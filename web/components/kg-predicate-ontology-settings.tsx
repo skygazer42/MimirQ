@@ -218,32 +218,32 @@ export function KgPredicateOntologySettings() {
   return (
     <Card
       className={cn(
-        'overflow-hidden rounded-xl border-slate-200/80 bg-card shadow-none',
+        'overflow-hidden rounded-xl border-border/60 bg-card shadow-none',
         loading ? 'opacity-60' : ''
       )}
     >
-      <CardHeader className="space-y-1 border-b border-slate-100 bg-slate-50/70 p-3">
+      <CardHeader className="space-y-1 border-b border-border/50 bg-muted/40 p-3">
         <div className="flex items-center justify-between gap-2">
-          <CardTitle className="text-[13px] font-semibold text-slate-950">
+          <CardTitle className="text-[13px] font-semibold text-foreground">
             KG 谓词治理
           </CardTitle>
-          <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">
+          <span className="rounded-full border border-success/20 bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success">
             关系白名单
           </span>
         </div>
-        <CardDescription className="text-[11px] leading-4 text-slate-500">
+        <CardDescription className="text-[11px] leading-4 text-muted-foreground">
           限定关系抽取可输出的谓词，减少关系漂移和脏数据。
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 p-3">
         {kgEnabled === false ? (
           <>
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200/70 bg-amber-50/70 px-3 py-2.5">
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2.5">
               <div className="min-w-0">
-                <div className="text-[12px] font-semibold text-amber-900">
+                <div className="text-[12px] font-semibold text-warning">
                   知识图谱未启用
                 </div>
-                <div className="mt-0.5 text-[11px] leading-4 text-amber-700">
+                <div className="mt-0.5 text-[11px] leading-4 text-warning">
                   启用后才能维护关系白名单。
                 </div>
               </div>
@@ -253,18 +253,18 @@ export function KgPredicateOntologySettings() {
                 variant="outline"
                 onClick={refreshStatus}
                 disabled={loading || saving}
-                className="h-7 shrink-0 gap-1.5 rounded-md border-amber-200 bg-card px-2.5 text-[11px] text-amber-800 hover:bg-amber-50"
+                className="h-7 shrink-0 gap-1.5 rounded-md border-warning/30 bg-card px-2.5 text-[11px] text-warning hover:bg-warning/10"
               >
                 <RefreshCw className="w-3 h-3" />
                 检查状态
               </Button>
             </div>
 
-            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/70 p-3">
-              <div className="text-[12px] font-semibold text-slate-800">
+            <div className="rounded-lg border border-dashed border-border bg-muted/40 p-3">
+              <div className="text-[12px] font-semibold text-foreground">
                 当前不可编辑
               </div>
-              <div className="mt-1 text-[11px] leading-4 text-slate-500">
+              <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
                 请先在系统设置中开启知识图谱能力，再返回这里配置谓词治理规则。
               </div>
             </div>
@@ -272,7 +272,7 @@ export function KgPredicateOntologySettings() {
         ) : (
           <>
             <div className="flex items-center justify-between gap-2">
-              <div className="text-[11px] text-slate-500">
+              <div className="text-[11px] text-muted-foreground">
                 共 {rows.length} 条，已启用{' '}
                 {rows.filter((r) => r.is_enabled).length} 条
               </div>
@@ -289,9 +289,9 @@ export function KgPredicateOntologySettings() {
               </Button>
             </div>
 
-            <div className="space-y-3 rounded-lg border border-slate-200/75 bg-slate-50/75 p-3">
+            <div className="space-y-3 rounded-lg border border-border/60 bg-muted/40 p-3">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-[12px] font-semibold text-slate-800">
+                <div className="text-[12px] font-semibold text-foreground">
                   {editingId ? '编辑谓词' : '新增谓词'}
                 </div>
                 <div className="flex items-center gap-2">
@@ -326,7 +326,7 @@ export function KgPredicateOntologySettings() {
                 <div className="space-y-1.5">
                   <Label
                     htmlFor="kg-onto-predicate"
-                    className="text-[11px] font-medium text-slate-500"
+                    className="text-[11px] font-medium text-muted-foreground"
                   >
                     谓词 key
                   </Label>
@@ -337,14 +337,14 @@ export function KgPredicateOntologySettings() {
                     placeholder="例如：works_for"
                     className="h-8 font-mono text-[12px]"
                   />
-                  <div className="text-[11px] text-slate-500">
+                  <div className="text-[11px] text-muted-foreground">
                     系统会自动归一化为 snake_case。
                   </div>
                 </div>
                 <div className="space-y-1.5">
                   <Label
                     htmlFor="kg-onto-display"
-                    className="text-[11px] font-medium text-slate-500"
+                    className="text-[11px] font-medium text-muted-foreground"
                   >
                     展示名称
                   </Label>
@@ -359,7 +359,7 @@ export function KgPredicateOntologySettings() {
                 <div className="space-y-1.5 md:col-span-2">
                   <Label
                     htmlFor="kg-onto-desc"
-                    className="text-[11px] font-medium text-slate-500"
+                    className="text-[11px] font-medium text-muted-foreground"
                   >
                     说明
                   </Label>
@@ -373,10 +373,10 @@ export function KgPredicateOntologySettings() {
                 </div>
                 <div className="flex items-center justify-between gap-2 md:col-span-2">
                   <div className="text-[12px]">
-                    <div className="font-semibold text-slate-800">
+                    <div className="font-semibold text-foreground">
                       启用该谓词
                     </div>
-                    <div className="text-[11px] text-slate-500">
+                    <div className="text-[11px] text-muted-foreground">
                       关闭后抽取结果不会写入该关系。
                     </div>
                   </div>
@@ -388,14 +388,14 @@ export function KgPredicateOntologySettings() {
               </div>
             </div>
 
-            <div className="overflow-hidden rounded-lg border border-slate-200/75">
-              <div className="grid grid-cols-[1fr_auto] gap-2 bg-slate-50/80 px-3 py-2 text-[10px] font-medium uppercase tracking-[0.12em] text-slate-400">
+            <div className="overflow-hidden rounded-lg border border-border/60">
+              <div className="grid grid-cols-[1fr_auto] gap-2 bg-muted/40 px-3 py-2 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/70">
                 <div>谓词</div>
                 <div>状态</div>
               </div>
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y divide-border/50">
                 {rows.length === 0 ? (
-                  <div className="p-3 text-[11px] text-slate-500">
+                  <div className="p-3 text-[11px] text-muted-foreground">
                     暂无条目。可先添加常用关系，如
                     alias_of、part_of、works_for。
                   </div>

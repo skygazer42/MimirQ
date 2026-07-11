@@ -56,9 +56,9 @@ function normalizeImportedBundle(raw: unknown): DatasetConfigBundle | null {
   return raw
 }
 
-const workflowHeroCard = 'relative overflow-hidden rounded-2xl border border-white/70 bg-[radial-gradient(circle_at_0%_0%,rgba(20,184,166,0.18),transparent_34%),linear-gradient(135deg,rgba(255,255,255,0.97),rgba(240,253,250,0.9))] shadow-[0_18px_55px_rgba(15,23,42,0.08)] ring-1 ring-slate-100/70 dark:border-border/60 dark:bg-card dark:ring-white/5'
+const workflowHeroCard = 'relative overflow-hidden rounded-2xl border border-border/60 bg-[radial-gradient(circle_at_0%_0%,hsl(var(--primary)/0.16),transparent_34%),linear-gradient(135deg,hsl(var(--card)/0.97),hsl(var(--background)/0.92))] shadow-[0_18px_55px_rgba(15,23,42,0.08)] ring-1 ring-border/50 dark:border-border/60 dark:bg-card dark:ring-white/5'
 const workflowActionButtonClass = 'h-9 gap-1.5 rounded-xl bg-card/70 px-3 text-[13px] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]'
-const workflowPanelClass = 'overflow-hidden border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.92))] shadow-[0_16px_45px_rgba(15,23,42,0.07)] ring-1 ring-slate-100/70 dark:border-border/60 dark:bg-card/95 dark:ring-white/5'
+const workflowPanelClass = 'overflow-hidden border-border/60 bg-[linear-gradient(180deg,hsl(var(--card)/0.98),hsl(var(--background)/0.92))] shadow-[0_16px_45px_rgba(15,23,42,0.07)] ring-1 ring-border/50 dark:border-border/60 dark:bg-card/95 dark:ring-white/5'
 
 export default function DatasetWorkflowPage() {
   const router = useRouter()
@@ -272,19 +272,19 @@ export default function DatasetWorkflowPage() {
         bodyContainerClassName="h-full min-h-0 overflow-hidden"
         top={
           <div className={workflowHeroCard}>
-            <div className="absolute inset-y-4 left-3 w-1 rounded-full bg-gradient-to-b from-teal-500 via-cyan-400 to-sky-300" />
+            <div className="absolute inset-y-4 left-3 w-1 rounded-full bg-[linear-gradient(180deg,hsl(var(--primary)),hsl(var(--info)/0.82),hsl(var(--primary)/0.42))]" />
             <div className="relative flex flex-col gap-3 px-5 py-3.5 pl-8 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 items-start gap-3.5">
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-teal-200/80 bg-white/82 text-teal-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_26px_rgba(20,184,166,0.14)] dark:border-teal-500/25 dark:bg-teal-500/10 dark:text-teal-300">
+                <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-success/30 bg-card/82 text-success shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_26px_rgba(20,184,166,0.14)] dark:border-teal-500/25 dark:bg-teal-500/10 dark:text-teal-300">
                   <Layers className="size-5" />
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="truncate text-[20px] font-medium leading-none tracking-[-0.01em] text-slate-800 dark:text-foreground">工作流配置</h1>
-                    <span className="inline-flex h-5 items-center rounded-full border border-slate-200/80 bg-white/70 px-2 text-[10px] font-medium leading-none text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-border/60 dark:bg-muted/30 dark:text-muted-foreground">
+                    <h1 className="truncate text-[20px] font-medium leading-none tracking-[-0.01em] text-foreground dark:text-foreground">工作流配置</h1>
+                    <span className="inline-flex h-5 items-center rounded-full border border-border/60 bg-card/70 px-2 text-[10px] font-medium leading-none text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-border/60 dark:bg-muted/30 dark:text-muted-foreground">
                       DatasetConfigBundle
                     </span>
-                    <Badge variant="soft" className="h-5 border-teal-200 bg-teal-50 px-2 text-[10px] font-medium leading-none text-teal-700">
+                    <Badge variant="soft" className="h-5 border-success/30 bg-success/10 px-2 text-[10px] font-medium leading-none text-success">
                       CONFIG GRAPH
                     </Badge>
                   </div>
@@ -295,22 +295,22 @@ export default function DatasetWorkflowPage() {
                   </div>
                   <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] leading-none text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5">
-                      <Layers className="size-3.5 text-teal-500" />
+                      <Layers className="size-3.5 text-success" />
                       <span>节点</span>
                       <span className="font-mono font-semibold text-foreground">{graph.nodes.length}</span>
                     </span>
                     <span className="inline-flex items-center gap-1.5">
-                      <BarChart3 className="size-3.5 text-cyan-500" />
+                      <BarChart3 className="size-3.5 text-info" />
                       <span>边</span>
                       <span className="font-mono font-semibold text-foreground">{graph.links.length}</span>
                     </span>
                     <span className="inline-flex items-center gap-1.5">
-                      <Database className="size-3.5 text-sky-500" />
+                      <Database className="size-3.5 text-info" />
                       <span>配置键</span>
                       <span className="font-mono font-semibold text-foreground">{topLevelKeyCount}</span>
                     </span>
                     <span className="inline-flex items-center gap-1.5">
-                      <Settings2 className="size-3.5 text-emerald-500" />
+                      <Settings2 className="size-3.5 text-success" />
                       <span>已配置节点</span>
                       <span className="font-mono font-semibold text-foreground">{configuredNodeCount}</span>
                     </span>
@@ -321,10 +321,10 @@ export default function DatasetWorkflowPage() {
                 <div className={cn(
                   'inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]',
                   hasUnsavedLayoutChanges
-                    ? 'border-amber-200/80 bg-amber-50/90 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300'
-                    : 'border-emerald-200/80 bg-emerald-50/90 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
+                    ? 'border-warning/30 bg-warning/5 text-warning dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300'
+                    : 'border-success/30 bg-success/5 text-success dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
                 )}>
-                  <span className={cn('size-2 rounded-full', loading ? 'animate-pulse bg-sky-500' : hasUnsavedLayoutChanges ? 'bg-amber-500' : 'bg-emerald-500')} />
+                  <span className={cn('size-2 rounded-full', loading ? 'animate-pulse bg-info' : hasUnsavedLayoutChanges ? 'bg-warning' : 'bg-success')} />
                   {layoutStatusLabel}
                 </div>
               </div>
@@ -361,7 +361,7 @@ export default function DatasetWorkflowPage() {
               <Button
                 onClick={() => detachPromise(doSaveLayout())}
                 disabled={saving || !datasetId || !workingConfig || !hasUnsavedLayoutChanges}
-                className="h-10 min-w-[118px] gap-2 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 text-[13px] text-white shadow-[0_14px_30px_rgba(20,184,166,0.24)] hover:from-teal-600 hover:to-cyan-600"
+                className="h-10 min-w-[118px] gap-2 rounded-xl bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] text-[13px] text-primary-foreground shadow-[0_14px_30px_rgba(20,184,166,0.24)] hover:bg-[linear-gradient(90deg,hsl(var(--primary)/0.92),hsl(var(--info)/0.92))]"
               >
                 {saving ? <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" /> : <Save className="size-3.5" />}
                 保存布局
@@ -388,14 +388,14 @@ export default function DatasetWorkflowPage() {
         <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
           <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_400px]">
             <Panel padding="none" className={cn(workflowPanelClass, 'flex min-h-0 min-w-0 flex-col')}>
-              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200/70 bg-white/65 px-3.5 py-2.5 dark:border-border/60 dark:bg-muted/20">
+              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/60 bg-card/65 px-3.5 py-2.5 dark:border-border/60 dark:bg-muted/20">
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold text-slate-900 dark:text-foreground">配置链路图</div>
+                  <div className="text-sm font-semibold text-foreground dark:text-foreground">配置链路图</div>
                   <div className="mt-0.5 text-[11px] text-muted-foreground">拖动节点只保存布局，不会改变业务配置值。</div>
                 </div>
                 <div className="hidden shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground md:flex">
-                  <span className="rounded-full border border-slate-200/80 bg-white/70 px-2 py-1 dark:border-border/60 dark:bg-muted/30">version {configVersionLabel}</span>
-                  <span className="rounded-full border border-slate-200/80 bg-white/70 px-2 py-1 dark:border-border/60 dark:bg-muted/30">{graph.nodes.length} nodes</span>
+                  <span className="rounded-full border border-border/60 bg-card/70 px-2 py-1 dark:border-border/60 dark:bg-muted/30">version {configVersionLabel}</span>
+                  <span className="rounded-full border border-border/60 bg-card/70 px-2 py-1 dark:border-border/60 dark:bg-muted/30">{graph.nodes.length} nodes</span>
                 </div>
               </div>
               <div className="min-h-0 flex-1">
@@ -409,9 +409,9 @@ export default function DatasetWorkflowPage() {
             </Panel>
 
             <Panel className={cn(workflowPanelClass, 'flex min-h-0 flex-col p-0')}>
-              <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200/70 bg-white/65 px-3.5 py-3 dark:border-border/60 dark:bg-muted/20">
+              <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border/60 bg-card/65 px-3.5 py-3 dark:border-border/60 dark:bg-muted/20">
                 <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold text-slate-900 dark:text-foreground">
+                  <div className="truncate text-sm font-semibold text-foreground dark:text-foreground">
                     {selectedNode?.label ? String(selectedNode.label) : '节点详情'}
                   </div>
                   <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{selectedMetaStatusText}</div>
@@ -429,7 +429,7 @@ export default function DatasetWorkflowPage() {
                     <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">摘要</div>
                     <div className="flex flex-wrap gap-1.5">
                       {selectedSummary.slice(0, 20).map((s) => (
-                        <Badge key={String(s)} variant="outline" className="rounded-lg border-slate-200/80 bg-white/70 font-mono text-[11px] dark:border-border/60 dark:bg-muted/30">
+                        <Badge key={String(s)} variant="outline" className="rounded-lg border-border/60 bg-card/70 font-mono text-[11px] dark:border-border/60 dark:bg-muted/30">
                           {String(s)}
                         </Badge>
                       ))}
@@ -442,13 +442,13 @@ export default function DatasetWorkflowPage() {
                   <Textarea
                     value={selectedJsonText || ''}
                     readOnly
-                    className="min-h-[320px] resize-none rounded-xl border-slate-200/80 bg-slate-50/80 font-mono text-[11px] leading-5 shadow-inner dark:border-border/60 dark:bg-muted/20"
+                    className="min-h-[320px] resize-none rounded-xl border-border/60 bg-muted/40 font-mono text-[11px] leading-5 shadow-inner dark:border-border/60 dark:bg-muted/20"
                     placeholder="选择左侧节点后查看 JSON..."
                   />
                 </div>
               </div>
 
-              <div className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200/70 px-3.5 py-2.5 text-[11px] text-muted-foreground dark:border-border/60">
+              <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border/60 px-3.5 py-2.5 text-[11px] text-muted-foreground dark:border-border/60">
                 <span>导出版本 <span className="font-mono text-foreground">{configVersionLabel}</span></span>
                 <span className="font-medium text-foreground">{layoutStatusLabel}</span>
               </div>

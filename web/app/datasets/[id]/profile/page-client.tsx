@@ -71,16 +71,16 @@ const PIE_COLORS = [
 const EMPTY_SCAN_RUNS: DatasetProfileScanRunOut[] = []
 const PROFILE_DOCUMENT_PAGE_SIZE = 50
 const PROFILE_BUCKET_PREVIEW_MAX_CHARS = 360
-const profileHeroCard = 'relative overflow-hidden rounded-2xl border border-white/70 bg-[radial-gradient(circle_at_0%_0%,rgba(14,165,233,0.18),transparent_34%),linear-gradient(135deg,rgba(255,255,255,0.96),rgba(236,253,245,0.9))] p-4 shadow-[0_18px_55px_rgba(15,23,42,0.08)] ring-1 ring-slate-100/70 dark:border-border/60 dark:bg-card dark:ring-white/5'
-const profilePanelClass = 'overflow-hidden border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.92))] p-3 shadow-[0_16px_45px_rgba(15,23,42,0.07)] ring-1 ring-slate-100/70 dark:border-border/60 dark:bg-card/95 dark:ring-white/5'
+const profileHeroCard = 'relative overflow-hidden rounded-2xl border border-border/60 bg-[radial-gradient(circle_at_0%_0%,hsl(var(--info)/0.18),transparent_34%),linear-gradient(135deg,hsl(var(--card)/0.96),hsl(var(--background)/0.92))] p-4 shadow-[0_18px_55px_rgba(15,23,42,0.08)] ring-1 ring-border/50 dark:border-border/60 dark:bg-card dark:ring-white/5'
+const profilePanelClass = 'overflow-hidden border-border/60 bg-[linear-gradient(180deg,hsl(var(--card)/0.98),hsl(var(--background)/0.92))] p-3 shadow-[0_16px_45px_rgba(15,23,42,0.07)] ring-1 ring-border/50 dark:border-border/60 dark:bg-card/95 dark:ring-white/5'
 const profileChartProps = { className: 'h-[176px]', minHeight: 176 } as const
 const profileEmptyChartClass = 'h-[176px] flex items-center justify-center text-[11px] text-muted-foreground/60'
 const profileSectionTitleClass = 'text-[13px] font-semibold leading-none text-foreground/85'
 const profileSectionCaptionClass = 'mt-1 text-[11px] leading-4 text-muted-foreground/62'
-const profileToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-2xl border border-white/70 bg-white/70 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.055)] ring-1 ring-slate-100/70 backdrop-blur dark:border-border/60 dark:bg-card/70 dark:ring-white/5'
-const profileToolbarButtonClass = 'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-slate-600 shadow-none hover:bg-white/95 hover:text-slate-900 hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
-const profileToolbarExportButtonClass = 'h-8 gap-1.5 rounded-xl border-white/70 bg-white/75 px-2.5 text-[12px] font-medium text-slate-700 shadow-[0_8px_20px_rgba(15,23,42,0.045)] hover:bg-white hover:text-slate-950 dark:border-border/60 dark:bg-card/70 dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
-const profileToolbarPrimaryButtonClass = 'h-8 gap-1.5 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-500 px-3 text-[12px] font-semibold text-white shadow-[0_10px_24px_rgba(14,165,233,0.24)] hover:from-sky-600 hover:to-cyan-600 [&_svg]:size-3.5'
+const profileToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-2xl border border-border/60 bg-card/70 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.055)] ring-1 ring-border/50 backdrop-blur dark:border-border/60 dark:bg-card/70 dark:ring-white/5'
+const profileToolbarButtonClass = 'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-muted-foreground shadow-none hover:bg-card/95 hover:text-foreground hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
+const profileToolbarExportButtonClass = 'h-8 gap-1.5 rounded-xl border-border/60 bg-card/75 px-2.5 text-[12px] font-medium text-foreground/85 shadow-[0_8px_20px_rgba(15,23,42,0.045)] hover:bg-card/95 hover:text-foreground dark:border-border/60 dark:bg-card/70 dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
+const profileToolbarPrimaryButtonClass = 'h-8 gap-1.5 rounded-xl bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] px-3 text-[12px] font-semibold text-primary-foreground shadow-[0_10px_24px_rgba(14,165,233,0.24)] hover:bg-[linear-gradient(90deg,hsl(var(--primary)/0.92),hsl(var(--info)/0.92))] [&_svg]:size-3.5'
 
 function ProfileCardHeader({
   title,
@@ -177,7 +177,7 @@ function ProfileAnchorNav() {
   }, [])
 
   return (
-    <div className="mb-3 flex items-center gap-1 overflow-x-auto rounded-2xl border border-white/70 bg-white/70 p-1.5 shadow-[0_12px_35px_rgba(15,23,42,0.06)] ring-1 ring-slate-100/70 no-scrollbar backdrop-blur dark:border-border/60 dark:bg-card/70 dark:ring-white/5">
+    <div className="mb-3 flex items-center gap-1 overflow-x-auto rounded-2xl border border-border/60 bg-card/70 p-1.5 shadow-[0_12px_35px_rgba(15,23,42,0.06)] ring-1 ring-border/50 no-scrollbar backdrop-blur dark:border-border/60 dark:bg-card/70 dark:ring-white/5">
       {PROFILE_SECTIONS.map((sec) => (
         <button
           key={sec.id}
@@ -186,8 +186,8 @@ function ProfileAnchorNav() {
           className={cn(
             'shrink-0 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap',
             activeId === sec.id
-              ? 'bg-sky-100 text-sky-700 shadow-sm'
-              : 'text-slate-500 hover:bg-slate-100/80 hover:text-slate-800 dark:text-muted-foreground dark:hover:bg-muted/50 dark:hover:text-foreground',
+              ? 'bg-info/15 text-info shadow-sm'
+              : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground dark:text-muted-foreground dark:hover:bg-muted/50 dark:hover:text-foreground',
           )}
         >
           {sec.label}
@@ -815,49 +815,49 @@ export default function DatasetProfilePage() {
             <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(14,165,233,0.045)_1px,transparent_1px),linear-gradient(90deg,rgba(14,165,233,0.045)_1px,transparent_1px)] bg-[size:28px_28px]" />
             <div className="relative flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 items-start gap-3.5">
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-sky-100 bg-sky-50/90 text-sky-600 shadow-inner">
+                <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-info/20 bg-info/5 text-info shadow-inner">
                   <BarChart3 className="size-5" />
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="truncate text-[20px] font-medium leading-none tracking-[-0.01em] text-slate-800 dark:text-foreground">
+                    <h1 className="truncate text-[20px] font-medium leading-none tracking-[-0.01em] text-foreground dark:text-foreground">
                       数据画像
                     </h1>
-                    <Badge variant="soft" className="h-5 border-sky-200 bg-sky-50 px-2 text-[10px] font-medium leading-none text-sky-700">
+                    <Badge variant="soft" className="h-5 border-info/30 bg-info/10 px-2 text-[10px] font-medium leading-none text-info">
                       PROFILE
                     </Badge>
                   </div>
                   <p className="mt-1.5 max-w-4xl text-[13px] leading-tight text-muted-foreground">
-                    数据集：<span className="font-semibold text-slate-800 dark:text-foreground">{dataset?.name || datasetId || '未选择'}</span>
-                    <span className="mx-2 text-slate-300">·</span>
+                    数据集：<span className="font-semibold text-foreground dark:text-foreground">{dataset?.name || datasetId || '未选择'}</span>
+                    <span className="mx-2 text-muted-foreground/60">·</span>
                     格式、长度、扫描件、PII、重复与切片指标的质量画像
                   </p>
                   <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] leading-none text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5">
-                      <Database className="size-3.5 text-sky-500" />
-                      文档 <strong className="font-mono text-slate-900 dark:text-foreground">{summary?.total_documents ?? (isLoading ? '…' : 0)}</strong>
+                      <Database className="size-3.5 text-info" />
+                      文档 <strong className="font-mono text-foreground dark:text-foreground">{summary?.total_documents ?? (isLoading ? '…' : 0)}</strong>
                     </span>
                     <span className="inline-flex items-center gap-1.5">
-                      <Cloud className="size-3.5 text-cyan-500" />
-                      总大小 <strong className="font-mono text-slate-900 dark:text-foreground">{totalSizeLabel}</strong>
+                      <Cloud className="size-3.5 text-info" />
+                      总大小 <strong className="font-mono text-foreground dark:text-foreground">{totalSizeLabel}</strong>
                     </span>
                     <span className="inline-flex items-center gap-1.5">
-                      <FileSearch className="size-3.5 text-amber-500" />
-                      扫描 PDF <strong className="font-mono text-slate-900 dark:text-foreground">{scannedPdfCount}</strong>
+                      <FileSearch className="size-3.5 text-warning" />
+                      扫描 PDF <strong className="font-mono text-foreground dark:text-foreground">{scannedPdfCount}</strong>
                     </span>
                     <span className="inline-flex items-center gap-1.5">
-                      <BarChart3 className="size-3.5 text-rose-500" />
-                      问题 <strong className="font-mono text-slate-900 dark:text-foreground">{summary ? totalFindingCount : (isLoading ? '…' : 0)}</strong>
+                      <BarChart3 className="size-3.5 text-destructive" />
+                      问题 <strong className="font-mono text-foreground dark:text-foreground">{summary ? totalFindingCount : (isLoading ? '…' : 0)}</strong>
                     </span>
                     <span className="inline-flex items-center gap-1.5">
-                      <Sparkles className="size-3.5 text-emerald-500" />
-                      更新时间 <strong className="font-mono text-slate-900 dark:text-foreground">{generatedAtLabel}</strong>
+                      <Sparkles className="size-3.5 text-success" />
+                      更新时间 <strong className="font-mono text-foreground dark:text-foreground">{generatedAtLabel}</strong>
                     </span>
                   </div>
                 </div>
               </div>
-              <div className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50/80 px-3 text-[13px] font-medium text-emerald-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
-                <span className={cn('size-2 rounded-full', scanRunning ? 'animate-pulse bg-sky-500' : 'bg-emerald-500')} />
+              <div className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-success/30 bg-success/5 px-3 text-[13px] font-medium text-success shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+                <span className={cn('size-2 rounded-full', scanRunning ? 'animate-pulse bg-info' : 'bg-success')} />
                 {latestRunLabel}
               </div>
             </div>
@@ -1095,7 +1095,7 @@ export default function DatasetProfilePage() {
                     检查 token 分布、正文覆盖和重叠成本；缺统计只提示补采集，不代表入库失败。
                   </div>
                 </div>
-                <Badge variant="outline" className="shrink-0 border-slate-200 bg-white/70 px-2 py-0.5 text-[10px] font-mono text-slate-500">
+                <Badge variant="outline" className="shrink-0 border-border bg-card/70 px-2 py-0.5 text-[10px] font-mono text-muted-foreground">
                   可选门禁
                 </Badge>
               </div>
@@ -1106,22 +1106,22 @@ export default function DatasetProfilePage() {
                     <div
                       key={String(t.key || t.label || idx)}
                       className={cn(
-                        'relative overflow-hidden rounded-xl border bg-white/60 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:bg-muted/20',
+                        'relative overflow-hidden rounded-xl border bg-card/60 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:bg-muted/20',
                         String(t.status || '').toLowerCase() === 'fail'
-                          ? 'border-rose-200/80'
+                          ? 'border-destructive/30'
                           : String(t.status || '').toLowerCase() === 'warn'
-                            ? 'border-amber-200/80'
-                            : 'border-slate-200/75 dark:border-border/60',
+                            ? 'border-warning/30'
+                            : 'border-border/60 dark:border-border/60',
                       )}
                     >
                       <div
                         className={cn(
                           'absolute inset-y-2 left-0 w-1 rounded-r-full',
                           String(t.status || '').toLowerCase() === 'fail'
-                            ? 'bg-rose-400'
+                            ? 'bg-destructive'
                             : String(t.status || '').toLowerCase() === 'warn'
-                              ? 'bg-amber-400'
-                              : 'bg-sky-300',
+                              ? 'bg-warning'
+                              : 'bg-info/30',
                         )}
                       />
                       <div className="min-w-0">
@@ -1139,7 +1139,7 @@ export default function DatasetProfilePage() {
                       </div>
 
                       {t.suggestions.length ? (
-                        <div className="mt-2 rounded-lg bg-slate-50/80 px-2.5 py-1.5 text-[11px] leading-4 text-muted-foreground/70 dark:bg-muted/30">
+                        <div className="mt-2 rounded-lg bg-muted/40 px-2.5 py-1.5 text-[11px] leading-4 text-muted-foreground/70 dark:bg-muted/30">
                           {String(t.suggestions[0])}
                           {t.suggestions.length > 1 ? (
                             <span className="ml-1 text-muted-foreground/45">+{t.suggestions.length - 1}</span>
@@ -1374,12 +1374,12 @@ export default function DatasetProfilePage() {
                     key={f.key}
                     type="button"
                     className={cn(
-                      'relative overflow-hidden rounded-xl border bg-white/60 px-2.5 py-2 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-colors hover:bg-white/90 dark:bg-muted/20 md:grid-cols-[minmax(0,1fr)_auto]',
+                      'relative overflow-hidden rounded-xl border bg-card/60 px-2.5 py-2 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-colors hover:bg-card/90 dark:bg-muted/20 md:grid-cols-[minmax(0,1fr)_auto]',
                       String(f.severity || '').toLowerCase() === 'error'
-                        ? 'border-rose-200/80'
+                        ? 'border-destructive/30'
                         : String(f.severity || '').toLowerCase() === 'warning'
-                          ? 'border-amber-200/80'
-                          : 'border-slate-200/75 dark:border-border/60',
+                          ? 'border-warning/30'
+                          : 'border-border/60 dark:border-border/60',
                       'focus:outline-none focus:ring-2 focus:ring-primary/30'
                     )}
                     onClick={() => detachPromise(openFinding(f))}
@@ -1388,10 +1388,10 @@ export default function DatasetProfilePage() {
                       className={cn(
                         'absolute inset-y-2 left-0 w-1 rounded-r-full',
                         String(f.severity || '').toLowerCase() === 'error'
-                          ? 'bg-rose-400'
+                          ? 'bg-destructive'
                           : String(f.severity || '').toLowerCase() === 'warning'
-                            ? 'bg-amber-400'
-                            : 'bg-sky-300',
+                            ? 'bg-warning'
+                            : 'bg-info/30',
                       )}
                     />
                     <div className="min-w-0">
@@ -1405,18 +1405,18 @@ export default function DatasetProfilePage() {
                         <div className="mt-1 line-clamp-2 pl-2 text-[11px] leading-4 text-muted-foreground/65">{f.description}</div>
                       ) : null}
                     </div>
-                    <div className="mt-2 pl-2 text-[11px] font-medium text-sky-600">查看文件</div>
+                    <div className="mt-2 pl-2 text-[11px] font-medium text-info">查看文件</div>
                   </button>
                 ))}
               </div>
             ) : (
-              <div className="rounded-xl border border-emerald-100 bg-emerald-50/45 px-2 py-1.5 text-[11px] leading-4 text-emerald-700">
+              <div className="rounded-xl border border-success/20 bg-success/5 px-2 py-1.5 text-[11px] leading-4 text-success">
                 当前没有命中的可操作问题，下面仅保留已检查项摘要。
               </div>
             )}
 
             {clearFindings.length ? (
-              <div className="mt-3 rounded-xl border border-border/40 bg-slate-50/60 px-2 py-1.5 dark:bg-muted/20">
+              <div className="mt-3 rounded-xl border border-border/40 bg-muted/40 px-2 py-1.5 dark:bg-muted/20">
                 <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/55">
                   已检查未命中
                 </div>
@@ -1424,7 +1424,7 @@ export default function DatasetProfilePage() {
                   {clearFindings.slice(0, 10).map((f) => (
                     <span
                       key={f.key}
-                      className="rounded-full border border-border/45 bg-white/60 px-2 py-0.5 text-[10px] leading-4 text-muted-foreground/65 dark:bg-card/50"
+                      className="rounded-full border border-border/45 bg-card/60 px-2 py-0.5 text-[10px] leading-4 text-muted-foreground/65 dark:bg-card/50"
                     >
                       {f.label}
                     </span>
@@ -1464,35 +1464,35 @@ export default function DatasetProfilePage() {
             </div>
 
             <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-5">
-              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-white/55 px-2.5 py-2 dark:bg-card/40">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-card/55 px-2.5 py-2 dark:bg-card/40">
                 <Label className="text-xs text-foreground/80">PDF 指标</Label>
                 <Switch
                   checked={!!scanConfig.backfill_pdf_quality}
                   onCheckedChange={(v) => setScanConfig((prev) => ({ ...prev, backfill_pdf_quality: !!v }))}
                 />
               </div>
-              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-white/55 px-2.5 py-2 dark:bg-card/40">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-card/55 px-2.5 py-2 dark:bg-card/40">
                 <Label className="text-xs text-foreground/80">文本质量</Label>
                 <Switch
                   checked={!!scanConfig.backfill_text_quality}
                   onCheckedChange={(v) => setScanConfig((prev) => ({ ...prev, backfill_text_quality: !!v }))}
                 />
               </div>
-              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-white/55 px-2.5 py-2 dark:bg-card/40">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-card/55 px-2.5 py-2 dark:bg-card/40">
                 <Label className="text-xs text-foreground/80">切片分布</Label>
                 <Switch
                   checked={!!scanConfig.backfill_chunk_stats}
                   onCheckedChange={(v) => setScanConfig((prev) => ({ ...prev, backfill_chunk_stats: !!v }))}
                 />
               </div>
-              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-white/55 px-2.5 py-2 dark:bg-card/40">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-card/55 px-2.5 py-2 dark:bg-card/40">
                 <Label className="text-xs text-foreground/80">文件哈希</Label>
                 <Switch
                   checked={!!scanConfig.compute_file_hash}
                   onCheckedChange={(v) => setScanConfig((prev) => ({ ...prev, compute_file_hash: !!v }))}
                 />
               </div>
-              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-white/55 px-2.5 py-2 dark:bg-card/40">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-card/55 px-2.5 py-2 dark:bg-card/40">
                 <Label className="text-xs text-foreground/80">最大文档数</Label>
                 <Input
                   value={scanConfig.max_documents ?? ''}
@@ -1511,7 +1511,7 @@ export default function DatasetProfilePage() {
               </div>
             </div>
 
-            <div className="mt-2 flex items-center justify-between gap-4 rounded-lg bg-slate-50/70 px-2.5 py-1.5 dark:bg-muted/20">
+            <div className="mt-2 flex items-center justify-between gap-4 rounded-lg bg-muted/40 px-2.5 py-1.5 dark:bg-muted/20">
               <div className="text-[11px] text-muted-foreground/65">
                 进度：{(() => {
     if (scanRunning) {
@@ -1573,13 +1573,13 @@ export default function DatasetProfilePage() {
                 </table>
               </div>
             ) : (
-              <div className="rounded-xl border border-border/45 bg-slate-50/60 px-2 py-1.5 text-[11px] text-muted-foreground/60 dark:bg-muted/20">
+              <div className="rounded-xl border border-border/45 bg-muted/40 px-2 py-1.5 text-[11px] text-muted-foreground/60 dark:bg-muted/20">
                 暂无扫描记录。启动一次深度扫描后，这里会显示快照和可对比版本。
               </div>
             )}
 
             <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
-              <div className="rounded-xl border border-border/50 bg-white/45 p-3 dark:bg-card/40">
+              <div className="rounded-xl border border-border/50 bg-card/45 p-3 dark:bg-card/40">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <div className="text-[13px] font-semibold text-foreground/85">快照对比</div>
                   <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-mono text-muted-foreground">
@@ -1593,7 +1593,7 @@ export default function DatasetProfilePage() {
                       <div className="space-y-1.5">
                         <Label className="text-[11px] text-muted-foreground">基准快照</Label>
                         <Select value={compareA} onValueChange={setCompareA}>
-                          <SelectTrigger className="h-8 bg-white/70 text-xs dark:bg-card/60">
+                          <SelectTrigger className="h-8 bg-card/70 text-xs dark:bg-card/60">
                             <SelectValue placeholder="选择 run" />
                           </SelectTrigger>
                           <SelectContent>
@@ -1608,7 +1608,7 @@ export default function DatasetProfilePage() {
                       <div className="space-y-1.5">
                         <Label className="text-[11px] text-muted-foreground">对比快照</Label>
                         <Select value={compareB} onValueChange={setCompareB}>
-                          <SelectTrigger className="h-8 bg-white/70 text-xs dark:bg-card/60">
+                          <SelectTrigger className="h-8 bg-card/70 text-xs dark:bg-card/60">
                             <SelectValue placeholder="选择 run" />
                           </SelectTrigger>
                           <SelectContent>
@@ -1624,42 +1624,42 @@ export default function DatasetProfilePage() {
 
                     {compareDelta ? (
                       <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-3">
-                        <div className="rounded-lg border border-border/45 bg-slate-50/70 p-2 dark:bg-muted/20">
+                        <div className="rounded-lg border border-border/45 bg-muted/40 p-2 dark:bg-muted/20">
                           <div className="text-[10px] text-muted-foreground">文档数 Δ</div>
                           <div className="mt-0.5 font-mono text-xs font-semibold">{compareDelta.docs >= 0 ? `+${compareDelta.docs}` : String(compareDelta.docs)}</div>
                         </div>
-                        <div className="rounded-lg border border-border/45 bg-slate-50/70 p-2 dark:bg-muted/20">
+                        <div className="rounded-lg border border-border/45 bg-muted/40 p-2 dark:bg-muted/20">
                           <div className="text-[10px] text-muted-foreground">总大小 Δ</div>
                           <div className="mt-0.5 font-mono text-xs font-semibold">
                             {compareDelta.bytes >= 0 ? '+' : '-'}
                             {formatFileSize(Math.abs(compareDelta.bytes))}
                           </div>
                         </div>
-                        <div className="rounded-lg border border-border/45 bg-slate-50/70 p-2 dark:bg-muted/20">
+                        <div className="rounded-lg border border-border/45 bg-muted/40 p-2 dark:bg-muted/20">
                           <div className="text-[10px] text-muted-foreground">P90 长度 Δ</div>
                           <div className="mt-0.5 font-mono text-xs font-semibold">{compareDelta.p90 >= 0 ? `+${compareDelta.p90}` : String(compareDelta.p90)}</div>
                         </div>
-                        <div className="rounded-lg border border-border/45 bg-slate-50/70 p-2 dark:bg-muted/20">
+                        <div className="rounded-lg border border-border/45 bg-muted/40 p-2 dark:bg-muted/20">
                           <div className="text-[10px] text-muted-foreground">扫描 PDF Δ</div>
                           <div className="mt-0.5 font-mono text-xs font-semibold">{compareDelta.scanned >= 0 ? `+${compareDelta.scanned}` : String(compareDelta.scanned)}</div>
                         </div>
-                        <div className="rounded-lg border border-border/45 bg-slate-50/70 p-2 dark:bg-muted/20">
+                        <div className="rounded-lg border border-border/45 bg-muted/40 p-2 dark:bg-muted/20">
                           <div className="text-[10px] text-muted-foreground">PII 命中 Δ</div>
                           <div className="mt-0.5 font-mono text-xs font-semibold">{compareDelta.pii >= 0 ? `+${compareDelta.pii}` : String(compareDelta.pii)}</div>
                         </div>
-                        <div className="rounded-lg border border-border/45 bg-slate-50/70 p-2 dark:bg-muted/20">
+                        <div className="rounded-lg border border-border/45 bg-muted/40 p-2 dark:bg-muted/20">
                           <div className="text-[10px] text-muted-foreground">Secrets 命中 Δ</div>
                           <div className="mt-0.5 font-mono text-xs font-semibold">{compareDelta.secrets >= 0 ? `+${compareDelta.secrets}` : String(compareDelta.secrets)}</div>
                         </div>
                       </div>
                     ) : (
-                    <div className="mt-3 rounded-lg bg-slate-50/70 px-2.5 py-1.5 text-[11px] text-muted-foreground/60 dark:bg-muted/20">
+                    <div className="mt-3 rounded-lg bg-muted/40 px-2.5 py-1.5 text-[11px] text-muted-foreground/60 dark:bg-muted/20">
                         请选择两个已完成扫描记录。
                       </div>
                     )}
                   </>
                 ) : (
-                  <div className="rounded-lg border border-dashed border-border/55 bg-slate-50/55 px-3 py-2 text-[11px] leading-4 text-muted-foreground/65 dark:bg-muted/20">
+                  <div className="rounded-lg border border-dashed border-border/55 bg-muted/40 px-3 py-2 text-[11px] leading-4 text-muted-foreground/65 dark:bg-muted/20">
                     <div className="font-medium text-foreground/75">暂无可对比快照</div>
                     <div className="mt-0.5">
                       至少需要 2 次已完成深度扫描；当前 {completedRuns.length} 次。完成后这里会出现基准/对比快照下拉。
@@ -1668,7 +1668,7 @@ export default function DatasetProfilePage() {
                 )}
               </div>
 
-              <div className="rounded-xl border border-border/50 bg-white/45 p-3 dark:bg-card/40">
+              <div className="rounded-xl border border-border/50 bg-card/45 p-3 dark:bg-card/40">
                 <div className="text-[13px] font-semibold text-foreground/85">离线报告</div>
                 <div className="text-[11px] leading-4 text-muted-foreground/65">
                   导出单文件 HTML，默认脱敏，适合离线分享。

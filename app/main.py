@@ -3,7 +3,6 @@ FastAPI main entry point.
 """
 import logging
 import os
-import time
 import warnings
 from contextlib import asynccontextmanager
 from ipaddress import IPv4Address
@@ -90,7 +89,6 @@ from app.core.config import settings
 from app.core.database import Base, SessionLocal, engine
 from app.core.env import is_production_env
 from app.core.exceptions import register_exception_handlers
-from app.core.health_checks import check_database, check_minio, check_redis, check_vector
 from app.core.http_client import close_http_client_pool
 from app.core.logging_config import configure_logging
 from app.core.migrations import apply_runtime_migrations
@@ -99,42 +97,13 @@ from app.core.sentry import init_sentry
 from app.core.utils import parse_csv
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
-from app.tasks.queue import close_queue, init_queue, is_queue_initialized
+from app.tasks.queue import close_queue, init_queue
 
 logger = logging.getLogger("mimirq")
 _OPENAPI_EXPORT_MODE = str(os.getenv("MIMIRQ_OPENAPI_EXPORT", "") or "").strip().lower() in {"1", "true", "yes", "y", "on"}
-_HEALTH_CACHE_TTL_SEC = max(0.0, float(getattr(settings, "HEALTH_CACHE_TTL_SEC", 2.0) or 2.0))
-_health_cache: dict[str, object] = {"ts": 0.0, "payload": None, "key": None}
 _DEV_LOCAL_CORS_PORTS = {3000, 3001, 3100}
 _ALL_INTERFACES_HOST = str(IPv4Address(0))
 _DOCS_PATH = "/docs"
-
-
-def _health_cache_key() -> tuple[object, ...]:
-    # Include endpoints so the cache doesn't hide hot-reloaded settings changes.
-    return (
-        (getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").lower(),
-        bool(getattr(settings, "TASK_QUEUE_ENABLED", False)),
-        bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", False)),
-        bool(getattr(settings, "MINIO_ENABLED", False)),
-        str(getattr(settings, "REDIS_URL", "") or ""),
-        str(getattr(settings, "MILVUS_HOST", "") or ""),
-        int(getattr(settings, "MILVUS_PORT", 0) or 0),
-        str(getattr(settings, "MINIO_ENDPOINT", "") or ""),
-        str(getattr(settings, "UPLOAD_DIR", "") or ""),
-    )
-
-
-def _get_cached_health_payload(cache_key: tuple[object, ...]) -> dict | None:  # type: ignore[type-arg]
-    now = time.monotonic()
-    payload = _health_cache.get("payload")
-    if (
-        payload is not None
-        and _health_cache.get("key") == cache_key
-        and (now - float(_health_cache.get("ts") or 0.0)) < _HEALTH_CACHE_TTL_SEC
-    ):
-        return payload  # type: ignore[return-value]
-    return None
 
 def _expand_dev_cors_origins(origins: list[str]) -> list[str]:
     """
@@ -621,75 +590,8 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check."""
-    cache_key = _health_cache_key()
-    cached = _get_cached_health_payload(cache_key)
-    if cached is not None:
-        return cached
-
-    db_status, _db_ok = check_database(SessionLocal)
-
-    # Vector (Milvus / local persistence backends)
-    vector_backend = (getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").lower()
-    milvus_get_count = None
-    if vector_backend == "milvus":
-        from app.storage.vector.milvus import milvus_store
-
-        milvus_get_count = milvus_store.get_collection_count
-
-    vector_status, milvus_status, _vector_ok = check_vector(
-        settings,
-        mode="health",
-        milvus_get_collection_count=milvus_get_count,
-    )
-
-    # MinIO (optional)
-    minio_health_check = None
-    if bool(getattr(settings, "MINIO_ENABLED", False)):
-        from app.storage.object.minio import minio_service
-
-        minio_health_check = minio_service.health_check
-
-    minio_status, _minio_ok = check_minio(
-        settings,
-        mode="health",
-        minio_health_check=minio_health_check,
-    )
-
-    uploads_status = {"status": "unknown", "path": settings.UPLOAD_DIR}
-    try:
-        upload_dir = Path(settings.UPLOAD_DIR)
-        upload_dir.mkdir(parents=True, exist_ok=True)
-        uploads_status["status"] = "ready"
-    except Exception as exc:  # noqa: BLE001
-        uploads_status["status"] = "unavailable"
-        uploads_status["error"] = str(exc)[:200]
-
-    redis_status, _redis_ok, _reset_redis_client = check_redis(settings)
-
-    task_queue_status = {
-        "enabled": bool(getattr(settings, "TASK_QUEUE_ENABLED", False)),
-        "queue": getattr(settings, "TASK_QUEUE_NAME", "mimirq"),
-        "status": "disabled",
-    }
-    if task_queue_status["enabled"]:
-        task_queue_status["initialized"] = is_queue_initialized()
-        task_queue_status["status"] = "connected" if task_queue_status["initialized"] else "not_initialized"
-
-    payload = {
-        "status": "healthy",
-        "database": db_status,
-        "vector": vector_status,
-        "milvus": milvus_status,
-        "redis": redis_status,
-        "task_queue": task_queue_status,
-        "uploads": uploads_status,
-        "minio": minio_status,
-    }
-    _health_cache["ts"] = time.monotonic()
-    _health_cache["payload"] = payload
-    _health_cache["key"] = cache_key
-    return payload
+    """Public liveness probe."""
+    return {"ok": True, "status": "healthy"}
 
 
 if __name__ == "__main__":

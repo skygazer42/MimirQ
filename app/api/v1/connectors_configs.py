@@ -19,8 +19,11 @@ from app.core.database import get_db
 from app.models.connector import ConnectorRun
 from app.models.connector_config import ConnectorConfig
 from app.models.document import Document as DBDocument
+from app.services.connector_egress_policy import validate_db_connector_config
+from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
 router = APIRouter(responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES)
+_DB_CONNECTOR_PERMISSION_DETAIL = "No permission to run DB connectors"
 
 
 @router.get("/configs", response_model=ConnectorConfigListResponse, responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -194,16 +197,30 @@ async def run_connector_config(
     if not cfg:
         raise HTTPException(status_code=404, detail=connectors_module.CONNECTOR_CONFIG_NOT_FOUND_DETAIL)
 
+    connector_id = str(cfg.connector_id or "").strip()
+    if connector_id in {"mysql_catalog", "sqlserver_catalog"}:
+        ensure_tenant_permission(
+            db,
+            tenant_id,
+            account_id,
+            TenantPermissions.SETTINGS_WRITE,
+            detail=_DB_CONNECTOR_PERMISSION_DETAIL,
+        )
+
     dataset = connectors_module.DatasetService.get_dataset(db, tenant_id, cfg.dataset_id)
     connectors_module.DatasetService.assert_dataset_writable(db, dataset, account_id)
 
-    connector_id = str(cfg.connector_id or "").strip()
     url_connectors = {"url_batch", "web_crawl", "github_repo", "drive_files", "minio_bucket", "confluence_space", "jira_project"}
     db_catalog_connectors = {"mysql_catalog", "sqlserver_catalog"}
     if connector_id in url_connectors and not bool(getattr(connectors_module.settings, "URL_INGEST_ENABLED", False)):
         raise HTTPException(status_code=400, detail=connectors_module.URL_INGEST_DISABLED_DETAIL)
     if connector_id in db_catalog_connectors and not bool(getattr(connectors_module.settings, "DB_CATALOG_ENABLED", False)):
         raise HTTPException(status_code=400, detail="DB catalog ingestion is disabled")
+    if connector_id in db_catalog_connectors:
+        try:
+            validate_db_connector_config(dict(cfg.config or {}))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     run_cfg = dict(cfg.config or {})
     connector_definition = connectors_module.get_connector_definition(connector_id)

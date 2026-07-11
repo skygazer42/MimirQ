@@ -23,16 +23,16 @@ function statInt(value: unknown): number | null {
 
 function getCoverageStatusTone(gapCount: number, overlapWastePct: number): string {
   if (gapCount <= 0 && overlapWastePct <= 8) {
-    return 'text-emerald-700 dark:text-emerald-300'
+    return 'text-success dark:text-emerald-300'
   }
-  if (gapCount <= 2) return 'text-amber-700 dark:text-amber-300'
+  if (gapCount <= 2) return 'text-warning dark:text-amber-300'
   return 'text-destructive'
 }
 
 function getCoveragePulseTone(gapCount: number, overlapWastePct: number): string {
-  if (gapCount <= 0 && overlapWastePct <= 8) return 'bg-emerald-500/80'
-  if (gapCount <= 2) return 'bg-amber-500/80'
-  return 'bg-rose-500/80'
+  if (gapCount <= 0 && overlapWastePct <= 8) return 'bg-success/80'
+  if (gapCount <= 2) return 'bg-warning/80'
+  return 'bg-destructive/80'
 }
 
 function getCoverageBarBackground(active: boolean, tone: string): string {
@@ -42,7 +42,7 @@ function getCoverageBarBackground(active: boolean, tone: string): string {
 }
 
 function getCoverageWarningClass(active: boolean): string {
-  if (active) return 'text-amber-700 dark:text-amber-300'
+  if (active) return 'text-warning dark:text-amber-300'
   return 'text-muted-foreground'
 }
 

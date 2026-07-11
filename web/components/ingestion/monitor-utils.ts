@@ -279,13 +279,13 @@ export function getDocumentKind(filename: string | null | undefined): DocumentKi
 export function getDocumentKindAccent(kind: DocumentKind): string {
   switch (kind) {
     case 'pdf':
-      return 'text-rose-500 border-rose-500/25 bg-rose-500/10'
+      return 'text-destructive border-destructive/25 bg-destructive/10'
     case 'markdown':
-      return 'text-sky-500 border-sky-500/25 bg-sky-500/10'
+      return 'text-info border-info/25 bg-info/10'
     case 'spreadsheet':
-      return 'text-emerald-500 border-emerald-500/25 bg-emerald-500/10'
+      return 'text-success border-success/25 bg-success/10'
     case 'html':
-      return 'text-amber-500 border-amber-500/25 bg-amber-500/10'
+      return 'text-warning border-warning/25 bg-warning/10'
     case 'text':
     default:
       return 'text-muted-foreground border-border/70 bg-muted/40'

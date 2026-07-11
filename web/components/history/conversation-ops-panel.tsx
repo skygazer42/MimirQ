@@ -91,19 +91,19 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
     <Panel
       padding="md"
       className={cn(
-        'relative overflow-hidden border-slate-200/80 shadow-[0_12px_36px_rgba(15,23,42,0.08)] transition-all duration-200 motion-reduce:transition-none',
+        'relative overflow-hidden border-border/60 shadow-[0_12px_36px_rgba(15,23,42,0.08)] transition-all duration-200 motion-reduce:transition-none',
         'bg-[linear-gradient(135deg,rgba(248,250,252,0.98),rgba(239,248,255,0.86)_48%,rgba(244,255,249,0.72))]',
         'dark:border-slate-800/90 dark:bg-[linear-gradient(135deg,rgba(15,23,42,0.96),rgba(8,47,73,0.72)_52%,rgba(6,78,59,0.46))]',
         panelOpen ? 'rounded-2xl' : 'rounded-[1.35rem] py-3'
       )}
     >
-      <div className="pointer-events-none absolute inset-y-2 left-0 w-1 rounded-r-full bg-gradient-to-b from-cyan-400 via-sky-500 to-emerald-400" />
-      <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-cyan-300/18 blur-2xl dark:bg-cyan-400/10" />
-      <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/65 to-transparent" />
+      <div className="pointer-events-none absolute inset-y-2 left-0 w-1 rounded-r-full bg-[linear-gradient(180deg,hsl(var(--info)/0.6),hsl(var(--primary)/0.72),hsl(var(--success)/0.6))]" />
+      <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-info/16 blur-2xl dark:bg-info/10" />
+      <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-[linear-gradient(90deg,transparent,hsl(var(--info)/0.56),transparent)]" />
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <button
           type="button"
-          className="group flex min-w-0 flex-1 items-center gap-3 rounded-2xl py-0.5 pl-1 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-cyan-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          className="group flex min-w-0 flex-1 items-center gap-3 rounded-2xl py-0.5 pl-1 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-info/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           aria-expanded={panelOpen}
           onClick={() => setPanelOpen((open) => !open)}
         >
@@ -111,16 +111,16 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
             className={cn(
               'flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border shadow-sm transition-all',
               panelOpen
-                ? 'border-cyan-500/35 bg-cyan-500/15 text-cyan-700 dark:text-cyan-200'
-                : 'border-cyan-500/20 bg-background/85 text-cyan-700 group-hover:-translate-y-0.5 group-hover:border-cyan-500/35 group-hover:bg-cyan-500/10 dark:text-cyan-200'
+                ? 'border-info/30 bg-info/14 text-info dark:text-info'
+                : 'border-info/18 bg-background/85 text-info group-hover:-translate-y-0.5 group-hover:border-info/28 group-hover:bg-info/10 dark:text-info'
             )}
           >
             <ChevronDown className={cn('h-4 w-4 transition-transform', panelOpen ? 'rotate-0' : '-rotate-90')} />
           </span>
           <span className="min-w-0">
             <span className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-semibold tracking-tight text-foreground">对话运维工具箱</span>
-              <span className="rounded-full border border-cyan-500/15 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-semibold text-cyan-700 dark:text-cyan-200">
+              <span className="text-sm font-semibold tracking-[-0.01em] text-foreground">对话运维工具箱</span>
+              <span className="rounded-full border border-info/15 bg-info/10 px-2 py-0.5 text-[10px] font-semibold text-info dark:text-info">
                 导出 · 检查点
               </span>
             </span>
@@ -134,7 +134,7 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
                 {QUICK_ACTIONS.map((label) => (
                   <span
                     key={label}
-                    className="rounded-full border border-white/70 bg-white/72 px-2.5 py-1 text-[11px] font-medium text-slate-600 shadow-[0_1px_0_rgba(255,255,255,0.85)_inset] backdrop-blur dark:border-white/10 dark:bg-white/8 dark:text-slate-300"
+                    className="rounded-full border border-border/55 bg-background/78 px-2.5 py-1 text-[11px] font-medium text-muted-foreground shadow-[0_1px_0_hsl(var(--background)/0.9)_inset] backdrop-blur dark:border-border/20 dark:bg-background/20 dark:text-slate-300"
                   >
                     {label}
                   </span>
@@ -148,7 +148,7 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
             className={cn(
               'w-fit rounded-full border px-2.5 py-1 text-[11px] font-semibold shadow-sm',
               hasConversation
-                ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200'
+                ? 'border-success/25 bg-success/10 text-success dark:text-emerald-200'
                 : 'border-muted-foreground/15 bg-muted/40 text-muted-foreground'
             )}
           >
@@ -159,10 +159,10 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
             variant="outline"
             size="sm"
             className={cn(
-              'h-8 rounded-full border-cyan-500/25 px-3 text-xs font-semibold shadow-sm transition',
+              'h-8 rounded-full border-info/22 px-3 text-xs font-semibold shadow-sm transition',
               panelOpen
-                ? 'bg-background/75 hover:border-cyan-500/45 hover:bg-cyan-500/10'
-                : 'bg-slate-950 text-white hover:border-slate-950 hover:bg-slate-800 dark:bg-cyan-300 dark:text-slate-950 dark:hover:bg-cyan-200'
+                ? 'bg-background/75 hover:border-info/38 hover:bg-info/10'
+                : 'bg-foreground text-background hover:border-foreground hover:bg-foreground/86 dark:bg-info/80 dark:text-background dark:hover:bg-info/70'
             )}
             onClick={() => setPanelOpen((open) => !open)}
           >
@@ -174,7 +174,7 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
 
       {panelOpen ? (
         <>
-          <div className="mt-3 rounded-2xl border border-sky-500/15 bg-background/70 p-3 shadow-[0_1px_0_rgba(255,255,255,0.7)_inset]">
+          <div className="mt-3 rounded-2xl border border-info bg-background/70 p-3 shadow-[0_1px_0_rgba(255,255,255,0.7)_inset]">
             <div className="text-xs font-semibold text-foreground">当前对话自动绑定</div>
             <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
               {hasConversation

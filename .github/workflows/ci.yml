@@ -22,6 +22,20 @@ jobs:
   test-and-verify:
     runs-on: [self-hosted, Linux, X64, mimirq]
     timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mimirq_ci
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d mimirq_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -105,8 +119,24 @@ jobs:
           OPENAI_API_KEY: "sk-test"
         run: make test
 
+      - name: Database migrations and integration tests
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:55432/mimirq_ci
+          MIMIRQ_DB_CREATE_ALL_ON_STARTUP: "false"
+          MIMIRQ_DB_RUNTIME_MIGRATIONS_ENABLED: "false"
+          MIMIRQ_INTEGRATION_TESTS: "1"
+        run: |
+          make db-upgrade
+          python -m pytest -q \
+            tests/test_document_version_diff_integration.py \
+            tests/test_document_versions_integration.py
+
       - name: Frontend tests
         run: make test-web
+
+      - name: Critical frontend coverage
+        working-directory: web
+        run: pnpm run test:coverage:critical
 
       - name: Generate full-stack test coverage matrix
         run: make test-matrix
@@ -116,8 +146,8 @@ jobs:
         working-directory: web
         run: pnpm exec playwright install chromium
 
-      - name: Management surface smoke
-        run: make test-management-smoke
+      - name: Browser smoke suite
+        run: make test-web-e2e
 
       - name: Repo verify
         run: make verify

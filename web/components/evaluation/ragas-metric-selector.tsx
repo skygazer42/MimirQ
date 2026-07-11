@@ -86,9 +86,9 @@ export function RagasMetricSelector({
           <span className={cn('space-y-0.5', textWrapClassName)}>
             <span className={cn('flex flex-wrap items-center gap-1.5 text-[12px] font-medium text-foreground', labelClassName)}>
               <span>{metric.label}</span>
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-slate-500">{metric.kind}</span>
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-medium text-slate-500">{metric.category}</span>
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-medium text-slate-500">{metric.cost}</span>
+              <span className="rounded-full border border-border bg-muted/50 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-muted-foreground">{metric.kind}</span>
+              <span className="rounded-full border border-border bg-muted/50 px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">{metric.category}</span>
+              <span className="rounded-full border border-border bg-muted/50 px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">{metric.cost}</span>
             </span>
             <span className={cn('block text-[11px] leading-4 text-muted-foreground', hintClassName)}>{metric.hint}</span>
           </span>

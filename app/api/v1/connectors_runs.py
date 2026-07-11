@@ -4,6 +4,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.dependencies.auth import get_current_account_id
@@ -25,6 +26,12 @@ from app.api.schemas.connector import (
 from app.api.v1 import connectors as connectors_module
 from app.core.database import get_db
 from app.models.connector import ConnectorRun
+from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
+from app.models.group_permissions import DatasetGroupPermission
+from app.models.tenant_group import TenantGroupMember
+from app.services.connector_egress_policy import validate_db_connector_config
+from app.services.dataset_service import EDIT_ROLES
+from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
 router = APIRouter(responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
@@ -62,6 +69,37 @@ _CONNECTOR_RUN_DISPATCHER_NAMES = {
     "mysql_catalog": "_execute_db_catalog_run",
     "sqlserver_catalog": "_execute_db_catalog_run",
 }
+_DB_CONNECTOR_PERMISSION_DETAIL = "No permission to run DB connectors"
+
+
+def _writable_dataset_ids_subquery(*, tenant_id: UUID, account_id: str):
+    member_group_ids_subq = select(TenantGroupMember.group_id).where(
+        TenantGroupMember.tenant_id == tenant_id,
+        TenantGroupMember.user_id == account_id,
+    )
+
+    partial_member_exists = exists().where(
+        DatasetPermission.tenant_id == tenant_id,
+        DatasetPermission.dataset_id == Dataset.id,
+        DatasetPermission.account_id == account_id,
+    )
+    partial_group_exists = exists().where(
+        DatasetGroupPermission.tenant_id == tenant_id,
+        DatasetGroupPermission.dataset_id == Dataset.id,
+        DatasetGroupPermission.group_id.in_(member_group_ids_subq),
+    )
+
+    return select(Dataset.id).where(
+        Dataset.tenant_id == tenant_id,
+        or_(
+            Dataset.owner_id == account_id,
+            Dataset.permission == DatasetPermissionEnum.ALL_TEAM_MEMBERS,
+            and_(
+                Dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS,
+                or_(partial_member_exists, partial_group_exists),
+            ),
+        ),
+    )
 
 
 class ConnectorRunListParams:
@@ -420,9 +458,23 @@ async def create_connector_run(
     connector_id = str(payload.connector_id or "").strip()
     _validate_connector_run_enabled(connector_id)
 
-    connectors_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    if connector_id in _DB_CATALOG_CONNECTOR_IDS:
+        ensure_tenant_permission(
+            db,
+            tenant_id,
+            account_id,
+            TenantPermissions.SETTINGS_WRITE,
+            detail=_DB_CONNECTOR_PERMISSION_DETAIL,
+        )
+    else:
+        connectors_module.DatasetService.ensure_member(db, tenant_id, account_id)
     dataset = connectors_module._resolve_writable_dataset(db, tenant_id, account_id, payload.dataset_id)
     cfg, cfg_dict = _validate_and_encrypt_run_config(connector_id, payload.config)
+    if connector_id in _DB_CATALOG_CONNECTOR_IDS:
+        try:
+            validate_db_connector_config(cfg)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     _assert_connector_run_groups_exist(db, tenant_id=tenant_id, cfg=cfg)
 
     run = _create_pending_connector_run(
@@ -453,13 +505,19 @@ def list_connector_runs(
     db: Annotated[Session, Depends(get_db)],
 ):
     """List connector runs (requires dataset write permission for each returned run's dataset)."""
-    connectors_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    member = connectors_module.DatasetService.ensure_member(db, tenant_id, account_id)
 
     query = db.query(ConnectorRun).filter(ConnectorRun.tenant_id == tenant_id)
     if params.dataset_id:
         dataset = connectors_module.DatasetService.get_dataset(db, tenant_id, params.dataset_id)
         connectors_module.DatasetService.assert_dataset_writable(db, dataset, account_id)
         query = query.filter(ConnectorRun.dataset_id == params.dataset_id)
+    elif str(getattr(member, "role", "") or "").lower() not in EDIT_ROLES:
+        return {"total": 0, "items": []}
+    else:
+        query = query.filter(
+            ConnectorRun.dataset_id.in_(_writable_dataset_ids_subquery(tenant_id=tenant_id, account_id=account_id))
+        )
 
     total = int(query.count())
     runs = (
@@ -469,19 +527,6 @@ def list_connector_runs(
         .limit(params.limit)
         .all()
     )
-
-    if not params.dataset_id:
-        allowed: list[ConnectorRun] = []
-        for run in runs:
-            if not run.dataset_id:
-                continue
-            try:
-                dataset = connectors_module.DatasetService.get_dataset(db, tenant_id, run.dataset_id)
-                connectors_module.DatasetService.assert_dataset_writable(db, dataset, account_id)
-            except HTTPException:
-                continue
-            allowed.append(run)
-        runs = allowed
 
     summaries = connectors_module._fetch_connector_run_acl_summaries(
         db,

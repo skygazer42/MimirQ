@@ -4,6 +4,11 @@ const FRONTEND_CONTRACT_FILES = listFrontendSourceFiles().filter(
   (rel) => rel === 'web/lib/api-client.ts' || rel.startsWith('web/lib/api/')
 )
 
+// Service-to-service callbacks are intentionally not callable by the browser API layer.
+const SERVICE_ONLY_BACKEND_ROUTES = new Set([
+  'POST /integrations/dify/conversation-turns',
+])
+
 function main() {
   const backend = parseBackendRoutes()
   const frontend = parseFrontendRoutes({ files: FRONTEND_CONTRACT_FILES })
@@ -12,6 +17,7 @@ function main() {
 
   const missing = []
   for (const [key, src] of backend.entries()) {
+    if (SERVICE_ONLY_BACKEND_ROUTES.has(key)) continue
     if (!frontendKeys.has(key)) {
       missing.push({ key, src })
     }

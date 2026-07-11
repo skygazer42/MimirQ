@@ -439,4 +439,6 @@ export type LoginRequest = import('./backend').LoginRequest
 
 export type HealthResponse = import('./backend').HealthResponse
 export type ReadyResponse = import('./backend').ReadyResponse
+export type HealthDetailsResponse = import('./backend').HealthDetailsResponse
 export type MetaResponse = import('./backend').MetaResponse
+export type MetaDetailsResponse = import('./backend').MetaDetailsResponse

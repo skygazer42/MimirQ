@@ -18,7 +18,7 @@ export function PageBody({
       ? "px-0"
       : gutter === "dense"
         ? compact
-          ? "px-3 md:px-4 lg:px-5"
+          ? "px-4 md:px-5 lg:px-6"
           : "px-4 md:px-5 lg:px-6"
         : compact
           ? "px-4 md:px-6"

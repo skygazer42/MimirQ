@@ -167,29 +167,29 @@ const DIAGNOSTICS_ACCENT_CLASSES: Record<
   },
   sky: {
     surface: 'border-border/70 bg-background',
-    label: 'text-sky-700',
-    dot: 'bg-sky-400',
+    label: 'text-info',
+    dot: 'bg-info',
     value: 'text-foreground',
     caption: 'text-muted-foreground',
   },
   violet: {
     surface: 'border-border/70 bg-background',
-    label: 'text-violet-700',
-    dot: 'bg-violet-400',
+    label: 'text-accent',
+    dot: 'bg-accent',
     value: 'text-foreground',
     caption: 'text-muted-foreground',
   },
   emerald: {
     surface: 'border-border/70 bg-background',
-    label: 'text-emerald-700',
-    dot: 'bg-emerald-400',
+    label: 'text-success',
+    dot: 'bg-success',
     value: 'text-foreground',
     caption: 'text-muted-foreground',
   },
   amber: {
     surface: 'border-border/70 bg-background',
-    label: 'text-amber-700',
-    dot: 'bg-amber-400',
+    label: 'text-warning',
+    dot: 'bg-warning',
     value: 'text-foreground',
     caption: 'text-muted-foreground',
   },
@@ -293,8 +293,8 @@ function caseKey(item: unknown): string | null {
 }
 
 function diagnosticsInlineToneClass(tone: DiagnosticsTone): string {
-  if (tone === 'positive') return 'text-emerald-700'
-  if (tone === 'negative') return 'text-rose-700'
+  if (tone === 'positive') return 'text-success'
+  if (tone === 'negative') return 'text-destructive'
   if (tone === 'neutral') return 'text-foreground'
   return 'text-muted-foreground'
 }
@@ -303,8 +303,8 @@ function diagnosticsMetricValueClass(
   tone: DiagnosticsTone,
   fallback: string
 ): string {
-  if (tone === 'positive') return 'text-emerald-700'
-  if (tone === 'negative') return 'text-rose-700'
+  if (tone === 'positive') return 'text-success'
+  if (tone === 'negative') return 'text-destructive'
   if (tone === 'muted') return 'text-muted-foreground'
   return fallback
 }
@@ -316,8 +316,8 @@ function diagnosticsTabClass(isActive: boolean): string {
 }
 
 function diagnosticsDeltaClass(delta: number): string {
-  if (delta > 0) return 'text-emerald-700'
-  if (delta < 0) return 'text-rose-700'
+  if (delta > 0) return 'text-success'
+  if (delta < 0) return 'text-destructive'
   return 'text-muted-foreground'
 }
 
@@ -541,7 +541,7 @@ function DiagnosticsInfoTooltip({
           <button
             type="button"
             aria-label={label}
-            className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-sky-50 hover:text-sky-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+            className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-info/10 hover:text-info focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/40"
           >
             <Info className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
@@ -717,7 +717,7 @@ function DiagnosticsMetricTile({
         )}
       >
         {isPending ? (
-          <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10.5px] font-medium text-slate-600">
+          <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-medium text-muted-foreground">
             待评测
           </span>
         ) : (
@@ -756,13 +756,13 @@ function DiagnosticsToggleCard({
     tone === 'sky'
       ? {
           surface: 'border-border/70 bg-background',
-          badge: 'text-sky-700',
-          dot: 'bg-sky-400',
+          badge: 'text-info',
+          dot: 'bg-info',
         }
       : {
           surface: 'border-border/70 bg-background',
-          badge: 'text-emerald-700',
-          dot: 'bg-emerald-400',
+          badge: 'text-success',
+          dot: 'bg-success',
         }
 
   return (
@@ -828,8 +828,8 @@ function DiagnosticsEmptyState({
       )}
     >
       {icon ? (
-        <div className="mb-2 flex justify-center text-sky-300">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-sky-100 bg-sky-50/80 shadow-sm">
+        <div className="mb-2 flex justify-center text-info">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-info/20 bg-info/5 shadow-sm">
             <div className="scale-75">{icon}</div>
           </div>
         </div>
@@ -856,7 +856,7 @@ function DiagnosticsRunHeroPanel({
       <div className="min-h-[118px] rounded-xl border border-border/70 bg-background px-4 py-3.5 shadow-sm">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-[11px] font-medium tracking-[0.12em] text-sky-600">
+            <div className="text-[11px] font-medium tracking-[0.12em] text-info">
               最新结果
             </div>
             <h3 className="mt-1 text-[18px] font-semibold tracking-[-0.03em] text-foreground">
@@ -866,7 +866,7 @@ function DiagnosticsRunHeroPanel({
               优先查看上方核心指标，再结合下方失败样本和运行记录判断这次检索质量是否稳定。
             </p>
           </div>
-          <div className="hidden h-14 w-14 items-center justify-center rounded-[18px] border border-sky-100 bg-sky-50 text-sky-500 shadow-sm md:flex">
+          <div className="hidden h-14 w-14 items-center justify-center rounded-[18px] border border-info/20 bg-info/10 text-info shadow-sm md:flex">
             <ClipboardList className="h-6 w-6" aria-hidden="true" />
           </div>
         </div>
@@ -895,14 +895,14 @@ function DiagnosticsRunHeroPanel({
   return (
     <div className="grid min-h-[152px] gap-3 rounded-xl border border-border/70 bg-[radial-gradient(circle_at_16%_0%,hsl(var(--info)/0.10),transparent_34%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--card)/0.92))] px-4 py-3.5 shadow-sm lg:grid-cols-[minmax(280px,0.72fr)_minmax(0,1.28fr)]">
       <div className="flex items-center gap-3">
-        <div className="relative flex h-[72px] w-[80px] shrink-0 items-center justify-center text-sky-300">
-          <div className="absolute inset-4 rounded-[24px] bg-sky-100/70 blur-xl" aria-hidden="true" />
-          <div className="relative flex h-14 w-14 items-center justify-center rounded-[18px] border border-sky-100 bg-sky-50/90 shadow-sm">
+        <div className="relative flex h-[72px] w-[80px] shrink-0 items-center justify-center text-info">
+          <div className="absolute inset-4 rounded-[24px] bg-info/10 blur-xl" aria-hidden="true" />
+          <div className="relative flex h-14 w-14 items-center justify-center rounded-[18px] border border-info/20 bg-info/5 shadow-sm">
             <ClipboardList className="h-7 w-7" aria-hidden="true" />
           </div>
         </div>
         <div className="min-w-0">
-          <div className="inline-flex rounded-full border border-sky-100 bg-sky-50 px-2 py-0.5 text-[10.5px] font-medium text-sky-700">
+          <div className="inline-flex rounded-full border border-info/20 bg-info/10 px-2 py-0.5 text-[10.5px] font-medium text-info">
             运行后会自动填充
           </div>
           <h3 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-foreground">
@@ -935,7 +935,7 @@ function DiagnosticsRunHeroPanel({
               key={item.title}
               className="flex items-start gap-2.5 rounded-[14px] border border-border/60 bg-background/82 px-3 py-2.5"
             >
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[10px] border border-sky-100 bg-sky-50 text-sky-600">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[10px] border border-info/20 bg-info/10 text-info">
                 {item.icon}
               </div>
               <div className="min-w-0">

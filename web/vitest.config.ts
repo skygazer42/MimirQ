@@ -9,7 +9,7 @@ const config = {
   test: {
     environment: 'node',
     pool: 'threads',
-    include: ['**/*.test.ts'],
+    include: ['**/*.test.{ts,tsx}'],
     reporters: ['default'],
     testTimeout: 15000,
     coverage: {

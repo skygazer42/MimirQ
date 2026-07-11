@@ -2,6 +2,7 @@
 import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from unittest.mock import ANY
 
 import pytest
 from fastapi import FastAPI
@@ -26,6 +27,39 @@ class _DummyDB:
 
 def _override_get_db():  # noqa: ANN202
     yield _DummyDB()
+
+
+class _CommitTrackingDB(_DummyDB):
+    def __init__(self, *, dataset_obj, tracked_docs, fail_commit_at: int | None = None) -> None:  # noqa: ANN001
+        self._dataset_obj = dataset_obj
+        self._tracked_docs = list(tracked_docs)
+        self._snapshots = [getattr(doc, "archived_at", None) for doc in self._tracked_docs]
+        self._fail_commit_at = fail_commit_at
+        self.commit_calls = 0
+        self.rollback_calls = 0
+
+    def query(self, _model):  # noqa: ANN001, ANN201
+        dataset_obj = self._dataset_obj
+
+        class _DatasetQuery:
+            def filter(self, *_args, **_kwargs):  # noqa: ANN001
+                return self
+
+            def first(self):  # noqa: ANN201
+                return dataset_obj
+
+        return _DatasetQuery()
+
+    def commit(self) -> None:
+        self.commit_calls += 1
+        if self._fail_commit_at is not None and self.commit_calls == self._fail_commit_at:
+            raise RuntimeError("commit failed")
+        self._snapshots = [getattr(doc, "archived_at", None) for doc in self._tracked_docs]
+
+    def rollback(self) -> None:
+        self.rollback_calls += 1
+        for doc, archived_at in zip(self._tracked_docs, self._snapshots, strict=False):
+            doc.archived_at = archived_at
 
 
 def test_retention_policy_metadata_helpers_round_trip() -> None:
@@ -225,3 +259,107 @@ async def test_run_dataset_retention_sweep_dry_run_summarizes_eligible_documents
     assert summary["policy"]["action"] == "archive"
     assert summary["policy"]["max_age_days"] == 30
     assert summary["cutoffs"]["created_at_lte"] is not None
+
+
+@pytest.mark.asyncio
+async def test_run_dataset_retention_sweep_delete_uses_system_membership_bypass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api.schemas.dataset import DatasetRetentionPolicy
+    from app.services import retention_jobs
+    from app.services import retention_policy as rp
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    now = datetime.now(UTC)
+    dataset_obj = SimpleNamespace(id=dataset_id, tenant_id=tenant_id, dataset_metadata={})
+    expired_doc = SimpleNamespace(id=uuid.uuid4(), archived_at=None)
+    delete_calls: list[dict[str, object]] = []
+
+    class _ExpiredQuery:
+        def limit(self, _n):  # noqa: ANN001, ANN201
+            return self
+
+        def all(self):  # noqa: ANN201
+            return [expired_doc]
+
+    async def _fake_delete_document_lifecycle(**kwargs):  # noqa: ANN003
+        delete_calls.append(kwargs)
+
+    monkeypatch.setattr(rp, "_expired_documents_query", lambda *_a, **_k: _ExpiredQuery(), raising=True)
+    monkeypatch.setattr(retention_jobs, "_resolve_delete_document_lifecycle", lambda: _fake_delete_document_lifecycle, raising=True)
+    monkeypatch.setattr(rp, "invalidate_dataset_cache_namespace", lambda *_a, **_k: "cache-token", raising=True)
+    monkeypatch.setattr(rp, "audit_log_event", lambda *_a, **_k: None, raising=True)
+
+    summary = await rp.run_dataset_retention_sweep(
+        _CommitTrackingDB(dataset_obj=dataset_obj, tracked_docs=[expired_doc]),
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        policy=DatasetRetentionPolicy(enabled=True, action="delete", max_age_days=30),
+        dry_run=False,
+        max_documents=10,
+        max_versions_pruned=0,
+        actor_id="system:retention",
+        now=now,
+    )
+
+    assert summary["documents"]["deleted"] == 1
+    assert delete_calls == [
+        {
+            "document_id": expired_doc.id,
+            "tenant_id": tenant_id,
+            "account_id": "system:retention",
+            "db": ANY,
+            "enforce_permissions": False,
+            "enforce_membership": False,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_run_dataset_retention_sweep_archive_only_counts_after_successful_commit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api.schemas.dataset import DatasetRetentionPolicy
+    from app.services import retention_policy as rp
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    now = datetime.now(UTC)
+    dataset_obj = SimpleNamespace(id=dataset_id, tenant_id=tenant_id, dataset_metadata={})
+    expired_doc = SimpleNamespace(id=uuid.uuid4(), archived_at=None)
+    cache_invalidations: list[tuple[uuid.UUID, uuid.UUID]] = []
+
+    class _ExpiredQuery:
+        def limit(self, _n):  # noqa: ANN001, ANN201
+            return self
+
+        def all(self):  # noqa: ANN201
+            return [expired_doc]
+
+    def _invalidate_cache(_db, *, tenant_id, dataset_id):  # noqa: ANN001
+        cache_invalidations.append((tenant_id, dataset_id))
+        return "cache-token"
+
+    monkeypatch.setattr(rp, "_expired_documents_query", lambda *_a, **_k: _ExpiredQuery(), raising=True)
+    monkeypatch.setattr(rp, "invalidate_dataset_cache_namespace", _invalidate_cache, raising=True)
+    monkeypatch.setattr(rp, "audit_log_event", lambda *_a, **_k: None, raising=True)
+
+    summary = await rp.run_dataset_retention_sweep(
+        _CommitTrackingDB(dataset_obj=dataset_obj, tracked_docs=[expired_doc], fail_commit_at=1),
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        policy=DatasetRetentionPolicy(enabled=True, action="archive", max_age_days=30),
+        dry_run=False,
+        max_documents=10,
+        max_versions_pruned=0,
+        actor_id="system:retention",
+        now=now,
+    )
+
+    assert summary["documents"]["eligible"] == 1
+    assert summary["documents"]["archived"] == 0
+    assert summary["documents"]["errors"] == 1
+    assert summary["cache_invalidation"] is None
+    assert expired_doc.archived_at is None
+    assert cache_invalidations == []

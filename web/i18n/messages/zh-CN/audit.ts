@@ -52,7 +52,7 @@ AuditPage: {
       time: '时间',
       actor: '操作者',
       event: '事件名称',
-      resource: '资源 / 租户',
+      resource: '资源',
       action: '操作',
     },
     actions: {

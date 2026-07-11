@@ -177,7 +177,7 @@ export const DropZone = React.forwardRef<DropZoneHandle, {
             aria-live="polite"
             className="rounded-3xl border border-dashed border-border/50 bg-background/95 px-10 py-12 text-center shadow-strong"
           >
-            <UploadCloud className="mx-auto h-10 w-10 text-sky-500" />
+            <UploadCloud className="mx-auto h-10 w-10 text-info" />
             <p className="mt-4 text-base font-semibold text-foreground">
               {invalidDrop ? '仅支持文件' : defaultPrecheckOnly ? '拖入文件以开始评估' : '拖入文件以上传'}
             </p>

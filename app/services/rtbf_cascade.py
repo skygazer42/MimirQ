@@ -118,6 +118,7 @@ async def _run_delete_document_lifecycle(
                 account_id=actor_id,
                 db=db,
                 enforce_permissions=False,
+                enforce_membership=False,
             )
             return attempts
         except Exception:

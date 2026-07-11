@@ -146,23 +146,23 @@ export function AblationGridPanel({
   }
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-card p-4 shadow-sm">
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
-            <Grid3X3 className="size-4 text-sky-600" />
+          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <Grid3X3 className="size-4 text-info" />
             笛卡尔网格批量
           </div>
-          <p className="mt-1 text-xs leading-5 text-slate-500">
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
             用 JSON 定义参数数组，前端按组合顺序创建 regression runs；默认上限 {MAX_GRID_COMBINATIONS} 个，避免跑爆配额。
           </p>
-          <p className="mt-1 text-[11px] leading-5 text-slate-400">
+          <p className="mt-1 text-[11px] leading-5 text-muted-foreground/70">
             支持字段：{GRID_PARAM_KEYS.join(' / ')}
           </p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-right">
-          <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">组合数</div>
-          <div className={cn('font-mono text-lg font-semibold', tooMany ? 'text-rose-600' : 'text-slate-950')}>
+        <div className="rounded-xl border border-border bg-muted/50 px-3 py-2 text-right">
+          <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">组合数</div>
+          <div className={cn('font-mono text-lg font-semibold', tooMany ? 'text-destructive' : 'text-foreground')}>
             {variants.length}
           </div>
         </div>
@@ -172,25 +172,25 @@ export function AblationGridPanel({
         value={gridText}
         onChange={(event) => setGridText(event.target.value)}
         spellCheck={false}
-        className="mt-3 min-h-36 rounded-xl border-slate-200 bg-slate-950 font-mono text-xs text-slate-100"
+        className="mt-3 min-h-36 rounded-xl border-border bg-background font-mono text-xs text-foreground"
       />
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="min-h-5 text-xs text-slate-500">
+        <div className="min-h-5 text-xs text-muted-foreground">
           {batchError ? (
-            <span className="inline-flex items-center gap-1 text-rose-600">
+            <span className="inline-flex items-center gap-1 text-destructive">
               <AlertTriangle className="size-3.5" />
               {batchError}
             </span>
           ) : error ? (
-            <span className="inline-flex items-center gap-1 text-rose-600">
+            <span className="inline-flex items-center gap-1 text-destructive">
               <AlertTriangle className="size-3.5" />
               {error}
             </span>
           ) : tooMany ? (
-            <span className="text-rose-600">组合数超过上限，请收窄参数范围。</span>
+            <span className="text-destructive">组合数超过上限，请收窄参数范围。</span>
           ) : disabled && disabledReason ? (
-            <span className="inline-flex items-center gap-1 text-amber-600">
+            <span className="inline-flex items-center gap-1 text-warning">
               <AlertTriangle className="size-3.5" />
               {disabledReason}
             </span>

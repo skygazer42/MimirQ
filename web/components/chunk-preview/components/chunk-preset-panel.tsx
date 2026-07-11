@@ -255,7 +255,7 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-violet-200/70 bg-violet-50/90 text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/35 dark:text-violet-200">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-accent/30 bg-accent/5 text-accent dark:border-violet-900/60 dark:bg-violet-950/35 dark:text-violet-200">
             <Bookmark className="h-3.5 w-3.5" />
           </span>
           <div className="min-w-0">
@@ -314,14 +314,14 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
             type="button"
             size="sm"
             variant="outline"
-            className="h-7 rounded-md border-violet-200/70 bg-violet-50/90 px-2.5 text-[11px] font-medium text-violet-700 shadow-none hover:bg-violet-100/90 hover:text-violet-800 dark:border-violet-900/60 dark:bg-violet-950/35 dark:text-violet-200 dark:hover:bg-violet-950/50"
+            className="h-7 rounded-md border-accent/30 bg-accent/5 px-2.5 text-[11px] font-medium text-accent shadow-none hover:bg-accent/10 hover:text-accent dark:border-violet-900/60 dark:bg-violet-950/35 dark:text-violet-200 dark:hover:bg-accent/50"
             onClick={() => detachPromise(onSave())}
             disabled={saving}
           >
             {saving ? (
               <Loader2 className="mr-1.5 h-3 w-3 animate-spin motion-reduce:animate-none" />
             ) : (
-              <Save className="mr-1.5 h-3 w-3 text-violet-600 dark:text-violet-200" />
+              <Save className="mr-1.5 h-3 w-3 text-accent dark:text-violet-200" />
             )}
             {selectedPreset ? t('chunkPresetPanel.updatePreset') : t('chunkPresetPanel.savePreset')}
           </Button>

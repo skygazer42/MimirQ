@@ -27,7 +27,9 @@ from app.connectors.registry import registry as connector_class_registry
 from app.core.database import get_db
 from app.core.secrets import redact_secrets
 from app.models.tenant_group import TenantGroup
+from app.services.connector_egress_policy import validate_db_connector_config
 from app.services.dataset_service import DatasetService
+from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 from app.services.security_redaction import redact_connection_info
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -40,6 +42,7 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 
 _DB_CONNECTOR_IDS = {"mysql_catalog", "sqlserver_catalog"}
 UNSUPPORTED_CONNECTOR_ID_DETAIL = "Unsupported connector_id"
+_DB_CONNECTOR_PERMISSION_DETAIL = "No permission to validate DB connector config"
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
@@ -256,9 +259,18 @@ async def validate_connector_config(
 
     Returns ok/errors/warnings so UIs can surface issues without throwing hard 4xx/5xx on validation.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
     connector_id = str(payload.connector_id or "").strip()
+
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    if connector_id in _DB_CONNECTOR_IDS:
+        ensure_tenant_permission(
+            db,
+            tenant_id,
+            account_id,
+            TenantPermissions.SETTINGS_WRITE,
+            detail=_DB_CONNECTOR_PERMISSION_DETAIL,
+        )
+
     errors: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
     checks: dict[str, Any] = {}
@@ -314,6 +326,14 @@ async def validate_connector_config(
                 checks["source_acl_groups"] = {"ok": False, "missing": missing[:20], "total_missing": len(missing)}
             else:
                 checks["source_acl_groups"] = {"ok": True, "count": len(source_acl_group_ids)}
+
+    if not errors and connector_id in _DB_CONNECTOR_IDS and cfg_obj is not None:
+        try:
+            resolved = validate_db_connector_config(cfg_obj)
+            checks["egress"] = {"ok": True, "resolved_addresses": resolved}
+        except ValueError as exc:
+            errors.append({"loc": ("host",), "msg": str(exc), "type": "value_error"})
+            checks["egress"] = {"ok": False, "error": str(exc)}
 
     if not errors and bool(payload.check_connectivity) and cfg_obj is not None:
         more_checks, more_warnings = await _best_effort_connectivity_checks(connector_id=connector_id, cfg=cfg_obj)

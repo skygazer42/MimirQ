@@ -141,18 +141,18 @@ export function AblationParameterImpactPanel({
   const maxSpread = rows.length ? Math.max(...rows.map((row) => Math.abs(row.spread))) || 1 : 1
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-card p-4 shadow-sm">
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
-            <SlidersHorizontal className="size-4 text-amber-600" />
+          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <SlidersHorizontal className="size-4 text-warning" />
             参数影响排序
           </div>
-          <p className="mt-1 text-xs leading-5 text-slate-500">
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
             基于已完成 runs 的 rag_params / ablation_variant 做观测相关排序，只用于定位下一轮调参重点，不当作 Sobol 或因果结论。
           </p>
         </div>
-        <div className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700">
+        <div className="rounded-full border border-warning/30 bg-warning/10 px-2.5 py-1 text-[11px] font-medium text-warning">
           观测相关 · {metricKey}
         </div>
       </div>
@@ -162,27 +162,27 @@ export function AblationParameterImpactPanel({
           {rows.map((row) => {
             const width = Math.max(8, (Math.abs(row.spread) / maxSpread) * 100)
             return (
-              <div key={row.key} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+              <div key={row.key} className="rounded-xl border border-border bg-muted/50 px-3 py-2">
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                   <div className="min-w-0">
-                    <div className="truncate font-mono font-semibold text-slate-900">{row.key}</div>
-                    <div className="mt-1 text-[11px] text-slate-500">
+                    <div className="truncate font-mono font-semibold text-foreground">{row.key}</div>
+                    <div className="mt-1 text-[11px] text-muted-foreground">
                       {row.values} 个取值 · {row.samples} 个样本
                     </div>
                   </div>
-                  <div className={cn('font-mono text-xs', row.spread >= 0 ? 'text-emerald-700' : 'text-rose-700')}>
+                  <div className={cn('font-mono text-xs', row.spread >= 0 ? 'text-success' : 'text-destructive')}>
                     Δ {row.spread >= 0 ? '+' : ''}{row.spread.toFixed(4)}
                   </div>
                 </div>
                 <div className="mt-2 h-2 overflow-hidden rounded-full bg-background">
-                  <div className="h-full rounded-full bg-amber-400" style={{ width: `${width}%` }} />
+                  <div className="h-full rounded-full bg-warning" style={{ width: `${width}%` }} />
                 </div>
-                <div className="mt-2 grid gap-2 text-[11px] text-slate-500 sm:grid-cols-2">
+                <div className="mt-2 grid gap-2 text-[11px] text-muted-foreground sm:grid-cols-2">
                   <div className="rounded-lg bg-background px-2 py-1">
-                    最好 <span className="font-mono text-slate-900">{row.bestLabel}</span> · {row.bestMetric.toFixed(4)}
+                    最好 <span className="font-mono text-foreground">{row.bestLabel}</span> · {row.bestMetric.toFixed(4)}
                   </div>
                   <div className="rounded-lg bg-background px-2 py-1">
-                    最弱 <span className="font-mono text-slate-900">{row.worstLabel}</span> · {row.worstMetric.toFixed(4)}
+                    最弱 <span className="font-mono text-foreground">{row.worstLabel}</span> · {row.worstMetric.toFixed(4)}
                   </div>
                 </div>
               </div>
@@ -190,7 +190,7 @@ export function AblationParameterImpactPanel({
           })}
         </div>
       ) : (
-        <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-8 text-center text-xs text-slate-500">
+        <div className="mt-3 rounded-xl border border-dashed border-border bg-muted/50 px-3 py-8 text-center text-xs text-muted-foreground">
           暂无足够的 completed ablation_variant runs 计算参数影响；至少需要同一参数两个取值。
         </div>
       )}

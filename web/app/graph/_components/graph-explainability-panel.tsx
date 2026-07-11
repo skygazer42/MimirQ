@@ -41,11 +41,11 @@ export function GraphExplainabilityPanel({
           let dotClass = 'bg-muted'
 
           if (isActive) {
-            borderClass = 'border-teal-500'
-            dotClass = 'bg-teal-500'
+            borderClass = 'border-success'
+            dotClass = 'bg-success'
           } else if (isDone) {
-            borderClass = 'border-teal-500/30'
-            dotClass = 'bg-teal-500/20'
+            borderClass = 'border-success/30'
+            dotClass = 'bg-success/20'
           }
 
           return (

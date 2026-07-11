@@ -41,10 +41,10 @@ const OMITTED_NODE_KEYS = new Set([
 ])
 
 const DETAIL_TONE_CLASSES = [
-  'border-[#c8edf1]/70 bg-[rgba(204,254,255,0.48)]',
-  'border-[#d3efdf]/70 bg-[rgba(223,255,236,0.56)]',
-  'border-[#efe5c9]/75 bg-[rgba(255,244,214,0.62)]',
-  'border-[#d9defd]/78 bg-[rgba(238,240,255,0.74)]',
+  'border-info/30 bg-info/10',
+  'border-success/30 bg-success/10',
+  'border-warning/30 bg-warning/10',
+  'border-primary/30 bg-primary/15',
 ]
 
 const PANEL_MIN_TOP = 16
@@ -83,12 +83,12 @@ function clampPanelPosition(args: {
 function getKindBadgeClasses(kind: string): string {
   switch (kind) {
     case 'event':
-      return 'border-[#efe0b8]/80 bg-[rgba(255,242,205,0.76)] text-amber-700'
+      return 'border-warning/30 bg-warning/15 text-warning'
     case 'entity':
-      return 'border-[#c8edf1]/80 bg-[rgba(204,254,255,0.74)] text-info'
+      return 'border-info/30 bg-info/15 text-info'
     case 'trace':
     case 'step':
-      return 'border-[#d9defd]/80 bg-[rgba(238,240,255,0.78)] text-indigo-700'
+      return 'border-primary/30 bg-primary/15 text-primary'
     default:
       return 'border-border/70 bg-muted/60 text-muted-foreground'
   }
@@ -174,7 +174,7 @@ function GraphNodeKgDetail({
 >) {
   if (kgNodeDetailLoading) {
     return (
-      <div className="rounded-lg border border-[#c8edf1]/70 bg-[rgba(204,254,255,0.36)] p-2.5 text-[11px] text-muted-foreground">
+      <div className="rounded-lg border border-info/30 bg-info/10 p-2.5 text-[11px] text-muted-foreground">
         Loading...
       </div>
     )
@@ -182,7 +182,7 @@ function GraphNodeKgDetail({
 
   if (!kgNodeDetail) {
     return (
-      <div className="rounded-lg border border-[#d9defd]/70 bg-[rgba(238,240,255,0.44)] p-2.5 text-[11px] text-muted-foreground">
+      <div className="rounded-lg border border-border/60 bg-primary/10 p-2.5 text-[11px] text-muted-foreground">
         No KG detail available
       </div>
     )
@@ -191,8 +191,8 @@ function GraphNodeKgDetail({
   if (selectedNode?.meta?.kind !== 'entity') {
     const eventDetail = kgNodeDetail as KGEventDetailResponse
     return (
-      <div className="rounded-lg border border-[#d3efdf]/75 bg-[rgba(223,255,236,0.52)] p-2.5">
-        <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-emerald-800/70">Entities</div>
+      <div className="rounded-lg border border-success/30 bg-success/10 p-2.5">
+        <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-success/70">Entities</div>
         <div className="space-y-1.5">
           {eventDetail.entities?.slice(0, 12)?.map((row) => (
             <div key={row.entity.id} className="flex items-center justify-between gap-2 text-[11px]">
@@ -260,7 +260,7 @@ function GraphNodeKgDetail({
               type="button"
               size="sm"
               variant="outline"
-              className="h-6.5 border-[#d9defd]/80 bg-background/72 px-2 text-[11px] shadow-none hover:bg-background"
+              className="h-6.5 border-primary/30 bg-background/72 px-2 text-[11px] shadow-none hover:bg-background"
               onClick={() => onMergeAliasSuggestion(suggestion)}
             >
               合并
@@ -273,7 +273,7 @@ function GraphNodeKgDetail({
 
   return (
     <div className="space-y-2.5">
-      <div className="rounded-lg border border-[#c8edf1]/75 bg-[rgba(204,254,255,0.46)] p-2.5">
+      <div className="rounded-lg border border-info/30 bg-info/10 p-2.5">
         <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-info/70">Recent Events</div>
         <div className="space-y-1.5">
           {entityDetail.events?.slice(0, 6)?.map((ev) => (
@@ -284,8 +284,8 @@ function GraphNodeKgDetail({
         </div>
       </div>
 
-      <div className="rounded-lg border border-[#d3efdf]/75 bg-[rgba(223,255,236,0.52)] p-2.5">
-        <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-emerald-800/70">Top Neighbors</div>
+      <div className="rounded-lg border border-success/30 bg-success/10 p-2.5">
+        <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-success/70">Top Neighbors</div>
         <div className="space-y-1.5">
           {entityDetail.neighbors?.slice(0, 8)?.map((neighbor) => (
             <div key={neighbor.entity_id} className="flex items-center justify-between gap-2 text-[11px]">
@@ -300,8 +300,8 @@ function GraphNodeKgDetail({
         </div>
       </div>
 
-      <div className="rounded-lg border border-[#efe5c9]/80 bg-[rgba(255,244,214,0.56)] p-2.5">
-        <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-amber-800/75">Aliases</div>
+      <div className="rounded-lg border border-warning/30 bg-warning/10 p-2.5">
+        <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-warning/75">Aliases</div>
         {aliasContent}
 
         <div className="mt-2.5 flex items-center gap-2">
@@ -314,7 +314,7 @@ function GraphNodeKgDetail({
           <Button
             type="button"
             variant="outline"
-            className="h-7.5 border-[#efe5c9]/80 bg-background/72 px-2.5 text-[11px] shadow-none hover:bg-background"
+            className="h-7.5 border-warning/30 bg-background/72 px-2.5 text-[11px] shadow-none hover:bg-background"
             onClick={onSaveAlias}
             disabled={aliasSaving || !aliasDraft.trim()}
           >
@@ -323,8 +323,8 @@ function GraphNodeKgDetail({
         </div>
       </div>
 
-      <div className="rounded-lg border border-[#d9defd]/78 bg-[rgba(238,240,255,0.6)] p-2.5">
-        <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-indigo-800/70">Suggestions</div>
+      <div className="rounded-lg border border-primary/30 bg-primary/10 p-2.5">
+        <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-primary/70">Suggestions</div>
         {aliasSuggestionsContent}
       </div>
     </div>
@@ -364,11 +364,11 @@ export function GraphNodeDetailPanel({
   const nodeKind = getGraphNodeKind(selectedNode)
   const nodeType = getGraphNodeType(selectedNode)
   const summaryBadges = [
-    { label: 'ID', value: selectedNode?.id == null ? '' : String(selectedNode.id), className: 'border-[#c8edf1]/80 bg-[rgba(204,254,255,0.74)] text-info' },
+    { label: 'ID', value: selectedNode?.id == null ? '' : String(selectedNode.id), className: 'border-info/30 bg-info/15 text-info' },
     nodeKind ? { label: '类别', value: getKindLabel(nodeKind), className: getKindBadgeClasses(nodeKind) } : null,
-    nodeType ? { label: '类型', value: nodeType, className: 'border-[#d9defd]/80 bg-[rgba(238,240,255,0.76)] text-indigo-700' } : null,
-    selectedNode?.group == null ? null : { label: '组', value: String(selectedNode.group), className: 'border-[#d3efdf]/80 bg-[rgba(223,255,236,0.74)] text-emerald-700' },
-    selectedNode?.val == null ? null : { label: '权重', value: String(selectedNode.val), className: 'border-[#efe5c9]/80 bg-[rgba(255,244,214,0.76)] text-amber-700' },
+    nodeType ? { label: '类型', value: nodeType, className: 'border-primary/30 bg-primary/15 text-primary' } : null,
+    selectedNode?.group == null ? null : { label: '组', value: String(selectedNode.group), className: 'border-success/30 bg-success/15 text-success' },
+    selectedNode?.val == null ? null : { label: '权重', value: String(selectedNode.val), className: 'border-warning/30 bg-warning/15 text-warning' },
   ].filter(Boolean) as Array<{ label: string; value: string; className: string }>
 
   const detailEntries = selectedNode
@@ -381,7 +381,7 @@ export function GraphNodeDetailPanel({
     : []
 
   const quickActionBaseClass =
-    'h-8 w-full rounded-lg px-2 text-[11px] text-slate-700 shadow-none hover:text-slate-900'
+    'h-8 w-full rounded-lg px-2 text-[11px] text-foreground/85 shadow-none hover:text-foreground'
   const panelRef = useRef<HTMLDivElement>(null)
   const dragStateRef = useRef<{
     pointerId: number
@@ -559,7 +559,7 @@ export function GraphNodeDetailPanel({
           onMergeAliasSuggestion={onMergeAliasSuggestion}
         />
       ) : (
-        <div className="rounded-lg border border-[#d9defd]/65 bg-[rgba(238,240,255,0.4)] px-3 py-2 text-[11px] text-muted-foreground">
+        <div className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-[11px] text-muted-foreground">
           展开查看最近事件、邻居、别名和合并建议。
         </div>
       )
@@ -569,13 +569,13 @@ export function GraphNodeDetailPanel({
           <button
             type="button"
             onClick={() => setIsKgDetailExpanded((value) => !value)}
-            className="flex w-full items-center justify-between rounded-xl border border-[#d9defd]/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(241,245,255,0.82))] px-3 py-2 text-left transition-colors hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(236,242,255,0.92))] focus-ring"
+            className="flex w-full items-center justify-between rounded-xl border border-border/60 bg-[linear-gradient(180deg,hsl(var(--card)/0.82),hsl(var(--muted)/0.4))] px-3 py-2 text-left transition-colors hover:bg-[linear-gradient(180deg,hsl(var(--card)/0.92),hsl(var(--muted)/0.5))] focus-ring"
           >
             <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              <Layers className="w-3 h-3 text-amber-700/80" />
+              <Layers className="w-3 h-3 text-warning/80" />
               KG Detail
             </span>
-            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600">
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
               {kgDetailSummaryLabel}
               <ChevronDown
                 className={cn(
@@ -595,24 +595,24 @@ export function GraphNodeDetailPanel({
         <div
           aria-hidden="true"
           className={cn(
-            'pointer-events-none absolute inset-0 -z-20 rounded-[1.45rem] bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.74),rgba(204,254,255,0.34)_34%,transparent_66%),radial-gradient(circle_at_bottom_right,rgba(170,217,242,0.18),transparent_48%)] blur-xl transition-all duration-300',
+            'pointer-events-none absolute inset-0 -z-20 rounded-[1.45rem] bg-[radial-gradient(circle_at_top_left,hsl(var(--info)/0.28),hsl(var(--info)/0.12)_34%,transparent_66%),radial-gradient(circle_at_bottom_right,hsl(var(--primary)/0.1),transparent_48%)] blur-xl transition-all duration-300',
             isDragging ? 'scale-[1.02] opacity-95' : 'opacity-70 group-hover:opacity-90'
           )}
         />
         <div
           aria-hidden="true"
           className={cn(
-            'pointer-events-none absolute inset-0 -z-10 rounded-[1.35rem] border border-border/55 bg-[linear-gradient(145deg,rgba(255,255,255,0.48),rgba(244,248,252,0.28)_55%,rgba(204,254,255,0.18))] shadow-[12px_17px_51px_rgba(15,23,42,0.16)] backdrop-blur-[10px] transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]'
+            'pointer-events-none absolute inset-0 -z-10 rounded-[1.35rem] border border-border/55 bg-[linear-gradient(145deg,hsl(var(--card)/0.5),hsl(var(--muted)/0.3)_55%,hsl(var(--info)/0.12))] shadow-[12px_17px_51px_hsl(var(--foreground)/0.16)] backdrop-blur-[10px] transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]'
           )}
           style={backCardStyle}
         />
         <div
-          className="overflow-hidden rounded-2xl border border-border/70 bg-[linear-gradient(180deg,rgba(252,253,255,0.78)_0%,rgba(245,248,250,0.58)_100%)] shadow-[12px_17px_51px_rgba(15,23,42,0.18)] backdrop-blur-[16px] transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
+          className="overflow-hidden rounded-2xl border border-border/70 bg-[linear-gradient(180deg,hsl(var(--card)/0.9)_0%,hsl(var(--muted)/0.4)_100%)] shadow-[12px_17px_51px_hsl(var(--foreground)/0.18)] backdrop-blur-[16px] transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
           style={frontCardStyle}
         >
         <div
           className={cn(
-            'border-b border-border/55 bg-[linear-gradient(180deg,rgba(255,255,255,0.52)_0%,rgba(255,255,255,0.26)_100%)] px-3.5 py-3 select-none',
+            'border-b border-border/55 bg-[linear-gradient(180deg,hsl(var(--card)/0.6)_0%,hsl(var(--card)/0.3)_100%)] px-3.5 py-3 select-none',
             isDragging ? 'cursor-grabbing' : 'cursor-grab'
           )}
           onPointerDown={handleDragStart}
@@ -662,7 +662,7 @@ export function GraphNodeDetailPanel({
               onClick={onChat}
               className={cn(
                 quickActionBaseClass,
-                'border-[#c8edf1]/75 bg-[rgba(204,254,255,0.56)] hover:bg-[rgba(204,254,255,0.84)]'
+                'border-info/30 bg-info/10 hover:bg-info/15'
               )}
             >
               <MessageSquare className="w-3.5 h-3.5 mr-1" />
@@ -673,7 +673,7 @@ export function GraphNodeDetailPanel({
               onClick={onViewSource}
               className={cn(
                 quickActionBaseClass,
-                'border-[#d9defd]/75 bg-[rgba(238,240,255,0.68)] hover:bg-[rgba(238,240,255,0.9)]'
+                'border-primary/30 bg-primary/15 hover:bg-primary/15'
               )}
             >
               <FileText className="w-3.5 h-3.5 mr-1" />
@@ -684,7 +684,7 @@ export function GraphNodeDetailPanel({
               onClick={onStartConnectMode}
               className={cn(
                 quickActionBaseClass,
-                'border-[#d3efdf]/75 bg-[rgba(223,255,236,0.58)] hover:bg-[rgba(223,255,236,0.88)]'
+                'border-success/30 bg-success/10 hover:bg-success/15'
               )}
             >
               <LinkIcon className="w-3.5 h-3.5 mr-1" />
@@ -704,7 +704,7 @@ export function GraphNodeDetailPanel({
             variant="outline"
             onClick={onExpandNode}
             disabled={isLoading}
-            className="h-8 w-full justify-start rounded-lg border-[#c8edf1]/75 bg-[rgba(204,254,255,0.42)] px-3 text-[11px] text-slate-700 shadow-none hover:bg-[rgba(204,254,255,0.76)] hover:text-slate-900"
+            className="h-8 w-full justify-start rounded-lg border-info/30 bg-info/10 px-3 text-[11px] text-foreground/85 shadow-none hover:bg-info/15 hover:text-foreground"
           >
             <Network className="w-3 h-3 mr-1.5" />
             {isLoading ? '展开中...' : '展开邻居节点'}
@@ -715,7 +715,7 @@ export function GraphNodeDetailPanel({
               <Button
                 variant="outline"
                 onClick={onOpenMerge}
-                className="h-7.5 w-full justify-start rounded-lg border-[#efe5c9]/75 bg-[rgba(255,244,214,0.64)] px-2.5 text-[11px] text-slate-700 shadow-none hover:bg-[rgba(255,244,214,0.9)] hover:text-slate-900"
+                className="h-7.5 w-full justify-start rounded-lg border-warning/30 bg-warning/10 px-2.5 text-[11px] text-foreground/85 shadow-none hover:bg-warning/15 hover:text-foreground"
               >
                 <BoxSelect className="w-3 h-3 mr-1.5" />
                 合并
@@ -723,7 +723,7 @@ export function GraphNodeDetailPanel({
               <Button
                 variant="outline"
                 onClick={onOpenSplit}
-                className="h-7.5 w-full justify-start rounded-lg border-[#d9defd]/75 bg-[rgba(238,240,255,0.7)] px-2.5 text-[11px] text-slate-700 shadow-none hover:bg-[rgba(238,240,255,0.94)] hover:text-slate-900"
+                className="h-7.5 w-full justify-start rounded-lg border-primary/30 bg-primary/15 px-2.5 text-[11px] text-foreground/85 shadow-none hover:bg-primary/15 hover:text-foreground"
               >
                 <Box className="w-3 h-3 mr-1.5" />
                 拆分
@@ -745,7 +745,7 @@ export function GraphNodeDetailPanel({
 
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              <Info className="w-3 h-3 text-indigo-700/75" />
+              <Info className="w-3 h-3 text-primary/75" />
               属性详情
             </div>
             <div className="grid grid-cols-2 gap-1.5">
@@ -757,7 +757,7 @@ export function GraphNodeDetailPanel({
                     DETAIL_TONE_CLASSES[index % DETAIL_TONE_CLASSES.length]
                   )}
                 >
-                  <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.06em] text-slate-700/78 capitalize">
+                  <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.06em] text-foreground/85 capitalize">
                     {key}
                   </div>
                   <div className="min-w-0 break-words text-[11px] leading-4.5 text-foreground/88">

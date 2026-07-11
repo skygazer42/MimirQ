@@ -821,9 +821,9 @@ export function GraphCanvas({
                         {semanticRelationSummary.map((item) => (
                           <span
                             key={item.relation}
-                            className="inline-flex items-center gap-1 rounded-full border border-border/65 bg-card/58 px-2 py-1 text-[11px] text-slate-600 shadow-[0_8px_20px_-18px_rgba(15,23,42,0.35)]"
+                            className="inline-flex items-center gap-1 rounded-full border border-border/65 bg-card/58 px-2 py-1 text-[11px] text-muted-foreground shadow-[0_8px_20px_-18px_rgba(15,23,42,0.35)]"
                           >
-                            <span className="h-1.5 w-1.5 rounded-full bg-slate-400/80" />
+                            <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/80" />
                             {item.relation}
                             <span className="text-muted-foreground">{item.count}</span>
                           </span>
@@ -836,7 +836,7 @@ export function GraphCanvas({
                       </div>
                     </section>
                     {keyboardRovingIndex >= 0 && semanticNodes[keyboardRovingIndex] ? (
-                      <div className="rounded-2xl border border-border/60 bg-card/48 px-2.5 py-2 text-[11px] text-slate-600 shadow-[0_10px_26px_-22px_rgba(15,23,42,0.38)]">
+                      <div className="rounded-2xl border border-border/60 bg-card/48 px-2.5 py-2 text-[11px] text-muted-foreground shadow-[0_10px_26px_-22px_rgba(15,23,42,0.38)]">
                         当前聚焦：<span className="font-semibold text-foreground">{semanticNodes[keyboardRovingIndex].label}</span>
                       </div>
                     ) : null}

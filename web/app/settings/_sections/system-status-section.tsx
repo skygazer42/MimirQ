@@ -1,13 +1,13 @@
 'use client'
 
-import type { BackendMeta, SystemStatus } from '@/lib/api'
+import type { BackendMetaDetails, SystemStatus } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { CheckCircle2, Server, XCircle } from 'lucide-react'
 import { systemPageTokens } from '@/components/ui/system-page-tokens'
 
 type SystemStatusSectionProps = {
   status: SystemStatus
-  backendMeta: BackendMeta | null
+  backendMeta: BackendMetaDetails | null
 }
 
 function StatusCard({

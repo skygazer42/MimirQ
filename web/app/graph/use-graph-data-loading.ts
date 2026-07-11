@@ -162,7 +162,7 @@ export function useGraphDataLoading({
         )
 
         try {
-          const meta = await metaApi.get()
+          const meta = await metaApi.details()
           if (meta.features?.kg_enabled === false) {
             setKgStats(null)
           } else {

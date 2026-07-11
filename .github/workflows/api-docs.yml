@@ -92,3 +92,18 @@ jobs:
         run: |
           echo "Built docs/api/site contents:"
           ls -la docs/api/site 2>/dev/null || true
+
+      - name: Configure GitHub Pages
+        if: github.event_name != 'pull_request' && steps.pages.outputs.enabled == 'true'
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages artifact
+        if: github.event_name != 'pull_request' && steps.pages.outputs.enabled == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/api/site
+
+      - name: Deploy GitHub Pages
+        if: github.event_name != 'pull_request' && steps.pages.outputs.enabled == 'true'
+        id: deployment
+        uses: actions/deploy-pages@v4

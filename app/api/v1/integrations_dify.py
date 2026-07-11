@@ -251,6 +251,8 @@ _METADATA_ANCHOR_DB_FALLBACK_SCALAR_FIELDS = (
 _METADATA_ANCHOR_DB_FALLBACK_TITLE_FIELDS = ("case_title", "source_topic", "title")
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 _DIFY_WARMUP_DEFAULT_QUERY = "warmup probe"
+_DIFY_TRACE_QUERY_PREVIEW_MAX_CHARS = 160
+_DIFY_TRACE_QUERY_PATH_MAX_CHARS = 120
 
 
 def _resolve_internal_candidate_top_k(requested_top_k: int) -> int:
@@ -617,6 +619,46 @@ def _has_dify_rerank(records: list[DifyExternalKnowledgeRecord]) -> bool:
     return False
 
 
+def _bounded_trace_query_preview(value: object) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    return text[:_DIFY_TRACE_QUERY_PREVIEW_MAX_CHARS]
+
+
+def _dify_trace_retrieval_queries(
+    *,
+    question: str,
+    retrieval_path: str,
+    retrieval_queries: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    rows = list(retrieval_queries or [])
+    if not rows:
+        rows = [{"kind": "main", "query": question, "path": retrieval_path, "ok": True}]
+
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        query_text = str(row.get("query") or "").strip()
+        query_preview = _bounded_trace_query_preview(query_text)
+        path = str(row.get("path") or "").strip()[:_DIFY_TRACE_QUERY_PATH_MAX_CHARS]
+        item = {
+            "kind": _first_nonempty_str(row.get("kind")) or "subq",
+            "query_chars": len(query_text),
+            "ok": bool(row.get("ok", True)),
+        }
+        if query_preview:
+            item["query_preview"] = query_preview
+        if path:
+            item["path"] = path
+        elapsed_sec = row.get("elapsed_sec")
+        if isinstance(elapsed_sec, int | float):
+            item["elapsed_sec"] = round(max(0.0, float(elapsed_sec)), 6)
+        out.append(item)
+    return out
+
+
 def _log_dify_external_rag_trace(
     *,
     tenant_id: UUID,
@@ -630,6 +672,7 @@ def _log_dify_external_rag_trace(
     elapsed_ms: float,
     metadata_anchor_fallback_count: int,
     mixed_intent_query_count: int,
+    retrieval_queries: list[dict[str, Any]] | None = None,
     dify_message_id: str | None = None,
     dify_workflow_run_id: str | None = None,
 ) -> None:
@@ -640,6 +683,11 @@ def _log_dify_external_rag_trace(
     records = list(response_records or [])
     citations = [_dify_trace_citation(record, elapsed_sec=elapsed_sec) for record in records]
     reranker_provider = _first_reranker_provider(records)
+    per_query = _dify_trace_retrieval_queries(
+        question=question,
+        retrieval_path=retrieval_path,
+        retrieval_queries=retrieval_queries,
+    )
     log_metrics(
         {
             "event": "rag_trace",
@@ -655,7 +703,8 @@ def _log_dify_external_rag_trace(
                 "mode": "dify_external_knowledge",
                 "requested_mode": "external_knowledge",
                 "top_k": int(top_k),
-                "query_count": 1 + max(0, int(mixed_intent_query_count or 0)),
+                "query_count": max(len(per_query), 1 + max(0, int(mixed_intent_query_count or 0))),
+                "per_query": per_query,
                 "elapsed_sec": elapsed_sec,
                 "errors": [],
                 "enable_reranker": _has_dify_rerank(records),
@@ -1194,11 +1243,12 @@ def _require_dify_actor(
     if not any(_token_matches(provided, expected) for expected in expected_tokens):
         raise HTTPException(status_code=401, detail="Invalid Dify API key")
 
-    raw_tenant = str(
-        request.headers.get(str(getattr(settings, "TENANT_HEADER", "X-Tenant-ID") or "X-Tenant-ID"))
-        or getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", "")
-        or getattr(settings, "DEFAULT_TENANT_ID", "")
-    ).strip()
+    raw_tenant = str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", "") or "").strip()
+    if not raw_tenant:
+        raw_tenant = str(
+            request.headers.get(str(getattr(settings, "TENANT_HEADER", "X-Tenant-ID") or "X-Tenant-ID"))
+            or getattr(settings, "DEFAULT_TENANT_ID", "")
+        ).strip()
     tenant_id = _coerce_uuid(raw_tenant, label="Dify tenant id")
     account_id = str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "") or "system:dify").strip()
     if not account_id:
@@ -5361,11 +5411,20 @@ def _records_from_citations(
     query: str,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> list[dict[str, Any]]:
-    chunk_content_map = _load_chunk_content_map(db=db, tenant_id=tenant_id, citations=citations)
+    citations_needing_hydration = [
+        citation
+        for citation in citations or []
+        if not _first_non_empty(citation, _CONTENT_KEYS)
+    ]
+    chunk_content_map = (
+        _load_chunk_content_map(db=db, tenant_id=tenant_id, citations=citations_needing_hydration)
+        if citations_needing_hydration
+        else {}
+    )
     records: list[dict[str, Any]] = []
     for citation in citations:
         chunk_id = _citation_chunk_id(citation)
-        if chunk_id and chunk_content_map.get(chunk_id):
+        if chunk_id and chunk_content_map.get(chunk_id) and not _first_non_empty(citation, _CONTENT_KEYS):
             citation = {**citation, "content": chunk_content_map[chunk_id]}
         record = _citation_to_dify_record(
             citation,
@@ -5908,6 +5967,9 @@ def _metadata_anchor_db_fallback_records(
                     DocumentChunk.tenant_id == tenant_id,
                     Document.tenant_id == tenant_id,
                     Document.dataset_id.in_(scoped_dataset_ids),
+                    Document.status == "completed",
+                    Document.publication_status == "published",
+                    Document.archived_at.is_(None),
                     DocumentChunk.disabled_at.is_(None),
                     Document.disabled_at.is_(None),
                     condition,
@@ -6955,6 +7017,7 @@ async def retrieve_external_knowledge(
                     elapsed_ms=elapsed_ms,
                     metadata_anchor_fallback_count=0,
                     mixed_intent_query_count=0,
+                    retrieval_queries=[{"kind": "main", "query": body.query, "path": "cache_hit", "ok": True}],
                     dify_message_id=body.dify_message_id,
                     dify_workflow_run_id=body.dify_workflow_run_id,
                 )
@@ -6970,6 +7033,20 @@ async def retrieve_external_knowledge(
     retrieval_path = "rag:primary_scope" if primary_scope_enabled else "rag"
     kg_on_demand_triggered = False
     kg_on_demand_skipped = False
+    trace_queries: list[dict[str, Any]] = []
+
+    def _set_main_trace_query(path: str, *, ok: bool = True) -> None:
+        entry = {
+            "kind": "main",
+            "query": body.query,
+            "path": path,
+            "ok": ok,
+        }
+        if trace_queries and str(trace_queries[0].get("kind") or "") == "main":
+            trace_queries[0] = entry
+            return
+        trace_queries.insert(0, entry)
+
     try:
         query_prefers_question_anchor = _query_prefers_question_anchor(
             body.query,
@@ -7065,6 +7142,7 @@ async def retrieve_external_knowledge(
                 metadata_anchor_fallback_count = len(metadata_anchor_records)
                 records.extend(metadata_anchor_records)
                 retrieval_path = "metadata_anchor:preflight"
+                _set_main_trace_query(retrieval_path)
 
         if (
             not records
@@ -7080,6 +7158,7 @@ async def retrieve_external_knowledge(
             mixed_preflight_records: list[dict[str, Any]] = []
             mixed_preflight_query_count = 0
             mixed_preflight_complete = True
+            mixed_preflight_trace_queries: list[dict[str, Any]] = []
             mixed_intent_subquery_top_k = _resolve_mixed_intent_subquery_top_k(
                 response_top_k=top_k,
                 candidate_top_k=candidate_top_k,
@@ -7121,12 +7200,22 @@ async def retrieve_external_knowledge(
                     mixed_preflight_complete = False
                     break
                 mixed_preflight_query_count += 1
+                mixed_preflight_trace_queries.append(
+                    {
+                        "kind": "subq",
+                        "query": subquery,
+                        "path": "metadata_anchor:mixed_preflight_subquery",
+                        "ok": True,
+                    }
+                )
                 mixed_preflight_records.extend(_tag_mixed_intent_records(subquery_anchor_records, subquery=subquery))
             if mixed_preflight_records and mixed_preflight_complete:
                 mixed_intent_query_count += mixed_preflight_query_count
                 metadata_anchor_fallback_count += len(mixed_preflight_records)
                 records.extend(mixed_preflight_records)
                 retrieval_path = "metadata_anchor:mixed_preflight"
+                _set_main_trace_query(retrieval_path)
+                trace_queries.extend(mixed_preflight_trace_queries)
 
         if not records:
             primary_retrieve_started = time.perf_counter()
@@ -7154,6 +7243,7 @@ async def retrieve_external_knowledge(
                 2,
             )
             primary_citation_count = len(primary_citations)
+            _set_main_trace_query(retrieval_path, ok=bool(primary_citations))
             records_started = time.perf_counter()
             records.extend(
                 _records_from_citations(
@@ -7227,6 +7317,14 @@ async def retrieve_external_knowledge(
                     if subquery_anchor_records:
                         mixed_intent_query_count += 1
                         metadata_anchor_fallback_count += len(subquery_anchor_records)
+                        trace_queries.append(
+                            {
+                                "kind": "subq",
+                                "query": subquery,
+                                "path": "metadata_anchor:mixed_intent_subquery",
+                                "ok": True,
+                            }
+                        )
                         records.extend(_tag_mixed_intent_records(subquery_anchor_records, subquery=subquery))
                         continue
                     subquery_citations = await _retrieve_dataset_citations(
@@ -7246,6 +7344,14 @@ async def retrieve_external_knowledge(
                         kg_chunk_boost_weight=primary_kg_flags.chunk_boost_weight,
                         kg_chunk_boost_max_promoted=primary_kg_flags.chunk_boost_max_promoted,
                         enable_reranker=False,
+                    )
+                    trace_queries.append(
+                        {
+                            "kind": "subq",
+                            "query": subquery,
+                            "path": "rag:mixed_intent_subquery",
+                            "ok": bool(subquery_citations),
+                        }
                     )
                     mixed_intent_query_count += 1
                     mixed_intent_citation_count += len(subquery_citations)
@@ -7446,6 +7552,7 @@ async def retrieve_external_knowledge(
             elapsed_ms=elapsed_ms,
             metadata_anchor_fallback_count=metadata_anchor_fallback_count,
             mixed_intent_query_count=mixed_intent_query_count,
+            retrieval_queries=trace_queries,
             dify_message_id=body.dify_message_id,
             dify_workflow_run_id=body.dify_workflow_run_id,
         )

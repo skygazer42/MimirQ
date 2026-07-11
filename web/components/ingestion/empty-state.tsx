@@ -35,8 +35,8 @@ export function EmptyState({
 
   return (
     <div className="rounded-[2rem] border border-border/60 bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.12),transparent_38%),linear-gradient(180deg,rgba(255,255,255,0.7),rgba(255,255,255,0.9))] px-6 py-10 text-left shadow-soft dark:bg-[radial-gradient(circle_at_top,rgba(14,165,233,0.16),transparent_32%),linear-gradient(180deg,rgba(14,14,16,0.92),rgba(12,12,15,0.96))]">
-      <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-sky-500/20 bg-card/80 shadow-soft">
-        <Shapes className="h-7 w-7 text-sky-500" />
+      <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-info/20 bg-card/80 shadow-soft">
+        <Shapes className="h-7 w-7 text-info" />
       </div>
       <div className="mx-auto max-w-4xl text-center">
         <p className="text-lg font-semibold text-foreground">还没有生成入库预检结果</p>
@@ -63,7 +63,7 @@ export function EmptyState({
               <div className="mt-1 text-sm font-semibold text-foreground">入库预检后将在此展示处理效率曲线</div>
             </div>
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-border/60 bg-background/80">
-              <BarChart3 className="h-4 w-4 text-sky-500" />
+              <BarChart3 className="h-4 w-4 text-info" />
             </div>
           </div>
           <div className="relative overflow-hidden rounded-[1.25rem] border border-border/50 bg-background/80 p-3">
@@ -79,14 +79,14 @@ export function EmptyState({
                 stroke="currentColor"
                 strokeWidth="2.5"
                 strokeDasharray="6 6"
-                className="text-sky-500/85"
+                className="text-info/85"
               />
               <path
                 d="M20 172 C92 166 130 158 188 142 C246 126 302 120 354 112 C412 102 456 92 512 84 C562 77 592 70 620 66"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"
-                className="text-emerald-500/70"
+                className="text-success/70"
                 opacity="0.5"
               />
             </svg>
@@ -123,12 +123,12 @@ export function EmptyState({
           <div className="rounded-[1.75rem] border border-border/60 bg-card/75 p-4 shadow-subtle">
             <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">入库风险热力图预留区</div>
             <div className="mt-3 grid h-[124px] grid-cols-3 gap-2 rounded-[1.25rem] border border-dashed border-border/60 bg-background/70 p-3">
-              <div className="rounded-2xl border border-red-500/10 bg-red-500/5" />
-              <div className="rounded-2xl border border-red-500/10 bg-red-500/5" />
-              <div className="rounded-2xl border border-red-500/10 bg-red-500/5" />
-              <div className="rounded-2xl border border-red-500/10 bg-red-500/5" />
-              <div className="rounded-2xl border border-red-500/10 bg-red-500/5" />
-              <div className="rounded-2xl border border-red-500/10 bg-red-500/5" />
+              <div className="rounded-2xl border border-destructive/10 bg-destructive/5" />
+              <div className="rounded-2xl border border-destructive/10 bg-destructive/5" />
+              <div className="rounded-2xl border border-destructive/10 bg-destructive/5" />
+              <div className="rounded-2xl border border-destructive/10 bg-destructive/5" />
+              <div className="rounded-2xl border border-destructive/10 bg-destructive/5" />
+              <div className="rounded-2xl border border-destructive/10 bg-destructive/5" />
             </div>
           </div>
         </div>

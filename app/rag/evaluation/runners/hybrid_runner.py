@@ -112,6 +112,9 @@ def run_hybrid_sweep(
     channels = _coerce_channels(sample if isinstance(sample, dict) else {})
     configs = list(configs or build_hybrid_sweep_configs())
     gold_chunk_ids = _coerce_ranked_ids((sample or {}).get("gold_chunk_ids"))
+    cited_chunk_ids = _coerce_ranked_ids(
+        (sample or {}).get("cited_chunk_ids") or (sample or {}).get("citations")
+    )
 
     rows: list[dict[str, Any]] = []
     for cfg in configs:
@@ -130,7 +133,7 @@ def run_hybrid_sweep(
         retrieval_metrics = evaluate_retrieval_metrics(
             gold_chunk_ids=gold_chunk_ids,
             retrieved_chunk_ids=retrieved,
-            cited_chunk_ids=[cid for cid in retrieved if cid in set(gold_chunk_ids)],
+            cited_chunk_ids=cited_chunk_ids,
             recall_k=int(route_config["top_k"]),
         )
         retrieval_metrics["hit_at_k"] = 1.0 if retrieval_metrics.get("recall_at_k", 0.0) > 0 else 0.0
@@ -143,7 +146,7 @@ def run_hybrid_sweep(
                 "actual_route": "hybrid",
                 "route_config": route_config,
                 "retrieved_chunk_ids": retrieved,
-                "citations": [{"chunk_id": cid} for cid in retrieved if cid in set(gold_chunk_ids)],
+                "citations": [{"chunk_id": cid} for cid in cited_chunk_ids],
                 "evaluators": {"retrieval": retrieval_metrics},
             }
         )
@@ -184,10 +187,11 @@ def run_hybrid_route(sample: dict[str, Any]) -> dict[str, Any]:
         return {
             "route_id": "hybrid",
             "actual_route": "hybrid",
-            "answer": {"text": str(sample.get("gold_answer") or "")},
+            "answer": {"text": _actual_answer_text(sample)},
+            "retrieved_chunk_ids": list(best.get("retrieved_chunk_ids") or []),
             "citations": list(best.get("citations") or []),
-            "latency_ms": 1300,
-            "token_cost": 0.18,
+            "latency_ms": sample.get("latency_ms"),
+            "token_cost": sample.get("token_cost"),
             "route_config": dict(best.get("route_config") or {}),
             "evaluators": dict(best.get("evaluators") or {}),
             "extensions": {
@@ -199,15 +203,17 @@ def run_hybrid_route(sample: dict[str, Any]) -> dict[str, Any]:
             },
         }
 
-    return {
-        "route_id": "hybrid",
-        "actual_route": "hybrid",
-        "answer": {"text": str(sample.get("gold_answer") or "")},
-        "citations": [{"chunk_id": cid} for cid in (sample.get("gold_chunk_ids") or [])],
-        "latency_ms": 1300,
-        "token_cost": 0.18,
-        "route_config": {"fusion": "rrf", "top_k": 10},
-    }
+    raise RuntimeError(
+        "Stage1 hybrid evaluation requires actual channel rankings; "
+        "gold labels must never be used as system output"
+    )
+
+
+def _actual_answer_text(sample: dict[str, Any]) -> str:
+    raw = sample.get("actual_answer") or sample.get("answer") or ""
+    if isinstance(raw, dict):
+        raw = raw.get("text") or ""
+    return str(raw)
 
 
 __all__ = ["build_hybrid_sweep_configs", "run_hybrid_route", "run_hybrid_sweep"]

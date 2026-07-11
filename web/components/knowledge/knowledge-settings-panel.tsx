@@ -650,7 +650,7 @@ export function KnowledgeSettingsPanel({
                       <span
                         className={cn(
                           'text-[10px] font-medium',
-                          isDirty ? 'text-amber-600' : 'text-emerald-600'
+                          isDirty ? 'text-warning' : 'text-success'
                         )}
                       >
                         {isDirty ? '有未保存更改' : '已同步'}
@@ -1161,7 +1161,7 @@ export function KnowledgeSettingsPanel({
                     <Button
                       type="button"
                       variant="outline"
-                      className="h-9 rounded-[12px] border-amber-200/80 bg-amber-50/70 px-4 text-[11px] font-medium text-amber-700 hover:border-amber-300 hover:bg-amber-100/75 hover:text-amber-900 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-200 dark:hover:bg-amber-400/20 dark:hover:text-amber-100"
+                      className="h-9 rounded-[12px] border-warning/30 bg-warning/5 px-4 text-[11px] font-medium text-warning hover:border-warning/40 hover:bg-warning/10 hover:text-warning dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-200 dark:hover:bg-warning/20 dark:hover:text-warning"
                       onClick={handleResetDraft}
                     >
                       重置更改
@@ -1572,9 +1572,9 @@ function TaskCard({
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden bg-zinc-950"
+            className="overflow-hidden bg-foreground"
           >
-            <div className="p-3 border-t border-border/5 font-mono text-[9px] leading-relaxed text-zinc-500">
+            <div className="p-3 border-t border-border/5 font-mono text-[9px] leading-relaxed text-muted-foreground">
               <div className="text-rose/80 font-medium mb-1">
                 ERR: {run.error_message}
               </div>

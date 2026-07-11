@@ -91,40 +91,44 @@ const PIE_COLORS = [
 ]
 const CHART_TOOLTIP_STYLE = {
   borderRadius: 10,
-  border: '1px solid #cbd5e1',
-  background: 'rgba(255,255,255,0.96)',
-  boxShadow: '0 8px 26px rgba(15,23,42,0.12)',
+  border: '1px solid hsl(var(--border))',
+  background: 'hsl(var(--card) / 0.97)',
+  color: 'hsl(var(--foreground))',
+  boxShadow: '0 8px 26px hsl(var(--foreground) / 0.12)',
   padding: '8px 10px',
 }
-const CHART_TOOLTIP_LABEL_STYLE = { color: '#334155', fontWeight: 600 }
-const CHART_TOOLTIP_CURSOR = { fill: 'rgba(148,163,184,0.08)' }
+const CHART_TOOLTIP_LABEL_STYLE = {
+  color: 'hsl(var(--foreground))',
+  fontWeight: 600,
+}
+const CHART_TOOLTIP_CURSOR = { fill: 'hsl(var(--muted-foreground) / 0.08)' }
 const DEFAULT_PIPELINE_VERSION_VALUE = '__mimirq_default_pipeline_version__'
 const REPORT_LABEL_CLASS =
-  'text-xs font-medium tracking-[0.02em] text-slate-500/90'
+  'text-xs font-medium tracking-[0.02em] text-muted-foreground/90'
 const REPORT_VALUE_CLASS =
-  'truncate text-[0.875rem] font-semibold leading-5 tracking-[-0.01em] text-slate-900'
-const REPORT_SUBTEXT_CLASS = 'text-xs leading-4 text-slate-500'
+  'truncate text-[0.875rem] font-semibold leading-5 tracking-[-0.01em] text-foreground'
+const REPORT_SUBTEXT_CLASS = 'text-xs leading-4 text-muted-foreground'
 const REPORT_METRIC_VALUE_CLASS =
-  'text-[1.375rem] font-semibold leading-none tracking-[-0.04em] tabular-nums text-slate-950'
+  'text-[1.375rem] font-semibold leading-none tracking-[-0.04em] tabular-nums text-foreground'
 const REPORT_PANEL_TITLE_CLASS =
-  'text-[0.9375rem] font-semibold leading-5 tracking-[-0.015em] text-slate-950'
+  'text-[0.9375rem] font-semibold leading-5 tracking-[-0.015em] text-foreground'
 const REPORT_TABLE_HEADER_CLASS =
-  'text-[0.6875rem] font-medium uppercase tracking-[0.1em] text-slate-500'
-const REPORT_TABLE_ROW_CLASS = 'text-[0.8125rem] leading-5 text-slate-700'
+  'text-[0.6875rem] font-medium uppercase tracking-[0.1em] text-muted-foreground'
+const REPORT_TABLE_ROW_CLASS = 'text-[0.8125rem] leading-5 text-foreground/85'
 const REPORT_PANEL_CLASS =
-  'rounded-[1.15rem] border border-slate-200/75 bg-white/92 p-3.5 shadow-[0_16px_36px_-30px_rgba(15,23,42,0.28)]'
+  'rounded-[1.15rem] border border-border/60 bg-card/92 p-3.5 shadow-[0_16px_36px_-30px_rgba(15,23,42,0.28)]'
 const REPORT_SECONDARY_ACTION_CLASS =
-  'h-9 gap-1.5 rounded-xl border-slate-200/80 bg-white/90 px-3 text-xs font-medium text-slate-600 shadow-none hover:border-sky-200 hover:bg-sky-50/70 hover:text-sky-800'
+  'h-9 gap-1.5 rounded-xl border-border/60 bg-card/90 px-3 text-xs font-medium text-muted-foreground shadow-none hover:border-info/25 hover:bg-info/[0.10] hover:text-info'
 const REPORT_PRIMARY_ACTION_CLASS =
-  'h-9 gap-1.5 rounded-xl bg-sky-600 px-3.5 text-xs font-semibold text-white shadow-[0_12px_24px_-14px_rgba(2,132,199,0.8)] hover:bg-sky-700'
+  'h-9 gap-1.5 rounded-xl bg-info px-3.5 text-xs font-semibold text-info-foreground shadow-[0_12px_24px_-14px_rgba(2,132,199,0.8)] hover:bg-info/90'
 const REPORT_FILTER_LABEL_CLASS =
-  'text-xs font-medium tracking-[0.02em] text-slate-600'
+  'text-xs font-medium tracking-[0.02em] text-muted-foreground'
 const REPORT_SELECT_TRIGGER_CLASS =
-  'h-9 w-full rounded-xl border-slate-200/80 bg-white/90 text-xs font-medium text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:border-sky-200'
+  'h-9 w-full rounded-xl border-border/60 bg-card/90 text-xs font-medium text-foreground/85 shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:border-info/25'
 const REPORT_SELECT_ITEM_CLASS =
-  'py-2 text-xs font-medium text-slate-700'
+  'py-2 text-xs font-medium text-foreground/85'
 const REPORT_METRIC_LEDGER_CLASS =
-  'grid overflow-hidden rounded-[1.2rem] border border-slate-200/75 bg-slate-200/75 shadow-[0_18px_42px_-34px_rgba(15,23,42,0.35)] md:grid-cols-3 2xl:grid-cols-6'
+  'grid overflow-hidden rounded-[1.2rem] border border-border/60 bg-border/60 shadow-[0_18px_42px_-34px_rgba(15,23,42,0.35)] md:grid-cols-3 2xl:grid-cols-6'
 type DataPillTone = 'blue' | 'green' | 'amber' | 'rose' | 'violet' | 'slate'
 type ReportMetricDatum = { name: string; value: number }
 type CategoryMetricDatum = ReportMetricDatum & { depth: number }
@@ -460,9 +464,9 @@ function findingSeverityLabel(severity: string | null | undefined): string {
 }
 
 function issueLevelClass(level: string): string {
-  if (level === '错误') return 'text-rose-600'
-  if (level === '警告') return 'text-amber-600'
-  return 'text-emerald-600'
+  if (level === '错误') return 'text-destructive'
+  if (level === '警告') return 'text-warning'
+  return 'text-success'
 }
 
 function reportPreviewEmptyTitle(datasetId: string, isLoadingReport: boolean): string {
@@ -693,24 +697,24 @@ function DataPill({
   tone?: DataPillTone
 }>) {
   const toneClass = {
-    blue: 'bg-blue-50 text-blue-600 ring-blue-100',
-    green: 'bg-emerald-50 text-emerald-600 ring-emerald-100',
-    amber: 'bg-amber-50 text-amber-600 ring-amber-100',
-    rose: 'bg-rose-50 text-rose-600 ring-rose-100',
-    violet: 'bg-violet-50 text-violet-600 ring-violet-100',
-    slate: 'bg-slate-50 text-slate-600 ring-slate-100',
+    blue: 'bg-info/10 text-info ring-info/20',
+    green: 'bg-success/10 text-success ring-success/20',
+    amber: 'bg-warning/10 text-warning ring-warning/20',
+    rose: 'bg-destructive/10 text-destructive ring-destructive/20',
+    violet: 'bg-accent/10 text-accent ring-accent/20',
+    slate: 'bg-muted/50 text-muted-foreground ring-border/50',
   }[tone]
   const valueToneClass = {
-    blue: 'text-slate-900',
-    green: 'text-emerald-700',
-    amber: 'text-amber-700',
-    rose: 'text-rose-700',
-    violet: 'text-violet-700',
-    slate: 'text-slate-800',
+    blue: 'text-foreground',
+    green: 'text-success',
+    amber: 'text-warning',
+    rose: 'text-destructive',
+    violet: 'text-accent',
+    slate: 'text-foreground',
   }[tone]
 
   return (
-    <div className="flex min-w-0 items-center gap-2.5 bg-white/88 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+    <div className="flex min-w-0 items-center gap-2.5 bg-card/88 px-3 py-2.5 shadow-[inset_0_1px_0_hsl(var(--background)/0.6)]">
       <div
         className={cn(
           'flex size-8 shrink-0 items-center justify-center rounded-xl ring-1',
@@ -746,16 +750,16 @@ function AuditMetricCard({
   tone?: 'blue' | 'green' | 'amber' | 'rose' | 'violet' | 'slate'
 }>) {
   const toneClass = {
-    blue: 'bg-blue-50 text-blue-600 ring-blue-100',
-    green: 'bg-emerald-50 text-emerald-600 ring-emerald-100',
-    amber: 'bg-amber-50 text-amber-600 ring-amber-100',
-    rose: 'bg-rose-50 text-rose-600 ring-rose-100',
-    violet: 'bg-violet-50 text-violet-600 ring-violet-100',
-    slate: 'bg-slate-50 text-slate-600 ring-slate-100',
+    blue: 'bg-info/10 text-info ring-info/20',
+    green: 'bg-success/10 text-success ring-success/20',
+    amber: 'bg-warning/10 text-warning ring-warning/20',
+    rose: 'bg-destructive/10 text-destructive ring-destructive/20',
+    violet: 'bg-accent/10 text-accent ring-accent/20',
+    slate: 'bg-muted/50 text-muted-foreground ring-border/50',
   }[tone]
 
   return (
-    <article className="min-w-0 bg-white/95 px-4 py-3.5">
+    <article className="min-w-0 bg-card/95 px-4 py-3.5">
       <div className="flex items-center gap-3">
         <div
           className={cn(
@@ -791,29 +795,29 @@ function ReportSignalRow({
   tone?: 'blue' | 'green' | 'amber' | 'rose' | 'violet' | 'slate'
 }>) {
   const toneClass = {
-    blue: 'text-blue-600',
-    green: 'text-emerald-600',
-    amber: 'text-amber-600',
-    rose: 'text-rose-600',
-    violet: 'text-violet-600',
-    slate: 'text-slate-600',
+    blue: 'text-info',
+    green: 'text-success',
+    amber: 'text-warning',
+    rose: 'text-destructive',
+    violet: 'text-accent',
+    slate: 'text-muted-foreground',
   }[tone]
   const dotClass = {
-    blue: 'bg-blue-500',
-    green: 'bg-emerald-500',
-    amber: 'bg-amber-500',
-    rose: 'bg-rose-500',
-    violet: 'bg-violet-500',
-    slate: 'bg-slate-400',
+    blue: 'bg-info/100',
+    green: 'bg-success/100',
+    amber: 'bg-warning/100',
+    rose: 'bg-destructive/100',
+    violet: 'bg-accent/100',
+    slate: 'bg-muted-foreground/60',
   }[tone]
 
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-slate-200/70 bg-white/70 px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]">
+    <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-card/70 px-2.5 py-1.5 shadow-[inset_0_1px_0_hsl(var(--background)/0.5)]">
       <span className={cn('size-2 shrink-0 rounded-full', dotClass)} />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
           <div
-            className="truncate text-[0.75rem] font-medium text-slate-700"
+            className="truncate text-[0.75rem] font-medium text-foreground/85"
             title={label}
           >
             {label}
@@ -840,8 +844,8 @@ function ReportInlineEmpty({
   description,
 }: Readonly<{ title: string; description: string }>) {
   return (
-    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/55 px-3 py-3">
-      <div className="text-[0.8125rem] font-semibold tracking-[-0.01em] text-slate-700">
+    <div className="rounded-xl border border-dashed border-border bg-muted/40 px-3 py-3">
+      <div className="text-[0.8125rem] font-semibold tracking-[-0.01em] text-foreground/85">
         {title}
       </div>
       <div className={cn('mt-1 max-w-[32rem]', REPORT_SUBTEXT_CLASS)}>
@@ -866,46 +870,46 @@ function CompactAuditFact({
 }>) {
   const toneClass = {
     blue: {
-      shell: 'border-blue-100 bg-blue-50/45',
-      icon: 'bg-blue-100 text-blue-700 ring-blue-200',
-      rail: 'bg-blue-500',
+      shell: 'border-info/20 bg-info/5',
+      icon: 'bg-info/15 text-info ring-info/30',
+      rail: 'bg-info/100',
       value:
-        'border-blue-100 bg-white/80 text-blue-700 shadow-[0_1px_2px_rgba(37,99,235,0.08)]',
+        'border-info/20 bg-card/80 text-info shadow-[0_1px_2px_rgba(37,99,235,0.08)]',
     },
     green: {
-      shell: 'border-emerald-100 bg-emerald-50/45',
-      icon: 'bg-emerald-100 text-emerald-700 ring-emerald-200',
-      rail: 'bg-emerald-500',
+      shell: 'border-success/20 bg-success/5',
+      icon: 'bg-success/15 text-success ring-success/30',
+      rail: 'bg-success/100',
       value:
-        'border-emerald-100 bg-white/80 text-emerald-700 shadow-[0_1px_2px_rgba(5,150,105,0.08)]',
+        'border-success/20 bg-card/80 text-success shadow-[0_1px_2px_rgba(5,150,105,0.08)]',
     },
     amber: {
-      shell: 'border-amber-100 bg-amber-50/50',
-      icon: 'bg-amber-100 text-amber-700 ring-amber-200',
-      rail: 'bg-amber-500',
+      shell: 'border-warning/20 bg-warning/5',
+      icon: 'bg-warning/15 text-warning ring-warning/30',
+      rail: 'bg-warning/100',
       value:
-        'border-amber-100 bg-white/85 text-amber-700 shadow-[0_1px_2px_rgba(217,119,6,0.08)]',
+        'border-warning/20 bg-card/85 text-warning shadow-[0_1px_2px_rgba(217,119,6,0.08)]',
     },
     rose: {
-      shell: 'border-rose-100 bg-rose-50/45',
-      icon: 'bg-rose-100 text-rose-700 ring-rose-200',
-      rail: 'bg-rose-500',
+      shell: 'border-destructive/20 bg-destructive/5',
+      icon: 'bg-destructive/15 text-destructive ring-destructive/30',
+      rail: 'bg-destructive/100',
       value:
-        'border-rose-100 bg-white/85 text-rose-700 shadow-[0_1px_2px_rgba(225,29,72,0.08)]',
+        'border-destructive/20 bg-card/85 text-destructive shadow-[0_1px_2px_rgba(225,29,72,0.08)]',
     },
     violet: {
-      shell: 'border-violet-100 bg-violet-50/45',
-      icon: 'bg-violet-100 text-violet-700 ring-violet-200',
-      rail: 'bg-violet-500',
+      shell: 'border-accent/20 bg-accent/5',
+      icon: 'bg-accent/15 text-accent ring-accent/30',
+      rail: 'bg-accent/100',
       value:
-        'border-violet-100 bg-white/80 text-violet-700 shadow-[0_1px_2px_rgba(124,58,237,0.08)]',
+        'border-accent/20 bg-card/80 text-accent shadow-[0_1px_2px_rgba(124,58,237,0.08)]',
     },
     slate: {
-      shell: 'border-slate-200/70 bg-slate-50/55',
-      icon: 'bg-slate-100 text-slate-600 ring-slate-200',
-      rail: 'bg-slate-300',
+      shell: 'border-border/60 bg-muted/40',
+      icon: 'bg-muted text-muted-foreground ring-border',
+      rail: 'bg-border',
       value:
-        'border-slate-200 bg-white/80 text-slate-600 shadow-[0_1px_2px_rgba(15,23,42,0.04)]',
+        'border-border bg-card/80 text-muted-foreground shadow-[0_1px_2px_rgba(15,23,42,0.04)]',
     },
   }[tone]
 
@@ -930,10 +934,10 @@ function CompactAuditFact({
           <Icon className="size-3.5" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[0.75rem] font-semibold tracking-[-0.01em] text-slate-800">
+          <div className="truncate text-[0.75rem] font-semibold tracking-[-0.01em] text-foreground">
             {label}
           </div>
-          <div className="mt-0.5 truncate text-[0.6875rem] leading-4 text-slate-500" title={sub}>
+          <div className="mt-0.5 truncate text-[0.6875rem] leading-4 text-muted-foreground" title={sub}>
             {sub}
           </div>
         </div>
@@ -956,12 +960,12 @@ function AuditMetricPlaceholder({
   hint,
 }: Readonly<{ label: string; hint: string }>) {
   return (
-    <div className="rounded-lg border border-dashed border-slate-200 bg-white/65 px-2.5 py-2">
+    <div className="rounded-lg border border-dashed border-border bg-background/65 px-2.5 py-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="truncate text-[0.75rem] font-semibold tracking-[-0.01em] text-slate-700">
+        <span className="truncate text-[0.75rem] font-semibold tracking-[-0.01em] text-foreground/85">
           {label}
         </span>
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[0.6875rem] font-medium text-slate-500">
+        <span className="rounded-full bg-muted px-2 py-0.5 text-[0.6875rem] font-medium text-muted-foreground">
           待运行
         </span>
       </div>
@@ -985,16 +989,16 @@ function ProgressRow({
         REPORT_TABLE_ROW_CLASS
       )}
     >
-      <div className="truncate text-slate-600" title={label}>
+      <div className="truncate text-muted-foreground" title={label}>
         {label}
       </div>
-      <div className="h-1.5 rounded-full bg-slate-100">
+      <div className="h-1.5 rounded-full bg-muted">
         <div
-          className="h-full rounded-full bg-blue-500"
+          className="h-full rounded-full bg-info/100"
           style={{ width: `${pct}%` }}
         />
       </div>
-      <div className="text-right tabular-nums text-slate-600">
+      <div className="text-right tabular-nums text-muted-foreground">
         {formatPct(value, max)}
       </div>
     </div>
@@ -1222,16 +1226,16 @@ function RetrievalAuditPanel({
     (value) => Number(value) > 0
   )
   const statusToneClass = {
-    green: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-    amber: 'border-amber-200 bg-amber-50 text-amber-700',
-    rose: 'border-rose-200 bg-rose-50 text-rose-700',
-    slate: 'border-slate-200 bg-slate-50 text-slate-600',
+    green: 'border-success/30 bg-success/10 text-success',
+    amber: 'border-warning/30 bg-warning/10 text-warning',
+    rose: 'border-destructive/30 bg-destructive/10 text-destructive',
+    slate: 'border-border bg-muted/50 text-muted-foreground',
   }[tone]
   const statusIconClass = {
-    green: 'bg-emerald-100 text-emerald-700',
-    amber: 'bg-amber-100 text-amber-700',
-    rose: 'bg-rose-100 text-rose-700',
-    slate: 'bg-slate-100 text-slate-600',
+    green: 'bg-success/15 text-success',
+    amber: 'bg-warning/15 text-warning',
+    rose: 'bg-destructive/15 text-destructive',
+    slate: 'bg-muted text-muted-foreground',
   }[tone]
   const StatusIcon = {
     green: CheckCircle2,
@@ -1242,16 +1246,16 @@ function RetrievalAuditPanel({
 
   return (
     <div className={REPORT_PANEL_CLASS}>
-      <div className="mb-2 overflow-hidden rounded-xl border border-slate-200/70 bg-[linear-gradient(120deg,#f8fbff_0%,#ffffff_54%,#f2fbff_100%)] px-2.5 py-2">
+      <div className="mb-2 overflow-hidden rounded-xl border border-border/60 bg-[linear-gradient(120deg,hsl(var(--info)/0.08),hsl(var(--card))_54%,hsl(var(--accent)/0.06))] px-2.5 py-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-info/10 text-info ring-1 ring-info/20">
               <FileSearch className="size-4" />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <div className={REPORT_PANEL_TITLE_CLASS}>召回审计</div>
-                <span className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[10px] font-medium tracking-[0.08em] text-blue-700">
+                <span className="rounded-full border border-info/20 bg-info/10 px-2 py-0.5 text-[10px] font-medium tracking-[0.08em] text-info">
                   生产准入
                 </span>
               </div>
@@ -1306,18 +1310,18 @@ function RetrievalAuditPanel({
         />
       </div>
 
-      <div className="mt-2 overflow-hidden rounded-lg border border-slate-100">
-        <div className="flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/80 px-2.5 py-1.5">
-          <div className="text-[0.75rem] font-semibold tracking-[-0.01em] text-slate-700">
+      <div className="mt-2 overflow-hidden rounded-lg border border-border/50">
+        <div className="flex items-center justify-between gap-2 border-b border-border/50 bg-muted/45 px-2.5 py-1.5">
+          <div className="text-[0.75rem] font-semibold tracking-[-0.01em] text-foreground/85">
             门禁指标
           </div>
-          <div className="text-[0.6875rem] text-slate-500">
+          <div className="text-[0.6875rem] text-muted-foreground">
             最新回归门禁
           </div>
         </div>
         <div
           className={cn(
-            'grid grid-cols-[1fr_104px] bg-white px-2.5 py-1.5',
+            'grid grid-cols-[1fr_104px] bg-background px-2.5 py-1.5',
             REPORT_TABLE_HEADER_CLASS
           )}
         >
@@ -1325,7 +1329,7 @@ function RetrievalAuditPanel({
           <span className="text-right">数值</span>
         </div>
         {metricRows.length === 0 ? (
-          <div className="border-t border-slate-100 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] px-2.5 py-2">
+          <div className="border-t border-border/50 bg-[linear-gradient(180deg,hsl(var(--card)),hsl(var(--muted)/0.4))] px-2.5 py-2">
             <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-4">
               <AuditMetricPlaceholder
                 label="Hit@K"
@@ -1353,14 +1357,14 @@ function RetrievalAuditPanel({
             <div
               key={row.key}
               className={cn(
-                'grid grid-cols-[1fr_104px] border-t border-slate-100 px-2.5 py-1.5',
+                'grid grid-cols-[1fr_104px] border-t border-border/50 px-2.5 py-1.5',
                 REPORT_TABLE_ROW_CLASS
               )}
             >
               <span className="truncate" title={row.key}>
                 {row.label}
               </span>
-              <span className="text-right font-medium tabular-nums text-slate-800">
+              <span className="text-right font-medium tabular-nums text-foreground">
                 {row.value}
               </span>
             </div>
@@ -1436,13 +1440,13 @@ function TopDocumentPanel({
                 REPORT_TABLE_ROW_CLASS
               )}
             >
-              <div className="truncate font-medium text-slate-700" title={row.name}>
+              <div className="truncate font-medium text-foreground/85" title={row.name}>
                 {row.name}
               </div>
-              <div className="tabular-nums text-slate-700">{row.value}</div>
-              <div className="h-1.5 rounded-full bg-slate-100">
+              <div className="tabular-nums text-foreground/85">{row.value}</div>
+              <div className="h-1.5 rounded-full bg-muted">
                 <div
-                  className="h-full rounded-full bg-blue-500"
+                  className="h-full rounded-full bg-info/100"
                   style={{
                     width: `${Math.max(3, (safeNumber(row.value) / topDocumentMax) * 100)}%`,
                   }}
@@ -1531,7 +1535,7 @@ function CategoryChartPanel({
           >
             <CartesianGrid
               strokeDasharray="3 3"
-              stroke="#e2e8f0"
+              stroke="hsl(var(--border))"
               opacity={0.55}
             />
             <XAxis dataKey="name" />
@@ -1541,7 +1545,7 @@ function CategoryChartPanel({
               contentStyle={CHART_TOOLTIP_STYLE}
               labelStyle={CHART_TOOLTIP_LABEL_STYLE}
             />
-            <Bar dataKey="value" radius={[7, 7, 0, 0]} fill="#2563eb" />
+            <Bar dataKey="value" radius={[7, 7, 0, 0]} fill="hsl(var(--info))" />
           </BarChart>
         </SafeResponsiveChart>
       )}
@@ -1607,7 +1611,7 @@ function PipelineVersionsPanel({
                     {pipelineVersionLabel(version.pipeline_hash)}
                   </span>
                 </span>
-                <span className="tabular-nums text-slate-500">
+                <span className="tabular-nums text-muted-foreground">
                   {version.documents} ({formatPct(version.documents, versionTotal)})
                 </span>
               </div>
@@ -1634,10 +1638,10 @@ function IssueRowsPanel({ issueRows }: Readonly<{ issueRows: IssueRow[] }>) {
           description="当前报告没有失败任务或质量规则命中；后续出现异常会在这里列出。"
         />
       ) : (
-        <div className="overflow-hidden rounded-xl border border-slate-100">
+        <div className="overflow-hidden rounded-xl border border-border/50">
           <div
             className={cn(
-            'grid grid-cols-[104px_64px_104px_1fr_56px] bg-slate-50 px-2.5 py-1.5',
+            'grid grid-cols-[104px_64px_104px_1fr_56px] bg-muted/50 px-2.5 py-1.5',
               REPORT_TABLE_HEADER_CLASS
             )}
           >
@@ -1651,7 +1655,7 @@ function IssueRowsPanel({ issueRows }: Readonly<{ issueRows: IssueRow[] }>) {
             <div
               key={row.id}
               className={cn(
-                'grid grid-cols-[104px_64px_104px_1fr_56px] items-center border-t border-slate-100 px-2.5 py-2',
+                'grid grid-cols-[104px_64px_104px_1fr_56px] items-center border-t border-border/50 px-2.5 py-2',
                 REPORT_TABLE_ROW_CLASS
               )}
             >
@@ -1682,18 +1686,18 @@ function ReportSectionHeading({
   description: string
 }>) {
   return (
-    <div className="flex items-end gap-3 border-b border-slate-200/70 pb-2.5">
-      <span className="pb-0.5 font-mono text-[11px] font-semibold tracking-[0.16em] text-sky-600">
+    <div className="flex items-end gap-3 border-b border-border/60 pb-2.5">
+      <span className="pb-0.5 font-mono text-[11px] font-semibold tracking-[0.16em] text-info">
         {index}
       </span>
       <div className="min-w-0 flex-1">
-        <h2 className="text-[0.9375rem] font-semibold tracking-[-0.015em] text-slate-950">
+        <h2 className="text-[0.9375rem] font-semibold tracking-[-0.015em] text-foreground">
           {title}
         </h2>
-        <p className="mt-0.5 text-xs leading-4 text-slate-500">{description}</p>
+        <p className="mt-0.5 text-xs leading-4 text-muted-foreground">{description}</p>
       </div>
       <span
-        className="mb-1 hidden h-px w-20 bg-gradient-to-r from-sky-300/80 to-transparent sm:block"
+        className="mb-1 hidden h-px w-20 bg-[linear-gradient(90deg,hsl(var(--info)/0.5),transparent)] sm:block"
         aria-hidden="true"
       />
     </div>
@@ -1872,7 +1876,7 @@ function ReportsHeaderPills({
   dataProvenance: DatasetReportDataProvenance | null
 }>) {
   return (
-    <div className="grid min-w-0 gap-px overflow-hidden rounded-2xl border border-sky-200/70 bg-sky-200/60 shadow-[0_16px_38px_-30px_rgba(14,116,144,0.5)] sm:grid-cols-2 xl:grid-cols-[1.35fr_0.86fr_0.9fr_0.88fr_1.15fr]">
+    <div className="grid min-w-0 gap-px overflow-hidden rounded-2xl border border-info/25 bg-info/20 shadow-[0_16px_38px_-30px_rgba(14,116,144,0.5)] sm:grid-cols-2 xl:grid-cols-[1.35fr_0.86fr_0.9fr_0.88fr_1.15fr]">
       <DataPill
         icon={Database}
         label="数据集"
@@ -2016,7 +2020,7 @@ function ReportsControlPanel({
   onRefresh: () => void
 }>) {
   return (
-    <section className="space-y-3 rounded-[1.2rem] border border-slate-200/75 bg-white/88 p-3.5 shadow-[0_18px_44px_-36px_rgba(15,23,42,0.35)] backdrop-blur">
+    <section className="space-y-3 rounded-[1.2rem] border border-border/60 bg-card/88 p-3.5 shadow-[0_18px_44px_-36px_rgba(15,23,42,0.35)] backdrop-blur">
       <div className="grid gap-3 xl:grid-cols-[1.25fr_1.1fr_0.85fr_auto] xl:items-end">
         <div className="space-y-1.5">
           <Label
@@ -2131,7 +2135,7 @@ function ReportsControlPanel({
           </Select>
         </div>
 
-        <div className="flex h-9 items-center gap-2 rounded-xl border border-slate-200/70 bg-slate-50/70 px-3">
+        <div className="flex h-9 items-center gap-2 rounded-xl border border-border/60 bg-muted/40 px-3">
           <Switch
             id="only-issues-switch"
             checked={showOnlyIssues}
@@ -2139,15 +2143,15 @@ function ReportsControlPanel({
           />
           <Label
             htmlFor="only-issues-switch"
-            className="whitespace-nowrap text-xs font-medium text-slate-600"
+            className="whitespace-nowrap text-xs font-medium text-muted-foreground"
           >
             只看异常
           </Label>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200/70 pt-3">
-        <div className="flex h-9 items-center gap-2 rounded-xl bg-slate-50/90 px-3 ring-1 ring-inset ring-slate-200/70">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-3">
+        <div className="flex h-9 items-center gap-2 rounded-xl bg-muted/45 px-3 ring-1 ring-inset ring-border/60">
           <Switch
             id="redact-switch"
             checked={redact}
@@ -2155,7 +2159,7 @@ function ReportsControlPanel({
           />
           <Label
             htmlFor="redact-switch"
-            className="text-xs font-medium text-slate-600"
+            className="text-xs font-medium text-muted-foreground"
           >
             导出脱敏
           </Label>
@@ -2180,21 +2184,21 @@ function ReportsControlPanel({
                   icon={Download}
                 />
                 <span>导出报告</span>
-                <ChevronDown className="size-3.5 text-slate-400" />
+                <ChevronDown className="size-3.5 text-muted-foreground/70" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
-              className="w-64 rounded-2xl border-slate-200/80 bg-white/95 p-1.5 shadow-[0_24px_70px_-28px_rgba(15,23,42,0.38)] backdrop-blur-xl"
+              className="w-64 rounded-2xl border-border/60 bg-popover/95 p-1.5 shadow-[0_24px_70px_-28px_rgba(15,23,42,0.38)] backdrop-blur-xl"
             >
-              <DropdownMenuLabel className="px-2.5 pb-1 pt-2 text-[11px] font-semibold tracking-[0.08em] text-slate-400">
+              <DropdownMenuLabel className="px-2.5 pb-1 pt-2 text-[11px] font-semibold tracking-[0.08em] text-muted-foreground/70">
                 基础与完整数据
               </DropdownMenuLabel>
               <DropdownMenuGroup>
                 <DropdownMenuItem
                   onSelect={onExportJson}
                   disabled={!datasetId || isExportingJson}
-                  className="rounded-xl px-2.5 py-2 text-xs focus:bg-sky-50 focus:text-sky-800"
+                  className="rounded-xl px-2.5 py-2 text-xs focus:bg-info/10 focus:text-info"
                   aria-label="导出 JSON"
                 >
                   <LoadingButtonIcon loading={isExportingJson} icon={Download} />
@@ -2203,7 +2207,7 @@ function ReportsControlPanel({
                 <DropdownMenuItem
                   onSelect={onExportCompleteJson}
                   disabled={!datasetId || !report}
-                  className="rounded-xl px-2.5 py-2 text-xs focus:bg-sky-50 focus:text-sky-800"
+                  className="rounded-xl px-2.5 py-2 text-xs focus:bg-info/10 focus:text-info"
                   aria-label="导出完整 JSON"
                 >
                   <Archive className="size-3.5" />
@@ -2212,7 +2216,7 @@ function ReportsControlPanel({
                 <DropdownMenuItem
                   onSelect={onExportChartsJson}
                   disabled={!datasetId || !report}
-                  className="rounded-xl px-2.5 py-2 text-xs focus:bg-sky-50 focus:text-sky-800"
+                  className="rounded-xl px-2.5 py-2 text-xs focus:bg-info/10 focus:text-info"
                   aria-label="导出 RAG 统计"
                 >
                   <BarChart3 className="size-3.5" />
@@ -2220,14 +2224,14 @@ function ReportsControlPanel({
                 </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator className="my-1.5" />
-              <DropdownMenuLabel className="px-2.5 pb-1 pt-1 text-[11px] font-semibold tracking-[0.08em] text-slate-400">
+              <DropdownMenuLabel className="px-2.5 pb-1 pt-1 text-[11px] font-semibold tracking-[0.08em] text-muted-foreground/70">
                 审计与交付物
               </DropdownMenuLabel>
               <DropdownMenuGroup>
                 <DropdownMenuItem
                   onSelect={onExportRagAuditHtml}
                   disabled={!datasetId || isExportingRagAuditHtml}
-                  className="rounded-xl px-2.5 py-2 text-xs focus:bg-sky-50 focus:text-sky-800"
+                  className="rounded-xl px-2.5 py-2 text-xs focus:bg-info/10 focus:text-info"
                   aria-label="导出 RAG 审计报告"
                 >
                   <LoadingButtonIcon
@@ -2239,7 +2243,7 @@ function ReportsControlPanel({
                 <DropdownMenuItem
                   onSelect={onExportBundleZip}
                   disabled={!datasetId || isExportingBundle}
-                  className="rounded-xl px-2.5 py-2 text-xs focus:bg-sky-50 focus:text-sky-800"
+                  className="rounded-xl px-2.5 py-2 text-xs focus:bg-info/10 focus:text-info"
                   aria-label="导出数据包 ZIP"
                 >
                   <LoadingButtonIcon loading={isExportingBundle} icon={Archive} />
@@ -2248,7 +2252,7 @@ function ReportsControlPanel({
                 <DropdownMenuItem
                   onSelect={onExportHtml}
                   disabled={!datasetId || isExportingHtml}
-                  className="rounded-xl px-2.5 py-2 text-xs focus:bg-sky-50 focus:text-sky-800"
+                  className="rounded-xl px-2.5 py-2 text-xs focus:bg-info/10 focus:text-info"
                   aria-label="导出 HTML"
                 >
                   <LoadingButtonIcon loading={isExportingHtml} icon={FileText} />
@@ -2286,6 +2290,7 @@ function ReportsResultSection({
   report,
   datasetId,
   isLoadingReport,
+  reportErrorMessage,
   totalDocs,
   totalBytes,
   successDocs,
@@ -2320,6 +2325,7 @@ function ReportsResultSection({
   report: DatasetReport | null
   datasetId: string
   isLoadingReport: boolean
+  reportErrorMessage: string
   totalDocs: number
   totalBytes: number
   successDocs: number
@@ -2352,6 +2358,15 @@ function ReportsResultSection({
   issueRows: IssueRow[]
 }>) {
   if (!report) {
+    if (reportErrorMessage && datasetId && !isLoadingReport) {
+      return (
+        <EmptyState
+          icon={AlertTriangle}
+          title="报告加载失败"
+          description={reportErrorMessage}
+        />
+      )
+    }
     return (
       <EmptyState
         title={reportPreviewEmptyTitle(datasetId, isLoadingReport)}
@@ -2446,6 +2461,9 @@ export default function ReportsCenterPage() {
   const report = reportQuery.data ?? null
   const isLoadingDatasets = datasetsQuery.isFetching
   const isLoadingReport = reportQuery.isFetching
+  const reportErrorMessage = reportQuery.error
+    ? formatApiError(reportQuery.error, '报告加载失败')
+    : ''
   const selectedDataset = useMemo(
     () => datasets.find((d) => d.id === datasetId) || null,
     [datasets, datasetId]
@@ -3040,6 +3058,7 @@ export default function ReportsCenterPage() {
               report={report}
               datasetId={datasetId}
               isLoadingReport={isLoadingReport}
+              reportErrorMessage={reportErrorMessage}
               totalDocs={totalDocs}
               totalBytes={totalBytes}
               successDocs={successDocs}

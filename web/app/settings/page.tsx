@@ -536,7 +536,7 @@ function SettingsPageContent() {
         size="full"
         compact
         density="system-dense"
-        headerClassName="[&_h1]:!text-[21px] [&_h1]:md:!text-[23px] [&_h1]:!font-semibold [&_h1]:!leading-tight [&_h1]:!tracking-[-0.026em] [&_[class*='rounded-full']]:border-primary/20 [&_[class*='rounded-full']]:bg-primary/10 [&_[class*='rounded-full']]:font-medium [&_[class*='rounded-full']]:normal-case [&_[class*='rounded-full']]:text-primary"
+        headerClassName="[&_[class*='rounded-full']]:border-primary/20 [&_[class*='rounded-full']]:bg-primary/10 [&_[class*='rounded-full']]:font-medium [&_[class*='rounded-full']]:normal-case [&_[class*='rounded-full']]:text-primary"
         topClassName="pb-2.5"
         bodyClassName="pt-0.5"
         top={

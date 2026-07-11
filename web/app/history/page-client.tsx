@@ -493,7 +493,7 @@ function HistoryPageContent({
               <div className="sticky top-0 z-20 border-b border-border/50 px-2 pt-2 pb-1.5 space-y-1 min-w-[19.5rem] backdrop-blur-md bg-background/80">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <div className="flex size-9 shrink-0 items-center justify-center rounded-2xl border border-sky-200/70 bg-[radial-gradient(circle_at_34%_24%,rgba(255,255,255,0.98),rgba(226,243,255,0.86)_48%,rgba(219,234,254,0.66)_100%)] text-primary shadow-[0_8px_18px_rgba(37,99,235,0.12)] ring-1 ring-white/80">
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded-2xl border border-info/30 bg-[radial-gradient(circle_at_34%_24%,rgba(255,255,255,0.98),rgba(226,243,255,0.86)_48%,rgba(219,234,254,0.66)_100%)] text-primary shadow-[0_8px_18px_rgba(37,99,235,0.12)] ring-1 ring-white/80">
                       <PageTitleIcon name="qa-history" className="size-7" />
                     </div>
                     <h2 className="text-sm font-medium text-foreground  uppercase">历史记录</h2>
@@ -810,7 +810,7 @@ function HistoryMainEmptyState() {
     <div className="flex-1 bg-muted/[0.12] p-4 md:p-6">
       <section
         data-history-main-empty="true"
-        className="relative isolate flex min-h-full items-center justify-center overflow-hidden rounded-[32px] border border-sky-100/80 bg-[linear-gradient(135deg,rgba(14,165,233,0.08),transparent_42%),radial-gradient(circle_at_50%_105%,rgba(59,130,246,0.10),transparent_45%)] px-8 py-12 text-center shadow-soft"
+        className="relative isolate flex min-h-full items-center justify-center overflow-hidden rounded-[32px] border border-info/20 bg-[linear-gradient(135deg,rgba(14,165,233,0.08),transparent_42%),radial-gradient(circle_at_50%_105%,rgba(59,130,246,0.10),transparent_45%)] px-8 py-12 text-center shadow-soft"
       >
         <div
           aria-hidden="true"
@@ -818,14 +818,14 @@ function HistoryMainEmptyState() {
         />
         <div
           aria-hidden="true"
-          className="absolute left-1/2 top-1/2 size-[420px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky-200/20 blur-3xl"
+          className="absolute left-1/2 top-1/2 size-[420px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-info/15 blur-3xl"
         />
 
         <div className="relative mx-auto flex max-w-xl flex-col items-center">
-          <div className="mb-5 grid size-[72px] place-items-center rounded-[26px] border border-sky-200/80 bg-[linear-gradient(145deg,rgba(255,255,255,0.96),rgba(224,244,255,0.84))] text-primary shadow-[0_18px_38px_rgba(14,165,233,0.16)]">
+          <div className="mb-5 grid size-[72px] place-items-center rounded-[26px] border border-info/30 bg-[linear-gradient(145deg,hsl(var(--card)),hsl(var(--info)/0.12))] text-primary shadow-[0_18px_38px_hsl(var(--info)/0.16)]">
             <History className="size-8" />
           </div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-sky-500/80">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-info/80">
             {t('historyEmptyKicker')}
           </p>
           <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-foreground">
@@ -878,7 +878,7 @@ function HistoryMainEmptyState() {
                 className="rounded-2xl border border-border/80 bg-background/72 px-3.5 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)] backdrop-blur"
               >
                 <div className="flex items-center gap-2 text-[12px] font-semibold text-foreground/82">
-                  <span className="size-1.5 rounded-full bg-sky-400" />
+                  <span className="size-1.5 rounded-full bg-info" />
                   {title}
                 </div>
                 <p className="mt-1 text-[11px] leading-4 text-muted-foreground/70">
@@ -916,12 +916,12 @@ function HistorySidebarEmptyState({
       aria-live="polite"
       className="mx-2 mt-8 px-4 text-center"
     >
-      <div className="relative mx-auto mb-4 grid size-14 place-items-center rounded-[22px] bg-sky-50/75 text-primary">
+      <div className="relative mx-auto mb-4 grid size-14 place-items-center rounded-[22px] bg-info/5 text-primary">
         <History className="size-6" />
-        <span className="absolute -right-1 top-2 size-2 rounded-full bg-sky-300" />
-        <span className="absolute -left-1.5 bottom-4 size-1.5 rounded-full bg-blue-200" />
+        <span className="absolute -right-1 top-2 size-2 rounded-full bg-info/30" />
+        <span className="absolute -left-1.5 bottom-4 size-1.5 rounded-full bg-primary/20" />
       </div>
-      <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-sky-500/75">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-info/75">
         {t('historyEmptyKicker')}
       </p>
       <h3 className="mt-2 text-[15px] font-semibold tracking-[-0.03em] text-foreground">
@@ -1146,7 +1146,7 @@ function HistoryMessageRoleBadge({
           : 'border-border/60 bg-background/90 text-foreground/80'
       )}
     >
-      <span className={cn('h-1.5 w-1.5 rounded-full', isUser ? 'bg-primary' : 'bg-sky-500')} />
+      <span className={cn('h-1.5 w-1.5 rounded-full', isUser ? 'bg-primary' : 'bg-info')} />
       <span>{isUser ? t('speakerQuestion') : t('speakerAnswer')}</span>
     </div>
   )
@@ -1164,33 +1164,33 @@ function getConversationGroupTone(
 ) {
   if (group === labels.today) {
     return {
-      chipClass: 'border-[#B6D7A8]/90 bg-[#F2F8ED] text-[#5E7E4D] dark:border-[#5E7E4D]/30 dark:bg-[#5E7E4D]/10 dark:text-[#A8C895]',
-      countClass: 'bg-[#DDECCF] text-[#4F6B41] dark:bg-[#5E7E4D]/20 dark:text-[#A8C895]',
-      lineClass: 'bg-[#B6D7A8]/75 dark:bg-[#5E7E4D]/20',
+      chipClass: 'border-success/30 bg-success/10 text-success',
+      countClass: 'bg-success/15 text-success',
+      lineClass: 'bg-success/25',
     }
   }
 
   if (group === labels.yesterday) {
     return {
-      chipClass: 'border-[#B0D2EF]/90 bg-[#EEF6FC] text-[#4F7090] dark:border-[#4F7090]/30 dark:bg-[#4F7090]/10 dark:text-[#9FBDE0]',
-      countClass: 'bg-[#D9EAF8] text-[#476786] dark:bg-[#4F7090]/20 dark:text-[#9FBDE0]',
-      lineClass: 'bg-[#B0D2EF]/75 dark:bg-[#4F7090]/20',
+      chipClass: 'border-info/30 bg-info/10 text-info',
+      countClass: 'bg-info/15 text-info',
+      lineClass: 'bg-info/25',
     }
   }
 
   if (group === labels.last7Days) {
     return {
-      chipClass: 'border-[#FFBEBA]/90 bg-[#FFF1F0] text-[#A86762] dark:border-[#A86762]/30 dark:bg-[#A86762]/10 dark:text-[#E0A7A3]',
-      countClass: 'bg-[#FFDCD8] text-[#955A56] dark:bg-[#A86762]/20 dark:text-[#E0A7A3]',
-      lineClass: 'bg-[#FFBEBA]/75 dark:bg-[#A86762]/20',
+      chipClass: 'border-destructive/30 bg-destructive/10 text-destructive',
+      countClass: 'bg-destructive/15 text-destructive',
+      lineClass: 'bg-destructive/25',
     }
   }
 
   if (group === labels.last30Days) {
     return {
-      chipClass: 'border-[#F4D8A6]/90 bg-[#FFF7E9] text-[#8A6A31] dark:border-[#8A6A31]/30 dark:bg-[#8A6A31]/10 dark:text-[#D4B581]',
-      countClass: 'bg-[#FCE9C3] text-[#785B28] dark:bg-[#8A6A31]/20 dark:text-[#D4B581]',
-      lineClass: 'bg-[#F4D8A6]/75 dark:bg-[#8A6A31]/20',
+      chipClass: 'border-warning/30 bg-warning/10 text-warning',
+      countClass: 'bg-warning/15 text-warning',
+      lineClass: 'bg-warning/25',
     }
   }
 

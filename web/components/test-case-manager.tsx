@@ -141,8 +141,8 @@ function TestCaseRow({
     <div
       className={cn(
         'transition-colors motion-reduce:transition-none',
-        dense ? 'px-3 py-3 hover:bg-slate-50/80' : 'p-4 hover:bg-muted/50',
-        isSelected && (dense ? 'bg-sky-50/70' : 'bg-primary/10')
+        dense ? 'px-3 py-3 hover:bg-muted/40' : 'p-4 hover:bg-muted/50',
+        isSelected && (dense ? 'bg-info/5' : 'bg-primary/10')
       )}
     >
       <div className={cn('flex items-start', dense ? 'gap-2.5' : 'gap-3')}>
@@ -197,7 +197,7 @@ function TestCaseRow({
                   className={cn(
                     'inline-flex items-center gap-1 rounded-full border text-muted-foreground',
                     dense
-                      ? 'border-slate-200/80 bg-[#fffef9] px-1.5 py-0.5 text-[9px]'
+                      ? 'border-border/60 bg-[#fffef9] px-1.5 py-0.5 text-[9px]'
                       : 'border-border/60 bg-muted px-2 py-0.5 text-[11px]'
                   )}
                 >
@@ -234,7 +234,7 @@ function TestCaseRow({
             onClick={handleToggleGolden}
             className={cn(
               'text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none',
-              isGolden && 'text-amber-600 hover:text-amber-700'
+              isGolden && 'text-warning hover:text-warning'
             )}
             aria-label={goldenActionLabel}
             title={goldenActionLabel}
@@ -804,8 +804,8 @@ export function TestCaseManager({
         )}
       >
         <div className="max-w-md">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl border border-slate-200/80 bg-[radial-gradient(circle_at_30%_20%,rgba(37,99,235,0.16),transparent_45%),linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] shadow-sm">
-            <FileText className="h-7 w-7 text-blue-600" />
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl border border-border/60 bg-[radial-gradient(circle_at_30%_20%,rgba(37,99,235,0.16),transparent_45%),linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] shadow-sm">
+            <FileText className="h-7 w-7 text-primary" />
           </div>
           <div className="mt-4 text-base font-semibold text-foreground">
             {emptyTitle}
@@ -821,7 +821,7 @@ export function TestCaseManager({
                 variant="outline"
                 className={cn(
                   dense &&
-                    'h-8 rounded-lg border-slate-200/80 bg-card/90 px-2.5 text-[11px]'
+                    'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[11px]'
                 )}
                 onClick={() => {
                   setSearchQuery('')
@@ -849,7 +849,7 @@ export function TestCaseManager({
               className={cn(
                 'gap-2',
                 dense &&
-                  'h-8 rounded-lg border-slate-200/80 bg-card/90 px-2.5 text-[11px]'
+                  'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[11px]'
               )}
               onClick={handleChooseEvidencePack}
               disabled={!datasetId}
@@ -868,9 +868,9 @@ export function TestCaseManager({
               ].map(([step, title, desc]) => (
                 <div
                   key={step}
-                  className="rounded-2xl border border-slate-200/80 bg-card/90 p-2.5"
+                  className="rounded-2xl border border-border/60 bg-card/90 p-2.5"
                 >
-                  <div className="text-[10px] font-semibold text-blue-600">
+                  <div className="text-[10px] font-semibold text-primary">
                     STEP {step}
                   </div>
                   <div className="mt-1 text-[11px] font-semibold text-foreground">
@@ -892,7 +892,7 @@ export function TestCaseManager({
         <div
           className={cn(
             'border-b flex items-center gap-2',
-            dense ? 'border-slate-200/80 px-3 py-2' : 'border-border px-4 py-2'
+            dense ? 'border-border/60 px-3 py-2' : 'border-border px-4 py-2'
           )}
         >
           <button
@@ -942,7 +942,7 @@ export function TestCaseManager({
         className={cn(
           'border-b',
           dense
-            ? 'border-slate-200/80 bg-[#fffef9] px-3 py-3'
+            ? 'border-border/60 bg-[#fffef9] px-3 py-3'
             : 'border-border p-4'
         )}
       >
@@ -974,20 +974,20 @@ export function TestCaseManager({
                 aria-label="Golden 评测集统计"
                 className="mt-2 flex flex-wrap items-center gap-1.5"
               >
-                <span className="rounded-full border border-slate-200 bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                <span className="rounded-full border border-border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground">
                   样本 {caseTotal}
                   {!casesFullyLoaded ? ` · 已载 ${cases.length}` : ''}
                 </span>
-                <span className="rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">
+                <span className="rounded-full border border-warning/30 bg-warning/10 px-1.5 py-0.5 text-[10px] text-warning">
                   Golden {goldenCount}
                 </span>
-                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] text-emerald-700">
+                <span className="rounded-full border border-success/30 bg-success/10 px-1.5 py-0.5 text-[10px] text-success">
                   标准答案 {standardAnswerCount}
                 </span>
-                <span className="rounded-full border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[10px] text-sky-700">
+                <span className="rounded-full border border-info/30 bg-info/10 px-1.5 py-0.5 text-[10px] text-info">
                   标准证据 {referenceSourceCount}
                 </span>
-                <span className="rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700">
+                <span className="rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
                   已选 {selectedCaseIds.size}
                 </span>
               </div>
@@ -1002,7 +1002,7 @@ export function TestCaseManager({
                   className={cn(
                     'gap-2',
                     dense &&
-                      'h-8 rounded-lg border-amber-200/80 bg-amber-50/80 px-2.5 text-[11px] text-amber-700 hover:bg-amber-50'
+                      'h-8 rounded-lg border-warning/30 bg-warning/5 px-2.5 text-[11px] text-warning hover:bg-warning/10'
                   )}
                   onClick={handleRunGolden}
                   disabled={!datasetId || goldenCaseIds.length === 0}
@@ -1016,7 +1016,7 @@ export function TestCaseManager({
                   className={cn(
                     'gap-2',
                     dense &&
-                      'h-8 rounded-lg border-slate-200/80 bg-card/90 px-2.5 text-[11px]'
+                      'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[11px]'
                   )}
                   onClick={handleRunAll}
                   disabled={!datasetId || cases.length === 0}
@@ -1033,7 +1033,7 @@ export function TestCaseManager({
                   className={cn(
                     'gap-2',
                     dense &&
-                      'h-8 rounded-lg border-slate-200/80 bg-card/90 px-2.5 text-[11px]'
+                      'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[11px]'
                   )}
                   onClick={handleRunSelected}
                 >
@@ -1053,7 +1053,7 @@ export function TestCaseManager({
                     className={cn(
                       'gap-2 text-destructive hover:text-destructive',
                       dense &&
-                        'h-8 rounded-lg border-slate-200/80 bg-card/90 px-2.5 text-[11px]'
+                        'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[11px]'
                     )}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -1079,7 +1079,7 @@ export function TestCaseManager({
               className={cn(
                 'gap-2',
                 dense &&
-                  'h-8 rounded-lg border-slate-200/80 bg-card/90 px-2.5 text-[11px]'
+                  'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[11px]'
               )}
               onClick={handleChooseEvidencePack}
               disabled={!datasetId}
@@ -1117,7 +1117,7 @@ export function TestCaseManager({
             onChange={(e) => setSearchQuery(e.target.value)}
             className={cn(
               dense
-                ? 'h-9 rounded-xl border-slate-200/80 bg-card/95 pl-8 text-[13px]'
+                ? 'h-9 rounded-xl border-border/60 bg-card/95 pl-8 text-[13px]'
                 : 'pl-10'
             )}
           />
@@ -1135,9 +1135,9 @@ export function TestCaseManager({
             className={cn(
               'gap-2',
               goldenOnly &&
-                'bg-amber-500/15 text-amber-700 hover:bg-amber-500/20',
+                'bg-warning/15 text-warning hover:bg-warning/20',
               dense &&
-                'h-8 rounded-lg border-slate-200/80 bg-card/90 px-2.5 text-[11px]'
+                'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[11px]'
             )}
             onClick={() => {
               setGoldenOnly((v) => !v)
@@ -1185,7 +1185,7 @@ export function TestCaseManager({
                 className={cn(
                   'resize-none',
                   dense
-                    ? 'min-h-[72px] rounded-xl border-slate-200/80 bg-card/95 text-[13px]'
+                    ? 'min-h-[72px] rounded-xl border-border/60 bg-card/95 text-[13px]'
                     : 'min-h-[72px]'
                 )}
               />
@@ -1206,7 +1206,7 @@ export function TestCaseManager({
                 className={cn(
                   'resize-none',
                   dense
-                    ? 'min-h-[72px] rounded-xl border-slate-200/80 bg-card/95 text-[13px]'
+                    ? 'min-h-[72px] rounded-xl border-border/60 bg-card/95 text-[13px]'
                     : 'min-h-[72px]'
                 )}
               />
@@ -1232,7 +1232,7 @@ export function TestCaseManager({
                 variant="outline"
                 className={cn(
                   dense &&
-                    'h-8 rounded-lg border-slate-200/80 bg-card/90 px-2.5 text-[11px]'
+                    'h-8 rounded-lg border-border/60 bg-card/90 px-2.5 text-[11px]'
                 )}
                 onClick={() => {
                   setIsCreating(false)
@@ -1245,7 +1245,7 @@ export function TestCaseManager({
             </div>
             <div
               className={cn(
-                'rounded-xl border border-amber-200/80 bg-amber-50/70 px-3 py-2 text-muted-foreground',
+                'rounded-xl border border-warning/30 bg-warning/5 px-3 py-2 text-muted-foreground',
                 dense ? 'text-[11px] leading-5' : 'text-[11px]'
               )}
             >
@@ -1421,7 +1421,7 @@ export function TestCaseManager({
           className={cn(
             'border-t',
             dense
-              ? 'border-slate-200/80 bg-[#fffef9] px-3 py-2.5'
+              ? 'border-border/60 bg-[#fffef9] px-3 py-2.5'
               : 'border-border bg-muted/30 p-3'
           )}
         >

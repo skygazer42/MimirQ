@@ -132,24 +132,24 @@ export function EvaluationDataOpsPanel() {
 
   return (
     <div className="space-y-3">
-      <section className="rounded-xl border border-slate-200/80 bg-card/95 p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <section className="rounded-xl border border-border/60 bg-card/95 p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex min-w-0 gap-3">
-            <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 ring-1 ring-blue-100">
+            <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/20">
               <ClipboardList className="h-4 w-4" />
             </span>
             <div className="min-w-0">
-              <h3 className="text-[15px] font-semibold text-slate-950">
+              <h3 className="text-[15px] font-semibold text-foreground">
                 评测数据运维
               </h3>
-              <p className="mt-1 text-[12px] leading-5 text-slate-500">
+              <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
                 围绕选中的数据集维护固定测试集、生成困难样例并清理旧运行；导入
                 JSON 和 run 明细排查默认收起。
               </p>
             </div>
           </div>
           {busy ? (
-            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-400 motion-reduce:animate-none" />
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground/70 motion-reduce:animate-none" />
           ) : null}
         </div>
 
@@ -157,7 +157,7 @@ export function EvaluationDataOpsPanel() {
           <DatasetSelectField
             value={datasetId}
             onChange={setDatasetId}
-            className="min-w-0 [&_button]:h-9 [&_button]:rounded-lg [&_button]:border-slate-200 [&_button]:bg-card [&_button]:text-[13px]"
+            className="min-w-0 [&_button]:h-9 [&_button]:rounded-lg [&_button]:border-border [&_button]:bg-card [&_button]:text-[13px]"
           />
           <Field label="样例上限">
             <Input
@@ -167,7 +167,7 @@ export function EvaluationDataOpsPanel() {
                   Number.parseInt(event.target.value || '0', 10) || 100
                 )
               }
-              className="h-9 rounded-lg border-slate-200 bg-card text-[13px]"
+              className="h-9 rounded-lg border-border bg-card text-[13px]"
               inputMode="numeric"
             />
           </Field>
@@ -179,7 +179,7 @@ export function EvaluationDataOpsPanel() {
                   Number.parseInt(event.target.value || '0', 10) || 30
                 )
               }
-              className="h-9 rounded-lg border-slate-200 bg-card text-[13px]"
+              className="h-9 rounded-lg border-border bg-card text-[13px]"
               inputMode="numeric"
             />
           </Field>
@@ -191,11 +191,11 @@ export function EvaluationDataOpsPanel() {
           <Toggle label="仅预演" checked={dryRun} onCheckedChange={setDryRun} />
         </div>
 
-        <div className="mt-4 flex flex-col gap-3 border-t border-slate-200/70 pt-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="mt-4 flex flex-col gap-3 border-t border-border/60 pt-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
-              className="h-9 gap-1.5 rounded-lg border-slate-200 bg-card px-3 text-[12px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+              className="h-9 gap-1.5 rounded-lg border-border bg-card px-3 text-[12px] font-medium text-foreground/85 shadow-sm hover:bg-muted/50"
               disabled={Boolean(busy) || !dataset}
               onClick={() =>
                 detachPromise(
@@ -253,7 +253,7 @@ export function EvaluationDataOpsPanel() {
             >
               <Button
                 variant="outline"
-                className="h-9 gap-1.5 rounded-lg border-slate-200 bg-card px-3 text-[12px] font-medium text-blue-700 shadow-sm hover:bg-blue-50"
+                className="h-9 gap-1.5 rounded-lg border-border bg-card px-3 text-[12px] font-medium text-primary shadow-sm hover:bg-primary/10"
                 disabled={Boolean(busy)}
               >
                 {busy === 'purge' ? (
@@ -301,7 +301,7 @@ export function EvaluationDataOpsPanel() {
             />
           </div>
           <Button
-            className="h-9 min-w-[110px] gap-1.5 rounded-lg bg-blue-600 px-4 text-[12px] font-semibold text-info-foreground shadow-[0_8px_18px_rgba(37,99,235,0.24)] hover:bg-blue-700"
+            className="h-9 min-w-[110px] gap-1.5 rounded-lg bg-primary px-4 text-[12px] font-semibold text-info-foreground shadow-[0_8px_18px_rgba(37,99,235,0.24)] hover:bg-primary"
             disabled={Boolean(busy) || !dataset}
             onClick={() => detachPromise(runKgDiagnostics())}
           >
@@ -317,27 +317,27 @@ export function EvaluationDataOpsPanel() {
 
       <details
         open
-        className="group rounded-xl border border-slate-200/80 bg-card/95 p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+        className="group rounded-xl border border-border/60 bg-card/95 p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
       >
         <summary className="flex cursor-pointer list-none items-start gap-2.5 [&::-webkit-details-marker]:hidden">
-          <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 -rotate-90 text-blue-600 transition-transform group-open:rotate-0" />
+          <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 -rotate-90 text-primary transition-transform group-open:rotate-0" />
           <div>
-            <h3 className="text-[14px] font-semibold text-slate-950">
+            <h3 className="text-[14px] font-semibold text-foreground">
               高级参数（可选）
             </h3>
-            <p className="mt-1 text-[12px] leading-5 text-slate-500">
+            <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
               仅在导入外部 cases 或定位历史 KG 诊断 run 时使用。
             </p>
           </div>
         </summary>
-        <div className="mt-3 space-y-3 border-t border-slate-200/70 pt-3">
+        <div className="mt-3 space-y-3 border-t border-border/60 pt-3">
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
             <Field label="KG 诊断运行">
               <Input
                 value={kgRunId}
                 onChange={(event) => setKgRunId(event.target.value)}
                 placeholder="请输入 KG 诊断运行 ID 或名称"
-                className="h-9 rounded-lg border-slate-200 bg-card font-mono text-[12px]"
+                className="h-9 rounded-lg border-border bg-card font-mono text-[12px]"
               />
             </Field>
             <ActionButton
@@ -353,9 +353,9 @@ export function EvaluationDataOpsPanel() {
             />
           </div>
           <Field label="导入数据（JSON）">
-            <div className="overflow-hidden rounded-lg border border-slate-200 bg-card shadow-inner">
+            <div className="overflow-hidden rounded-lg border border-border bg-card shadow-inner">
               <div className="flex">
-                <div className="w-12 shrink-0 border-r border-slate-200 bg-slate-50 px-3 py-2 text-right font-mono text-[12px] leading-5 text-slate-400">
+                <div className="w-12 shrink-0 border-r border-border bg-muted/50 px-3 py-2 text-right font-mono text-[12px] leading-5 text-muted-foreground/70">
                   1
                 </div>
                 <Textarea
@@ -405,7 +405,7 @@ function Field({
 }: Readonly<{ label: string; children: ReactNode }>) {
   return (
     <div className="space-y-1">
-      <Label className="text-[11px] font-medium text-slate-500">{label}</Label>
+      <Label className="text-[11px] font-medium text-muted-foreground">{label}</Label>
       {children}
     </div>
   )
@@ -421,12 +421,12 @@ function Toggle({
   onCheckedChange: (checked: boolean) => void
 }>) {
   return (
-    <label className="flex h-9 items-center justify-end gap-2 text-[12px] font-medium text-slate-600">
+    <label className="flex h-9 items-center justify-end gap-2 text-[12px] font-medium text-muted-foreground">
       <span>{label}</span>
       <Switch
         checked={checked}
         onCheckedChange={onCheckedChange}
-        className="scale-90 data-[state=unchecked]:bg-slate-300"
+        className="scale-90 data-[state=unchecked]:bg-border"
       />
     </label>
   )
@@ -451,7 +451,7 @@ function ActionButton({
     <Button
       variant="outline"
       className={cn(
-        'h-9 gap-1.5 rounded-lg border-slate-200 bg-card px-3 text-[12px] font-medium text-slate-700 shadow-sm hover:bg-slate-50',
+        'h-9 gap-1.5 rounded-lg border-border bg-card px-3 text-[12px] font-medium text-foreground/85 shadow-sm hover:bg-muted/50',
         className
       )}
       disabled={disabled}
@@ -479,37 +479,37 @@ function ResultCard({
   showRaw: boolean
 }>) {
   return (
-    <section className="rounded-xl border border-slate-200/80 bg-card/95 p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <section className="rounded-xl border border-border/60 bg-card/95 p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex items-center gap-2">
-        <span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-blue-50 text-blue-600 ring-1 ring-blue-100">
+        <span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-primary/10 text-primary ring-1 ring-primary/20">
           <FileJson className="h-3.5 w-3.5" />
         </span>
-        <h3 className="text-[14px] font-semibold text-slate-950">
+        <h3 className="text-[14px] font-semibold text-foreground">
           评测数据操作结果
         </h3>
       </div>
 
-      <div className="mt-3 rounded-lg border border-slate-200/80 bg-slate-50/70 p-3">
+      <div className="mt-3 rounded-lg border border-border/60 bg-muted/40 p-3">
         {result ? (
           <div className="flex items-center gap-3">
-            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-card text-blue-600 shadow-sm ring-1 ring-slate-200">
+            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-card text-primary shadow-sm ring-1 ring-border">
               <FileJson className="h-4 w-4" />
             </span>
             <div className="min-w-0">
-              <div className="text-[13px] font-semibold text-slate-900">
+              <div className="text-[13px] font-semibold text-foreground">
                 {result.title}
               </div>
-              <p className="mt-1 text-[12px] text-slate-500">
+              <p className="mt-1 text-[12px] text-muted-foreground">
                 接口已返回真实数据，摘要：{describePayload(result.payload)}。
               </p>
             </div>
           </div>
         ) : (
           <div className="flex items-center gap-3">
-            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-card text-slate-400 shadow-sm ring-1 ring-slate-200">
+            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-card text-muted-foreground/70 shadow-sm ring-1 ring-border">
               <FileJson className="h-4 w-4" />
             </span>
-            <p className="text-[12px] leading-5 text-slate-500">
+            <p className="text-[12px] leading-5 text-muted-foreground">
               选择上方操作后，这里展示执行摘要；原始接口响应默认收起。
             </p>
           </div>
@@ -519,7 +519,7 @@ function ResultCard({
       <div className="mt-3 flex justify-end gap-2">
         <Button
           variant="outline"
-          className="h-8 gap-1.5 rounded-lg border-slate-200 bg-card px-3 text-[12px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+          className="h-8 gap-1.5 rounded-lg border-border bg-card px-3 text-[12px] font-medium text-foreground/85 shadow-sm hover:bg-muted/50"
           disabled={!result}
           onClick={onToggleRaw}
         >
@@ -528,7 +528,7 @@ function ResultCard({
         </Button>
         <Button
           variant="outline"
-          className="h-8 gap-1.5 rounded-lg border-slate-200 bg-card px-3 text-[12px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+          className="h-8 gap-1.5 rounded-lg border-border bg-card px-3 text-[12px] font-medium text-foreground/85 shadow-sm hover:bg-muted/50"
           disabled={!result}
           onClick={onClear}
         >
@@ -538,7 +538,7 @@ function ResultCard({
       </div>
 
       {result && showRaw ? (
-        <pre className="mt-3 max-h-72 overflow-auto rounded-lg border border-slate-200 bg-slate-950 p-3 text-[11px] leading-5 text-slate-100">
+        <pre className="mt-3 max-h-72 overflow-auto rounded-lg border border-border bg-foreground p-3 text-[11px] leading-5 text-muted-foreground/30">
           {prettyJson(result.payload)}
         </pre>
       ) : null}

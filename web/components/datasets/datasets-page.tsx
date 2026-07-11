@@ -14,6 +14,7 @@ import { AppFrame } from '@/components/app-frame'
 import { useRouter } from '@/i18n/navigation'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
+import { KNOWLEDGE_OPS_HERO_PANEL_CLASS } from '@/components/ui/knowledge-ops-hero'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -132,7 +133,7 @@ function getDatasetOperationalStatus(dataset: Dataset, stats?: DatasetIngestionS
 }
 
 function formatRelativeTime(value?: string | null): string {
-  if (!value) return '刚刚'
+  if (!value) return '—'
   const timestamp = new Date(value).getTime()
   if (!Number.isFinite(timestamp)) return value
   const diffMs = Date.now() - timestamp
@@ -148,20 +149,20 @@ function getDatasetStatusBadgeConfig(status: 'active' | 'anomaly' | 'pending' | 
     case 'active':
       return {
         label: '正常',
-        className: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600',
-        dotClassName: 'bg-emerald-500',
+        className: 'border-success/25 bg-success/10 text-success',
+        dotClassName: 'bg-success',
       }
     case 'anomaly':
       return {
         label: '异常',
-        className: 'border-red-500/20 bg-red-500/10 text-red-600',
-        dotClassName: 'bg-red-500',
+        className: 'border-destructive/25 bg-destructive/10 text-destructive',
+        dotClassName: 'bg-destructive',
       }
     case 'pending':
       return {
         label: '处理中',
-        className: 'border-amber-500/20 bg-amber-500/10 text-amber-600',
-        dotClassName: 'bg-amber-500',
+        className: 'border-warning/25 bg-warning/10 text-warning',
+        dotClassName: 'bg-warning',
       }
     case 'testing':
       return {
@@ -176,18 +177,18 @@ function getDatasetStatusIconConfig(status: 'active' | 'anomaly' | 'pending' | '
   switch (status) {
     case 'active':
       return {
-        defaultClassName: 'border-emerald-200/80 bg-emerald-50 text-emerald-600',
-        activeClassName: 'border-emerald-300/90 bg-emerald-100 text-emerald-700',
+        defaultClassName: 'border-success/30 bg-success/10 text-success',
+        activeClassName: 'border-success/40 bg-success/15 text-success',
       }
     case 'anomaly':
       return {
-        defaultClassName: 'border-red-200/80 bg-red-50 text-red-500',
-        activeClassName: 'border-red-300/90 bg-red-100 text-red-600',
+        defaultClassName: 'border-destructive/30 bg-destructive/10 text-destructive',
+        activeClassName: 'border-destructive/40 bg-destructive/15 text-destructive',
       }
     case 'pending':
       return {
-        defaultClassName: 'border-amber-200/80 bg-amber-50 text-amber-600',
-        activeClassName: 'border-amber-300/90 bg-amber-100 text-amber-700',
+        defaultClassName: 'border-warning/30 bg-warning/10 text-warning',
+        activeClassName: 'border-warning/40 bg-warning/15 text-warning',
       }
     case 'testing':
       return {
@@ -197,20 +198,13 @@ function getDatasetStatusIconConfig(status: 'active' | 'anomaly' | 'pending' | '
   }
 }
 
-function estimateDatasetHealthScore(dataset: Dataset, stats?: DatasetIngestionStats | null): number {
-  const anomalyPenalty = getDatasetAnomalyCount(stats) * 12
-  const pendingPenalty = getDatasetPendingCount(stats) * 4
-  const testingPenalty = getDatasetOperationalStatus(dataset, stats) === 'testing' ? 6 : 0
-  return Math.max(62, Math.min(96, 94 - anomalyPenalty - pendingPenalty - testingPenalty))
-}
-
 function getDatasetIconTone(icon: LucideIcon) {
   if (icon === Database) {
     return {
-      iconClassName: 'text-violet-600',
-      softIconClassName: 'text-violet-500',
-      containerClassName: 'border-violet-200/80 bg-violet-50 text-violet-600',
-      chipClassName: 'text-violet-600',
+      iconClassName: 'text-accent',
+      softIconClassName: 'text-accent',
+      containerClassName: 'border-accent/30 bg-accent/10 text-accent',
+      chipClassName: 'text-accent',
     }
   }
 
@@ -225,10 +219,10 @@ function getDatasetIconTone(icon: LucideIcon) {
 
   if (icon === Layers || icon === Table2) {
     return {
-      iconClassName: 'text-indigo-600',
-      softIconClassName: 'text-indigo-500',
-      containerClassName: 'border-indigo-200/80 bg-indigo-50 text-indigo-600',
-      chipClassName: 'text-indigo-600',
+      iconClassName: 'text-primary',
+      softIconClassName: 'text-primary',
+      containerClassName: 'border-primary/30 bg-primary/10 text-primary',
+      chipClassName: 'text-primary',
     }
   }
 
@@ -243,36 +237,36 @@ function getDatasetIconTone(icon: LucideIcon) {
 
   if (icon === Settings2 || icon === Clock3) {
     return {
-      iconClassName: 'text-amber-600',
-      softIconClassName: 'text-amber-500',
-      containerClassName: 'border-amber-200/80 bg-amber-50 text-amber-600',
-      chipClassName: 'text-amber-600',
+      iconClassName: 'text-warning',
+      softIconClassName: 'text-warning',
+      containerClassName: 'border-warning/30 bg-warning/10 text-warning',
+      chipClassName: 'text-warning',
     }
   }
 
   if (icon === AlertCircle) {
     return {
-      iconClassName: 'text-red-500',
-      softIconClassName: 'text-red-400',
-      containerClassName: 'border-red-200/80 bg-red-50 text-red-500',
-      chipClassName: 'text-red-500',
+      iconClassName: 'text-destructive',
+      softIconClassName: 'text-destructive',
+      containerClassName: 'border-destructive/30 bg-destructive/10 text-destructive',
+      chipClassName: 'text-destructive',
     }
   }
 
   if (icon === BarChart3 || icon === CheckCircle2) {
     return {
-      iconClassName: 'text-emerald-600',
-      softIconClassName: 'text-emerald-500',
-      containerClassName: 'border-emerald-200/80 bg-emerald-50 text-emerald-600',
-      chipClassName: 'text-emerald-600',
+      iconClassName: 'text-success',
+      softIconClassName: 'text-success',
+      containerClassName: 'border-success/30 bg-success/10 text-success',
+      chipClassName: 'text-success',
     }
   }
 
   return {
-    iconClassName: 'text-slate-600',
-    softIconClassName: 'text-slate-500',
-    containerClassName: 'border-slate-200/80 bg-slate-50 text-slate-600',
-    chipClassName: 'text-slate-600',
+    iconClassName: 'text-muted-foreground',
+    softIconClassName: 'text-muted-foreground',
+    containerClassName: 'border-border/60 bg-muted/50 text-muted-foreground',
+    chipClassName: 'text-muted-foreground',
   }
 }
 
@@ -285,6 +279,7 @@ export default function DatasetsPage() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [collectionFilter, setCollectionFilter] = useState<'all' | 'active' | 'anomaly' | 'pending' | 'testing'>('all')
+  const [sortBy, setSortBy] = useState<'default' | 'name_asc'>('default')
   const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null)
   const [pageSize, setPageSize] = useState(20)
   const [currentPage, setCurrentPage] = useState(1)
@@ -376,9 +371,14 @@ export default function DatasetsPage() {
   }, [filteredItems, statsByDatasetId])
 
   const displayedItems = useMemo(() => {
-    if (collectionFilter === 'all') return filteredItems
-    return filteredItems.filter((dataset) => getDatasetOperationalStatus(dataset, statsByDatasetId[dataset.id]) === collectionFilter)
-  }, [collectionFilter, filteredItems, statsByDatasetId])
+    const base = collectionFilter === 'all'
+      ? filteredItems
+      : filteredItems.filter((dataset) => getDatasetOperationalStatus(dataset, statsByDatasetId[dataset.id]) === collectionFilter)
+    if (sortBy === 'name_asc') {
+      return [...base].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'zh-CN'))
+    }
+    return base
+  }, [collectionFilter, filteredItems, sortBy, statsByDatasetId])
 
   const totalPages = displayedItems.length === 0 ? 0 : Math.ceil(displayedItems.length / pageSize)
 
@@ -432,7 +432,7 @@ export default function DatasetsPage() {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchQuery, collectionFilter, selectedCategoryId])
+  }, [searchQuery, collectionFilter, selectedCategoryId, sortBy])
 
   useEffect(() => {
     const nextTotalPages = displayedItems.length === 0 ? 1 : Math.ceil(displayedItems.length / pageSize)
@@ -640,33 +640,35 @@ export default function DatasetsPage() {
         showHeader={false}
         bodyClassName="pt-2 pb-4"
         description={<span>管理知识库集合与访问权限</span>}
-        topClassName="px-3 md:px-4 lg:px-5 pt-4 pb-2.5 bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.10),transparent_34rem)]"
+        topClassName="px-4 md:px-5 lg:px-6 pt-4 pb-2.5 bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.04),transparent_34rem)]"
         top={
-          <div className="relative overflow-hidden rounded-3xl border border-sky-200/60 bg-gradient-to-br from-white via-sky-50/40 to-blue-50/30 px-5 py-4 shadow-xl shadow-sky-200/30 backdrop-blur-xl dark:border-sky-300/15 dark:bg-gradient-to-br dark:from-slate-900 dark:via-sky-950/40 dark:to-blue-950/30">
-            <div className="pointer-events-none absolute -right-10 -top-14 size-44 rounded-full bg-sky-300/22 blur-3xl" aria-hidden="true" />
-            <div className="pointer-events-none absolute bottom-0 left-8 right-8 h-px bg-gradient-to-r from-transparent via-sky-300/65 to-transparent" aria-hidden="true" />
+          <div className={KNOWLEDGE_OPS_HERO_PANEL_CLASS}>
+            <div className="pointer-events-none absolute -right-10 -top-14 size-44 rounded-full bg-info/10 blur-3xl dark:bg-info/[0.08]" aria-hidden="true" />
+            <div className="pointer-events-none absolute bottom-0 left-8 right-8 h-px bg-[linear-gradient(90deg,transparent,hsl(var(--info)/0.28),transparent)]" aria-hidden="true" />
             <div className="relative flex min-w-0 flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div className="flex min-w-0 items-center gap-4">
-                <div className="relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-sky-200/60 bg-gradient-to-br from-white to-sky-100 text-sky-600 shadow-lg shadow-sky-200/40">
-                  <span className="absolute inset-x-2 top-1.5 h-px bg-white/80" aria-hidden="true" />
+                <div className="relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-info/20 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.14))] text-info shadow-lg shadow-[0_18px_32px_-24px_hsl(var(--info)/0.55)]">
+                  <span className="absolute inset-x-2 top-1.5 h-px bg-card/80" aria-hidden="true" />
                   <PageTitleIcon name="dataset" className="size-9" />
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-300/60 bg-gradient-to-r from-sky-100/80 to-blue-100/60 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-sky-700 shadow-sm dark:border-sky-300/20 dark:bg-sky-300/10 dark:text-sky-200">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-info/20 bg-[linear-gradient(90deg,hsl(var(--background)/0.92),hsl(var(--info)/0.14))] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-info shadow-sm dark:border-info/16 dark:bg-info/12 dark:text-info">
                       <Database className="size-3.5" />
                       Dataset Ops
                     </span>
-                    <span className="inline-flex items-center rounded-full border border-emerald-300/60 bg-gradient-to-r from-emerald-100/80 to-teal-100/60 px-3 py-1.5 text-[10px] font-bold text-emerald-700 shadow-sm dark:border-emerald-300/15 dark:bg-emerald-300/10 dark:text-emerald-200">
+                    <span className="inline-flex items-center rounded-full border border-success/20 bg-[linear-gradient(90deg,hsl(var(--background)/0.92),hsl(var(--success)/0.14))] px-3 py-1.5 text-[10px] font-bold text-success shadow-sm dark:border-success/16 dark:bg-success/12 dark:text-success">
                       <ShieldCheck className="mr-1.5 size-3.5" />
                       权限与资产编排
                     </span>
                   </div>
                   <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
-                    <h1 className="text-[26px] font-black tracking-tight text-slate-900 dark:text-white">
-                      数据集
+                    <h1 className="text-[26px] font-black tracking-[-0.025em] text-foreground">
+                      <span className="bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent">
+                        数据集
+                      </span>
                     </h1>
-                    <p className="text-[13px] font-semibold leading-5 text-sky-600/90 dark:text-sky-400">
+                    <p className="text-[13px] font-semibold leading-5 text-info/90">
                       <span>管理知识库集合与访问权限</span>
                     </p>
                   </div>
@@ -674,28 +676,28 @@ export default function DatasetsPage() {
               </div>
 
               <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] xl:min-w-[560px]">
-                <div className="flex min-w-0 items-center justify-between gap-2 rounded-2xl border border-sky-200/70 bg-white/80 px-4 py-3 text-[12px] shadow-md shadow-sky-200/20 backdrop-blur-sm dark:border-sky-300/15 dark:bg-background/40">
-                  <span className="inline-flex items-center gap-2 font-bold text-slate-700 dark:text-slate-200">
-                    <Layers className="size-4 text-sky-500" />
+                <div className="flex min-w-0 items-center justify-between gap-2 rounded-2xl border border-info/18 bg-[linear-gradient(135deg,hsl(var(--background)/0.9),hsl(var(--info)/0.07))] px-4 py-3 text-[12px] shadow-md shadow-[0_14px_28px_-22px_hsl(var(--info)/0.35)] backdrop-blur-sm dark:border-info/16 dark:bg-[linear-gradient(135deg,hsl(var(--background)/0.42),hsl(var(--info)/0.12))]">
+                  <span className="inline-flex items-center gap-2 font-bold text-foreground/85">
+                    <Layers className="size-4 text-info" />
                     集合
                   </span>
-                  <ChevronRight className="size-4 shrink-0 text-sky-400" />
-                  <span className="inline-flex items-center gap-2 font-bold text-slate-700 dark:text-slate-200">
-                    <ShieldCheck className="size-4 text-sky-500" />
+                  <ChevronRight className="size-4 shrink-0 text-info" />
+                  <span className="inline-flex items-center gap-2 font-bold text-foreground/85">
+                    <ShieldCheck className="size-4 text-info" />
                     权限
                   </span>
-                  <ChevronRight className="size-4 shrink-0 text-sky-400" />
-                  <span className="inline-flex items-center gap-2 font-bold text-slate-700 dark:text-slate-200">
-                    <FileSearch className="size-4 text-sky-500" />
+                  <ChevronRight className="size-4 shrink-0 text-info" />
+                  <span className="inline-flex items-center gap-2 font-bold text-foreground/85">
+                    <FileSearch className="size-4 text-info" />
                     检索验证
                   </span>
                 </div>
                 <div className="flex items-center justify-end gap-2">
-                  <div className="flex items-center gap-2 rounded-2xl border border-sky-200/70 bg-white/80 px-3 py-2 shadow-md shadow-sky-200/20 backdrop-blur-sm dark:border-sky-300/15 dark:bg-background/40">
+                  <div className="flex items-center gap-2 rounded-2xl border border-info/18 bg-[linear-gradient(135deg,hsl(var(--background)/0.9),hsl(var(--info)/0.07))] px-3 py-2 shadow-md shadow-[0_14px_28px_-22px_hsl(var(--info)/0.35)] backdrop-blur-sm dark:border-info/16 dark:bg-[linear-gradient(135deg,hsl(var(--background)/0.42),hsl(var(--info)/0.12))]">
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-10 rounded-xl border-sky-200/60 bg-white/90 px-4 text-[13px] font-bold text-sky-700 shadow-sm hover:bg-gradient-to-r hover:from-sky-50 hover:to-blue-50 hover:shadow-md dark:bg-background/55 dark:text-sky-300"
+                      className="h-10 rounded-xl border-info/18 bg-background/90 px-4 text-[13px] font-bold text-info shadow-sm hover:bg-[linear-gradient(90deg,hsl(var(--info)/0.08),hsl(var(--primary)/0.06))] hover:shadow-md dark:bg-background/55"
                       onClick={() => { detachPromise(refreshDatasets()) }}
                       disabled={isRefreshing}
                     >
@@ -706,7 +708,7 @@ export default function DatasetsPage() {
                       <DialogTrigger asChild>
                         <CreateDatasetButton
                           variant="outline"
-                          className="h-10 border-sky-200/60 bg-white/90 text-[13px] font-bold text-sky-700 shadow-sm hover:bg-gradient-to-r hover:from-sky-50 hover:to-blue-50 hover:text-sky-800 hover:shadow-md dark:bg-background/55 dark:text-sky-300"
+                          className="h-10 border-info/18 bg-background/90 text-[13px] font-bold text-info shadow-sm hover:bg-[linear-gradient(90deg,hsl(var(--info)/0.08),hsl(var(--primary)/0.06))] hover:text-info hover:shadow-md dark:bg-background/55"
                         />
                       </DialogTrigger>
                       <DialogContent className="max-w-xl p-0 sm:rounded-2xl">
@@ -732,24 +734,18 @@ export default function DatasetsPage() {
           </div>
         }
       >
-        {/* flex min-h-[calc(100vh-11.5rem)] flex-col overflow-hidden rounded-3xl border border-border/60 bg-card/90 shadow-soft */}
-        {/* lg:grid-cols-[176px_minmax(0,1fr)] */}
-        {/* xl:grid-cols-[minmax(0,1.15fr)_320px] */}
-        {/* Dataset Inspector */}
-        {/* 选择一个数据集以查看快捷入口与访问配置 */}
-        {/* <DatasetShortcutButton */}
         <div className="flex min-h-[calc(100vh-11.5rem)] flex-col overflow-hidden rounded-3xl border border-border/60 bg-card/90 shadow-soft xl:h-[calc(100vh-9.25rem)] xl:min-h-0">
           <div className="border-b border-border/60 bg-background/80 px-3 py-2.5 backdrop-blur">
             <div className="grid gap-1.5 xl:grid-cols-[minmax(0,1fr)_276px] xl:items-start">
               <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-4">
-                <DatasetSummaryCard title="全部数据集" value={String(total)} icon={Layers} tone="slate" />
+                <DatasetSummaryCard title="全部数据集" value={String(total)} icon={Layers} tone="neutral" />
                 <DatasetSummaryCard title="活跃" value={String(statusCounts.active)} icon={CheckCircle2} tone="green" />
                 <DatasetSummaryCard title="异常" value={String(statusCounts.anomaly)} icon={AlertCircle} tone="red" />
                 <DatasetSummaryCard title="待处理" value={String(statusCounts.pending)} icon={Clock3} tone="amber" />
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <div className="flex flex-wrap items-center gap-1 text-[9px] font-medium text-muted-foreground/72">
+                <div className="flex flex-wrap items-center gap-1 text-[10px] font-medium text-muted-foreground/72">
                   <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background px-2 py-0.5 text-foreground/76">
                     <Filter className="size-3 text-primary/70" />
                     {collectionFilterLabel}
@@ -801,7 +797,7 @@ export default function DatasetsPage() {
                 <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-foreground/54">状态视图</div>
                 <div className="space-y-1">
                 <DatasetFilterButton
-                  label="全部分类"
+                  label="全部数据集"
                   count={total}
                   active={collectionFilter === 'all'}
                   onClick={() => setCollectionFilter('all')}
@@ -812,21 +808,21 @@ export default function DatasetsPage() {
                   count={statusCounts.active}
                   active={collectionFilter === 'active'}
                   onClick={() => setCollectionFilter('active')}
-                  dotClassName="bg-emerald-500"
+                  dotClassName="bg-success"
                 />
                 <DatasetFilterButton
                   label="异常"
                   count={statusCounts.anomaly}
                   active={collectionFilter === 'anomaly'}
                   onClick={() => setCollectionFilter('anomaly')}
-                  dotClassName="bg-red-500"
+                  dotClassName="bg-destructive"
                 />
                 <DatasetFilterButton
                   label="待处理"
                   count={statusCounts.pending}
                   active={collectionFilter === 'pending'}
                   onClick={() => setCollectionFilter('pending')}
-                  dotClassName="bg-info"
+                  dotClassName="bg-warning"
                 />
                 <DatasetFilterButton
                   label="测试集"
@@ -861,18 +857,15 @@ export default function DatasetsPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Select value="updated_desc" onValueChange={() => {}}>
-                      <SelectTrigger className="h-9 w-[132px] rounded-xl border-border/60 bg-background px-3 text-[11px] font-medium">
-                        <SelectValue placeholder="按更新时间" />
+                    <Select value={sortBy} onValueChange={(value) => setSortBy(value as 'default' | 'name_asc')}>
+                      <SelectTrigger className="h-9 w-[132px] rounded-xl border-border/60 bg-background px-3 text-[11px] font-medium" aria-label="排序方式">
+                        <SelectValue placeholder="排序方式" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="updated_desc">按更新时间</SelectItem>
+                        <SelectItem value="default">默认排序</SelectItem>
                         <SelectItem value="name_asc">按名称</SelectItem>
                       </SelectContent>
                     </Select>
-                    <Button variant="outline" size="icon" className="size-8 rounded-xl border-border/60 bg-background" aria-label="切换表格视图" title="切换表格视图">
-                      <Table2 className="size-4" />
-                    </Button>
                   </div>
                 </div>
 
@@ -921,7 +914,7 @@ export default function DatasetsPage() {
                               'focus-ring group w-full cursor-pointer rounded-[20px] border px-4 py-3 text-left transition-all duration-200 active:scale-[0.998]',
                               isActive
                                 ? 'border-primary/30 bg-primary/5 shadow-[0_14px_26px_-20px_hsl(var(--primary)/0.22)] ring-2 ring-primary/15'
-                                : 'border-border/60 bg-background/80 shadow-[0_10px_18px_-18px_rgba(15,23,42,0.1)] hover:border-slate-300/80 hover:bg-background hover:shadow-[0_16px_28px_-22px_rgba(15,23,42,0.12)]'
+                                : 'border-border/60 bg-background/80 shadow-[0_10px_18px_-18px_rgba(15,23,42,0.1)] hover:border-border hover:bg-background hover:shadow-[0_16px_28px_-22px_rgba(15,23,42,0.12)]'
                             )}
                           >
                             <div className={cn(
@@ -1005,11 +998,11 @@ export default function DatasetsPage() {
                             </div>
 
                             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-border/50 pt-2">
-                              <DatasetMetaPill icon={Database} label="ID" value={dataset.id.slice(0, 8)} className="font-mono text-violet-600" valueClassName="text-violet-600" />
+                              <DatasetMetaPill icon={Database} label="ID" value={dataset.id.slice(0, 8)} className="font-mono text-accent" valueClassName="text-accent" />
                               <DatasetMetaPill icon={Clock3} label="更新" value={formatRelativeTime(stats?.last_processed_at)} />
                               <DatasetMetaPill icon={FileSearch} label="文档" value={String(Number(stats?.total_documents || 0))} />
                               <DatasetMetaPill icon={Layers} label="Chunk" value={Number(stats?.total_chunks || 0).toLocaleString()} />
-                              <DatasetMetaPill icon={AlertCircle} label="异常" value={String(anomalyCount)} className={anomalyCount > 0 ? 'text-red-500' : undefined} />
+                              <DatasetMetaPill icon={AlertCircle} label="异常" value={String(anomalyCount)} className={anomalyCount > 0 ? 'text-destructive' : undefined} />
                               <DatasetMetaPill icon={Users} label="成员" value={memberCount > 0 ? String(memberCount) : '0'} />
                             </div>
                           </motion.div>
@@ -1029,7 +1022,7 @@ export default function DatasetsPage() {
                         setCurrentPage(1)
                       }}
                     >
-                      <SelectTrigger className="h-8 w-[98px] rounded-[11px] border border-slate-200/80 bg-slate-50/80 px-2.5 text-[11px] font-medium shadow-none transition-all duration-200 hover:border-slate-300 hover:bg-card">
+                      <SelectTrigger className="h-8 w-[98px] rounded-[11px] border border-border/60 bg-muted/40 px-2.5 text-[11px] font-medium shadow-none transition-all duration-200 hover:border-border hover:bg-card">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -1043,7 +1036,7 @@ export default function DatasetsPage() {
                         type="button"
                         disabled={currentPage <= 1}
                         onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-                        className="size-8 rounded-[11px] border border-slate-200/80 bg-slate-50/80 text-muted-foreground/50 transition-all duration-200 hover:border-slate-300 hover:bg-card hover:text-foreground active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-45"
+                        className="size-8 rounded-[11px] border border-border/60 bg-muted/40 text-muted-foreground/50 transition-all duration-200 hover:border-border hover:bg-card hover:text-foreground active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-45"
                       >
                         ‹
                       </button>
@@ -1054,7 +1047,7 @@ export default function DatasetsPage() {
                         type="button"
                         disabled={totalPages === 0 || currentPage >= totalPages}
                         onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
-                        className="size-8 rounded-[11px] border border-slate-200/80 bg-slate-50/80 text-muted-foreground/50 transition-all duration-200 hover:border-slate-300 hover:bg-card hover:text-foreground active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-45"
+                        className="size-8 rounded-[11px] border border-border/60 bg-muted/40 text-muted-foreground/50 transition-all duration-200 hover:border-border hover:bg-card hover:text-foreground active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-45"
                       >
                         ›
                       </button>
@@ -1081,7 +1074,7 @@ export default function DatasetsPage() {
                         <div className="mt-0.5 text-[11px] font-semibold text-foreground">当前选中数据集</div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="icon" aria-label="编辑数据集" title="编辑数据集" className="size-7 rounded-full border border-slate-200/80 bg-slate-50 text-slate-500 transition-all duration-200 hover:border-slate-300 hover:bg-card hover:text-foreground active:scale-[0.96]" onClick={() => openEdit(selectedDataset)}>
+                        <Button variant="ghost" size="icon" aria-label="编辑数据集" title="编辑数据集" className="size-7 rounded-full border border-border/60 bg-muted/50 text-muted-foreground transition-all duration-200 hover:border-border hover:bg-card hover:text-foreground active:scale-[0.96]" onClick={() => openEdit(selectedDataset)}>
                           <Pencil className="size-3" />
                         </Button>
                         <Button
@@ -1089,7 +1082,7 @@ export default function DatasetsPage() {
                           size="icon"
                           aria-label="删除数据集"
                           title="删除数据集"
-                          className="size-7 rounded-full border border-destructive/20 bg-red-50 text-destructive/70 transition-all duration-200 hover:border-destructive/30 hover:bg-red-100 active:scale-[0.96]"
+                          className="size-7 rounded-full border border-destructive/20 bg-destructive/10 text-destructive/70 transition-all duration-200 hover:border-destructive/30 hover:bg-destructive/15 active:scale-[0.96]"
                           onClick={() => {
                             setDeleteIncludingDocuments(false)
                             setDeleteDocumentCountHint(null)
@@ -1111,7 +1104,7 @@ export default function DatasetsPage() {
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <div className="truncate text-[10px] font-semibold text-foreground">{selectedDataset.name}</div>
+                            <div className="truncate text-[12px] font-semibold text-foreground">{selectedDataset.name}</div>
                             <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold', selectedStatusBadge.className)}>
                               <span className={cn('size-1.5 rounded-full', selectedStatusBadge.dotClassName)} />
                               {selectedStatusBadge.label}
@@ -1122,8 +1115,8 @@ export default function DatasetsPage() {
 
                       <div className="mt-1 grid grid-cols-3 gap-1">
                         <DetailStat
-                          label="健康度"
-                          value={`${estimateDatasetHealthScore(selectedDataset, selectedDatasetStats)} 分`}
+                          label="文档数"
+                          value={Number(selectedDatasetStats?.total_documents || 0).toLocaleString()}
                           meta=""
                           tone="neutral"
                         />
@@ -1144,7 +1137,7 @@ export default function DatasetsPage() {
 
                     <div className="space-y-0.5 rounded-[18px] border border-border/60 bg-background px-2 py-1.5">
                       <InspectorRow icon={Database} label="数据集 ID">
-                        <span className="font-mono text-violet-600">{selectedDataset.id.slice(0, 8)}</span>
+                        <span className="font-mono text-accent">{selectedDataset.id.slice(0, 8)}</span>
                       </InspectorRow>
                       <InspectorRow icon={FolderOpen} label="当前范围">
                         <span>{selectedCategoryId ? '当前分类范围' : '全部分类范围'}</span>
@@ -1276,7 +1269,7 @@ export default function DatasetsPage() {
                     animate={{ opacity: 1 }}
                     className="flex h-full min-h-[320px] flex-col items-center justify-center rounded-[22px] border border-dashed border-border/60 bg-background/40 p-6 text-center"
                   >
-                    <Layers className="mb-3 size-9 text-muted-foreground/20" />
+                    <Layers className="mb-3 size-9 text-muted-foreground/30" />
                     <div className="text-sm font-semibold text-foreground/80">检视器就绪</div>
                     <div className="mt-2 max-w-[220px] text-[11px] leading-relaxed text-muted-foreground/60">
                       选择一个数据集以查看快捷入口与访问配置
@@ -1308,17 +1301,17 @@ export default function DatasetsPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           {deleteRequiresDocumentPurge ? (
-            <div className="rounded-2xl border border-amber-200/80 bg-amber-50/80 p-3 text-sm text-amber-950">
+            <div className="rounded-2xl border border-warning/30 bg-warning/5 p-3 text-sm text-warning">
               <div className="flex items-start gap-2.5">
-                <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-600" />
+                <AlertCircle className="mt-0.5 size-4 shrink-0 text-warning" />
                 <div className="min-w-0">
                   <div className="font-semibold">该数据集还有 {deleteTargetDocumentCount} 个文档</div>
-                  <p className="mt-1 text-xs leading-relaxed text-amber-800/80">
+                  <p className="mt-1 text-xs leading-relaxed text-warning/80">
                     直接删除会被后端拦截。勾选后会先清空文档、分块和索引，再删除数据集记录。
                   </p>
                 </div>
               </div>
-              <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-xl border border-amber-200/70 bg-card/70 px-3 py-2 text-xs font-medium text-amber-950">
+              <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-xl border border-warning/30 bg-card/70 px-3 py-2 text-xs font-medium text-warning">
                 <Checkbox
                   checked={deleteIncludingDocuments}
                   onCheckedChange={(checked) => setDeleteIncludingDocuments(checked === true)}
@@ -1392,7 +1385,7 @@ function DatasetMetaPill({
         <Icon className="size-2" />
       </div>
       <div className="min-w-0">
-        <div className="truncate text-[8px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/50">{label}</div>
+        <div className="truncate text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/50">{label}</div>
         <div className={cn('truncate text-[10px] font-medium leading-none text-foreground/82', valueClassName)}>{value}</div>
       </div>
     </div>
@@ -1408,10 +1401,10 @@ function DatasetSummaryCard({
   title: string
   value: string
   icon: LucideIcon
-  tone: 'slate' | 'green' | 'red' | 'amber'
+  tone: 'neutral' | 'green' | 'red' | 'amber'
 }>) {
   return (
-    <div className="rounded-[16px] border border-slate-200/80 bg-background/92 px-3 py-2 shadow-[0_8px_16px_-16px_rgba(15,23,42,0.12)] transition-all duration-200 hover:border-slate-300 hover:shadow-[0_12px_20px_-18px_rgba(15,23,42,0.14)]">
+    <div className="rounded-[16px] border border-border/60 bg-card/95 px-3 py-2 shadow-[0_8px_16px_-16px_rgba(15,23,42,0.12)] transition-all duration-200 hover:border-border hover:shadow-[0_12px_20px_-18px_rgba(15,23,42,0.14)]">
       <div className="flex items-start justify-between gap-2">
         <div>
           <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/62">{title}</div>
@@ -1419,11 +1412,11 @@ function DatasetSummaryCard({
         </div>
         <div
           className={cn(
-            'flex size-7 items-center justify-center rounded-[10px] border shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_8px_14px_-14px_rgba(15,23,42,0.22)]',
-            tone === 'slate' && 'border-slate-200/80 bg-slate-50 text-slate-600',
-            tone === 'green' && 'border-emerald-200/80 bg-emerald-50 text-emerald-600',
-            tone === 'red' && 'border-red-200/80 bg-red-50 text-red-500',
-            tone === 'amber' && 'border-amber-200/80 bg-amber-50 text-amber-600'
+            'flex size-7 items-center justify-center rounded-[10px] border shadow-[inset_0_1px_0_hsl(var(--background)/0.5),0_8px_14px_-14px_rgba(15,23,42,0.22)]',
+            tone === 'neutral' && 'border-border/60 bg-muted/50 text-muted-foreground',
+            tone === 'green' && 'border-success/30 bg-success/10 text-success',
+            tone === 'red' && 'border-destructive/30 bg-destructive/10 text-destructive',
+            tone === 'amber' && 'border-warning/30 bg-warning/10 text-warning'
           )}
         >
           <Icon className="size-3.5" />
@@ -1456,7 +1449,7 @@ function DatasetFilterButton({
         'flex w-full items-center justify-between rounded-[12px] border px-2.5 py-1.5 text-left transition-colors',
         active
           ? 'border-primary/15 bg-primary/10 text-primary shadow-inner-soft'
-          : 'border-transparent text-foreground/78 hover:border-slate-200/80 hover:bg-slate-50/70'
+          : 'border-transparent text-foreground/78 hover:border-border/60 hover:bg-muted/40'
       )}
     >
       <span className="flex min-w-0 items-center gap-2">
@@ -1479,120 +1472,6 @@ function DatasetFilterButton({
   )
 }
 
-function DatasetShortcutButton({
-  icon: Icon,
-  title,
-  description,
-  onClick,
-  emphasis = false,
-  compact = false,
-}: Readonly<{
-  icon: LucideIcon
-  title: string
-  description: string
-  onClick: () => void
-  emphasis?: boolean
-  compact?: boolean
-}>) {
-  return (
-    <button
-      type="button"
-      className={cn(
-        'focus-ring group relative flex w-full items-center gap-3 overflow-hidden border transition-all duration-200 motion-reduce:transition-none active:scale-[0.99]',
-        compact ? 'rounded-2xl px-3 py-2.5' : 'rounded-3xl px-5 py-4',
-        emphasis
-          ? 'border-primary/20 bg-primary/[0.03] hover:border-primary/35 hover:bg-primary/[0.06] hover:shadow-[0_12px_22px_-18px_hsl(var(--primary)/0.22)]'
-          : 'border-slate-200/80 bg-slate-50/75 hover:border-primary/20 hover:bg-primary/[0.03] hover:shadow-[0_12px_22px_-18px_rgba(15,23,42,0.14)]'
-      )}
-      onClick={onClick}
-    >
-      <div className="absolute inset-0 bg-primary/[0.05] opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
-
-      <div className={cn(
-        'relative flex shrink-0 items-center justify-center rounded-xl transition-all duration-200 group-hover:scale-[1.04]',
-        compact ? 'size-9' : 'size-11',
-        emphasis
-          ? 'bg-primary/10 text-primary shadow-sm shadow-primary/20'
-          : `${getDatasetIconTone(Icon).containerClassName} group-hover:bg-primary/10 group-hover:text-primary`
-      )}>
-        <Icon className={compact ? 'size-4' : 'size-5'} />
-      </div>
-
-      <div className="relative min-w-0 flex-1 flex flex-col justify-center text-left">
-        <div className="mb-0.5 text-[12px] font-semibold  text-foreground transition-colors group-hover:text-primary">
-          {title}
-        </div>
-        <div
-          className="text-[10px] font-medium text-muted-foreground/60 leading-relaxed truncate"
-          title={description}
-        >
-          {description}
-        </div>
-      </div>
-
-      <div className="relative flex size-4 items-center justify-center opacity-0 transition-all duration-300 group-hover:translate-x-0 group-hover:opacity-100">
-        <ChevronRight className={cn(
-          'size-3.5',
-          emphasis ? 'text-primary' : 'text-primary/60'
-        )} />
-      </div>
-    </button>
-  )
-}
-
-function DatasetInspectorMetric({
-  icon: Icon,
-  label,
-  value,
-  mono = false,
-  valueClassName,
-  variant = 'default',
-}: Readonly<{
-  icon: LucideIcon
-  label: string
-  value: string
-  mono?: boolean
-  valueClassName?: string
-  variant?: 'default' | 'stat'
-}>) {
-  const tone = getDatasetIconTone(Icon)
-  if (variant === 'stat') {
-    return (
-      <div className="flex flex-col items-center justify-center gap-1 rounded-xl border border-slate-200/80 bg-slate-50/80 p-2.5 transition-all duration-200 hover:border-primary/15 hover:bg-primary/[0.03] hover:shadow-[0_12px_22px_-18px_rgba(15,23,42,0.14)]">
-        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase  text-muted-foreground/50 transition-colors">
-          <span className={cn('flex size-[18px] items-center justify-center rounded-md border', tone.containerClassName)}>
-            <Icon className="size-3" />
-          </span>
-          <span className="truncate">{label}</span>
-        </div>
-        <div className={cn("text-[13px] font-bold  text-foreground/90 text-center", valueClassName)}>
-          {value}
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="flex items-center justify-between py-1.5 group/metric px-1.5 -mx-0.5 rounded-lg transition-colors hover:bg-slate-50/80">
-      <div className="flex min-w-0 items-center gap-2">
-        <span className={cn('flex size-[18px] items-center justify-center rounded-md border', tone.containerClassName)}>
-          <Icon className="size-3" />
-        </span>
-        <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground/60 group-hover/metric:text-muted-foreground transition-colors truncate">
-          {label}
-        </span>
-      </div>
-      <div className={cn(
-        'ml-auto min-w-0 truncate rounded-md border border-slate-200/70 bg-card px-2.5 py-0.5 text-right text-[11px] font-semibold text-foreground/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.92)]',
-        mono && 'font-mono tabular-nums ',
-        valueClassName
-      )}>
-        {value}
-      </div>
-    </div>
-  )
-}
-
 function InspectorRow({
   icon: Icon,
   label,
@@ -1606,7 +1485,7 @@ function InspectorRow({
   return (
     <div className="flex items-center justify-between gap-2 py-1">
       <div className="flex min-w-0 items-center gap-2">
-        <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground/56">
+        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground/56">
           <span className={cn('flex size-4 items-center justify-center rounded-md border', tone.containerClassName)}>
             <Icon className="size-2.5" />
           </span>
@@ -1635,7 +1514,7 @@ function DatasetOperationTile({
   return (
     <button
       type="button"
-      className="focus-ring group relative flex min-h-[62px] flex-col items-start justify-between rounded-[14px] border border-slate-200/80 bg-slate-50/75 px-2 py-1.5 transition-all duration-200 hover:border-primary/20 hover:bg-primary/[0.03] hover:shadow-[0_12px_22px_-18px_rgba(15,23,42,0.14)] active:scale-[0.98]"
+      className="focus-ring group relative flex min-h-[70px] flex-col items-start justify-between rounded-[14px] border border-border/60 bg-muted/40 px-2 py-1.5 transition-all duration-200 hover:border-primary/20 hover:bg-primary/[0.03] hover:shadow-[0_12px_22px_-18px_rgba(15,23,42,0.14)] active:scale-[0.98]"
       onClick={onClick}
       aria-label={`${title}：${description}`}
     >
@@ -1643,10 +1522,10 @@ function DatasetOperationTile({
         <Icon className="size-3" />
       </div>
       <div className="min-w-0 text-left">
-        <div className="truncate text-[9px] font-semibold text-foreground/84 transition-colors group-hover:text-primary">
+        <div className="truncate text-[11px] font-semibold text-foreground/84 transition-colors group-hover:text-primary">
           {title}
         </div>
-        <div className="mt-0.5 line-clamp-2 text-[8px] leading-[0.95rem] text-muted-foreground/72">
+        <div className="mt-0.5 line-clamp-2 text-[10px] leading-[0.95rem] text-muted-foreground/72">
           {description}
         </div>
       </div>
@@ -1671,16 +1550,16 @@ function DatasetCapabilityItem({
       type="button"
       onClick={onClick}
       title={description}
-      className="focus-ring group relative flex min-h-[38px] items-center gap-1.5 rounded-[12px] border border-slate-200/80 bg-slate-50/75 px-2 py-1.5 transition-all duration-200 hover:border-primary/20 hover:bg-primary/[0.03] active:scale-[0.98]"
+      className="focus-ring group relative flex min-h-[38px] items-center gap-1.5 rounded-[12px] border border-border/60 bg-muted/40 px-2 py-1.5 transition-all duration-200 hover:border-primary/20 hover:bg-primary/[0.03] active:scale-[0.98]"
     >
       <div className={cn('flex size-4 shrink-0 items-center justify-center rounded-md border transition-colors duration-200 group-hover:text-primary', tone.containerClassName)}>
         <Icon className="size-2.5" />
       </div>
-      <span className="truncate text-[9px] font-medium text-foreground/84 transition-colors duration-200 group-hover:text-primary">
+      <span className="truncate text-[10px] font-medium text-foreground/84 transition-colors duration-200 group-hover:text-primary">
         {title}
       </span>
-      <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 w-32 -translate-x-1/2 translate-y-1 rounded-lg border border-slate-200/80 bg-popover/95 px-2 py-1 text-center opacity-0 shadow-lg backdrop-blur transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100">
-        <div className="text-[8px] leading-[1rem] text-foreground/84">{description}</div>
+      <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 w-32 -translate-x-1/2 translate-y-1 rounded-lg border border-border/60 bg-popover/95 px-2 py-1 text-center opacity-0 shadow-lg backdrop-blur transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100">
+        <div className="text-[10px] leading-[1.05rem] text-foreground/84">{description}</div>
       </div>
     </button>
   )
@@ -1698,20 +1577,20 @@ function DetailStat({
   tone: 'success' | 'warning' | 'danger' | 'neutral'
 }>) {
   return (
-    <div className="rounded-[12px] border border-slate-200/80 bg-slate-50/80 px-2 py-1.5 transition-colors duration-200 hover:border-slate-300 hover:bg-card">
+    <div className="rounded-[12px] border border-border/60 bg-muted/40 px-2 py-1.5 transition-colors duration-200 hover:border-border hover:bg-card">
       <div className="flex items-center gap-1">
         <span
           className={cn(
             'size-1 rounded-full',
-            tone === 'success' && 'bg-emerald-500',
-            tone === 'warning' && 'bg-amber-500',
-            tone === 'danger' && 'bg-red-500',
-            tone === 'neutral' && 'bg-slate-300'
+            tone === 'success' && 'bg-success',
+            tone === 'warning' && 'bg-warning',
+            tone === 'danger' && 'bg-destructive',
+            tone === 'neutral' && 'bg-border'
           )}
         />
-        <span className="text-[9px] font-semibold uppercase tracking-[0.1em] text-foreground/72">{label}</span>
+        <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-foreground/72">{label}</span>
       </div>
-      <div className="mt-1 text-[10px] font-semibold text-foreground/86">{value}</div>
+      <div className="mt-1 text-[11px] font-semibold text-foreground/86">{value}</div>
       {meta ? <div className="mt-0.5 text-[9px] text-muted-foreground/56">{meta}</div> : null}
     </div>
   )

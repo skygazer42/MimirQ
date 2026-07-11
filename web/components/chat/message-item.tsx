@@ -143,7 +143,7 @@ function getConfidenceMeta(confidenceScore: number | null): ConfidenceMeta | nul
     return {
       label: '✓ 高置信度',
       summary: '证据与回答整体一致',
-      badgeClass: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+      badgeClass: 'border-success/20 bg-success/10 text-success dark:text-emerald-300',
       lineClass: 'border-l-emerald-500/80',
     }
   }
@@ -151,14 +151,14 @@ function getConfidenceMeta(confidenceScore: number | null): ConfidenceMeta | nul
     return {
       label: '⚠ 部分支撑',
       summary: '存在有效证据，但仍建议交叉确认',
-      badgeClass: 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+      badgeClass: 'border-warning/20 bg-warning/10 text-warning dark:text-amber-300',
       lineClass: 'border-l-amber-500/80',
     }
   }
   return {
     label: '✗ 证据不足',
     summary: '当前回答缺少足够支撑，建议继续追问',
-    badgeClass: 'border-rose-500/20 bg-rose-500/10 text-rose-700 dark:text-rose-300',
+    badgeClass: 'border-destructive/20 bg-destructive/10 text-destructive dark:text-rose-300',
     lineClass: 'border-l-rose-500/80',
   }
 }
@@ -1275,7 +1275,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                       title={`${v} 星`}
                     >
                       <Star
-                        className={cn('size-4', active ? 'text-yellow-500' : 'text-muted-foreground')}
+                        className={cn('size-4', active ? 'text-warning' : 'text-muted-foreground')}
                         fill={active ? 'currentColor' : 'none'}
                       />
                     </button>

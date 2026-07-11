@@ -11,6 +11,7 @@ from app.connectors.base import ConnectorBase
 from app.connectors.registry import registry
 from app.connectors.types import ConnectionTestResult, RawDocument
 from app.rag.core.logging import get_logger
+from app.services.connector_egress_policy import validate_db_connector_config
 
 logger = get_logger(__name__)
 
@@ -68,6 +69,7 @@ class _BaseCatalogConnector(ConnectorBase):
 
     async def connect(self, config: dict[str, Any]) -> None:
         self._config = dict(config or {})
+        validate_db_connector_config(self._config)
 
     async def fetch_documents(self, **kwargs: Any) -> AsyncIterator[RawDocument]:
         if kwargs.get("__yield_placeholder__"):
@@ -91,6 +93,7 @@ class MySQLCatalogConnector(_BaseCatalogConnector):
         warnings: list[dict[str, Any]] = []
         details: dict[str, Any] = {"latency_ms": None, "read_only": None}
         try:
+            validate_db_connector_config(cfg)
             import pymysql
 
             t0 = time.time()
@@ -155,6 +158,7 @@ class SQLServerCatalogConnector(_BaseCatalogConnector):
         warnings: list[dict[str, Any]] = []
         details: dict[str, Any] = {"latency_ms": None, "read_only": None}
         try:
+            validate_db_connector_config(cfg)
             import pyodbc
 
             preferred = ("ODBC Driver 18 for SQL Server", "ODBC Driver 17 for SQL Server")

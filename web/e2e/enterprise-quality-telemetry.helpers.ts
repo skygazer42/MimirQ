@@ -88,6 +88,16 @@ export async function installCommonApiMocks(page: Page, state: EnterpriseTelemet
       })
     }
 
+    if (pathname === '/api/v1/settings/status' && method === 'GET') {
+      return fulfillJson(route, {
+        database: { connected: true, message: 'ready' },
+        milvus: { connected: true, message: 'ready' },
+        llm: { configured: true, model: 'e2e-model' },
+        embedding: { configured: true, model: 'e2e-embedding' },
+        parsers: {},
+      })
+    }
+
     if (pathname === '/api/v1/prompt-templates' && method === 'GET') {
       return fulfillJson(route, {
         items: [],

@@ -20,4 +20,14 @@ describe('api-client source dedupe', () => {
     expect(observabilitySrc.match(/withPreferredLanguageHeader\(/g)?.length).toBeGreaterThanOrEqual(2)
     expect(streamingSrc).toContain('withPreferredLanguageHeader({')
   })
+
+  it('keeps public health metadata minimal and exposes authenticated details explicitly', () => {
+    const healthSrc = fs.readFileSync(path.resolve(__dirname, 'api/health.ts'), 'utf8')
+    const metaSrc = fs.readFileSync(path.resolve(__dirname, 'api/meta.ts'), 'utf8')
+
+    expect(healthSrc).toContain("path: '/api/v1/health/details'")
+    expect(healthSrc).toContain('status: z.string()')
+    expect(healthSrc).not.toContain('time: z.string()')
+    expect(metaSrc).toContain("path: '/api/v1/meta/details'")
+  })
 })

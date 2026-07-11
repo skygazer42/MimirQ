@@ -27,6 +27,7 @@ import { PageScaffold } from '@/components/ui/page-scaffold'
 import {
   KnowledgeOpsFlowCard,
   KnowledgeOpsHero,
+  KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS,
 } from '@/components/ui/knowledge-ops-hero'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -559,7 +560,7 @@ export function GovernanceCommonLinesPage() {
           description="跨文档识别页眉、页脚、导航和免责声明等反复出现的行，可一键写入自定义治理配置。"
           summary={
             <div className="grid gap-2 sm:grid-cols-2">
-              <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-2xl border border-sky-200/70 bg-white/64 px-3 py-2 text-[11px] text-muted-foreground shadow-[0_12px_28px_-24px_rgba(14,116,144,0.45)] backdrop-blur dark:border-sky-300/15 dark:bg-background/28">
+              <div className={KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS}>
                 <span className="inline-flex items-center gap-1.5">
                   <span className="size-1 rounded-full bg-info/70" aria-hidden />
                   候选

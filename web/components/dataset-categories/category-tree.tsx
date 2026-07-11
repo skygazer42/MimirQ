@@ -90,14 +90,14 @@ export function DatasetCategoryTreeView({
             'w-full flex items-center gap-1.5 rounded-[12px] border px-1.5 py-1 text-[11px] transition-all duration-200 active:scale-[0.995]',
             isSelected
               ? 'border-primary/15 bg-primary/10 text-primary shadow-[0_10px_18px_-16px_rgba(37,99,235,0.25)]'
-              : 'border-transparent text-muted-foreground hover:border-slate-200/80 hover:bg-slate-50/80 hover:text-foreground'
+              : 'border-transparent text-muted-foreground hover:border-border/60 hover:bg-muted/40 hover:text-foreground'
           )}
           style={{ paddingLeft: 6 + Math.max(0, Number(node.depth || 0)) * 10 }}
         >
           {hasChildren ? (
             <button
               type="button"
-              className="rounded p-0.5 transition-colors duration-200 hover:bg-slate-100 focus-ring"
+              className="rounded p-0.5 transition-colors duration-200 hover:bg-muted focus-ring"
               aria-label={isExpanded ? '折叠' : '展开'}
               onClick={(e) => {
                 e.stopPropagation()
@@ -121,7 +121,7 @@ export function DatasetCategoryTreeView({
                 <span
                   className={cn(
                     'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-muted-foreground',
-                    isSelected ? 'border-primary/15 bg-card text-primary shadow-[0_8px_14px_-12px_rgba(37,99,235,0.25)]' : 'border-slate-200/80 bg-slate-50 text-slate-500'
+                    isSelected ? 'border-primary/15 bg-card text-primary shadow-[0_8px_14px_-12px_rgba(37,99,235,0.25)]' : 'border-border/60 bg-muted/50 text-muted-foreground'
                   )}
                 >
                   <FolderOpen className="h-3 w-3" />
@@ -131,7 +131,7 @@ export function DatasetCategoryTreeView({
               <span
                 className={cn(
                   'rounded-full border px-1.5 py-0.5 tabular-nums text-[9px] font-semibold shadow-sm',
-                  isSelected ? 'border-primary/15 bg-card text-primary shadow-[0_8px_14px_-12px_rgba(37,99,235,0.22)]' : 'border-slate-200/80 bg-card text-muted-foreground'
+                  isSelected ? 'border-primary/15 bg-card text-primary shadow-[0_8px_14px_-12px_rgba(37,99,235,0.22)]' : 'border-border/60 bg-card text-muted-foreground'
                 )}
               >
                 {Number(node.datasets || 0) || 0}
@@ -157,7 +157,7 @@ export function DatasetCategoryTreeView({
         className={cn(
           'focus-ring w-full flex items-center justify-between rounded-[12px] border px-2 py-1.5 text-[11px] transition-all duration-200 active:scale-[0.995]',
           selectedId
-            ? 'border-transparent text-muted-foreground hover:border-slate-200/80 hover:bg-slate-50/80 hover:text-foreground'
+            ? 'border-transparent text-muted-foreground hover:border-border/60 hover:bg-muted/40 hover:text-foreground'
             : 'border-primary/15 bg-primary/10 text-primary shadow-[0_10px_18px_-16px_rgba(37,99,235,0.25)]'
         )}
       >
@@ -165,7 +165,7 @@ export function DatasetCategoryTreeView({
           <span
             className={cn(
               'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border',
-              selectedId ? 'border-slate-200/80 bg-slate-50 text-slate-500' : 'border-primary/15 bg-card text-primary shadow-[0_8px_14px_-12px_rgba(37,99,235,0.22)]'
+              selectedId ? 'border-border/60 bg-muted/50 text-muted-foreground' : 'border-primary/15 bg-card text-primary shadow-[0_8px_14px_-12px_rgba(37,99,235,0.22)]'
             )}
           >
             <FolderTree className="h-3 w-3" />

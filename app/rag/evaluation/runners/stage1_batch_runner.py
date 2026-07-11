@@ -1,5 +1,6 @@
 
 import json
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -11,6 +12,9 @@ from app.rag.evaluation.reports.stage1_summary import summarize_stage1_results
 from app.rag.evaluation.results.artifacts import build_eval_artifact_paths
 from app.rag.evaluation.runners.base import build_runner_result
 from app.rag.evaluation.runners.registry import get_runner
+
+Runner = Callable[[dict[str, Any]], dict[str, Any]]
+RunnerResolver = Callable[[str], Runner | None]
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -27,7 +31,24 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def run_stage1_batch(*, sample_path: Path, manifest_path: Path, output_root: Path) -> dict[str, Any]:
+def _chunk_ids(items: Iterable[Any]) -> list[str]:
+    chunk_ids: list[str] = []
+    for item in items or []:
+        raw = item.get("chunk_id") if isinstance(item, dict) else item
+        chunk_id = str(raw or "").strip()
+        if chunk_id and chunk_id not in chunk_ids:
+            chunk_ids.append(chunk_id)
+    return chunk_ids
+
+
+def run_stage1_batch(
+    *,
+    sample_path: Path,
+    manifest_path: Path,
+    output_root: Path,
+    route_ids: list[str] | tuple[str, ...] | None = None,
+    runner_resolver: RunnerResolver = get_runner,
+) -> dict[str, Any]:
     rows = _load_jsonl(Path(sample_path))
     manifest = _load_json(Path(manifest_path))
     validation = validate_eval_dataset(rows=rows, manifest=manifest)
@@ -38,14 +59,23 @@ def run_stage1_batch(*, sample_path: Path, manifest_path: Path, output_root: Pat
     artifact_paths = build_eval_artifact_paths(root=Path(output_root), run_id=run_id)
     artifact_paths["root"].mkdir(parents=True, exist_ok=True)
 
-    route_ids = ["retrieval", "kg", "hybrid"]
+    selected_route_ids = list(route_ids or ("retrieval", "kg", "hybrid"))
     detailed_rows: list[dict[str, Any]] = []
     for sample in validation["rows"]:
-        for route_id in route_ids:
-            runner = get_runner(route_id)
+        for route_id in selected_route_ids:
+            runner = runner_resolver(route_id)
             if runner is None:
                 continue
             route_result = runner(sample)
+            citations = list(route_result.get("citations") or [])
+            cited_chunk_ids = _chunk_ids(citations)
+            retrieved_items = route_result.get("retrieved_chunk_ids")
+            retrieved_chunk_ids = (
+                _chunk_ids(retrieved_items)
+                if isinstance(retrieved_items, (list, tuple))
+                else list(cited_chunk_ids)
+            )
+            route_config = dict(route_result.get("route_config") or {})
             evaluators = {
                 "answer_det": evaluate_answer_deterministic(
                     question=sample["query"],
@@ -55,9 +85,9 @@ def run_stage1_batch(*, sample_path: Path, manifest_path: Path, output_root: Pat
                 ),
                 "retrieval": evaluate_retrieval_metrics(
                     gold_chunk_ids=sample.get("gold_chunk_ids") or [],
-                    retrieved_chunk_ids=[item.get("chunk_id") for item in (route_result.get("citations") or [])],
-                    cited_chunk_ids=[item.get("chunk_id") for item in (route_result.get("citations") or [])],
-                    recall_k=10,
+                    retrieved_chunk_ids=retrieved_chunk_ids,
+                    cited_chunk_ids=cited_chunk_ids,
+                    recall_k=max(1, int(route_config.get("top_k") or 10)),
                 ),
             }
             detailed_rows.append(
@@ -69,21 +99,22 @@ def run_stage1_batch(*, sample_path: Path, manifest_path: Path, output_root: Pat
                     expected_route=sample.get("expected_route"),
                     actual_route=route_result.get("actual_route"),
                     answer=route_result.get("answer"),
-                    citations=route_result.get("citations"),
+                    citations=citations,
                     latency_ms=route_result.get("latency_ms"),
                     token_cost=route_result.get("token_cost"),
-                    route_config=route_result.get("route_config"),
+                    route_config=route_config,
                     evaluators=evaluators,
+                    extensions={"retrieved_chunk_ids": retrieved_chunk_ids},
                 )
             )
 
     summary = summarize_stage1_results(detailed_rows)
-    summary["routes_evaluated"] = list(route_ids)
+    summary["routes_evaluated"] = list(selected_route_ids)
     run_meta = {
         "run_id": run_id,
         "schema_version": "mimirq.eval.run_meta.v1",
         "dataset_version": manifest.get("dataset_version"),
-        "routes": route_ids,
+        "routes": selected_route_ids,
         "evaluators": ["answer_det", "retrieval"],
         "generated_at": manifest.get("generated_at"),
     }

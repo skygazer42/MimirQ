@@ -168,24 +168,24 @@ function formatSignedDelta(
 function deltaState(value: unknown, lowerIsBetter: boolean) {
   const numeric = Number(value)
   if (!Number.isFinite(numeric) || Math.abs(numeric) < 1e-9) {
-    return { label: '持平', className: 'bg-slate-100 text-slate-600' }
+    return { label: '持平', className: 'bg-muted text-muted-foreground' }
   }
   const improved = lowerIsBetter ? numeric < 0 : numeric > 0
   if (improved) {
-    return { label: '改善', className: 'bg-emerald-50 text-emerald-700' }
+    return { label: '改善', className: 'bg-success/10 text-success' }
   }
-  return { label: '退化', className: 'bg-rose-50 text-rose-700' }
+  return { label: '退化', className: 'bg-destructive/10 text-destructive' }
 }
 
 function QuerysetChartEmptyState() {
   return (
     <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-      <div className="rounded-2xl bg-card/75 px-4 py-3 text-center shadow-[0_12px_30px_rgba(15,23,42,0.08)] ring-1 ring-slate-200/70 backdrop-blur-sm">
-        <div className="mx-auto mb-1.5 flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
+      <div className="rounded-2xl bg-card/80 px-4 py-3 text-center shadow-sm ring-1 ring-border/60 backdrop-blur-sm">
+        <div className="mx-auto mb-1.5 flex h-9 w-9 items-center justify-center rounded-xl bg-muted text-muted-foreground/70">
           <ChartLine className="h-4 w-4" aria-hidden="true" />
         </div>
-        <div className="text-[12px] font-semibold text-slate-700">暂无数据</div>
-        <div className="mt-0.5 text-[11px] text-slate-500">
+        <div className="text-[12px] font-semibold text-foreground">暂无数据</div>
+        <div className="mt-0.5 text-[11px] text-muted-foreground">
           当前筛选条件下暂无趋势数据
         </div>
       </div>
@@ -331,7 +331,7 @@ export function QuerysetHealthTab({
       <Panel
         variant="glass"
         padding="sm"
-        className="rounded-2xl border-slate-200/80 bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+        className="rounded-2xl border-border/60 bg-card shadow-sm"
       >
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -416,7 +416,7 @@ export function QuerysetHealthTab({
         <Panel
           variant="glass"
           padding="sm"
-          className="rounded-2xl min-h-[205px] border-slate-200/80 bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+          className="rounded-2xl min-h-[205px] border-border/60 bg-card shadow-sm"
         >
           <div className="flex items-center justify-between mb-2">
             <div className="text-sm font-semibold text-foreground">
@@ -427,7 +427,7 @@ export function QuerysetHealthTab({
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 rounded-lg border-slate-200 px-2 text-[11px]"
+                className="h-7 rounded-lg border-border px-2 text-[11px]"
               >
                 近 7 天
               </Button>
@@ -470,7 +470,7 @@ export function QuerysetHealthTab({
         <Panel
           variant="glass"
           padding="sm"
-          className="rounded-2xl min-h-[205px] border-slate-200/80 bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+          className="rounded-2xl min-h-[205px] border-border/60 bg-card shadow-sm"
         >
           <div className="flex items-center justify-between mb-2">
             <div className="text-sm font-semibold text-foreground">
@@ -481,7 +481,7 @@ export function QuerysetHealthTab({
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 rounded-lg border-slate-200 px-2 text-[11px]"
+                className="h-7 rounded-lg border-border px-2 text-[11px]"
               >
                 近 7 天
               </Button>
@@ -525,7 +525,7 @@ export function QuerysetHealthTab({
       <Panel
         variant="glass"
         padding="sm"
-        className="rounded-2xl border-slate-200/80 bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+        className="rounded-2xl border-border/60 bg-card shadow-sm"
       >
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.72fr)]">
           <div>
@@ -625,15 +625,15 @@ export function QuerysetHealthTab({
             ) : null}
           </div>
 
-          <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 ring-1 ring-blue-100">
+          <div className="flex items-center gap-3 rounded-2xl border border-border bg-muted/40 px-4 py-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20">
               <Scale className="h-5 w-5" aria-hidden="true" />
             </span>
             <div className="min-w-0">
-              <div className="text-sm font-semibold text-slate-900">
+              <div className="text-sm font-semibold text-foreground">
                 如何解读差异
               </div>
-              <div className="mt-1 text-[12px] leading-5 text-slate-500">
+              <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
                 命中率、MRR、NDCG 为正表示提升；P95 延迟、漏检率、弱命中率为负表示改善。
                 仅对相同评测配置的快照进行可比对。
               </div>
@@ -645,7 +645,7 @@ export function QuerysetHealthTab({
       <Panel
         variant="glass"
         padding="sm"
-        className="rounded-2xl border-slate-200/80 bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+        className="rounded-2xl border-border/60 bg-card shadow-sm"
       >
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -659,7 +659,7 @@ export function QuerysetHealthTab({
           <Button
             variant="outline"
             size="sm"
-            className="h-7 rounded-lg border-slate-200 px-2 text-[11px]"
+            className="h-7 rounded-lg border-border px-2 text-[11px]"
           >
             查看全部
           </Button>
@@ -683,10 +683,10 @@ export function QuerysetHealthTab({
                 <tr>
                   <td colSpan={7} className="py-4 text-center">
                     <div className="mx-auto flex w-fit flex-col items-center text-muted-foreground">
-                      <div className="mb-1.5 flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-slate-400">
+                      <div className="mb-1.5 flex h-8 w-8 items-center justify-center rounded-xl bg-muted text-muted-foreground/70">
                         <ShieldAlert className="h-4 w-4" aria-hidden="true" />
                       </div>
-                      <div className="text-sm font-medium text-slate-600">
+                      <div className="text-sm font-medium text-muted-foreground">
                         暂无运行记录
                       </div>
                       <div className="mt-0.5 text-xs">

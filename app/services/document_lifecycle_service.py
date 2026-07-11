@@ -21,6 +21,8 @@ logger = get_logger("services.document_lifecycle")
 
 DOC_NOT_FOUND_DETAIL = "Document not found"
 MANUAL_FILE_PATH_PREFIX = "manual://"
+DELETION_STATE_KEY = "deletion"
+DELETION_STATE_DELETING = "deleting"
 Indexer: Any | None = None
 
 
@@ -229,6 +231,28 @@ def _touch_dataset_updated_after_delete(db: Session, *, tenant_id: UUID, documen
         logger.debug("Failed touching dataset.updated_at after delete: %s", str(exc)[:200])
 
 
+def _persist_document_deleting_state(
+    db: Session,
+    *,
+    document: DBDocument,
+    account_id: str,
+) -> None:
+    now_iso = datetime.now(UTC).isoformat()
+    doc_meta = dict(document.doc_metadata or {})
+    deletion_meta_raw = doc_meta.get(DELETION_STATE_KEY)
+    deletion_meta = dict(deletion_meta_raw) if isinstance(deletion_meta_raw, dict) else {}
+    deletion_meta["state"] = DELETION_STATE_DELETING
+    deletion_meta["requested_at"] = str(deletion_meta.get("requested_at") or now_iso)
+    deletion_meta["requested_by"] = str(account_id)
+    deletion_meta["updated_at"] = now_iso
+    doc_meta[DELETION_STATE_KEY] = deletion_meta
+    document.doc_metadata = doc_meta
+    document.status = DELETION_STATE_DELETING
+    document.current_stage = DELETION_STATE_DELETING
+    db.commit()
+    db.refresh(document)
+
+
 def _delete_document_record(
     db: Session,
     *,
@@ -300,17 +324,23 @@ async def _delete_document_lifecycle(
         enforce_permissions=enforce_permissions,
     )
     _cancel_processing_document(db, document)
+    _persist_document_deleting_state(db, document=document, account_id=account_id)
     await _abort_document_tasks_before_delete(document_id=document_id, task_ids=_document_task_ids(document))
     _delete_document_minio_images(db, tenant_id=tenant_id, document_id=document_id, document=document)
     _get_indexer_class()(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
     _delete_document_table_store(tenant_id=tenant_id, document_id=document_id, document=document)
     _delete_document_file(tenant_id=tenant_id, document=document)
     _touch_dataset_updated_after_delete(db, tenant_id=tenant_id, document=document)
-    _delete_document_record(
-        db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        document_id=document_id,
-        document=document,
-    )
+    try:
+        _delete_document_record(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            document_id=document_id,
+            document=document,
+        )
+    except Exception:
+        with contextlib.suppress(Exception):
+            db.rollback()
+        raise
     _cleanup_document_kg_artifacts(db, tenant_id=tenant_id, document_id=document_id)

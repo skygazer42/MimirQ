@@ -8,7 +8,7 @@ import {
   ltrApi,
   metaApi,
   settingsApi,
-  type BackendMeta,
+  type BackendMetaDetails,
   type CacheConfig,
   type ChatConfig,
   type DifyExternalKnowledgeConfig,
@@ -403,7 +403,7 @@ export function useSettingsPageState() {
 
   const [settings, setSettings] = useState<SystemSettings | null>(null)
   const [status, setStatus] = useState<SystemStatus | null>(null)
-  const [backendMeta, setBackendMeta] = useState<BackendMeta | null>(null)
+  const [backendMeta, setBackendMeta] = useState<BackendMetaDetails | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -507,7 +507,7 @@ export function useSettingsPageState() {
       const [settingsData, statusData, metaData] = await Promise.all([
         settingsApi.get(),
         settingsApi.getStatus().catch(() => null),
-        metaApi.get().catch(() => null),
+        metaApi.details().catch(() => null),
       ])
       setSettings(settingsData)
       setStatus(statusData)

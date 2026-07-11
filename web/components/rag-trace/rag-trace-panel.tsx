@@ -1041,7 +1041,7 @@ export function RagTracePipelineTimeline({
               </div>
               <div className="h-1.5 w-full rounded-full bg-border/60">
                 <div
-                  className="h-full rounded-full bg-sky-500/70"
+                  className="h-full rounded-full bg-info"
                   style={{ width: `${barWidth}%` }}
                   data-pipeline-share={shareLabel}
                 />
@@ -1067,8 +1067,8 @@ export function RagTracePipelineTimeline({
                 'block w-full space-y-1 rounded-xl border px-3 py-2 text-left transition-colors',
                 'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background',
                 selected
-                  ? 'border-sky-500/60 bg-sky-500/10 shadow-sm'
-                  : 'border-border/60 bg-muted/20 hover:border-sky-500/30 hover:bg-muted/40'
+                  ? 'border-info bg-info shadow-sm'
+                  : 'border-border/60 bg-muted/20 hover:border-info hover:bg-muted/40'
               )}
             >
               {content}
@@ -1105,8 +1105,8 @@ function TraceCitationDiffList({
           variant="soft"
           className={cn(
             'text-[11px]',
-            tone === 'added' ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : undefined,
-            tone === 'removed' ? 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300' : undefined
+            tone === 'added' ? 'border-success/20 bg-success/10 text-success dark:text-emerald-300' : undefined,
+            tone === 'removed' ? 'border-warning/20 bg-warning/10 text-warning dark:text-amber-300' : undefined
           )}
         >
           {items.length}
@@ -1194,7 +1194,7 @@ function TraceCitationScoreShiftList({
                     <span className="font-mono">
                       A={item.scoreA == null ? '—' : item.scoreA.toFixed(3)} → B={item.scoreB == null ? '—' : item.scoreB.toFixed(3)}
                     </span>
-                    <span className={cn('font-mono', item.scoreDelta >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400')}>
+                    <span className={cn('font-mono', item.scoreDelta >= 0 ? 'text-success dark:text-emerald-400' : 'text-warning dark:text-amber-400')}>
                       Δ {item.scoreDelta.toFixed(3)}
                     </span>
                   </div>
@@ -1456,8 +1456,8 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
     setBundleError(null)
     try {
       const [meta, ready, configSnapshot, traceBundle] = await Promise.all([
-        metaApi.get(),
-        healthApi.ready(),
+        metaApi.details(),
+        healthApi.details(),
         observabilityApi.getOpsConfigSnapshot(),
         observabilityApi.getRagTraceBundle({ request_id: rid }),
       ])
@@ -1598,7 +1598,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
           </span>
         }
         icon={Route}
-        iconClassName="text-sky-600 dark:text-sky-400"
+        iconClassName="text-info dark:text-sky-400"
       />
     )
   }
@@ -1615,7 +1615,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
           </span>
         }
         icon={Quote}
-        iconClassName="text-sky-600 dark:text-sky-400"
+        iconClassName="text-info dark:text-sky-400"
       >
         <Button variant="outline" onClick={load} className="rounded-xl">
           {t("panel.actions.refresh")}
@@ -1629,11 +1629,11 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
       className={cn('grid grid-cols-1 gap-3 lg:grid-cols-[300px,minmax(0,1fr)]', className)}
       aria-label="RAG trace keyboard navigation"
     >
-      <Panel variant="glass" padding="none" className="overflow-hidden border-sky-500/10 bg-gradient-to-b from-sky-500/[0.04] to-background/70">
+      <Panel variant="glass" padding="none" className="overflow-hidden border-info/14 bg-[linear-gradient(180deg,hsl(var(--info)/0.05),hsl(var(--background)/0.7))]">
         <div className="flex items-center justify-between gap-3 border-b border-border/60 px-3 py-2.5">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <Route className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+              <Route className="h-4 w-4 text-info dark:text-sky-400" />
               <div className="text-sm font-semibold">{t("panel.header.title")}</div>
               <Badge variant="soft" className="text-[11px]">
                 {items.length} 条
@@ -1658,7 +1658,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                   'w-full rounded-xl border px-3 py-2 text-left transition-colors',
                   'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background',
                   active
-                    ? 'border-sky-500/70 bg-sky-500/10 shadow-sm'
+                    ? 'border-info bg-info shadow-sm'
                     : 'border-border/60 bg-background/65 hover:bg-muted/40'
                 )}
               >
@@ -1686,7 +1686,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
           <>
             <Panel
               variant="glass"
-              className="flex flex-col gap-2 border-sky-500/10 bg-gradient-to-br from-background via-background to-sky-500/[0.035]"
+              className="flex flex-col gap-2 border-info/14 bg-[linear-gradient(135deg,hsl(var(--background)),hsl(var(--background)),hsl(var(--info)/0.04))]"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
@@ -1781,8 +1781,8 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                                     'rounded-xl border px-3 py-2 text-left transition-colors',
                                     'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background',
                                     active
-                                      ? 'border-sky-500/50 bg-sky-500/10'
-                                      : 'border-border/60 bg-background/80 hover:border-sky-500/30 hover:bg-muted/30'
+                                      ? 'border-info bg-info'
+                                      : 'border-border/60 bg-background/80 hover:border-info hover:bg-muted/30'
                                   )}
                                 >
                                   <div className="flex items-center gap-2 text-xs font-medium text-foreground">
@@ -1866,14 +1866,14 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                               </div>
                               <div className="mt-1 text-lg font-semibold text-foreground">{localCitationDiff.sharedCount}</div>
                             </div>
-                            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-3">
-                              <div className="text-[11px] font-semibold uppercase text-emerald-700 dark:text-emerald-300">
+                            <div className="rounded-xl border border-success/20 bg-success/5 px-3 py-3">
+                              <div className="text-[11px] font-semibold uppercase text-success dark:text-emerald-300">
                                 {t("panel.evidenceDrift.addedSummaryTitle")}
                               </div>
                               <div className="mt-1 text-lg font-semibold text-foreground">{localCitationDiff.addedCount}</div>
                             </div>
-                            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-3">
-                              <div className="text-[11px] font-semibold uppercase text-amber-700 dark:text-amber-300">
+                            <div className="rounded-xl border border-warning/20 bg-warning/5 px-3 py-3">
+                              <div className="text-[11px] font-semibold uppercase text-warning dark:text-amber-300">
                                 {t("panel.evidenceDrift.removedSummaryTitle")}
                               </div>
                               <div className="mt-1 text-lg font-semibold text-foreground">{localCitationDiff.removedCount}</div>
@@ -1971,14 +1971,14 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
 
               <div className="grid grid-cols-3 gap-2">
                 <Panel variant="muted" className="flex items-center gap-2 px-3 py-2">
-                  <Timer className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+                  <Timer className="h-4 w-4 text-info dark:text-sky-400" />
                   <div className="min-w-0">
                     <div className="text-xs font-semibold text-foreground">{t("panel.pipelineSummary.retrieve")}</div>
                     <div className="text-xs text-muted-foreground">{formatSec(selected?.retrieval?.elapsed_sec)}</div>
                   </div>
                 </Panel>
                 <Panel variant="muted" className="flex items-center gap-2 px-3 py-2">
-                  <Database className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+                  <Database className="h-4 w-4 text-info dark:text-sky-400" />
                   <div className="min-w-0">
                     <div className="text-xs font-semibold text-foreground">{t("panel.pipelineSummary.reranker")}</div>
                     <div className="truncate text-xs text-muted-foreground">
@@ -1987,7 +1987,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                   </div>
                 </Panel>
                 <Panel variant="muted" className="flex items-center gap-2 px-3 py-2">
-                  <Quote className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+                  <Quote className="h-4 w-4 text-info dark:text-sky-400" />
                   <div className="min-w-0">
                     <div className="text-xs font-semibold text-foreground">{t("panel.pipelineSummary.citations")}</div>
                     <div className="text-xs text-muted-foreground">{selected.citations_count}</div>
@@ -1996,7 +1996,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
               </div>
 
               {evidencePreviewCitations.length ? (
-                <div className="space-y-2 rounded-2xl border border-sky-500/15 bg-sky-500/[0.035] p-3 shadow-soft">
+                <div className="space-y-2 rounded-2xl border border-info bg-info/[0.035] p-3 shadow-soft">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <div className="text-xs font-semibold text-foreground">{t("panel.evidencePreview.title")}</div>
@@ -2110,7 +2110,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                         </div>
 
                         {selectedPipelineSection.callout ? (
-                          <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 px-3 py-2 text-xs text-sky-900 dark:text-sky-100">
+                          <div className="rounded-xl border border-info/25 bg-info/10 px-3 py-2 text-xs text-info">
                             {selectedPipelineSection.callout}
                           </div>
                         ) : null}
@@ -2210,8 +2210,8 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                               'rounded-full border px-3 py-1.5 text-left text-xs transition-colors',
                               'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background',
                               summary.active
-                                ? 'border-sky-500/50 bg-sky-500/10 text-sky-900 dark:text-sky-100'
-                                : 'border-border/60 bg-background/80 text-muted-foreground hover:border-sky-500/30 hover:text-foreground'
+                                ? 'border-info/25 bg-info/10 text-info'
+                                : 'border-border/60 bg-background/80 text-muted-foreground hover:border-info hover:text-foreground'
                             )}
                           >
                             <span className="font-semibold">{summary.label}</span>
@@ -2461,7 +2461,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                             variant="muted"
                             className={cn(
                               'flex items-center justify-between gap-3',
-                              summary?.active ? 'border-sky-500/40 bg-sky-500/10' : undefined
+                              summary?.active ? 'border-info bg-info' : undefined
                             )}
                           >
                             <div className="min-w-0">
@@ -2565,7 +2565,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                               </Badge>
                             )}
                             {focusedChannelScore != null && selectedCitationChannel !== 'all' ? (
-                              <Badge variant="soft" className="text-[11px] border-sky-500/20 bg-sky-500/10">
+                              <Badge variant="soft" className="text-[11px] border-info bg-info">
                                 {getRagTraceCitationChannelLabel(selectedCitationChannel, t)}={focusedChannelScore.toFixed(3)}
                               </Badge>
                             ) : null}

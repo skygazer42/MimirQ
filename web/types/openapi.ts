@@ -11,10 +11,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Health
-         * @description Lightweight health check for web/dev tooling.
-         */
+        /** Health */
         get: operations["health_api_v1_health_get"];
         put?: never;
         post?: never;
@@ -47,6 +44,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/health/details": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Health Details */
+        get: operations["health_details_api_v1_health_details_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/meta": {
         parameters: {
             query?: never;
@@ -59,6 +73,23 @@ export interface paths {
          * @description Small, safe-to-expose metadata endpoint for UI diagnostics.
          */
         get: operations["get_meta_api_v1_meta_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta/details": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Meta Details */
+        get: operations["get_meta_details_api_v1_meta_details_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -202,8 +233,8 @@ export interface paths {
          * Download Document
          * @description Download (or inline-preview) a document file.
          *
-         *     This endpoint supports `?token=` and `?tenant_id=` query params to enable
-         *     usage in <iframe>/<a> tags where custom headers cannot be set.
+         *     JWT-authenticated requests must supply an Authorization header.
+         *     Tenant selection may still be provided via header or query parameter.
          */
         get: operations["download_document_api_v1_documents__document_id__download_get"];
         put?: never;
@@ -5996,6 +6027,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/integrations/dify/conversation-turns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Persist Dify Conversation Turn */
+        post: operations["persist_dify_conversation_turn_api_v1_integrations_dify_conversation_turns_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/integrations/dify/retrieval": {
         parameters: {
             query?: never;
@@ -7357,7 +7405,7 @@ export interface paths {
         };
         /**
          * Health Check
-         * @description Health check.
+         * @description Public liveness probe.
          */
         get: operations["health_check_health_get"];
         put?: never;
@@ -10023,13 +10071,6 @@ export interface components {
         ConversationUpdate: {
             /** Title */
             title?: string | null;
-        };
-        /** DatabaseStatus */
-        DatabaseStatus: {
-            /** Status */
-            status: string;
-            /** Error */
-            error?: string | null;
         };
         /** DatasetCacheInvalidationResponse */
         DatasetCacheInvalidationResponse: {
@@ -12747,6 +12788,57 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** DifyConversationTurnRequest */
+        DifyConversationTurnRequest: {
+            /** Query */
+            query: string;
+            /** Answer */
+            answer: string;
+            /** Conversation Id */
+            conversation_id?: string | null;
+            /** Trace Request Id */
+            trace_request_id?: string | null;
+            /** Source Conversation Id */
+            source_conversation_id?: string | null;
+            /** Source Message Id */
+            source_message_id?: string | null;
+            /** Source Run Id */
+            source_run_id?: string | null;
+            /** Dify Conversation Id */
+            dify_conversation_id?: string | null;
+            /** Dify Message Id */
+            dify_message_id?: string | null;
+            /** Dify Workflow Run Id */
+            dify_workflow_run_id?: string | null;
+            /** Citations */
+            citations?: {
+                [key: string]: unknown;
+            }[];
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+        };
+        /** DifyConversationTurnResponse */
+        DifyConversationTurnResponse: {
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /**
+             * User Message Id
+             * Format: uuid
+             */
+            user_message_id: string;
+            /**
+             * Assistant Message Id
+             * Format: uuid
+             */
+            assistant_message_id: string;
+            /** Reused User Message */
+            reused_user_message: boolean;
+        };
         /**
          * DifyExternalKnowledgeConfig
          * @description Dify External Knowledge API adapter settings.
@@ -12816,6 +12908,14 @@ export interface components {
             conversation_id?: string | null;
             /** Request Id */
             request_id?: string | null;
+            /** Source Conversation Id */
+            source_conversation_id?: string | null;
+            /** Source Message Id */
+            source_message_id?: string | null;
+            /** Source Run Id */
+            source_run_id?: string | null;
+            /** Dify Conversation Id */
+            dify_conversation_id?: string | null;
             /** Dify Message Id */
             dify_message_id?: string | null;
             /** Dify Workflow Run Id */
@@ -12838,6 +12938,8 @@ export interface components {
              * @default 0
              */
             score_threshold: number;
+            /** Latency Profile */
+            latency_profile?: string | null;
             /** Enable Kg Query Expansion */
             enable_kg_query_expansion?: boolean | null;
             /** Enable Kg Chunk Injection */
@@ -15572,6 +15674,30 @@ export interface components {
              */
             approved: number;
         };
+        /** ExternalConversationAsyncIngestResponse */
+        ExternalConversationAsyncIngestResponse: {
+            /**
+             * Success
+             * @default true
+             */
+            success: boolean;
+            /**
+             * Accepted
+             * @default true
+             */
+            accepted: boolean;
+            /**
+             * Queued
+             * @default true
+             */
+            queued: boolean;
+            /** Request Id */
+            request_id: string;
+            /** Source */
+            source: string;
+            /** Source Conversation Id */
+            source_conversation_id: string;
+        };
         /**
          * ExternalConversationIngestRequest
          * @description Import conversation turns from any external chat system into MimirQ history.
@@ -16359,16 +16485,57 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** HealthDetailsResponse */
+        HealthDetailsResponse: {
+            /** Ok */
+            ok: boolean;
+            /** Status */
+            status: string;
+            /** Database */
+            database: {
+                [key: string]: unknown;
+            };
+            /** Vector */
+            vector: {
+                [key: string]: unknown;
+            };
+            /** Milvus */
+            milvus?: {
+                [key: string]: unknown;
+            } | null;
+            /** Redis */
+            redis: {
+                [key: string]: unknown;
+            };
+            /** Minio */
+            minio: {
+                [key: string]: unknown;
+            };
+            /** Dify External Knowledge */
+            dify_external_knowledge?: {
+                [key: string]: unknown;
+            } | null;
+            /** Time */
+            time: string;
+            /** Vector Backend */
+            vector_backend: string;
+            /** Use Langgraph Pipeline */
+            use_langgraph_pipeline: boolean;
+            /** Task Queue */
+            task_queue: {
+                [key: string]: unknown;
+            };
+            /** Uploads */
+            uploads: {
+                [key: string]: unknown;
+            };
+        };
         /** HealthResponse */
         HealthResponse: {
             /** Ok */
             ok: boolean;
-            /** Time */
-            time: string;
-            /** Vector Backend */
-            vector_backend?: string | null;
-            /** Use Langgraph Pipeline */
-            use_langgraph_pipeline?: boolean | null;
+            /** Status */
+            status: string;
         };
         /**
          * HistoryMessage
@@ -18915,6 +19082,18 @@ export interface components {
              */
             created_at: string;
         };
+        /** MetaDetailsResponse */
+        MetaDetailsResponse: {
+            /** Name */
+            name: string;
+            /** Api Version */
+            api_version: string;
+            build: components["schemas"]["BuildMeta"];
+            features: components["schemas"]["MetaFeatureFlags"];
+            /** Time */
+            time: string;
+            runtime: components["schemas"]["RuntimeMeta"];
+        };
         /** MetaFeatureFlags */
         MetaFeatureFlags: {
             /** Auth Mode */
@@ -18950,11 +19129,8 @@ export interface components {
             name: string;
             /** Api Version */
             api_version: string;
-            /** Time */
-            time: string;
             build: components["schemas"]["BuildMeta"];
-            features: components["schemas"]["MetaFeatureFlags"];
-            runtime: components["schemas"]["RuntimeMeta"];
+            features: components["schemas"]["PublicMetaFeatureFlags"];
         };
         /**
          * MilvusConfig
@@ -19068,17 +19244,6 @@ export interface components {
              * @default 0
              */
             image_max_bytes: number;
-        };
-        /** MinioStatus */
-        MinioStatus: {
-            /** Status */
-            status: string;
-            /** Enabled */
-            enabled: boolean;
-            /** Bucket */
-            bucket?: string | null;
-            /** Error */
-            error?: string | null;
         };
         /**
          * NavigationConfig
@@ -20127,6 +20292,21 @@ export interface components {
             service_anchor_noise_terms?: string[];
             /** Service Anchor Priority Terms */
             service_anchor_priority_terms?: string[];
+            /** Service Anchor Entity Terms */
+            service_anchor_entity_terms?: string[];
+            /** Service Anchor Leading Noise Terms */
+            service_anchor_leading_noise_terms?: string[];
+            /** Service Anchor Cutoff Terms */
+            service_anchor_cutoff_terms?: string[];
+            /** Question Anchor Generic Subject Terms */
+            question_anchor_generic_subject_terms?: string[];
+            /** Fast Response Always Labels */
+            fast_response_always_labels?: string[];
+            /**
+             * Fast Response Field Rules
+             * @default 0
+             */
+            fast_response_field_rules: number;
             /** Metadata Anchor Preflight Block Terms */
             metadata_anchor_preflight_block_terms?: string[];
             /**
@@ -20671,6 +20851,11 @@ export interface components {
             ab_variant?: string | null;
             /** Ab Weight */
             ab_weight?: number | null;
+        };
+        /** PublicMetaFeatureFlags */
+        PublicMetaFeatureFlags: {
+            /** Auth Mode */
+            auth_mode: string;
         };
         /** QAPairPreview */
         QAPairPreview: {
@@ -22495,26 +22680,8 @@ export interface components {
         ReadyResponse: {
             /** Ok */
             ok: boolean;
-            database: components["schemas"]["DatabaseStatus"];
-            vector: components["schemas"]["VectorStatus"];
-            redis: components["schemas"]["RedisStatus"];
-            minio: components["schemas"]["MinioStatus"];
-        };
-        /** RedisStatus */
-        RedisStatus: {
             /** Status */
             status: string;
-            /** Enabled */
-            enabled: boolean;
-            /** Required */
-            required: boolean;
-            /**
-             * Embedding Cache Enabled
-             * @default false
-             */
-            embedding_cache_enabled: boolean;
-            /** Error */
-            error?: string | null;
         };
         /**
          * ReferenceSource
@@ -24070,15 +24237,6 @@ export interface components {
                 [key: string]: unknown;
             };
         };
-        /** VectorStatus */
-        VectorStatus: {
-            /** Backend */
-            backend: string;
-            /** Status */
-            status: string;
-            /** Error */
-            error?: string | null;
-        };
         /** ZipImageInfo */
         ZipImageInfo: {
             /** Img Id */
@@ -24220,6 +24378,74 @@ export interface operations {
             };
         };
     };
+    health_details_api_v1_health_details_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthDetailsResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_meta_api_v1_meta_get: {
         parameters: {
             query?: never;
@@ -24272,6 +24498,74 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    get_meta_details_api_v1_meta_details_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaDetailsResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };
@@ -48078,7 +48372,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ExternalConversationIngestResponse"];
+                    "application/json": components["schemas"]["ExternalConversationIngestResponse"] | components["schemas"]["ExternalConversationAsyncIngestResponse"];
                 };
             };
             /** @description Bad Request */
@@ -48124,6 +48418,76 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    persist_dify_conversation_turn_api_v1_integrations_dify_conversation_turns_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DifyConversationTurnRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DifyConversationTurnResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

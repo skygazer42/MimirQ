@@ -20,6 +20,7 @@ import {
   ChevronRight,
   EyeOff,
   SlidersHorizontal,
+  CheckCircle2,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
@@ -1001,7 +1002,8 @@ export function ChunkList() {
                   )
                   })}
                   {healthyQualitySummaryCount > 0 ? (
-                    <span className="inline-flex h-6 items-center rounded-md border border-emerald-500/15 bg-emerald-500/8 px-1.5 text-[10px] text-emerald-700 dark:text-emerald-300">
+                    <span className="inline-flex h-6 items-center gap-1 rounded-md border border-success/25 bg-success/10 px-1.5 text-[10px] font-medium text-success">
+                      <CheckCircle2 className="h-3 w-3" />
                       {t('chunkList.filters.healthySummary', { count: healthyQualitySummaryCount })}
                     </span>
                   ) : null}

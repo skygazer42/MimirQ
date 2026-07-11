@@ -316,13 +316,13 @@ export function TopBar() {
       .replaceAll(BACKTICK, SHELL_BACKSLASH + BACKTICK)
 
   const summaryChipClass =
-    'inline-flex h-7 items-center gap-1.5 rounded-lg border border-border/55 bg-muted/20 px-2.5 text-[10.5px] font-bold uppercase tracking-tight text-muted-foreground/90 antialiased shadow-[0_1px_0_rgba(255,255,255,0.7)_inset]'
+    'inline-flex h-7 items-center gap-1.5 rounded-lg border border-border/55 bg-muted/20 px-2.5 text-[10.5px] font-bold uppercase tracking-[-0.01em] text-muted-foreground/90 antialiased shadow-[0_1px_0_rgba(255,255,255,0.7)_inset]'
   const fileMetaChipClass =
-    'inline-flex h-5 min-w-0 items-center gap-1 rounded-md border border-border/45 bg-background/60 px-1.5 text-[9px] font-bold tracking-tight text-muted-foreground/80 antialiased'
+    'inline-flex h-5 min-w-0 items-center gap-1 rounded-md border border-border/45 bg-background/60 px-1.5 text-[9px] font-bold tracking-[-0.01em] text-muted-foreground/80 antialiased'
   const stateChipClass =
-    'inline-flex h-7 items-center gap-1.5 rounded-lg border px-2.5 text-[10.5px] font-bold uppercase tracking-tight antialiased shadow-[0_1px_0_rgba(255,255,255,0.7)_inset]'
+    'inline-flex h-7 items-center gap-1.5 rounded-lg border px-2.5 text-[10.5px] font-bold uppercase tracking-[-0.01em] antialiased shadow-[0_1px_0_rgba(255,255,255,0.7)_inset]'
   const actionButtonClass =
-    'h-8 rounded-lg px-2.5 text-[11px] font-bold uppercase tracking-tight text-muted-foreground/90 hover:bg-primary/8 hover:text-primary transition-all antialiased'
+    'h-8 rounded-lg px-2.5 text-[11px] font-bold uppercase tracking-[-0.01em] text-muted-foreground/90 hover:bg-primary/8 hover:text-primary transition-all antialiased'
   const visibleFileName =
     currentFileItem.displayName || previewData?.filename || currentFile.name
   const visibleFileType =
@@ -481,14 +481,14 @@ export function TopBar() {
         <div data-current-file-summary className="flex min-w-0 items-center gap-3">
           <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/5 text-primary shadow-[0_1px_0_rgba(255,255,255,0.8)_inset,0_4px_12px_-4px_rgba(var(--primary-rgb),0.2)]">
             <FileText className="h-5 w-5" strokeWidth={2.5} />
-            <div className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full border border-background bg-primary text-[8px] font-black text-white shadow-sm">
+            <div className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full border border-background bg-primary text-[8px] font-black text-primary-foreground shadow-sm">
               {currentFileIndex + 1}
             </div>
           </div>
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
               <span
-                className="max-w-full truncate text-[13px] font-black tracking-tight text-foreground sm:max-w-[28rem] xl:max-w-[34rem]"
+                className="max-w-full truncate text-[13px] font-black tracking-[-0.01em] text-foreground sm:max-w-[28rem] xl:max-w-[34rem]"
                 title={visibleFileName}
               >
                 {visibleFileName}
@@ -497,7 +497,7 @@ export function TopBar() {
             <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
               {visibleFileType ? (
                 <span className={cn(fileMetaChipClass, 'border-primary/20 bg-primary/5 text-primary/90')}>
-                  <span className="font-black uppercase tracking-widest">{String(visibleFileType).toUpperCase()}</span>
+                  <span className="font-black uppercase tracking-[0.18em]">{String(visibleFileType).toUpperCase()}</span>
                 </span>
               ) : null}
               <span className={fileMetaChipClass}>
@@ -517,7 +517,7 @@ export function TopBar() {
         <div className="flex min-w-0 flex-wrap items-center gap-2 px-0.5">
           <div className="flex items-center gap-1 rounded-lg border border-border/50 bg-muted/10 p-0.5 shadow-[inset_0_1px_2px_rgba(0,0,0,0.03)]">
             <span className={summaryChipClass}>
-              <span className="opacity-50 tracking-widest">{t('topBar.strategyLabel')}</span>
+              <span className="opacity-50 tracking-[0.18em]">{t('topBar.strategyLabel')}</span>
               <span className="text-foreground" title={effectiveChunkStrategy}>
                 {getChunkStrategyLabel(effectiveChunkStrategy)}
               </span>
@@ -537,7 +537,7 @@ export function TopBar() {
             </span>
 
             <span className={summaryChipClass}>
-              <span className="opacity-50 tracking-widest">{t('topBar.paramsLabel')}</span>
+              <span className="opacity-50 tracking-[0.18em]">{t('topBar.paramsLabel')}</span>
               <span
                 className="font-black tabular-nums text-foreground"
                 title={visibleChunkUnit}
@@ -560,7 +560,7 @@ export function TopBar() {
                 <div
                   className={cn(
                     'h-1.5 w-1.5 rounded-full shadow-[0_0_8px_rgba(var(--primary-rgb),0.4)]',
-                    previewData.chunks_truncated ? 'bg-amber-500' : 'bg-primary'
+                    previewData.chunks_truncated ? 'bg-warning' : 'bg-primary'
                   )}
                 />
                 <span className="font-black tabular-nums text-foreground/90">
@@ -584,7 +584,7 @@ export function TopBar() {
 
             {previewData?.parse_cache_hit ? (
               <span
-                className={cn(stateChipClass, 'border-violet-500/20 bg-violet-500/5 text-violet-600 dark:text-violet-400')}
+                className={cn(stateChipClass, 'border-accent/20 bg-accent/5 text-accent dark:text-violet-400')}
                 title={t('topBar.status.parseCacheAgeTitle', {
                   age: previewData.parse_cache_age_ms ?? '-',
                 })}
@@ -620,14 +620,14 @@ export function TopBar() {
 
       <div className="flex flex-wrap items-center gap-2 xl:justify-end">
         {submitSuccess ? (
-          <div className="flex items-center gap-2 rounded-xl border border-success/30 bg-success/10 px-3 py-1.5 text-xs font-black uppercase tracking-widest text-success animate-in fade-in slide-in-from-right-4 motion-reduce:animate-none shadow-[0_2px_12px_-4px_rgba(16,185,129,0.2)]">
+          <div className="flex items-center gap-2 rounded-xl border border-success/30 bg-success/10 px-3 py-1.5 text-xs font-black uppercase tracking-[0.18em] text-success animate-in fade-in slide-in-from-right-4 motion-reduce:animate-none shadow-[0_2px_12px_-4px_rgba(16,185,129,0.2)]">
             <Check className="w-4 h-4" strokeWidth={3} />
             {t('topBar.submitSuccess')}
           </div>
         ) : null}
 
         {isPreviewDirty && !submitSuccess && !error ? (
-          <div className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-black uppercase tracking-widest text-amber-600 dark:text-amber-400 shadow-[0_2px_12px_-4px_rgba(245,158,11,0.2)]">
+          <div className="flex items-center gap-2 rounded-xl border border-warning/30 bg-warning/10 px-3 py-1.5 text-xs font-black uppercase tracking-[0.18em] text-warning dark:text-warning shadow-[0_2px_12px_-4px_hsl(var(--warning)/0.24)]">
             <AlertCircle className="w-4 h-4" strokeWidth={3} />
             {t('topBar.dirtyWarning')}
           </div>
@@ -644,11 +644,11 @@ export function TopBar() {
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-black uppercase tracking-tight leading-none">
+                <span className="text-xs font-black uppercase tracking-[-0.01em] leading-none">
                   {topBarError.title}
                 </span>
                 {topBarError.badge ? (
-                  <span className="rounded-full border border-destructive/30 bg-background/80 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest leading-none text-destructive/90 antialiased">
+                  <span className="rounded-full border border-destructive/30 bg-background/80 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.18em] leading-none text-destructive/90 antialiased">
                     {topBarError.badge}
                   </span>
                 ) : null}

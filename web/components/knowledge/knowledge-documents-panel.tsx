@@ -431,7 +431,7 @@ export function KnowledgeDocumentsPanel({
   const iconShellClassName =
     'relative overflow-hidden shadow-[inset_0_1px_0_hsl(var(--card)/0.72),0_10px_20px_-18px_hsl(var(--foreground)/0.18)] backdrop-blur-[6px]'
   const inventoryStatCardClassName =
-    'group relative overflow-hidden rounded-none border-0 border-l border-border/45 bg-transparent px-3 py-1.5 shadow-none transition-colors hover:bg-slate-50/70 dark:border-border/60 dark:bg-transparent dark:hover:bg-muted/10'
+    'group relative overflow-hidden rounded-none border-0 border-l border-border/45 bg-transparent px-3 py-1.5 shadow-none transition-colors hover:bg-muted/40 dark:border-border/60 dark:bg-transparent dark:hover:bg-muted/10'
   const checkboxCellClassName =
     'flex size-7 items-center justify-center rounded-[10px] border border-border/55 bg-card/72 shadow-[inset_0_1px_0_hsl(var(--card)/0.82),0_8px_16px_-14px_hsl(var(--primary)/0.28)] dark:border-border/65 dark:bg-background/66'
   const checkboxInputClassName =
@@ -792,12 +792,12 @@ export function KnowledgeDocumentsPanel({
 
       <div
         className={cn(
-          'flex min-h-0 flex-col overflow-hidden rounded-none border-0 bg-white shadow-none dark:bg-background',
+          'flex min-h-0 flex-col overflow-hidden rounded-none border-0 bg-background shadow-none dark:bg-background',
           embedded && 'h-full flex-1',
           embedded ? 'h-full' : 'min-h-[560px]'
         )}
       >
-        <div className="relative overflow-hidden border-b border-border/45 bg-white px-4 pb-2.5 pt-3.5 dark:border-border/60 dark:bg-background">
+        <div className="relative overflow-hidden border-b border-border/45 bg-background px-4 pb-2.5 pt-3.5 dark:border-border/60 dark:bg-background">
           <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,hsl(var(--primary)/0.42),transparent)]" />
           <div className="pointer-events-none absolute right-8 top-4 h-20 w-40 rounded-full bg-info/10 blur-3xl" />
           <div className="relative z-10 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -893,7 +893,7 @@ export function KnowledgeDocumentsPanel({
               compactEmptyInventory && 'overflow-visible'
             )}
           >
-            <div className="border-b border-border/45 bg-white px-3 py-2 dark:border-border/60 dark:bg-background">
+            <div className="border-b border-border/45 bg-background px-3 py-2 dark:border-border/60 dark:bg-background">
               {inventoryToolbar}
             </div>
             <div
@@ -1132,11 +1132,11 @@ export function KnowledgeDocumentsPanel({
                         <col className="w-[8.5rem]" />
                       </colgroup>
                       {/* sticky top-0 z-10 bg-card/92 px-3 py-2 font-medium dark:bg-background/90 */}
-                      <thead className="border-b border-border/50 bg-white text-[11px] text-muted-foreground/74 dark:border-border/60 dark:bg-background">
+                      <thead className="border-b border-border/50 bg-background text-[11px] text-muted-foreground/74 dark:border-border/60 dark:bg-background">
                         <tr>
                           <th
                             colSpan={tableColumnCount}
-                            className="sticky top-0 z-10 bg-white px-3 py-2 font-medium dark:bg-background"
+                            className="sticky top-0 z-10 bg-background px-3 py-2 font-medium dark:bg-background"
                           >
                             <div
                               className="grid items-center gap-3"
@@ -1173,7 +1173,7 @@ export function KnowledgeDocumentsPanel({
                           </th>
                         </tr>
                       </thead>
-                      <tbody className="bg-white dark:bg-background">
+                      <tbody className="bg-background dark:bg-background">
                         {docsTablePaddingTop > 0 ? (
                           <tr>
                             <td
@@ -1226,7 +1226,7 @@ export function KnowledgeDocumentsPanel({
                                 colSpan={tableColumnCount}
                                 className="border-b border-border/40 px-3 py-0"
                               >
-                                <div className="rounded-none border-0 bg-transparent shadow-none transition-colors duration-150 group-hover/row:bg-slate-50/80 dark:group-hover/row:bg-muted/10">
+                                <div className="rounded-none border-0 bg-transparent shadow-none transition-colors duration-150 group-hover/row:bg-muted/40 dark:group-hover/row:bg-muted/10">
                                   <div
                                     className="grid min-h-[54px] items-center gap-3 px-0 py-2"
                                     style={{

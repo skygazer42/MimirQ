@@ -61,8 +61,6 @@ def _cache_jwt_identity(request: Request, *, payload: dict, tenant_uuid: UUID) -
 
 
 async def _preferred_jwt_tenant_id(request: Request) -> UUID | None:
-    if not bool(getattr(settings, "TENANT_PREFER_JWT_TENANT", False)):
-        return None
     if tenant_uuid := _tenant_uuid_from_state(request):
         return tenant_uuid
 

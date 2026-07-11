@@ -156,7 +156,7 @@ export function EvidenceSuiteWorkbenchShell({
   return (
     <div className="space-y-4">
       {pendingFeedbackId ? (
-        <div className="rounded-2xl border border-amber-500/25 bg-amber-500/8 px-4 py-3">
+        <div className="rounded-2xl border border-warning/25 bg-warning/8 px-4 py-3">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-1">
               <div className="text-sm font-semibold text-foreground">导入待处理反馈</div>
@@ -196,7 +196,7 @@ export function EvidenceSuiteWorkbenchShell({
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
         <SuiteListPanel
           datasetLabel={datasetLoading ? '加载中…' : dataset?.name || datasetId || '-'}
           suiteQuery={suiteQuery}

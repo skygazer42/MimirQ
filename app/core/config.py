@@ -408,6 +408,8 @@ class Settings(BaseSettings):
     # Optional: ingest structured DB metadata (catalog/profiling) from MySQL/SQLServer.
     # Disabled by default because it requires outbound DB connectivity and careful secrets handling.
     DB_CATALOG_ENABLED: bool = False
+    # Explicit CIDR allowlist for DB connector egress. Empty means only public destinations are allowed.
+    CONNECTOR_DB_EGRESS_ALLOW_CIDRS: str = ""
     # Optional: ingest bounded row snapshots (for TAG recall) alongside DB catalog metadata.
     # This is off by default and intentionally bounded by strict caps.
     DB_CATALOG_ROW_SYNC_ENABLED: bool = False
@@ -2194,6 +2196,8 @@ class Settings(BaseSettings):
     TENANT_HEADER: str = "X-Tenant-ID"
     # Optional hardening: when enabled (and JWT tenant claim is available), prefer the verified
     # tenant from the token over a spoofable header.
+    # Deprecated compatibility setting. When JWT_TENANT_CLAIM is configured,
+    # tenant resolution is always bound to the verified claim.
     TENANT_PREFER_JWT_TENANT: bool = False
 
     # Rate Limiting

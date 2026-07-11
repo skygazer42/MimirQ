@@ -95,9 +95,9 @@ const PRECHECK_SAMPLE_NUMERATOR = 3
 const PRECHECK_SAMPLE_DENOMINATOR = 1000
 const PRECHECK_SAMPLE_MAX = 2000
 const INGESTION_BACKGROUND_CLASS =
-  'bg-white bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.10),transparent_34rem)] dark:bg-background'
+  'bg-background bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.10),transparent_34rem)] dark:bg-background'
 const INGESTION_HERO_PANEL_CLASS =
-  'relative overflow-hidden rounded-[28px] border border-sky-200/55 bg-[linear-gradient(135deg,rgba(248,253,255,0.92),rgba(229,245,255,0.72)_45%,rgba(255,255,255,0.82))] shadow-[0_24px_70px_-48px_rgba(14,116,144,0.55)] backdrop-blur-2xl dark:border-sky-300/15 dark:bg-[linear-gradient(135deg,rgba(8,21,34,0.82),rgba(8,47,73,0.36)_48%,rgba(15,23,42,0.72))]'
+  'relative overflow-hidden rounded-[28px] border border-info/30 bg-[linear-gradient(135deg,rgba(248,253,255,0.92),rgba(229,245,255,0.72)_45%,rgba(255,255,255,0.82))] shadow-[0_24px_70px_-48px_rgba(14,116,144,0.55)] backdrop-blur-2xl dark:border-sky-300/15 dark:bg-[linear-gradient(135deg,rgba(8,21,34,0.82),rgba(8,47,73,0.36)_48%,rgba(15,23,42,0.72))]'
 
 type IngestionMode = 'sales-audit' | 'execution-monitor'
 type SampleDisposition = 'approved' | 'manual'
@@ -4624,11 +4624,11 @@ export default function KnowledgeIngestionPageClient() {
                   aria-hidden="true"
                 />
                 <div
-                  className="pointer-events-none absolute -right-10 -top-14 size-44 rounded-full bg-sky-300/22 blur-3xl"
+                  className="pointer-events-none absolute -right-10 -top-14 size-44 rounded-full bg-info/30 blur-3xl"
                   aria-hidden="true"
                 />
                 <div
-                  className="pointer-events-none absolute bottom-0 left-8 right-8 h-px bg-gradient-to-r from-transparent via-sky-300/65 to-transparent"
+                  className="pointer-events-none absolute bottom-0 left-8 right-8 h-px bg-[linear-gradient(90deg,transparent,hsl(var(--info)/0.38),transparent)]"
                   aria-hidden="true"
                 />
                 <div
@@ -4861,7 +4861,7 @@ export default function KnowledgeIngestionPageClient() {
                     <div className="relative z-10 space-y-2">
                       <section className={cn(SALES_PANEL_CLASS, 'p-2.5')}>
                         <div className="grid gap-1.5 xl:grid-cols-[184px_minmax(0,1fr)] xl:items-stretch">
-                          <div className="rounded-[0.9rem] border border-border/50 bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(248,250,252,0.9))] px-2.5 py-2">
+                          <div className="rounded-[0.9rem] border border-border/50 bg-[linear-gradient(180deg,hsl(var(--card)),hsl(var(--muted)/0.3))] px-2.5 py-2">
                             <div className="flex items-center justify-between gap-2">
                               <div className="text-[7px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
                                 入库依据

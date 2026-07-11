@@ -13,7 +13,7 @@ function cloneGraphData(data: GraphData): GraphData {
 
 async function isKgEnabled(): Promise<boolean> {
   try {
-    const meta = await metaApi.get()
+    const meta = await metaApi.details()
     return meta.features?.kg_enabled !== false
   } catch {
     return true
