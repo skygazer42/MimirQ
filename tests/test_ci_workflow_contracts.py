@@ -36,3 +36,9 @@ def test_fresh_database_migrations_widen_alembic_revision_storage() -> None:
 
     assert "ALTER TABLE alembic_version" in migration
     assert "VARCHAR(255)" in migration
+
+
+def test_backend_dockerfile_uses_bundled_buildkit_frontend() -> None:
+    dockerfile = _read("docker/Dockerfile")
+
+    assert not dockerfile.lstrip().startswith("# syntax=docker/dockerfile:")
