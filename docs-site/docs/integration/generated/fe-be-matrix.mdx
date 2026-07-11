@@ -175,6 +175,7 @@ sidebar_position: 10
 
 | Path |
 | --- |
+| `/api/v1/integrations/dify/conversation-turns` |
 | `/api/v1/integrations/dify/retrieval` |
 
 ### Documents
@@ -329,6 +330,7 @@ sidebar_position: 10
 | Path |
 | --- |
 | `/api/v1/health` |
+| `/api/v1/health/details` |
 | `/api/v1/health/ready` |
 
 ### Industry Rules
@@ -410,6 +412,7 @@ sidebar_position: 10
 | Path |
 | --- |
 | `/api/v1/meta` |
+| `/api/v1/meta/details` |
 
 ### Observability
 
@@ -594,11 +597,10 @@ sidebar_position: 10
 | `chat.ts` | `/api/v1/chat` |
 | `connectors.ts` | `/api/v1/connectors`, `/api/v1/connectors/configs`, `/api/v1/connectors/configs/{config_id}`, `/api/v1/connectors/configs/{config_id}/run`, `/api/v1/connectors/runs`, `/api/v1/connectors/runs/{run_id}`, `/api/v1/connectors/runs/{run_id}/cancel`, `/api/v1/connectors/runs/{run_id}/resume`, `/api/v1/connectors/runs/{run_id}/retry-failed`, `/api/v1/connectors/scheduled/tick`, `/api/v1/connectors/validate` |
 | `datasets.ts` | `/api/v1/dataset-categories/`, `/api/v1/dataset-categories/{category_id}`, `/api/v1/dataset-categories/{category_id}/move`, `/api/v1/datasets/`, `/api/v1/datasets/{dataset_id}`, `/api/v1/datasets/{dataset_id}/categories`, `/api/v1/datasets/{dataset_id}/clone`, `/api/v1/datasets/{dataset_id}/config/export`, `/api/v1/datasets/{dataset_id}/config/import`, `/api/v1/datasets/{dataset_id}/health`, `/api/v1/datasets/{dataset_id}/ingestion-policy`, `/api/v1/datasets/{dataset_id}/ingestion-policy/rollback` … |
-| `documents.ts` | `/api/v1/documents/`, `/api/v1/documents/batch-delete`, `/api/v1/documents/batch-upload/apply-urls`, `/api/v1/documents/batch-upload/status/{batch_id}`, `/api/v1/documents/batch/access`, `/api/v1/documents/batch/archive`, `/api/v1/documents/batch/disable`, `/api/v1/documents/batch/enable`, `/api/v1/documents/batch/metadata`, `/api/v1/documents/batch/move`, `/api/v1/documents/batch/reingest`, `/api/v1/documents/batch/retry` … |
+| `documents.ts` | `/api/v1/documents/batch-delete`, `/api/v1/documents/batch-upload/apply-urls`, `/api/v1/documents/batch-upload/status/{batch_id}`, `/api/v1/documents/batch/access`, `/api/v1/documents/batch/archive`, `/api/v1/documents/batch/disable`, `/api/v1/documents/batch/enable`, `/api/v1/documents/batch/metadata`, `/api/v1/documents/batch/move`, `/api/v1/documents/batch/reingest`, `/api/v1/documents/batch/retry`, `/api/v1/documents/batch/unarchive` … |
 | `evidence.ts` | `/api/v1/evidence/datasets/{dataset_id}/drift-audit`, `/api/v1/evidence/items/{item_id}`, `/api/v1/evidence/items/{item_id}/approve`, `/api/v1/evidence/items/{item_id}/archive`, `/api/v1/evidence/items/{item_id}/review`, `/api/v1/evidence/suites`, `/api/v1/evidence/suites/{suite_id}`, `/api/v1/evidence/suites/{suite_id}/dashboard`, `/api/v1/evidence/suites/{suite_id}/drift-audit`, `/api/v1/evidence/suites/{suite_id}/export`, `/api/v1/evidence/suites/{suite_id}/hardcase-candidates`, `/api/v1/evidence/suites/{suite_id}/items` … |
-| `health.ts` | `/api/v1/health`, `/api/v1/health/ready` |
-| `meta.ts` | `/api/v1/meta` |
-| `parsing.source.test.ts` | `/api/v1/parsing/documents/{document_id}/extract` |
+| `health.ts` | `/api/v1/health`, `/api/v1/health/details`, `/api/v1/health/ready` |
+| `meta.ts` | `/api/v1/meta`, `/api/v1/meta/details` |
 | `parsing.ts` | `/api/v1/parsing/documents/{document_id}/content`, `/api/v1/parsing/documents/{document_id}/extract`, `/api/v1/parsing/documents/{document_id}/parse` |
 | `pipeline.ts` | `/api/v1/pipeline/auto-annotations`, `/api/v1/pipeline/capabilities`, `/api/v1/pipeline/chunk-preview`, `/api/v1/pipeline/clean-preview`, `/api/v1/pipeline/clean-rules`, `/api/v1/pipeline/extract-keywords`, `/api/v1/pipeline/governance-analyze`, `/api/v1/pipeline/governance-profiles`, `/api/v1/pipeline/governance-profiles/import`, `/api/v1/pipeline/governance-profiles/{profile_ref}`, `/api/v1/pipeline/governance-profiles/{profile_ref}/resolved`, `/api/v1/pipeline/learn-common-lines` … |
 | `rag.ts` | `/api/v1/rag/retrieve` |
