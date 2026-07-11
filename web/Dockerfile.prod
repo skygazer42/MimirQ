@@ -4,8 +4,11 @@ RUN corepack enable
 WORKDIR /app
 
 FROM base AS deps
+ARG PNPM_REGISTRY=https://registry.npmmirror.com
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=mimirq-web-pnpm-store,target=/root/.local/share/pnpm/store,sharing=locked \
+    pnpm config set registry "$PNPM_REGISTRY" \
+    && pnpm install --frozen-lockfile
 
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules

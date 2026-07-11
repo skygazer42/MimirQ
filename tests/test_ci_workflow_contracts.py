@@ -64,3 +64,15 @@ def test_cpu_torch_wheels_match_linux_runtime_requirements() -> None:
         assert set(re.findall(r"\btorchvision-([0-9.]+)\+cpu-", content)) == {
             torchvision_version.group(1)
         }
+
+
+def test_docker_ci_supports_cold_web_builds() -> None:
+    workflow = _read(".github/workflows/ci.yml")
+    docker_job = workflow.split("\n  docker-build:", 1)[1].split(
+        "\n  retrieval-only-bounded-gate:", 1
+    )[0]
+    web_dockerfile = _read("web/Dockerfile.prod")
+
+    assert "timeout-minutes: 45" in docker_job
+    assert "target=/root/.local/share/pnpm/store" in web_dockerfile
+    assert "https://registry.npmmirror.com" in web_dockerfile
