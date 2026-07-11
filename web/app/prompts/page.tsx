@@ -66,7 +66,6 @@ import { KgExtractPromptSettings } from '@/components/kg-extract-prompt-settings
 import { KgPredicateOntologySettings } from '@/components/kg-predicate-ontology-settings'
 import { AppFrame } from '@/components/app-frame'
 import { AnalysisPageShell } from '@/components/ui/analysis-page-shell'
-import { PageHeader } from '@/components/ui/page-header'
 import { cn } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 import { reportClientError } from '@/lib/client-logging'
@@ -265,9 +264,9 @@ function PromptsPageContent() {
     currentPageIds.every((id) => selectedIds.has(id))
 
   const activeStatusBadgeClass =
-    'rounded-md border-sky-200 bg-sky-50 text-sky-700'
+    'rounded-md border-info/30 bg-info/10 text-info'
   const inactiveStatusBadgeClass =
-    'rounded-md border-slate-200 bg-slate-50 text-slate-600'
+    'rounded-md border-border bg-muted/50 text-muted-foreground'
 
   useEffect(() => {
     setCurrentPage(1)
@@ -451,79 +450,69 @@ function PromptsPageContent() {
     <AppFrame>
       <AnalysisPageShell
         title="提示词模板"
-        badge="提示词"
+        badge="模板管理"
         icon={Wand2}
+        iconImage="prompts"
         iconColor="text-primary"
-        description="创建和管理您的 RAG 对话提示词模板"
+        description="管理对话、KG 与评测模板，保障稳定输出"
         size="full"
-        showHeader={false}
+        actions={
+          <div className="grid grid-cols-4 gap-2 xl:min-w-[520px]">
+            {[
+              { label: '总数', value: templates.length, tone: 'slate' },
+              { label: '启用', value: activeCount, tone: 'blue' },
+              { label: '停用', value: inactiveCount, tone: 'slate' },
+              {
+                label: '待验证',
+                value: pendingValidationCount,
+                tone: 'slate',
+              },
+            ].map((item) => (
+              <div
+                key={item.label}
+                className={cn(
+                  'rounded-xl border bg-card/80 px-3 py-2 shadow-sm',
+                  item.tone === 'blue'
+                    ? 'border-primary/30'
+                    : 'border-border/60'
+                )}
+              >
+                <div
+                  className={cn(
+                    'text-[11px] font-semibold',
+                    item.tone === 'blue' ? 'text-primary' : 'text-muted-foreground'
+                  )}
+                >
+                  {item.label}
+                </div>
+                <div className="mt-1 text-[20px] font-semibold leading-none tabular-nums text-foreground">
+                  {item.value}
+                </div>
+              </div>
+            ))}
+          </div>
+        }
         bodyGutter="none"
         bodyClassName="!pb-0"
         bodyContainerClassName="max-w-none"
       >
-        <div className="min-h-0 space-y-4 bg-[#f8fafc] px-5 py-4">
-          <PageHeader
-            title="提示词模板"
-            description="维护对话与 KG 系统使用的模板资产；模板为系统提供稳定输出，避免干扰模板的实时编辑。"
-            iconImage="prompts"
-            icon={Wand2}
-            iconColor="text-info"
-            badge="模板管理"
-            compact
-            className="p-0"
-          >
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:min-w-[560px]">
-              {[
-                { label: '总数', value: templates.length, tone: 'slate' },
-                { label: '启用', value: activeCount, tone: 'blue' },
-                { label: '停用', value: inactiveCount, tone: 'slate' },
-                {
-                  label: '待验证',
-                  value: pendingValidationCount,
-                  tone: 'slate',
-                },
-              ].map((item) => (
-                <div
-                  key={item.label}
-                  className={cn(
-                    'rounded-xl border bg-card px-4 py-3 shadow-[0_1px_0_rgba(15,23,42,0.03)]',
-                    item.tone === 'blue'
-                      ? 'border-blue-200/90'
-                      : 'border-slate-200/80'
-                  )}
-                >
-                  <div
-                    className={cn(
-                      'text-[13px] font-semibold',
-                      item.tone === 'blue' ? 'text-blue-600' : 'text-slate-500'
-                    )}
-                  >
-                    {item.label}
-                  </div>
-                  <div className="mt-3 text-[22px] font-semibold leading-none tabular-nums text-slate-950">
-                    {item.value}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </PageHeader>
-
+        <div className="min-h-0 space-y-4 bg-transparent px-6 pb-4">
           <Tabs
             value={scenarioFilter}
             onValueChange={setScenarioFilter}
             className="w-full"
           >
-            <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 rounded-xl border border-slate-200/80 bg-card p-1.5 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
+            <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 rounded-xl border border-border/60 bg-card p-1.5 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
               {SCENARIO_DEFINITIONS.map((def) => (
                 <TabsTrigger
                   key={def.value}
                   value={def.value}
-                  className="h-9 gap-1.5 rounded-lg px-3 text-[13px] font-medium data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:shadow-sm"
+                  className="h-9 gap-1.5 rounded-lg px-3 text-[13px] font-medium data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-sm"
                 >
                   <span>{def.label}</span>
                   <Badge
                     variant="secondary"
-                    className="h-5 min-w-[1.5rem] justify-center rounded-md bg-slate-100 px-1.5 text-[11px] font-semibold text-slate-600 data-[active=true]:bg-blue-100 data-[active=true]:text-blue-700"
+                    className="h-5 min-w-[1.5rem] justify-center rounded-md bg-muted px-1.5 text-[11px] font-semibold text-muted-foreground data-[active=true]:bg-primary/15 data-[active=true]:text-primary"
                     data-active={scenarioFilter === def.value}
                   >
                     {scenarioCounts[def.value] ?? 0}
@@ -533,21 +522,21 @@ function PromptsPageContent() {
             </TabsList>
           </Tabs>
 
-          <section className="rounded-xl border border-slate-200/80 bg-card shadow-[0_1px_0_rgba(15,23,42,0.03)]">
-            <div className="flex flex-col gap-3 border-b border-slate-200/75 p-4 xl:flex-row xl:items-center">
+          <section className="rounded-xl border border-border/60 bg-card shadow-[0_1px_0_rgba(15,23,42,0.03)]">
+            <div className="flex flex-col gap-3 border-b border-border/60 p-4 xl:flex-row xl:items-center">
               <SearchInput
                 value={searchQuery}
                 onValueChange={setSearchQuery}
                 placeholder="搜索模板名称、描述、内容或标签..."
                 containerClassName="min-w-0 flex-1"
-                inputClassName="h-10 rounded-lg border-slate-200/90 bg-card text-[13px]"
+                inputClassName="h-10 rounded-lg border-border/60 bg-card text-[13px]"
               />
               <div className="grid grid-cols-2 gap-3 md:flex md:items-center">
                 <Select
                   value={categoryFilter}
                   onValueChange={setCategoryFilter}
                 >
-                  <SelectTrigger className="h-10 w-full rounded-lg border-slate-200/90 bg-card text-[13px] md:w-[150px]">
+                  <SelectTrigger className="h-10 w-full rounded-lg border-border/60 bg-card text-[13px] md:w-[150px]">
                     <SelectValue placeholder="所有分类" />
                   </SelectTrigger>
                   <SelectContent>
@@ -560,7 +549,7 @@ function PromptsPageContent() {
                   </SelectContent>
                 </Select>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="h-10 w-full rounded-lg border-slate-200/90 bg-card text-[13px] md:w-[150px]">
+                  <SelectTrigger className="h-10 w-full rounded-lg border-border/60 bg-card text-[13px] md:w-[150px]">
                     <SelectValue placeholder="所有状态" />
                   </SelectTrigger>
                   <SelectContent>
@@ -571,7 +560,7 @@ function PromptsPageContent() {
                 </Select>
                 <Button
                   onClick={handleCreate}
-                  className="h-10 gap-1.5 rounded-lg bg-blue-600 px-4 text-[13px] font-semibold text-info-foreground hover:bg-blue-700"
+                  className="h-10 gap-1.5 rounded-lg bg-primary px-4 text-[13px] font-semibold text-info-foreground hover:bg-primary"
                 >
                   <Plus className="size-4" />
                   创建模板
@@ -581,7 +570,7 @@ function PromptsPageContent() {
                   variant="outline"
                   onClick={handleSyncBuiltins}
                   disabled={syncingBuiltins}
-                  className="h-10 gap-1.5 rounded-lg border-blue-100 bg-blue-50 px-3 text-[13px] font-semibold text-blue-700 hover:bg-blue-100 hover:text-blue-800 disabled:opacity-60"
+                  className="h-10 gap-1.5 rounded-lg border-primary/20 bg-primary/10 px-3 text-[13px] font-semibold text-primary hover:bg-primary/15 hover:text-primary disabled:opacity-60"
                 >
                   <Wand2 className="size-4" />
                   {syncingBuiltins ? '同步中' : '同步内置模板'}
@@ -590,47 +579,47 @@ function PromptsPageContent() {
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
-                      className="group h-10 justify-between rounded-lg border-slate-200/90 !bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] px-2.5 text-left !text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:!bg-[linear-gradient(180deg,#ffffff_0%,#f2f7ff_100%)] hover:!text-slate-900 data-[state=open]:border-blue-200 data-[state=open]:!bg-[linear-gradient(180deg,#ffffff_0%,#f2f7ff_100%)] data-[state=open]:!text-slate-900 md:w-[286px]"
+                      className="group h-10 justify-between rounded-lg border-border/60 !bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] px-2.5 text-left !text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:!bg-[linear-gradient(180deg,#ffffff_0%,#f2f7ff_100%)] hover:!text-foreground data-[state=open]:border-primary/30 data-[state=open]:!bg-[linear-gradient(180deg,#ffffff_0%,#f2f7ff_100%)] data-[state=open]:!text-foreground md:w-[286px]"
                     >
-                      <span className="mr-2 flex size-7 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-blue-50 text-blue-600 transition-colors group-hover:bg-blue-100/70">
+                      <span className="mr-2 flex size-7 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary transition-colors group-hover:bg-primary/10">
                         <Wand2 className="size-3.5" />
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="flex min-w-0 items-center gap-1.5 leading-4">
-                          <span className="truncate text-[13px] font-semibold text-slate-900">
+                          <span className="truncate text-[13px] font-semibold text-foreground">
                             场景绑定
                           </span>
-                          <span className="rounded-full border border-blue-100 bg-blue-50 px-1.5 py-0 text-[9px] font-semibold leading-4 text-blue-600">
+                          <span className="rounded-full border border-primary/20 bg-primary/10 px-1.5 py-0 text-[9px] font-semibold leading-4 text-primary">
                             KG
                           </span>
                         </span>
-                        <span className="block truncate text-[11px] font-normal leading-4 text-slate-500">
+                        <span className="block truncate text-[11px] font-normal leading-4 text-muted-foreground">
                           抽取 · 召回 · 关系治理
                         </span>
                       </span>
-                      <ChevronDown className="ml-2 size-4 shrink-0 text-slate-400 transition-transform group-data-[state=open]:rotate-180 group-data-[state=open]:text-blue-500" />
+                      <ChevronDown className="ml-2 size-4 shrink-0 text-muted-foreground/70 transition-transform group-data-[state=open]:rotate-180 group-data-[state=open]:text-primary" />
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent
                     align="end"
-                    className="max-h-[76vh] w-[540px] overflow-y-auto rounded-2xl border-slate-200 bg-card p-0 shadow-[0_18px_50px_rgba(15,23,42,0.14)]"
+                    className="max-h-[76vh] w-[540px] overflow-y-auto rounded-2xl border-border bg-card p-0 shadow-[0_18px_50px_rgba(15,23,42,0.14)]"
                   >
-                    <div className="border-b border-slate-100 bg-[linear-gradient(180deg,#f8fbff_0%,#ffffff_100%)] px-4 py-3">
+                    <div className="border-b border-border/50 bg-[linear-gradient(180deg,#f8fbff_0%,#ffffff_100%)] px-4 py-3">
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <div className="text-[13px] font-semibold text-slate-950">
+                          <div className="text-[13px] font-semibold text-foreground">
                             场景绑定
                           </div>
-                          <div className="mt-1 text-[12px] leading-5 text-slate-500">
+                          <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
                             把提示词模板绑定到 KG 抽取、对话召回和关系治理。
                           </div>
                         </div>
-                        <span className="rounded-full border border-slate-200 bg-card px-2.5 py-1 text-[10px] font-semibold text-slate-500">
+                        <span className="rounded-full border border-border bg-card px-2.5 py-1 text-[10px] font-semibold text-muted-foreground">
                           低频配置
                         </span>
                       </div>
                     </div>
-                    <div className="space-y-3 bg-slate-50/45 p-3">
+                    <div className="space-y-3 bg-muted/40 p-3">
                       <KgExtractPromptSettings templates={templates} />
                       <KgPredicateOntologySettings />
                     </div>
@@ -640,10 +629,10 @@ function PromptsPageContent() {
             </div>
 
             {selectedIds.size > 0 ? (
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-sky-100 bg-sky-50/70 px-4 py-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-info/20 bg-info/5 px-4 py-2">
                 <div className="flex items-center gap-2">
                   <Checkbox checked={true} onCheckedChange={handleSelectAll} />
-                  <span className="text-[12px] font-medium text-sky-800">
+                  <span className="text-[12px] font-medium text-info">
                     已选择 {selectedIds.size} 个模板
                   </span>
                 </div>
@@ -651,7 +640,7 @@ function PromptsPageContent() {
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-7 rounded-md border-sky-200 bg-card px-2.5 text-[11px] text-sky-700 hover:bg-sky-50"
+                    className="h-7 rounded-md border-info/30 bg-card px-2.5 text-[11px] text-info hover:bg-info/10"
                     onClick={() => handleBatchActivate(true)}
                   >
                     批量启用
@@ -659,7 +648,7 @@ function PromptsPageContent() {
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-7 rounded-md border-slate-200 bg-card px-2.5 text-[11px] text-slate-700 hover:bg-slate-50"
+                    className="h-7 rounded-md border-border bg-card px-2.5 text-[11px] text-foreground/85 hover:bg-muted/50"
                     onClick={() => handleBatchActivate(false)}
                   >
                     批量停用
@@ -725,7 +714,7 @@ function PromptsPageContent() {
                     {templates.length === 0 ? (
                       <Button
                         onClick={handleCreate}
-                        className="h-8 rounded-lg bg-blue-600 px-3 text-xs text-info-foreground hover:bg-blue-700"
+                        className="h-8 rounded-lg bg-primary px-3 text-xs text-info-foreground hover:bg-primary"
                       >
                         <Plus className="mr-2 size-4" />
                         创建第一个模板
@@ -739,7 +728,7 @@ function PromptsPageContent() {
                 <>
                   <div className="overflow-x-auto">
                     <div className="min-w-[1080px]">
-                      <div className="grid grid-cols-[40px_minmax(220px,1fr)_78px_62px_130px_136px_350px] items-center border-b border-slate-200/75 bg-slate-50/65 px-4 py-3 text-[12px] font-semibold text-slate-500">
+                      <div className="grid grid-cols-[40px_minmax(220px,1fr)_78px_62px_130px_136px_350px] items-center border-b border-border/60 bg-muted/40 px-4 py-3 text-[12px] font-semibold text-muted-foreground">
                         <Checkbox
                           checked={allCurrentPageSelected}
                           onCheckedChange={handleSelectAll}
@@ -751,13 +740,13 @@ function PromptsPageContent() {
                         <div>更新时间</div>
                         <div>操作</div>
                       </div>
-                      <div className="max-h-[calc(100vh-360px)] divide-y divide-slate-100 overflow-y-auto">
+                      <div className="max-h-[calc(100vh-360px)] divide-y divide-border/50 overflow-y-auto">
                         {paginatedTemplates.map((template) => (
                           <div
                             key={template.id}
                             className={cn(
-                              'grid grid-cols-[40px_minmax(220px,1fr)_78px_62px_130px_136px_350px] items-center px-4 py-2 text-[13px] transition-colors hover:bg-slate-50/80',
-                              selectedIds.has(template.id) && 'bg-sky-50/60'
+                              'grid grid-cols-[40px_minmax(220px,1fr)_78px_62px_130px_136px_350px] items-center px-4 py-2 text-[13px] transition-colors hover:bg-muted/40',
+                              selectedIds.has(template.id) && 'bg-info/5'
                             )}
                           >
                             <div>
@@ -774,7 +763,7 @@ function PromptsPageContent() {
                               onClick={() => handlePreview(template)}
                             >
                               <div className="flex min-w-0 items-center gap-2">
-                                <span className="truncate font-semibold text-slate-900">
+                                <span className="truncate font-semibold text-foreground">
                                   {template.name}
                                 </span>
                                 <Badge
@@ -789,14 +778,14 @@ function PromptsPageContent() {
                                   {template.is_active ? '启用' : '停用'}
                                 </Badge>
                               </div>
-                              <div className="mt-1 truncate text-[12px] text-slate-500">
+                              <div className="mt-1 truncate text-[12px] text-muted-foreground">
                                 {template.description || '无描述'}
                               </div>
                             </button>
-                            <div className="text-slate-500">
+                            <div className="text-muted-foreground">
                               {template.category || '-'}
                             </div>
-                            <div className="tabular-nums text-slate-500">
+                            <div className="tabular-nums text-muted-foreground">
                               {template.usage_count}
                             </div>
                             <div className="flex min-w-0 flex-wrap gap-1">
@@ -808,29 +797,29 @@ function PromptsPageContent() {
                                       <Badge
                                         key={variable}
                                         variant="secondary"
-                                        className="h-6 rounded-md bg-slate-100 px-2 font-mono text-[11px] font-medium text-slate-700"
+                                        className="h-6 rounded-md bg-muted px-2 font-mono text-[11px] font-medium text-foreground/85"
                                       >
                                         {`{${variable}}`}
                                       </Badge>
                                     ))}
                                   {template.variables.length > 2 ? (
-                                    <span className="text-[11px] text-slate-400">
+                                    <span className="text-[11px] text-muted-foreground/70">
                                       +{template.variables.length - 2}
                                     </span>
                                   ) : null}
                                 </>
                               ) : (
-                                <span className="text-slate-400">-</span>
+                                <span className="text-muted-foreground/70">-</span>
                               )}
                             </div>
-                            <div className="tabular-nums text-slate-500">
+                            <div className="tabular-nums text-muted-foreground">
                               {formatDateTime(template.updated_at)}
                             </div>
                             <div className="flex items-center gap-1.5">
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-7 rounded-lg border-slate-200 px-2 text-[11px]"
+                                className="h-7 rounded-lg border-border px-2 text-[11px]"
                                 onClick={() => handlePreview(template)}
                               >
                                 <Eye className="mr-1 size-3" />
@@ -840,7 +829,7 @@ function PromptsPageContent() {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="h-7 rounded-lg border-slate-200 px-2 text-[11px]"
+                                  className="h-7 rounded-lg border-border px-2 text-[11px]"
                                   onClick={() => handleEdit(template)}
                                 >
                                   <Edit className="mr-1 size-3" />
@@ -850,7 +839,7 @@ function PromptsPageContent() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-7 rounded-lg border-slate-200 px-2 text-[11px]"
+                                className="h-7 rounded-lg border-border px-2 text-[11px]"
                                 onClick={() => handleDuplicate(template)}
                               >
                                 <Copy className="mr-1 size-3" />
@@ -859,7 +848,7 @@ function PromptsPageContent() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-7 rounded-lg border-slate-200 px-2 text-[11px]"
+                                className="h-7 rounded-lg border-border px-2 text-[11px]"
                                 onClick={() => handleToggleActive(template)}
                               >
                                 {template.is_active ? (
@@ -873,7 +862,7 @@ function PromptsPageContent() {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="h-7 rounded-lg border-red-100 px-2 text-[11px] text-red-500 hover:bg-red-50 hover:text-red-600"
+                                  className="h-7 rounded-lg border-destructive/20 px-2 text-[11px] text-destructive hover:bg-destructive/10 hover:text-destructive"
                                   onClick={() =>
                                     setDeleteTemplateTarget(template)
                                   }
@@ -889,14 +878,14 @@ function PromptsPageContent() {
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-3 border-t border-slate-200/75 px-4 py-3 text-[13px] text-slate-500 md:flex-row md:items-center md:justify-between">
+                  <div className="flex flex-col gap-3 border-t border-border/60 px-4 py-3 text-[13px] text-muted-foreground md:flex-row md:items-center md:justify-between">
                     <div>共 {filteredTemplates.length} 条</div>
                     <div className="flex flex-wrap items-center justify-end gap-3">
                       <Select
                         value={String(pageSize)}
                         onValueChange={(value) => setPageSize(Number(value))}
                       >
-                        <SelectTrigger className="h-9 w-[112px] rounded-lg border-slate-200 bg-card text-[13px]">
+                        <SelectTrigger className="h-9 w-[112px] rounded-lg border-border bg-card text-[13px]">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -910,7 +899,7 @@ function PromptsPageContent() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-9 w-9 rounded-lg border-slate-200 p-0"
+                        className="h-9 w-9 rounded-lg border-border p-0"
                         disabled={safeCurrentPage <= 1}
                         onClick={() =>
                           setCurrentPage((page) => Math.max(1, page - 1))
@@ -931,8 +920,8 @@ function PromptsPageContent() {
                           className={cn(
                             'h-9 w-9 rounded-lg p-0 text-[13px]',
                             safeCurrentPage === page
-                              ? 'bg-blue-600 text-info-foreground hover:bg-blue-700'
-                              : 'border-slate-200 bg-card text-slate-600'
+                              ? 'bg-primary text-info-foreground hover:bg-primary'
+                              : 'border-border bg-card text-muted-foreground'
                           )}
                           onClick={() => setCurrentPage(page)}
                         >
@@ -942,7 +931,7 @@ function PromptsPageContent() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-9 w-9 rounded-lg border-slate-200 p-0"
+                        className="h-9 w-9 rounded-lg border-border p-0"
                         disabled={safeCurrentPage >= totalPages}
                         onClick={() =>
                           setCurrentPage((page) =>
@@ -964,7 +953,7 @@ function PromptsPageContent() {
                           )
                             setCurrentPage(value)
                         }}
-                        className="h-9 w-16 rounded-lg border-slate-200 text-center text-[13px]"
+                        className="h-9 w-16 rounded-lg border-border text-center text-[13px]"
                       />
                       <span>页</span>
                     </div>
@@ -1009,7 +998,7 @@ function PromptsPageContent() {
 
         {/* Preview Dialog */}
         <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
-          <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto overscroll-contain rounded-2xl border border-slate-200/80 bg-card no-scrollbar">
+          <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto overscroll-contain rounded-2xl border border-border/60 bg-card no-scrollbar">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 {previewTemplate?.name}
@@ -1120,7 +1109,7 @@ function PromptsPageContent() {
 
         {/* Create/Edit Dialog */}
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto overscroll-contain rounded-2xl border border-slate-200/80 bg-card no-scrollbar">
+          <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto overscroll-contain rounded-2xl border border-border/60 bg-card no-scrollbar">
             <DialogHeader>
               <DialogTitle className="text-[15px] font-semibold">
                 {editingTemplate ? '编辑模板' : '创建新模板'}

@@ -32,7 +32,7 @@ export default function DatasetEvidencePage() {
         title="证据库（Evidence Workbench）"
         badge="Ground Truth"
         icon={ShieldCheck}
-        iconColor="text-emerald-700 dark:text-emerald-400"
+        iconColor="text-success dark:text-emerald-400"
         description={<span className="text-sm text-muted-foreground text-pretty">持久化证据资产（Suites/Items）+ 审核流 + 一键同步到回归用例库。</span>}
         actions={
           <div className="flex items-center gap-2">

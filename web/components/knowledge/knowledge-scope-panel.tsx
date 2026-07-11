@@ -148,7 +148,7 @@ export function KnowledgeScopePanel({
   const header = (
     <div className="space-y-2.5">
       <div className="flex items-start gap-2.5">
-        <div className="relative flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-sky-200/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.11))] text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_16px_28px_-24px_hsl(var(--info)/0.72)] dark:border-sky-300/20 dark:bg-background/70">
+        <div className="relative flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-info/30 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.11))] text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_16px_28px_-24px_hsl(var(--info)/0.72)] dark:border-sky-300/20 dark:bg-background/70">
           <span className="pointer-events-none absolute inset-x-1.5 top-1 h-px bg-card/80" />
           <span className="pointer-events-none absolute -right-2 -top-2 size-7 rounded-full bg-info/20 blur-xl" />
           <Filter className="relative h-3.5 w-3.5" />
@@ -160,7 +160,7 @@ export function KnowledgeScopePanel({
           <div className="mt-1 text-[13px] font-semibold leading-none text-foreground/92">
             导航
           </div>
-          <div className="mt-1.5 inline-flex max-w-full items-center rounded-full border border-sky-200/60 bg-sky-50/50 px-2 py-0.5 text-[10px] font-medium text-sky-700 dark:border-sky-300/15 dark:bg-sky-300/10 dark:text-sky-200">
+          <div className="mt-1.5 inline-flex max-w-full items-center rounded-full border border-info/30 bg-info/5 px-2 py-0.5 text-[10px] font-medium text-info dark:border-sky-300/15 dark:bg-sky-300/10 dark:text-sky-200">
             Scope Navigator
           </div>
           <p className="sr-only">
@@ -223,7 +223,7 @@ export function KnowledgeScopePanel({
             aria-expanded={datasetListExpanded}
             onClick={() => setDatasetListExpanded((prev) => !prev)}
             className={cn(
-              'group flex w-full items-center justify-between gap-2.5 rounded-md border border-border/45 bg-white px-2.5 py-2 text-left shadow-none transition-colors focus-ring dark:border-border/65 dark:bg-background/58',
+              'group flex w-full items-center justify-between gap-2.5 rounded-md border border-border/45 bg-background px-2.5 py-2 text-left shadow-none transition-colors focus-ring dark:border-border/65 dark:bg-background/58',
               datasetListExpanded
                 ? 'border-primary/25'
                 : 'hover:border-primary/25 hover:bg-card/90 dark:hover:border-border'
@@ -251,7 +251,7 @@ export function KnowledgeScopePanel({
             <section
               aria-label={t('dataset.ariaLabel')}
               className={cn(
-                'space-y-1 rounded-md border border-border/60 bg-white p-1 shadow-none dark:border-border/70 dark:bg-background/62'
+                'space-y-1 rounded-md border border-border/60 bg-background p-1 shadow-none dark:border-border/70 dark:bg-background/62'
               )}
             >
               {datasetsLoading ? (
@@ -422,11 +422,18 @@ export function KnowledgeScopePanel({
 
   if (embedded) {
     return (
-      <div className={cn('flex flex-col border-0 bg-transparent', className)}>
-        <div className="border-b border-border/45 bg-slate-50 px-3 py-3 backdrop-blur-none dark:border-border/65 dark:bg-background/54">
+      <div
+        className={cn('flex min-h-0 flex-1 flex-col border-0 bg-transparent', className)}
+      >
+        <div className="border-b border-border/45 bg-muted/50 px-3 py-3 backdrop-blur-none dark:border-border/65 dark:bg-background/54">
           {header}
         </div>
-        {body}
+        <div
+          data-knowledge-scope-panel="true"
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        >
+          {body}
+        </div>
       </div>
     )
   }

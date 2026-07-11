@@ -1,0 +1,38 @@
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _read(relative_path: str) -> str:
+    return (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+
+
+def test_main_ci_runs_database_migrations_and_integrations() -> None:
+    workflow = _read(".github/workflows/ci.yml")
+
+    assert "MIMIRQ_INTEGRATION_TESTS: \"1\"" in workflow
+    assert "make db-upgrade" in workflow
+    assert "tests/test_document_version_diff_integration.py" in workflow
+    assert "tests/test_document_versions_integration.py" in workflow
+
+
+def test_main_ci_runs_all_browser_smoke_specs_and_critical_coverage() -> None:
+    workflow = _read(".github/workflows/ci.yml")
+
+    assert "make test-web-e2e" in workflow
+    assert "pnpm run test:coverage:critical" in workflow
+
+
+def test_api_docs_workflow_actually_deploys_pages() -> None:
+    workflow = _read(".github/workflows/api-docs.yml")
+
+    assert "actions/configure-pages@" in workflow
+    assert "actions/upload-pages-artifact@" in workflow
+    assert "actions/deploy-pages@" in workflow
+
+
+def test_fresh_database_migrations_widen_alembic_revision_storage() -> None:
+    migration = _read("alembic/versions/0002_add_kg_relations.py")
+
+    assert "ALTER TABLE alembic_version" in migration
+    assert "VARCHAR(255)" in migration

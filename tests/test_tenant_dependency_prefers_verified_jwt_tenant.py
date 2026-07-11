@@ -33,7 +33,7 @@ def _jwt_token(*, secret_key: str, sub: str, tenant_id: str) -> str:
     )
 
 
-def test_tenant_dependency_defaults_to_header_when_prefer_disabled(monkeypatch):
+def test_tenant_dependency_cannot_disable_verified_jwt_tenant_binding(monkeypatch):
     monkeypatch.setenv("ENV", "production")
 
     monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
@@ -54,6 +54,20 @@ def test_tenant_dependency_defaults_to_header_when_prefer_disabled(monkeypatch):
 
     client = TestClient(_build_app())
     res = client.get("/tid", headers={"Authorization": f"Bearer {token}", "X-Tenant-ID": header_tid})
+    assert res.status_code == 200
+    assert res.json()["tenant_id"] == jwt_tid
+
+
+def test_tenant_dependency_uses_header_when_no_jwt_tenant_claim_is_configured(monkeypatch):
+    monkeypatch.setenv("ENV", "production")
+    monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
+    monkeypatch.setattr(settings, "JWT_TENANT_CLAIM", "", raising=False)
+    monkeypatch.setattr(settings, "TENANT_PREFER_JWT_TENANT", False, raising=False)
+
+    header_tid = str(uuid.uuid4())
+    client = TestClient(_build_app())
+    res = client.get("/tid", headers={"X-Tenant-ID": header_tid})
+
     assert res.status_code == 200
     assert res.json()["tenant_id"] == header_tid
 

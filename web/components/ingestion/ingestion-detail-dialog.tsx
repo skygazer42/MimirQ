@@ -235,9 +235,9 @@ export function IngestionDetailDialog({
 
           {isError && !isLoading && (
             <div className="flex-1 overflow-y-auto overscroll-contain p-6 no-scrollbar">
-              <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-700 relative z-10">
+              <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-6 text-sm text-destructive relative z-10">
                 <div className="mb-2 flex items-center gap-2">
-                  <AlertCircle className="w-5 h-5 text-red-500" />
+                  <AlertCircle className="w-5 h-5 text-destructive" />
                   <span className="font-bold">{t('errors.loadTitle')}</span>
                 </div>
                 <p>{t('errors.loadDescription')}</p>
@@ -339,18 +339,18 @@ export function IngestionDetailDialog({
             {(doc.status === 'failed' || doc.status === 'quarantined') && doc.error_message && (
               <div className={cn(
                 "rounded-2xl border p-5 shadow-inner",
-                doc.status === 'quarantined' ? "border-amber-200 bg-amber-50" : "border-red-200 bg-red-50"
+                doc.status === 'quarantined' ? "border-warning/30 bg-warning/10" : "border-destructive/30 bg-destructive/10"
               )}>
                 <div className={cn(
                   "text-sm font-bold flex items-center gap-2 mb-2",
-                  doc.status === 'quarantined' ? "text-amber-700" : "text-red-700"
+                  doc.status === 'quarantined' ? "text-warning" : "text-destructive"
                 )}>
                   <AlertCircle className="w-4 h-4" />
                   {doc.status === 'quarantined' ? t('errors.quarantineReason') : t('errors.errorMessage')}
                 </div>
 	                <pre className={cn(
 	                  "whitespace-pre-wrap break-words rounded-xl bg-card border p-4 text-xs font-mono leading-relaxed shadow-sm",
-	                  doc.status === 'quarantined' ? "border-amber-100 text-amber-700" : "border-red-100 text-red-600"
+	                  doc.status === 'quarantined' ? "border-warning/20 text-warning" : "border-destructive/20 text-destructive"
 	                )}>
 	                  {doc.error_message}
 	                </pre>

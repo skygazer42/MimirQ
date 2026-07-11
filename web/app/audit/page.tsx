@@ -60,7 +60,7 @@ const AUDIT_PANEL_CLASS = `rounded-[1.15rem] ${AUDIT_SURFACE_CLASS} bg-card/86 s
 const AUDIT_TABLE_HEAD_CLASS =
   'border-b border-border/50 bg-muted/38 text-left backdrop-blur'
 const AUDIT_TABLE_HEADER_CLASS =
-  'px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground'
+  'px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground'
 const AUDIT_MUTED_CHIP_CLASS =
   'inline-flex items-center rounded-full border border-border/60 bg-muted/45 px-2.5 py-1 text-[11px] font-medium text-muted-foreground'
 const FILTER_ALL_VALUE = '__all__'
@@ -207,6 +207,27 @@ function formatAuditResourceType(value: string | null | undefined) {
   const raw = String(value || '').trim()
   if (!raw) return '未绑定资源'
   return AUDIT_RESOURCE_TYPE_LABELS[raw] || humanizeAuditTokens(raw)
+}
+
+const AUDIT_ACTION_TONE_DOT_CLASSES = {
+  destructive: 'bg-destructive',
+  warning: 'bg-warning',
+  success: 'bg-success',
+  accent: 'bg-accent',
+  neutral: 'bg-primary/60',
+} as const
+
+type AuditActionTone = keyof typeof AUDIT_ACTION_TONE_DOT_CLASSES
+
+function auditActionTone(action: string | null | undefined): AuditActionTone {
+  const raw = String(action || '').toLowerCase()
+  if (/delete|purge|remove|destroy|revoke/.test(raw)) return 'destructive'
+  if (/quarantine|block|deny|fail|drift|stale|violation/.test(raw))
+    return 'warning'
+  if (/create|add|import|upload|restore|approve|publish/.test(raw))
+    return 'success'
+  if (/export|download|snapshot|backup/.test(raw)) return 'accent'
+  return 'neutral'
 }
 
 function formatAuditDateTime(value: string) {
@@ -830,8 +851,30 @@ function AuditLogsPageContent() {
                   审计事件
                 </h2>
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  按后端审计日志展示时间、操作者、事件名称、资源/租户与操作明细。
+                  按后端审计日志展示时间、操作者、事件名称与资源；展开单行可查看租户、请求 ID 与完整明细。
                 </p>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-medium text-muted-foreground">
+                  {(
+                    [
+                      ['destructive', '删除/清理'],
+                      ['warning', '隔离/失败'],
+                      ['success', '创建/恢复'],
+                      ['accent', '导出/快照'],
+                      ['neutral', '其他'],
+                    ] as const
+                  ).map(([toneKey, label]) => (
+                    <span key={toneKey} className="inline-flex items-center gap-1">
+                      <span
+                        aria-hidden
+                        className={cn(
+                          'size-1.5 rounded-full',
+                          AUDIT_ACTION_TONE_DOT_CLASSES[toneKey]
+                        )}
+                      />
+                      {label}
+                    </span>
+                  ))}
+                </div>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2">
                 {selectedIds.length > 0 && (
@@ -863,7 +906,7 @@ function AuditLogsPageContent() {
               <table className="w-full border-collapse">
                 <thead className="sticky top-0 z-10">
                   <tr className={AUDIT_TABLE_HEAD_CLASS}>
-                    <th className="w-10 px-6 py-3.5">
+                    <th className="w-10 px-4 py-3">
                       <input
                         type="checkbox"
                         aria-label="选择当前页审计日志"
@@ -885,7 +928,7 @@ function AuditLogsPageContent() {
                       事件名称
                     </th>
                     <th className={AUDIT_TABLE_HEADER_CLASS}>
-                      资源 / 租户
+                      资源
                     </th>
                     <th className={cn(AUDIT_TABLE_HEADER_CLASS, 'text-right')}>
                       操作
@@ -1010,7 +1053,7 @@ function AuditLogsPageContent() {
               </div>
               <ChevronDown className="size-4 transition-transform group-open:rotate-180" />
             </summary>
-            <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="mt-3">
               <pre className="max-h-[300px] overflow-auto rounded-2xl border border-border/60 bg-foreground p-4 font-mono text-[11px] text-background/85 shadow-strong custom-scrollbar">
                 {JSON.stringify(resp, null, 2)}
               </pre>
@@ -1049,6 +1092,15 @@ function AuditRow({
   const timestamp = formatAuditDateTime(log.created_at)
   const actionLabel = formatAuditAction(log.action)
   const resourceTypeLabel = formatAuditResourceType(log.resource_type)
+  const tone = auditActionTone(log.action)
+  const detailFields = [
+    ['动作', log.action],
+    ['请求 ID', log.request_id],
+    ['IP', log.ip],
+    ['租户', log.tenant_id],
+    ['资源', resource],
+    ['日志 ID', log.id],
+  ].filter((entry): entry is [string, string] => Boolean(entry[1]))
 
   return (
     <>
@@ -1059,33 +1111,31 @@ function AuditRow({
           selected && 'bg-primary/[0.065]'
         )}
       >
-        <td className="px-5 py-3.5 align-top">
+        <td className="px-4 py-3 align-middle">
           <input
             type="checkbox"
             aria-label={`选择审计日志 ${log.id}`}
             disabled={!canDelete}
             checked={selected}
             onChange={(event) => onSelectChange(event.currentTarget.checked)}
-            className="mt-1 size-3.5 rounded border-border text-primary accent-[hsl(var(--primary))]"
+            className="size-3.5 rounded border-border text-primary accent-[hsl(var(--primary))]"
           />
         </td>
-        <td className="px-5 py-3.5" onClick={onToggle}>
-          <div className="flex flex-col">
-            <span className="mb-1 text-[12px] font-semibold leading-none text-foreground">
-              {timestamp.date}
-            </span>
-            <span className="font-mono text-[10px] font-medium text-muted-foreground">
-              {timestamp.time}
-            </span>
-          </div>
+        <td className="whitespace-nowrap px-4 py-3" onClick={onToggle}>
+          <span className="font-mono text-[12px] font-semibold text-foreground">
+            {timestamp.date}
+          </span>{' '}
+          <span className="font-mono text-[11px] font-medium text-muted-foreground">
+            {timestamp.time}
+          </span>
         </td>
-        <td className="px-5 py-3.5" onClick={onToggle}>
+        <td className="px-4 py-3" onClick={onToggle}>
           <div className="flex items-center gap-2">
             <div className="flex size-6 shrink-0 items-center justify-center rounded-full border border-border/60 bg-muted/55 text-[10px] font-semibold uppercase text-muted-foreground">
               {log.actor_id?.slice(0, 2) || '??'}
             </div>
             <div className="min-w-0">
-              <div className="max-w-[220px] truncate font-mono text-[12px] font-medium text-foreground">
+              <div className="max-w-[180px] truncate font-mono text-[12px] font-medium text-foreground">
                 {log.actor_id || 'system'}
               </div>
               {log.ip && (
@@ -1096,53 +1146,63 @@ function AuditRow({
             </div>
           </div>
         </td>
-        <td className="px-5 py-3.5" onClick={onToggle}>
-          <div className="max-w-[320px]">
-            <div className="truncate text-[13px] font-semibold text-foreground">
-              {actionLabel}
+        <td className="px-4 py-3" onClick={onToggle}>
+          <div className="max-w-[280px]">
+            <div className="flex items-center gap-2">
+              <span
+                aria-hidden
+                className={cn(
+                  'size-1.5 shrink-0 rounded-full',
+                  AUDIT_ACTION_TONE_DOT_CLASSES[tone]
+                )}
+              />
+              <span className="truncate text-[13px] font-semibold text-foreground">
+                {actionLabel}
+              </span>
             </div>
-            <div className="mt-1 truncate font-mono text-[10px] text-muted-foreground">
+            <div className="mt-1 truncate pl-3.5 font-mono text-[10px] text-muted-foreground">
               {log.action}
             </div>
-            {log.request_id && (
-              <div className="mt-1 truncate font-mono text-[10px] text-muted-foreground">
-                请求 {log.request_id}
-              </div>
-            )}
           </div>
         </td>
-        <td className="px-5 py-3.5" onClick={onToggle}>
-          <div className="max-w-[320px]">
+        <td className="px-4 py-3" onClick={onToggle}>
+          <div className="max-w-[240px]">
             <div className="truncate text-[12px] font-semibold text-foreground">
               {log.resource_type ? resourceTypeLabel : '未绑定资源'}
             </div>
-            {resource && (
-              <div className="mt-1 truncate font-mono text-[10px] font-medium text-muted-foreground">
-                {resource}
+            {log.resource_id && (
+              <div className="mt-0.5 truncate font-mono text-[10px] font-medium text-muted-foreground">
+                {log.resource_id}
               </div>
             )}
-            <div className="mt-1 truncate text-[10px] font-medium text-muted-foreground">
-              租户 <span className="font-mono">{log.tenant_id || '-'}</span>
-            </div>
           </div>
         </td>
-        <td className="px-5 py-3.5 text-right">
-          <div className="flex items-center justify-end gap-2">
+        <td className="px-4 py-3 text-right">
+          <div className="flex items-center justify-end gap-1">
             <Button
               variant="ghost"
-              size="sm"
-              className="h-7 rounded-full px-2.5 text-[10px] font-semibold text-muted-foreground hover:bg-primary/10 hover:text-primary"
+              size="icon"
+              aria-label={expanded ? '收起详情' : '展开详情'}
+              title={expanded ? '收起详情' : '展开详情'}
+              className="size-7 rounded-full text-muted-foreground hover:bg-primary/10 hover:text-primary"
               onClick={onToggle}
             >
-              {expanded ? '收起' : '详情'}
+              <ChevronDown
+                className={cn(
+                  'size-3.5 transition-transform',
+                  expanded && 'rotate-180'
+                )}
+              />
             </Button>
             <Button
-              variant="outline"
-              size="sm"
-              className="h-7 gap-1.5 rounded-full border-border/60 bg-card px-2.5 text-[10px] font-semibold shadow-none transition-all hover:border-primary/30 hover:bg-primary/10 hover:text-primary"
+              variant="ghost"
+              size="icon"
+              aria-label="复制审计明细 JSON"
+              title="复制 JSON"
+              className="size-7 rounded-full text-muted-foreground hover:bg-primary/10 hover:text-primary"
               onClick={() => onCopy(JSON.stringify(log.details, null, 2))}
             >
-              <FileJson className="size-3" /> JSON
+              <FileJson className="size-3.5" />
             </Button>
             <ConfirmDialog
               title="确认删除审计日志"
@@ -1153,17 +1213,18 @@ function AuditRow({
               onConfirm={onDelete}
             >
               <Button
-                variant="outline"
-                size="sm"
+                variant="ghost"
+                size="icon"
                 disabled={!canDelete || deleting}
-                className="h-7 gap-1.5 rounded-full border-destructive/20 bg-destructive/10 px-2.5 text-[10px] font-semibold text-destructive shadow-none transition-all hover:bg-destructive/15 hover:text-destructive"
+                aria-label="删除这条审计日志"
+                title="删除"
+                className="size-7 rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
               >
                 {deleting ? (
-                  <RefreshCw className="size-3 animate-spin" />
+                  <RefreshCw className="size-3.5 animate-spin" />
                 ) : (
-                  <Trash2 className="size-3" />
+                  <Trash2 className="size-3.5" />
                 )}
-                删除
               </Button>
             </ConfirmDialog>
           </div>
@@ -1171,17 +1232,38 @@ function AuditRow({
       </tr>
       {expanded && (
         <tr className="bg-primary/[0.025]">
-          <td colSpan={6} className="px-5 pb-5">
-            <div className="group relative rounded-xl border border-primary/15 bg-card p-4 shadow-inner">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute right-2 top-2 size-6 opacity-0 transition-opacity group-hover:opacity-100"
-                aria-label="复制审计日志 JSON"
-                onClick={() => onCopy(JSON.stringify(log.details, null, 2))}
-              >
-                <Copy className="size-3" />
-              </Button>
+          <td colSpan={6} className="px-4 pb-5 pt-1">
+            <div className="rounded-xl border border-primary/15 bg-card p-4 shadow-inner">
+              <div className="mb-3 flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-border/40 pb-3">
+                {detailFields.map(([key, value]) => (
+                  <div
+                    key={key}
+                    className="flex min-w-0 max-w-full items-center gap-1.5 text-[11px]"
+                  >
+                    <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      {key}
+                    </span>
+                    <button
+                      type="button"
+                      title="点击复制"
+                      className="truncate font-mono font-medium text-foreground transition-colors hover:text-primary"
+                      onClick={() => onCopy(value)}
+                    >
+                      {value}
+                    </button>
+                  </div>
+                ))}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="ml-auto size-6 shrink-0"
+                  aria-label="复制审计日志 JSON"
+                  title="复制 JSON"
+                  onClick={() => onCopy(JSON.stringify(log.details, null, 2))}
+                >
+                  <Copy className="size-3" />
+                </Button>
+              </div>
               <pre className="max-h-[300px] overflow-auto font-mono text-[11px] leading-relaxed text-foreground custom-scrollbar">
                 {JSON.stringify(log.details, null, 2)}
               </pre>

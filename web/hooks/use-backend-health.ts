@@ -3,10 +3,10 @@
 import { useQuery } from '@tanstack/react-query'
 
 import { healthApi } from '@/lib/api'
-import type { HealthResponse } from '@/types/backend'
+import type { HealthDetailsResponse } from '@/types/backend'
 
 export type BackendHealthSnapshot = {
-  payload: HealthResponse
+  payload: HealthDetailsResponse
   latencyMs: number
 }
 
@@ -15,7 +15,7 @@ export function useBackendHealth() {
     queryKey: ['backend-health'],
     queryFn: async () => {
       const start = Date.now()
-      const payload = await healthApi.health()
+      const payload = await healthApi.details()
       const latencyMs = Math.max(0, Date.now() - start)
       return { payload, latencyMs }
     },
@@ -25,4 +25,3 @@ export function useBackendHealth() {
     retry: 1,
   })
 }
-

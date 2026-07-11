@@ -565,12 +565,9 @@ def _rewrite_preview_images_to_minio(
     return PREVIEW_IMAGE_REF_RE.sub(lambda match: _replace_preview_ref(match, local_id_to_img_id), text), referenced_img_ids, start_index
 
 
-def _asset_cache_control(*, token_in_url: bool, max_age: int) -> str:
-    if token_in_url:
-        return "no-store"
-    if max_age > 0:
-        return f"private, max-age={max_age}"
-    return "no-cache"
+def _asset_cache_control(*, max_age: int) -> str:
+    del max_age
+    return "private, no-store"
 
 
 def _parse_uuid(value: str) -> UUID:
@@ -589,9 +586,6 @@ def _asset_request_header_account(request, *, is_production: bool) -> str | None
 
 def _asset_request_authorization(request) -> str:
     authorization = (request.headers.get("authorization") or "").strip()
-    token = (request.query_params.get("token") or request.query_params.get("access_token") or "").strip()
-    if not authorization and token:
-        authorization = token if token.lower().startswith("bearer ") else f"Bearer {token}"
     if not authorization:
         raise HTTPException(status_code=401, detail="Authentication required")
     return authorization
@@ -602,7 +596,7 @@ async def _resolve_account_id_for_asset_request(request, *, tenant_id: UUID | No
     Resolve account id for asset endpoints that may be requested by <img src>.
 
     - AUTH_MODE=header: allow anonymous in local/dev (headers can't be set by <img>).
-    - AUTH_MODE=jwt: require either Authorization header or ?token= query param.
+    - AUTH_MODE=jwt: require an Authorization header; query-string bearer tokens are unsupported.
     """
     is_production = is_production_env()
     auth_mode = (getattr(settings, "AUTH_MODE", "jwt") or "jwt").lower()

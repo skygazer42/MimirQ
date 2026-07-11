@@ -334,6 +334,7 @@ async def run_knowledge_asset_retention(
                     account_id=str(actor_id or SYSTEM_RETENTION_ACTOR_ID),
                     db=db,
                     enforce_permissions=False,
+                    enforce_membership=False,
                 )
                 deleted += 1
             except Exception as exc:  # noqa: BLE001

@@ -44,8 +44,8 @@ async def download_document(
     """
     Download (or inline-preview) a document file.
 
-    This endpoint supports `?token=` and `?tenant_id=` query params to enable
-    usage in <iframe>/<a> tags where custom headers cannot be set.
+    JWT-authenticated requests must supply an Authorization header.
+    Tenant selection may still be provided via header or query parameter.
     """
     docs_mod = _documents_module()
     tenant_id = docs_mod._resolve_tenant_id_for_asset_request(request)
@@ -111,11 +111,8 @@ async def download_document(
         if total_size <= 0:
             raise HTTPException(status_code=404, detail=docs_mod.DOCUMENT_FILE_NOT_FOUND_DETAIL)
 
-        token_in_url = bool(
-            (request.query_params.get("token") or request.query_params.get("access_token") or "").strip()
-        )
         max_age = max(0, int(getattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 0) or 0))
-        cache_control = docs_mod._asset_cache_control(token_in_url=token_in_url, max_age=max_age)
+        cache_control = docs_mod._asset_cache_control(max_age=max_age)
 
         etag_raw = str(getattr(stat, "etag", "") or "").strip()
         etag = f"\"{etag_raw}\"" if etag_raw and not etag_raw.startswith("\"") else (etag_raw or None)
@@ -131,9 +128,6 @@ async def download_document(
             "Accept-Ranges": "bytes",
             **({"ETag": etag} if etag else {}),
         }
-        if token_in_url:
-            headers["Pragma"] = "no-cache"
-            headers["Expires"] = "0"
 
         if etag and not range_header:
             if_none_match = (request.headers.get("if-none-match") or "").strip()
@@ -146,9 +140,6 @@ async def download_document(
                         "Referrer-Policy": "no-referrer",
                         "X-Content-Type-Options": "nosniff",
                     }
-                    if token_in_url:
-                        headers_304["Pragma"] = "no-cache"
-                        headers_304["Expires"] = "0"
                     return Response(status_code=304, headers=headers_304)
 
         if range_header.lower().startswith("bytes="):
@@ -213,18 +204,14 @@ async def download_document(
     if not media_type:
         media_type = "application/octet-stream"
 
-    token_in_url = bool((request.query_params.get("token") or request.query_params.get("access_token") or "").strip())
     max_age = max(0, int(getattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 0) or 0))
-    cache_control = docs_mod._asset_cache_control(token_in_url=token_in_url, max_age=max_age)
+    cache_control = docs_mod._asset_cache_control(max_age=max_age)
 
     headers = {
         "Cache-Control": cache_control,
         "Referrer-Policy": "no-referrer",
         "X-Content-Type-Options": "nosniff",
     }
-    if token_in_url:
-        headers["Pragma"] = "no-cache"
-        headers["Expires"] = "0"
 
     return FileResponse(
         path,
@@ -277,7 +264,7 @@ async def get_image(
             continue
         if file_path.exists() and file_path.is_file():
             max_age = max(0, int(getattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 0) or 0))
-            cache_control = f"private, max-age={max_age}, immutable" if max_age > 0 else "no-cache"
+            cache_control = docs_mod._asset_cache_control(max_age=max_age)
             try:
                 stat_result = file_path.stat()
             except Exception:
@@ -300,6 +287,7 @@ async def get_image(
                             headers={
                                 "ETag": etag,
                                 "Cache-Control": cache_control,
+                                "Referrer-Policy": "no-referrer",
                                 "X-Content-Type-Options": "nosniff",
                             },
                         )
@@ -308,6 +296,7 @@ async def get_image(
                 media_type=media_type,
                 headers={
                     "Cache-Control": cache_control,
+                    "Referrer-Policy": "no-referrer",
                     "X-Content-Type-Options": "nosniff",
                     **({"ETag": etag} if etag else {}),
                 },
@@ -331,10 +320,6 @@ async def get_image_url(
     docs_mod = _documents_module()
     if not settings.MINIO_ENABLED:
         raise HTTPException(status_code=503, detail="MinIO is disabled; cannot retrieve image URL")
-
-    token_in_url = bool(
-        (request.query_params.get("token") or request.query_params.get("access_token") or "").strip()
-    )
     requested_tenant = docs_mod._get_tenant_id_from_request_if_provided(request)
 
     def _tenant_from_img_id(val: str) -> UUID | None:
@@ -429,7 +414,7 @@ async def get_image_url(
         raise HTTPException(status_code=404, detail=docs_mod.IMAGE_NOT_FOUND_DETAIL)
 
     max_age = max(0, int(getattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 0) or 0))
-    cache_control = docs_mod._asset_cache_control(token_in_url=token_in_url, max_age=max_age)
+    cache_control = docs_mod._asset_cache_control(max_age=max_age)
 
     etag_raw = str(getattr(stat, "etag", "") or "").strip()
     etag = f"\"{etag_raw}\"" if etag_raw and not etag_raw.startswith("\"") else (etag_raw or None)
@@ -446,9 +431,6 @@ async def get_image_url(
                     "Referrer-Policy": "no-referrer",
                     "X-Content-Type-Options": "nosniff",
                 }
-                if token_in_url:
-                    headers_304["Pragma"] = "no-cache"
-                    headers_304["Expires"] = "0"
                 return Response(status_code=304, headers=headers_304)
 
     offset = 0
@@ -461,9 +443,6 @@ async def get_image_url(
         "Accept-Ranges": "bytes",
         **({"ETag": etag} if etag else {}),
     }
-    if token_in_url:
-        headers["Pragma"] = "no-cache"
-        headers["Expires"] = "0"
 
     if range_header:
         if not range_header.lower().startswith("bytes="):

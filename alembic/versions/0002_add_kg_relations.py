@@ -15,6 +15,9 @@ depends_on = None
 
 
 UPGRADE_SQL = [
+    # Alembic defaults version_num to VARCHAR(32), but the next historical
+    # revision id is longer. Fresh installs must widen it before 0003.
+    "ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(255)",
     "CREATE TABLE kg_relations (\n"
     "\tid UUID NOT NULL, \n"
     "\ttenant_id UUID NOT NULL, \n"
@@ -66,4 +69,3 @@ def upgrade() -> None:
 def downgrade() -> None:
     for stmt in DOWNGRADE_SQL:
         op.execute(stmt)
-

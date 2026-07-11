@@ -11,6 +11,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
+from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.dependencies.auth import get_current_account_id
@@ -23,10 +24,13 @@ from app.api.schemas.ingestion_run import (
 )
 from app.api.utils.response_headers import download_response_headers
 from app.core.database import get_db
+from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
+from app.models.group_permissions import DatasetGroupPermission
 from app.models.ingestion_run import IngestionRun as DBIngestionRun
+from app.models.tenant_group import TenantGroupMember
 from app.rag.core.logging import get_logger
 from app.services.audit_log_service import audit_log_event
-from app.services.dataset_service import DatasetService
+from app.services.dataset_service import EDIT_ROLES, DatasetService
 from app.services.ingestion_run_service import IngestionRunService
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -38,6 +42,36 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 }
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+
+
+def _writable_dataset_ids_subquery(*, tenant_id: UUID, account_id: str):
+    member_group_ids_subq = select(TenantGroupMember.group_id).where(
+        TenantGroupMember.tenant_id == tenant_id,
+        TenantGroupMember.user_id == account_id,
+    )
+
+    partial_member_exists = exists().where(
+        DatasetPermission.tenant_id == tenant_id,
+        DatasetPermission.dataset_id == Dataset.id,
+        DatasetPermission.account_id == account_id,
+    )
+    partial_group_exists = exists().where(
+        DatasetGroupPermission.tenant_id == tenant_id,
+        DatasetGroupPermission.dataset_id == Dataset.id,
+        DatasetGroupPermission.group_id.in_(member_group_ids_subq),
+    )
+
+    return select(Dataset.id).where(
+        Dataset.tenant_id == tenant_id,
+        or_(
+            Dataset.owner_id == account_id,
+            Dataset.permission == DatasetPermissionEnum.ALL_TEAM_MEMBERS,
+            and_(
+                Dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS,
+                or_(partial_member_exists, partial_group_exists),
+            ),
+        ),
+    )
 
 
 def _run_out(run: DBIngestionRun) -> IngestionRunOut:
@@ -84,13 +118,17 @@ def list_ingestion_runs(
     db: Annotated[Session, Depends(get_db)],
 ):
     """List ingestion runs (requires dataset write permission for each returned run's dataset)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    member = DatasetService.ensure_member(db, tenant_id, account_id)
 
     q = db.query(DBIngestionRun).filter(DBIngestionRun.tenant_id == tenant_id)
     if dataset_id:
         ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
         DatasetService.assert_dataset_writable(db, ds, account_id)
         q = q.filter(DBIngestionRun.dataset_id == dataset_id)
+    elif str(getattr(member, "role", "") or "").lower() not in EDIT_ROLES:
+        return IngestionRunListResponse(total=0, items=[])
+    else:
+        q = q.filter(DBIngestionRun.dataset_id.in_(_writable_dataset_ids_subquery(tenant_id=tenant_id, account_id=account_id)))
 
     status_norm = str(status or "").strip().lower()
     if status_norm:
@@ -108,21 +146,6 @@ def list_ingestion_runs(
         .limit(limit)
         .all()
     )
-
-    # If dataset_id isn't provided, filter to writable datasets only (avoid leaking run config).
-    if not dataset_id:
-        allowed: list[DBIngestionRun] = []
-        for run in runs:
-            ds_id = getattr(run, "dataset_id", None)
-            if not ds_id:
-                continue
-            try:
-                ds = DatasetService.get_dataset(db, tenant_id, ds_id)
-                DatasetService.assert_dataset_writable(db, ds, account_id)
-            except HTTPException:
-                continue
-            allowed.append(run)
-        runs = allowed
 
     return IngestionRunListResponse(total=total, items=[_run_out(r) for r in runs])
 

@@ -50,11 +50,11 @@ export function BulkActionBar({
       <div
         role="toolbar"
         aria-label="批量操作"
-        className="rounded-[1.1rem] border border-sky-400/18 bg-[linear-gradient(180deg,rgba(240,249,255,0.98),rgba(248,252,255,0.94))] px-3 py-3 shadow-[0_18px_50px_rgba(56,189,248,0.14)] ring-1 ring-sky-200/45 backdrop-blur-xl dark:border-sky-400/12 dark:bg-[linear-gradient(180deg,rgba(12,24,34,0.96),rgba(9,16,24,0.96))] dark:ring-white/5"
+        className="rounded-[1.1rem] border border-info/18 bg-[linear-gradient(180deg,rgba(240,249,255,0.98),rgba(248,252,255,0.94))] px-3 py-3 shadow-[0_18px_50px_rgba(56,189,248,0.14)] ring-1 ring-info/30 backdrop-blur-xl dark:border-sky-400/12 dark:bg-[linear-gradient(180deg,rgba(12,24,34,0.96),rgba(9,16,24,0.96))] dark:ring-white/5"
       >
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0 flex items-center gap-3">
-            <div className="inline-flex h-8 min-w-8 items-center justify-center rounded-full border border-sky-400/15 bg-sky-500/10 px-2 font-code text-sm font-semibold text-sky-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] dark:border-sky-400/12 dark:bg-sky-400/12 dark:text-sky-300">
+            <div className="inline-flex h-8 min-w-8 items-center justify-center rounded-full border border-info/15 bg-info/10 px-2 font-code text-sm font-semibold text-info shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] dark:border-sky-400/12 dark:bg-sky-400/12 dark:text-sky-300">
               {selectionCount}
             </div>
             <div className="min-w-0">
@@ -125,10 +125,10 @@ function ActionTile({
   onClick: () => void
 }>) {
   const toneClass = {
-    sky: 'border-sky-400/18 bg-sky-500/[0.07] text-sky-700 hover:border-sky-500/28 hover:bg-sky-500/[0.12] dark:text-sky-300',
-    amber: 'border-sky-400/16 bg-sky-500/[0.05] text-slate-700 hover:border-amber-500/26 hover:bg-amber-500/[0.10] hover:text-amber-700 dark:text-slate-200 dark:hover:text-amber-300',
-    rose: 'border-sky-400/16 bg-sky-500/[0.05] text-slate-700 hover:border-rose-500/26 hover:bg-rose-500/[0.10] hover:text-rose-700 dark:text-slate-200 dark:hover:text-rose-300',
-    emerald: 'border-sky-400/18 bg-sky-500/[0.07] text-sky-700 hover:border-emerald-500/26 hover:bg-emerald-500/[0.10] hover:text-emerald-700 dark:text-sky-300 dark:hover:text-emerald-300',
+    sky: 'border-info/18 bg-info/[0.07] text-info hover:border-info/28 hover:bg-info/[0.12] dark:text-sky-300',
+    amber: 'border-info/16 bg-info/[0.05] text-foreground/85 hover:border-warning/26 hover:bg-warning/[0.10] hover:text-warning dark:text-slate-200 dark:hover:text-warning',
+    rose: 'border-info/16 bg-info/[0.05] text-foreground/85 hover:border-destructive/26 hover:bg-destructive/[0.10] hover:text-destructive dark:text-slate-200 dark:hover:text-destructive',
+    emerald: 'border-info/18 bg-info/[0.07] text-info hover:border-success/26 hover:bg-success/[0.10] hover:text-success dark:text-sky-300 dark:hover:text-success',
   }[tone]
 
   return (
@@ -142,7 +142,7 @@ function ActionTile({
         toneClass
       )}
     >
-      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-card/88 ring-1 ring-sky-200/55 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:bg-card/10 dark:ring-white/10">
+      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-card/88 ring-1 ring-info/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:bg-card/10 dark:ring-white/10">
         <Icon className="h-3.5 w-3.5" />
       </span>
       {label}

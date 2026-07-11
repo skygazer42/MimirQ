@@ -66,28 +66,28 @@ export function AblationComparisonMatrix({
   const primaryMetric = metricKeys[0] || 'retrieval_mrr'
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-card p-4 shadow-sm">
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
-            <GitCompareArrows className="size-4 text-violet-600" />
+          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <GitCompareArrows className="size-4 text-accent" />
             N×M 多 Run 对比矩阵
           </div>
-          <p className="mt-1 text-xs leading-5 text-slate-500">
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
             行是 run，列是 metric；单元格显示 value 与相对 base 的 delta。右侧标记 Pareto 候选：更高主指标、更低 latency。
           </p>
         </div>
-        <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-right">
-          <div className="text-[10px] uppercase tracking-[0.16em] text-violet-500">Pareto</div>
-          <div className="text-sm font-semibold text-violet-800">
+        <div className="rounded-xl border border-accent/30 bg-accent/10 px-3 py-2 text-right">
+          <div className="text-[10px] uppercase tracking-[0.16em] text-accent">Pareto</div>
+          <div className="text-sm font-semibold text-accent">
             {completed.filter((run) => isPareto(run, completed, primaryMetric)).length || '-'}
           </div>
         </div>
       </div>
 
-      <div className="mt-3 overflow-auto rounded-xl border border-slate-200">
+      <div className="mt-3 overflow-auto rounded-xl border border-border">
         <div
-          className="grid min-w-[720px] bg-slate-50 text-[11px] uppercase tracking-[0.12em] text-slate-500"
+          className="grid min-w-[720px] bg-muted/50 text-[11px] uppercase tracking-[0.12em] text-muted-foreground"
           style={{ gridTemplateColumns: `140px repeat(${metricKeys.length}, minmax(110px, 1fr)) 110px` }}
         >
           <div className="px-3 py-2">Run</div>
@@ -101,10 +101,10 @@ export function AblationComparisonMatrix({
           return (
             <div
               key={run.id}
-              className="grid min-w-[720px] border-t border-slate-100 text-xs"
+              className="grid min-w-[720px] border-t border-border/50 text-xs"
               style={{ gridTemplateColumns: `140px repeat(${metricKeys.length}, minmax(110px, 1fr)) 110px` }}
             >
-              <div className={cn('px-3 py-2 font-mono', pareto ? 'text-violet-700' : 'text-slate-800')}>
+              <div className={cn('px-3 py-2 font-mono', pareto ? 'text-accent' : 'text-foreground')}>
                 {shortId(run.id)} {pareto ? '•' : ''}
               </div>
               {metricKeys.map((metric) => {
@@ -116,20 +116,20 @@ export function AblationComparisonMatrix({
                   <div
                     key={`${run.id}-${metric}`}
                     className="px-3 py-2 text-right font-mono"
-                    style={{ backgroundColor: `rgba(14, 165, 233, ${heat})` }}
+                    style={{ backgroundColor: `hsl(var(--info) / ${heat})` }}
                   >
-                    <span className="text-slate-950">{value === null ? '-' : value.toFixed(4)}</span>
-                    <span className={cn('ml-1 text-[10px]', delta && delta > 0 ? 'text-emerald-700' : delta && delta < 0 ? 'text-rose-700' : 'text-slate-500')}>
+                    <span className="text-foreground">{value === null ? '-' : value.toFixed(4)}</span>
+                    <span className={cn('ml-1 text-[10px]', delta && delta > 0 ? 'text-success' : delta && delta < 0 ? 'text-destructive' : 'text-muted-foreground')}>
                       {delta === null ? '' : delta >= 0 ? `+${delta.toFixed(3)}` : delta.toFixed(3)}
                     </span>
                   </div>
                 )
               })}
-              <div className="px-3 py-2 text-right font-mono text-slate-600">{latency(run) === null ? '-' : `${Math.round(latency(run) || 0)}ms`}</div>
+              <div className="px-3 py-2 text-right font-mono text-muted-foreground">{latency(run) === null ? '-' : `${Math.round(latency(run) || 0)}ms`}</div>
             </div>
           )
         }) : (
-          <div className="px-3 py-8 text-center text-xs text-slate-500">暂无 completed runs，刷新排行榜或先创建消融实验。</div>
+          <div className="px-3 py-8 text-center text-xs text-muted-foreground">暂无 completed runs，刷新排行榜或先创建消融实验。</div>
         )}
       </div>
     </section>

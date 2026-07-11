@@ -17,6 +17,7 @@ import { PageLoading } from '@/components/ui/page-loading'
 import { readClientStorage, writeClientStorage } from '@/lib/client-storage'
 import { cn, detachPromise } from '@/lib/utils'
 import { queryKeys } from '@/lib/query-keys'
+import { useMediaQuery } from '@/hooks/use-media-query'
 import { buildSimilarityDiagnostics } from '@/components/ragviz/similarity-diagnostics'
 import type {
   DiagnosticDecision,
@@ -200,23 +201,23 @@ function metricToneClass(tone?: string) {
 }
 
 function emptyMatrixSwatchClass(index: number) {
-  if (index % 4 === 0) return 'bg-blue-500/80'
-  if (index % 3 === 0) return 'bg-blue-400/55'
-  return 'bg-blue-200/80'
+  if (index % 4 === 0) return 'bg-primary'
+  if (index % 3 === 0) return 'bg-primary'
+  return 'bg-primary/15'
 }
 
 function emptyMatrixCellClass(index: number) {
-  if (index % 9 === 0) return 'bg-blue-500/70'
-  if (index % 5 === 0) return 'bg-blue-300/75'
-  return 'bg-blue-100'
+  if (index % 9 === 0) return 'bg-primary'
+  if (index % 5 === 0) return 'bg-primary/30'
+  return 'bg-primary/15'
 }
 
 function diagnosticCandidateStatusClass(isDisabled: boolean, isMarked: boolean) {
   if (isDisabled) return 'border-border bg-muted text-muted-foreground'
   if (isMarked) {
-    return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200'
+    return 'border-warning/30 bg-warning/10 text-warning dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200'
   }
-  return 'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/40 dark:bg-orange-900/20 dark:text-orange-200'
+  return 'border-warning/30 bg-warning/10 text-warning dark:border-orange-900/40 dark:bg-orange-900/20 dark:text-orange-200'
 }
 
 function diagnosticCandidateStatusLabel(isDisabled: boolean, isMarked: boolean) {
@@ -460,6 +461,21 @@ export function RagvizSimilarityWorkbench() {
     useState<RightBottomPanel>('filters')
   const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(false)
   const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(false)
+  const isCompactRightSidebar = useMediaQuery('(max-width: 1535.98px)')
+  const isCompactLeftSidebar = useMediaQuery('(max-width: 1279.98px)')
+  const [compactSidebar, setCompactSidebar] = useState<
+    'left' | 'right' | null
+  >(null)
+
+  const isLeftSidebarOpen = isCompactLeftSidebar
+    ? compactSidebar === 'left'
+    : !isLeftSidebarCollapsed
+  const isRightSidebarOpen = isCompactRightSidebar
+    ? compactSidebar === 'right'
+    : !isRightSidebarCollapsed
+  const hasCompactOverlay =
+    (isCompactLeftSidebar && compactSidebar === 'left') ||
+    (isCompactRightSidebar && compactSidebar === 'right')
 
   const [leftWidth, setLeftWidth] = useState<number>(312)
   const [rightWidth, setRightWidth] = useState<number>(248)
@@ -1004,39 +1020,69 @@ export function RagvizSimilarityWorkbench() {
     )
   }, [])
 
+  const handleLeftSidebarToggle = useCallback(() => {
+    if (isCompactLeftSidebar) {
+      setCompactSidebar((current) => (current === 'left' ? null : 'left'))
+      return
+    }
+    setIsLeftSidebarCollapsed((current) => !current)
+  }, [isCompactLeftSidebar])
+
+  const handleRightSidebarToggle = useCallback(() => {
+    if (isCompactRightSidebar) {
+      setCompactSidebar((current) => (current === 'right' ? null : 'right'))
+      return
+    }
+    setIsRightSidebarCollapsed((current) => !current)
+  }, [isCompactRightSidebar])
+
   const handleStatisticsPanelToggle = useCallback(() => {
+    if (isCompactRightSidebar) {
+      setRightTopPanel('statistics')
+      setCompactSidebar('right')
+      return
+    }
     if (isRightSidebarCollapsed) {
       setIsRightSidebarCollapsed(false)
       setRightTopPanel('statistics')
       return
     }
     setRightTopPanel((prev) => (prev === 'statistics' ? null : 'statistics'))
-  }, [isRightSidebarCollapsed])
+  }, [isCompactRightSidebar, isRightSidebarCollapsed])
 
   const handleFilterPanelToggle = useCallback(() => {
+    if (isCompactRightSidebar) {
+      setRightBottomPanel('filters')
+      setCompactSidebar('right')
+      return
+    }
     if (isRightSidebarCollapsed) {
       setIsRightSidebarCollapsed(false)
       setRightBottomPanel('filters')
       return
     }
     setRightBottomPanel((prev) => (prev === 'filters' ? null : 'filters'))
-  }, [isRightSidebarCollapsed])
+  }, [isCompactRightSidebar, isRightSidebarCollapsed])
 
   const handleLeftTopPanelSelect = useCallback(
     (panel: LeftTopPanel) => {
-      if (isLeftSidebarCollapsed) {
+      if (isCompactLeftSidebar) {
+        setCompactSidebar('left')
+      } else if (isLeftSidebarCollapsed) {
         setIsLeftSidebarCollapsed(false)
       }
       setLeftTopPanel(panel)
     },
-    [isLeftSidebarCollapsed]
+    [isCompactLeftSidebar, isLeftSidebarCollapsed]
   )
 
   const handleLeftChartControlsOpen = useCallback(() => {
-    if (isLeftSidebarCollapsed) {
+    if (isCompactLeftSidebar) {
+      setCompactSidebar('left')
+    } else if (isLeftSidebarCollapsed) {
       setIsLeftSidebarCollapsed(false)
     }
-  }, [isLeftSidebarCollapsed])
+  }, [isCompactLeftSidebar, isLeftSidebarCollapsed])
 
   const updateDisplayFields = (xField: string, yField: string) => {
     if (primaryIndex === null) return
@@ -1415,39 +1461,48 @@ export function RagvizSimilarityWorkbench() {
   }, [displayLabels, displayMatrix, selectedCellDetails])
 
   return (
-    <div className="flex h-full w-full overflow-hidden bg-[radial-gradient(circle_at_50%_-12%,hsl(var(--primary)/0.10),transparent_34%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--surface-2)/0.34))]">
+    <div className="relative flex h-full min-w-0 w-full overflow-hidden bg-[radial-gradient(circle_at_50%_-12%,hsl(var(--primary)/0.10),transparent_34%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--surface-2)/0.34))]">
+      {hasCompactOverlay ? (
+        <button
+          type="button"
+          className="absolute inset-0 z-10 cursor-default bg-foreground/[0.04] backdrop-blur-[1px]"
+          aria-label="关闭侧栏"
+          onClick={() => setCompactSidebar(null)}
+        />
+      ) : null}
+
       {/* Left section */}
-      <div className="flex h-full">
-        <div className="flex w-12 flex-col items-center border-r border-border/34 bg-card/46 py-2 shadow-[8px_0_24px_-28px_hsl(var(--foreground)/0.22)] backdrop-blur-xl">
+      <div className="relative z-20 flex h-full shrink-0">
+        <div className="relative z-30 flex w-12 flex-col items-center border-r border-border/34 bg-card/46 py-2 shadow-[8px_0_24px_-28px_hsl(var(--foreground)/0.22)] backdrop-blur-xl">
           <div className="flex flex-col gap-1">
             <IconBtn
-              active={!isLeftSidebarCollapsed && leftTopPanel === 'dataSource'}
+              active={isLeftSidebarOpen && leftTopPanel === 'dataSource'}
               title="数据源配置"
               onClick={() => handleLeftTopPanelSelect('dataSource')}
               icon={<Database className="size-4" />}
             />
             <IconBtn
-              active={!isLeftSidebarCollapsed && leftTopPanel === 'operations'}
+              active={isLeftSidebarOpen && leftTopPanel === 'operations'}
               title="结果操作"
               onClick={() => handleLeftTopPanelSelect('operations')}
               icon={<Download className="size-4" />}
             />
             <IconBtn
               active={false}
-              title={isLeftSidebarCollapsed ? '展开左侧栏' : '收起左侧栏'}
-              onClick={() => setIsLeftSidebarCollapsed((prev) => !prev)}
+              title={isLeftSidebarOpen ? '收起左侧栏' : '展开左侧栏'}
+              onClick={handleLeftSidebarToggle}
               icon={
-                isLeftSidebarCollapsed ? (
-                  <ChevronRight className="size-4" />
-                ) : (
+                isLeftSidebarOpen ? (
                   <ChevronLeft className="size-4" />
+                ) : (
+                  <ChevronRight className="size-4" />
                 )
               }
             />
           </div>
           <div className="mt-auto pt-2">
             <IconBtn
-              active={!isLeftSidebarCollapsed}
+              active={isLeftSidebarOpen}
               title="图表选择与控制"
               onClick={handleLeftChartControlsOpen}
               icon={<Grid3X3 className="size-4" />}
@@ -1458,20 +1513,25 @@ export function RagvizSimilarityWorkbench() {
         <div
           ref={leftSidebarRef}
           className={cn(
-            'relative flex h-full flex-col overflow-hidden border-r border-border/34 bg-card/42 backdrop-blur-xl transition-[width,opacity] duration-200 ease-out',
-            isLeftSidebarCollapsed ? 'opacity-0' : 'opacity-100'
+            'flex h-full max-w-[calc(100vw-7rem)] flex-col overflow-hidden border-r border-border/34 backdrop-blur-xl transition-[width,opacity] duration-200 ease-out',
+            isCompactLeftSidebar
+              ? 'absolute inset-y-0 left-12 z-20 bg-card/95 shadow-[18px_0_42px_-24px_rgba(15,23,42,0.35)]'
+              : 'relative bg-card/42',
+            isLeftSidebarOpen
+              ? 'opacity-100'
+              : 'pointer-events-none opacity-0'
           )}
-          style={{ width: isLeftSidebarCollapsed ? 0 : leftWidth }}
-          aria-hidden={isLeftSidebarCollapsed}
+          style={{ width: isLeftSidebarOpen ? leftWidth : 0 }}
+          aria-hidden={!isLeftSidebarOpen}
         >
-          {isLeftSidebarCollapsed ? null : (
+          {isLeftSidebarOpen && !isCompactLeftSidebar ? (
             <button
               type="button"
               aria-label="Resize left sidebar"
               className="absolute top-0 right-0 h-full w-1 cursor-col-resize hover:bg-primary/20"
               onMouseDown={(e) => startResizeSidebar('left', e)}
             />
-          )}
+          ) : null}
 
           <div className="flex flex-col overflow-hidden">
             <div
@@ -1737,12 +1797,12 @@ export function RagvizSimilarityWorkbench() {
                                   </span>
                                 ) : null}
                                 {isSubtract ? (
-                                  <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                                  <span className="px-1.5 py-0.5 rounded bg-warning/10 text-warning dark:text-amber-300">
                                     减
                                   </span>
                                 ) : null}
                                 {isExclusive ? (
-                                  <span className="px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-700 dark:text-sky-300">
+                                  <span className="px-1.5 py-0.5 rounded bg-info/10 text-info dark:text-sky-300">
                                     独占
                                   </span>
                                 ) : null}
@@ -1801,9 +1861,9 @@ export function RagvizSimilarityWorkbench() {
       </div>
 
       {/* Main content */}
-      <div className="h-full flex-1 overflow-hidden bg-transparent">
+      <div className="h-full min-w-0 flex-1 overflow-hidden bg-transparent">
         <div className="h-full w-full flex flex-col">
-          <div className="px-8 pb-3 pt-6">
+          <div className="px-4 pb-3 pt-5 sm:px-5 xl:px-6 2xl:px-8 2xl:pt-6">
             <PageHeader
               title={
                 mainView === 'diagnostics'
@@ -1931,12 +1991,12 @@ export function RagvizSimilarityWorkbench() {
       </div>
 
       {/* Right section */}
-      <div className="flex h-full">
-        <div className="flex w-12 flex-col items-center border-l border-border/34 bg-card/46 py-2 shadow-[-8px_0_24px_-28px_hsl(var(--foreground)/0.22)] backdrop-blur-xl">
+      <div className="relative z-20 flex h-full shrink-0">
+        <div className="relative z-30 flex w-12 flex-col items-center border-l border-border/34 bg-card/46 py-2 shadow-[-8px_0_24px_-28px_hsl(var(--foreground)/0.22)] backdrop-blur-xl">
           <div className="flex flex-col gap-1">
             <IconBtn
               active={
-                !isRightSidebarCollapsed && rightTopPanel === 'statistics'
+                isRightSidebarOpen && rightTopPanel === 'statistics'
               }
               title="统计信息"
               onClick={handleStatisticsPanelToggle}
@@ -1944,13 +2004,13 @@ export function RagvizSimilarityWorkbench() {
             />
             <IconBtn
               active={false}
-              title={isRightSidebarCollapsed ? '展开右侧栏' : '收起右侧栏'}
-              onClick={() => setIsRightSidebarCollapsed((prev) => !prev)}
+              title={isRightSidebarOpen ? '收起右侧栏' : '展开右侧栏'}
+              onClick={handleRightSidebarToggle}
               icon={
-                isRightSidebarCollapsed ? (
-                  <ChevronLeft className="size-4" />
-                ) : (
+                isRightSidebarOpen ? (
                   <ChevronRight className="size-4" />
+                ) : (
+                  <ChevronLeft className="size-4" />
                 )
               }
             />
@@ -1958,7 +2018,7 @@ export function RagvizSimilarityWorkbench() {
           <div className="mt-auto pt-2">
             <IconBtn
               active={
-                !isRightSidebarCollapsed && rightBottomPanel === 'filters'
+                isRightSidebarOpen && rightBottomPanel === 'filters'
               }
               title="筛选器控制"
               onClick={handleFilterPanelToggle}
@@ -1970,20 +2030,25 @@ export function RagvizSimilarityWorkbench() {
         <div
           ref={rightSidebarRef}
           className={cn(
-            'relative flex h-full flex-col overflow-hidden border-l border-border/34 bg-card/42 backdrop-blur-xl transition-[width,opacity] duration-200 ease-out',
-            isRightSidebarCollapsed ? 'opacity-0' : 'opacity-100'
+            'flex h-full max-w-[calc(100vw-7rem)] flex-col overflow-hidden border-l border-border/34 backdrop-blur-xl transition-[width,opacity] duration-200 ease-out',
+            isCompactRightSidebar
+              ? 'absolute inset-y-0 right-12 z-20 bg-card/95 shadow-[-18px_0_42px_-24px_rgba(15,23,42,0.35)]'
+              : 'relative bg-card/42',
+            isRightSidebarOpen
+              ? 'opacity-100'
+              : 'pointer-events-none opacity-0'
           )}
-          style={{ width: isRightSidebarCollapsed ? 0 : rightWidth }}
-          aria-hidden={isRightSidebarCollapsed}
+          style={{ width: isRightSidebarOpen ? rightWidth : 0 }}
+          aria-hidden={!isRightSidebarOpen}
         >
-          {isRightSidebarCollapsed ? null : (
+          {isRightSidebarOpen && !isCompactRightSidebar ? (
             <button
               type="button"
               aria-label="Resize right sidebar"
               className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-primary/20"
               onMouseDown={(e) => startResizeSidebar('right', e)}
             />
-          )}
+          ) : null}
 
           <div className="flex flex-col overflow-hidden">
             <div
@@ -2131,8 +2196,8 @@ export function RagvizSimilarityWorkbench() {
                                 className={cn(
                                   'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px]',
                                   selectedCellDetails.isVisible
-                                    ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                                    : 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                                    ? 'border-success/25 bg-success/10 text-success dark:text-emerald-300'
+                                    : 'border-warning/25 bg-warning/10 text-warning dark:text-amber-300'
                                 )}
                               >
                                 {selectedCellDetails.isVisible
@@ -2695,16 +2760,16 @@ function SimilarityDiagnosticsView({
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                <LegendPill className="border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/40 dark:bg-sky-900/20 dark:text-sky-200">
+                <LegendPill className="border-info/30 bg-info/10 text-info dark:border-sky-900/40 dark:bg-sky-900/20 dark:text-sky-200">
                   X 侧项目
                 </LegendPill>
                 <LegendPill className="border-success/20 bg-success/10 text-success">
                   Y 侧项目
                 </LegendPill>
-                <LegendPill className="border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/40 dark:bg-orange-900/20 dark:text-orange-200">
+                <LegendPill className="border-warning/30 bg-warning/10 text-warning dark:border-orange-900/40 dark:bg-orange-900/20 dark:text-orange-200">
                   异常点候选
                 </LegendPill>
-                <LegendPill className="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200">
+                <LegendPill className="border-warning/30 bg-warning/10 text-warning dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200">
                   标记待审
                 </LegendPill>
               </div>
@@ -3723,11 +3788,11 @@ function StatsItem({
     if (tone === 'success') {
       return 'bg-success/10 text-success border-success/20'
     } else if (tone === 'warning') {
-      return 'bg-amber-50 text-amber-800 border-amber-100 dark:bg-amber-900/15 dark:text-amber-200 dark:border-amber-900/30'
+      return 'bg-warning/10 text-warning border-warning/20 dark:bg-amber-900/15 dark:text-amber-200 dark:border-amber-900/30'
     } else if (tone === 'danger') {
-      return 'bg-rose-50 text-rose-700 border-rose-100 dark:bg-rose-900/15 dark:text-rose-200 dark:border-rose-900/30'
+      return 'bg-destructive/10 text-destructive border-destructive/20 dark:bg-rose-900/15 dark:text-rose-200 dark:border-rose-900/30'
     } else if (tone === 'info') {
-      return 'bg-sky-50 text-sky-700 border-sky-100 dark:bg-sky-900/15 dark:text-sky-200 dark:border-sky-900/30'
+      return 'bg-info/10 text-info border-info/20 dark:bg-sky-900/15 dark:text-sky-200 dark:border-sky-900/30'
     } else if (tone === 'muted') {
       return 'bg-muted text-muted-foreground border-border'
     } else {

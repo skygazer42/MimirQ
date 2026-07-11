@@ -87,6 +87,20 @@ describe('navbar source', () => {
     expect(src).toContain('left-[264px]')
   })
 
+  it('keeps the top sidebar actions softly tinted in both themes', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'navbar.tsx'), 'utf8')
+
+    expect(src).toContain('hsl(var(--info)/0.18)')
+    expect(src).toContain('hsl(var(--card)/0.92)')
+    expect(src).toContain('ref={firstActionRef}\n            variant="ghost"')
+    expect(src).not.toContain(
+      'bg-[linear-gradient(90deg,hsl(var(--info)),hsl(var(--primary)))] text-white'
+    )
+    expect(src).not.toContain(
+      'bg-[linear-gradient(135deg,hsl(var(--background)/0.92),hsl(var(--info)/0.06))]'
+    )
+  })
+
   it('keeps daily navigation focused while advanced vector diagnostics stay out of the sidebar', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'navbar.tsx'), 'utf8')
     const chatMessages = fs.readFileSync(

@@ -161,14 +161,14 @@ export function GraphPageHeader({
           </div>
           <div className="flex items-center gap-2 rounded-full border border-border/60 bg-background/76 px-2.5 py-1.5 shadow-none">
             <div className="flex items-center gap-1.5 text-xs font-medium text-foreground/88">
-              <Network className={cn('h-3.5 w-3.5', includeRelationLinks ? 'text-teal-600 dark:text-teal-300' : 'text-muted-foreground')} />
+              <Network className={cn('h-3.5 w-3.5', includeRelationLinks ? 'text-success dark:text-teal-300' : 'text-muted-foreground')} />
               <span>关系</span>
             </div>
             <Switch
               checked={includeRelationLinks}
               onCheckedChange={() => onToggleRelationLinks()}
               aria-label="切换关系连线"
-              className="scale-[0.82] data-[state=checked]:bg-teal-500"
+              className="scale-[0.82] data-[state=checked]:bg-success"
             />
           </div>
         </div>
@@ -209,7 +209,7 @@ export function GraphPageHeader({
             知识图谱
           </span>
         </h1>
-        <span className="shrink-0 rounded-full border border-blue-500/25 bg-blue-500/10 px-2.5 py-1 text-[11px] font-semibold text-blue-600 shadow-sm dark:text-blue-300">
+        <span className="shrink-0 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary shadow-sm dark:text-blue-300">
           {viewMode === '3d' ? '3D 图谱' : '2D 图谱'}
         </span>
       </div>
@@ -310,7 +310,7 @@ export function GraphPageHeader({
                 asChild
                 variant="outline"
                 size="sm"
-                className="justify-start gap-2 border-border/60 bg-background/70 text-muted-foreground shadow-none hover:bg-amber-500/10 hover:text-amber-700 dark:hover:text-amber-300"
+                className="justify-start gap-2 border-border/60 bg-background/70 text-muted-foreground shadow-none hover:bg-warning/10 hover:text-warning dark:hover:text-warning"
               >
                 <Link href="/graph/diagnostics">
                   <Wrench className="h-4 w-4" />
@@ -322,7 +322,7 @@ export function GraphPageHeader({
                 asChild
                 variant="outline"
                 size="sm"
-                className="justify-start gap-2 border-border/60 bg-background/70 text-muted-foreground shadow-none hover:bg-violet-500/10 hover:text-violet-700 dark:hover:text-violet-300"
+                className="justify-start gap-2 border-border/60 bg-background/70 text-muted-foreground shadow-none hover:bg-accent/10 hover:text-accent dark:hover:text-accent"
               >
                 <Link href="/graph/snapshots">
                   <GitCompare className="h-4 w-4" />
@@ -386,7 +386,7 @@ export function GraphPageHeader({
                 size="sm"
                 onClick={onRefreshLiveData}
                 disabled={isLoading}
-                className="justify-start gap-2 border-border/60 bg-background/70 text-muted-foreground shadow-none hover:bg-sky-500/10 hover:text-sky-600 dark:hover:text-sky-300"
+                className="justify-start gap-2 border-border/60 bg-background/70 text-muted-foreground shadow-none hover:bg-info/10 hover:text-info dark:hover:text-info"
               >
                 <RefreshCw className={cn('h-4 w-4', isLoading && 'animate-spin motion-reduce:animate-none')} />
                 {isLoading ? '加载中' : '刷新'}
@@ -396,7 +396,7 @@ export function GraphPageHeader({
                 variant="outline"
                 size="sm"
                 onClick={onTriggerTraceUpload}
-                className="justify-start gap-2 border-border/60 bg-background/70 text-muted-foreground shadow-none hover:bg-teal-500/10 hover:text-teal-600 dark:hover:text-teal-300"
+                className="justify-start gap-2 border-border/60 bg-background/70 text-muted-foreground shadow-none hover:bg-success/10 hover:text-success dark:hover:text-success"
                 title="导入 RAG trace JSON（回放检索路径）"
               >
                 <FileText className="h-4 w-4" />

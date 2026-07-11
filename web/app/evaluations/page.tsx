@@ -24,8 +24,11 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { AnalysisPageShell } from '@/components/ui/analysis-page-shell'
-import { PageHeader } from '@/components/ui/page-header'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
+import {
+  MANAGEMENT_HERO_PANEL_CLASS,
+  KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS,
+} from '@/components/ui/knowledge-ops-hero'
 import {
   Select,
   SelectContent,
@@ -89,7 +92,7 @@ type ConversationEvidenceFilter = 'ready' | 'missing' | 'all'
 const EMPTY_CONVERSATIONS: Conversation[] = []
 const EMPTY_RUNS: RagasRun[] = []
 const ADVANCED_DIAGNOSTIC_ITEM_CLASS =
-  'items-start rounded-lg px-2.5 py-2.5 data-[highlighted]:bg-sky-50/80 data-[highlighted]:text-slate-900 focus:bg-sky-50/80 focus:text-slate-900'
+  'items-start rounded-lg px-2.5 py-2.5 data-[highlighted]:bg-info/5 data-[highlighted]:text-foreground focus:bg-info/5 focus:text-foreground'
 
 const CONVERSATION_EVIDENCE_FILTERS: Array<{
   id: ConversationEvidenceFilter
@@ -333,13 +336,13 @@ function EvaluationConfigSection({
   return (
     <section
       className={cn(
-        'border-b border-slate-200/80 px-3 py-2.5 last:border-b-0',
+        'border-b border-border/60 px-3 py-2.5 last:border-b-0',
         className
       )}
     >
       <div className="flex items-start gap-2.5">
         {Icon ? (
-          <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-md border border-sky-200/60 bg-sky-100/70 text-sky-700">
+          <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-md border border-info/30 bg-info/10 text-info">
             <Icon className="h-3.5 w-3.5" aria-hidden="true" />
           </span>
         ) : null}
@@ -367,11 +370,11 @@ function EvaluationInlineStat({
   value: ReactNode
 }>) {
   return (
-    <div className="inline-flex items-center gap-2 rounded-full border border-sky-100/60 bg-gradient-to-r from-white to-sky-50/30 px-3 py-1.5 shadow-sm backdrop-blur-sm">
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-sky-600/80">
+    <div className="inline-flex items-center gap-2 rounded-full border border-info/20 bg-[linear-gradient(90deg,hsl(var(--card)),hsl(var(--info)/0.08))] px-3 py-1.5 shadow-sm backdrop-blur-sm">
+      <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-info/80">
         {label}
       </span>
-      <span className="font-mono text-[12px] font-bold tabular-nums text-slate-800">
+      <span className="font-mono text-[12px] font-bold tabular-nums text-foreground">
         {value}
       </span>
     </div>
@@ -422,14 +425,14 @@ function EvaluationStageStat({
   helper: string
 }>) {
   return (
-    <div className="rounded-2xl border border-sky-100/70 bg-gradient-to-br from-white via-slate-50/80 to-sky-50/60 px-3.5 py-3 shadow-sm backdrop-blur-sm">
-      <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+    <div className="rounded-2xl border border-info/20 bg-[linear-gradient(135deg,hsl(var(--card)),hsl(var(--muted)/0.55),hsl(var(--info)/0.12))] px-3.5 py-3 shadow-sm backdrop-blur-sm">
+      <div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
         {label}
       </div>
-      <div className="mt-1.5 text-[18px] font-bold leading-tight tabular-nums text-slate-900">
+      <div className="mt-1.5 text-[18px] font-bold leading-tight tabular-nums text-foreground">
         {value}
       </div>
-      <div className="mt-1 text-[11px] leading-4 text-slate-500">{helper}</div>
+      <div className="mt-1 text-[11px] leading-4 text-muted-foreground">{helper}</div>
     </div>
   )
 }
@@ -470,10 +473,10 @@ function EvaluationResultsStage({
   })
   const readinessLabelClassName =
     readiness.tone === 'ready'
-      ? 'bg-gradient-to-r from-emerald-100 to-teal-100 text-emerald-700'
+      ? 'bg-[linear-gradient(90deg,hsl(var(--success)/0.18),hsl(var(--success)/0.10))] text-success'
       : readiness.tone === 'checking'
-        ? 'bg-gradient-to-r from-sky-100 to-blue-100 text-sky-700'
-        : 'bg-gradient-to-r from-amber-100 to-orange-100 text-amber-800'
+        ? 'bg-[linear-gradient(90deg,hsl(var(--info)/0.18),hsl(var(--primary)/0.12))] text-info'
+        : 'bg-[linear-gradient(90deg,hsl(var(--warning)/0.18),hsl(var(--warning)/0.10))] text-warning'
   const isDeterministicEvaluation =
     String(summary.mode || '') === 'deterministic_conversation'
   const deterministicReason = String(summary.ragas_skipped_reason || '')
@@ -485,25 +488,25 @@ function EvaluationResultsStage({
   return (
     <section
       className={cn(
-        'overflow-hidden rounded-[28px] border border-sky-100/50 bg-white/85 shadow-lg backdrop-blur-sm',
+        'overflow-hidden rounded-[28px] border border-info/20 bg-card/85 shadow-lg backdrop-blur-sm',
         'flex flex-col',
         fillAvailableHeight && 'min-h-0 flex-1',
         className
       )}
     >
-      <div className="border-b border-sky-100/60 bg-gradient-to-r from-sky-50/45 via-white to-blue-50/30 px-4 py-4">
+      <div className="border-b border-info/20 bg-[linear-gradient(90deg,hsl(var(--info)/0.08),hsl(var(--card)/0.96),hsl(var(--primary)/0.08))] px-4 py-4">
         <div className="flex flex-wrap items-center gap-2.5">
-          <span className="inline-flex h-7 items-center rounded-full border border-sky-200/70 bg-white/85 px-3 text-[11px] font-semibold text-sky-700 shadow-sm">
+          <span className="inline-flex h-7 items-center rounded-full border border-info/30 bg-card/85 px-3 text-[11px] font-semibold text-info shadow-sm">
             运行详情
           </span>
           {statusBadge}
         </div>
         <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
-            <div className="line-clamp-2 text-[18px] font-bold leading-tight text-slate-900">
+            <div className="line-clamp-2 text-[18px] font-bold leading-tight text-foreground">
               {selectedRunTitle}
             </div>
-            <p className="mt-1.5 max-w-3xl text-[12.5px] leading-5 text-slate-600">
+            <p className="mt-1.5 max-w-3xl text-[12.5px] leading-5 text-muted-foreground">
               把忠实度可评估性、当前 run 状态和结果输出收进同一个结果舞台，避免同一条线索被拆成多个孤立块。
             </p>
           </div>
@@ -528,7 +531,7 @@ function EvaluationResultsStage({
           )}
         >
           <div className="flex flex-wrap items-center gap-2.5">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
               忠实度可评估性
             </div>
             <span
@@ -540,27 +543,27 @@ function EvaluationResultsStage({
               {readiness.label}
             </span>
           </div>
-          <div className="text-[17px] font-semibold text-slate-900">
+          <div className="text-[17px] font-semibold text-foreground">
             {readiness.title}
           </div>
-          <p className="max-w-3xl text-[12.5px] leading-5 text-slate-600">
+          <p className="max-w-3xl text-[12.5px] leading-5 text-muted-foreground">
             {readiness.description}
           </p>
           {isDeterministicEvaluation ? (
-            <div className="rounded-xl border border-cyan-200/70 bg-cyan-50/70 px-3 py-2.5 text-[11.5px] leading-5 text-cyan-950">
+            <div className="rounded-xl border border-info/25 bg-info/[0.10] px-3 py-2.5 text-[11.5px] leading-5 text-foreground">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium text-cyan-700">评测方式</span>
-                <span className="rounded-full bg-white px-2.5 py-0.5 font-bold text-cyan-800 shadow-sm ring-1 ring-cyan-200/70">
+                <span className="font-medium text-info">评测方式</span>
+                <span className="rounded-full bg-card px-2.5 py-0.5 font-bold text-info shadow-sm ring-1 ring-info/25">
                   确定性证据校验
                 </span>
               </div>
-              <p className="mt-1 text-cyan-900/80">
+              <p className="mt-1 text-foreground/80">
                 {deterministicDescription}
               </p>
             </div>
           ) : null}
           {readiness.showMissingEvidenceFailure ? (
-            <p className="rounded-xl border border-amber-200/70 bg-amber-100/60 px-3 py-2 text-[11.5px] font-semibold leading-5 text-amber-900">
+            <p className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-[11.5px] font-semibold leading-5 text-warning">
               当前 run 的失败原因是缺少证据，不是 RAGAS 算出低分。
             </p>
           ) : null}
@@ -568,38 +571,38 @@ function EvaluationResultsStage({
           {!displayMetrics.length ? (
             <div
               className={cn(
-                'rounded-2xl border border-dashed border-sky-200/70 bg-gradient-to-br from-slate-50/90 via-white to-sky-50/70 p-4',
+                'rounded-2xl border border-dashed border-info/30 bg-[linear-gradient(135deg,hsl(var(--muted)/0.55),hsl(var(--card)/0.96),hsl(var(--info)/0.12))] p-4',
                 fillAvailableHeight && 'flex flex-1 flex-col justify-between'
               )}
             >
-              <div className="text-[14px] font-semibold text-slate-900">
+              <div className="text-[14px] font-semibold text-foreground">
                 {emptyRunState.title}
               </div>
-              <p className="mt-1.5 max-w-2xl text-[12px] leading-5 text-slate-600">
+              <p className="mt-1.5 max-w-2xl text-[12px] leading-5 text-muted-foreground">
                 {emptyRunState.description}
               </p>
               <div className="mt-4 grid gap-2.5 sm:grid-cols-3">
-                <div className="rounded-xl border border-sky-100/70 bg-white/90 px-3 py-2.5 shadow-sm">
-                  <div className="text-[11px] font-bold text-sky-700">
+                <div className="rounded-xl border border-info/20 bg-card/90 px-3 py-2.5 shadow-sm">
+                  <div className="text-[11px] font-bold text-info">
                     1 选择会话来源
                   </div>
-                  <div className="mt-1 text-[11px] leading-4 text-slate-600">
+                  <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
                     从已有会话或查询中选择
                   </div>
                 </div>
-                <div className="rounded-xl border border-sky-100/70 bg-white/90 px-3 py-2.5 shadow-sm">
-                  <div className="text-[11px] font-bold text-sky-700">
+                <div className="rounded-xl border border-info/20 bg-card/90 px-3 py-2.5 shadow-sm">
+                  <div className="text-[11px] font-bold text-info">
                     2 配置评测参数
                   </div>
-                  <div className="mt-1 text-[11px] leading-4 text-slate-600">
+                  <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
                     选择指标与过滤规则
                   </div>
                 </div>
-                <div className="rounded-xl border border-sky-100/70 bg-white/90 px-3 py-2.5 shadow-sm">
-                  <div className="text-[11px] font-bold text-sky-700">
+                <div className="rounded-xl border border-info/20 bg-card/90 px-3 py-2.5 shadow-sm">
+                  <div className="text-[11px] font-bold text-info">
                     3 开始评测
                   </div>
-                  <div className="mt-1 text-[11px] leading-4 text-slate-600">
+                  <div className="mt-1 text-[11px] leading-4 text-muted-foreground">
                     流程完成后查看结果
                   </div>
                 </div>
@@ -628,13 +631,13 @@ function EvaluationResultsStage({
       </div>
 
       {displayMetrics.length ? (
-        <div className="border-t border-sky-100/60 bg-gradient-to-b from-slate-50/60 to-white px-4 py-4">
+        <div className="border-t border-info/20 bg-[linear-gradient(180deg,hsl(var(--muted)/0.34),hsl(var(--card)))] px-4 py-4">
           <div className="mb-3 flex flex-wrap items-center gap-2.5">
-            <div className="inline-flex items-center gap-2 text-[14px] font-bold text-slate-900">
-              <BarChart3 className="h-4 w-4 text-sky-600" aria-hidden="true" />
+            <div className="inline-flex items-center gap-2 text-[14px] font-bold text-foreground">
+              <BarChart3 className="h-4 w-4 text-info" aria-hidden="true" />
               得分概览
             </div>
-            <span className="rounded-full border border-sky-200/70 bg-white px-2.5 py-1 text-[10.5px] font-semibold text-sky-700 shadow-sm">
+            <span className="rounded-full border border-info/30 bg-card px-2.5 py-1 text-[10.5px] font-semibold text-info shadow-sm">
               {displayMetrics.length} 项指标
             </span>
           </div>
@@ -642,12 +645,12 @@ function EvaluationResultsStage({
             {displayMetrics.map((metric) => (
               <div
                 key={metric.key}
-                className="rounded-2xl border border-sky-100/60 bg-white/90 px-3.5 py-3 shadow-sm"
+                className="rounded-2xl border border-info/20 bg-card/90 px-3.5 py-3 shadow-sm"
               >
-                <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-sky-700">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-info">
                   {metricLabel(metric.key)}
                 </div>
-                <div className="mt-1.5 text-[22px] font-bold leading-none tabular-nums text-slate-900">
+                <div className="mt-1.5 text-[22px] font-bold leading-none tabular-nums text-foreground">
                   {metric.value.toFixed(3)}
                 </div>
               </div>
@@ -673,29 +676,29 @@ function EvaluationHeroEmptyState({
   return (
     <div
       className={cn(
-        'flex rounded-xl border border-dashed border-slate-200 bg-slate-50/55',
+        'flex rounded-xl border border-dashed border-border bg-muted/40',
         compact
           ? 'min-h-[148px] flex-row items-center justify-start gap-3 px-3 py-2.5 text-left'
           : 'min-h-[188px] flex-col items-center justify-center px-6 py-8 text-center'
       )}
     >
       {compact ? (
-        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-100 bg-card text-blue-600 shadow-[0_8px_20px_rgba(37,99,235,0.10)]">
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-card text-primary shadow-[0_8px_20px_rgba(37,99,235,0.10)]">
           <BarChart3 className="h-4 w-4" aria-hidden="true" />
         </span>
       ) : (
         <div className="relative mb-3 h-16 w-20">
-          <div className="absolute left-5 top-1 h-14 w-12 rounded-xl border border-blue-100 bg-card shadow-[0_10px_28px_rgba(37,99,235,0.12)]" />
-          <div className="absolute left-8 top-0 h-4 w-6 rounded-md bg-blue-100 ring-1 ring-blue-200" />
-          <div className="absolute left-9 top-9 h-3 w-2 rounded-sm bg-blue-300" />
-          <div className="absolute left-12 top-7 h-5 w-2 rounded-sm bg-blue-400" />
-          <div className="absolute left-[60px] top-5 h-7 w-2 rounded-sm bg-blue-500" />
+          <div className="absolute left-5 top-1 h-14 w-12 rounded-xl border border-primary/20 bg-card shadow-[0_10px_28px_rgba(37,99,235,0.12)]" />
+          <div className="absolute left-8 top-0 h-4 w-6 rounded-md bg-primary/15 ring-1 ring-primary/30" />
+          <div className="absolute left-9 top-9 h-3 w-2 rounded-sm bg-primary/30" />
+          <div className="absolute left-12 top-7 h-5 w-2 rounded-sm bg-primary" />
+          <div className="absolute left-[60px] top-5 h-7 w-2 rounded-sm bg-primary" />
         </div>
       )}
       <div className={cn(compact && 'min-w-0')}>
         <div
           className={cn(
-            'font-semibold text-slate-950',
+            'font-semibold text-foreground',
             compact ? 'text-[13px]' : 'text-[14px]'
           )}
         >
@@ -703,7 +706,7 @@ function EvaluationHeroEmptyState({
         </div>
         <p
           className={cn(
-            'max-w-xl text-[12px] text-slate-500',
+            'max-w-xl text-[12px] text-muted-foreground',
             compact ? 'mt-1 leading-4' : 'mt-2 leading-5'
           )}
         >
@@ -740,69 +743,67 @@ function EvaluationHeroCard({
   showAblationsEntry: boolean
 }>) {
   return (
-    <section className="relative overflow-hidden rounded-3xl border border-sky-200/60 bg-gradient-to-br from-white via-sky-50/40 to-blue-50/30 px-5 py-4 shadow-xl shadow-sky-200/30 backdrop-blur-xl">
+    <section className={cn(MANAGEMENT_HERO_PANEL_CLASS, 'min-h-[95px]')}>
       <div
-        className="pointer-events-none absolute -right-10 -top-14 size-44 rounded-full bg-sky-300/22 blur-3xl"
+        className="pointer-events-none absolute -right-10 -top-14 size-44 rounded-full bg-info/10 blur-3xl dark:bg-info/[0.08]"
         aria-hidden="true"
       />
       <div
-        className="pointer-events-none absolute bottom-0 left-8 right-8 h-px bg-gradient-to-r from-transparent via-sky-300/65 to-transparent"
+        className="pointer-events-none absolute bottom-0 left-8 right-8 h-px bg-[linear-gradient(90deg,transparent,hsl(var(--info)/0.28),transparent)]"
         aria-hidden="true"
       />
 
-      <div className="relative flex min-w-0 flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+      <div className="relative flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex min-w-0 items-center gap-4">
-          <div className="relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-sky-200/60 bg-gradient-to-br from-white to-sky-100 text-sky-600 shadow-lg shadow-sky-200/40">
+          <div className="relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-info/30 bg-[linear-gradient(135deg,hsl(var(--card)),hsl(var(--info)/0.16))] text-info shadow-lg shadow-info/20">
             <span
-              className="absolute inset-x-2 top-1.5 h-px bg-white/80"
+              className="absolute inset-x-2 top-1.5 h-px bg-card/80"
               aria-hidden="true"
             />
             <PageTitleIcon name="ragas-evaluation" className="size-10" />
           </div>
 
           <div className="min-w-0">
-            <div className="mb-2 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-300/60 bg-gradient-to-r from-sky-100/80 to-blue-100/60 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-sky-700 shadow-sm">
-                <BarChart3 className="size-3.5" aria-hidden="true" />
-                Evaluation Ops
-              </span>
-              <span className="inline-flex items-center rounded-full border border-emerald-300/60 bg-gradient-to-r from-emerald-100/80 to-teal-100/60 px-3 py-1.5 text-[10px] font-bold text-emerald-700 shadow-sm">
-                <Icon className="mr-1.5 size-3.5" aria-hidden="true" />
-                {label}
-              </span>
-            </div>
-
-            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-              <h1 className="text-[26px] font-black tracking-tight text-slate-900">
-                {title}
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-[26px] font-black tracking-[-0.025em] text-foreground">
+                <span className="bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent">
+                  {title}
+                </span>
               </h1>
-              <p className="text-[13px] font-semibold leading-5 text-sky-600/90">
-                {description}
-              </p>
+              <span className="inline-flex items-center rounded-full border border-success/20 bg-success/10 px-2.5 py-1 text-[10px] font-bold text-success shadow-sm">
+                <Icon className="mr-1.5 size-3.5" aria-hidden="true" />
+                评测中心 · {label}
+              </span>
             </div>
+            <p
+              className="mt-0.5 truncate text-[13px] leading-5 text-muted-foreground"
+              title={description}
+            >
+              {description}
+            </p>
           </div>
         </div>
 
-        <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] xl:min-w-[560px]">
-          <div className="flex min-w-0 flex-wrap items-center gap-2.5 rounded-2xl border border-sky-200/70 bg-white/80 px-4 py-3 text-[12px] shadow-md shadow-sky-200/20 backdrop-blur-sm">
-            <span className="inline-flex items-center gap-2 font-bold text-slate-700">
+        <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] xl:min-w-[520px]">
+          <div className={cn(KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS, 'gap-2.5 px-4 py-2.5 text-[12px]')}>
+            <span className="inline-flex items-center gap-2 font-bold text-foreground/85">
               <span
-                className="size-1.5 rounded-full bg-sky-500 shadow-sm shadow-sky-300"
+                className="size-1.5 rounded-full bg-info shadow-sm shadow-info/20"
                 aria-hidden="true"
               />
               会话
             </span>
-            <span className="font-mono font-black tabular-nums text-slate-900">
+            <span className="font-mono font-black tabular-nums text-foreground">
               {conversationsCount}
             </span>
-            <span className="h-4 w-px bg-sky-200/70" />
-            <span className="font-bold text-slate-600">运行</span>
-            <span className="font-mono font-black tabular-nums text-sky-600">
+            <span className="h-4 w-px bg-info/15" />
+            <span className="font-bold text-muted-foreground">运行</span>
+            <span className="font-mono font-black tabular-nums text-info">
               {runsCount}
             </span>
-            <span className="h-4 w-px bg-sky-200/70" />
-            <span className="font-bold text-slate-600">{focusLabel}</span>
-            <span className="font-mono font-black tabular-nums text-emerald-600">
+            <span className="h-4 w-px bg-info/15" />
+            <span className="font-bold text-muted-foreground">{focusLabel}</span>
+            <span className="font-mono font-black tabular-nums text-success">
               {focusValue}
             </span>
           </div>
@@ -813,18 +814,18 @@ function EvaluationHeroCard({
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-10 flex-1 rounded-xl border-sky-200/60 bg-white/90 px-4 text-[13px] font-bold text-slate-700 shadow-sm hover:bg-sky-50 hover:text-sky-700 sm:flex-none"
+                  className="h-10 flex-1 rounded-xl border-info/30 bg-card/90 px-4 text-[13px] font-bold text-foreground/85 shadow-sm hover:bg-info/[0.08] hover:text-info sm:flex-none"
                 >
                   <SlidersHorizontal className="mr-2 h-4 w-4" />
                   高级诊断
-                  <ChevronDown className="ml-2 h-3.5 w-3.5 text-slate-400" />
+                  <ChevronDown className="ml-2 h-3.5 w-3.5 text-muted-foreground/70" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="end"
-                className="w-72 rounded-xl border-sky-200/70 bg-white/95 p-1.5 shadow-xl backdrop-blur-xl"
+                className="w-72 rounded-xl border-info/30 bg-popover/95 p-1.5 shadow-xl backdrop-blur-xl"
               >
-                <DropdownMenuLabel className="px-2.5 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-sky-700">
+                <DropdownMenuLabel className="px-2.5 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-info">
                   召回与向量诊断
                 </DropdownMenuLabel>
                 <DropdownMenuItem
@@ -832,12 +833,12 @@ function EvaluationHeroCard({
                   className={ADVANCED_DIAGNOSTIC_ITEM_CLASS}
                 >
                   <Link href="/knowledge/similarity">
-                    <Grid3X3 className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
+                    <Grid3X3 className="mt-0.5 h-4 w-4 shrink-0 text-info" />
                     <span className="min-w-0">
-                      <span className="block text-[13px] font-bold text-slate-800">
+                      <span className="block text-[13px] font-bold text-foreground">
                         向量相似度诊断
                       </span>
-                      <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">
+                      <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
                         用热力图检查问题、切片与数据集之间的语义重叠。
                       </span>
                     </span>
@@ -851,12 +852,12 @@ function EvaluationHeroCard({
                       className={ADVANCED_DIAGNOSTIC_ITEM_CLASS}
                     >
                       <Link href="/evaluations/ablations">
-                        <SlidersHorizontal className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
+                        <SlidersHorizontal className="mt-0.5 h-4 w-4 shrink-0 text-info" />
                         <span className="min-w-0">
-                          <span className="block text-[13px] font-bold text-slate-800">
+                          <span className="block text-[13px] font-bold text-foreground">
                             检索调参对比
                           </span>
-                          <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">
+                          <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
                             对比检索配置、消融结果和参数影响。
                           </span>
                         </span>
@@ -870,7 +871,7 @@ function EvaluationHeroCard({
             <Button
               type="button"
               variant="outline"
-              className="h-10 flex-1 rounded-xl border-sky-200/60 bg-white/90 px-4 text-[13px] font-bold text-sky-700 shadow-sm hover:bg-gradient-to-r hover:from-sky-50 hover:to-blue-50 hover:shadow-md sm:flex-none"
+              className="h-10 flex-1 rounded-xl border-info/30 bg-card/90 px-4 text-[13px] font-bold text-info shadow-sm hover:bg-[linear-gradient(90deg,hsl(var(--info)/0.10),hsl(var(--primary)/0.08))] hover:shadow-md sm:flex-none"
               onClick={onRefresh}
             >
               <RefreshCw
@@ -905,12 +906,12 @@ function CollapsedWorkspaceRail({
   const ExpandIcon = side === 'left' ? ChevronRight : ChevronLeft
 
   return (
-    <aside className="hidden xl:flex min-h-0 flex-col items-center rounded-2xl border border-sky-100/50 bg-white/80 px-2 py-3 shadow-lg backdrop-blur-sm">
+    <aside className="hidden xl:flex min-h-0 flex-col items-center rounded-2xl border border-info/20 bg-card/80 px-2 py-3 shadow-lg backdrop-blur-sm">
       <Button
         type="button"
         variant="ghost"
         size="icon"
-        className="h-9 w-9 rounded-xl border border-sky-200/60 bg-sky-50/70 text-sky-700 shadow-sm hover:bg-sky-100"
+        className="h-9 w-9 rounded-xl border border-info/30 bg-info/5 text-info shadow-sm hover:bg-info/15"
         onClick={onExpand}
         title={expandLabel}
         aria-label={expandLabel}
@@ -918,7 +919,7 @@ function CollapsedWorkspaceRail({
         <Icon className="h-4 w-4" aria-hidden="true" />
       </Button>
 
-      <div className="mt-3 text-center text-[10.5px] font-semibold leading-4 text-slate-600">
+      <div className="mt-3 text-center text-[10.5px] font-semibold leading-4 text-muted-foreground">
         {title}
       </div>
 
@@ -926,12 +927,12 @@ function CollapsedWorkspaceRail({
         {badgeItems.map((item) => (
           <div
             key={item.label}
-            className="rounded-xl border border-sky-100/70 bg-gradient-to-br from-white to-sky-50/60 px-1.5 py-2 text-center shadow-sm"
+            className="rounded-xl border border-info/20 bg-[linear-gradient(135deg,hsl(var(--card)),hsl(var(--info)/0.10))] px-1.5 py-2 text-center shadow-sm"
           >
-            <div className="text-[11px] font-bold leading-none tabular-nums text-slate-900">
+            <div className="text-[11px] font-bold leading-none tabular-nums text-foreground">
               {item.value}
             </div>
-            <div className="mt-1 text-[9px] font-semibold leading-3 text-sky-700">
+            <div className="mt-1 text-[9px] font-semibold leading-3 text-info">
               {item.label}
             </div>
           </div>
@@ -942,7 +943,7 @@ function CollapsedWorkspaceRail({
         type="button"
         variant="ghost"
         size="icon"
-        className="mt-auto h-8 w-8 rounded-full text-slate-500 hover:bg-sky-50 hover:text-sky-700"
+        className="mt-auto h-8 w-8 rounded-full text-muted-foreground hover:bg-info/10 hover:text-info"
         onClick={onExpand}
         title={expandLabel}
         aria-label={expandLabel}
@@ -979,12 +980,12 @@ function RunRecordCard({
       type="button"
       onClick={onClick}
       className={cn(
-        'w-full rounded-xl border bg-white/80 p-3 text-left shadow-sm backdrop-blur-sm transition-all duration-200 hover:shadow-md hover:scale-[1.02] focus-ring',
-        active ? 'border-sky-300 bg-gradient-to-br from-sky-50/90 to-blue-50/90 ring-2 ring-sky-100/50 shadow-sky-100/50' : 'border-sky-100/50 hover:border-sky-200'
+        'w-full rounded-xl border bg-card/80 p-3 text-left shadow-sm backdrop-blur-sm transition-all duration-200 hover:shadow-md hover:scale-[1.02] focus-ring',
+        active ? 'border-info/40 bg-[linear-gradient(135deg,hsl(var(--info)/0.12),hsl(var(--primary)/0.10))] ring-2 ring-info/20 shadow-info/20' : 'border-info/20 hover:border-info/30'
       )}
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 text-[13px] font-bold text-slate-900">
+        <div className="min-w-0 text-[13px] font-bold text-foreground">
           <div className="truncate">
             {shortConversationTitle(conversation, run.conversation_id)}
           </div>
@@ -997,7 +998,7 @@ function RunRecordCard({
           />
         </span>
       </div>
-      <div className="mt-2 space-y-1 text-[11px] leading-4 text-slate-600">
+      <div className="mt-2 space-y-1 text-[11px] leading-4 text-muted-foreground">
         <div>运行时间：{formatDateTime(run.created_at)}</div>
         <div className="flex items-center gap-4">
           <span className="font-medium">轮次：{samples}</span>
@@ -1006,25 +1007,25 @@ function RunRecordCard({
       </div>
       {progress === null ? null : (
         <div className="mt-2.5 flex items-center gap-2">
-          <div className="h-2 flex-1 overflow-hidden rounded-full bg-sky-100/60">
+          <div className="h-2 flex-1 overflow-hidden rounded-full bg-info/10">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-sky-500 to-blue-500 transition-all duration-300"
+              className="h-full rounded-full bg-[linear-gradient(90deg,hsl(var(--info)),hsl(var(--primary)))] transition-all duration-300"
               style={{ width: `${progress}%` }}
             />
           </div>
-          <span className="text-[11px] font-semibold tabular-nums text-sky-600">
+          <span className="text-[11px] font-semibold tabular-nums text-info">
             {progress}%
           </span>
         </div>
       )}
       {run.status === 'failed' && run.error_message ? (
-        <div className="mt-2 line-clamp-2 rounded-lg bg-rose-50/80 px-2 py-1 text-[11px] font-medium text-rose-700">
+        <div className="mt-2 line-clamp-2 rounded-lg bg-destructive/5 px-2 py-1 text-[11px] font-medium text-destructive">
           {missingEvidence
             ? '缺少 citations / retrieved contexts，无法计算忠实度。'
             : `错误：${run.error_message}`}
         </div>
       ) : (
-        <div className="mt-2 text-right text-[10.5px] font-medium text-sky-600">
+        <div className="mt-2 text-right text-[10.5px] font-medium text-info">
           耗时：{formatRunDuration(run)}
         </div>
       )}
@@ -1038,15 +1039,15 @@ function ScoreDetailsCard({
   rows: ReturnType<typeof scoreRowsFor>
 }>) {
   return (
-    <section className="rounded-2xl border border-sky-100/50 bg-white/80 shadow-md backdrop-blur-sm">
-      <div className="flex items-center gap-2.5 border-b border-sky-100/60 bg-gradient-to-r from-sky-50/40 to-blue-50/30 px-4 py-3">
-        <div className="text-[14px] font-bold text-slate-900">评分明细</div>
-        <Info className="h-4 w-4 text-sky-500" aria-hidden="true" />
+    <section className="rounded-2xl border border-info/20 bg-card/80 shadow-md backdrop-blur-sm">
+      <div className="flex items-center gap-2.5 border-b border-info/20 bg-[linear-gradient(90deg,hsl(var(--info)/0.08),hsl(var(--primary)/0.08))] px-4 py-3">
+        <div className="text-[14px] font-bold text-foreground">评分明细</div>
+        <Info className="h-4 w-4 text-info" aria-hidden="true" />
       </div>
       {rows.length ? (
         <div className="overflow-auto">
           <table className="w-full text-left text-[12.5px]">
-            <thead className="bg-gradient-to-r from-sky-50/50 to-blue-50/30 text-slate-700">
+            <thead className="bg-[linear-gradient(90deg,hsl(var(--info)/0.10),hsl(var(--primary)/0.08))] text-foreground/85">
               <tr>
                 <th className="px-4 py-2.5 font-bold">指标</th>
                 <th className="px-4 py-2.5 font-bold">平均分</th>
@@ -1055,22 +1056,22 @@ function ScoreDetailsCard({
                 <th className="px-4 py-2.5 font-bold">通过率（≥0.8）</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-sky-100/40">
+            <tbody className="divide-y divide-info/20">
               {rows.map((row) => (
-                <tr key={row.key} className="hover:bg-sky-50/30 transition-colors">
-                  <td className="px-4 py-2.5 font-bold text-slate-900">
+                <tr key={row.key} className="hover:bg-info/5 transition-colors">
+                  <td className="px-4 py-2.5 font-bold text-foreground">
                     {row.label}
                   </td>
-                  <td className="px-4 py-2.5 font-semibold tabular-nums text-slate-800">
+                  <td className="px-4 py-2.5 font-semibold tabular-nums text-foreground">
                     {row.mean === null ? '-' : row.mean.toFixed(3)}
                   </td>
-                  <td className="px-4 py-2.5 font-semibold tabular-nums text-slate-800">
+                  <td className="px-4 py-2.5 font-semibold tabular-nums text-foreground">
                     {row.p50 === null ? '-' : row.p50.toFixed(3)}
                   </td>
-                  <td className="px-4 py-2.5 font-semibold tabular-nums text-slate-800">
+                  <td className="px-4 py-2.5 font-semibold tabular-nums text-foreground">
                     {row.p90 === null ? '-' : row.p90.toFixed(3)}
                   </td>
-                  <td className="px-4 py-2.5 font-semibold tabular-nums text-slate-800">
+                  <td className="px-4 py-2.5 font-semibold tabular-nums text-foreground">
                     {formatPercentValue(row.passRate)}
                   </td>
                 </tr>
@@ -1109,16 +1110,16 @@ function IterationDetailsCard({
     : items
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-2">
+    <section className="rounded-xl border border-border bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2">
         <div className="flex items-center gap-2">
-          <div className="text-[13px] font-semibold text-slate-950">
+          <div className="text-[13px] font-semibold text-foreground">
             逐轮明细
           </div>
-          <Info className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
+          <Info className="h-3.5 w-3.5 text-muted-foreground/70" aria-hidden="true" />
         </div>
         <div className="flex items-center gap-2">
-          <label className="inline-flex items-center gap-2 text-[12px] text-slate-500">
+          <label className="inline-flex items-center gap-2 text-[12px] text-muted-foreground">
             仅看异常
             <Checkbox
               checked={onlyFailures}
@@ -1127,7 +1128,7 @@ function IterationDetailsCard({
           </label>
           <Button
             variant="outline"
-            className="h-7 rounded-lg border-slate-200 bg-card px-2.5 text-[12px]"
+            className="h-7 rounded-lg border-border bg-card px-2.5 text-[12px]"
             disabled={!items.length}
             onClick={onExport}
           >
@@ -1141,7 +1142,7 @@ function IterationDetailsCard({
             aria-label="逐轮评分明细"
             className="w-full min-w-[760px] text-left text-[12px]"
           >
-            <thead className="sticky top-0 z-10 bg-slate-50 text-slate-500">
+            <thead className="sticky top-0 z-10 bg-muted/50 text-muted-foreground">
               <tr>
                 <th className="w-16 px-3 py-1.5 font-medium">轮次</th>
                 <th className="min-w-[160px] px-3 py-1.5 font-medium">问题</th>
@@ -1156,21 +1157,21 @@ function IterationDetailsCard({
                 <th className="w-20 px-3 py-1.5 font-medium">状态</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-border/50">
               {visibleItems.map((item) => {
                 const anomaly = itemHasLowScore(item, metricKeys)
                 return (
-                  <tr key={item.id} className="align-top hover:bg-slate-50/80">
-                    <td className="px-3 py-1.5 tabular-nums text-slate-500">
+                  <tr key={item.id} className="align-top hover:bg-muted/40">
+                    <td className="px-3 py-1.5 tabular-nums text-muted-foreground">
                       {item.turn_index}
                     </td>
                     <td className="px-3 py-1.5">
-                      <div className="line-clamp-2 text-slate-800">
+                      <div className="line-clamp-2 text-foreground">
                         {item.user_input}
                       </div>
                     </td>
                     <td className="px-3 py-1.5">
-                      <div className="line-clamp-2 text-slate-600">
+                      <div className="line-clamp-2 text-muted-foreground">
                         {item.response}
                       </div>
                     </td>
@@ -1181,7 +1182,7 @@ function IterationDetailsCard({
                       return (
                         <td
                           key={metricKey}
-                          className="px-3 py-1.5 tabular-nums text-slate-700"
+                          className="px-3 py-1.5 tabular-nums text-foreground/85"
                         >
                           {isNum ? value.toFixed(3) : '-'}
                         </td>
@@ -1192,8 +1193,8 @@ function IterationDetailsCard({
                         className={cn(
                           'rounded-full px-2 py-0.5 text-[11px] font-medium',
                           anomaly
-                            ? 'bg-rose-50 text-rose-600'
-                            : 'bg-emerald-50 text-emerald-600'
+                            ? 'bg-destructive/10 text-destructive'
+                            : 'bg-success/10 text-success'
                         )}
                       >
                         {anomaly ? '异常' : '正常'}
@@ -1613,31 +1614,16 @@ function EvaluationsPageContent() {
       : runStatusCounts.failed
 
   return (
-    <div className="relative flex flex-1 flex-col overflow-hidden bg-gradient-to-br from-sky-50/40 via-blue-50/30 to-cyan-50/40">
+    <div className="relative flex flex-1 flex-col overflow-hidden bg-[linear-gradient(135deg,hsl(var(--info)/0.08),hsl(var(--primary)/0.07),hsl(var(--info)/0.10))]">
       <AnalysisPageShell
         title="评测中心"
         description="把实时会话评测、回归测试与检索集健康度放到同一个工作台里，减少来回切页。"
         icon={BarChart3}
-        iconColor="text-sky-600"
+        iconColor="text-info"
         badge="评测"
         size="full"
         showHeader={false}
-        bodyGutter="none"
-        bodyClassName="!pb-0"
-        bodyContainerClassName="max-w-none"
-      >
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto px-6 py-4">
-          <PageHeader
-            title={activeTabMeta.title}
-            description={activeTabMeta.description}
-            iconImage="ragas-evaluation"
-            icon={ActiveTabIcon}
-            iconColor="text-sky-600"
-            badge="评测中心"
-            compact
-            className="sr-only"
-          />
-
+        top={
           <EvaluationHeroCard
             title={activeTabMeta.title}
             description={activeTabMeta.description}
@@ -1651,10 +1637,16 @@ function EvaluationsPageContent() {
             isLoading={isLoading}
             showAblationsEntry={showAblationsEntry}
           />
-
-          <section className="overflow-hidden rounded-2xl border border-sky-100/50 bg-white/80 shadow-md backdrop-blur-sm">
-            <div className="flex items-center gap-3 bg-gradient-to-r from-sky-50/45 to-blue-50/25 px-4 py-3">
-              <nav className="flex items-center gap-1 rounded-xl bg-white/65 p-1 shadow-sm backdrop-blur-sm">
+        }
+        topClassName="pt-4"
+        bodyGutter="none"
+        bodyClassName="!pt-0 !pb-0"
+        bodyContainerClassName="max-w-none"
+      >
+        <div className="flex min-h-0 flex-1 flex-col gap-3 px-6 pb-4">
+          <section className="overflow-hidden rounded-2xl border border-info/20 bg-card/80 shadow-md backdrop-blur-sm">
+            <div className="flex items-center gap-3 bg-[linear-gradient(90deg,hsl(var(--info)/0.08),hsl(var(--primary)/0.06))] px-4 py-3">
+              <nav className="flex items-center gap-1 rounded-xl bg-card/65 p-1 shadow-sm backdrop-blur-sm">
                 {TAB_META.map((tab) => (
                   <button
                     key={tab.id}
@@ -1663,8 +1655,8 @@ function EvaluationsPageContent() {
                     className={cn(
                       'relative inline-flex h-8 items-center gap-2 rounded-lg px-3.5 text-[12px] font-medium transition-all duration-200',
                       isActiveTab(tab.id)
-                        ? 'bg-gradient-to-r from-sky-500 to-blue-500 text-white shadow-md shadow-sky-200/50'
-                        : 'text-slate-600 hover:bg-sky-50/70 hover:text-sky-700'
+                        ? 'bg-[linear-gradient(90deg,hsl(var(--info)),hsl(var(--primary)))] text-primary-foreground shadow-md shadow-info/20'
+                        : 'text-muted-foreground hover:bg-info/5 hover:text-info'
                     )}
                   >
                     <tab.icon className="h-4 w-4" aria-hidden="true" />
@@ -1697,11 +1689,11 @@ function EvaluationsPageContent() {
                   side="left"
                 />
               ) : (
-                <aside className="flex min-h-0 max-h-[calc(100vh-246px)] flex-col rounded-2xl border border-sky-100/50 bg-white/80 shadow-lg backdrop-blur-sm">
-                  <div className="flex items-center justify-between border-b border-sky-100/60 bg-gradient-to-r from-sky-50/50 to-blue-50/30 px-4 py-3">
-                    <div className="inline-flex items-center gap-2.5 text-[14px] font-bold text-slate-900">
+                <aside className="flex min-h-0 max-h-[calc(100vh-246px)] flex-col rounded-2xl border border-info/20 bg-card/80 shadow-lg backdrop-blur-sm">
+                  <div className="flex items-center justify-between border-b border-info/20 bg-[linear-gradient(90deg,hsl(var(--info)/0.10),hsl(var(--primary)/0.08))] px-4 py-3">
+                    <div className="inline-flex items-center gap-2.5 text-[14px] font-bold text-foreground">
                       <SlidersHorizontal
-                        className="h-4.5 w-4.5 text-sky-600"
+                        className="h-4.5 w-4.5 text-info"
                         aria-hidden="true"
                       />
                       参数设置
@@ -1711,7 +1703,7 @@ function EvaluationsPageContent() {
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="h-7 rounded-lg px-2.5 text-[11px] font-semibold text-sky-600 hover:bg-sky-50"
+                        className="h-7 rounded-lg px-2.5 text-[11px] font-semibold text-info hover:bg-info/10"
                         onClick={() => {
                           setMetricKeys(['faithfulness', 'response_relevancy'])
                           setMaxTurns(20)
@@ -1725,7 +1717,7 @@ function EvaluationsPageContent() {
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="hidden h-7 w-7 rounded-lg text-slate-500 hover:bg-sky-50 hover:text-sky-700 xl:inline-flex"
+                        className="hidden h-7 w-7 rounded-lg text-muted-foreground hover:bg-info/10 hover:text-info xl:inline-flex"
                         onClick={() => setSetupRailCollapsed(true)}
                         aria-label="收起参数栏"
                         title="收起参数栏"
@@ -1735,7 +1727,7 @@ function EvaluationsPageContent() {
                     </div>
                   </div>
 
-                  <div className="min-h-0 flex-1 divide-y divide-sky-100/60 overflow-y-auto">
+                  <div className="min-h-0 flex-1 divide-y divide-info/20 overflow-y-auto">
                     <EvaluationConfigSection
                       icon={Database}
                       title="对话来源"
@@ -1745,7 +1737,7 @@ function EvaluationsPageContent() {
                         value={scopedConversationId}
                         onValueChange={handleConversationChange}
                       >
-                        <SelectTrigger className="h-10 rounded-xl border-sky-200/60 bg-white text-[13px] shadow-sm">
+                        <SelectTrigger className="h-10 rounded-xl border-info/30 bg-card text-[13px] shadow-sm">
                           <SelectValue placeholder="请选择会话或查询" />
                         </SelectTrigger>
                         <SelectContent>
@@ -1786,10 +1778,10 @@ function EvaluationsPageContent() {
                                   className={cn(
                                     'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold',
                                     !evidence?.isKnown
-                                      ? 'bg-slate-100 text-slate-600'
+                                      ? 'bg-muted text-muted-foreground'
                                       : evidence.isEvaluable
-                                        ? 'bg-emerald-100 text-emerald-700'
-                                        : 'bg-amber-100 text-amber-700'
+                                        ? 'bg-success/15 text-success'
+                                        : 'bg-warning/15 text-warning'
                                   )}
                                 >
                                   {evidenceLabel}
@@ -1800,7 +1792,7 @@ function EvaluationsPageContent() {
                           })}
                         </SelectContent>
                       </Select>
-                      <div className="mt-2.5 grid grid-cols-3 gap-1.5 rounded-xl border border-sky-200/60 bg-gradient-to-br from-sky-50/50 to-blue-50/30 p-1.5">
+                      <div className="mt-2.5 grid grid-cols-3 gap-1.5 rounded-xl border border-info/30 bg-[linear-gradient(135deg,hsl(var(--info)/0.10),hsl(var(--primary)/0.08))] p-1.5">
                         {CONVERSATION_EVIDENCE_FILTERS.map((filter) => {
                           const count =
                             filter.id === 'ready'
@@ -1817,8 +1809,8 @@ function EvaluationsPageContent() {
                               className={cn(
                                 'rounded-lg px-2 py-1.5 text-[11.5px] font-bold transition-all duration-200',
                                 active
-                                  ? 'bg-white text-sky-700 shadow-md ring-1 ring-sky-100'
-                                  : 'text-slate-600 hover:bg-white/70 hover:text-slate-900'
+                                  ? 'bg-card text-info shadow-md ring-1 ring-info/20'
+                                  : 'text-muted-foreground hover:bg-card/70 hover:text-foreground'
                               )}
                             >
                               {filter.label}
@@ -1871,7 +1863,7 @@ function EvaluationsPageContent() {
                         onMetricKeysChange={setMetricKeys}
                         scope="conversation"
                         className="space-y-1.5"
-                        itemClassName="rounded-lg border border-slate-200 bg-card px-2 py-1 shadow-sm"
+                        itemClassName="rounded-lg border border-border bg-card px-2 py-1 shadow-sm"
                         labelClassName="text-[11px]"
                         hintClassName="text-[10px] leading-3"
                       />
@@ -1887,7 +1879,7 @@ function EvaluationsPageContent() {
                         <div className="space-y-1.5">
                           <Label
                             htmlFor="max-turns"
-                            className="text-[12px] font-medium text-slate-600"
+                            className="text-[12px] font-medium text-muted-foreground"
                           >
                             最近轮次
                           </Label>
@@ -1898,11 +1890,11 @@ function EvaluationsPageContent() {
                             max={200}
                             value={maxTurns}
                             onChange={(e) => setMaxTurns(Number(e.target.value))}
-                            className="h-9 rounded-lg border-slate-200 bg-card text-xs"
+                            className="h-9 rounded-lg border-border bg-card text-xs"
                           />
                         </div>
 
-                        <label className="flex items-start gap-2.5 rounded-lg border border-slate-200 bg-card px-2.5 py-2 shadow-sm">
+                        <label className="flex items-start gap-2.5 rounded-lg border border-border bg-card px-2.5 py-2 shadow-sm">
                           <Checkbox
                             checked={skipEmptyContexts}
                             onCheckedChange={(value) =>
@@ -1910,10 +1902,10 @@ function EvaluationsPageContent() {
                             }
                           />
                           <span className="space-y-0.5">
-                            <span className="block text-[12px] font-medium text-slate-900">
+                            <span className="block text-[12px] font-medium text-foreground">
                               跳过无引用轮次
                             </span>
-                            <span className="block text-[11px] leading-4 text-slate-500">
+                            <span className="block text-[11px] leading-4 text-muted-foreground">
                               减少空样本干扰，让结果更接近真实 RAG 场景。
                             </span>
                           </span>
@@ -1922,7 +1914,7 @@ function EvaluationsPageContent() {
                     </EvaluationConfigSection>
                   </div>
 
-                  <div className="shrink-0 border-t border-sky-100/60 bg-gradient-to-r from-sky-50/30 to-blue-50/20 p-3">
+                  <div className="shrink-0 border-t border-info/20 bg-[linear-gradient(90deg,hsl(var(--info)/0.06),hsl(var(--primary)/0.05))] p-3">
                     <div className="mb-2 flex flex-wrap items-center gap-2">
                       <EvaluationInlineStat
                         label="指标数"
@@ -1935,7 +1927,7 @@ function EvaluationsPageContent() {
                       />
                     </div>
                     <Button
-                      className="h-10 w-full rounded-full bg-gradient-to-r from-sky-500 to-blue-600 text-[13px] font-bold text-white shadow-lg shadow-sky-200/50 transition-all duration-200 hover:from-sky-600 hover:to-blue-700 hover:shadow-xl hover:shadow-sky-300/50"
+                      className="h-10 w-full rounded-full bg-[linear-gradient(90deg,hsl(var(--info)),hsl(var(--primary)))] text-[13px] font-bold text-primary-foreground shadow-lg shadow-info/20 transition-all duration-200 hover:bg-[linear-gradient(90deg,hsl(var(--info)/0.92),hsl(var(--primary)/0.92))] hover:shadow-xl hover:shadow-info/20"
                       disabled={
                         isStarting ||
                         !scopedConversationId ||
@@ -1953,7 +1945,7 @@ function EvaluationsPageContent() {
                     </Button>
                     <Button
                       variant="outline"
-                      className="mt-2 h-8 w-full rounded-full border-sky-200/60 bg-white/80 text-[12px] font-semibold text-sky-700 shadow-sm backdrop-blur-sm hover:bg-sky-50"
+                      className="mt-2 h-8 w-full rounded-full border-info/30 bg-card/80 text-[12px] font-semibold text-info shadow-sm backdrop-blur-sm hover:bg-info/[0.08]"
                       onClick={() => refreshEvaluationWorkspace()}
                     >
                       <RefreshCw
@@ -2021,26 +2013,26 @@ function EvaluationsPageContent() {
                   side="right"
                 />
               ) : (
-                <aside className="flex max-h-[calc(100vh-246px)] min-h-0 flex-col overflow-hidden rounded-2xl border border-sky-100/50 bg-white/80 p-3 shadow-lg backdrop-blur-sm">
+                <aside className="flex max-h-[calc(100vh-246px)] min-h-0 flex-col overflow-hidden rounded-2xl border border-info/20 bg-card/80 p-3 shadow-lg backdrop-blur-sm">
                   <div className="mb-2.5 flex shrink-0 items-center justify-between gap-3">
                     <button
                       type="button"
-                      className="inline-flex min-w-0 items-center gap-2.5 text-left text-[14px] font-bold text-slate-900 focus-ring"
+                      className="inline-flex min-w-0 items-center gap-2.5 text-left text-[14px] font-bold text-foreground focus-ring"
                       onClick={() => setIsRunRecordsCollapsed((value) => !value)}
                       aria-expanded={!isRunRecordsCollapsed}
                       aria-controls="ragas-run-records-list"
                     >
                       <ListChecks
-                        className="h-5 w-5 shrink-0 text-sky-600"
+                        className="h-5 w-5 shrink-0 text-info"
                         aria-hidden="true"
                       />
                       <span className="truncate">运行记录</span>
-                      <span className="rounded-full border border-sky-200/60 bg-gradient-to-r from-sky-50 to-blue-50 px-2 py-0.5 text-[11px] font-bold text-sky-700">
+                      <span className="rounded-full border border-info/30 bg-[linear-gradient(90deg,hsl(var(--info)/0.10),hsl(var(--primary)/0.08))] px-2 py-0.5 text-[11px] font-bold text-info">
                         {runs.length}
                       </span>
                       <ChevronDown
                         className={cn(
-                          'h-4 w-4 text-slate-400 transition-transform duration-200',
+                          'h-4 w-4 text-muted-foreground/70 transition-transform duration-200',
                           isRunRecordsCollapsed && '-rotate-90'
                         )}
                         aria-hidden="true"
@@ -2049,7 +2041,7 @@ function EvaluationsPageContent() {
                     <div className="flex items-center gap-1">
                       <Button
                         variant="ghost"
-                        className="h-8 shrink-0 px-2.5 text-[12px] font-semibold text-sky-700 hover:bg-sky-50"
+                        className="h-8 shrink-0 px-2.5 text-[12px] font-semibold text-info hover:bg-info/10"
                         onClick={() => runsQuery.refetch()}
                       >
                         刷新
@@ -2058,7 +2050,7 @@ function EvaluationsPageContent() {
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="hidden h-8 w-8 shrink-0 rounded-lg text-slate-500 hover:bg-sky-50 hover:text-sky-700 xl:inline-flex"
+                        className="hidden h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-info/10 hover:text-info xl:inline-flex"
                         onClick={() => setRunsRailCollapsed(true)}
                         aria-label="收起运行记录侧栏"
                         title="收起运行记录侧栏"
@@ -2107,7 +2099,7 @@ function EvaluationsPageContent() {
                   </div>
 
                   {isRunRecordsCollapsed ? (
-                    <div className="rounded-xl border border-sky-200/60 bg-gradient-to-br from-sky-50/40 to-blue-50/30 px-3 py-2.5 text-[11px] font-medium text-slate-600">
+                    <div className="rounded-xl border border-info/30 bg-[linear-gradient(135deg,hsl(var(--info)/0.08),hsl(var(--primary)/0.06))] px-3 py-2.5 text-[11px] font-medium text-muted-foreground">
                       已收起 {runs.length}{' '}
                       条运行记录，点击标题展开后在列表内上滑查看。
                     </div>
@@ -2116,11 +2108,11 @@ function EvaluationsPageContent() {
               )}
             </div>
           ) : activeTab === 'regression' ? (
-            <div className="flex h-[calc(100vh-255px)] min-h-[610px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-card p-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="flex h-[calc(100vh-255px)] min-h-[610px] flex-col overflow-hidden rounded-xl border border-border bg-card p-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
               <RegressionTestTab embedded />
             </div>
           ) : (
-            <div className="rounded-xl border border-slate-200 bg-card p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="rounded-xl border border-border bg-card p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
               <QuerysetHealthTab embedded />
             </div>
           )}

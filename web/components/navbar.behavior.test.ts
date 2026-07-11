@@ -105,7 +105,7 @@ vi.mock('@/hooks/use-auth', () => ({
 }))
 
 vi.mock('@/hooks/use-backend-meta', () => ({
-  useBackendMeta: () => ({
+  useBackendMetaDetails: () => ({
     data: null,
   }),
 }))

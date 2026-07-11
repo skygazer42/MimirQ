@@ -28,12 +28,12 @@ import { useRouter } from '@/i18n/navigation'
 import type { Dataset, DatasetHealthResponse, DatasetProfileFindingSummary } from '@/types'
 
 const PIE_COLORS = ['#38bdf8', '#22c55e', '#f59e0b', '#fb7185', '#a78bfa', '#14b8a6', '#94a3b8']
-const healthHeroCard = 'relative overflow-hidden rounded-2xl border border-white/70 bg-[radial-gradient(circle_at_0%_0%,rgba(14,165,233,0.18),transparent_34%),linear-gradient(135deg,rgba(255,255,255,0.96),rgba(236,253,245,0.9))] p-4 shadow-[0_18px_55px_rgba(15,23,42,0.08)] ring-1 ring-slate-100/70 dark:border-border/60 dark:bg-card dark:ring-white/5'
-const healthPanelClass = 'overflow-hidden border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.92))] p-4 shadow-[0_16px_45px_rgba(15,23,42,0.07)] ring-1 ring-slate-100/70 dark:border-border/60 dark:bg-card/95 dark:ring-white/5'
-const healthToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-2xl border border-white/70 bg-white/70 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.055)] ring-1 ring-slate-100/70 backdrop-blur dark:border-border/60 dark:bg-card/70 dark:ring-white/5'
-const healthToolbarButtonClass = 'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-slate-600 shadow-none hover:bg-white/95 hover:text-slate-900 hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
-const healthToolbarExportButtonClass = 'h-8 gap-1.5 rounded-xl border-white/70 bg-white/75 px-2.5 text-[12px] font-medium text-slate-700 shadow-[0_8px_20px_rgba(15,23,42,0.045)] hover:bg-white hover:text-slate-950 dark:border-border/60 dark:bg-card/70 dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
-const healthToolbarPrimaryButtonClass = 'h-8 gap-1.5 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-500 px-3 text-[12px] font-semibold text-white shadow-[0_10px_24px_rgba(14,165,233,0.24)] hover:from-sky-600 hover:to-cyan-600 [&_svg]:size-3.5'
+const healthHeroCard = 'relative overflow-hidden rounded-2xl border border-border/60 bg-[radial-gradient(circle_at_0%_0%,hsl(var(--info)/0.18),transparent_34%),linear-gradient(135deg,hsl(var(--card)/0.96),hsl(var(--background)/0.92))] p-4 shadow-[0_18px_55px_rgba(15,23,42,0.08)] ring-1 ring-border/50 dark:border-border/60 dark:bg-card dark:ring-white/5'
+const healthPanelClass = 'overflow-hidden border-border/60 bg-[linear-gradient(180deg,hsl(var(--card)/0.98),hsl(var(--background)/0.92))] p-4 shadow-[0_16px_45px_rgba(15,23,42,0.07)] ring-1 ring-border/50 dark:border-border/60 dark:bg-card/95 dark:ring-white/5'
+const healthToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-2xl border border-border/60 bg-card/70 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.055)] ring-1 ring-border/50 backdrop-blur dark:border-border/60 dark:bg-card/70 dark:ring-white/5'
+const healthToolbarButtonClass = 'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-muted-foreground shadow-none hover:bg-card/95 hover:text-foreground hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
+const healthToolbarExportButtonClass = 'h-8 gap-1.5 rounded-xl border-border/60 bg-card/75 px-2.5 text-[12px] font-medium text-foreground/85 shadow-[0_8px_20px_rgba(15,23,42,0.045)] hover:bg-card/95 hover:text-foreground dark:border-border/60 dark:bg-card/70 dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
+const healthToolbarPrimaryButtonClass = 'h-8 gap-1.5 rounded-xl bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] px-3 text-[12px] font-semibold text-primary-foreground shadow-[0_10px_24px_rgba(14,165,233,0.24)] hover:bg-[linear-gradient(90deg,hsl(var(--primary)/0.92),hsl(var(--info)/0.92))] [&_svg]:size-3.5'
 
 function asDatasetId(raw: unknown): string {
   if (typeof raw === 'string' && raw.trim()) return raw
@@ -234,43 +234,43 @@ export default function DatasetHealthPage() {
             <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(14,165,233,0.045)_1px,transparent_1px),linear-gradient(90deg,rgba(14,165,233,0.045)_1px,transparent_1px)] bg-[size:28px_28px]" />
             <div className="relative flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 items-start gap-3.5">
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-sky-100 bg-sky-50/90 text-sky-600 shadow-inner">
+                <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-info/20 bg-info/5 text-info shadow-inner">
                   <Activity className="size-5" />
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="truncate text-[20px] font-medium leading-none tracking-[-0.01em] text-slate-800 dark:text-foreground">
+                    <h1 className="truncate text-[20px] font-medium leading-none tracking-[-0.01em] text-foreground dark:text-foreground">
                       健康概览
                     </h1>
-                    <Badge variant="soft" className="h-5 border-sky-200 bg-sky-50 px-2 text-[10px] font-medium leading-none text-sky-700">
+                    <Badge variant="soft" className="h-5 border-info/30 bg-info/10 px-2 text-[10px] font-medium leading-none text-info">
                       HEALTH
                     </Badge>
                   </div>
                   <p className="mt-1.5 max-w-4xl text-[13px] leading-tight text-muted-foreground">
-                    数据集：<span className="font-semibold text-slate-800 dark:text-foreground">{dataset?.name || datasetId || '未选择'}</span>
-                    <span className="mx-2 text-slate-300">·</span>
+                    数据集：<span className="font-semibold text-foreground dark:text-foreground">{dataset?.name || datasetId || '未选择'}</span>
+                    <span className="mx-2 text-muted-foreground/60">·</span>
                     汇总数据画像、入库状态和下一步处理建议
                   </p>
                   <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] leading-none text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5">
-                      <Database className="size-3.5 text-sky-500" />
-                      文档 <strong className="font-mono text-slate-900 dark:text-foreground">{documentCountLabel}</strong>
+                      <Database className="size-3.5 text-info" />
+                      文档 <strong className="font-mono text-foreground dark:text-foreground">{documentCountLabel}</strong>
                     </span>
                     <span className="inline-flex items-center gap-1.5">
-                      <Cloud className="size-3.5 text-cyan-500" />
-                      总大小 <strong className="font-mono text-slate-900 dark:text-foreground">{totalSizeLabel}</strong>
+                      <Cloud className="size-3.5 text-info" />
+                      总大小 <strong className="font-mono text-foreground dark:text-foreground">{totalSizeLabel}</strong>
                     </span>
                     <span className="inline-flex items-center gap-1.5">
-                      <ShieldAlert className="size-3.5 text-rose-500" />
-                      失败 <strong className="font-mono text-slate-900 dark:text-foreground">{ingestion ? failedCount : (isLoading ? '…' : 0)}</strong>
+                      <ShieldAlert className="size-3.5 text-destructive" />
+                      失败 <strong className="font-mono text-foreground dark:text-foreground">{ingestion ? failedCount : (isLoading ? '…' : 0)}</strong>
                     </span>
                     <span className="inline-flex items-center gap-1.5">
-                      <FileSearch className="size-3.5 text-amber-500" />
-                      隔离 <strong className="font-mono text-slate-900 dark:text-foreground">{ingestion ? quarantinedCount : (isLoading ? '…' : 0)}</strong>
+                      <FileSearch className="size-3.5 text-warning" />
+                      隔离 <strong className="font-mono text-foreground dark:text-foreground">{ingestion ? quarantinedCount : (isLoading ? '…' : 0)}</strong>
                     </span>
                     <span className="inline-flex items-center gap-1.5">
-                      <Sparkles className="size-3.5 text-emerald-500" />
-                      更新时间 <strong className="font-mono text-slate-900 dark:text-foreground">{generatedAtLabel}</strong>
+                      <Sparkles className="size-3.5 text-success" />
+                      更新时间 <strong className="font-mono text-foreground dark:text-foreground">{generatedAtLabel}</strong>
                     </span>
                   </div>
                 </div>
@@ -279,16 +279,16 @@ export default function DatasetHealthPage() {
                 className={cn(
                   'inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border px-3 text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]',
                   loadError
-                    ? 'border-rose-200 bg-rose-50/80 text-rose-700'
+                    ? 'border-destructive/30 bg-destructive/5 text-destructive'
                     : riskCount > 0
-                      ? 'border-amber-200 bg-amber-50/80 text-amber-700'
-                      : 'border-emerald-200 bg-emerald-50/80 text-emerald-700',
+                      ? 'border-warning/30 bg-warning/5 text-warning'
+                      : 'border-success/30 bg-success/5 text-success',
                 )}
               >
                 <span
                   className={cn(
                     'size-2 rounded-full',
-                    loadError ? 'bg-rose-500' : riskCount > 0 ? 'bg-amber-500' : 'bg-emerald-500',
+                    loadError ? 'bg-destructive' : riskCount > 0 ? 'bg-warning' : 'bg-success',
                   )}
                 />
                 {healthStatusLabel}
@@ -476,8 +476,8 @@ export default function DatasetHealthPage() {
                   </SafeResponsiveChart>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {statusChartData.map((item) => (
-                      <span key={item.name} className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-white/60 px-3 py-1 text-xs shadow-sm dark:bg-muted/20">
-                        <span className="size-2 rounded-full bg-sky-400" />
+                      <span key={item.name} className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/60 px-3 py-1 text-xs shadow-sm dark:bg-muted/20">
+                        <span className="size-2 rounded-full bg-info" />
                         <span className="font-medium">{item.name}</span>
                         <span className="font-mono text-muted-foreground">{item.value}</span>
                       </span>
@@ -506,8 +506,8 @@ export default function DatasetHealthPage() {
                   </SafeResponsiveChart>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {fileTypeChartData.map((item) => (
-                      <span key={item.name} className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-white/60 px-3 py-1 text-xs shadow-sm dark:bg-muted/20">
-                        <span className="size-2 rounded-full bg-cyan-400" />
+                      <span key={item.name} className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/60 px-3 py-1 text-xs shadow-sm dark:bg-muted/20">
+                        <span className="size-2 rounded-full bg-info" />
                         <span className="font-medium">{item.name}</span>
                         <span className="font-mono text-muted-foreground">{item.value}</span>
                       </span>
@@ -534,7 +534,7 @@ export default function DatasetHealthPage() {
             </div>
 
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_360px]">
-              <div className="rounded-xl border border-border/50 bg-white/45 p-3 dark:bg-card/40">
+              <div className="rounded-xl border border-border/50 bg-card/45 p-3 dark:bg-card/40">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <div className="text-[13px] font-semibold text-foreground/85">建议</div>
                   <Badge variant={suggestions.length ? 'soft' : 'outline'} className="h-5 px-1.5 text-[10px] font-mono">
@@ -556,13 +556,13 @@ export default function DatasetHealthPage() {
                     ))}
                   </div>
                 ) : (
-                  <div className="rounded-lg border border-emerald-100 bg-emerald-50/45 px-2.5 py-2 text-[11px] leading-4 text-emerald-700">
+                  <div className="rounded-lg border border-success/20 bg-success/5 px-2.5 py-2 text-[11px] leading-4 text-success">
                     当前没有 rule-based 建议。若仍不放心，可查看画像与预检详情确认是否需要补扫。
                   </div>
                 )}
               </div>
 
-              <div className="rounded-xl border border-border/50 bg-white/45 p-3 dark:bg-card/40">
+              <div className="rounded-xl border border-border/50 bg-card/45 p-3 dark:bg-card/40">
                 <div className="mb-2.5 flex items-center justify-between gap-2">
                   <div>
                     <div className="text-[13px] font-semibold text-foreground/85">画像发现</div>
@@ -578,12 +578,12 @@ export default function DatasetHealthPage() {
                       <div
                         key={f.key}
                         className={cn(
-                          'group relative overflow-hidden rounded-xl border bg-white/70 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] transition-colors hover:bg-white/90 dark:bg-muted/20',
+                          'group relative overflow-hidden rounded-xl border bg-card/70 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] transition-colors hover:bg-card/90 dark:bg-muted/20',
                           f.severity === 'error'
-                            ? 'border-rose-200/80'
+                            ? 'border-destructive/30'
                             : f.severity === 'warning'
-                              ? 'border-amber-200/80'
-                              : 'border-slate-200/75 dark:border-border/60',
+                              ? 'border-warning/30'
+                              : 'border-border/60 dark:border-border/60',
                         )}
                         title={f.description || ''}
                       >
@@ -591,17 +591,17 @@ export default function DatasetHealthPage() {
                           className={cn(
                             'absolute inset-y-2 left-0 w-1 rounded-r-full',
                             f.severity === 'error'
-                              ? 'bg-rose-400'
+                              ? 'bg-destructive'
                               : f.severity === 'warning'
-                                ? 'bg-amber-400'
-                                : 'bg-sky-300',
+                                ? 'bg-warning'
+                                : 'bg-info/30',
                           )}
                         />
                         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 pl-2">
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5">
                               <div className="truncate text-[12px] font-semibold text-foreground/85">{f.label}</div>
-                              <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] leading-none text-slate-500 dark:bg-muted/50">
+                              <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 font-mono text-[10px] leading-none text-muted-foreground dark:bg-muted/50">
                                 ×{Number(f.count || 0)}
                               </span>
                             </div>
@@ -617,7 +617,7 @@ export default function DatasetHealthPage() {
                     ))}
                   </div>
                 ) : (
-                  <div className="rounded-lg border border-dashed border-border/55 bg-slate-50/55 px-2.5 py-2 text-[11px] leading-4 text-muted-foreground/65 dark:bg-muted/20">
+                  <div className="rounded-lg border border-dashed border-border/55 bg-muted/40 px-2.5 py-2 text-[11px] leading-4 text-muted-foreground/65 dark:bg-muted/20">
                     当前没有 profile findings。
                   </div>
                 )}

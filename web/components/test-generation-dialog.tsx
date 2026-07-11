@@ -323,7 +323,7 @@ export function TestGenerationDialog({
 	                      : 'border-border/60 hover:border-border'
 	                  )}
 	                >
-                  <MessageSquare className="w-6 h-6 mb-2 text-purple-600" />
+                  <MessageSquare className="w-6 h-6 mb-2 text-accent" />
                   <div className="font-medium text-foreground mb-1">
                     从对话生成
                   </div>

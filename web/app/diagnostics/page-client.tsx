@@ -33,7 +33,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { AppFrame } from '@/components/app-frame'
-import { PageHeader } from '@/components/ui/page-header'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import {
   Select,
@@ -49,7 +48,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useBackendHealth } from '@/hooks/use-backend-health'
-import { useBackendMeta } from '@/hooks/use-backend-meta'
+import { useBackendMetaDetails } from '@/hooks/use-backend-meta'
 import { formatApiError } from '@/lib/api-errors'
 import { datasetApi, documentApi, observabilityApi, ragApi } from '@/lib/api'
 import { API_V1_BASE_URL } from '@/lib/env'
@@ -69,10 +68,10 @@ import type {
 // --- Constants & Styles ---
 
 const CARD_BASE =
-  'bg-card rounded-2xl border border-slate-200/70 shadow-[0_1px_3px_rgba(15,23,42,0.03)] p-4'
+  'bg-card rounded-2xl border border-border/60 shadow-[0_1px_3px_rgba(15,23,42,0.03)] p-4'
 const SECTION_TITLE =
-  'text-[14px] font-semibold text-slate-950 flex items-center gap-2 mb-4'
-const FIELD_LABEL = 'text-[12px] font-medium text-slate-500 mb-1.5 block'
+  'text-[14px] font-semibold text-foreground flex items-center gap-2 mb-4'
+const FIELD_LABEL = 'text-[12px] font-medium text-muted-foreground mb-1.5 block'
 const ALL_DOCUMENTS_VALUE = '__all_documents__'
 const EMPTY_DATASETS: Dataset[] = []
 const EMPTY_DOCUMENTS: KnowledgeDocument[] = []
@@ -528,15 +527,15 @@ function recommendationItems(recommendations: string[]) {
 function resourceStatusClass(status: string) {
   const normalized = status.toLowerCase()
   if (['connected', 'ok', 'ready'].includes(normalized)) {
-    return 'border-emerald-100/70 bg-emerald-50 text-emerald-600'
+    return 'border-success/20 bg-success/10 text-success'
   }
   if (['checking', 'pending'].includes(normalized)) {
-    return 'border-blue-100/70 bg-blue-50 text-blue-600'
+    return 'border-primary/20/70 bg-primary/10 text-primary'
   }
   if (['disabled', 'off'].includes(normalized)) {
-    return 'border-slate-100 bg-slate-50 text-slate-500'
+    return 'border-border/50 bg-muted/50 text-muted-foreground'
   }
-  return 'border-red-100/70 bg-red-50 text-red-500'
+  return 'border-destructive/20 bg-destructive/10 text-destructive'
 }
 
 function resourceStatusLabel(status: string) {
@@ -563,27 +562,27 @@ async function copyToClipboard(text = ''): Promise<void> {
 // --- Reusable UI Parts ---
 
 const TOP_HUD_TONE_CLASSES = {
-  slate: 'bg-slate-50 text-slate-400 border-slate-100',
-  green: 'bg-emerald-50 text-emerald-500 border-emerald-100',
-  amber: 'bg-amber-50 text-amber-500 border-amber-100',
-  red: 'bg-red-50 text-red-500 border-red-100',
-  blue: 'bg-blue-50 text-blue-500 border-blue-100',
-  purple: 'bg-purple-50 text-purple-500 border-purple-100',
+  slate: 'bg-muted/50 text-muted-foreground/80 border-border/50',
+  green: 'bg-success/10 text-success border-success/20',
+  amber: 'bg-warning/10 text-warning border-warning/20',
+  red: 'bg-destructive/10 text-destructive border-destructive/20',
+  blue: 'bg-primary/10 text-primary border-primary/20',
+  purple: 'bg-accent/10 text-accent border-accent/20',
 } as const
 
 const STATUS_PILL_TONE_CLASSES = {
   slate:
-    'border-slate-200 bg-white/80 text-slate-600 shadow-[0_1px_2px_rgba(15,23,42,0.04)]',
+    'border-border bg-card/80 text-muted-foreground shadow-[0_1px_2px_rgba(15,23,42,0.04)]',
   green:
-    'border-emerald-100 bg-white/85 text-emerald-700 shadow-[0_1px_2px_rgba(5,150,105,0.08)]',
+    'border-success/20 bg-card/85 text-success shadow-[0_1px_2px_rgba(5,150,105,0.08)]',
   amber:
-    'border-amber-100 bg-white/85 text-amber-700 shadow-[0_1px_2px_rgba(217,119,6,0.08)]',
+    'border-warning/20 bg-card/85 text-warning shadow-[0_1px_2px_rgba(217,119,6,0.08)]',
   red:
-    'border-red-100 bg-white/85 text-red-600 shadow-[0_1px_2px_rgba(220,38,38,0.08)]',
+    'border-destructive/20 bg-card/85 text-destructive shadow-[0_1px_2px_rgba(220,38,38,0.08)]',
   blue:
-    'border-blue-100 bg-white/85 text-blue-700 shadow-[0_1px_2px_rgba(37,99,235,0.08)]',
+    'border-primary/20 bg-card/85 text-primary shadow-[0_1px_2px_rgba(37,99,235,0.08)]',
   purple:
-    'border-purple-100 bg-white/85 text-purple-700 shadow-[0_1px_2px_rgba(126,34,206,0.08)]',
+    'border-accent/20 bg-card/85 text-accent shadow-[0_1px_2px_rgba(126,34,206,0.08)]',
 } as const
 
 function statusPillTone(value: string, fallback: MetricTone = 'slate'): MetricTone {
@@ -645,7 +644,7 @@ function TopHUDTile({
   const valueTone = statusPillTone(value, tone)
 
   return (
-    <div className="flex min-h-[78px] items-center gap-3 rounded-xl border border-slate-200/70 bg-card px-3 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.02)]">
+    <div className="flex min-h-[78px] items-center gap-3 rounded-xl border border-border/60 bg-card px-3 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.02)]">
       <div
         className={cn(
           'flex size-10 shrink-0 items-center justify-center rounded-full border shadow-inner',
@@ -655,15 +654,15 @@ function TopHUDTile({
         <Icon className="size-5" />
       </div>
       <div className="min-w-0">
-        <span className="block truncate text-[11px] font-medium text-slate-500">
+        <span className="block truncate text-[11px] font-medium text-muted-foreground">
           {label}
         </span>
         <DiagnosticStatusPill
           value={value}
           tone={valueTone}
-          className="mt-1 h-6 max-w-[132px]"
+          className="mt-1 h-6 max-w-full"
         />
-        <p className="mt-1 truncate text-[10px] font-medium text-slate-400">
+        <p className="mt-1 truncate text-[10px] font-medium text-muted-foreground/80">
           {detail}
         </p>
       </div>
@@ -691,12 +690,12 @@ function DimensionMatrixItem({
   onToggle: () => void
 }>) {
   const colorMap: Record<MetricTone, string> = {
-    blue: 'bg-blue-50 text-blue-600 border-blue-100',
-    green: 'bg-emerald-50 text-emerald-600 border-emerald-100',
-    amber: 'bg-amber-50 text-amber-600 border-amber-100',
-    red: 'bg-red-50 text-red-500 border-red-100',
-    slate: 'bg-slate-50 text-slate-400 border-slate-100',
-    purple: 'bg-purple-50 text-purple-600 border-purple-100',
+    blue: 'bg-primary/10 text-primary border-primary/20',
+    green: 'bg-success/10 text-success border-success/20',
+    amber: 'bg-warning/10 text-warning border-warning/20',
+    red: 'bg-destructive/10 text-destructive border-destructive/20',
+    slate: 'bg-muted/50 text-muted-foreground/80 border-border/50',
+    purple: 'bg-accent/10 text-accent border-accent/20',
   }
 
   return (
@@ -706,10 +705,10 @@ function DimensionMatrixItem({
       onClick={onToggle}
       className={cn(
         'group flex min-h-[68px] w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-all',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/25',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25',
         selected
-          ? 'border-blue-200 bg-blue-50/40 shadow-[0_1px_6px_rgba(37,99,235,0.08)]'
-          : 'border-slate-200/70 bg-card hover:border-slate-300 hover:bg-slate-50'
+          ? 'border-primary/30 bg-primary/[0.06] shadow-[0_1px_6px_rgba(37,99,235,0.08)]'
+          : 'border-border/60 bg-card hover:border-border hover:bg-muted/50'
       )}
     >
       <div
@@ -723,10 +722,10 @@ function DimensionMatrixItem({
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="truncate text-[12px] font-semibold leading-tight text-slate-700 group-hover:text-slate-900">
+            <p className="truncate text-[12px] font-semibold leading-tight text-foreground group-hover:text-foreground">
               {title}
             </p>
-            <p className="mt-0.5 truncate text-[10px] font-medium text-slate-400 group-hover:text-slate-500">
+            <p className="mt-0.5 truncate text-[10px] font-medium text-muted-foreground/80 group-hover:text-muted-foreground">
               {subtitle}
             </p>
           </div>
@@ -734,8 +733,8 @@ function DimensionMatrixItem({
             className={cn(
               'shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold',
               selected
-                ? 'border-blue-100 bg-card text-blue-600'
-                : 'border-slate-100 bg-slate-50 text-slate-400'
+                ? 'border-primary/20 bg-card text-primary'
+                : 'border-border/50 bg-muted/50 text-muted-foreground/80'
             )}
           >
             {selected ? '已选' : '未选'}
@@ -747,7 +746,7 @@ function DimensionMatrixItem({
             tone={isPendingMetricLabel(value) ? 'slate' : tone}
             className="h-5 max-w-[96px] px-1.5 text-[10px]"
           />
-          <span className="truncate rounded-full bg-white/70 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-slate-300">
+          <span className="truncate rounded-full bg-card/70 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-muted-foreground/60">
             {source}
           </span>
         </div>
@@ -774,14 +773,14 @@ function MainMetricCard({
   const isWait = isPendingMetricLabel(value)
   const toneClass =
     {
-      slate: 'bg-slate-50 text-slate-400 border-slate-100',
-      green: 'bg-emerald-50 text-emerald-500 border-emerald-100',
-      amber: 'bg-amber-50 text-amber-500 border-amber-100',
-      red: 'bg-red-50 text-red-500 border-red-100',
-    }[tone] || 'bg-slate-50 text-slate-400 border-slate-100'
+      slate: 'bg-muted/50 text-muted-foreground/80 border-border/50',
+      green: 'bg-success/10 text-success border-success/20',
+      amber: 'bg-warning/10 text-warning border-warning/20',
+      red: 'bg-destructive/10 text-destructive border-destructive/20',
+    }[tone] || 'bg-muted/50 text-muted-foreground/80 border-border/50'
 
   return (
-    <div className="group flex min-h-[48px] items-center gap-2 rounded-xl border border-slate-200/70 bg-card px-2 py-1.5 shadow-[0_1px_2px_rgba(15,23,42,0.02)] transition-all hover:border-slate-300 hover:bg-slate-50/60">
+    <div className="group flex min-h-[48px] items-center gap-2 rounded-xl border border-border/60 bg-card px-2 py-1.5 shadow-[0_1px_2px_rgba(15,23,42,0.02)] transition-all hover:border-border hover:bg-muted/40">
       <div
         className={cn(
           'flex size-7 shrink-0 items-center justify-center rounded-lg border transition-colors',
@@ -792,7 +791,7 @@ function MainMetricCard({
       </div>
       <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-1.5">
-          <p className="truncate text-[10.5px] font-medium leading-none text-slate-500">
+          <p className="truncate text-[10.5px] font-medium leading-none text-muted-foreground">
             {label}
           </p>
           {help ? (
@@ -801,7 +800,7 @@ function MainMetricCard({
         </div>
         <div className="shrink-0">
           {loading ? (
-            <div className="h-5 w-16 animate-pulse rounded-full bg-slate-100" />
+            <div className="h-5 w-16 animate-pulse rounded-full bg-muted" />
           ) : (
             <DiagnosticStatusPill
               value={value}
@@ -830,7 +829,7 @@ function MetricInfoTooltip({
         <button
           type="button"
           aria-label={label}
-          className="inline-flex size-4 items-center justify-center rounded-full border border-slate-200 bg-card text-slate-400 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+          className="inline-flex size-4 items-center justify-center rounded-full border border-border bg-card text-muted-foreground/80 transition-colors hover:border-primary/30 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
         >
           <Info className="size-3" aria-hidden="true" />
         </button>
@@ -838,7 +837,7 @@ function MetricInfoTooltip({
       <TooltipContent
         side={side}
         align="center"
-        className="max-w-[280px] rounded-lg bg-slate-950 px-3 py-2 text-[11px] leading-5 text-slate-50 shadow-lg"
+        className="max-w-[280px] rounded-lg bg-foreground px-3 py-2 text-[11px] leading-5 text-background shadow-lg"
       >
         {children}
       </TooltipContent>
@@ -890,11 +889,11 @@ function DiagnosticUseStep({
         <Icon className="size-4" />
       </div>
       <div className="min-w-0">
-        <p className="text-[12px] font-semibold text-slate-900">{title}</p>
+        <p className="text-[12px] font-semibold text-foreground">{title}</p>
         <p className="mt-0.5 text-[10px] font-semibold text-primary">
           {action}
         </p>
-        <p className="mt-1 text-[11px] leading-5 text-slate-500">{text}</p>
+        <p className="mt-1 text-[11px] leading-5 text-muted-foreground">{text}</p>
       </div>
     </div>
   )
@@ -904,14 +903,12 @@ function DiagnosticUseStep({
 
 export default function DiagnosticsPage() {
   const health = useBackendHealth()
-  const meta = useBackendMeta()
+  const meta = useBackendMetaDetails()
 
   // Config States
   const [probeDatasetId, setProbeDatasetId] = useState('')
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([])
-  const [probeQuery, setProbeQuery] = useState(
-    '请输入要检索的问题或说明诊断目标...'
-  )
+  const [probeQuery, setProbeQuery] = useState('')
   const [probeResult, setProbeResult] = useState<PromptPreviewResponse | null>(
     null
   )
@@ -1118,10 +1115,6 @@ export default function DiagnosticsPage() {
     },
     {
       label: '向量后端',
-      status: dependencyStatus(readySnapshot?.vector || depsSnapshot?.milvus),
-    },
-    {
-      label: '向量库',
       status: dependencyStatus(readySnapshot?.vector || depsSnapshot?.milvus),
     },
     {
@@ -1332,51 +1325,49 @@ export default function DiagnosticsPage() {
       <PageScaffold
         title="诊断中心"
         description="全面诊断系统健康状态、服务依赖与 RAG 质量，保障稳定可靠运行"
-          icon={Activity}
-          iconColor="text-blue-600"
-          size="full"
-          showHeader={false}
-          bodyGutter="dense"
-          bodyClassName="bg-slate-50/50 pt-3 pb-6"
-        >
+        iconImage="diagnostics"
+        icon={Activity}
+        iconColor="text-primary"
+        size="full"
+        bodyGutter="dense"
+        bodyClassName="bg-muted/40 pt-4 pb-6"
+        actions={
+          <div className="flex shrink-0 items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 rounded-full border-destructive/20 bg-destructive/10 px-3 text-[12px] font-semibold text-destructive shadow-none hover:bg-destructive/15 hover:text-destructive"
+              onClick={() => {
+                depsSnapshotQuery.refetch()
+                readySnapshotQuery.refetch()
+                document
+                  .getElementById('diagnostics-dependency-card')
+                  ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+              }}
+            >
+              <ShieldAlert className="size-3.5" />
+              服务健康排查
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="刷新诊断状态"
+              className="h-8 w-8 rounded-lg border-border bg-card"
+              onClick={() => {
+                health.refetch()
+                meta.refetch()
+                readySnapshotQuery.refetch()
+                onlineQualityQuery.refetch()
+                depsSnapshotQuery.refetch()
+              }}
+            >
+              <RefreshCcw className="size-4" />
+            </Button>
+          </div>
+        }
+      >
           <TooltipProvider delayDuration={120}>
             <div className="flex flex-col gap-3">
-          <PageHeader
-            title="诊断中心"
-            description="全面诊断系统健康状态、服务依赖与 RAG 质量，保障稳定可靠运行"
-            iconImage="diagnostics"
-            icon={Activity}
-            iconColor="text-info"
-            compact
-            className="p-0"
-          >
-            <div className="flex shrink-0 items-center gap-3">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 gap-1.5 rounded-full border-red-100 bg-red-50 px-3 text-[12px] font-semibold text-red-500 shadow-none hover:bg-red-100 hover:text-red-600"
-              >
-                <ShieldAlert className="size-3.5" />
-                服务健康排查
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                aria-label="刷新诊断状态"
-                className="h-8 w-8 rounded-lg border-slate-200 bg-card"
-                onClick={() => {
-                  health.refetch()
-                  meta.refetch()
-                  readySnapshotQuery.refetch()
-                  onlineQualityQuery.refetch()
-                  depsSnapshotQuery.refetch()
-                }}
-              >
-                <RefreshCcw className="size-4" />
-              </Button>
-            </div>
-          </PageHeader>
-
           {/* Top HUD Cards Row */}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-6">
             <TopHUDTile
@@ -1439,7 +1430,7 @@ export default function DiagnosticsPage() {
             {/* 1. 诊断配置 */}
             <div className={cn(CARD_BASE, 'lg:col-span-4')}>
               <h3 className={SECTION_TITLE}>
-                <FileJson className="size-4 text-blue-500" /> 诊断配置
+                <FileJson className="size-4 text-primary" /> 诊断配置
               </h3>
               <div className="space-y-3">
                 <div>
@@ -1454,7 +1445,7 @@ export default function DiagnosticsPage() {
                   >
                     <SelectTrigger
                       id="diagnostics-dataset"
-                      className="h-9 rounded-lg border-slate-200 bg-slate-50/50 text-[13px]"
+                      className="h-9 rounded-lg border-border bg-muted/40 text-[13px]"
                     >
                       <span className="truncate">
                         {datasetSelectLabel(datasetsLoading, selectedDataset)}
@@ -1467,7 +1458,7 @@ export default function DiagnosticsPage() {
                             <span className="truncate text-[13px] font-medium">
                               {datasetLabel(dataset)}
                             </span>
-                            <span className="truncate text-[10px] text-slate-400">
+                            <span className="truncate text-[10px] text-muted-foreground/80">
                               {shortId(dataset.id, 12)}
                             </span>
                           </span>
@@ -1489,7 +1480,7 @@ export default function DiagnosticsPage() {
                   >
                     <SelectTrigger
                       id="diagnostics-documents"
-                      className="h-9 rounded-lg border-slate-200 bg-slate-50/50 text-[13px]"
+                      className="h-9 rounded-lg border-border bg-muted/40 text-[13px]"
                     >
                       <span className="truncate">{selectedDocumentLabel}</span>
                     </SelectTrigger>
@@ -1508,8 +1499,8 @@ export default function DiagnosticsPage() {
                                 className={cn(
                                   'flex size-4 shrink-0 items-center justify-center rounded border text-[10px]',
                                   selected
-                                    ? 'border-blue-200 bg-blue-50 text-blue-600'
-                                    : 'border-slate-200 bg-card text-transparent'
+                                    ? 'border-primary/30 bg-primary/10 text-primary'
+                                    : 'border-border bg-card text-transparent'
                                 )}
                               >
                                 {selected ? '✓' : ''}
@@ -1518,7 +1509,7 @@ export default function DiagnosticsPage() {
                                 <span className="truncate text-[13px] font-medium">
                                   {documentLabel(document)}
                                 </span>
-                                <span className="truncate text-[10px] text-slate-400">
+                                <span className="truncate text-[10px] text-muted-foreground/80">
                                   {shortId(document.id, 12)}
                                 </span>
                               </span>
@@ -1533,19 +1524,19 @@ export default function DiagnosticsPage() {
                       {selectedDocuments.slice(0, 3).map((document) => (
                         <span
                           key={document.id}
-                          className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600"
+                          className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary"
                         >
                           {documentLabel(document)}
                         </span>
                       ))}
                       {selectedDocuments.length > 3 ? (
-                        <span className="rounded-full border border-slate-100 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-400">
+                        <span className="rounded-full border border-border/50 bg-muted/50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground/80">
                           +{selectedDocuments.length - 3}
                         </span>
                       ) : null}
                     </div>
                   ) : (
-                    <p className="mt-1 text-[10px] font-medium text-slate-400">
+                    <p className="mt-1 text-[10px] font-medium text-muted-foreground/80">
                       不选择文档时，诊断当前数据集的全部可检索内容。
                     </p>
                   )}
@@ -1555,7 +1546,8 @@ export default function DiagnosticsPage() {
                   <Textarea
                     value={probeQuery}
                     onChange={(e) => setProbeQuery(e.target.value)}
-                    className="min-h-[72px] bg-slate-50/50 border-slate-200 resize-none text-[13px]"
+                    placeholder="请输入要检索的问题或说明诊断目标..."
+                    className="min-h-[72px] bg-muted/40 border-border resize-none text-[13px]"
                   />
                 </div>
                 <div className="flex gap-2">
@@ -1569,7 +1561,7 @@ export default function DiagnosticsPage() {
                   </Button>
                   <Button
                     variant="outline"
-                    className="h-9 flex-none gap-2 border-slate-200 text-[13px] font-semibold"
+                    className="h-9 flex-none gap-2 border-border text-[13px] font-semibold"
                     onClick={() => {
                       setProbeDatasetId(datasets[0]?.id || '')
                       setSelectedDocumentIds([])
@@ -1585,10 +1577,10 @@ export default function DiagnosticsPage() {
             {/* 2. 诊断维度矩阵 */}
             <div className={cn(CARD_BASE, 'lg:col-span-5')}>
               <div className="mb-4 flex items-center justify-between gap-3">
-                <h3 className="m-0 flex items-center gap-2 text-[14px] font-semibold text-slate-950">
-                  <LayoutGrid className="size-4 text-blue-500" /> 诊断维度
+                <h3 className="m-0 flex items-center gap-2 text-[14px] font-semibold text-foreground">
+                  <LayoutGrid className="size-4 text-primary" /> 诊断维度
                 </h3>
-                <span className="rounded-full border border-slate-100 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                <span className="rounded-full border border-border/50 bg-muted/50 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
                   已选 {selectedDimensions.length}
                 </span>
               </div>
@@ -1615,7 +1607,7 @@ export default function DiagnosticsPage() {
             {/* 3. 参数配置 */}
             <div className={cn(CARD_BASE, 'lg:col-span-3')}>
               <h3 className={SECTION_TITLE}>
-                <Settings2 className="size-4 text-blue-500" /> 参数配置
+                <Settings2 className="size-4 text-primary" /> 参数配置
               </h3>
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
@@ -1628,7 +1620,7 @@ export default function DiagnosticsPage() {
                       onChange={(e) =>
                         setDriftThreshold(Number(e.target.value))
                       }
-                      className="h-9 bg-slate-50/50 border-slate-200 text-[13px]"
+                      className="h-9 bg-muted/40 border-border text-[13px]"
                     />
                   </div>
                   <div>
@@ -1637,7 +1629,7 @@ export default function DiagnosticsPage() {
                       type="number"
                       value={driftSampleN}
                       onChange={(e) => setDriftSampleN(Number(e.target.value))}
-                      className="h-9 bg-slate-50/50 border-slate-200 text-[13px]"
+                      className="h-9 bg-muted/40 border-border text-[13px]"
                     />
                   </div>
                 </div>
@@ -1650,7 +1642,7 @@ export default function DiagnosticsPage() {
                       onChange={(e) =>
                         setPerfSuiteIterations(Number(e.target.value))
                       }
-                      className="h-9 bg-slate-50/50 border-slate-200 text-[13px]"
+                      className="h-9 bg-muted/40 border-border text-[13px]"
                     />
                   </div>
                   <div>
@@ -1662,14 +1654,14 @@ export default function DiagnosticsPage() {
                       onChange={(e) =>
                         setPerfSuiteTimeoutSec(Number(e.target.value))
                       }
-                      className="h-9 bg-slate-50/50 border-slate-200 text-[13px]"
+                      className="h-9 bg-muted/40 border-border text-[13px]"
                     />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 pt-2">
                   <Button
                     variant="outline"
-                    className="h-9 w-full gap-2 border-slate-200 text-[13px] font-semibold"
+                    className="h-9 w-full gap-2 border-border text-[13px] font-semibold"
                     onClick={runEmbeddingDriftProbe}
                     disabled={driftRunning}
                   >
@@ -1680,7 +1672,7 @@ export default function DiagnosticsPage() {
                   </Button>
                   <Button
                     variant="outline"
-                    className="h-9 w-full gap-2 border-slate-200 text-[13px] font-semibold"
+                    className="h-9 w-full gap-2 border-border text-[13px] font-semibold"
                     onClick={runPerfSuiteProbe}
                     disabled={perfSuiteRunning}
                   >
@@ -1700,14 +1692,14 @@ export default function DiagnosticsPage() {
           {/* 4. 核心指标横条 */}
           <div>
             <div className="mb-2 flex items-center justify-between gap-3 px-2">
-              <h3 className="m-0 flex items-center gap-2 text-[14px] font-semibold text-slate-950">
-                <BarChart3 className="size-4 text-blue-500" /> 核心指标
+              <h3 className="m-0 flex items-center gap-2 text-[14px] font-semibold text-foreground">
+                <BarChart3 className="size-4 text-primary" /> 核心指标
                 <MetricInfoTooltip label="核心指标说明" side="right">
                   这里不是自动生成的总报告。RAG
                   预览、漂移检查、性能门禁是三个独立探针，分别点击后只更新自己负责的指标。
                 </MetricInfoTooltip>
               </h3>
-              <p className="text-[11px] font-medium text-slate-400">
+              <p className="text-[11px] font-medium text-muted-foreground/80">
                 先跑左侧按钮，再看对应指标
               </p>
             </div>
@@ -1764,7 +1756,7 @@ export default function DiagnosticsPage() {
             {/* 执行结果 */}
             <div className={cn(CARD_BASE, 'lg:col-span-3')}>
               <h3 className={SECTION_TITLE}>
-                <LayoutGrid className="size-4 text-blue-500" /> 执行结果
+                <LayoutGrid className="size-4 text-primary" /> 执行结果
                 <MetricInfoTooltip label="执行结果说明" side="right">
                   每一行对应一个按钮。只点“漂移检查”时，RAG
                   预览和性能门禁保持待执行是正常的。
@@ -1788,9 +1780,12 @@ export default function DiagnosticsPage() {
               </div>
 
             {/* 依赖资源 */}
-            <div className={cn(CARD_BASE, 'lg:col-span-3')}>
+            <div
+              id="diagnostics-dependency-card"
+              className={cn(CARD_BASE, 'lg:col-span-3 scroll-mt-24')}
+            >
               <h3 className={SECTION_TITLE}>
-                <Database className="size-4 text-blue-500" /> 依赖资源
+                <Database className="size-4 text-primary" /> 依赖资源
               </h3>
               <div className="grid grid-cols-2 gap-2 pt-1">
                 {dependencyItems.map((item) => (
@@ -1810,10 +1805,10 @@ export default function DiagnosticsPage() {
             {/* 排障摘要 */}
             <div className={cn(CARD_BASE, 'lg:col-span-3 flex flex-col')}>
               <div className="mb-3 flex items-start justify-between gap-3">
-                <h3 className="m-0 flex items-center gap-2 text-[14px] font-semibold text-slate-950">
-                  <Terminal className="size-4 text-blue-500" /> 排障摘要
+                <h3 className="m-0 flex items-center gap-2 text-[14px] font-semibold text-foreground">
+                  <Terminal className="size-4 text-primary" /> 排障摘要
                 </h3>
-                <span className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-600">
+                <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
                   原始响应已收起
                 </span>
               </div>
@@ -1855,14 +1850,14 @@ export default function DiagnosticsPage() {
             {/* 后端建议 */}
             <div className={cn(CARD_BASE, 'lg:col-span-3')}>
               <h3 className={SECTION_TITLE}>
-                <Zap className="size-4 text-blue-500" /> 后端建议
+                <Zap className="size-4 text-primary" /> 后端建议
               </h3>
               {backendRecommendationItems.length > 0 ? (
                 <div className="space-y-2">
                   {backendRecommendationItems.map((recommendation) => (
                     <p
                       key={recommendation.key}
-                      className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2 text-[12px] leading-relaxed text-slate-600"
+                      className="rounded-lg border border-border/50 bg-muted/40 px-3 py-2 text-[12px] leading-relaxed text-muted-foreground"
                     >
                       {recommendation.text}
                     </p>
@@ -1870,15 +1865,15 @@ export default function DiagnosticsPage() {
                 </div>
               ) : (
                 <div className="flex min-h-[170px] flex-col items-center justify-center">
-                  <div className="mb-4 flex size-14 items-center justify-center rounded-full border border-dashed border-slate-200 bg-slate-50">
-                    <Activity className="size-6 text-slate-200" />
+                  <div className="mb-4 flex size-14 items-center justify-center rounded-full border border-dashed border-border bg-muted/50">
+                    <Activity className="size-6 text-muted-foreground/40" />
                   </div>
                   <DiagnosticStatusPill
                     value="待生成建议"
                     tone="slate"
                     className="h-6 px-2.5"
                   />
-                  <p className="mt-2 text-[11px] text-slate-400">
+                  <p className="mt-2 text-[11px] text-muted-foreground/80">
                     运行 RAG 预览、漂移检查或性能门禁后生成建议
                   </p>
                 </div>
@@ -1894,12 +1889,12 @@ export default function DiagnosticsPage() {
 
 function ConclusionItem({ label, status }: Readonly<{ label: string; status: string }>) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 bg-card px-2.5 py-2">
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-card px-2.5 py-2">
       <div className="flex items-center gap-3">
-        <div className="size-5 rounded bg-slate-50 border border-slate-100 flex items-center justify-center">
-          <LayoutGrid className="size-3 text-slate-400" />
+        <div className="size-5 rounded bg-muted/50 border border-border/50 flex items-center justify-center">
+          <LayoutGrid className="size-3 text-muted-foreground/80" />
         </div>
-        <span className="text-[12px] font-medium text-slate-600">{label}</span>
+        <span className="text-[12px] font-medium text-muted-foreground">{label}</span>
       </div>
       <DiagnosticStatusPill
         value={status}
@@ -1915,8 +1910,8 @@ function ResourceItem({ label, status }: Readonly<{ label: string; status: strin
   const displayLabel = resourceStatusLabel(normalized)
 
   return (
-    <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-card px-2.5 py-2">
-      <span className="text-[12px] font-medium text-slate-600">{label}</span>
+    <div className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-card px-2.5 py-2">
+      <span className="text-[12px] font-medium text-muted-foreground">{label}</span>
       <span
         className={cn(
           'rounded border px-2 py-0.5 text-[9px] font-bold uppercase',
@@ -1942,20 +1937,20 @@ function DiagnosticsSummaryItem({
 }>) {
   const toneClass =
     {
-      slate: 'border-slate-100 bg-slate-50 text-slate-600',
-      green: 'border-emerald-100 bg-emerald-50 text-emerald-600',
-      blue: 'border-blue-100 bg-blue-50 text-blue-600',
-      red: 'border-red-100 bg-red-50 text-red-500',
-      amber: 'border-amber-100 bg-amber-50 text-amber-600',
-    }[tone] || 'border-slate-100 bg-slate-50 text-slate-600'
+      slate: 'border-border/50 bg-muted/50 text-muted-foreground',
+      green: 'border-success/20 bg-success/10 text-success',
+      blue: 'border-primary/20 bg-primary/10 text-primary',
+      red: 'border-destructive/20 bg-destructive/10 text-destructive',
+      amber: 'border-warning/20 bg-warning/10 text-warning',
+    }[tone] || 'border-border/50 bg-muted/50 text-muted-foreground'
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2">
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/40 px-3 py-2">
       <div className="min-w-0">
-        <p className="truncate text-[11px] font-medium text-slate-500">
+        <p className="truncate text-[11px] font-medium text-muted-foreground">
           {label}
         </p>
-        <p className="mt-0.5 truncate text-[10px] text-slate-400">{detail}</p>
+        <p className="mt-0.5 truncate text-[10px] text-muted-foreground/80">{detail}</p>
       </div>
       <span
         className={cn(
@@ -1977,30 +1972,30 @@ function RawDiagnosticsDetails({
   onCopy: () => void
 }>) {
   return (
-    <details className="group mt-3 rounded-xl border border-slate-200/70 bg-card">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-[12px] font-semibold text-slate-700 transition-colors hover:bg-blue-50/50 [&::-webkit-details-marker]:hidden">
+    <details className="group mt-3 rounded-xl border border-border/60 bg-card">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-[12px] font-semibold text-foreground transition-colors hover:bg-primary/[0.06] [&::-webkit-details-marker]:hidden">
         <span className="flex items-center gap-2">
-          <FileJson className="size-3.5 text-blue-500" />
+          <FileJson className="size-3.5 text-primary" />
           查看原始响应
         </span>
-        <ChevronDown className="size-3.5 text-slate-400 transition-transform group-open:rotate-180" />
+        <ChevronDown className="size-3.5 text-muted-foreground/80 transition-transform group-open:rotate-180" />
       </summary>
-      <div className="border-t border-slate-100 p-3">
+      <div className="border-t border-border/50 p-3">
         <div className="mb-2 flex items-center justify-between gap-3">
-          <p className="text-[11px] font-medium text-slate-400">
+          <p className="text-[11px] font-medium text-muted-foreground/80">
             仅用于排障复制，不默认占用诊断主视图。
           </p>
           <Button
             variant="outline"
             size="sm"
             aria-label="复制原始响应 JSON"
-            className="h-7 gap-1.5 rounded-lg border-slate-200 bg-card text-[11px] font-semibold text-slate-600 hover:bg-blue-50 hover:text-blue-600"
+            className="h-7 gap-1.5 rounded-lg border-border bg-card text-[11px] font-semibold text-muted-foreground hover:bg-primary/10 hover:text-primary"
             onClick={onCopy}
           >
             <Copy className="size-3" /> 复制
           </Button>
         </div>
-        <pre className="max-h-[180px] overflow-auto rounded-lg bg-slate-950 p-3 font-mono text-[11px] leading-5 text-blue-100 custom-scrollbar">
+        <pre className="max-h-[180px] overflow-auto rounded-lg bg-foreground p-3 font-mono text-[11px] leading-5 text-background/85 custom-scrollbar">
           {json}
         </pre>
       </div>

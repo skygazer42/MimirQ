@@ -34,20 +34,17 @@ type PageScaffoldProps = {
 }
 
 function getHeaderSpacingClass(isSystemDense: boolean, compact: boolean): string {
-  if (isSystemDense) return "px-3 md:px-4 lg:px-5 pt-4 md:pt-5 pb-2.5 md:pb-3"
-  if (compact) return "px-5 md:px-8 pt-6 md:pt-7 pb-4 md:pb-5"
+  if (isSystemDense || compact) return "px-4 md:px-5 lg:px-6 pt-4 pb-2.5"
   return "px-6 md:px-8 pt-6 md:pt-8 pb-5 md:pb-6"
 }
 
 function getTopSpacingClass(isSystemDense: boolean, compact: boolean): string {
-  if (isSystemDense) return "px-3 md:px-4 lg:px-5 pb-2.5"
-  if (compact) return "px-4 md:px-6 pb-3"
+  if (isSystemDense || compact) return "px-4 md:px-5 lg:px-6 pb-2.5"
   return "px-6 md:px-8 pb-6"
 }
 
 function getToolbarSpacingClass(isSystemDense: boolean, compact: boolean): string {
-  if (isSystemDense) return "px-3 md:px-4 lg:px-5 py-2"
-  if (compact) return "px-4 md:px-6 py-2 md:py-3"
+  if (isSystemDense || compact) return "px-4 md:px-5 lg:px-6 py-2"
   return "px-6 md:px-8 py-3 md:py-4"
 }
 

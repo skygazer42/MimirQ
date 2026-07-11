@@ -83,6 +83,7 @@ app/deepdoc/resources/models/hf/**/.cache/
 app/deepdoc/resources/models/hf_onnx/**/.cache/
 web/.next/
 web/.next_build/
+web/.next_dev_tmp/
 web/public/monaco/
 web/public/pdfjs/
 web/openapi.json

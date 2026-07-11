@@ -10,6 +10,74 @@ async function fulfillJson(route: Route, payload: unknown) {
   })
 }
 
+async function documentHorizontalOverflow(page: Page) {
+  return page.evaluate(() => {
+    const root = document.documentElement
+    const body = document.body
+    return Math.max(root.scrollWidth, body.scrollWidth) - window.innerWidth
+  })
+}
+
+async function scrollContainerMetrics(page: Page, selector: string) {
+  return page.locator(selector).evaluate((element) => {
+    const target = element as HTMLElement
+    const before = target.scrollTop
+    target.scrollTop = target.scrollHeight
+    return {
+      clientHeight: target.clientHeight,
+      scrollHeight: target.scrollHeight,
+      scrollTop: target.scrollTop,
+      scrolled: target.scrollTop > before,
+      overflowY: window.getComputedStyle(target).overflowY,
+    }
+  })
+}
+
+const LEGACY_DARK_SURFACE_CLASS =
+  /^(?:text-slate-(?:400|500|600|700|800|900|950)|border-slate-(?:100|200|300)(?:\/\d+)?|bg-(?:white|slate-(?:50|100|200))(?:\/\d+)?)$/
+
+async function visibleLegacyDarkSurfaceClasses(page: Page) {
+  return page.evaluate((patternSource) => {
+    const pattern = new RegExp(patternSource)
+    const matches = new Set<string>()
+
+    for (const element of document.querySelectorAll('body *')) {
+      const rect = element.getBoundingClientRect()
+      const style = window.getComputedStyle(element)
+      const isVisible =
+        rect.width > 2 &&
+        rect.height > 2 &&
+        rect.bottom > 0 &&
+        rect.top < window.innerHeight &&
+        rect.right > 0 &&
+        rect.left < window.innerWidth &&
+        style.display !== 'none' &&
+        style.visibility !== 'hidden'
+      if (!isVisible) continue
+
+      for (const className of element.classList) {
+        if (pattern.test(className)) matches.add(className)
+      }
+    }
+
+    return Array.from(matches).sort()
+  }, LEGACY_DARK_SURFACE_CLASS.source)
+}
+
+async function textAndSemanticForeground(page: Page, selector: string) {
+  return page.locator(selector).first().evaluate((element) => {
+    const probe = document.createElement('span')
+    probe.style.color = 'hsl(var(--foreground))'
+    document.body.appendChild(probe)
+    const result = {
+      actual: window.getComputedStyle(element).color,
+      expected: window.getComputedStyle(probe).color,
+    }
+    probe.remove()
+    return result
+  })
+}
+
 async function installManagementSurfaceMocks(page: Page) {
   const state: EnterpriseTelemetryMockState = { uploaded: false, parsingDocuments: [] }
 
@@ -22,9 +90,6 @@ async function installManagementSurfaceMocks(page: Page) {
     if (method === 'GET') {
       if (pathname.includes('/kg/ontology/predicates')) {
         return fulfillJson(route, { predicates: [] })
-      }
-      if (pathname.includes('/settings/status')) {
-        return fulfillJson(route, {})
       }
       if (pathname.includes('/usage/tenant/quotas')) {
         return fulfillJson(route, { datasets: [] })
@@ -56,6 +121,17 @@ async function installManagementSurfaceMocks(page: Page) {
         },
       ],
       total: 1,
+    })
+  })
+
+  await page.route('**/api/v1/datasets/ds-smoke', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    return fulfillJson(route, {
+      id: 'ds-smoke',
+      name: 'Smoke Dataset',
+      description: 'management smoke fixture',
+      created_at: '2026-04-09T00:00:00Z',
+      updated_at: '2026-04-09T00:00:00Z',
     })
   })
 
@@ -246,6 +322,91 @@ async function installManagementSurfaceMocks(page: Page) {
       document_group_allowlist_count: 2,
     })
   })
+
+  await page.route('**/api/v1/rbac/members**', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    return fulfillJson(route, {
+      items: [
+        {
+          id: 'member-owner',
+          tenant_id: 'tenant-smoke',
+          user_id: 'avery.long.member.identifier.for.viewport.regression@example.com',
+          role: 'owner',
+          is_current: true,
+          created_at: '2026-04-09T00:00:00Z',
+          updated_at: '2026-04-09T00:00:00Z',
+        },
+        {
+          id: 'member-auditor',
+          tenant_id: 'tenant-smoke',
+          user_id: 'audit.operator@example.com',
+          role: 'auditor',
+          is_current: false,
+          created_at: '2026-04-09T00:00:00Z',
+          updated_at: '2026-04-09T00:00:00Z',
+        },
+      ],
+      total: 2,
+    })
+  })
+
+  await page.route('**/api/v1/evidence/suites/suite-smoke/items**', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    return fulfillJson(route, {
+      items: [
+        {
+          id: 'item-smoke',
+          suite_id: 'suite-smoke',
+          query: 'How does the smoke evidence item behave at laptop widths?',
+          expected_answer: 'It should stay readable and selectable.',
+          notes: 'Smoke evidence item note',
+          status: 'reviewed',
+          tags: ['smoke', 'viewport'],
+          reference_sources: [
+            {
+              document_id: 'doc-smoke',
+              chunk_id: 'chunk-smoke',
+              label: 'Smoke reference label',
+              quote: 'Smoke reference quote',
+              page_number: 3,
+              chunk_index: 1,
+            },
+          ],
+          source_metadata: {
+            source: 'smoke',
+          },
+          updated_at: '2026-04-09T00:00:00Z',
+        },
+      ],
+      total: 1,
+    })
+  })
+
+  await page.route('**/api/v1/evidence/suites**', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    if (new URL(route.request().url()).pathname !== '/api/v1/evidence/suites') {
+      return route.fallback()
+    }
+    return fulfillJson(route, {
+      items: [
+        {
+          id: 'suite-smoke',
+          dataset_id: 'ds-smoke',
+          name: 'Smoke Evidence Suite',
+          description: 'Evidence smoke fixture',
+          tags: ['smoke', 'evidence'],
+          item_counts: {
+            total: 1,
+            draft: 0,
+            reviewed: 1,
+            approved: 0,
+            archived: 0,
+          },
+        },
+      ],
+      total: 1,
+    })
+  })
 }
 
 test.describe('management surfaces smoke', () => {
@@ -269,6 +430,430 @@ test.describe('management surfaces smoke', () => {
     await page.goto('/evaluations')
     await expect(page.getByText('评测中心')).toBeVisible({ timeout: 60_000 })
     await expect(page.getByRole('combobox').first()).toContainText('Smoke Conversation')
+  })
+
+  test('keeps the datasets hero tint restrained', async ({ page }) => {
+    await page.goto('/datasets')
+    const heading = page.getByRole('heading', { name: '数据集' }).first()
+    await expect(heading).toBeVisible({ timeout: 60_000 })
+
+    const hero = heading.locator('xpath=ancestor::div[contains(@class, "overflow-hidden")][1]')
+    const className = await hero.getAttribute('class')
+    expect(className).toContain('hsl(var(--card)/0.98)')
+    expect(className).not.toContain('hsl(var(--info)/0.24)')
+
+    const geometry = await hero.evaluate((element) => {
+      const style = getComputedStyle(element)
+      return {
+        height: element.getBoundingClientRect().height,
+        padding: style.padding,
+        borderRadius: style.borderRadius,
+      }
+    })
+    expect(geometry.height).toBeLessThanOrEqual(96)
+    expect(geometry.padding).toBe('12px 16px')
+    expect(geometry.borderRadius).toBe('28px')
+  })
+
+  test('keeps the knowledge header surfaces restrained', async ({ page }) => {
+    await page.goto('/knowledge')
+    const heading = page.getByRole('heading', { name: '知识库管理' }).first()
+    await expect(heading).toBeVisible({ timeout: 60_000 })
+
+    const hero = heading.locator('xpath=ancestor::div[contains(@class, "overflow-hidden")][1]')
+    const heroClassName = await hero.getAttribute('class')
+    expect(heroClassName).toContain('hsl(var(--card)/0.98)')
+    expect(heroClassName).not.toContain('hsl(var(--info)/0.24)')
+
+    const summaryStrip = page.locator('div.grid.border-y').first()
+    const summaryClassName = await summaryStrip.getAttribute('class')
+    expect(summaryClassName).toContain('hsl(var(--card)/0.98)')
+    expect(summaryClassName).not.toContain('hsl(var(--info)/0.08)')
+  })
+
+  test('uses the shared gradient title treatment on custom management heroes', async ({ page }) => {
+    for (const surface of [
+      { route: '/datasets', heading: '数据集', occurrence: 'first' },
+      { route: '/knowledge', heading: '知识库管理', occurrence: 'first' },
+      { route: '/evaluations', heading: '实时会话评分', occurrence: 'last' },
+    ] as const) {
+      await page.goto(surface.route, { waitUntil: 'domcontentloaded' })
+      const headings = page.getByRole('heading', { name: surface.heading })
+      const heading = surface.occurrence === 'first' ? headings.first() : headings.last()
+      await expect(heading, `${surface.route} heading`).toBeVisible({ timeout: 60_000 })
+
+      const titleInk = heading.locator(':scope > span')
+      await expect(titleInk, `${surface.route} gradient title ink`).toHaveClass(/bg-clip-text/)
+      await expect(titleInk, `${surface.route} transparent title ink`).toHaveClass(/text-transparent/)
+
+      const titleStyle = await titleInk.evaluate((element) => {
+        const style = getComputedStyle(element)
+        return {
+          backgroundImage: style.backgroundImage,
+          backgroundClip: style.backgroundClip,
+          color: style.color,
+        }
+      })
+      expect(titleStyle.backgroundImage, `${surface.route} gradient`).toContain('linear-gradient')
+      expect(titleStyle.backgroundClip, `${surface.route} clipping`).toBe('text')
+      expect(titleStyle.color, `${surface.route} transparent ink`).toBe('rgba(0, 0, 0, 0)')
+    }
+  })
+
+  test('aligns quarantine and feedback headers with Knowledge Ops', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+
+    for (const surface of [
+      { route: '/knowledge/quarantine', heading: '隔离审核中心' },
+      { route: '/knowledge/feedback', heading: '反馈分析中心' },
+    ]) {
+      await page.goto(surface.route)
+      const heading = page.getByRole('heading', { name: surface.heading }).first()
+      await expect(heading).toBeVisible({ timeout: 60_000 })
+
+      const hero = heading.locator('xpath=ancestor::div[contains(@class, "overflow-hidden")][1]')
+      const className = await hero.getAttribute('class')
+      expect(className).toContain('hsl(var(--card)/0.98)')
+
+      const geometry = await hero.evaluate((element) => {
+        const style = getComputedStyle(element)
+        const rect = element.getBoundingClientRect()
+        return {
+          x: rect.x,
+          width: rect.width,
+          height: rect.height,
+          padding: style.padding,
+          borderRadius: style.borderRadius,
+        }
+      })
+      expect(geometry.x).toBe(288)
+      expect(geometry.width).toBe(1128)
+      expect(geometry.height).toBeLessThanOrEqual(100)
+      expect(geometry.padding).toBe('12px 16px')
+      expect(geometry.borderRadius).toBe('28px')
+    }
+  })
+
+  test('aligns management headers with the shared hero grid', async ({ page }) => {
+    test.setTimeout(180_000)
+    await page.setViewportSize({ width: 1440, height: 900 })
+
+    for (const surface of [
+      { route: '/evaluations', heading: '实时会话评分' },
+      { route: '/prompts', heading: '提示词模板' },
+      { route: '/diagnostics', heading: '诊断中心' },
+      { route: '/usage', heading: '用量/配额' },
+      { route: '/audit', heading: '审计日志' },
+      { route: '/settings/rbac', heading: '成员权限' },
+      { route: '/settings/groups', heading: '组管理' },
+      { route: '/settings', heading: '设置与配置' },
+    ]) {
+      await page.goto(surface.route, { waitUntil: 'domcontentloaded' })
+      const heading = page.getByRole('heading', { name: surface.heading }).last()
+      await expect(heading, `${surface.route} heading`).toBeVisible({ timeout: 15_000 })
+      await page.waitForTimeout(300)
+
+      const hero =
+        surface.route === '/evaluations'
+          ? heading.locator('xpath=ancestor::section[contains(@class, "overflow-hidden")][1]')
+          : page.getByTestId('page-title-shell').first()
+      await expect(hero, `${surface.route} shared hero`).toBeVisible({ timeout: 10_000 })
+      const className = await hero.getAttribute('class')
+      expect(className, `${surface.route} should use the shared hero surface`).toContain(
+        'hsl(var(--card)/0.98)'
+      )
+
+      const geometry = await hero.evaluate((element) => {
+        const style = getComputedStyle(element)
+        const rect = element.getBoundingClientRect()
+        return {
+          x: rect.x,
+          y: rect.y,
+          width: rect.width,
+          height: rect.height,
+          padding: style.padding,
+          borderRadius: style.borderRadius,
+        }
+      })
+      expect(geometry.x, `${surface.route} x`).toBeCloseTo(288, 0)
+      expect(geometry.y, `${surface.route} y`).toBeCloseTo(16, 0)
+      expect(geometry.width, `${surface.route} width`).toBeCloseTo(1128, 0)
+      expect(geometry.height, `${surface.route} height`).toBeGreaterThanOrEqual(94)
+      expect(geometry.height, `${surface.route} height`).toBeLessThanOrEqual(100)
+      expect(geometry.padding, `${surface.route} padding`).toBe('12px 16px')
+      expect(geometry.borderRadius, `${surface.route} radius`).toBe('28px')
+    }
+
+    await page.setViewportSize({ width: 1280, height: 768 })
+    await page.goto('/evaluations', { waitUntil: 'domcontentloaded' })
+    const evaluationHeading = page.getByRole('heading', { name: '实时会话评分' }).last()
+    await expect(evaluationHeading).toBeVisible({ timeout: 15_000 })
+    const evaluationHero = evaluationHeading.locator(
+      'xpath=ancestor::section[contains(@class, "overflow-hidden")][1]'
+    )
+    const evaluationGeometry = await evaluationHero.evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      pageOverflow:
+        Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) -
+        window.innerWidth,
+    }))
+    expect(evaluationGeometry.height).toBeLessThanOrEqual(100)
+    expect(evaluationGeometry.pageOverflow).toBeLessThanOrEqual(1)
+  })
+
+  test('uses semantic surfaces after switching to dark mode', async ({ page }) => {
+    test.setTimeout(180_000)
+    await page.setViewportSize({ width: 1280, height: 720 })
+    await page.goto('/evaluations', { waitUntil: 'domcontentloaded' })
+    await expect(
+      page.getByRole('heading', { name: '实时会话评分' }).first()
+    ).toBeVisible({ timeout: 60_000 })
+    await page.getByRole('button', { name: '切换主题' }).last().click()
+    const darkThemeItem = page.getByRole('menuitem', { name: '深色' })
+    await expect(darkThemeItem).toBeVisible({ timeout: 10_000 })
+    await darkThemeItem.click()
+    await expect(page.locator('html')).toHaveClass(/dark/)
+
+    for (const surface of [
+      { route: '/evaluations', heading: '实时会话评分' },
+      { route: '/evaluations/ablations', heading: '检索调参对比' },
+      { route: '/reports', heading: '数据报告' },
+      { route: '/datasets', heading: '数据集' },
+    ]) {
+      await page.goto(surface.route, { waitUntil: 'domcontentloaded' })
+      const heading = page.getByRole('heading', { name: surface.heading }).first()
+      await expect(heading).toBeVisible({ timeout: 60_000 })
+
+      const legacyClasses = await visibleLegacyDarkSurfaceClasses(page)
+      expect(
+        legacyClasses,
+        `${surface.route} still renders light-only utility classes in dark mode`
+      ).toEqual([])
+
+      const colors = await textAndSemanticForeground(
+        page,
+        `h1:has-text("${surface.heading}")`
+      )
+      expect(colors.actual).toBe(colors.expected)
+    }
+  })
+
+  test('keeps similarity workbench readable at laptop width', async ({ page }) => {
+    test.setTimeout(180_000)
+    await page.setViewportSize({ width: 1280, height: 720 })
+
+    await page.goto('/knowledge/similarity', {
+      waitUntil: 'domcontentloaded',
+      timeout: 150_000,
+    })
+    const similarityTitle = page.getByRole('heading', {
+      name: '跨集合相似度热力图',
+    })
+    await expect(similarityTitle).toBeVisible({ timeout: 60_000 })
+    const similarityTitleBox = await similarityTitle.boundingBox()
+    expect(similarityTitleBox?.width).toBeGreaterThan(160)
+    expect(similarityTitleBox?.height).toBeLessThan(60)
+  })
+
+  test('keeps Golden workspace readable at laptop width', async ({ page }) => {
+    test.setTimeout(180_000)
+    await page.setViewportSize({ width: 1280, height: 720 })
+
+    await page.goto('/evaluations', {
+      waitUntil: 'domcontentloaded',
+      timeout: 150_000,
+    })
+    await page.getByRole('button', { name: 'Golden 评测集' }).click()
+    const goldenWorkspaceTitle = page
+      .getByText('Golden 评测集', { exact: true })
+      .last()
+    await expect(goldenWorkspaceTitle).toBeVisible({ timeout: 60_000 })
+    const goldenTitleBox = await goldenWorkspaceTitle.boundingBox()
+    expect(goldenTitleBox?.width).toBeGreaterThan(90)
+    expect(goldenTitleBox?.height).toBeLessThan(40)
+
+    const runHistoryTitle = page.getByText('运行历史', { exact: true })
+    const runHistoryCardHeight = await runHistoryTitle.evaluate(
+      (element) =>
+        element.parentElement?.parentElement?.parentElement?.getBoundingClientRect()
+          .height ?? 0
+    )
+    expect(runHistoryCardHeight).toBeGreaterThan(100)
+  })
+
+  test('keeps knowledge ingestion vertically scrollable at laptop heights', async ({ page }) => {
+    test.setTimeout(180_000)
+    for (const viewport of [
+      { width: 1024, height: 768 },
+      { width: 1280, height: 720 },
+      { width: 1366, height: 768 },
+    ]) {
+      await page.setViewportSize(viewport)
+      await page.goto('/knowledge/ingestion', {
+        waitUntil: 'domcontentloaded',
+        timeout: 150_000,
+      })
+      await expect(page.getByText('入库管理', { exact: true })).toBeVisible({
+        timeout: 60_000,
+      })
+
+      const metrics = await scrollContainerMetrics(
+        page,
+        '[data-ingestion-operation-root="true"]'
+      )
+      expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight + 20)
+      expect(metrics.scrolled).toBe(true)
+    }
+  })
+
+  test('keeps quarantine vertically scrollable at laptop heights', async ({ page }) => {
+    test.setTimeout(180_000)
+    for (const viewport of [
+      { width: 1024, height: 768 },
+      { width: 1280, height: 720 },
+      { width: 1366, height: 768 },
+    ]) {
+      await page.setViewportSize(viewport)
+      await page.goto('/knowledge/quarantine', {
+        waitUntil: 'domcontentloaded',
+        timeout: 150_000,
+      })
+      await expect(page.getByText('隔离审核中心', { exact: true })).toBeVisible({
+        timeout: 60_000,
+      })
+
+      const metrics = await scrollContainerMetrics(
+        page,
+        '[data-quarantine-page-root="true"]'
+      )
+      expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight + 20)
+      expect(metrics.scrolled).toBe(true)
+    }
+  })
+
+  test('keeps chunk preview readable at 1024px width', async ({ page }) => {
+    test.setTimeout(180_000)
+    await page.setViewportSize({ width: 1024, height: 768 })
+
+    await page.goto('/chunk-preview', {
+      waitUntil: 'domcontentloaded',
+      timeout: 150_000,
+    })
+    await expect(page.locator('[data-chunk-empty-intake-panel]')).toBeVisible({
+      timeout: 60_000,
+    })
+
+    expect(await documentHorizontalOverflow(page)).toBeLessThanOrEqual(1)
+  })
+
+  test('keeps retrieval ablations readable at 1024px width', async ({ page }) => {
+    test.setTimeout(180_000)
+    await page.setViewportSize({ width: 1024, height: 768 })
+
+    await page.goto('/evaluations/ablations', {
+      waitUntil: 'domcontentloaded',
+      timeout: 150_000,
+    })
+    await expect(page.getByRole('heading', { name: '检索调参对比' })).toBeVisible({
+      timeout: 60_000,
+    })
+
+    expect(await documentHorizontalOverflow(page)).toBeLessThanOrEqual(1)
+  })
+
+  test('keeps evidence workbench usable at 1024px and 1280px widths', async ({ page }) => {
+    test.setTimeout(180_000)
+    for (const viewport of [
+      { width: 1024, height: 768, stacked: true },
+      { width: 1280, height: 720, stacked: false },
+    ]) {
+      await page.setViewportSize(viewport)
+      await page.goto('/datasets/ds-smoke/evidence', {
+        waitUntil: 'domcontentloaded',
+        timeout: 150_000,
+      })
+      await expect(
+        page.getByRole('heading', { name: '证据库（Evidence Workbench）' })
+      ).toBeVisible({ timeout: 60_000 })
+
+      const suitePanel = page.getByText('Evidence Suites', { exact: true })
+      const itemPanel = page.getByText('Evidence Items', { exact: true })
+      const detailPanel = page.getByText('Detail', { exact: true })
+      await expect(suitePanel).toBeVisible()
+      await expect(itemPanel).toBeVisible()
+      const suiteButton = page.getByRole('button', {
+        name: /Smoke Evidence Suite/,
+      })
+      await expect(suiteButton).toBeVisible()
+      await suiteButton.click()
+      await itemPanel.scrollIntoViewIfNeeded()
+      await expect(itemPanel).toBeVisible()
+      const evidenceItem = page.getByText('How does the smoke evidence item behave at laptop widths?', {
+        exact: true,
+      })
+      await expect(evidenceItem).toBeVisible({ timeout: 10_000 })
+      await evidenceItem.click()
+      await detailPanel.scrollIntoViewIfNeeded()
+      await expect(detailPanel).toBeVisible()
+      expect(await documentHorizontalOverflow(page)).toBeLessThanOrEqual(1)
+
+      const suiteBox = await suitePanel.boundingBox()
+      const detailBox = await detailPanel.boundingBox()
+      if (viewport.stacked) {
+        expect(detailBox?.y).toBeGreaterThan((suiteBox?.y ?? 0) + 120)
+      }
+    }
+  })
+
+  test('keeps the knowledge scope panel scrollable at low height', async ({ page }) => {
+    test.setTimeout(180_000)
+    await page.setViewportSize({ width: 1280, height: 720 })
+
+    await page.goto('/knowledge', {
+      waitUntil: 'domcontentloaded',
+      timeout: 150_000,
+    })
+    await expect(page.getByText('Scope Navigator', { exact: true })).toBeVisible({
+      timeout: 60_000,
+    })
+
+    const metrics = await scrollContainerMetrics(page, '[data-knowledge-scope-panel]')
+    expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight + 20)
+    expect(metrics.scrolled).toBe(true)
+  })
+
+  test('keeps RBAC controls inside the 1024px viewport', async ({ page }) => {
+    test.setTimeout(180_000)
+    await page.setViewportSize({ width: 1024, height: 768 })
+
+    await page.goto('/settings/rbac', {
+      waitUntil: 'domcontentloaded',
+      timeout: 150_000,
+    })
+    await expect(page.getByRole('heading', { name: '成员权限' })).toBeVisible({
+      timeout: 60_000,
+    })
+
+    expect(await documentHorizontalOverflow(page)).toBeLessThanOrEqual(1)
+  })
+
+  test('does not reopen the compact similarity sidebar across breakpoint changes', async ({ page }) => {
+    test.setTimeout(180_000)
+
+    await page.setViewportSize({ width: 1024, height: 768 })
+    await page.goto('/knowledge/similarity', {
+      waitUntil: 'domcontentloaded',
+      timeout: 150_000,
+    })
+    await expect(
+      page.getByRole('heading', { name: '跨集合相似度热力图' })
+    ).toBeVisible({ timeout: 60_000 })
+
+    const dataSourcePanelTitle = page.getByText('数据源配置', { exact: true }).last()
+    await expect(dataSourcePanelTitle).not.toBeVisible()
+
+    await page.setViewportSize({ width: 1366, height: 768 })
+    await expect(dataSourcePanelTitle).not.toBeVisible()
   })
 
   test('loads usage page with token and quota summaries', async ({ page }) => {

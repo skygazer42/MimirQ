@@ -20,7 +20,7 @@ export default function KnowledgeEvidencePage() {
         title="Evidence Workbench"
         description="检索-only Evidence API 调试台：查看 citations / has_evidence / abstain 信号（不生成回答）"
         icon={Search}
-        iconColor="text-sky-600 dark:text-sky-400"
+        iconColor="text-info dark:text-sky-400"
       >
         <EvidenceWorkbench />
         <EvidenceOpsPanel />

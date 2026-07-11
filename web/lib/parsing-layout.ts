@@ -25,17 +25,17 @@ const PARSING_LAYOUT_META: Record<ParsingLayoutKind, ParsingLayoutMeta> = {
   heading: {
     label: '标题',
     shortLabel: '标题',
-    chipClassName: 'border-sky-200/80 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-200',
-    dotClassName: 'bg-sky-500 dark:bg-sky-300',
-    overlayClassName: 'border-sky-500/75 bg-sky-500/10',
+    chipClassName: 'border-info/30 bg-info/10 text-info dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-200',
+    dotClassName: 'bg-info dark:bg-sky-300',
+    overlayClassName: 'border-info/75 bg-info/10',
   },
   paragraph: {
     label: '正文',
     shortLabel: '正文',
     chipClassName:
-      'border-slate-200/80 bg-slate-50 text-slate-700 dark:border-slate-800/70 dark:bg-slate-900/40 dark:text-slate-200',
-    dotClassName: 'bg-slate-400 dark:bg-slate-300',
-    overlayClassName: 'border-slate-400/75 bg-slate-400/10',
+      'border-border/60 bg-muted/50 text-foreground/85 dark:border-slate-800/70 dark:bg-slate-900/40 dark:text-slate-200',
+    dotClassName: 'bg-muted-foreground/50 dark:bg-slate-300',
+    overlayClassName: 'border-border bg-muted-foreground/10',
   },
   list: {
     label: '列表',
@@ -49,33 +49,33 @@ const PARSING_LAYOUT_META: Record<ParsingLayoutKind, ParsingLayoutMeta> = {
     label: '表格',
     shortLabel: '表格',
     chipClassName:
-      'border-emerald-200/80 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/35 dark:text-emerald-200',
-    dotClassName: 'bg-emerald-500 dark:bg-emerald-300',
-    overlayClassName: 'border-emerald-500/75 bg-emerald-500/10',
+      'border-success/30 bg-success/10 text-success dark:border-emerald-900/60 dark:bg-emerald-950/35 dark:text-emerald-200',
+    dotClassName: 'bg-success dark:bg-emerald-300',
+    overlayClassName: 'border-success/75 bg-success/10',
   },
   image: {
     label: '图片',
     shortLabel: '图片',
     chipClassName:
-      'border-amber-200/80 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/35 dark:text-amber-200',
-    dotClassName: 'bg-amber-500 dark:bg-amber-300',
-    overlayClassName: 'border-amber-500/75 bg-amber-500/10',
+      'border-warning/30 bg-warning/10 text-warning dark:border-amber-900/60 dark:bg-amber-950/35 dark:text-amber-200',
+    dotClassName: 'bg-warning dark:bg-amber-300',
+    overlayClassName: 'border-warning/75 bg-warning/10',
   },
   equation: {
     label: '公式',
     shortLabel: '公式',
     chipClassName:
-      'border-violet-200/80 bg-violet-50 text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/35 dark:text-violet-200',
-    dotClassName: 'bg-violet-500 dark:bg-violet-300',
-    overlayClassName: 'border-violet-500/75 bg-violet-500/10',
+      'border-accent/30 bg-accent/10 text-accent dark:border-violet-900/60 dark:bg-violet-950/35 dark:text-violet-200',
+    dotClassName: 'bg-accent dark:bg-violet-300',
+    overlayClassName: 'border-accent/75 bg-accent/10',
   },
   seal: {
     label: '印章',
     shortLabel: '印章',
     chipClassName:
-      'border-rose-200/80 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/35 dark:text-rose-200',
-    dotClassName: 'bg-rose-500 dark:bg-rose-300',
-    overlayClassName: 'border-rose-500/75 bg-rose-500/10',
+      'border-destructive/30 bg-destructive/10 text-destructive dark:border-rose-900/60 dark:bg-rose-950/35 dark:text-rose-200',
+    dotClassName: 'bg-destructive dark:bg-rose-300',
+    overlayClassName: 'border-destructive/75 bg-destructive/10',
   },
 }
 const EQUATION_MARKER_TOKENS = [

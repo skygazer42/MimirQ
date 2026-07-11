@@ -1020,7 +1020,7 @@ export function ParsingActiveFilePane({
  {activeFile.status === 'pending' ? (
  <div className="flex h-full items-center justify-center">
  <div className="text-center">
- <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-xl bg-sky-100 dark:bg-info/30">
+ <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-xl bg-info/15 dark:bg-info/30">
  <Sparkles className="h-8 w-8 text-info dark:text-info" />
  </div>
  <p className="mb-2 text-foreground/80 dark:text-muted-foreground">准备就绪</p>
@@ -1045,7 +1045,7 @@ export function ParsingActiveFilePane({
  onClick={() => onParseFile(activeFile.id, activeFile.parserBackend)}
  className="gap-2 bg-info hover:bg-info"
  >
- <Sparkles className="h-4 w-4 text-sky-200" />
+ <Sparkles className="h-4 w-4 text-info" />
  用当前解析器开始解析
  </Button>
  </div>
@@ -1215,13 +1215,13 @@ export function ParsingActiveFilePane({
  className={cn(
  'group w-full overflow-hidden rounded-xl border text-left transition',
  isActive
- ? 'border-amber-400/70 bg-amber-50/80 shadow-soft ring-1 ring-amber-300/45 dark:bg-amber-950/24'
- : 'border-amber-200/70 bg-card/90 hover:border-amber-400/70 hover:bg-amber-50/55 dark:border-amber-900/50 dark:bg-background/35 dark:hover:bg-amber-950/18'
+ ? 'border-warning/70 bg-warning/5 shadow-soft ring-1 ring-warning/40 dark:bg-amber-950/24'
+ : 'border-warning/30 bg-card/90 hover:border-warning/70 hover:bg-warning/5 dark:border-amber-900/50 dark:bg-background/35 dark:hover:bg-warning/18'
  )}
  title={String(element.text || element.id || '')}
  >
  <div className="flex gap-3 p-3">
- <div className="relative h-24 w-28 shrink-0 overflow-hidden rounded-lg border border-amber-200/70 bg-[linear-gradient(135deg,hsl(var(--muted)),hsl(var(--background)))] dark:border-amber-900/50">
+ <div className="relative h-24 w-28 shrink-0 overflow-hidden rounded-lg border border-warning/30 bg-[linear-gradient(135deg,hsl(var(--muted)),hsl(var(--background)))] dark:border-amber-900/50">
  {reviewEntry.src ? (
  <AuthImage
  src={reviewEntry.src}
@@ -1237,7 +1237,7 @@ export function ParsingActiveFilePane({
  </div>
  <div className="min-w-0 flex-1">
  <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
- <span className="inline-flex items-center rounded-full border border-amber-200/80 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/35 dark:text-amber-200">
+ <span className="inline-flex items-center rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[11px] font-medium text-warning dark:border-amber-900/60 dark:bg-amber-950/35 dark:text-amber-200">
  图片
  </span>
  <span className="font-mono text-[11px] text-muted-foreground">片段 {index + 1}</span>
@@ -1319,7 +1319,7 @@ export function ParsingActiveFilePane({
  isActive ? 'bg-primary/55' : 'bg-border/45 group-hover:bg-border/70'
  )}
  />
- <div className="prose prose-slate prose-sm max-w-none prose-headings:mb-1 prose-headings:mt-0 prose-headings:text-foreground prose-p:my-0 prose-p:text-foreground/82 prose-a:text-info prose-code:rounded prose-code:bg-info/10 prose-code:px-1 prose-code:py-0.5 prose-code:text-info prose-pre:my-1 prose-pre:bg-foreground prose-table:my-1 prose-table:border-collapse prose-td:border prose-td:border-sky-200 prose-td:p-2 prose-th:border prose-th:border-sky-200 prose-th:bg-info/10 prose-th:p-2 dark:prose-invert dark:prose-headings:text-foreground dark:prose-p:text-muted-foreground dark:prose-a:text-info dark:prose-code:bg-muted dark:prose-code:text-info dark:prose-th:border-info/30 dark:prose-th:bg-info/20 dark:prose-td:border-info/30">
+ <div className="prose prose-slate prose-sm max-w-none prose-headings:mb-1 prose-headings:mt-0 prose-headings:text-foreground prose-p:my-0 prose-p:text-foreground/82 prose-a:text-info prose-code:rounded prose-code:bg-info/10 prose-code:px-1 prose-code:py-0.5 prose-code:text-info prose-pre:my-1 prose-pre:bg-foreground prose-table:my-1 prose-table:border-collapse prose-td:border prose-td:border-info/30 prose-td:p-2 prose-th:border prose-th:border-info/30 prose-th:bg-info/10 prose-th:p-2 dark:prose-invert dark:prose-headings:text-foreground dark:prose-p:text-muted-foreground dark:prose-a:text-info dark:prose-code:bg-muted dark:prose-code:text-info dark:prose-th:border-info/30 dark:prose-th:bg-info/20 dark:prose-td:border-info/30">
  <MarkdownRenderer markdown={entry.text} />
  </div>
  </div>
@@ -1338,7 +1338,7 @@ export function ParsingActiveFilePane({
  >
  {previewMode === 'rendered' ? (
  <div className="flex gap-8">
- <div className="prose prose-slate prose-sm min-w-0 max-w-none flex-1 prose-headings:text-foreground prose-h1:mb-5 prose-h1:text-[26px] prose-h1:font-semibold prose-h1:leading-[1.22] prose-h1:tracking-[-0.02em] prose-h2:mb-3 prose-h2:mt-8 prose-h2:text-[21px] prose-h2:leading-[1.3] prose-h3:text-[17px] prose-p:my-4 prose-p:text-[15px] prose-p:leading-7 prose-p:text-foreground/80 prose-li:text-[15px] prose-li:leading-7 prose-a:text-info prose-code:rounded prose-code:bg-info/10 prose-code:px-1 prose-code:py-0.5 prose-code:text-info prose-pre:bg-foreground prose-table:border-collapse prose-td:border prose-td:border-sky-200 prose-td:p-2 prose-th:border prose-th:border-sky-200 prose-th:bg-info/10 prose-th:p-2 dark:prose-invert dark:prose-headings:text-foreground dark:prose-p:text-muted-foreground dark:prose-a:text-info dark:prose-code:bg-muted dark:prose-code:text-info dark:prose-th:border-info/30 dark:prose-th:bg-info/20 dark:prose-td:border-info/30">
+ <div className="prose prose-slate prose-sm min-w-0 max-w-none flex-1 prose-headings:text-foreground prose-h1:mb-5 prose-h1:text-[26px] prose-h1:font-semibold prose-h1:leading-[1.22] prose-h1:tracking-[-0.02em] prose-h2:mb-3 prose-h2:mt-8 prose-h2:text-[21px] prose-h2:leading-[1.3] prose-h3:text-[17px] prose-p:my-4 prose-p:text-[15px] prose-p:leading-7 prose-p:text-foreground/80 prose-li:text-[15px] prose-li:leading-7 prose-a:text-info prose-code:rounded prose-code:bg-info/10 prose-code:px-1 prose-code:py-0.5 prose-code:text-info prose-pre:bg-foreground prose-table:border-collapse prose-td:border prose-td:border-info/30 prose-td:p-2 prose-th:border prose-th:border-info/30 prose-th:bg-info/10 prose-th:p-2 dark:prose-invert dark:prose-headings:text-foreground dark:prose-p:text-muted-foreground dark:prose-a:text-info dark:prose-code:bg-muted dark:prose-code:text-info dark:prose-th:border-info/30 dark:prose-th:bg-info/20 dark:prose-td:border-info/30">
  <MarkdownRenderer
  markdown={activeMarkdown}
  autoScrollToHash

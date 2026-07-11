@@ -145,7 +145,7 @@ function GroupSummaryStrip({ items }: Readonly<{ items: SummaryItem[] }>) {
               index === 0 && 'ring-1 ring-primary/5'
             )}
           >
-            <div className="pointer-events-none absolute inset-x-4 top-0 h-px bg-gradient-to-r from-primary/25 via-primary/8 to-transparent" />
+            <div className="pointer-events-none absolute inset-x-4 top-0 h-px bg-[linear-gradient(90deg,transparent,hsl(var(--primary)/0.25),transparent)]" />
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
@@ -155,7 +155,7 @@ function GroupSummaryStrip({ items }: Readonly<{ items: SummaryItem[] }>) {
                   className={cn(
                     'mt-2 leading-none tracking-[-0.035em] text-foreground',
                     isTextValue
-                      ? 'inline-flex rounded-full border border-border/60 bg-muted/45 px-2.5 py-1 text-[12px] font-semibold tracking-normal'
+                      ? 'inline-flex rounded-full border border-border/60 bg-muted/45 px-2.5 py-1 text-[12px] font-semibold tracking-[0em]'
                       : 'text-[24px] font-semibold',
                     item.valueClassName
                   )}
@@ -336,8 +336,7 @@ function SettingsGroupsPageContent() {
         icon={Users}
         iconColor="text-primary"
         size="full"
-        compact={false}
-        headerClassName="[&_h1]:!text-[27px] [&_h1]:md:!text-[29px] [&_h1]:!leading-tight [&_h1]:!tracking-[-0.035em]"
+        compact
         topClassName="pb-2.5"
         bodyClassName="pt-1.5"
         bodyContainerClassName="flex min-h-full flex-col"

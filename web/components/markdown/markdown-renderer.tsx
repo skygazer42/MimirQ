@@ -274,7 +274,7 @@ function MarkdownRenderFallback({ className }: Readonly<{ className?: string }>)
   return (
     <output
       className={cn(
-        'rounded-lg border border-amber-500/30 bg-amber-500/8 px-4 py-3 text-sm text-amber-900 dark:text-amber-100',
+        'rounded-lg border border-warning/30 bg-warning/8 px-4 py-3 text-sm text-warning dark:text-amber-100',
         className
       )}
     >

@@ -1,4 +1,4 @@
-.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-full test-web test-web-full test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build api-docs-build-static diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure plugin-release-gate changzhou-gov-plugin-chunk-report changzhou-gov-plugin-chunk-evidence changzhou-gov-plugin-test-report changzhou-gov-plugin-test-evidence changzhou-gov-plugin-corpus-closed-loop-smoke changzhou-gov-plugin-corpus-closed-loop-evidence changzhou-gov-delivery-pack changzhou-gov-delivery-pack-refresh changzhou-gov-delivery-pack-refresh-with-audit changzhou-dify-knowledge-map-check changzhou-dify-mimirq-direct-gate changzhou-dify-mimirq-direct-kg-off-gate changzhou-dify-mimirq-direct-kg-on-gate changzhou-dify-kg-compare-gate changzhou-dify-kg-on-off-gate changzhou-dify-external-probe changzhou-dify-workflow-lint changzhou-dify-workflow-sync-dry-run changzhou-dify-workflow-sync-apply changzhou-dify-full-gate changzhou-dify-readiness-summary changzhou-dify-readiness-status changzhou-dify-readiness-evidence changzhou-dify-readiness-persist-audit changzhou-dify-readiness-gate changzhou-dify-readiness-gate-quiet changzhou-human-mixed-cases mixed-rag-quality check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-full test-web test-web-full test-web-e2e test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build api-docs-build-static diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure plugin-release-gate changzhou-gov-plugin-chunk-report changzhou-gov-plugin-chunk-evidence changzhou-gov-plugin-test-report changzhou-gov-plugin-test-evidence changzhou-gov-plugin-corpus-closed-loop-smoke changzhou-gov-plugin-corpus-closed-loop-evidence changzhou-gov-delivery-pack changzhou-gov-delivery-pack-refresh changzhou-gov-delivery-pack-refresh-with-audit changzhou-dify-knowledge-map-check changzhou-dify-mimirq-direct-gate changzhou-dify-mimirq-direct-kg-off-gate changzhou-dify-mimirq-direct-kg-on-gate changzhou-dify-kg-compare-gate changzhou-dify-kg-on-off-gate changzhou-dify-external-probe changzhou-dify-workflow-lint changzhou-dify-workflow-sync-dry-run changzhou-dify-workflow-sync-apply changzhou-dify-full-gate changzhou-dify-readiness-summary changzhou-dify-readiness-status changzhou-dify-readiness-evidence changzhou-dify-readiness-persist-audit changzhou-dify-readiness-gate changzhou-dify-readiness-gate-quiet changzhou-human-mixed-cases mixed-rag-quality check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -166,6 +166,9 @@ CORE_TESTS := \
 	tests/test_rbac_current_access_endpoint.py \
 	tests/test_documents_upload_url_endpoint.py \
 	tests/test_document_lifecycle_metadata_endpoints.py \
+	tests/test_document_lifecycle_retention.py \
+	tests/test_document_asset_auth.py \
+	tests/test_health_meta_exposure.py \
 	tests/test_documents_batch_reingest_endpoint.py \
 	tests/test_document_version_diff_integration.py \
 	tests/test_document_versions_integration.py \
@@ -214,20 +217,25 @@ CORE_TESTS := \
 	tests/test_eval_retrieval_metrics.py \
 	tests/test_eval_fusion_metrics.py \
 	tests/test_eval_runner_result_shape.py \
+	tests/test_eval_stage1_runner_integrity.py \
 	tests/test_regression_gate_report.py \
 	tests/test_evidence_api_offline_regression_gate.py \
 	tests/test_reports_endpoints.py \
 	tests/test_reports_export_bundle.py \
 	tests/test_reports_dataset_report.py \
+	tests/test_connector_db_egress_and_auth.py \
+	tests/test_run_list_acl_pagination.py \
 	tests/test_dataset_retention_policy.py \
 	tests/test_persist_retrieval_audit_snapshot.py \
 	tests/test_table_store_service.py \
 	tests/test_embedding_cache_key_space_hash.py \
 	tests/test_regression_item_meta_persistence.py \
+	tests/test_dependency_audit_contract.py \
 	tests/test_no_future_annotations_imports.py \
 	tests/test_no_module_level_import_fallbacks.py \
 	tests/test_no_import_error_fallbacks.py \
 	tests/test_source_guard_contracts.py \
+	tests/test_ci_workflow_contracts.py \
 	tests/test_test_inventory_contract.py \
 	tests/test_core_test_suite_contract.py
 
@@ -246,8 +254,10 @@ CORE_WEB_TESTS := \
 	components/navbar.source.test.ts \
 	components/navbar.active-indicator.test.ts \
 	components/navbar.behavior.test.ts \
+	hooks/use-media-query.test.tsx \
 	lib/api-client.source.test.ts \
 	lib/api-client-auth.test.ts \
+	lib/image-auth-proxy.test.ts \
 	lib/api-client-chat-stream.test.ts \
 	lib/api-client.rag-evidence.test.ts \
 	lib/openapi-request.test.ts \
@@ -493,6 +503,9 @@ test-web:
 
 test-web-full:
 	cd web && pnpm exec vitest run $(VITEST_ARGS)
+
+test-web-e2e:
+	cd web && PLAYWRIGHT_USE_PROD_SERVER=1 pnpm exec playwright test
 
 test-management-smoke:
 	cd web && PLAYWRIGHT_USE_PROD_SERVER=1 pnpm exec playwright test e2e/management-surfaces.smoke.spec.ts

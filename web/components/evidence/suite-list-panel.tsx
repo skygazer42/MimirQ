@@ -116,7 +116,7 @@ export function SuiteListPanel({
   }
 
   return (
-    <Panel className="p-4 lg:col-span-3">
+    <Panel className="p-4 xl:col-span-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-sm font-semibold text-foreground">

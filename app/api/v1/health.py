@@ -1,20 +1,27 @@
 """
 Health check endpoints.
 
-Provides system health status check interfaces for frontend and developer tools monitoring.
+Public endpoints stay probe-friendly and minimal; detailed dependency state is admin-gated.
 """
 
 
 import time
 from datetime import UTC, datetime
-from typing import Any
+from pathlib import Path
+from typing import Annotated, Any
+from uuid import UUID
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Depends, Response
+from sqlalchemy.orm import Session
 
-from app.api.schemas.health import HealthResponse, ReadyResponse
+from app.api.dependencies.auth import get_current_account_id
+from app.api.dependencies.tenant import get_tenant_id
+from app.api.schemas.health import HealthDetailsResponse, HealthResponse, ReadyResponse
 from app.core.config import settings
-from app.core.database import SessionLocal
+from app.core.database import SessionLocal, get_db
 from app.core.health_checks import check_database, check_minio, check_redis, check_vector
+from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
+from app.tasks.queue import is_queue_initialized
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -49,6 +56,16 @@ class _MinioServiceProxy:
 # Backward compatible symbols (tests / tooling patch these).
 milvus_store = _MilvusStoreProxy()
 minio_service = _MinioServiceProxy()
+
+
+def _ensure_admin(db: Session, tenant_id: UUID, account_id: str) -> None:
+    ensure_tenant_permission(
+        db,
+        tenant_id,
+        account_id,
+        TenantPermissions.OBSERVABILITY_READ,
+        detail="No permission to access observability dashboards",
+    )
 
 
 def _ready_cache_key() -> tuple[object, ...]:
@@ -92,33 +109,11 @@ def _get_redis_client():
     return _redis_client
 
 
-@router.get("/health", response_model=HealthResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-def health() -> dict:
-    """
-    Lightweight health check for web/dev tooling.
-    """
-    now = datetime.now(UTC).isoformat()
-    return {
-        "ok": True,
-        "time": now,
-        "vector_backend": settings.VECTOR_BACKEND,
-        "use_langgraph_pipeline": bool(getattr(settings, "USE_LANGGRAPH_PIPELINE", False)),
-    }
-
-
-@router.get("/health/ready", response_model=ReadyResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-def ready(response: Response) -> dict:
-    """
-    Readiness probe for orchestration (k8s, compose, etc).
-
-    - Returns 200 when required deps are reachable
-    - Returns 503 when one or more deps are down
-    """
+def _collect_ready_details() -> tuple[dict[str, Any], int, dict[str, Any] | None]:
     cache_key = _ready_cache_key()
     cached_payload, cached_status = _get_ready_cache(cache_key)
     if cached_payload is not None:
-        response.status_code = cached_status
-        return cached_payload
+        return cached_payload, int(cached_status or 200), cached_payload.get("milvus") if isinstance(cached_payload, dict) else None
 
     ok = True
 
@@ -127,7 +122,7 @@ def ready(response: Response) -> dict:
 
     vector_backend = (getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").lower()
     milvus_get_count = milvus_store.get_collection_count if vector_backend == "milvus" else None
-    vector_status, _milvus_status, vector_ok = check_vector(
+    vector_status, milvus_status, vector_ok = check_vector(
         settings,
         mode="ready",
         milvus_get_collection_count=milvus_get_count,
@@ -170,19 +165,92 @@ def ready(response: Response) -> dict:
             if bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_REQUIRED_FOR_READY", False)):
                 ok = False
 
-    if not ok:
-        response.status_code = 503
-
     payload = {
         "ok": ok,
+        "status": "ready" if ok else "unready",
         "database": db_status,
         "vector": vector_status,
+        "milvus": milvus_status,
         "redis": redis_status,
         "minio": minio_status,
         "dify_external_knowledge": dify_external_status,
     }
+    status_code = 200 if ok else 503
     _ready_cache["ts"] = time.monotonic()
     _ready_cache["payload"] = payload
-    _ready_cache["status"] = response.status_code
+    _ready_cache["status"] = status_code
     _ready_cache["key"] = cache_key
-    return payload
+    return payload, status_code, milvus_status
+
+
+def _uploads_status() -> dict[str, Any]:
+    status = {"status": "unknown", "path": settings.UPLOAD_DIR}
+    try:
+        upload_dir = Path(settings.UPLOAD_DIR)
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        status["status"] = "ready"
+    except Exception as exc:  # noqa: BLE001
+        status["status"] = "unavailable"
+        status["error"] = str(exc)[:200]
+    return status
+
+
+def _task_queue_status() -> dict[str, Any]:
+    enabled = bool(getattr(settings, "TASK_QUEUE_ENABLED", False))
+    status = {
+        "enabled": enabled,
+        "queue": getattr(settings, "TASK_QUEUE_NAME", "mimirq"),
+        "status": "disabled",
+    }
+    if enabled:
+        initialized = is_queue_initialized()
+        status["initialized"] = initialized
+        status["status"] = "connected" if initialized else "not_initialized"
+    return status
+
+
+@router.get("/health", response_model=HealthResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def health() -> dict[str, Any]:
+    return {
+        "ok": True,
+        "status": "ok",
+    }
+
+
+@router.get("/health/ready", response_model=ReadyResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def ready(response: Response) -> dict[str, Any]:
+    """
+    Readiness probe for orchestration (k8s, compose, etc).
+
+    - Returns 200 when required deps are reachable
+    - Returns 503 when one or more deps are down
+    """
+    payload, status_code, _milvus_status = _collect_ready_details()
+    response.status_code = status_code
+    return {"ok": bool(payload.get("ok")), "status": str(payload.get("status") or "unready")}
+
+
+@router.get(
+    "/health/details",
+    response_model=HealthDetailsResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
+def health_details(
+    response: Response,
+    db: Annotated[Session, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+) -> dict[str, Any]:
+    _ensure_admin(db, tenant_id, account_id)
+
+    payload, status_code, milvus_status = _collect_ready_details()
+    response.status_code = status_code
+    return {
+        **payload,
+        "time": datetime.now(UTC).isoformat(),
+        "vector_backend": settings.VECTOR_BACKEND,
+        "use_langgraph_pipeline": bool(getattr(settings, "USE_LANGGRAPH_PIPELINE", False)),
+        "milvus": milvus_status,
+        "task_queue": _task_queue_status(),
+        "uploads": _uploads_status(),
+    }

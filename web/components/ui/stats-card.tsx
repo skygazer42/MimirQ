@@ -30,56 +30,56 @@ const valueColorStyles: Record<NonNullable<StatCardProps['color']>, string> = {
   amber: 'text-warning',
   blue: 'text-info',
   green: 'text-success',
-  teal: 'text-teal',
-  orange: 'text-orange',
+  teal: 'text-success',
+  orange: 'text-warning',
   red: 'text-destructive',
   gray: 'text-foreground',
   cyan: 'text-info',
   sky: 'text-info',
-  rose: 'text-rose',
-  indigo: 'text-indigo',
+  rose: 'text-destructive',
+  indigo: 'text-primary',
 }
 
 const iconTextStyles: Record<NonNullable<StatCardProps['color']>, string> = {
   amber: 'text-warning/80',
   blue: 'text-info/80',
   green: 'text-success/80',
-  teal: 'text-teal/80',
-  orange: 'text-orange/80',
+  teal: 'text-success/80',
+  orange: 'text-warning/80',
   red: 'text-destructive/80',
   gray: 'text-muted-foreground',
   cyan: 'text-info/80',
   sky: 'text-info/80',
-  rose: 'text-rose/80',
-  indigo: 'text-indigo/80',
+  rose: 'text-destructive/80',
+  indigo: 'text-primary/80',
 }
 
 const colorStyles = {
-  amber: 'border-amber-200/50 bg-gradient-to-br from-amber-50/40 to-orange-50/30 text-amber-700 group-hover:border-amber-300 group-hover:from-amber-50/60 group-hover:to-orange-50/50',
-  blue: 'border-sky-200/50 bg-gradient-to-br from-sky-50/40 to-blue-50/30 text-sky-700 group-hover:border-sky-300 group-hover:from-sky-50/60 group-hover:to-blue-50/50',
-  green: 'border-emerald-200/50 bg-gradient-to-br from-emerald-50/40 to-teal-50/30 text-emerald-700 group-hover:border-emerald-300 group-hover:from-emerald-50/60 group-hover:to-teal-50/50',
-  teal: 'border-teal-200/50 bg-gradient-to-br from-teal-50/40 to-cyan-50/30 text-teal-700 group-hover:border-teal-300 group-hover:from-teal-50/60 group-hover:to-cyan-50/50',
-  orange: 'border-orange-200/50 bg-gradient-to-br from-orange-50/40 to-amber-50/30 text-orange-700 group-hover:border-orange-300 group-hover:from-orange-50/60 group-hover:to-amber-50/50',
-  red: 'border-rose-200/50 bg-gradient-to-br from-rose-50/40 to-pink-50/30 text-rose-700 group-hover:border-rose-300 group-hover:from-rose-50/60 group-hover:to-pink-50/50',
-  gray: 'border-slate-200/50 bg-gradient-to-br from-slate-50/40 to-gray-50/30 text-slate-700 group-hover:border-slate-300 group-hover:from-slate-50/60 group-hover:to-gray-50/50',
-  cyan: 'border-cyan-200/50 bg-gradient-to-br from-cyan-50/40 to-sky-50/30 text-cyan-700 group-hover:border-cyan-300 group-hover:from-cyan-50/60 group-hover:to-sky-50/50',
-  sky: 'border-sky-200/50 bg-gradient-to-br from-sky-50/40 to-blue-50/30 text-sky-700 group-hover:border-sky-300 group-hover:from-sky-50/60 group-hover:to-blue-50/50',
-  rose: 'border-rose-200/50 bg-gradient-to-br from-rose-50/40 to-pink-50/30 text-rose-700 group-hover:border-rose-300 group-hover:from-rose-50/60 group-hover:to-pink-50/50',
-  indigo: 'border-indigo-200/50 bg-gradient-to-br from-indigo-50/40 to-purple-50/30 text-indigo-700 group-hover:border-indigo-300 group-hover:from-indigo-50/60 group-hover:to-purple-50/50',
+  amber: 'border-warning/20 bg-[linear-gradient(135deg,hsl(var(--background)/0.94),hsl(var(--warning)/0.12))] text-warning group-hover:border-warning/30 group-hover:bg-[linear-gradient(135deg,hsl(var(--background)/0.98),hsl(var(--warning)/0.18))]',
+  blue: 'border-info/20 bg-[linear-gradient(135deg,hsl(var(--background)/0.94),hsl(var(--info)/0.12))] text-info group-hover:border-info/30 group-hover:bg-[linear-gradient(135deg,hsl(var(--background)/0.98),hsl(var(--info)/0.18))]',
+  green: 'border-success/20 bg-[linear-gradient(135deg,hsl(var(--background)/0.94),hsl(var(--success)/0.12))] text-success group-hover:border-success/30 group-hover:bg-[linear-gradient(135deg,hsl(var(--background)/0.98),hsl(var(--success)/0.18))]',
+  teal: 'border-success/20 bg-[linear-gradient(135deg,hsl(var(--background)/0.94),hsl(var(--success)/0.10))] text-success group-hover:border-success/30 group-hover:bg-[linear-gradient(135deg,hsl(var(--background)/0.98),hsl(var(--success)/0.16))]',
+  orange: 'border-warning/20 bg-[linear-gradient(135deg,hsl(var(--background)/0.94),hsl(var(--warning)/0.10))] text-warning group-hover:border-warning/30 group-hover:bg-[linear-gradient(135deg,hsl(var(--background)/0.98),hsl(var(--warning)/0.16))]',
+  red: 'border-destructive/18 bg-[linear-gradient(135deg,hsl(var(--background)/0.94),hsl(var(--destructive)/0.10))] text-destructive group-hover:border-destructive/28 group-hover:bg-[linear-gradient(135deg,hsl(var(--background)/0.98),hsl(var(--destructive)/0.16))]',
+  gray: 'border-border/60 bg-[linear-gradient(135deg,hsl(var(--background)/0.94),hsl(var(--muted)/0.42))] text-foreground group-hover:border-border/70 group-hover:bg-[linear-gradient(135deg,hsl(var(--background)/0.98),hsl(var(--muted)/0.52))]',
+  cyan: 'border-info/20 bg-[linear-gradient(135deg,hsl(var(--background)/0.94),hsl(var(--info)/0.12))] text-info group-hover:border-info/30 group-hover:bg-[linear-gradient(135deg,hsl(var(--background)/0.98),hsl(var(--info)/0.18))]',
+  sky: 'border-info/20 bg-[linear-gradient(135deg,hsl(var(--background)/0.94),hsl(var(--info)/0.12))] text-info group-hover:border-info/30 group-hover:bg-[linear-gradient(135deg,hsl(var(--background)/0.98),hsl(var(--info)/0.18))]',
+  rose: 'border-destructive/18 bg-[linear-gradient(135deg,hsl(var(--background)/0.94),hsl(var(--destructive)/0.10))] text-destructive group-hover:border-destructive/28 group-hover:bg-[linear-gradient(135deg,hsl(var(--background)/0.98),hsl(var(--destructive)/0.16))]',
+  indigo: 'border-primary/20 bg-[linear-gradient(135deg,hsl(var(--background)/0.94),hsl(var(--primary)/0.12))] text-primary group-hover:border-primary/30 group-hover:bg-[linear-gradient(135deg,hsl(var(--background)/0.98),hsl(var(--primary)/0.18))]',
 }
 
 const iconBgStyles = {
-  amber: 'bg-gradient-to-br from-amber-100 to-orange-100 text-amber-600 group-hover:from-amber-200 group-hover:to-orange-200',
-  blue: 'bg-gradient-to-br from-sky-100 to-blue-100 text-sky-600 group-hover:from-sky-200 group-hover:to-blue-200',
-  green: 'bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-600 group-hover:from-emerald-200 group-hover:to-teal-200',
-  teal: 'bg-gradient-to-br from-teal-100 to-cyan-100 text-teal-600 group-hover:from-teal-200 group-hover:to-cyan-200',
-  orange: 'bg-gradient-to-br from-orange-100 to-amber-100 text-orange-600 group-hover:from-orange-200 group-hover:to-amber-200',
-  red: 'bg-gradient-to-br from-rose-100 to-pink-100 text-rose-600 group-hover:from-rose-200 group-hover:to-pink-200',
-  gray: 'bg-gradient-to-br from-slate-100 to-gray-100 text-slate-600 group-hover:from-slate-200 group-hover:to-gray-200',
-  cyan: 'bg-gradient-to-br from-cyan-100 to-sky-100 text-cyan-600 group-hover:from-cyan-200 group-hover:to-sky-200',
-  sky: 'bg-gradient-to-br from-sky-100 to-blue-100 text-sky-600 group-hover:from-sky-200 group-hover:to-blue-200',
-  rose: 'bg-gradient-to-br from-rose-100 to-pink-100 text-rose-600 group-hover:from-rose-200 group-hover:to-pink-200',
-  indigo: 'bg-gradient-to-br from-indigo-100 to-purple-100 text-indigo-600 group-hover:from-indigo-200 group-hover:to-purple-200',
+  amber: 'bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--warning)/0.16))] text-warning',
+  blue: 'bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.16))] text-info',
+  green: 'bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--success)/0.16))] text-success',
+  teal: 'bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--success)/0.14))] text-success',
+  orange: 'bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--warning)/0.14))] text-warning',
+  red: 'bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--destructive)/0.14))] text-destructive',
+  gray: 'bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.44))] text-muted-foreground',
+  cyan: 'bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.16))] text-info',
+  sky: 'bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.16))] text-info',
+  rose: 'bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--destructive)/0.14))] text-destructive',
+  indigo: 'bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--primary)/0.16))] text-primary',
 }
 
 export function StatCard({
@@ -103,10 +103,10 @@ export function StatCard({
   if (variant === 'minimal') {
     const Wrapper = onClick ? 'button' : 'div'
     const statusColorStyle = isDimmed
-      ? "bg-slate-100/60 text-slate-500 border-slate-200/40"
+      ? "bg-muted/60 text-muted-foreground border-border/60"
       : active
-        ? "bg-gradient-to-r from-sky-100 to-blue-100 text-sky-700 border-sky-300 shadow-md shadow-sky-200/30"
-        : (colorStyles[color] || colorStyles.sky) + " border-sky-200/40 shadow-sm"
+        ? "bg-[linear-gradient(90deg,hsl(var(--background)/0.92),hsl(var(--info)/0.18))] text-info border-info/28 shadow-md shadow-[0_12px_24px_-18px_hsl(var(--info)/0.45)]"
+        : (colorStyles[color] || colorStyles.sky) + " border-info/30 shadow-sm"
 
     return (
       <Wrapper
@@ -122,9 +122,9 @@ export function StatCard({
         <div className={cn(
           "relative flex size-6 shrink-0 items-center justify-center rounded-lg transition-all duration-200",
           isDimmed
-            ? "bg-slate-100 text-slate-400"
+            ? "bg-muted text-muted-foreground/70"
             : active
-              ? "bg-gradient-to-br from-sky-200 to-blue-200 text-sky-700"
+              ? "bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.22))] text-info"
               : (iconBgStyles[color] || iconBgStyles.sky)
         )}>
           <Icon className="size-4" />
@@ -139,7 +139,7 @@ export function StatCard({
           <div className="flex items-baseline gap-1">
             <span className={cn(
               "text-[14px] font-black font-mono tabular-nums leading-none transition-all duration-200",
-              isDimmed ? "text-slate-600" : "text-slate-900"
+              isDimmed ? "text-muted-foreground" : "text-foreground"
             )}>
               {value}
             </span>
@@ -157,22 +157,22 @@ export function StatCard({
     )
   }
 
-  const silentColorStyle = 'border-slate-200/60 bg-slate-50/40 text-slate-500'
-  const silentIconStyle = 'bg-slate-100/60 text-slate-400'
+  const silentColorStyle = 'border-border/60 bg-muted/40 text-muted-foreground'
+  const silentIconStyle = 'bg-muted/60 text-muted-foreground/70'
 
   if (dense) {
     return (
       <div className={cn(
         'group flex items-center gap-3 rounded-2xl border px-3 py-2 shadow-sm backdrop-blur-sm transition-all duration-200 hover:shadow-md',
-        isDimmed ? silentColorStyle : (colorStyles[color] || colorStyles.sky) + ' bg-white/80',
+        isDimmed ? silentColorStyle : colorStyles[color] || colorStyles.sky,
         className
       )}>
         <div className={cn('flex size-8 items-center justify-center rounded-xl shadow-sm transition-all duration-200 group-hover:scale-110', isDimmed ? silentIconStyle : (iconBgStyles[color] || iconBgStyles.sky))}>
           <Icon className="size-4" />
         </div>
         <div className="min-w-0">
-          <p className="truncate text-[10px] font-black uppercase text-slate-600">{label}</p>
-          <p className={cn("truncate text-[14px] font-mono font-black tabular-nums transition-all duration-200", isDimmed ? "text-slate-600" : "text-slate-900")}>{value}</p>
+          <p className="truncate text-[10px] font-black uppercase text-muted-foreground">{label}</p>
+          <p className={cn("truncate text-[14px] font-mono font-black tabular-nums transition-all duration-200", isDimmed ? "text-muted-foreground" : "text-foreground")}>{value}</p>
         </div>
       </div>
     )
@@ -189,10 +189,10 @@ export function StatCard({
         <Icon className="size-6" />
       </div>
       <div className="relative min-w-0 flex-1">
-        <p className="truncate text-[11px] font-black uppercase mb-1 text-slate-600">{label}</p>
+        <p className="truncate text-[11px] font-black uppercase mb-1 text-muted-foreground">{label}</p>
         <div className="flex items-baseline gap-2">
-          <p className={cn("truncate text-[24px] font-mono font-black leading-none transition-all duration-200", isDimmed ? "text-slate-600" : "text-slate-900")}>{value}</p>
-          {unit && <span className="text-xs font-bold uppercase text-slate-500 transition-all duration-200">{unit}</span>}
+          <p className={cn("truncate text-[24px] font-mono font-black leading-none transition-all duration-200", isDimmed ? "text-muted-foreground" : "text-foreground")}>{value}</p>
+          {unit && <span className="text-xs font-bold uppercase text-muted-foreground transition-all duration-200">{unit}</span>}
         </div>
       </div>
     </div>

@@ -113,7 +113,7 @@ export function ItemListPanel({
   }
 
   return (
-    <Panel className="p-4 lg:col-span-4">
+    <Panel className="p-4 xl:col-span-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm font-semibold text-foreground">Evidence Items</div>

@@ -63,7 +63,7 @@ export function StatCard({
             <span
               className={cn(
                 'font-black',
-                deltaGood ? 'text-emerald-600/80' : 'text-red-600/80'
+                deltaGood ? 'text-success/80' : 'text-destructive/80'
               )}
             >
               {delta > 0 ? '+' : ''}{delta}%

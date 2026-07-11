@@ -160,7 +160,7 @@ export default function LogosPreviewPage() {
               <h3 className="text-sm font-medium text-foreground/80 mb-3">
                 深色背景
               </h3>
-              <div className="bg-slate-950 p-4 rounded-lg border border-border/60">
+              <div className="bg-foreground p-4 rounded-lg border border-border/60">
                 <div className="flex flex-wrap gap-3">
                   {providers.map((provider) => (
                     <ProviderIcon

@@ -3,46 +3,29 @@ Health check response schemas.
 """
 
 
-from pydantic import BaseModel, Field
+from typing import Any
+
+from pydantic import BaseModel
 
 
 class HealthResponse(BaseModel):
     ok: bool
-    time: str
-    vector_backend: str | None = None
-    use_langgraph_pipeline: bool | None = None
-
-
-class DatabaseStatus(BaseModel):
     status: str
-    error: str | None = None
 
 
-class VectorStatus(BaseModel):
-    backend: str
-    status: str
-    error: str | None = None
+class ReadyResponse(HealthResponse):
+    pass
 
 
-class RedisStatus(BaseModel):
-    status: str
-    enabled: bool
-    required: bool
-    embedding_cache_enabled: bool = Field(default=False, alias="embedding_cache_enabled")
-    error: str | None = None
-
-
-class MinioStatus(BaseModel):
-    status: str
-    enabled: bool
-    bucket: str | None = None
-    error: str | None = None
-
-
-class ReadyResponse(BaseModel):
-    ok: bool
-    database: DatabaseStatus
-    vector: VectorStatus
-    redis: RedisStatus
-    minio: MinioStatus
+class HealthDetailsResponse(ReadyResponse):
+    database: dict[str, Any]
+    vector: dict[str, Any]
+    milvus: dict[str, Any] | None = None
+    redis: dict[str, Any]
+    minio: dict[str, Any]
     dify_external_knowledge: dict[str, object] | None = None
+    time: str
+    vector_backend: str
+    use_langgraph_pipeline: bool
+    task_queue: dict[str, Any]
+    uploads: dict[str, Any]

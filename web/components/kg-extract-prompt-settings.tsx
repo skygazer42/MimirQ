@@ -114,31 +114,31 @@ export function KgExtractPromptSettings({
   return (
     <Card
       className={cn(
-        'overflow-hidden rounded-xl border-slate-200/80 bg-card shadow-none',
+        'overflow-hidden rounded-xl border-border/60 bg-card shadow-none',
         loading ? 'opacity-60' : ''
       )}
     >
-      <CardHeader className="space-y-1 border-b border-slate-100 bg-slate-50/70 p-3">
+      <CardHeader className="space-y-1 border-b border-border/50 bg-muted/40 p-3">
         <div className="flex items-center justify-between gap-2">
-          <CardTitle className="text-[13px] font-semibold text-slate-950">
+          <CardTitle className="text-[13px] font-semibold text-foreground">
             KG 抽取绑定
           </CardTitle>
-          <span className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-600">
+          <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
             抽取策略
           </span>
         </div>
-        <CardDescription className="text-[11px] leading-4 text-slate-500">
+        <CardDescription className="text-[11px] leading-4 text-muted-foreground">
           为 KG 抽取和对话召回选择稳定模板；默认使用系统内置提示词。
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 p-3">
         <div className="space-y-2">
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200/75 bg-card px-3 py-2.5">
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-card px-3 py-2.5">
             <div className="min-w-0">
-              <div className="text-[12px] font-semibold text-slate-800">
+              <div className="text-[12px] font-semibold text-foreground">
                 对话 KG 召回
               </div>
-              <div className="mt-0.5 text-[11px] leading-4 text-slate-500">
+              <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
                 回答前补充事件摘要，提升跨文档线索覆盖。
               </div>
             </div>
@@ -150,12 +150,12 @@ export function KgExtractPromptSettings({
             />
           </div>
 
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200/75 bg-card px-3 py-2.5">
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-card px-3 py-2.5">
             <div className="min-w-0">
-              <div className="text-[12px] font-semibold text-slate-800">
+              <div className="text-[12px] font-semibold text-foreground">
                 重复抽取覆盖旧事件
               </div>
-              <div className="mt-0.5 text-[11px] leading-4 text-slate-500">
+              <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
                 同一文档重新处理时保持 KG 事件不重复。
               </div>
             </div>
@@ -170,12 +170,12 @@ export function KgExtractPromptSettings({
             />
           </div>
 
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200/75 bg-card px-3 py-2.5">
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-card px-3 py-2.5">
             <div className="min-w-0">
-              <div className="text-[12px] font-semibold text-slate-800">
+              <div className="text-[12px] font-semibold text-foreground">
                 自动清理孤立实体
               </div>
-              <div className="mt-0.5 text-[11px] leading-4 text-slate-500">
+              <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
                 事件变更后移除没有关联关系的实体。
               </div>
             </div>
@@ -191,12 +191,12 @@ export function KgExtractPromptSettings({
           </div>
         </div>
 
-        <div className="space-y-2 rounded-lg border border-slate-200/75 bg-slate-50/60 p-3">
+        <div className="space-y-2 rounded-lg border border-border/60 bg-muted/40 p-3">
           <div>
-            <Label className="text-[11px] font-semibold text-slate-600">
+            <Label className="text-[11px] font-semibold text-muted-foreground">
               抽取模板
             </Label>
-            <div className="mt-0.5 text-[11px] text-slate-500">
+            <div className="mt-0.5 text-[11px] text-muted-foreground">
               固定一个已启用模板，或使用系统默认模板。
             </div>
           </div>
@@ -206,7 +206,7 @@ export function KgExtractPromptSettings({
               onPickTemplate(v === SELECT_DEFAULT_VALUE ? '' : v)
             }
           >
-            <SelectTrigger className="h-9 rounded-lg border-slate-200 bg-card text-[12px]">
+            <SelectTrigger className="h-9 rounded-lg border-border bg-card text-[12px]">
               <SelectValue placeholder="默认（内置提示词）" />
             </SelectTrigger>
             <SelectContent>
@@ -222,7 +222,7 @@ export function KgExtractPromptSettings({
             </SelectContent>
           </Select>
           {pinnedName ? (
-            <div className="text-[11px] text-slate-500">
+            <div className="text-[11px] text-muted-foreground">
               当前模板：{pinnedName}
             </div>
           ) : null}
@@ -230,22 +230,22 @@ export function KgExtractPromptSettings({
 
         <button
           type="button"
-          className="flex w-full items-center justify-between rounded-lg border border-dashed border-slate-200 bg-card px-3 py-2 text-left text-[12px] font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+          className="flex w-full items-center justify-between rounded-lg border border-dashed border-border bg-card px-3 py-2 text-left text-[12px] font-semibold text-foreground/85 transition-colors hover:bg-muted/50"
           onClick={() => setShowAdvanced((value) => !value)}
         >
           <span>高级参数</span>
           <ChevronDown
             className={cn(
-              'size-3.5 text-slate-400 transition-transform',
+              'size-3.5 text-muted-foreground/70 transition-transform',
               showAdvanced && 'rotate-180'
             )}
           />
         </button>
 
         {showAdvanced ? (
-          <div className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200/75 bg-slate-50/60 p-3 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 rounded-lg border border-border/60 bg-muted/40 p-3 md:grid-cols-2">
             <div className="space-y-1.5">
-              <Label className="text-[11px] font-medium text-slate-500">
+              <Label className="text-[11px] font-medium text-muted-foreground">
                 模板 key
               </Label>
               <Input
@@ -266,13 +266,13 @@ export function KgExtractPromptSettings({
                 }}
                 className="h-8 bg-card text-[12px]"
               />
-              <div className="text-[11px] text-slate-500">
+              <div className="text-[11px] text-muted-foreground">
                 按 key 自动选择最新启用版本。
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-[11px] font-medium text-slate-500">
+              <Label className="text-[11px] font-medium text-muted-foreground">
                 A/B 实验 key
               </Label>
               <Input
@@ -293,14 +293,14 @@ export function KgExtractPromptSettings({
                 }}
                 className="h-8 bg-card text-[12px]"
               />
-              <div className="text-[11px] text-slate-500">
+              <div className="text-[11px] text-muted-foreground">
                 用于灰度或实验分流。
               </div>
             </div>
           </div>
         ) : null}
 
-        <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-3">
+        <div className="flex items-center justify-end gap-2 border-t border-border/50 pt-3">
           <Button
             variant="outline"
             onClick={reset}

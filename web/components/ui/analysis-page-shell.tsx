@@ -1,11 +1,13 @@
 import type { LucideIcon } from "lucide-react"
 
 import { PageScaffold } from "@/components/ui/page-scaffold"
+import type { PageTitleIconName } from "@/components/ui/page-title-icon"
 
 type AnalysisPageShellProps = {
   title: string
   description?: React.ReactNode
   icon: LucideIcon
+  iconImage?: PageTitleIconName
   iconColor?: string
   badge?: string
   actions?: React.ReactNode
@@ -27,6 +29,7 @@ export function AnalysisPageShell({
   title,
   description,
   icon,
+  iconImage,
   iconColor,
   badge,
   actions,
@@ -48,6 +51,7 @@ export function AnalysisPageShell({
       title={title}
       description={description}
       icon={icon}
+      iconImage={iconImage}
       iconColor={iconColor}
       badge={badge}
       actions={actions}

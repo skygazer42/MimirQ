@@ -63,7 +63,7 @@ export type {
   RagasRunDetail,
 } from './evaluation'
 export type { PromptTemplate, PromptTemplateCreate, PromptTemplateNewVersion, PromptTemplateUpdate } from './prompts'
-export type { BackendMeta } from './meta'
+export type { BackendMeta, BackendMetaDetails } from './meta'
 export type { TenantMember } from './access'
 export type { TenantAccess, TenantPermission } from '../tenant-permissions'
 export type { LTRModelInfo } from './ltr'

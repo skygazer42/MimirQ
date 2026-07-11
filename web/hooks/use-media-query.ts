@@ -1,24 +1,51 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useSyncExternalStore } from 'react'
+
+function getMediaQuerySnapshot(query: string): boolean {
+  if (
+    typeof globalThis.window === 'undefined' ||
+    typeof globalThis.window.matchMedia !== 'function'
+  ) {
+    return false
+  }
+
+  return globalThis.window.matchMedia(query).matches
+}
+
+function subscribeToMediaQuery(
+  query: string,
+  onStoreChange: () => void
+): () => void {
+  if (
+    typeof globalThis.window === 'undefined' ||
+    typeof globalThis.window.matchMedia !== 'function'
+  ) {
+    return () => {}
+  }
+
+  const mql = globalThis.window.matchMedia(query)
+  const listener = () => onStoreChange()
+
+  if (typeof mql.addEventListener === 'function') {
+    mql.addEventListener('change', listener)
+    return () => mql.removeEventListener('change', listener)
+  }
+
+  mql.addListener(listener)
+  return () => mql.removeListener(listener)
+}
 
 /**
  * Subscribe to a CSS media query and return whether it currently matches.
  * Returns `false` during SSR so the initial server/client render is identical.
  */
 export function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState(false)
-
-  useEffect(() => {
-    const mql = globalThis.matchMedia(query)
-    setMatches(mql.matches)
-
-    const handler = (e: MediaQueryListEvent) => setMatches(e.matches)
-    mql.addEventListener('change', handler)
-    return () => mql.removeEventListener('change', handler)
-  }, [query])
-
-  return matches
+  return useSyncExternalStore(
+    (onStoreChange) => subscribeToMediaQuery(query, onStoreChange),
+    () => getMediaQuerySnapshot(query),
+    () => false
+  )
 }
 
 /** Viewport narrower than Tailwind `md` (768px). */

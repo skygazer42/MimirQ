@@ -448,19 +448,26 @@ async def run_dataset_retention_sweep(
 
     if not dry_run and expired_docs:
         if action == "archive":
+            archived_count = 0
             for doc in expired_docs:
                 if getattr(doc, "archived_at", None) is None:
                     doc.archived_at = now0
-                    summary["documents"]["archived"] += 1
-            # Touch dataset.updated_at to invalidate dataset-scoped retrieval caches.
-            with contextlib.suppress(Exception):
-                summary["cache_invalidation"] = invalidate_dataset_cache_namespace(
-                    db,
-                    tenant_id=tenant_id,
-                    dataset_id=dataset_id,
-                )
-            with contextlib.suppress(Exception):
+                    archived_count += 1
+            try:
                 db.commit()
+            except Exception:
+                with contextlib.suppress(Exception):
+                    db.rollback()
+                summary["documents"]["errors"] += int(archived_count)
+            else:
+                summary["documents"]["archived"] += int(archived_count)
+                # Touch dataset.updated_at to invalidate dataset-scoped retrieval caches only after commit.
+                with contextlib.suppress(Exception):
+                    summary["cache_invalidation"] = invalidate_dataset_cache_namespace(
+                        db,
+                        tenant_id=tenant_id,
+                        dataset_id=dataset_id,
+                    )
         else:
             # Delete uses the existing document delete lifecycle (cascades chunks/vectors/KG/object assets).
             from app.services.retention_jobs import _resolve_delete_document_lifecycle  # noqa: WPS433
@@ -478,6 +485,7 @@ async def run_dataset_retention_sweep(
                         account_id=str(actor_id),
                         db=db,
                         enforce_permissions=False,
+                        enforce_membership=False,
                     )
                     summary["documents"]["deleted"] += 1
                 except Exception as exc:  # noqa: BLE001

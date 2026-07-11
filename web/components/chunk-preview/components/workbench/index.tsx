@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/button'
 import {
   KnowledgeOpsFlowCard,
   KnowledgeOpsHero,
+  KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS,
 } from '@/components/ui/knowledge-ops-hero'
 import {
   PipelineRail,
@@ -49,7 +50,7 @@ function ChunkPreviewWorkbenchHeader() {
         description={t('workbench.description')}
         summary={
           <div className="grid gap-2 sm:grid-cols-2">
-            <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-2xl border border-sky-200/70 bg-white/64 px-3 py-2 text-[11px] text-muted-foreground shadow-[0_12px_28px_-24px_rgba(14,116,144,0.45)] backdrop-blur dark:border-sky-300/15 dark:bg-background/28">
+            <div className={KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS}>
               <span className="inline-flex items-center gap-1.5">
                 <span className="size-1 rounded-full bg-info/70" aria-hidden />
                 范围
@@ -136,7 +137,7 @@ function ChunkPreviewEmptyCanvas() {
     {
       icon: Layers,
       label: t('emptyState.visual.steps.review'),
-      tone: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+      tone: 'border-success/20 bg-success/10 text-success dark:text-emerald-400',
     },
   ]
 
@@ -173,7 +174,7 @@ function ChunkPreviewEmptyCanvas() {
                 {t('emptyState.badge')}
               </div>
               <div>
-                <h2 className="max-w-2xl text-2xl font-black tracking-tight text-foreground md:text-3xl antialiased">
+                <h2 className="max-w-2xl text-2xl font-black tracking-[-0.01em] text-foreground md:text-3xl antialiased">
                   {t('emptyState.title')}
                 </h2>
                 <p className="mt-2 max-w-3xl text-sm font-medium leading-6 text-muted-foreground/78 antialiased">
@@ -221,7 +222,7 @@ function ChunkPreviewEmptyCanvas() {
                   <FileUp className="size-5" strokeWidth={2.5} />
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-sm font-black tracking-tight text-foreground antialiased">
+                  <span className="block text-sm font-black tracking-[-0.01em] text-foreground antialiased">
                     {isDragging ? t('emptyState.draggingTitle') : t('emptyState.idleTitle')}
                   </span>
                   <span className="mt-1 block text-xs font-semibold leading-5 text-muted-foreground/70 antialiased">
@@ -245,13 +246,13 @@ function ChunkPreviewEmptyCanvas() {
                       item.accent === 'primary' && 'border-primary/20 bg-primary/10 text-primary',
                       item.accent === 'info' && 'border-info/20 bg-info/10 text-info',
                       item.accent === 'amber' &&
-                        'border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                        'border-warning/20 bg-warning/10 text-warning dark:text-amber-400'
                     )}
                   >
                     <Icon className="size-4.5" strokeWidth={2.5} />
                   </div>
                   <div>
-                    <div className="text-xs font-black uppercase tracking-wider text-foreground">
+                    <div className="text-xs font-black uppercase tracking-[0.12em] text-foreground">
                       {item.title}
                     </div>
                     <div className="mt-1 text-[11px] font-bold leading-5 text-muted-foreground/75">
@@ -301,7 +302,7 @@ function ChunkPreviewEmptyCanvas() {
             <div className="relative z-10 flex h-full flex-col gap-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h3 className="text-sm font-black tracking-tight text-foreground">
+                  <h3 className="text-sm font-black tracking-[-0.01em] text-foreground">
                     {t('emptyState.visual.title')}
                   </h3>
                   <p className="mt-1 max-w-md text-[11px] font-semibold leading-5 text-muted-foreground/72">
@@ -354,7 +355,7 @@ function ChunkPreviewEmptyCanvas() {
                             <StepIcon className="size-4" strokeWidth={2.5} />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="text-xs font-black tracking-tight text-foreground">
+                            <div className="text-xs font-black tracking-[-0.01em] text-foreground">
                               {step.label}
                             </div>
                             <div className="mt-1 flex gap-1.5">

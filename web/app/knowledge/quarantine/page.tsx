@@ -31,6 +31,10 @@ import { toast } from 'sonner'
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
+import {
+  KNOWLEDGE_OPS_HERO_PANEL_CLASS,
+  KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS,
+} from '@/components/ui/knowledge-ops-hero'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { getDocumentKind } from '@/components/ingestion/monitor-utils'
@@ -78,10 +82,8 @@ type QueueSyncStatus = {
 
 const QUARANTINE_PAGE_SIZE = 6
 const QUARANTINE_BACKGROUND_CLASS =
-  'bg-white bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.10),transparent_34rem)] dark:bg-background'
+  'bg-background bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.04),transparent_34rem)] dark:bg-background'
 const QUARANTINE_GRID_OVERLAY_CLASS = 'hidden'
-const QUARANTINE_HERO_PANEL_CLASS =
-  'relative overflow-hidden rounded-[28px] border border-sky-200/55 bg-[linear-gradient(135deg,rgba(248,253,255,0.92),rgba(229,245,255,0.72)_45%,rgba(255,255,255,0.82))] px-4 py-3 shadow-[0_24px_70px_-48px_rgba(14,116,144,0.55)] backdrop-blur-2xl dark:border-sky-300/15 dark:bg-[linear-gradient(135deg,rgba(8,21,34,0.82),rgba(8,47,73,0.36)_48%,rgba(15,23,42,0.72))]'
 
 const STATUS_LABELS: Record<string, string> = {
   completed: '已解决',
@@ -699,10 +701,10 @@ function SummaryStatCard({
       className={cn(
         'relative flex h-full min-h-[104px] flex-col justify-between overflow-hidden rounded-[1.15rem] border bg-background/92 px-3.5 py-3 shadow-[0_18px_44px_-38px_hsl(var(--foreground)/0.20)] backdrop-blur-sm',
         tone === 'neutral' && 'border-primary/12',
-        tone === 'success' && 'border-emerald-500/12',
-        tone === 'warning' && 'border-amber-500/14',
-        tone === 'danger' && 'border-red-500/12',
-        tone === 'info' && 'border-violet-500/12'
+        tone === 'success' && 'border-success/12',
+        tone === 'warning' && 'border-warning/14',
+        tone === 'danger' && 'border-destructive/12',
+        tone === 'info' && 'border-accent/12'
       )}
     >
       <div
@@ -735,12 +737,12 @@ function SummaryStatCard({
             tone === 'neutral' &&
               'border-primary/10 bg-primary/10 text-primary',
             tone === 'success' &&
-              'border-emerald-500/10 bg-emerald-500/10 text-emerald-600',
+              'border-success/10 bg-success/10 text-success',
             tone === 'warning' &&
-              'border-amber-500/10 bg-amber-500/10 text-amber-600',
-            tone === 'danger' && 'border-red-500/10 bg-red-500/10 text-red-600',
+              'border-warning/10 bg-warning/10 text-warning',
+            tone === 'danger' && 'border-destructive/10 bg-destructive/10 text-destructive',
             tone === 'info' &&
-              'border-violet-500/10 bg-violet-500/10 text-violet-600'
+              'border-accent/10 bg-accent/10 text-accent'
           )}
         >
           <Icon className="size-4" />
@@ -756,8 +758,8 @@ function SummaryStatCard({
             <div
               className={cn(
                 'mt-1 text-[12px] font-medium',
-                delta.tone === 'up' && 'text-red-500',
-                delta.tone === 'down' && 'text-emerald-500',
+                delta.tone === 'up' && 'text-destructive',
+                delta.tone === 'down' && 'text-success',
                 delta.tone === 'neutral' && 'text-muted-foreground'
               )}
             >
@@ -772,10 +774,10 @@ function SummaryStatCard({
               className={cn(
                 'w-[5px] rounded-full',
                 tone === 'neutral' && 'bg-primary/70',
-                tone === 'success' && 'bg-emerald-400/70',
-                tone === 'warning' && 'bg-amber-400/80',
-                tone === 'danger' && 'bg-red-400/70',
-                tone === 'info' && 'bg-violet-400/70'
+                tone === 'success' && 'bg-success',
+                tone === 'warning' && 'bg-warning/80',
+                tone === 'danger' && 'bg-destructive/70',
+                tone === 'info' && 'bg-accent/70'
               )}
               style={{ height: `${5 + height * 16}px` }}
             />
@@ -911,11 +913,11 @@ function StatusPill({ status }: Readonly<{ status: Document['status'] }>) {
       className={cn(
         'inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium',
         status === 'completed' &&
-          'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+          'border-success/20 bg-success/10 text-success',
         status === 'failed' &&
-          'border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-300',
+          'border-destructive/20 bg-destructive/10 text-destructive dark:text-red-300',
         status === 'quarantined' &&
-          'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+          'border-warning/20 bg-warning/10 text-warning dark:text-amber-300',
         status === 'pending' &&
           'border-info/20 bg-info/10 text-info',
         status === 'processing' &&
@@ -1034,11 +1036,11 @@ function QuarantineDetailPanel({
       </div>
 
       {selected.error_message && (
-        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
-          <div className="text-[10px] font-medium uppercase text-amber-600">
+        <div className="rounded-xl border border-warning/20 bg-warning/5 p-4">
+          <div className="text-[10px] font-medium uppercase text-warning">
             隔离原因 / RISKS
           </div>
-          <div className="mt-2 break-words text-xs font-mono leading-relaxed text-amber-900/80 dark:text-amber-200/80">
+          <div className="mt-2 break-words text-xs font-mono leading-relaxed text-warning/80 dark:text-amber-200/80">
             {selected.error_message}
           </div>
         </div>
@@ -1052,7 +1054,7 @@ function QuarantineDetailPanel({
               key={tip}
               className="flex items-start gap-3 text-[13px] font-medium text-foreground/80 leading-relaxed"
             >
-              <div className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]" />
+              <div className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-warning shadow-[0_0_8px_rgba(245,158,11,0.5)]" />
               <div>{tip}</div>
             </div>
           ))}
@@ -1069,7 +1071,7 @@ function QuarantineDetailPanel({
               <Badge
                 key={reason}
                 variant="secondary"
-                className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-[10px] font-medium uppercase text-amber-700 dark:text-amber-300"
+                className="rounded-lg border border-warning/20 bg-warning/10 px-2 py-1 text-[10px] font-medium uppercase text-warning dark:text-amber-300"
               >
                 {reasonLabel(reason)}
               </Badge>
@@ -1158,7 +1160,7 @@ function QuarantineReviewDrawer({
                 <div className="grid grid-cols-2 gap-2">
                   <Button
                     size="sm"
-                    className="h-10 rounded-xl bg-amber-600 font-medium text-primary-foreground shadow-sm hover:bg-amber-500"
+                    className="h-10 rounded-xl bg-warning font-medium text-primary-foreground shadow-sm hover:bg-warning"
                     disabled={acting?.id === selected.id}
                     onClick={() => onRelease(selected)}
                   >
@@ -1254,7 +1256,7 @@ function QuarantineReviewDrawer({
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-9 w-9 p-0 rounded-xl text-red-500/50 hover:bg-red-500/10 hover:text-red-600"
+                      className="h-9 w-9 p-0 rounded-xl text-destructive/50 hover:bg-destructive/10 hover:text-destructive"
                       disabled={acting?.id === selected.id}
                     >
                       <Trash2 className="size-4" />
@@ -1931,19 +1933,19 @@ export default function QuarantineQueuePage() {
           showHeader={false}
           size="full"
           // max-w-[1520px]
-          topClassName="relative z-10 w-full max-w-none px-2 pt-3 pb-2 md:px-3 xl:px-4"
+          topClassName="relative z-10 w-full max-w-none px-4 pt-4 pb-2.5 md:px-5 lg:px-6"
           top={
           <div className="space-y-2.5">
             <div
               className={cn(
-                'flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between',
-                QUARANTINE_HERO_PANEL_CLASS
+                'flex min-h-[95px] min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between',
+                KNOWLEDGE_OPS_HERO_PANEL_CLASS
               )}
             >
-              <div className="pointer-events-none absolute -right-10 -top-14 size-44 rounded-full bg-sky-300/22 blur-3xl" aria-hidden="true" />
-              <div className="pointer-events-none absolute bottom-0 left-8 right-8 h-px bg-gradient-to-r from-transparent via-sky-300/65 to-transparent" aria-hidden="true" />
+              <div className="pointer-events-none absolute -right-10 -top-14 size-44 rounded-full bg-info/10 blur-3xl dark:bg-info/[0.08]" aria-hidden="true" />
+              <div className="pointer-events-none absolute bottom-0 left-8 right-8 h-px bg-[linear-gradient(90deg,transparent,hsl(var(--info)/0.28),transparent)]" aria-hidden="true" />
               <div className="relative flex min-w-0 items-center gap-3">
-                <div className="relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-[22px] border border-info/20 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.12))] text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_18px_36px_-24px_hsl(var(--info)/0.9)]">
+                <div className="relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-info/20 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.12))] text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_18px_36px_-24px_hsl(var(--info)/0.9)]">
                   <span
                     className="absolute inset-x-2 top-1 h-px bg-card/70"
                     aria-hidden="true"
@@ -1952,30 +1954,30 @@ export default function QuarantineQueuePage() {
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200/70 bg-sky-50/70 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-700 dark:border-sky-300/20 dark:bg-sky-300/10 dark:text-sky-200">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-info/30 bg-info/5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-info dark:border-sky-300/20 dark:bg-sky-300/10 dark:text-sky-200">
                       <Sparkles className="size-3" />
                       Quarantine Ops
                     </span>
-                    <span className="inline-flex items-center rounded-full border border-amber-200/70 bg-amber-50/70 px-2.5 py-1 text-[10px] font-medium text-amber-700 dark:border-amber-300/15 dark:bg-amber-300/10 dark:text-amber-200">
+                    <span className="inline-flex items-center rounded-full border border-warning/30 bg-warning/5 px-2.5 py-1 text-[10px] font-medium text-warning dark:border-amber-300/15 dark:bg-amber-300/10 dark:text-amber-200">
                       <ShieldCheck className="mr-1.5 size-3" />
                       样本复核与规则回放
                     </span>
                   </div>
                   <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <h1 className="text-[22px] font-semibold tracking-[-0.025em] text-foreground">
+                    <h1 className="text-[26px] font-black tracking-[-0.025em] text-foreground">
                       <span className="bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent">
                         隔离审核中心
                       </span>
                     </h1>
                     <p className="text-[13px] leading-5 text-muted-foreground/85">
-                      聚合命中规则，抽样预览原文，一键调参回放。这里集中处理被隔离的异常样本，帮助你快速完成复核和回放。
+                      集中复核隔离样本，支持原文预览、规则调参与回放。
                     </p>
                   </div>
                 </div>
               </div>
-              <div className="relative flex min-w-0 flex-col gap-2 lg:min-w-[470px]">
+              <div className="relative flex min-w-0 flex-col gap-1.5 lg:min-w-[500px]">
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-2xl border border-sky-200/70 bg-white/64 px-3 py-2 text-[11px] text-muted-foreground shadow-[0_12px_28px_-24px_rgba(14,116,144,0.45)] backdrop-blur dark:border-sky-300/15 dark:bg-background/28">
+                  <div className={cn(KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS, 'py-1.5')}>
                     <span className="inline-flex items-center gap-1.5">
                       <span
                         className="size-1 rounded-full bg-info/70"
@@ -1992,19 +1994,19 @@ export default function QuarantineQueuePage() {
                       {stats.unreviewed}
                     </span>
                   </div>
-                  <div className="flex min-w-0 items-center justify-between gap-2 rounded-2xl border border-sky-200/70 bg-white/64 px-3 py-2 text-[11px] text-muted-foreground shadow-[0_12px_28px_-24px_rgba(14,116,144,0.45)] backdrop-blur dark:border-sky-300/15 dark:bg-background/28">
+                  <div className={cn(KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS, 'justify-between py-1.5')}>
                     <span className="inline-flex items-center gap-1.5">
-                      <LayoutList className="size-3 text-sky-500" />
+                      <LayoutList className="size-3 text-info" />
                       发现
                     </span>
                     <ArrowRight className="size-3 shrink-0 text-muted-foreground/45" />
                     <span className="inline-flex items-center gap-1.5">
-                      <Eye className="size-3 text-sky-500" />
+                      <Eye className="size-3 text-info" />
                       复核
                     </span>
                     <ArrowRight className="size-3 shrink-0 text-muted-foreground/45" />
                     <span className="inline-flex items-center gap-1.5">
-                      <RotateCcw className="size-3 text-sky-500" />
+                      <RotateCcw className="size-3 text-info" />
                       回放
                     </span>
                   </div>
@@ -2014,7 +2016,7 @@ export default function QuarantineQueuePage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-9 gap-2 rounded-xl border-primary/35 bg-background px-4 text-[12px] font-medium text-primary shadow-[0_16px_30px_-26px_hsl(var(--primary)/0.55)] hover:bg-primary/10"
+                      className="h-8 gap-2 rounded-xl border-primary/35 bg-background px-4 text-[12px] font-medium text-primary shadow-[0_16px_30px_-26px_hsl(var(--primary)/0.55)] hover:bg-primary/10"
                       onClick={handleExitDemoMode}
                     >
                       <Play className="size-4 fill-current" />
@@ -2024,7 +2026,7 @@ export default function QuarantineQueuePage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-9 gap-2 rounded-xl border-info/25 bg-info/[0.06] px-3.5 text-[12px] font-medium text-info shadow-[0_12px_24px_-22px_hsl(var(--info)/0.5)] hover:border-info/40 hover:bg-info/[0.12] hover:text-info"
+                    className="h-8 gap-2 rounded-xl border-info/25 bg-info/[0.06] px-3.5 text-[12px] font-medium text-info shadow-[0_12px_24px_-22px_hsl(var(--info)/0.5)] hover:border-info/40 hover:bg-info/[0.12] hover:text-info"
                     onClick={() => {
                       if (demoMode) {
                         toast.success('Demo 数据已刷新')
@@ -2044,7 +2046,7 @@ export default function QuarantineQueuePage() {
                     同步数据
                   </Button>
 
-                  <div className="flex h-9 items-center gap-2 rounded-xl border border-transparent bg-background/70 px-2.5">
+                  <div className="flex h-8 items-center gap-2 rounded-xl border border-transparent bg-background/70 px-2.5">
                     <span className="text-[11px] font-medium text-muted-foreground">
                       自动刷新
                     </span>
@@ -2059,7 +2061,7 @@ export default function QuarantineQueuePage() {
             </div>
 
             {queueErrorMessage ? (
-              <div className="flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-[12px] text-red-700 dark:text-red-300">
+              <div className="flex items-start gap-2 rounded-xl border border-destructive/20 bg-destructive/10 px-3 py-2 text-[12px] text-destructive dark:text-red-300">
                 <AlertCircle className="mt-0.5 size-4 shrink-0" />
                 <div className="min-w-0">
                   <div className="font-medium">隔离队列同步异常</div>
@@ -2075,8 +2077,8 @@ export default function QuarantineQueuePage() {
                 className={cn(
                   'flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 text-[11px]',
                   lastQueueSync.type === 'success'
-                    ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                    : 'border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-300'
+                    ? 'border-success/20 bg-success/10 text-success'
+                    : 'border-destructive/20 bg-destructive/10 text-destructive dark:text-red-300'
                 )}
               >
                 {lastQueueSync.type === 'success' ? (
@@ -2496,7 +2498,7 @@ export default function QuarantineQueuePage() {
                               {reasons.map((reason) => (
                                 <span
                                   key={reason}
-                                  className="rounded-full border border-amber-500/15 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300"
+                                  className="rounded-full border border-warning/15 bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning dark:text-amber-300"
                                 >
                                   {reasonLabel(reason)}
                                 </span>
@@ -2767,7 +2769,7 @@ export default function QuarantineQueuePage() {
         <DialogContent className="sm:max-w-[720px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Settings2 className="size-5 text-amber-600" />
+              <Settings2 className="size-5 text-warning" />
               调参回放
             </DialogTitle>
             <DialogDescription>

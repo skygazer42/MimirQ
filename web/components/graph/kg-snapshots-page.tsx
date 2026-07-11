@@ -177,39 +177,39 @@ const DIFF_KEYS = ['docs', 'events', 'entities', 'links', 'relations'] as const
 const INLINE_STAT_TONE_CLASSES: Record<SnapshotInlineStatTone, string> = {
   muted: 'border-border/70 bg-card text-muted-foreground',
   neutral: 'border-border/70 bg-card text-foreground',
-  positive: 'border-emerald-200/70 bg-emerald-50/70 text-emerald-700',
-  negative: 'border-rose-200/70 bg-rose-50/70 text-rose-700',
-  warning: 'border-amber-200/70 bg-amber-50/70 text-amber-700',
+  positive: 'border-success/30 bg-success/5 text-success',
+  negative: 'border-destructive/30 bg-destructive/5 text-destructive',
+  warning: 'border-warning/30 bg-warning/5 text-warning',
 }
 
 const INLINE_STAT_VALUE_TONE_CLASSES: Record<SnapshotInlineStatTone, string> = {
   muted: 'text-muted-foreground',
   neutral: 'text-foreground',
-  positive: 'text-emerald-700',
-  negative: 'text-rose-700',
-  warning: 'text-amber-700',
+  positive: 'text-success',
+  negative: 'text-destructive',
+  warning: 'text-warning',
 }
 
 const SNAPSHOT_NODE_TONE_CLASSES: Record<SnapshotStudioNode['tone'], string> = {
-  amber: 'from-amber-400 to-orange-500 ring-amber-200',
-  blue: 'from-blue-500 to-sky-500 ring-blue-200',
-  green: 'from-emerald-400 to-teal-500 ring-emerald-200',
-  orange: 'from-orange-400 to-rose-500 ring-orange-200',
-  purple: 'from-violet-400 to-indigo-500 ring-violet-200',
-  rose: 'from-rose-400 to-pink-500 ring-rose-200',
-  teal: 'from-teal-400 to-cyan-500 ring-teal-200',
+  amber: 'from-warning to-warning ring-warning/30',
+  blue: 'from-primary to-info ring-primary/30',
+  green: 'from-success to-success ring-success/30',
+  orange: 'from-warning to-destructive ring-warning/30',
+  purple: 'from-accent to-primary ring-accent/30',
+  rose: 'from-destructive to-destructive ring-destructive/30',
+  teal: 'from-success to-info ring-success/30',
 }
 
 const DELTA_TEXT_CLASSES: Record<DeltaDirection, string> = {
   flat: 'text-muted-foreground',
-  negative: 'text-rose-700',
-  positive: 'text-emerald-700',
+  negative: 'text-destructive',
+  positive: 'text-success',
 }
 
 const DELTA_TINT_CLASSES: Record<DeltaDirection, string> = {
   flat: 'bg-muted/40 ring-border',
-  negative: 'bg-rose-50 ring-rose-200/60',
-  positive: 'bg-emerald-50 ring-emerald-200/60',
+  negative: 'bg-destructive/10 ring-destructive/30',
+  positive: 'bg-success/10 ring-success/30',
 }
 
 const DELTA_BADGE_VARIANTS: Record<DeltaDirection, 'soft' | 'outline' | 'destructive'> = {
@@ -905,8 +905,8 @@ function toneClassForDelta(value: number) {
 }
 
 function lineNumberClassForStatus(status: DiffCellStatus | 'single'): string {
-  if (status === 'added') return 'text-emerald-700'
-  if (status === 'removed') return 'text-rose-700'
+  if (status === 'added') return 'text-success'
+  if (status === 'removed') return 'text-destructive'
   return 'text-muted-foreground'
 }
 
@@ -922,20 +922,20 @@ function tabLabelForView(view: SnapshotView) {
 }
 
 function cellSurfaceClass(status: DiffCellStatus, side: 'left' | 'right') {
-  if (status === 'removed') return 'bg-rose-50/90'
-  if (status === 'added') return 'bg-emerald-50/90'
+  if (status === 'removed') return 'bg-destructive/5'
+  if (status === 'added') return 'bg-success/5'
   if (status === 'empty')
-    return side === 'left' ? 'bg-rose-50/35' : 'bg-emerald-50/35'
+    return side === 'left' ? 'bg-destructive/5' : 'bg-success/5'
   return 'bg-card'
 }
 
 function tokenClassName(kind: JsonTokenKind) {
-  if (kind === 'key') return 'text-sky-700'
-  if (kind === 'string') return 'text-emerald-700'
-  if (kind === 'number') return 'text-amber-700'
-  if (kind === 'boolean') return 'text-violet-700'
-  if (kind === 'null') return 'text-rose-600'
-  if (kind === 'punctuation') return 'text-slate-500'
+  if (kind === 'key') return 'text-info'
+  if (kind === 'string') return 'text-success'
+  if (kind === 'number') return 'text-warning'
+  if (kind === 'boolean') return 'text-accent'
+  if (kind === 'null') return 'text-destructive'
+  if (kind === 'punctuation') return 'text-muted-foreground'
   return 'text-foreground/90'
 }
 
@@ -1156,12 +1156,12 @@ function SnapshotStudioToolbar({
               className={cn(
                 'inline-flex items-center justify-center gap-1 rounded-full px-2 text-[11.5px] font-medium transition-colors',
                 activeSnapshotView === 'a'
-                  ? 'bg-emerald-50 text-emerald-700'
+                  ? 'bg-success/10 text-success'
                   : 'text-muted-foreground hover:bg-muted/50'
               )}
               onClick={() => onSnapshotViewChange('a')}
             >
-              <span className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full bg-emerald-100 text-[10px] font-bold text-emerald-700">
+              <span className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full bg-success/15 text-[10px] font-bold text-success">
                 A
               </span>
               <span className="hidden 2xl:inline">视图 A</span>
@@ -1171,12 +1171,12 @@ function SnapshotStudioToolbar({
               className={cn(
                 'inline-flex items-center justify-center gap-1 rounded-full px-2 text-[11.5px] font-medium transition-colors',
                 activeSnapshotView === 'b'
-                  ? 'bg-sky-50 text-sky-700'
+                  ? 'bg-info/10 text-info'
                   : 'text-muted-foreground hover:bg-muted/50'
               )}
               onClick={() => onSnapshotViewChange('b')}
             >
-              <span className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full bg-sky-100 text-[10px] font-bold text-sky-700">
+              <span className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full bg-info/15 text-[10px] font-bold text-info">
                 B
               </span>
               <span className="hidden 2xl:inline">视图 B</span>
@@ -1265,13 +1265,13 @@ function SnapshotGraphCanvas({
   }, [displayNodes, isDenseGraph, mediumGraph])
   const legendRows = useMemo(() => {
     const colorByTone: Record<SnapshotStudioNode['tone'], string> = {
-      blue: 'bg-blue-500',
-      green: 'bg-emerald-500',
-      orange: 'bg-orange-500',
-      purple: 'bg-violet-500',
-      rose: 'bg-rose-500',
-      amber: 'bg-amber-500',
-      teal: 'bg-teal-500',
+      blue: 'bg-primary',
+      green: 'bg-success',
+      orange: 'bg-warning',
+      purple: 'bg-accent',
+      rose: 'bg-destructive',
+      amber: 'bg-warning',
+      teal: 'bg-success',
     }
     const seen = new Map<string, string>()
     for (const node of displayNodes) {
@@ -1391,7 +1391,7 @@ function SnapshotGraphCanvas({
                   x={midX}
                   y={midY - 1.2}
                   textAnchor="middle"
-                  className="fill-slate-400 text-[1.55px] font-normal tracking-[0.03em]"
+                  className="fill-muted-foreground text-[1.55px] font-normal tracking-[0.03em]"
                   opacity={Math.max(opacity * 0.9, 0.16)}
                 >
                   {link.label}
@@ -1428,7 +1428,7 @@ function SnapshotGraphCanvas({
           >
             <span
               className={cn(
-                'flex items-center justify-center rounded-full text-info-foreground shadow-strong shadow-slate-900/10',
+                'flex items-center justify-center rounded-full text-info-foreground shadow-strong shadow-foreground/10',
                 getGraphNodeSizeClass(isDenseGraph, mediumGraph),
                 snapshotToneClassName(node.tone, selected)
               )}
@@ -1463,9 +1463,9 @@ function SnapshotGraphCanvas({
         )}
         <span className="inline-flex items-center gap-2">
           <span>关系强度:</span>
-          <span className="h-px w-10 bg-slate-300" aria-hidden />
+          <span className="h-px w-10 bg-border" aria-hidden />
           <span>弱</span>
-          <span className="h-0.5 w-14 bg-slate-500" aria-hidden />
+          <span className="h-0.5 w-14 bg-muted-foreground" aria-hidden />
           <span>强</span>
         </span>
       </div>
@@ -1842,19 +1842,19 @@ function DriftCounterCluster({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <span className="inline-flex min-w-[40px] items-center justify-center gap-0.5 rounded-md bg-emerald-50 px-1.5 py-1 font-mono text-[11px] font-semibold tabular-nums text-emerald-700 ring-1 ring-emerald-200/60">
+          <span className="inline-flex min-w-[40px] items-center justify-center gap-0.5 rounded-md bg-success/10 px-1.5 py-1 font-mono text-[11px] font-semibold tabular-nums text-success ring-1 ring-success/30">
             <span aria-hidden className="opacity-70">
               +
             </span>
             {added}
           </span>
-          <span className="inline-flex min-w-[40px] items-center justify-center gap-0.5 rounded-md bg-rose-50 px-1.5 py-1 font-mono text-[11px] font-semibold tabular-nums text-rose-700 ring-1 ring-rose-200/60">
+          <span className="inline-flex min-w-[40px] items-center justify-center gap-0.5 rounded-md bg-destructive/10 px-1.5 py-1 font-mono text-[11px] font-semibold tabular-nums text-destructive ring-1 ring-destructive/30">
             <span aria-hidden className="opacity-70">
               −
             </span>
             {removed}
           </span>
-          <span className="inline-flex min-w-[40px] items-center justify-center gap-0.5 rounded-md bg-amber-50 px-1.5 py-1 font-mono text-[11px] font-semibold tabular-nums text-amber-700 ring-1 ring-amber-200/60">
+          <span className="inline-flex min-w-[40px] items-center justify-center gap-0.5 rounded-md bg-warning/10 px-1.5 py-1 font-mono text-[11px] font-semibold tabular-nums text-warning ring-1 ring-warning/30">
             <span aria-hidden className="opacity-70">
               Δ
             </span>
@@ -1877,43 +1877,43 @@ function SnapshotExactDriftPanel({
       label: '新增节点',
       key: 'nodes_added',
       icon: <Database className="h-3.5 w-3.5" />,
-      tone: 'text-emerald-700',
-      tint: 'bg-emerald-50',
+      tone: 'text-success',
+      tint: 'bg-success/10',
     },
     {
       label: '移除节点',
       key: 'nodes_removed',
       icon: <Database className="h-3.5 w-3.5" />,
-      tone: 'text-rose-700',
-      tint: 'bg-rose-50',
+      tone: 'text-destructive',
+      tint: 'bg-destructive/10',
     },
     {
       label: '变更节点',
       key: 'nodes_changed',
       icon: <Database className="h-3.5 w-3.5" />,
-      tone: 'text-amber-700',
-      tint: 'bg-amber-50',
+      tone: 'text-warning',
+      tint: 'bg-warning/10',
     },
     {
       label: '新增边',
       key: 'edges_added',
       icon: <Link2 className="h-3.5 w-3.5" />,
-      tone: 'text-emerald-700',
-      tint: 'bg-emerald-50',
+      tone: 'text-success',
+      tint: 'bg-success/10',
     },
     {
       label: '移除边',
       key: 'edges_removed',
       icon: <Link2 className="h-3.5 w-3.5" />,
-      tone: 'text-rose-700',
-      tint: 'bg-rose-50',
+      tone: 'text-destructive',
+      tint: 'bg-destructive/10',
     },
     {
       label: '变更边',
       key: 'edges_changed',
       icon: <Link2 className="h-3.5 w-3.5" />,
-      tone: 'text-amber-700',
-      tint: 'bg-amber-50',
+      tone: 'text-warning',
+      tint: 'bg-warning/10',
     },
   ]
 
@@ -2858,7 +2858,7 @@ export function KGSnapshotsPage() {
     setLiveGraphError(null)
     ;(async () => {
       try {
-        const meta = await metaApi.get().catch(() => null)
+        const meta = await metaApi.details().catch(() => null)
         if (meta?.features?.kg_enabled === false) {
           if (!cancelled) {
             setLiveGraph({ nodes: [], links: [] })
@@ -2973,15 +2973,15 @@ export function KGSnapshotsPage() {
       {
         label: '节点变化',
         value: nodeAdded + nodeRemoved + nodeChanged,
-        tone: 'bg-slate-400',
+        tone: 'bg-muted-foreground/50',
       },
-      { label: '属性变化', value: nodeChanged, tone: 'bg-emerald-400' },
-      { label: '新增关系', value: edgeAdded, tone: 'bg-rose-400' },
-      { label: '删除关系', value: edgeRemoved, tone: 'bg-red-400' },
+      { label: '属性变化', value: nodeChanged, tone: 'bg-success' },
+      { label: '新增关系', value: edgeAdded, tone: 'bg-destructive' },
+      { label: '删除关系', value: edgeRemoved, tone: 'bg-destructive' },
       {
         label: '重要变化',
         value: driftScore >= 0.35 ? 1 : 0,
-        tone: 'bg-amber-400',
+        tone: 'bg-warning',
       },
     ]
   }, [diff, driftScore])
@@ -3168,7 +3168,7 @@ export function KGSnapshotsPage() {
                           htmlFor="pipeline-hash-a"
                           className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground"
                         >
-                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-emerald-50 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200/60">
+                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-success/10 text-[10px] font-bold text-success ring-1 ring-success/30">
                             A
                           </span>
                           <span>快照 A</span>
@@ -3201,7 +3201,7 @@ export function KGSnapshotsPage() {
                           htmlFor="pipeline-hash-b"
                           className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground"
                         >
-                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-sky-50 text-[10px] font-bold text-sky-700 ring-1 ring-sky-200/60">
+                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-info/10 text-[10px] font-bold text-info ring-1 ring-info/30">
                             B
                           </span>
                           <span>快照 B</span>
@@ -3507,18 +3507,18 @@ export function KGSnapshotsPage() {
                               </TabsTrigger>
                               <TabsTrigger
                                 value="a"
-                                className="inline-flex h-7 items-center gap-1.5 rounded-lg px-3 text-[12px] font-medium text-muted-foreground transition-colors data-[state=active]:bg-emerald-500 data-[state=active]:text-info-foreground data-[state=active]:shadow-sm hover:text-foreground"
+                                className="inline-flex h-7 items-center gap-1.5 rounded-lg px-3 text-[12px] font-medium text-muted-foreground transition-colors data-[state=active]:bg-success data-[state=active]:text-info-foreground data-[state=active]:shadow-sm hover:text-foreground"
                               >
-                                <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-emerald-50 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200/60 data-[state=active]:bg-emerald-700 data-[state=active]:text-info-foreground data-[state=active]:ring-0">
+                                <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-success/10 text-[10px] font-bold text-success ring-1 ring-success/30 data-[state=active]:bg-success data-[state=active]:text-info-foreground data-[state=active]:ring-0">
                                   A
                                 </span>
                                 <span>视图 A</span>
                               </TabsTrigger>
                               <TabsTrigger
                                 value="b"
-                                className="inline-flex h-7 items-center gap-1.5 rounded-lg px-3 text-[12px] font-medium text-muted-foreground transition-colors data-[state=active]:bg-sky-500 data-[state=active]:text-info-foreground data-[state=active]:shadow-sm hover:text-foreground"
+                                className="inline-flex h-7 items-center gap-1.5 rounded-lg px-3 text-[12px] font-medium text-muted-foreground transition-colors data-[state=active]:bg-info data-[state=active]:text-info-foreground data-[state=active]:shadow-sm hover:text-foreground"
                               >
-                                <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-sky-50 text-[10px] font-bold text-sky-700 ring-1 ring-sky-200/60 data-[state=active]:bg-sky-700 data-[state=active]:text-info-foreground data-[state=active]:ring-0">
+                                <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-info/10 text-[10px] font-bold text-info ring-1 ring-info/30 data-[state=active]:bg-info data-[state=active]:text-info-foreground data-[state=active]:ring-0">
                                   B
                                 </span>
                                 <span>视图 B</span>

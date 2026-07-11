@@ -12,7 +12,7 @@ export default function AccessReviewPage() {
   }, [router])
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 text-sm font-medium text-slate-500">
+    <main className="flex min-h-screen items-center justify-center bg-muted/50 text-sm font-medium text-muted-foreground">
       正在打开审计日志...
     </main>
   )

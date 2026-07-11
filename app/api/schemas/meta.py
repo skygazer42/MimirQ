@@ -24,6 +24,10 @@ class MetaFeatureFlags(BaseModel):
     cors_origins: list[str] = Field(default_factory=list)
 
 
+class PublicMetaFeatureFlags(BaseModel):
+    auth_mode: str
+
+
 class RuntimeMeta(BaseModel):
     python: str
     platform: str
@@ -32,7 +36,11 @@ class RuntimeMeta(BaseModel):
 class MetaResponse(BaseModel):
     name: str
     api_version: str
-    time: str
     build: BuildMeta
+    features: PublicMetaFeatureFlags
+
+
+class MetaDetailsResponse(MetaResponse):
+    time: str
     features: MetaFeatureFlags
     runtime: RuntimeMeta

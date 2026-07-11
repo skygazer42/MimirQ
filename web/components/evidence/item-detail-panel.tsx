@@ -67,8 +67,8 @@ export function ItemDetailPanel({
   onArchiveItem,
 }: Readonly<ItemDetailPanelProps>) {
   return (
-    <Panel className="p-4 lg:col-span-5">
-      <div className="flex items-start justify-between gap-3">
+    <Panel className="p-4 xl:col-span-5">
+      <div className="flex flex-col gap-3">
         <div className="min-w-0">
           <div className="text-sm font-semibold text-foreground">Detail</div>
           <div className="mt-1 text-xs text-muted-foreground text-pretty">
@@ -81,7 +81,7 @@ export function ItemDetailPanel({
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <input
             ref={qaFaqInputRef}
             type="file"

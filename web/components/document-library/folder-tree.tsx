@@ -63,39 +63,39 @@ const smallFileIconToneClasses: Record<
   }
 > = {
   red: {
-    bg: 'bg-red-50 dark:bg-red-950/20',
-    border: 'border-red-200/80 dark:border-red-800/60',
-    icon: 'text-red-600 dark:text-red-300',
+    bg: 'bg-destructive/10 dark:bg-red-950/20',
+    border: 'border-destructive/30 dark:border-red-800/60',
+    icon: 'text-destructive dark:text-red-300',
   },
   blue: {
-    bg: 'bg-blue-50 dark:bg-blue-950/20',
-    border: 'border-blue-200/80 dark:border-blue-800/60',
-    icon: 'text-blue-600 dark:text-blue-300',
+    bg: 'bg-primary/10 dark:bg-blue-950/20',
+    border: 'border-primary/30 dark:border-blue-800/60',
+    icon: 'text-primary dark:text-blue-300',
   },
   emerald: {
-    bg: 'bg-emerald-50 dark:bg-emerald-950/20',
-    border: 'border-emerald-200/80 dark:border-emerald-800/60',
-    icon: 'text-emerald-700 dark:text-emerald-300',
+    bg: 'bg-success/10 dark:bg-emerald-950/20',
+    border: 'border-success/30 dark:border-emerald-800/60',
+    icon: 'text-success dark:text-emerald-300',
   },
   amber: {
-    bg: 'bg-amber-50 dark:bg-amber-950/20',
-    border: 'border-amber-200/80 dark:border-amber-800/60',
-    icon: 'text-amber-700 dark:text-amber-300',
+    bg: 'bg-warning/10 dark:bg-amber-950/20',
+    border: 'border-warning/30 dark:border-amber-800/60',
+    icon: 'text-warning dark:text-amber-300',
   },
   rose: {
-    bg: 'bg-rose-50 dark:bg-rose-950/20',
-    border: 'border-rose-200/80 dark:border-rose-800/60',
-    icon: 'text-rose-600 dark:text-rose-300',
+    bg: 'bg-destructive/10 dark:bg-rose-950/20',
+    border: 'border-destructive/30 dark:border-rose-800/60',
+    icon: 'text-destructive dark:text-rose-300',
   },
   sky: {
-    bg: 'bg-sky-50 dark:bg-sky-950/20',
-    border: 'border-sky-200/80 dark:border-sky-800/60',
-    icon: 'text-sky-600 dark:text-sky-300',
+    bg: 'bg-info/10 dark:bg-sky-950/20',
+    border: 'border-info/30 dark:border-sky-800/60',
+    icon: 'text-info dark:text-sky-300',
   },
   teal: {
-    bg: 'bg-teal-50 dark:bg-teal-950/20',
-    border: 'border-teal-200/80 dark:border-teal-800/60',
-    icon: 'text-teal-700 dark:text-teal-300',
+    bg: 'bg-success/10 dark:bg-teal-950/20',
+    border: 'border-success/30 dark:border-teal-800/60',
+    icon: 'text-success dark:text-teal-300',
   },
   slate: {
     bg: 'bg-muted dark:bg-slate-900/40',
@@ -147,35 +147,35 @@ export function getFileIcon(filename: string, className?: string) {
   // Large Icon (Detailed Paper Style)
   // Simulating a vertical document page with a colored fold/header
   const paperBand: Record<string, string> = {
-    red: "bg-red-500/70",
-    blue: "bg-blue-500/70",
-    emerald: "bg-emerald-500/70",
-    amber: "bg-amber-500/70",
-    rose: "bg-rose-500/70",
+    red: "bg-destructive/70",
+    blue: "bg-primary/70",
+    emerald: "bg-success/70",
+    amber: "bg-warning/70",
+    rose: "bg-destructive/70",
     sky: "bg-primary/30",
-    teal: "bg-teal-500/70",
+    teal: "bg-success/70",
     slate: "bg-muted-foreground/40",
   }
 
   const textTone: Record<string, string> = {
-    red: "text-red-600",
-    blue: "text-blue-600",
-    emerald: "text-emerald-600",
-    amber: "text-amber-700",
-    rose: "text-rose-600",
+    red: "text-destructive",
+    blue: "text-primary",
+    emerald: "text-success",
+    amber: "text-warning",
+    rose: "text-destructive",
     sky: "text-primary",
-    teal: "text-teal-700",
+    teal: "text-success",
     slate: "text-muted-foreground",
   }
 
   const badgeBorder: Record<string, string> = {
-    red: "border-red-200",
-    blue: "border-blue-200",
-    emerald: "border-emerald-200",
-    amber: "border-amber-200",
-    rose: "border-rose-200",
+    red: "border-destructive/30",
+    blue: "border-primary/30",
+    emerald: "border-success/30",
+    amber: "border-warning/30",
+    rose: "border-destructive/30",
     sky: "border-primary/25",
-    teal: "border-teal-200",
+    teal: "border-success/30",
     slate: "border-border/60",
   }
 
@@ -790,7 +790,7 @@ export function DocumentFolderTree({
                   </span>
                 ) : null}
                 {isPending ? (
-                  <span className="shrink-0 text-amber-600/80 dark:text-amber-300/80" title="待解析">
+                  <span className="shrink-0 text-warning/80 dark:text-amber-300/80" title="待解析">
                     <Clock3 className="h-3 w-3" />
                   </span>
                 ) : null}
@@ -1066,7 +1066,7 @@ export function DocumentFolderTree({
                   重命名
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  className="text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400"
+                  className="text-destructive dark:text-red-400 focus:text-destructive dark:focus:text-destructive"
                   onSelect={() => setConfirmingFolderId(folder.id)}
                 >
                   <Trash2 className="w-4 h-4 mr-2" />
