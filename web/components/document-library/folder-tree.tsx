@@ -63,43 +63,43 @@ const smallFileIconToneClasses: Record<
   }
 > = {
   red: {
-    bg: 'bg-destructive/10 dark:bg-red-950/20',
-    border: 'border-destructive/30 dark:border-red-800/60',
-    icon: 'text-destructive dark:text-red-300',
+    bg: 'bg-destructive/10',
+    border: 'border-destructive/30',
+    icon: 'text-destructive',
   },
   blue: {
-    bg: 'bg-primary/10 dark:bg-blue-950/20',
-    border: 'border-primary/30 dark:border-blue-800/60',
-    icon: 'text-primary dark:text-blue-300',
+    bg: 'bg-primary/10',
+    border: 'border-primary/30',
+    icon: 'text-primary',
   },
   emerald: {
-    bg: 'bg-success/10 dark:bg-emerald-950/20',
-    border: 'border-success/30 dark:border-emerald-800/60',
-    icon: 'text-success dark:text-emerald-300',
+    bg: 'bg-success/10',
+    border: 'border-success/30',
+    icon: 'text-success',
   },
   amber: {
-    bg: 'bg-warning/10 dark:bg-amber-950/20',
-    border: 'border-warning/30 dark:border-amber-800/60',
-    icon: 'text-warning dark:text-amber-300',
+    bg: 'bg-warning/10',
+    border: 'border-warning/30',
+    icon: 'text-warning',
   },
   rose: {
-    bg: 'bg-destructive/10 dark:bg-rose-950/20',
-    border: 'border-destructive/30 dark:border-rose-800/60',
-    icon: 'text-destructive dark:text-rose-300',
+    bg: 'bg-destructive/10',
+    border: 'border-destructive/30',
+    icon: 'text-destructive',
   },
   sky: {
-    bg: 'bg-info/10 dark:bg-sky-950/20',
-    border: 'border-info/30 dark:border-sky-800/60',
-    icon: 'text-info dark:text-sky-300',
+    bg: 'bg-info/10',
+    border: 'border-info/30',
+    icon: 'text-info',
   },
   teal: {
-    bg: 'bg-success/10 dark:bg-teal-950/20',
-    border: 'border-success/30 dark:border-teal-800/60',
-    icon: 'text-success dark:text-teal-300',
+    bg: 'bg-success/10',
+    border: 'border-success/30',
+    icon: 'text-success',
   },
   slate: {
-    bg: 'bg-muted dark:bg-slate-900/40',
-    border: 'border-border/70 dark:border-slate-700/65',
+    bg: 'bg-muted',
+    border: 'border-border/70',
     icon: 'text-muted-foreground',
   },
 }
@@ -790,7 +790,7 @@ export function DocumentFolderTree({
                   </span>
                 ) : null}
                 {isPending ? (
-                  <span className="shrink-0 text-warning/80 dark:text-amber-300/80" title="待解析">
+                  <span className="shrink-0 text-warning/80" title="待解析">
                     <Clock3 className="h-3 w-3" />
                   </span>
                 ) : null}
@@ -1066,7 +1066,7 @@ export function DocumentFolderTree({
                   重命名
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  className="text-destructive dark:text-red-400 focus:text-destructive dark:focus:text-destructive"
+                  className="text-destructive focus:text-destructive dark:focus:text-destructive"
                   onSelect={() => setConfirmingFolderId(folder.id)}
                 >
                   <Trash2 className="w-4 h-4 mr-2" />

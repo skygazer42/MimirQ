@@ -246,7 +246,7 @@ export default function ObservabilityPage() {
           title="监控面板"
           description="检索 / 重排 / 引用的全链路指标（来自 metrics JSONL）"
           icon={BarChart3}
-          iconColor="text-info dark:text-sky-400"
+          iconColor="text-info"
           size="7xl"
           actions={
             <div className="flex items-center gap-2">
@@ -491,7 +491,7 @@ export default function ObservabilityPage() {
     else if (analytics) {
             if (analytics.enabled) {
                 if (analytics.rag_trace_count <= 0) {
-                    return (<EmptyState title="暂无 Query Analytics 数据" description="提示：只有走到检索链路（rag_trace）时才会计入统计；可尝试先发起一次检索请求再刷新。" icon={TriangleAlert} iconClassName="text-info dark:text-sky-400">
+                    return (<EmptyState title="暂无 Query Analytics 数据" description="提示：只有走到检索链路（rag_trace）时才会计入统计；可尝试先发起一次检索请求再刷新。" icon={TriangleAlert} iconClassName="text-info">
                   <Button variant="outline" className="rounded-xl" onClick={() => analyticsQuery.refetch()} disabled={loadingAnalytics}>
                     <RefreshCw className={cn('size-4', loadingAnalytics && 'animate-spin motion-reduce:animate-none')}/>
                     刷新

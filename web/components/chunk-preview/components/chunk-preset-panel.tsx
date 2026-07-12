@@ -255,7 +255,7 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-accent/30 bg-accent/5 text-accent dark:border-violet-900/60 dark:bg-violet-950/35 dark:text-violet-200">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-accent/30 bg-accent/5 text-accent">
             <Bookmark className="h-3.5 w-3.5" />
           </span>
           <div className="min-w-0">
@@ -314,14 +314,14 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
             type="button"
             size="sm"
             variant="outline"
-            className="h-7 rounded-md border-accent/30 bg-accent/5 px-2.5 text-[11px] font-medium text-accent shadow-none hover:bg-accent/10 hover:text-accent dark:border-violet-900/60 dark:bg-violet-950/35 dark:text-violet-200 dark:hover:bg-accent/50"
+            className="h-7 rounded-md border-accent/30 bg-accent/5 px-2.5 text-[11px] font-medium text-accent shadow-none hover:bg-accent/10 hover:text-accent dark:hover:bg-accent/50"
             onClick={() => detachPromise(onSave())}
             disabled={saving}
           >
             {saving ? (
               <Loader2 className="mr-1.5 h-3 w-3 animate-spin motion-reduce:animate-none" />
             ) : (
-              <Save className="mr-1.5 h-3 w-3 text-accent dark:text-violet-200" />
+              <Save className="mr-1.5 h-3 w-3 text-accent" />
             )}
             {selectedPreset ? t('chunkPresetPanel.updatePreset') : t('chunkPresetPanel.savePreset')}
           </Button>

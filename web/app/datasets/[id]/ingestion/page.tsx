@@ -830,14 +830,14 @@ export default function DatasetIngestionPolicyPage() {
         size="full"
         density="system-dense"
         bodyGutter="dense"
-        bodyClassName="h-full overflow-hidden bg-[radial-gradient(circle_at_16%_0%,rgba(8,145,178,0.12),transparent_30%),radial-gradient(circle_at_84%_10%,rgba(15,23,42,0.055),transparent_28%),linear-gradient(180deg,rgba(248,250,252,0.98),rgba(239,244,248,0.76))] pb-3 dark:bg-[radial-gradient(circle_at_18%_0%,rgba(14,165,233,0.14),transparent_28%),linear-gradient(180deg,rgba(15,23,42,0.96),rgba(15,23,42,0.86))]"
+        bodyClassName="h-full overflow-hidden bg-[radial-gradient(circle_at_16%_0%,hsl(var(--info)/0.12),transparent_30%),radial-gradient(circle_at_84%_10%,hsl(var(--foreground)/0.055),transparent_28%),linear-gradient(180deg,hsl(var(--background)/0.98),hsl(var(--surface-2)/0.76))] pb-3"
         bodyContainerClassName="h-full min-h-0 overflow-hidden"
         top={
           <div className={ingestionHeroCard}>
             <div className="absolute inset-y-4 left-3 w-1 rounded-full bg-[linear-gradient(180deg,hsl(var(--primary)),hsl(var(--info)/0.78),hsl(var(--primary)/0.36))]" />
             <div className="relative flex flex-col gap-3 px-5 py-3.5 pl-8 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 items-start gap-3.5">
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-info/30 bg-card/82 text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_26px_rgba(14,165,233,0.14)] dark:border-sky-500/25 dark:bg-sky-500/10">
+                <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-info/30 bg-card/82 text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_26px_hsl(var(--info)/0.14)] dark:bg-info/10">
                   <Settings2 className="size-5" />
                 </div>
                 <div className="min-w-0">
@@ -892,7 +892,7 @@ export default function DatasetIngestionPolicyPage() {
                     </div>
                   ))}
                 </div>
-                <div className="inline-flex h-9 items-center gap-2 rounded-xl border border-success/30 bg-success/5 px-3 text-[12px] font-semibold text-success shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_10px_24px_rgba(5,150,105,0.10)] dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+                <div className="inline-flex h-9 items-center gap-2 rounded-xl border border-success/30 bg-success/5 px-3 text-[12px] font-semibold text-success shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_10px_24px_rgba(5,150,105,0.10)]">
                   <span className="size-2 rounded-full bg-success" />
                   策略可编辑
                 </div>
@@ -1188,7 +1188,7 @@ export default function DatasetIngestionPolicyPage() {
                 </div>
 
                 {Array.isArray(preview.clean?.issues) && preview.clean.issues.length > 0 ? (
-                  <Panel variant="muted" className="rounded-2xl border-warning/30 bg-warning/5 p-4 shadow-none dark:border-amber-500/30 dark:bg-amber-500/10">
+                  <Panel variant="muted" className="rounded-2xl border-warning/30 bg-warning/5 p-4 shadow-none">
                     <div className="mb-2 text-sm font-bold text-foreground dark:text-foreground">后端检测到的问题（issues）</div>
                     <div className="space-y-2">
                       {preview.clean.issues.slice(0, 8).map((it) => (

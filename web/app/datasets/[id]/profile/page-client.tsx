@@ -80,7 +80,7 @@ const profileSectionCaptionClass = 'mt-1 text-[11px] leading-4 text-muted-foregr
 const profileToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-2xl border border-border/60 bg-card/70 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.055)] ring-1 ring-border/50 backdrop-blur dark:border-border/60 dark:bg-card/70 dark:ring-white/5'
 const profileToolbarButtonClass = 'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-muted-foreground shadow-none hover:bg-card/95 hover:text-foreground hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
 const profileToolbarExportButtonClass = 'h-8 gap-1.5 rounded-xl border-border/60 bg-card/75 px-2.5 text-[12px] font-medium text-foreground/85 shadow-[0_8px_20px_rgba(15,23,42,0.045)] hover:bg-card/95 hover:text-foreground dark:border-border/60 dark:bg-card/70 dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
-const profileToolbarPrimaryButtonClass = 'h-8 gap-1.5 rounded-xl bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] px-3 text-[12px] font-semibold text-primary-foreground shadow-[0_10px_24px_rgba(14,165,233,0.24)] hover:bg-[linear-gradient(90deg,hsl(var(--primary)/0.92),hsl(var(--info)/0.92))] [&_svg]:size-3.5'
+const profileToolbarPrimaryButtonClass = 'h-8 gap-1.5 rounded-xl bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] px-3 text-[12px] font-semibold text-primary-foreground shadow-[0_10px_24px_hsl(var(--info)/0.24)] hover:bg-[linear-gradient(90deg,hsl(var(--primary)/0.92),hsl(var(--info)/0.92))] [&_svg]:size-3.5'
 
 function ProfileCardHeader({
   title,
@@ -808,11 +808,11 @@ export default function DatasetProfilePage() {
         size="full"
         density="system-dense"
         bodyGutter="dense"
-        bodyClassName="h-full overflow-hidden bg-[radial-gradient(circle_at_12%_0%,rgba(14,165,233,0.10),transparent_28%),linear-gradient(180deg,#f8fcff_0%,#f4f8fb_44%,#f8fafc_100%)] pb-3 dark:bg-background"
+        bodyClassName="h-full overflow-hidden bg-[radial-gradient(circle_at_12%_0%,hsl(var(--info)/0.10),transparent_28%),linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--surface-2)/0.76)_44%,hsl(var(--background))_100%)] pb-3"
         bodyContainerClassName="h-full min-h-0 overflow-hidden"
         top={
           <div className={profileHeroCard}>
-            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(14,165,233,0.045)_1px,transparent_1px),linear-gradient(90deg,rgba(14,165,233,0.045)_1px,transparent_1px)] bg-[size:28px_28px]" />
+            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(hsl(var(--info)/0.045)_1px,transparent_1px),linear-gradient(90deg,hsl(var(--info)/0.045)_1px,transparent_1px)] bg-[size:28px_28px]" />
             <div className="relative flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 items-start gap-3.5">
                 <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-info/20 bg-info/5 text-info shadow-inner">

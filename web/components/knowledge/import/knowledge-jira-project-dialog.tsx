@@ -360,7 +360,7 @@ export function KnowledgeJiraProjectDialog({
                     仅在“文档访问控制”保持“继承数据集”时生效；这样不会和手工访问控制发生冲突。
                   </div>
                   {hasManualAccessOverride ? (
-                    <div className="text-xs text-warning dark:text-amber-300">
+                    <div className="text-xs text-warning">
                       当前选择了手工文档访问控制，运行时会忽略 Source ACL。
                     </div>
                   ) : null}

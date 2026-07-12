@@ -901,7 +901,7 @@ export function GovernanceCommonLinesPage() {
                   <Checkbox
                     checked={useOriginal}
                     onCheckedChange={(v) => setUseOriginal(Boolean(v))}
-                    className="mt-0.5 data-[state=checked]:border-[#2563eb] data-[state=checked]:bg-[#2563eb] data-[state=checked]:text-info-foreground"
+                    className="mt-0.5 data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground"
                   />
                   <span>优先基于治理前的原始解析结果进行识别</span>
                 </label>

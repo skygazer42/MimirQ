@@ -22,6 +22,7 @@ import {
   MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
+  Palette,
   Plus,
   Scissors,
   Search,
@@ -41,6 +42,7 @@ import { Link, usePathname, useRouter } from '@/i18n/navigation'
 import { readClientStorage, writeClientStorage } from '@/lib/client-storage'
 import { cn } from '@/lib/utils'
 import { ModeToggle } from '@/components/mode-toggle'
+import { ThemeCustomizer } from '@/components/theme-customizer'
 import { useAuth } from '@/hooks/use-auth'
 import { useBackendMetaDetails } from '@/hooks/use-backend-meta'
 import { useBackendReady } from '@/hooks/use-backend-ready'
@@ -741,7 +743,26 @@ export function Navbar({
             </div>
           </div>
 
-          <div className="mt-3 flex items-center justify-between gap-2">
+          <div className="mt-2">
+            <ThemeCustomizer
+              trigger={
+                <Button
+                  variant="ghost"
+                  className="h-9 w-full justify-start gap-2 rounded-xl border border-border/60 bg-card/60 px-3 text-xs font-semibold text-foreground shadow-sm transition-colors duration-200 hover:border-primary/20 hover:bg-muted"
+                  title={t('toolbar.appearance')}
+                  aria-label={t('toolbar.appearance')}
+                >
+                  <Palette className="size-4 text-primary" aria-hidden="true" />
+                  <span>{t('toolbar.appearance')}</span>
+                  <span className="ml-auto text-[10px] font-medium text-muted-foreground">
+                    {t('toolbar.appearanceHint')}
+                  </span>
+                </Button>
+              }
+            />
+          </div>
+
+          <div className="mt-2 flex items-center justify-between gap-2">
             <Popover>
               <PopoverTrigger asChild>
                 <button

@@ -41,7 +41,7 @@ export function getLibraryStatusBadge(
     case 'parsed':
       return { label: t('libraryStatus.parsed'), cls: 'bg-success/10 text-success dark:text-emerald-300 border-success/20' }
     case 'parsing':
-      return { label: t('libraryStatus.parsing'), cls: 'bg-info/10 text-info dark:text-sky-300 border-info/20' }
+      return { label: t('libraryStatus.parsing'), cls: 'bg-info/10 text-info border-info/20' }
     case 'error':
       return { label: t('libraryStatus.error'), cls: 'bg-destructive/10 text-destructive dark:text-red-300 border-destructive/20' }
     case 'pending':

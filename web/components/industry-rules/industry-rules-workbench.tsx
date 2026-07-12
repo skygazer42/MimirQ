@@ -520,8 +520,8 @@ export function IndustryRulesWorkbench() {
           <div className="relative flex min-h-[150px] items-center overflow-hidden rounded-[16px] border border-primary/20 bg-[linear-gradient(105deg,#ffffff_0%,#f8fbff_45%,#dbeafe_100%)] px-5 py-5 shadow-[0_14px_36px_rgba(15,23,42,0.06)]">
             <div className="pointer-events-none absolute inset-y-0 right-0 hidden w-[460px] overflow-hidden lg:block">
               <div className="absolute right-[-80px] top-[-80px] h-[260px] w-[430px] rotate-[-16deg] rounded-[42px] border border-border/70 bg-card/35" />
-              <div className="absolute right-[48px] top-[22px] h-[118px] w-[210px] rotate-[-16deg] rounded-[30px] bg-primary/10 shadow-[0_18px_42px_rgba(37,99,235,0.18)]" />
-              <div className="absolute right-[132px] top-[24px] flex h-[84px] w-[96px] rotate-[-16deg] items-center justify-center rounded-[24px] border border-primary/30 bg-card/85 shadow-[0_18px_32px_rgba(37,99,235,0.2)]">
+              <div className="absolute right-[48px] top-[22px] h-[118px] w-[210px] rotate-[-16deg] rounded-[30px] bg-primary/10 shadow-[0_18px_42px_hsl(var(--primary)/0.18)]" />
+              <div className="absolute right-[132px] top-[24px] flex h-[84px] w-[96px] rotate-[-16deg] items-center justify-center rounded-[24px] border border-primary/30 bg-card/85 shadow-[0_18px_32px_hsl(var(--primary)/0.2)]">
                 <ShieldCheck className="h-11 w-11 rotate-[16deg] text-primary" />
               </div>
             </div>

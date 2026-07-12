@@ -27,13 +27,13 @@ import { useRouter } from '@/i18n/navigation'
 
 import type { Dataset, DatasetHealthResponse, DatasetProfileFindingSummary } from '@/types'
 
-const PIE_COLORS = ['#38bdf8', '#22c55e', '#f59e0b', '#fb7185', '#a78bfa', '#14b8a6', '#94a3b8']
+const PIE_COLORS = ['hsl(var(--chart-5))', 'hsl(var(--chart-2))', 'hsl(var(--chart-4))', 'hsl(var(--chart-6))', 'hsl(var(--chart-3))', 'hsl(var(--chart-1))', 'hsl(var(--chart-8))']
 const healthHeroCard = 'relative overflow-hidden rounded-2xl border border-border/60 bg-[radial-gradient(circle_at_0%_0%,hsl(var(--info)/0.18),transparent_34%),linear-gradient(135deg,hsl(var(--card)/0.96),hsl(var(--background)/0.92))] p-4 shadow-[0_18px_55px_rgba(15,23,42,0.08)] ring-1 ring-border/50 dark:border-border/60 dark:bg-card dark:ring-white/5'
 const healthPanelClass = 'overflow-hidden border-border/60 bg-[linear-gradient(180deg,hsl(var(--card)/0.98),hsl(var(--background)/0.92))] p-4 shadow-[0_16px_45px_rgba(15,23,42,0.07)] ring-1 ring-border/50 dark:border-border/60 dark:bg-card/95 dark:ring-white/5'
 const healthToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-2xl border border-border/60 bg-card/70 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.055)] ring-1 ring-border/50 backdrop-blur dark:border-border/60 dark:bg-card/70 dark:ring-white/5'
 const healthToolbarButtonClass = 'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-muted-foreground shadow-none hover:bg-card/95 hover:text-foreground hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
 const healthToolbarExportButtonClass = 'h-8 gap-1.5 rounded-xl border-border/60 bg-card/75 px-2.5 text-[12px] font-medium text-foreground/85 shadow-[0_8px_20px_rgba(15,23,42,0.045)] hover:bg-card/95 hover:text-foreground dark:border-border/60 dark:bg-card/70 dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
-const healthToolbarPrimaryButtonClass = 'h-8 gap-1.5 rounded-xl bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] px-3 text-[12px] font-semibold text-primary-foreground shadow-[0_10px_24px_rgba(14,165,233,0.24)] hover:bg-[linear-gradient(90deg,hsl(var(--primary)/0.92),hsl(var(--info)/0.92))] [&_svg]:size-3.5'
+const healthToolbarPrimaryButtonClass = 'h-8 gap-1.5 rounded-xl bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] px-3 text-[12px] font-semibold text-primary-foreground shadow-[0_10px_24px_hsl(var(--info)/0.24)] hover:bg-[linear-gradient(90deg,hsl(var(--primary)/0.92),hsl(var(--info)/0.92))] [&_svg]:size-3.5'
 
 function asDatasetId(raw: unknown): string {
   if (typeof raw === 'string' && raw.trim()) return raw
@@ -227,11 +227,11 @@ export default function DatasetHealthPage() {
         size="full"
         density="system-dense"
         bodyGutter="dense"
-        bodyClassName="bg-[radial-gradient(circle_at_12%_0%,rgba(14,165,233,0.10),transparent_28%),linear-gradient(180deg,#f8fcff_0%,#f4f8fb_44%,#f8fafc_100%)] dark:bg-background"
+        bodyClassName="bg-[radial-gradient(circle_at_12%_0%,hsl(var(--info)/0.10),transparent_28%),linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--surface-2)/0.76)_44%,hsl(var(--background))_100%)]"
         bodyContainerClassName="h-full min-h-full"
         top={
           <div className={healthHeroCard}>
-            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(14,165,233,0.045)_1px,transparent_1px),linear-gradient(90deg,rgba(14,165,233,0.045)_1px,transparent_1px)] bg-[size:28px_28px]" />
+            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(hsl(var(--info)/0.045)_1px,transparent_1px),linear-gradient(90deg,hsl(var(--info)/0.045)_1px,transparent_1px)] bg-[size:28px_28px]" />
             <div className="relative flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 items-start gap-3.5">
                 <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-info/20 bg-info/5 text-info shadow-inner">

@@ -1161,7 +1161,7 @@ export function KnowledgeSettingsPanel({
                     <Button
                       type="button"
                       variant="outline"
-                      className="h-9 rounded-[12px] border-warning/30 bg-warning/5 px-4 text-[11px] font-medium text-warning hover:border-warning/40 hover:bg-warning/10 hover:text-warning dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-200 dark:hover:bg-warning/20 dark:hover:text-warning"
+                      className="h-9 rounded-[12px] border-warning/30 bg-warning/5 px-4 text-[11px] font-medium text-warning hover:border-warning/40 hover:bg-warning/10 hover:text-warning dark:hover:bg-warning/20 dark:hover:text-warning"
                       onClick={handleResetDraft}
                     >
                       重置更改

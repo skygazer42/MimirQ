@@ -40,7 +40,7 @@ export function RagTraceDialog({ open, onOpenChange, conversationId, title }: Re
       <DialogContent className="flex max-h-[90vh] max-w-6xl flex-col gap-0 overflow-hidden p-0">
         <DialogHeader className="shrink-0 border-b border-border/60 px-6 py-4 pr-12">
           <DialogTitle className="flex items-center gap-2">
-            <Route className="h-5 w-5 text-info dark:text-sky-400" />
+            <Route className="h-5 w-5 text-info" />
             <span>{t("dialog.title")}</span>
             {title ? <span className="text-sm font-normal text-muted-foreground">· {title}</span> : null}
           </DialogTitle>

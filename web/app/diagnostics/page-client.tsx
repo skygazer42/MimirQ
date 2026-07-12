@@ -580,7 +580,7 @@ const STATUS_PILL_TONE_CLASSES = {
   red:
     'border-destructive/20 bg-card/85 text-destructive shadow-[0_1px_2px_rgba(220,38,38,0.08)]',
   blue:
-    'border-primary/20 bg-card/85 text-primary shadow-[0_1px_2px_rgba(37,99,235,0.08)]',
+    'border-primary/20 bg-card/85 text-primary shadow-[0_1px_2px_hsl(var(--primary)/0.08)]',
   purple:
     'border-accent/20 bg-card/85 text-accent shadow-[0_1px_2px_rgba(126,34,206,0.08)]',
 } as const
@@ -707,7 +707,7 @@ function DimensionMatrixItem({
         'group flex min-h-[68px] w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-all',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25',
         selected
-          ? 'border-primary/30 bg-primary/[0.06] shadow-[0_1px_6px_rgba(37,99,235,0.08)]'
+          ? 'border-primary/30 bg-primary/[0.06] shadow-[0_1px_6px_hsl(var(--primary)/0.08)]'
           : 'border-border/60 bg-card hover:border-border hover:bg-muted/50'
       )}
     >

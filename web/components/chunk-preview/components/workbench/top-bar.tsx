@@ -584,7 +584,7 @@ export function TopBar() {
 
             {previewData?.parse_cache_hit ? (
               <span
-                className={cn(stateChipClass, 'border-accent/20 bg-accent/5 text-accent dark:text-violet-400')}
+                className={cn(stateChipClass, 'border-accent/20 bg-accent/5 text-accent')}
                 title={t('topBar.status.parseCacheAgeTitle', {
                   age: previewData.parse_cache_age_ms ?? '-',
                 })}

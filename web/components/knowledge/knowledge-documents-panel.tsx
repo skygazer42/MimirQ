@@ -926,9 +926,9 @@ export function KnowledgeDocumentsPanel({
                 >
                   <div
                     data-knowledge-empty-shelf="true"
-                    className="relative flex min-h-[clamp(220px,30vh,320px)] w-full flex-1 overflow-hidden rounded-[20px] border border-dashed border-info/18 bg-[radial-gradient(circle_at_50%_0%,rgba(59,130,246,0.12),transparent_44%)]"
+                    className="relative flex min-h-[clamp(220px,30vh,320px)] w-full flex-1 overflow-hidden rounded-[20px] border border-dashed border-info/18 bg-[radial-gradient(circle_at_50%_0%,hsl(var(--info)/0.12),transparent_44%)]"
                   >
-                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(59,130,246,0.055)_1px,transparent_1px),linear-gradient(90deg,rgba(59,130,246,0.055)_1px,transparent_1px)] bg-[size:34px_34px]" />
+                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(hsl(var(--info)/0.055)_1px,transparent_1px),linear-gradient(90deg,hsl(var(--info)/0.055)_1px,transparent_1px)] bg-[size:34px_34px]" />
                     <div className="pointer-events-none absolute -left-12 top-16 size-44 rounded-full bg-info/10 blur-3xl" />
                     <div className="pointer-events-none absolute -right-10 bottom-8 size-52 rounded-full bg-info/10 blur-3xl" />
                     <div className="absolute right-4 top-4 z-10">

@@ -137,7 +137,7 @@ function ChunkPreviewEmptyCanvas() {
     {
       icon: Layers,
       label: t('emptyState.visual.steps.review'),
-      tone: 'border-success/20 bg-success/10 text-success dark:text-emerald-400',
+      tone: 'border-success/20 bg-success/10 text-success',
     },
   ]
 
@@ -246,7 +246,7 @@ function ChunkPreviewEmptyCanvas() {
                       item.accent === 'primary' && 'border-primary/20 bg-primary/10 text-primary',
                       item.accent === 'info' && 'border-info/20 bg-info/10 text-info',
                       item.accent === 'amber' &&
-                        'border-warning/20 bg-warning/10 text-warning dark:text-amber-400'
+                        'border-warning/20 bg-warning/10 text-warning'
                     )}
                   >
                     <Icon className="size-4.5" strokeWidth={2.5} />

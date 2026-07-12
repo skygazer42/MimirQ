@@ -1283,7 +1283,7 @@ function SnapshotGraphCanvas({
   return (
     <div
       data-testid="kg-snapshot-graph-canvas"
-      className="relative min-h-0 flex-1 overflow-hidden bg-[radial-gradient(circle_at_center,rgba(37,99,235,0.05),transparent_44%),radial-gradient(circle_at_70%_20%,rgba(14,165,233,0.04),transparent_28%)]"
+      className="relative min-h-0 flex-1 overflow-hidden bg-[radial-gradient(circle_at_center,hsl(var(--primary)/0.05),transparent_44%),radial-gradient(circle_at_70%_20%,hsl(var(--info)/0.04),transparent_28%)]"
     >
       <div
         className="absolute inset-0 opacity-[0.42] [background-image:radial-gradient(circle,hsl(var(--muted-foreground)/0.26)_1px,transparent_1px)] [background-size:14px_14px]"
@@ -2992,7 +2992,7 @@ export function KGSnapshotsPage() {
 
   return (
     <AppFrame showBackground={false}>
-      <div className="flex h-full min-h-0 flex-col bg-[radial-gradient(1200px_460px_at_12%_-18%,rgba(37,99,235,0.08),transparent_58%),radial-gradient(960px_420px_at_88%_-24%,rgba(14,165,233,0.06),transparent_56%)] bg-background">
+      <div className="flex h-full min-h-0 flex-col bg-[radial-gradient(1200px_460px_at_12%_-18%,hsl(var(--primary)/0.08),transparent_58%),radial-gradient(960px_420px_at_88%_-24%,hsl(var(--info)/0.06),transparent_56%)] bg-background">
         <header className="shrink-0 border-b border-border/70 bg-background/80 backdrop-blur">
           <div className="px-4 py-3 md:px-6">
             <PageHeader

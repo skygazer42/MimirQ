@@ -381,7 +381,7 @@ export function KnowledgeRetrievalPanel({
         <div className="border-b border-border/60 bg-background/72 px-4 py-4 backdrop-blur-xl">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-start gap-3">
-              <div className="relative flex size-9 shrink-0 items-center justify-center rounded-[14px] border border-info/20 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.16),transparent_62%),linear-gradient(180deg,rgba(239,246,255,0.95),rgba(219,234,254,0.78))] text-info shadow-[0_14px_28px_-22px_rgba(37,99,235,0.45)]">
+              <div className="relative flex size-9 shrink-0 items-center justify-center rounded-[14px] border border-info/20 bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.16),transparent_62%),linear-gradient(180deg,hsl(var(--card)/0.95),hsl(var(--info)/0.12))] text-info shadow-[0_14px_28px_-22px_hsl(var(--info)/0.45)]">
                 <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,rgba(255,255,255,0.35),transparent_48%)] opacity-80" />
                 <Fingerprint className="size-4" />
               </div>
@@ -398,7 +398,7 @@ export function KnowledgeRetrievalPanel({
               label={t('actions.run')}
               variant="outline"
               className={cn(
-                'size-9 rounded-[14px] border-border/70 bg-background/72 transition-[transform,box-shadow] hover:scale-[1.03] hover:shadow-[0_12px_24px_-18px_rgba(37,99,235,0.24)]',
+                'size-9 rounded-[14px] border-border/70 bg-background/72 transition-[transform,box-shadow] hover:scale-[1.03] hover:shadow-[0_12px_24px_-18px_hsl(var(--info)/0.24)]',
                 indexAuditLoading && 'text-primary border-primary/20'
               )}
               onClick={() => detachPromise(runIndexAudit())}

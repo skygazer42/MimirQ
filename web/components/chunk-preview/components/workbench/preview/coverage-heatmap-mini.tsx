@@ -23,9 +23,9 @@ function statInt(value: unknown): number | null {
 
 function getCoverageStatusTone(gapCount: number, overlapWastePct: number): string {
   if (gapCount <= 0 && overlapWastePct <= 8) {
-    return 'text-success dark:text-emerald-300'
+    return 'text-success'
   }
-  if (gapCount <= 2) return 'text-warning dark:text-amber-300'
+  if (gapCount <= 2) return 'text-warning'
   return 'text-destructive'
 }
 
@@ -42,7 +42,7 @@ function getCoverageBarBackground(active: boolean, tone: string): string {
 }
 
 function getCoverageWarningClass(active: boolean): string {
-  if (active) return 'text-warning dark:text-amber-300'
+  if (active) return 'text-warning'
   return 'text-muted-foreground'
 }
 

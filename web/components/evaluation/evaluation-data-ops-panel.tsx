@@ -301,7 +301,7 @@ export function EvaluationDataOpsPanel() {
             />
           </div>
           <Button
-            className="h-9 min-w-[110px] gap-1.5 rounded-lg bg-primary px-4 text-[12px] font-semibold text-info-foreground shadow-[0_8px_18px_rgba(37,99,235,0.24)] hover:bg-primary"
+            className="h-9 min-w-[110px] gap-1.5 rounded-lg bg-primary px-4 text-[12px] font-semibold text-primary-foreground shadow-[0_8px_18px_hsl(var(--primary)/0.24)] hover:bg-primary"
             disabled={Boolean(busy) || !dataset}
             onClick={() => detachPromise(runKgDiagnostics())}
           >

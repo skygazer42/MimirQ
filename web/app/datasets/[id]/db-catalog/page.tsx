@@ -468,14 +468,14 @@ export default function DatasetDbCatalogPage() {
         size="full"
         density="system-dense"
         bodyGutter="dense"
-        bodyClassName="h-full overflow-hidden bg-[radial-gradient(circle_at_18%_0%,rgba(14,165,233,0.10),transparent_28%),linear-gradient(180deg,rgba(248,250,252,0.96),rgba(241,245,249,0.68))] pb-3 dark:bg-[radial-gradient(circle_at_18%_0%,rgba(14,165,233,0.14),transparent_28%),linear-gradient(180deg,rgba(15,23,42,0.96),rgba(15,23,42,0.86))]"
+        bodyClassName="h-full overflow-hidden bg-[radial-gradient(circle_at_18%_0%,hsl(var(--info)/0.10),transparent_28%),linear-gradient(180deg,hsl(var(--background)/0.96),hsl(var(--surface-2)/0.68))] pb-3"
         bodyContainerClassName="h-full min-h-0 overflow-hidden"
         top={
           <div className={dbCatalogHeroCard}>
             <div className="absolute inset-y-4 left-3 w-1 rounded-full bg-[linear-gradient(180deg,hsl(var(--primary)),hsl(var(--info)/0.82),hsl(var(--success)/0.72))]" />
             <div className="relative flex flex-col gap-3 px-5 py-3.5 pl-8 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 items-start gap-3.5">
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-info/30 bg-card/82 text-info shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_26px_rgba(14,165,233,0.14)] dark:border-sky-500/25 dark:bg-sky-500/10 dark:text-sky-300">
+                <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-info/30 bg-card/82 text-info shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_26px_hsl(var(--info)/0.14)] dark:bg-info/10">
                   <Database className="size-5" />
                 </div>
                 <div className="min-w-0">
@@ -518,7 +518,7 @@ export default function DatasetDbCatalogPage() {
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2 lg:self-end">
-                <div className="inline-flex h-9 items-center gap-2 rounded-lg border border-info/30 bg-info/5 px-3 text-[13px] font-medium text-info shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
+                <div className="inline-flex h-9 items-center gap-2 rounded-lg border border-info/30 bg-info/5 px-3 text-[13px] font-medium text-info shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:bg-info/10">
                   <span className={cn('size-2 rounded-full', latestRunLoading ? 'animate-pulse bg-info' : latestRun ? 'bg-success' : 'bg-muted-foreground/50')} />
                   {latestRunSummary.status}
                 </div>
@@ -560,7 +560,7 @@ export default function DatasetDbCatalogPage() {
             </div>
             {datasetId ? (
               <Button
-                className="h-10 min-w-[118px] gap-2 rounded-xl bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] text-[13px] text-primary-foreground shadow-[0_14px_30px_rgba(14,165,233,0.24)] hover:bg-[linear-gradient(90deg,hsl(var(--primary)/0.92),hsl(var(--info)/0.92))]"
+                className="h-10 min-w-[118px] gap-2 rounded-xl bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] text-[13px] text-primary-foreground shadow-[0_14px_30px_hsl(var(--info)/0.24)] hover:bg-[linear-gradient(90deg,hsl(var(--primary)/0.92),hsl(var(--info)/0.92))]"
                 onClick={() => {
                   setSyncError(null)
                   setSyncOpen(true)
@@ -636,7 +636,7 @@ export default function DatasetDbCatalogPage() {
                             className={cn(
                               'w-full rounded-xl border px-3 py-2.5 text-left transition duration-150',
                               active
-                                ? 'border-info/40 bg-info/5 shadow-[inset_3px_0_0_rgba(14,165,233,0.72)]'
+                                ? 'border-info/40 bg-info/5 shadow-[inset_3px_0_0_hsl(var(--info)/0.72)]'
                                 : 'border-border/60 bg-card/55 hover:border-info/30 hover:bg-info/5 dark:border-border/60 dark:bg-muted/20'
                             )}
                             onClick={() => setSelectedId(t.id)}

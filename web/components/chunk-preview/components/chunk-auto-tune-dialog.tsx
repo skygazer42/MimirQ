@@ -298,7 +298,7 @@ export function ChunkAutoTuneDialog() {
         disabled={!previewData || isLoading}
         title={isAutoTuneAvailable ? t('autoTune.trigger.readyTitle') : t('autoTune.trigger.disabledTitle')}
       >
-        <Wand2 className="mr-1 h-3 w-3 text-info dark:text-sky-200" />
+        <Wand2 className="mr-1 h-3 w-3 text-info" />
         {t('autoTune.trigger.label')}
       </Button>
 

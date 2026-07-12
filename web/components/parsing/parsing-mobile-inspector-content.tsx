@@ -134,7 +134,7 @@ export function ParsingMobileInspectorContent({
  className={cn(
  'w-full rounded-xl border px-3 py-2 text-left text-sm transition-colors',
  isActive
- ? 'border-info bg-info/10 dark:bg-sky-950/30'
+ ? 'border-info bg-info/10'
  : 'border-border/60 hover:bg-muted/40'
  )}
  >

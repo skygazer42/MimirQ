@@ -804,7 +804,7 @@ export function TestCaseManager({
         )}
       >
         <div className="max-w-md">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl border border-border/60 bg-[radial-gradient(circle_at_30%_20%,rgba(37,99,235,0.16),transparent_45%),linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] shadow-sm">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl border border-border/60 bg-[radial-gradient(circle_at_30%_20%,hsl(var(--primary)/0.16),transparent_45%),linear-gradient(180deg,hsl(var(--card))_0%,hsl(var(--background))_100%)] shadow-sm">
             <FileText className="h-7 w-7 text-primary" />
           </div>
           <div className="mt-4 text-base font-semibold text-foreground">

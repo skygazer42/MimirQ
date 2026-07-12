@@ -145,15 +145,15 @@ const seedRecentQueries: RecentQueryItem[] = [
 const RETRIEVAL_ADVANCED_PANEL_ID = 'retrieval-advanced-params'
 const RETRIEVAL_HISTORY_PANEL_ID = 'retrieval-query-history'
 const RETRIEVAL_RANGE_INPUT_CLASS =
-  'relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-0 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-info/40 [&::-webkit-slider-thumb]:bg-card [&::-webkit-slider-thumb]:shadow-[0_6px_14px_-8px_rgba(37,99,235,0.55)] dark:[&::-webkit-slider-thumb]:border-border dark:[&::-webkit-slider-thumb]:bg-card [&::-moz-range-track]:h-5 [&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:h-5 [&::-moz-range-progress]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-info/40 [&::-moz-range-thumb]:bg-card'
+  'relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-0 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-info/40 [&::-webkit-slider-thumb]:bg-card [&::-webkit-slider-thumb]:shadow-[0_6px_14px_-8px_hsl(var(--info)/0.55)] dark:[&::-webkit-slider-thumb]:border-border dark:[&::-webkit-slider-thumb]:bg-card [&::-moz-range-track]:h-5 [&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:h-5 [&::-moz-range-progress]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-info/40 [&::-moz-range-thumb]:bg-card'
 const RETRIEVAL_PANEL_SURFACE_CLASS =
-  'border-info/20 bg-card/[0.94] shadow-[0_14px_26px_-24px_rgba(37,99,235,0.18)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62'
+  'border-info/20 bg-card/[0.94] shadow-[0_14px_26px_-24px_hsl(var(--info)/0.18)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62'
 const RETRIEVAL_CONTROL_SURFACE_CLASS =
   'border-info/20 bg-card/[0.92] shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-border/70 dark:bg-background/58'
 
 function SemanticRetrievalMark() {
   return (
-    <div className="relative flex size-14 items-center justify-center rounded-[22px] border border-info/30 bg-[radial-gradient(circle_at_30%_18%,rgba(255,255,255,0.92),transparent_34%),linear-gradient(145deg,#EFF6FF_0%,#DBEAFE_58%,#E0F2FE_100%)] text-primary shadow-[0_18px_32px_-24px_rgba(37,99,235,0.52)]">
+    <div className="relative flex size-14 items-center justify-center rounded-[22px] border border-info/30 bg-[radial-gradient(circle_at_30%_18%,hsl(var(--card)/0.92),transparent_34%),linear-gradient(145deg,hsl(var(--info)/0.08)_0%,hsl(var(--info)/0.14)_58%,hsl(var(--info)/0.10)_100%)] text-primary shadow-[0_18px_32px_-24px_hsl(var(--info)/0.52)]">
       <span
         aria-hidden="true"
         className="pointer-events-none absolute inset-1 rounded-[18px] border border-border/70"
@@ -471,7 +471,7 @@ export function RetrievePreviewPanel({
 
             <Button
               type="button"
-              className="h-9 rounded-[14px] bg-primary px-[18px] text-[13px] font-medium text-primary-foreground shadow-[0_14px_22px_-18px_rgba(37,99,235,0.52)]"
+              className="h-9 rounded-[14px] bg-primary px-[18px] text-[13px] font-medium text-primary-foreground shadow-[0_14px_22px_-18px_hsl(var(--primary)/0.52)]"
               disabled={!searchQuery.trim() || isSearching || !hasRetrievalScope}
               onClick={() => detachPromise(handleSearch())}
             >
@@ -560,12 +560,12 @@ export function RetrievePreviewPanel({
                   aria-expanded={advancedParamsOpen}
                   aria-controls={RETRIEVAL_ADVANCED_PANEL_ID}
                   onClick={() => setAdvancedParamsOpen((open) => !open)}
-                  className="inline-flex items-center text-[12px] font-medium text-primary transition-colors hover:text-primary dark:text-blue-300 dark:hover:text-primary"
+                  className="inline-flex items-center text-[12px] font-medium text-primary transition-colors hover:text-primary"
                 >
                   {advancedParamsOpen ? '收起高级参数' : '更多高级参数'}
                   <ChevronRight
                     className={cn(
-                      'ml-1 size-3 text-primary/90 transition-transform dark:text-blue-300/90',
+                      'ml-1 size-3 text-primary/90 transition-transform',
                       advancedParamsOpen && 'rotate-90'
                     )}
                   />
@@ -685,12 +685,12 @@ export function RetrievePreviewPanel({
                 aria-expanded={fullHistoryOpen}
                 aria-controls={RETRIEVAL_HISTORY_PANEL_ID}
                 onClick={() => setFullHistoryOpen((open) => !open)}
-                className="inline-flex items-center text-[12px] font-medium text-primary transition-colors hover:text-primary dark:text-blue-300 dark:hover:text-primary"
+                className="inline-flex items-center text-[12px] font-medium text-primary transition-colors hover:text-primary"
               >
                 {fullHistoryOpen ? '收起全部历史' : '查看全部历史'}
                 <ChevronRight
                   className={cn(
-                    'ml-1 size-3 text-primary/90 transition-transform dark:text-blue-300/90',
+                    'ml-1 size-3 text-primary/90 transition-transform',
                     fullHistoryOpen && 'rotate-90'
                   )}
                 />
@@ -1009,7 +1009,7 @@ export function RetrievePreviewPanel({
 
   return (
     <div className={cn(className, 'relative flex h-full min-h-0 flex-col overflow-hidden bg-[#F8FBFF]/75 dark:bg-background/30')}>
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.09),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.48),transparent_40%)] dark:bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.08),transparent_44%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.09),transparent_42%),linear-gradient(180deg,hsl(var(--card)/0.48),transparent_40%)] dark:bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.08),transparent_44%)]" />
       <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4">
         {!hasSearched && !isSearching ? renderInitialWorkbench() : renderResultsWorkbench()}
       </div>

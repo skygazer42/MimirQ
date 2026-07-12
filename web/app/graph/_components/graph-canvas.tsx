@@ -586,7 +586,7 @@ export function GraphCanvas({
         className="absolute inset-0 z-0"
         style={getCanvasBackdropStyle(isDark)}
       />
-      <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_center,transparent_52%,rgba(59,130,246,0.025)_100%)] dark:bg-[radial-gradient(circle_at_center,transparent_42%,rgba(2,6,23,0.36)_100%)]" />
+      <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_center,transparent_52%,hsl(var(--info)/0.025)_100%)] dark:bg-[radial-gradient(circle_at_center,transparent_42%,hsl(var(--background)/0.36)_100%)]" />
 
       {graphRenderData.nodes.length > 0 ? (
         <>

@@ -215,9 +215,9 @@ function emptyMatrixCellClass(index: number) {
 function diagnosticCandidateStatusClass(isDisabled: boolean, isMarked: boolean) {
   if (isDisabled) return 'border-border bg-muted text-muted-foreground'
   if (isMarked) {
-    return 'border-warning/30 bg-warning/10 text-warning dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200'
+    return 'border-warning/30 bg-warning/10 text-warning'
   }
-  return 'border-warning/30 bg-warning/10 text-warning dark:border-orange-900/40 dark:bg-orange-900/20 dark:text-orange-200'
+  return 'border-warning/30 bg-warning/10 text-warning'
 }
 
 function diagnosticCandidateStatusLabel(isDisabled: boolean, isMarked: boolean) {
@@ -1797,12 +1797,12 @@ export function RagvizSimilarityWorkbench() {
                                   </span>
                                 ) : null}
                                 {isSubtract ? (
-                                  <span className="px-1.5 py-0.5 rounded bg-warning/10 text-warning dark:text-amber-300">
+                                  <span className="px-1.5 py-0.5 rounded bg-warning/10 text-warning">
                                     减
                                   </span>
                                 ) : null}
                                 {isExclusive ? (
-                                  <span className="px-1.5 py-0.5 rounded bg-info/10 text-info dark:text-sky-300">
+                                  <span className="px-1.5 py-0.5 rounded bg-info/10 text-info">
                                     独占
                                   </span>
                                 ) : null}
@@ -2196,8 +2196,8 @@ export function RagvizSimilarityWorkbench() {
                                 className={cn(
                                   'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px]',
                                   selectedCellDetails.isVisible
-                                    ? 'border-success/25 bg-success/10 text-success dark:text-emerald-300'
-                                    : 'border-warning/25 bg-warning/10 text-warning dark:text-amber-300'
+                                    ? 'border-success/25 bg-success/10 text-success'
+                                    : 'border-warning/25 bg-warning/10 text-warning'
                                 )}
                               >
                                 {selectedCellDetails.isVisible
@@ -2760,16 +2760,16 @@ function SimilarityDiagnosticsView({
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                <LegendPill className="border-info/30 bg-info/10 text-info dark:border-sky-900/40 dark:bg-sky-900/20 dark:text-sky-200">
+                <LegendPill className="border-info/30 bg-info/10 text-info dark:bg-info/10">
                   X 侧项目
                 </LegendPill>
                 <LegendPill className="border-success/20 bg-success/10 text-success">
                   Y 侧项目
                 </LegendPill>
-                <LegendPill className="border-warning/30 bg-warning/10 text-warning dark:border-orange-900/40 dark:bg-orange-900/20 dark:text-orange-200">
+                <LegendPill className="border-warning/30 bg-warning/10 text-warning">
                   异常点候选
                 </LegendPill>
-                <LegendPill className="border-warning/30 bg-warning/10 text-warning dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200">
+                <LegendPill className="border-warning/30 bg-warning/10 text-warning">
                   标记待审
                 </LegendPill>
               </div>
@@ -3788,11 +3788,11 @@ function StatsItem({
     if (tone === 'success') {
       return 'bg-success/10 text-success border-success/20'
     } else if (tone === 'warning') {
-      return 'bg-warning/10 text-warning border-warning/20 dark:bg-amber-900/15 dark:text-amber-200 dark:border-amber-900/30'
+      return 'bg-warning/10 text-warning border-warning/20'
     } else if (tone === 'danger') {
-      return 'bg-destructive/10 text-destructive border-destructive/20 dark:bg-rose-900/15 dark:text-rose-200 dark:border-rose-900/30'
+      return 'bg-destructive/10 text-destructive border-destructive/20'
     } else if (tone === 'info') {
-      return 'bg-info/10 text-info border-info/20 dark:bg-sky-900/15 dark:text-sky-200 dark:border-sky-900/30'
+      return 'bg-info/10 text-info border-info/20'
     } else if (tone === 'muted') {
       return 'bg-muted text-muted-foreground border-border'
     } else {

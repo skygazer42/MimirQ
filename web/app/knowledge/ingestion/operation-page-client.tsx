@@ -67,7 +67,7 @@ const EMPTY_FILES: File[] = []
 const OPERATION_BACKGROUND_CLASS =
   'bg-background bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.10),transparent_34rem)] dark:bg-background'
 const OPERATION_HERO_PANEL_CLASS =
-  'relative overflow-hidden rounded-[28px] border border-info/30 bg-[linear-gradient(135deg,rgba(248,253,255,0.92),rgba(229,245,255,0.72)_45%,rgba(255,255,255,0.82))] px-4 py-3 shadow-[0_24px_70px_-48px_rgba(14,116,144,0.55)] backdrop-blur-2xl dark:border-sky-300/15 dark:bg-[linear-gradient(135deg,rgba(8,21,34,0.82),rgba(8,47,73,0.36)_48%,rgba(15,23,42,0.72))]'
+  'relative overflow-hidden rounded-[28px] border border-info/30 bg-[linear-gradient(135deg,hsl(var(--card)/0.92),hsl(var(--info)/0.10)_45%,hsl(var(--background)/0.82))] px-4 py-3 shadow-[0_24px_70px_-48px_hsl(var(--info)/0.55)] backdrop-blur-2xl'
 
 type UploadSource = 'local' | 'folder' | 'url' | 'object' | 'api'
 type ParserBackend = 'auto' | 'docling' | 'markitdown' | 'deepdoc' | 'csv' | 'json' | 'markdown'
@@ -1139,11 +1139,11 @@ export default function KnowledgeIngestionOperationPage() {
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-info/30 bg-info/5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-info dark:border-sky-300/20 dark:bg-sky-300/10 dark:text-sky-200">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-info/30 bg-info/5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-info">
                   <Sparkles className="size-3" />
                   Knowledge Ops
                 </span>
-                <span className="inline-flex items-center rounded-full border border-success/30 bg-success/5 px-2.5 py-1 text-[10px] font-medium text-success dark:border-emerald-300/15 dark:bg-emerald-300/10 dark:text-emerald-200">
+                <span className="inline-flex items-center rounded-full border border-success/30 bg-success/5 px-2.5 py-1 text-[10px] font-medium text-success">
                   <ShieldCheck className="mr-1.5 size-3" />
                   文档资产治理中枢
                 </span>
@@ -1162,7 +1162,7 @@ export default function KnowledgeIngestionOperationPage() {
           </div>
           <div className="relative flex min-w-0 flex-col gap-2 lg:min-w-[470px]">
             <div className="grid gap-2 sm:grid-cols-2">
-              <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-2xl border border-info/30 bg-card/64 px-3 py-2 text-[11px] text-muted-foreground shadow-[0_12px_28px_-24px_rgba(14,116,144,0.45)] backdrop-blur dark:border-sky-300/15 dark:bg-background/28">
+              <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-2xl border border-info/30 bg-card/64 px-3 py-2 text-[11px] text-muted-foreground shadow-[0_12px_28px_-24px_hsl(var(--info)/0.45)] backdrop-blur dark:bg-background/28">
                 <span className="inline-flex items-center gap-1.5">
                   <span
                     className="size-1 rounded-full bg-info/70"
@@ -1179,7 +1179,7 @@ export default function KnowledgeIngestionOperationPage() {
                   {totalDocuments}
                 </span>
               </div>
-              <div className="flex min-w-0 items-center justify-between gap-2 rounded-2xl border border-info/30 bg-card/64 px-3 py-2 text-[11px] text-muted-foreground shadow-[0_12px_28px_-24px_rgba(14,116,144,0.45)] backdrop-blur dark:border-sky-300/15 dark:bg-background/28">
+              <div className="flex min-w-0 items-center justify-between gap-2 rounded-2xl border border-info/30 bg-card/64 px-3 py-2 text-[11px] text-muted-foreground shadow-[0_12px_28px_-24px_hsl(var(--info)/0.45)] backdrop-blur dark:bg-background/28">
                 <span className="inline-flex items-center gap-1.5">
                   <UploadCloud className="size-3 text-info" />
                   登记

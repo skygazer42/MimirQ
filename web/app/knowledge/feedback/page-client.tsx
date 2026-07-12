@@ -1309,7 +1309,7 @@ export default function FeedbackTriagePage() {
                   </div>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-info/30 bg-info/5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-info dark:border-sky-300/20 dark:bg-sky-300/10 dark:text-sky-200">
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-info/30 bg-info/5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-info">
                         <MessageSquare className="size-3" />
                         Feedback Ops
                       </span>
@@ -1450,7 +1450,7 @@ export default function FeedbackTriagePage() {
                           className={cn(
                             'rounded-xl border px-3.5 py-1.5 text-[12px] font-medium transition-colors',
                             boardTab === value
-                              ? 'border-info/25 bg-info/[0.12] text-info shadow-[0_10px_22px_-18px_rgba(37,99,235,0.55)]'
+                              ? 'border-info/25 bg-info/[0.12] text-info shadow-[0_10px_22px_-18px_hsl(var(--info)/0.55)]'
                               : 'border-transparent bg-transparent text-muted-foreground hover:bg-card/85 hover:text-foreground'
                           )}
                         >

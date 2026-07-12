@@ -64,6 +64,7 @@ const messages: Record<
   'sections.system': 'sections.system',
   'status.badgePrefix': 'status.badgePrefix:',
   'toolbar.navLabel': 'toolbar.navLabel',
+  'toolbar.appearance': '界面外观',
   'toolbar.sidebarClose': 'toolbar.sidebarClose',
   'user.offlineEnvironment': 'user.offlineEnvironment',
   'user.openSettings': 'user.openSettings',
@@ -132,6 +133,11 @@ vi.mock('@/store/command-menu', () => ({
 vi.mock('@/components/mode-toggle', () => ({
   ModeToggle: () =>
     React.createElement('div', { 'data-testid': 'mode-toggle' }),
+}))
+
+vi.mock('@/components/theme-customizer', () => ({
+  ThemeCustomizer: ({ trigger }: { trigger?: React.ReactNode }) =>
+    React.createElement('div', { 'data-testid': 'appearance-customizer' }, trigger),
 }))
 
 vi.mock('@/components/ui/status-badge', () => ({
@@ -229,6 +235,18 @@ describe('Navbar behavior', () => {
     expect(knowledgeBaseLink?.getAttribute('aria-current')).toBeNull()
     expect(evaluationsLink?.getAttribute('aria-current')).toBe('page')
     expect(ragVisualizationLink).toBeUndefined()
+
+    view.unmount()
+  })
+
+  it('offers appearance customization from the global navigation', () => {
+    const view = renderComponent(React.createElement(Navbar))
+
+    const appearance = view.container.querySelector('[data-testid="appearance-customizer"]')
+    expect(appearance).not.toBeNull()
+    expect(appearance?.textContent).toContain('界面外观')
+    expect(appearance?.querySelector('button')?.getAttribute('class')).toContain('w-full')
+    expect(view.container.querySelector('[data-testid="mode-toggle"]')).not.toBeNull()
 
     view.unmount()
   })

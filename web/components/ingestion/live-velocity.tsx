@@ -45,12 +45,12 @@ export function LiveVelocity({
       onClick={onToggle}
       className={cn(
         'inline-flex items-center gap-2 rounded-lg border border-info/20 bg-info/5 px-2 py-1 text-[11px] font-bold uppercase  text-info transition-colors hover:bg-info/10 motion-reduce:transition-none',
-        'dark:text-sky-400'
+        'dark:text-info'
       )}
       title="点击切换 docs/min 与 MB/s"
     >
       <Activity className="h-3.5 w-3.5" />
-      <span className="text-[10px] font-semibold text-info/80 dark:text-sky-300/80">处理效率</span>
+      <span className="text-[10px] font-semibold text-info/80">处理效率</span>
       <span className="tabular-nums">{formatValue(displayValue, unit)}</span>
       <span className="text-[10px] font-medium opacity-60">近 5 min 均值</span>
     </button>

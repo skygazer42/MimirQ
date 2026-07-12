@@ -60,6 +60,16 @@ function parseCssVariables(block) {
   return vars
 }
 
+function mergeCssVariables(...blocks) {
+  const merged = new Map()
+  for (const block of blocks) {
+    for (const [key, value] of parseCssVariables(block)) {
+      merged.set(key, value)
+    }
+  }
+  return merged
+}
+
 function isHslTriplet(value) {
   return /^\d+(?:\.\d+)?\s+\d+(?:\.\d+)?%\s+\d+(?:\.\d+)?%$/u.test(value.trim())
 }
@@ -81,10 +91,29 @@ async function main() {
     throw new Error('Could not locate :root/default html.dark token blocks in app/globals.css')
   }
 
-  const themes = [
-    { name: 'light', vars: parseCssVariables(lightBlock) },
-    { name: 'dark', vars: parseCssVariables(darkBlock) },
-  ]
+  const surfaceNames = ['ocean', 'neutral', 'classic', 'earth']
+  const themes = []
+
+  for (const surface of surfaceNames) {
+    const lightSurfaceBlock =
+      surface === 'ocean'
+        ? ''
+        : extractBlock(source, `html:not(.dark)[data-surface-theme="${surface}"]`)
+    const darkSurfaceBlock = extractBlock(source, `html.dark[data-surface-theme="${surface}"]`)
+
+    if (lightSurfaceBlock === null || darkSurfaceBlock === null) {
+      throw new Error(`Could not locate complete ${surface} surface token blocks in app/globals.css`)
+    }
+
+    themes.push({
+      name: `light:${surface}`,
+      vars: mergeCssVariables(lightBlock, lightSurfaceBlock),
+    })
+    themes.push({
+      name: `dark:${surface}`,
+      vars: mergeCssVariables(lightBlock, darkBlock, darkSurfaceBlock),
+    })
+  }
 
   const failures = []
   const reports = []

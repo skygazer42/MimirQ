@@ -81,13 +81,13 @@ import type {
 import type { ReportTransformsWorkerApi } from '@/workers/report-transforms.worker'
 
 const PIE_COLORS = [
-  '#3b82f6',
-  '#0ea5e9',
-  '#14b8a6',
-  '#22c55e',
-  '#f59e0b',
-  '#6366f1',
-  '#64748b',
+  'hsl(var(--chart-5))',
+  'hsl(var(--chart-1))',
+  'hsl(var(--chart-2))',
+  'hsl(var(--chart-4))',
+  'hsl(var(--chart-3))',
+  'hsl(var(--chart-6))',
+  'hsl(var(--chart-7))',
 ]
 const CHART_TOOLTIP_STYLE = {
   borderRadius: 10,
@@ -874,7 +874,7 @@ function CompactAuditFact({
       icon: 'bg-info/15 text-info ring-info/30',
       rail: 'bg-info/100',
       value:
-        'border-info/20 bg-card/80 text-info shadow-[0_1px_2px_rgba(37,99,235,0.08)]',
+        'border-info/20 bg-card/80 text-info shadow-[0_1px_2px_hsl(var(--info)/0.08)]',
     },
     green: {
       shell: 'border-success/20 bg-success/5',

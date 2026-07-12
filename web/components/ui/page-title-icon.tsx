@@ -52,6 +52,7 @@ export function PageTitleIcon({
       src={`/page-title-icons/${name}.png`}
       alt=""
       aria-hidden="true"
+      data-theme-illustration="page-title"
       draggable={false}
       width={64}
       height={64}

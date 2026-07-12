@@ -493,7 +493,7 @@ function HistoryPageContent({
               <div className="sticky top-0 z-20 border-b border-border/50 px-2 pt-2 pb-1.5 space-y-1 min-w-[19.5rem] backdrop-blur-md bg-background/80">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <div className="flex size-9 shrink-0 items-center justify-center rounded-2xl border border-info/30 bg-[radial-gradient(circle_at_34%_24%,rgba(255,255,255,0.98),rgba(226,243,255,0.86)_48%,rgba(219,234,254,0.66)_100%)] text-primary shadow-[0_8px_18px_rgba(37,99,235,0.12)] ring-1 ring-white/80">
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded-2xl border border-info/30 bg-[radial-gradient(circle_at_34%_24%,hsl(var(--card)/0.98),hsl(var(--info)/0.10)_48%,hsl(var(--info)/0.14)_100%)] text-primary shadow-[0_8px_18px_hsl(var(--info)/0.12)] ring-1 ring-border/40">
                       <PageTitleIcon name="qa-history" className="size-7" />
                     </div>
                     <h2 className="text-sm font-medium text-foreground  uppercase">历史记录</h2>
@@ -810,11 +810,11 @@ function HistoryMainEmptyState() {
     <div className="flex-1 bg-muted/[0.12] p-4 md:p-6">
       <section
         data-history-main-empty="true"
-        className="relative isolate flex min-h-full items-center justify-center overflow-hidden rounded-[32px] border border-info/20 bg-[linear-gradient(135deg,rgba(14,165,233,0.08),transparent_42%),radial-gradient(circle_at_50%_105%,rgba(59,130,246,0.10),transparent_45%)] px-8 py-12 text-center shadow-soft"
+        className="relative isolate flex min-h-full items-center justify-center overflow-hidden rounded-[32px] border border-info/20 bg-[linear-gradient(135deg,hsl(var(--info)/0.08),transparent_42%),radial-gradient(circle_at_50%_105%,hsl(var(--info)/0.10),transparent_45%)] px-8 py-12 text-center shadow-soft"
       >
         <div
           aria-hidden="true"
-          className="absolute inset-0 bg-[linear-gradient(to_right,rgba(14,165,233,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(14,165,233,0.07)_1px,transparent_1px)] bg-[size:44px_44px] opacity-35"
+          className="absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--info)/0.08)_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--info)/0.07)_1px,transparent_1px)] bg-[size:44px_44px] opacity-35"
         />
         <div
           aria-hidden="true"

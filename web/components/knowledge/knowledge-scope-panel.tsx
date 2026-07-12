@@ -148,7 +148,7 @@ export function KnowledgeScopePanel({
   const header = (
     <div className="space-y-2.5">
       <div className="flex items-start gap-2.5">
-        <div className="relative flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-info/30 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.11))] text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_16px_28px_-24px_hsl(var(--info)/0.72)] dark:border-sky-300/20 dark:bg-background/70">
+        <div className="relative flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-info/30 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.11))] text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_16px_28px_-24px_hsl(var(--info)/0.72)] dark:bg-background/70">
           <span className="pointer-events-none absolute inset-x-1.5 top-1 h-px bg-card/80" />
           <span className="pointer-events-none absolute -right-2 -top-2 size-7 rounded-full bg-info/20 blur-xl" />
           <Filter className="relative h-3.5 w-3.5" />
@@ -160,7 +160,7 @@ export function KnowledgeScopePanel({
           <div className="mt-1 text-[13px] font-semibold leading-none text-foreground/92">
             导航
           </div>
-          <div className="mt-1.5 inline-flex max-w-full items-center rounded-full border border-info/30 bg-info/5 px-2 py-0.5 text-[10px] font-medium text-info dark:border-sky-300/15 dark:bg-sky-300/10 dark:text-sky-200">
+          <div className="mt-1.5 inline-flex max-w-full items-center rounded-full border border-info/30 bg-info/5 px-2 py-0.5 text-[10px] font-medium text-info">
             Scope Navigator
           </div>
           <p className="sr-only">

@@ -1105,8 +1105,8 @@ function TraceCitationDiffList({
           variant="soft"
           className={cn(
             'text-[11px]',
-            tone === 'added' ? 'border-success/20 bg-success/10 text-success dark:text-emerald-300' : undefined,
-            tone === 'removed' ? 'border-warning/20 bg-warning/10 text-warning dark:text-amber-300' : undefined
+            tone === 'added' ? 'border-success/20 bg-success/10 text-success' : undefined,
+            tone === 'removed' ? 'border-warning/20 bg-warning/10 text-warning' : undefined
           )}
         >
           {items.length}
@@ -1194,7 +1194,7 @@ function TraceCitationScoreShiftList({
                     <span className="font-mono">
                       A={item.scoreA == null ? '—' : item.scoreA.toFixed(3)} → B={item.scoreB == null ? '—' : item.scoreB.toFixed(3)}
                     </span>
-                    <span className={cn('font-mono', item.scoreDelta >= 0 ? 'text-success dark:text-emerald-400' : 'text-warning dark:text-amber-400')}>
+                    <span className={cn('font-mono', item.scoreDelta >= 0 ? 'text-success' : 'text-warning')}>
                       Δ {item.scoreDelta.toFixed(3)}
                     </span>
                   </div>
@@ -1598,7 +1598,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
           </span>
         }
         icon={Route}
-        iconClassName="text-info dark:text-sky-400"
+        iconClassName="text-info"
       />
     )
   }
@@ -1615,7 +1615,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
           </span>
         }
         icon={Quote}
-        iconClassName="text-info dark:text-sky-400"
+        iconClassName="text-info"
       >
         <Button variant="outline" onClick={load} className="rounded-xl">
           {t("panel.actions.refresh")}
@@ -1633,7 +1633,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
         <div className="flex items-center justify-between gap-3 border-b border-border/60 px-3 py-2.5">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <Route className="h-4 w-4 text-info dark:text-sky-400" />
+              <Route className="h-4 w-4 text-info" />
               <div className="text-sm font-semibold">{t("panel.header.title")}</div>
               <Badge variant="soft" className="text-[11px]">
                 {items.length} 条
@@ -1867,13 +1867,13 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                               <div className="mt-1 text-lg font-semibold text-foreground">{localCitationDiff.sharedCount}</div>
                             </div>
                             <div className="rounded-xl border border-success/20 bg-success/5 px-3 py-3">
-                              <div className="text-[11px] font-semibold uppercase text-success dark:text-emerald-300">
+                              <div className="text-[11px] font-semibold uppercase text-success">
                                 {t("panel.evidenceDrift.addedSummaryTitle")}
                               </div>
                               <div className="mt-1 text-lg font-semibold text-foreground">{localCitationDiff.addedCount}</div>
                             </div>
                             <div className="rounded-xl border border-warning/20 bg-warning/5 px-3 py-3">
-                              <div className="text-[11px] font-semibold uppercase text-warning dark:text-amber-300">
+                              <div className="text-[11px] font-semibold uppercase text-warning">
                                 {t("panel.evidenceDrift.removedSummaryTitle")}
                               </div>
                               <div className="mt-1 text-lg font-semibold text-foreground">{localCitationDiff.removedCount}</div>
@@ -1971,14 +1971,14 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
 
               <div className="grid grid-cols-3 gap-2">
                 <Panel variant="muted" className="flex items-center gap-2 px-3 py-2">
-                  <Timer className="h-4 w-4 text-info dark:text-sky-400" />
+                  <Timer className="h-4 w-4 text-info" />
                   <div className="min-w-0">
                     <div className="text-xs font-semibold text-foreground">{t("panel.pipelineSummary.retrieve")}</div>
                     <div className="text-xs text-muted-foreground">{formatSec(selected?.retrieval?.elapsed_sec)}</div>
                   </div>
                 </Panel>
                 <Panel variant="muted" className="flex items-center gap-2 px-3 py-2">
-                  <Database className="h-4 w-4 text-info dark:text-sky-400" />
+                  <Database className="h-4 w-4 text-info" />
                   <div className="min-w-0">
                     <div className="text-xs font-semibold text-foreground">{t("panel.pipelineSummary.reranker")}</div>
                     <div className="truncate text-xs text-muted-foreground">
@@ -1987,7 +1987,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                   </div>
                 </Panel>
                 <Panel variant="muted" className="flex items-center gap-2 px-3 py-2">
-                  <Quote className="h-4 w-4 text-info dark:text-sky-400" />
+                  <Quote className="h-4 w-4 text-info" />
                   <div className="min-w-0">
                     <div className="text-xs font-semibold text-foreground">{t("panel.pipelineSummary.citations")}</div>
                     <div className="text-xs text-muted-foreground">{selected.citations_count}</div>

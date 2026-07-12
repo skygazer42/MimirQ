@@ -1059,7 +1059,7 @@ export function ParsingActiveFilePane({
  <div className="relative">
  <Loader2 className="mx-auto h-12 w-12 animate-spin text-info motion-reduce:animate-none dark:text-info" />
  <div className="absolute inset-0 flex items-center justify-center">
- <span className="text-xs font-medium text-info dark:text-sky-200">
+ <span className="text-xs font-medium text-info">
  {Math.round(activeFile.progress || 0)}%
  </span>
  </div>
@@ -1215,13 +1215,13 @@ export function ParsingActiveFilePane({
  className={cn(
  'group w-full overflow-hidden rounded-xl border text-left transition',
  isActive
- ? 'border-warning/70 bg-warning/5 shadow-soft ring-1 ring-warning/40 dark:bg-amber-950/24'
- : 'border-warning/30 bg-card/90 hover:border-warning/70 hover:bg-warning/5 dark:border-amber-900/50 dark:bg-background/35 dark:hover:bg-warning/18'
+ ? 'border-warning/70 bg-warning/5 shadow-soft ring-1 ring-warning/40'
+ : 'border-warning/30 bg-card/90 hover:border-warning/70 hover:bg-warning/5 dark:bg-background/35 dark:hover:bg-warning/18'
  )}
  title={String(element.text || element.id || '')}
  >
  <div className="flex gap-3 p-3">
- <div className="relative h-24 w-28 shrink-0 overflow-hidden rounded-lg border border-warning/30 bg-[linear-gradient(135deg,hsl(var(--muted)),hsl(var(--background)))] dark:border-amber-900/50">
+ <div className="relative h-24 w-28 shrink-0 overflow-hidden rounded-lg border border-warning/30 bg-[linear-gradient(135deg,hsl(var(--muted)),hsl(var(--background)))]">
  {reviewEntry.src ? (
  <AuthImage
  src={reviewEntry.src}
@@ -1237,7 +1237,7 @@ export function ParsingActiveFilePane({
  </div>
  <div className="min-w-0 flex-1">
  <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
- <span className="inline-flex items-center rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[11px] font-medium text-warning dark:border-amber-900/60 dark:bg-amber-950/35 dark:text-amber-200">
+ <span className="inline-flex items-center rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[11px] font-medium text-warning">
  图片
  </span>
  <span className="font-mono text-[11px] text-muted-foreground">片段 {index + 1}</span>

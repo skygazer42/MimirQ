@@ -34,7 +34,7 @@ export function EmptyState({
   }
 
   return (
-    <div className="rounded-[2rem] border border-border/60 bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.12),transparent_38%),linear-gradient(180deg,rgba(255,255,255,0.7),rgba(255,255,255,0.9))] px-6 py-10 text-left shadow-soft dark:bg-[radial-gradient(circle_at_top,rgba(14,165,233,0.16),transparent_32%),linear-gradient(180deg,rgba(14,14,16,0.92),rgba(12,12,15,0.96))]">
+    <div className="rounded-[2rem] border border-border/60 bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.12),transparent_38%),linear-gradient(180deg,hsl(var(--card)/0.7),hsl(var(--card)/0.9))] px-6 py-10 text-left shadow-soft dark:bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.16),transparent_32%),linear-gradient(180deg,hsl(var(--card)/0.92),hsl(var(--background)/0.96))]">
       <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-info/20 bg-card/80 shadow-soft">
         <Shapes className="h-7 w-7 text-info" />
       </div>
@@ -67,7 +67,7 @@ export function EmptyState({
             </div>
           </div>
           <div className="relative overflow-hidden rounded-[1.25rem] border border-border/50 bg-background/80 p-3">
-            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,rgba(56,189,248,0.08)_50%,transparent_100%)] animate-pulse" />
+            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,hsl(var(--info)/0.08)_50%,transparent_100%)] animate-pulse" />
             <svg viewBox="0 0 640 220" className="h-[220px] w-full" aria-hidden="true">
               <path d="M20 182 H620" fill="none" stroke="currentColor" strokeWidth="1" className="text-border/70" />
               <path d="M20 134 H620" fill="none" stroke="currentColor" strokeWidth="1" className="text-border/40" />

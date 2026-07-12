@@ -161,7 +161,7 @@ export function GraphPageHeader({
           </div>
           <div className="flex items-center gap-2 rounded-full border border-border/60 bg-background/76 px-2.5 py-1.5 shadow-none">
             <div className="flex items-center gap-1.5 text-xs font-medium text-foreground/88">
-              <Network className={cn('h-3.5 w-3.5', includeRelationLinks ? 'text-success dark:text-teal-300' : 'text-muted-foreground')} />
+              <Network className={cn('h-3.5 w-3.5', includeRelationLinks ? 'text-success' : 'text-muted-foreground')} />
               <span>关系</span>
             </div>
             <Switch
@@ -209,7 +209,7 @@ export function GraphPageHeader({
             知识图谱
           </span>
         </h1>
-        <span className="shrink-0 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary shadow-sm dark:text-blue-300">
+        <span className="shrink-0 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary shadow-sm">
           {viewMode === '3d' ? '3D 图谱' : '2D 图谱'}
         </span>
       </div>

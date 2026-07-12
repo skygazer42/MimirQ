@@ -268,14 +268,14 @@ export default function DatasetWorkflowPage() {
         size="full"
         density="system-dense"
         bodyGutter="dense"
-        bodyClassName="h-full overflow-hidden bg-[radial-gradient(circle_at_18%_0%,rgba(20,184,166,0.10),transparent_28%),linear-gradient(180deg,rgba(248,250,252,0.96),rgba(241,245,249,0.68))] pb-3 dark:bg-[radial-gradient(circle_at_18%_0%,rgba(20,184,166,0.13),transparent_28%),linear-gradient(180deg,rgba(15,23,42,0.96),rgba(15,23,42,0.86))]"
+        bodyClassName="h-full overflow-hidden bg-[radial-gradient(circle_at_18%_0%,hsl(var(--info)/0.08),transparent_28%),linear-gradient(180deg,hsl(var(--background)/0.96),hsl(var(--surface-2)/0.68))] pb-3"
         bodyContainerClassName="h-full min-h-0 overflow-hidden"
         top={
           <div className={workflowHeroCard}>
             <div className="absolute inset-y-4 left-3 w-1 rounded-full bg-[linear-gradient(180deg,hsl(var(--primary)),hsl(var(--info)/0.82),hsl(var(--primary)/0.42))]" />
             <div className="relative flex flex-col gap-3 px-5 py-3.5 pl-8 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 items-start gap-3.5">
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-success/30 bg-card/82 text-success shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_26px_rgba(20,184,166,0.14)] dark:border-teal-500/25 dark:bg-teal-500/10 dark:text-teal-300">
+                <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-success/30 bg-card/82 text-success shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_26px_rgba(20,184,166,0.14)]">
                   <Layers className="size-5" />
                 </div>
                 <div className="min-w-0">
@@ -321,8 +321,8 @@ export default function DatasetWorkflowPage() {
                 <div className={cn(
                   'inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]',
                   hasUnsavedLayoutChanges
-                    ? 'border-warning/30 bg-warning/5 text-warning dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300'
-                    : 'border-success/30 bg-success/5 text-success dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
+                    ? 'border-warning/30 bg-warning/5 text-warning'
+                    : 'border-success/30 bg-success/5 text-success'
                 )}>
                   <span className={cn('size-2 rounded-full', loading ? 'animate-pulse bg-info' : hasUnsavedLayoutChanges ? 'bg-warning' : 'bg-success')} />
                   {layoutStatusLabel}

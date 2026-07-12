@@ -185,7 +185,7 @@ export default function DocumentHealthPage({ documentId }: Readonly<{ documentId
         size="full"
         density="system-dense"
         bodyGutter="dense"
-        bodyClassName="bg-[radial-gradient(circle_at_18%_0%,rgba(14,165,233,0.10),transparent_28%),linear-gradient(180deg,rgba(248,250,252,0.96),rgba(241,245,249,0.68))] pb-3 dark:bg-[radial-gradient(circle_at_18%_0%,rgba(14,165,233,0.14),transparent_28%),linear-gradient(180deg,rgba(15,23,42,0.96),rgba(15,23,42,0.86))]"
+        bodyClassName="bg-[radial-gradient(circle_at_18%_0%,hsl(var(--info)/0.10),transparent_28%),linear-gradient(180deg,hsl(var(--background)/0.96),hsl(var(--surface-2)/0.68))] pb-3"
         description={
           <div className="space-y-1">
             <div className="text-muted-foreground">

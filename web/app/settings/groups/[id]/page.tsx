@@ -282,7 +282,7 @@ function SettingsGroupDetailPageContent() {
         title={title}
         description="编辑组信息，并维护组成员（user_id）"
         icon={Users}
-        iconColor="text-primary dark:text-indigo-400"
+        iconColor="text-primary"
         size="6xl"
         actions={
           <div className="flex items-center gap-2">

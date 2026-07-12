@@ -92,8 +92,7 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
       padding="md"
       className={cn(
         'relative overflow-hidden border-border/60 shadow-[0_12px_36px_rgba(15,23,42,0.08)] transition-all duration-200 motion-reduce:transition-none',
-        'bg-[linear-gradient(135deg,rgba(248,250,252,0.98),rgba(239,248,255,0.86)_48%,rgba(244,255,249,0.72))]',
-        'dark:border-slate-800/90 dark:bg-[linear-gradient(135deg,rgba(15,23,42,0.96),rgba(8,47,73,0.72)_52%,rgba(6,78,59,0.46))]',
+        'bg-[linear-gradient(135deg,hsl(var(--card)/0.98),hsl(var(--info)/0.08)_48%,hsl(var(--success)/0.06))]',
         panelOpen ? 'rounded-2xl' : 'rounded-[1.35rem] py-3'
       )}
     >
@@ -134,7 +133,7 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
                 {QUICK_ACTIONS.map((label) => (
                   <span
                     key={label}
-                    className="rounded-full border border-border/55 bg-background/78 px-2.5 py-1 text-[11px] font-medium text-muted-foreground shadow-[0_1px_0_hsl(var(--background)/0.9)_inset] backdrop-blur dark:border-border/20 dark:bg-background/20 dark:text-slate-300"
+                    className="rounded-full border border-border/55 bg-background/78 px-2.5 py-1 text-[11px] font-medium text-muted-foreground shadow-[0_1px_0_hsl(var(--background)/0.9)_inset] backdrop-blur dark:border-border/20 dark:bg-background/20"
                   >
                     {label}
                   </span>
@@ -148,7 +147,7 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
             className={cn(
               'w-fit rounded-full border px-2.5 py-1 text-[11px] font-semibold shadow-sm',
               hasConversation
-                ? 'border-success/25 bg-success/10 text-success dark:text-emerald-200'
+                ? 'border-success/25 bg-success/10 text-success'
                 : 'border-muted-foreground/15 bg-muted/40 text-muted-foreground'
             )}
           >

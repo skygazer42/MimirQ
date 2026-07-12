@@ -1511,7 +1511,7 @@ export function ParsingWorkbenchShell({
                       className="absolute inset-0 bg-[linear-gradient(hsl(var(--info)/0.055)_1px,transparent_1px),linear-gradient(90deg,hsl(var(--info)/0.055)_1px,transparent_1px)] bg-[size:42px_42px]"
                     />
                     <div className="relative max-w-md px-8 text-center">
-                      <div className="mx-auto mb-6 flex size-28 items-center justify-center rounded-[30px] border border-info/20 bg-card shadow-[0_24px_58px_-40px_rgba(37,99,235,0.75)]">
+                      <div className="mx-auto mb-6 flex size-28 items-center justify-center rounded-[30px] border border-info/20 bg-card shadow-[0_24px_58px_-40px_hsl(var(--info)/0.75)]">
                         <div className="relative flex h-20 w-16 items-center justify-center rounded-[18px] bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.55))] shadow-[0_14px_30px_-20px_rgba(15,23,42,0.45)]">
                           <div className="absolute right-0 top-0 size-7 rounded-bl-2xl bg-info/15" />
                           <div className="space-y-2">
@@ -1519,7 +1519,7 @@ export function ParsingWorkbenchShell({
                             <div className="h-1 w-11 rounded-full bg-info/35" />
                             <div className="h-1 w-10 rounded-full bg-info/25" />
                           </div>
-                          <span className="absolute -bottom-3 -right-3 flex size-10 items-center justify-center rounded-full bg-[#2563eb] text-primary-foreground shadow-[0_18px_32px_-18px_rgba(37,99,235,0.75)]">
+                          <span className="absolute -bottom-3 -right-3 flex size-10 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_18px_32px_-18px_hsl(var(--primary)/0.75)]">
                             <UploadCloud className="size-4" />
                           </span>
                         </div>
@@ -1530,7 +1530,7 @@ export function ParsingWorkbenchShell({
                       <p className="mx-auto max-w-[34ch] text-[14px] leading-6 text-muted-foreground">
                         {t('emptyDescription')}
                       </p>
-                      <span className="mt-6 inline-flex h-11 min-w-36 items-center justify-center gap-2 rounded-[16px] bg-[#2563eb] px-6 text-[14px] font-semibold text-primary-foreground shadow-[0_18px_34px_-20px_rgba(37,99,235,0.78)] transition-colors hover:bg-[#1d4ed8]">
+                      <span className="mt-6 inline-flex h-11 min-w-36 items-center justify-center gap-2 rounded-[16px] bg-primary px-6 text-[14px] font-semibold text-primary-foreground shadow-[0_18px_34px_-20px_hsl(var(--primary)/0.78)] transition-colors hover:bg-primary/90">
                         <UploadCloud className="size-4" />
                         {t('sidebar.uploadFile')}
                       </span>

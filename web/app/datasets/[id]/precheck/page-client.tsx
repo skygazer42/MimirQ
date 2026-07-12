@@ -153,9 +153,9 @@ function formatRunStatus(status?: string | null): string {
 
 function getRunStatusTone(status?: string | null): string {
   const normalized = String(status || '').toLowerCase()
-  if (normalized === 'completed') return 'border-success/30 bg-success/10 text-success dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
-  if (normalized === 'running' || normalized === 'pending') return 'border-info/30 bg-info/10 text-info dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300'
-  if (normalized === 'failed') return 'border-destructive/30 bg-destructive/10 text-destructive dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300'
+  if (normalized === 'completed') return 'border-success/30 bg-success/10 text-success'
+  if (normalized === 'running' || normalized === 'pending') return 'border-info/30 bg-info/10 text-info'
+  if (normalized === 'failed') return 'border-destructive/30 bg-destructive/10 text-destructive'
   return 'border-muted-foreground/20 bg-muted/50 text-muted-foreground'
 }
 
@@ -652,11 +652,11 @@ export default function DatasetPrecheckPage() {
   const latestRunProgress = selectedRun?.progress ?? 0
   const hasPrecheckRuns = runs.length > 0
   const showPrecheckEmptyState = !loading && !hasPrecheckRuns
-  const precheckHeroCard = 'precheckHeroCard relative overflow-hidden rounded-2xl border border-border/60 bg-[linear-gradient(135deg,hsl(var(--card)/0.98),hsl(var(--background)/0.9)_58%,hsl(var(--card)/0.76))] shadow-[0_18px_50px_rgba(15,23,42,0.08)] ring-1 ring-info/20 before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_18%_12%,hsl(var(--info)/0.14),transparent_28%),linear-gradient(90deg,rgba(14,165,233,0.035)_1px,transparent_1px),linear-gradient(0deg,rgba(14,165,233,0.035)_1px,transparent_1px)] before:bg-[length:auto,28px_28px,28px_28px] dark:border-border/60 dark:bg-card/95 dark:ring-sky-500/15'
+  const precheckHeroCard = 'precheckHeroCard relative overflow-hidden rounded-2xl border border-border/60 bg-[linear-gradient(135deg,hsl(var(--card)/0.98),hsl(var(--background)/0.9)_58%,hsl(var(--card)/0.76))] shadow-[0_18px_50px_rgba(15,23,42,0.08)] ring-1 ring-info/20 before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_18%_12%,hsl(var(--info)/0.14),transparent_28%),linear-gradient(90deg,hsl(var(--info)/0.035)_1px,transparent_1px),linear-gradient(0deg,hsl(var(--info)/0.035)_1px,transparent_1px)] before:bg-[length:auto,28px_28px,28px_28px] dark:border-border/60 dark:bg-card/95'
   const precheckToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-2xl border border-border/60 bg-card/70 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.055)] ring-1 ring-border/50 backdrop-blur dark:border-border/60 dark:bg-card/70 dark:ring-white/5'
   const precheckToolbarButtonClass = 'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-muted-foreground shadow-none hover:bg-card/95 hover:text-foreground hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
   const precheckToolbarExportButtonClass = 'h-8 gap-1.5 rounded-xl border-border/60 bg-card/75 px-2.5 text-[12px] font-medium text-foreground/85 shadow-[0_8px_20px_rgba(15,23,42,0.045)] hover:bg-card hover:text-foreground dark:border-border/60 dark:bg-card/70 dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
-  const precheckToolbarPrimaryButtonClass = 'h-8 min-w-[96px] gap-1.5 rounded-xl bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] px-3 text-[12px] font-semibold text-primary-foreground shadow-[0_10px_24px_rgba(14,165,233,0.24)] hover:bg-[linear-gradient(90deg,hsl(var(--primary)/0.92),hsl(var(--info)/0.92))] [&_svg]:size-3.5'
+  const precheckToolbarPrimaryButtonClass = 'h-8 min-w-[96px] gap-1.5 rounded-xl bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] px-3 text-[12px] font-semibold text-primary-foreground shadow-[0_10px_24px_hsl(var(--info)/0.24)] hover:bg-[linear-gradient(90deg,hsl(var(--primary)/0.92),hsl(var(--info)/0.92))] [&_svg]:size-3.5'
   const runRootPath =
     readStringField(selectedRun?.config, 'root_path') ||
     readStringField(selectedRun?.artifacts, 'root_path') ||
@@ -681,14 +681,14 @@ export default function DatasetPrecheckPage() {
         size="full"
         density="system-dense"
         bodyGutter="dense"
-        bodyClassName="h-full bg-[radial-gradient(circle_at_18%_0%,rgba(14,165,233,0.10),transparent_28%),linear-gradient(180deg,rgba(248,250,252,0.96),rgba(241,245,249,0.68))] pb-3 dark:bg-[radial-gradient(circle_at_18%_0%,rgba(14,165,233,0.14),transparent_28%),linear-gradient(180deg,rgba(15,23,42,0.96),rgba(15,23,42,0.86))]"
+        bodyClassName="h-full bg-[radial-gradient(circle_at_18%_0%,hsl(var(--info)/0.10),transparent_28%),linear-gradient(180deg,hsl(var(--background)/0.96),hsl(var(--surface-2)/0.68))] pb-3"
         bodyContainerClassName="h-full min-h-full"
         top={
           <div className={precheckHeroCard}>
             <div className="absolute inset-y-4 left-3 w-1 rounded-full bg-[linear-gradient(180deg,hsl(var(--primary)),hsl(var(--info)/0.78),hsl(var(--primary)/0.36))]" />
             <div className="relative flex flex-col gap-3 px-5 py-3.5 pl-8 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 items-start gap-3.5">
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-info/30 bg-card/82 text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_26px_rgba(14,165,233,0.14)] dark:border-sky-500/25 dark:bg-sky-500/10">
+                <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-info/30 bg-card/82 text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_26px_hsl(var(--info)/0.14)] dark:bg-info/10">
                   <FileSearch className="size-5" />
                 </div>
                 <div className="min-w-0">
@@ -732,7 +732,7 @@ export default function DatasetPrecheckPage() {
               </div>
 
               <div className="flex shrink-0 items-center gap-2 lg:self-end">
-                <div className="inline-flex h-9 items-center gap-2 rounded-lg border border-success/30 bg-success/5 px-3 text-[13px] font-medium text-success shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+                <div className="inline-flex h-9 items-center gap-2 rounded-lg border border-success/30 bg-success/5 px-3 text-[13px] font-medium text-success shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
                   <span className="size-2 rounded-full bg-success" />
                   数据良好
                 </div>
@@ -826,7 +826,7 @@ export default function DatasetPrecheckPage() {
               <div className="space-y-3.5 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    <div className="flex size-9 items-center justify-center rounded-xl border border-info/30 bg-info/5 text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-sky-500/25 dark:bg-sky-500/10">
+                    <div className="flex size-9 items-center justify-center rounded-xl border border-info/30 bg-info/5 text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] dark:bg-info/10">
                       <ListChecks className="size-[18px]" />
                     </div>
                     <div>
@@ -843,7 +843,7 @@ export default function DatasetPrecheckPage() {
                   </div>
                 </div>
 
-                <div className="flex items-start gap-2 rounded-xl border border-info/30 bg-[linear-gradient(90deg,rgba(240,249,255,0.62),rgba(236,253,245,0.32))] px-3 py-2 text-[11px] leading-4 text-info/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:border-sky-500/25 dark:bg-sky-500/10 dark:text-sky-200/70">
+                <div className="flex items-start gap-2 rounded-xl border border-info/30 bg-[linear-gradient(90deg,hsl(var(--info)/0.08),hsl(var(--success)/0.05))] px-3 py-2 text-[11px] leading-4 text-info/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:bg-info/10">
                   <Info className="mt-0.5 size-3.5 shrink-0" />
                   <span>当前数据源为 LOCAL_SCAN_ENABLED，允许远程根目录 / uploads，仅生成质量画像，不入库、不切片。</span>
                 </div>
@@ -908,7 +908,7 @@ export default function DatasetPrecheckPage() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-2.5 lg:grid-cols-3">
-                  <div className="rounded-2xl border border-info/20 bg-[linear-gradient(135deg,hsl(var(--card)/0.92),hsl(var(--info)/0.08))] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.86),0_8px_24px_rgba(15,23,42,0.035)] dark:border-sky-500/15 dark:from-card dark:to-sky-500/5">
+                  <div className="rounded-2xl border border-info/20 bg-[linear-gradient(135deg,hsl(var(--card)/0.92),hsl(var(--info)/0.08))] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.86),0_8px_24px_rgba(15,23,42,0.035)]">
                     <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                       <FileDigit className="size-3.5" />
                       基础画像
@@ -931,7 +931,7 @@ export default function DatasetPrecheckPage() {
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-warning/20 bg-[linear-gradient(135deg,hsl(var(--card)/0.92),hsl(var(--warning)/0.10))] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.86),0_8px_24px_rgba(15,23,42,0.035)] dark:border-amber-500/15 dark:from-card dark:to-amber-500/5">
+                  <div className="rounded-2xl border border-warning/20 bg-[linear-gradient(135deg,hsl(var(--card)/0.92),hsl(var(--warning)/0.10))] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.86),0_8px_24px_rgba(15,23,42,0.035)] dark:from-card">
                     <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                       <Shield className="size-3.5" />
                       风险扫描
@@ -961,7 +961,7 @@ export default function DatasetPrecheckPage() {
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-success/20 bg-[linear-gradient(135deg,hsl(var(--card)/0.92),hsl(var(--success)/0.10))] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.86),0_8px_24px_rgba(15,23,42,0.035)] dark:border-emerald-500/15 dark:from-card dark:to-emerald-500/5">
+                  <div className="rounded-2xl border border-success/20 bg-[linear-gradient(135deg,hsl(var(--card)/0.92),hsl(var(--success)/0.10))] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.86),0_8px_24px_rgba(15,23,42,0.035)] dark:from-card">
                     <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                       <Database className="size-3.5" />
                       复用策略
@@ -1034,9 +1034,9 @@ export default function DatasetPrecheckPage() {
 
               {!hasRunOutput && !scanRunning ? (
                 <div className="p-4">
-                  <div className="rounded-2xl border border-dashed border-info/30 bg-[radial-gradient(circle_at_18%_0%,rgba(14,165,233,0.10),transparent_35%),linear-gradient(135deg,rgba(240,249,255,0.92),rgba(255,255,255,0.94)_48%,rgba(255,251,235,0.52))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-sky-500/25 dark:from-sky-500/10 dark:to-amber-500/5">
+                  <div className="rounded-2xl border border-dashed border-info/30 bg-[radial-gradient(circle_at_18%_0%,hsl(var(--info)/0.10),transparent_35%),linear-gradient(135deg,hsl(var(--card)/0.92),hsl(var(--background)/0.94)_48%,hsl(var(--warning)/0.05))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]">
                     <div className="flex items-start gap-3">
-                      <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-info/30 bg-card/82 text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_8px_20px_rgba(14,165,233,0.12)] dark:border-sky-500/30 dark:bg-background/60">
+                      <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-info/30 bg-card/82 text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_8px_20px_hsl(var(--info)/0.12)] dark:bg-background/60">
                         <Clock3 className="size-4" />
                       </div>
                       <div className="min-w-0">
@@ -1067,7 +1067,7 @@ export default function DatasetPrecheckPage() {
                       </div>
                     </div>
 
-                    <div className="mt-3 flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-[11px] text-warning/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200/70">
+                    <div className="mt-3 flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-[11px] text-warning/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]">
                       <AlertCircle className="size-3.5 shrink-0" />
                       尚未运行扫描，以上信息将在执行后更新。
                     </div>

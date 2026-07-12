@@ -31,7 +31,7 @@ export function HighlightLayer({ content, query }: Readonly<HighlightLayerProps>
     out.push(
       <mark
         key={`${idx}-${matched}`}
-        className="rounded bg-warning/15 px-0.5 text-foreground dark:bg-yellow-400/20"
+        className="rounded bg-warning/15 px-0.5 text-foreground"
       >
         {content.slice(idx, idx + matched.length)}
       </mark>

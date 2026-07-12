@@ -449,7 +449,7 @@ export default function KnowledgePage() {
   const documentScopeSummary = useMemo(
     () => (
       <div className="inline-flex max-w-full flex-wrap items-center gap-2 rounded-2xl border border-info/18 bg-[linear-gradient(90deg,hsl(var(--background)/0.94),hsl(var(--info)/0.08))] px-3.5 py-2 text-[12px] shadow-md shadow-[0_14px_28px_-22px_hsl(var(--info)/0.35)] backdrop-blur-sm dark:border-info/16 dark:bg-[linear-gradient(90deg,hsl(var(--background)/0.42),hsl(var(--info)/0.14))]">
-        <span className="inline-flex items-center gap-2 font-bold text-foreground/85 dark:text-slate-200">
+        <span className="inline-flex items-center gap-2 font-bold text-foreground/85">
           <Database className="size-4 text-info" />
           数据范围
           <span className="max-w-[14rem] truncate text-[12px] font-black text-foreground">
@@ -457,18 +457,18 @@ export default function KnowledgePage() {
           </span>
         </span>
         <span className="h-4 w-px bg-info/15" />
-        <span className="inline-flex items-center gap-2 font-bold text-foreground/85 dark:text-slate-200">
+        <span className="inline-flex items-center gap-2 font-bold text-foreground/85">
           <Eye className="size-4 text-info" />
           可见
-          <span className="font-mono font-black tabular-nums text-info dark:text-sky-400">
+          <span className="font-mono font-black tabular-nums text-info">
             {filteredDocuments.length}
           </span>
         </span>
         <span className="h-4 w-px bg-info/15" />
-        <span className="inline-flex items-center gap-2 font-bold text-foreground/85 dark:text-slate-200">
+        <span className="inline-flex items-center gap-2 font-bold text-foreground/85">
           <Activity className="size-4 text-success" />
           生命周期
-          <span className="text-[12px] font-black text-success dark:text-emerald-400">
+          <span className="text-[12px] font-black text-success">
             {lifecycleFilter}
           </span>
         </span>
@@ -744,7 +744,7 @@ export default function KnowledgePage() {
                       {t('header.title')}
                     </span>
                   </h1>
-                  <p className="text-[13px] font-semibold leading-5 text-info/90 dark:text-sky-400">
+                  <p className="text-[13px] font-semibold leading-5 text-info/90">
                     {t('header.description')}
                   </p>
                 </div>
@@ -752,7 +752,7 @@ export default function KnowledgePage() {
             </div>
             <div className="relative grid min-w-0 gap-3 sm:grid-cols-2 lg:min-w-[500px]">
               <div className={cn(KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS, 'px-4 py-3 text-[12px]')}>
-                <span className="inline-flex items-center gap-2 font-bold text-foreground/85 dark:text-slate-200">
+                <span className="inline-flex items-center gap-2 font-bold text-foreground/85">
                   <span
                     className="size-1.5 rounded-full bg-info shadow-sm shadow-info/20"
                     aria-hidden
@@ -763,23 +763,23 @@ export default function KnowledgePage() {
                   {selectedDatasetLabel || scopeT('dataset.all')}
                 </span>
                 <span className="h-4 w-px bg-info/15" />
-                <span className="font-bold text-muted-foreground dark:text-slate-300">任务</span>
-                <span className="font-mono font-black tabular-nums text-info dark:text-sky-400">
+                <span className="font-bold text-muted-foreground">任务</span>
+                <span className="font-mono font-black tabular-nums text-info">
                   {activeTasksCount}
                 </span>
               </div>
               <div className={cn(KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS, 'px-4 py-3 text-[12px]')}>
-                <span className="inline-flex items-center gap-2 font-bold text-foreground/85 dark:text-slate-200">
+                <span className="inline-flex items-center gap-2 font-bold text-foreground/85">
                   <Database className="size-4 text-info" />
                   采集
                 </span>
                 <ArrowRight className="size-4 shrink-0 text-info" />
-                <span className="inline-flex items-center gap-2 font-bold text-foreground/85 dark:text-slate-200">
+                <span className="inline-flex items-center gap-2 font-bold text-foreground/85">
                   <FileStack className="size-4 text-info" />
                   资产
                 </span>
                 <ArrowRight className="size-4 shrink-0 text-info" />
-                <span className="inline-flex items-center gap-2 font-bold text-foreground/85 dark:text-slate-200">
+                <span className="inline-flex items-center gap-2 font-bold text-foreground/85">
                   <Search className="size-4 text-info" />
                   验证
                 </span>
@@ -821,14 +821,14 @@ export default function KnowledgePage() {
                       <card.icon className="size-5" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-[11px] font-black uppercase tracking-[0.14em] text-muted-foreground dark:text-slate-400">
+                      <div className="truncate text-[11px] font-black uppercase tracking-[0.14em] text-muted-foreground">
                         {card.label}
                       </div>
                       <div className="mt-1.5 flex min-w-0 items-baseline gap-2">
                         <span className="truncate text-[18px] font-black leading-none tabular-nums text-foreground">
                           {card.value}
                         </span>
-                        <span className="min-w-0 truncate text-[11px] font-semibold text-info dark:text-sky-400">
+                        <span className="min-w-0 truncate text-[11px] font-semibold text-info">
                           {card.caption}
                         </span>
                       </div>

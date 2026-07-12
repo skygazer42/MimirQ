@@ -143,7 +143,7 @@ function getConfidenceMeta(confidenceScore: number | null): ConfidenceMeta | nul
     return {
       label: '✓ 高置信度',
       summary: '证据与回答整体一致',
-      badgeClass: 'border-success/20 bg-success/10 text-success dark:text-emerald-300',
+      badgeClass: 'border-success/20 bg-success/10 text-success',
       lineClass: 'border-l-emerald-500/80',
     }
   }
@@ -151,14 +151,14 @@ function getConfidenceMeta(confidenceScore: number | null): ConfidenceMeta | nul
     return {
       label: '⚠ 部分支撑',
       summary: '存在有效证据，但仍建议交叉确认',
-      badgeClass: 'border-warning/20 bg-warning/10 text-warning dark:text-amber-300',
+      badgeClass: 'border-warning/20 bg-warning/10 text-warning',
       lineClass: 'border-l-amber-500/80',
     }
   }
   return {
     label: '✗ 证据不足',
     summary: '当前回答缺少足够支撑，建议继续追问',
-    badgeClass: 'border-destructive/20 bg-destructive/10 text-destructive dark:text-rose-300',
+    badgeClass: 'border-destructive/20 bg-destructive/10 text-destructive',
     lineClass: 'border-l-rose-500/80',
   }
 }

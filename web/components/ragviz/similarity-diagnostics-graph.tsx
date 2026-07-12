@@ -198,7 +198,7 @@ function DiagnosticsDetailCard({
       className={cn(
         'rounded-2xl border px-4 py-3',
         tone === 'warning'
-          ? 'border-warning/30 bg-warning/5 dark:border-orange-900/40 dark:bg-orange-950/10'
+          ? 'border-warning/30 bg-warning/5'
           : 'border-border/60 bg-background/70'
       )}
     >

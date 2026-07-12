@@ -92,6 +92,10 @@ CommonUi: {
           title: '默认海洋',
           description: '冷静蓝绿，保持当前默认观感。',
         },
+        neutral: {
+          title: '中性白',
+          description: '纯白表面、石墨文字与浅灰层级，仅保留必要的业务状态色。',
+        },
         classic: {
           title: '经典白灰',
           description: '背景 #F8F9FA，正文深灰，强调蓝色，干净现代且阅读友好。',
@@ -102,6 +106,9 @@ CommonUi: {
         },
       },
       colorLabel: '主色调',
+      useSurfaceColor: '跟随背景风格',
+      surfaceColorActive: '当前跟随背景风格（{color}），切换明暗模式时会自动保持对比度。',
+      customColorActive: '当前使用自定义强调色。',
       modeLabel: '模式',
       presetLabel: '选择主色调：{name}',
       selected: '已选中',

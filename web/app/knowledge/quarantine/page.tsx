@@ -915,9 +915,9 @@ function StatusPill({ status }: Readonly<{ status: Document['status'] }>) {
         status === 'completed' &&
           'border-success/20 bg-success/10 text-success',
         status === 'failed' &&
-          'border-destructive/20 bg-destructive/10 text-destructive dark:text-red-300',
+          'border-destructive/20 bg-destructive/10 text-destructive',
         status === 'quarantined' &&
-          'border-warning/20 bg-warning/10 text-warning dark:text-amber-300',
+          'border-warning/20 bg-warning/10 text-warning',
         status === 'pending' &&
           'border-info/20 bg-info/10 text-info',
         status === 'processing' &&
@@ -1040,7 +1040,7 @@ function QuarantineDetailPanel({
           <div className="text-[10px] font-medium uppercase text-warning">
             隔离原因 / RISKS
           </div>
-          <div className="mt-2 break-words text-xs font-mono leading-relaxed text-warning/80 dark:text-amber-200/80">
+          <div className="mt-2 break-words text-xs font-mono leading-relaxed text-warning/80">
             {selected.error_message}
           </div>
         </div>
@@ -1071,7 +1071,7 @@ function QuarantineDetailPanel({
               <Badge
                 key={reason}
                 variant="secondary"
-                className="rounded-lg border border-warning/20 bg-warning/10 px-2 py-1 text-[10px] font-medium uppercase text-warning dark:text-amber-300"
+                className="rounded-lg border border-warning/20 bg-warning/10 px-2 py-1 text-[10px] font-medium uppercase text-warning"
               >
                 {reasonLabel(reason)}
               </Badge>
@@ -1954,11 +1954,11 @@ export default function QuarantineQueuePage() {
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-info/30 bg-info/5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-info dark:border-sky-300/20 dark:bg-sky-300/10 dark:text-sky-200">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-info/30 bg-info/5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-info">
                       <Sparkles className="size-3" />
                       Quarantine Ops
                     </span>
-                    <span className="inline-flex items-center rounded-full border border-warning/30 bg-warning/5 px-2.5 py-1 text-[10px] font-medium text-warning dark:border-amber-300/15 dark:bg-amber-300/10 dark:text-amber-200">
+                    <span className="inline-flex items-center rounded-full border border-warning/30 bg-warning/5 px-2.5 py-1 text-[10px] font-medium text-warning">
                       <ShieldCheck className="mr-1.5 size-3" />
                       样本复核与规则回放
                     </span>
@@ -2061,7 +2061,7 @@ export default function QuarantineQueuePage() {
             </div>
 
             {queueErrorMessage ? (
-              <div className="flex items-start gap-2 rounded-xl border border-destructive/20 bg-destructive/10 px-3 py-2 text-[12px] text-destructive dark:text-red-300">
+              <div className="flex items-start gap-2 rounded-xl border border-destructive/20 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
                 <AlertCircle className="mt-0.5 size-4 shrink-0" />
                 <div className="min-w-0">
                   <div className="font-medium">隔离队列同步异常</div>
@@ -2078,7 +2078,7 @@ export default function QuarantineQueuePage() {
                   'flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 text-[11px]',
                   lastQueueSync.type === 'success'
                     ? 'border-success/20 bg-success/10 text-success'
-                    : 'border-destructive/20 bg-destructive/10 text-destructive dark:text-red-300'
+                    : 'border-destructive/20 bg-destructive/10 text-destructive'
                 )}
               >
                 {lastQueueSync.type === 'success' ? (
@@ -2498,7 +2498,7 @@ export default function QuarantineQueuePage() {
                               {reasons.map((reason) => (
                                 <span
                                   key={reason}
-                                  className="rounded-full border border-warning/15 bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning dark:text-amber-300"
+                                  className="rounded-full border border-warning/15 bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning"
                                 >
                                   {reasonLabel(reason)}
                                 </span>

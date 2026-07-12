@@ -39,9 +39,9 @@ export function getFileTypeMeta(doc: Pick<Document, 'filename' | 'file_type'>): 
       return {
         icon: FileType,
         label: 'DOCX',
-        color: 'text-primary dark:text-blue-400',
-        bg: 'bg-primary/10 dark:bg-blue-900/20',
-        border: 'border-primary/30 dark:border-blue-500/30',
+        color: 'text-primary',
+        bg: 'bg-primary/10',
+        border: 'border-primary/30',
       }
     case 'doc':
       return {
@@ -120,4 +120,3 @@ export function getFileTypeMeta(doc: Pick<Document, 'filename' | 'file_type'>): 
       }
   }
 }
-

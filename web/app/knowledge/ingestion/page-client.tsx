@@ -97,7 +97,7 @@ const PRECHECK_SAMPLE_MAX = 2000
 const INGESTION_BACKGROUND_CLASS =
   'bg-background bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.10),transparent_34rem)] dark:bg-background'
 const INGESTION_HERO_PANEL_CLASS =
-  'relative overflow-hidden rounded-[28px] border border-info/30 bg-[linear-gradient(135deg,rgba(248,253,255,0.92),rgba(229,245,255,0.72)_45%,rgba(255,255,255,0.82))] shadow-[0_24px_70px_-48px_rgba(14,116,144,0.55)] backdrop-blur-2xl dark:border-sky-300/15 dark:bg-[linear-gradient(135deg,rgba(8,21,34,0.82),rgba(8,47,73,0.36)_48%,rgba(15,23,42,0.72))]'
+  'relative overflow-hidden rounded-[28px] border border-info/30 bg-[linear-gradient(135deg,hsl(var(--card)/0.92),hsl(var(--info)/0.10)_45%,hsl(var(--background)/0.82))] shadow-[0_24px_70px_-48px_hsl(var(--info)/0.55)] backdrop-blur-2xl'
 
 type IngestionMode = 'sales-audit' | 'execution-monitor'
 type SampleDisposition = 'approved' | 'manual'

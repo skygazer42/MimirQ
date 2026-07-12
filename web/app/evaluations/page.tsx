@@ -683,12 +683,12 @@ function EvaluationHeroEmptyState({
       )}
     >
       {compact ? (
-        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-card text-primary shadow-[0_8px_20px_rgba(37,99,235,0.10)]">
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-card text-primary shadow-[0_8px_20px_hsl(var(--primary)/0.10)]">
           <BarChart3 className="h-4 w-4" aria-hidden="true" />
         </span>
       ) : (
         <div className="relative mb-3 h-16 w-20">
-          <div className="absolute left-5 top-1 h-14 w-12 rounded-xl border border-primary/20 bg-card shadow-[0_10px_28px_rgba(37,99,235,0.12)]" />
+          <div className="absolute left-5 top-1 h-14 w-12 rounded-xl border border-primary/20 bg-card shadow-[0_10px_28px_hsl(var(--primary)/0.12)]" />
           <div className="absolute left-8 top-0 h-4 w-6 rounded-md bg-primary/15 ring-1 ring-primary/30" />
           <div className="absolute left-9 top-9 h-3 w-2 rounded-sm bg-primary/30" />
           <div className="absolute left-12 top-7 h-5 w-2 rounded-sm bg-primary" />

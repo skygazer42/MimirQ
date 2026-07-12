@@ -69,11 +69,11 @@ export function KnowledgeOpsHero({
         </div>
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-info/30 bg-info/5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-info dark:border-sky-300/20 dark:bg-sky-300/10 dark:text-sky-200">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-info/30 bg-info/5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-info">
               <Sparkles className="size-3" />
               {eyebrow}
             </span>
-            <span className="inline-flex items-center rounded-full border border-success/30 bg-success/5 px-2.5 py-1 text-[10px] font-medium text-success dark:border-emerald-300/15 dark:bg-emerald-300/10 dark:text-emerald-200">
+            <span className="inline-flex items-center rounded-full border border-success/30 bg-success/5 px-2.5 py-1 text-[10px] font-medium text-success">
               <ShieldCheck className="mr-1.5 size-3" />
               {badge}
             </span>
