@@ -254,6 +254,7 @@ CORE_WEB_TESTS := \
 	components/navbar.source.test.ts \
 	components/navbar.active-indicator.test.ts \
 	components/navbar.behavior.test.ts \
+	components/ui/page-title-icon.test.ts \
 	hooks/use-media-query.test.tsx \
 	lib/api-client.source.test.ts \
 	lib/api-client-auth.test.ts \
@@ -261,6 +262,7 @@ CORE_WEB_TESTS := \
 	lib/api-client-chat-stream.test.ts \
 	lib/api-client.rag-evidence.test.ts \
 	lib/openapi-request.test.ts \
+	lib/theme-surface.test.ts \
 	lib/api-runtime-contracts.test.ts
 
 help:
