@@ -32,6 +32,18 @@ def test_api_docs_workflow_actually_deploys_pages() -> None:
     assert "actions/deploy-pages@" in workflow
 
 
+def test_api_docs_pages_actions_are_gated_before_runner_setup() -> None:
+    workflow = _read(".github/workflows/api-docs.yml")
+
+    assert "\n  publish:\n" in workflow
+    build_job, publish_job = workflow.split("\n  publish:\n", 1)
+    assert "actions/configure-pages@" not in build_job
+    assert "actions/upload-pages-artifact@" not in build_job
+    assert "actions/deploy-pages@" not in build_job
+    assert "needs: deploy" in publish_job
+    assert "needs.deploy.outputs.pages_enabled == 'true'" in publish_job
+
+
 def test_fresh_database_migrations_widen_alembic_revision_storage() -> None:
     migration = _read("alembic/versions/0002_add_kg_relations.py")
 

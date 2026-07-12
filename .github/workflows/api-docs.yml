@@ -24,11 +24,10 @@ env:
 
 jobs:
   deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: [self-hosted, Linux, X64, mimirq]
     timeout-minutes: 45
+    outputs:
+      pages_enabled: ${{ steps.pages.outputs.enabled }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -93,17 +92,29 @@ jobs:
           echo "Built docs/api/site contents:"
           ls -la docs/api/site 2>/dev/null || true
 
+  publish:
+    needs: deploy
+    if: ${{ github.event_name != 'pull_request' && needs.deploy.outputs.pages_enabled == 'true' }}
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build static API site (OpenAPI + Redoc + Docusaurus handbook)
+        run: make api-docs-build-static
+
       - name: Configure GitHub Pages
-        if: github.event_name != 'pull_request' && steps.pages.outputs.enabled == 'true'
         uses: actions/configure-pages@v5
 
       - name: Upload GitHub Pages artifact
-        if: github.event_name != 'pull_request' && steps.pages.outputs.enabled == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: docs/api/site
 
       - name: Deploy GitHub Pages
-        if: github.event_name != 'pull_request' && steps.pages.outputs.enabled == 'true'
         id: deployment
         uses: actions/deploy-pages@v4
