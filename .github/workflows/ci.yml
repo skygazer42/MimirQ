@@ -30,7 +30,7 @@ jobs:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: mimirq_ci
         ports:
-          - 55432:5432
+          - 5432/tcp
         options: >-
           --health-cmd "pg_isready -U postgres -d mimirq_ci"
           --health-interval 10s
@@ -121,7 +121,7 @@ jobs:
 
       - name: Database migrations and integration tests
         env:
-          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:55432/mimirq_ci
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/mimirq_ci
           MIMIRQ_DB_CREATE_ALL_ON_STARTUP: "false"
           MIMIRQ_DB_RUNTIME_MIGRATIONS_ENABLED: "false"
           MIMIRQ_INTEGRATION_TESTS: "1"
