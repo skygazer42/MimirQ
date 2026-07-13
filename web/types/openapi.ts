@@ -18918,6 +18918,11 @@ export interface components {
              */
             expected_answer?: string | null;
             /**
+             * Category
+             * @description Negative-feedback root cause (optional)
+             */
+            category?: ("retrieval_miss" | "wrong_answer" | "out_of_scope" | "other") | null;
+            /**
              * Extra
              * @description Extension fields (optional)
              */
@@ -18967,6 +18972,18 @@ export interface components {
             tags?: string[];
             /** Expected Answer */
             expected_answer: string | null;
+            /** Category */
+            category?: ("retrieval_miss" | "wrong_answer" | "out_of_scope" | "other") | null;
+            /** Category Source */
+            category_source?: ("user" | "llm_auto" | "reviewer") | null;
+            /** Query Hash */
+            query_hash?: string | null;
+            /** Retrieval Trace Ref */
+            retrieval_trace_ref?: string | null;
+            /** Profile */
+            profile?: string | null;
+            /** Judge Score Ref */
+            judge_score_ref?: string | null;
             /** Extra */
             extra?: {
                 [key: string]: unknown;
@@ -19027,6 +19044,18 @@ export interface components {
             tags?: string[];
             /** Expected Answer */
             expected_answer: string | null;
+            /** Category */
+            category?: ("retrieval_miss" | "wrong_answer" | "out_of_scope" | "other") | null;
+            /** Category Source */
+            category_source?: ("user" | "llm_auto" | "reviewer") | null;
+            /** Query Hash */
+            query_hash?: string | null;
+            /** Retrieval Trace Ref */
+            retrieval_trace_ref?: string | null;
+            /** Profile */
+            profile?: string | null;
+            /** Judge Score Ref */
+            judge_score_ref?: string | null;
             /** Extra */
             extra?: {
                 [key: string]: unknown;
@@ -19052,6 +19081,11 @@ export interface components {
              * @description Archive/unarchive the feedback item
              */
             archived?: boolean | null;
+            /**
+             * Category
+             * @description Reviewer-assigned root cause
+             */
+            category?: ("retrieval_miss" | "wrong_answer" | "out_of_scope" | "other") | null;
         };
         /**
          * MessageSchema
