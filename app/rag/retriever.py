@@ -37,7 +37,6 @@ from app.models.document import DocumentChunk
 from app.rag.core.filters import match_metadata_filter
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
-from app.rag.core.retrieval_profiles import is_recall_first_profile
 from app.rag.embedding.utils import current_embedding_space_hash
 from app.rag.pipeline_plugins.contracts import (
     DISPLAY_METADATA_KEY,
@@ -45,6 +44,7 @@ from app.rag.pipeline_plugins.contracts import (
     INDEXED_METADATA_KEY,
     METADATA_SCHEMA_VIEW_KEYS,
     RECORD_IDENTITY_METADATA_KEY,
+    RETRIEVAL_TEXT_METADATA_KEY,
 )
 from app.rag.preprocessing.stopwords import STOPWORDS
 from app.rag.preprocessing.tokenization import tokenize_for_bm25
@@ -86,6 +86,7 @@ COLBERT_INDEX_DIR_FALLBACK = "./data/colbert_indexes"
 LEXICAL_DB_SEARCH_FAILED_LOG = "Lexical DB search failed: %s"
 NON_CRITICAL_RETRIEVER_FALLBACK_LOG = "Ignoring non-critical retriever fallback failure: %s"
 _RETRIEVAL_DISPLAY_CONTENT_KEY = "_retrieval_display_content"
+_RETRIEVAL_TEXT_KEY = RETRIEVAL_TEXT_METADATA_KEY
 _RETRIEVAL_QUESTIONS_CHANNEL_KEY = "_retrieval_questions_channel_applied"
 _PIPELINE_PLUGIN_METADATA_KEYS = ("chunk_python_plugin", "governance_python_plugin", "kg_python_plugin")
 _INDEXED_METADATA_KEY = INDEXED_METADATA_KEY
@@ -330,6 +331,45 @@ def _apply_metadata_exact_anchor_to_result(
     return True
 
 
+def _apply_exact_content_bonus_to_result(
+    *,
+    query: str,
+    result: dict[str, Any],
+    phrase_boost_weight: float,
+) -> bool:
+    """Add a bounded exact-text signal without expanding the candidate set."""
+    if result.get("exact_phrase_score") is not None:
+        return False
+
+    metadata = result.get("metadata") if isinstance(result, dict) else None
+    indexed_content = metadata.get(_RETRIEVAL_TEXT_KEY) if isinstance(metadata, dict) else None
+    content = (
+        str(indexed_content)
+        if isinstance(indexed_content, str) and indexed_content.strip()
+        else str(result.get("content") or "")
+    )
+    query_norm = _normalize_exact_anchor(query)
+    content_norm = _normalize_exact_anchor(content)
+    phrase = query_phrase_match(query, content)
+    phrase_score = float(phrase.get("score", 0.0) or 0.0)
+    full_query_match = bool(len(query_norm) >= 2 and query_norm in content_norm)
+    exact_score = max(1.0 if full_query_match else 0.0, phrase_score)
+    if exact_score <= 0.0:
+        return False
+
+    boost = exact_score * max(0.0, float(phrase_boost_weight or 0.0))
+    current_score = _float_or_default(result.get("score"), 0.0)
+    result["exact_phrase_score"] = round(float(exact_score), 6)
+    result["exact_phrase_boost"] = round(float(boost), 6)
+    matches = list(phrase.get("matched_phrases") or [])
+    if full_query_match and query_norm not in matches:
+        matches.insert(0, query_norm)
+    if matches:
+        result["exact_phrase_matches"] = matches[:4]
+    result["score"] = min(1.0, current_score + boost)
+    return True
+
+
 @dataclass(frozen=True)
 class HybridSearchOptions:
     top_k: int = 5
@@ -488,7 +528,7 @@ class HybridRetriever(BaseRetriever):
     context_neighbor_high_span: int | None = None
     context_neighbor_mid_span: int | None = None
     enable_hierarchy_recall: bool = False
-    hierarchy_family_collapse: bool = False
+    hierarchy_family_collapse: bool = getattr(settings, "HIERARCHY_RECALL_FAMILY_COLLAPSE", True)
     hierarchy_overfetch_factor: int = max(1, int(getattr(settings, "HIERARCHY_RECALL_OVERFETCH_FACTOR", 4) or 4))
     lexical_db_hybrid_fallback_only: bool | None = None
     lexical_db_hybrid_metadata_exact_fallback_enabled: bool | None = None
@@ -899,7 +939,13 @@ class HybridRetriever(BaseRetriever):
     def _prepare_retrieval_document(self, doc: Document) -> Document:
         meta = dict(doc.metadata or {})
         display_content = str(meta.get(_RETRIEVAL_DISPLAY_CONTENT_KEY) or doc.page_content or "")
-        retrieval_content, applied = self._augment_retrieval_corpus_text(content=display_content, metadata=meta)
+        indexed_content = meta.get(_RETRIEVAL_TEXT_KEY)
+        retrieval_base = (
+            str(indexed_content)
+            if isinstance(indexed_content, str) and indexed_content.strip()
+            else display_content
+        )
+        retrieval_content, applied = self._augment_retrieval_corpus_text(content=retrieval_base, metadata=meta)
         meta[_RETRIEVAL_DISPLAY_CONTENT_KEY] = display_content
         meta[_RETRIEVAL_QUESTIONS_CHANNEL_KEY] = bool(applied)
         try:
@@ -5727,6 +5773,10 @@ class HybridRetriever(BaseRetriever):
             doc_filename_by_id: dict[str, str] = {}
             doc_metadata_by_id: dict[str, dict[str, Any]] = {}
             doc_title_by_id: dict[str, str] = {}
+            doc_authority_by_id: dict[str, int] = {}
+            doc_updated_ts_by_id: dict[str, float] = {}
+            doc_publication_by_id: dict[str, str] = {}
+            doc_supersedes_by_id: dict[str, str] = {}
             try:
                 doc_ids: set[UUID] = set()
                 for ck in list(chunks_by_id.values()) + list(chunks_by_pair.values()):
@@ -5742,17 +5792,48 @@ class HybridRetriever(BaseRetriever):
                         DBDocument.archived_at,
                         DBDocument.disabled_at,
                         DBDocument.publication_status,
+                        DBDocument.authority_level,
+                        DBDocument.updated_at,
+                        DBDocument.created_at,
+                        DBDocument.supersedes_document_id,
                     ).filter(DBDocument.id.in_(sorted(doc_ids)))
                     if tenant_filter:
                         dq = dq.filter(DBDocument.tenant_id == tenant_filter)
-                    for doc_id, filename, ds_id, status, doc_meta, archived_at, disabled_at, publication_status in dq.all():
+                    for (
+                        doc_id,
+                        filename,
+                        ds_id,
+                        status,
+                        doc_meta,
+                        archived_at,
+                        disabled_at,
+                        publication_status,
+                        authority_level,
+                        updated_at,
+                        created_at,
+                        supersedes_document_id,
+                    ) in dq.all():
+                        doc_id_s = str(doc_id)
                         meta0 = doc_meta if isinstance(doc_meta, dict) else {}
-                        doc_metadata_by_id[str(doc_id)] = dict(meta0)
+                        doc_metadata_by_id[doc_id_s] = dict(meta0)
                         if filename:
-                            doc_filename_by_id[str(doc_id)] = str(filename)
+                            doc_filename_by_id[doc_id_s] = str(filename)
                         user0 = meta0.get("user") if isinstance(meta0.get("user"), dict) else {}
                         if user0:
-                            doc_user_by_id[str(doc_id)] = dict(user0)
+                            doc_user_by_id[doc_id_s] = dict(user0)
+                        try:
+                            doc_authority_by_id[doc_id_s] = max(0, min(100, int(authority_level or 0)))
+                        except (TypeError, ValueError, AttributeError):
+                            doc_authority_by_id[doc_id_s] = 0
+                        updated = updated_at or created_at
+                        if updated is not None:
+                            try:
+                                doc_updated_ts_by_id[doc_id_s] = float(updated.timestamp())
+                            except (TypeError, ValueError, AttributeError, OverflowError) as exc:
+                                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+                        doc_publication_by_id[doc_id_s] = str(publication_status or "published").strip().lower()
+                        if supersedes_document_id is not None:
+                            doc_supersedes_by_id[doc_id_s] = str(supersedes_document_id)
                         pq_obj = meta0.get("parse_quality")
                         pq_score_raw = None
                         if isinstance(pq_obj, dict):
@@ -5824,6 +5905,10 @@ class HybridRetriever(BaseRetriever):
                 doc_filename_by_id = {}
                 doc_metadata_by_id = {}
                 doc_title_by_id = {}
+                doc_authority_by_id = {}
+                doc_updated_ts_by_id = {}
+                doc_publication_by_id = {}
+                doc_supersedes_by_id = {}
 
             # Candidate-level ACL trimming (security trimming) and dataset scoping.
             # This enables "open scope" retrieval (no precomputed allowed_doc_ids list) without leaking data.
@@ -5960,6 +6045,14 @@ class HybridRetriever(BaseRetriever):
                     doc_title = doc_title_by_id.get(doc_id_str)
                     if doc_title and not meta.get("document_title"):
                         meta["document_title"] = doc_title
+                    if doc_id_str in doc_authority_by_id:
+                        meta["_governance_authority_level"] = doc_authority_by_id[doc_id_str]
+                    if doc_id_str in doc_updated_ts_by_id:
+                        meta["_governance_updated_ts"] = doc_updated_ts_by_id[doc_id_str]
+                    if doc_id_str in doc_publication_by_id:
+                        meta["_governance_publication_status"] = doc_publication_by_id[doc_id_str]
+                    if doc_id_str in doc_supersedes_by_id:
+                        meta["_governance_supersedes_document_id"] = doc_supersedes_by_id[doc_id_str]
                     if (ck.page_number is not None) and not meta.get("page"):
                         meta["page"] = ck.page_number
                     if (ck.page_number is not None) and not meta.get("page_number"):
@@ -7038,14 +7131,15 @@ class HybridRetriever(BaseRetriever):
         stats: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """
-        Apply optional lifecycle governance preferences at the *final candidate ranking* stage.
+        Apply lifecycle preferences over already-enriched final candidates.
 
-        This is disabled by default and must not change behavior unless explicitly enabled.
-
-        Policies (opt-in):
+        Policies:
         - prefer_authority: small additive boost based on documents.authority_level (0-100)
         - prefer_latest: small additive boost for recently updated documents
-        - filter_superseded: drop documents that are superseded by another active-ready doc
+        - filter_superseded: drop older documents when their replacement is also a candidate
+
+        The document enrichment pass supplies every feature used here, so this stage performs
+        no database, retrieval, or model calls.
         """
         if stats is not None:
             stats.clear()
@@ -7063,135 +7157,61 @@ class HybridRetriever(BaseRetriever):
             stats["prefer_authority"] = bool(prefer_authority)
             stats["prefer_latest"] = bool(prefer_latest)
             stats["filter_superseded"] = bool(filter_superseded)
+            stats["feature_source"] = "candidate_metadata"
+            stats["db_roundtrips"] = 0
 
         if not enabled:
             return results
 
-        # Avoid surprises: only apply cross-document lifecycle policies when dataset scoped.
-        # (When callers explicitly scope by document_ids, do not remove/reorder docs implicitly.)
-        if self.dataset_id is None:
-            if stats is not None:
-                stats["skip_reason"] = "no_dataset_scope"
-            return results
-
-        tenant_id = self.tenant_id
-        if tenant_id is None:
-            if stats is not None:
-                stats["skip_reason"] = "no_tenant_scope"
-            return results
-
-        doc_ids: set[str] = set()
-        for r in results:
-            did = self._get_doc_id(r)
-            if did:
-                doc_ids.add(did)
         if stats is not None:
             stats["input_results"] = len(results)
 
-        if not doc_ids:
-            if stats is not None:
-                stats["skip_reason"] = "no_candidate_docs"
-            return results
-
-        doc_uuid_list: list[UUID] = []
-        for did in doc_ids:
-            try:
-                doc_uuid_list.append(UUID(str(did)))
-            except (TypeError, ValueError, AttributeError):
-                continue
-        if stats is not None:
-            stats["candidate_docs"] = len(doc_uuid_list)
-        if not doc_uuid_list:
-            if stats is not None:
-                stats["skip_reason"] = "invalid_doc_ids"
-            return results
-
-        # Query doc-level features in a single bounded DB roundtrip.
-        # NOTE: Do not attach raw values to result metadata; keep observability in retriever_debug only.
         doc_features: dict[str, dict[str, Any]] = {}
         superseded_doc_ids: set[str] = set()
-
-        db = SessionLocal()
-        try:
-            if prefer_authority or prefer_latest:
-                rows = (
-                    db.query(
-                        DBDocument.id,
-                        DBDocument.authority_level,
-                        DBDocument.updated_at,
-                        DBDocument.created_at,
-                    )
-                    .filter(
-                        DBDocument.tenant_id == tenant_id,
-                        DBDocument.dataset_id == self.dataset_id,
-                        DBDocument.id.in_(sorted(doc_uuid_list)),
-                    )
-                    .all()
-                )
-                for did, auth, updated_at, created_at in rows:
-                    ts = updated_at or created_at
-                    try:
-                        ts_sec = float(ts.timestamp()) if ts is not None else None
-                    except Exception as exc:
-                        _log_retriever_fallback('_apply_governance_policy', exc)
-                        ts_sec = None
-                    try:
-                        auth_i = int(auth) if auth is not None else 0
-                    except (TypeError, ValueError, AttributeError):
-                        auth_i = 0
-                    doc_features[str(did)] = {"authority_level": auth_i, "updated_ts": ts_sec}
-
-            if filter_superseded:
-                sup_rows = (
-                    db.query(
-                        DBDocument.supersedes_document_id,
-                        DBDocument.status,
-                        DBDocument.doc_metadata,
-                        DBDocument.archived_at,
-                        DBDocument.disabled_at,
-                        DBDocument.publication_status,
-                    )
-                    .filter(
-                        DBDocument.tenant_id == tenant_id,
-                        DBDocument.dataset_id == self.dataset_id,
-                        DBDocument.supersedes_document_id.isnot(None),
-                        DBDocument.supersedes_document_id.in_(sorted(doc_uuid_list)),
-                    )
-                    .all()
-                )
-                for supersedes_id, status, meta, archived_at, disabled_at, publication_status in sup_rows:
-                    if supersedes_id is None:
-                        continue
-                    # Only treat as superseded when the superseding doc is "active-ready".
-                    # (If the newer doc is archived/disabled/processing, keep the older doc.)
-                    ready = False
-                    try:
-                        meta0 = meta if isinstance(meta, dict) else {}
-                        if "active_pipeline_ready" in meta0:
-                            ready = bool(meta0.get("active_pipeline_ready"))
-                        else:
-                            ready = str(status or "").lower() == "completed"
-                        if archived_at is not None or disabled_at is not None:
-                            ready = False
-                        if str(publication_status or "published").strip().lower() != "published":
-                            ready = False
-                    except (TypeError, ValueError, AttributeError):
-                        ready = False
-                    if not ready:
-                        continue
-                    superseded_doc_ids.add(str(supersedes_id))
-        except Exception as exc:
-            _log_retriever_fallback('_apply_governance_policy', exc)
-            # Fail open: governance policy must never break retrieval.
-            doc_features = {}
-            superseded_doc_ids = set()
-        finally:
+        unpublished_doc_ids: set[str] = set()
+        for result in results:
+            did = self._get_doc_id(result)
+            if not did:
+                continue
+            meta = result.get("metadata") if isinstance(result, dict) else None
+            meta = meta if isinstance(meta, dict) else {}
             try:
-                db.close()
-            except Exception as exc:
-                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+                authority = int(meta.get("_governance_authority_level", meta.get("authority_level", 0)) or 0)
+            except (TypeError, ValueError, AttributeError):
+                authority = 0
+            try:
+                updated_ts = float(meta.get("_governance_updated_ts", meta.get("updated_ts")))
+            except (TypeError, ValueError, AttributeError):
+                updated_ts = None
+
+            publication_status = str(
+                meta.get("_governance_publication_status", meta.get("publication_status", "published"))
+                or "published"
+            ).strip().lower()
+            supersedes_id = str(
+                meta.get("_governance_supersedes_document_id", meta.get("supersedes_document_id", "")) or ""
+            ).strip()
+
+            doc_features[did] = {
+                "authority_level": max(0, min(100, authority)),
+                "updated_ts": updated_ts,
+                "publication_status": publication_status,
+            }
+            if publication_status != "published":
+                unpublished_doc_ids.add(did)
+            if filter_superseded and publication_status == "published" and supersedes_id:
+                superseded_doc_ids.add(supersedes_id)
+
+        if stats is not None:
+            stats["candidate_docs"] = len(doc_features)
 
         out = list(results)
+
+        filtered_unpublished = 0
+        if unpublished_doc_ids:
+            before = len(out)
+            out = [r for r in out if self._get_doc_id(r) not in unpublished_doc_ids]
+            filtered_unpublished = max(0, before - len(out))
 
         filtered_superseded = 0
         if filter_superseded and superseded_doc_ids:
@@ -7261,6 +7281,7 @@ class HybridRetriever(BaseRetriever):
                     max_boost = 0.0
 
         if stats is not None:
+            stats["filtered_unpublished"] = int(filtered_unpublished)
             stats["filtered_superseded"] = int(filtered_superseded)
             stats["output_results"] = len(out)
             stats["reordered"] = bool(reordered)
@@ -7396,6 +7417,19 @@ class HybridRetriever(BaseRetriever):
         if not out or not query_text:
             return out
 
+        phrase_boost_weight = max(
+            0.0,
+            float(getattr(settings, "RETRIEVAL_EXACT_PHRASE_RERANK_BOOST", 0.35) or 0.0),
+        )
+        exact_adjusted = 0
+        for result in out:
+            if _apply_exact_content_bonus_to_result(
+                query=query_text,
+                result=result,
+                phrase_boost_weight=phrase_boost_weight,
+            ):
+                exact_adjusted += 1
+
         bonuses: list[float] = []
         adjusted = 0
         for result in out:
@@ -7428,8 +7462,18 @@ class HybridRetriever(BaseRetriever):
             diagnostics["avg_bonus"] = round(float(sum(bonuses) / len(bonuses)) if bonuses else 0.0, 6)
             self._last_channel_metrics["retrieval_policy"] = diagnostics
 
-        if adjusted <= 0:
+        if adjusted <= 0 and exact_adjusted <= 0:
             return out
+        has_budgeted_prefix = any(item.get("fusion_budgeted_prefix_rank") is not None for item in out)
+        if has_budgeted_prefix:
+            return sorted(
+                out,
+                key=lambda item: (
+                    0 if item.get("fusion_budgeted_prefix_rank") is not None else 1,
+                    -_float_or_default(item.get("score"), 0.0),
+                    self._result_key(item),
+                ),
+            )
         return sorted(out, key=lambda item: (-_float_or_default(item.get("score"), 0.0), self._result_key(item)))
 
     def _result_key(self, result: dict[str, Any]) -> str:
@@ -7483,11 +7527,7 @@ class HybridRetriever(BaseRetriever):
         return self._result_chunk_family_key(meta, result)
 
     def _should_apply_hierarchy_family_collapse(self) -> bool:
-        if not bool(self.enable_hierarchy_recall):
-            return False
-        if not bool(self.hierarchy_family_collapse):
-            return False
-        return bool(is_recall_first_profile(self.retrieval_profile))
+        return bool(self.hierarchy_family_collapse)
 
     def _init_family_collapse_stats(
         self,
@@ -8486,6 +8526,18 @@ class HybridRetriever(BaseRetriever):
                     raw = float(item.get("rrf_score_raw", 0.0) or 0.0)
                     item["score"] = (raw - min_s) / rng
 
+            if query:
+                phrase_boost_weight = max(
+                    0.0,
+                    float(getattr(settings, "RETRIEVAL_EXACT_PHRASE_RERANK_BOOST", 0.35) or 0.0),
+                )
+                for item in merged.values():
+                    _apply_exact_content_bonus_to_result(
+                        query=query,
+                        result=item,
+                        phrase_boost_weight=phrase_boost_weight,
+                    )
+
             def _sort_key(item: dict[str, Any]) -> tuple[float, float, float, float, float, float, str]:
                 return (
                     -float(item.get("score", 0.0) or 0.0),
@@ -8671,6 +8723,18 @@ class HybridRetriever(BaseRetriever):
                     raw = float(item.get("rrf_score_raw", 0.0) or 0.0)
                     item["score"] = (raw - min_s) / rng
 
+            if query:
+                phrase_boost_weight = max(
+                    0.0,
+                    float(getattr(settings, "RETRIEVAL_EXACT_PHRASE_RERANK_BOOST", 0.35) or 0.0),
+                )
+                for item in merged.values():
+                    _apply_exact_content_bonus_to_result(
+                        query=query,
+                        result=item,
+                        phrase_boost_weight=phrase_boost_weight,
+                    )
+
             def _sort_key(item: dict[str, Any]) -> tuple[float, float, float, float, float, float, str]:
                 return (
                     -float(item.get("score", 0.0) or 0.0),
@@ -8683,6 +8747,27 @@ class HybridRetriever(BaseRetriever):
                 )
 
             all_sorted = sorted(merged.values(), key=_sort_key)
+
+            def _budget_channel_order(
+                channel_results: list[dict[str, Any]],
+                rank_map: dict[str, int],
+            ) -> list[dict[str, Any]]:
+                return sorted(
+                    channel_results,
+                    key=lambda item: (
+                        -_float_or_default(
+                            merged.get(self._result_key(item), {}).get("exact_phrase_score"),
+                            0.0,
+                        ),
+                        int(rank_map.get(self._result_key(item), len(channel_results) + 1)),
+                        self._result_key(item),
+                    ),
+                )
+
+            v_budget_sorted = _budget_channel_order(v_sorted, v_rank)
+            b_budget_sorted = _budget_channel_order(b_sorted, b_rank)
+            l_budget_sorted = _budget_channel_order(l_sorted, l_rank)
+            s_budget_sorted = _budget_channel_order(s_sorted, s_rank)
 
             # Build a top_k prefix that enforces budgets/quotas but still orders by fused score.
             selected_keys: list[str] = []
@@ -8705,8 +8790,9 @@ class HybridRetriever(BaseRetriever):
                     if rs <= 0.0:
                         continue
                     if th is not None and rs < float(th):
-                        # Rank scores are monotonic decreasing within a channel; can stop early.
-                        break
+                        # Exact-hit weighting may reorder a channel, so lower-ranked misses
+                        # cannot terminate the scan for later eligible candidates.
+                        continue
                     if not _candidate_eligible(key):
                         continue
                     used.add(key)
@@ -8717,10 +8803,10 @@ class HybridRetriever(BaseRetriever):
                     except Exception as exc:
                         logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
 
-            _select_from_channel("vector", v_sorted, v_rank)
-            _select_from_channel("bm25", b_sorted, b_rank)
-            _select_from_channel("lexical", l_sorted, l_rank)
-            _select_from_channel("sparse", s_sorted, s_rank)
+            _select_from_channel("vector", v_budget_sorted, v_rank)
+            _select_from_channel("bm25", b_budget_sorted, b_rank)
+            _select_from_channel("lexical", l_budget_sorted, l_rank)
+            _select_from_channel("sparse", s_budget_sorted, s_rank)
 
             if len(selected_keys) < k_prefix:
                 for item in all_sorted:

@@ -1,6 +1,9 @@
 
 from typing import Any
 
+FAST_RETRIEVAL_PROFILE = "fast"
+BALANCED_RETRIEVAL_PROFILE = "balanced"
+QUALITY_RETRIEVAL_PROFILE = "quality"
 PRODUCTION_RETRIEVAL_PROFILE = "hybrid_ce"
 STRICT_GROUNDED_RETRIEVAL_PROFILE = "grounded_strict"
 LONG_CONTEXT_RETRIEVAL_PROFILE = "long_context"
@@ -10,6 +13,7 @@ HIERARCHY_PRODUCTION_RETRIEVAL_PROFILE = "hierarchy_hybrid_ce"
 HIERARCHY_STRICT_GROUNDED_RETRIEVAL_PROFILE = "hierarchy_grounded_strict"
 HIERARCHY_EXPANDED_RECALL_RETRIEVAL_PROFILE = "hierarchy_recall20_expand"
 RECALL_FIRST_RETRIEVAL_PROFILES = {
+    QUALITY_RETRIEVAL_PROFILE,
     "recall20",
     "recall50",
     "coverage80",
@@ -18,6 +22,9 @@ RECALL_FIRST_RETRIEVAL_PROFILES = {
     HIERARCHY_EXPANDED_RECALL_RETRIEVAL_PROFILE,
 }
 SUPPORTED_RETRIEVAL_PROFILES = set(RECALL_FIRST_RETRIEVAL_PROFILES) | {
+    FAST_RETRIEVAL_PROFILE,
+    BALANCED_RETRIEVAL_PROFILE,
+    QUALITY_RETRIEVAL_PROFILE,
     PRODUCTION_RETRIEVAL_PROFILE,
     STRICT_GROUNDED_RETRIEVAL_PROFILE,
     LONG_CONTEXT_RETRIEVAL_PROFILE,
@@ -96,6 +103,44 @@ def apply_retrieval_profile_overrides(
 
     if normalized is None:
         out["retrieval_profile"] = None
+        return out
+
+    if normalized == FAST_RETRIEVAL_PROFILE:
+        out["retrieval_mode"] = "vector"
+        out["top_k"] = 10
+        out["score_threshold"] = 0.0
+        out["enable_reranker"] = False
+        out["reranker_provider"] = "none"
+        out["reranker_top_n"] = 1
+        out["enable_weight_rerank"] = False
+        out["sparse_retrieval_enabled"] = False
+        return out
+
+    if normalized == BALANCED_RETRIEVAL_PROFILE:
+        out["retrieval_mode"] = "hybrid"
+        out["top_k"] = 10
+        out["score_threshold"] = 0.0
+        out["enable_weight_rerank"] = False
+        if out.get("enable_reranker") is False:
+            out["reranker_provider"] = "none"
+            out["reranker_top_n"] = 1
+            return out
+        out["enable_reranker"] = True
+        out["reranker_provider"] = "cross_encoder"
+        out["reranker_top_n"] = 20
+        return out
+
+    if normalized == QUALITY_RETRIEVAL_PROFILE:
+        out = _apply_default_expansion_defaults(out)
+        out["retrieval_mode"] = "hybrid"
+        out["enable_weight_rerank"] = False
+        if out.get("enable_reranker") is False:
+            out["reranker_provider"] = "none"
+            out["reranker_top_n"] = 1
+            return out
+        out["enable_reranker"] = True
+        out["reranker_provider"] = "cross_encoder"
+        out["reranker_top_n"] = max(40, int(out["top_k"] or 0))
         return out
 
     if normalized == "recall20":
@@ -194,12 +239,15 @@ def apply_retrieval_profile_overrides(
 
     raise ValueError(
         "retrieval_profile must be one of: "
-        "recall20, recall50, coverage80, expanded, sparse_splade, hybrid_ce, grounded_strict, long_context, "
+        "fast, balanced, quality, recall20, recall50, coverage80, expanded, sparse_splade, hybrid_ce, grounded_strict, long_context, "
         "hierarchy_recall20, hierarchy_recall20_expand, hierarchy_hybrid_ce, hierarchy_grounded_strict"
     )
 
 
 __all__ = [
+    "FAST_RETRIEVAL_PROFILE",
+    "BALANCED_RETRIEVAL_PROFILE",
+    "QUALITY_RETRIEVAL_PROFILE",
     "PRODUCTION_RETRIEVAL_PROFILE",
     "STRICT_GROUNDED_RETRIEVAL_PROFILE",
     "LONG_CONTEXT_RETRIEVAL_PROFILE",

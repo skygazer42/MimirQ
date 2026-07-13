@@ -1365,7 +1365,7 @@ def _dify_response_cache_settings_signature() -> dict[str, Any]:
             getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_TEXT_SCAN_ENABLED", False)
         ),
         "metadata_anchor_extend_sibling_policy_scope_enabled": bool(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTEND_SIBLING_POLICY_SCOPE_ENABLED", True)
+            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTEND_SIBLING_POLICY_SCOPE_ENABLED", False)
         ),
         "metadata_anchor_extended_scope_max_datasets": int(
             getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTENDED_SCOPE_MAX_DATASETS", 80) or 80
@@ -1622,7 +1622,7 @@ def _metadata_anchor_dataset_ids_for_query(
     if not dataset_ids:
         return []
     if not bool(
-        getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTEND_SIBLING_POLICY_SCOPE_ENABLED", True)
+        getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTEND_SIBLING_POLICY_SCOPE_ENABLED", False)
     ):
         return dataset_ids
     if not _query_has_specific_service_anchor_candidate(query, policy_plugin_refs=policy_plugin_refs):

@@ -5,6 +5,7 @@ import type {
   MessageFeedbackEnrichedListResponse,
   FeedbackLoopHardNegativeExportResponse,
   FeedbackLoopCandidatesResponse,
+  FeedbackCategory,
   MessageFeedbackListResponse,
   RegressionCase,
 } from '@/types'
@@ -71,7 +72,7 @@ export const feedbackApi = {
 
   async update(
     feedbackId: string,
-    body: { archived?: boolean }
+    body: { archived?: boolean; category?: FeedbackCategory }
   ): Promise<MessageFeedback> {
     const { data } = await apiClient.patch(`/feedback/messages/${feedbackId}`, body)
     return data

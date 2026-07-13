@@ -3314,6 +3314,12 @@ def test_dify_metadata_anchor_expands_to_sibling_policy_datasets_for_specific_se
     )
     monkeypatch.setattr(
         dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTEND_SIBLING_POLICY_SCOPE_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED",
         False,
         raising=False,
@@ -3448,6 +3454,12 @@ def test_dify_mixed_preflight_uses_sibling_policy_scope_for_specific_service_anc
     )
     monkeypatch.setattr(
         dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTEND_SIBLING_POLICY_SCOPE_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
         (
             '{"city": {'
@@ -3549,6 +3561,50 @@ def test_dify_mixed_preflight_uses_sibling_policy_scope_for_specific_service_anc
     assert subquery_calls
     assert all([city_dataset, district_dataset] == ids for _seen_query, ids in subquery_calls)
     assert res.json()["records"][0]["metadata"]["service_name"] == "城市建筑垃圾处置核准"
+
+
+def test_dify_metadata_anchor_sibling_scope_is_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    city_dataset = uuid.uuid4()
+    district_dataset = uuid.uuid4()
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTEND_SIBLING_POLICY_SCOPE_ENABLED",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        (
+            '{"city": {'
+            f'"dataset_ids": ["{city_dataset}"], '
+            f'"plugin_refs": ["{_DEMO_PLUGIN_REF}"], '
+            '"query_routes": ['
+            '{"terms": ["区县甲"], '
+            f'"dataset_ids": ["{district_dataset}"], '
+            '"mode": "replace"}'
+            "]"
+            "},"
+            '"district": {'
+            f'"dataset_ids": ["{district_dataset}"], '
+            f'"plugin_refs": ["{_DEMO_PLUGIN_REF}"]'
+            "}}"
+        ),
+        raising=False,
+    )
+
+    resolved = dify_api._metadata_anchor_dataset_ids_for_query(
+        knowledge_id="city",
+        base_dataset_ids=[city_dataset],
+        query="机关事业单位参保注销：行使层级、办理地点、监督投诉方式。",
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+    assert resolved == [city_dataset]
 
 
 def test_dify_aggregate_routes_merge_explicit_and_inherited_hints(

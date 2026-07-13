@@ -104,7 +104,7 @@ async def replay_ingest_dead_letter(
     document_status = await retry_document_processing(
         document_id=dead_letter.document_id,
         background_tasks=background_tasks,
-        force=True,
+        force=str(document.status or "").strip().lower() == "completed",
         skip_if_unchanged=False,
         tenant_id=tenant_id,
         account_id=account_id,

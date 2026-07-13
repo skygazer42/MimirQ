@@ -12,7 +12,7 @@ Golden-set format:
     "cases": [
       {
         "id": "case-1",
-        "input_path": "inputs/doc1.pdf",
+        "path": "inputs/doc1.pdf",
         "golden_markdown_path": "golden/doc1.md"
       }
     ]
@@ -53,7 +53,7 @@ def _load_cases(*, golden_dir: Path, cases_json: Path) -> list[dict[str, Any]]:
         if not isinstance(row, dict):
             continue
         cid = str(row.get("id") or f"case-{i+1}").strip()
-        input_path = str(row.get("input_path") or row.get("input") or "").strip()
+        input_path = str(row.get("path") or row.get("input_path") or row.get("input") or "").strip()
         golden_md = str(row.get("golden_markdown_path") or row.get("golden_markdown") or "").strip()
         if not input_path or not golden_md:
             continue
@@ -169,4 +169,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -13,7 +13,7 @@ import remarkGfm from 'remark-gfm'
 import { AuthImage } from '@/components/auth-image'
 import { useRouter } from '@/i18n/navigation'
 import { resolveMarkdownImageSrc, sanitizeMarkdownHref } from '@/components/markdown/markdown-safety'
-import type { Citation, Message, MessageFeedback } from '@/types'
+import type { Citation, FeedbackCategory, Message, MessageFeedback } from '@/types'
 import { getDocumentPreviewAnchorFromCitation } from '@/lib/document-preview-anchor'
 import { cn, detachPromise } from '@/lib/utils'
 import { globalEventBus } from '@/lib/event-bus'
@@ -603,6 +603,27 @@ export const ChatMessageItem = memo(function ChatMessageItem({
       setRatingSending(false)
     }
   }, [canRate, message.id, ratingSending])
+
+  const submitFeedbackCategory = useCallback(async (category: FeedbackCategory) => {
+    if (!canRate || rating == null || rating > 2 || ratingSending) return
+    setRatingSending(true)
+    try {
+      const updated = await feedbackApi.create({
+        message_id: message.id,
+        rating,
+        category,
+        reason: feedbackRecord?.reason,
+        tags: feedbackRecord?.tags,
+        expected_answer: feedbackRecord?.expected_answer,
+      })
+      setFeedbackRecord(updated)
+      toast.success('已记录问题分类')
+    } catch (err: unknown) {
+      toast.error(formatApiError(err, '问题分类提交失败'))
+    } finally {
+      setRatingSending(false)
+    }
+  }, [canRate, feedbackRecord, message.id, rating, ratingSending])
 
   const resolveFeedbackDatasetId = useCallback(async () => {
     if (messageDatasetId) return messageDatasetId
@@ -1284,6 +1305,30 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                  {ratingSending ? <span className="ml-2 text-xs text-muted-foreground">提交中…</span> : null}
                </div>
              </div>
+             {rating != null && rating <= 2 ? (
+               <div className="flex flex-wrap items-center gap-2 border-t border-border/50 px-4 py-3">
+                 <span className="mr-1 text-[11px] text-muted-foreground">主要问题</span>
+                 {(
+                   [
+                     ['retrieval_miss', '没找到'],
+                     ['wrong_answer', '答错了'],
+                     ['out_of_scope', '超出范围'],
+                   ] as const
+                 ).map(([category, label]) => (
+                   <Button
+                     key={category}
+                     type="button"
+                     size="sm"
+                     variant={feedbackRecord?.category === category ? 'default' : 'outline'}
+                     className="h-7 rounded-full px-3 text-[11px]"
+                     disabled={ratingSending}
+                     onClick={() => submitFeedbackCategory(category)}
+                   >
+                     {label}
+                   </Button>
+                 ))}
+               </div>
+             ) : null}
              {feedbackRecord?.id ? (
                <div className="border-t border-border/50 px-4 py-3">
                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

@@ -128,7 +128,7 @@ services:
 
   # Milvus 向量数据库
   mimirq-milvus:
-    image: milvusdb/milvus:v2.3.5
+    image: milvusdb/milvus:v2.6.11
     restart: unless-stopped
     logging: *docker_logging
     command: ["milvus", "run", "standalone"]
@@ -178,6 +178,7 @@ services:
       TABLE_STORE_DIR: /data/uploads/table_store
     volumes:
       - upload_data:/data/uploads
+      - ../plugins:/app/plugins:ro
       # Reuse the MinerU/PDF-Extract-Kit cache for MagicPDF local parsing.
       # Mounted read-only; populate/update it via the optional mineru parser service.
       - mineru_cache:/opt/mimirq-model-cache:ro
@@ -205,6 +206,7 @@ services:
       TABLE_STORE_DIR: /data/uploads/table_store
     volumes:
       - upload_data:/data/uploads
+      - ../plugins:/app/plugins:ro
       # Worker runs persisted ingestion; it needs the same local MagicPDF models.
       - mineru_cache:/opt/mimirq-model-cache:ro
     command: arq app.tasks.worker.WorkerSettings

@@ -369,6 +369,9 @@ export interface CheckpointDetailResponse {
 
 // ==================== 反馈相关类型 ====================
 
+export type FeedbackCategory = 'retrieval_miss' | 'wrong_answer' | 'out_of_scope' | 'other'
+export type FeedbackCategorySource = 'user' | 'llm_auto' | 'reviewer'
+
 export interface MessageFeedback {
   id: string
   tenant_id: string
@@ -379,6 +382,12 @@ export interface MessageFeedback {
   reason?: string
   tags: string[]
   expected_answer?: string
+  category?: FeedbackCategory | null
+  category_source?: FeedbackCategorySource | null
+  query_hash?: string | null
+  retrieval_trace_ref?: string | null
+  profile?: string | null
+  judge_score_ref?: string | null
   extra?: JsonObject
   created_at: string
   updated_at: string
@@ -390,6 +399,7 @@ export interface MessageFeedbackCreate {
   reason?: string
   tags?: string[]
   expected_answer?: string
+  category?: FeedbackCategory
   extra?: JsonObject
 }
 
@@ -414,6 +424,7 @@ export interface FeedbackLoopCandidatesResponse {
   summary: JsonObject
   hard_negative_records: JsonObject[]
   training_triples: JsonObject[]
+  eval_case_candidates: JsonObject[]
   rules_suggestions: JsonObject
 }
 

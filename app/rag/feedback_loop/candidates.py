@@ -9,6 +9,7 @@ from app.rag.industry_rules.schema import IndustryRuleset
 
 FEEDBACK_LOOP_CANDIDATES_SCHEMA_V1 = "mimirq.feedback_loop_candidates.v1"
 FEEDBACK_TRAINING_TRIPLE_SCHEMA_V1 = "mimirq.feedback_training_triple.v1"
+FEEDBACK_EVAL_CASE_SCHEMA_V1 = "mimirq.feedback_eval_case.v1"
 
 
 def _as_mapping(row: Any) -> dict[str, Any]:
@@ -137,6 +138,45 @@ def _build_training_triple(
     }
 
 
+def _build_eval_case_candidate(row: dict[str, Any]) -> dict[str, Any] | None:
+    extra = _extra(row)
+    status = _safe_str(row.get("eval_case_status") or extra.get("eval_case_status"), max_len=32).lower()
+    if status in {"promoted", "rejected"} or bool(row.get("archived") or extra.get("archived")):
+        return None
+    question = _query(row)
+    if not question:
+        return None
+    category = _safe_str(row.get("category"), max_len=32) or None
+    tags = [_safe_str(item, max_len=64) for item in (row.get("tags") or [])]
+    tags = [item for item in tags if item]
+    if category and category not in tags:
+        tags.append(category)
+    trace = _retrieval_trace(row)
+    reference_sources = _reference_sources(row)
+    if not reference_sources and isinstance(trace.get("citations"), list):
+        reference_sources = [dict(item) for item in trace["citations"] if isinstance(item, dict)]
+    retrieval = trace.get("retrieval") if isinstance(trace.get("retrieval"), dict) else {}
+    return {
+        "schema": FEEDBACK_EVAL_CASE_SCHEMA_V1,
+        "status": "pending_review",
+        "question": question,
+        "expected_answer": _safe_str(row.get("expected_answer"), max_len=16_000) or None,
+        "reference_sources": reference_sources,
+        "tags": tags[:30],
+        "category": category,
+        "category_source": _safe_str(row.get("category_source"), max_len=32) or None,
+        "query_hash": _safe_str(row.get("query_hash"), max_len=64) or _stable_query_hash(question),
+        "retrieval_trace_ref": _safe_str(row.get("retrieval_trace_ref"), max_len=255) or None,
+        "retrieval_config_hash": _safe_str(retrieval.get("retrieval_config_hash"), max_len=128) or None,
+        "profile": _safe_str(row.get("profile"), max_len=64) or None,
+        "judge_score_ref": _safe_str(row.get("judge_score_ref"), max_len=255) or None,
+        "source_feedback_id": _feedback_id(row) or None,
+        "source_conversation_id": _lineage_id(row, "conversation_id"),
+        "source_message_id": _lineage_id(row, "message_id"),
+        "dataset_id": _dataset_id(row),
+    }
+
+
 def _rules_row(row: dict[str, Any]) -> dict[str, Any]:
     trace = _retrieval_trace(row)
     citations = trace.get("citations") if isinstance(trace, dict) else []
@@ -168,8 +208,12 @@ def build_feedback_loop_candidates(
 
     hard_negative_records: list[dict[str, Any]] = []
     training_triples: list[dict[str, Any]] = []
+    eval_case_candidates: list[dict[str, Any]] = []
 
     for row in negative_rows:
+        eval_case = _build_eval_case_candidate(row)
+        if eval_case is not None:
+            eval_case_candidates.append(eval_case)
         query = _query(row)
         refs = _reference_sources(row)
         trace = _retrieval_trace(row)
@@ -211,12 +255,14 @@ def build_feedback_loop_candidates(
             "negative_feedback_total": int(len(negative_rows)),
             "hard_negative_records": int(len(hard_negative_records)),
             "training_triples": int(len(training_triples)),
+            "eval_case_candidates": int(len(eval_case_candidates)),
             "rules_glossary_candidates": int(len(rules_suggestions.get("glossary_suggestions") or [])),
             "rules_pattern_candidates": int(len(rules_suggestions.get("pattern_suggestions") or [])),
             "rules_intent_candidates": int(len(rules_suggestions.get("intent_suggestions") or [])),
         },
         "hard_negative_records": hard_negative_records,
         "training_triples": training_triples,
+        "eval_case_candidates": eval_case_candidates,
         "rules_suggestions": rules_suggestions,
     }
 
@@ -224,5 +270,6 @@ def build_feedback_loop_candidates(
 __all__ = [
     "FEEDBACK_LOOP_CANDIDATES_SCHEMA_V1",
     "FEEDBACK_TRAINING_TRIPLE_SCHEMA_V1",
+    "FEEDBACK_EVAL_CASE_SCHEMA_V1",
     "build_feedback_loop_candidates",
 ]

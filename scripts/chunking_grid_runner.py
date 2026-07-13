@@ -3,13 +3,17 @@
 import argparse
 import json
 from pathlib import Path
-from statistics import median
 from typing import Any
 
 from langchain_core.documents import Document
 
 from app.core.token_utils import estimate_tokens
 from app.rag.chunking.factory import chunker_factory
+from app.rag.chunking.quality_scorer import detect_context_cliff
+from app.services.chunking_stats_utils import (
+    compute_chunking_stats_from_texts,
+    compute_chunking_stats_from_texts_tokens,
+)
 
 _DEFAULT_CHUNK_SIZES = (256, 512, 1024)
 _DEFAULT_OVERLAP_RATIOS = (0.0, 0.10, 0.25)
@@ -18,7 +22,6 @@ _DEFAULT_STRATEGIES = (
     "semantic_sentence",
     "sentence_window",
     "parent_child",
-    "contextual",
 )
 _ILYA_CONTROL_GROUP = {
     "strategy": "langchain_recursive",
@@ -51,13 +54,6 @@ def build_chunking_grid_configs(
     return grid
 
 
-def _resolve_strategy(strategy: str) -> tuple[str, dict[str, Any]]:
-    raw = str(strategy or "").strip().lower()
-    if raw == "contextual":
-        return "langchain_recursive", {"embedding_contextual_retrieval_enabled": True}
-    return chunker_factory.resolve_strategy(raw), {}
-
-
 def evaluate_chunking_grid_file(
     *,
     path: Path,
@@ -66,10 +62,14 @@ def evaluate_chunking_grid_file(
     chunk_overlap: int,
 ) -> dict[str, Any]:
     text = path.read_text(encoding="utf-8", errors="ignore")
-    resolved_strategy, extra = _resolve_strategy(strategy)
+    resolved_strategy = chunker_factory.resolve_strategy(strategy)
     chunker = chunker_factory.get_chunker(resolved_strategy, int(chunk_size), int(chunk_overlap))
     chunks = chunker.split_documents([Document(page_content=text, metadata={"source": str(path)})])
-    token_counts = [int(estimate_tokens(c.page_content or "") or 0) for c in (chunks or [])]
+    chunk_texts = [str(c.page_content or "") for c in (chunks or [])]
+    token_counts = [int(estimate_tokens(chunk_text) or 0) for chunk_text in chunk_texts]
+    char_stats = compute_chunking_stats_from_texts(chunk_texts) or {}
+    token_stats = compute_chunking_stats_from_texts_tokens(chunk_texts) or {}
+    cliff_count = sum(1 for count in token_counts if detect_context_cliff(count).get("cliff_risk") != "none")
     return {
         "file": str(path),
         "strategy": str(strategy),
@@ -77,9 +77,10 @@ def evaluate_chunking_grid_file(
         "chunk_size": int(chunk_size),
         "chunk_overlap": int(chunk_overlap),
         "chunk_count": int(len(chunks or [])),
-        "total_tokens_est": int(sum(token_counts)),
-        "median_tokens_est": int(median(token_counts)) if token_counts else 0,
-        **extra,
+        "total_tokens_est": int(token_stats.get("total") or 0),
+        "median_tokens_est": int(token_stats.get("median") or 0),
+        "avg_chunk_chars": int(char_stats.get("avg") or 0),
+        "cliff_rate": round(cliff_count / len(token_counts), 4) if token_counts else 0.0,
     }
 
 

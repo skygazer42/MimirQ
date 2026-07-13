@@ -19,6 +19,7 @@ from app.core.constants import EmbeddingProviders
 from app.models.dataset import Dataset as DBDataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
+from app.query.normalize import normalize_query
 from app.rag.chunking.utils.hierarchical import apply_sequence_hierarchy_metadata
 from app.rag.core.metadata import ensure_hierarchy_overlay_metadata, normalize_image_metadata
 from app.rag.embedding import create_langchain_embeddings_from_config
@@ -304,12 +305,25 @@ def _chunk_index_content(content: str, metadata: dict[str, Any] | None) -> tuple
     labels/aliases/structured fields. The stored chunk body remains the clean content.
     """
     meta = dict(metadata or {})
+    display_content = str(content or "")
     raw_index_text = meta.get(RETRIEVAL_TEXT_METADATA_KEY)
     index_text = str(raw_index_text or "").strip() if isinstance(raw_index_text, str) else ""
     if not index_text:
-        return str(content or ""), meta
-    meta.setdefault(RETRIEVAL_DISPLAY_CONTENT_METADATA_KEY, str(content or ""))
-    return index_text, meta
+        index_text = display_content
+
+    prefix, prefix_fields = _build_retrieval_metadata_prefix(meta)
+    if prefix and not bool(meta.get("rich_metadata_header_applied")):
+        index_text = f"{prefix}\n\n{index_text}" if index_text else prefix
+        meta["retrieval_metadata_prefix_applied"] = True
+        meta["retrieval_metadata_prefix_fields"] = prefix_fields
+
+    normalized = normalize_query(index_text)
+    meta[RETRIEVAL_TEXT_METADATA_KEY] = normalized.normalized_text
+    if normalized.applied_rules:
+        meta["retrieval_normalization_rules"] = list(normalized.applied_rules)
+    if normalized.normalized_text != display_content:
+        meta.setdefault(RETRIEVAL_DISPLAY_CONTENT_METADATA_KEY, display_content)
+    return normalized.normalized_text, meta
 
 
 def _should_prefix_embedding(meta: dict[str, Any]) -> bool:
@@ -405,6 +419,8 @@ def _extract_title_for_embedding(meta: dict[str, Any]) -> str | None:
     if not isinstance(meta, dict):
         return None
     for key in (
+        # Prefer record-level titles over the enclosing document filename.
+        "service_name",
         "document_title",
         "doc_title",
         "title",
@@ -424,13 +440,78 @@ def _extract_heading_for_embedding(meta: dict[str, Any]) -> str | None:
         return None
 
     header = meta.get("header_path") or meta.get("outline_path_str") or meta.get("header_context") or None
-    if header is None:
+    if isinstance(header, list):
+        header = " / ".join([str(x).strip() for x in header if str(x).strip()][:10])
+    elif header is None:
         header_list = meta.get("outline_path") or meta.get("header_path_list") or None
         if isinstance(header_list, list) and header_list:
             header = " / ".join([str(x).strip() for x in header_list if str(x).strip()][:10])
+        else:
+            header = meta.get("section") or meta.get("section_title") or meta.get("knowledge_section")
 
     header_str = _coerce_short_text(header, max_chars=280)
     return header_str
+
+
+def _build_retrieval_metadata_prefix(meta: dict[str, Any]) -> tuple[str, list[str]]:
+    """Build a bounded, deterministic index-only prefix from existing metadata."""
+    if not isinstance(meta, dict):
+        return "", []
+
+    def _values(value: Any, *, max_items: int, max_chars: int) -> list[str]:
+        raw = value if isinstance(value, (list, tuple, set)) else [value]
+        out: list[str] = []
+        seen: set[str] = set()
+        for item in raw:
+            text = str(item or "").strip()
+            if not text:
+                continue
+            text = text[:max_chars]
+            key = text.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(text)
+            if len(out) >= max_items:
+                break
+        return out
+
+    lines: list[str] = []
+    fields: list[str] = []
+    title = _extract_title_for_embedding(meta)
+    if str(title or "").strip().casefold() in {"unknown", "untitled"}:
+        title = None
+    if title:
+        lines.append(f"[Title] {title}")
+        fields.append("title")
+
+    section = _extract_heading_for_embedding(meta)
+    if section:
+        lines.append(f"[Section] {section}")
+        fields.append("section")
+
+    keywords = _values(
+        meta.get("document_keywords") or meta.get("keywords"),
+        max_items=12,
+        max_chars=64,
+    )
+    if keywords:
+        lines.append(f"[Keywords] {', '.join(keywords)}")
+        fields.append("keywords")
+
+    questions = _values(
+        meta.get("document_questions")
+        or meta.get("questions")
+        or meta.get("question")
+        or meta.get("hypothetical_questions"),
+        max_items=5,
+        max_chars=200,
+    )
+    if questions:
+        lines.append("[Questions] " + " | ".join(questions))
+        fields.append("questions")
+
+    return "\n".join(lines), fields
 
 
 def _build_llm_contextual_summary(
@@ -991,6 +1072,7 @@ class Indexer:
         dataset_uuid: UUID | None = None
         file_type_str: str | None = None
         document_title: str | None = None
+        document_retrieval_metadata: dict[str, Any] = {}
         embedding_runtime = resolve_dataset_embedding_runtime(None)
         embedding_space = embedding_runtime.embedding_space_hash
         try:
@@ -1006,6 +1088,8 @@ class Indexer:
                     dataset_id_str = str(ds_id)
                 if ft is not None:
                     file_type_str = str(ft)
+                if isinstance(doc_meta, dict):
+                    document_retrieval_metadata = dict(doc_meta)
                 document_title = _derive_document_title(fn, doc_meta)
                 dataset_meta = self._load_dataset_metadata(tenant_id=tenant_id, dataset_id=dataset_uuid)
                 embedding_runtime = resolve_dataset_embedding_runtime(dataset_meta)
@@ -1014,6 +1098,7 @@ class Indexer:
             dataset_id_str = None
             file_type_str = None
             document_title = None
+            document_retrieval_metadata = {}
             embedding_runtime = resolve_dataset_embedding_runtime(None)
             embedding_space = embedding_runtime.embedding_space_hash
 
@@ -1064,6 +1149,12 @@ class Indexer:
             meta.setdefault("source", source)
             if file_type_str and not meta.get("file_type"):
                 meta["file_type"] = file_type_str
+            if document_title and not meta.get("document_title"):
+                meta["document_title"] = document_title
+            for metadata_key in ("document_keywords", "document_questions"):
+                value = document_retrieval_metadata.get(metadata_key)
+                if value not in (None, "", [], {}) and meta.get(metadata_key) in (None, "", [], {}):
+                    meta[metadata_key] = value
             if embedding_prefix_enabled:
                 meta.setdefault("embedding_context_prefix_enabled", True)
             if contextual_retrieval_enabled:
@@ -1118,12 +1209,13 @@ class Indexer:
                         meta=meta,
                     )
                     if prefix:
-                        embed_text = prefix + "\n" + raw_body
+                        embed_text = prefix + "\n" + embed_text
                 except Exception as exc:
                     # Fail open: contextual prefixes are best-effort.
                     logger.debug("Failed to build contextual embedding prefix; continuing without prefix: %s", exc)
             if embedding_prefix_enabled:
                 embed_text = _build_embedding_text(embed_text, meta)
+            embed_text = normalize_query(embed_text).normalized_text
             vector_docs.append({"content": embed_text, "metadata": meta})
 
             if field_aware_enabled and _should_prefix_embedding(meta):
@@ -1137,13 +1229,17 @@ class Indexer:
                 if title:
                     meta_t = dict(meta)
                     meta_t["chunk_id"] = f"{chunk_id}:title"
-                    extra_vector_docs.append({"content": f"[Title] {title}", "metadata": meta_t})
+                    extra_vector_docs.append(
+                        {"content": normalize_query(f"[Title] {title}").normalized_text, "metadata": meta_t}
+                    )
 
                 heading = _extract_heading_for_embedding(meta)
                 if heading:
                     meta_h = dict(meta)
                     meta_h["chunk_id"] = f"{chunk_id}:heading"
-                    extra_vector_docs.append({"content": f"[Heading] {heading}", "metadata": meta_h})
+                    extra_vector_docs.append(
+                        {"content": normalize_query(f"[Heading] {heading}").normalized_text, "metadata": meta_h}
+                    )
 
         vector_ids = self._index_chunk_vectors(
             vector_docs,

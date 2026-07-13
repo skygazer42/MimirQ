@@ -34,6 +34,7 @@ from app.models.evaluation import (
     RagasRegressionItem,
     RagasRegressionRun,
 )
+from app.rag.core.hashing import stable_json_hash
 from app.rag.core.http import httpx_trust_env
 from app.rag.core.logging import get_logger
 from app.rag.core.text import parse_json_from_text
@@ -923,6 +924,30 @@ def _default_llm_judge_prompt(*, kind: str, question: str, answer: str, contexts
     )
 
 
+def _llm_judge_version_hash(
+    *,
+    model: Any,
+    generation_prompt_content: str | None = None,
+    generation_prompt_variables: list[str] | None = None,
+    generation_prompt_version: int | None = None,
+) -> str:
+    model_used = getattr(model, "model_name", None) or getattr(model, "model", None)
+    default_inputs = {"question": "{question}", "answer": "{answer}", "contexts": ["{context}"]}
+    return stable_json_hash(
+        {
+            "schema": "mimirq.llm_judge.version.v1",
+            "model": str(model_used or ""),
+            "temperature": getattr(model, "temperature", None),
+            "retrieval_rubric": _default_llm_judge_prompt(kind="retrieval", **default_inputs),
+            "generation_rubric": generation_prompt_content
+            or _default_llm_judge_prompt(kind="generation", **default_inputs),
+            "generation_prompt_variables": sorted(str(item) for item in (generation_prompt_variables or [])),
+            "generation_prompt_version": generation_prompt_version,
+        },
+        length=24,
+    )
+
+
 def _render_llm_judge_prompt(
     *,
     kind: str,
@@ -978,7 +1003,31 @@ def _coerce_llm_judge_payload(raw: Any) -> dict[str, Any]:
     elif isinstance(quotes_raw, str) and quotes_raw.strip():
         quotes = [_clip_text(quotes_raw, max_len=160)]
 
-    return {"score": score, "reason": reason, "evidence_quotes": quotes}
+    out = {"score": score, "reason": reason, "evidence_quotes": quotes}
+    detail_fields = {
+        "atomic_facts": {"fact", "status", "verdict", "evidence_quote"},
+        "chunk_judgments": {"rank", "is_relevant", "evidence_quote"},
+        "citation_checks": {"citation", "claim", "verdict", "evidence_quote"},
+    }
+    for key, allowed_fields in detail_fields.items():
+        items: list[dict[str, Any]] = []
+        for item in obj.get(key) if isinstance(obj.get(key), list) else []:
+            if not isinstance(item, dict):
+                continue
+            cleaned: dict[str, Any] = {}
+            for field in allowed_fields:
+                value = item.get(field)
+                if isinstance(value, (bool, int, float)):
+                    cleaned[field] = value
+                elif isinstance(value, str) and value.strip():
+                    cleaned[field] = _clip_text(value, max_len=500)
+            if cleaned:
+                items.append(cleaned)
+            if len(items) >= 100:
+                break
+        if items:
+            out[key] = items
+    return out
 
 
 def _run_llm_judge(
@@ -1037,6 +1086,7 @@ def _attach_llm_judge_to_eval_items(
     selected_generation_template = None
     generation_prompt_content: str | None = None
     generation_prompt_variables: list[str] | None = None
+    generation_prompt_version: int | None = None
     generation_prompt_meta: dict[str, Any] = {}
 
     if db is not None and tenant_id is not None and (
@@ -1060,12 +1110,21 @@ def _attach_llm_judge_to_eval_items(
     if selected_generation_template is not None:
         generation_prompt_content = str(getattr(selected_generation_template, "content", "") or "").strip() or None
         generation_prompt_variables = list(getattr(selected_generation_template, "variables", None) or [])
+        generation_prompt_version = int(getattr(selected_generation_template, "version", 0) or 0) or None
         generation_prompt_meta = {
             "prompt_template_id": str(getattr(selected_generation_template, "id", "") or "") or None,
             "prompt_template_key": str(getattr(selected_generation_template, "template_key", "") or "").strip() or None,
             "prompt_ab_experiment_key": str(getattr(selected_generation_template, "ab_experiment_key", "") or "").strip() or None,
             "prompt_ab_variant": str(getattr(selected_generation_template, "ab_variant", "") or "").strip() or None,
+            "prompt_template_version": generation_prompt_version,
         }
+
+    judge_version_hash = _llm_judge_version_hash(
+        model=llm,
+        generation_prompt_content=generation_prompt_content,
+        generation_prompt_variables=generation_prompt_variables,
+        generation_prompt_version=generation_prompt_version,
+    )
 
     def _run() -> None:
         for item in eval_items:
@@ -1107,6 +1166,7 @@ def _attach_llm_judge_to_eval_items(
             meta["llm_judge"] = {
                 "enabled": True,
                 "model_used": model_used,
+                "version_hash": judge_version_hash,
                 "retrieval": retrieval,
                 "generation": generation,
                 "overall_score": overall,
@@ -1135,6 +1195,7 @@ def _attach_llm_judge_to_eval_items(
 
     return {
         "llm_judge_model_used": str(model_used or "") or None,
+        "llm_judge_version_hash": judge_version_hash,
         "llm_judge_items": int(len(overall_scores)),
         "llm_judge_retrieval_avg": _mean(ret_scores),
         "llm_judge_generation_avg": _mean(gen_scores),
@@ -1143,6 +1204,7 @@ def _attach_llm_judge_to_eval_items(
         "llm_judge_prompt_template_key": generation_prompt_meta.get("prompt_template_key"),
         "llm_judge_prompt_ab_experiment_key": generation_prompt_meta.get("prompt_ab_experiment_key"),
         "llm_judge_prompt_ab_variant": generation_prompt_meta.get("prompt_ab_variant"),
+        "llm_judge_prompt_template_version": generation_prompt_meta.get("prompt_template_version"),
         # Gap8 (P2): cost tracking for judge calls (best-effort).
         "llm_judge_tokens_input": prompt_tokens,
         "llm_judge_tokens_output": completion_tokens,

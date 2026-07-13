@@ -8,10 +8,30 @@ from sqlalchemy.orm import Session
 
 from app.models.chat import Conversation, Message
 from app.models.feedback import MessageFeedback
+from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
 from app.rag.feedback_loop.candidates import build_feedback_loop_candidates as build_feedback_loop_candidate_payload
 from app.rag.industry_rules.schema import IndustryRuleset
 from app.services.rag_trace_service import list_rag_traces
+
+_SERVER_MANAGED_FEEDBACK_EXTRA_KEYS = {
+    "archived",
+    "archived_at",
+    "archived_by",
+    "dataset_id",
+    "eval_case_status",
+    "eval_case_id",
+    "eval_case_promoted_by",
+    "source",
+    "feedback_id",
+    "message_id",
+    "rating",
+    "feedback_category",
+    "feedback_category_source",
+    "rag_config_snapshot",
+    "retrieval_trace",
+    "retrieval_trace_request_id",
+}
 
 
 def _coerce_mapping(value: Any) -> dict[str, Any]:
@@ -112,6 +132,17 @@ def _safe_text(value: Any, *, max_len: int = 4000) -> str:
     return text[: max(0, int(max_len or 0))]
 
 
+def _normalize_feedback_category(value: Any) -> str | None:
+    category = _safe_text(value, max_len=32).lower()
+    if not category:
+        return None
+    if category == "generation_error":
+        category = "wrong_answer"
+    if category not in {"retrieval_miss", "wrong_answer", "out_of_scope", "other"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid feedback category")
+    return category
+
+
 def _feedback_loop_reference_sources(citations: Any) -> list[dict[str, Any]]:
     if not isinstance(citations, list):
         return []
@@ -205,6 +236,7 @@ class FeedbackService:
         tags: list[str] | None,
         expected_answer: str | None,
         extra: dict[str, Any] | None,
+        category: str | None = None,
         ensure_member_fn: Callable[[Session, UUID, str], Any] | None = None,
         list_rag_traces_fn: Callable[..., Any] = list_rag_traces,
     ) -> MessageFeedback:
@@ -244,12 +276,37 @@ class FeedbackService:
                 list_rag_traces_fn=list_rag_traces_fn,
             )
 
+        client_extra = {
+            key: value
+            for key, value in (extra.items() if isinstance(extra, dict) else [])
+            if key not in _SERVER_MANAGED_FEEDBACK_EXTRA_KEYS
+        }
         extra_payload = _augment_feedback_extra_with_snapshots(
-            extra=extra if isinstance(extra, dict) else {},
+            extra=client_extra,
             trace_payload=trace_payload,
             request_id=request_id,
             dataset_id=dataset_id,
         )
+        normalized_category = _normalize_feedback_category(category)
+        if normalized_category is not None and int(rating) > 2:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Feedback category is only valid for ratings 1-2",
+            )
+        profile = _safe_text(meta.get("retrieval_profile"), max_len=64)
+        question = _previous_user_question(
+            messages=db.query(Message).filter(
+                Message.tenant_id == tenant_id,
+                Message.conversation_id == msg.conversation_id,
+            ).all(),
+            conversation_id=msg.conversation_id,
+            assistant_created_at=getattr(msg, "created_at", None),
+        )
+        query_hash = _safe_text(meta.get("query_hash"), max_len=64) or (
+            stable_hash(question, length=64) if question else ""
+        )
+        retrieval_trace_ref = _safe_text(request_id, max_len=255)
+        judge_score_ref = _safe_text(meta.get("judge_score_ref"), max_len=255)
 
         row = (
             db.query(MessageFeedback)
@@ -262,10 +319,21 @@ class FeedbackService:
         )
         normalized_tags = [str(item) for item in (tags or [])]
         if row:
+            previous_extra = dict(row.extra or {}) if isinstance(row.extra, dict) else {}
+            for key in _SERVER_MANAGED_FEEDBACK_EXTRA_KEYS:
+                if key in previous_extra:
+                    extra_payload[key] = previous_extra[key]
             row.rating = int(rating)
             row.reason = reason
             row.tags = normalized_tags
             row.expected_answer = expected_answer
+            if normalized_category is not None and str(row.category_source or "").lower() != "reviewer":
+                row.category = normalized_category
+                row.category_source = "user"
+            row.query_hash = query_hash or None
+            row.retrieval_trace_ref = retrieval_trace_ref or None
+            row.profile = profile or None
+            row.judge_score_ref = judge_score_ref or None
             row.extra = extra_payload
             db.commit()
             db.refresh(row)
@@ -280,6 +348,12 @@ class FeedbackService:
             reason=reason,
             tags=normalized_tags,
             expected_answer=expected_answer,
+            category=normalized_category,
+            category_source="user" if normalized_category else None,
+            query_hash=query_hash or None,
+            retrieval_trace_ref=retrieval_trace_ref or None,
+            profile=profile or None,
+            judge_score_ref=judge_score_ref or None,
             extra=extra_payload,
         )
         db.add(row)
@@ -392,6 +466,8 @@ class FeedbackService:
         account_id: str,
         feedback_id: UUID,
         archived: bool | None,
+        category: str | None = None,
+        category_source: str | None = None,
         ensure_member_fn: Callable[[Session, UUID, str], Any] | None = None,
     ) -> MessageFeedback:
         FeedbackService._ensure_member(
@@ -417,6 +493,19 @@ class FeedbackService:
             else:
                 payload.pop("archived_at", None)
                 payload.pop("archived_by", None)
+
+        normalized_category = _normalize_feedback_category(category)
+        if normalized_category is not None:
+            if int(getattr(row, "rating", 0) or 0) > 2:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Feedback category is only valid for ratings 1-2",
+                )
+            source = _safe_text(category_source, max_len=32).lower() or "reviewer"
+            if source not in {"user", "llm_auto", "reviewer"}:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid feedback category source")
+            row.category = normalized_category
+            row.category_source = source
 
         row.extra = payload
         db.commit()
@@ -508,6 +597,14 @@ class FeedbackService:
                     "reason": getattr(fb, "reason", None),
                     "tags": list(getattr(fb, "tags", []) or []),
                     "expected_answer": getattr(fb, "expected_answer", None),
+                    "category": getattr(fb, "category", None),
+                    "category_source": getattr(fb, "category_source", None),
+                    "query_hash": getattr(fb, "query_hash", None),
+                    "retrieval_trace_ref": getattr(fb, "retrieval_trace_ref", None),
+                    "profile": getattr(fb, "profile", None),
+                    "judge_score_ref": getattr(fb, "judge_score_ref", None),
+                    "eval_case_status": extra.get("eval_case_status"),
+                    "archived": bool(extra.get("archived")),
                     "dataset_id": dataset_id or None,
                     "conversation_id": str(getattr(fb, "conversation_id", "") or ""),
                     "message_id": str(getattr(fb, "message_id", "") or ""),

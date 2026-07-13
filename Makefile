@@ -175,12 +175,15 @@ CORE_TESTS := \
 	tests/test_parsing_extract_api.py \
 	tests/test_parsing_extract_service.py \
 	tests/test_parsing_quality_gate.py \
+	tests/test_parsing_benchmark_manifest.py \
 	tests/test_chunk_quality_gate_service.py \
 	tests/test_chunk_quality_scoring.py \
 	tests/test_chunking_stats_tokens.py \
+	tests/test_chunking_grid_runner.py \
 	tests/test_chunk_presets.py \
 	tests/test_chunking_recommendations.py \
 	tests/test_dataset_ingestion_policy_endpoints.py \
+	tests/test_ingestion_checkpoint_safety.py \
 	tests/test_indexer_upsert_entities.py \
 	tests/test_index_audit_summary.py \
 	tests/test_adaptive_retrieval_routing.py \
@@ -218,6 +221,7 @@ CORE_TESTS := \
 	tests/test_eval_fusion_metrics.py \
 	tests/test_eval_runner_result_shape.py \
 	tests/test_eval_stage1_runner_integrity.py \
+	tests/test_llm_judge_versioning.py \
 	tests/test_regression_gate_report.py \
 	tests/test_evidence_api_offline_regression_gate.py \
 	tests/test_reports_endpoints.py \

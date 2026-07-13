@@ -75,6 +75,7 @@ runs/parser_checks/
 runs/queryset_health/
 runs/smoke/
 .playwright-mcp/
+.playwright-cli/
 chunk-preview-*.png
 graph-snapshots-*.png
 web/coverage/

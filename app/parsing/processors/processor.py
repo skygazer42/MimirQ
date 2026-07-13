@@ -109,6 +109,19 @@ LOG_DOC_ID_FMT = '%s document_id=%s'
 AUDIT_ACTION_DOCUMENT_QUARANTINE = 'document.quarantine'
 
 
+def _parsed_checkpoint_is_reusable(metadata: dict[str, Any]) -> bool:
+    checkpoint = metadata.get("ingest_checkpoint")
+    if not (
+        isinstance(checkpoint, dict)
+        and str(checkpoint.get("version") or "") == "1"
+        and str(checkpoint.get("stage") or "") == "parsed"
+    ):
+        return False
+    persisted = metadata.get("parsed_content_persisted")
+    cleaned = persisted.get("cleaned") if isinstance(persisted, dict) else None
+    return not (isinstance(cleaned, dict) and bool(cleaned.get("truncated")))
+
+
 def _build_combined_governance_rules(pipeline_effective: PipelineEffective):
     """
     Build the explicit regex-rule list for GovernanceProcessor when rule packs or custom regex rules are enabled.
@@ -3098,7 +3111,7 @@ class DocumentProcessorService:
             try:
                 meta0 = dict(db_document.doc_metadata or {})
                 ck = meta0.get("ingest_checkpoint") if isinstance(meta0, dict) else None
-                ck_ok = isinstance(ck, dict) and str(ck.get("version") or "") == "1" and str(ck.get("stage") or "") == "parsed"
+                ck_ok = _parsed_checkpoint_is_reusable(meta0)
                 if ck_ok:
                     pipeline_hash0 = str(meta0.get("pipeline_hash") or "").strip()
                     file_sha0 = str(meta0.get("file_sha256") or "").strip().lower()
@@ -3862,14 +3875,17 @@ class DocumentProcessorService:
                         )
                         meta = dict(db_document.doc_metadata or {})
                         meta["parsed_content_persisted"] = persist_meta
-                        # Checkpoint: enable resuming ingest retries without re-parsing.
-                        meta["ingest_checkpoint"] = {
-                            "version": "1",
-                            "stage": "parsed",
-                            "source": "document_parsed_contents",
-                            "file_sha256": str(meta.get("file_sha256") or "").strip().lower(),
-                            "pipeline_hash": str(meta.get("pipeline_hash") or "").strip(),
-                        }
+                        # Truncated audit content is not a valid restart checkpoint.
+                        if bool((persist_meta.get("cleaned") or {}).get("truncated")):
+                            meta.pop("ingest_checkpoint", None)
+                        else:
+                            meta["ingest_checkpoint"] = {
+                                "version": "1",
+                                "stage": "parsed",
+                                "source": "document_parsed_contents",
+                                "file_sha256": str(meta.get("file_sha256") or "").strip().lower(),
+                                "pipeline_hash": str(meta.get("pipeline_hash") or "").strip(),
+                            }
                         db_document.doc_metadata = meta
                         db.commit()
                         db.refresh(db_document)

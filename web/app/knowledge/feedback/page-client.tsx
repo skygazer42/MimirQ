@@ -318,6 +318,13 @@ function getFeedbackSourceLabel(source: FeedbackSourceFilter): string {
 }
 
 function getFeedbackIssueLabel(item: MessageFeedbackEnriched): string {
+  const categoryLabels = {
+    retrieval_miss: '未命中知识库',
+    wrong_answer: '回答错误',
+    out_of_scope: '超出知识范围',
+    other: '其他问题',
+  } as const
+  if (item.category) return categoryLabels[item.category]
   const explicitIssue = firstFeedbackDisplayString(
     item.extra?.feedback_issue,
     item.extra?.quality_label

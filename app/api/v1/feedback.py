@@ -36,6 +36,7 @@ from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import DatasetService
 from app.services.feedback_service import FeedbackService
 from app.services.rag_trace_service import list_rag_traces
+from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -203,6 +204,7 @@ async def upsert_message_feedback(
         reason=request.reason,
         tags=request.tags,
         expected_answer=request.expected_answer,
+        category=request.category,
         extra=request.extra if isinstance(request.extra, dict) else {},
         ensure_member_fn=DatasetService.ensure_member,
         list_rag_traces_fn=list_rag_traces,
@@ -275,12 +277,20 @@ async def patch_message_feedback(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Patch mutable feedback triage fields."""
+    ensure_tenant_permission(
+        db,
+        tenant_id,
+        account_id,
+        TenantPermissions.FEEDBACK_TRIAGE_WRITE,
+        detail="No permission to triage feedback",
+    )
     return FeedbackService.patch_message_feedback(
         db=db,
         tenant_id=tenant_id,
         account_id=account_id,
         feedback_id=feedback_id,
         archived=request.archived,
+        category=request.category,
         ensure_member_fn=DatasetService.ensure_member,
     )
 
@@ -375,15 +385,25 @@ async def create_regression_case_from_feedback(
     - dataset_id is read from assistant message metadata when available.
     - document_ids scope is inherited from the conversation when requested.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    ensure_tenant_permission(
+        db,
+        tenant_id,
+        account_id,
+        TenantPermissions.FEEDBACK_TRIAGE_WRITE,
+        detail="No permission to promote feedback",
+    )
 
     fb = (
         db.query(MessageFeedback)
         .filter(MessageFeedback.id == feedback_id, MessageFeedback.tenant_id == tenant_id)
+        .with_for_update()
         .first()
     )
     if not fb:
         raise HTTPException(status_code=404, detail="Feedback not found")
+    feedback_extra = dict(fb.extra or {}) if isinstance(fb.extra, dict) else {}
+    if str(feedback_extra.get("eval_case_status") or "").strip().lower() == "promoted":
+        raise HTTPException(status_code=409, detail="Feedback already promoted to a regression case")
 
     assistant = (
         db.query(Message)
@@ -426,6 +446,11 @@ async def create_regression_case_from_feedback(
             dataset_id = UUID(raw_ds.strip())
         except Exception:
             dataset_id = None
+    if dataset_id is None:
+        dataset_id = getattr(conv, "dataset_id", None)
+    if dataset_id is not None:
+        dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+        DatasetService.assert_dataset_writable(db, dataset, account_id)
     request_id = str(meta.get("request_id") or "").strip() if isinstance(meta, dict) else ""
 
     doc_ids: list[str] = []
@@ -435,6 +460,8 @@ async def create_regression_case_from_feedback(
     tags: list[str] = []
     if isinstance(fb.tags, list):
         tags.extend([str(x) for x in fb.tags if isinstance(x, (str, int, float))])
+    if getattr(fb, "category", None):
+        tags.append(str(fb.category))
     if isinstance(getattr(body, "tags", None), list):
         tags.extend([str(x) for x in body.tags if isinstance(x, (str, int, float))])
     # Small normalization: unique + cap.
@@ -452,15 +479,33 @@ async def create_regression_case_from_feedback(
         if len(cleaned) >= 30:
             break
 
+    protected_extra_keys = {
+        "source",
+        "feedback_id",
+        "message_id",
+        "rating",
+        "feedback_category",
+        "feedback_category_source",
+        "dataset_id",
+        "query_hash",
+        "retrieval_trace_ref",
+        "profile",
+        "judge_score_ref",
+        "retrieval_trace",
+        "retrieval_trace_request_id",
+    }
     extra: dict = {}
     if isinstance(fb.extra, dict):
         extra.update(fb.extra)
     if isinstance(getattr(body, "extra", None), dict):
-        extra.update(body.extra)
-    extra.setdefault("source", "feedback")
-    extra.setdefault("feedback_id", str(fb.id))
-    extra.setdefault("message_id", str(fb.message_id))
-    extra.setdefault("rating", int(fb.rating))
+        extra.update({key: value for key, value in body.extra.items() if key not in protected_extra_keys})
+    extra["source"] = "feedback"
+    extra["feedback_id"] = str(fb.id)
+    extra["message_id"] = str(fb.message_id)
+    extra["rating"] = int(fb.rating)
+    if getattr(fb, "category", None):
+        extra["feedback_category"] = str(fb.category)
+        extra["feedback_category_source"] = str(getattr(fb, "category_source", "") or "") or None
 
     reference_sources = _extract_reference_sources(getattr(assistant, "citations", None))
     trace_payload = _find_trace_by_request_id(tenant_id=tenant_id, conversation_id=conv.id, request_id=request_id)
@@ -486,6 +531,11 @@ async def create_regression_case_from_feedback(
         db.flush()
     except Exception as exc:
         logger.debug(_FEEDBACK_FALLBACK_LOG_MESSAGE, exc)
+
+    feedback_extra["eval_case_status"] = "promoted"
+    feedback_extra["eval_case_id"] = str(getattr(row, "id", "") or "")
+    feedback_extra["eval_case_promoted_by"] = str(account_id or "")
+    fb.extra = feedback_extra
 
     # Best-effort audit log (commit in the same transaction).
     audit_log_event(

@@ -872,7 +872,11 @@ Requirements:
         )
         metadata_exact_db_fallback_enabled = getattr(rag_config, "metadata_exact_db_fallback_enabled", None)
         enable_hierarchy_recall = rag_config.enable_hierarchy_recall
-        hierarchy_family_collapse = rag_config.hierarchy_family_collapse
+        hierarchy_family_collapse = (
+            rag_config.hierarchy_family_collapse
+            if rag_config.hierarchy_family_collapse is not None
+            else bool(getattr(settings, "HIERARCHY_RECALL_FAMILY_COLLAPSE", True))
+        )
         hierarchy_family_aggregation = rag_config.hierarchy_family_aggregation
         hierarchy_tree_dedup = rag_config.hierarchy_tree_dedup
         hierarchy_parent_depth = rag_config.hierarchy_parent_depth
@@ -1379,6 +1383,10 @@ Requirements:
                 rerank_top_n = int(profile_applied.get("reranker_top_n") or rerank_top_n or 0)
             if profile_applied.get("enable_weight_rerank") is not None:
                 enable_weight_rerank = bool(profile_applied.get("enable_weight_rerank"))
+            if profile_applied.get("sparse_retrieval_enabled") is not None:
+                sparse_retrieval_enabled = bool(profile_applied.get("sparse_retrieval_enabled"))
+            if profile_applied.get("sparse_retrieval_provider"):
+                sparse_retrieval_provider = str(profile_applied.get("sparse_retrieval_provider"))
             if profile_applied.get("enable_hierarchy_recall") is not None:
                 enable_hierarchy_recall = bool(profile_applied.get("enable_hierarchy_recall"))
             if profile_applied.get("hierarchy_family_collapse") is not None:
@@ -1849,6 +1857,8 @@ Requirements:
                 "metadata_exact_db_fallback_enabled": metadata_exact_db_fallback_enabled,
                 "retrieval_mode": mode_used,
                 "retrieval_profile": profile_norm or None,
+                "sparse_retrieval_enabled": sparse_retrieval_enabled,
+                "sparse_retrieval_provider": sparse_retrieval_provider,
                 "context_neighbor_window": profile_applied.get("context_neighbor_window"),
                 "context_neighbor_max_added": profile_applied.get("context_neighbor_max_added"),
                 "context_neighbor_score_driven": profile_applied.get("context_neighbor_score_driven"),

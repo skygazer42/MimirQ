@@ -829,6 +829,9 @@ class Settings(BaseSettings):
     DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_SCAN: int = 80
     DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_RECORDS: int = 4
     DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_STATEMENT_TIMEOUT_MS: int = 2500
+    # Exact-anchor lookup must stay inside the requested knowledge scope unless
+    # a deployment explicitly opts into cross-sibling recovery.
+    DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTEND_SIBLING_POLICY_SCOPE_ENABLED: bool = False
     # Avoid unindexed JSON text scans on the latency-sensitive Dify path.
     # Structured metadata fields remain available through the anchor fallback.
     DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_TEXT_SCAN_ENABLED: bool = False
@@ -937,7 +940,7 @@ class Settings(BaseSettings):
     # - linear: min-max normalize each channel then alpha-blend
     # - rrf: reciprocal-rank fusion (normalized for UI)
     # - budgeted_rrf: RRF scoring but enforce per-channel quotas in the visible top-k prefix
-    RETRIEVAL_FUSION_STRATEGY: str = "linear"  # linear | rrf | budgeted_rrf
+    RETRIEVAL_FUSION_STRATEGY: str = "budgeted_rrf"  # linear | rrf | budgeted_rrf
     # Single source for dense-vs-keyword blend defaults across request schemas and retrievers.
     RETRIEVAL_DEFAULT_ALPHA: float = 0.6
     RETRIEVAL_RRF_K: int = 60
@@ -990,7 +993,7 @@ class Settings(BaseSettings):
     RETRIEVAL_OVERFETCH_MAX_K: int = 50
     # Optional hierarchy-aware recall overlay. Safe-off defaults preserve legacy retrieval behavior.
     HIERARCHY_RECALL_ENABLED: bool = False
-    HIERARCHY_RECALL_FAMILY_COLLAPSE: bool = False
+    HIERARCHY_RECALL_FAMILY_COLLAPSE: bool = True
     HIERARCHY_RECALL_FAMILY_AGGREGATION: str = "combined"  # frequency | score | combined
     HIERARCHY_RECALL_TREE_DEDUP: bool = False
     HIERARCHY_RECALL_PARENT_DEPTH: int = 0
@@ -1050,14 +1053,14 @@ class Settings(BaseSettings):
     # Default upper-bound for parse-risk driven reparse planning CLI.
     RETRIEVAL_PARSE_RISK_REPARSE_MAX_DOCS: int = 100
 
-    # Lifecycle governance-aware retrieval policy (disabled by default; opt-in).
+    # Lifecycle governance-aware retrieval policy over already-enriched candidates.
     #
     # Goal: keep enterprise knowledge bases fresh + authoritative without changing default retrieval behavior.
     # - prefer_authority/latest: adds a small scoring bias at the candidate ranking stage
     # - filter_superseded: optionally drop documents that have been superseded by another active doc
-    RETRIEVAL_GOVERNANCE_PREFER_AUTHORITY: bool = False
-    RETRIEVAL_GOVERNANCE_PREFER_LATEST: bool = False
-    RETRIEVAL_GOVERNANCE_FILTER_SUPERSEDED: bool = False
+    RETRIEVAL_GOVERNANCE_PREFER_AUTHORITY: bool = True
+    RETRIEVAL_GOVERNANCE_PREFER_LATEST: bool = True
+    RETRIEVAL_GOVERNANCE_FILTER_SUPERSEDED: bool = True
     # Max additive score boosts (keep small to avoid overpowering semantic relevance).
     RETRIEVAL_GOVERNANCE_AUTHORITY_BOOST_MAX: float = 0.02
     RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX: float = 0.02
@@ -1978,7 +1981,7 @@ class Settings(BaseSettings):
     # Optional context window: include neighbor chunks as background (0 disables).
     KG_EXTRACT_CONTEXT_WINDOW_CHUNKS: int = 0
     # Optional incremental extraction: skip unchanged chunks when prompt selection matches.
-    # Default false to preserve backward-compatible behavior (prompt changes should re-extract).
+    # Default false because backend/model/extraction-option changes are not yet part of the skip fingerprint.
     KG_EXTRACT_SKIP_UNCHANGED_CHUNKS: bool = False
     # Evidence-first extraction (optional; improves KG precision and debuggability).
     # When enabled, the extractor will attempt to ground each entity/relation to a chunk-local evidence quote/span.
@@ -3010,6 +3013,9 @@ class Settings(BaseSettings):
         # Validate default retrieval profile used by chat when request-side knobs are omitted.
         valid_retrieval_profiles = {
             "",
+            "fast",
+            "balanced",
+            "quality",
             "recall20",
             "recall50",
             "coverage80",

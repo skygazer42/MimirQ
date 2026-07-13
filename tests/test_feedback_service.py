@@ -1,9 +1,17 @@
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 
+import pytest
+from fastapi import HTTPException
+
+from app.api.v1 import feedback as feedback_api
 from app.models.chat import Conversation, Message
+from app.models.evaluation import RagasRegressionCase
 from app.models.feedback import MessageFeedback
+from app.rag.feedback_loop.candidates import build_feedback_loop_candidates
+from app.rag.feedback_loop.dispatcher import dispatch_feedback_loop_batch
 from app.rag.trace_schema import RagTrace, RagTraceListResponse
 from app.services.feedback_service import FeedbackService
 
@@ -44,6 +52,12 @@ class _FakeQuery:
     def all(self):  # noqa: D401
         return list(self._items)
 
+    def order_by(self, *_args, **_kwargs):  # noqa: ANN002,ANN003,D401
+        return self
+
+    def with_for_update(self):  # noqa: D401
+        return self
+
 
 class _FakeDB:
     def __init__(self, *, feedback_rows, messages, conversations):  # noqa: ANN001
@@ -69,6 +83,9 @@ class _FakeDB:
     def commit(self) -> None:
         return None
 
+    def flush(self) -> None:
+        return None
+
     def refresh(self, _obj) -> None:  # noqa: ANN001
         return None
 
@@ -79,6 +96,16 @@ def test_upsert_message_feedback_persists_trace_and_snapshot_metadata() -> None:
     conversation_id = uuid.uuid4()
     request_id = "req-feedback-service-1"
     now = datetime.now(UTC)
+    user_msg = Message(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        role="user",
+        content="How should I configure this?",
+        citations=[],
+        message_metadata={},
+        created_at=now - timedelta(seconds=1),
+    )
     assistant_msg = Message(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
@@ -86,7 +113,11 @@ def test_upsert_message_feedback_persists_trace_and_snapshot_metadata() -> None:
         role="assistant",
         content="hello",
         citations=[],
-        message_metadata={"dataset_id": str(dataset_id), "request_id": request_id},
+        message_metadata={
+            "dataset_id": str(dataset_id),
+            "request_id": request_id,
+            "retrieval_profile": "balanced",
+        },
         created_at=now,
     )
     conv = Conversation(
@@ -96,11 +127,11 @@ def test_upsert_message_feedback_persists_trace_and_snapshot_metadata() -> None:
         dataset_id=dataset_id,
         title="demo",
         document_ids=[],
-        message_count=1,
+        message_count=2,
         created_at=now,
         updated_at=now,
     )
-    db = _FakeDB(feedback_rows=[], messages=[assistant_msg], conversations=[conv])
+    db = _FakeDB(feedback_rows=[], messages=[user_msg, assistant_msg], conversations=[conv])
 
     row = FeedbackService.upsert_message_feedback(
         db=db,
@@ -111,6 +142,7 @@ def test_upsert_message_feedback_persists_trace_and_snapshot_metadata() -> None:
         reason="missing detail",
         tags=["negative"],
         expected_answer="expected",
+        category="retrieval_miss",
         extra={"from": "test"},
         ensure_member_fn=lambda *_args, **_kwargs: None,
         list_rag_traces_fn=lambda **_kwargs: RagTraceListResponse(
@@ -134,11 +166,74 @@ def test_upsert_message_feedback_persists_trace_and_snapshot_metadata() -> None:
 
     assert row.rating == 2
     assert row.reason == "missing detail"
+    assert row.category == "retrieval_miss"
+    assert row.category_source == "user"
+    assert len(row.query_hash) == 64
+    assert row.retrieval_trace_ref == request_id
+    assert row.profile == "balanced"
     assert row.extra["dataset_id"] == str(dataset_id)
     assert row.extra["retrieval_trace_request_id"] == request_id
     assert row.extra["retrieval_trace"]["request_id"] == request_id
     assert row.extra["rag_config_snapshot"]["retrieval_config_hash"] == "cfg-feedback-service-1"
     assert len(db._rows[MessageFeedback]) == 1
+
+    row.category = "wrong_answer"
+    row.category_source = "reviewer"
+    row.extra = {
+        **row.extra,
+        "archived": True,
+        "eval_case_status": "promoted",
+        "eval_case_id": "case-1",
+    }
+    updated = FeedbackService.upsert_message_feedback(
+        db=db,
+        tenant_id=tenant_id,
+        account_id="u",
+        message_id=assistant_msg.id,
+        rating=3,
+        reason="updated",
+        tags=[],
+        expected_answer=None,
+        extra={},
+        ensure_member_fn=lambda *_args, **_kwargs: None,
+        list_rag_traces_fn=lambda **_kwargs: RagTraceListResponse(
+            enabled=True,
+            path="/tmp/fake.jsonl",
+            window_minutes=60,
+            truncated=False,
+            returned=0,
+            items=[],
+        ),
+    )
+    assert updated.category == "wrong_answer"
+    assert updated.category_source == "reviewer"
+    assert updated.extra["archived"] is True
+    assert updated.extra["eval_case_status"] == "promoted"
+    assert updated.extra["eval_case_id"] == "case-1"
+
+    user_retry = FeedbackService.upsert_message_feedback(
+        db=db,
+        tenant_id=tenant_id,
+        account_id="u",
+        message_id=assistant_msg.id,
+        rating=2,
+        reason="retry",
+        tags=[],
+        expected_answer=None,
+        category="retrieval_miss",
+        extra={},
+        ensure_member_fn=lambda *_args, **_kwargs: None,
+        list_rag_traces_fn=lambda **_kwargs: RagTraceListResponse(
+            enabled=True,
+            path="/tmp/fake.jsonl",
+            window_minutes=60,
+            truncated=False,
+            returned=0,
+            items=[],
+        ),
+    )
+    assert user_retry.category == "wrong_answer"
+    assert user_retry.category_source == "reviewer"
 
 
 def test_list_message_feedback_enriched_filters_sorts_and_truncates() -> None:
@@ -334,6 +429,11 @@ def test_build_feedback_loop_candidates_uses_negative_feedback_context() -> None
         reason="召回错",
         tags=["negative"],
         expected_answer="请检查 MCU 通讯和采集配置。",
+        category="retrieval_miss",
+        category_source="reviewer",
+        query_hash="query-hash-loop",
+        retrieval_trace_ref="req-loop-1",
+        profile="balanced",
         extra={
             "retrieval_trace": {
                 "retrieval": {"retrieval_config_hash": "cfg-loop"},
@@ -361,7 +461,190 @@ def test_build_feedback_loop_candidates_uses_negative_feedback_context() -> None
     assert out["summary"]["negative_feedback_total"] == 1
     assert out["hard_negative_records"][0]["hard_negatives"][0]["chunk_id"] == "chunk-hard"
     assert out["training_triples"][0]["positive_chunk_ids"] == ["chunk-positive"]
+    assert out["summary"]["eval_case_candidates"] == 1
+    assert out["eval_case_candidates"][0] == {
+        "schema": "mimirq.feedback_eval_case.v1",
+        "status": "pending_review",
+        "question": "MCU 没数据",
+        "expected_answer": "请检查 MCU 通讯和采集配置。",
+        "reference_sources": [{"chunk_id": "chunk-positive", "document_id": "doc-good"}],
+        "tags": ["negative", "retrieval_miss"],
+        "category": "retrieval_miss",
+        "category_source": "reviewer",
+        "query_hash": "query-hash-loop",
+        "retrieval_trace_ref": "req-loop-1",
+        "retrieval_config_hash": "cfg-loop",
+        "profile": "balanced",
+        "judge_score_ref": None,
+        "source_feedback_id": str(feedback.id),
+        "source_conversation_id": str(conversation_id),
+        "source_message_id": str(assistant_message_id),
+        "dataset_id": str(dataset_id),
+    }
     assert {item["token"] for item in out["rules_suggestions"]["glossary_suggestions"]} >= {"MCU"}
+
+
+def test_eval_case_candidate_falls_back_to_trace_citations() -> None:
+    out = build_feedback_loop_candidates(
+        [
+            {
+                "id": "feedback-1",
+                "rating": 1,
+                "question": "What changed?",
+                "retrieval_trace": {
+                    "citations": [{"document_id": "doc-1", "chunk_id": "chunk-1"}],
+                },
+            }
+        ]
+    )
+
+    assert out["eval_case_candidates"][0]["reference_sources"] == [
+        {"document_id": "doc-1", "chunk_id": "chunk-1"}
+    ]
+
+    promoted = build_feedback_loop_candidates(
+        [
+            {
+                "id": "feedback-1",
+                "rating": 1,
+                "question": "What changed?",
+                "extra": {"eval_case_status": "promoted"},
+            }
+        ]
+    )
+    assert promoted["eval_case_candidates"] == []
+
+
+def test_feedback_loop_dispatcher_exposes_eval_case_review_queue() -> None:
+    out = dispatch_feedback_loop_batch(
+        rows=[
+            {
+                "id": "feedback-1",
+                "rating": 1,
+                "question": "What changed?",
+                "expected_answer": "The MCU configuration changed.",
+            }
+        ],
+        dry_run=True,
+    )
+
+    assert out["candidates"]["eval_case_candidates"] == 1
+    assert out["eval_case_candidates"][0]["status"] == "pending_review"
+
+
+def test_feedback_promotion_requires_write_permission(monkeypatch: pytest.MonkeyPatch) -> None:
+    def deny(*_args, **_kwargs):  # noqa: ANN002,ANN003
+        raise HTTPException(status_code=403, detail="denied")
+
+    monkeypatch.setattr(feedback_api.DatasetService, "ensure_member", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(feedback_api, "ensure_tenant_permission", deny)
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(
+            feedback_api.create_regression_case_from_feedback(
+                uuid.uuid4(),
+                feedback_api.FeedbackToRegressionCaseRequest(),
+                tenant_id=uuid.uuid4(),
+                account_id="viewer",
+                db=_FakeDB(feedback_rows=[], messages=[], conversations=[]),
+            )
+        )
+
+    assert exc_info.value.status_code == 403
+
+
+def test_feedback_promotion_keeps_server_lineage(monkeypatch: pytest.MonkeyPatch) -> None:
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    conversation_id = uuid.uuid4()
+    assistant_id = uuid.uuid4()
+    now = datetime.now(UTC)
+    feedback = MessageFeedback(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        message_id=assistant_id,
+        account_id="u",
+        rating=1,
+        reason="bad",
+        tags=[],
+        expected_answer="expected",
+        extra={},
+        created_at=now,
+        updated_at=now,
+    )
+    user_message = Message(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        role="user",
+        content="question",
+        citations=[],
+        message_metadata={},
+        created_at=now - timedelta(seconds=1),
+    )
+    assistant = Message(
+        id=assistant_id,
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        role="assistant",
+        content="answer",
+        citations=[],
+        message_metadata={"dataset_id": str(dataset_id)},
+        created_at=now,
+    )
+    conversation = Conversation(
+        id=conversation_id,
+        tenant_id=tenant_id,
+        user_id=None,
+        dataset_id=dataset_id,
+        title="feedback",
+        document_ids=[],
+        message_count=2,
+        created_at=now,
+        updated_at=now,
+    )
+    db = _FakeDB(
+        feedback_rows=[feedback],
+        messages=[user_message, assistant],
+        conversations=[conversation],
+    )
+    monkeypatch.setattr(feedback_api.DatasetService, "ensure_member", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(feedback_api, "ensure_tenant_permission", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(feedback_api.DatasetService, "get_dataset", lambda *_args, **_kwargs: object())
+    writable_checks: list[tuple[object, str]] = []
+    monkeypatch.setattr(
+        feedback_api.DatasetService,
+        "assert_dataset_writable",
+        lambda _db, dataset, account_id: writable_checks.append((dataset, account_id)),
+    )
+    monkeypatch.setattr(feedback_api, "audit_log_event", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(feedback_api, "_find_trace_by_request_id", lambda **_kwargs: None)
+
+    row = asyncio.run(
+        feedback_api.create_regression_case_from_feedback(
+            feedback.id,
+            feedback_api.FeedbackToRegressionCaseRequest(
+                extra={
+                    "source": "spoofed",
+                    "feedback_id": "spoofed",
+                    "message_id": "spoofed",
+                    "rating": 5,
+                }
+            ),
+            tenant_id=tenant_id,
+            account_id="editor",
+            db=db,
+        )
+    )
+
+    assert isinstance(row, RagasRegressionCase)
+    assert row.extra["source"] == "feedback"
+    assert row.extra["feedback_id"] == str(feedback.id)
+    assert row.extra["message_id"] == str(assistant_id)
+    assert row.extra["rating"] == 1
+    assert row.dataset_id == dataset_id
+    assert writable_checks and writable_checks[0][1] == "editor"
 
 
 def test_patch_message_feedback_archive_state_persists_in_extra() -> None:
@@ -391,11 +674,14 @@ def test_patch_message_feedback_archive_state_persists_in_extra() -> None:
         account_id="reviewer",
         feedback_id=feedback_row.id,
         archived=True,
+        category="wrong_answer",
         ensure_member_fn=lambda *_args, **_kwargs: None,
     )
     assert archived.extra["archived"] is True
     assert archived.extra["archived_by"] == "reviewer"
     assert isinstance(archived.extra["archived_at"], str)
+    assert archived.category == "wrong_answer"
+    assert archived.category_source == "reviewer"
 
     unarchived = FeedbackService.patch_message_feedback(
         db=db,
