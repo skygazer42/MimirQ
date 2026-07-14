@@ -17,7 +17,7 @@
 </p>
 
 <p>
-  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"/></a>
+  <a href="https://www.apache.org/licenses/LICENSE-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"/></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+"/></a>
   <a href="https://nextjs.org/"><img src="https://img.shields.io/badge/Next.js-14-black" alt="Next.js 14"/></a>
   <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/FastAPI-0.135-009688.svg" alt="FastAPI"/></a>
@@ -416,7 +416,9 @@ make enterprise-checks
 
 ## 📜 许可证
 
-本项目采用 [MIT 许可证](LICENSE) — 自由使用、修改和分发。
+本项目采用 [Apache License 2.0](LICENSE)。第三方组件（含 vendored 自 RAGFlow/DeepDoc 的代码及打包的模型权重）的归属声明见 [NOTICE](NOTICE)。
+
+> ⚠️ **注意 PyMuPDF (AGPL-3.0)**：默认 PDF 解析可能使用 PyMuPDF，其协议为 AGPL-3.0 / 商业双授权。若你以 SaaS 形式对外提供服务，AGPL 的网络条款可能要求公开整个组合作品的源码。如需规避，请改用宽松协议的解析后端（pypdf / pdfplumber）。详见 NOTICE。
 
 ---
 

@@ -44,7 +44,7 @@ jobs:
         env:
           http_proxy: http://127.0.0.1:35983
           https_proxy: http://127.0.0.1:35983
-          no_proxy: 127.0.0.1,localhost,ci-service.example
+          no_proxy: 127.0.0.1,localhost,${{ vars.CI_NO_PROXY }}
 
       - name: Ensure self-hosted toolchain
         if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
@@ -69,7 +69,7 @@ jobs:
         env:
           http_proxy: http://127.0.0.1:35983
           https_proxy: http://127.0.0.1:35983
-          no_proxy: 127.0.0.1,localhost,ci-service.example
+          no_proxy: 127.0.0.1,localhost,${{ vars.CI_NO_PROXY }}
         run: |
           mkdir -p "$PIP_CACHE_DIR" "$TORCH_WHEEL_DIR"
           python -m pip install --upgrade pip
@@ -171,7 +171,7 @@ jobs:
         env:
           http_proxy: http://127.0.0.1:35983
           https_proxy: http://127.0.0.1:35983
-          no_proxy: 127.0.0.1,localhost,ci-service.example
+          no_proxy: 127.0.0.1,localhost,${{ vars.CI_NO_PROXY }}
 
       - name: Build backend image
         run: docker build -t mimirq-backend -f docker/Dockerfile .
@@ -191,7 +191,7 @@ jobs:
         env:
           http_proxy: http://127.0.0.1:35983
           https_proxy: http://127.0.0.1:35983
-          no_proxy: 127.0.0.1,localhost,ci-service.example
+          no_proxy: 127.0.0.1,localhost,${{ vars.CI_NO_PROXY }}
 
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
@@ -987,7 +987,7 @@ jobs:
         env:
           http_proxy: http://127.0.0.1:35983
           https_proxy: http://127.0.0.1:35983
-          no_proxy: 127.0.0.1,localhost,ci-service.example
+          no_proxy: 127.0.0.1,localhost,${{ vars.CI_NO_PROXY }}
 
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
@@ -1223,7 +1223,7 @@ jobs:
         env:
           http_proxy: http://127.0.0.1:35983
           https_proxy: http://127.0.0.1:35983
-          no_proxy: 127.0.0.1,localhost,ci-service.example
+          no_proxy: 127.0.0.1,localhost,${{ vars.CI_NO_PROXY }}
 
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}

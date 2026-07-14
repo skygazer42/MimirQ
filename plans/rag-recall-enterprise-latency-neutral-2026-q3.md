@@ -18,7 +18,7 @@
 2. **贵活路由化**：重排/扩展/agentic 只给需要它的查询，靠分级路由把均摊延迟压住；简单查询走 fast path。
 3. **下沉优先**：能在单次前向做的不做两次调用（triplet 一次编码出三态），能在 Milvus 服务端做的不在应用层做（原生 hybrid 融合）。
 
-每项变更过双门禁：质量（显著性检验）+ 延迟（p95 增幅 ≤5% 或有配对抵消项）。
+每项变更过双门禁：质量（显著性检验）+ 延迟（**硬约束，2026-07-14 用户确认：不得影响查询速度**——默认路径 p50/p95 不得高于变更前基线，原"≤5% 容忍带"作废；任何增时环节必须在其抵消项**实测落地之后**才可进默认路径，否则只能进 opt-in profile 或异步旁路）。
 
 ---
 
@@ -31,7 +31,7 @@
 
 ### P0-2 三个决策性 A/B（复用显著性栈，全是"改一行默认值"级收益）
 1. **embedding 默认切换**：`text-embedding-3-small` → `BAAI/bge-m3`，测 siliconflow 与本地 vllm 两种部署形态，中文集优先。预期质量 +（中文代差）且延迟 **-**（本地 GPU ~10-30ms vs 跨海 API 100-300ms）。同时把 `EMBEDDING_MODEL_ZH/EN`(`config.py:342`) 语言路由配起来。
-2. **重排默认开启**：`ENABLE_RERANKER=True` + `cross_encoder`（bge-reranker-v2-m3，top-20 GPU ~80ms），先仅 balanced/quality profile。
+2. **重排默认开启**：`ENABLE_RERANKER=True` + `cross_encoder`（bge-reranker-v2-m3，top-20 GPU ~80ms），先仅 balanced/quality profile。**前置硬条件（先省后花）：A/B① embedding 本地化已落地且实测净省 ≥ 重排增耗，否则 cross_encoder 只留在 opt-in 的 quality profile，不进默认路径。**
 3. **HyDE on/off**：证实有害则"默认关"从直觉升级为证据并写入文档；证实有益则仅 quality profile 开。
 
 ### P0-3 官方三档 profile（收敛 800+ 配置项的态空间）
@@ -77,7 +77,7 @@
 **命题：把"证据一致性"做成相关性/多样性/通道配额之外的第四融合信号——纯 RAG 产品几乎无人内建，政务法规版本冲突是刚需。**
 - 融合后 top-k 内：规则+GLiNER（KG extraction 已有资产）抽取 {文号、日期、数值、机构} → 同实体跨文档分组 → 规则级矛盾检测（数值不等 / 日期新旧 / 文号修订链）→ 输出 `conflict_flag` + 时效排序建议。
 - 装配端策略：新版本优先、被修订文档降权并标注"已被 X 号文修订"；citation 携带冲突标记；前端可视化留接口。
-- 不用 LLM，<5ms；与 `RAG_TEMPORAL_INTENT_ENABLED` 及 provenance 钩子衔接。检出率/误报率进评测集（政务集补 50 题版本冲突专项）。
+- 不用 LLM，<5ms；与 `RAG_TEMPORAL_INTENT_ENABLED` 及 provenance 钩子衔接。检出率/误报率进评测集（政务集补 50 题版本冲突专项）。硬约束下若实测同步开销超出噪声带，冲突检测整体移至装配后异步段，仅做标注、不阻塞首响。
 - 二期（可选）：冲突组内才触发一次小 LLM 仲裁（仅 quality profile，且异步标注不阻塞首响）。
 
 ### P1-4 观测与门禁固化

@@ -29,7 +29,7 @@ jobs:
         env:
           http_proxy: http://127.0.0.1:35983
           https_proxy: http://127.0.0.1:35983
-          no_proxy: 127.0.0.1,localhost,ci-service.example
+          no_proxy: 127.0.0.1,localhost,${{ vars.CI_NO_PROXY }}
 
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}

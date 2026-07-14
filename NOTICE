@@ -1,0 +1,64 @@
+MimirQ
+Copyright 2026 skygazer42
+
+This product includes software developed at, and derived from, third-party
+open source projects. The sections below record the attributions required by
+the licenses of that software. This NOTICE file is provided for informational
+purposes and, per Apache License 2.0 Section 4(d), must be retained in
+redistributions of this Work or Derivative Works.
+
+================================================================================
+1. RAGFlow / DeepDoc  (Apache License 2.0)
+================================================================================
+
+The following components are vendored from or derived from the RAGFlow project
+by The InfiniFlow Authors (https://github.com/infiniflow/ragflow), licensed
+under the Apache License, Version 2.0:
+
+  - app/deepdoc/                         (document vision, OCR, layout, parsing)
+  - app/third_party/integrated_pipeline/ (naive/book/laws/email chunkers and
+                                          supporting NLP utilities)
+
+  Copyright 2024 The InfiniFlow Authors
+  Copyright 2025 The InfiniFlow Authors
+
+  Licensed under the Apache License, Version 2.0. A copy of the Apache License
+  is provided in the top-level LICENSE file of this distribution. The original
+  source is available at https://github.com/infiniflow/ragflow.
+
+  Modifications have been made to the original files by the MimirQ authors.
+  Files carrying an InfiniFlow copyright header retain that header; any file
+  from which the upstream header was inadvertently omitted remains subject to
+  the Apache License 2.0 of its upstream origin.
+
+================================================================================
+2. Bundled model weights (app/deepdoc/resources/models/)
+================================================================================
+
+This distribution bundles third-party model weights. Each model remains under
+its own upstream license and attribution:
+
+  - PaddleOCR PP-OCR series (Baidu)            — Apache License 2.0
+  - Table Transformer (TATR, Microsoft)        — MIT License
+    (app/deepdoc/resources/models/hf/table_structure__tatr_v1_1_all__...)
+  - TrOCR-based seal recognition model         — see model card in
+    app/deepdoc/resources/models/seal/trocr_seal_384/README.md
+  - Layout / UVDoc / XGBoost auxiliary models  — see respective upstream
+
+  NOTE: Model weights whose upstream license or provenance is not yet
+  documented should be verified before redistribution, or fetched at build
+  time rather than bundled. See THIRD_PARTY_NOTICES / release checklist.
+
+================================================================================
+3. Other dependencies
+================================================================================
+
+This product depends on additional third-party packages declared in
+requirements.txt (Python) and web/package.json (JavaScript). Those packages are
+distributed under their own licenses and are not redistributed in source form
+as part of this repository. Notable copyleft-licensed runtime dependencies:
+
+  - PyMuPDF (fitz)  — GNU AGPL v3.0 / commercial dual license.
+    Distributing a combined work that includes PyMuPDF may subject that
+    combined work to AGPL-3.0 obligations, including the network-use clause.
+    See the project README for how PDF parsing backends are selected.

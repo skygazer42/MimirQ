@@ -223,7 +223,7 @@ make changzhou-dify-mimirq-direct-gate
 
 ```bash
 python scripts/changzhou_gov_collect_dify_answers.py \
-  --base-url https://dify.example.com:5001/v1 \
+  --base-url https://dify.example.com/v1 \
   --api-key-file /tmp/dify_remote_app_api_key.json \
   --mode chat \
   --out /tmp/changzhou_gov_dify_answers.json
@@ -345,7 +345,7 @@ MimirQ 直查 golden eval -> Dify workflow trace。
 python scripts/changzhou_gov_dify_full_gate.py \
   --app-id 00000000-0000-0000-0000-000000000003 \
   --cases plugins/pipelines/changzhou-gov-service-knowledge/golden_eval_cases.json \
-  --dify-base-url https://dify.example.com:5001/v1 \
+  --dify-base-url https://dify.example.com/v1 \
   --dify-api-key-file /tmp/dify_remote_app_api_key.json \
   --storage-state /tmp/dify_console_storage_state.json \
   --mimirq-base-url http://127.0.0.1:8000 \
@@ -408,11 +408,11 @@ curl --noproxy '*' -sS \
   -H 'Authorization: Bearer <DIFY_EXTERNAL_KNOWLEDGE_API_KEY>' \
   -H 'Content-Type: application/json' \
   -d '{"knowledge_id":"changzhou_新北区_service","query":"新北区社保卡补卡在哪里办理","retrieval_setting":{"top_k":5,"score_threshold":0}}' \
-  http://192.0.2.6:8000/api/v1/integrations/dify/retrieval
+  http://mimirq.example:8000/api/v1/integrations/dify/retrieval
 ```
 
 如果 `--noproxy '*'` 有结果，但 Dify 页面/Console hit-testing 仍为空，
-需要把 Dify api/worker 的 `NO_PROXY/no_proxy` 加上 `192.168.0.0/16,192.0.2.6`
+需要把 Dify api/worker 的 `NO_PROXY/no_proxy` 加上 `mimirq.example`
 并重启 Dify 后端运行进程。若容器内 curl 本身无法连通，则需要给 Dify 所在主机或容器
 提供能访问 MimirQ 的地址（同网段 LAN 地址、反向代理地址或部署后的 MimirQ 服务地址）。
 

@@ -16,7 +16,7 @@
 默认生产验证目标：
 
 ```bash
-export CHANGZHOU_DIFY_MIMIRQ_BASE_URL=http://192.0.2.6:8000
+export CHANGZHOU_DIFY_MIMIRQ_BASE_URL=http://mimirq.example:8000
 export DIFY_CONSOLE_EMAIL='<operator-email>'
 export DIFY_CONSOLE_PASSWORD_FILE=/tmp/dify_console_password.txt
 ```
