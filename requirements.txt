@@ -30,7 +30,7 @@ langchain-core==1.4.8
 langchain-community==0.4.1
 langchain-chroma==1.1.0
 langchain-openai==1.1.14
-langchain-anthropic==1.4.0
+langchain-anthropic==1.4.6
 langchain-text-splitters==1.1.2
 # NOTE: USTC mirror / PyPI currently provides up to 1.0.5 (1.0.15 not published).
 langgraph==1.2.4
