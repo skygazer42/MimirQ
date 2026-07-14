@@ -86,16 +86,6 @@ def _should_redact_table_rows_role(role: str) -> bool:
     return not _can_view_redacted_sql_role(role)
 
 
-def _can_view_redacted_sql(db: Session, tenant_id: UUID, account_id: str) -> bool:
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
-    return _can_view_redacted_sql_role(_member_role(member))
-
-
-def _should_redact_table_rows(db: Session, tenant_id: UUID, account_id: str) -> bool:
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
-    return _should_redact_table_rows_role(_member_role(member))
-
-
 def _redact_table_text(text: str) -> str:
     s = text or ""
     if not s:
