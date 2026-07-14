@@ -60,6 +60,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Web: cover missing backend routes in `web/lib/api-client.ts` (SCIM Groups/Users mutations; observability periodic job freshness).
 - Web: pin ESLint to v9 to avoid a runtime crash in `eslint-plugin-react` when linting.
 
+## [0.7.2] - 2026-07-14
+
+### Changed
+
+- Move blocking retrieval, graph, and parsing work off async request loops, remove duplicate enrichment, push feedback pagination into SQL, and reuse embedding clients without adding retrieval calls.
+- Consolidate sync-over-async bridging, embedding HTTP retries, and optional Redis client lifecycles into shared tested implementations.
+- Remove unused async database, provider alias, reranker shim, delegate, upload wrapper, and exception surfaces without changing active runtime contracts.
+- Replace source-sniffing tests with deterministic API drift, ACL pagination, query decomposition, frontend behavior, and robustness gates; allow cold container builds enough time to complete.
+
+### Fixed
+
+- Surface vector ingestion failures through the existing failed-job and retry path instead of marking incomplete documents as completed.
+- Distinguish partial retrieval degradation from genuine zero-hit results and return an error when every retrieval channel fails.
+- Keep worker heartbeats, BM25 cache state, bounded stream completion, logout cache isolation, polling cleanup, and local search rebuilds coherent under failure and concurrency.
+- Keep generated frontend API types aligned with feedback triage contracts and avoid fixed PostgreSQL port collisions on shared CI runners.
+
+### Security
+
+- Upgrade Pillow to its patched release and `langchain-anthropic` to `1.4.6`, closing the dependency audit findings including `PYSEC-2026-2556`.
+
 ## [0.5.1] - 2026-03-17
 
 ### Fixed
