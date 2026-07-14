@@ -1959,16 +1959,7 @@ Requirements:
 
             if retrieval_parallelism <= 1 or len(retrieval_plan) <= 1:
                 for kind, q, r in retrieval_plan:
-                    t0 = time.time()
-                    try:
-                        docs_i = r.invoke(q)
-                        err = None
-                    except Exception as exc:  # noqa: BLE001
-                        docs_i = []
-                        err = str(exc)[:200]
-                    elapsed_i = time.time() - t0
-                    dbg = getattr(r, "_last_debug_metrics", None)
-                    dbg = dbg if isinstance(dbg, dict) else None
+                    kind, docs_i, err, elapsed_i, dbg = await _run_one(kind, q, r)
                     retrieval_per_query.append(
                         {
                             "kind": kind,

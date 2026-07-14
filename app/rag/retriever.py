@@ -71,6 +71,7 @@ from app.services.dataset_embedding_config import (
     create_embeddings_for_runtime,
     resolve_dataset_embedding_runtime,
 )
+from app.services.rag_runtime_limiter import run_blocking_retrieval_call
 from app.storage.vector.factory import get_vector_store
 from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
 
@@ -4416,6 +4417,7 @@ class HybridRetriever(BaseRetriever):
         query: str,
         *,
         options: HybridSearchOptions | None = None,
+        embedding_runtime: DatasetEmbeddingRuntimeConfig | None = None,
         **legacy_overrides: Any,
     ) -> list[dict[str, Any]]:
         """Hybrid search: vector retrieval + BM25, optional reranking."""
@@ -4467,7 +4469,7 @@ class HybridRetriever(BaseRetriever):
         want_colpali = False
         colpali_reason = "disabled"
         tenant_uuid = tenant_id or self.tenant_id
-        embedding_runtime = self._resolve_embedding_runtime(tenant_id=tenant_uuid)
+        embedding_runtime = embedding_runtime or self._resolve_embedding_runtime(tenant_id=tenant_uuid)
         embedding_space = str(embedding_runtime.embedding_space_hash or "").strip()
 
         # Metadata filter strategy:
@@ -5680,6 +5682,7 @@ class HybridRetriever(BaseRetriever):
         stats: dict[str, Any] | None = None,
         _stats: dict[str, Any] | None = None,
         metadata_filter_override: dict[str, Any] | None = None,
+        embedding_runtime: DatasetEmbeddingRuntimeConfig | None = None,
     ) -> list[dict[str, Any]]:
         """
         Vector store may return "trimmed" metadata (e.g., without img_id).
@@ -5709,9 +5712,8 @@ class HybridRetriever(BaseRetriever):
             tenant_filter = self.tenant_id
             account_id = (self.account_id or "").strip() or None
             dataset_filter = self.dataset_id
-            embedding_space = self._resolve_embedding_runtime(
-                tenant_id=tenant_filter,
-            ).embedding_space_hash
+            runtime = embedding_runtime or self._resolve_embedding_runtime(tenant_id=tenant_filter)
+            embedding_space = runtime.embedding_space_hash
 
             chunk_ids: list[UUID] = []
             # First collect existing chunk_ids (prefer using these for lookup)
@@ -6952,8 +6954,10 @@ class HybridRetriever(BaseRetriever):
         except (TypeError, ValueError, AttributeError):
             debug["milvus_doc_id_pushdown_skipped"] = None
 
+        embedding_runtime = self._resolve_embedding_runtime(tenant_id=self.tenant_id)
         results = self._hybrid_search(
             query=query,
+            embedding_runtime=embedding_runtime,
             top_k=search_k,
             score_threshold=self.score_threshold,
             document_ids=self.document_ids,
@@ -7009,13 +7013,16 @@ class HybridRetriever(BaseRetriever):
                 results,
                 stats=enrich1,
                 metadata_filter_override=effective_metadata_filter,
+                embedding_runtime=embedding_runtime,
             )
         except TypeError as exc:
-            if "metadata_filter_override" not in str(exc):
+            message = str(exc)
+            if "metadata_filter_override" not in message and "embedding_runtime" not in message:
                 raise
             results = self._enrich_results_with_db_metadata(results, stats=enrich1)
         debug["enrich_pass1"] = enrich1
         n_enrich1 = len(results or [])
+        enriched_result_keys = {self._result_key(item) for item in results if isinstance(item, dict)}
 
         results = self._expand_results_with_neighbors(results)
         debug["neighbors_delta"] = len(results or []) - n_enrich1
@@ -7023,20 +7030,22 @@ class HybridRetriever(BaseRetriever):
         n_neighbors = len(results or [])
         results = self._auto_merge_parent_child(results)
         debug["parent_child_merge_delta"] = len(results or []) - n_neighbors
-        # Neighbor expansion / parent-child merges can introduce additional chunks that were
-        # not part of the original retrieval result set. Re-apply DB enrichment + ACL/version
-        # trimming to guarantee defense-in-depth and avoid leaking stale/non-active pipelines.
         enrich2: dict[str, Any] = {}
-        try:
-            results = self._enrich_results_with_db_metadata(
-                results,
-                stats=enrich2,
-                metadata_filter_override=effective_metadata_filter,
-            )
-        except TypeError as exc:
-            if "metadata_filter_override" not in str(exc):
-                raise
-            results = self._enrich_results_with_db_metadata(results, stats=enrich2)
+        expanded_result_keys = {self._result_key(item) for item in results if isinstance(item, dict)}
+        if expanded_result_keys != enriched_result_keys:
+            # New identities must pass ACL/version/embedding-space checks before exposure.
+            try:
+                results = self._enrich_results_with_db_metadata(
+                    results,
+                    stats=enrich2,
+                    metadata_filter_override=effective_metadata_filter,
+                    embedding_runtime=embedding_runtime,
+                )
+            except TypeError as exc:
+                message = str(exc)
+                if "metadata_filter_override" not in message and "embedding_runtime" not in message:
+                    raise
+                results = self._enrich_results_with_db_metadata(results, stats=enrich2)
         debug["enrich_pass2"] = enrich2
 
         exact_anchor_post_stats: dict[str, Any] = {}
@@ -7297,7 +7306,11 @@ class HybridRetriever(BaseRetriever):
         *,
         run_manager: AsyncCallbackManagerForRetrieverRun,
     ) -> list[Document]:
-        return self._get_relevant_documents(query, run_manager=CallbackManagerForRetrieverRun.get_noop_manager())
+        return await run_blocking_retrieval_call(
+            self._get_relevant_documents,
+            query,
+            run_manager=CallbackManagerForRetrieverRun.get_noop_manager(),
+        )
 
     def _compact_high_confidence_results(
         self,

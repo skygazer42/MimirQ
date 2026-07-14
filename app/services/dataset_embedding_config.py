@@ -3,6 +3,7 @@
 
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any
 
 from app.core.config import settings
@@ -79,6 +80,7 @@ def resolve_dataset_embedding_runtime(
     )
 
 
+@lru_cache(maxsize=8)
 def create_embeddings_for_runtime(runtime: DatasetEmbeddingRuntimeConfig):
     return create_langchain_embeddings_from_config(
         provider=runtime.provider,

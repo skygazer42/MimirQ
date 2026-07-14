@@ -4,6 +4,7 @@ from typing import Any, Callable
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.chat import Conversation, Message
@@ -113,16 +114,6 @@ def _augment_feedback_extra_with_snapshots(
         if rag_config_snapshot:
             payload["rag_config_snapshot"] = rag_config_snapshot
     return payload
-
-
-def _feedback_sort_key(row: MessageFeedback) -> datetime:
-    updated_at = getattr(row, "updated_at", None)
-    if isinstance(updated_at, datetime):
-        return updated_at if updated_at.tzinfo is not None else updated_at.replace(tzinfo=UTC)
-    created_at = getattr(row, "created_at", None)
-    if isinstance(created_at, datetime):
-        return created_at if created_at.tzinfo is not None else created_at.replace(tzinfo=UTC)
-    return datetime.min.replace(tzinfo=UTC)
 
 
 def _safe_text(value: Any, *, max_len: int = 4000) -> str:
@@ -381,21 +372,20 @@ class FeedbackService:
             account_id=account_id,
             ensure_member_fn=ensure_member_fn,
         )
-        rows = list(
-            FeedbackService._build_feedback_query(
-                db=db,
-                tenant_id=tenant_id,
-                conversation_id=conversation_id,
-                message_id=message_id,
-                min_rating=min_rating,
-                max_rating=max_rating,
-            ).all()
+        query = FeedbackService._build_feedback_query(
+            db=db,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            message_id=message_id,
+            min_rating=min_rating,
+            max_rating=max_rating,
         )
-        rows.sort(key=_feedback_sort_key, reverse=True)
-        total = len(rows)
+        total = int(query.count())
         start = max(0, int(skip or 0))
         size = max(1, int(limit or 1))
-        return {"total": total, "items": rows[start : start + size]}
+        updated_at = func.coalesce(MessageFeedback.updated_at, MessageFeedback.created_at)
+        rows = query.order_by(updated_at.desc(), MessageFeedback.id.desc()).offset(start).limit(size).all()
+        return {"total": total, "items": list(rows)}
 
     @staticmethod
     def list_message_feedback_enriched(

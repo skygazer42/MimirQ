@@ -1136,9 +1136,15 @@ async def retrieve_evidence(
     state["multimodal_router"] = multimodal_meta
     state["image_meta"] = image_meta
 
-    primary = run_retrieval(state) or {}
+    primary_offload_metrics: dict[str, Any] = {}
+    primary = await run_blocking_retrieval_call(
+        run_retrieval,
+        state,
+        runtime_metrics=primary_offload_metrics,
+    ) or {}
     citations = primary.get("citations") or []
     metrics = dict(primary.get("metrics") or {})
+    metrics.update(primary_offload_metrics)
     query_for_retrieval = (primary.get("query_for_retrieval") or body.query or "").strip()
     query_debug = primary.get("query_debug")
     if not isinstance(query_debug, dict):
@@ -1204,9 +1210,15 @@ async def retrieve_evidence(
         fallback_state["top_k"] = fallback_k
         fallback_state["score_threshold"] = 0.0
 
-        fallback = run_retrieval(fallback_state) or {}
+        fallback_offload_metrics: dict[str, Any] = {}
+        fallback = await run_blocking_retrieval_call(
+            run_retrieval,
+            fallback_state,
+            runtime_metrics=fallback_offload_metrics,
+        ) or {}
         f_citations = fallback.get("citations") or []
         f_metrics = dict(fallback.get("metrics") or {})
+        f_metrics.update(fallback_offload_metrics)
         f_abstain = bool(fallback.get("abstain_triggered") or f_metrics.get("abstain_triggered") or False)
         f_has_evidence = bool(f_citations) and not f_abstain
 
@@ -1564,10 +1576,16 @@ async def prompt_preview(
     # Best-effort: allow retrieval-only orchestrator to load extra evidence from DB (e.g. KG chunk injection).
     state["db"] = db
 
-    retrieved = run_retrieval(state) or {}
+    offload_metrics: dict[str, Any] = {}
+    retrieved = await run_blocking_retrieval_call(
+        run_retrieval,
+        state,
+        runtime_metrics=offload_metrics,
+    ) or {}
     citations = retrieved.get("citations") or []
     docs = retrieved.get("docs") or []
     metrics = dict(retrieved.get("metrics") or {})
+    metrics.update(offload_metrics)
     query_for_retrieval = (retrieved.get("query_for_retrieval") or body.query or "").strip()
 
     ctx_t0 = time.time()

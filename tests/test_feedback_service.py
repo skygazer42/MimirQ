@@ -17,8 +17,10 @@ from app.services.feedback_service import FeedbackService
 
 
 class _FakeQuery:
-    def __init__(self, items):  # noqa: ANN001
+    def __init__(self, items, *, model=None):  # noqa: ANN001
         self._items = list(items or [])
+        self._model = model
+        self._limit = None
 
     def filter(self, *args, **kwargs):  # noqa: ANN001,D401
         try:
@@ -50,9 +52,35 @@ class _FakeQuery:
         return self._items[0] if self._items else None
 
     def all(self):  # noqa: D401
+        if self._model is MessageFeedback and self._limit is None:
+            raise AssertionError("feedback queries must paginate in SQL before all()")
         return list(self._items)
 
     def order_by(self, *_args, **_kwargs):  # noqa: ANN002,ANN003,D401
+        if self._model is MessageFeedback:
+            floor = datetime.min.replace(tzinfo=UTC)
+
+            def sort_key(row):  # noqa: ANN001
+                updated_at = getattr(row, "updated_at", None)
+                created_at = getattr(row, "created_at", None)
+                timestamp = updated_at or created_at or floor
+                if timestamp.tzinfo is None:
+                    timestamp = timestamp.replace(tzinfo=UTC)
+                return timestamp, str(getattr(row, "id", ""))
+
+            self._items.sort(key=sort_key, reverse=True)
+        return self
+
+    def count(self):  # noqa: D401
+        return len(self._items)
+
+    def offset(self, value):  # noqa: ANN001,D401
+        self._items = self._items[max(0, int(value or 0)) :]
+        return self
+
+    def limit(self, value):  # noqa: ANN001,D401
+        self._limit = max(0, int(value or 0))
+        self._items = self._items[: self._limit]
         return self
 
     def with_for_update(self):  # noqa: D401
@@ -68,7 +96,7 @@ class _FakeDB:
         }
 
     def query(self, model):  # noqa: ANN001
-        return _FakeQuery(self._rows.get(model, []))
+        return _FakeQuery(self._rows.get(model, []), model=model)
 
     def add(self, obj):  # noqa: ANN001
         if getattr(obj, "id", None) is None:
@@ -379,6 +407,48 @@ def test_list_message_feedback_enriched_filters_sorts_and_truncates() -> None:
     assert enriched["items"][1].conversation_title == "Conversation A"
     assert enriched["items"][1].message_created_at == assistant_a.created_at
     assert len(enriched["items"][1].message_content or "") == 4000
+
+
+def test_list_message_feedback_uses_stable_sql_page_boundaries() -> None:
+    tenant_id = uuid.uuid4()
+    conversation_id = uuid.uuid4()
+    message_id = uuid.uuid4()
+    now = datetime.now(UTC)
+
+    def feedback(row_id: int) -> MessageFeedback:
+        return MessageFeedback(
+            id=uuid.UUID(int=row_id),
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            message_id=message_id,
+            account_id="u",
+            rating=3,
+            extra={},
+            created_at=now,
+            updated_at=now,
+        )
+
+    older_id = feedback(1)
+    newer_id = feedback(2)
+    db = _FakeDB(feedback_rows=[older_id, newer_id], messages=[], conversations=[])
+    args = {
+        "db": db,
+        "tenant_id": tenant_id,
+        "account_id": "u",
+        "conversation_id": None,
+        "message_id": None,
+        "min_rating": None,
+        "max_rating": None,
+        "limit": 1,
+        "ensure_member_fn": lambda *_args, **_kwargs: None,
+    }
+
+    first = FeedbackService.list_message_feedback(skip=0, **args)
+    second = FeedbackService.list_message_feedback(skip=1, **args)
+
+    assert first["total"] == second["total"] == 2
+    assert [row.id for row in first["items"]] == [newer_id.id]
+    assert [row.id for row in second["items"]] == [older_id.id]
 
 
 def test_build_feedback_loop_candidates_uses_negative_feedback_context() -> None:

@@ -23,6 +23,7 @@ from app.rag.pipelines.langgraph import build_rag_state
 from app.rag.retrieval.orchestrator import run_retrieval
 from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids
+from app.services.rag_runtime_limiter import run_blocking_retrieval_call
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -194,10 +195,16 @@ async def explain_retrieval(
         visible_evidence_only=effective_rag_config.visible_evidence_only,
         db=db,
     )
-    out = run_retrieval(state)
+    offload_metrics: dict[str, Any] = {}
+    out = await run_blocking_retrieval_call(
+        run_retrieval,
+        state,
+        runtime_metrics=offload_metrics,
+    )
 
     citations = out.get("citations") if isinstance(out.get("citations"), list) else []
-    metrics = out.get("metrics") if isinstance(out.get("metrics"), dict) else {}
+    metrics = dict(out.get("metrics")) if isinstance(out.get("metrics"), dict) else {}
+    metrics.update(offload_metrics)
     query_debug = out.get("query_debug") if isinstance(out.get("query_debug"), dict) else {}
     retrieval_trace = out.get("retrieval_trace") if isinstance(out.get("retrieval_trace"), dict) else {}
 

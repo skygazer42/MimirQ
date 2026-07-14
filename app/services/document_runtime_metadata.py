@@ -1,6 +1,5 @@
 
 import re
-from pathlib import Path
 from typing import Any
 
 from sqlalchemy.orm.attributes import set_committed_value
@@ -15,21 +14,6 @@ def _safe_int(value: Any) -> int:
     except (TypeError, ValueError):
         return 0
     return max(0, numeric)
-
-
-def _read_pdf_page_count(path: str | None) -> int:
-    if not path:
-        return 0
-    file_path = Path(path)
-    if not file_path.exists() or not file_path.is_file():
-        return 0
-
-    try:
-        from pypdf import PdfReader
-
-        return max(0, len(PdfReader(str(file_path)).pages))
-    except Exception:
-        return 0
 
 
 def _element_texts(metadata: dict[str, Any]) -> list[str]:
@@ -92,22 +76,14 @@ def _count_element_tables(metadata: dict[str, Any]) -> int:
 
 def build_runtime_document_metadata(document: Any) -> dict[str, Any]:
     """
-    Enrich transient API metadata with facts available on the document row.
+    Enrich transient API metadata using facts already stored on the document row.
 
     This intentionally does not write back to the database. It makes list/detail
-    responses useful for live dashboards even when older parsed documents missed
-    a few analytics fields at ingest time.
+    responses useful without opening source files on the request path.
     """
 
     raw_metadata = getattr(document, "doc_metadata", None)
     metadata: dict[str, Any] = dict(raw_metadata or {}) if isinstance(raw_metadata, dict) else {}
-
-    file_type = str(getattr(document, "file_type", "") or "").lower()
-    if file_type == "pdf" and _safe_int(metadata.get("page_count")) <= 0:
-        page_count = _read_pdf_page_count(getattr(document, "file_path", None))
-        if page_count > 0:
-            metadata["page_count"] = page_count
-            metadata["page_count_source"] = "source_pdf"
 
     if _safe_int(metadata.get("image_count")) <= 0:
         image_count = _count_element_images(metadata)

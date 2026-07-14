@@ -186,6 +186,7 @@ CORE_TESTS := \
 	tests/test_ingestion_checkpoint_safety.py \
 	tests/test_indexer_upsert_entities.py \
 	tests/test_index_audit_summary.py \
+	tests/test_backend_performance_fixes.py \
 	tests/test_adaptive_retrieval_routing.py \
 	tests/test_retrieval_fusion_budgeted_rrf.py \
 	tests/test_mmr_reranker.py \

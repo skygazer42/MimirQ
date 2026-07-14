@@ -1,4 +1,7 @@
 
+import asyncio
+import contextlib
+import threading
 from dataclasses import dataclass, replace
 from typing import Any, AsyncIterator, Callable, cast
 
@@ -15,6 +18,67 @@ from app.services.chat_stream_common import (
     log_chat_stream_completion_metrics,
 )
 from app.services.chat_stream_persistence import dispatch_chat_stream_persistence
+
+_SYNC_STREAM_END = object()
+
+
+async def _iterate_sync_in_worker(
+    factory: Callable[[], Any],
+    *,
+    max_queue_size: int = 16,
+) -> AsyncIterator[Any]:
+    """Iterate a blocking generator without running any of it on the event loop."""
+
+    outbox: asyncio.Queue[tuple[bool, Any]] = asyncio.Queue()
+    slots = threading.BoundedSemaphore(max(1, max_queue_size))
+    stop = threading.Event()
+    loop = asyncio.get_running_loop()
+
+    def put(payload: tuple[bool, Any]) -> bool:
+        while not stop.is_set():
+            if not slots.acquire(timeout=0.1):
+                continue
+            try:
+                loop.call_soon_threadsafe(outbox.put_nowait, payload)
+            except RuntimeError:
+                slots.release()
+                return False
+            return True
+        return False
+
+    def produce() -> None:
+        iterator = None
+        try:
+            iterator = iter(factory())
+            for item in iterator:
+                if not put((True, item)):
+                    return
+        except Exception as exc:
+            put((False, exc))
+        finally:
+            close = getattr(iterator, "close", None)
+            if callable(close):
+                with contextlib.suppress(Exception):
+                    close()
+            put((True, _SYNC_STREAM_END))
+
+    producer = asyncio.create_task(asyncio.to_thread(produce))
+    try:
+        while True:
+            ok, item = await outbox.get()
+            slots.release()
+            if item is _SYNC_STREAM_END:
+                break
+            if not ok:
+                raise item
+            yield item
+        await producer
+    finally:
+        stop.set()
+        if not producer.done():
+            producer.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await producer
 
 
 @dataclass(frozen=True)
@@ -161,12 +225,15 @@ async def stream_graph_chat_events(
     response_parts: list[str] = []
     citations_data: list[dict[str, Any]] = []
 
-    for mode, chunk in rag_workflow.stream(
-        state,
-        config=config,
-        context=runtime_context,
-        stream_mode=["custom", "values"],
-    ):
+    def graph_events():
+        return rag_workflow.stream(
+            state,
+            config=config,
+            context=runtime_context,
+            stream_mode=["custom", "values"],
+        )
+
+    async for mode, chunk in _iterate_sync_in_worker(graph_events):
         if mode == "custom":
             yield {"type": "graph", "data": chunk}
             continue
