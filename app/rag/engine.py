@@ -100,6 +100,19 @@ _UNABLE_TO_ANSWER_MESSAGE = "Unable to answer this question based on the availab
 _REDACTED_MASK = "[REDACTED]"
 
 
+def _retrieval_error_from_debug(debug: dict[str, Any] | None) -> str | None:
+    if not isinstance(debug, dict) or not bool(debug.get("all_retrieval_channels_failed")):
+        return None
+    reasons = debug.get("retrieval_degraded_reasons")
+    details = sorted(
+        f"{item.get('channel')}:{item.get('error_type')}"
+        for item in (reasons if isinstance(reasons, list) else [])
+        if isinstance(item, dict) and item.get("channel") and item.get("error_type")
+    )
+    suffix = ", ".join(details) if details else "unknown retrieval failure"
+    return f"all retrieval channels failed: {suffix}"
+
+
 @dataclass(frozen=True)
 class RAGChatContext:
     history: list[dict[str, str]] | None = None
@@ -1953,6 +1966,9 @@ Requirements:
                     docs_i = await asyncio.to_thread(r.invoke, q)
                     dbg = getattr(r, "_last_debug_metrics", None)
                     dbg = dbg if isinstance(dbg, dict) else None
+                    retrieval_error = _retrieval_error_from_debug(dbg)
+                    if retrieval_error:
+                        return kind, [], retrieval_error, time.time() - t0, dbg
                     return kind, (docs_i or []), None, time.time() - t0, dbg
                 except Exception as exc:  # noqa: BLE001
                     return kind, [], str(exc)[:200], time.time() - t0, None

@@ -9,6 +9,8 @@ import asyncio
 import contextlib
 import os
 import socket
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from arq.connections import RedisSettings
 from arq.worker import func
@@ -70,6 +72,35 @@ def _build_worker_redis_settings() -> RedisSettings:
     return redis_settings
 
 
+async def _heartbeat_loop(
+    *,
+    redis: Any,
+    queue_name: str,
+    worker_id: str,
+    interval: float,
+    observe: Callable[..., Awaitable[Any]],
+) -> None:
+    while True:
+        try:
+            await observe(redis=redis, queue_name=queue_name, worker_id=worker_id)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Worker heartbeat failed; retrying: %s", str(exc)[:200])
+        await asyncio.sleep(interval)
+
+
+def _log_heartbeat_task_exit(task: asyncio.Task[None]) -> None:
+    if task.cancelled():
+        return
+    try:
+        error = task.exception()
+    except asyncio.CancelledError:
+        return
+    if error is not None:
+        logger.error("Worker heartbeat task exited unexpectedly: %s", str(error)[:200])
+
+
 async def startup(ctx):  # noqa: ANN001
     logger.info("Arq worker starting... max_jobs=%s", getattr(settings, "TASK_WORKER_MAX_JOBS", 10))
     try:
@@ -80,14 +111,18 @@ async def startup(ctx):  # noqa: ANN001
         interval = float(getattr(settings, "TASK_WORKER_HEARTBEAT_INTERVAL_SEC", 5.0) or 5.0)
         interval = max(1.0, interval)
 
-        async def _heartbeat_loop() -> None:
-            redis = ctx.get("redis")
-            while True:
-                await observe_task_worker_heartbeat(redis=redis, queue_name=queue_name, worker_id=worker_id)
-                await asyncio.sleep(interval)
-
         # Fire-and-forget: never block worker startup.
-        ctx[_WORKER_HEARTBEAT_TASK_KEY] = asyncio.create_task(_heartbeat_loop())
+        heartbeat_task = asyncio.create_task(
+            _heartbeat_loop(
+                redis=ctx.get("redis"),
+                queue_name=queue_name,
+                worker_id=worker_id,
+                interval=interval,
+                observe=observe_task_worker_heartbeat,
+            )
+        )
+        heartbeat_task.add_done_callback(_log_heartbeat_task_exit)
+        ctx[_WORKER_HEARTBEAT_TASK_KEY] = heartbeat_task
         logger.info("Worker heartbeat enabled queue=%s interval_sec=%s", queue_name, interval)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to start worker heartbeat: %s", str(exc)[:200])

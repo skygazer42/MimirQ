@@ -1910,8 +1910,7 @@ class Indexer:
             return out
         except Exception as exc:
             logger.warning("Failed to store vectors: %s", exc)
-            logger.warning("Proceeding without vector ids; BM25-only retrieval will still work.")
-            return [None] * len(docs)
+            raise
 
     def _persist_document_chunks(
         self,

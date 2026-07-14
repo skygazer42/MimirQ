@@ -4453,8 +4453,38 @@ class HybridRetriever(BaseRetriever):
                 "lexical_candidates": 0,
                 "sparse_candidates": 0,
             },
+            "retrieval_degraded": False,
+            "degraded_reasons": [],
+            "all_retrieval_channels_failed": False,
         }
         self._last_channel_metrics = channel_metrics
+        channel_attempts: set[str] = set()
+        channel_successes: set[str] = set()
+        channel_failures: dict[str, str] = {}
+
+        def _channel_started(channel: str) -> None:
+            channel_attempts.add(channel)
+
+        def _channel_succeeded(channel: str) -> None:
+            channel_attempts.add(channel)
+            channel_successes.add(channel)
+
+        def _channel_failed(channel: str, error: Exception) -> None:
+            channel_attempts.add(channel)
+            channel_failures[channel] = type(error).__name__
+
+        def _publish_channel_health() -> None:
+            reasons = [
+                {"channel": channel, "error_type": error_type}
+                for channel, error_type in sorted(channel_failures.items())
+            ]
+            channel_metrics["retrieval_degraded"] = bool(reasons)
+            channel_metrics["degraded_reasons"] = reasons
+            channel_metrics["attempted_channels"] = sorted(channel_attempts)
+            channel_metrics["successful_channels"] = sorted(channel_successes)
+            channel_metrics["all_retrieval_channels_failed"] = bool(
+                channel_attempts and not channel_successes
+            )
         # Reset per-call diversity caps meta to avoid stale fields on cache-hit/early-return paths.
         self._last_diversity_caps = {}
 
@@ -4767,6 +4797,7 @@ class HybridRetriever(BaseRetriever):
         vector_results: list[dict[str, Any]] = []
         if want_vector:
             vector_store = get_vector_store()
+            _channel_started("vector")
             try:
                 search_kwargs = {
                     "query": query,
@@ -4793,15 +4824,18 @@ class HybridRetriever(BaseRetriever):
                         )
                     else:
                         vector_results = vector_store.search(**search_kwargs)
+                    _channel_succeeded("vector")
                 finally:
                     vector_elapsed_ms += (time.perf_counter() - t0) * 1000
             except Exception as exc:
+                _channel_failed("vector", exc)
                 logger.warning("Vector search failed: %s", exc)
                 vector_results = []
 
         # Optional: ColBERT ANN fallback for vector retrieval.
         # This is opt-in and only runs when vector backend returns empty results.
         if want_vector and not vector_results and bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)):
+            _channel_started("colbert")
             try:
                 t0 = time.perf_counter()
                 try:
@@ -4814,11 +4848,13 @@ class HybridRetriever(BaseRetriever):
                     )
                     colbert_used = True
                     colbert_candidates = int(len(vector_results or []))
+                    _channel_succeeded("colbert")
                 finally:
                     delta_ms = (time.perf_counter() - t0) * 1000
                     vector_elapsed_ms += delta_ms
                     colbert_elapsed_ms += delta_ms
             except Exception as exc:
+                _channel_failed("colbert", exc)
                 logger.warning("ColBERT ANN search failed: %s", exc)
                 vector_results = []
 
@@ -4832,6 +4868,7 @@ class HybridRetriever(BaseRetriever):
         )
         if retrieval_mode == "keyword":
             if want_lexical:
+                _channel_started("lexical_db")
                 t0 = time.perf_counter()
                 try:
                     lexical_results = self._search_lexical_db(
@@ -4841,14 +4878,17 @@ class HybridRetriever(BaseRetriever):
                         tenant_id=tenant_id,
                         metadata_filter=bm25_filter,
                     )
+                    _channel_succeeded("lexical_db")
                     lexical_run_reason = "keyword_primary"
                 except Exception as exc:
+                    _channel_failed("lexical_db", exc)
                     logger.warning(LEXICAL_DB_SEARCH_FAILED_LOG, exc)
                     lexical_results = []
                     lexical_run_reason = "error"
                 finally:
                     lexical_elapsed_ms += (time.perf_counter() - t0) * 1000
             if want_bm25 or (not lexical_results and bm25_index_enabled):
+                _channel_started("bm25")
                 t0 = time.perf_counter()
                 try:
                     bm25_results = self._search_bm25(
@@ -4858,11 +4898,17 @@ class HybridRetriever(BaseRetriever):
                         tenant_id=tenant_id,
                         metadata_filter=bm25_filter,
                     )
+                    _channel_succeeded("bm25")
+                except Exception as exc:
+                    _channel_failed("bm25", exc)
+                    logger.warning("BM25 search failed: %s", exc)
+                    bm25_results = []
                 finally:
                     bm25_elapsed_ms += (time.perf_counter() - t0) * 1000
         else:
             # 2) BM25 retrieval
             if want_bm25:
+                _channel_started("bm25")
                 t0 = time.perf_counter()
                 try:
                     bm25_results = self._search_bm25(
@@ -4872,6 +4918,11 @@ class HybridRetriever(BaseRetriever):
                         tenant_id=tenant_id,
                         metadata_filter=bm25_filter,
                     )
+                    _channel_succeeded("bm25")
+                except Exception as exc:
+                    _channel_failed("bm25", exc)
+                    logger.warning("BM25 search failed: %s", exc)
+                    bm25_results = []
                 finally:
                     bm25_elapsed_ms += (time.perf_counter() - t0) * 1000
 
@@ -4905,6 +4956,7 @@ class HybridRetriever(BaseRetriever):
                 or metadata_exact_fallback
             )
             if should_run_lexical:
+                _channel_started("lexical_db")
                 t0 = time.perf_counter()
                 try:
                     lexical_results = self._search_lexical_db(
@@ -4914,6 +4966,7 @@ class HybridRetriever(BaseRetriever):
                         tenant_id=tenant_id,
                         metadata_filter=bm25_filter,
                     )
+                    _channel_succeeded("lexical_db")
                     if not lexical_hybrid_fallback_only:
                         lexical_run_reason = "hybrid_parallel"
                     elif metadata_exact_fallback:
@@ -4921,6 +4974,7 @@ class HybridRetriever(BaseRetriever):
                     else:
                         lexical_run_reason = "hybrid_fallback"
                 except Exception as exc:
+                    _channel_failed("lexical_db", exc)
                     logger.warning(LEXICAL_DB_SEARCH_FAILED_LOG, exc)
                     lexical_results = []
                     lexical_run_reason = "error"
@@ -5006,6 +5060,7 @@ class HybridRetriever(BaseRetriever):
                 "candidates": 0,
             }
         if want_sparse:
+            _channel_started("sparse")
             try:
                 sparse_results = self._search_sparse(
                     query=query,
@@ -5014,11 +5069,14 @@ class HybridRetriever(BaseRetriever):
                     tenant_id=tenant_id,
                     metadata_filter=bm25_filter,
                 )
+                _channel_succeeded("sparse")
             except Exception as exc:
+                _channel_failed("sparse", exc)
                 logger.warning("Sparse search failed: %s", exc)
                 sparse_results = []
 
         if want_colpali:
+            _channel_started("colpali")
             try:
                 colpali_results = self._search_colpali_retriever(
                     query=query,
@@ -5027,12 +5085,15 @@ class HybridRetriever(BaseRetriever):
                     tenant_id=tenant_id,
                     metadata_filter=bm25_filter,
                 )
+                _channel_succeeded("colpali")
             except Exception as exc:
+                _channel_failed("colpali", exc)
                 logger.warning("ColPali retriever failed: %s", exc)
                 colpali_results = []
 
         # Fallback: when single-channel mode fails, try the other channel.
         if retrieval_mode == "vector" and not vector_results:
+            _channel_started("bm25")
             t0 = time.perf_counter()
             try:
                 bm25_results = self._search_bm25(
@@ -5042,8 +5103,14 @@ class HybridRetriever(BaseRetriever):
                     tenant_id=tenant_id,
                     metadata_filter=bm25_filter,
                 )
+                _channel_succeeded("bm25")
+            except Exception as exc:
+                _channel_failed("bm25", exc)
+                logger.warning("BM25 search failed: %s", exc)
+                bm25_results = []
             finally:
                 bm25_elapsed_ms += (time.perf_counter() - t0) * 1000
+            _channel_started("lexical_db")
             try:
                 t0 = time.perf_counter()
                 lexical_results = self._search_lexical_db(
@@ -5053,14 +5120,17 @@ class HybridRetriever(BaseRetriever):
                     tenant_id=tenant_id,
                     metadata_filter=bm25_filter,
                 )
+                _channel_succeeded("lexical_db")
                 lexical_run_reason = "vector_fallback"
             except Exception as exc:
+                _channel_failed("lexical_db", exc)
                 logger.warning(LEXICAL_DB_SEARCH_FAILED_LOG, exc)
                 lexical_results = []
                 lexical_run_reason = "error"
             finally:
                 lexical_elapsed_ms += (time.perf_counter() - t0) * 1000
             if want_sparse:
+                _channel_started("sparse")
                 try:
                     sparse_results = self._search_sparse(
                         query=query,
@@ -5069,11 +5139,14 @@ class HybridRetriever(BaseRetriever):
                         tenant_id=tenant_id,
                         metadata_filter=bm25_filter,
                     )
+                    _channel_succeeded("sparse")
                 except Exception as exc:
+                    _channel_failed("sparse", exc)
                     logger.warning("Sparse search failed: %s", exc)
                     sparse_results = []
         elif retrieval_mode == "keyword" and not bm25_results and not lexical_results and not sparse_results:
             vector_store = get_vector_store()
+            _channel_started("vector")
             try:
                 fallback_kwargs = {
                     "query": query,
@@ -5098,11 +5171,15 @@ class HybridRetriever(BaseRetriever):
                         )
                     else:
                         vector_results = vector_store.search(**fallback_kwargs)
+                    _channel_succeeded("vector")
                 finally:
                     vector_elapsed_ms += (time.perf_counter() - t0) * 1000
             except Exception as exc:
+                _channel_failed("vector", exc)
                 logger.warning("Vector search failed: %s", exc)
                 vector_results = []
+
+        _publish_channel_health()
 
         # Defense-in-depth: if Milvus/Vector backend cannot push down a huge document_ids filter,
         # enforce the scope client-side to preserve semantics.
@@ -6980,6 +7057,12 @@ class HybridRetriever(BaseRetriever):
             debug["channels"] = dict(self._last_channel_metrics or {})
         except (TypeError, ValueError, AttributeError):
             debug["channels"] = {}
+        channels_debug = debug["channels"] if isinstance(debug.get("channels"), dict) else {}
+        debug["retrieval_degraded"] = bool(channels_debug.get("retrieval_degraded", False))
+        debug["retrieval_degraded_reasons"] = list(channels_debug.get("degraded_reasons") or [])
+        debug["all_retrieval_channels_failed"] = bool(
+            channels_debug.get("all_retrieval_channels_failed", False)
+        )
         try:
             ch = debug.get("channels") or {}
             timing0 = ch.get("timing") if isinstance(ch, dict) else None
