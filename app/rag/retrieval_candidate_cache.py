@@ -17,36 +17,26 @@ import json
 from typing import Any
 
 from app.core.config import settings
+from app.core.redis_client import LazyRedisClient
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
 
 logger = get_logger("rag.candidate_cache")
 
-_redis_client: Any | None = None
-
-
-def _get_redis_client():  # noqa: ANN202
-    global _redis_client
-    if _redis_client is not None:
-        return _redis_client
-    try:
-        import redis  # type: ignore
-
-        _redis_client = redis.Redis.from_url(
-            settings.REDIS_URL,
-            socket_timeout=1,
-            socket_connect_timeout=1,
-            decode_responses=False,
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Retrieval candidate cache disabled (redis init failed): %s", str(exc)[:200])
-        _redis_client = None
-    return _redis_client
-
-
-def _invalidate_redis_client() -> None:
-    global _redis_client
-    _redis_client = None
+_redis_client_slot = LazyRedisClient(
+    url=lambda: settings.REDIS_URL,
+    kwargs={
+        "socket_timeout": 1,
+        "socket_connect_timeout": 1,
+        "decode_responses": False,
+    },
+    on_error=lambda exc: logger.warning(
+        "Retrieval candidate cache disabled (redis init failed): %s",
+        str(exc)[:200],
+    ),
+)
+_get_redis_client = _redis_client_slot.get
+_invalidate_redis_client = _redis_client_slot.invalidate
 
 
 def _hash_doc_scope(document_ids: list[str]) -> str:

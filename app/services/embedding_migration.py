@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.constants import EmbeddingProviders
 from app.core.pipeline_versions import get_active_pipeline_hash
+from app.core.redis_client import LazyRedisClient
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.rag.chunking.contextual_enrichment import build_context_prefix
@@ -33,35 +34,24 @@ from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_nam
 
 logger = get_logger("embedding_migration")
 
-_redis_client: Any | None = None
+_redis_client_slot = LazyRedisClient(
+    url=lambda: settings.REDIS_URL,
+    kwargs={
+        "socket_timeout": 1,
+        "socket_connect_timeout": 1,
+        "decode_responses": False,
+    },
+    on_error=lambda exc: logger.warning(
+        "Embedding migration progress disabled (redis init failed): %s",
+        str(exc)[:200],
+    ),
+)
+_get_redis_client = _redis_client_slot.get
+_invalidate_redis_client = _redis_client_slot.invalidate
 
 
 def _utc_now_iso() -> str:
     return datetime.now(UTC).isoformat()
-
-
-def _get_redis_client():  # noqa: ANN202
-    global _redis_client
-    if _redis_client is not None:
-        return _redis_client
-    try:
-        import redis  # type: ignore
-
-        _redis_client = redis.Redis.from_url(
-            settings.REDIS_URL,
-            socket_timeout=1,
-            socket_connect_timeout=1,
-            decode_responses=False,
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Embedding migration progress disabled (redis init failed): %s", str(exc)[:200])
-        _redis_client = None
-    return _redis_client
-
-
-def _invalidate_redis_client() -> None:
-    global _redis_client
-    _redis_client = None
 
 
 def _progress_key(

@@ -36,7 +36,7 @@ def _build_app() -> tuple[FastAPI, object, object, object]:
 
 def _reset_caches(health_module: object) -> None:
     health_module._ready_cache.update({"ts": 0.0, "payload": None, "status": 200, "key": None})  # type: ignore[attr-defined]
-    health_module._redis_client = None  # type: ignore[attr-defined]
+    health_module._redis_client_slot.invalidate()  # type: ignore[attr-defined]
 
 
 def test_public_health_endpoints_expose_only_minimal_status_fields(monkeypatch):  # noqa: ANN001

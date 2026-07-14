@@ -9,35 +9,25 @@ import hashlib
 import json
 
 from app.core.config import settings
+from app.core.redis_client import LazyRedisClient
 from app.rag.embedding.base import BaseEmbeddingModel
 from app.rag.embedding.utils import current_embedding_space_hash, logger
 from app.services.metrics_logger import log_metrics
 
-_redis_client = None
-
-
-def _get_redis_client():
-    global _redis_client
-    if _redis_client is not None:
-        return _redis_client
-    try:
-        import redis  # type: ignore
-
-        _redis_client = redis.Redis.from_url(
-            settings.REDIS_URL,
-            socket_timeout=1,
-            socket_connect_timeout=1,
-            decode_responses=False,
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Embedding cache disabled (redis init failed): %s", str(exc)[:200])
-        _redis_client = None
-    return _redis_client
-
-
-def _invalidate_redis_client() -> None:
-    global _redis_client
-    _redis_client = None
+_redis_client_slot = LazyRedisClient(
+    url=lambda: settings.REDIS_URL,
+    kwargs={
+        "socket_timeout": 1,
+        "socket_connect_timeout": 1,
+        "decode_responses": False,
+    },
+    on_error=lambda exc: logger.warning(
+        "Embedding cache disabled (redis init failed): %s",
+        str(exc)[:200],
+    ),
+)
+_get_redis_client = _redis_client_slot.get
+_invalidate_redis_client = _redis_client_slot.invalidate
 
 
 def _embed_cache_key(text: str, *, space: str | None = None) -> str:

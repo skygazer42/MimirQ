@@ -1,41 +1,23 @@
 
 import threading
 import time
-from typing import Any
 
 from fastapi import HTTPException
 
 from app.core.config import settings
+from app.core.redis_client import LazyRedisClient
 
-_redis_client: Any | None = None
+_redis_client_slot = LazyRedisClient(
+    url=lambda: settings.REDIS_URL,
+    kwargs={"decode_responses": False},
+    enabled=lambda: bool(getattr(settings, "SAML_REPLAY_REDIS_ENABLED", False)),
+    skip_empty_url=True,
+    strip_url=True,
+)
+_get_redis_client = _redis_client_slot.get
+_invalidate_redis_client = _redis_client_slot.invalidate
 _memory_lock = threading.Lock()
 _memory_seen_until: dict[str, float] = {}
-
-
-def _get_redis_client() -> Any | None:
-    global _redis_client
-
-    if _redis_client is not None:
-        return _redis_client
-    if not bool(getattr(settings, "SAML_REPLAY_REDIS_ENABLED", False)):
-        return None
-
-    redis_url = str(getattr(settings, "REDIS_URL", "") or "").strip()
-    if not redis_url:
-        return None
-
-    try:
-        import redis  # type: ignore
-
-        _redis_client = redis.Redis.from_url(redis_url, decode_responses=False)
-    except Exception:  # noqa: BLE001
-        _redis_client = None
-    return _redis_client
-
-
-def _invalidate_redis_client() -> None:
-    global _redis_client
-    _redis_client = None
 
 
 def _claim_in_memory(key: str, ttl_sec: int) -> None:

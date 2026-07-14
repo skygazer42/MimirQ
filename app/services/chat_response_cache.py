@@ -20,39 +20,29 @@ from typing import Any
 from uuid import UUID
 
 from app.core.config import settings
+from app.core.redis_client import LazyRedisClient
 from app.rag.core.logging import get_logger
 from app.rag.embedding.utils import current_embedding_space_hash
 from app.services.corpus_cache_tokens import resolve_corpus_cache_token
 
 logger = get_logger("chat.cache")
 
-_redis_client: Any | None = None
+_redis_client_slot = LazyRedisClient(
+    url=lambda: settings.REDIS_URL,
+    kwargs={
+        "socket_timeout": 1,
+        "socket_connect_timeout": 1,
+        "decode_responses": False,
+    },
+    on_error=lambda exc: logger.warning(
+        "Chat cache disabled (redis init failed): %s",
+        str(exc)[:200],
+    ),
+)
+_get_redis_client = _redis_client_slot.get
+_invalidate_redis_client = _redis_client_slot.invalidate
 _inflight_response_futures: dict[str, asyncio.Future[dict[str, Any]]] = {}
 _inflight_response_lock: asyncio.Lock | None = None
-
-
-def _get_redis_client():  # noqa: ANN202
-    global _redis_client
-    if _redis_client is not None:
-        return _redis_client
-    try:
-        import redis  # type: ignore
-
-        _redis_client = redis.Redis.from_url(
-            settings.REDIS_URL,
-            socket_timeout=1,
-            socket_connect_timeout=1,
-            decode_responses=False,
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Chat cache disabled (redis init failed): %s", str(exc)[:200])
-        _redis_client = None
-    return _redis_client
-
-
-def _invalidate_redis_client() -> None:
-    global _redis_client
-    _redis_client = None
 
 
 def _get_inflight_response_lock() -> asyncio.Lock:
