@@ -2641,16 +2641,7 @@ Requirements:
                             )
                         else:
                             retry_runner = retry_retriever.model_copy(update={"enable_reranker": False})
-                    t0 = time.time()
-                    try:
-                        docs_i = retry_runner.invoke(q)
-                        err = None
-                    except Exception as exc:  # noqa: BLE001
-                        docs_i = []
-                        err = str(exc)[:200]
-                    elapsed_i = time.time() - t0
-                    dbg = getattr(retry_runner, "_last_debug_metrics", None)
-                    dbg = dbg if isinstance(dbg, dict) else None
+                    kind, docs_i, err, elapsed_i, dbg = await _run_one(kind, q, retry_runner)
                     retry_per_query.append(
                         {
                             "kind": kind,

@@ -1,4 +1,5 @@
 
+import threading
 import uuid
 
 import pytest
@@ -11,12 +12,14 @@ class _SequentialRetriever:
         self._call_index = 0
         self._last_debug_metrics: dict[str, object] = {}
         self.model_copy_updates: list[dict[str, object]] = []
+        self.invoke_thread_ids: list[int] = []
 
     def model_copy(self, *, update=None, **_kwargs):  # noqa: ANN001
         self.model_copy_updates.append(dict(update or {}))
         return self
 
     def invoke(self, _query: str) -> list[Document]:
+        self.invoke_thread_ids.append(threading.get_ident())
         idx = min(self._call_index, len(self._docs_by_call) - 1)
         self._call_index += 1
         return list(self._docs_by_call[idx])
@@ -85,6 +88,7 @@ async def test_stream_chat_retries_retrieval_when_corrective_abstain(
     monkeypatch.setattr(engine_mod, "hybrid_retriever", retriever, raising=True)
 
     engine = RAGEngine()
+    loop_thread_id = threading.get_ident()
     done_metrics = None
 
     agen = engine.stream_chat(
@@ -108,6 +112,8 @@ async def test_stream_chat_retries_retrieval_when_corrective_abstain(
         await agen.aclose()
 
     assert retriever._call_index >= 2
+    assert len(retriever.invoke_thread_ids) >= 2
+    assert all(thread_id != loop_thread_id for thread_id in retriever.invoke_thread_ids)
     assert isinstance(done_metrics, dict)
     assert done_metrics.get("corrective_used") is True
     assert "abstain" in (done_metrics.get("corrective_reason_codes") or [])
@@ -116,6 +122,51 @@ async def test_stream_chat_retries_retrieval_when_corrective_abstain(
     retrieval_updates = [item for item in retriever.model_copy_updates if "k" in item]
     assert len(retrieval_updates) >= 2
     assert retrieval_updates[1].get("retrieval_profile") == "recall50"
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_serial_retrieval_failure_emits_error_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.engine as engine_mod
+    from app.core.config import settings
+    from app.rag.engine import RAGEngine
+
+    _disable_optional_features(monkeypatch)
+    monkeypatch.setattr(settings, "RAG_CORRECTIVE_ENABLED", False, raising=False)
+    retriever = _SequentialRetriever(docs_by_call=[[]])
+    retriever._last_debug_metrics = {
+        "all_retrieval_channels_failed": True,
+        "retrieval_degraded_reasons": [
+            {"channel": "bm25", "error_type": "RuntimeError"},
+            {"channel": "vector", "error_type": "ConnectionError"},
+        ],
+    }
+    monkeypatch.setattr(engine_mod, "hybrid_retriever", retriever, raising=True)
+
+    stream = RAGEngine().stream_chat(
+        question="What failed?",
+        history=[],
+        tenant_id=uuid.uuid4(),
+        account_id="member-1",
+        document_ids=[uuid.uuid4()],
+        top_k=2,
+        score_threshold=0.0,
+        retrieval_mode="hybrid",
+        request_id="serial-retrieval-failure-test",
+    )
+    error = None
+    try:
+        async for event in stream:
+            if event.get("type") == "error":
+                error = event.get("data") or {}
+                break
+    finally:
+        await stream.aclose()
+
+    assert error == {
+        "message": "retrieval failed: all retrieval channels failed: bm25:RuntimeError, vector:ConnectionError"
+    }
 
 
 @pytest.mark.asyncio

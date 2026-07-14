@@ -32,6 +32,7 @@ from app.services.chat_stream_common import (
 from app.services.chat_stream_graph import GraphChatStreamSessionInput, stream_graph_chat_session_events
 from app.services.chat_stream_langchain import LangChainChatStreamSessionInput, stream_langchain_chat_session_events
 from app.services.metrics_logger import set_metrics_context
+from app.services.rag_runtime_limiter import run_blocking_retrieval_call
 
 logger = get_logger("services.chat_stream_orchestrator")
 
@@ -189,7 +190,8 @@ async def stream_chat_sse_events(
         original_error: BaseException | None = None,
         provider_error: str | None = None,
     ) -> AsyncIterator[str]:
-        chat_result = execute_extractive_fallback_once(
+        chat_result = await run_blocking_retrieval_call(
+            execute_extractive_fallback_once,
             db=db,
             tenant_id=tenant_id,
             account_id=account_id,

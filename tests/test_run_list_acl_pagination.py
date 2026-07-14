@@ -4,6 +4,8 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import BinaryExpression, BooleanClauseList
 
 import app.api.v1.connectors  # noqa: F401
@@ -214,3 +216,80 @@ def test_list_connector_runs_applies_acl_before_count_and_pagination(monkeypatch
     assert response["total"] == 2
     assert [item["id"] for item in response["items"]] == [runs[2].id, runs[3].id]
     assert calls == {"get_dataset": 0, "assert_dataset_writable": 0}
+
+
+@pytest.mark.parametrize(
+    "subquery_factory",
+    [
+        ingestion_runs_module._writable_dataset_ids_subquery,
+        connectors_runs_module._writable_dataset_ids_subquery,
+    ],
+    ids=["ingestion", "connector"],
+)
+def test_writable_dataset_subquery_executes_real_acl_policy(subquery_factory) -> None:  # noqa: ANN001
+    from app.models.dataset import DatasetPermissionEnum
+
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    tenant_id = uuid4()
+    other_tenant_id = uuid4()
+    account_id = "member-1"
+    group_id = uuid4()
+    allowed = {
+        "owned": uuid4(),
+        "public": uuid4(),
+        "direct": uuid4(),
+        "group": uuid4(),
+    }
+    blocked = {
+        "partial": uuid4(),
+        "private_with_acl": uuid4(),
+        "other_tenant": uuid4(),
+    }
+
+    with engine.begin() as conn:
+        conn.exec_driver_sql(
+            "CREATE TABLE datasets (id UUID PRIMARY KEY, tenant_id UUID NOT NULL, permission TEXT NOT NULL, owner_id TEXT)"
+        )
+        conn.exec_driver_sql(
+            "CREATE TABLE dataset_permissions (tenant_id UUID NOT NULL, dataset_id UUID NOT NULL, account_id TEXT NOT NULL)"
+        )
+        conn.exec_driver_sql(
+            "CREATE TABLE dataset_group_permissions (tenant_id UUID NOT NULL, dataset_id UUID NOT NULL, group_id UUID NOT NULL)"
+        )
+        conn.exec_driver_sql(
+            "CREATE TABLE tenant_group_members (tenant_id UUID NOT NULL, group_id UUID NOT NULL, user_id TEXT NOT NULL)"
+        )
+
+        rows = [
+            (allowed["owned"], tenant_id, DatasetPermissionEnum.ONLY_ME, account_id),
+            (allowed["public"], tenant_id, DatasetPermissionEnum.ALL_TEAM_MEMBERS, "owner-2"),
+            (allowed["direct"], tenant_id, DatasetPermissionEnum.PARTIAL_MEMBERS, "owner-2"),
+            (allowed["group"], tenant_id, DatasetPermissionEnum.PARTIAL_MEMBERS, "owner-2"),
+            (blocked["partial"], tenant_id, DatasetPermissionEnum.PARTIAL_MEMBERS, "owner-2"),
+            (blocked["private_with_acl"], tenant_id, DatasetPermissionEnum.ONLY_ME, "owner-2"),
+            (blocked["other_tenant"], other_tenant_id, DatasetPermissionEnum.ALL_TEAM_MEMBERS, "owner-2"),
+        ]
+        conn.exec_driver_sql(
+            "INSERT INTO datasets (id, tenant_id, permission, owner_id) VALUES (?, ?, ?, ?)",
+            [(dataset_id.hex, row_tenant_id.hex, permission.name, owner_id) for dataset_id, row_tenant_id, permission, owner_id in rows],
+        )
+        conn.exec_driver_sql(
+            "INSERT INTO dataset_permissions (tenant_id, dataset_id, account_id) VALUES (?, ?, ?)",
+            [
+                (tenant_id.hex, allowed["direct"].hex, account_id),
+                (tenant_id.hex, blocked["private_with_acl"].hex, account_id),
+            ],
+        )
+        conn.exec_driver_sql(
+            "INSERT INTO tenant_group_members (tenant_id, group_id, user_id) VALUES (?, ?, ?)",
+            (tenant_id.hex, group_id.hex, account_id),
+        )
+        conn.exec_driver_sql(
+            "INSERT INTO dataset_group_permissions (tenant_id, dataset_id, group_id) VALUES (?, ?, ?)",
+            (tenant_id.hex, allowed["group"].hex, group_id.hex),
+        )
+
+    with Session(engine) as db:
+        actual = set(db.execute(subquery_factory(tenant_id=tenant_id, account_id=account_id)).scalars())
+
+    assert actual == set(allowed.values())

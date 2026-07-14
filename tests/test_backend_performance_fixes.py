@@ -1,7 +1,6 @@
 import asyncio
 import sys
 import threading
-import time
 import uuid
 from dataclasses import replace
 from types import SimpleNamespace
@@ -11,30 +10,24 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_sync_iterator_worker_keeps_event_loop_responsive() -> None:
+async def test_sync_iterator_worker_runs_source_off_event_loop() -> None:
     from app.services.chat_stream_graph import _iterate_sync_in_worker
 
-    release = threading.Event()
+    loop_thread_id = threading.get_ident()
+    source_thread_ids: list[int] = []
 
     def source():
-        release.wait(0.25)
+        source_thread_ids.append(threading.get_ident())
         yield "event"
 
     stream = _iterate_sync_in_worker(source)
-    timer = threading.Timer(0.25, release.set)
-    timer.start()
-    started = time.monotonic()
-    pending = asyncio.create_task(anext(stream))
     try:
-        await asyncio.sleep(0.02)
-        elapsed = time.monotonic() - started
-        release.set()
-        assert await pending == "event"
-        assert elapsed < 0.15
+        assert await anext(stream) == "event"
     finally:
-        timer.cancel()
-        release.set()
         await stream.aclose()
+
+    assert len(source_thread_ids) == 1
+    assert source_thread_ids[0] != loop_thread_id
 
 
 @pytest.mark.asyncio
@@ -81,27 +74,100 @@ async def test_async_retriever_does_not_run_sync_retrieval_on_event_loop(
 ) -> None:
     from app.rag.retriever import HybridRetriever
 
-    release = threading.Event()
+    loop_thread_id = threading.get_ident()
+    retrieval_thread_ids: list[int] = []
 
     def blocking_get(self, query, *, run_manager):  # noqa: ANN001,ARG001
-        release.wait(0.25)
+        retrieval_thread_ids.append(threading.get_ident())
         return []
 
     monkeypatch.setattr(HybridRetriever, "_get_relevant_documents", blocking_get)
     retriever = HybridRetriever(document_ids=[uuid.uuid4()])
-    timer = threading.Timer(0.25, release.set)
-    timer.start()
-    started = time.monotonic()
-    pending = asyncio.create_task(retriever.ainvoke("q"))
-    try:
-        await asyncio.sleep(0.02)
-        elapsed = time.monotonic() - started
-        release.set()
-        assert await pending == []
-        assert elapsed < 0.15
-    finally:
-        timer.cancel()
-        release.set()
+
+    assert await retriever.ainvoke("q") == []
+    assert len(retrieval_thread_ids) == 1
+    assert retrieval_thread_ids[0] != loop_thread_id
+
+
+@pytest.mark.asyncio
+async def test_stream_extractive_fallback_runs_retrieval_off_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.services.chat_stream_orchestrator as orchestrator
+
+    loop_thread_id = threading.get_ident()
+    fallback_thread_ids: list[int] = []
+    effective_rag_config = SimpleNamespace(answer_mode="extractive", retrieval_mode="hybrid", use_graph=False)
+    runtime = SimpleNamespace(
+        effective_rag_config=effective_rag_config,
+        dataset_id_used=None,
+        dataset_rag_defaults_applied_fields=[],
+        effective_prompt_template_id=None,
+        effective_prompt_template_key=None,
+        effective_prompt_ab_experiment_key=None,
+        dataset_prompt_defaults_applied_fields=[],
+        dataset_rag_config_template_defaults_applied_fields=[],
+        rag_config_template_meta={},
+        history_for_llm=[],
+        cache_feature_enabled=False,
+        cache_key=None,
+        cache_skip_reason=None,
+        cache_eligible=False,
+        cache_hit=False,
+        full_response="",
+        citations_data=[],
+        metrics_data={},
+        structured_data=None,
+    )
+    monkeypatch.setattr(orchestrator, "prepare_stream_chat_runtime", lambda **_kwargs: runtime)
+
+    def fallback(**_kwargs):
+        fallback_thread_ids.append(threading.get_ident())
+        return SimpleNamespace(content="fallback", citations=[], metrics={}, structured_data=None)
+
+    async def materialized_events(**_kwargs):
+        yield {"type": "done", "data": {}}
+
+    monkeypatch.setattr(orchestrator, "execute_extractive_fallback_once", fallback)
+    monkeypatch.setattr(orchestrator, "stream_materialized_chat_events", materialized_events)
+
+    async def is_disconnected() -> bool:
+        return False
+
+    request = SimpleNamespace(
+        message="question",
+        enable_summary_memory=False,
+        enable_structured_memory=False,
+        structured_output=False,
+        structured_preset=None,
+    )
+    events = [
+        event
+        async for event in orchestrator.stream_chat_sse_events(
+            http_request=SimpleNamespace(
+                state=SimpleNamespace(request_id="extractive-offload-test"),
+                client=SimpleNamespace(host="127.0.0.1"),
+                headers={},
+                is_disconnected=is_disconnected,
+            ),
+            db=object(),
+            tenant_id=uuid.uuid4(),
+            account_id="member-1",
+            request=request,
+            conversation_id=None,
+            scope_dataset_id=None,
+            allowed_doc_ids=[],
+            long_term_messages=[],
+            assistant_message_id=uuid.uuid4(),
+            tenant_qps_meta=None,
+            quota_meta=None,
+            spawn_background_task=lambda _task: None,
+        )
+    ]
+
+    assert any('"type": "done"' in event for event in events)
+    assert len(fallback_thread_ids) == 1
+    assert fallback_thread_ids[0] != loop_thread_id
 
 
 @pytest.mark.parametrize(("replace_candidate", "expected_enrich_calls"), [(False, 1), (True, 2)])

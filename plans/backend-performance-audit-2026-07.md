@@ -3,7 +3,7 @@
 > 范围：只修复已由当前代码证明的阻塞、重复 I/O 和客户端重复构造。
 > 目标：降低并发阻塞和确定性浪费，不增加检索步骤、候选量、外部调用或线上维护负担。
 > 关联：`rag-recall-enterprise-latency-neutral-2026-q3.md`、`rag-four-subsystem-audit-2026-07.md`。
-> 状态：已实施（2026-07-14）。根因测试、关联回归、CI 核心测试、Ruff、compileall 和 perf smoke 均通过。
+> 状态：已实施（2026-07-14，二次复核闭环）。流式抽取回退与 corrective second pass 两个同根漏点已补齐；核心测试、Ruff、compileall 和仓库 verify 均通过。
 
 ## 1. 硬约束
 
@@ -17,7 +17,7 @@
 
 | ID | 结论 | 代码证据 | 优先级 |
 | --- | --- | --- | --- |
-| BP-01 | 多个 async 检索入口直接执行同步检索，阻塞事件循环 | `app/rag/engine.py:1948-1964`、`app/api/v1/rag.py:1139`、`app/api/v1/rag.py:1207`、`app/api/v1/rag.py:1567`、`app/api/v1/retrieval_explain.py:197`、`app/rag/agents/rag_agent.py:557`、`app/rag/retriever.py:7287-7293` | P0 |
+| BP-01 | 多个 async 检索入口直接执行同步检索，阻塞事件循环 | `app/rag/engine.py:1948-1964,2646`、`app/services/chat_stream_orchestrator.py:192`、`app/api/v1/rag.py:1139,1207,1567`、`app/api/v1/retrieval_explain.py:197`、`app/rag/agents/rag_agent.py:557`、`app/rag/retriever.py:7287-7293` | P0 |
 | BP-02 | `use_graph=True` 的同步 LangGraph 迭代器在 async generator 内运行，独占事件循环 | `app/services/chat_stream_graph.py:164-205`、`app/rag/pipelines/langgraph.py:562-569` | P0（可选图路径） |
 | BP-03 | 同一检索请求重复解析 dataset embedding runtime，且无条件执行第二次安全元数据回填 | `app/rag/retriever.py:1011-1045`、`app/rag/retriever.py:4470`、`app/rag/retriever.py:5712`、`app/rag/retriever.py:7006-7040` | P1 |
 | BP-04 | 文档列表和详情会对缺少页数的历史 PDF 在请求内同步打开并解析源文件 | `app/api/v1/document_listing.py:201-213`、`app/services/document_runtime_metadata.py:20-32`、`app/services/document_runtime_metadata.py:93-110`、`app/api/v1/document_detail.py:91` | P1 |
@@ -37,12 +37,13 @@
 - 在 `app/rag/engine.py` 中让默认串行分支复用现有 `_run_one`，保留其 `asyncio.to_thread(r.invoke, q)`；并行分支和 `RETRIEVAL_QUERY_PARALLELISM` 语义不变，避免双重限流。
 - 在 `app/api/v1/rag.py` 的 evidence 主检索、fallback 和 prompt preview，以及 `app/api/v1/retrieval_explain.py` 中，复用 `app/services/rag_runtime_limiter.py:73-88` 的 `run_blocking_retrieval_call`。
 - 在 `app/rag/agents/rag_agent.py` 和 `HybridRetriever._aget_relevant_documents` 中卸载同步调用；不改变异常降级、返回结构或检索参数。
+- 流式抽取回退复用 `run_blocking_retrieval_call`；corrective second pass 复用 engine 既有 `_run_one`，不保留第二份同步调用和异常解析。
 - 不调高 `RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY` 或 `RETRIEVAL_QUERY_PARALLELISM`，本项只恢复事件循环公平性。
 
 验收：
 
-- [x] 用受 `threading.Event` 控制的同步检索 stub 运行各 async 入口；stub 未释放时，独立 heartbeat coroutine 仍能推进。
-- [x] engine 串行和并行分支的结果顺序、主查询失败事件及 debug metrics 与修改前一致。
+- [x] 用线程身份断言覆盖 async retriever、流式抽取回退和 corrective second pass；不依赖调度时长阈值。
+- [x] engine 串行和并行分支的结果顺序及 debug metrics 一致；全通道失败均发 error 事件（修复前串行漏发，现为 RB-02 有意收敛）。
 - [x] API 级调用仍受现有全局 gate 约束，`rag_offload_queue_ms` / `rag_offload_exec_ms` 可继续写入已有 runtime metrics。
 - [x] 不新增检索调用，不改变单请求 query plan。
 
