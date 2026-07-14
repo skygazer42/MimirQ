@@ -947,13 +947,6 @@ def _normalize_upload_key(filename: str) -> str:
     return key
 
 
-def _normalize_upload_source_path(filename: str) -> str | None:
-    key = _normalize_upload_key(filename)
-    if "/" not in key:
-        return None
-    return key
-
-
 def _sanitize_filename(filename: str) -> str:
     if not filename:
         raise HTTPException(status_code=400, detail="Filename is required")
