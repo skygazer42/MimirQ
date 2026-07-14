@@ -2172,7 +2172,6 @@ class Settings(BaseSettings):
     INTERRUPT_TIMEOUT_SEC: int = 3600  # 1 hour
     # Stream writer configuration
     STREAM_WRITER_ENABLED: bool = True
-    STREAM_BUFFER_SIZE: int = 100
     # Chat streaming (SSE) robustness
     CHAT_STREAM_HEARTBEAT_SEC: float = 10.0
     CHAT_STREAM_CANCEL_ON_DISCONNECT: bool = True

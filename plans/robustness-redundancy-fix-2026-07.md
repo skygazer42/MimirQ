@@ -2,7 +2,7 @@
 
 > 范围：只修复 `plans/backend-frontend-audit-2026-07-14.md` 中已逐行验证的静默降级、共享状态竞态、假测试与安全可删冗余。
 > 目标：把"故障暴露出来"、把"绿灯变成真绿灯"，不改变正常路径的召回、排序、引用与合规语义。
-> 关联：`plans/backend-performance-audit-2026-07.md`（性能修复计划，BP-01~06 执行中，本计划不重复其条目）、`plans/rag-recall-enterprise-latency-neutral-2026-q3.md`。
+> 关联：`plans/backend-performance-audit-2026-07.md`（性能修复计划，BP-01~06 已闭环，本计划不重复其条目）、`plans/rag-recall-enterprise-latency-neutral-2026-q3.md`。
 > 边界：不含安全维度（用户指定）；性能条目已归 BP 计划。
 
 ## 1. 硬约束
@@ -21,10 +21,10 @@
 | RB-02 | 查询期向量检索异常降级为空结果，与零命中不可区分，Milvus 宕机=200 空答案 | `app/rag/retriever.py:4799-4800`、`:5104-5105`、`app/rag/engine.py:1959` | P0 |
 | RB-03 | worker 心跳循环体无 try/except，首个 Redis 抖动即静默死亡，误报"worker 已死" | `app/tasks/worker.py:85-90` | P1 |
 | RB-04 | 单例 retriever 可变缓存经 model_copy 按引用共享+线程池并发写+双锁不互斥；构建锁 get-or-create 无锁 | `app/rag/retriever.py:540-552`、`:1119-1138`、`engine.py:1891/2604` | P1 |
-| RB-05 | 流式背压丢正文 chunk（截断答案无提示）；close 丢 sentinel 可致消费者永挂 | `app/rag/core/stream_writer.py:157-169`、`:279-281` | P1 |
+| RB-05 | 自研 `StreamWriter` 未接入生产；半修复在无消费者时仍可永久阻塞，现有 happy-path 测试制造假信心 | `app/rag/core/stream_writer.py`、`tests/test_robustness_redundancy_fixes.py:295-326` | 删除 |
 | RB-06 | 前端：登出不清 Query 缓存（换账号残留数据）；轮询 timer 卸载后复活；useLocalSearch 每键全量重建索引 | `web/hooks/use-auth.ts:43-48`、`use-document-polling.ts:78-80`、`use-local-search.ts:18-34` | P1/P2 |
 | TQ-01 | 字段级契约漂移 CI 不拦：drift 脚本恒 exit 0，87 个手写类型裸奔 | `web/scripts/check-api-types-drift.mjs:80`、`web/package.json:32` | P1 |
-| TQ-02 | ACL 分页测试靠 SQL 子串嗅探，生产 ACL 写错测试照过 | `tests/test_run_list_acl_pagination.py:39-46,73-76` | P1 |
+| TQ-02 | ACL 分页测试只执行外层表达式，权限子查询整体被 stub；内部 ACL 变异仍可假绿 | `tests/test_run_list_acl_pagination.py:157-162,188-193` | P1 |
 | TQ-03 | 查询分解测试 stub 掉被测逻辑且从不断言第二子问题 | `tests/test_query_decomposition_chain.py:59,63-65` | P2 |
 | TQ-04 | 前端约 16/24 测试是源码 grep 非行为测试（假覆盖+极脆） | `web/app/history/page.delete-action.test.ts:10-12` 等 | P2 |
 | RD-01 | Tier1 死代码：async DB 栈 6 符号、4 个空 embedding 子类、reranker shim、5 个死委托、6 个死异常类 | `database_singleton.py:59-124`、`providers/{bedrock,cohere,jina,voyage}.py`、`bge_v2.py`、`exceptions.py:165+` | P2 |
@@ -80,16 +80,16 @@
 - [x] 注入乱序驱逐/构建交错：数据 dict 与 LRU order 条目集合始终一致，`max_tenants` 上限不被逃逸。
 - [x] 检索结果、缓存命中语义与既有 `_bm25_dataset_cache_version` 失效行为不变。
 
-#### RB-05 流缓冲不丢正文、close 保证终止
+#### RB-05 删除未接线流缓冲实现
 
 改动：
-- 正文 chunk 的 `put` 不再 5s 丢弃：改为阻塞等待，叠加既有断连检测与整体 deadline（超 deadline 走 error 事件终止流，而非静默缺字）。
-- `close()` 的 sentinel 投递保证送达：put 失败时改走"置关闭标志 + 唤醒消费者"路径，`__aiter__` 检查关闭标志退出。
+- 词界引用扫描确认整个 `app/rag/core/stream_writer.py` 无生产消费者；实际图流使用 `langgraph.config.get_stream_writer`，不是该自研模块。
+- 删除自研模块、两条只覆盖活消费者/主动 drain 的 happy-path 测试，以及仅供该模块使用的 `STREAM_BUFFER_SIZE`。
+- 不为未批准接线的死实现补 deadline/断连抽象；未来若出现真实消费者，必须基于实际 SSE 生命周期重新实现并测试。
 
 验收：
-- [x] 慢消费者场景：答案完整无缺字；队列仍有界；断连时生产者及时退出。
-- [x] close 后消费者必然终止（含"队列曾满"情形），无永久挂起协程。
-- [x] 正常流式事件序列与类型不变。
+- [x] 全仓不再引用自研 `StreamWriter` 或 `STREAM_BUFFER_SIZE`。
+- [x] 生产 LangGraph/SSE 流测试保持通过，事件序列与类型不变。
 
 #### RB-06 前端三处小修
 
@@ -113,8 +113,10 @@
 
 改动：重写 `_FakeQuery`：不再对条件 `str()` 嗅探关键词，改为解析真实 BinaryExpression 并对内存行执行过滤（参照 `tests/test_feedback_service.py:22-52` 的既有可靠 fake），或改用内存 SQLite + 真模型执行生产查询。
 
+复核修正：现有 fake 只证明外层 ACL 过滤先于 count/分页；它整体 stub 了 `_writable_dataset_ids_subquery`。新增参数化内存 SQLite 测试，直接执行 ingestion/connector 两个生产子查询，并用精确允许 ID 集杀死“漏 dataset 权限谓词”和“AND→OR”变异。
+
 验收：
-- [x] 变异验证：把生产 ACL 条件故意改错（如漏 dataset 级权限 / AND→OR）后该测试必红；恢复后绿。
+- [x] 变异验证：删 dataset 关联时多放行 1 项、AND→OR 时多放行 2 项，测试均红；恢复后 ingestion/connector 双参数绿。
 - [x] 原有分页/total 断言保留。
 
 #### TQ-03 查询分解测试补真断言
@@ -153,10 +155,10 @@
 - [x] 替换前后各调用点行为等价（mock 下向量/重试/超时结果一致）；embedding provider 既有测试全绿。
 - [x] 新 loop 反复创建场景下信号量字典不再增长。
 
-#### RD-03 未接线决策项（本计划登记，不执行）
+#### RD-03 未接线决策项
 
 - 语言路由 resolver（`factory.py:79`）：**移交** `rag-recall-enterprise-latency-neutral-2026-q3.md` P0-2 接线，本计划不删不改。
-- `image_url_rewriter.py`：安全相关（JWT 走 URL 修复的一半），接线或删除由用户决策后另行处理。
+- `image_url_rewriter.py` 与 `image_mapping.py`：现有 `AuthImage` 已通过 Authorization header 加载受保护资产，后端也拒绝 query bearer；两个零引用旧模块删除，不把 JWT 写进 URL。
 - 疑似死但需人工确认清单（`rag/middleware/` 备用 API、`deepdoc/vision` vendored 算子、`_resolve_connectors_helper`×6）：维持不动。
 
 ## 4. 测试与验证顺序
@@ -168,16 +170,16 @@
 
 ## 5. 完成定义
 
-- [x] RB-01~06、TQ-01~04、RD-01~02 验收全部通过；RD-03 两个决策项已登记去向。
+- [x] RB-01~04、RB-06、TQ-01~04、RD-01~02 验收通过；RB-05 死实现删除；RD-03 语言路由移交且图片旧实现删除。
 - [x] 入库/查询路径不再存在"故障静默当成功"：写失败必 failed，检索腿异常必可观测。
 - [x] 契约漂移有 ratchet 门禁；ACL 与分解测试通过变异验证。
-- [x] 删除与提取零行为变化：召回、排序、引用、事件序列、响应 schema 全部不变。
+- [x] 删除与提取不改变生产召回、排序、引用、事件序列和响应 schema；全通道失败 error 为已记录的有意收敛。
 - [x] 每阶段独立提交，Lore trailers 记录约束、测试与未覆盖环境。
 
 ## 6. 明确不做
 
 - 不动 `engine.py:3563-4037` 缓冲流式：BP 计划 §6 已裁决为 fail-closed 合规边界。
-- 不做安全维度修复（用户指定）；`image_url_rewriter` 仅登记决策。
+- 不扩展安全功能；只删除已被 header-only `AuthImage` 链路替代的零引用图片 URL/映射旧实现。
 - 不重复 BP-01~06（事件循环卸载、图桥、PDF 页数、反馈分页、embedding 缓存/DashScope 均在性能计划执行）。
 - 不机械合并语义漂移的 coercion helpers（`_coerce_int`×22 失败返回 0/None 不一），需逐个定义语义后另行小批处理。
 - 不一次性重写全部 16 个前端 grep 测试，不引入新测试框架或 E2E 扩军。
@@ -190,6 +192,6 @@
 | --- | --- | --- |
 | RB-01 使入库失败率显性上升（原被隐藏） | 这是暴露不是引入；arq 重试兜底；观察 failed 率一周 | 失败率异常且非 Milvus 故障 → 恢复降级 return 但必须同步登记 drift item |
 | RB-02 改变"全腿异常"下的响应形态 | 仅在全部启用腿异常时才改行为；部分异常仍 200+标志 | 下游依赖 200 空答案的集成出现故障 → 撤回全腿异常分支，保留 degraded 标志 |
-| RB-05 背压阻塞拖长慢客户端占用 | 整体 deadline + 断连检测双保险 | 生产者堆积 → 恢复丢弃但日志升 error 并发流内 error 事件 |
+| 删除自研 `StreamWriter` 影响仓库外私有导入 | 模块未导出、无文档契约、仓内零引用 | 出现已确认的外部消费者 → 基于其真实生命周期单独恢复实现 |
 | TQ-01 strict 挡住无害改动 | ratchet 只挡增量，基线可显式调整 | 误报率过高 → 降回警告并记录原因 |
 | RD 删除误伤动态引用 | 逐文件提交 + 词界 grep + 全测试 | 任一 ImportError/测试红 → revert 单文件提交 |

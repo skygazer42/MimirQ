@@ -46,6 +46,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Remove unconnected custom stream-writer and image-URL mapping implementations already superseded by the active LangGraph and authenticated image paths.
+- Replace scheduler timing thresholds with thread-identity checks and execute ingestion/connector ACL subqueries against in-memory SQLite.
 - Evidence retrieval orchestrator supports optional post-fusion reranking for retrieval-only workflows (`EVIDENCE_POST_RERANK_*`).
 - Evidence citations now surface additional per-channel sparse scores (`lexical_score`, `sparse_score`) for debugging/training.
 - Retrieval profiles endpoint now exposes runtime `chat_default_profile` and `chat_default_effective`.
@@ -54,6 +56,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Offload streaming extractive fallback and corrective second-pass retrieval from the async event loop without adding retrieval calls.
 - CI: install Linux CPU-only PyTorch wheels to avoid pulling huge CUDA runtime dependencies (disk exhaustion in CI/docker builds).
 - CI: ensure `pnpm` is available before enabling `actions/setup-node` pnpm caching.
 - OpenAPI: regenerate `web/types/openapi.ts` so `make openapi-check` stays stable in CI.

@@ -137,7 +137,7 @@ def test_partial_retrieval_failure_returns_results_and_marks_debug(
     assert retriever._last_debug_metrics["all_retrieval_channels_failed"] is False
 
 
-def test_all_retrieval_failures_are_reported_to_engine(
+def test_all_retrieval_failures_build_engine_error_message(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.rag.engine import _retrieval_error_from_debug
@@ -290,37 +290,3 @@ def test_bm25_lru_eviction_keeps_cache_maps_aligned(monkeypatch: pytest.MonkeyPa
     assert set(retriever._chunk_id_lookup) == expected
     assert set(retriever._bm25_cache_versions) == expected
     assert isinstance(retriever._bm25_cache_order, OrderedDict)
-
-
-@pytest.mark.asyncio
-async def test_stream_writer_close_terminates_when_buffer_is_full() -> None:
-    from app.rag.core.stream_writer import StreamWriter
-
-    writer = StreamWriter(buffer_size=1)
-    await writer.write("complete body")
-
-    await asyncio.wait_for(writer.close(), timeout=0.2)
-    chunks = await asyncio.wait_for(writer.read_all(), timeout=0.2)
-
-    assert [chunk.content for chunk in chunks] == ["complete body"]
-
-
-@pytest.mark.asyncio
-async def test_stream_writer_backpressure_preserves_every_body_chunk() -> None:
-    from app.rag.core.stream_writer import StreamWriter
-
-    writer = StreamWriter(buffer_size=1)
-    received: list[str] = []
-
-    async def consume() -> None:
-        async for chunk in writer:
-            await asyncio.sleep(0.01)
-            received.append(str(chunk.content))
-
-    consumer = asyncio.create_task(consume())
-    for value in ("first", "second", "third"):
-        await writer.write(value)
-    await writer.close()
-    await asyncio.wait_for(consumer, timeout=0.5)
-
-    assert received == ["first", "second", "third"]
