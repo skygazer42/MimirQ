@@ -22,12 +22,7 @@ from app.api.v1 import chat_conversation_memory, chat_conversations
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.token_utils import num_tokens_from_string
-from app.models.chat import Message
 from app.rag.core.logging import get_logger
-from app.services.audit_log_service import (
-    audit_log_event,
-    build_chat_audit_details,
-)
 from app.services.chat_conversation_titles import (
     CONVERSATION_TITLE_SOURCE_AUTO as CONVERSATION_TITLE_SOURCE_AUTO,
 )
@@ -67,15 +62,9 @@ from app.services.chat_persistence import (
 from app.services.chat_persistence import (
     finalize_chat_response_sync as _finalize_chat_response_sync,
 )
-from app.services.chat_response_cache import (
-    reject_inflight_chat_response,
-    set_cached_chat_response,
-)
+from app.services.chat_response_cache import reject_inflight_chat_response
 from app.services.chat_runtime import (
     ChatCacheLookupInput as _ChatCacheLookupInput,
-)
-from app.services.chat_runtime import (
-    ChatStreamPersistInput,
 )
 from app.services.chat_runtime import (
     annotate_chat_cache_metrics as _annotate_chat_cache_metrics,
@@ -107,9 +96,6 @@ from app.services.chat_stream_orchestrator import (
 from app.services.chat_turn_persistence import (
     auto_update_summary_background as _auto_update_summary_background,
 )
-from app.services.chat_turn_persistence import (
-    build_chat_message_metadata as _build_chat_message_metadata_impl,
-)
 from app.services.metrics_logger import set_metrics_context
 from app.services.quota_service import check_chat_assistant_token_quota
 from app.services.rag_runtime_limiter import run_blocking_retrieval_call
@@ -120,28 +106,6 @@ _BACKGROUND_TASKS: set[asyncio.Task[Any]] = set()
 
 ChatCacheLookupInput = _ChatCacheLookupInput
 _prepare_chat_cache_lookup = _prepare_chat_cache_lookup_impl
-
-
-def _build_chat_message_metadata(*args: Any, **kwargs: Any) -> dict[str, Any]:
-    return _build_chat_message_metadata_impl(*args, **kwargs)
-
-
-async def _persist_chat_stream_turn_background(
-    *,
-    options: ChatStreamPersistInput,
-) -> None:
-    import app.services.chat_cache_runtime as cache_runtime_mod
-    import app.services.chat_runtime as runtime_mod
-    import app.services.chat_stream_persistence as stream_persistence_mod
-
-    stream_persistence_mod.Message = Message
-    stream_persistence_mod.audit_log_event = audit_log_event
-    stream_persistence_mod.build_chat_audit_details = build_chat_audit_details
-    stream_persistence_mod.set_cached_chat_response = set_cached_chat_response
-    stream_persistence_mod.num_tokens_from_string = num_tokens_from_string
-    cache_runtime_mod.set_cached_chat_response = set_cached_chat_response
-    runtime_mod.set_cached_chat_response = set_cached_chat_response
-    await stream_persistence_mod.persist_chat_stream_turn_background(options=options)
 
 
 def _spawn_background_task(coro: Any) -> None:
