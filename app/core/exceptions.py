@@ -9,9 +9,6 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.status import (
-    HTTP_401_UNAUTHORIZED,
-    HTTP_403_FORBIDDEN,
-    HTTP_404_NOT_FOUND,
     HTTP_413_CONTENT_TOO_LARGE,
     HTTP_422_UNPROCESSABLE_CONTENT,
     HTTP_429_TOO_MANY_REQUESTS,
@@ -162,41 +159,6 @@ class ValidationError(MimirQError):
         )
 
 
-class NotFoundError(MimirQError):
-    def __init__(self, resource: str, identifier: str | None = None):
-        detail: dict[str, Any] = {"resource": resource}
-        if identifier:
-            detail["identifier"] = identifier
-        super().__init__(
-            message=f"{resource} not found",
-            error_code="NOT_FOUND",
-            status_code=HTTP_404_NOT_FOUND,
-            detail=detail,
-        )
-
-
-class AuthenticationError(MimirQError):
-    def __init__(self, message: str = "Authentication required"):
-        super().__init__(
-            message=message,
-            error_code="AUTHENTICATION_ERROR",
-            status_code=HTTP_401_UNAUTHORIZED,
-        )
-
-
-class AuthorizationError(MimirQError):
-    def __init__(self, message: str = "Permission denied", resource: str | None = None):
-        detail: dict[str, Any] = {}
-        if resource:
-            detail["resource"] = resource
-        super().__init__(
-            message=message,
-            error_code="AUTHORIZATION_ERROR",
-            status_code=HTTP_403_FORBIDDEN,
-            detail=detail or None,
-        )
-
-
 class RateLimitError(MimirQError):
     def __init__(self, retry_after: float = 60.0):
         super().__init__(
@@ -204,16 +166,6 @@ class RateLimitError(MimirQError):
             error_code="RATE_LIMIT_EXCEEDED",
             status_code=HTTP_429_TOO_MANY_REQUESTS,
             detail={"retry_after": retry_after},
-        )
-
-
-class ServiceUnavailableError(MimirQError):
-    def __init__(self, service: str, message: str | None = None):
-        super().__init__(
-            message=message or f"Service '{service}' is temporarily unavailable",
-            error_code="SERVICE_UNAVAILABLE",
-            status_code=HTTP_503_SERVICE_UNAVAILABLE,
-            detail={"service": service},
         )
 
 
@@ -226,39 +178,6 @@ class LLMError(MimirQError):
             message=message,
             error_code="LLM_ERROR",
             status_code=HTTP_503_SERVICE_UNAVAILABLE,
-            detail=detail or None,
-        )
-
-
-class DocumentProcessingError(MimirQError):
-    def __init__(
-        self,
-        message: str,
-        document_id: str | None = None,
-        stage: str | None = None,
-    ):
-        detail: dict[str, Any] = {}
-        if document_id:
-            detail["document_id"] = document_id
-        if stage:
-            detail["stage"] = stage
-        super().__init__(
-            message=message,
-            error_code="DOCUMENT_PROCESSING_ERROR",
-            status_code=HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=detail or None,
-        )
-
-
-class RetrievalError(MimirQError):
-    def __init__(self, message: str, backend: str | None = None):
-        detail: dict[str, Any] = {}
-        if backend:
-            detail["backend"] = backend
-        super().__init__(
-            message=message,
-            error_code="RETRIEVAL_ERROR",
-            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
             detail=detail or None,
         )
 
