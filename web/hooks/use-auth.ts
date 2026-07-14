@@ -45,7 +45,7 @@ export function useAuth() {
     // Best-effort: clear server-side OIDC refresh token cookie if present.
     void fetch('/api/oidc/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' } }).catch(() => undefined)
     clearAuthSession()
-    queryClient.setQueryData(queryKeys.auth.profile, null)
+    queryClient.clear()
   }, [queryClient])
 
   const isAuthenticated = Boolean(accessToken)

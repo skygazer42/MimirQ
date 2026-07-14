@@ -76,9 +76,9 @@
 - `_last_debug_metrics` 改为每次 invoke 局部构建后整体替换引用，避免跨副本写串。
 
 验收：
-- [ ] 并发首建同 scope（线程栅栏测试）：索引只构建一次，无重复构建。
-- [ ] 注入乱序驱逐/构建交错：数据 dict 与 LRU order 条目集合始终一致，`max_tenants` 上限不被逃逸。
-- [ ] 检索结果、缓存命中语义与既有 `_bm25_dataset_cache_version` 失效行为不变。
+- [x] 并发首建同 scope（线程栅栏测试）：索引只构建一次，无重复构建。
+- [x] 注入乱序驱逐/构建交错：数据 dict 与 LRU order 条目集合始终一致，`max_tenants` 上限不被逃逸。
+- [x] 检索结果、缓存命中语义与既有 `_bm25_dataset_cache_version` 失效行为不变。
 
 #### RB-05 流缓冲不丢正文、close 保证终止
 
@@ -87,17 +87,17 @@
 - `close()` 的 sentinel 投递保证送达：put 失败时改走"置关闭标志 + 唤醒消费者"路径，`__aiter__` 检查关闭标志退出。
 
 验收：
-- [ ] 慢消费者场景：答案完整无缺字；队列仍有界；断连时生产者及时退出。
-- [ ] close 后消费者必然终止（含"队列曾满"情形），无永久挂起协程。
-- [ ] 正常流式事件序列与类型不变。
+- [x] 慢消费者场景：答案完整无缺字；队列仍有界；断连时生产者及时退出。
+- [x] close 后消费者必然终止（含"队列曾满"情形），无永久挂起协程。
+- [x] 正常流式事件序列与类型不变。
 
 #### RB-06 前端三处小修
 
 改动：`logout()` 增加 `queryClient.clear()`；`use-document-polling` 增加 `cancelledRef`，每个 await 后检查再注册 timer；`use-local-search` 的 fields/storeFields 由调用方提为常量（或内部 stable memo）。
 
 验收：
-- [ ] vitest：登出后任意 query 缓存为空；卸载后不再有新 timer 注册；输入连续字符不触发 MiniSearch 重建（spy addAll 调用次数）。
-- [ ] `pnpm verify` 全绿。
+- [x] vitest：登出后任意 query 缓存为空；卸载后不再有新 timer 注册；输入连续字符不触发 MiniSearch 重建（spy addAll 调用次数）。
+- [x] `pnpm verify` 全绿。
 
 ### 阶段 C：测试真实性
 

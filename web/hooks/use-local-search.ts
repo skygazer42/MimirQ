@@ -8,24 +8,30 @@ interface SearchItem {
   [key: string]: unknown
 }
 
+function parseFields(serialized: string): string[] {
+  return JSON.parse(serialized) as string[]
+}
+
 export function useLocalSearch<T extends SearchItem>(
   data: T[],
   options: { fields: string[]; storeFields?: string[] }
 ) {
   const [term, setTerm] = useState('')
+  const fieldsKey = JSON.stringify(options.fields)
+  const storeFieldsKey = JSON.stringify(options.storeFields || options.fields)
 
   // Initialize MiniSearch
   const miniSearch = useMemo(() => {
     return new MiniSearch({
-      fields: options.fields, // fields to index for full-text search
-      storeFields: options.storeFields || options.fields, // fields to return with search results
+      fields: parseFields(fieldsKey), // fields to index for full-text search
+      storeFields: parseFields(storeFieldsKey), // fields to return with search results
       searchOptions: {
         boost: { filename: 2 },
         fuzzy: 0.2,
         prefix: true
       }
     })
-  }, [options.fields, options.storeFields])
+  }, [fieldsKey, storeFieldsKey])
 
   // Index data when it changes
   useEffect(() => {

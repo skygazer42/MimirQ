@@ -17,6 +17,7 @@ Usage:
 
 
 import asyncio
+import contextlib
 import json
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Callable
@@ -120,8 +121,10 @@ class StreamWriter(BaseStreamWriter):
             buffer_size: Maximum buffer size
             node: Default node name for chunks
         """
-        self._queue: asyncio.Queue[StreamChunk | None] = asyncio.Queue(maxsize=buffer_size)
+        self._queue: asyncio.Queue[StreamChunk] = asyncio.Queue(maxsize=buffer_size)
         self._closed = False
+        self._state_changed = asyncio.Event()
+        self._active_writes = 0
         self._node = node
         self._listeners: list[Callable[[StreamChunk], None]] = []
         self._chunks_written = 0
@@ -151,11 +154,9 @@ class StreamWriter(BaseStreamWriter):
             logger.warning("Attempting to write to closed stream")
             return
 
+        self._active_writes += 1
         try:
-            await asyncio.wait_for(
-                self._queue.put(chunk),
-                timeout=5.0,
-            )
+            await self._queue.put(chunk)
             self._chunks_written += 1
 
             # Notify listeners
@@ -164,9 +165,9 @@ class StreamWriter(BaseStreamWriter):
                     listener(chunk)
                 except Exception as e:
                     logger.exception("Stream listener error: %s", e)
-
-        except asyncio.TimeoutError:
-            logger.warning("Stream buffer full, dropping chunk")
+        finally:
+            self._active_writes -= 1
+            self._state_changed.set()
 
     async def write(self, content: Any, **kwargs) -> None:
         """Write text content to the stream."""
@@ -271,23 +272,35 @@ class StreamWriter(BaseStreamWriter):
             return
 
         self._closed = True
-
-        # Put sentinel value to signal end
-        try:
-            await asyncio.wait_for(
-                self._queue.put(None),
-                timeout=1.0,
-            )
-        except asyncio.TimeoutError:
-            pass
+        self._state_changed.set()
 
     async def __aiter__(self) -> AsyncIterator[StreamChunk]:
         """Async iteration over stream chunks."""
         while True:
-            chunk = await self._queue.get()
-            if chunk is None:
+            if self._closed and self._active_writes == 0 and self._queue.empty():
                 break
-            yield chunk
+            get_task = asyncio.create_task(self._queue.get())
+            state_task = asyncio.create_task(self._state_changed.wait())
+            tasks = {get_task, state_task}
+            try:
+                done, pending = await asyncio.wait(
+                    tasks,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+            except BaseException:
+                for task in tasks:
+                    task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await task
+                raise
+            for task in pending:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+            if state_task in done:
+                self._state_changed.clear()
+            if get_task in done:
+                yield get_task.result()
 
     async def read_all(self) -> list[StreamChunk]:
         """Read all chunks (waits for stream to close)."""
@@ -301,8 +314,7 @@ class StreamWriter(BaseStreamWriter):
         chunks = []
         while not self._queue.empty():
             chunk = self._queue.get_nowait()
-            if chunk is not None:
-                chunks.append(chunk)
+            chunks.append(chunk)
         return chunks
 
 

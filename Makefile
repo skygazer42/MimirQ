@@ -262,6 +262,7 @@ CORE_WEB_TESTS := \
 	components/navbar.behavior.test.ts \
 	components/ui/page-title-icon.test.ts \
 	hooks/use-media-query.test.tsx \
+	hooks/use-rag-lifecycle.behavior.test.tsx \
 	lib/api-client.source.test.ts \
 	lib/api-client-auth.test.ts \
 	lib/image-auth-proxy.test.ts \

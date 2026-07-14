@@ -18,6 +18,7 @@ type UseDocumentPollingOptions = {
 
 export function useDocumentPolling({ updateCachedDocuments }: UseDocumentPollingOptions) {
   const pollTimersRef = useRef<Map<string, number>>(new Map())
+  const cancelledRef = useRef(false)
 
   const cancelDocumentPolling = useCallback((documentId: string) => {
     const existing = pollTimersRef.current.get(documentId)
@@ -40,8 +41,10 @@ export function useDocumentPolling({ updateCachedDocuments }: UseDocumentPolling
 
       const startedAt = Date.now()
       const pollOnce = async () => {
+        if (cancelledRef.current) return
         try {
           const status = await documentApi.getStatus(documentId)
+          if (cancelledRef.current) return
 
           updateCachedDocuments((current) => {
             if (!current?.items?.length) return current
@@ -55,6 +58,7 @@ export function useDocumentPolling({ updateCachedDocuments }: UseDocumentPolling
             pollTimersRef.current.delete(documentId)
 
             const fullDoc = await documentApi.get(documentId)
+            if (cancelledRef.current) return
             updateCachedDocuments((current) => {
               if (!current?.items?.length) return current
               return {
@@ -65,6 +69,7 @@ export function useDocumentPolling({ updateCachedDocuments }: UseDocumentPolling
             return
           }
         } catch (err) {
+          if (cancelledRef.current) return
           reportClientError('Poll document status failed', err)
           pollTimersRef.current.delete(documentId)
           return
@@ -75,6 +80,7 @@ export function useDocumentPolling({ updateCachedDocuments }: UseDocumentPolling
           return
         }
 
+        if (cancelledRef.current) return
         const timeoutId = globalThis.window.setTimeout(pollOnce, 2000)
         pollTimersRef.current.set(documentId, timeoutId)
       }
@@ -84,8 +90,12 @@ export function useDocumentPolling({ updateCachedDocuments }: UseDocumentPolling
     [cancelDocumentPolling, updateCachedDocuments]
   )
 
-  useEffect(() => () => {
-    cancelAllDocumentPolling()
+  useEffect(() => {
+    cancelledRef.current = false
+    return () => {
+      cancelledRef.current = true
+      cancelAllDocumentPolling()
+    }
   }, [cancelAllDocumentPolling])
 
   return {
