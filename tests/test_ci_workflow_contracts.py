@@ -85,7 +85,7 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     )[0]
     web_dockerfile = _read("web/Dockerfile.prod")
 
-    assert "timeout-minutes: 45" in docker_job
+    assert "timeout-minutes: 60" in docker_job
     assert "target=/root/.local/share/pnpm/store" in web_dockerfile
     assert "https://registry.npmmirror.com" in web_dockerfile
 
