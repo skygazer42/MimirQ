@@ -60,9 +60,58 @@ def test_run_retrieval_chains_decomposed_queries_sequentially(monkeypatch: pytes
 
     orch.run_retrieval(_base_state())
 
-    assert len(captured_queries) >= 2
-    assert "subquestion one" in captured_queries[0]
-    assert "subquestion one" in captured_queries[1]
+    assert captured_queries[:2] == [
+        "subquestion one",
+        "subquestion two\n\nPrior findings:\n- subquestion one",
+    ]
+
+
+def test_decompose_query_parses_deduplicates_and_truncates_llm_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.retrieval.orchestrator as orch
+    from app.core.config import settings
+
+    long_question = "x" * 520
+    raw_output = f'["first question", "first question", "{long_question}", "ignored third"]'
+
+    class _Pipeline:
+        def __or__(self, _other):  # noqa: ANN001
+            return self
+
+        def invoke(self, _payload):  # noqa: ANN001
+            return raw_output
+
+    class _Model:
+        model_name = "decompose-test"
+
+        def bind(self, **_kwargs):  # noqa: ANN003
+            return self
+
+    class _Parser:
+        pass
+
+    class _Engine:
+        models = {"fast": _Model()}
+        decompose_prompt = _Pipeline()
+
+    monkeypatch.setattr(settings, "ENABLE_QUERY_DECOMPOSITION", True, raising=False)
+    monkeypatch.setattr(settings, "QUERY_DECOMPOSITION_MAX_SUBQUESTIONS", 2, raising=False)
+    monkeypatch.setattr(settings, "QUERY_DECOMPOSITION_MIN_CHARS", 0, raising=False)
+    monkeypatch.setattr(settings, "QUERY_DECOMPOSITION_MAX_CHARS", 400, raising=False)
+    monkeypatch.setattr(settings, "QUERY_DECOMPOSITION_HEURISTIC_FALLBACK_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "LLM_API_KEY", "test-key", raising=False)
+    monkeypatch.setattr(orch, "_get_langchain_text_pipeline_primitives", lambda: (object, _Parser))
+
+    questions, _elapsed, model_used, parse_meta = orch._decompose_query(
+        "original complex question",
+        _Engine(),
+        enabled=True,
+    )
+
+    assert questions == ["first question", f"{'x' * 500}..."]
+    assert model_used == "decompose-test"
+    assert parse_meta.get("ok") is True
 
 
 def test_run_retrieval_marks_decomposition_chain_metrics(monkeypatch: pytest.MonkeyPatch) -> None:

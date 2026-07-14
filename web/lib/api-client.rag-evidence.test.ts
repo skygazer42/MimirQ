@@ -1,14 +1,38 @@
-import fs from 'node:fs'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { describe, expect, it } from 'vitest'
+const apiCoreMock = vi.hoisted(() => ({
+  apiClient: { post: vi.fn() },
+  openapiRequest: vi.fn(),
+}))
+
+vi.mock('@/lib/api/core', () => apiCoreMock)
+
+import { ragApi } from './api/rag'
+
+afterEach(() => {
+  vi.clearAllMocks()
+})
 
 describe('ragApi.retrieveEvidence', () => {
-  it('calls the production retrieval-only endpoint (/rag/retrieve)', () => {
-    const url = new URL('./api/rag.ts', import.meta.url)
-    const src = fs.readFileSync(url, 'utf8')
+  it('posts the request to the retrieval-only endpoint and returns its payload', async () => {
+    const request = { query: 'What is the policy?', dataset_id: 'dataset-1', top_k: 5 }
+    const response = {
+      query_for_retrieval: request.query,
+      citations: [],
+      schema: 'mimirq.evidence.v1',
+      has_evidence: false,
+      abstain_triggered: true,
+    }
+    apiCoreMock.openapiRequest.mockResolvedValue(response)
 
-    expect(src).toContain('retrieveEvidence')
-    expect(src).toContain('openapiRequest({')
-    expect(src).toContain("path: '/api/v1/rag/retrieve'")
+    await expect(ragApi.retrieveEvidence(request)).resolves.toEqual(response)
+    expect(apiCoreMock.openapiRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: '/api/v1/rag/retrieve',
+        method: 'post',
+        body: request,
+        responseSchemaName: 'EvidenceRetrieveResponse',
+      })
+    )
   })
 })

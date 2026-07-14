@@ -106,31 +106,31 @@
 改动：`check-api-types-drift.mjs` 支持 `--strict --baseline <file>`；提交当前基线（15 模块/87 类型），计数**超过基线即失败**，等于或低于则通过并提示可下调；`api-check` 接入 strict 模式。
 
 验收：
-- [ ] 新增一个手写漂移类型 → CI 红；删除一个 → 提示下调基线。
-- [ ] 现状（87）下 `pnpm verify` 保持绿。
+- [x] 新增一个手写漂移类型 → CI 红；删除一个 → 提示下调基线。
+- [x] 现状（87）下 `pnpm verify` 保持绿。
 
 #### TQ-02 ACL 分页测试去子串嗅探
 
 改动：重写 `_FakeQuery`：不再对条件 `str()` 嗅探关键词，改为解析真实 BinaryExpression 并对内存行执行过滤（参照 `tests/test_feedback_service.py:22-52` 的既有可靠 fake），或改用内存 SQLite + 真模型执行生产查询。
 
 验收：
-- [ ] 变异验证：把生产 ACL 条件故意改错（如漏 dataset 级权限 / AND→OR）后该测试必红；恢复后绿。
-- [ ] 原有分页/total 断言保留。
+- [x] 变异验证：把生产 ACL 条件故意改错（如漏 dataset 级权限 / AND→OR）后该测试必红；恢复后绿。
+- [x] 原有分页/total 断言保留。
 
 #### TQ-03 查询分解测试补真断言
 
 改动：断言 `captured_queries` 精确包含两个子问题且顺序正确；另补一个不 stub `_decompose_query` 的单元测试（mock LLM 输出，验证解析/去重/截断逻辑本身）。
 
 验收：
-- [ ] 变异验证：让分解链丢弃/重复第二子问题时测试必红。
+- [x] 变异验证：让分解链丢弃/重复第二子问题时测试必红。
 
 #### TQ-04 前端 grep 测试处置（首批 3 个）
 
 改动：将最误导的三个（`page.delete-action`、`reports/page.real-data.source`、`api-client.rag-evidence`）改为真实行为测试（render+交互 / msw 或 fetch spy）；其余 grep 测试在文件头加注释标记"源码规范检查，非行为覆盖"，排入 backlog 渐进替换，不一次性重写。
 
 验收：
-- [ ] 三个新测试在对应真实回归（删除不触发/端点改名/数据未接）下必红。
-- [ ] 全套 vitest 通过，无因样式改动而红的旧断言残留于这三个文件。
+- [x] 三个新测试在对应真实回归（删除不触发/端点改名/数据未接）下必红。
+- [x] 全套 vitest 通过，无因样式改动而红的旧断言残留于这三个文件。
 
 ### 阶段 D：冗余清理与决策项
 

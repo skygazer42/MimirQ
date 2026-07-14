@@ -263,6 +263,7 @@ CORE_WEB_TESTS := \
 	components/ui/page-title-icon.test.ts \
 	hooks/use-media-query.test.tsx \
 	hooks/use-rag-lifecycle.behavior.test.tsx \
+	scripts/check-api-types-drift.test.ts \
 	lib/api-client.source.test.ts \
 	lib/api-client-auth.test.ts \
 	lib/image-auth-proxy.test.ts \

@@ -1,3 +1,4 @@
+// Source contract check only; this is not behavior coverage.
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -9,4 +10,3 @@ describe('evaluations ablations route entry', () => {
     expect(src).toContain('@/components/evaluation/retrieval-ablations-page')
   })
 })
-

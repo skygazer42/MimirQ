@@ -160,6 +160,17 @@ type ReportExportParams = {
   connector_runs_limit: number
   redact?: boolean
 }
+
+export function useDatasetReportQuery(
+  datasetId: string,
+  reportParams: Pick<ReportExportParams, 'pipeline_hash' | 'connector_runs_limit'>
+) {
+  return useQuery<DatasetReport>({
+    queryKey: queryKeys.reports.dataset(datasetId, reportParams),
+    queryFn: () => reportApi.getDatasetReport(datasetId, reportParams),
+    enabled: Boolean(datasetId),
+  })
+}
 type ReportBlobExporter = (
   datasetId: string,
   params: ReportExportParams
@@ -2444,11 +2455,7 @@ export default function ReportsCenterPage() {
     queryKey: queryKeys.reports.categories,
     queryFn: () => datasetCategoryApi.listTree(),
   })
-  const reportQuery = useQuery<DatasetReport>({
-    queryKey: queryKeys.reports.dataset(datasetId, reportParams),
-    queryFn: () => reportApi.getDatasetReport(datasetId, reportParams),
-    enabled: Boolean(datasetId),
-  })
+  const reportQuery = useDatasetReportQuery(datasetId, reportParams)
 
   const datasets = useMemo(
     () => datasetsQuery.data?.items || [],

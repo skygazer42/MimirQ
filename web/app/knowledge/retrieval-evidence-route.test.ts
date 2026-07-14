@@ -1,3 +1,4 @@
+// Source contract check only; this is not behavior coverage.
 import fs from 'node:fs'
 
 import { describe, expect, it } from 'vitest'

@@ -7,6 +7,7 @@ import { useState, useEffect, useLayoutEffect, useRef, Suspense, useCallback, us
 import { useLocale, useTranslations } from 'next-intl'
 import { useSearchParams } from 'next/navigation'
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
+import type { QueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   MessageSquare,
@@ -69,6 +70,46 @@ type HistoryPageContentProps = {
 const EMPTY_CONVERSATIONS: Conversation[] = []
 const EMPTY_MESSAGES: Message[] = []
 const CONVERSATION_PAGE_SIZE = 100
+
+type ConversationPagesCache = {
+  pages?: Array<{
+    items?: Conversation[]
+    total?: number
+    returned?: number
+  }>
+  pageParams?: unknown[]
+}
+
+export async function deleteConversationFromHistory(
+  conversationId: string,
+  queryClient: QueryClient
+) {
+  await chatApi.deleteConversation(conversationId)
+  queryClient.setQueryData(
+    queryKeys.chat.conversationPages({ limit: CONVERSATION_PAGE_SIZE }),
+    (current: ConversationPagesCache | undefined) =>
+      current
+        ? {
+            ...current,
+            pages: (current.pages || []).map((page) => {
+              const items = (page.items || []).filter(
+                (conversation) => conversation.id !== conversationId
+              )
+              const removed = (page.items || []).length - items.length
+              return {
+                ...page,
+                items,
+                returned: Math.max(
+                  0,
+                  Number(page.returned ?? page.items?.length ?? 0) - removed
+                ),
+                total: Math.max(0, Number(page.total || 0) - removed),
+              }
+            }),
+          }
+        : current
+  )
+}
 
 export default function HistoryPageClient({
   initialConversationId = null,
@@ -333,37 +374,7 @@ function HistoryPageContent({
 
   const handleDeleteConversation = async (conversationId: string) => {
     try {
-      await chatApi.deleteConversation(conversationId)
-      queryClient.setQueryData(
-        queryKeys.chat.conversationPages({ limit: CONVERSATION_PAGE_SIZE }),
-        (
-          current:
-            | {
-                pages?: Array<{
-                  items?: Conversation[]
-                  total?: number
-                  returned?: number
-                }>
-                pageParams?: unknown[]
-              }
-            | undefined
-        ) =>
-          current
-            ? {
-                ...current,
-                pages: (current.pages || []).map((page) => {
-                  const items = (page.items || []).filter((conversation) => conversation.id !== conversationId)
-                  const removed = (page.items || []).length - items.length
-                  return {
-                    ...page,
-                    items,
-                    returned: Math.max(0, Number(page.returned ?? page.items?.length ?? 0) - removed),
-                    total: Math.max(0, Number(page.total || 0) - removed),
-                  }
-                }),
-              }
-            : current
-      )
+      await deleteConversationFromHistory(conversationId, queryClient)
       if (selectedConversation?.id === conversationId) {
         setSelectedConversation(null)
         router.push('/history', { scroll: false })
@@ -946,7 +957,7 @@ function HistorySidebarEmptyState({
 }
 
 // 对话列表项
-function ConversationItem({
+export function ConversationItem({
   conversation,
   isSelected,
   onSelect,

@@ -4,6 +4,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy.sql.elements import BinaryExpression, BooleanClauseList
 
 import app.api.v1.connectors  # noqa: F401
 from app.api.v1 import connectors_runs as connectors_runs_module
@@ -29,21 +30,44 @@ class _FakeRun:
 
 
 class _FakeQuery:
-    def __init__(self, *, runs: list[_FakeRun], allowed_dataset_ids: set[UUID]) -> None:
+    def __init__(self, *, runs: list[_FakeRun]) -> None:
         self._runs = list(runs)
-        self._allowed_dataset_ids = set(allowed_dataset_ids)
-        self._acl_applied = False
         self._skip = 0
         self._limit: int | None = None
 
     def filter(self, *conditions):  # noqa: ANN002, ANN202
-        rendered = " ".join(str(condition) for condition in conditions)
-        if any(
-            marker in rendered
-            for marker in ("datasets", "dataset_permissions", "dataset_group_permissions", "tenant_group_members")
-        ):
-            self._acl_applied = True
+        for condition in conditions:
+            self._runs = [run for run in self._runs if self._matches(run, condition)]
         return self
+
+    @classmethod
+    def _matches(cls, run: _FakeRun, condition) -> bool:  # noqa: ANN001
+        if isinstance(condition, BooleanClauseList):
+            clauses = [cls._matches(run, clause) for clause in condition.clauses]
+            operator_name = getattr(condition.operator, "__name__", "")
+            if operator_name == "and_":
+                return all(clauses)
+            if operator_name == "or_":
+                return any(clauses)
+            raise AssertionError(f"unsupported boolean operator: {operator_name}")
+        if not isinstance(condition, BinaryExpression):
+            raise AssertionError(f"unsupported filter expression: {type(condition).__name__}")
+
+        key = getattr(condition.left, "key", None)
+        value = getattr(condition.right, "value", None)
+        operator_name = getattr(condition.operator, "__name__", "")
+        if not key:
+            raise AssertionError("filter expression has no model field")
+        actual = getattr(run, key)
+        if operator_name == "eq":
+            return actual == value
+        if operator_name == "ne":
+            return actual != value
+        if operator_name == "in_op":
+            return actual in set(value or [])
+        if operator_name == "not_in_op":
+            return actual not in set(value or [])
+        raise AssertionError(f"unsupported binary operator: {operator_name}")
 
     def count(self) -> int:
         return len(self._filtered_runs())
@@ -71,9 +95,7 @@ class _FakeQuery:
         return runs
 
     def _filtered_runs(self) -> list[_FakeRun]:
-        if not self._acl_applied:
-            return list(self._runs)
-        return [run for run in self._runs if run.dataset_id in self._allowed_dataset_ids]
+        return list(self._runs)
 
 
 class _FakeSession:
@@ -130,8 +152,14 @@ def _install_acl_guards(monkeypatch: pytest.MonkeyPatch, *, dataset_service, all
 
 def test_list_ingestion_runs_applies_acl_before_count_and_pagination(monkeypatch: pytest.MonkeyPatch) -> None:
     tenant_id, runs, allowed_dataset_ids = _build_runs()
-    db = _FakeSession(query=_FakeQuery(runs=runs, allowed_dataset_ids=allowed_dataset_ids))
+    db = _FakeSession(query=_FakeQuery(runs=runs))
     calls = _install_acl_guards(monkeypatch, dataset_service=ingestion_runs_module.DatasetService, allowed_dataset_ids=allowed_dataset_ids)
+    monkeypatch.setattr(
+        ingestion_runs_module,
+        "_writable_dataset_ids_subquery",
+        lambda **_kwargs: list(allowed_dataset_ids),
+        raising=True,
+    )
 
     response = ingestion_runs_module.list_ingestion_runs(
         skip=0,
@@ -151,11 +179,17 @@ def test_list_ingestion_runs_applies_acl_before_count_and_pagination(monkeypatch
 
 def test_list_connector_runs_applies_acl_before_count_and_pagination(monkeypatch: pytest.MonkeyPatch) -> None:
     tenant_id, runs, allowed_dataset_ids = _build_runs()
-    db = _FakeSession(query=_FakeQuery(runs=runs, allowed_dataset_ids=allowed_dataset_ids))
+    db = _FakeSession(query=_FakeQuery(runs=runs))
     calls = _install_acl_guards(
         monkeypatch,
         dataset_service=connectors_runs_module.connectors_module.DatasetService,
         allowed_dataset_ids=allowed_dataset_ids,
+    )
+    monkeypatch.setattr(
+        connectors_runs_module,
+        "_writable_dataset_ids_subquery",
+        lambda **_kwargs: list(allowed_dataset_ids),
+        raising=True,
     )
     monkeypatch.setattr(
         connectors_runs_module.connectors_module,

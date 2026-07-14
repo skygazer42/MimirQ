@@ -22,15 +22,34 @@ const API_DIR = path.resolve(__dirname, '..', 'lib', 'api')
 // Modules intentionally exempt (infra, not API contract surfaces).
 const EXEMPT = new Set(['core.ts', 'index.ts', 'openapi-request.ts', 'document-helpers.ts'])
 
-// Baseline: number of modules still hand-writing types. Ratchet this DOWN over
-// time as modules migrate to generated types. CI --strict fails if it grows.
-const HANDWRITTEN_MODULE_BASELINE = 30
-
 function listApiModules() {
   return fs
     .readdirSync(API_DIR)
     .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && !EXEMPT.has(f))
     .sort()
+}
+
+function argumentValue(name) {
+  const index = process.argv.indexOf(name)
+  return index >= 0 ? process.argv[index + 1] : undefined
+}
+
+function loadBaseline() {
+  const baselineArg = argumentValue('--baseline')
+  if (!baselineArg) {
+    throw new Error('--baseline <file> is required with --strict')
+  }
+  const baselinePath = path.resolve(process.cwd(), baselineArg)
+  const parsed = JSON.parse(fs.readFileSync(baselinePath, 'utf8'))
+  const handwrittenModules = Number(parsed.handwrittenModules)
+  const handwrittenTypes = Number(parsed.handwrittenTypes)
+  if (!Number.isInteger(handwrittenModules) || handwrittenModules < 0) {
+    throw new Error('baseline handwrittenModules must be a non-negative integer')
+  }
+  if (!Number.isInteger(handwrittenTypes) || handwrittenTypes < 0) {
+    throw new Error('baseline handwrittenTypes must be a non-negative integer')
+  }
+  return { handwrittenModules, handwrittenTypes, baselinePath }
 }
 
 function analyze(file) {
@@ -69,15 +88,42 @@ function main() {
     console.log('[api-types-drift] OK: no hand-written API types found')
   }
 
-  if (strict && withHandwritten.length > HANDWRITTEN_MODULE_BASELINE) {
-    console.error(
-      `[api-types-drift] FAIL (--strict): ${withHandwritten.length} modules exceed baseline ${HANDWRITTEN_MODULE_BASELINE}`
-    )
-    process.exitCode = 1
+  if (strict) {
+    let baseline
+    try {
+      baseline = loadBaseline()
+    } catch (error) {
+      console.error(`[api-types-drift] FAIL (--strict): ${error instanceof Error ? error.message : String(error)}`)
+      process.exitCode = 1
+      return
+    }
+
+    const failures = []
+    if (withHandwritten.length > baseline.handwrittenModules) {
+      failures.push(
+        `hand-written-type modules=${withHandwritten.length} exceed baseline ${baseline.handwrittenModules}`
+      )
+    }
+    if (totalHandwritten > baseline.handwrittenTypes) {
+      failures.push(`hand-written types=${totalHandwritten} exceed baseline ${baseline.handwrittenTypes}`)
+    }
+    if (failures.length > 0) {
+      for (const failure of failures) console.error(`[api-types-drift] FAIL (--strict): ${failure}`)
+      process.exitCode = 1
+      return
+    }
+    if (
+      withHandwritten.length < baseline.handwrittenModules ||
+      totalHandwritten < baseline.handwrittenTypes
+    ) {
+      console.log(
+        `[api-types-drift] baseline can be lowered to modules=${withHandwritten.length}, types=${totalHandwritten}`
+      )
+    }
+    console.log(`[api-types-drift] strict baseline passed (${baseline.baselinePath})`)
     return
   }
 
-  // Warning-level by default: always exit 0 so CI is not blocked yet.
   console.log('[api-types-drift] done (warning-level; pass --strict to enforce baseline)')
 }
 
