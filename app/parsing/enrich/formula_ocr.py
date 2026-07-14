@@ -12,10 +12,8 @@ Design constraints:
 """
 
 
-import asyncio
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -23,6 +21,7 @@ from urllib.parse import unquote, urlparse
 
 import httpx
 
+from app.core.async_bridge import run_coroutine_sync as _run_coroutine_sync
 from app.rag.core.logging import get_logger
 
 logger = get_logger("parsing.formula_ocr")
@@ -35,16 +34,6 @@ _FENCE_RE = re.compile(r"^\s*(```+|~~~+)")
 
 _FORMULA_HINT_RE = re.compile(r"\b(formula|equation|latex|math|eqn)\b", re.IGNORECASE)
 _MINIO_URL_HINT = "/api/v1/documents/image-url/"
-
-
-def _run_coroutine_sync(factory: Any) -> Any:
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(factory())
-
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        return executor.submit(lambda: asyncio.run(factory())).result()
 
 
 def _clean_latex(raw: str, *, max_chars: int) -> str:

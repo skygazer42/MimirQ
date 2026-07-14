@@ -1,7 +1,6 @@
 
 import asyncio
 import time
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -10,6 +9,7 @@ import fitz  # PyMuPDF
 import httpx
 from langchain_core.documents import Document
 
+from app.core.async_bridge import run_coroutine_sync as _run_coroutine_sync
 from app.core.config import settings
 from app.rag.core.logging import get_logger
 from app.rag.core.vision_reader import _describe_with_vision_llm
@@ -66,16 +66,6 @@ async def _correct_markdown_with_vision_async(*, markdown: str, image_bytes: byt
 
 def _correct_markdown_with_vision(*, markdown: str, image_bytes: bytes) -> str:
     return asyncio.run(_correct_markdown_with_vision_async(markdown=markdown, image_bytes=image_bytes))
-
-
-def _run_coroutine_sync(factory) -> Any:
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(factory())
-
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        return executor.submit(lambda: asyncio.run(factory())).result()
 
 
 async def apply_vlm_correction_async(

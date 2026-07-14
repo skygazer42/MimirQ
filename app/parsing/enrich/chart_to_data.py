@@ -1,16 +1,16 @@
 
-import asyncio
 import hashlib
 import json
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
 import httpx
+
+from app.core.async_bridge import run_coroutine_sync as _run_coroutine_sync
 
 _MD_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 _HTML_IMG_TAG_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
@@ -52,16 +52,6 @@ def _coerce_confidence(value: Any) -> float | None:
     if out > 1:
         return 1.0
     return out
-
-
-def _run_coroutine_sync(factory: Any) -> Any:
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(factory())
-
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        return executor.submit(lambda: asyncio.run(factory())).result()
 
 
 def build_chart_data_v1_payload(

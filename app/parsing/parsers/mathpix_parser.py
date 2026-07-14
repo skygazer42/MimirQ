@@ -1,23 +1,13 @@
 
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
 import httpx
 from langchain_core.documents import Document
 
+from app.core.async_bridge import run_coroutine_sync as _run_coroutine_sync
 from app.core.config import settings
-
-
-def _run_coroutine_sync(factory: Any) -> Any:
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(factory())
-
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        return executor.submit(lambda: asyncio.run(factory())).result()
 
 
 async def _call_mathpix_backend_async(*, file_path: Path, app_id: str, app_key: str) -> str:

@@ -7,26 +7,15 @@ This stage is feature-flagged and best-effort:
 """
 
 
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
 import httpx
 
+from app.core.async_bridge import run_coroutine_sync as _run_coroutine_sync
 from app.parsing.preprocess.model_loader import get_preprocess_model_loader
 
 _RASTER_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"}
-
-
-def _run_coroutine_sync(factory: Any) -> Any:
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(factory())
-
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        return executor.submit(lambda: asyncio.run(factory())).result()
 
 
 async def _cleanup_handwriting_via_http_async(

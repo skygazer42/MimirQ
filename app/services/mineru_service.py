@@ -12,8 +12,6 @@ import tempfile
 import time
 import uuid
 import zipfile
-from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -22,6 +20,7 @@ import aiofiles
 import httpx
 from langchain_core.documents import Document
 
+from app.core.async_bridge import run_coroutine_sync as _run_coroutine_sync
 from app.core.config import settings
 from app.core.http_client import get_http_client_pool
 from app.core.jwt_inspect import format_unix_ts_utc, try_get_jwt_exp
@@ -183,23 +182,6 @@ class MinerUService:
             except Exception as exc:
                 logger.debug(MINERU_FALLBACK_LOG_MESSAGE, exc)
 
-    @staticmethod
-    def _run_coroutine_sync(factory: Callable[[], Any]) -> Any:
-        """
-        Execute an async MinerU helper from synchronous call sites.
-
-        When called from a plain sync context, reuse `asyncio.run`.
-        When a loop is already running in the current thread, offload the
-        coroutine to a short-lived worker thread so sync wrappers still work.
-        """
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return asyncio.run(factory())
-
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            return executor.submit(lambda: asyncio.run(factory())).result()
-
     async def aapply_upload_url(self, filename: str, data_id: str) -> dict[str, Any]:
         """Request a single file upload URL (async)."""
         self._ensure_online_enabled()
@@ -229,7 +211,7 @@ class MinerUService:
                 "data_id": "xxx"
             }
         """
-        return self._run_coroutine_sync(lambda: self.aapply_upload_url(filename, data_id))
+        return _run_coroutine_sync(lambda: self.aapply_upload_url(filename, data_id))
 
     async def aapply_batch_upload_urls(self, files: list[dict[str, str]]) -> dict[str, Any]:
         """Request batch upload URLs (async)."""
@@ -263,7 +245,7 @@ class MinerUService:
                 "files": [{"name": "...", "data_id": "..."}, ...]
             }
         """
-        return self._run_coroutine_sync(lambda: self.aapply_batch_upload_urls(files))
+        return _run_coroutine_sync(lambda: self.aapply_batch_upload_urls(files))
 
     async def aupload_file(self, file_path: Path, upload_url: str) -> bool:
         """
@@ -307,7 +289,7 @@ class MinerUService:
             return False
 
     def upload_file(self, file_path: Path, upload_url: str) -> bool:
-        return bool(self._run_coroutine_sync(lambda: self.aupload_file(file_path, upload_url)))
+        return bool(_run_coroutine_sync(lambda: self.aupload_file(file_path, upload_url)))
 
     async def aget_task_status(self, batch_id: str) -> dict[str, Any]:
         """
@@ -335,7 +317,7 @@ class MinerUService:
         Returns:
             Task status info.
         """
-        return self._run_coroutine_sync(lambda: self.aget_task_status(batch_id))
+        return _run_coroutine_sync(lambda: self.aget_task_status(batch_id))
 
     @staticmethod
     def _normalize_batch_status(batch_data: dict[str, Any]) -> dict[str, Any]:
@@ -438,7 +420,7 @@ class MinerUService:
 
     def get_batch_results(self, batch_id: str) -> dict[str, Any]:
         """Fetch raw MinerU batch results (sync)."""
-        return self._run_coroutine_sync(lambda: self.aget_batch_results(batch_id))
+        return _run_coroutine_sync(lambda: self.aget_batch_results(batch_id))
 
     async def await_for_completion(
         self,
@@ -514,7 +496,7 @@ class MinerUService:
             except TimeoutError as exc:
                 raise TimeoutError(f"Task {batch_id} timeout after {timeout} seconds") from exc
 
-        return self._run_coroutine_sync(
+        return _run_coroutine_sync(
             _run_with_timeout
         )
 
@@ -540,7 +522,7 @@ class MinerUService:
         Returns:
             Markdown content.
         """
-        return str(self._run_coroutine_sync(lambda: self.adownload_result(result_url)))
+        return str(_run_coroutine_sync(lambda: self.adownload_result(result_url)))
 
     async def adownload_result_zip(self, zip_url: str) -> bytes:
         """Download parse result ZIP bytes (async)."""
@@ -556,7 +538,7 @@ class MinerUService:
 
     def download_result_zip(self, zip_url: str) -> bytes:
         """Download parse result ZIP bytes (sync)."""
-        return bytes(self._run_coroutine_sync(lambda: self.adownload_result_zip(zip_url)))
+        return bytes(_run_coroutine_sync(lambda: self.adownload_result_zip(zip_url)))
 
     @staticmethod
     def _extract_markdown_from_zip_bytes(zip_bytes: bytes) -> str:
@@ -998,7 +980,7 @@ class MinerUService:
         Returns:
             Parsed LangChain Document list.
         """
-        return self._run_coroutine_sync(
+        return _run_coroutine_sync(
             lambda: self.aparse_file(
                 file_path=file_path,
                 data_id=data_id,
@@ -1028,7 +1010,7 @@ class MinerUService:
         Returns:
             Parsed LangChain Documents (images uploaded to MinIO).
         """
-        return self._run_coroutine_sync(
+        return _run_coroutine_sync(
             lambda: self.aparse_file_local(
                 file_path=file_path,
                 dataset_id=dataset_id,

@@ -6,21 +6,11 @@ heavy ML dependencies in-process.
 """
 
 
-import asyncio
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import httpx
 
-
-def _run_coroutine_sync(factory):
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(factory())
-
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        return executor.submit(lambda: asyncio.run(factory())).result()
+from app.core.async_bridge import run_coroutine_sync as _run_coroutine_sync
 
 
 async def _deskew_via_http_async(

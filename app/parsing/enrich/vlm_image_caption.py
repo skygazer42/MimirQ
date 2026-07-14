@@ -11,10 +11,8 @@ Design constraints:
 """
 
 
-import asyncio
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -22,6 +20,7 @@ from urllib.parse import unquote, urlparse
 
 import httpx
 
+from app.core.async_bridge import run_coroutine_sync as _run_coroutine_sync
 from app.core.config import settings
 from app.rag.core.logging import get_logger
 
@@ -44,16 +43,6 @@ _FENCE_RE = re.compile(r"^\s*(```+|~~~+)")
 _CAPTION_PREFIXES = ("image caption:", "caption:")
 
 _GENERIC_ALT_RE = re.compile(r"^(image|figure|photo|picture|diagram|chart|page\\s+\\d+\\s+image)\\b", re.IGNORECASE)
-
-
-def _run_coroutine_sync(factory: Any) -> Any:
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(factory())
-
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        return executor.submit(lambda: asyncio.run(factory())).result()
 
 
 def _normalize_caption_check(line: str) -> str:
