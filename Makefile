@@ -188,6 +188,9 @@ CORE_TESTS := \
 	tests/test_index_audit_summary.py \
 	tests/test_backend_performance_fixes.py \
 	tests/test_robustness_redundancy_fixes.py \
+	tests/test_async_bridge.py \
+	tests/test_embedding_http_providers.py \
+	tests/test_redis_client.py \
 	tests/test_adaptive_retrieval_routing.py \
 	tests/test_retrieval_fusion_budgeted_rrf.py \
 	tests/test_mmr_reranker.py \

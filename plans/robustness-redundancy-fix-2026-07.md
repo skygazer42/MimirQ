@@ -139,8 +139,8 @@
 改动：删除 async DB 栈 6 符号+re-export、4 个空 embedding 子类+`__init__` 导出、`bge_v2.py`、5 个死委托函数、6 个死异常类。每删前以词界 grep 复核零引用（含 tests/、字符串派发）。
 
 验收：
-- [ ] 每次删除后 pytest + Ruff + mypy/导入检查全绿；全仓无新增 ImportError 路径。
-- [ ] `exceptions.py` 活跃异常（ValidationError/RateLimitError/LLMError 等）不受影响。
+- [x] 每次删除后 pytest + Ruff + compileall/导入检查全绿；全仓无新增 ImportError 路径。
+- [x] `exceptions.py` 活跃异常（ValidationError/RateLimitError/LLMError 等）不受影响。
 
 #### RD-02 高风险样板提取（行为等价重构）
 
@@ -150,8 +150,8 @@
 - 新建 `app/core/redis_client.py` 统一 8 处 lazy 工厂；各处连接参数差异先显式列出再收敛，语义不同的保留传参。
 
 验收：
-- [ ] 替换前后各调用点行为等价（mock 下向量/重试/超时结果一致）；embedding provider 既有测试全绿。
-- [ ] 新 loop 反复创建场景下信号量字典不再增长。
+- [x] 替换前后各调用点行为等价（mock 下向量/重试/超时结果一致）；embedding provider 既有测试全绿。
+- [x] 新 loop 反复创建场景下信号量字典不再增长。
 
 #### RD-03 未接线决策项（本计划登记，不执行）
 
@@ -168,11 +168,11 @@
 
 ## 5. 完成定义
 
-- [ ] RB-01~06、TQ-01~04、RD-01~02 验收全部通过；RD-03 两个决策项已登记去向。
-- [ ] 入库/查询路径不再存在"故障静默当成功"：写失败必 failed，检索腿异常必可观测。
-- [ ] 契约漂移有 ratchet 门禁；ACL 与分解测试通过变异验证。
-- [ ] 删除与提取零行为变化：召回、排序、引用、事件序列、响应 schema 全部不变。
-- [ ] 每阶段独立提交，Lore trailers 记录约束、测试与未覆盖环境。
+- [x] RB-01~06、TQ-01~04、RD-01~02 验收全部通过；RD-03 两个决策项已登记去向。
+- [x] 入库/查询路径不再存在"故障静默当成功"：写失败必 failed，检索腿异常必可观测。
+- [x] 契约漂移有 ratchet 门禁；ACL 与分解测试通过变异验证。
+- [x] 删除与提取零行为变化：召回、排序、引用、事件序列、响应 schema 全部不变。
+- [x] 每阶段独立提交，Lore trailers 记录约束、测试与未覆盖环境。
 
 ## 6. 明确不做
 

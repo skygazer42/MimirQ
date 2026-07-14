@@ -9,23 +9,29 @@ import pytest
 
 
 class _SyncClient:
-    def __init__(self, responses: list[httpx.Response]) -> None:
+    def __init__(self, responses: list[httpx.Response | Exception]) -> None:
         self._responses = iter(responses)
         self.calls: list[dict[str, Any]] = []
 
     def post(self, url: str, **kwargs: Any) -> httpx.Response:
         self.calls.append({"url": url, **kwargs})
-        return next(self._responses)
+        response = next(self._responses)
+        if isinstance(response, Exception):
+            raise response
+        return response
 
 
 class _AsyncClient:
-    def __init__(self, responses: list[httpx.Response]) -> None:
+    def __init__(self, responses: list[httpx.Response | Exception]) -> None:
         self._responses = iter(responses)
         self.calls: list[dict[str, Any]] = []
 
     async def post(self, url: str, **kwargs: Any) -> httpx.Response:
         self.calls.append({"url": url, **kwargs})
-        return next(self._responses)
+        response = next(self._responses)
+        if isinstance(response, Exception):
+            raise response
+        return response
 
 
 def _response(url: str, status: int, payload: dict[str, Any]) -> httpx.Response:
@@ -103,6 +109,44 @@ async def test_ollama_embedding_retries_sync_and_async_429(monkeypatch: pytest.M
     assert len(async_client.calls) == 2
     assert "headers" not in sync_client.calls[0]
     assert "headers" not in async_client.calls[0]
+
+
+@pytest.mark.asyncio
+async def test_openai_embedding_retries_sync_and_async_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.embedding.providers.openai as provider_module
+
+    url = "https://embedding.example/v1/embeddings"
+    success = {"data": [{"embedding": [5.0, 6.0]}]}
+    sync_client = _SyncClient(
+        [
+            httpx.ReadTimeout("timed out", request=httpx.Request("POST", url)),
+            _response(url, 200, success),
+        ]
+    )
+    async_client = _AsyncClient(
+        [
+            httpx.ReadTimeout("timed out", request=httpx.Request("POST", url)),
+            _response(url, 200, success),
+        ]
+    )
+    pool = SimpleNamespace(
+        get_external_sync_client=lambda: sync_client,
+        get_external_async_client=lambda: async_client,
+    )
+    monkeypatch.setattr(provider_module, "get_http_client_pool", lambda: pool)
+    _configure_retry_settings(monkeypatch, provider_module)
+
+    embedding = provider_module.OpenAICompatibleEmbedding(
+        model="embed-model",
+        base_url=url,
+    )
+
+    assert embedding.encode(["sync"]) == [[5.0, 6.0]]
+    assert await embedding.aencode(["async"]) == [[5.0, 6.0]]
+    assert len(sync_client.calls) == 2
+    assert len(async_client.calls) == 2
 
 
 def test_async_embedding_semaphore_pool_does_not_retain_closed_loops(
