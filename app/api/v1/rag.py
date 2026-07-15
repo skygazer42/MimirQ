@@ -438,7 +438,7 @@ async def retrieve_preview(
     """Execute retrieval only (no answer generation); for parameter tuning and retrieval quality debugging."""
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    # Tenant QPS quotas (Wave22-T094): per-tenant aggregate limiter (best-effort).
+    # Best-effort per-tenant aggregate QPS limiter.
     from app.services.tenant_quota_service import enforce_tenant_qps_quota
 
     tenant_qps_meta = enforce_tenant_qps_quota(tenant_id=tenant_id, key="retrieval")
@@ -852,7 +852,7 @@ async def image_search_preview(
     ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
     DatasetService.assert_dataset_readable(db, ds, account_id)
 
-    # Tenant QPS quotas (Wave22-T094): per-tenant aggregate limiter (best-effort).
+    # Best-effort per-tenant aggregate QPS limiter.
     from app.services.tenant_quota_service import enforce_tenant_qps_quota
 
     tenant_qps_meta = enforce_tenant_qps_quota(tenant_id=tenant_id, key="retrieval")
@@ -963,7 +963,7 @@ async def retrieve_evidence(
     t_api_start = time.monotonic()
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    # Tenant QPS quotas (Wave22-T094): per-tenant aggregate limiter (best-effort).
+    # Best-effort per-tenant aggregate QPS limiter.
     from app.services.tenant_quota_service import enforce_tenant_qps_quota
 
     tenant_qps_meta = enforce_tenant_qps_quota(tenant_id=tenant_id, key="retrieval")
@@ -1453,7 +1453,7 @@ async def prompt_preview(
     t0 = time.time()
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    # Tenant QPS quotas (Wave22-T094): per-tenant aggregate limiter (best-effort).
+    # Best-effort per-tenant aggregate QPS limiter.
     from app.services.tenant_quota_service import enforce_tenant_qps_quota
 
     tenant_qps_meta = enforce_tenant_qps_quota(tenant_id=tenant_id, key="retrieval")

@@ -5,37 +5,42 @@
 > 覆盖状态：前端质量、API 设计两路已完成并验证；后端 Python 深读、文档友好度两路报告未送达（见 §6 待补）；另有主会话独立扫描的确定项（§1）。
 > 总基调：**代码机械纪律很好，低级 bug 几乎为零**——前端 0 处 index-key / 0 松散 == / 0 @ts-ignore / 仅 3 处 as any；后端 0 生产 print / 0 TODO-FIXME / 0 裸 except。真正可挑的集中在**设计/一致性层**与**开源门面**，不在 bug 层。这对开源是好信号。
 
+> 执行裁决（2026-07-15）：本轮仅处理 M-1/M-2/M-3、A-1 中仓库实际使用的 400/409/416，以及 F-1。其余 API/DB 兼容性改造与未经测量的结构性重构暂缓。
+> 执行结果：上述范围已完成，相关回归测试及全量前端门禁通过。
+> 第二批裁决：D-2 保留应用侧默认值，只改为 UTC-aware，避免引入数据库迁移；D-5 仅收紧四个已明确值域的关键配置。A-2 中入库任务状态与文档状态属于不同领域，不合并，DB 约束继续暂缓。
+
 ---
 
 ## 1. 开源门面（必修，别人第一眼就看到）——主会话已逐行验证
 
-### M-1 一个文件通篇 GBK 乱码注释
-- `web/components/data-governance-panel.tsx:2-3` 起，文件头 docblock 与散落注释共 **18 行** GBK 被错误解码：`* 鏁版嵁娌荤悊宸ヤ綔鍙扮粍浠?`（原意"数据治理工作台组件"）、`// 璁＄畻鐩稿浜庤鍙ｇ殑浣嶇疆`。仅此一文件。
+### M-1 一个文件通篇 GBK 乱码注释（已完成）
+- 当前复核确认 `web/components/data-governance-panel.tsx` 共 **48 行**乱码注释，现已全部重写为正常中文。仅此一文件。
 - 为什么必修：开源后任何人打开此文件第一屏就是乱码，直接拉低专业观感。
 - 处置：按原意用正常中文（或英文）重写这些注释。
 
-### M-2 内部研发代号注释散落 22 文件 28 处
+### M-2 内部研发代号注释散落 16 文件 21 处（已完成）
 - 代表：`app/api/v1/chat.py:175` `# Tenant QPS quotas (Wave22-T094): ...`、`app/api/v1/rbac.py:4` `Wave22-T092: RBAC roles ...`、`app/api/v1/usage.py:346`（`Wave22-T095: cost attribution`）。前端另有 1 处。
 - 为什么必修：`Wave22-T094` 是内部迭代任务编号，对外部读者零信息量、还暴露内部流程节奏。
 - 处置：批量删除代号前缀或改写为正常功能描述（如 `# Per-tenant aggregate QPS limiter (best-effort)`）。
 
-### M-3 vendored 代码里的注释掉的 print 调试残留（低危）
-- `app/deepdoc/parser/excel_parser.py:202-206`、`vision/recognizer.py:32,378`、`third_party/integrated_pipeline/nlp/__init__.py:747` 共 6 处 `# print(...)`。均在 vendored 目录、均已注释，非活代码。
+### M-3 注释掉的 print 调试残留（已完成）
+- 当前复核确认 `app/deepdoc/parser/excel_parser.py` 与 `app/deepdoc/vision/recognizer.py` 共 5 处 `# print(...)`，现已删除。均为非活代码。
 - 处置：顺手清理即可，非阻塞。生产活 `print()` = 0（已确认干净）。
 
 ---
 
 ## 2. 接入体验（高性价比，改动小，"别人接你 API 立刻踩"）——已逐行验证
 
-### A-1 错误码信封在最高频的 400/409 上退化为通用码
+### A-1 错误码信封在最高频的 400/409 上退化为通用码（已完成：400/409/416）
 - `app/core/exceptions.py:248` `error_code_map` 只含 `{401,403,404,422,413,429,500,503}` 八个；但全仓 `status_code=400` 用了 **357 次**、`409` 用了 **48 次**，二者不在 map 里 → `ErrorResponse.error` 全部落回通用 `"HTTP_ERROR"`。
 - 为什么：那个设计得很好的机器可判别错误字段，在占比最大的两类错误（校验失败/冲突）上失效，接入方只能回退去 string-match `message`。
 - 处置：map 补 `400:"BAD_REQUEST"`、`409:"CONFLICT"`、`416`、`402` 等；或让端点改抛携带稳定 `error_code` 的 `MimirQError` 子类（该体系已存在但 HTTP 层几乎没消费）。
 
-### A-2 文档状态枚举三处定义、值集发散、DB 不约束
+### A-2 文档状态枚举三处定义、值集发散、DB 不约束（复核后暂缓）
 - `app/models/document.py:74` `status = Column(String(20))` 注释 4 值（pending/processing/completed/failed）；`app/api/schemas/document.py:16` `DocumentStatusEnum` 6 值（多 quarantined/cancelled）；`app/models/ingestion_run.py:70` 注释 7 值（多 created）。DB 列裸 String 无 CHECK。
 - 为什么：接入方无法从单一来源知道会收到哪些状态；脏值可直接落库。权限词表同类问题（`DocumentAccessMode` Literal vs `DatasetPermissionEnum` Enum，两套重叠不等同）。
 - 处置：每个受控词表建单一 source of truth（`str, Enum`），DB 加 `CheckConstraint`（项目已有先例 `models/feedback.py:25`），API `*Out` 复用同一枚举。
+- 复核裁决：`Document.status` 与 `IngestionRunDocument.status` 分属文档生命周期和单次入库映射状态，不能合并成同一枚举；本轮仅修正文档模型的六值注释，DB 约束留待兼容性迁移时处理。
 
 ### A-3 请求体默认静默吞未知字段
 - 绝大多数 Create/Update/Request schema 无 `model_config`（Pydantic 默认 `extra="ignore"`）；全仓仅 19 处 `extra="forbid"`。
@@ -55,7 +60,7 @@
 
 ## 3. 前端设计/抽象（结构性，建议示范式推进，非全量重写）——已验证头部
 
-### F-1 真 bug：formatFileSize 对负数/NaN/≥TB 输出 "undefined"
+### F-1 真 bug：formatFileSize 对负数/NaN/≥TB 输出 "undefined"（已完成）
 - `web/lib/utils.ts:33`：`i = Math.floor(Math.log(bytes)/Math.log(k))`，`bytes` 为负/NaN → `i=NaN` → `sizes[NaN]=undefined`；`bytes≥1TB` → `i=4` 越界。输出 `"NaN undefined"`。
 - 处置：入口守卫 `Number.isFinite(bytes) && bytes>0`，`i` 用 `Math.min(i, sizes.length-1)`，`sizes` 补 TB。
 
@@ -96,10 +101,10 @@
 - `ConnectorRun`/`IngestionRun`/`RagasEvaluationRun`/`RagasRegressionRun`/`KGSearchDiagnosticsRun`/`DatasetPrecheckScanRun`/`DatasetProfileScanRun` 全直接 `(Base)`，各自重抄 tenant_id/status/config/stats/error/时间戳；`status` 宽度 20/32 混用。ConnectorRun 与 IngestionRun 功能高度重叠（两套 API 并存）。
 - 处置：抽 `RunMixin`；评估 ConnectorRun 是否可收敛为 IngestionRun 的一个 `kind`。
 
-### D-2 时间戳默认值两套机制并存（naive 弃用 vs tz-aware）
+### D-2 时间戳默认值两套机制并存（已完成：应用侧 UTC-aware）
 - `datetime.utcnow`（naive，3.12 起弃用）：`dataset.py:42`/`tenant.py:23`/`dataset_category.py:43`/`tenant_group.py:40`/`group_permissions.py` 5 文件；其余用 `server_default=func.now()`（tz-aware）。列都声明 `DateTime(timezone=True)`。
 - 为什么：前 5 张表写入 naive UTC，读出 tzinfo 缺失，跨组时间比较会 aware/naive 混用异常。
-- 处置：统一 `server_default=func.now()` + `onupdate=func.now()`。
+- 处置：保留现有应用侧默认值语义，统一为 `datetime.now(UTC)`；不引入数据库迁移。
 
 ### D-3 Schema 字段四处重复 + 共享基类被绕过
 - `schemas/dataset.py` 的 `DatasetBase/DatasetUpdate/DatasetOut/DatasetConfigBundle` 各自重抄同一组 ~15 字段；`base.py` 的 `OrmTimestampModel/TimestampMixin` 各仅用 3 次，而 `created_at: datetime` 在 schema 里手抄 43 次。
@@ -109,10 +114,10 @@
 - `models/feedback.py:49` `rating` 注释"1-5"无 CheckConstraint（同表 category 有）；`RagasRegressionItem.case_id`（evaluation.py:132）裸 UUID 无 FK（同类 run_id 有）；`IndexDriftItem.document_id/chunk_id`、`EvidenceItem.regression_case_id` 均无 FK。
 - 处置：能加 FK 的补 FK（多租户用组合 FK，项目已有优秀先例）；rating 加 `CheckConstraint('rating BETWEEN 1 AND 5')`。
 
-### D-5 受控配置项用裸 str + 注释而非 Literal
+### D-5 受控配置项用裸 str + 注释而非 Literal（已完成：四个关键配置）
 - config.py 1257 项里仅 2 个 Literal；`INPUT_GUARD_MODE`(252)/`RETRIEVAL_FUSION_STRATEGY`(943)/`VECTOR_BACKEND`(1354)/`GOVERNANCE_PII_MODE`(1684) 等几十个是"注释即枚举"的裸 str。
 - 为什么：env 拼错（`GOVERNANCE_PII_MODE=msak`）加载期不报错，运行时才 fallback 走错分支。
-- 处置：受控项改 `Literal[...]`，加载即校验。
+- 处置：本轮仅将上述四项改为 `Literal[...]`，加载即校验；同时删除 VECTOR_BACKEND 与 RETRIEVAL_FUSION_STRATEGY 的重复手写校验。
 
 ### D-6 列表分页元数据不统一（nit）
 - 仅 `schemas/chat.py:236 ConversationList` 有 `total/returned/has_more/next_skip`；其余列表是 `{total, items}`（信封一致是优点，但多数不告诉"还有没有下一页"）。
@@ -138,8 +143,8 @@
 ## 7. 建议处理顺序（按 改动成本 × 别人会不会挑）
 
 1. **开源前必清（0.5 天，纯门面）**：M-1 乱码注释、M-2 Wave 代号 28 处、M-3 print 残留。
-2. **接入体验（1 天，小改大收益）**：A-1 错误码补 400/409、A-2 文档状态枚举统一、A-3 请求体 extra=forbid、F-1 formatFileSize 修 bug、F-2 格式化统一。
-3. **一致性欠账（2-3 天，维护性）**：D-2 时间戳统一、D-4 补 FK/CheckConstraint、D-1 Run 表 RunMixin、A-4 补 response_model。
+2. **接入体验（1 天，小改大收益）**：A-1 错误码补 400/409、A-3 请求体 extra=forbid、F-1 formatFileSize 修 bug、F-2 格式化统一；A-2 等兼容性迁移时处理。
+3. **一致性欠账（2-3 天，维护性）**：D-2 时间戳统一、D-5 关键配置收紧、D-4 补 FK/CheckConstraint、D-1 Run 表 RunMixin、A-4 补 response_model。
 4. **结构性重构（示范式，不阻塞开源）**：F-3 表单状态、F-4 chunk-preview context、F-5 useResizablePanel、D-3 schema mixin——各挑一个最痛的做示范，其余渐进。
 5. **补审两路**（§6）后合并本清单。
 

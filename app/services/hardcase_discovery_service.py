@@ -1,7 +1,7 @@
 """
 Hardcase discovery helpers (PII-safe).
 
-Primary use-case (Wave26-T39):
+Primary use case:
 - Cluster/dedupe negative MessageFeedback by `question_hash` from `rag_trace` metrics records.
 - Keep outputs PII-safe by construction: never emit raw query text here.
 - Deterministic + bounded: stable ordering and explicit caps.

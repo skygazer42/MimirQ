@@ -8,7 +8,7 @@ Notes:
 
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import Column, DateTime, ForeignKey, ForeignKeyConstraint, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
@@ -40,7 +40,7 @@ class DatasetGroupPermission(Base):
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     dataset_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     group_id = Column(UUID(as_uuid=True), nullable=False, index=True)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 
 class DocumentGroupPermission(Base):
@@ -62,5 +62,4 @@ class DocumentGroupPermission(Base):
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
     group_id = Column(UUID(as_uuid=True), nullable=False, index=True)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
-
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))

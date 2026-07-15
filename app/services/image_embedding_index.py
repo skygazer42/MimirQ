@@ -1,8 +1,6 @@
 """
 Image embedding indexing + search (CLIP).
 
-Wave19-T061: Image embedding index (CLIP) + citations.
-
 Design goals:
 - Optional and fail-open: never block ingest/retrieval when image embedding deps are missing.
 - PII-minimal: do not persist raw image bytes or OCR text; store only embeddings + stable ids/metadata.

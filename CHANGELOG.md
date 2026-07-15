@@ -63,6 +63,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Web: cover missing backend routes in `web/lib/api-client.ts` (SCIM Groups/Users mutations; observability periodic job freshness).
 - Web: pin ESLint to v9 to avoid a runtime crash in `eslint-plugin-react` when linting.
 
+## [0.7.3] - 2026-07-15
+
+### Changed
+
+- Remove internal iteration markers, garbled comments, and commented-out debug output from public source files.
+- Make legacy application-side timestamp defaults UTC-aware without requiring a database migration.
+- Validate four controlled runtime settings with `Literal` types and remove duplicate manual checks.
+
+### Fixed
+
+- Preserve stable API error codes for HTTP 400, 409, and 416 responses.
+- Keep frontend file-size formatting valid for non-finite, negative, and terabyte-scale values.
+- Align the document status comment with the six statuses exposed by the document API.
+
 ## [0.7.2] - 2026-07-14
 
 ### Changed

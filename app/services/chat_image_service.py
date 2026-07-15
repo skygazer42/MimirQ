@@ -1,8 +1,6 @@
 """
 Chat <-> image embedding index bridge (CLIP).
 
-Wave19-T063: Multi-modal query routing (text vs image vs table).
-
 This module provides a small utility to inject image-chunk context docs into the
 chat retrieval pipeline so:
 - the LLM can read OCR/caption text,

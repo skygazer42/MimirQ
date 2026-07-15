@@ -172,7 +172,7 @@ async def chat(
     allow_empty_docs = bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True))
     allow_open_scope = bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False))
 
-    # Tenant QPS quotas (Wave22-T094): per-tenant aggregate limiter (best-effort).
+    # Best-effort per-tenant aggregate QPS limiter.
     from app.services.tenant_quota_service import enforce_tenant_qps_quota
 
     tenant_qps_meta = enforce_tenant_qps_quota(tenant_id=tenant_id, key="chat")
@@ -540,7 +540,7 @@ async def stream_chat(
     allow_empty_docs = bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True))
     allow_open_scope = bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False))
 
-    # Tenant QPS quotas (Wave22-T094): per-tenant aggregate limiter (best-effort).
+    # Best-effort per-tenant aggregate QPS limiter.
     from app.services.tenant_quota_service import enforce_tenant_qps_quota
 
     tenant_qps_meta = enforce_tenant_qps_quota(tenant_id=tenant_id, key="chat")

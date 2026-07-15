@@ -249,7 +249,7 @@ class Settings(BaseSettings):
     ADAPTIVE_RETRIEVAL_COMPLEX_TOP_K: int = 40
     ADAPTIVE_RETRIEVAL_COMPLEX_MQ_COUNT: int = 5
     INPUT_GUARD_ENABLED: bool = False
-    INPUT_GUARD_MODE: str = "warn"  # warn | block
+    INPUT_GUARD_MODE: Literal["warn", "block"] = "warn"
     INPUT_GUARD_SCORE_THRESHOLD: float = 0.7
     INPUT_GUARD_WARN_THRESHOLD: float = 0.35
     INPUT_GUARD_LOG_BLOCKED: bool = True
@@ -940,7 +940,7 @@ class Settings(BaseSettings):
     # - linear: min-max normalize each channel then alpha-blend
     # - rrf: reciprocal-rank fusion (normalized for UI)
     # - budgeted_rrf: RRF scoring but enforce per-channel quotas in the visible top-k prefix
-    RETRIEVAL_FUSION_STRATEGY: str = "budgeted_rrf"  # linear | rrf | budgeted_rrf
+    RETRIEVAL_FUSION_STRATEGY: Literal["linear", "rrf", "budgeted_rrf"] = "budgeted_rrf"
     # Single source for dense-vs-keyword blend defaults across request schemas and retrievers.
     RETRIEVAL_DEFAULT_ALPHA: float = 0.6
     RETRIEVAL_RRF_K: int = 60
@@ -1351,7 +1351,7 @@ class Settings(BaseSettings):
     AGENT_LOG_INCLUDE_EXECUTION_PATH: bool = False
     AGENT_LOG_MAX_PREVIEW_CHARS: int = 500
 
-    VECTOR_BACKEND: str = "milvus"  # milvus | memory | faiss | chroma | qdrant | pgvector
+    VECTOR_BACKEND: Literal["milvus", "memory", "faiss", "chroma", "qdrant", "pgvector"] = "milvus"
     # Optional JSON object keyed by region -> backend, e.g. {"cn-shanghai":"qdrant"}.
     VECTOR_REGION_BACKENDS: str = ""
     # Indexing toggles (to reduce duplicate pipelines when desired)
@@ -1681,7 +1681,7 @@ class Settings(BaseSettings):
     GOVERNANCE_NORMALIZE_TABLES: bool = False
     GOVERNANCE_STRIP_CODE_LINE_NUMBERS: bool = False
     GOVERNANCE_PII_ANONYMIZE: bool = False
-    GOVERNANCE_PII_MODE: str = "mask"  # mask | token
+    GOVERNANCE_PII_MODE: Literal["mask", "token"] = "mask"
     GOVERNANCE_PII_MASK: str = "[REDACTED]"
     # Compliance gate: if >=0, quarantine/drop a document when total PII hits exceed this threshold (sum across kinds).
     GOVERNANCE_PII_MAX_HITS: int = -1
@@ -3002,13 +3002,6 @@ class Settings(BaseSettings):
                 f"WORKFLOW_MODE ({self.WORKFLOW_MODE}) must be one of {valid_workflow_modes}"
             )
 
-        # Validate vector backend
-        valid_vector_backends = {"milvus", "memory", "faiss", "chroma", "qdrant", "pgvector"}
-        if self.VECTOR_BACKEND not in valid_vector_backends:
-            raise ValueError(
-                f"VECTOR_BACKEND ({self.VECTOR_BACKEND}) must be one of {valid_vector_backends}"
-            )
-
         # Validate default retrieval profile used by chat when request-side knobs are omitted.
         valid_retrieval_profiles = {
             "",
@@ -3277,13 +3270,6 @@ class Settings(BaseSettings):
         if self.RERANKER_PROVIDER not in valid_reranker_providers:
             raise ValueError(
                 f"RERANKER_PROVIDER ({self.RERANKER_PROVIDER}) must be one of {valid_reranker_providers}"
-            )
-
-        # Validate retrieval fusion strategy
-        valid_fusion_strategies = {"linear", "rrf", "budgeted_rrf"}
-        if self.RETRIEVAL_FUSION_STRATEGY not in valid_fusion_strategies:
-            raise ValueError(
-                f"RETRIEVAL_FUSION_STRATEGY ({self.RETRIEVAL_FUSION_STRATEGY}) must be one of {valid_fusion_strategies}"
             )
 
         rag_eval_faithfulness_min = float(getattr(self, "RAG_EVAL_GATE_FAITHFULNESS_MIN", 0.80) or 0.80)

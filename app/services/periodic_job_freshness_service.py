@@ -1,7 +1,7 @@
 """
 Periodic job freshness snapshot (ops-facing).
 
-Wave26-T02: Provide a small admin-only endpoint to answer:
+Provides a small admin-only endpoint to answer:
   - "When did our periodic audits / access review last run?"
   - "Are we stale?"
 

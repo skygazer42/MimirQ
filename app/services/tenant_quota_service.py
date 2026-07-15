@@ -1,8 +1,6 @@
 """
 Tenant quota helpers (best-effort).
 
-Wave22-T094: Tenant quotas (storage/docs/embedding tokens/qps).
-
 Design goals:
 - Best-effort: quota lookup failures should not take down core flows (fail open).
 - Cheap: single aggregate queries when possible.

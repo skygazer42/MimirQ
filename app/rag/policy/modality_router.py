@@ -1,8 +1,6 @@
 """
 Multi-modal query router (deterministic).
 
-Wave19-T063: Multi-modal query routing (text vs image vs table).
-
 Design goals:
 - Deterministic + auditable (no LLM calls).
 - Low false-positives: prefer "table" when explicit SQL/aggregation intent exists.

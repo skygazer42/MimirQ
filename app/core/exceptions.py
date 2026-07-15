@@ -246,9 +246,12 @@ def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse
     request_id = get_request_id(request)
 
     error_code_map = {
+        400: "BAD_REQUEST",
         401: "AUTHENTICATION_ERROR",
         403: "AUTHORIZATION_ERROR",
         404: "NOT_FOUND",
+        409: "CONFLICT",
+        416: "RANGE_NOT_SATISFIABLE",
         422: "VALIDATION_ERROR",
         413: "PAYLOAD_TOO_LARGE",
         429: "RATE_LIMIT_EXCEEDED",

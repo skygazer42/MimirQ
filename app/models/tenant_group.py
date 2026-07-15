@@ -13,7 +13,7 @@ permission tables (see follow-up migrations/models).
 
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import Column, DateTime, ForeignKeyConstraint, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
@@ -37,8 +37,12 @@ class TenantGroup(Base):
     # Optional stable identifier from an external IdP (OIDC/SCIM).
     external_id = Column(String(255), nullable=True)
 
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
 
     members = relationship("TenantGroupMember", back_populates="group", cascade="all, delete-orphan")
 
@@ -59,7 +63,6 @@ class TenantGroupMember(Base):
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     group_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     user_id = Column(String(255), nullable=False, index=True)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
     group = relationship("TenantGroup", back_populates="members")
-

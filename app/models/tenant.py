@@ -4,7 +4,7 @@ Multi-tenant data models.
 Defines tenant and member tables for tenant isolation.
 """
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import Boolean, Column, DateTime, String
 from sqlalchemy.dialects.postgresql import UUID
@@ -20,8 +20,12 @@ class Tenant(Base):
     name = Column(String(255), nullable=False, unique=True)
     status = Column(String(32), default="active")
     plan = Column(String(64), default="basic")
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
 
 
 class TenantMember(Base):
@@ -36,5 +40,9 @@ class TenantMember(Base):
     # Enterprise lifecycle: allow deprovisioning without hard-deleting membership rows.
     is_active = Column(Boolean, default=True)
     is_current = Column(Boolean, default=False)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )

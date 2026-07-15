@@ -29,7 +29,6 @@ from .operators import preprocess
 resource_dir = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "../../resources/data_parser/qieci")
 )
-# print(resource_dir)
 
 
 def get_default_resource_dir():
@@ -375,7 +374,6 @@ class Recognizer:
                 # Remove boxes with IoU over the threshold
                 keep_indices = np.nonzero(ious < iou_threshold)[0]
 
-                # print(keep_indices.shape, sorted_indices.shape)
                 sorted_indices = sorted_indices[keep_indices + 1]
 
             return keep_boxes

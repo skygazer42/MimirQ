@@ -342,8 +342,7 @@ def get_chat_cost_usage_summary(
     Summarize per-request cost attribution grouped by dataset_id (best-effort).
 
     Source of truth:
-    - `Message.message_metadata` fields written by chat/RAG engines
-      (Wave22-T095: cost attribution).
+    - Cost attribution fields in `Message.message_metadata` written by chat/RAG engines.
     """
     _ensure_admin(db, tenant_id, account_id)
 

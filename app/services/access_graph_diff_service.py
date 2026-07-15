@@ -1,7 +1,7 @@
 """
 PII-safe diff summary for access-graph exports.
 
-Wave26-T03: Provide a bounded, content-free diff that can be used for access reviews:
+Provides a bounded, content-free diff that can be used for access reviews:
 - input: two access-graph exports (records as dicts)
 - output: counts of added/removed/changed per kind + small samples
 

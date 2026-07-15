@@ -6,7 +6,7 @@ categories (many-to-many).
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import Column, DateTime, ForeignKeyConstraint, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
@@ -40,8 +40,12 @@ class DatasetCategory(Base):
     # Optional stable ordering among siblings.
     sort_order = Column(Integer, nullable=False, default=0)
 
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
 
     parent = relationship(
         "DatasetCategory",
@@ -83,7 +87,7 @@ class DatasetCategoryMembership(Base):
     dataset_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     category_id = Column(UUID(as_uuid=True), nullable=False, index=True)
 
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
     dataset = relationship("Dataset", foreign_keys=[tenant_id, dataset_id], overlaps="memberships")
     category = relationship("DatasetCategory", back_populates="memberships", foreign_keys=[tenant_id, category_id], overlaps="dataset")

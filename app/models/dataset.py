@@ -5,7 +5,7 @@ Defines dataset tables and permission relationships.
 """
 import enum
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import Column, DateTime, Enum, ForeignKeyConstraint, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -39,8 +39,12 @@ class Dataset(Base):
     # Dataset-level metadata (e.g., pipeline/governance defaults for documents).
     # Use a non-reserved attribute name; the column name remains "metadata".
     dataset_metadata = Column("metadata", JSONB, nullable=False, default=dict)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
-    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
 
     # relationships
     permissions = relationship("DatasetPermission", back_populates="dataset", cascade="all, delete-orphan")
@@ -63,6 +67,6 @@ class DatasetPermission(Base):
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     dataset_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     account_id = Column(String(255), nullable=False, index=True)
-    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
     dataset = relationship("Dataset", back_populates="permissions")

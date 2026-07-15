@@ -4034,7 +4034,7 @@ Requirements:
             if claim_check_applied or output_guard_enabled:
                 yield {"type": "token", "data": {"content": full_response}}
 
-            # ---- Wave22-T095: Cost attribution (per request) ----
+            # Cost attribution per request.
             #
             # Keep this PII-safe: only numeric counters and model identifiers.
             answer_chars = len(full_response or "")
@@ -4286,7 +4286,7 @@ Requirements:
                         "context_limit_per_chunk_tokens": int(getattr(settings, "RAG_CONTEXT_MAX_TOKENS_PER_CHUNK", 0) or 0),
                         "answer_chars": answer_chars,
                         "answer_tokens": answer_tokens,
-                        # Cost attribution (Wave22-T095): stable, numeric, PII-safe.
+                        # Stable, numeric, PII-safe cost attribution.
                         "cost_schema": str(cost_attribution.get("schema") or ""),
                         "cost_llm_prompt_tokens": int(prompt_tokens_est),
                         "cost_llm_completion_tokens": int(answer_tokens),

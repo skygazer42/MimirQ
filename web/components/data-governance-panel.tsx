@@ -1,6 +1,6 @@
 /**
- * 鏁版嵁娌荤悊宸ヤ綔鍙扮粍浠?
- * 鍔熻兘锛氳川閲忔娴嬨€佹櫤鑳芥竻娲椼€佹暟鎹爣娉ㄣ€佸垎绫诲綊妗?
+ * 数据治理工作台组件
+ * 功能：质量检测、智能清洗、数据标注、分类归档
  */
 'use client'
 
@@ -358,7 +358,7 @@ function mapParsingDocumentToGovernanceFile(
   }
 }
 
-// 鏂囦欢娌荤悊鐘舵€?
+// 文件治理状态
 interface FileGovernanceState {
   id: string
   originalContent: string
@@ -399,7 +399,7 @@ export function DataGovernancePanel() {
   const removeFile = useParsedFiles((state) => state.removeFile)
   const { parserBackend } = useParserBackendPreference()
 
-  // UI 鐘舵€?
+  // UI 状态
   const [activeTab, setActiveTab] = useState<GovernanceTab>('quality')
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'edit' | 'preview' | 'original'>(
@@ -600,7 +600,7 @@ export function DataGovernancePanel() {
     toast.info(t('toasts.uploadCancelled'))
   }, [t])
 
-  // 鏂囦欢娌荤悊鐘舵€?
+  // 文件治理状态
   const [governanceStates, setGovernanceStates] = useState<
     Record<string, FileGovernanceState>
   >({})
@@ -608,13 +608,13 @@ export function DataGovernancePanel() {
     () => new Set()
   )
 
-  // 渚ц竟鏍忕姸鎬?
+  // 侧边栏状态
   const [sidebarWidth, setSidebarWidth] = useState(280)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isResizing, setIsResizing] = useState(false)
   const sidebarRef = useRef<HTMLDivElement>(null)
 
-  // 娌荤悊闈㈡澘鐘舵€?(鍙充晶)
+  // 治理面板状态（右侧）
   const [panelWidth, setPanelWidth] = useState(400)
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false)
   const [isPanelResizing, setIsPanelResizing] = useState(false)
@@ -648,18 +648,18 @@ export function DataGovernancePanel() {
   const resize = useCallback(
     (mouseMoveEvent: MouseEvent) => {
       if (isResizing && sidebarRef.current) {
-        // 璁＄畻鐩稿浜庤鍙ｇ殑浣嶇疆
+        // 计算相对于视口的位置
         const sidebarLeft = sidebarRef.current.getBoundingClientRect().left
         const newWidth = mouseMoveEvent.clientX - sidebarLeft
 
-        // 闄愬埗鏈€灏忓拰鏈€澶у搴?
+        // 限制最小和最大宽度
         if (newWidth > 200 && newWidth < 500) {
           setSidebarWidth(newWidth)
         }
       }
 
       if (isPanelResizing && panelRef.current) {
-        // 鍙充晶闈㈡澘瀹藉害 = 瑙嗗彛瀹藉害 - 榧犳爣X
+        // 右侧面板宽度 = 视口宽度 - 鼠标 X
         const newWidth = globalThis.window.innerWidth - mouseMoveEvent.clientX
 
         if (newWidth > 300 && newWidth < 800) {
@@ -695,7 +695,7 @@ export function DataGovernancePanel() {
     return counts
   }, [files])
 
-  // 閫変腑鐨勬枃浠?
+  // 选中的文件
   const selectedFile = scopedFiles.find((f) => f.id === selectedFileId) || null
   const governanceState = selectedFileId
     ? governanceStates[selectedFileId]
@@ -755,7 +755,7 @@ export function DataGovernancePanel() {
     })
   }, [])
 
-  // 鍒濆鍖栨枃浠舵不鐞嗙姸鎬?
+  // 初始化文件治理状态
   const initializeGovernanceState = useCallback(
     (file: {
       id: string
@@ -902,7 +902,7 @@ export function DataGovernancePanel() {
     [files, removeFile, selectedFileId, t]
   )
 
-  // 鍒濆鍖栵細鑷姩閫夋嫨绗竴涓枃浠?
+  // 初始化时自动选择第一个文件
   useEffect(() => {
     if (!isLoaded) return
 
@@ -919,7 +919,7 @@ export function DataGovernancePanel() {
     }
   }, [isLoaded, visibleFiles, selectedFileId, initializeGovernanceState])
 
-  // 鎷栨斁澶勭悊
+  // 拖放处理
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(true)
@@ -930,7 +930,7 @@ export function DataGovernancePanel() {
     setIsDragging(false)
   }, [])
 
-  // 涓婁紶骞惰В鏋愰€昏緫锛堟敮鎸?.zip 鎵归噺瑙ｅ帇锛?
+  // 上传并解析（支持 .zip 批量解压）
   const handleUploadAndParse = useCallback(
     async (incomingFiles: File[]) => {
       uploadAbortRef.current?.abort()
@@ -1033,7 +1033,7 @@ export function DataGovernancePanel() {
         }
 
         for (const { file, folderId } of expanded) {
-          // 浣跨敤 preview 鎺ュ彛蹇€熻幏鍙?Markdown
+          // 使用 preview 接口快速获取 Markdown
           if (
             controller.signal.aborted ||
             uploadAbortRef.current !== controller
@@ -1054,7 +1054,7 @@ export function DataGovernancePanel() {
           )
             return
 
-          // 鎷兼帴 segments 鑾峰彇鍏ㄦ枃
+          // 拼接 segments 获取全文
           const markdownContent = data.segments
             .map((s) => s.content)
             .join('\n\n')
@@ -1070,7 +1070,7 @@ export function DataGovernancePanel() {
             datasetName: selectedDatasetName,
           })
 
-          // 濡傛灉鏄涓€涓枃浠讹紝鑷姩閫変腑
+          // 如果是第一个文件，则自动选中
           initializeGovernanceState({ id: newId, markdownContent })
           setSelectedFileId((prev) => prev ?? newId)
         }
@@ -1127,7 +1127,7 @@ export function DataGovernancePanel() {
     [handleUploadAndParse]
   )
 
-  // 鑾峰彇褰撳墠鏄剧ず鍐呭
+  // 获取当前显示内容
   const displayContent = useMemo(() => {
     if (!governanceState) return ''
     return viewMode === 'original'
@@ -1136,7 +1136,7 @@ export function DataGovernancePanel() {
   }, [governanceState, viewMode])
   const libraryOnlyNotice = t('libraryFile.notice')
 
-  // 鏂囦欢閫夋嫨
+  // 文件选择
   const handleSelectFile = useCallback(
     (fileId: string) => {
       const file = scopedFiles.find((f) => f.id === fileId)
@@ -1148,7 +1148,7 @@ export function DataGovernancePanel() {
     [scopedFiles, initializeGovernanceState]
   )
 
-  // 鎵嬪姩缂栬緫鍥炶皟
+  // 手动编辑回调
   const handleManualEdit = useCallback(
     (newContent: string) => {
       if (!selectedFileId) return
@@ -1157,14 +1157,14 @@ export function DataGovernancePanel() {
         [selectedFileId]: {
           ...prev[selectedFileId],
           cleanedContent: newContent,
-          isModified: true, // 鎵嬪姩淇敼涔熻瑙嗕负宸蹭慨鏀?
+          isModified: true, // 手动修改也视为已修改
         },
       }))
     },
     [selectedFileId]
   )
 
-  // 璐ㄩ噺妫€娴嬪畬鎴愬洖璋?
+  // 质量检测完成回调
   const handleQualityCheck = useCallback(
     (result: { score: number; issues: FileGovernanceState['issues'] }) => {
       if (!selectedFileId) return
@@ -1180,7 +1180,7 @@ export function DataGovernancePanel() {
     [selectedFileId]
   )
 
-  // 娓呮礂瀹屾垚鍥炶皟
+  // 清洗完成回调
   const handleClean = useCallback(
     (cleanedContent: string) => {
       if (!selectedFileId) return
@@ -1196,7 +1196,7 @@ export function DataGovernancePanel() {
     [selectedFileId]
   )
 
-  // 鏍囨敞瀹屾垚鍥炶皟
+  // 标注完成回调
   const handleAnnotate = useCallback(
     (annotations: FileGovernanceState['annotations']) => {
       if (!selectedFileId) return
@@ -1233,7 +1233,7 @@ export function DataGovernancePanel() {
     [selectedFileId]
   )
 
-  // 鍒嗙被瀹屾垚鍥炶皟
+  // 分类完成回调
   const handleClassify = useCallback(
     (category: string, tags: string[]) => {
       if (!selectedFileId) return
@@ -1250,7 +1250,7 @@ export function DataGovernancePanel() {
     [selectedFileId]
   )
 
-  // 閲嶇疆鏂囦欢鐘舵€?
+  // 重置文件状态
   const handleReset = useCallback(() => {
     if (!selectedFileId || !governanceState) return
     setGovernanceStates((prev) => ({
@@ -1268,7 +1268,7 @@ export function DataGovernancePanel() {
     }))
   }, [selectedFileId, governanceState])
 
-  // 灏嗘不鐞嗗悗鐨勫唴瀹瑰洖鍐欏埌鍏变韩瀛樺偍锛坙ocalStorage锛夛紝浠ヤ究 /chunk-preview 浣跨敤鏈€鏂扮増鏈?
+  // 将治理后的内容写回共享存储，供 /chunk-preview 使用最新版本
   const persistGovernanceEdits = useCallback(
     (options?: {
       markReadyFileIds?: Set<string>
@@ -1287,7 +1287,7 @@ export function DataGovernancePanel() {
         )
         if (!state && !nextChunkStatus) continue
 
-        // 濡傛灉鍘嗗彶鏁版嵁娌℃湁淇濆瓨 originalMarkdownContent锛屽厛鐢ㄥ綋鍓嶅唴瀹硅ˉ榻愶紝閬垮厤琚悗缁繚瀛樿鐩栨帀銆?
+        // 旧数据缺少 originalMarkdownContent 时用当前内容补齐，避免后续保存覆盖
         const originalMarkdownContent =
           typeof f.originalMarkdownContent === 'string'
             ? f.originalMarkdownContent
@@ -1369,7 +1369,7 @@ export function DataGovernancePanel() {
     selectedReadyChunkFiles.length,
   ])
 
-  // 缁熻鏁版嵁
+  // 统计数据
   const stats = useMemo(() => {
     const scopedIds = new Set(scopedFiles.map((file) => file.id))
     const scopedStates = Object.values(governanceStates).filter((state) =>
@@ -1412,7 +1412,7 @@ export function DataGovernancePanel() {
     </div>
   )
 
-  // 绌虹姸鎬?- 鏀逛负涓婁紶寮曞
+  // 空状态上传引导
   if (isLoaded && files.length === 0) {
     return (
       <WorkbenchScaffold
@@ -1862,7 +1862,7 @@ export function DataGovernancePanel() {
       mainPanel={
         <div className="flex-1 flex flex-col bg-background text-foreground min-h-0">
           <div className="flex-1 flex overflow-hidden min-h-0 relative bg-background">
-            {/* 宸︿晶鏂囦欢鍒楄〃 */}
+            {/* 左侧文件列表 */}
             <aside
               ref={sidebarRef}
               className={cn(
@@ -1871,7 +1871,7 @@ export function DataGovernancePanel() {
               )}
               style={{ width: isSidebarCollapsed ? 0 : sidebarWidth }}
             >
-              {/* 鎶樺彔/灞曞紑鎸夐挳 */}
+              {/* 折叠/展开按钮 */}
               <Button
                 variant="ghost"
                 size="icon"
@@ -1904,7 +1904,7 @@ export function DataGovernancePanel() {
                   isSidebarCollapsed && 'invisible'
                 )}
               >
-                {/* 鐩綍鍒囨崲 & 鎼滅储 */}
+                {/* 目录切换与搜索 */}
                 <div className="p-3 border-b border-border space-y-3">
                   <Select
                     value={activeFolderId || ROOT_FOLDER_ID}
@@ -2014,7 +2014,7 @@ export function DataGovernancePanel() {
                   </div>
                 </div>
 
-                {/* 鏂囦欢鐩綍鏍?- 鍙姌鍙犲尯鍩?*/}
+                {/* 可折叠的文件目录树 */}
                 {/* Folder tree section */}
                 <div className="space-y-1.5 border-b border-border/40 px-3 py-2">
                   <div className="flex items-center gap-1.5 px-1">
@@ -2226,7 +2226,7 @@ export function DataGovernancePanel() {
                   )}
                 </div>
 
-                {/* 搴曢儴缁熻鏍?*/}
+                {/* 底部统计栏 */}
                 {/* Footer KPI bar */}
                 <div className="mt-auto border-t border-border/60 from-muted/30 to-muted/55 backdrop-blur-sm px-3 py-2.5 space-y-1.5">
                   <div className="flex items-baseline justify-between gap-2">
@@ -2271,7 +2271,7 @@ export function DataGovernancePanel() {
                 </div>
               </div>
 
-              {/* 鎷栨嫿鎵嬫焺 */}
+              {/* 拖拽手柄 */}
               <button
                 type="button"
                 className={cn(
@@ -2283,13 +2283,13 @@ export function DataGovernancePanel() {
               />
             </aside>
 
-            {/* 涓诲唴瀹瑰尯 (涓棿 + 鍙充晶闈㈡澘) */}
+            {/* 主内容区（中间 + 右侧面板） */}
             <main className="flex-1 flex overflow-hidden min-h-0 relative">
               {selectedFile && governanceState ? (
                 <>
-                  {/* 涓棿锛氶瑙堢敾甯?*/}
+                  {/* 中间预览画布 */}
                   <div className="flex-1 flex flex-col overflow-hidden relative z-0">
-                    {/* 鐢诲竷宸ュ叿鏍?(鎮诞鎴栭泦鎴? */}
+                    {/* 画布工具栏 */}
                     <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center bg-card border border-border/60 shadow-soft rounded-full px-2 py-1 gap-1 transition-colors duration-150 motion-reduce:transition-none">
                       {/* Segmented view-mode control */}
                       <div className="flex items-center bg-muted/60 rounded-full p-0.5 border border-border/60">
@@ -2343,7 +2343,7 @@ export function DataGovernancePanel() {
                       </Button>
                     </div>
 
-                    {/* 宸︿晶鏀惰捣鎸夐挳 (濡傛灉宸︿晶鏀惰捣) */}
+                    {/* 左侧栏展开按钮 */}
                     {isSidebarCollapsed && (
                       <Button
                         variant="ghost"
@@ -2370,7 +2370,7 @@ export function DataGovernancePanel() {
                       </Button>
                     )}
 
-                    {/* 鍐呭鍖哄煙 */}
+                    {/* 内容区域 */}
                     <div
                       ref={contentScrollRef}
                       className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-4 md:p-8"
@@ -2381,7 +2381,7 @@ export function DataGovernancePanel() {
                           viewMode === 'edit' ? 'max-w-full' : 'max-w-4xl'
                         )}
                       >
-                        {/* 绾稿紶鏁堟灉瀹瑰櫒 */}
+                        {/* 纸张效果容器 */}
                         <div
                           className={cn(
                             'bg-card min-h-[800px] shadow-sm border border-border/60 rounded-xl overflow-hidden relative',
@@ -2390,7 +2390,7 @@ export function DataGovernancePanel() {
                               : 'p-10 md:p-14'
                           )}
                         >
-                          {/* 娌荤悊鐘舵€佹按鍗?寰界珷 */}
+                          {/* 治理状态徽章 */}
                           {viewMode !== 'edit' &&
                             governanceState.isModified && (
                               <div className="absolute top-0 right-0 p-4">
@@ -2408,7 +2408,7 @@ export function DataGovernancePanel() {
                     </div>
                   </div>
 
-                  {/* 鍙充晶锛氭不鐞嗗伐鍏烽潰鏉?(鏁村悎浜?Tabs) */}
+                  {/* 右侧治理工具面板 */}
                   <div
                     ref={panelRef}
                     className={cn(
@@ -2499,7 +2499,7 @@ export function DataGovernancePanel() {
                       </div>
                     </div>
 
-                    {/* 宸ュ叿鍐呭鍖?*/}
+                    {/* 工具内容区 */}
                     <div
                       key={activeTab}
                       data-governance-tool-scroll="true"
@@ -2538,7 +2538,7 @@ export function DataGovernancePanel() {
                       )}
                     </div>
 
-                    {/* 鎷栨嫿鎵嬫焺 */}
+                    {/* 拖拽手柄 */}
                     <button
                       type="button"
                       className={cn(
@@ -2551,7 +2551,7 @@ export function DataGovernancePanel() {
                   </div>
                 </>
               ) : (
-                // 绌虹姸鎬佸崰浣?
+                // 空状态占位
                 <div className="flex-1 flex flex-col items-center justify-center bg-muted">
                   <div className="w-24 h-24 bg-card rounded-full border border-border flex items-center justify-center mb-6 shadow-sm">
                     <FileSearch className="w-10 h-10 text-muted-foreground" />

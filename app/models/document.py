@@ -71,7 +71,7 @@ class Document(Base):
     publication_status = Column(String(20), nullable=False, default="published", index=True)  # draft|published|deprecated
 
     # Processing status
-    status = Column(String(20), nullable=False, default='pending')  # pending | processing | completed | failed
+    status = Column(String(20), nullable=False, default="pending")  # pending|processing|completed|failed|quarantined|cancelled
     processing_progress = Column(Integer, default=0)  # 0-100
     current_stage = Column(String(50), nullable=True)  # parsing | chunking | embedding | vector_write | completed
     failed_stage = Column(String(50), nullable=True)

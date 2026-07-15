@@ -1,8 +1,6 @@
 """
 Ingestion dashboard aggregates (admin-only, PII-safe).
 
-Wave20-T078: Admin dashboard: ingestion throughput + error taxonomy
-
 Design goals:
 - PII-safe: never return raw filenames/document contents; error taxonomy is normalized.
 - Cheap: aggregate queries where possible; bounded scans for error reasons.

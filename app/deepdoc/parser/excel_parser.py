@@ -197,10 +197,3 @@ if __name__ == "__main__":
     logging.info("Table content:")
     for line in lines:
         logging.info("%s", line)
-
-    # # HTML format (suitable for frontend preview)
-    # print("\n📊 HTML chunks (suitable for frontend preview):")
-    # html_chunks = parser.html(file_bytes)
-    # for idx, chunk in enumerate(html_chunks):
-    #     print(f"\n--- Chunk {idx + 1} ---")
-    #     print(chunk)

@@ -1105,7 +1105,7 @@ class Indexer:
         source = str(default_source or "").strip() or "unknown"
         total_characters = sum(len(c.content or "") for c in chunks)
 
-        # Tenant quotas (Wave22-T094): best-effort rolling cap on indexing/embedding volume.
+        # Best-effort tenant rolling cap on indexing and embedding volume.
         #
         # Note: this is deliberately enforced here (right before vector/BM25 writes) so any
         # ingestion path that calls Indexer will respect quotas.

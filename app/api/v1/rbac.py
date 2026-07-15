@@ -1,8 +1,6 @@
 """
 RBAC admin API (tenant-scoped).
 
-Wave22-T092: RBAC roles (admin/editor/viewer) for datasets/connectors.
-
 Notes:
 - MimirQ currently models roles on `tenant_members.role` (tenant-scoped).
 - Dataset/connector write APIs already gate on EDIT_ROLES derived from this field.

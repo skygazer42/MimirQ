@@ -7364,8 +7364,7 @@ export interface paths {
          * @description Summarize per-request cost attribution grouped by dataset_id (best-effort).
          *
          *     Source of truth:
-         *     - `Message.message_metadata` fields written by chat/RAG engines
-         *       (Wave22-T095: cost attribution).
+         *     - Cost attribution fields in `Message.message_metadata` written by chat/RAG engines.
          */
         get: operations["get_chat_cost_usage_summary_api_v1_usage_chat_cost_summary_get"];
         put?: never;

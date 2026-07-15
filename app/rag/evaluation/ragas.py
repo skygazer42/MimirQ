@@ -2034,7 +2034,7 @@ def run_regression_ragas_evaluation(
             citations: Any = []
             graph_result: dict[str, Any] = {}
 
-            # === Multi-modal evaluation harness (Wave19-T066) ===
+            # Multi-modal evaluation harness.
             #
             # Regression runs can include image/table-heavy questions. The main chat endpoint performs
             # deterministic modality routing + context injection before running the RAG graph. We do
