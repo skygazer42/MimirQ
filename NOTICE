@@ -32,22 +32,27 @@ under the Apache License, Version 2.0:
   the Apache License 2.0 of its upstream origin.
 
 ================================================================================
-2. Bundled model weights (app/deepdoc/resources/models/)
+2. Build-provisioned model weights (app/deepdoc/resources/models/)
 ================================================================================
 
-This distribution bundles third-party model weights. Each model remains under
-its own upstream license and attribution:
+The current source tree does not bundle model weights. Container builds and the
+explicit `make models` command download a checksum-verified snapshot from:
+
+  https://huggingface.co/qwqqwq/mimirq
+  revision 118452f3ea3ccd09a41b2d39ea82d7de535e2908
+
+Each downloaded model remains under its own upstream license and attribution;
+the model repository carries the applicable Apache-2.0 and MIT license texts:
 
   - PaddleOCR PP-OCR series (Baidu)            — Apache License 2.0
   - Table Transformer (TATR, Microsoft)        — MIT License
-    (app/deepdoc/resources/models/hf/table_structure__tatr_v1_1_all__...)
-  - TrOCR-based seal recognition model         — see model card in
-    app/deepdoc/resources/models/seal/trocr_seal_384/README.md
-  - Layout / UVDoc / XGBoost auxiliary models  — see respective upstream
+  - DeepDoc layout and XGBoost auxiliary models — Apache License 2.0
+  - UVDoc                                        — Apache License 2.0
 
-  NOTE: Model weights whose upstream license or provenance is not yet
-  documented should be verified before redistribution, or fetched at build
-  time rather than bundled. See THIRD_PARTY_NOTICES / release checklist.
+The TrOCR-based seal recognition weights are intentionally not distributed
+because their redistribution provenance is not documented. Deployments that
+have separate rights to those weights may provide them through
+`SEAL_RECOGNITION_MODEL_DIR`.
 
 ================================================================================
 3. Other dependencies

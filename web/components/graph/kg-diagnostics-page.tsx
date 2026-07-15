@@ -1456,7 +1456,7 @@ export function KGDiagnosticsPage() {
 
   return (
     <AppFrame showBackground={false}>
-      <div className="h-full bg-[linear-gradient(180deg,#f8fbff_0%,#ffffff_32%)] p-2">
+      <div className="h-full bg-[linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--card)/0.82)_32%)] p-2">
         <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border border-border/70 bg-background/95 shadow-sm">
           <header className="shrink-0 border-b border-border/70 px-6 py-5">
             <PageHeader

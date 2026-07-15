@@ -32,6 +32,7 @@ function hslTokenToColor(value: string) {
 describe('theme surface appearance', () => {
   it('recognizes the professional neutral-white surface preset', () => {
     expect(normalizeSurfaceTheme('neutral')).toBe('neutral')
+    expect(normalizeSurfaceTheme('deepsea')).toBe('deepsea')
   })
 
   it('keeps surface defaults free from stale inline accent overrides', () => {

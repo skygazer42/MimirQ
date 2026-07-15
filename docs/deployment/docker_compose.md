@@ -12,6 +12,10 @@
 `mimirq-magicpdf` 独立服务运行；本地 CLI 兜底模式仍依赖这个挂载或显式
 `MAGIC_PDF_MODELS_DIR`，未找到模型时会在诊断中显示 `missing models`。
 
+DeepDoc 的轻量解析模型不随源码仓库分发。Docker 构建会从
+`qwqqwq/mimirq@118452f3ea3ccd09a41b2d39ea82d7de535e2908` 下载并校验模型，
+因此首次构建需要访问 Hugging Face；镜像构建完成后，运行时不会联网下载模型。
+
 另外，前端服务 `web` 放在 `docker/docker-compose.web.yml`，默认不启动；需要时用 `-f` 叠加即可（或直接 `make up-web`）。
 
 ---
@@ -19,14 +23,14 @@
 ## 1) 环境准备
 
 ```bash
-cp .env.example .env
-cp web/.env.local.example web/.env.local
+make init
+# Windows without make: python scripts/init_env.py
 ```
 
 编辑 `.env`，至少配置：
 
 - `LLM_API_KEY`（以及可选的 `LLM_API_BASE/LLM_MODEL`）
-- 若启用生产 JWT：`AUTH_MODE=jwt` + `SECRET_KEY`（长度 >= 32）
+- 默认启用 `AUTH_MODE=jwt`；`make init` 会生成长度 >= 32 的 `SECRET_KEY`
 
 若使用 DashScope / 通义千问的 OpenAI-compatible 接口，示例：
 
@@ -92,6 +96,7 @@ make logs-lite
 make infra-up
 
 pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+make models
 python main.py
 ```
 

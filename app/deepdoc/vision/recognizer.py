@@ -47,17 +47,6 @@ def get_default_resource_dir():
 
 class Recognizer:
     def __init__(self, label_list, task_name, model_dir=None):
-        """
-        If you have trouble downloading HuggingFace models, -_^ this might help!!
-
-        For Linux:
-        export HF_ENDPOINT=https://hf-mirror.com
-
-        For Windows:
-        Good luck
-        ^_-
-
-        """
         if not model_dir:
             model_dir = get_default_resource_dir()
         self.ort_sess, self.run_options = load_model(model_dir, task_name)

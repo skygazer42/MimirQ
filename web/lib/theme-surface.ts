@@ -1,7 +1,7 @@
 import chroma, { type Color } from 'chroma-js'
 import { getClientStorage } from './client-storage'
 
-export type SurfaceThemeKey = 'ocean' | 'neutral' | 'classic' | 'earth'
+export type SurfaceThemeKey = 'ocean' | 'deepsea' | 'neutral' | 'classic' | 'earth'
 
 export const SURFACE_THEME_STORAGE_KEY = 'mimirq.surfaceTheme'
 export const THEME_COLOR_STORAGE_KEY = 'mimirq.themeColor'
@@ -51,6 +51,12 @@ export const SURFACE_THEMES: Array<{
     defaultPrimary: '#0f172a',
   },
   {
+    key: 'deepsea',
+    label: 'Deep Sea',
+    description: '雾白蓝灰表面与克制的深海蓝强调。',
+    defaultPrimary: '#405BD8',
+  },
+  {
     key: 'neutral',
     label: 'Neutral',
     description: '瓷白表面与石墨层级，仅让必要的业务状态着色。',
@@ -72,7 +78,7 @@ export const SURFACE_THEMES: Array<{
 
 export function normalizeSurfaceTheme(value?: string | null): SurfaceThemeKey {
   const raw = String(value || '').trim().toLowerCase()
-  if (raw === 'neutral' || raw === 'classic' || raw === 'earth') return raw
+  if (raw === 'deepsea' || raw === 'neutral' || raw === 'classic' || raw === 'earth') return raw
   return 'ocean'
 }
 

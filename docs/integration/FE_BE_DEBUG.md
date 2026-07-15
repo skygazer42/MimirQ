@@ -75,7 +75,7 @@ Docker 默认允许：
 - 或后端配置项 `CORS_ORIGINS`
 
 ### ③ 401/403（未授权/无权限）
-若你用 `AUTH_MODE=header`（默认开发模式）：
+若你显式使用 `AUTH_MODE=header`（仅限本地开发）：
 - 前端会发 `X-User-ID`（来自 `NEXT_PUBLIC_USER_ID` 或 localStorage）
 - 租户用 `X-Tenant-ID`（来自 `NEXT_PUBLIC_TENANT_ID` 或 localStorage）
 

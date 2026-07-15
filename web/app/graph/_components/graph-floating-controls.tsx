@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import {
   Box,
@@ -73,8 +73,14 @@ export function GraphFloatingControls({
 }: GraphFloatingControlsProps) {
   const [isCollapsed, setIsCollapsed] = useState(false)
 
+  useEffect(() => {
+    if (globalThis.window.matchMedia('(max-width: 767px)').matches) {
+      setIsCollapsed(true)
+    }
+  }, [])
+
   return (
-    <div className="absolute bottom-8 right-8 z-10 flex items-end gap-2">
+    <div className="absolute bottom-4 right-4 z-10 flex items-end gap-2 md:bottom-8 md:right-8">
       <Button
         type="button"
         variant="ghost"

@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import secrets
 import sys
 from pathlib import Path
 
@@ -16,6 +17,7 @@ def main() -> int:
 
     # Hint the app to avoid heavyweight side effects during OpenAPI export.
     os.environ.setdefault("MIMIRQ_OPENAPI_EXPORT", "1")
+    os.environ.setdefault("SECRET_KEY", secrets.token_urlsafe(32))
 
     # Import here to avoid side effects during argument parsing.
     from app.main import app

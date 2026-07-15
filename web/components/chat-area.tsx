@@ -1262,9 +1262,9 @@ export function ChatArea({
 
           <div
             className={cn(
-              'relative group overflow-hidden bg-card transition-colors duration-150',
+              'relative group overflow-hidden transition-colors duration-150',
               isWelcomeState
-                ? 'rounded-[28px] border border-border/70 bg-card/90 px-3 pb-3 pt-2 shadow-[0_22px_56px_-34px_rgba(15,23,42,0.46)] backdrop-blur-xl focus-within:border-primary/25'
+                ? 'rounded-[28px] border border-border/50 bg-card/72 px-3 pb-3 pt-2 shadow-[0_16px_44px_-36px_rgba(2,8,23,0.24)] backdrop-blur-xl focus-within:border-primary/25'
                 : 'rounded-[2rem] border border-border/55 bg-background/95 shadow-[0_18px_50px_-34px_rgba(15,23,42,0.55)] hover:border-primary/20 hover:shadow-[0_22px_60px_-36px_rgba(15,23,42,0.62)] focus-within:border-primary/40 focus-within:ring-0 focus-within:shadow-[0_0_0_3px_hsl(var(--primary)/0.07),0_22px_60px_-36px_rgba(15,23,42,0.62)]'
             )}
           >
@@ -1447,7 +1447,7 @@ function WelcomeScreen() {
             height={181}
             priority
             unoptimized
-            className="h-auto w-[min(76vw,560px)] select-none object-contain"
+            className="h-auto w-[min(76vw,560px)] select-none object-contain dark:invert dark:hue-rotate-180"
           />
         </div>
       </div>

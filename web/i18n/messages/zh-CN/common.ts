@@ -92,6 +92,10 @@ CommonUi: {
           title: '默认海洋',
           description: '冷静蓝绿，保持当前默认观感。',
         },
+        deepsea: {
+          title: '深海留白',
+          description: '雾白蓝灰表面、深海蓝焦点与轻柔光晕，简洁但保留清晰层级。',
+        },
         neutral: {
           title: '中性白',
           description: '纯白表面、石墨文字与浅灰层级，仅保留必要的业务状态色。',

@@ -21,8 +21,8 @@ def download_hf_snapshot(
     """
     Download an explicitly selected HuggingFace small-model snapshot.
 
-    This is intentionally never called by the default parsing path. Callers must
-    opt into downloads so offline deployments keep using bundled ONNX models.
+    This is intentionally never called by the request parsing path. Callers must
+    opt into provisioning so runtime deployments remain offline-capable.
     """
     hub = require_dependency("huggingface_hub", feature="parsing_small_model_hf_cache", pip_name="huggingface-hub")
     kwargs: dict[str, object] = {"repo_id": repo_id}

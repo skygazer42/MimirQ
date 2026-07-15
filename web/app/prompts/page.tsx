@@ -579,7 +579,7 @@ function PromptsPageContent() {
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
-                      className="group h-10 justify-between rounded-lg border-border/60 !bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] px-2.5 text-left !text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:!bg-[linear-gradient(180deg,#ffffff_0%,#f2f7ff_100%)] hover:!text-foreground data-[state=open]:border-primary/30 data-[state=open]:!bg-[linear-gradient(180deg,#ffffff_0%,#f2f7ff_100%)] data-[state=open]:!text-foreground md:w-[286px]"
+                      className="group h-10 justify-between rounded-lg border-border/60 !bg-[linear-gradient(180deg,hsl(var(--card)),hsl(var(--muted)/0.55))] px-2.5 text-left !text-foreground shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:!bg-[linear-gradient(180deg,hsl(var(--card)),hsl(var(--muted)/0.78))] hover:!text-foreground data-[state=open]:border-primary/30 data-[state=open]:!bg-[linear-gradient(180deg,hsl(var(--card)),hsl(var(--muted)/0.78))] data-[state=open]:!text-foreground md:w-[286px]"
                     >
                       <span className="mr-2 flex size-7 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary transition-colors group-hover:bg-primary/10">
                         <Wand2 className="size-3.5" />
@@ -604,7 +604,7 @@ function PromptsPageContent() {
                     align="end"
                     className="max-h-[76vh] w-[540px] overflow-y-auto rounded-2xl border-border bg-card p-0 shadow-[0_18px_50px_rgba(15,23,42,0.14)]"
                   >
-                    <div className="border-b border-border/50 bg-[linear-gradient(180deg,#f8fbff_0%,#ffffff_100%)] px-4 py-3">
+                    <div className="border-b border-border/50 bg-[linear-gradient(180deg,hsl(var(--muted)/0.6),hsl(var(--card)))] px-4 py-3">
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <div className="text-[13px] font-semibold text-foreground">

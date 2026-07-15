@@ -4,6 +4,9 @@ import socket
 import pytest
 from sqlalchemy import text
 
+# AUTH_MODE defaults to JWT; tests use an explicit non-production signing key.
+os.environ.setdefault("SECRET_KEY", "test-only-signing-key-not-for-production")
+
 
 def _patch_asyncio_threadsafe_wakeup_for_sandbox() -> None:
     """

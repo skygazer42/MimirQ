@@ -65,6 +65,7 @@ const messages: Record<
   'status.badgePrefix': 'status.badgePrefix:',
   'toolbar.navLabel': 'toolbar.navLabel',
   'toolbar.appearance': '界面外观',
+  'toolbar.appearanceHint': (values) => `${String(values?.count ?? '')} 种风格`,
   'toolbar.sidebarClose': 'toolbar.sidebarClose',
   'user.offlineEnvironment': 'user.offlineEnvironment',
   'user.openSettings': 'user.openSettings',
@@ -245,6 +246,7 @@ describe('Navbar behavior', () => {
     const appearance = view.container.querySelector('[data-testid="appearance-customizer"]')
     expect(appearance).not.toBeNull()
     expect(appearance?.textContent).toContain('界面外观')
+    expect(appearance?.textContent).toContain('5 种风格')
     expect(appearance?.querySelector('button')?.getAttribute('class')).toContain('w-full')
     expect(view.container.querySelector('[data-testid="mode-toggle"]')).not.toBeNull()
 

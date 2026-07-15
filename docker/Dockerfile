@@ -125,6 +125,11 @@ RUN mkdir -p uploads logs vector_faiss vector_chroma chroma_db /data/uploads \
         /opt/venv/lib/python3.11/site-packages/rapidocr/models \
         /opt/venv/lib/python3.11/site-packages/rapid_table/models
 
+COPY scripts/bootstrap_mimirq_models.py ./scripts/bootstrap_mimirq_models.py
+# Parsing weights are pinned and verified during the image build; runtime stays offline.
+RUN --mount=type=cache,target=/app/.cache/huggingface \
+    /opt/venv/bin/python scripts/bootstrap_mimirq_models.py
+
 # 复制运行时需要的应用路径，避免把构建上下文整体带入镜像。
 COPY app ./app
 COPY alembic ./alembic

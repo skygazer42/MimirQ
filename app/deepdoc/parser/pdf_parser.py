@@ -31,7 +31,6 @@ import numpy as np
 import pdfplumber  # Extract PDF page info, text characters, coordinates, TOC, etc.
 import trio  # Async concurrency (multi-page async OCR).
 import xgboost as xgb  # Paragraph merge prediction model.
-from huggingface_hub import snapshot_download
 from PIL import Image
 from pypdf import PdfReader as pdf2_read
 
@@ -252,22 +251,13 @@ class IntegratedPipelinePdfParser:
             # legacy-binary support.
             model_dir = get_default_resource_dir()
             _load_updown_concat_model(self.updown_cnt_mdl, model_dir)
-        except Exception as first_exc:
-            try:
-                model_dir = snapshot_download(
-                    repo_id="InfiniFlow/text_concat_xgb_v1.0",
-                    local_dir=get_default_resource_dir(),
-                    local_dir_use_symlinks=False)
-                _load_updown_concat_model(self.updown_cnt_mdl, model_dir)
-            except Exception as second_exc:
-                self._updown_cnt_model_error = (
-                    f"local={str(first_exc)[:200]}; downloaded={str(second_exc)[:200]}"
-                )
-                logging.warning(
-                    "IntegratedPipelinePdfParser paragraph-concat model unavailable; continuing with heuristic-only merging: %s",
-                    self._updown_cnt_model_error,
-                )
-                self.updown_cnt_mdl = None
+        except Exception as exc:
+            self._updown_cnt_model_error = f"local={str(exc)[:200]}"
+            logging.warning(
+                "IntegratedPipelinePdfParser paragraph-concat model unavailable; continuing with heuristic-only merging: %s",
+                self._updown_cnt_model_error,
+            )
+            self.updown_cnt_mdl = None
         # Set page starting number
         self.page_from = 0
 

@@ -217,7 +217,7 @@ Navbar: {
       collapse: '收起侧边栏',
       expand: '展开侧边栏',
       appearance: '界面外观',
-      appearanceHint: '4 种风格',
+      appearanceHint: '{count} 种风格',
     },
     user: {
       developerMode: '开发模式',

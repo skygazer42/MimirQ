@@ -171,7 +171,6 @@ function HistoryPageContent({
   const conversationId = searchParams.get('id') || initialConversationId || null
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
-  const [isWideHistoryViewport, setIsWideHistoryViewport] = useState(false)
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(initialSelectedConversation)
   const [searchQuery, setSearchQuery] = useState('')
   const [historyView, setHistoryView] = useState<'all' | 'recent'>('all')
@@ -278,24 +277,24 @@ function HistoryPageContent({
   const isLoadingOlder = messagesQuery.isFetchingPreviousPage
   const isLoadingMessages = Boolean(selectedConversationId) && messagesQuery.isLoading
 
-  useEffect(() => {
-    const media = globalThis.window.matchMedia('(min-width: 1280px)')
-    const updateViewportWidth = () => setIsWideHistoryViewport(media.matches)
-
-    updateViewportWidth()
-    media.addEventListener('change', updateViewportWidth)
-    return () => media.removeEventListener('change', updateViewportWidth)
-  }, [])
-
   const handleSelectConversation = useCallback(async (conversation: Conversation) => {
     if (selectedConversation?.id === conversation.id) return
 
     shouldScrollToEndRef.current = true
     setSelectedConversation(conversation)
+    if (globalThis.window.matchMedia('(max-width: 767px)').matches) {
+      setIsSidebarCollapsed(true)
+    }
 
     // 更新 URL
     router.push(`/history?id=${conversation.id}`, { scroll: false })
   }, [router, selectedConversation?.id])
+
+  useEffect(() => {
+    if (conversationId && globalThis.window.matchMedia('(max-width: 767px)').matches) {
+      setIsSidebarCollapsed(true)
+    }
+  }, [conversationId])
 
   useEffect(() => {
     if (!conversationsQuery.error) return
@@ -468,8 +467,6 @@ function HistoryPageContent({
       toast.error(formatApiError(error, t('loadOlderMessagesFailed')))
     }
   }, [selectedConversation, hasMoreMessages, isLoadingMessages, isLoadingOlder, oldestMessageId, messagesQuery, t])
-  const sidebarExpandedWidth = isWideHistoryViewport ? '20.75rem' : '19.5rem'
-
   return (
     <AppFrame rightPanel={<DocumentViewerPanel />} withDocumentViewerPadding mainClassName="overflow-hidden">
       <PageScaffold
@@ -491,17 +488,17 @@ function HistoryPageContent({
             <motion.aside 
               initial={false}
               animate={{ 
-                width: isSidebarCollapsed ? 0 : sidebarExpandedWidth,
                 opacity: isSidebarCollapsed ? 0 : 1,
                 borderRightWidth: isSidebarCollapsed ? 0 : 1
               }}
               transition={{ type: 'spring', stiffness: 300, damping: 30, mass: 0.8 }}
               className={cn(
-                "relative z-10 flex shrink-0 flex-col border-r border-border/60 bg-muted/30 overflow-hidden"
+                "relative z-10 flex shrink-0 flex-col overflow-hidden border-r border-border/60 bg-muted/30 transition-[width] duration-200",
+                isSidebarCollapsed ? "w-0" : "w-full md:w-[19.5rem] xl:w-[20.75rem]"
               )}
             >
               {/* 头部 - 已扁平化 */}
-              <div className="sticky top-0 z-20 border-b border-border/50 px-2 pt-2 pb-1.5 space-y-1 min-w-[19.5rem] backdrop-blur-md bg-background/80">
+              <div className="sticky top-0 z-20 min-w-0 space-y-1 border-b border-border/50 bg-background/80 px-2 pb-1.5 pt-2 backdrop-blur-md md:min-w-[19.5rem]">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <div className="flex size-9 shrink-0 items-center justify-center rounded-2xl border border-info/30 bg-[radial-gradient(circle_at_34%_24%,hsl(var(--card)/0.98),hsl(var(--info)/0.10)_48%,hsl(var(--info)/0.14)_100%)] text-primary shadow-[0_8px_18px_hsl(var(--info)/0.12)] ring-1 ring-border/40">
@@ -625,8 +622,8 @@ function HistoryPageContent({
             <motion.div 
               layout
               className={cn(
-                "relative flex min-w-0 flex-1 flex-col transition-colors duration-500",
-                isSidebarCollapsed ? "bg-background/40" : "bg-background/65"
+                "relative min-w-0 flex-1 flex-col transition-colors duration-500",
+                isSidebarCollapsed ? "flex bg-background/40" : "hidden bg-background/65 md:flex"
               )}
             >
               {/* 悬浮侧边栏展开按钮 - 仅在收起时显示，且固定在边缘 */}

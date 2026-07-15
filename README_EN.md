@@ -240,7 +240,7 @@ User Query → Query Embedding → Hybrid Retrieval Top-K (Vector + BM25 + SPLAD
 git clone https://github.com/skygazer42/MimirQ.git
 cd MimirQ
 
-# 1. Generate local config files (.env / docker/.env / web/.env.local)
+# 1. Generate local config files and a JWT SECRET_KEY
 make init
 # Windows (no make): python scripts/init_env.py
 
@@ -250,6 +250,8 @@ make up
 # 3. [Optional] Start frontend (Next.js production build)
 make up-web
 ```
+
+The first Docker build downloads and verifies a pinned DeepDoc model bundle. Run `make models` before using local source-based parsing.
 
 ### Verify Services
 
@@ -392,6 +394,7 @@ make init
 
 # Local development
 make up-infra          # Start infrastructure
+make models            # Download and verify the pinned DeepDoc models
 cd web && pnpm dev     # Frontend dev
 python main.py         # Backend dev
 
@@ -403,7 +406,7 @@ make enterprise-checks
 
 ## 📜 License
 
-This project is licensed under the [Apache License 2.0](LICENSE). Attribution for third-party components (including code vendored from RAGFlow/DeepDoc and bundled model weights) is recorded in [NOTICE](NOTICE).
+This project is licensed under the [Apache License 2.0](LICENSE). Attribution for third-party components (including code vendored from RAGFlow/DeepDoc and build-provisioned model weights) is recorded in [NOTICE](NOTICE).
 
 > ⚠️ **PyMuPDF (AGPL-3.0) notice**: Default PDF parsing may use PyMuPDF, which is licensed under AGPL-3.0 / commercial dual license. If you offer this software as a network service (SaaS), the AGPL network clause may require you to release the source of the entire combined work. To avoid this, switch to a permissively-licensed parsing backend (pypdf / pdfplumber). See NOTICE for details.
 

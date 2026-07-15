@@ -80,8 +80,7 @@ chunk-preview-*.png
 graph-snapshots-*.png
 web/coverage/
 web/test-results/
-app/deepdoc/resources/models/hf/**/.cache/
-app/deepdoc/resources/models/hf_onnx/**/.cache/
+app/deepdoc/resources/models/
 web/.next/
 web/.next_build/
 web/.next_dev_tmp/

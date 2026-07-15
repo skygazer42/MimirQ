@@ -164,6 +164,14 @@ const nextConfig = {
         destination: `${backendBase}/api/v1/documents/`,
       },
       {
+        source: '/api/v1/datasets',
+        destination: `${backendBase}/api/v1/datasets/`,
+      },
+      {
+        source: '/api/v1/groups',
+        destination: `${backendBase}/api/v1/groups/`,
+      },
+      {
         source: '/api/v1/:path*',
         destination: `${backendBase}/api/v1/:path*`,
       },

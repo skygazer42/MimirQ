@@ -240,7 +240,7 @@ Milvus 十亿级向量检索、PostgreSQL 持久化、OpenAI 兼容接口。Dock
 git clone https://github.com/skygazer42/MimirQ.git
 cd MimirQ
 
-# 1. 生成本地配置文件（.env / docker/.env / web/.env.local）
+# 1. 生成本地配置文件，并自动创建 JWT SECRET_KEY
 make init
 # Windows 无 make 可用：python scripts/init_env.py
 
@@ -250,6 +250,8 @@ make up
 # 3. [可选] 启动前端（Next.js 生产构建）
 make up-web
 ```
+
+Docker 首次构建会下载并校验固定版本的 DeepDoc 模型包；本地源码运行解析器前执行 `make models`。
 
 ### 验证服务
 
@@ -405,6 +407,7 @@ make init
 
 # 本地开发
 make up-infra          # 启动基础设施
+make models            # 下载并校验固定版本的 DeepDoc 模型
 cd web && pnpm dev     # 前端开发
 python main.py         # 后端开发
 
@@ -416,7 +419,7 @@ make enterprise-checks
 
 ## 📜 许可证
 
-本项目采用 [Apache License 2.0](LICENSE)。第三方组件（含 vendored 自 RAGFlow/DeepDoc 的代码及打包的模型权重）的归属声明见 [NOTICE](NOTICE)。
+本项目采用 [Apache License 2.0](LICENSE)。第三方组件（含 vendored 自 RAGFlow/DeepDoc 的代码及构建时下载的模型权重）的归属声明见 [NOTICE](NOTICE)。
 
 > ⚠️ **注意 PyMuPDF (AGPL-3.0)**：默认 PDF 解析可能使用 PyMuPDF，其协议为 AGPL-3.0 / 商业双授权。若你以 SaaS 形式对外提供服务，AGPL 的网络条款可能要求公开整个组合作品的源码。如需规避，请改用宽松协议的解析后端（pypdf / pdfplumber）。详见 NOTICE。
 

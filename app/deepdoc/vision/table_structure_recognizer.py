@@ -19,7 +19,6 @@ import re
 from collections import Counter
 
 import numpy as np
-from huggingface_hub import snapshot_download
 
 from ..src.model import rag_tokenizer
 from .recognizer import Recognizer
@@ -48,12 +47,7 @@ class TableStructureRecognizer(Recognizer):
     ]
 
     def __init__(self):
-        try:
-            super().__init__(self.labels, "tsr", get_default_resource_dir())
-        except Exception:
-            super().__init__(self.labels, "tsr", snapshot_download(repo_id="InfiniFlow/deepdoc",
-                                                                   local_dir=get_default_resource_dir(),
-                                                                   local_dir_use_symlinks=False))
+        super().__init__(self.labels, "tsr", get_default_resource_dir())
 
     def __call__(self, images, thr=0.2):
         tbls = super().__call__(images, thr)

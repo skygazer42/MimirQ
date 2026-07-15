@@ -810,12 +810,12 @@ export default function DatasetIngestionPolicyPage() {
     }
   }, [previewFile, datasetId])
 
-  const ingestionHeroCard = 'relative overflow-hidden rounded-[26px] border border-border/60 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(246,248,251,0.94)_45%,rgba(232,246,250,0.72))] shadow-[0_24px_70px_rgba(15,23,42,0.10)] ring-1 ring-white/80 before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_16%_10%,rgba(8,145,178,0.16),transparent_26%),radial-gradient(circle_at_82%_0%,rgba(15,23,42,0.075),transparent_24%),linear-gradient(90deg,rgba(15,23,42,0.035)_1px,transparent_1px)] before:bg-[length:auto,auto,34px_34px] dark:border-border/60 dark:bg-card/95 dark:ring-white/5'
+  const ingestionHeroCard = 'relative overflow-hidden rounded-[26px] border border-border/60 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(246,248,251,0.94)_45%,rgba(232,246,250,0.72))] shadow-[0_24px_70px_rgba(15,23,42,0.10)] ring-1 ring-white/80 before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_16%_10%,rgba(8,145,178,0.16),transparent_26%),radial-gradient(circle_at_82%_0%,rgba(15,23,42,0.075),transparent_24%),linear-gradient(90deg,rgba(15,23,42,0.035)_1px,transparent_1px)] before:bg-[length:auto,auto,34px_34px] dark:border-border/60 dark:bg-none dark:bg-card/95 dark:ring-white/5'
   const ingestionToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-2xl border border-border/60 bg-card/82 p-1 shadow-[0_12px_34px_rgba(15,23,42,0.07)] ring-1 ring-white/75 backdrop-blur dark:border-border/60 dark:bg-card/70 dark:ring-white/5'
   const ingestionToolbarButtonClass = 'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-semibold text-muted-foreground shadow-none hover:bg-card hover:text-foreground hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
   const ingestionToolbarPrimaryButtonClass = 'h-8 min-w-[104px] gap-1.5 rounded-xl bg-primary px-3.5 text-[12px] font-semibold text-primary-foreground shadow-[0_12px_26px_rgba(15,23,42,0.22)] hover:bg-primary/90 dark:bg-primary dark:text-primary-foreground dark:hover:bg-primary/90 [&_svg]:size-3.5'
   const ingestionPanelClass = 'rounded-[24px] border-border/60 bg-card/88 shadow-[0_18px_54px_rgba(15,23,42,0.08)] ring-1 ring-white/75 backdrop-blur-xl dark:border-border/60 dark:bg-card/82 dark:ring-white/5'
-  const ingestionPanelHeaderClass = 'shrink-0 border-b border-border/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.78))] px-5 py-4 dark:border-border/60 dark:bg-muted/20'
+  const ingestionPanelHeaderClass = 'shrink-0 border-b border-border/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.78))] px-5 py-4 dark:border-border/60 dark:bg-none dark:bg-muted/20'
   const ingestionIconPillClass = 'flex size-9 shrink-0 items-center justify-center rounded-2xl border border-border/60 bg-card text-foreground/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_8px_22px_rgba(15,23,42,0.08)] dark:border-border/60 dark:bg-muted/30 dark:text-foreground'
   const ingestionActionButtonClass = 'h-9 rounded-xl px-3 text-[12px] font-semibold shadow-sm [&_svg]:size-4'
   const ingestionMetricCardClass = 'group relative overflow-hidden rounded-2xl border border-border/60 bg-card/90 px-4 py-3 shadow-[0_12px_32px_rgba(15,23,42,0.055)] ring-1 ring-white/80 transition-colors hover:border-border dark:border-border/60 dark:bg-card/80 dark:ring-white/5'
@@ -1042,7 +1042,7 @@ export default function DatasetIngestionPolicyPage() {
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto bg-[linear-gradient(180deg,rgba(248,250,252,0.72),rgba(255,255,255,0.92))] p-4 no-scrollbar dark:bg-muted/5">
+            <div className="min-h-0 flex-1 overflow-y-auto bg-[linear-gradient(180deg,rgba(248,250,252,0.72),rgba(255,255,255,0.92))] p-4 no-scrollbar dark:bg-none dark:bg-muted/5">
               {(rules || []).length === 0 ? (
                 <div className="flex min-h-[260px] flex-col justify-center rounded-[22px] border border-dashed border-border bg-card/72 px-6 py-8 text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-border dark:bg-muted/20 dark:text-muted-foreground">
                   <div className="flex items-start gap-4">
@@ -1155,7 +1155,7 @@ export default function DatasetIngestionPolicyPage() {
                   </div>
                 </div>
               </div>
-              <div className="rounded-[22px] border border-info/20 bg-[linear-gradient(135deg,rgba(240,249,255,0.95),rgba(255,255,255,0.9))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_14px_32px_rgba(2,132,199,0.10)] dark:border-border/60 dark:bg-muted/20">
+              <div className="rounded-[22px] border border-info/20 bg-[linear-gradient(135deg,rgba(240,249,255,0.95),rgba(255,255,255,0.9))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_14px_32px_rgba(2,132,199,0.10)] dark:border-border/60 dark:bg-none dark:bg-muted/20">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground/70 dark:text-muted-foreground">sample file</span>
                   {previewFile ? <span className="truncate font-mono text-[11px] text-muted-foreground dark:text-muted-foreground">{previewFile.name}</span> : null}
@@ -1175,7 +1175,7 @@ export default function DatasetIngestionPolicyPage() {
             </div>
 
             {preview ? (
-              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[linear-gradient(180deg,rgba(248,250,252,0.62),rgba(255,255,255,0.92))] p-4 no-scrollbar dark:bg-muted/5">
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[linear-gradient(180deg,rgba(248,250,252,0.62),rgba(255,255,255,0.92))] p-4 no-scrollbar dark:bg-none dark:bg-muted/5">
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                   <Badge variant={preview.rule?.matched ? 'soft' : 'outline'} className="rounded-lg font-mono">
                     matched: {preview.rule?.matched ? 'true' : 'false'}
@@ -1230,7 +1230,7 @@ export default function DatasetIngestionPolicyPage() {
                 ) : null}
               </div>
             ) : (
-              <div className="flex min-h-0 flex-1 flex-col justify-between bg-[linear-gradient(180deg,rgba(248,250,252,0.62),rgba(255,255,255,0.92))] p-4 dark:bg-muted/5">
+              <div className="flex min-h-0 flex-1 flex-col justify-between bg-[linear-gradient(180deg,rgba(248,250,252,0.62),rgba(255,255,255,0.92))] p-4 dark:bg-none dark:bg-muted/5">
                 <div className="rounded-2xl border border-dashed border-border bg-card/68 px-4 py-5 text-[12px] leading-6 text-muted-foreground dark:border-border dark:bg-muted/20 dark:text-muted-foreground">
                   可选：选择 HTML / PDF / DOCX / CSV 样例后生成预览，用于检查策略命中和治理 diff。
                 </div>

@@ -37,6 +37,13 @@ export function AppFrame({
       ? "mr-0 md:mr-[45vw] lg:mr-[40vw] xl:mr-[35vw]"
       : undefined
 
+  React.useEffect(() => {
+    if (!showNavbar || globalThis.window === undefined) return
+    if (globalThis.window.matchMedia("(max-width: 768px)").matches) {
+      setSidebarOpen(false)
+    }
+  }, [showNavbar])
+
   // Accessibility: when the sidebar acts like a modal overlay (mobile),
   // prevent focus/interaction with the rest of the app.
   React.useEffect(() => {

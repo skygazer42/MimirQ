@@ -195,7 +195,7 @@ export function GraphPageHeader({
   }
 
   return (
-    <header className="absolute top-0 left-0 right-0 z-20 flex h-16 items-center gap-3 border-b border-border/60 bg-[linear-gradient(135deg,hsl(var(--card)/0.98),hsl(var(--muted)/0.34))] px-4 shadow-[0_18px_46px_-40px_rgba(15,23,42,0.46)] pointer-events-none lg:px-6">
+    <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex h-16 items-center gap-2 border-b border-border/60 bg-[linear-gradient(135deg,hsl(var(--card)/0.98),hsl(var(--muted)/0.34))] pl-14 pr-3 shadow-[0_18px_46px_-40px_rgba(15,23,42,0.46)] md:gap-3 md:px-4 lg:px-6">
       <div
         className="pointer-events-none absolute inset-y-3 left-0 w-1 rounded-r-full bg-[linear-gradient(180deg,hsl(var(--info)),hsl(var(--primary)))]"
         aria-hidden="true"
@@ -204,12 +204,12 @@ export function GraphPageHeader({
         <div className="flex size-9 shrink-0 items-center justify-center rounded-[15px] border border-info/18 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.10))] text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_14px_30px_-24px_hsl(var(--info)/0.75)]">
           <PageTitleIcon name="knowledge-graph" className="size-7" />
         </div>
-        <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-foreground">
+        <h1 className="text-lg font-semibold tracking-[-0.02em] text-foreground sm:text-[22px]">
           <span className="bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent">
             知识图谱
           </span>
         </h1>
-        <span className="shrink-0 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary shadow-sm">
+        <span className="hidden shrink-0 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary shadow-sm sm:inline-flex">
           {viewMode === '3d' ? '3D 图谱' : '2D 图谱'}
         </span>
       </div>
@@ -232,7 +232,7 @@ export function GraphPageHeader({
         ) : null}
       </div>
 
-      <div className="pointer-events-auto flex min-w-[300px] flex-1 justify-center">
+      <div className="pointer-events-auto hidden min-w-[300px] flex-1 justify-center md:flex">
         <GraphSearchOverlay
           open={searchOpen}
           inputRef={searchInputRef}
@@ -264,10 +264,10 @@ export function GraphPageHeader({
             <Button
               variant="outline"
               size="sm"
-              className="shrink-0 gap-2 border-border/60 bg-background/78 text-foreground/88 shadow-none hover:bg-background hover:text-foreground active:bg-background"
+              className="size-9 shrink-0 gap-2 border-border/60 bg-background/78 px-0 text-foreground/88 shadow-none hover:bg-background hover:text-foreground active:bg-background sm:h-9 sm:w-auto sm:px-3"
             >
               <MoreHorizontal className="h-4 w-4" />
-              图谱工具
+              <span className="hidden sm:inline">图谱工具</span>
               {activeGraphFilterCount > 0 ? (
                 <span className="ml-0.5 rounded-full bg-info/12 px-1.5 py-0.5 text-[10px] font-semibold text-info">
                   {activeGraphFilterCount}
@@ -275,7 +275,7 @@ export function GraphPageHeader({
               ) : null}
             </Button>
           </PopoverTrigger>
-          <PopoverContent align="end" className="w-[390px] p-3">
+          <PopoverContent align="end" className="w-[min(390px,calc(100vw-1rem))] p-3">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-sm font-semibold text-foreground">图谱工具</div>

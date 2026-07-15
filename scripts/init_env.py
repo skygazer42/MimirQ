@@ -69,7 +69,7 @@ def main() -> int:
     parser.add_argument(
         "--gen-secret-key",
         action="store_true",
-        help="When writing new env files, generate and fill SECRET_KEY if it's empty.",
+        help="Deprecated compatibility flag; SECRET_KEY is now generated automatically when empty.",
     )
     args = parser.parse_args()
 
@@ -94,7 +94,6 @@ def main() -> int:
         return 0
 
     wrote_any = False
-    wrote_paths: list[Path] = []
     for kind, msg, src, dst in actions:
         print(f"[init-env] {msg}")
         if kind != "write":
@@ -102,16 +101,11 @@ def main() -> int:
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(src, dst)
         wrote_any = True
-        wrote_paths.append(dst)
 
-    if bool(args.gen_secret_key) and wrote_paths:
-        secret_key = secrets.token_urlsafe(32)
-        changed = 0
-        for p in wrote_paths:
-            if _maybe_set_secret_key(p, secret_key=secret_key):
-                changed += 1
-        if changed:
-            print(f"[init-env] filled SECRET_KEY in {changed} file(s)")
+    env_path = repo_root / ".env"
+    if env_path.exists() and _maybe_set_secret_key(env_path, secret_key=secrets.token_urlsafe(32)):
+        print("[init-env] filled SECRET_KEY in .env")
+        wrote_any = True
 
     if not wrote_any:
         print("[init-env] no changes")

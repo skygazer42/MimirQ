@@ -62,6 +62,7 @@ make up-web
 > 如果你要本地源码调后端，请直接使用项目虚拟环境入口，不要调用系统全局 `uvicorn`：
 >
 > ```bash
+> make models
 > make backend
 > ```
 >

@@ -89,7 +89,7 @@ export function ThemeCustomizer({ trigger }: Readonly<ThemeCustomizerProps> = {}
       <PopoverTrigger asChild>
         {triggerNode}
       </PopoverTrigger>
-      <PopoverContent className="w-80 p-4" align="end" sideOffset={10}>
+      <PopoverContent className="max-h-[calc(100dvh-2rem)] w-80 overflow-y-auto p-4" align="end" sideOffset={10}>
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="space-y-1">
@@ -141,7 +141,9 @@ export function ThemeCustomizer({ trigger }: Readonly<ThemeCustomizerProps> = {}
                         className="size-4 rounded-full border border-black/5"
                         style={{
                           backgroundColor:
-                            preset.key === 'neutral'
+                            preset.key === 'deepsea'
+                              ? '#F7F9FF'
+                              : preset.key === 'neutral'
                               ? '#FFFFFF'
                               : preset.key === 'classic'
                                 ? '#F8F9FA'

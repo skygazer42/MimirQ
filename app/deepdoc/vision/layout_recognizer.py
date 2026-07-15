@@ -21,7 +21,6 @@ from copy import deepcopy
 
 import cv2
 import numpy as np
-from huggingface_hub import snapshot_download
 
 from .operators import nms
 from .recognizer import Recognizer
@@ -56,15 +55,7 @@ class LayoutRecognizer(Recognizer):
     ]
 
     def __init__(self, domain):
-        try:
-            model_dir = get_default_resource_dir()
-            super().__init__(self.labels, domain, model_dir)
-        except Exception:
-            model_dir = snapshot_download(repo_id="InfiniFlow/deepdoc",
-                                          local_dir=get_default_resource_dir(),
-                                          local_dir_use_symlinks=False)
-            super().__init__(self.labels, domain, model_dir)
-
+        super().__init__(self.labels, domain, get_default_resource_dir())
         self.garbage_layouts = ["footer", "header", "reference"]
 
     def __call__(self, image_list, ocr_res, scale_factor=3,

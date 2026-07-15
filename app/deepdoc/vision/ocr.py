@@ -24,7 +24,6 @@ from pathlib import Path
 import cv2
 import numpy as np
 import onnxruntime as ort
-from huggingface_hub import snapshot_download
 
 from . import operators
 from .postprocess import build_post_process
@@ -121,8 +120,9 @@ def load_model(model_dir, nm, device_id: int | None = None):
     model_file_path = str(resolve_model_file_path(model_dir, nm))
 
     if not os.path.exists(model_file_path):
-        raise ValueError("not find model file path {}".format(
-            model_file_path))
+        raise FileNotFoundError(
+            f"DeepDoc model file is missing: {model_file_path}. Run `make models` before local parsing."
+        )
 
     def resolve_cuda_device_id() -> int | None:
         if not _deepdoc_onnx_gpu_enabled():
@@ -648,48 +648,10 @@ class TextDetector:
 
 class OCR:
     def __init__(self, model_dir=None):
-        """
-        If you have trouble downloading HuggingFace models, -_^ this might help!!
-
-        For Linux:
-        export HF_ENDPOINT=https://hf-mirror.com
-
-        For Windows:
-        Good luck
-        ^_-
-
-        """
-        if not model_dir:
-            try:
-                model_dir = get_default_resource_dir()
-
-                # Append muti-gpus task to the list
-                if PARALLEL_DEVICES is not None and PARALLEL_DEVICES > 0:
-                    self.text_detector = []
-                    self.text_recognizer = []
-                    for device_id in range(PARALLEL_DEVICES):
-                        self.text_detector.append(TextDetector(model_dir, device_id))
-                        self.text_recognizer.append(TextRecognizer(model_dir, device_id))
-                else:
-                    self.text_detector = [TextDetector(model_dir, 0)]
-                    self.text_recognizer = [TextRecognizer(model_dir, 0)]
-
-            except Exception:
-                model_dir = snapshot_download(repo_id="InfiniFlow/deepdoc",
-                                              local_dir=get_default_resource_dir(),
-                                              local_dir_use_symlinks=False)
-
-                if PARALLEL_DEVICES is not None:
-                    if PARALLEL_DEVICES <= 0:
-                        raise ValueError("Number of devices must be >= 1")
-                    self.text_detector = []
-                    self.text_recognizer = []
-                    for device_id in range(PARALLEL_DEVICES):
-                        self.text_detector.append(TextDetector(model_dir, device_id))
-                        self.text_recognizer.append(TextRecognizer(model_dir, device_id))
-                else:
-                    self.text_detector = [TextDetector(model_dir, 0)]
-                    self.text_recognizer = [TextRecognizer(model_dir, 0)]
+        model_dir = model_dir or get_default_resource_dir()
+        device_ids = range(PARALLEL_DEVICES) if PARALLEL_DEVICES is not None and PARALLEL_DEVICES > 0 else (0,)
+        self.text_detector = [TextDetector(model_dir, device_id) for device_id in device_ids]
+        self.text_recognizer = [TextRecognizer(model_dir, device_id) for device_id in device_ids]
 
         self.drop_score = 0.5
         self.crop_image_res_index = 0

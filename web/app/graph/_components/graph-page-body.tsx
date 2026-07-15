@@ -109,7 +109,7 @@ export function GraphPageBody({
       ) : null}
 
       {showStatsBar ? (
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10">
+        <div className="absolute bottom-8 left-1/2 z-10 hidden -translate-x-1/2 sm:block">
           <GraphStatsBar
             nodeCount={statsNodeCount}
             linkCount={statsLinkCount}

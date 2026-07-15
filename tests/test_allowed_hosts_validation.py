@@ -4,6 +4,12 @@ import pytest
 from app.core.config import Settings
 
 
+def test_auth_mode_defaults_to_jwt(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("AUTH_MODE", raising=False)
+
+    assert Settings(SECRET_KEY="x" * 32).AUTH_MODE == "jwt"
+
+
 def _set_prod_auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
     # Settings validation enforces jwt auth + strong SECRET_KEY in production.
     monkeypatch.setenv("ENV", "production")
@@ -19,4 +25,3 @@ def test_allowed_hosts_required_in_production(monkeypatch: pytest.MonkeyPatch):
         Settings()
 
     assert "ALLOWED_HOSTS" in str(excinfo.value)
-

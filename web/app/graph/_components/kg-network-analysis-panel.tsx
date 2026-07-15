@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import {
   Activity,
   BarChart3,
@@ -155,6 +155,12 @@ export function KgNetworkAnalysisPanel({
   const [panelOffset, setPanelOffset] = useState({ x: 0, y: 0 })
   const dragStateRef = useRef<PanelDragState>(null)
 
+  useEffect(() => {
+    if (globalThis.window.matchMedia('(max-width: 767px)').matches) {
+      setCollapsed(true)
+    }
+  }, [])
+
   const request: KGNetworkRequest = {
     edges,
     start_id: startId.trim() || undefined,
@@ -225,7 +231,7 @@ export function KgNetworkAnalysisPanel({
 
   if (collapsed) {
     return (
-      <div className="absolute right-[6.75rem] top-24 z-20 transition-transform duration-150" style={panelDragStyle}>
+      <div className="absolute left-4 top-20 z-20 transition-transform duration-150 md:left-auto md:right-[6.75rem] md:top-24" style={panelDragStyle}>
         <Button
           type="button"
           variant="outline"

@@ -158,6 +158,58 @@
     --chart-8: 210 14% 72%;
   }
 
+  html:not(.dark)[data-surface-theme="deepsea"] {
+    --background: 225 100% 98.4%;
+    --foreground: 224.1 36.2% 18.4%;
+    --card: 0 0% 100%;
+    --card-foreground: 224.1 36.2% 18.4%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224.1 36.2% 18.4%;
+    --primary: 229.3 66.1% 54.9%;
+    --primary-foreground: 0 0% 100%;
+    --primary-50: 226 100% 97%;
+    --primary-100: 228 100% 94%;
+    --primary-200: 229 100% 88%;
+    --primary-300: 230 100% 80%;
+    --primary-400: 230 90% 69%;
+    --primary-500: 229.3 66.1% 54.9%;
+    --primary-600: 230 66% 48%;
+    --primary-700: 230 68% 41%;
+    --primary-800: 230 68% 33%;
+    --primary-900: 229 65% 25%;
+    --secondary: 225.9 100% 96.7%;
+    --secondary-foreground: 225.3 37.8% 23.3%;
+    --muted: 222 50% 96.1%;
+    --muted-foreground: 217.9 18.8% 39.6%;
+    --accent: 226.2 100% 94.9%;
+    --accent-foreground: 229.5 57.3% 43.1%;
+    --info: 229.3 66.1% 54.9%;
+    --info-foreground: 0 0% 100%;
+    --border: 220 44.7% 90.8%;
+    --input: 220 38.5% 84.7%;
+    --ring: 229.3 66.1% 54.9%;
+    --sidebar-background: 228 100% 99%;
+    --sidebar-foreground: 224.1 36.2% 18.4%;
+    --sidebar-border: 220 44.7% 90.8%;
+    --code-background: 220 50% 95.3%;
+    --surface-2: 222 62.5% 96.9%;
+    --app-background-base: radial-gradient(circle at 18% -4%, hsl(var(--primary) / 0.11), transparent 34%),
+      radial-gradient(circle at 84% 6%, hsl(207 100% 57% / 0.08), transparent 36%),
+      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-2) / 0.88) 52%, hsl(var(--background)) 100%);
+    --app-orb-primary: 229.3 66.1% 54.9%;
+    --app-orb-secondary: 207 100% 57%;
+    --app-orb-primary-opacity: 0.11;
+    --app-orb-secondary-opacity: 0.08;
+    --chart-1: 229.3 66.1% 54.9%;
+    --chart-2: 207 88% 54%;
+    --chart-3: 218 34% 48%;
+    --chart-4: 172 48% 38%;
+    --chart-5: 38 72% 50%;
+    --chart-6: 347 58% 52%;
+    --chart-7: 229 72% 72%;
+    --chart-8: 207 70% 72%;
+  }
+
   html:not(.dark)[data-surface-theme="classic"] {
     --background: 210 16.7% 97.6%;
     --foreground: 210 10.8% 14.5%;
@@ -259,6 +311,58 @@
     --app-background-base: radial-gradient(circle at 18% -4%, hsl(var(--primary) / 0.13), transparent 34%),
       radial-gradient(circle at 82% 2%, hsl(var(--info) / 0.10), transparent 36%),
       linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-2) / 0.52) 52%, hsl(var(--background)) 100%);
+  }
+
+  html.dark[data-surface-theme="deepsea"] {
+    --background: 225.7 39.6% 10.4%;
+    --foreground: 228 100% 97.1%;
+    --card: 226.2 36.1% 14.1%;
+    --card-foreground: 228 100% 97.1%;
+    --popover: 226.2 36.1% 14.1%;
+    --popover-foreground: 228 100% 97.1%;
+    --primary: 230.7 100% 78.4%;
+    --primary-foreground: 228 42.4% 11.6%;
+    --primary-50: 225 35% 14%;
+    --primary-100: 226 38% 18%;
+    --primary-200: 227 42% 24%;
+    --primary-300: 228 50% 34%;
+    --primary-400: 229 68% 54%;
+    --primary-500: 230 100% 72%;
+    --primary-600: 230.7 100% 78.4%;
+    --primary-700: 231 100% 84%;
+    --primary-800: 231 100% 90%;
+    --primary-900: 228 100% 95%;
+    --secondary: 225 33.3% 18.8%;
+    --secondary-foreground: 228 100% 97.1%;
+    --muted: 225 33.3% 18.8%;
+    --muted-foreground: 222.9 27.6% 75.1%;
+    --accent: 226.7 40.3% 26.3%;
+    --accent-foreground: 228 100% 93.1%;
+    --info: 230.7 100% 78.4%;
+    --info-foreground: 228 42.4% 11.6%;
+    --border: 224.2 30.6% 24.3%;
+    --input: 222.9 28.4% 29%;
+    --ring: 230.7 100% 78.4%;
+    --sidebar-background: 224.2 42.2% 8.8%;
+    --sidebar-foreground: 228 100% 97.1%;
+    --sidebar-border: 224.2 30.6% 24.3%;
+    --code-background: 225 36.4% 12.9%;
+    --surface-2: 224 34.9% 16.9%;
+    --app-background-base: radial-gradient(circle at 18% -4%, hsl(var(--primary) / 0.14), transparent 34%),
+      radial-gradient(circle at 84% 4%, hsl(207 100% 68% / 0.09), transparent 36%),
+      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-2) / 0.62) 52%, hsl(var(--background)) 100%);
+    --app-orb-primary: 230.7 100% 78.4%;
+    --app-orb-secondary: 207 100% 68%;
+    --app-orb-primary-opacity: 0.13;
+    --app-orb-secondary-opacity: 0.08;
+    --chart-1: 230.7 100% 78.4%;
+    --chart-2: 207 86% 70%;
+    --chart-3: 218 42% 68%;
+    --chart-4: 172 48% 56%;
+    --chart-5: 38 76% 62%;
+    --chart-6: 347 64% 66%;
+    --chart-7: 229 58% 52%;
+    --chart-8: 207 54% 48%;
   }
 
   html.dark[data-surface-theme="neutral"] {

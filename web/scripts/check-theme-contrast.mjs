@@ -91,7 +91,7 @@ async function main() {
     throw new Error('Could not locate :root/default html.dark token blocks in app/globals.css')
   }
 
-  const surfaceNames = ['ocean', 'neutral', 'classic', 'earth']
+  const surfaceNames = ['ocean', 'deepsea', 'neutral', 'classic', 'earth']
   const themes = []
 
   for (const surface of surfaceNames) {

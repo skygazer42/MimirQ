@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { cn } from '@/lib/utils'
@@ -38,6 +38,12 @@ function metaRecord(value: unknown): Record<string, unknown> {
 
 export function GraphLegend({ nodes, links = [], activeTypeFilters = [], onToggleTypeFilter }: GraphLegendProps) {
   const [collapsed, setCollapsed] = useState(false)
+
+  useEffect(() => {
+    if (globalThis.window.matchMedia('(max-width: 767px)').matches) {
+      setCollapsed(true)
+    }
+  }, [])
 
   const entityTypes = useMemo<EntityTypeEntry[]>(() => {
     const colorMap = buildTypeColorMap(nodes)
@@ -99,8 +105,8 @@ export function GraphLegend({ nodes, links = [], activeTypeFilters = [], onToggl
   if (entityTypes.length === 0 && edgeKinds.length === 0) return null
 
   return (
-    <div className="absolute bottom-8 left-8 z-10">
-      <div className="bg-card/95 backdrop-blur-sm rounded-xl border border-border/60 shadow-md overflow-hidden max-w-[340px]">
+    <div className="absolute bottom-4 left-4 z-10 md:bottom-8 md:left-8">
+      <div className="max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border/60 bg-card/95 shadow-md backdrop-blur-sm md:max-w-[340px]">
           <button
             type="button"
             onClick={() => setCollapsed(prev => !prev)}

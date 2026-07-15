@@ -219,9 +219,9 @@ export default function DatasetTablesPage() {
     )
   }, [selected])
 
-  const tablesHeroCard = 'relative overflow-hidden rounded-[26px] border border-border/60 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(246,248,251,0.94)_45%,rgba(232,246,250,0.72))] shadow-[0_24px_70px_rgba(15,23,42,0.10)] ring-1 ring-white/80 before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_16%_10%,rgba(8,145,178,0.16),transparent_26%),radial-gradient(circle_at_82%_0%,rgba(15,23,42,0.075),transparent_24%),linear-gradient(90deg,rgba(15,23,42,0.035)_1px,transparent_1px)] before:bg-[length:auto,auto,34px_34px] dark:border-border/60 dark:bg-card/95 dark:ring-white/5'
+  const tablesHeroCard = 'relative overflow-hidden rounded-[26px] border border-border/60 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(246,248,251,0.94)_45%,rgba(232,246,250,0.72))] shadow-[0_24px_70px_rgba(15,23,42,0.10)] ring-1 ring-white/80 before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_16%_10%,rgba(8,145,178,0.16),transparent_26%),radial-gradient(circle_at_82%_0%,rgba(15,23,42,0.075),transparent_24%),linear-gradient(90deg,rgba(15,23,42,0.035)_1px,transparent_1px)] before:bg-[length:auto,auto,34px_34px] dark:border-border/60 dark:bg-none dark:bg-card/95 dark:ring-white/5'
   const tablePanelClass = 'overflow-hidden rounded-[24px] border-border/60 bg-card/88 shadow-[0_18px_54px_rgba(15,23,42,0.08)] ring-1 ring-white/75 backdrop-blur-xl dark:border-border/60 dark:bg-card/82 dark:ring-white/5'
-  const tablePanelHeaderClass = 'border-b border-border/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.78))] px-5 py-4 dark:border-border/60 dark:bg-muted/20'
+  const tablePanelHeaderClass = 'border-b border-border/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.78))] px-5 py-4 dark:border-border/60 dark:bg-none dark:bg-muted/20'
   const sectionTitleClass = 'text-[15px] font-bold tracking-[-0.015em] text-foreground dark:text-foreground'
   const mutedHintClass = 'text-[12px] leading-5 text-muted-foreground dark:text-muted-foreground'
   const tableToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-2xl border border-border/60 bg-card/82 p-1 shadow-[0_12px_34px_rgba(15,23,42,0.07)] ring-1 ring-white/75 backdrop-blur dark:border-border/60 dark:bg-card/70 dark:ring-white/5'
@@ -377,7 +377,7 @@ export default function DatasetTablesPage() {
               </div>
             </div>
 
-            <div className={cn('min-h-0 flex-1 bg-[linear-gradient(180deg,rgba(248,250,252,0.72),rgba(255,255,255,0.92))] p-4 pr-3 dark:bg-muted/5', items.length ? 'space-y-2 overflow-auto no-scrollbar' : '')}>
+            <div className={cn('min-h-0 flex-1 bg-[linear-gradient(180deg,rgba(248,250,252,0.72),rgba(255,255,255,0.92))] p-4 pr-3 dark:bg-none dark:bg-muted/5', items.length ? 'space-y-2 overflow-auto no-scrollbar' : '')}>
               {items.length === 0 && !isLoading ? (
                 <div className="rounded-[22px] border border-dashed border-info/30 bg-card/72 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
                   <div className="flex items-start gap-3">

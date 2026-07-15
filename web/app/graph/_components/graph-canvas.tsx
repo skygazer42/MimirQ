@@ -249,7 +249,7 @@ export function GraphCanvas({
 
   useEffect(() => {
     if (viewMode === '3d') {
-      setIsSemanticListVisible(true)
+      setIsSemanticListVisible(!globalThis.window.matchMedia('(max-width: 767px)').matches)
     }
   }, [viewMode])
 
@@ -645,7 +645,7 @@ export function GraphCanvas({
           >
             <div
               ref={semanticPanelRef}
-              className={`pointer-events-auto overflow-hidden border border-border/60 bg-[rgba(250,252,255,0.72)] shadow-[12px_18px_46px_-28px_rgba(15,23,42,0.44)] backdrop-blur-xl supports-[backdrop-filter]:bg-[rgba(250,252,255,0.62)] ${
+              className={`pointer-events-auto overflow-hidden border border-border/60 bg-card/88 shadow-[12px_18px_46px_-28px_rgba(15,23,42,0.44)] backdrop-blur-xl supports-[backdrop-filter]:bg-card/78 ${
                 isSemanticListVisible ? 'w-[min(16.75rem,calc(100vw-2rem))] rounded-[1.35rem]' : 'rounded-[1.35rem]'
               }`}
             >
@@ -777,12 +777,12 @@ export function GraphCanvas({
                                       style={{ backgroundColor: tone }}
                                     />
                                     <span
-                                      className="relative h-2.5 w-2.5 rounded-full shadow-[0_0_0_4px_rgba(255,255,255,0.5)]"
+                                      className="relative h-2.5 w-2.5 rounded-full"
                                       style={{
                                         backgroundColor: tone,
                                         boxShadow: isActive
-                                          ? `0 0 0 4px rgba(255,255,255,0.62), 0 0 0 1px ${tone}`
-                                          : '0 0 0 4px rgba(255,255,255,0.5)',
+                                          ? `0 0 0 4px hsl(var(--background) / 0.62), 0 0 0 1px ${tone}`
+                                          : '0 0 0 4px hsl(var(--background) / 0.5)',
                                       }}
                                     />
                                   </button>
@@ -790,7 +790,7 @@ export function GraphCanvas({
                                 <TooltipContent
                                   side="left"
                                   align="center"
-                                  className="rounded-2xl border-border/55 bg-[rgba(250,252,255,0.9)] px-3 py-2 text-[11px] text-foreground shadow-[12px_18px_42px_-24px_rgba(15,23,42,0.38)] backdrop-blur-xl"
+                                  className="rounded-2xl border-border/55 bg-popover/95 px-3 py-2 text-[11px] text-foreground shadow-[12px_18px_42px_-24px_rgba(15,23,42,0.38)] backdrop-blur-xl"
                                 >
                                   <div className="flex items-start gap-2">
                                     <span className="mt-1 h-2.5 w-2.5 rounded-full" style={{ backgroundColor: tone }} />
