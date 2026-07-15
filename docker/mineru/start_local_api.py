@@ -1,16 +1,31 @@
 
 import json
+import logging
 import os
 import subprocess
 import sys
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
 REMOTE_MODEL_SOURCES = {"huggingface", "modelscope"}
 DOWNLOAD_MODEL_TYPES = {"pipeline", "vlm", "all"}
 PIPELINE_REQUIRED_FILES = (
-    "models/OCR/paddleocr_torch/ch_PP-OCRv4_rec_server_doc_infer.pth",
+    "models/Layout/PP-DocLayoutV2/model.safetensors",
+    "models/MFR/unimernet_hf_small_2503/model.safetensors",
+    "models/OCR/paddleocr_torch/ch_PP-OCRv6_small_det_infer.safetensors",
+    "models/OCR/paddleocr_torch/ch_PP-OCRv6_small_rec_infer.safetensors",
+    "models/OCR/paddleocr_torch/ch_PP-OCRv6_medium_rec_infer.safetensors",
+    "models/TabRec/SlanetPlus/slanet-plus.onnx",
+    "models/TabRec/UnetStructure/unet.onnx",
+    "models/TabCls/paddle_table_cls/PP-LCNet_x1_0_table_cls.onnx",
+    "models/MFR/pp_formulanet_plus_m/PP-FormulaNet_plus-M.pth",
 )
-VLM_REQUIRED_FILES = ("config.json",)
+VLM_REQUIRED_FILES = (
+    "config.json",
+    "model.safetensors",
+    "preprocessor_config.json",
+)
 
 
 def _config_path() -> Path:
@@ -51,7 +66,7 @@ def _discover_local_model_dirs() -> dict[str, str]:
 
     hf_hub = Path.home() / ".cache" / "huggingface" / "hub"
     pipeline = _existing_snapshot_root(hf_hub / "models--opendatalab--PDF-Extract-Kit-1.0" / "snapshots")
-    vlm = _existing_snapshot_root(hf_hub / "models--opendatalab--MinerU2.5-2509-1.2B" / "snapshots")
+    vlm = _existing_snapshot_root(hf_hub / "models--opendatalab--MinerU2.5-Pro-2605-1.2B" / "snapshots")
 
     if pipeline:
         roots["pipeline"] = pipeline
@@ -126,7 +141,7 @@ def ensure_models(required_types: list[str]) -> None:
         return
 
     cmd = ["mineru-models-download", "-s", _download_source(), "-m", download_type]
-    print(f"Ensuring MinerU {download_type} models in mounted cache: {' '.join(cmd)}", flush=True)
+    logger.warning("Ensuring MinerU %s models in mounted cache: %s", download_type, " ".join(cmd))
     subprocess.run(cmd, check=True)
 
 

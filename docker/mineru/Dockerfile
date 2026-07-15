@@ -28,7 +28,7 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-ARG MINERU_PIP_SPEC="mineru[core]>=2.7.0"
+ARG MINERU_PIP_SPEC="mineru[core]==3.4.4"
 RUN python3 -m pip install -U "${MINERU_PIP_SPEC}" --break-system-packages
 
 # Optional: pre-download models during build (offline/air-gapped deployments).

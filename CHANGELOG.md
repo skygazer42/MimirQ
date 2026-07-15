@@ -63,6 +63,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Web: cover missing backend routes in `web/lib/api-client.ts` (SCIM Groups/Users mutations; observability periodic job freshness).
 - Web: pin ESLint to v9 to avoid a runtime crash in `eslint-plugin-react` when linting.
 
+## [0.7.4] - 2026-07-15
+
+### Changed
+
+- Pin the MinerU runtime to 3.4.4 and align cache readiness with its OCRv6, pipeline, and `MinerU2.5-Pro-2605-1.2B` model contracts.
+- Document the A6000 real-document parser validation matrix in `docs/ops/parser-gpu-validation-v0.7.4.md`.
+
+### Fixed
+
+- Route the advertised ColPali PDF backend through the parser factory.
+- Reject stale MagicPDF CUDA health results and keep its container build on the available `stringzilla` binary wheel.
+
 ## [0.7.3] - 2026-07-15
 
 ### Changed

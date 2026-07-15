@@ -71,9 +71,25 @@ def _resolve_cli() -> str:
 
 def _cuda_available() -> bool:
     try:
-        return bool(torch.cuda.is_available())
+        if not bool(torch.cuda.is_available()):
+            return False
     except (AttributeError, OSError, RuntimeError):
         return False
+
+    nvidia_smi = shutil.which("nvidia-smi")
+    if not nvidia_smi:
+        return True
+    try:
+        subprocess.run(
+            [nvidia_smi, "-L"],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return True
 
 
 def _has_required_models(models_dir: Path) -> bool:

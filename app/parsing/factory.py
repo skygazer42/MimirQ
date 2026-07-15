@@ -1092,6 +1092,8 @@ class ParserFactory:
     def _get_pdf_parser(self, backend: str):
         if backend == "basic":
             return self._get_basic_pdf_parser()
+        if backend == "colpali":
+            return self._get_colpali_parser()
         spec = self.PDF_PARSER_SPECS.get(backend)
         if spec is None:
             raise ValueError(f"Unsupported PDF parser backend '{backend}'")
