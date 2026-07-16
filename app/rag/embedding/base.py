@@ -123,16 +123,23 @@ class BaseEmbeddingModel(ABC):
                 "progress": 0,
             }
 
-        for i in range(0, len(messages), batch_size):
-            group_msg = messages[i : i + batch_size]
-            logger.info(f"Encoding [{i}/{len(messages)}] messages (bsz={batch_size})")
-            response = self.encode(group_msg)
-            data.extend(response)
+        try:
+            for i in range(0, len(messages), batch_size):
+                group_msg = messages[i : i + batch_size]
+                logger.info(f"Encoding [{i}/{len(messages)}] messages (bsz={batch_size})")
+                response = self.encode(group_msg)
+                data.extend(response)
+                if task_id:
+                    self.embed_state[task_id]["progress"] = i + len(group_msg)
+        except Exception:
             if task_id:
-                self.embed_state[task_id]["progress"] = i + len(group_msg)
-
-        if task_id:
-            self.embed_state[task_id]["status"] = "completed"
+                self.embed_state[task_id]["status"] = "failed"
+            raise
+        finally:
+            # embed_state is progress bookkeeping only; drop the entry so a
+            # long-lived embedder does not accumulate an unbounded dict.
+            if task_id:
+                self.embed_state.pop(task_id, None)
 
         return data
 
@@ -182,14 +189,22 @@ class BaseEmbeddingModel(ABC):
                 return result
 
         tasks = [encode_batch_with_limit(batch) for batch in batches]
-        results = await asyncio.gather(*tasks)
-        
+        try:
+            results = await asyncio.gather(*tasks)
+        except Exception:
+            # A failed batch fails the whole call (results must stay aligned);
+            # mark the task failed instead of leaving it stuck at "in-progress".
+            if task_id:
+                self.embed_state[task_id]["status"] = "failed"
+            raise
+        finally:
+            # embed_state is progress bookkeeping only; drop the entry so a
+            # long-lived embedder does not accumulate an unbounded dict.
+            if task_id:
+                self.embed_state.pop(task_id, None)
+
         for res in results:
             data.extend(res)
-
-        if task_id:
-            self.embed_state[task_id]["progress"] = len(messages)
-            self.embed_state[task_id]["status"] = "completed"
 
         return data
 
