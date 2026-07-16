@@ -3556,13 +3556,14 @@ Requirements:
             claim_check_total = 0
             claim_check_removed_reasons: list[dict[str, Any]] = []
 
-            holdback = max(0, int(getattr(settings, "PII_STREAM_HOLDBACK_CHARS", 128) or 128))
             context_for_model = redact_text(context) if pii_on else context
             history_for_model = redact_text(history_text) if pii_on else history_text
             question_for_model = redact_text(question) if pii_on else question
 
-            pending = ""
-            buffered_parts: list[str] | None = [] if (claim_check_applied or output_guard_enabled) else None
+            # PII redaction must see the complete response before any bytes are
+            # emitted; bounded holdbacks cannot safely cover variable-length
+            # emails, secrets, or overlapping numeric identifiers.
+            buffered_parts: list[str] | None = [] if (claim_check_applied or output_guard_enabled or pii_on) else None
             generation_inputs = {
                 "context": context_for_model,
                 "history": history_for_model,
@@ -3697,30 +3698,12 @@ Requirements:
                     buffered_parts.append(token_text)
                     continue
 
-                if not pii_on:
-                    full_response += token_text
-                    yield {"type": "token", "data": {"content": token_text}}
-                    continue
-
-                pending += token_text
-                if holdback and len(pending) <= holdback:
-                    continue
-
-                emit_raw = pending[:-holdback] if holdback else pending
-                pending = pending[-holdback:] if holdback else ""
-                emit_safe = redact_text(emit_raw)
-                if emit_safe:
-                    full_response += emit_safe
-                    yield {"type": "token", "data": {"content": emit_safe}}
+                full_response += token_text
+                yield {"type": "token", "data": {"content": token_text}}
 
             if buffered_parts is not None:
                 raw_generated = "".join(buffered_parts)
                 full_response = redact_text(raw_generated) if pii_on else raw_generated
-            elif pii_on and pending:
-                emit_safe = redact_text(pending)
-                if emit_safe:
-                    full_response += emit_safe
-                    yield {"type": "token", "data": {"content": emit_safe}}
 
             llm_invocation_meta: dict[str, Any] = {}
             get_last_invocation_meta = getattr(llm, "get_last_invocation_meta", None)
@@ -4035,7 +4018,7 @@ Requirements:
                     if not claim_check_applied:
                         yield {"type": "token", "data": {"content": suffix_md_safe}}
 
-            if claim_check_applied or output_guard_enabled:
+            if buffered_parts is not None:
                 yield {"type": "token", "data": {"content": full_response}}
 
             # Cost attribution per request.

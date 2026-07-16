@@ -17,9 +17,16 @@ from app.rag.core.logging import get_logger
 logger = get_logger("core.pii_redaction")
 DEFAULT_MASK = "[REDACTED]"
 
-_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
-_CN_MOBILE_RE = re.compile(r"\b1[3-9]\d{9}\b")
-_CN_ID_RE = re.compile(r"\b\d{17}[\dXx]\b")
+# \b also fails between a Chinese char and an ASCII email local-part, so anchor
+# with character-class lookarounds that tolerate CJK/punctuation on both sides.
+_EMAIL_RE = re.compile(
+    r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?![A-Za-z])"
+)
+# Use digit-boundary lookarounds instead of \b: a \b between a Chinese char and
+# a digit does not match (both are \w in Unicode), so "\b1[3-9]\d{9}\b" silently
+# fails to redact a phone number embedded in Chinese text like "电话13800138000".
+_CN_MOBILE_RE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
+_CN_ID_RE = re.compile(r"(?<!\d)\d{17}[\dXx](?!\d)")
 _OPENAI_KEY_RE = re.compile(r"\bsk-[A-Za-z0-9]{20,}\b")
 _AWS_ACCESS_KEY_RE = re.compile(r"\bAKIA[0-9A-Z]{16}\b")
 _GENERIC_KV_SECRET_RE = re.compile(

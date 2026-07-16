@@ -37,8 +37,10 @@ class _Section:
     heading: ResumeHeading | None
 
 
-_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
-_CN_MOBILE_RE = re.compile(r"\b1[3-9]\d{9}\b")
+_EMAIL_RE = re.compile(
+    r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?![A-Za-z])"
+)
+_CN_MOBILE_RE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
 
 _EN_SECTIONS: dict[str, str] = {
     "summary": "summary",

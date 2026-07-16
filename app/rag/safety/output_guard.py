@@ -7,8 +7,8 @@ from typing import Any
 from app.core.config import settings
 from app.rag.safety.regex_safety_guard import RegexSafetyGuard
 
-_PHONE_RE = re.compile(r"\b1\d{10}\b")
-_ID_CARD_RE = re.compile(r"\b\d{17}[\dXx]\b")
+_PHONE_RE = re.compile(r"(?<!\d)1\d{10}(?!\d)")
+_ID_CARD_RE = re.compile(r"(?<!\d)\d{17}[\dXx](?!\d)")
 _FAKE_CITATION_RE = re.compile(r"第\s*999\s*页|page\s*999", flags=re.IGNORECASE)
 _CN_ENTITY_RE = re.compile(r"[\u4e00-\u9fff]{2,12}")
 

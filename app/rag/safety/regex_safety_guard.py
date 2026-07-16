@@ -12,7 +12,7 @@ _PROMPT_INJECTION_RE = re.compile(
     r"忽略.*规则|绕过安全|系统提示词|ignore.*instruction|system prompt|developer message",
     flags=re.IGNORECASE,
 )
-_SENSITIVE_RE = re.compile(r"\b1\d{10}\b|\b\d{17}[\dXx]\b")
+_SENSITIVE_RE = re.compile(r"(?<!\d)1\d{10}(?!\d)|(?<!\d)\d{17}[\dXx](?!\d)")
 
 
 def _action_for_score(score: float) -> str:
