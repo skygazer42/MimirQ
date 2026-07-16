@@ -26,6 +26,7 @@ from langchain_core.messages import (
 )
 
 from app.core.config import settings
+from app.core.async_bridge import run_coroutine_sync
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
 
@@ -326,18 +327,14 @@ class ShortTermMemoryManager:
             # Get or create summary for old messages
             cache_key = session_id or f"msgs:{stable_hash(str(old_messages))}"
             if cache_key not in self._summary_cache:
-                # Create summary synchronously (use async version for async contexts)
-                import asyncio
+                # Bridge to the async summarizer even when a loop is already
+                # running (offloads to a worker thread) so sync callers get a
+                # real LLM summary instead of the degraded simple fallback.
                 try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        # Can't await in sync context, use simple summary
-                        summary = self._simple_summary(old_messages)
-                    else:
-                        summary = loop.run_until_complete(
-                            summarize_messages(old_messages, self.llm)
-                        )
-                except RuntimeError:
+                    summary = run_coroutine_sync(
+                        lambda: summarize_messages(old_messages, self.llm)
+                    )
+                except Exception:
                     summary = self._simple_summary(old_messages)
 
                 self._summary_cache[cache_key] = summary

@@ -272,10 +272,6 @@ function PromptsPageContent() {
     setCurrentPage(1)
   }, [searchQuery, scenarioFilter, categoryFilter, statusFilter, pageSize])
 
-  useEffect(() => {
-    if (currentPage > totalPages) setCurrentPage(totalPages)
-  }, [currentPage, totalPages])
-
   const formatDateTime = (value?: string) => {
     if (!value) return '-'
     const date = new Date(value)

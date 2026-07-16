@@ -82,6 +82,7 @@ export function useChatStream({
   const activeConversationIdRef = useRef<string | undefined>(conversationId)
   const fullResponseRef = useRef('')
   const currentStepsRef = useRef<string[]>([])
+  const currentCitationsRef = useRef<Citation[]>([])
   const rafIdRef = useRef<number | null>(null)
   const streamRequestIdRef = useRef<string | null>(null)
 
@@ -100,6 +101,7 @@ export function useChatStream({
     streamRequestIdRef.current = null
     fullResponseRef.current = ''
     currentStepsRef.current = []
+    currentCitationsRef.current = []
   }, [clearRaf])
 
   useEffect(() => {
@@ -209,6 +211,7 @@ export function useChatStream({
 
               if (event.type === 'citations') {
                 citations = getCitations(event.data)
+                currentCitationsRef.current = citations
                 setCurrentCitations(citations)
                 return
               }
@@ -324,6 +327,26 @@ export function useChatStream({
         if (isAbort) {
           if (didTimeout) {
             onError?.('Request timed out')
+          } else {
+            // User stopped generation: preserve whatever was already streamed
+            // instead of letting the in-flight bubble vanish once isLoading
+            // flips to false. Commit the partial answer as a stopped message.
+            const partialContent = fullResponseRef.current
+            if (partialContent) {
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: Date.now().toString(),
+                  role: 'assistant',
+                  content: partialContent,
+                  citations: currentCitationsRef.current,
+                  steps: getStepList(currentStepsRef.current),
+                  message_metadata: { stopped: true },
+                  created_at: new Date().toISOString(),
+                },
+              ])
+            }
+            resetTransientState()
           }
         } else {
           reportClientError('Chat request failed', err)

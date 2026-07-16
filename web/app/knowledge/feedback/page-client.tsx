@@ -1212,13 +1212,16 @@ export default function FeedbackTriagePage() {
     () => Math.max(1, Math.ceil(filtered.length / FEEDBACK_PAGE_SIZE)),
     [filtered.length]
   )
+  // Clamp during render instead of syncing via an effect: when filters shrink
+  // the result set, safePage stays in range without an extra render pass.
+  const safePage = Math.min(page, totalPages)
   const paginated = useMemo(
     () =>
       filtered.slice(
-        (page - 1) * FEEDBACK_PAGE_SIZE,
-        page * FEEDBACK_PAGE_SIZE
+        (safePage - 1) * FEEDBACK_PAGE_SIZE,
+        safePage * FEEDBACK_PAGE_SIZE
       ),
-    [filtered, page]
+    [filtered, safePage]
   )
   const listSummary = useMemo(() => {
     if (!items.length) return null
@@ -1240,10 +1243,6 @@ export default function FeedbackTriagePage() {
   useEffect(() => {
     setPage(1)
   }, [boardTab, filterType, ratingFilter, sourceFilter, timeRange, searchTerm])
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages)
-  }, [page, totalPages])
 
   const summaryCards = useMemo(
     () => [
@@ -1825,7 +1824,7 @@ export default function FeedbackTriagePage() {
                     <button
                       type="button"
                       className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/60 bg-background text-foreground disabled:opacity-35"
-                      disabled={page <= 1}
+                      disabled={safePage <= 1}
                       onClick={() =>
                         setPage((previous) => Math.max(1, previous - 1))
                       }
@@ -1843,7 +1842,7 @@ export default function FeedbackTriagePage() {
                             onClick={() => setPage(pageNumber)}
                             className={cn(
                               'inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-[11px] font-medium',
-                              page === pageNumber
+                              safePage === pageNumber
                                 ? 'bg-info/[0.12] text-info'
                                 : 'text-muted-foreground hover:text-foreground'
                             )}
@@ -1862,7 +1861,7 @@ export default function FeedbackTriagePage() {
                         onClick={() => setPage(totalPages)}
                         className={cn(
                           'inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-[11px] font-medium',
-                          page === totalPages
+                          safePage === totalPages
                             ? 'bg-info/[0.12] text-info'
                             : 'text-muted-foreground hover:text-foreground'
                         )}
@@ -1873,7 +1872,7 @@ export default function FeedbackTriagePage() {
                     <button
                       type="button"
                       className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/60 bg-background text-foreground disabled:opacity-35"
-                      disabled={page >= totalPages}
+                      disabled={safePage >= totalPages}
                       onClick={() =>
                         setPage((previous) =>
                           Math.min(totalPages, previous + 1)
