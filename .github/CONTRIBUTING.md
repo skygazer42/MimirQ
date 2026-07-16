@@ -52,13 +52,6 @@ make verify
 powershell -File scripts/verify.ps1
 ```
 
-Pre-commit (recommended):
-```bash
-python -m pip install pre-commit
-pre-commit install
-pre-commit run --all-files
-```
-
 Common subsets:
 ```bash
 python -m pytest -q
