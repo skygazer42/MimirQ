@@ -482,7 +482,7 @@ def _load_competition_weights() -> dict[str, float] | None:
         except Exception:
             return None
 
-    # Default weights from docs/plans/2026-03-19-document-parsing-optimization.md (Opt 8).
+    # Balanced defaults for parser competition scoring.
     return {"text": 0.40, "table": 0.30, "image": 0.15, "reading_order": 0.15}
 
 

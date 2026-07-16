@@ -291,7 +291,7 @@ def kg_extraction_options(
 
 
 def _log_kg_api_metric(event: str, **fields: object) -> None:
-    if not bool(getattr(settings, "KG_API_METRICS_ENABLED", False)):
+    if not settings.KG_API_METRICS_ENABLED:
         return
     try:
         payload: dict[str, object] = {"event": event}

@@ -10,7 +10,6 @@ Supports:
 - Formula recognition
 - Complex layout analysis
 """
-import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -31,16 +30,10 @@ class MinerUParser(BaseAdvancedParser):
     """
 
     def __init__(self):
-        # Prefer explicit MinerU API server envs, otherwise fall back to our
-        # project-level settings (docker-compose uses MINERU_LOCAL_SERVER_URL / MINERU_VL_SERVER).
-        local_api = (getattr(settings, "MINERU_LOCAL_SERVER_URL", "") or "").strip()
-        legacy_api = (getattr(settings, "MINERU_APISERVER", "") or "").strip()
-        api = (os.environ.get("MINERU_APISERVER") or local_api or legacy_api or "").strip()
+        api = settings.MINERU_LOCAL_SERVER_URL.strip()
         self._api = api.rstrip("/") if api else ""
 
-        vl_server = (getattr(settings, "MINERU_VL_SERVER", "") or "").strip()
-        legacy_server = (getattr(settings, "MINERU_SERVER_URL", "") or "").strip()
-        server_url = (os.environ.get("MINERU_SERVER_URL") or vl_server or legacy_server or "").strip()
+        server_url = settings.MINERU_VL_SERVER.strip()
         self._server_url = server_url.rstrip("/") if server_url else ""
         super().__init__()
 
@@ -69,9 +62,7 @@ class MinerUParser(BaseAdvancedParser):
             filepath=str(file_path),
             binary=binary,
             callback=callback,
-            backend=os.environ.get("MINERU_BACKEND")
-            or getattr(settings, "MINERU_BACKEND", "pipeline")
-            or "pipeline",
+            backend=settings.MINERU_BACKEND,
             server_url=self._server_url,
             delete_output=True,
             **kwargs

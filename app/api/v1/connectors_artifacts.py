@@ -164,7 +164,7 @@ def _upsert_db_row_sidecar_document(
         max_tables=max_tables,
         max_rows_per_table=max_rows_per_table,
         max_cols=max_cols,
-        sample_rows=int(getattr(settings, "TABLE_STORE_SAMPLE_ROWS", 20) or 20),
+        sample_rows=int(settings.TABLE_STORE_SAMPLE_ROWS),
     )
 
     tables_payload: list[dict[str, Any]] = []

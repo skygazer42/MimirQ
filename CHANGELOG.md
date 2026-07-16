@@ -68,7 +68,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - Pin the MinerU runtime to 3.4.4 and align cache readiness with its OCRv6, pipeline, and `MinerU2.5-Pro-2605-1.2B` model contracts.
-- Document the A6000 real-document parser validation matrix in `docs/ops/parser-gpu-validation-v0.7.4.md`.
+- Validate the parser matrix against real documents on an NVIDIA RTX A6000.
 
 ### Fixed
 

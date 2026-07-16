@@ -1575,9 +1575,7 @@ class ParsingStage:
             specialty_signals = _seal_summary_to_specialty_signals(seal_summary)
             ocr_summary = _build_ocr_quality_summary(
                 documents,
-                low_confidence_threshold=float(
-                    getattr(settings, "PARSE_QUALITY_OCR_LOW_CONFIDENCE_THRESHOLD", 0.7) or 0.7
-                ),
+                low_confidence_threshold=float(settings.PARSE_QUALITY_OCR_LOW_CONFIDENCE_THRESHOLD),
             )
             meta = dict(db_document.doc_metadata or {})
             meta["parsed_text_quality"] = quality

@@ -7,10 +7,6 @@ from typing import Any
 from app.core.config import settings
 from app.rag.safety.llama_guard import LlamaGuard
 
-_OUTPUT_GUARD_MODE_DEFAULT = "warn"
-_OUTPUT_GUARD_SCORE_THRESHOLD_DEFAULT = 0.7
-_OUTPUT_GUARD_WARN_THRESHOLD_DEFAULT = 0.35
-
 _PHONE_RE = re.compile(r"\b1\d{10}\b")
 _ID_CARD_RE = re.compile(r"\b\d{17}[\dXx]\b")
 _FAKE_CITATION_RE = re.compile(r"第\s*999\s*页|page\s*999", flags=re.IGNORECASE)
@@ -99,9 +95,9 @@ class OutputGuard:
     def _resolve_action(*, score: float, matched_rules: list[str]) -> str:
         if not matched_rules:
             return "allow"
-        mode = str(getattr(settings, "OUTPUT_GUARD_MODE", _OUTPUT_GUARD_MODE_DEFAULT) or _OUTPUT_GUARD_MODE_DEFAULT).strip().lower()
-        block_threshold = float(getattr(settings, "OUTPUT_GUARD_SCORE_THRESHOLD", _OUTPUT_GUARD_SCORE_THRESHOLD_DEFAULT) or _OUTPUT_GUARD_SCORE_THRESHOLD_DEFAULT)
-        warn_threshold = float(getattr(settings, "OUTPUT_GUARD_WARN_THRESHOLD", _OUTPUT_GUARD_WARN_THRESHOLD_DEFAULT) or _OUTPUT_GUARD_WARN_THRESHOLD_DEFAULT)
+        mode = settings.OUTPUT_GUARD_MODE
+        block_threshold = float(settings.OUTPUT_GUARD_SCORE_THRESHOLD)
+        warn_threshold = float(settings.OUTPUT_GUARD_WARN_THRESHOLD)
         if score >= block_threshold:
             return "block" if mode == "block" else "warn"
         if score >= warn_threshold:

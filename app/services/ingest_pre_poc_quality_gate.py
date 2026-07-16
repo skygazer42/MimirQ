@@ -63,7 +63,7 @@ def evaluate_ingest_pre_poc_quality_gate(
     )
     sample = _read_text_sample(path, max_bytes=sample_bytes)
     pii_threshold = (
-        int(getattr(settings, "INGEST_PRE_POC_PII_MAX_HITS", -1) or -1)
+        int(settings.INGEST_PRE_POC_PII_MAX_HITS)
         if pii_max_hits is None
         else int(pii_max_hits)
     )

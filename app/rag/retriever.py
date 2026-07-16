@@ -5231,7 +5231,7 @@ class HybridRetriever(BaseRetriever):
         # FAQ/title-style chunks when dense/BM25 channels find semantically similar
         # distractors and lexical DB returns equal raw FTS scores.
         metadata_exact_pre_fusion_stats: dict[str, Any] = {
-            "enabled": bool(getattr(settings, "RETRIEVAL_METADATA_EXACT_PRE_FUSION_ENABLED", True)),
+            "enabled": settings.RETRIEVAL_METADATA_EXACT_PRE_FUSION_ENABLED,
             "annotated": 0,
             "promoted": 0,
         }
@@ -6270,7 +6270,7 @@ class HybridRetriever(BaseRetriever):
         max_added = max(0, int(max_added_raw or 0))
         sibling_max_added = max(
             0,
-            int(getattr(settings, "RAG_CONTEXT_SIBLING_MAX_ADDED", max_added or 0) or (max_added or 0)),
+            int(settings.RAG_CONTEXT_SIBLING_MAX_ADDED),
         )
         tenant_filter = self.tenant_id
 

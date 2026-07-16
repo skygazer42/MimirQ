@@ -951,7 +951,7 @@ def _ensure_dify_trace_conversation(
         if existing_id is not None:
             return existing_id
 
-        if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TRACE_AUTO_CREATE_CONVERSATION_ENABLED", True)):
+        if not settings.DIFY_EXTERNAL_KNOWLEDGE_TRACE_AUTO_CREATE_CONVERSATION_ENABLED:
             return None
 
         now = datetime.now(UTC)
@@ -1368,7 +1368,7 @@ def _dify_response_cache_settings_signature() -> dict[str, Any]:
             getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTEND_SIBLING_POLICY_SCOPE_ENABLED", False)
         ),
         "metadata_anchor_extended_scope_max_datasets": int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTENDED_SCOPE_MAX_DATASETS", 80) or 80
+            settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTENDED_SCOPE_MAX_DATASETS
         ),
         "mixed_intent_supplement_enabled": bool(
             getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED", True)
@@ -1669,7 +1669,7 @@ def _metadata_anchor_dataset_ids_for_query(
         len(dataset_ids),
         min(
             200,
-            int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTENDED_SCOPE_MAX_DATASETS", 80) or 80),
+            int(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTENDED_SCOPE_MAX_DATASETS),
         ),
     )
     return list(_dedupe_dataset_ids(expanded)[:max_datasets])

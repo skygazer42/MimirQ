@@ -1,5 +1,5 @@
 """
-Parse cache (Opt 11: docs/plans/2026-03-19-document-parsing-optimization.md).
+Parse cache for deterministic parser results.
 
 Goal:
 - Avoid re-running expensive parsing backends for identical inputs by caching the parsed

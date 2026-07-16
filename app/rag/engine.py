@@ -97,8 +97,6 @@ logger = get_logger("rag.engine")
 _RAG_ENGINE_FALLBACK_LOG_MESSAGE = "Ignoring non-critical RAG engine fallback failure: %s"
 
 _UNABLE_TO_ANSWER_MESSAGE = "Unable to answer this question based on the available materials."
-_REDACTED_MASK = "[REDACTED]"
-
 
 def _retrieval_error_from_debug(debug: dict[str, Any] | None) -> str | None:
     if not isinstance(debug, dict) or not bool(debug.get("all_retrieval_channels_failed")):
@@ -928,7 +926,7 @@ Requirements:
             "score": 0.0,
             "matched_rules": [],
         }
-        retrieval_rail_enabled = bool(getattr(settings, "RAG_RETRIEVAL_RAIL_ENABLED", False))
+        retrieval_rail_enabled = settings.RAG_RETRIEVAL_RAIL_ENABLED
         retrieval_rail_meta: dict[str, Any] = {
             "enabled": bool(retrieval_rail_enabled),
             "used": False,
@@ -2414,8 +2412,8 @@ Requirements:
 
                     rail_result = apply_retrieval_rail(
                         docs,
-                        mask_pii=bool(getattr(settings, "RAG_RETRIEVAL_RAIL_MASK_PII", False)),
-                        pii_mask=str(getattr(settings, "RAG_RETRIEVAL_RAIL_PII_MASK", _REDACTED_MASK) or _REDACTED_MASK),
+                        mask_pii=settings.RAG_RETRIEVAL_RAIL_MASK_PII,
+                        pii_mask=settings.RAG_RETRIEVAL_RAIL_PII_MASK,
                     )
                     docs = list(rail_result.get("docs") or [])
                     meta = dict(rail_result.get("meta") or {})
@@ -2758,7 +2756,7 @@ Requirements:
                         merged_retry_docs.append(doc)
                     docs = merged_retry_docs[: max(0, int(top_k or 0))] if merged_retry_docs else []
 
-                retrieval_rail_enabled = bool(getattr(settings, "RAG_RETRIEVAL_RAIL_ENABLED", False))
+                retrieval_rail_enabled = settings.RAG_RETRIEVAL_RAIL_ENABLED
                 retrieval_rail_meta: dict[str, Any] = {
                     "enabled": bool(retrieval_rail_enabled),
                     "used": False,
@@ -2771,8 +2769,8 @@ Requirements:
 
                         rail_result = apply_retrieval_rail(
                             docs,
-                            mask_pii=bool(getattr(settings, "RAG_RETRIEVAL_RAIL_MASK_PII", False)),
-                            pii_mask=str(getattr(settings, "RAG_RETRIEVAL_RAIL_PII_MASK", _REDACTED_MASK) or _REDACTED_MASK),
+                            mask_pii=settings.RAG_RETRIEVAL_RAIL_MASK_PII,
+                            pii_mask=settings.RAG_RETRIEVAL_RAIL_PII_MASK,
                         )
                         docs = list(rail_result.get("docs") or [])
                         meta = dict(rail_result.get("meta") or {})
@@ -4040,7 +4038,7 @@ Requirements:
             answer_chars = len(full_response or "")
             answer_tokens = num_tokens_from_string(full_response or "")
             question_tokens = num_tokens_from_string(question or "")
-            prompt_overhead = int(getattr(settings, "COST_PROMPT_OVERHEAD_TOKENS", 50) or 50)
+            prompt_overhead = int(settings.COST_PROMPT_OVERHEAD_TOKENS)
             prompt_tokens_est = (
                 num_tokens_from_string(history_text or "")
                 + num_tokens_from_string(context or "")

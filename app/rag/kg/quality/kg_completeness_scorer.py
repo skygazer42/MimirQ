@@ -221,7 +221,7 @@ def build_kg_quality_report(
     avg_rel_per_entity = float((2 * relation_count) / max(1, int(entity_count)))
 
     # Connected components over relation graph (best-effort; capped).
-    edge_limit = int(getattr(settings, "KG_QUALITY_RELATION_EDGES_LIMIT", 50_000) or 50_000)
+    edge_limit = int(settings.KG_QUALITY_RELATION_EDGES_LIMIT)
     edge_limit = max(0, edge_limit)
     rel_edges_truncated = False
     edges: list[tuple[str, str]] = []
@@ -280,4 +280,3 @@ def build_kg_quality_report(
 
 
 __all__ = ["build_kg_quality_report"]
-

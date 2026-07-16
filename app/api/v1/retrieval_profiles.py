@@ -38,7 +38,7 @@ def _runtime_baseline() -> dict[str, Any]:
     return {
         "top_k": int(getattr(settings, "RETRIEVAL_TOP_K", 5) or 5),
         "score_threshold": float(getattr(settings, "SIMILARITY_THRESHOLD", 0.0) or 0.0),
-        "retrieval_mode": str(getattr(settings, "RETRIEVAL_MODE", "hybrid") or "hybrid"),
+        "retrieval_mode": settings.RETRIEVAL_MODE,
         "enable_reranker": bool(getattr(settings, "ENABLE_RERANKER", False)),
         "reranker_provider": str(getattr(settings, "RERANKER_PROVIDER", "llm") or "llm"),
         "reranker_top_n": int(getattr(settings, "RERANKER_TOP_N", 20) or 20),

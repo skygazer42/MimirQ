@@ -110,7 +110,7 @@ def maybe_sync_jwt_groups(*, tenant_id: UUID, account_id: str, jwt_payload: dict
     """
     if not bool(getattr(settings, "JWT_GROUPS_SYNC_ENABLED", False)):
         return
-    ttl = float(getattr(settings, "JWT_GROUPS_SYNC_TTL_SEC", 60) or 60)
+    ttl = float(settings.JWT_GROUPS_SYNC_TTL_SEC)
     if not _should_sync(tenant_id=tenant_id, account_id=account_id, ttl_sec=ttl):
         return
     try:

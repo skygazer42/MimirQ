@@ -108,3 +108,11 @@ web/.next_3101/
 # Local generated analysis/training artifacts
 .scannerwork/
 work/
+
+# Local planning and design-review notes (not part of the public docs set)
+/plans/
+/docs/plans/
+/docs/notes/
+/docs/superpowers/
+/docs/waves/
+/web/docs/

@@ -378,7 +378,7 @@ cd web && pnpm lint && pnpm test
 - [ ] More Data Source Connectors (Confluence / S3 / Notion)
 - [ ] Visual RAG Workflow Editor
 
-> See [docs/plans/](./docs/plans/) for the full roadmap.
+> Follow the public roadmap in [GitHub Issues](https://github.com/skygazer42/MimirQ/issues).
 
 ---
 

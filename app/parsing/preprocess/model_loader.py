@@ -1,9 +1,6 @@
 """
 Model loader scaffolding for document/image preprocessing.
 
-docs/plans/2026-03-19-model-based-deskew-watermark-removal.md:
-- "按需加载 + singleton 缓存 + ONNX Runtime 推理 + 支持外部 API 端点"
-
 This module intentionally keeps the core backend free of heavyweight ML deps.
 It provides a thin optional-dependency wrapper that can be used by deployments
 that choose to run DocTr/LaMa/etc in-process.
@@ -63,4 +60,3 @@ def get_preprocess_model_loader() -> PreprocessModelLoader:
 
 
 __all__ = ["LoadedModel", "PreprocessModelLoader", "get_preprocess_model_loader"]
-

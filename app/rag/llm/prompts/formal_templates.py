@@ -2,15 +2,13 @@
 from collections.abc import Iterable, Sequence
 
 FORMAL_PLAN_SOURCES: tuple[str, ...] = (
-    "plans/rag-prompts-mainstream-research-2026-q2.md",
-    "plans/rag-ibm-champion-blueprint-2026-q2.md",
-    "plans/rag-cleaning-embedding-prompts-execution-plan-2026-q2.md",
+    "docs/prompts/mimirq-prompt-library-2026-q2.md",
 )
 
 FORMAL_PROMPT_TAGS: tuple[str, ...] = (
     "formal",
     "prompt-as-code",
-    "plans-derived",
+    "documented",
 )
 
 _FORMAL_PROVENANCE = "\n".join(f"- {source}" for source in FORMAL_PLAN_SOURCES)
@@ -65,7 +63,7 @@ def render_formal_xml_prompt(
     output_contract: str,
     extra_policies: Sequence[str] = (),
 ) -> str:
-    """Render a shared XML-style prompt scaffold derived from the formal prompt plans."""
+    """Render a shared XML-style prompt scaffold from the documented prompt policy."""
 
     rendered_task_sections = "\n\n".join(
         f"<{name}>\n{body}\n</{name}>"

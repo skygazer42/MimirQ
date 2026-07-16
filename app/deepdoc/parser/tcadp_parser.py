@@ -191,11 +191,11 @@ class TCADPParser(IntegratedPipelinePdfParser):
         self.logger.info(f"[TCADP] Initializing with parameters - table_result_type: {table_result_type}, markdown_image_response_type: {markdown_image_response_type}")
 
         # Read from MimirQ settings
-        self.secret_id = secret_id or getattr(settings, "TCADP_SECRET_ID", "")
-        self.secret_key = secret_key or getattr(settings, "TCADP_SECRET_KEY", "")
-        self.region = region or getattr(settings, "TCADP_REGION", "ap-guangzhou")
-        self.table_result_type = table_result_type or getattr(settings, "TCADP_TABLE_RESULT_TYPE", "1")
-        self.markdown_image_response_type = markdown_image_response_type or getattr(settings, "TCADP_MARKDOWN_IMAGE_RESPONSE_TYPE", "1")
+        self.secret_id = secret_id or settings.TCADP_SECRET_ID
+        self.secret_key = secret_key or settings.TCADP_SECRET_KEY
+        self.region = region or settings.TCADP_REGION
+        self.table_result_type = table_result_type or settings.TCADP_TABLE_RESULT_TYPE
+        self.markdown_image_response_type = markdown_image_response_type or settings.TCADP_MARKDOWN_IMAGE_RESPONSE_TYPE
 
         self.logger.info(f"[TCADP] Final values - table_result_type: {self.table_result_type}, markdown_image_response_type: {self.markdown_image_response_type}")
 

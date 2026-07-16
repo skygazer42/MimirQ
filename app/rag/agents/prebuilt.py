@@ -20,8 +20,8 @@ from app.rag.core.logging import get_logger
 logger = get_logger("rag.agents.prebuilt")
 
 # Configuration
-AGENT_MAX_ITERATIONS = getattr(settings, "AGENT_MAX_ITERATIONS", 10)
-AGENT_RECURSION_LIMIT = getattr(settings, "AGENT_RECURSION_LIMIT", 25)
+AGENT_MAX_ITERATIONS = settings.AGENT_MAX_ITERATIONS
+AGENT_RECURSION_LIMIT = settings.AGENT_RECURSION_LIMIT
 
 
 def create_rag_agent(

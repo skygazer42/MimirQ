@@ -271,7 +271,7 @@ async def upload_document(
 
     if isinstance(user_metadata, str) and user_metadata.strip():
         raw = user_metadata.strip()
-        max_len = int(getattr(settings, "USER_METADATA_FORM_JSON_MAX_CHARS", 20_000) or 20_000)
+        max_len = int(settings.USER_METADATA_FORM_JSON_MAX_CHARS)
         if max_len > 0 and len(raw) > max_len:
             raise HTTPException(status_code=400, detail="user_metadata is too large")
         try:
@@ -417,7 +417,7 @@ async def upload_document(
 
             if isinstance(user_metadata, str) and user_metadata.strip():
                 raw = user_metadata.strip()
-                max_len = int(getattr(settings, "USER_METADATA_FORM_JSON_MAX_CHARS", 20_000) or 20_000)
+                max_len = int(settings.USER_METADATA_FORM_JSON_MAX_CHARS)
                 if max_len > 0 and len(raw) > max_len:
                     raise HTTPException(status_code=400, detail="user_metadata is too large")
                 try:
@@ -577,7 +577,7 @@ async def upload_documents_batch(
     user_meta_by_key: dict[str, dict] = {}
     if isinstance(user_metadata_map, str) and user_metadata_map.strip():
         raw = user_metadata_map.strip()
-        max_len = int(getattr(settings, "USER_METADATA_MAP_FORM_JSON_MAX_CHARS", 200_000) or 200_000)
+        max_len = int(settings.USER_METADATA_MAP_FORM_JSON_MAX_CHARS)
         if max_len > 0 and len(raw) > max_len:
             raise HTTPException(status_code=400, detail="user_metadata_map is too large")
         try:

@@ -45,13 +45,13 @@ _TIMELINE_REDACT_KEYS = {
 }
 
 
-def _sanitize_timeline_details(details: Any) -> dict[str, Any]:
+def _sanitize_timeline_details(details: Any, *, _depth: int = 0) -> dict[str, Any]:
     """
     Best-effort PII-minimal details projection for user-facing timelines.
 
     Audit logs should already be small, but timeline is displayed broadly; keep it safe by default.
     """
-    if not isinstance(details, dict):
+    if not isinstance(details, dict) or _depth >= 3:
         return {}
 
     out: dict[str, Any] = {}
@@ -70,20 +70,13 @@ def _sanitize_timeline_details(details: Any) -> dict[str, Any]:
                 if isinstance(item, (str, int, float, bool)) or item is None:
                     safe_items.append(item)
                 elif isinstance(item, dict):
-                    safe_item = {
-                        str(k): v
-                        for k, v in list(item.items())[:20]
-                        if isinstance(v, (str, int, float, bool)) or v is None
-                    }
-                    safe_items.append(safe_item)
+                    safe_item = _sanitize_timeline_details(dict(list(item.items())[:20]), _depth=_depth + 1)
+                    if safe_item:
+                        safe_items.append(safe_item)
             if safe_items:
                 out[key_norm] = safe_items
         elif isinstance(value, dict):
-            safe_map = {
-                str(k): v
-                for k, v in list(value.items())[:20]
-                if isinstance(v, (str, int, float, bool)) or v is None
-            }
+            safe_map = _sanitize_timeline_details(dict(list(value.items())[:20]), _depth=_depth + 1)
             if safe_map:
                 out[key_norm] = safe_map
     return out

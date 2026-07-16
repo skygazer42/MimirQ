@@ -343,5 +343,3 @@ python scripts/eval_ltr_offline.py \
 - 更强的 hard negative mining（跨 run、跨版本、从 trace/feedback 自动挖掘）
 - 更细粒度的 rollout orchestration（例如审批流、分阶段多波次 canary）
 - 完整 A/B 分流与线上指标自动回写
-
-详见最新差距快照与实施计划：`docs/plans/2026-03-12-top-tier-rag-gap-wave-c-40-task-implementation-plan.md`。

@@ -158,6 +158,7 @@ CORE_TESTS := \
 	tests/test_request_id_middleware.py \
 	tests/test_validation_error_includes_request_id.py \
 	tests/test_allowed_hosts_validation.py \
+	tests/test_controlled_settings_validation.py \
 	tests/test_auth_dependency_sets_request_state.py \
 	tests/test_auth_saml_exchange_endpoint.py \
 	tests/test_tenant_dependency_prefers_verified_jwt_tenant.py \
@@ -167,6 +168,7 @@ CORE_TESTS := \
 	tests/test_documents_upload_url_endpoint.py \
 	tests/test_document_lifecycle_metadata_endpoints.py \
 	tests/test_document_lifecycle_retention.py \
+	tests/test_document_timeline_sanitization.py \
 	tests/test_document_asset_auth.py \
 	tests/test_health_meta_exposure.py \
 	tests/test_documents_batch_reingest_endpoint.py \
@@ -175,6 +177,11 @@ CORE_TESTS := \
 	tests/test_parsing_extract_api.py \
 	tests/test_parsing_extract_service.py \
 	tests/test_bootstrap_mimirq_models.py \
+	tests/test_magicpdf_cuda_health.py \
+	tests/test_magicpdf_dependency_pins.py \
+	tests/test_mineru_model_contract.py \
+	tests/test_model_timestamp_defaults.py \
+	tests/test_parser_factory_colpali.py \
 	tests/test_parsing_quality_gate.py \
 	tests/test_parsing_benchmark_manifest.py \
 	tests/test_chunk_quality_gate_service.py \
@@ -184,6 +191,7 @@ CORE_TESTS := \
 	tests/test_chunk_presets.py \
 	tests/test_chunking_recommendations.py \
 	tests/test_dataset_ingestion_policy_endpoints.py \
+	tests/test_pipeline_config_settings.py \
 	tests/test_ingestion_checkpoint_safety.py \
 	tests/test_indexer_upsert_entities.py \
 	tests/test_index_audit_summary.py \
@@ -201,6 +209,7 @@ CORE_TESTS := \
 	tests/test_context_expansion_framework.py \
 	tests/test_query_decomposition_chain.py \
 	tests/test_evidence_post_rerank_pipeline.py \
+	tests/test_output_guard_settings.py \
 	tests/test_evidence_span_strict_orchestrator.py \
 	tests/test_kg_search_diagnostics_metrics.py \
 	tests/test_kg_path_provenance.py \
@@ -250,10 +259,12 @@ CORE_TESTS := \
 	tests/test_core_test_suite_contract.py
 
 CORE_WEB_TESTS := \
+	components/app-frame.behavior.test.tsx \
 	app/history/page.source.test.ts \
 	app/history/page.empty-state.test.ts \
 	app/history/page.delete-action.test.ts \
 	lib/server-history-page-data.source.test.ts \
+	lib/utils.test.ts \
 	app/knowledge/knowledge-page.entry.test.ts \
 	app/knowledge/retrieval-evidence-route.test.ts \
 	app/knowledge/evidence/page.source.test.ts \

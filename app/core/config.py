@@ -242,6 +242,8 @@ class Settings(BaseSettings):
     ENABLE_DYNAMIC_MODEL_ROUTING: bool = False
     MODEL_COMPLEXITY_THRESHOLD: int = 160
     MODEL_COMPLEXITY_HISTORY_WEIGHT: float = 0.35
+    AGENT_MAX_ITERATIONS: int = 10
+    AGENT_RECURSION_LIMIT: int = 25
     ADAPTIVE_RETRIEVAL_ROUTING_ENABLED: bool = False
     ADAPTIVE_RETRIEVAL_SIMPLE_THRESHOLD: float = 80.0
     ADAPTIVE_RETRIEVAL_SIMPLE_TOP_K: int = 10
@@ -254,6 +256,10 @@ class Settings(BaseSettings):
     INPUT_GUARD_WARN_THRESHOLD: float = 0.35
     INPUT_GUARD_LOG_BLOCKED: bool = True
     OUTPUT_GUARD_ENABLED: bool = False
+    OUTPUT_GUARD_MODE: Literal["warn", "block"] = "warn"
+    OUTPUT_GUARD_SCORE_THRESHOLD: float = 0.7
+    OUTPUT_GUARD_WARN_THRESHOLD: float = 0.35
+    COST_PROMPT_OVERHEAD_TOKENS: int = 50
     LLM_TEMPERATURE: float = 0.7
     # Structured JSON output is latency-sensitive and benefits from deterministic decoding.
     # Keep this separate from the general chat temperature so `/api/v1/chat` can stay fast
@@ -365,6 +371,8 @@ class Settings(BaseSettings):
 
     UPLOAD_DIR: str = "./uploads"
     MAX_FILE_SIZE: int = 50_000_000
+    USER_METADATA_FORM_JSON_MAX_CHARS: int = 20_000
+    USER_METADATA_MAP_FORM_JSON_MAX_CHARS: int = 200_000
     # Hard cap for HTTP request bodies (Content-Length gate; 0 disables).
     # Keep slightly above MAX_FILE_SIZE to account for multipart overhead.
     REQUEST_MAX_BODY_BYTES: int = 60_000_000
@@ -562,8 +570,14 @@ class Settings(BaseSettings):
     MINERU_BACKEND: str = "pipeline"
     MINERU_ENABLED: bool = False
     # MinerU local ZIP mode (Markdown + images)
-    MINERU_LOCAL_SERVER_URL: str = ""
-    MINERU_VL_SERVER: str = ""
+    MINERU_LOCAL_SERVER_URL: str = Field(
+        default="",
+        validation_alias=AliasChoices("MINERU_LOCAL_SERVER_URL", "MINERU_APISERVER"),
+    )
+    MINERU_VL_SERVER: str = Field(
+        default="",
+        validation_alias=AliasChoices("MINERU_VL_SERVER", "MINERU_SERVER_URL"),
+    )
 
     # DeepSeek OCR (SiliconFlow)
     DEEPSEEK_OCR_ENABLED: bool = False
@@ -603,6 +617,14 @@ class Settings(BaseSettings):
     ETL4LLM_PAGE_IMAGE_DPI: int = 150
     # 0 = unlimited.
     ETL4LLM_PAGE_IMAGE_MAX_PAGES: int = 20
+
+    # Tencent Cloud ADP parser (optional).
+    TCADP_SECRET_ID: str = ""
+    TCADP_SECRET_KEY: str = ""
+    TCADP_REGION: str = "ap-guangzhou"
+    TCADP_TABLE_RESULT_TYPE: str = "1"
+    TCADP_MARKDOWN_IMAGE_RESPONSE_TYPE: str = "1"
+    PARSE_QUALITY_OCR_LOW_CONFIDENCE_THRESHOLD: float = 0.7
 
     # Marker (PDF -> Markdown external service; optional)
     MARKER_ENABLED: bool = False
@@ -769,6 +791,7 @@ class Settings(BaseSettings):
     DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID: str = ""
     DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID: str = "system:dify"
     DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON: str = ""
+    DIFY_EXTERNAL_KNOWLEDGE_TRACE_AUTO_CREATE_CONVERSATION_ENABLED: bool = True
     # Background cold-start warmup for Dify external knowledge retrieval. This
     # keeps the first real Dify request from paying tokenizer/BM25/vector setup.
     DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED: bool = True
@@ -832,6 +855,7 @@ class Settings(BaseSettings):
     # Exact-anchor lookup must stay inside the requested knowledge scope unless
     # a deployment explicitly opts into cross-sibling recovery.
     DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTEND_SIBLING_POLICY_SCOPE_ENABLED: bool = False
+    DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTENDED_SCOPE_MAX_DATASETS: int = 80
     # Avoid unindexed JSON text scans on the latency-sensitive Dify path.
     # Structured metadata fields remain available through the anchor fallback.
     DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_TEXT_SCAN_ENABLED: bool = False
@@ -925,6 +949,7 @@ class Settings(BaseSettings):
     CHUNK_DEDUP_ENABLED: bool = False
     # Mid-scale default: keep recall reasonable without exploding context/token cost.
     RETRIEVAL_TOP_K: int = 10
+    RETRIEVAL_MODE: str = "hybrid"
     SIMILARITY_THRESHOLD: float = 0.7
     # Concurrent retrieval across query variants (multi-query / decompose / HyDE).
     RETRIEVAL_QUERY_PARALLELISM: int = 1
@@ -1096,6 +1121,7 @@ class Settings(BaseSettings):
     # is diluted by broad semantic matches.
     RETRIEVAL_METADATA_EXACT_DB_FALLBACK_ENABLED: bool = True
     RETRIEVAL_METADATA_EXACT_DB_MAX_CANDIDATES: int = 80
+    RETRIEVAL_METADATA_EXACT_PRE_FUSION_ENABLED: bool = True
 
     # Optional sparse retrieval channel (SPLADE-style scaffolding).
     #
@@ -1219,6 +1245,9 @@ class Settings(BaseSettings):
     RAG_CONTEXT_SIBLING_SHORT_DOC_MAX_CHUNKS: int = 8
     # Max number of sibling chunks to add in total (0 disables the cap).
     RAG_CONTEXT_SIBLING_MAX_ADDED: int = 40
+    RAG_RETRIEVAL_RAIL_ENABLED: bool = False
+    RAG_RETRIEVAL_RAIL_MASK_PII: bool = False
+    RAG_RETRIEVAL_RAIL_PII_MASK: str = "[REDACTED]"
     # Optional: reorder returned context chunks to improve continuity by stitching contiguous
     # (document_id, chunk_index) sequences together. Default off to preserve legacy ordering.
     RAG_CONTEXT_STITCHING_ENABLED: bool = False
@@ -1336,12 +1365,6 @@ class Settings(BaseSettings):
 
     # Middleware System Configuration
     MIDDLEWARE_ENABLED: bool = True
-    MIDDLEWARE_ERROR_HANDLER_ENABLED: bool = True
-    MIDDLEWARE_ERROR_HANDLER_MAX_RETRIES: int = 3
-    MIDDLEWARE_DYNAMIC_MODEL_ENABLED: bool = False  # Syncs with ENABLE_DYNAMIC_MODEL_ROUTING
-    MIDDLEWARE_DYNAMIC_PROMPT_ENABLED: bool = True
-    MIDDLEWARE_INJECT_TIME_CONTEXT: bool = True
-    MIDDLEWARE_DEFAULT_RESPONSE_STYLE: str = ""  # professional | casual | technical | concise | detailed
     # Tool-call middleware (logging wrapper)
     TOOL_CALL_LOG_ENABLED: bool = False
     TOOL_CALL_LOG_INCLUDE_PREVIEW: bool = False
@@ -1996,6 +2019,7 @@ class Settings(BaseSettings):
     KG_ENTITY_LINK_MAX_ENTITIES_PER_EVENT: int = 60
     # KG API guardrails.
     KG_API_MAX_DOCUMENT_IDS: int = 500
+    KG_API_METRICS_ENABLED: bool = False
     # KG search guardrails/observability.
     # - Max clue items returned by KG search (0 disables).
     KG_SEARCH_MAX_CLUES: int = 2000
@@ -2044,6 +2068,8 @@ class Settings(BaseSettings):
     KG_SEARCH_CACHE_TTL_SEC: int = 30
     KG_SEARCH_CACHE_MAX_ENTRIES: int = 256
     KG_SEARCH_MULTI_DATASET_MAX_CONCURRENCY: int = 4
+    KG_SEARCH_MULTI_DATASET_MAX_EVENTS: int = 80
+    KG_SEARCH_MULTI_DATASET_MAX_ENTITIES: int = 80
     # KG quality diagnostics (best-effort; aggregate-only).
     KG_QUALITY_LOW_CONFIDENCE_THRESHOLD: float = 0.30
     # Upper bound for relation edges loaded into component analysis (0 disables component analysis).

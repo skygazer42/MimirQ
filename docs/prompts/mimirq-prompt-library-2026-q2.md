@@ -3,14 +3,13 @@
 > **本文档定位**：MimirQ 系统所需的全部 prompt 提示词的中文参考手册。**上半部分（Part A）** 是业界调研对比：5 大风格速查、11+ 开源 prompt 库索引、MimirQ 现状速查；**下半部分（Part B）** 是按 13 类场景给出的可直接复用中文 prompt 库——每类至少含"现状基线（MimirQ 现有 prompt 中文转写）"+"业界优秀版本（中文翻译并适配）"两条，共 26+ 个完整 prompt。
 >
 > **注意**：
-> - 本文档**不是代码**，是参考资源；后续把这些 prompt 迁入 `app/rag/llm/prompts/` 留待单独 implementation plan。
+> - 本文档**不是代码**，是参考资源；生产模板实现位于 `app/rag/llm/prompts/`。
 > - "prompt template 内容"与"前端 UI i18n"是不同维度——本手册只覆盖前者。
-> - 调研基准日期：2026-05-18。行号在该日期对齐 MimirQ main 分支；后续代码变化由迁移 plan 同步。
+> - 调研基准日期：2026-05-18。运行行为和模板版本始终以当前代码为准。
 >
 > **关联文档**：
-> - `plans/rag-prompts-mainstream-research-2026-q2.md`（业界框架综述，与本文档互补）
-> - `plans/rag-ibm-champion-blueprint-2026-q2.md §2.7`（Prompt-as-Code 范式）
 > - `app/models/prompt_template.py`（数据库 schema：version / parent_id / ab_experiment_key / ab_weight）
+> - `app/rag/llm/prompts/formal_templates.py`（生产 Prompt-as-Code 公共约束）
 
 ---
 
@@ -241,7 +240,6 @@ Return JSON: {"score": float, "reason": "..."}
 | `app/models/prompt_template.py:15` | id / name / category / template_text / version / parent_id / ab_experiment_key / ab_weight / usage_count / tenant_id / created_at |
 | `app/api/v1/prompt_templates.py` | CRUD + version 管理 |
 | `app/services/prompt_resolver.py` | SHA256 hashing 做 A/B 路由 |
-| `app/rag/middleware/dynamic_prompt.py` | 运行时动态拼装 |
 
 ### A.3.4 整体评估
 

@@ -1,6 +1,6 @@
 # MimirQ 全栈手册（Docusaurus）
 
-本目录为 [计划](https://github.com/skygazer42/MimirQ) 中的 **docs-site**：与 `docs/api/site` 的 Redoc **并存**，部署在 GitHub Pages 的 **`/MimirQ/handbook/`** 路径下。
+本目录为 [MimirQ](https://github.com/skygazer42/MimirQ) 的 **docs-site**：与 `docs/api/site` 的 Redoc **并存**，部署在 GitHub Pages 的 **`/MimirQ/handbook/`** 路径下。
 
 ## 本地开发
 

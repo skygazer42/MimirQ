@@ -1,8 +1,5 @@
 """
-Formula OCR / LaTeX enrichment (Opt 3).
-
-docs/plans/2026-03-19-document-parsing-optimization.md:
-- "公式识别与 LaTeX 转写"
+Formula OCR / LaTeX enrichment.
 
 Design constraints:
 - Disabled by default; requires an external HTTP backend.

@@ -43,8 +43,8 @@ class TCADPParser(BaseAdvancedParser):
             table_result_type: Table output type.
             markdown_image_response_type: Image response type.
         """
-        self.secret_id = secret_id or getattr(settings, "TCADP_SECRET_ID", "")
-        self.secret_key = secret_key or getattr(settings, "TCADP_SECRET_KEY", "")
+        self.secret_id = secret_id or settings.TCADP_SECRET_ID
+        self.secret_key = secret_key or settings.TCADP_SECRET_KEY
         self.region = region
         self.table_result_type = table_result_type
         self.markdown_image_response_type = markdown_image_response_type

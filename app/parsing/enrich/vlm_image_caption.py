@@ -1,8 +1,5 @@
 """
-VLM-backed inline image captioning (Opt 5).
-
-docs/plans/2026-03-19-document-parsing-optimization.md:
-- "InlineAssetStage 中统一对所有解析路径的图片 asset 做 VLM 描述"
+VLM-backed inline image captioning.
 
 Design constraints:
 - Safe defaults: disabled unless explicitly enabled + API URL configured.

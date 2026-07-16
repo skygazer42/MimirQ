@@ -391,7 +391,7 @@ make changzhou-dify-workflow-sync-apply
 - [ ] 更多数据源连接器（Confluence / S3 / Notion）
 - [ ] 可视化 RAG 工作流编辑器
 
-> 完整 Roadmap 请参考 [docs/plans/](./docs/plans/)
+> 后续 Roadmap 通过 [GitHub Issues](https://github.com/skygazer42/MimirQ/issues) 公开跟踪。
 
 ---
 

@@ -184,7 +184,6 @@ Rollout recommendation:
 
 MimirQ includes RAGAS evaluation and regression helpers. See:
 - `docs/guides/regression_gate.md`
-- `docs/feature_benchmark.md`
 
 ## 7) Metadata Filtering (Scope + Precision)
 

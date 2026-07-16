@@ -180,7 +180,6 @@ from app.rag.kg.pipeline import extract_events
 from app.rag.preprocessing.html_canonical import extract_canonical_url, normalize_url_for_dedup
 from app.rag.preprocessing.processor import governance_processor
 from app.rag.preprocessing.rules import build_governance_rules
-from app.services.audit_log_service import audit_log_event
 from app.services.dataset_precheck_ingestion_suggestion import apply_ingestion_policy_suggestion
 from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
 from app.services.dataset_service import EDIT_ROLES, DatasetService
@@ -191,7 +190,6 @@ from app.services.document_preview_utils import (
     _materialize_local_images_for_preview,
 )
 from app.services.index_audit_service import build_index_drift_marker
-from app.services.indexer import Indexer
 from app.services.ingestion_policy import (
     match_ingestion_rule,
     parse_ingestion_policy_from_metadata,
@@ -205,7 +203,7 @@ from app.services.pipeline_config import (
     upsert_pipeline_metadata,
 )
 from app.services.tenant_group_service import TenantGroupService
-from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri
+from app.storage.object.minio import minio_service
 from app.tasks.queue import enqueue_document_processing
 from app.types.pipeline import PipelineOptions
 
@@ -291,21 +289,6 @@ PREVIEW_IMAGE_REF_RE = re.compile(rf"(?:https?://[^\s)\"']+)?/api/v1/documents/i
 MINIO_IMAGE_REF_RE = re.compile(r"(?:https?://[^\s)\"']+)?/api/v1/documents/image-url/([^\s)\"']+)")
 # Position tags emitted by some PDF parsers (used for PDF overlay highlighting).
 POSITION_TAG_RE = re.compile(r"@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)##")
-
-_TIMELINE_REDACT_KEYS = {
-    "content",
-    "text",
-    "markdown",
-    "html",
-    "raw",
-    "prompt",
-    "question",
-    "answer",
-    "secret",
-    "token",
-    "password",
-    "api_key",
-}
 
 DOC_NOT_FOUND_DETAIL = 'Document not found'
 INVALID_RANGE_HEADER_DETAIL = 'Invalid Range header'
@@ -720,43 +703,6 @@ def _decode_escaped_input_preview(value: str) -> str:
         return json.loads(f"\"{escaped}\"")
     except Exception:
         return raw
-
-
-def _sanitize_timeline_detail_value(value: Any) -> Any:
-    if isinstance(value, str):
-        vv = value.strip()
-        return vv[:400] + "..." if len(vv) > 400 else vv
-
-    if value is None or isinstance(value, (int, float, bool)):
-        return value
-
-    try:
-        dumped = json.dumps(value, ensure_ascii=True, default=str)
-    except Exception:
-        return "<redacted>"
-    return "<redacted>" if len(dumped) > 800 else value
-
-
-def _sanitize_timeline_details(details: Any) -> dict[str, Any]:
-    """
-    Best-effort PII-minimal details projection for user-facing timelines.
-
-    Audit logs should already be small, but timeline is displayed broadly; keep it safe by default.
-    """
-    if not isinstance(details, dict):
-        return {}
-
-    out: dict[str, Any] = {}
-    for k, v in details.items():
-        key = str(k or "").strip()
-        if not key:
-            continue
-        lowered = key.lower()
-        if lowered in _TIMELINE_REDACT_KEYS:
-            continue
-        out[key] = _sanitize_timeline_detail_value(v)
-
-    return out
 
 
 def _filter_chunker_kwargs_for_strategy(strategy: str, kwargs: dict[str, Any]) -> dict[str, Any]:
@@ -2694,290 +2640,6 @@ enable_document_chunk = document_chunks_write.enable_document_chunk
 reembed_document_chunks = document_chunks_write.reembed_document_chunks
 router.include_router(document_chunks_write.router)
 
-
-def _get_document_for_delete(db: Session, *, tenant_id: UUID, document_id: uuid.UUID) -> DBDocument:
-    document = (
-        db.query(DBDocument)
-        .filter(
-            DBDocument.id == document_id,
-            DBDocument.tenant_id == tenant_id,
-        )
-        .first()
-    )
-    if not document:
-        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
-    return document
-
-
-def _assert_document_delete_permission(
-    db: Session,
-    *,
-    tenant_id: UUID,
-    account_id: str,
-    document: DBDocument,
-    enforce_permissions: bool,
-) -> None:
-    if enforce_permissions and document.dataset_id:
-        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_writable(db, ds, account_id)
-
-
-def _cancel_processing_document(db: Session, document: DBDocument) -> None:
-    if str(document.status or "").lower() not in {"pending", "processing"}:
-        return
-    doc_meta = dict(document.doc_metadata or {})
-    doc_meta["cancel_requested"] = True
-    document.doc_metadata = doc_meta
-    document.status = "cancelled"
-    document.processing_progress = 0
-    document.current_stage = "cancelled"
-    document.error_message = "cancelled"
-    db.commit()
-    db.refresh(document)
-
-
-def _document_task_ids(document: DBDocument) -> list[str]:
-    doc_meta = document.doc_metadata or {}
-    task_ids: list[str] = []
-    for key in ("task_id", "kg_task_id"):
-        value = doc_meta.get(key) if isinstance(doc_meta, dict) else None
-        if isinstance(value, str) and value.strip():
-            task_ids.append(value.strip())
-    return task_ids
-
-
-async def _abort_document_tasks_before_delete(*, document_id: uuid.UUID, task_ids: list[str]) -> None:
-    if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)) or not task_ids:
-        return
-    try:
-        from arq.jobs import Job
-
-        from app.tasks.queue import get_queue
-
-        q = await get_queue()
-        if q is None:
-            return
-        queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
-        for task_id in task_ids:
-            job = Job(task_id, q, _queue_name=queue_name)
-            with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
-                await job.abort(timeout=0.2)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "Failed to abort document tasks before delete: doc=%s tasks=%s err=%s",
-            document_id,
-            task_ids,
-            str(exc)[:200],
-        )
-
-
-def _add_document_metadata_img_ids(img_ids: set[str], document: DBDocument) -> None:
-    doc_meta = document.doc_metadata or {}
-    doc_img_ids = doc_meta.get("img_ids") if isinstance(doc_meta, dict) else None
-    if not isinstance(doc_img_ids, list):
-        return
-    for value in doc_img_ids:
-        if isinstance(value, str) and value.strip():
-            img_ids.add(value)
-
-
-def _add_chunk_metadata_img_ids(db: Session, *, tenant_id: UUID, document_id: uuid.UUID, img_ids: set[str]) -> None:
-    chunks = (
-        db.query(DocumentChunk)
-        .filter(DocumentChunk.document_id == document_id, DocumentChunk.tenant_id == tenant_id)
-        .all()
-    )
-    for chunk in chunks:
-        img_id = chunk.doc_metadata.get("img_id") if chunk.doc_metadata else None
-        if isinstance(img_id, str) and img_id.strip():
-            img_ids.add(img_id)
-
-
-def _delete_document_minio_images(db: Session, *, tenant_id: UUID, document_id: uuid.UUID, document: DBDocument) -> None:
-    if not settings.MINIO_ENABLED:
-        return
-    img_ids: set[str] = set()
-    _add_document_metadata_img_ids(img_ids, document)
-    _add_chunk_metadata_img_ids(db, tenant_id=tenant_id, document_id=document_id, img_ids=img_ids)
-    for img_id in sorted(img_ids):
-        try:
-            minio_service.delete_image(img_id, extension="jpg")
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to delete image %s from object storage: %s", img_id, exc)
-
-
-def _delete_document_table_store(*, tenant_id: UUID, document_id: uuid.UUID, document: DBDocument) -> None:
-    if document.dataset_id is None or str(document.file_type or "").lower() not in {"csv", "xls", "xlsx"}:
-        return
-    try:
-        from app.services.table_store import table_store_path
-
-        db_path = table_store_path(tenant_id=tenant_id, dataset_id=document.dataset_id, document_id=document.id)
-        if db_path.exists():
-            db_path.unlink(missing_ok=True)
-        with contextlib.suppress(Exception):
-            db_path.parent.rmdir()
-        with contextlib.suppress(Exception):
-            db_path.parent.parent.rmdir()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to delete table store file for document %s: %s", document_id, str(exc)[:200])
-
-
-def _delete_minio_document_object(*, raw_path: str, tenant_id: UUID, document: DBDocument) -> None:
-    if not bool(getattr(settings, "MINIO_ENABLED", False)):
-        return
-    try:
-        ref = parse_minio_uri(raw_path)
-        if ref.bucket != str(getattr(settings, "MINIO_BUCKET_NAME", "")):
-            return
-        dataset_id = str(document.dataset_id) if document.dataset_id else str(tenant_id)
-        expected_object = minio_service.build_document_object_name(
-            tenant_id=str(tenant_id),
-            dataset_id=dataset_id,
-            document_id=str(document.id),
-            extension=f".{(document.file_type or '').lower()}",
-        )
-        if ref.object_name == expected_object:
-            minio_service.delete_object(object_name=ref.object_name)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to delete document from object storage: %s", exc)
-
-
-def _delete_local_document_file(*, raw_path: str, tenant_id: UUID) -> None:
-    file_path = Path(raw_path)
-    if not file_path.exists() or not file_path.is_file():
-        return
-
-    from app.services.path_safety import resolve_under_base
-
-    tenant_root = Path(settings.UPLOAD_DIR) / str(tenant_id)
-    safe = resolve_under_base(file_path, base=tenant_root)
-    if safe is None:
-        logger.warning("Skipping unsafe document file delete: %s", raw_path)
-        return
-    safe.unlink(missing_ok=True)
-
-
-def _delete_document_file(*, tenant_id: UUID, document: DBDocument) -> None:
-    try:
-        raw_path = str(document.file_path or "").strip()
-        if not raw_path or raw_path.startswith(MANUAL_FILE_PATH_PREFIX):
-            return
-        if is_minio_uri(raw_path):
-            _delete_minio_document_object(raw_path=raw_path, tenant_id=tenant_id, document=document)
-            return
-        _delete_local_document_file(raw_path=raw_path, tenant_id=tenant_id)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to delete file: %s", exc)
-
-
-def _touch_dataset_updated_after_delete(db: Session, *, tenant_id: UUID, document: DBDocument) -> None:
-    if getattr(document, "dataset_id", None) is None:
-        return
-    try:
-        from app.models.dataset import Dataset as DBDataset  # noqa: WPS433
-
-        ds = (
-            db.query(DBDataset)
-            .filter(
-                DBDataset.tenant_id == tenant_id,
-                DBDataset.id == document.dataset_id,
-            )
-            .first()
-        )
-        if ds is not None:
-            ds.updated_at = datetime.now(UTC)
-    except Exception as exc:  # noqa: BLE001
-        logger.debug("Failed touching dataset.updated_at after delete: %s", str(exc)[:200])
-
-
-def _delete_document_record(
-    db: Session,
-    *,
-    tenant_id: UUID,
-    account_id: str,
-    document_id: uuid.UUID,
-    document: DBDocument,
-) -> None:
-    db.delete(document)
-    audit_log_event(
-        db,
-        tenant_id=tenant_id,
-        actor_id=account_id,
-        action="document.delete",
-        resource_type="document",
-        resource_id=str(document_id),
-        details={
-            "dataset_id": str(document.dataset_id) if getattr(document, "dataset_id", None) else None,
-            "file_type": str(getattr(document, "file_type", "") or ""),
-            "file_size": int(getattr(document, "file_size", 0) or 0),
-        },
-    )
-    db.commit()
-
-
-def _cleanup_document_kg_artifacts(db: Session, *, tenant_id: UUID, document_id: uuid.UUID) -> None:
-    try:
-        from app.rag.kg.models import KgRelation
-
-        db.query(KgRelation).filter(
-            KgRelation.tenant_id == tenant_id,
-            KgRelation.document_id == document_id,
-        ).delete(synchronize_session=False)
-        Indexer(db).delete_event_indexes(
-            tenant_id=tenant_id,
-            document_id=document_id,
-            commit=False,
-            prune_orphan_entities=True,
-        )
-        db.commit()
-    except Exception:
-        with contextlib.suppress(Exception):
-            db.rollback()
-
-
-async def _delete_document_lifecycle(
-    *,
-    document_id: uuid.UUID,
-    tenant_id: UUID,
-    account_id: str,
-    db: Session,
-    enforce_permissions: bool = True,
-    enforce_membership: bool = True,
-) -> None:
-    """
-    Internal document delete lifecycle.
-
-    - `enforce_permissions=True` matches the public endpoint behavior.
-    - `enforce_permissions=False` is intended for admin-only lifecycle operations (e.g. dataset purge),
-      where the caller already performed the necessary RBAC checks.
-    """
-    if bool(enforce_membership):
-        DatasetService.ensure_member(db, tenant_id, account_id)
-    document = _get_document_for_delete(db, tenant_id=tenant_id, document_id=document_id)
-    _assert_document_delete_permission(
-        db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        document=document,
-        enforce_permissions=enforce_permissions,
-    )
-    _cancel_processing_document(db, document)
-    await _abort_document_tasks_before_delete(document_id=document_id, task_ids=_document_task_ids(document))
-    _delete_document_minio_images(db, tenant_id=tenant_id, document_id=document_id, document=document)
-    Indexer(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
-    _delete_document_table_store(tenant_id=tenant_id, document_id=document_id, document=document)
-    _delete_document_file(tenant_id=tenant_id, document=document)
-    _touch_dataset_updated_after_delete(db, tenant_id=tenant_id, document=document)
-    _delete_document_record(
-        db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        document_id=document_id,
-        document=document,
-    )
-    _cleanup_document_kg_artifacts(db, tenant_id=tenant_id, document_id=document_id)
-    return None
 
 document_lifecycle_service = importlib.import_module("app.services.document_lifecycle_service")
 _get_document_for_delete = document_lifecycle_service._get_document_for_delete

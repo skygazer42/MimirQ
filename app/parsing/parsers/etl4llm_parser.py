@@ -345,7 +345,7 @@ class Etl4LlmParser:
             has_refs = ("![" in lowered) or ("<img" in lowered)
             if fallback_enabled and self._extract_images and file_path.suffix.lower() == ".pdf" and (not has_any_images) and (not has_refs):
                 dpi = int(getattr(settings, "ETL4LLM_PAGE_IMAGE_DPI", 150) or 150)
-                max_pages = int(getattr(settings, "ETL4LLM_PAGE_IMAGE_MAX_PAGES", 20) or 20)
+                max_pages = int(settings.ETL4LLM_PAGE_IMAGE_MAX_PAGES)
                 max_pages = max(0, max_pages)
 
                 page_refs: list[str] = []

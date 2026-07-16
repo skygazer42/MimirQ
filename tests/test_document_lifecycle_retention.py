@@ -6,6 +6,15 @@ from unittest.mock import ANY
 import pytest
 
 
+def test_documents_lifecycle_exports_delegate_to_service() -> None:
+    from app.api.v1 import documents
+    from app.services import document_lifecycle_service
+
+    assert documents._get_document_for_delete is document_lifecycle_service._get_document_for_delete
+    assert documents._delete_document_file is document_lifecycle_service._delete_document_file
+    assert documents._delete_document_lifecycle is document_lifecycle_service._delete_document_lifecycle
+
+
 class _LifecycleDB:
     def __init__(self, document, *, fail_commit_at: int | None = None) -> None:  # noqa: ANN001
         self.document = document

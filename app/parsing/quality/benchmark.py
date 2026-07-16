@@ -1,8 +1,5 @@
 """
-Parsing benchmark helpers (Opt 1).
-
-docs/plans/2026-03-19-document-parsing-optimization.md:
-- "维护 golden-set 文档，对每个解析器计算 text edit distance / TEDS(表格) / reading order NID / image extraction recall"
+Parsing benchmark helpers for text, table, reading-order, and image quality.
 
 This module provides lightweight, dependency-free proxy metrics so we can
 benchmark parsing backends in CI/nightly jobs without requiring heavyweight

@@ -1,9 +1,6 @@
 """
 Orientation helpers for preprocessing.
 
-docs/plans/2026-03-19-model-based-deskew-watermark-removal.md (Module 3):
-- Page orientation detection (0/90/180/270)
-
 This implementation is best-effort and lightweight:
 - Images: EXIF transpose (no model).
 - PDFs: normalize page rotation metadata when a dominant rotation is detected.

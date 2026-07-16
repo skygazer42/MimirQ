@@ -250,8 +250,8 @@ def _merge_kg_dataset_shard_results(
         if summary:
             global_summaries.append(summary)
 
-    max_events = max(1, int(getattr(settings, "KG_SEARCH_MULTI_DATASET_MAX_EVENTS", 80) or 80))
-    max_entities = max(1, int(getattr(settings, "KG_SEARCH_MULTI_DATASET_MAX_ENTITIES", 80) or 80))
+    max_events = max(1, int(settings.KG_SEARCH_MULTI_DATASET_MAX_EVENTS))
+    max_entities = max(1, int(settings.KG_SEARCH_MULTI_DATASET_MAX_ENTITIES))
     events = sorted(
         events_by_key.values(),
         key=lambda item: (-_kg_item_score(item), int(item.get("_merge_order", 0) or 0)),

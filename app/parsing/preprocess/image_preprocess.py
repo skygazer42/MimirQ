@@ -5,7 +5,7 @@ This module sits *before* the parsing subprocess backends. It is meant to:
 - Fix obvious orientation issues (EXIF transpose) for standalone images
 - Optionally call external services for deskew/dewarp/watermark removal
 
-Scope (per docs/plans/2026-03-19-model-based-deskew-watermark-removal.md):
+Scope:
 - Feature-flagged stage in ingest pipeline (disabled by default).
 - Lightweight orientation normalization (EXIF for images; rotation metadata for PDFs).
 - Optional external HTTP backends for deskew and watermark removal.

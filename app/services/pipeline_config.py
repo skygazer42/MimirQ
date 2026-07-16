@@ -793,7 +793,7 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
     governance_pii_max_hits = (
         options.governance_pii_max_hits
         if options.governance_pii_max_hits is not None
-        else int(getattr(settings, "GOVERNANCE_PII_MAX_HITS", -1) or -1)
+        else int(settings.GOVERNANCE_PII_MAX_HITS)
     )
     governance_llm_auto_tagging_enabled = (
         getattr(settings, "GOVERNANCE_LLM_AUTO_TAGGING_ENABLED", False)
@@ -838,7 +838,7 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
     governance_secrets_max_hits = (
         options.governance_secrets_max_hits
         if options.governance_secrets_max_hits is not None
-        else int(getattr(settings, "GOVERNANCE_SECRETS_MAX_HITS", -1) or -1)
+        else int(settings.GOVERNANCE_SECRETS_MAX_HITS)
     )
     governance_max_blank_lines = (
         options.governance_max_blank_lines
@@ -1030,17 +1030,17 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
     table_store_max_rows = (
         options.table_store_max_rows
         if options.table_store_max_rows is not None
-        else int(getattr(settings, "TABLE_STORE_MAX_ROWS", 200_000) or 200_000)
+        else int(settings.TABLE_STORE_MAX_ROWS)
     )
     table_store_max_cols = (
         options.table_store_max_cols
         if options.table_store_max_cols is not None
-        else int(getattr(settings, "TABLE_STORE_MAX_COLS", 500) or 500)
+        else int(settings.TABLE_STORE_MAX_COLS)
     )
     table_store_sample_rows = (
         options.table_store_sample_rows
         if options.table_store_sample_rows is not None
-        else int(getattr(settings, "TABLE_STORE_SAMPLE_ROWS", 20) or 20)
+        else int(settings.TABLE_STORE_SAMPLE_ROWS)
     )
     table_store_auto_route = (
         getattr(settings, "TABLE_STORE_AUTO_ROUTE", False)
