@@ -84,8 +84,3 @@ Refactor instead:
 
 - Move the shared utility into `app.core.*` (or a lower-level module) so both sides can import it safely.
 - Keep degradation at the third-party boundary (`ImportError`) and make it observable (log + reason).
-
-## Notes
-
-- `AGENTS.md` mentions the Corridor MCP tool for plan/threat analysis, but the current environment may not have it configured.
-  When unavailable, do a manual security review and keep changes small, observable, and test-covered.

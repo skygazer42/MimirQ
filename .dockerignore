@@ -45,8 +45,16 @@ app/deepdoc/resources/models/
 
 .idea/
 .cursor/
+.run/
+.agents/
+.beads/
+.claude/
 .codex/
 .gemini/
+.omx/
+.serena/
 .shared/
 .docling_tmp/
 .worktrees/
+AGENTS.md
+skills-lock.json

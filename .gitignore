@@ -35,6 +35,7 @@ package-lock.json
 
 # Environment
 .env
+.env.lock
 .env.local
 .env.*.local
 
@@ -42,11 +43,14 @@ package-lock.json
 .vscode/
 .idea/
 .cursor/
+.run/
 *.swp
 *.swo
 *~
 
 # AI/agent tooling (local-only; do not commit agent state or skills)
+/AGENTS.md
+/skills-lock.json
 .agents/
 .beads/
 .claude/

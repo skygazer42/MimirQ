@@ -30,7 +30,3 @@ Makefile text eol=lf
 *.gif binary
 *.pdf binary
 *.onnx filter=lfs diff=lfs merge=lfs -text
-
-
-# Use bd merge for beads JSONL files
-.beads/issues.jsonl merge=beads

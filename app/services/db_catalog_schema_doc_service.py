@@ -1,9 +1,8 @@
 """
-DB catalog -> "virtual schema document" renderer and (later) upsert helpers.
+DB catalog virtual schema document renderer.
 
-Task intent (from AGENTS.md / project notes):
-- Provide a digest-only document containing table/column metadata + safe aggregates,
-  so RAG retrieval can hit table/field knowledge without exposing raw DB rows.
+Provides a digest-only document containing table/column metadata and safe
+aggregates, so retrieval can find schema knowledge without exposing raw rows.
 """
 
 
