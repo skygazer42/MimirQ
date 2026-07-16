@@ -1,40 +1,40 @@
 {
   "plugin_id": "changzhou-gov-service-knowledge",
   "version": "1.0.0",
-  "package_hash": "bdf4bb47ad8dbbd511b51b3d87e0c591e4fe6f4160cafa8a6352ce6079c61f75",
-  "tested_at": "2026-07-10T12:42:47.884346+00:00",
+  "package_hash": "61241af36b1a823e4b816ef73cf296da0aa7d8816b3de8bcc7be1b3afdc6b83f",
+  "tested_at": "2026-07-16T05:22:00.271386+00:00",
   "passed": true,
   "stages": {
     "governance": {
       "passed": true,
-      "input_count": 8,
-      "output_count": 8,
-      "output_chars": 959,
+      "input_count": 9,
+      "output_count": 9,
+      "output_chars": 1455,
       "metadata_validation": {
         "ok": true,
-        "checked": 8,
+        "checked": 9,
         "errors": []
       }
     },
     "chunk": {
       "passed": true,
-      "input_count": 8,
-      "output_count": 11,
-      "output_chars": 1555,
+      "input_count": 9,
+      "output_count": 12,
+      "output_chars": 2067,
       "metadata_validation": {
         "ok": true,
-        "checked": 11,
+        "checked": 12,
         "errors": []
       }
     },
     "kg": {
       "passed": true,
-      "input_count": 11,
-      "output_count": 11,
-      "output_chars": 1555,
+      "input_count": 12,
+      "output_count": 12,
+      "output_chars": 2067,
       "kg_validation": {
         "ok": true,
-        "checked": 11,
+        "checked": 12,
         "errors": []
       }
     }
@@ -47,7 +47,7 @@
       "经开区社会保障卡补卡在哪里办理？",
       "经开区社会保障卡补卡咨询电话是多少？",
       "经开区社会保障卡补卡能不能网上办？",
-      "住宅专项维修资金的交存标准是多少？"
+      "残疾人服务“一件事”包含哪些事项？"
     ]
   }
 }
