@@ -1816,7 +1816,37 @@ class Indexer:
                 )
                 for index, doc in enumerate(docs)
             ]
-            return adapter.add_vectors(items, embeddings=vectors, batch_size=_vector_write_batch_size(), upsert=True)
+            # Retry the Milvus write on transient errors, mirroring the default
+            # path (_write_chunk_vector_batch_with_retries). Embeddings are a pure
+            # function of the input and already batched inside the provider, so we
+            # only re-run the vector-store write, not the embedding step.
+            max_retries, backoff = _vector_write_retry_policy()
+            ids: list[str | None] = []
+            for attempt in range(max_retries + 1):
+                try:
+                    ids = adapter.add_vectors(
+                        items, embeddings=vectors, batch_size=_vector_write_batch_size(), upsert=True
+                    )
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    if attempt >= max_retries:
+                        raise
+                    _log_chunk_vector_retry(
+                        tenant_id=tenant_id,
+                        document_id=document_id,
+                        attempt=attempt + 1,
+                        max_attempts=max_retries + 1,
+                        batch_size=len(items),
+                        backoff=backoff,
+                        error=exc,
+                    )
+                    time.sleep(backoff)
+                    backoff *= 2
+            # Fail closed on a short/long id list so a partial Milvus write cannot
+            # silently desynchronize chunk<->vector_id alignment downstream.
+            if len(ids) != len(docs):
+                raise ValueError(f"vector ids length {len(ids)} != docs length {len(docs)}")
+            return ids
         except Exception as exc:
             logger.warning(
                 "Dataset-scoped vector write failed collection=%s space=%s: %s",

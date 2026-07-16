@@ -3,6 +3,7 @@ import threading
 import time
 import uuid
 from collections import OrderedDict
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -55,6 +56,66 @@ def test_default_vector_write_failure_raises_and_recovery_can_succeed(
         enable_vectors=True,
         embedding_runtime=_embedding_runtime(),
     ) == ["vector-1"]
+
+
+def test_dataset_scoped_vector_write_retries_without_reembedding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.services.indexer as indexer_module
+
+    class _Embeddings:
+        calls = 0
+
+        def embed_documents(self, texts):  # noqa: ANN001
+            self.calls += 1
+            return [[1.0] for _ in texts]
+
+    class _Adapter:
+        calls = 0
+
+        def add_vectors(self, items, **_kwargs):  # noqa: ANN001
+            self.calls += 1
+            if self.calls == 1:
+                raise ConnectionError("transient")
+            return [str(item["id"]) for item in items]
+
+    embeddings = _Embeddings()
+    adapter = _Adapter()
+    monkeypatch.setattr(indexer_module, "create_embeddings_for_runtime", lambda _runtime: embeddings)
+    monkeypatch.setattr(indexer_module, "get_milvus_adapter", lambda _name: adapter)
+    monkeypatch.setattr(indexer_module, "_vector_write_retry_policy", lambda: (1, 0.0))
+    monkeypatch.setattr(indexer_module.time, "sleep", lambda _seconds: None)
+
+    document_id = uuid.uuid4()
+    result = indexer_module.Indexer.__new__(indexer_module.Indexer)._write_dataset_scoped_chunk_vectors(
+        [{"content": "chunk", "metadata": {"chunk_id": "chunk-1"}}],
+        document_id=document_id,
+        tenant_id=uuid.uuid4(),
+        runtime=replace(_embedding_runtime(), dataset_scoped=True),
+    )
+
+    assert result == ["chunk-1"]
+    assert embeddings.calls == 1
+    assert adapter.calls == 2
+
+
+def test_dataset_scoped_vector_write_rejects_misaligned_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.services.indexer as indexer_module
+
+    embeddings = SimpleNamespace(embed_documents=lambda texts: [[1.0] for _ in texts])
+    adapter = SimpleNamespace(add_vectors=lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(indexer_module, "create_embeddings_for_runtime", lambda _runtime: embeddings)
+    monkeypatch.setattr(indexer_module, "get_milvus_adapter", lambda _name: adapter)
+
+    with pytest.raises(ValueError, match="vector ids length 0 != docs length 1"):
+        indexer_module.Indexer.__new__(indexer_module.Indexer)._write_dataset_scoped_chunk_vectors(
+            [{"content": "chunk", "metadata": {"chunk_id": "chunk-1"}}],
+            document_id=uuid.uuid4(),
+            tenant_id=uuid.uuid4(),
+            runtime=replace(_embedding_runtime(), dataset_scoped=True),
+        )
 
 
 def _configure_retrieval_test(monkeypatch: pytest.MonkeyPatch) -> None:
