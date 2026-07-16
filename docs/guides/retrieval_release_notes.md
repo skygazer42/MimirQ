@@ -10,9 +10,9 @@ Goal:
 
 ---
 
-## 1) Copy/Paste Block for `CHANGELOG.md`
+## 1) GitHub Release Block
 
-Use the section below in each release (or in `Unreleased` during development):
+Use the section below in each GitHub Release:
 
 ```markdown
 ### Retrieval Quality

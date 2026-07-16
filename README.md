@@ -12,8 +12,7 @@
   <a href="./docs/api/README.md"><b>API 导读</b></a> ·
   <a href="#-快速开始"><b>快速开始</b></a> ·
   <a href="https://github.com/skygazer42/MimirQ/issues"><b>反馈</b></a> ·
-  <a href="./CHANGELOG.md"><b>更新日志</b></a> ·
-  <a href="./CONTRIBUTING.md"><b>参与贡献</b></a>
+  <a href="./.github/CONTRIBUTING.md"><b>参与贡献</b></a>
 </p>
 
 <p>
@@ -397,7 +396,7 @@ make changzhou-dify-workflow-sync-apply
 
 ## 🤝 参与贡献
 
-我们欢迎任何形式的贡献！请参阅 [CONTRIBUTING.md](./CONTRIBUTING.md) 了解详情。
+我们欢迎任何形式的贡献！请参阅 [CONTRIBUTING.md](./.github/CONTRIBUTING.md) 了解详情。
 
 ```bash
 # Fork 后克隆

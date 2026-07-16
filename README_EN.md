@@ -12,8 +12,7 @@
   <a href="./docs/api/README.md"><b>API Guide</b></a> ·
   <a href="#-quick-start"><b>Quick Start</b></a> ·
   <a href="https://github.com/skygazer42/MimirQ/issues"><b>Feedback</b></a> ·
-  <a href="./CHANGELOG.md"><b>Changelog</b></a> ·
-  <a href="./CONTRIBUTING.md"><b>Contributing</b></a>
+  <a href="./.github/CONTRIBUTING.md"><b>Contributing</b></a>
 </p>
 
 <p>
@@ -384,7 +383,7 @@ cd web && pnpm lint && pnpm test
 
 ## 🤝 Contributing
 
-We welcome contributions of all kinds! See [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
+We welcome contributions of all kinds! See [CONTRIBUTING.md](./.github/CONTRIBUTING.md) for details.
 
 ```bash
 # Fork and clone

@@ -44,4 +44,4 @@ python scripts/regression_gate.py \
 
 - [ ] 运行 profile 兼容检查（如适用）：`python scripts/check_retrieval_profile_compat.py`。
 - [ ] 如果改了 API 或调参方式，补充 `docs/guides/` 或 `docs/examples/`。
-- [ ] 对用户可见行为变化，更新 `CHANGELOG.md` 的 Retrieval Quality 区块。
+- [ ] 对用户可见行为变化，在 PR 描述或 GitHub Release 中说明。

@@ -77,7 +77,7 @@ Notes:
 - Update docs (`docs/`) when adding or changing user-facing behavior.
 - Avoid committing secrets (see `.env.example` templates and CI secret scanning).
 - If the PR changes retrieval/ranking behavior, follow the retrieval checklist:
-  [`docs/contributing/retrieval_pr_checklist.md`](docs/contributing/retrieval_pr_checklist.md).
+  [`docs/contributing/retrieval_pr_checklist.md`](../docs/contributing/retrieval_pr_checklist.md).
 
 ### Commit hygiene (recommended)
 
