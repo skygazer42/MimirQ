@@ -764,7 +764,12 @@ Requirements:
         raw_scores = list(score_map.values())
         min_s = min(raw_scores) if raw_scores else 0.0
         max_s = max(raw_scores) if raw_scores else 0.0
-        rng = (max_s - min_s) if max_s > min_s else 1.0
+        # When every fused doc shares one RRF score (single hit, or all docs hit
+        # the same number of queries at the same rank), min == max. Min-max
+        # normalization would map them all to 0.0 and wipe out the signal, so
+        # treat that degenerate case as "uniformly relevant" (1.0) instead.
+        degenerate_range = not (max_s > min_s)
+        rng = 1.0 if degenerate_range else (max_s - min_s)
 
         fused_items: list[tuple[str, Document]] = []
         for key, doc in best_docs.items():
@@ -772,11 +777,12 @@ Requirements:
             base_score = meta.get("score")
             if base_score is not None and f"{meta_prefix}_base_score" not in meta:
                 meta[f"{meta_prefix}_base_score"] = base_score
-            meta[f"{meta_prefix}_rrf_raw"] = float(score_map.get(key, 0.0) or 0.0)
+            raw_rrf = float(score_map.get(key, 0.0) or 0.0)
+            meta[f"{meta_prefix}_rrf_raw"] = raw_rrf
             meta[f"{meta_prefix}_rrf_k"] = k0
             meta[f"{meta_prefix}_hits"] = int(hit_counts.get(key, 0) or 0)
             meta[f"{meta_prefix}_fused"] = True
-            meta["score"] = (float(score_map.get(key, 0.0) or 0.0) - min_s) / rng
+            meta["score"] = 1.0 if degenerate_range else (raw_rrf - min_s) / rng
             fused_items.append(
                 (
                     key,

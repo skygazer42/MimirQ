@@ -1,8 +1,10 @@
 
 import argparse
+import ipaddress
 import json
 import subprocess
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -170,7 +172,17 @@ def _check_backend_ready(*, url: str, timeout_sec: float) -> dict[str, Any]:
     result: dict[str, Any] = {"url": url, "ok": False}
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "mimirq-compose-diagnostics/1.0"})
-        with urllib.request.urlopen(req, timeout=timeout_sec) as res:  # noqa: S310
+        host = (urllib.parse.urlsplit(url).hostname or "").rstrip(".").lower()
+        try:
+            is_loopback = ipaddress.ip_address(host).is_loopback
+        except ValueError:
+            is_loopback = host == "localhost"
+        open_url = (
+            urllib.request.build_opener(urllib.request.ProxyHandler({})).open
+            if is_loopback
+            else urllib.request.urlopen
+        )
+        with open_url(req, timeout=timeout_sec) as res:  # noqa: S310
             body = res.read()
             status = int(getattr(res, "status", 200))
             result["status_code"] = status

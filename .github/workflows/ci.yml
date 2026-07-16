@@ -112,6 +112,10 @@ jobs:
       - name: OpenAPI types check
         run: make openapi-check
 
+      - name: API types drift gate
+        working-directory: web
+        run: node scripts/check-api-types-drift.mjs --strict --baseline scripts/api-types-drift-baseline.json
+
       - name: Backend tests
         env:
           LLM_MOCK_ENABLED: "true"

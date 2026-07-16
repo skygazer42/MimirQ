@@ -171,6 +171,7 @@ CORE_TESTS := \
 	tests/test_document_timeline_sanitization.py \
 	tests/test_document_asset_auth.py \
 	tests/test_health_meta_exposure.py \
+	tests/test_api_ping.py \
 	tests/test_documents_batch_reingest_endpoint.py \
 	tests/test_document_version_diff_integration.py \
 	tests/test_document_versions_integration.py \
@@ -336,7 +337,7 @@ help:
 	@echo "  make api-check - verify web routes exist in backend"
 	@echo "  make api-ping  - ping backend health endpoints (quick reachability check)"
 	@echo "  make web-api-ping - ping backend endpoints using frontend URL logic (NEXT_PUBLIC_API_URL)"
-	@echo "  make api-smoke - smoke-test all OpenAPI endpoints (docker backend)"
+	@echo "  make api-smoke - smoke-test all OpenAPI endpoints on the running backend"
 	@echo "  make typecheck - run web TypeScript typecheck"
 	@echo "  make ui-check  - verify web UI design tokens (no hard-coded white/cyan etc)"
 	@echo "  make lint-py   - run Python lint (ruff)"
@@ -991,7 +992,7 @@ web-api-ping:
 	cd web && pnpm run api-ping
 
 api-smoke:
-	$(COMPOSE) exec -T -w /app mimirq-api python scripts/api_smoke.py --base-url http://localhost:8000 --skip-llm-test --skip-mineru
+	$(PY) scripts/api_smoke.py --base-url http://127.0.0.1:8000 --skip-llm-test --skip-mineru
 
 typecheck:
 	cd web && pnpm run typecheck

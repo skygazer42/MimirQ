@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
 const baseURL = process.env.PLAYWRIGHT_LIVE_BASE_URL || 'http://127.0.0.1:3000'
+const browserChannel = process.env.PLAYWRIGHT_CHANNEL
 
 export default defineConfig({
   testDir: './e2e',
@@ -17,7 +18,7 @@ export default defineConfig({
     navigationTimeout: 120_000,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    video: browserChannel ? 'off' : 'retain-on-failure',
     viewport: { width: 1600, height: 1000 },
   },
   projects: [
@@ -25,6 +26,7 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
+        ...(browserChannel ? { channel: browserChannel } : {}),
       },
     },
   ],

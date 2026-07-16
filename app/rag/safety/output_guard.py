@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.core.config import settings
-from app.rag.safety.llama_guard import LlamaGuard
+from app.rag.safety.regex_safety_guard import RegexSafetyGuard
 
 _PHONE_RE = re.compile(r"\b1\d{10}\b")
 _ID_CARD_RE = re.compile(r"\b\d{17}[\dXx]\b")
@@ -25,7 +25,7 @@ class OutputGuard:
     """Best-effort output-side guard for obvious leakage and fabricated citation signals."""
 
     def __init__(self) -> None:
-        self._llama_guard = LlamaGuard()
+        self._safety_guard = RegexSafetyGuard()
 
     async def check(
         self,
@@ -41,14 +41,14 @@ class OutputGuard:
             str(text or ""),
             list(context_chunks or []),
         )
-        llama_result = await self._llama_guard.guard_agent_response(str(text or ""))
+        safety_result = await self._safety_guard.guard_agent_response(str(text or ""))
         matched_rules = list(sync_result.matched_rules or [])
         details = dict(sync_result.details or {})
         score = float(sync_result.score or 0.0)
 
-        if str(getattr(llama_result, "action", "allow") or "allow").strip().lower() != "allow":
-            matched_rules.append("llama_guard_response")
-            details["llama_guard_action"] = str(getattr(llama_result, "action", "allow") or "allow")
+        if str(getattr(safety_result, "action", "allow") or "allow").strip().lower() != "allow":
+            matched_rules.append("safety_guard_response")
+            details["safety_guard_action"] = str(getattr(safety_result, "action", "allow") or "allow")
             score = min(1.0, max(score, 0.9))
 
         matched_rules = sorted(set(matched_rules))

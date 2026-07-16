@@ -6,6 +6,7 @@ IGNORED_WEB_DIRS = {"node_modules", ".next", ".next_build"}
 CORE_E2E_TESTS = {
     "e2e/command-menu-document-view.spec.ts",
     "e2e/document-chat.smoke.spec.ts",
+    "e2e/live-stack.smoke.spec.ts",
     "e2e/management-surfaces.smoke.spec.ts",
 }
 

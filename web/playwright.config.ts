@@ -3,6 +3,7 @@ import { defineConfig, devices } from '@playwright/test'
 const PORT = Number(process.env.PLAYWRIGHT_PORT || 3100)
 const baseURL = `http://127.0.0.1:${PORT}`
 const useProdServer = Boolean(process.env.CI) || process.env.PLAYWRIGHT_USE_PROD_SERVER === '1'
+const browserChannel = process.env.PLAYWRIGHT_CHANNEL
 const LOCAL_NO_PROXY_HOSTS = ['127.0.0.1', 'localhost']
 
 function ensureLocalNoProxy(envName: 'NO_PROXY' | 'no_proxy') {
@@ -35,7 +36,7 @@ export default defineConfig({
     navigationTimeout: 90_000,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    video: browserChannel ? 'off' : 'retain-on-failure',
     viewport: { width: 1600, height: 1000 },
   },
   webServer: {
@@ -53,6 +54,7 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
+        ...(browserChannel ? { channel: browserChannel } : {}),
       },
     },
   ],

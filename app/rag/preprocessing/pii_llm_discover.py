@@ -3,7 +3,7 @@ import re
 from collections import Counter
 from typing import Any
 
-from app.rag.preprocessing.pii_presidio import analyze_pii_text
+from app.rag.preprocessing.pii_regex import analyze_pii_text
 
 _PATTERNS: list[tuple[str, re.Pattern[str], str]] = [
     ("employee_id", re.compile(r"\bEMP-\d{3,}\b", re.IGNORECASE), r"EMP-\d{3,}"),

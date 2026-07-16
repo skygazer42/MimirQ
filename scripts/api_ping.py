@@ -1,12 +1,14 @@
 
 import argparse
+import ipaddress
 import json
 import os
 import time
 from dataclasses import dataclass
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
+from urllib.request import ProxyHandler, Request, build_opener, urlopen
 
 
 def _strip_trailing_slashes(value: str) -> str:
@@ -36,7 +38,13 @@ def _read_json(url: str, *, timeout_sec: float) -> PingResult:
     start = time.perf_counter()
     try:
         req = Request(url, headers={"Accept": "application/json"})
-        with urlopen(req, timeout=timeout_sec) as resp:
+        host = (urlsplit(url).hostname or "").rstrip(".").lower()
+        try:
+            is_loopback = ipaddress.ip_address(host).is_loopback
+        except ValueError:
+            is_loopback = host == "localhost"
+        open_url = build_opener(ProxyHandler({})).open if is_loopback else urlopen
+        with open_url(req, timeout=timeout_sec) as resp:
             body = resp.read() or b""
             elapsed_ms = int((time.perf_counter() - start) * 1000)
             content_type = (resp.headers.get("Content-Type") or "").lower()

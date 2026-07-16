@@ -2,6 +2,11 @@
 import re
 from typing import Any
 
+# Rule-based PII detection/anonymization. This is a regex + dictionary baseline,
+# NOT the Microsoft Presidio framework. It covers common CN entities (phone,
+# id card, license plate, social-security labels) plus the shared detectors in
+# pii_anonymizer. Swap in a real NER/Presidio recognizer when higher recall is
+# required.
 from app.rag.preprocessing.pii_anonymizer import find_pii_matches
 
 _CN_PLATE_RE = re.compile(
@@ -106,7 +111,7 @@ def analyze_pii_text(text: str) -> dict[str, Any]:
 
     entities.sort(key=lambda item: (int(item["start"]), int(item["end"]), str(item["entity_type"])))
     return {
-        "schema": "mimirq.pii_presidio_analysis.v1",
+        "schema": "mimirq.pii_regex_analysis.v1",
         "entities": entities,
     }
 
@@ -121,7 +126,7 @@ def anonymize_pii_text(text: str, *, mask: str = "[REDACTED]") -> dict[str, Any]
         end = int(entity["end"])
         current = current[:start] + str(mask) + current[end:]
     return {
-        "schema": "mimirq.pii_presidio_anonymize.v1",
+        "schema": "mimirq.pii_regex_anonymize.v1",
         "text": current,
         "changed": current != raw,
         "entities": entities,
