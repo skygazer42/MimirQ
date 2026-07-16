@@ -721,6 +721,10 @@ class Settings(BaseSettings):
     # When enabled (and JWT_TENANT_CLAIM is set), require X-Tenant-ID header to match the JWT tenant claim.
     # This mitigates cross-tenant spoofing via headers in AUTH_MODE=jwt while staying backwards compatible by default.
     JWT_ENFORCE_TENANT_HEADER_MATCH: bool = False
+    # Explicitly trust the client-supplied tenant header (TENANT_HEADER) as the tenant source in
+    # production when no verified JWT tenant claim is configured. Only safe when a trusted gateway
+    # strips/injects the header, or the deployment is effectively single-tenant.
+    TENANT_HEADER_TRUSTED: bool = False
     # Optional: sync tenant groups from a verified JWT claim (enterprise directory primitive).
     # Safe defaults: disabled.
     JWT_GROUPS_SYNC_ENABLED: bool = False
@@ -2336,6 +2340,18 @@ class Settings(BaseSettings):
             raise ValueError(f"Unsupported AUTH_MODE: {auth_mode}")
         if auth_mode == "header" and is_production:
             raise ValueError("AUTH_MODE=header is not allowed in production")
+
+        # Security: tenant-source guard. Without a verified JWT tenant claim the tenant id comes
+        # from the client-controlled tenant header (cross-tenant spoofing of team-shared
+        # resources); fail closed in production unless the deployment explicitly trusts the header.
+        if auth_mode == "jwt" and is_production:
+            tenant_claim = str(getattr(self, "JWT_TENANT_CLAIM", "") or "").strip()
+            if not tenant_claim and not bool(getattr(self, "TENANT_HEADER_TRUSTED", False)):
+                raise ValueError(
+                    "AUTH_MODE=jwt in production requires a trusted tenant source: "
+                    "set JWT_TENANT_CLAIM (recommended) or set TENANT_HEADER_TRUSTED=true "
+                    "to explicitly trust the client/gateway-supplied tenant header"
+                )
 
         # Security: JWT tenant member auto-provision guard (enterprise).
         if bool(getattr(self, "JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED", False)):

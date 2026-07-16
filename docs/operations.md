@@ -131,7 +131,7 @@ python scripts/regression_gate.py \
 - 开启方式：设置 `LOG_FORMAT=json`
 - 常见字段：
   - `request_id`：请求链路 id（响应头也会返回 `X-Request-ID`）
-  - `tenant_id`：租户 id（来自 `TENANT_HEADER`，默认 `X-Tenant-ID`；在 JWT 模式下可优先使用 token claim）
+  - `tenant_id`：租户 id（来自 `TENANT_HEADER`，默认 `X-Tenant-ID`；在 JWT 模式下优先使用 token claim。生产环境要求配置 `JWT_TENANT_CLAIM` 或显式 `TENANT_HEADER_TRUSTED=true`，启动时强制校验）
   - `route`：路由模板（低基数，例如 `/api/v1/rag/retrieve`，用于聚合与检索）
   - `trace_id` / `span_id`：当启用 OpenTelemetry 时自动附带
 

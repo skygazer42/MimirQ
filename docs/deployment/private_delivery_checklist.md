@@ -22,7 +22,7 @@
 - [ ] **JWT 校验**：
   - [ ] 选择 JWKS URL 或 OIDC discovery（`JWT_JWKS_DISCOVERY_ENABLED=true`）
   - [ ] 设置 `JWT_ISSUER` / `JWT_AUDIENCE`（如适用）
-  - [ ] 配置 `JWT_TENANT_CLAIM`（如启用多租户 claim 绑定）
+  - [ ] **租户来源（启动强制）**：配置 `JWT_TENANT_CLAIM`（推荐，租户取自已验签的 token claim）；或确认可信网关会剥离并重新注入租户头后，显式设 `TENANT_HEADER_TRUSTED=true`。两者均未配置时生产环境拒绝启动（防止伪造 `X-Tenant-ID` 跨租户读取团队共享资源）
   - [ ] 可选：`JWT_ENFORCE_TENANT_HEADER_MATCH=true` 防跨租户 header spoofing
 - [ ] **Tenant Groups（组目录，推荐企业必须）**：
   - [ ] 组管理 API 可用：`GET/POST /api/v1/groups`、`GET /api/v1/groups/{id}`、`GET/POST /api/v1/groups/{id}/members`
