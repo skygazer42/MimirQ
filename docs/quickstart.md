@@ -8,31 +8,36 @@ git clone https://github.com/skygazer42/MimirQ.git
 cd MimirQ
 ```
 
-### 2. 配置模型 API Key
-
-初始化并编辑 `.env` 文件，填入你的模型配置（OpenAI-compatible）：
-
-```env
-LLM_API_KEY=sk-your-api-key-here
-# 可选：自定义 Base URL（OpenAI-compatible）
-# LLM_API_BASE=https://api.openai.com/v1
-# LLM_MODEL=gpt-4o-mini
-```
-
-> 小贴士：可以先运行 `make init`，它会在缺失时自动从模板创建：
-> - `.env`（来自 `.env.example`）
-> - `web/.env.local`（来自 `web/.env.local.example`）
->
-> 根目录 `.env.example` 已包含解析、RAG、KG、可观测性等环境变量；本地按需复制到 `.env` 后修改即可。
-
-### 3. 启动服务
+### 2. 启动完整 Web 栈
 
 ```bash
-# 推荐：一键生成本地 env（不会覆盖已有文件）
+# 生成 .env 和随机 JWT SECRET_KEY
 make init
+```
 
-# 推荐：使用 Makefile 一键启动/查看状态
+`.env` 是高级配置参考，不需要逐项填写。默认使用硅基流动 `Qwen/Qwen3-32B` 和 `BAAI/bge-m3`，只需填写：
+
+```env
+LLM_API_KEY=<your-siliconflow-api-key>
+```
+
+Embedding 默认复用同一地址和密钥。Reranker 默认关闭；需要时只设置 `ENABLE_RERANKER=true`，同样复用 LLM 密钥。只有更换供应商时才需要修改 `LLM_API_BASE`、`LLM_MODEL` 或 `EMBEDDING_*`；其他参数保持默认。然后启动：
+
+```bash
+make up-web
+```
+
+打开 [http://localhost:3000](http://localhost:3000)，创建本地账户即可进入系统。
+
+首次构建会下载并校验固定版本的解析模型。代理仅监听 Linux 宿主机回环地址时，先在本机 Docker 配置代理，再运行 `DOCKER_BUILD_NETWORK=host make up-web`；不要把个人代理地址提交到配置模板。
+
+### 3. 其他启动方式
+
+```bash
+# 仅启动后端 + 标准基础设施
 make up
+
+# 查看标准栈状态
 make ps
 
 # (可选) 低资源模式（lite：不启动 Milvus/MinIO，默认使用 Chroma 本地向量库）
@@ -50,10 +55,7 @@ make api-ping
 docker compose --env-file .env -f docker/docker-compose.yml up -d --build
 docker compose --env-file .env -f docker/docker-compose.yml ps
 
-# (可选) 启动前端（两种方式二选一）
-# 1) Docker（生产构建；推荐用于“一键部署”）
-make up-web
-# 2) 本地开发（热更新更快）
+# 本地前端开发（热更新）
 # cd web; pnpm install; pnpm dev
 ```
 
@@ -79,7 +81,7 @@ make up-web
 - 热启动（镜像已缓存）：通常 20-60 秒即可达到 `api-ping` 全绿。
 - 该模式默认关闭重解析路径，适合做召回/排序离线对比，不适合高并发生产压测。
 
-> Docker 启动前端时：`NEXT_PUBLIC_API_URL` 是给浏览器用的（默认 `http://localhost:8000`）；如需 SSR 在容器内访问后端，请设置 `API_INTERNAL_URL_DOCKER=http://mimirq-api:8000`（不要把 `NEXT_PUBLIC_API_URL` 改成 Docker 内部地址）。
+> Docker 前端默认通过同源 `/api/*` 代理访问后端；浏览器地址由 `NEXT_PUBLIC_API_URL_DOCKER=/` 控制，SSR 容器内地址由 `API_INTERNAL_URL_DOCKER=http://mimirq-api:8000` 控制。不要把 Docker 内部主机名暴露给浏览器。
 
 ### (可选) 启用 ETL4LLM（Bisheng Unstructured）版面解析
 

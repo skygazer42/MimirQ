@@ -2,7 +2,7 @@
 
 <img src="./images/logo.png" alt="MimirQ" width="100%"/>
 
-<h3>看得见的 RAG · 中文知识库问答平台</h3>
+<h3>企业级知识库</h3>
 
 <p><b>不是又一个黑盒 RAG</b>——从文档怎么被切、检索命中了什么、答案凭什么这么答，每一步都摊开给你看、让你调。</p>
 
@@ -42,53 +42,30 @@
 
 ---
 
-## 🤔 为什么又一个 RAG 项目？
+## 🤔 我为什么做 MimirQ？
 
-大多数 RAG 工具在你问"**为什么答错了**"时只能耸耸肩——文档被怎么切的看不见，检索到底命中了什么看不见，答案凭哪句原文生成的也看不见。调参像开盲盒。
+MimirQ 最开始不是为了再造一个 RAG 框架，也不是为了把当时流行的模型、Agent 和 GraphRAG 全塞进同一个仓库。它起源于一个很具体的政务智能问答项目：知识库已经建起来，问题也能回答，但只要答案不对，团队就很难说清楚到底错在哪里。是扫描件没有解析完整，是切块把办理条件和例外说明拆开了，是召回漏掉了新版本文件，是重排把真正的依据挤到了后面，还是大模型拿到了证据却没有按证据回答？系统通常只给出最后一句答案，排查只能靠反复改参数、重新入库、再问一次。
 
-**MimirQ 把这些黑盒全打开了：**
+这种黑盒在政务知识里尤其麻烦。同一事项可能同时存在市级和区级版本，政策会更新，旧文件会被替代，表格、附件和扫描页里又藏着关键条件。用户问的往往不是文件标题，而是“我这种情况能不能办”“还缺什么材料”“哪个部门负责”。一个看起来通顺但引用了旧政策的答案，比直接回答不知道更危险。真正需要解决的也就不只是“让模型说得更像人”，而是让系统能够回答：原文是否被正确读出来，哪些内容进入了索引，为什么召回这些证据，证据是否在用户权限范围内，最终答案又对应原文哪一句。
 
-- 📐 **切块所见即所得**——上传文档，实时预览分块效果、边界、打分，参数一改立刻重算，不用反复入库试错。
-- 🔬 **检索全程可追溯**——每次问答都有 Trace：走了哪些通道、命中哪些片段、重排怎么调序、引用来自原文哪一句，一目了然。
-- 📊 **质量用数字说话**——内置 RAGAS 评测 + 回归门禁 + Leaderboard，改动效果好不好有基线对比，不靠"感觉变好了"。
-- 🇨🇳 **中文是一等公民**——从中文分词、混排 PII 脱敏，到中文政务/金融场景的行业规则库，不是英文项目顺手加个中文。
+我试过用现成平台把链路拼起来。它们各有所长：有的擅长工作流，有的擅长文档解析，有的适合快速搭建 Agent。但在实际排障时，解析、切块、索引、召回、重排、引用和评测往往散落在不同组件里。某个指标变差后，很难沿着一次请求把原因追回去；为了提高召回再叠一层检索或模型调用，又可能直接把延迟和成本推高。我不想再做一套通用节点画布，也不想靠不断增加在线调用来换效果，所以把重点放回 RAG 链路本身：尽可能把计算前移到入库阶段，在现有候选集里完成融合和治理，同时把每一步留下可检查的结果。
 
-> 一句话：**MimirQ 帮你把"能跑的 Demo"变成"敢上生产、出了问题查得到根因"的知识库系统。**
+这就是 MimirQ 后来形成的样子。上传文档时可以看到解析结果和切块边界；入库后可以检查元数据、版本与权限；提问时可以回看各路召回、融合、重排和逐句引用；知识图谱不是单独摆着看的页面，而是补充实体关系与多跳证据；评测也不是发布前跑一次的分数，而是每次修改后都能拿同一批问题做回归。项目看起来覆盖得比较宽，不是因为我想做一个“什么都有”的平台，而是因为一次错误答案的根因本来就可能跨过整条链路。
 
----
+我选择把它开源，也是希望保留一份可以真正运行和拆解的参考实现。公开仓库不会包含生产知识库和内部环境，只保留经过裁剪的政务插件样例、可复现的处理流程以及必要的测试。你可以直接把它当成完整系统使用，也可以只取解析、切块、检索调试、Dify 外部知识库或 KG 中的一部分。它不承诺在所有数据上天然优于其他项目，但希望做到一件更朴素的事：效果变好时知道为什么，效果变差时也找得到原因。
 
-## 📍 已在真实场景验证
-
-MimirQ 不是实验室 Demo——它已在**市级政务智能问答助手**场景落地，覆盖 7 个区级 + 市级共多个真实知识库，并用一套 **800 题政务基准 + 确定性评测（无 LLM judge、参数固定）** 做了同参前后对比。
-
-<!-- 数据来源：artifacts/dify_3way_benchmark_*_20260713/（被 .gitignore 忽略，盘上留档可查）。下表均为 2026-07-13 实测值。 -->
-
-| 指标（800 题政务基准 · 2026-07-13 同参复测） | 结果 |
-|:---|:---|
-| **完整执行成功率** | **800 / 800**（旧链路为 687 / 800） |
-| **配对平均时延（共同 687 题）** | **5.1 秒** ← 旧链路 35.1 秒（**↓ 85.5%**） |
-| **配对中位时延（共同 687 题）** | **4.9 秒** ← 旧链路 34.8 秒（↓ 86.1%） |
-| **完整 800 题平均时延** | **5.0 秒** |
-| **答案可用率** | 86.4% |
-| **答案条款覆盖率** | 80.2% |
-| 评测方式 | 确定性证据条款匹配，参数固定 |
-
-> 📝 **诚实说明**：本次同参复测的硬结论是 **端到端时延骤降（35s → 5s）且 800 题全部跑通**；答案质量为当前绝对值，尚未在统计意义上超过旧版（区级 +3pp，市级因输出风格变化 -15.7pp，正在恢复完整字段输出）。完整报告与逐题结果保存在测试机器的 `artifacts/`，未随公开仓库发布；中文公开可复现基准（MIRACL-zh / CFEVER）见 [公开评测指南](./docs/guides/public_benchmarks_zh.md)。
-
-**🔌 无缝接入 Dify 生态**：MimirQ 提供 [Dify External Knowledge API](./docs/guides/pipeline_plugins.md) 兼容接口，可作为**外部知识库**直接挂到 Dify 工作流——已有的 Dify 应用无需改造，即可用上 MimirQ 的混合检索、知识图谱与引用溯源能力。上面这套 800 题基准，正是通过 Dify HTTP 链路直连 MimirQ 跑出来的。
+> **MimirQ 想解决的不是“RAG 能不能跑”，而是“这套 RAG 为什么值得被相信”。**
 
 ---
 
 ## 📑 目录
 
-- [为什么又一个 RAG 项目？](#-为什么又一个-rag-项目)
-- [已在真实场景验证](#-已在真实场景验证)
-- [核心特性](#-核心特性)
-- [项目规模](#-项目规模)
-- [系统架构](#-系统架构)
-- [RAG Pipeline](#-rag-pipeline)
-- [技术栈](#-技术栈)
+- [我为什么做 MimirQ？](#-我为什么做-mimirq)
+- [MimirQ 是什么](#-mimirq-是什么)
+- [产品界面](#-产品界面)
 - [快速开始](#-快速开始)
+- [核心功能对比](#-核心功能对比)
+- [已在真实场景验证](#-已在真实场景验证)
 - [API 参考（OpenAPI / Pages）](#-api-参考openapi--github-pages)
 - [部署方式](#-部署方式)
 - [功能指南](#-功能指南)
@@ -112,191 +89,55 @@ MimirQ 不是实验室 Demo——它已在**市级政务智能问答助手**场�
 
 ---
 
-## ✨ 核心特性
+## 🖼️ 产品界面
 
-<div align="center">
-  <img src="./docs/images/features.svg" alt="MimirQ Features" width="100%"/>
-</div>
-
-<br/>
+以下界面使用仓库内公开的政务插件演示样例生成，不含生产知识库数据。
 
 <table>
   <tr>
-    <td width="50%">
-
-**🔍 混合检索引擎**
-
-开箱即用的 **Vector 语义 + BM25 关键词** 双通道，RRF 融合排序，兼顾"理解意思"和"精确命中关键词"。需要更强召回时，可按需开启 **SPLADE 稀疏检索、ColBERT 晚交互重排、LTR 学习排序**——能力齐备，默认精简。
-
-</td>
-    <td width="50%">
-
-**📐 可视化切片预览**
-
-上传即预览，告别黑盒切块。多策略并排（递归 / 语义 / 分层 / 父子），边界可视、打分透明、参数即改即算，所见即所得。
-→ [使用指南](./docs/guides/chunk_preview.md)
-
-</td>
+    <td colspan="2" align="center">
+      <img src="./docs/images/screenshots/knowledge-graph.png" alt="MimirQ 知识图谱界面" width="100%"/>
+      <br/><strong>知识图谱</strong>
+      <br/><sub>在同一画布中检索和分析实体、事件与关系。</sub>
+    </td>
   </tr>
   <tr>
-    <td>
-
-**🔄 多模态文档解析**
-
-**30+ 种解析后端**覆盖 PDF / Markdown / HTML / 图文混排。集成 PyMuPDF、MinerU、ETL4LLM、Marker、Docling、PaddleOCR-VL、olmOCR、Qianfan-OCR，中文扫描件与复杂版式也能拿下，可按需扩展。
-
-</td>
-    <td>
-
-**💬 RAG 智能问答**
-
-流式响应、逐句引用溯源、多轮对话记忆。基于 LangChain Runnable 架构，可选 LangGraph Agent 流水线（Self-RAG / CRAG / FLARE 等自纠正策略）。
-
-</td>
+    <td width="50%" align="center">
+      <img src="./docs/images/screenshots/dataset-management.png" alt="MimirQ 知识库管理界面" width="100%"/>
+      <br/><strong>知识库管理</strong>
+      <br/><sub>集中查看数据集、文档、Chunk 与入库状态。</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="./docs/images/screenshots/rag-evaluation.png" alt="MimirQ Golden 回归评测界面" width="100%"/>
+      <br/><strong>Golden 回归评测</strong>
+      <br/><sub>标准问答、运行记录与 Recall / MRR 等指标同屏可查。</sub>
+    </td>
   </tr>
   <tr>
-    <td>
-
-**🕸️ 知识图谱（KG）**
-
-从文档自动抽取实体 / 事件 / 关系，Force Graph 可视化、多跳检索、社区发现。更进一步：**图谱快照精确 Diff + BFS 影响分析**，改一处知识能看到牵连了哪些下游。可回注 RAG 做 query expansion。
-→ [使用指南](./docs/guides/knowledge_graph.md)
-
-</td>
-    <td>
-
-**📊 评测治理框架**
-
-内置 RAGAS（Faithfulness / Relevancy / Context Precision）+ **回归门禁 + Leaderboard + 统计显著性检验**（t-test / Wilcoxon / Bootstrap）。每次改动都有基线对比，好不好用数字说话。
-
-</td>
+    <td width="50%" align="center">
+      <img src="./docs/images/screenshots/settings.png" alt="MimirQ 系统设置界面" width="100%"/>
+      <br/><strong>系统设置</strong>
+      <br/><sub>集中查看依赖状态、解析能力以及模型服务接入。</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="./docs/images/screenshots/chat-history.png" alt="MimirQ 问答历史与证据回看界面" width="100%"/>
+      <br/><strong>问答历史与证据回看</strong>
+      <br/><sub>检索历史会话，并回看完整回答、来源与反馈入口。</sub>
+    </td>
   </tr>
   <tr>
-    <td>
-
-**🔒 企业级安全**
-
-文档级 ACL（owner / 成员 / 团队 / 继承）+ 检索侧权限裁剪，杜绝引用越权；RBAC + SCIM/SSO + SAML 单点登录；中文场景 PII 脱敏、InputGuard/OutputGuard、SSRF 逐跳校验。
-→ [使用指南](./docs/guides/document_acl.md)
-
-</td>
-    <td>
-
-**📑 文档版本管理**
-
-同一文档在不同 pipeline 配置下形成独立版本（`pipeline_hash`），支持查看、激活回滚、删除历史，UI 中直接切换预览——调参不怕改坏，随时回到上一版。
-→ [使用指南](./docs/guides/document_versions.md)
-
-</td>
-  </tr>
-  <tr>
-    <td>
-
-**🔗 URL 导入与连接器**
-
-后端拉取远程 URL 入库，批量导入带状态 / 统计 / 错误归因（Connector Run）。内置 SSRF 防护与安全开关，公网抓取也放心。
-→ [使用指南](./docs/guides/url_ingest.md)
-
-</td>
-    <td>
-
-**🏢 生产级架构**
-
-Milvus 十亿级向量、PostgreSQL 持久化、arq 异步任务队列、OpenAI 兼容接口。Docker Compose / Helm / K8s 多形态部署，CI/CD + Prometheus + Grafana 开箱可观测。
-
-</td>
-  </tr>
-  <tr>
-    <td>
-
-**🔌 Dify 生态集成**
-
-提供 Dify External Knowledge API 兼容接口，作为外部知识库直接挂到 Dify 工作流。已有 Dify 应用零改造，即可用上 MimirQ 的混合检索、KG 与引用溯源。
-→ [使用指南](./docs/guides/pipeline_plugins.md)
-
-</td>
-    <td>
-
-**🏛️ 政务 / 垂直场景就绪**
-
-面向政务、金融等严肃场景，内置就绪度门禁（readiness gate）、证据审计（evidence audit）、行业规则库与离线脱敏，已在市级政务问答助手落地验证。
-
-</td>
+    <td width="50%" align="center">
+      <img src="./docs/images/screenshots/ingestion-monitor.png" alt="MimirQ 入库执行监控界面" width="100%"/>
+      <br/><strong>入库执行监控</strong>
+      <br/><sub>按数据集观察解析、切块、治理、导出和失败重试状态。</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="./docs/images/screenshots/data-governance.png" alt="MimirQ 数据治理工作台" width="100%"/>
+      <br/><strong>数据治理</strong>
+      <br/><sub>在同一工作台完成文档预览、质量检测、清洗与标注。</sub>
+    </td>
   </tr>
 </table>
-
----
-
-## 📈 项目规模
-
-不是玩具项目——这是一套认真做工程的全栈系统：
-
-| 维度 | 规模 |
-|:---|:---|
-| **后端代码** | ~30 万行自研 Python（不含 vendored 解析器） |
-| **前端代码** | ~20 万行 TypeScript / React |
-| **文档解析后端** | 30+ 种（PDF / OCR / 版式 / 视觉） |
-| **切块策略** | 78 种（递归 / 语义 / 分层 / 父子 / RAPTOR / Late Chunking …） |
-| **重排序器** | 15 种（RRF / ColBERT / LTR / LLM-based / long-context …） |
-| **测试** | 106 个后端测试文件，后端 576 用例 + 前端 61 用例 + CI 契约门禁 |
-
----
-
-## 🔎 系统架构
-
-<div align="center">
-  <img src="./docs/images/architecture.svg" alt="MimirQ Architecture" width="100%"/>
-</div>
-
----
-
-## 🔄 RAG Pipeline
-
-<div align="center">
-  <img src="./docs/images/rag-pipeline.svg" alt="RAG Pipeline" width="100%"/>
-</div>
-
-<details>
-<summary><b>流程详解</b></summary>
-
-### 入库流程（Ingestion）
-
-```
-文档上传 → 格式解析 (PyMuPDF/MinerU/ETL4LLM/…) → 智能切块 (递归/语义/父子)
-→ 向量化 (OpenAI/Ollama/本地模型) → 多路索引 (Milvus + BM25，可选 SPLADE)
-→ [可选] 知识图谱抽取 (实体/关系/事件)
-```
-
-### 问答流程（Retrieval & Generation）
-
-```
-用户提问 → Query 向量化 → 混合检索 Top-K (Vector + BM25，可选 SPLADE)
-→ 融合重排 (RRF，可选 ColBERT/LTR) → 权限裁剪 (Security Trimming)
-→ 上下文构建 → LLM 生成 → 流式回答 + 逐句引用溯源 + 检索 Trace
-```
-
-> 💡 SPLADE / ColBERT / LTR / HyDE / 多查询改写等进阶通道**默认关闭**，需要时在配置里显式开启——保证开箱即用路径的延迟与成本可控，进阶能力随取随用。
-
-</details>
-
----
-
-## 🛠 技术栈
-
-<div align="center">
-  <img src="./docs/images/tech-stack.svg" alt="Tech Stack" width="100%"/>
-</div>
-
-<br/>
-
-| 层级 | 技术 |
-|:---:|:---|
-| **前端** | Next.js 14 (App Router) · React 19 · TypeScript · Tailwind CSS · shadcn/ui · Zustand · TanStack Query · Radix UI · Recharts · react-force-graph |
-| **后端** | FastAPI · Python 3.11+ · LangChain 1.x · LangGraph · SQLAlchemy · Alembic · arq Worker · RAGAS |
-| **检索** | Milvus (默认) / FAISS / Chroma · BM25 · SPLADE · ColBERT · LTR · RRF Fusion |
-| **解析** | PyMuPDF · MinerU · ETL4LLM · Marker · Docling · PaddleOCR-VL · olmOCR · Qianfan-OCR |
-| **存储** | PostgreSQL 15 · Redis 7 · MinIO · etcd |
-| **部署** | Docker Compose · Helm / K8s · Prometheus · Grafana · GitHub Actions CI |
 
 ---
 
@@ -305,28 +146,59 @@ Milvus 十亿级向量、PostgreSQL 持久化、arq 异步任务队列、OpenAI 
 ### 前置要求
 
 - [Docker](https://docs.docker.com/get-docker/) 20.10+ & [Docker Compose](https://docs.docker.com/compose/install/) 2.0+
+- GNU Make 与 Python 3.9+（仅用于幂等生成本地配置和随机密钥）
 - 至少 4 核 CPU / 16 GB RAM / 50 GB 磁盘
 
-### 一键启动
+### 最小启动
 
 ```bash
 git clone https://github.com/skygazer42/MimirQ.git
 cd MimirQ
-
-# 1. 生成本地配置文件，并自动创建 JWT SECRET_KEY
 make init
-# Windows 无 make 可用：python scripts/init_env.py
+```
 
-# 2. 启动后端 + 基础设施（Postgres / Milvus / MinIO / Redis）
-make up
+`make init` 会生成完整 `.env` 和随机 JWT `SECRET_KEY`。`.env` 是高级配置参考，不是需要逐项填写的表单；默认硅基流动配置只需填写这一项：
 
-# 3. [可选] 启动前端（Next.js 生产构建）
+```dotenv
+# 唯一必填
+LLM_API_KEY=<your-siliconflow-api-key>
+```
+
+然后启动：
+
+```bash
 make up-web
 ```
 
-> 想先轻量体验？`make up-lite` 用 Chroma/FAISS 替代 Milvus、免 MinIO，几分钟跑起来。
+`make up-web` 会启动前端、后端、Worker、Postgres、Milvus、MinIO 与 Redis；已有配置不会被覆盖。打开 [http://localhost:3000](http://localhost:3000) 后创建本地账户即可进入系统。
 
-Docker 首次构建会下载并校验固定版本的 DeepDoc 模型包；本地源码运行解析器前执行 `make models`。
+> 想先轻量体验？`make up-lite` 用 Chroma/FAISS 替代 Milvus、免 MinIO。外部 LLM/Embedding 调用仍需配置你自己的模型供应商密钥；项目不会内置或提交密钥。
+
+Docker 首次构建会下载并校验固定版本的 DeepDoc 模型包；本地源码运行解析器前执行 `make models`。代理仅监听 Linux 宿主机回环地址时，应先在本机 Docker 配置代理，再运行 `DOCKER_BUILD_NETWORK=host make up-web`；不要把代理地址写进仓库。
+
+| 场景 | 需要修改 | 是否必填 |
+|:---|:---|:---:|
+| 默认硅基流动 LLM + Embedding | `LLM_API_KEY` | **是** |
+| 更换聊天供应商或模型 | `LLM_API_BASE`、`LLM_MODEL` | 否 |
+| Embedding 使用不同供应商 | `EMBEDDING_API_KEY`、`EMBEDDING_API_BASE`、`EMBEDDING_MODEL` | 否；留空地址和密钥会复用 LLM |
+| 硅基流动 Reranker | `ENABLE_RERANKER=true` | 否；默认关闭以避免增加检索时延，密钥复用 LLM |
+| MinerU 在线 PDF 解析 | `MINERU_ENABLED=true`、`MINERU_API_TOKEN` | 否；启用后上传时选择 `mineru` |
+| 其他 `.env` 参数 | 无需修改 | 否；保持默认 |
+
+模型名必须来自硅基流动 `/v1/models`。当前实测可用的聊天模型包括 `Qwen/Qwen3-32B`、`Qwen/Qwen3-8B`，Embedding 包括 `BAAI/bge-m3`、`Qwen/Qwen3-Embedding-0.6B`，Reranker 为 `BAAI/bge-reranker-v2-m3`。更换 Embedding 模型后必须重建已有知识库索引，不能混用旧向量。
+
+请在[硅基流动控制台](https://cloud.siliconflow.cn/account/ak)和 [MinerU](https://mineru.net/) 创建凭证；真实密钥只放本地 `.env`，不要提交。
+
+### 运行政务插件样例
+
+仓库内置常州政务服务知识插件，并为事项知识、一件事、常见问题、专题问答、部门问答和区县问答六类来源各保留少量公开演示数据。无需启动数据库即可验证治理、切块、KG 和 Golden 草稿：
+
+```bash
+make changzhou-gov-plugin-test-report
+make changzhou-gov-plugin-chunk-report
+```
+
+报告写入 `/tmp/changzhou_gov_plugin_*`，不会写入数据库、向量库或 KG。样例目录、插件引用和真实语料闭环命令见[插件说明](./plugins/pipelines/changzhou-gov-service-knowledge/README.md)。
 
 ### 验证服务
 
@@ -348,6 +220,62 @@ curl http://localhost:8000/api/v1/health/ready
 | **健康检查** | [http://localhost:8000/api/v1/health](http://localhost:8000/api/v1/health) |
 
 > 如需从源码部署或本地开发，请参考 [开发文档](./docs/quickstart.md)
+
+---
+
+## 🧭 核心功能对比
+
+| 功能维度 | **MimirQ** | [Dify](https://github.com/langgenius/dify) | [RAGFlow](https://github.com/infiniflow/ragflow) | [FastGPT](https://github.com/labring/FastGPT) | [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) | [LangChain](https://github.com/langchain-ai/langchain) |
+|:---|:---|:---|:---|:---|:---|:---|
+| **文档解析** | **30+ 解析后端**：PDF、OCR、版式、表格、公式、VLM | Knowledge Pipeline；PDF、PPT 等常见格式 | **DeepDoc**；复杂版式、扫描件、MinerU / Docling | PDF、扫描件、表格、公式转 Markdown | PDF、TXT、DOCX 等文档管道 | Document Loaders 与第三方解析器集成 |
+| **切块能力** | **78 种策略**：递归、语义、父子、RAPTOR、Late Chunking；可视化预览 | 通用、父子、Q&A 与可编排处理 | 模板化切块；支持可视化人工干预 | 自动、手工、Q&A 与增强处理 | 文档管道自动分块 | Text Splitters；由应用代码组合 |
+| **检索 / 重排** | Milvus / FAISS / Chroma + BM25 / SPLADE / ColBERT / LTR / RRF；**15 种重排器** | 语义、全文、混合检索；可配置 rerank | 多路召回 + 融合重排 | 语义、全文、混合检索 + RRF + rerank | 多种向量库检索 + 来源引用 | Retriever / reranker 组件；自行编排 |
+| **知识图谱** | 实体、关系、事件抽取；实体消解、社区发现与多跳检索 | 通过工作流、插件或外部服务接入 | 内建 GraphRAG | 通过工作流或外部服务接入 | 通过 Agent / Tool 外接 | 图数据库集成与自定义链路 |
+| **Agent / MCP** | LangGraph Agent、Self-RAG / CRAG / FLARE；MCP client / server | Function Calling / ReAct Agent、工具与 MCP | Agentic Workflow、MCP、代码执行器 | Agent V2、工具、MCP 与 VM 执行 | No-code Agent Builder、MCP、定时任务 | Agents / LangGraph / MCP；代码优先 |
+| **可视化工作流** | **无通用节点画布**；专注 RAG 调试、治理页面与 API | **核心能力**：应用 / Agent 节点编排 | Agent 与入库 Pipeline 编排 | **核心能力**：Flow 节点编排 | No-code Agent Builder | 无内建产品 UI；由应用实现 |
+| **评测 / 治理闭环** | RAGAS、回归门禁、Leaderboard、显著性检验、证据审计 | 运行日志、观测与人工标注 | 检索测试、切块检查与引用追溯 | 运行详情、检索调试与日志 | 来源引用；无内建 RAG 回归门禁 | 需另接 LangSmith 或自建评测 |
+| **安全 Guard** | InputGuard / OutputGuard、PII / Secret 脱敏、SSRF 逐跳校验 | 内容审查节点与工作流规则 | 代码执行沙箱；业务 Guard 需配置 | 工作流内容审查与 VM 沙箱 | Local-first、Agent 工具权限 | 由应用中间件与部署边界实现 |
+| **企业权限 / 合规** | 文档 ACL + Security Trimming、RBAC、SCIM / SSO / SAML、审计 | Workspace 权限；企业版组织与 SSO | 账号与 API 鉴权；细粒度合规需按部署建设 | ABAC + RBAC；团队、群组与资源权限 | Docker 版多用户与权限控制 | 框架本身不提供；由应用实现 |
+| **RAG 调试可视化** | 切块预览、检索 Trace、重排过程、逐句引用、KG、评测看板 | Dataset 测试、Workflow Trace 与应用日志 | 切块可视化、命中片段与引用 | 知识库测试、Workflow 运行详情 | Workspace、来源引用与聊天 UI | 无内建 UI；可另接观测平台 |
+| **Dify 外部知识库** | **原生兼容 Dify External Knowledge API** | 原生消费外部知识库 | 需通过 API 适配 | 需通过 API 适配 | 需通过 API 适配 | 自行实现适配器 |
+| **开箱方式** | Docker Compose / Helm；完整企业 RAG 栈 | Docker Compose / Cloud | Docker Compose；官方建议 4C / 16 GB / 50 GB | Docker / Cloud | Desktop / Docker | Python / JS 库；需自行组装应用 |
+
+> 对比基于各项目公开版本与官方文档（2026-07），描述的是**仓库直接提供的能力表面**，不是统一 benchmark。插件、商业版和后续版本可能改变结果。
+
+---
+
+## 📍 已在真实场景验证
+
+MimirQ 不是实验室 Demo——它已用于**市级政务智能问答助手**，覆盖 7 个区级 + 市级真实知识库。验证分为两层：先用同一题集比较四种实际接入链路，再对升级前后的同一条 Dify HTTP 链路做严格配对。
+
+### Dify 四路质量横评
+
+<!-- 数据来源：artifacts/changzhou_dify_4way_partial/summary_for_sharing.md；complete_4way_1100=true，生成时间 2026-07-09T22:30:03Z。 -->
+
+| 链路 | 实际调用路径 | 题数 | 回答可用率 | 回答证据覆盖 |
+|:---|:---|---:|---:|---:|
+| **MimirQ 检索直连** | 客户端 → MimirQ External Knowledge 检索 API（无 LLM 生成） | 1100 | **88.9%** | **88.7%** |
+| **Dify External → MimirQ** | Dify 负责生成；MimirQ 作为 External Knowledge 检索源 | 1100 | 67.4% | 65.9% |
+| **Dify HTTP → MimirQ** | Dify Workflow HTTP 节点调用 MimirQ 完整问答 API | 1100 | 69.6% | 67.9% |
+| **Dify 原生知识库** | Dify 原生入库、检索与生成 | 1100 | 50.6% | 49.7% |
+
+1100 题由 800 道模拟用户问题、200 道事项直问和 100 道精确问答组成，统一使用确定性证据条款匹配，不使用 LLM judge。检索直连以 Top-3 证据文本作为输出，其余链路评估生成答案。四路工作量不同，因此不做延迟横向比较。延迟指标将在统一环境、固定并发和固定缓存状态下重新测试后发布。
+
+### Dify HTTP 升级前后同参复测
+
+<!-- 数据来源：artifacts/dify_3way_benchmark_ab_overlap_20260713/；固定同一 app、输入 SHA、truth SHA 和 687 个共同成功 case。 -->
+
+| 指标（2026-07-13） | 升级前 | 最终版 | 变化 |
+|:---|---:|---:|---:|
+| 完整执行 | 687 / 800 | **800 / 800** | +113 题 |
+| 配对答案条款覆盖率 | **84.4%** | 80.5% | -3.9pp |
+| 配对答案可用率 | **91.8%** | 86.5% | -5.4pp |
+| 最终完整 800 题 | — | 80.2% 条款覆盖 / 86.4% 可用 | — |
+| 延迟指标 | — | 待统一环境重测 | — |
+
+> 📝 **诚实说明**：同路复测证明了**完成率改善**，但不能证明整体答案质量提升。7 个区级知识库的条款覆盖合计 +3.0pp，市级知识库因输出变短而 -15.7pp，抵消了区级收益。每个版本只完整运行一次且 Dify 生成未固定随机种子，因此这是一组同参观测，不是统计显著性声明；延迟结论待统一环境重测后补充。完整逐题产物保存在本机 `artifacts/`，未随公开仓库发布；公开可复现测试见[中文评测指南](./docs/guides/public_benchmarks_zh.md)。
+
+接入时，如果希望 **Dify 保留 Prompt 与答案生成控制权**，使用 [Dify External Knowledge API](./docs/guides/pipeline_plugins.md)；如果希望 **MimirQ 完成检索、治理与最终回答**，在 Dify Workflow 中使用 HTTP 节点调用 MimirQ API。
 
 ---
 
@@ -375,7 +303,7 @@ curl http://localhost:8000/api/v1/health/ready
 | 方式 | 命令 | 说明 |
 |:---:|:---|:---|
 | **标准部署** | `make up` | 完整栈：Postgres + Milvus + MinIO + Redis + API + Worker |
-| **标准 + 前端** | `make up-web` | 标准部署 + Next.js 前端 |
+| **标准 + 前端** | `make up-web` | 推荐首次启动；自动初始化本地配置并启动完整 Web 栈 |
 | **轻量模式** | `make up-lite` | Chroma/FAISS 替代 Milvus，无需 MinIO，适合快速体验 |
 | **开发模式** | `make up-infra` | 仅基础设施，后端/前端本地运行 |
 | **Helm / K8s** | `helm install` | 生产级部署，含 HPA、PDB、CronJob、PrometheusRule |
@@ -498,7 +426,9 @@ make enterprise-checks
 
 MimirQ 构建于优秀的开源生态之上，感谢以下项目：
 
-[FastAPI](https://fastapi.tiangolo.com/) · [LangChain](https://langchain.com/) · [LangGraph](https://langchain-ai.github.io/langgraph/) · [Milvus](https://milvus.io/) · [Next.js](https://nextjs.org/) · [PostgreSQL](https://www.postgresql.org/) · [RAGAS](https://docs.ragas.io/) · [PyMuPDF](https://pymupdf.readthedocs.io/) · [MinerU](https://github.com/opendatalab/MinerU) · [Tailwind CSS](https://tailwindcss.com/) · [shadcn/ui](https://ui.shadcn.com/)
+[Dify](https://github.com/langgenius/dify) · [RAGFlow](https://github.com/infiniflow/ragflow) · [FastAPI](https://fastapi.tiangolo.com/) · [LangChain](https://langchain.com/) · [LangGraph](https://langchain-ai.github.io/langgraph/) · [Milvus](https://milvus.io/) · [Next.js](https://nextjs.org/) · [PostgreSQL](https://www.postgresql.org/) · [RAGAS](https://docs.ragas.io/) · [PyMuPDF](https://pymupdf.readthedocs.io/) · [MinerU](https://github.com/opendatalab/MinerU) · [Tailwind CSS](https://tailwindcss.com/) · [shadcn/ui](https://ui.shadcn.com/)
+
+感谢[硅基流动](https://siliconflow.cn/)为 MimirQ 的公开联调提供 50 元 API 体验额度支持。
 
 ---
 

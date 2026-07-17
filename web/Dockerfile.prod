@@ -31,6 +31,7 @@ COPY store ./store
 COPY types ./types
 COPY workers ./workers
 ARG NEXT_PUBLIC_API_URL=http://localhost:8000
+ARG API_INTERNAL_URL=http://mimirq-api:8000
 ARG NEXT_PUBLIC_API_TIMEOUT_MS=60000
 ARG NEXT_PUBLIC_API_LONG_TIMEOUT_MS=600000
 ARG NEXT_PUBLIC_USER_ID=demo
@@ -39,6 +40,7 @@ ARG MIMIRQ_BUILD_SHA=""
 ARG MIMIRQ_BUILD_TIME=""
 ENV NODE_ENV=production
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV API_INTERNAL_URL=$API_INTERNAL_URL
 ENV NEXT_PUBLIC_API_TIMEOUT_MS=$NEXT_PUBLIC_API_TIMEOUT_MS
 ENV NEXT_PUBLIC_API_LONG_TIMEOUT_MS=$NEXT_PUBLIC_API_LONG_TIMEOUT_MS
 ENV NEXT_PUBLIC_USER_ID=$NEXT_PUBLIC_USER_ID
@@ -75,7 +77,7 @@ COPY --from=builder /app/node_modules ./node_modules
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD wget -qO- http://localhost:3000/ > /dev/null || exit 1
+  CMD wget -Y off -qO- http://localhost:3000/ > /dev/null || exit 1
 
 USER node
 CMD ["node", "node_modules/next/dist/bin/next", "start", "-p", "3000"]

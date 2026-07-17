@@ -296,7 +296,7 @@ help:
 	@echo "  make init      - create local env files if missing (.env, web/.env.local)"
 	@echo "  make models    - download and verify the pinned DeepDoc model bundle"
 	@echo "  make up        - docker compose up (build + detach)"
-	@echo "  make up-web    - docker compose up + frontend (extra compose file)"
+	@echo "  make up-web    - initialize local env and start backend + infra + frontend"
 	@echo "  make up-lite   - docker compose up (lite: no milvus/minio; chroma by default)"
 	@echo "  make up-retrieval-dev - start minimal retrieval-only stack (postgres+redis+api; no parser services)"
 	@echo "  make up-etl4llm - docker compose up + ETL4LLM parser (profile etl4llm)"
@@ -413,37 +413,37 @@ init:
 models:
 	@$(PY) scripts/bootstrap_mimirq_models.py
 
-up:
+up: init
 	$(COMPOSE) up -d --build
 
-up-web:
+up-web: init
 	$(COMPOSE_WEB) up -d --build
 
-up-lite:
+up-lite: init
 	$(COMPOSE_LITE) up -d --build
 
-up-retrieval-dev:
+up-retrieval-dev: init
 	$(COMPOSE_RETRIEVAL_DEV) up -d --build
 
-up-etl4llm:
+up-etl4llm: init
 	$(COMPOSE_PARSERS) --profile etl4llm up -d --build
 
-up-marker:
+up-marker: init
 	$(COMPOSE_PARSERS) --profile marker up -d --build
 
-up-paddlevl:
+up-paddlevl: init
 	$(COMPOSE_PARSERS) --profile paddlevl up -d --build
 
-up-mineru:
+up-mineru: init
 	$(COMPOSE_PARSERS) --profile mineru up -d --build
 
-up-mineru-vlm:
+up-mineru-vlm: init
 	$(COMPOSE_PARSERS) --profile mineru --profile mineru-vlm up -d --build
 
-up-olmocr:
+up-olmocr: init
 	$(COMPOSE_PARSERS) --profile olmocr up -d --build
 
-up-qianfanocr:
+up-qianfanocr: init
 	$(COMPOSE_PARSERS) --profile qianfanocr up -d --build
 
 up-dev:
@@ -458,28 +458,28 @@ up-prod:
 up-prod-web:
 	@$(MAKE) up-web
 
-infra-up:
+infra-up: init
 	$(COMPOSE_INFRA) up -d
 
-infra-up-etl4llm:
+infra-up-etl4llm: init
 	$(COMPOSE_INFRA_PARSERS) --profile etl4llm up -d
 
-infra-up-marker:
+infra-up-marker: init
 	$(COMPOSE_INFRA_PARSERS) --profile marker up -d --build
 
-infra-up-paddlevl:
+infra-up-paddlevl: init
 	$(COMPOSE_INFRA_PARSERS) --profile paddlevl up -d --build
 
-infra-up-mineru:
+infra-up-mineru: init
 	$(COMPOSE_INFRA_PARSERS) --profile mineru up -d --build
 
-infra-up-mineru-vlm:
+infra-up-mineru-vlm: init
 	$(COMPOSE_INFRA_PARSERS) --profile mineru --profile mineru-vlm up -d --build
 
-infra-up-olmocr:
+infra-up-olmocr: init
 	$(COMPOSE_INFRA_PARSERS) --profile olmocr up -d --build
 
-infra-up-qianfanocr:
+infra-up-qianfanocr: init
 	$(COMPOSE_INFRA_PARSERS) --profile qianfanocr up -d --build
 
 infra-ps:

@@ -8,8 +8,6 @@ and return a real LLM summary.
 
 import asyncio
 
-import pytest
-
 from langchain_core.messages import AIMessage, HumanMessage
 
 from app.rag.memory.short_term import ShortTermMemoryManager

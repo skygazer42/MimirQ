@@ -11,8 +11,10 @@ services:
     build:
       context: ../web
       dockerfile: Dockerfile.prod
+      network: ${DOCKER_BUILD_NETWORK:-default}
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL_DOCKER:-/}
+        API_INTERNAL_URL: ${API_INTERNAL_URL_DOCKER:-http://mimirq-api:8000}
         NEXT_PUBLIC_API_TIMEOUT_MS: ${NEXT_PUBLIC_API_TIMEOUT_MS:-60000}
         NEXT_PUBLIC_API_LONG_TIMEOUT_MS: ${NEXT_PUBLIC_API_LONG_TIMEOUT_MS:-600000}
         NEXT_PUBLIC_USER_ID: ${NEXT_PUBLIC_USER_ID:-demo}
@@ -23,7 +25,7 @@ services:
     ports:
       - "${WEB_PORT:-3000}:3000"
     environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL_DOCKER:-/}
       NEXT_PUBLIC_API_TIMEOUT_MS: ${NEXT_PUBLIC_API_TIMEOUT_MS:-60000}
       NEXT_PUBLIC_API_LONG_TIMEOUT_MS: ${NEXT_PUBLIC_API_LONG_TIMEOUT_MS:-600000}
       NEXT_PUBLIC_USER_ID: ${NEXT_PUBLIC_USER_ID:-demo}
@@ -35,4 +37,3 @@ services:
     depends_on:
       mimirq-api:
         condition: service_healthy
-

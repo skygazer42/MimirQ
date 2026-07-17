@@ -93,15 +93,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 \
     && rm -rf /var/lib/apt/lists/*
 
-ARG MIMIRQ_BUILD_SHA=""
-ARG MIMIRQ_BUILD_TIME=""
-
 ENV PATH="/opt/venv/bin:$PATH" \
     XDG_CACHE_HOME=/app/.cache \
     HF_HOME=/app/.cache/huggingface \
-    # Optional build metadata (exposed via /api/v1/meta)
-    MIMIRQ_BUILD_SHA="${MIMIRQ_BUILD_SHA}" \
-    MIMIRQ_BUILD_TIME="${MIMIRQ_BUILD_TIME}" \
     # Uvicorn defaults (override via env)
     UVICORN_WORKERS=1 \
     UVICORN_LOG_LEVEL=info
@@ -114,6 +108,10 @@ RUN mkdir -p uploads logs vector_faiss vector_chroma chroma_db /data/uploads \
     /opt/venv/lib/python3.11/site-packages/rapidocr/models \
     /opt/venv/lib/python3.11/site-packages/rapid_table/models \
     && adduser --disabled-password --gecos "" --home /app appuser \
+    && touch /app/.env /app/.env.lock \
+    && chown root:appuser /app \
+    && chmod 1775 /app \
+    && chown appuser:appuser /app/.env /app/.env.lock \
     && chown -R appuser:appuser \
         uploads \
         logs \
@@ -130,10 +128,17 @@ COPY scripts/bootstrap_mimirq_models.py ./scripts/bootstrap_mimirq_models.py
 RUN --mount=type=cache,target=/app/.cache/huggingface \
     /opt/venv/bin/python scripts/bootstrap_mimirq_models.py
 
+# Build metadata changes frequently and must not invalidate the model layer above.
+ARG MIMIRQ_BUILD_SHA=""
+ARG MIMIRQ_BUILD_TIME=""
+ENV MIMIRQ_BUILD_SHA="${MIMIRQ_BUILD_SHA}" \
+    MIMIRQ_BUILD_TIME="${MIMIRQ_BUILD_TIME}"
+
 # 复制运行时需要的应用路径，避免把构建上下文整体带入镜像。
 COPY app ./app
 COPY alembic ./alembic
 COPY config ./config
+COPY ci/perf_suite_baseline.v1.json ci/perf_regression_policy.v1.json ./ci/
 COPY alembic.ini main.py ./
 COPY docker/start_backend.sh ./docker/start_backend.sh
 
@@ -143,8 +148,8 @@ USER appuser
 EXPOSE 8000
 
 # Image-level healthcheck (compose may override)
-HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-  CMD curl -fsS http://localhost:8000/api/v1/health/ready || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=240s --retries=3 \
+  CMD curl --noproxy '*' -fsS http://localhost:8000/api/v1/health/ready || exit 1
 
 # 启动命令
 CMD ["sh", "docker/start_backend.sh"]

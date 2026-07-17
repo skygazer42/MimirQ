@@ -1,6 +1,7 @@
 x-backend-build: &backend_build
   context: ..
   dockerfile: docker/Dockerfile
+  network: ${DOCKER_BUILD_NETWORK:-default}
   args:
     # Optional build metadata (exposed via /api/v1/meta)
     MIMIRQ_BUILD_SHA: ${MIMIRQ_BUILD_SHA:-}
@@ -8,6 +9,8 @@ x-backend-build: &backend_build
 
 x-backend-env: &backend_env
   PYTHONDONTWRITEBYTECODE: 1
+  HOST: 0.0.0.0
+  PORT: 8000
   # Process settings (overrides Dockerfile defaults)
   UVICORN_WORKERS: ${BACKEND_WORKERS:-1}
   # Force container-to-container endpoints (do not depend on host-local `.env` defaults like localhost).
@@ -71,11 +74,12 @@ services:
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/v1/health/ready"]
+      test: ["CMD", "curl", "--noproxy", "*", "-fsS", "http://localhost:8000/api/v1/health/ready"]
       interval: 10s
       timeout: 3s
       retries: 10
-      start_period: 30s
+      # Empty databases can spend several minutes creating the initial schema.
+      start_period: 240s
     depends_on:
       mimirq-postgres:
         condition: service_healthy
