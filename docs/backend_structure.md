@@ -326,6 +326,17 @@ from app.services.prompt_resolver import resolve_prompt_template
 
 在 `rag/` 下扩展 `engine.py` 或添加新的编排文件。
 
+### 添加新 API 路由
+
+在 `api/v1/` 下创建路由文件，然后在 `api/v1/__init__.py` 中 `include_router(...)` 注册。
+
+**认证约定（务必遵守）**：后端没有全局强制认证中间件——认证由**每个路由显式声明依赖**实现。新增任何路由都必须带认证依赖：
+
+- 函数级：访问租户数据时同时声明 `tenant_id: Annotated[UUID, Depends(get_tenant_id)]` 和 `account_id: Annotated[str, Depends(get_current_account_id)]`；只需确认身份、不涉及租户数据时声明 `Depends(get_current_account_id)`；
+- 路由级：`APIRouter(dependencies=[Depends(get_current_account_id)])`（整组路由统一鉴权，适合一组无租户数据但仍需认证的端点）。
+
+即使是**纯计算、不访问数据库**的端点（如图算法工具）也必须认证，否则会成为未认证的计算/DoS 面；同时对客户端提供的列表/数组输入用 `Field(..., max_length=...)` 设上限，避免无界输入导致 CPU/内存耗尽。参考 `api/v1/network_analysis.py`（用路由级 `Depends(get_current_account_id)` + `edges` 上限）。
+
 ## 测试
 
 按模块运行测试：

@@ -162,6 +162,7 @@ CORE_TESTS := \
 	tests/test_auth_dependency_sets_request_state.py \
 	tests/test_auth_saml_exchange_endpoint.py \
 	tests/test_tenant_dependency_prefers_verified_jwt_tenant.py \
+	tests/test_production_trusted_tenant_source.py \
 	tests/test_tenant_rls.py \
 	tests/test_tenant_quota.py \
 	tests/test_rbac_current_access_endpoint.py \
@@ -199,6 +200,7 @@ CORE_TESTS := \
 	tests/test_backend_performance_fixes.py \
 	tests/test_robustness_redundancy_fixes.py \
 	tests/test_async_bridge.py \
+	tests/test_short_term_memory_sync_summary.py \
 	tests/test_embedding_http_providers.py \
 	tests/test_redis_client.py \
 	tests/test_adaptive_retrieval_routing.py \
