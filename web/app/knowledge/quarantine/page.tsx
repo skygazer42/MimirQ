@@ -1650,13 +1650,16 @@ export default function QuarantineQueuePage() {
     () => Math.max(1, Math.ceil(filtered.length / QUARANTINE_PAGE_SIZE)),
     [filtered.length]
   )
+  // Clamp during render instead of via an effect: when filters shrink the
+  // result set, safePage stays in range without an extra render pass.
+  const safePage = Math.min(page, totalPages)
   const paginated = useMemo(
     () =>
       filtered.slice(
-        (page - 1) * QUARANTINE_PAGE_SIZE,
-        page * QUARANTINE_PAGE_SIZE
+        (safePage - 1) * QUARANTINE_PAGE_SIZE,
+        safePage * QUARANTINE_PAGE_SIZE
       ),
-    [filtered, page]
+    [filtered, safePage]
   )
 
   const selected = useMemo(() => {
@@ -1690,10 +1693,6 @@ export default function QuarantineQueuePage() {
     dateTo,
     reviewState,
   ])
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages)
-  }, [page, totalPages])
 
   const resetFilters = useCallback(() => {
     setSearch('')
@@ -2609,10 +2608,8 @@ export default function QuarantineQueuePage() {
                     <button
                       type="button"
                       className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/60 bg-background text-foreground disabled:opacity-40"
-                      disabled={page <= 1}
-                      onClick={() =>
-                        setPage((previous) => Math.max(1, previous - 1))
-                      }
+                      disabled={safePage <= 1}
+                      onClick={() => setPage(Math.max(1, safePage - 1))}
                     >
                       <ChevronLeft className="h-3.5 w-3.5" />
                     </button>
@@ -2627,7 +2624,7 @@ export default function QuarantineQueuePage() {
                             onClick={() => setPage(pageNumber)}
                             className={cn(
                               'inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-[12px] font-medium tabular-nums',
-                              page === pageNumber
+                              safePage === pageNumber
                                 ? 'bg-primary text-primary-foreground'
                                 : 'text-muted-foreground hover:text-foreground'
                             )}
@@ -2646,7 +2643,7 @@ export default function QuarantineQueuePage() {
                         onClick={() => setPage(totalPages)}
                         className={cn(
                           'inline-flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-[12px] font-medium tabular-nums',
-                          page === totalPages
+                          safePage === totalPages
                             ? 'bg-primary text-primary-foreground'
                             : 'text-muted-foreground hover:text-foreground'
                         )}
@@ -2657,11 +2654,9 @@ export default function QuarantineQueuePage() {
                     <button
                       type="button"
                       className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/60 bg-background text-foreground disabled:opacity-40"
-                      disabled={page >= totalPages}
+                      disabled={safePage >= totalPages}
                       onClick={() =>
-                        setPage((previous) =>
-                          Math.min(totalPages, previous + 1)
-                        )
+                        setPage(Math.min(totalPages, safePage + 1))
                       }
                     >
                       <ChevronRight className="h-3.5 w-3.5" />

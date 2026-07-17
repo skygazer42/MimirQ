@@ -25,8 +25,8 @@ from langchain_core.messages import (
     trim_messages as lc_trim_messages,
 )
 
-from app.core.config import settings
 from app.core.async_bridge import run_coroutine_sync
+from app.core.config import settings
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
 

@@ -1,7 +1,7 @@
 'use client'
 
 import type { ChangeEvent, Dispatch, RefObject, SetStateAction } from 'react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { toast } from 'sonner'
 
@@ -104,6 +104,9 @@ export function useGraphDataLoading({
   resetExplainMode,
 }: UseGraphDataLoadingParams): UseGraphDataLoadingResult {
   const [autoLoadedGraphKey, setAutoLoadedGraphKey] = useState<string | null>(null)
+  // Monotonic token to discard stale initial-load responses: when the scope
+  // changes quickly, an earlier (slower) fetch must not overwrite a later one.
+  const loadTokenRef = useRef(0)
 
   const resetGraphSurface = useCallback(() => {
     setKgNodeDetail(null)
@@ -119,6 +122,7 @@ export function useGraphDataLoading({
       source: 'live' = 'live',
       opts?: { includeEntityLinks?: boolean; includeRelationLinks?: boolean; minSharedEvents?: number }
     ) => {
+      const requestToken = (loadTokenRef.current += 1)
       if (
         source === 'live' &&
         scope.hasScope &&
@@ -127,6 +131,7 @@ export function useGraphDataLoading({
         scopedDocumentIds === null &&
         scopedDatasetDocIdsLoading
       ) {
+        setIsLoading(false)
         toast.message('正在解析 dataset scope 的文档列表…')
         return
       }
@@ -147,6 +152,10 @@ export function useGraphDataLoading({
           pipelineHash: scope.pipelineHash || undefined,
         })
 
+        // A newer load started while this fetch was in flight — drop this
+        // response so a slow earlier scope cannot clobber the current one.
+        if (requestToken !== loadTokenRef.current) return
+
         setGraphData(data)
         setViewMode('3d')
         setDataSource(source)
@@ -163,21 +172,28 @@ export function useGraphDataLoading({
 
         try {
           const meta = await metaApi.details()
+          if (requestToken !== loadTokenRef.current) return
           if (meta.features?.kg_enabled === false) {
             setKgStats(null)
           } else {
             const stats = await kgApi.getStats(scopeParams || undefined)
+            if (requestToken !== loadTokenRef.current) return
             setKgStats(stats)
           }
         } catch {
-          setKgStats(null)
+          if (requestToken === loadTokenRef.current) setKgStats(null)
         }
 
+        if (requestToken !== loadTokenRef.current) return
         resetGraphSurface()
       } catch (error) {
-        reportClientError('Failed to fetch graph data', error)
+        if (requestToken === loadTokenRef.current) {
+          reportClientError('Failed to fetch graph data', error)
+        }
       } finally {
-        setIsLoading(false)
+        // Only the most recent load owns the loading flag; a stale finally
+        // must not clear the spinner for an in-flight newer request.
+        if (requestToken === loadTokenRef.current) setIsLoading(false)
       }
     },
     [

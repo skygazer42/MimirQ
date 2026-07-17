@@ -2,9 +2,10 @@
 from collections import defaultdict, deque
 from typing import Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
+from app.api.dependencies.auth import get_current_account_id
 from app.rag.kg.community import CommunityEdge, label_propagation_communities
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -15,8 +16,19 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     416: {"description": "Range Not Satisfiable"},
 }
 
-router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+# These endpoints run graph algorithms over a client-supplied edge list and never
+# touch tenant data, but they must still require authentication (parity with the
+# rest of /api/v1, which enforces auth per-route rather than via global middleware)
+# so they cannot be abused as an unauthenticated compute/DoS surface.
+router = APIRouter(
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+    dependencies=[Depends(get_current_account_id)],
+)
 _SCHEMA = "mimirq.kg_network_analysis.v1"
+
+# Upper bound on the client-supplied edge list. Path enumeration / PageRank over an
+# unbounded graph is a CPU/memory DoS vector, so cap the input size defensively.
+_MAX_EDGES = 20_000
 
 
 class EdgeIn(BaseModel):
@@ -26,7 +38,7 @@ class EdgeIn(BaseModel):
 
 
 class GraphRequest(BaseModel):
-    edges: list[EdgeIn] = Field(default_factory=list)
+    edges: list[EdgeIn] = Field(default_factory=list, max_length=_MAX_EDGES)
     start_id: str | None = None
     target_id: str | None = None
     max_hops: int = Field(default=2, ge=1, le=10)
