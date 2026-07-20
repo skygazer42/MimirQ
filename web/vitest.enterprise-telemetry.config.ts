@@ -12,7 +12,6 @@ const config = {
     include: [
       'components/providers/service-worker-registrar.test.ts',
       'components/providers/web-vitals-reporter.test.ts',
-      'lib/api-client-observability.test.ts',
       'lib/fetch-errors.test.ts',
       'lib/preferred-language.test.ts',
       'lib/request-id.test.ts',

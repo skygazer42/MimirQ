@@ -1,3 +1,5 @@
+import { AUTH_SCOPE_CHANGED_EVENT, getAuthCacheScope } from './auth-storage'
+
 export type DocContentCacheRecord = {
   id: string
   markdownContent: string
@@ -44,6 +46,10 @@ const CONTENT_STORE = 'doc_contents'
 const SOURCE_STORE = 'doc_sources'
 const MB = 1024 * 1024
 const DEFAULT_STALE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+
+function scopedRecordId(id: string): string {
+  return `${getAuthCacheScope()}:${id}`
+}
 
 function toError(reason: unknown, fallbackMessage: string): Error {
   if (reason instanceof Error) return reason
@@ -228,7 +234,7 @@ export async function saveDocContentToCache(record: Omit<DocContentCacheRecord, 
   if (!record?.id) return
   await withStore(CONTENT_STORE, 'readwrite', (store) =>
     store.put({
-      id: record.id,
+      id: scopedRecordId(record.id),
       markdownContent: record.markdownContent || '',
       originalMarkdownContent: record.originalMarkdownContent || '',
       updatedAt: record.updatedAt ?? Date.now(),
@@ -239,14 +245,14 @@ export async function saveDocContentToCache(record: Omit<DocContentCacheRecord, 
 export async function getDocContentFromCache(id: string): Promise<DocContentCacheRecord | null> {
   if (globalThis.window === undefined) return null
   if (!id) return null
-  const res = await withStore(CONTENT_STORE, 'readonly', (store) => store.get(id))
-  return res ? (res as DocContentCacheRecord) : null
+  const res = await withStore(CONTENT_STORE, 'readonly', (store) => store.get(scopedRecordId(id)))
+  return res ? { ...(res as DocContentCacheRecord), id } : null
 }
 
 export async function deleteDocContentFromCache(id: string) {
   if (globalThis.window === undefined) return
   if (!id) return
-  await withStore(CONTENT_STORE, 'readwrite', (store) => store.delete(id))
+  await withStore(CONTENT_STORE, 'readwrite', (store) => store.delete(scopedRecordId(id)))
 }
 
 export async function saveDocSourceToCache(record: { id: string; file: File; updatedAt?: number }) {
@@ -256,7 +262,7 @@ export async function saveDocSourceToCache(record: { id: string; file: File; upd
 
   await withStore(SOURCE_STORE, 'readwrite', (store) =>
     store.put({
-      id: record.id,
+      id: scopedRecordId(record.id),
       filename: record.file.name || 'document',
       mimeType: record.file.type || 'application/octet-stream',
       size: record.file.size || 0,
@@ -270,14 +276,14 @@ export async function saveDocSourceToCache(record: { id: string; file: File; upd
 export async function getDocSourceFromCache(id: string): Promise<DocSourceCacheRecord | null> {
   if (globalThis.window === undefined) return null
   if (!id) return null
-  const res = await withStore(SOURCE_STORE, 'readonly', (store) => store.get(id))
-  return res ? (res as DocSourceCacheRecord) : null
+  const res = await withStore(SOURCE_STORE, 'readonly', (store) => store.get(scopedRecordId(id)))
+  return res ? { ...(res as DocSourceCacheRecord), id } : null
 }
 
 export async function deleteDocSourceFromCache(id: string) {
   if (globalThis.window === undefined) return
   if (!id) return
-  await withStore(SOURCE_STORE, 'readwrite', (store) => store.delete(id))
+  await withStore(SOURCE_STORE, 'readwrite', (store) => store.delete(scopedRecordId(id)))
 }
 
 export async function getDocContentCacheStats(): Promise<DocContentCacheStats> {
@@ -321,6 +327,12 @@ export async function clearDocContentCache() {
 export async function clearDocSourceCache() {
   if (globalThis.window === undefined) return
   await withStore(SOURCE_STORE, 'readwrite', (store) => store.clear())
+}
+
+if (globalThis.window !== undefined) {
+  globalThis.window.addEventListener(AUTH_SCOPE_CHANGED_EVENT, () => {
+    void Promise.all([clearDocContentCache(), clearDocSourceCache()]).catch(() => undefined)
+  })
 }
 
 async function pruneStoreByUpdatedAt(

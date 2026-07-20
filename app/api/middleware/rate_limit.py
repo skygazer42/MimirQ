@@ -254,13 +254,6 @@ def get_default_limiter() -> RateLimiter | RedisRateLimiter:
 
 
 def _client_ip_from_request(request: Request) -> str:
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return (forwarded.split(",")[0] or "").strip() or "unknown"
-
-    real_ip = request.headers.get("X-Real-IP")
-    if real_ip:
-        return real_ip.strip() or "unknown"
     if request.client:
         return request.client.host
     return "unknown"

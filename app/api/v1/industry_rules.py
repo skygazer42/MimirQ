@@ -1,8 +1,12 @@
 
-from typing import Any
+from typing import Annotated, Any
+from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 
+from app.api.dependencies.auth import get_current_account_id
+from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.industry_rules import (
     IndustryRulesetDetailResponse,
     IndustryRulesetListResponse,
@@ -13,6 +17,8 @@ from app.api.schemas.industry_rules import (
     IndustryRulesRewritePreviewResponse,
     IndustryRulesUpdateResponse,
 )
+from app.core.config import settings
+from app.core.database import get_db
 from app.rag.industry_rules.appliers.query_rewrite import expand_query_terms
 from app.rag.industry_rules.loaders import (
     list_rulesets,
@@ -22,6 +28,7 @@ from app.rag.industry_rules.loaders import (
     replace_ruleset_patterns,
     ruleset_exists,
 )
+from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -37,6 +44,24 @@ _INDEX_SCHEMA = "mimirq.industry_rules_index.v1"
 _RULESET_SCHEMA = "mimirq.industry_rules_ruleset.v1"
 _PREVIEW_SCHEMA = "mimirq.industry_rules_preview.v1"
 _UPDATE_SCHEMA = "mimirq.industry_rules_update.v1"
+
+
+def _ensure_write(db: Session, tenant_id: UUID, account_id: str) -> None:
+    try:
+        system_tenant_id = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail="DEFAULT_TENANT_ID is invalid") from exc
+    if tenant_id != system_tenant_id:
+        raise HTTPException(status_code=403, detail="No permission to manage industry rules")
+    member = ensure_tenant_permission(
+        db,
+        tenant_id,
+        account_id,
+        TenantPermissions.SETTINGS_WRITE,
+        detail="No permission to manage industry rules",
+    )
+    if str(getattr(member, "role", "") or "").strip().lower() != "owner":
+        raise HTTPException(status_code=403, detail="No permission to manage industry rules")
 
 
 def _ruleset_summary(name: str) -> dict[str, Any]:
@@ -119,7 +144,15 @@ def get_industry_ruleset(name: str) -> dict[str, Any]:
     ),
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-def put_industry_ruleset_glossary(name: str, body: IndustryRulesGlossaryUpdateRequest) -> dict[str, Any]:
+def put_industry_ruleset_glossary(
+    name: str,
+    body: IndustryRulesGlossaryUpdateRequest,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    _ensure_write(db, tenant_id, account_id)
     candidate = _require_ruleset(name)
     result = replace_ruleset_glossary(candidate, body.glossary)
     return {"schema": _UPDATE_SCHEMA, **result}
@@ -135,7 +168,15 @@ def put_industry_ruleset_glossary(name: str, body: IndustryRulesGlossaryUpdateRe
     ),
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-def put_industry_ruleset_patterns(name: str, body: IndustryRulesPatternsUpdateRequest) -> dict[str, Any]:
+def put_industry_ruleset_patterns(
+    name: str,
+    body: IndustryRulesPatternsUpdateRequest,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    _ensure_write(db, tenant_id, account_id)
     candidate = _require_ruleset(name)
     result = replace_ruleset_patterns(candidate, body.patterns)
     return {"schema": _UPDATE_SCHEMA, **result}
@@ -151,7 +192,15 @@ def put_industry_ruleset_patterns(name: str, body: IndustryRulesPatternsUpdateRe
     ),
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-def put_industry_ruleset_intents(name: str, body: IndustryRulesIntentsUpdateRequest) -> dict[str, Any]:
+def put_industry_ruleset_intents(
+    name: str,
+    body: IndustryRulesIntentsUpdateRequest,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    _ensure_write(db, tenant_id, account_id)
     candidate = _require_ruleset(name)
     result = replace_ruleset_intents(candidate, body.intents)
     return {"schema": _UPDATE_SCHEMA, **result}

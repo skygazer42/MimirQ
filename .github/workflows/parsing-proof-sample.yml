@@ -24,9 +24,6 @@ jobs:
       - name: Install Python deps
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --retries 5 --timeout 120 \
-            "torch @ https://download-r2.pytorch.org/whl/cpu/torch-2.10.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
-            "torchvision @ https://download-r2.pytorch.org/whl/cpu/torchvision-0.25.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl"
           python -m pip install --retries 10 --timeout 120 \
             --extra-index-url https://download.pytorch.org/whl/cpu \
             -r requirements.txt
@@ -37,19 +34,12 @@ jobs:
           python scripts/run_sample_parsing_retrieval_proof.py \
             --out-dir artifacts/parsing_proof_broader_sample
 
-      - name: Build broader parsing proof summary artifacts
-        run: |
-          python scripts/build_parsing_retrieval_proof_artifacts.py \
-            --batch-report artifacts/parsing_proof_broader_sample/batch.report.json \
-            --summary-out artifacts/parsing_proof_broader_sample/summary.json \
-            --report-out artifacts/parsing_proof_broader_sample/report.json
-
       - name: Evaluate broader parsing proof thresholds
         run: |
           python scripts/parsing_retrieval_proof_gate.py \
             --input artifacts/parsing_proof_broader_sample/summary.json \
             --thresholds ci/parsing_retrieval_proof_thresholds.v1.json \
-            --out artifacts/parsing_proof_broader_sample/gate.json || true
+            --out artifacts/parsing_proof_broader_sample/gate.json
 
       - name: Upload parsing proof artifacts
         if: always()

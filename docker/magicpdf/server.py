@@ -1,4 +1,3 @@
-
 import asyncio
 import json
 import os
@@ -35,6 +34,7 @@ def _get_int_env(name: str, default: int) -> int:
 
 
 _MAX_CONCURRENT_JOBS = max(1, _get_int_env("MAGIC_PDF_MAX_CONCURRENT_JOBS", 1))
+_MAX_UPLOAD_BYTES = max(1, _get_int_env("MAGIC_PDF_MAX_UPLOAD_BYTES", 50 * 1024 * 1024))
 _PIPELINE_TIMEOUT_SEC = max(30, _get_int_env("MAGIC_PDF_PIPELINE_TIMEOUT_SEC", 600))
 _ARTIFACT_ROOT = Path(os.environ.get("MAGIC_PDF_ARTIFACT_ROOT") or "/var/lib/mimirq/magicpdf-artifacts")
 _CLI = (os.environ.get("MAGIC_PDF_CLI") or "magic-pdf").strip() or "magic-pdf"
@@ -54,6 +54,15 @@ _REQUIRED_MODEL_FILES = (
 _CH_DOC_REC_MODEL = "ch_PP-OCRv4_rec_server_doc_infer.pth"
 _CH_COMPAT_REC_MODEL = "ch_PP-OCRv5_rec_infer.pth"
 _CH_COMPAT_DICT = "ppocrv5_dict.txt"
+
+
+async def _read_upload(file: UploadFile) -> bytes:
+    data = bytearray()
+    while chunk := await file.read(min(1024 * 1024, _MAX_UPLOAD_BYTES + 1 - len(data))):
+        data.extend(chunk)
+        if len(data) > _MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="upload too large")
+    return bytes(data)
 
 
 def _sanitize_run_id(value: str) -> str:
@@ -323,7 +332,7 @@ async def convert(
     if suffix and suffix != ".pdf":
         raise HTTPException(status_code=400, detail="MagicPDF service currently accepts PDF files only.")
 
-    file_bytes = await file.read()
+    file_bytes = await _read_upload(file)
     if not file_bytes:
         raise HTTPException(status_code=400, detail="empty upload")
 

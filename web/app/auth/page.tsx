@@ -35,7 +35,7 @@ function getAuthSubmitContent(isSubmitting: boolean, mode: Mode): ReactNode {
 
     return (
         <>
-            {mode === 'login' ? '登 录' : '创建账户'}
+            {mode === 'login' ? '登 录' : '创建初始管理员'}
             <ArrowRight className="ml-2 size-4 opacity-70" />
         </>
     )
@@ -209,13 +209,16 @@ export default function AuthPage() {
                             )}
                             onClick={() => setMode('register')}
                         >
-                            注册
+                            首次设置
                         </button>
                     </div>
 
                     <form onSubmit={handleSubmit} className="space-y-5">
                         {mode === 'register' && (
                             <div className="space-y-4">
+                                <p className="text-xs leading-5 text-muted-foreground">
+                                    仅用于未初始化的部署。已有管理员时，请联系管理员开通账号。
+                                </p>
                                 <div className="space-y-2">
                                     <Label htmlFor="email" className="text-xs text-muted-foreground">邮箱地址</Label>
                                     <div className="relative group">

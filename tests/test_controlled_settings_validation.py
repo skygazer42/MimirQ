@@ -21,3 +21,14 @@ def test_controlled_settings_reject_unknown_values(field_name: str):
                 field_name: "typo",
             }
         )
+
+
+def test_scim_requires_a_bound_tenant() -> None:
+    with pytest.raises(ValidationError, match="SCIM_TENANT_ID required"):
+        Settings.model_validate(
+            {
+                "SECRET_KEY": "test-only-signing-key-not-for-production",
+                "SCIM_ENABLED": True,
+                "SCIM_BEARER_TOKEN": "test-only-scim-token",
+            }
+        )

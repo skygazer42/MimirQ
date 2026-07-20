@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import sys
 import tempfile
 import threading
@@ -35,6 +36,7 @@ import pdfplumber
 from PIL import Image
 
 from app.deepdoc.parser.pdf_parser import IntegratedPipelinePdfParser
+from app.parsing.utils.zip_processor import ZipImageProcessor
 
 LOCK_KEY_pdfplumber = "global_shared_lock_pdfplumber"
 if LOCK_KEY_pdfplumber not in sys.modules:
@@ -143,33 +145,21 @@ class MinerUParser(IntegratedPipelinePdfParser):
     def _extract_zip_no_root(self, zip_path, extract_to, root_dir):
         self.logger.info(f"[MinerU] Extract zip: zip_path={zip_path}, extract_to={extract_to}, root_hint={root_dir}")
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
-            if not root_dir:
-                files = zip_ref.namelist()
-                root_dir = files[0] if files and files[0].endswith("/") else None
-
-            if not root_dir or not root_dir.endswith("/"):
-                self.logger.info(f"[MinerU] No root directory found, extracting all (root_hint={root_dir})")
-                zip_ref.extractall(extract_to)
-                return
-
-            root_len = len(root_dir)
-            for member in zip_ref.infolist():
-                filename = member.filename
-                if filename == root_dir:
-                    self.logger.info("[MinerU] Ignore root folder...")
-                    continue
-
-                path = filename
-                if path.startswith(root_dir):
-                    path = path[root_len:]
-
-                full_path = os.path.join(extract_to, path)
-                if member.is_dir():
-                    os.makedirs(full_path, exist_ok=True)
-                else:
-                    os.makedirs(os.path.dirname(full_path), exist_ok=True)
-                    with open(full_path, "wb") as f:
-                        f.write(zip_ref.read(filename))
+            with tempfile.TemporaryDirectory() as temp_dir:
+                temp_path = Path(temp_dir)
+                ZipImageProcessor._safe_extract(zip_ref, temp_path)
+                source = temp_path
+                if root_dir:
+                    candidate = temp_path / ZipImageProcessor._sanitize_zip_member(root_dir.rstrip("/"))
+                    if candidate.is_dir():
+                        source = candidate
+                Path(extract_to).mkdir(parents=True, exist_ok=True)
+                for child in source.iterdir():
+                    target = Path(extract_to) / child.name
+                    if child.is_dir():
+                        shutil.copytree(child, target, dirs_exist_ok=True)
+                    else:
+                        shutil.copy2(child, target)
 
     @staticmethod
     def _is_http_endpoint_valid(url, timeout=5):

@@ -1,6 +1,7 @@
 
 import uuid
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI, HTTPException
@@ -209,3 +210,31 @@ def test_document_lifecycle_metadata_patch_rejects_self_supersedes(monkeypatch, 
     assert res.status_code in {400, 422}, res.text
     if res.status_code == 400:
         assert "supersedes_document_id" in res.text
+
+
+def test_document_qa_calls_the_qa_service(monkeypatch) -> None:
+    import app.api.v1.document_mutations as mutations_module
+    import app.api.v1.documents as documents_module
+
+    document_id = uuid.uuid4()
+    tenant_id = uuid.uuid4()
+    document = SimpleNamespace(id=document_id, tenant_id=tenant_id, dataset_id=None, status="completed")
+    client, _lifecycle_module = _build_client(monkeypatch, doc=document)
+
+    called: dict[str, object] = {}
+
+    def _generate(_db, **kwargs):  # noqa: ANN001
+        called.update(kwargs)
+        return SimpleNamespace(mode="extract", deleted=0, created=1, chunk_ids=[], preview=[])
+
+    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args: None, raising=True)
+    monkeypatch.setattr(documents_module, "_assert_document_acl_readable", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(mutations_module, "audit_log_event", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(mutations_module, "generate_and_index_document_qa", _generate, raising=True)
+
+    response = client.post(f"/api/v1/documents/{document_id}/qa/generate", json={"num_pairs": 3})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["created"] == 1
+    assert called["document"] is document
+    assert called["num_pairs"] == 3

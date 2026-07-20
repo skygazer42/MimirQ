@@ -1,7 +1,9 @@
 'use client'
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+
+import { AUTH_SCOPE_CHANGED_EVENT } from '@/lib/auth-storage'
 
 function getHttpStatus(error: unknown): number | null {
   const err = error as { response?: { status?: unknown }; status?: unknown }
@@ -40,6 +42,15 @@ export function QueryProvider({ children }: Readonly<{ children: React.ReactNode
         },
       })
   )
+
+  useEffect(() => {
+    const clearQueries = () => queryClient.clear()
+
+    globalThis.window.addEventListener(AUTH_SCOPE_CHANGED_EVENT, clearQueries)
+    return () => {
+      globalThis.window.removeEventListener(AUTH_SCOPE_CHANGED_EVENT, clearQueries)
+    }
+  }, [queryClient])
 
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 }

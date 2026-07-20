@@ -180,6 +180,10 @@ services:
     environment:
       <<: *backend_env
       TABLE_STORE_DIR: /data/uploads/table_store
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS_DOCKER:-127.0.0.1,172.30.0.10}
+    networks:
+      - default
+      - mimirq-proxy
     volumes:
       - upload_data:/data/uploads
       - ../plugins:/app/plugins:ro
@@ -228,3 +232,9 @@ volumes:
   upload_data:
   # Shared MinerU/PDF-Extract-Kit model cache, also used by MagicPDF local parser.
   mineru_cache:
+
+networks:
+  mimirq-proxy:
+    ipam:
+      config:
+        - subnet: ${MIMIRQ_PROXY_SUBNET:-172.30.0.0/24}

@@ -1,4 +1,3 @@
-
 import asyncio
 import base64
 import os
@@ -41,6 +40,7 @@ def _get_float_env(name: str, default: float) -> float:
 
 
 _MAX_CONCURRENT_JOBS = max(1, _get_int_env("QIANFAN_OCR_MAX_CONCURRENT_JOBS", 1))
+_MAX_UPLOAD_BYTES = max(1, _get_int_env("QIANFAN_OCR_MAX_UPLOAD_BYTES", 50 * 1024 * 1024))
 _PAGE_CONCURRENCY = max(1, _get_int_env("QIANFAN_OCR_PAGE_CONCURRENCY", 1))
 _PDF_DPI = max(72, _get_int_env("QIANFAN_OCR_PDF_DPI", 200))
 _TIMEOUT_SEC = max(10.0, _get_float_env("QIANFAN_OCR_REQUEST_TIMEOUT_SEC", 120.0))
@@ -58,7 +58,9 @@ _MAX_TOKENS = max(256, _get_int_env("QIANFAN_OCR_MAX_TOKENS", 4096))
 _TEMPERATURE = float(_get_float_env("QIANFAN_OCR_TEMPERATURE", 0.0))
 _DEFAULT_LAYOUT_AS_THOUGHT = _get_bool_env("QIANFAN_OCR_LAYOUT_AS_THOUGHT", False)
 _LAYOUT_TRIGGER = (os.environ.get("QIANFAN_OCR_LAYOUT_TRIGGER") or "").strip()
-_DEFAULT_MARKDOWN_PROMPT = "Convert the document to markdown with correct reading order. Keep tables in HTML and formulas in $$...$$."
+_DEFAULT_MARKDOWN_PROMPT = (
+    "Convert the document to markdown with correct reading order. Keep tables in HTML and formulas in $$...$$."
+)
 _QIANFAN_ONLINE_PROMPT = "OCR this image."
 
 
@@ -68,10 +70,7 @@ def _default_prompt_for_server(server_url: str) -> str:
     return _DEFAULT_MARKDOWN_PROMPT
 
 
-_PROMPT = (
-    os.environ.get("QIANFAN_OCR_PROMPT")
-    or _default_prompt_for_server(_SERVER_URL)
-).strip()
+_PROMPT = (os.environ.get("QIANFAN_OCR_PROMPT") or _default_prompt_for_server(_SERVER_URL)).strip()
 _STRIP_THINK_TAGS = _get_bool_env("QIANFAN_OCR_STRIP_THINK_TAGS", True)
 
 _semaphore = asyncio.Semaphore(_MAX_CONCURRENT_JOBS)
@@ -79,6 +78,15 @@ _semaphore = asyncio.Semaphore(_MAX_CONCURRENT_JOBS)
 _THINK_RE = re.compile(r"<think>.*?</think>", flags=re.IGNORECASE | re.DOTALL)
 _REF_RE = re.compile(r"<\|ref\|>.*?<\|/ref\|>", flags=re.DOTALL)
 _DET_RE = re.compile(r"<\|det\|>.*?<\|/det\|>", flags=re.DOTALL)
+
+
+async def _read_upload(file: UploadFile) -> bytes:
+    data = bytearray()
+    while chunk := await file.read(min(1024 * 1024, _MAX_UPLOAD_BYTES + 1 - len(data))):
+        data.extend(chunk)
+        if len(data) > _MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="upload too large")
+    return bytes(data)
 
 
 def _build_api_url() -> str:
@@ -251,7 +259,7 @@ async def convert(
     if suffix not in {".pdf", ".png", ".jpg", ".jpeg"}:
         raise HTTPException(status_code=400, detail="Only PDF/PNG/JPG is supported")
 
-    file_bytes = await file.read()
+    file_bytes = await _read_upload(file)
     if not file_bytes:
         raise HTTPException(status_code=400, detail="Empty file")
 

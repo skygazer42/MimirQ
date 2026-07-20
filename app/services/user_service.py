@@ -10,6 +10,7 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.constants import UserRoles
 from app.core.security import hash_password, verify_password
 from app.models.tenant import Tenant, TenantMember
 from app.models.user import User
@@ -88,13 +89,13 @@ class UserService:
     def ensure_default_membership(db: Session, *, user_id: str) -> None:
         raw_tenant = str(getattr(settings, "DEFAULT_TENANT_ID", "") or "").strip()
         if not raw_tenant:
-            return
+            raise HTTPException(status_code=500, detail="DEFAULT_TENANT_ID is not configured")
         try:
             tenant_id = UUID(raw_tenant)
-        except ValueError:
-            return
+        except ValueError as exc:
+            raise HTTPException(status_code=500, detail="DEFAULT_TENANT_ID is invalid") from exc
 
-        tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+        tenant = db.query(Tenant).filter(Tenant.id == tenant_id).with_for_update().first()
         if not tenant:
             tenant = Tenant(
                 id=tenant_id,
@@ -103,21 +104,22 @@ class UserService:
                 plan="basic",
             )
             db.add(tenant)
+            db.flush()
 
-        member = db.query(TenantMember).filter(
-            TenantMember.tenant_id == tenant_id,
-            TenantMember.user_id == user_id,
-        ).first()
-        if not member:
-            db.add(
-                TenantMember(
-                    tenant_id=tenant_id,
-                    user_id=user_id,
-                    role="owner",
-                    is_active=True,
-                    is_current=True,
-                )
+        if db.query(TenantMember.id).filter(TenantMember.tenant_id == tenant_id).first() is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Initial registration is closed; contact an administrator",
             )
+        db.add(
+            TenantMember(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                role=UserRoles.OWNER,
+                is_active=True,
+                is_current=True,
+            )
+        )
 
     @staticmethod
     def mark_login(db: Session, user: User) -> None:

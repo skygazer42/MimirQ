@@ -146,18 +146,33 @@ async function handleUnauthorizedApiError(error: ApiClientError, requestId?: str
   logRequestScopedError('[API] 未授权，请检查登录状态', requestId)
 
   const token = getAccessToken()
+  const requestAuthorization = error.config
+    ? headerValueToString(
+        AxiosHeaders.from(
+          (error.config.headers ?? {}) as Record<string, string | number | boolean>
+        ).get('Authorization')
+      )
+    : undefined
+  const requestUsesSessionToken = !!token && requestAuthorization === `Bearer ${token}`
   const canAttemptRefresh =
-    !!token && globalThis.window !== undefined && !!error.config && !error.config.__mimirqOidcRetried
+    requestUsesSessionToken &&
+    globalThis.window !== undefined &&
+    !!error.config &&
+    !error.config.__mimirqOidcRetried
   if (canAttemptRefresh && error.config) {
     error.config.__mimirqOidcRetried = true
 
     const refreshed = await tryRefreshOidcAccessToken()
     if (refreshed) {
       setAccessToken(refreshed)
+      error.config.headers = AxiosHeaders.from(
+        (error.config.headers ?? {}) as Record<string, string | number | boolean>
+      ).set('Authorization', `Bearer ${refreshed.access_token}`)
       return apiClient.request(error.config)
     }
   }
 
+  if (token && !requestUsesSessionToken) return undefined
   if (!token) return undefined
 
   clearAuthSession()

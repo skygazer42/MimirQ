@@ -105,3 +105,8 @@ async def get_tenant_id(request: Request, x_tenant_id: str | None = Header(defau
     if tenant_uuid := await _preferred_jwt_tenant_id(request):
         return tenant_uuid
     return _tenant_uuid_from_header_or_default(request, x_tenant_id)
+
+
+def get_tenant_id_from_header(request: Request, x_tenant_id: str | None = Header(default=None)) -> UUID:
+    """Resolve tenant context without interpreting a route-specific bearer token as JWT."""
+    return _tenant_uuid_from_header_or_default(request, x_tenant_id)

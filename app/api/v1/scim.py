@@ -25,9 +25,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.tenant import get_tenant_id
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.tenant import TenantMember
@@ -60,6 +60,25 @@ _URN_SERVICE_PROVIDER_CONFIG = "urn:ietf:params:scim:schemas:core:2.0:ServicePro
 
 _TOKEN_SPLIT_RE = re.compile(r"[,\s]+")
 _REMOVE_MEMBER_FILTER_RE = re.compile(r'members\[\s*value\s+eq\s+"([^"]+)"\s*\]', re.IGNORECASE)
+
+
+def get_scim_tenant_id(request: Request, x_tenant_id: str | None = Header(default=None)) -> UUID:
+    tenant_header = str(getattr(settings, "TENANT_HEADER", "") or "X-Tenant-ID").strip() or "X-Tenant-ID"
+    raw_tenant = (x_tenant_id or "").strip()
+    if not raw_tenant and tenant_header.lower() != "x-tenant-id":
+        raw_tenant = (request.headers.get(tenant_header) or "").strip()
+    if not raw_tenant:
+        raise HTTPException(status_code=400, detail=f"{tenant_header} header required")
+
+    bound_tenant = str(getattr(settings, "SCIM_TENANT_ID", "") or "").strip()
+    try:
+        requested_id = UUID(raw_tenant)
+        bound_id = UUID(bound_tenant)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid tenant id") from exc
+    if requested_id != bound_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return bound_id
 
 
 def _dt_iso(dt: Any) -> str | None:
@@ -108,17 +127,7 @@ def _token_matches(provided_token: str, expected_token: str) -> bool:
 
 
 def _extract_client_ip(request: Request) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        candidate = (forwarded.split(",")[0] or "").strip()
-    else:
-        real_ip = request.headers.get("X-Real-IP")
-        if real_ip:
-            candidate = (real_ip or "").strip()
-        elif request.client:
-            candidate = request.client.host
-        else:
-            candidate = ""
+    candidate = request.client.host if request.client else ""
     if not candidate:
         return None
     try:
@@ -358,7 +367,7 @@ def list_groups(
     start_index: Annotated[int, Query(ge=1, alias='startIndex')] = 1,
     count: Annotated[int, Query(ge=1)] = 200,
     *,
-    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    tenant_id: Annotated[UUID, Depends(get_scim_tenant_id)],
     _actor: Annotated[str, Depends(_require_scim_actor)],
     db: Annotated[Session, Depends(get_db)],
 ):
@@ -372,7 +381,7 @@ def list_groups(
 def get_group(
     group_id: UUID,
     *,
-    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    tenant_id: Annotated[UUID, Depends(get_scim_tenant_id)],
     _actor: Annotated[str, Depends(_require_scim_actor)],
     db: Annotated[Session, Depends(get_db)],
 ):
@@ -390,7 +399,7 @@ def create_group(
     payload: dict[str, Any],
     http_request: Request,
     *,
-    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    tenant_id: Annotated[UUID, Depends(get_scim_tenant_id)],
     actor_id: Annotated[str, Depends(_require_scim_actor)],
     db: Annotated[Session, Depends(get_db)],
 ):
@@ -452,7 +461,7 @@ def put_group(
     payload: dict[str, Any],
     http_request: Request,
     *,
-    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    tenant_id: Annotated[UUID, Depends(get_scim_tenant_id)],
     actor_id: Annotated[str, Depends(_require_scim_actor)],
     db: Annotated[Session, Depends(get_db)],
 ):
@@ -515,7 +524,7 @@ def delete_group(
     group_id: UUID,
     http_request: Request,
     *,
-    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    tenant_id: Annotated[UUID, Depends(get_scim_tenant_id)],
     actor_id: Annotated[str, Depends(_require_scim_actor)],
     db: Annotated[Session, Depends(get_db)],
 ):
@@ -560,7 +569,7 @@ def list_users(
     start_index: Annotated[int, Query(ge=1, alias='startIndex')] = 1,
     count: Annotated[int, Query(ge=1)] = 200,
     *,
-    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    tenant_id: Annotated[UUID, Depends(get_scim_tenant_id)],
     _actor: Annotated[str, Depends(_require_scim_actor)],
     db: Annotated[Session, Depends(get_db)],
 ):
@@ -575,7 +584,7 @@ def list_users(
 def get_user(
     user_id: str,
     *,
-    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    tenant_id: Annotated[UUID, Depends(get_scim_tenant_id)],
     _actor: Annotated[str, Depends(_require_scim_actor)],
     db: Annotated[Session, Depends(get_db)],
 ):
@@ -663,7 +672,7 @@ def create_user(
     payload: dict[str, Any],
     http_request: Request,
     *,
-    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    tenant_id: Annotated[UUID, Depends(get_scim_tenant_id)],
     actor_id: Annotated[str, Depends(_require_scim_actor)],
     db: Annotated[Session, Depends(get_db)],
 ):
@@ -714,7 +723,11 @@ def create_user(
         },
     )
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        return _scim_error(status_code=409, detail="User already exists", scim_type="uniqueness")
     db.refresh(member)
     return _scim_json(_scim_user(member), status_code=201)
 
@@ -751,7 +764,7 @@ def patch_user(
     payload: dict[str, Any],
     http_request: Request,
     *,
-    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    tenant_id: Annotated[UUID, Depends(get_scim_tenant_id)],
     actor_id: Annotated[str, Depends(_require_scim_actor)],
     db: Annotated[Session, Depends(get_db)],
 ):
@@ -844,7 +857,7 @@ def patch_group_membership(
     group_id: UUID,
     payload: dict[str, Any],
     *,
-    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    tenant_id: Annotated[UUID, Depends(get_scim_tenant_id)],
     actor_id: Annotated[str, Depends(_require_scim_actor)],
     db: Annotated[Session, Depends(get_db)],
 ):

@@ -213,10 +213,9 @@ def create_chunk_preset(
     account_id: Annotated[str, Depends(get_current_account_id)],
 ):
     member = DatasetService.ensure_member(db, tenant_id, account_id)
+    BaseService.assert_edit_role(member)
     dataset_uuid = _dataset_uuid_from_payload(req.payload)
     if dataset_uuid is not None:
-        # Governance: dataset-scoped presets affect ingestion behavior and should be editable only by editors.
-        BaseService.assert_edit_role(member)
         DatasetService.get_dataset(db, tenant_id, dataset_uuid)
     row = _create_chunk_preset_row(
         db=db,
@@ -239,14 +238,11 @@ def update_chunk_preset(
     account_id: Annotated[str, Depends(get_current_account_id)],
 ):
     member = DatasetService.ensure_member(db, tenant_id, account_id)
+    BaseService.assert_edit_role(member)
     existing = _get_chunk_preset_row(db=db, tenant_id=tenant_id, preset_id=preset_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Chunk preset not found")
     dataset_uuid = _dataset_uuid_from_payload(req.payload)
-    # Governance: dataset-scoped presets affect ingestion behavior and should be editable only by editors.
-    # Fail-closed: do not allow non-editors to "unscope" a dataset preset by omitting payload.dataset_id.
-    if getattr(existing, "dataset_id", None) is not None or dataset_uuid is not None:
-        BaseService.assert_edit_role(member)
     if dataset_uuid is not None:
         DatasetService.get_dataset(db, tenant_id, dataset_uuid)
     row = _update_chunk_preset_row(
@@ -270,9 +266,7 @@ def delete_chunk_preset(
     account_id: Annotated[str, Depends(get_current_account_id)],
 ):
     member = DatasetService.ensure_member(db, tenant_id, account_id)
-    row = _get_chunk_preset_row(db=db, tenant_id=tenant_id, preset_id=preset_id)
-    if row and getattr(row, "dataset_id", None) is not None:
-        BaseService.assert_edit_role(member)
+    BaseService.assert_edit_role(member)
     ok = _delete_chunk_preset_row(db=db, tenant_id=tenant_id, preset_id=preset_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Chunk preset not found")

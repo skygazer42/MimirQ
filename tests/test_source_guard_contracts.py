@@ -1,3 +1,4 @@
+import json
 import re
 from pathlib import Path
 
@@ -118,3 +119,57 @@ def test_sonar_flagged_workflow_actions_are_pinned_to_full_sha() -> None:
         for line in _read(workflow_path).splitlines():
             if line.lstrip().startswith("uses:") and any(action in line for action in flagged_actions):
                 assert FULL_SHA_RE.search(line), line
+
+
+def test_parser_quality_gates_cannot_ignore_complete_regressions() -> None:
+    profile = json.loads(_read("ci/parser_strict_profile.v1.json"))
+    assert all(0 <= float(value) < 1 for value in profile["thresholds"].values())
+
+    for workflow_path in (
+        ".github/workflows/ci.yml",
+        ".github/workflows/parsing-proof-nightly.yml",
+        ".github/workflows/parsing-proof-sample.yml",
+        ".github/workflows/rag-quality-gate.yml",
+    ):
+        workflow = _read(workflow_path)
+        assert "parsing_retrieval_proof_gate.py" in workflow
+        assert "gate.json || true" not in workflow
+
+    for workflow_path in (
+        ".github/workflows/ci.yml",
+        ".github/workflows/parsing-proof-sample.yml",
+        ".github/workflows/rag-quality-gate.yml",
+    ):
+        workflow = _read(workflow_path)
+        assert "build_parsing_retrieval_proof_artifacts.py" not in workflow
+
+    ci_workflow = _read(".github/workflows/ci.yml")
+    assert "--input-dir tests/fixtures/parsing_golden" in ci_workflow
+    assert "--manifest tests/fixtures/parsing_golden/manifest.json" in ci_workflow
+
+
+def test_self_hosted_workflows_clean_checkout_state() -> None:
+    for workflow_path in (
+        ".github/workflows/api-docs.yml",
+        ".github/workflows/ci.yml",
+        ".github/workflows/lint-fast.yml",
+        ".github/workflows/security.yml",
+    ):
+        assert "clean: false" not in _read(workflow_path)
+
+
+def test_backend_entrypoint_uses_an_explicit_forwarded_proxy_allowlist() -> None:
+    entrypoint = _read("docker/start_backend.sh")
+    assert ': "${FORWARDED_ALLOW_IPS:=127.0.0.1}"' in entrypoint
+    assert '--forwarded-allow-ips "${FORWARDED_ALLOW_IPS}"' in entrypoint
+
+
+def test_web_production_healthcheck_uses_ipv4_loopback() -> None:
+    dockerfile = _read("web/Dockerfile.prod")
+    assert "http://127.0.0.1:3000/" in dockerfile
+    assert "http://localhost:3000/" not in dockerfile
+
+
+def test_web_production_image_drops_next_build_cache() -> None:
+    dockerfile = _read("web/Dockerfile.prod")
+    assert "RUN rm -rf .next_build/cache" in dockerfile

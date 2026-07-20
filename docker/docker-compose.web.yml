@@ -37,3 +37,6 @@ services:
     depends_on:
       mimirq-api:
         condition: service_healthy
+    networks:
+      mimirq-proxy:
+        ipv4_address: ${WEB_PROXY_IP_DOCKER:-172.30.0.10}

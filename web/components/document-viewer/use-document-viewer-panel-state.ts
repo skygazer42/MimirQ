@@ -82,7 +82,7 @@ export function useDocumentViewerPanelState() {
     sourceContext,
     closeDocument,
     activeTab,
-    documentLayouts,
+    getDocumentLayout,
     setActiveTab,
     setDocumentLayout,
     setHighlightChunk,
@@ -108,7 +108,6 @@ export function useDocumentViewerPanelState() {
   const [panelWidthPx, setPanelWidthPxState] = React.useState<number | null>(null)
   const chunksListRef = React.useRef<HTMLDivElement>(null)
   const chunkSearchRef = React.useRef<HTMLInputElement>(null)
-  const previousDocumentIdRef = React.useRef<string | null>(null)
   const pendingChunksScrollRestoreRef = React.useRef<number | null>(null)
   const pendingTextScrollRestoreRef = React.useRef<number | null>(null)
   const persistedLayoutTimeoutRef = React.useRef<number | null>(null)
@@ -147,11 +146,6 @@ export function useDocumentViewerPanelState() {
     estimateSize: () => 220,
     overscan: 8,
   })
-
-  const documentLayout = React.useMemo(
-    () => (documentId ? documentLayouts[documentId] || null : null),
-    [documentId, documentLayouts]
-  )
 
   const flushPersistedLayoutPatch = React.useCallback(
     (targetDocumentId?: string | null) => {
@@ -201,12 +195,8 @@ export function useDocumentViewerPanelState() {
   )
 
   React.useEffect(() => {
-    if (!documentId) {
-      previousDocumentIdRef.current = null
-      return
-    }
-    if (previousDocumentIdRef.current === documentId) return
-    previousDocumentIdRef.current = documentId
+    if (!documentId) return
+    const documentLayout = getDocumentLayout(documentId)
     parsedContentServerKeyRef.current = null
     setDoc(null)
     setChunks([])
@@ -247,16 +237,25 @@ export function useDocumentViewerPanelState() {
     }
 
     setIsLoading(!prefetchedDoc)
+    let cancelled = false
     documentApi
       .get(documentId, { includeChunks: false })
       .then((data) => {
+        if (cancelled) return
         setDoc(data)
       })
-      .catch((error: unknown) => reportClientError("Load document detail failed", error))
-      .finally(() => setIsLoading(false))
+      .catch((error: unknown) => {
+        if (!cancelled) reportClientError("Load document detail failed", error)
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false)
+      })
 
-    return () => globalThis.window.cancelAnimationFrame(raf)
-  }, [documentId, documentLayout])
+    return () => {
+      cancelled = true
+      globalThis.window.cancelAnimationFrame(raf)
+    }
+  }, [documentId, getDocumentLayout])
 
   React.useEffect(() => {
     const currentDocumentId = documentId

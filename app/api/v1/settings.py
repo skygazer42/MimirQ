@@ -169,13 +169,21 @@ def _ensure_settings_readable(db: Session, tenant_id: UUID, account_id: str) -> 
 
 
 def _ensure_settings_writable(db: Session, tenant_id: UUID, account_id: str) -> None:
-    ensure_tenant_permission(
+    try:
+        system_tenant_id = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail="DEFAULT_TENANT_ID is invalid") from exc
+    if tenant_id != system_tenant_id:
+        raise HTTPException(status_code=403, detail="No permission to manage system settings")
+    member = ensure_tenant_permission(
         db,
         tenant_id,
         account_id,
         TenantPermissions.SETTINGS_WRITE,
         detail="No permission to manage system settings",
     )
+    if str(getattr(member, "role", "") or "").strip().lower() != "owner":
+        raise HTTPException(status_code=403, detail="No permission to manage system settings")
 
 
 def _validate_public_base_url(base_url: str) -> None:

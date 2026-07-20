@@ -183,7 +183,11 @@ const nextIntlConfig = withNextIntl(nextConfig)
 
 const sentryWrappedConfig = withSentryConfig(nextIntlConfig, {
   silent: true,
-  disableLogger: true,
+  webpack: {
+    treeshake: {
+      removeDebugLogging: true,
+    },
+  },
 })
 
 export default sentryEnabled ? sentryWrappedConfig : nextIntlConfig

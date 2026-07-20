@@ -14,7 +14,7 @@ RUN --mount=type=cache,id=mimirq-web-pnpm-store,target=/root/.local/share/pnpm/s
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json pnpm-lock.yaml ./
-COPY next.config.mjs tsconfig.json tailwind.config.ts postcss.config.mjs eslint.config.js next-env.d.ts vitest.config.ts .eslintrc.json ./
+COPY next.config.mjs tsconfig.json tailwind.config.ts postcss.config.mjs eslint.config.js next-env.d.ts vitest.config.ts ./
 COPY app ./app
 COPY components ./components
 COPY contexts ./contexts
@@ -46,10 +46,12 @@ ENV NEXT_PUBLIC_API_LONG_TIMEOUT_MS=$NEXT_PUBLIC_API_LONG_TIMEOUT_MS
 ENV NEXT_PUBLIC_USER_ID=$NEXT_PUBLIC_USER_ID
 ENV NEXT_PUBLIC_TENANT_ID=$NEXT_PUBLIC_TENANT_ID
 RUN pnpm build && pnpm prune --prod
+RUN rm -rf .next_build/cache
 
 FROM base AS runner
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV HOST=0.0.0.0
 ARG NEXT_PUBLIC_API_URL=http://localhost:8000
 ARG NEXT_PUBLIC_API_TIMEOUT_MS=60000
 ARG NEXT_PUBLIC_API_LONG_TIMEOUT_MS=600000
@@ -70,6 +72,7 @@ COPY --from=builder /app/next.config.mjs ./next.config.mjs
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next_build ./.next_build
 COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/scripts/production-server.mjs /app/scripts/trusted-forwarding.mjs ./scripts/
 # Perf note:
 # Avoid recursive chown/chmod across node_modules during local rebuilds; it's slow and
 # unnecessary as long as we run the server as the non-root `node` user.
@@ -77,7 +80,7 @@ COPY --from=builder /app/node_modules ./node_modules
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD wget -Y off -qO- http://localhost:3000/ > /dev/null || exit 1
+  CMD wget -Y off -qO- http://127.0.0.1:3000/ > /dev/null || exit 1
 
 USER node
-CMD ["node", "node_modules/next/dist/bin/next", "start", "-p", "3000"]
+CMD ["node", "scripts/production-server.mjs"]

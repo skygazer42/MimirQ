@@ -8,7 +8,6 @@ This module is intentionally conservative to reduce SSRF risk:
 - Streaming download with hard size limit
 """
 
-
 import asyncio
 import contextlib
 import ipaddress
@@ -16,14 +15,13 @@ import re
 import socket
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlunparse
 
 import aiofiles
 import httpx
 from fastapi import HTTPException
 
 from app.core.config import settings
-from app.core.http_client import get_http_client_pool
 
 _ALL_INTERFACES_HOST = str(ipaddress.IPv4Address(0))
 _BLOCKED_HOSTS = {
@@ -131,6 +129,7 @@ def _is_allowed_ip(ip: ipaddress._BaseAddress, *, allow_private: bool) -> bool: 
 @dataclass(frozen=True)
 class _ParsedIngestURL:
     raw: str
+    scheme: str
     host: str
     port: int
 
@@ -146,13 +145,15 @@ def _parse_ingest_url(url: str) -> _ParsedIngestURL:
         raise HTTPException(status_code=400, detail="url scheme must be http or https")
     if not parsed.hostname:
         raise HTTPException(status_code=400, detail="url hostname is required")
+    if parsed.username is not None or parsed.password is not None:
+        raise HTTPException(status_code=400, detail="url credentials are not allowed")
 
     host = parsed.hostname.strip().lower()
     try:
         port = parsed.port or (443 if scheme == "https" else 80)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="url port is not allowed") from exc
-    return _ParsedIngestURL(raw=raw, host=host, port=port)
+    return _ParsedIngestURL(raw=raw, scheme=scheme, host=host, port=port)
 
 
 def _validate_blocked_host(host: str) -> None:
@@ -221,12 +222,15 @@ def _validate_resolved_ips(ips: list[str], *, allow_private: bool) -> None:
         _validate_ip_allowed(ip, allow_private=allow_private)
 
 
-async def validate_url_for_ingest(url: str) -> str:
-    """
-    Validate that a URL is safe-enough for server-side fetching (best-effort).
+@dataclass(frozen=True)
+class _ValidatedFetchTarget:
+    raw: str
+    connect_url: str
+    host: str
+    host_header: str
 
-    Returns the normalized URL string on success.
-    """
+
+async def _validated_fetch_target(url: str) -> _ValidatedFetchTarget:
     parsed_url = _parse_ingest_url(url)
     _validate_blocked_host(parsed_url.host)
     _validate_host_allowlist(parsed_url.host)
@@ -235,11 +239,27 @@ async def validate_url_for_ingest(url: str) -> str:
 
     if ip := _ip_literal_or_none(parsed_url.host):
         _validate_ip_allowed(ip, allow_private=allow_private)
-        return parsed_url.raw
+        connect_host = str(ip)
+    else:
+        ips = await _resolve_host_ips(parsed_url.host, parsed_url.port)
+        _validate_resolved_ips(ips, allow_private=allow_private)
+        connect_host = ips[0]
 
-    ips = await _resolve_host_ips(parsed_url.host, parsed_url.port)
-    _validate_resolved_ips(ips, allow_private=allow_private)
-    return parsed_url.raw
+    rendered_connect_host = f"[{connect_host}]" if ":" in connect_host else connect_host
+    rendered_original_host = f"[{parsed_url.host}]" if ":" in parsed_url.host else parsed_url.host
+    parsed = urlparse(parsed_url.raw)
+    connect_url = urlunparse(parsed._replace(netloc=f"{rendered_connect_host}:{parsed_url.port}"))
+    return _ValidatedFetchTarget(
+        raw=parsed_url.raw,
+        connect_url=connect_url,
+        host=parsed_url.host,
+        host_header=f"{rendered_original_host}:{parsed_url.port}",
+    )
+
+
+async def validate_url_for_ingest(url: str) -> str:
+    """Validate an ingestion URL and its current DNS answers."""
+    return (await _validated_fetch_target(url)).raw
 
 
 @dataclass(frozen=True)
@@ -302,7 +322,14 @@ def _download_options(options: URLDownloadOptions | None) -> _DownloadOptions:
     )
 
 
-async def _validated_redirect_url(resp: httpx.Response, *, follow: bool, hops: int, max_redirects: int) -> str | None:
+async def _validated_redirect_url(
+    resp: httpx.Response,
+    *,
+    request_url: str,
+    follow: bool,
+    hops: int,
+    max_redirects: int,
+) -> str | None:
     if resp.status_code not in _REDIRECT_STATUS_CODES:
         return None
     if not follow:
@@ -312,7 +339,7 @@ async def _validated_redirect_url(resp: httpx.Response, *, follow: bool, hops: i
     loc = (resp.headers.get("location") or "").strip()
     if not loc:
         raise HTTPException(status_code=400, detail="redirect location missing")
-    return await validate_url_for_ingest(urljoin(str(resp.url), loc))
+    return urljoin(request_url, loc)
 
 
 def _raise_for_fetch_status(resp: httpx.Response) -> None:
@@ -342,7 +369,7 @@ async def _write_response_body(resp: httpx.Response, *, destination: Path, max_b
     return size
 
 
-def _download_result(resp: httpx.Response, *, size_bytes: int) -> DownloadedURL:
+def _download_result(resp: httpx.Response, *, size_bytes: int, final_url: str) -> DownloadedURL:
     last_modified = (resp.headers.get("last-modified") or "").strip() or None
     etag = (resp.headers.get("etag") or "").strip() or None
     if etag and len(etag) > 500:
@@ -350,7 +377,7 @@ def _download_result(resp: httpx.Response, *, size_bytes: int) -> DownloadedURL:
     return DownloadedURL(
         size_bytes=int(size_bytes),
         content_type=resp.headers.get("content-type"),
-        final_url=str(resp.url),
+        final_url=final_url,
         last_modified=last_modified,
         etag=etag,
     )
@@ -372,37 +399,42 @@ async def download_url_to_path(
     """
     options = _download_options(options)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    pool = get_http_client_pool()
-    # Security/compliance: do not propagate internal tenant/user headers to arbitrary URLs.
-    client = await pool.get_external_client()
-
-    current = await validate_url_for_ingest(url)
+    current = url
 
     try:
         hops = 0
         while True:
-            async with client.stream(
-                "GET",
-                current,
-                headers=options.headers,
-                timeout=httpx.Timeout(options.timeout_sec),
-                follow_redirects=False,  # validate per-hop ourselves
-            ) as resp:
-                # Manual redirect handling (defense-in-depth; prevents redirect-to-private SSRF).
-                if redirect_url := await _validated_redirect_url(
-                    resp,
-                    follow=options.follow_redirects,
-                    hops=hops,
-                    max_redirects=options.max_redirects,
-                ):
-                    current = redirect_url
-                    hops += 1
-                    continue
+            target = await _validated_fetch_target(current)
+            headers = {**options.headers, "Host": target.host_header}
+            # A short-lived HTTP/1.1 client prevents a TLS connection pinned for one
+            # hostname from being reused for another hostname on the same address.
+            async with httpx.AsyncClient(
+                http2=False,
+                follow_redirects=False,
+                trust_env=False,
+            ) as client:
+                async with client.stream(
+                    "GET",
+                    target.connect_url,
+                    headers=headers,
+                    timeout=httpx.Timeout(options.timeout_sec),
+                    extensions={"sni_hostname": target.host},
+                ) as resp:
+                    if redirect_url := await _validated_redirect_url(
+                        resp,
+                        request_url=current,
+                        follow=options.follow_redirects,
+                        hops=hops,
+                        max_redirects=options.max_redirects,
+                    ):
+                        current = redirect_url
+                        hops += 1
+                        continue
 
-                _raise_for_fetch_status(resp)
-                _enforce_content_length(resp, max_bytes=options.max_bytes)
-                size = await _write_response_body(resp, destination=destination, max_bytes=options.max_bytes)
-                return _download_result(resp, size_bytes=size)
+                    _raise_for_fetch_status(resp)
+                    _enforce_content_length(resp, max_bytes=options.max_bytes)
+                    size = await _write_response_body(resp, destination=destination, max_bytes=options.max_bytes)
+                    return _download_result(resp, size_bytes=size, final_url=current)
     except HTTPException:
         _cleanup_partial_download(destination)
         raise

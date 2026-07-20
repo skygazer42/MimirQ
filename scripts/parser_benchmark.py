@@ -3,6 +3,7 @@ import argparse
 import difflib
 import hashlib
 import json
+import math
 import re
 import sys
 import time
@@ -606,34 +607,93 @@ def evaluate_strict_regressions(
 ) -> dict[str, Any]:
     failures: list[str] = []
     by_backend: dict[str, Any] = {}
-    metrics = [
-        str(m).strip()
-        for m in (max_drop_by_metric or {}).keys()
-        if str(m).strip()
-    ]
-    for backend, after in (current_summary or {}).items():
-        if not isinstance(after, dict):
+    if not baseline_summary:
+        return {
+            "passed": False,
+            "failures": ["baseline summary is missing or empty"],
+            "by_backend": {},
+        }
+
+    metrics: list[tuple[str, float]] = []
+    for raw_metric, max_drop in (max_drop_by_metric or {}).items():
+        metric = str(raw_metric).strip()
+        if not metric:
             continue
-        before = baseline_summary.get(backend)
+        try:
+            allowed_drop = abs(float(max_drop))
+            if not math.isfinite(allowed_drop):
+                raise ValueError
+        except (TypeError, ValueError):
+            failures.append(f"{metric} has a non-numeric maximum drop")
+            continue
+        metrics.append((metric, allowed_drop))
+
+    for backend, before in (baseline_summary or {}).items():
         if not isinstance(before, dict):
+            failures.append(f"{backend} backend has an invalid baseline summary")
+            by_backend[str(backend)] = [{"reason": "invalid_baseline_backend"}]
+            continue
+        after = current_summary.get(backend)
+        if not isinstance(after, dict):
+            failures.append(f"{backend} backend is missing from the current summary")
+            by_backend[str(backend)] = [{"reason": "missing_backend"}]
             continue
 
         backend_failures: list[dict[str, Any]] = []
-        for metric in metrics:
-            max_drop = max_drop_by_metric.get(metric)
-            try:
-                allowed_drop = abs(float(max_drop))
-            except Exception:
-                continue
-
+        for metric, allowed_drop in metrics:
             b_raw = before.get(metric)
             a_raw = after.get(metric)
-            if b_raw is None or a_raw is None:
+            if b_raw is None:
+                backend_failures.append(
+                    {
+                        "metric": metric,
+                        "before": None,
+                        "after": a_raw,
+                        "reason": "missing_baseline_metric",
+                    }
+                )
+                failures.append(f"{backend}.{metric} is missing from the baseline summary")
+                continue
+            if a_raw is None:
+                backend_failures.append(
+                    {
+                        "metric": metric,
+                        "before": b_raw,
+                        "after": None,
+                        "reason": "missing_metric",
+                    }
+                )
+                failures.append(f"{backend}.{metric} is missing from the current summary")
                 continue
             try:
                 b = float(b_raw)
+                if not math.isfinite(b):
+                    raise ValueError
+            except (TypeError, ValueError):
+                backend_failures.append(
+                    {
+                        "metric": metric,
+                        "before": b_raw,
+                        "after": a_raw,
+                        "reason": "invalid_baseline_metric",
+                    }
+                )
+                failures.append(f"{backend}.{metric} has a non-numeric baseline value")
+                continue
+            try:
                 a = float(a_raw)
-            except Exception:
+                if not math.isfinite(a):
+                    raise ValueError
+            except (TypeError, ValueError):
+                backend_failures.append(
+                    {
+                        "metric": metric,
+                        "before": b_raw,
+                        "after": a_raw,
+                        "reason": "invalid_current_metric",
+                    }
+                )
+                failures.append(f"{backend}.{metric} has a non-numeric current value")
                 continue
             delta = float(a - b)
             if delta < (0.0 - allowed_drop):
@@ -669,7 +729,11 @@ def evaluate_baseline_compatibility(
     for key in ("fixture_hash", "profile_hash"):
         current = str((current_report or {}).get(key) or "").strip()
         baseline = str((baseline_report or {}).get(key) or "").strip()
-        if not current or not baseline:
+        if not current:
+            mismatches.append(f"{key} missing from current report")
+            continue
+        if not baseline:
+            mismatches.append(f"{key} missing from baseline report")
             continue
         if current != baseline:
             mismatches.append(f"{key} mismatch (current={current}, baseline={baseline})")

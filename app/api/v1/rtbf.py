@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
+from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 from app.services.rtbf_cascade import run_rtbf_cascade
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -43,6 +44,13 @@ async def request_rtbf_cascade(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, Any]:
+    ensure_tenant_permission(
+        db,
+        tenant_id,
+        account_id,
+        TenantPermissions.LIFECYCLE_MANAGE,
+        detail="No permission to execute RTBF deletion",
+    )
     return await run_rtbf_cascade(
         db,
         tenant_id=tenant_id,

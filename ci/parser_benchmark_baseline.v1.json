@@ -1,12 +1,12 @@
 {
   "schema": "mimirq.parser_benchmark.v1",
-  "generated_at": "2026-06-28T10:34:40.659899+00:00",
+  "generated_at": "2026-07-20T09:50:31.413806+00:00",
   "input_dir": "/data/temp34/MimirQ/tests/fixtures/parsing_golden",
   "manifest": "/data/temp34/MimirQ/tests/fixtures/parsing_golden/manifest.json",
   "baseline": null,
   "strict_profile": "/data/temp34/MimirQ/ci/parser_strict_profile.v1.json",
   "fixture_hash": "02c760e2f900a4c9bffbdd02",
-  "profile_hash": "5142423143b9e34515a51956",
+  "profile_hash": "f595a17da3998edeb393f8b9",
   "backends": [
     "basic"
   ],
@@ -105,7 +105,7 @@
           "specialty_recall": {
             "seal": 0.0
           },
-          "elapsed_ms": 4
+          "elapsed_ms": 10
         }
       ]
     },
@@ -310,7 +310,7 @@
           "specialty_image_visual_kind_recall": {
             "chart": 1.0
           },
-          "elapsed_ms": 832
+          "elapsed_ms": 1989
         }
       ]
     },
@@ -426,7 +426,7 @@
           "specialty_image_code_value_recall": {
             "qr": 1.0
           },
-          "elapsed_ms": 386
+          "elapsed_ms": 1031
         }
       ]
     },
@@ -531,7 +531,7 @@
           "specialty_image_visual_kind_recall": {
             "diagram": 1.0
           },
-          "elapsed_ms": 606
+          "elapsed_ms": 1326
         }
       ]
     },
@@ -647,7 +647,7 @@
           "specialty_image_code_value_recall": {
             "barcode": 1.0
           },
-          "elapsed_ms": 1038
+          "elapsed_ms": 2694
         }
       ]
     }
@@ -657,6 +657,8 @@
       "attempts": 6,
       "ok": 6,
       "ok_rate": 1.0,
+      "elapsed_ms_p50": 1031,
+      "elapsed_ms_p90": 1989,
       "parse_score_mean": 0.7555,
       "golden_similarity_mean": 1.0,
       "golden_coverage_ratio_mean": 1.0,

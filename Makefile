@@ -151,146 +151,6 @@ MIMIRQ_API_TIMEOUT ?= 60
 PYTEST_ARGS ?=
 VITEST_ARGS ?=
 
-# Fast merge gate. Keep this list focused on stable product-spine contracts;
-# use `make test-full` for the complete regression inventory.
-CORE_TESTS := \
-	tests/test_worker_startup_logs.py \
-	tests/test_request_id_middleware.py \
-	tests/test_validation_error_includes_request_id.py \
-	tests/test_allowed_hosts_validation.py \
-	tests/test_controlled_settings_validation.py \
-	tests/test_auth_dependency_sets_request_state.py \
-	tests/test_auth_saml_exchange_endpoint.py \
-	tests/test_tenant_dependency_prefers_verified_jwt_tenant.py \
-	tests/test_production_trusted_tenant_source.py \
-	tests/test_tenant_rls.py \
-	tests/test_tenant_quota.py \
-	tests/test_rbac_current_access_endpoint.py \
-	tests/test_documents_upload_url_endpoint.py \
-	tests/test_document_lifecycle_metadata_endpoints.py \
-	tests/test_document_lifecycle_retention.py \
-	tests/test_document_timeline_sanitization.py \
-	tests/test_document_asset_auth.py \
-	tests/test_health_meta_exposure.py \
-	tests/test_api_ping.py \
-	tests/test_documents_batch_reingest_endpoint.py \
-	tests/test_document_version_diff_integration.py \
-	tests/test_document_versions_integration.py \
-	tests/test_parsing_extract_api.py \
-	tests/test_parsing_extract_service.py \
-	tests/test_bootstrap_mimirq_models.py \
-	tests/test_magicpdf_cuda_health.py \
-	tests/test_magicpdf_dependency_pins.py \
-	tests/test_mineru_model_contract.py \
-	tests/test_model_timestamp_defaults.py \
-	tests/test_parser_factory_colpali.py \
-	tests/test_parsing_quality_gate.py \
-	tests/test_parsing_benchmark_manifest.py \
-	tests/test_chunk_quality_gate_service.py \
-	tests/test_chunk_quality_scoring.py \
-	tests/test_chunking_stats_tokens.py \
-	tests/test_chunking_grid_runner.py \
-	tests/test_chunk_presets.py \
-	tests/test_chunking_recommendations.py \
-	tests/test_dataset_ingestion_policy_endpoints.py \
-	tests/test_pipeline_config_settings.py \
-	tests/test_ingestion_checkpoint_safety.py \
-	tests/test_indexer_upsert_entities.py \
-	tests/test_index_audit_summary.py \
-	tests/test_backend_performance_fixes.py \
-	tests/test_robustness_redundancy_fixes.py \
-	tests/test_async_bridge.py \
-	tests/test_short_term_memory_sync_summary.py \
-	tests/test_embedding_http_providers.py \
-	tests/test_redis_client.py \
-	tests/test_adaptive_retrieval_routing.py \
-	tests/test_retrieval_fusion_budgeted_rrf.py \
-	tests/test_mmr_reranker.py \
-	tests/test_rerank_score_calibration.py \
-	tests/test_retrieval_secondary_pass.py \
-	tests/test_retrieval_contract_fail_reasons.py \
-	tests/test_context_expansion_framework.py \
-	tests/test_query_decomposition_chain.py \
-	tests/test_evidence_post_rerank_pipeline.py \
-	tests/test_output_guard_settings.py \
-	tests/test_evidence_span_strict_orchestrator.py \
-	tests/test_kg_search_diagnostics_metrics.py \
-	tests/test_kg_path_provenance.py \
-	tests/test_kg_shortest_path_provenance.py \
-	tests/test_kg_relation_expansion_provenance.py \
-	tests/test_kg_lazy_indexer.py \
-	tests/test_chat_response_cache_does_not_cross_scopes.py \
-	tests/test_chat_cache_corpus_invalidation.py \
-	tests/test_chat_persistence_metrics.py \
-	tests/test_external_conversation_ingest.py \
-	tests/test_corrective_streaming.py \
-	tests/test_rag_trace_schema.py \
-	tests/test_retrieval_trace_schema_v1.py \
-	tests/test_observability_trace_bundle.py \
-	tests/test_feedback_service.py \
-	tests/test_dify_external_knowledge_adapter.py \
-	tests/test_import_dify_benchmark_feedback.py \
-	tests/test_changzhou_gov_dify_trace_report.py \
-	tests/test_assemble_dify_benchmark_report.py \
-	tests/rag/evaluation/test_rag_quality_gate.py \
-	tests/test_eval_ragas_adapter.py \
-	tests/test_eval_rerank_pipeline_offline.py \
-	tests/test_eval_retrieval_metrics.py \
-	tests/test_eval_fusion_metrics.py \
-	tests/test_eval_runner_result_shape.py \
-	tests/test_eval_stage1_runner_integrity.py \
-	tests/test_llm_judge_versioning.py \
-	tests/test_regression_gate_report.py \
-	tests/test_evidence_api_offline_regression_gate.py \
-	tests/test_reports_endpoints.py \
-	tests/test_reports_export_bundle.py \
-	tests/test_reports_dataset_report.py \
-	tests/test_connector_db_egress_and_auth.py \
-	tests/test_run_list_acl_pagination.py \
-	tests/test_dataset_retention_policy.py \
-	tests/test_persist_retrieval_audit_snapshot.py \
-	tests/test_table_store_service.py \
-	tests/test_embedding_cache_key_space_hash.py \
-	tests/test_regression_item_meta_persistence.py \
-	tests/test_dependency_audit_contract.py \
-	tests/test_no_future_annotations_imports.py \
-	tests/test_no_module_level_import_fallbacks.py \
-	tests/test_no_import_error_fallbacks.py \
-	tests/test_source_guard_contracts.py \
-	tests/test_ci_workflow_contracts.py \
-	tests/test_test_inventory_contract.py \
-	tests/test_core_test_suite_contract.py
-
-CORE_WEB_TESTS := \
-	components/app-frame.behavior.test.tsx \
-	app/history/page.source.test.ts \
-	app/history/page.empty-state.test.ts \
-	app/history/page.delete-action.test.ts \
-	lib/server-history-page-data.source.test.ts \
-	lib/utils.test.ts \
-	app/knowledge/knowledge-page.entry.test.ts \
-	app/knowledge/retrieval-evidence-route.test.ts \
-	app/knowledge/evidence/page.source.test.ts \
-	app/evaluations/ablations/page.entry.test.ts \
-	app/evaluations/page.query.source.test.ts \
-	app/reports/page.bundle-export.source.test.ts \
-	app/reports/page.real-data.source.test.ts \
-	components/navbar.source.test.ts \
-	components/navbar.active-indicator.test.ts \
-	components/navbar.behavior.test.ts \
-	components/ui/page-title-icon.test.ts \
-	hooks/use-media-query.test.tsx \
-	hooks/use-rag-lifecycle.behavior.test.tsx \
-	scripts/check-api-types-drift.test.ts \
-	lib/api-client.source.test.ts \
-	lib/api-client-auth.test.ts \
-	lib/image-auth-proxy.test.ts \
-	lib/api-client-chat-stream.test.ts \
-	lib/api-client.rag-evidence.test.ts \
-	lib/openapi-request.test.ts \
-	lib/theme-surface.test.ts \
-	lib/api-runtime-contracts.test.ts
-
 help:
 	@echo "MimirQ dev commands (run from repo root):"
 	@echo "  make init      - create local env files if missing (.env, web/.env.local)"
@@ -329,12 +189,12 @@ help:
 	@echo "  make backend   - run backend locally from the project venv (uvicorn --reload)"
 	@echo "  make backend-no-reload - run backend locally from the project venv without file watching"
 	@echo "  make web       - run web locally (pnpm dev)"
-	@echo "  make test      - run the fast backend core suite"
-	@echo "  make test-full - run all backend tests"
-	@echo "  make test-web  - run the fast frontend core suite"
-	@echo "  make test-web-full - run all frontend unit/integration tests"
+	@echo "  make test      - run all backend tests"
+	@echo "  make test-full - compatibility alias for test"
+	@echo "  make test-web  - run all frontend unit/integration tests"
+	@echo "  make test-web-full - compatibility alias for test-web"
 	@echo "  make test-management-smoke - run Playwright smoke against management surfaces"
-	@echo "  make test-matrix - generate full-stack test coverage matrix artifacts"
+	@echo "  make test-matrix - generate full-stack test inventory artifacts"
 	@echo "  make perf-smoke - run perf harness in LLM mock mode (writes runs/perf/perf-smoke.json)"
 	@echo "  make api-check - verify web routes exist in backend"
 	@echo "  make api-ping  - ping backend health endpoints (quick reachability check)"
@@ -525,16 +385,14 @@ web:
 	cd web && pnpm dev
 
 test:
-	$(PY) -m pytest -q $(CORE_TESTS) $(PYTEST_ARGS)
-
-test-full:
 	$(PY) -m pytest -q $(PYTEST_ARGS)
 
-test-web:
-	cd web && pnpm exec vitest run $(CORE_WEB_TESTS) $(VITEST_ARGS)
+test-full: test
 
-test-web-full:
+test-web:
 	cd web && pnpm exec vitest run $(VITEST_ARGS)
+
+test-web-full: test-web
 
 test-web-e2e:
 	cd web && PLAYWRIGHT_USE_PROD_SERVER=1 pnpm exec playwright test
@@ -542,7 +400,7 @@ test-web-e2e:
 test-management-smoke:
 	cd web && PLAYWRIGHT_USE_PROD_SERVER=1 pnpm exec playwright test e2e/management-surfaces.smoke.spec.ts
 
-test-matrix:
+test-matrix: openapi-export
 	@mkdir -p artifacts
 	$(PY) scripts/generate_test_coverage_matrix.py --json-out artifacts/test-coverage-matrix.json --markdown-out artifacts/test-coverage-matrix.md
 

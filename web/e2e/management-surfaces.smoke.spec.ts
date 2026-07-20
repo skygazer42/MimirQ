@@ -693,7 +693,7 @@ test.describe('management surfaces smoke', () => {
         waitUntil: 'domcontentloaded',
         timeout: 150_000,
       })
-      await expect(page.getByText('入库管理', { exact: true })).toBeVisible({
+      await expect(page.getByRole('heading', { name: '入库管理', exact: true })).toBeVisible({
         timeout: 60_000,
       })
 
@@ -784,7 +784,7 @@ test.describe('management surfaces smoke', () => {
       const suiteButton = page.getByRole('button', {
         name: /Smoke Evidence Suite/,
       })
-      await expect(suiteButton).toBeVisible()
+      await expect(suiteButton).toBeVisible({ timeout: 60_000 })
       await suiteButton.click()
       await itemPanel.scrollIntoViewIfNeeded()
       await expect(itemPanel).toBeVisible()

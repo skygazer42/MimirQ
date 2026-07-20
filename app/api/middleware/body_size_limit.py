@@ -1,43 +1,59 @@
-"""
-Request body size limit middleware.
+"""Hard request-body size limit for both fixed and streamed uploads."""
 
-This is a lightweight DoS guardrail:
-- If Content-Length is present and exceeds the configured limit, reject early.
-- If Content-Length is missing/invalid (e.g., chunked transfer), do not block here.
+from collections.abc import Awaitable, Callable
+from typing import Any
 
-It is intentionally simple and fail-open for unknown body sizes.
-"""
-
-
-from collections.abc import Callable
-
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
-from starlette.status import HTTP_413_REQUEST_ENTITY_TOO_LARGE
+from starlette.responses import JSONResponse
+from starlette.status import HTTP_413_CONTENT_TOO_LARGE
+from starlette.types import Message, Receive, Scope, Send
 
 
-class BodySizeLimitMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, *, max_body_bytes: int = 0) -> None:
-        super().__init__(app)
+class _BodyTooLargeError(Exception):
+    pass
+
+
+class BodySizeLimitMiddleware:
+    def __init__(self, app: Callable[..., Awaitable[Any]], *, max_body_bytes: int = 0) -> None:
+        self.app = app
         self.max_body_bytes = max(0, int(max_body_bytes or 0))
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         limit = self.max_body_bytes
-        if limit <= 0:
-            return await call_next(request)
+        if scope["type"] != "http" or limit <= 0:
+            await self.app(scope, receive, send)
+            return
 
-        raw = (request.headers.get("content-length") or "").strip()
-        if raw:
+        for name, value in scope.get("headers", []):
+            if name.lower() != b"content-length":
+                continue
             try:
-                size = int(raw)
+                if int(value) > limit:
+                    await self._reject(scope, receive, send)
+                    return
             except ValueError:
-                size = -1
-            if size > limit:
-                return JSONResponse(
-                    status_code=HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                    content={"detail": "Request body too large"},
-                )
+                pass
+            break
 
-        return await call_next(request)
+        size = 0
 
+        async def limited_receive() -> Message:
+            nonlocal size
+            message = await receive()
+            if message["type"] == "http.request":
+                size += len(message.get("body", b""))
+                if size > limit:
+                    raise _BodyTooLargeError
+            return message
+
+        try:
+            await self.app(scope, limited_receive, send)
+        except _BodyTooLargeError:
+            await self._reject(scope, receive, send)
+
+    @staticmethod
+    async def _reject(scope: Scope, receive: Receive, send: Send) -> None:
+        response = JSONResponse(
+            status_code=HTTP_413_CONTENT_TOO_LARGE,
+            content={"detail": "Request body too large"},
+        )
+        await response(scope, receive, send)

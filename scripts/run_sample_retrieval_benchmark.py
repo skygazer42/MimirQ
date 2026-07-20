@@ -357,6 +357,7 @@ def run_benchmark(
         retriever = HybridRetriever(
             tenant_id=tenant_id,
             dataset_id=dataset_id,
+            enable_reranker=False,
             sparse_enabled=bool(sparse_retrieval_enabled),
             sparse_provider=sparse_provider,
         )

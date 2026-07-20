@@ -43,12 +43,6 @@ def _get_jwt_tenant_id(payload: dict) -> str | None:
 
 
 def _best_effort_client_ip(request: Request) -> str | None:
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return (forwarded.split(",")[0] or "").strip() or None
-    real_ip = request.headers.get("X-Real-IP")
-    if real_ip:
-        return real_ip.strip() or None
     client = request.client
     if client is None:
         return None
@@ -90,7 +84,7 @@ async def _decode_or_cached_jwt_payload(*, token: str, request: Request | None) 
         logger.warning("Expired token attempted for access")
         raise HTTPException(status_code=401, detail="Token expired") from exc
     except JWTError as exc:
-        logger.warning("Invalid token: %s", str(exc)[:100])
+        logger.warning("Invalid token")
         raise HTTPException(status_code=401, detail=INVALID_TOKEN_DETAIL) from exc
     if request is not None:
         request.state._jwt_payload = payload

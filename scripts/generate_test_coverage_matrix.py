@@ -2,35 +2,11 @@
 import argparse
 import json
 import os
-import re
 from pathlib import Path
 from typing import Iterable
 
-INCLUDE_ROUTER_RE = re.compile(
-    r"router\.include_router\(\s*(?P<alias>[a-zA-Z_][a-zA-Z0-9_]*)\.router(?:,\s*prefix=(?P<prefix>[^,\n)]+))?",
-    re.MULTILINE,
-)
-IMPORT_MODULE_RE = re.compile(
-    r'(?P<alias>[a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*import_module\("(?P<module>[^"]+)"\)',
-    re.MULTILINE,
-)
-CONST_RE = re.compile(r'(?P<name>_[A-Z0-9_]+)\s*=\s*"(?P<value>/[^"]*)"', re.MULTILINE)
-ROUTE_DECORATOR_RE = re.compile(
-    r"@router\.(?P<method>get|post|put|patch|delete|head|options|api_route)\((?P<body>.*?)\)",
-    re.DOTALL,
-)
-PATH_LITERAL_RE = re.compile(r'["\'](?P<path>/[^"\']*)["\']')
-METHODS_RE = re.compile(r"methods\s*=\s*\[(?P<methods>[^\]]+)\]", re.DOTALL)
-METHOD_LITERAL_RE = re.compile(r'["\'](?P<method>[A-Za-z]+)["\']')
 FRONTEND_TEST_GLOBS = ('*.test.ts', '*.test.tsx', '*.spec.ts', '*.spec.tsx')
-
-
-def _normalize_backend_path(prefix: str, route_path: str) -> str:
-    combined = f"{prefix.rstrip('/')}/{route_path.lstrip('/')}" if prefix else route_path
-    combined = "/" + combined.lstrip("/")
-    combined = re.sub(r"/{2,}", "/", combined)
-    combined = re.sub(r"\{[^}/]+\}", "{}", combined)
-    return combined
+HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
 
 
 def _normalize_frontend_route(app_root: Path, page_path: Path) -> str:
@@ -65,71 +41,27 @@ def _iter_files(root: Path, patterns: Iterable[str]) -> list[Path]:
     return sorted(files)
 
 
-def _resolve_prefix(raw_prefix: str | None, constants: dict[str, str]) -> str:
-    if not raw_prefix:
-        return ""
-    value = raw_prefix.strip()
-    if value in constants:
-        return constants[value]
-    if value.startswith(("'", '"')) and value.endswith(("'", '"')):
-        return value[1:-1]
-    return value
-
-
-def _parse_methods(method: str, body: str) -> list[str]:
-    if method != "api_route":
-        return [method.upper()]
-    match = METHODS_RE.search(body)
-    if not match:
-        return ["ANY"]
-    methods = [entry.group("method").upper() for entry in METHOD_LITERAL_RE.finditer(match.group("methods"))]
-    return methods or ["ANY"]
-
-
 def _parse_backend_routes(repo_root: Path) -> list[dict[str, str]]:
-    init_path = repo_root / "app" / "api" / "v1" / "__init__.py"
-    if not init_path.exists():
+    openapi_path = repo_root / "web" / "openapi.json"
+    if not openapi_path.exists():
         return []
-
-    src = init_path.read_text(encoding="utf-8")
-    alias_to_module = {match.group("alias"): match.group("module") for match in IMPORT_MODULE_RE.finditer(src)}
-    constants = {match.group("name"): match.group("value") for match in CONST_RE.finditer(src)}
+    spec = json.loads(openapi_path.read_text(encoding="utf-8"))
     routes: list[dict[str, str]] = []
-
-    for match in INCLUDE_ROUTER_RE.finditer(src):
-        alias = match.group("alias")
-        module_name = alias_to_module.get(alias)
-        if not module_name:
-            fallback_path = repo_root / "app" / "api" / "v1" / f"{alias}.py"
-            if fallback_path.exists():
-                module_name = f"app.api.v1.{alias}"
-            else:
-                continue
-        if not module_name.startswith("app.api.v1."):
+    for route_path, operations in (spec.get("paths") or {}).items():
+        if not isinstance(operations, dict):
             continue
-
-        module_path = repo_root.joinpath(*module_name.split(".")).with_suffix(".py")
-        if not module_path.exists():
-            continue
-
-        prefix = _resolve_prefix(match.group("prefix"), constants)
-        module_src = module_path.read_text(encoding="utf-8")
-        for decorator in ROUTE_DECORATOR_RE.finditer(module_src):
-            body = decorator.group("body")
-            path_match = PATH_LITERAL_RE.search(body)
-            if not path_match:
+        for method, operation in operations.items():
+            if method.lower() not in HTTP_METHODS:
                 continue
-            route_path = path_match.group("path")
-            for http_method in _parse_methods(decorator.group("method"), body):
-                routes.append(
-                    {
-                        "module": module_name,
-                        "method": http_method,
-                        "path": _normalize_backend_path(prefix, route_path),
-                    }
-                )
-
-    return sorted(routes, key=lambda entry: (entry["path"], entry["method"], entry["module"]))
+            operation = operation if isinstance(operation, dict) else {}
+            routes.append(
+                {
+                    "operation_id": str(operation.get("operationId") or ""),
+                    "method": method.upper(),
+                    "path": str(route_path),
+                }
+            )
+    return sorted(routes, key=lambda entry: (entry["path"], entry["method"], entry["operation_id"]))
 
 
 def _parse_frontend_pages(repo_root: Path) -> list[dict[str, str]]:
@@ -158,7 +90,7 @@ def _parse_frontend_pages(repo_root: Path) -> list[dict[str, str]]:
 def _collect_tests(repo_root: Path) -> tuple[list[dict[str, str]], list[dict[str, str]], list[dict[str, str]]]:
     backend_tests = [
         {"file": str(path.relative_to(repo_root))}
-        for path in sorted((repo_root / "tests").glob("test_*.py"))
+        for path in sorted((repo_root / "tests").rglob("test_*.py"))
         if path.is_file()
     ]
 
@@ -200,7 +132,7 @@ def build_matrix(repo_root: Path) -> dict:
 def render_markdown(matrix: dict) -> str:
     summary = matrix["summary"]
     lines = [
-        "# Full-Stack Test Coverage Matrix",
+        "# Full-Stack Test Inventory",
         "",
         "## Summary",
         "",
@@ -217,7 +149,7 @@ def render_markdown(matrix: dict) -> str:
     ]
 
     for route in matrix["backend_routes"]:
-        lines.append(f"- `{route['method']} {route['path']}` ({route['module']})")
+        lines.append(f"- `{route['method']} {route['path']}` ({route['operation_id']})")
 
     lines.extend(["", "## Frontend Pages", ""])
     for page in matrix["frontend_pages"]:
@@ -240,7 +172,7 @@ def render_markdown(matrix: dict) -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate a full-stack test coverage matrix.")
+    parser = argparse.ArgumentParser(description="Generate a full-stack test inventory.")
     parser.add_argument("--repo-root", default=".", help="Repository root to scan.")
     parser.add_argument("--json-out", help="Optional JSON output path.")
     parser.add_argument("--markdown-out", help="Optional Markdown output path.")

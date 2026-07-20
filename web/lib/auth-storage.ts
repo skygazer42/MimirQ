@@ -6,6 +6,20 @@ const USER_KEY = 'mimirq_user_profile'
 const USER_ID_KEY = 'mimirq_user_id'
 const TENANT_ID_KEY = 'mimirq_tenant_id'
 const TOKEN_EXPIRES_AT_KEY = 'mimirq_token_expires_at'
+export const DOCUMENT_VIEW_STORAGE_KEY = 'mimirq_document_view_v1'
+
+export const AUTH_SCOPE_CHANGED_EVENT = 'mimirq:auth-scope-changed'
+const AUTH_SCOPE_STORAGE_KEYS = new Set([USER_ID_KEY, TENANT_ID_KEY])
+
+function notifyAuthScopeChanged() {
+  removeClientStorage(DOCUMENT_VIEW_STORAGE_KEY)
+  globalThis.window?.dispatchEvent(new Event(AUTH_SCOPE_CHANGED_EVENT))
+}
+
+globalThis.window?.addEventListener('storage', (event) => {
+  if (event.key !== null && !AUTH_SCOPE_STORAGE_KEYS.has(event.key)) return
+  notifyAuthScopeChanged()
+})
 
 export function getAccessToken(): string | null {
   return readClientStorage(ACCESS_TOKEN_KEY)
@@ -18,6 +32,10 @@ export function getTenantId(): string | null {
 
 export function getStoredUserId(): string | null {
   return readClientStorage(USER_ID_KEY)
+}
+
+export function getAuthCacheScope(): string {
+  return `${encodeURIComponent(getTenantId() || 'default')}:${encodeURIComponent(getStoredUserId() || 'anonymous')}`
 }
 
 export function getStoredUser(): UserProfile | null {
@@ -33,11 +51,13 @@ export function getStoredUser(): UserProfile | null {
 export function setAuthSession(params: { token: AuthToken; user: UserProfile }) {
   if (globalThis.window === undefined) return
   const { token, user } = params
+  const previousUserId = getStoredUserId()
   writeClientStorage(ACCESS_TOKEN_KEY, token.access_token)
   writeClientStorage(USER_KEY, JSON.stringify(user))
   writeClientStorage(USER_ID_KEY, user.id)
   const expiresAt = Date.now() + token.expires_in * 1000
   writeClientStorage(TOKEN_EXPIRES_AT_KEY, String(expiresAt))
+  if (previousUserId && previousUserId !== user.id) notifyAuthScopeChanged()
 }
 
 export function setAccessToken(token: AuthToken) {
@@ -49,8 +69,10 @@ export function setAccessToken(token: AuthToken) {
 
 export function setStoredUser(user: UserProfile) {
   if (globalThis.window === undefined) return
+  const previousUserId = getStoredUserId()
   writeClientStorage(USER_KEY, JSON.stringify(user))
   writeClientStorage(USER_ID_KEY, user.id)
+  if (previousUserId && previousUserId !== user.id) notifyAuthScopeChanged()
 }
 
 export function clearAuthSession() {
@@ -59,4 +81,5 @@ export function clearAuthSession() {
   removeClientStorage(USER_KEY)
   removeClientStorage(USER_ID_KEY)
   removeClientStorage(TOKEN_EXPIRES_AT_KEY)
+  notifyAuthScopeChanged()
 }

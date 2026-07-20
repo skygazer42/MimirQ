@@ -32,7 +32,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          clean: false
+          clean: true
         env:
           http_proxy: http://127.0.0.1:35983
           https_proxy: http://127.0.0.1:35983

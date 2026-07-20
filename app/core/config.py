@@ -773,6 +773,8 @@ class Settings(BaseSettings):
     # - You may provide a comma/space-separated active set (e.g. "tok_v1,tok_v2")
     # - Each token may be provided as raw or as `sha256:<hex>` (recommended)
     SCIM_BEARER_TOKEN: str = ""
+    # Each SCIM credential set is bound to exactly one tenant.
+    SCIM_TENANT_ID: str = ""
     SCIM_PAGE_SIZE_MAX: int = 200
     # Defense-in-depth: optional client IP allowlist for SCIM endpoints.
     # Comma/space-separated CIDRs (e.g. "203.0.113.0/24,198.51.100.10/32").
@@ -2372,6 +2374,14 @@ class Settings(BaseSettings):
                     digest = tok.split(":", 1)[1].strip()
                     if not re.fullmatch(r"[0-9a-fA-F]{64}", digest or ""):
                         raise ValueError("SCIM_BEARER_TOKEN sha256 digest must be 64 hex chars")
+
+            tenant_raw = str(getattr(self, "SCIM_TENANT_ID", "") or "").strip()
+            if not tenant_raw:
+                raise ValueError("SCIM_TENANT_ID required when SCIM_ENABLED=true")
+            try:
+                UUID(tenant_raw)
+            except ValueError as exc:
+                raise ValueError("SCIM_TENANT_ID must be a UUID") from exc
 
             allow_raw = str(getattr(self, "SCIM_IP_ALLOWLIST_CIDRS", "") or "").strip()
             if allow_raw:

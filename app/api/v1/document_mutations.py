@@ -25,6 +25,8 @@ from app.api.schemas.qa import (
 from app.core.database import get_db
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
+from app.services.audit_log_service import audit_log_event
+from app.services.document_qa_service import generate_and_index_document_qa
 from app.services.pipeline_config import parse_pipeline_from_metadata, upsert_pipeline_metadata
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -87,7 +89,7 @@ async def generate_document_qa(
     if current_status in {"pending", "processing"}:
         raise HTTPException(status_code=409, detail=f"Cannot generate Q&A for a {current_status} document")
 
-    result = documents_module.generate_and_index_document_qa(
+    result = generate_and_index_document_qa(
         db,
         tenant_id=tenant_id,
         document=document,
@@ -98,7 +100,7 @@ async def generate_document_qa(
         preview_pairs=int(payload.preview_pairs or 0),
     )
 
-    documents_module.audit_log_event(
+    audit_log_event(
         db,
         tenant_id=tenant_id,
         actor_id=account_id,
@@ -175,7 +177,7 @@ async def patch_document_pipeline(
     db.refresh(document)
     try:
         fields = sorted(getattr(patch, "model_fields_set", set()))
-        documents_module.audit_log_event(
+        audit_log_event(
             db,
             tenant_id=tenant_id,
             actor_id=account_id,
@@ -239,7 +241,7 @@ async def patch_document_user_metadata(
                 details["quarantine_action"] = value.strip()[:200]
         if "quarantine_reviewed" in patch:
             details["quarantine_reviewed"] = bool(patch.get("quarantine_reviewed"))
-        documents_module.audit_log_event(
+        audit_log_event(
             db,
             tenant_id=tenant_id,
             actor_id=account_id,

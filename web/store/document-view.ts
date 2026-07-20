@@ -2,6 +2,11 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
 import { getClientStorage } from '@/lib/client-storage'
+import {
+  AUTH_SCOPE_CHANGED_EVENT,
+  DOCUMENT_VIEW_STORAGE_KEY,
+  getAuthCacheScope,
+} from '@/lib/auth-storage'
 import type { DocumentPreviewAnchor } from '@/lib/document-preview-anchor'
 import { sanitizeDocumentPreviewAnchor } from '@/lib/document-preview-anchor'
 
@@ -37,6 +42,7 @@ export type DocumentViewLayout = {
 }
 
 interface DocumentViewState {
+  authScope: string
   isOpen: boolean
   documentId: string | null
   highlightChunkId: string | null
@@ -66,7 +72,6 @@ interface DocumentViewState {
   setDocumentLayout: (documentId: string, patch: Partial<DocumentViewLayout>) => void
 }
 
-const STORAGE_KEY = 'mimirq_document_view_v1'
 const DEFAULT_ACTIVE_TAB: DocumentViewTab = 'preview'
 const MAX_SOURCE_CONTEXT_TEXT_CHARS = 20_000
 const VALID_TABS = new Set<string>(['preview', 'text', 'chunks'])
@@ -231,6 +236,7 @@ function persistActiveTabForDocument(
 export const useDocumentView = create<DocumentViewState>()(
   persist(
     (set, get) => ({
+      authScope: getAuthCacheScope(),
       isOpen: false,
       documentId: null,
       highlightChunkId: null,
@@ -374,9 +380,10 @@ export const useDocumentView = create<DocumentViewState>()(
         }),
     }),
     {
-      name: STORAGE_KEY,
+      name: DOCUMENT_VIEW_STORAGE_KEY,
       storage: createJSONStorage(() => getClientStorage() ?? noopStorage),
       partialize: (state) => ({
+        authScope: state.authScope,
         isOpen: state.isOpen,
         documentId: state.documentId,
         highlightChunkId: state.highlightChunkId,
@@ -387,6 +394,26 @@ export const useDocumentView = create<DocumentViewState>()(
         documentLayouts: state.documentLayouts,
         lastOpenedTarget: state.lastOpenedTarget,
       }),
+      merge: (persisted, current) => {
+        const saved = persisted as Partial<DocumentViewState>
+        return saved.authScope === getAuthCacheScope() ? { ...current, ...saved } : current
+      },
     }
   )
 )
+
+globalThis.window?.addEventListener(AUTH_SCOPE_CHANGED_EVENT, () => {
+  useDocumentView.setState({
+    authScope: getAuthCacheScope(),
+    isOpen: false,
+    documentId: null,
+    highlightChunkId: null,
+    highlightRange: null,
+    previewAnchor: null,
+    sourceContext: null,
+    activeTab: DEFAULT_ACTIVE_TAB,
+    documentLayouts: {},
+    lastOpenedTarget: null,
+  })
+  useDocumentView.persist.clearStorage()
+})

@@ -24,26 +24,37 @@ export function useChatSession({
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const messagesRef = useRef<Message[]>([])
+  const loadRequestIdRef = useRef(0)
 
   useEffect(() => {
     messagesRef.current = messages
   }, [messages])
+
+  useEffect(
+    () => () => {
+      loadRequestIdRef.current += 1
+    },
+    []
+  )
 
   const loadConversation = useCallback(
     async (id: string) => {
       const nextConversationId = id.trim()
       if (!nextConversationId) return
 
+      const loadRequestId = ++loadRequestIdRef.current
       setIsLoading(true)
       try {
         const result = await queryClient.fetchQuery({
           queryKey: queryKeys.chat.messages(nextConversationId),
           queryFn: () => chatApi.getMessages(nextConversationId),
         })
+        if (loadRequestId !== loadRequestIdRef.current) return
         setConversationId(nextConversationId)
         setMessages(result.messages || [])
         onConversationId?.(nextConversationId)
       } catch (err) {
+        if (loadRequestId !== loadRequestIdRef.current) return
         const payload = (err as { response?: { data?: unknown; headers?: Record<string, string> } })?.response?.data
         const requestId =
           (err as { response?: { headers?: Record<string, string> } })?.response?.headers?.['x-request-id'] ||
@@ -54,13 +65,16 @@ export function useChatSession({
           'Failed to load conversation'
         onError?.(withRequestId(message, requestId))
       } finally {
-        setIsLoading(false)
+        if (loadRequestId === loadRequestIdRef.current) {
+          setIsLoading(false)
+        }
       }
     },
     [onConversationId, onError, queryClient]
   )
 
   const resetConversationState = useCallback(() => {
+    loadRequestIdRef.current += 1
     setConversationId(undefined)
     setMessages([])
     setIsLoading(false)

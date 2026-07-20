@@ -271,6 +271,16 @@ def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse
     else:
         message = "Request failed"
 
+    if exc.status_code >= 500:
+        logger.error(
+            "HTTP exception status=%s detail=%r (request_id=%s)",
+            exc.status_code,
+            exc.detail,
+            request_id,
+        )
+        message = "An unexpected error occurred. Please try again later."
+        detail = None
+
     hint = _derive_hint(
         status_code=int(exc.status_code),
         error_code=str(error_code),

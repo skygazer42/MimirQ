@@ -1,7 +1,12 @@
 'use client'
 
 import { API_BASE_URL, toAbsoluteBackendUrl } from '@/lib/env'
-import { getAccessToken, getTenantId } from '@/lib/auth-storage'
+import {
+  AUTH_SCOPE_CHANGED_EVENT,
+  getAccessToken,
+  getAuthCacheScope,
+  getTenantId,
+} from '@/lib/auth-storage'
 import { buildMarkdownImageProxyUrl } from '@/lib/markdown-image-proxy'
 
 const DOCUMENT_DOWNLOAD_PATH_RE = /^\/api\/v1\/documents\/[^/]+\/download\/?$/
@@ -15,6 +20,18 @@ try {
 
 const blobCache = new Map<string, string>()
 const proxiedRemoteUrlCache = new Map<string, string>()
+
+function cacheKey(url: string): string {
+  return `${getAuthCacheScope()}:${url}`
+}
+
+function clearAssetCaches() {
+  for (const blobUrl of blobCache.values()) URL.revokeObjectURL(blobUrl)
+  blobCache.clear()
+  proxiedRemoteUrlCache.clear()
+}
+
+globalThis.window?.addEventListener(AUTH_SCOPE_CHANGED_EVENT, clearAssetCaches)
 
 export function normalizeAssetUrl(rawUrl: string | null | undefined): string | null {
   const raw = String(rawUrl || '').trim()
@@ -43,7 +60,8 @@ export function needsAuthAssetProxy(rawUrl: string | null | undefined): boolean 
 }
 
 async function mintOpaqueRemoteImageUrl(rawUrl: string): Promise<string> {
-  const cached = proxiedRemoteUrlCache.get(rawUrl)
+  const key = cacheKey(rawUrl)
+  const cached = proxiedRemoteUrlCache.get(key)
   if (cached) return cached
 
   try {
@@ -61,7 +79,7 @@ async function mintOpaqueRemoteImageUrl(rawUrl: string): Promise<string> {
       const payload = await response.json() as { src?: unknown }
       const nextUrl = typeof payload?.src === 'string' ? payload.src.trim() : ''
       if (nextUrl) {
-        proxiedRemoteUrlCache.set(rawUrl, nextUrl)
+        if (key === cacheKey(rawUrl)) proxiedRemoteUrlCache.set(key, nextUrl)
         return nextUrl
       }
     }
@@ -70,7 +88,7 @@ async function mintOpaqueRemoteImageUrl(rawUrl: string): Promise<string> {
   }
 
   const fallbackUrl = buildMarkdownImageProxyUrl(rawUrl)
-  proxiedRemoteUrlCache.set(rawUrl, fallbackUrl)
+  if (key === cacheKey(rawUrl)) proxiedRemoteUrlCache.set(key, fallbackUrl)
   return fallbackUrl
 }
 
@@ -88,7 +106,8 @@ export async function fetchAuthAssetUrl(rawUrl: string | null | undefined): Prom
     return null
   }
 
-  const cached = blobCache.get(resolved)
+  const key = cacheKey(resolved)
+  const cached = blobCache.get(key)
   if (cached) return cached
 
   const headers: Record<string, string> = {}
@@ -102,6 +121,10 @@ export async function fetchAuthAssetUrl(rawUrl: string | null | undefined): Prom
   if (!response.ok) return null
 
   const blobUrl = URL.createObjectURL(await response.blob())
-  blobCache.set(resolved, blobUrl)
+  if (key !== cacheKey(resolved)) {
+    URL.revokeObjectURL(blobUrl)
+    return null
+  }
+  blobCache.set(key, blobUrl)
   return blobUrl
 }

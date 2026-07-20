@@ -294,6 +294,10 @@ async def run_subprocess_worker(
         err = parsed.get("error") if isinstance(parsed.get("error"), dict) else {}
         msg = str(err.get("message") or "worker_failed")
         raise SubprocessWorkerError(msg, details=err, log_tail=_read_log_tail(log_path))
+    except asyncio.CancelledError:
+        if process is not None:
+            await _terminate_process_group(process)
+        raise
     finally:
         try:
             if log_file is not None:

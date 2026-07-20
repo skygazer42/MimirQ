@@ -259,12 +259,13 @@ services:
     hostname: mimirq-magicpdf
     gpus: all
     ports:
-      - "2095:2095"
+      - "127.0.0.1:2095:2095"
     environment:
       TZ: Asia/Shanghai
       NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
       NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
       MAGIC_PDF_MAX_CONCURRENT_JOBS: ${MAGIC_PDF_MAX_CONCURRENT_JOBS:-1}
+      MAGIC_PDF_MAX_UPLOAD_BYTES: ${MAGIC_PDF_MAX_UPLOAD_BYTES:-52428800}
       MAGIC_PDF_PIPELINE_TIMEOUT_SEC: ${MAGIC_PDF_PIPELINE_TIMEOUT_SEC:-600}
       MAGIC_PDF_CLI: ${MAGIC_PDF_CLI:-magic-pdf}
       MAGIC_PDF_MODELS_DIR: ${MAGIC_PDF_MODELS_DIR:-/opt/mimirq-model-cache}
@@ -299,7 +300,7 @@ services:
     restart: unless-stopped
     hostname: mimirq-qianfanocr
     ports:
-      - "2090:2090"
+      - "127.0.0.1:2090:2090"
     environment:
       TZ: Asia/Shanghai
       # OpenAI-compatible upstream endpoint, e.g. https://qianfan.baidubce.com/v2 or http://host.docker.internal:8000/v1
@@ -307,6 +308,7 @@ services:
       QIANFAN_OCR_SERVER_API_KEY: ${QIANFAN_OCR_SERVER_API_KEY:-}
       QIANFAN_OCR_MODEL: ${QIANFAN_OCR_MODEL:-deepseek-ocr}
       QIANFAN_OCR_MAX_CONCURRENT_JOBS: ${QIANFAN_OCR_MAX_CONCURRENT_JOBS:-1}
+      QIANFAN_OCR_MAX_UPLOAD_BYTES: ${QIANFAN_OCR_MAX_UPLOAD_BYTES:-52428800}
       QIANFAN_OCR_PAGE_CONCURRENCY: ${QIANFAN_OCR_PAGE_CONCURRENCY:-1}
       QIANFAN_OCR_REQUEST_TIMEOUT_SEC: ${QIANFAN_OCR_REQUEST_TIMEOUT_SEC:-120}
       QIANFAN_OCR_PDF_DPI: ${QIANFAN_OCR_PDF_DPI:-200}

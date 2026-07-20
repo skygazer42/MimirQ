@@ -46,6 +46,20 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
+def _lock_active_admin_members(db: Session, tenant_id: UUID) -> list[TenantMember]:
+    return (
+        db.query(TenantMember)
+        .filter(
+            TenantMember.tenant_id == tenant_id,
+            TenantMember.is_active.is_(True),
+            TenantMember.role.in_(list(UserRoles.ADMIN_ROLES)),
+        )
+        .order_by(TenantMember.id.asc())
+        .with_for_update()
+        .all()
+    )
+
+
 @router.get("/me", response_model=TenantAccessOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_current_tenant_access(
     *,
@@ -120,15 +134,22 @@ async def patch_tenant_member_role(
     if not uid:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="user_id is required")
 
+    active_admins = _lock_active_admin_members(db, tenant_id)
     member = (
         db.query(TenantMember)
         .filter(TenantMember.tenant_id == tenant_id, TenantMember.user_id == uid)
+        .with_for_update()
         .first()
     )
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant member not found")
 
-    member.role = str(payload.role or "").strip().lower()
+    next_role = str(payload.role or "").strip().lower()
+    current_role = str(getattr(member, "role", "") or "").strip().lower()
+    if current_role in UserRoles.ADMIN_ROLES and next_role not in UserRoles.ADMIN_ROLES and len(active_admins) <= 1:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="不能降级最后一个管理员")
+
+    member.role = next_role
     db.commit()
     db.refresh(member)
     return TenantMemberOut.model_validate(member)
@@ -160,9 +181,11 @@ async def delete_tenant_member(
     if uid == str(account_id or "").strip():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="不能移除当前用户")
 
+    active_admins = _lock_active_admin_members(db, tenant_id)
     member = (
         db.query(TenantMember)
         .filter(TenantMember.tenant_id == tenant_id, TenantMember.user_id == uid)
+        .with_for_update()
         .first()
     )
     if not member:
@@ -170,17 +193,7 @@ async def delete_tenant_member(
 
     member_role = str(getattr(member, "role", "") or "").strip().lower()
     if member_role in UserRoles.ADMIN_ROLES and bool(getattr(member, "is_active", True)):
-        other_admin_count = (
-            db.query(TenantMember)
-            .filter(
-                TenantMember.tenant_id == tenant_id,
-                TenantMember.user_id != uid,
-                TenantMember.is_active.is_(True),
-                TenantMember.role.in_(list(UserRoles.ADMIN_ROLES)),
-            )
-            .count()
-        )
-        if int(other_admin_count or 0) <= 0:
+        if len(active_admins) <= 1:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="不能移除最后一个管理员")
 
     revoked_groups = int(

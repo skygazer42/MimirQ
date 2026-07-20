@@ -24,6 +24,16 @@ def test_main_ci_runs_all_browser_smoke_specs_and_critical_coverage() -> None:
     assert "pnpm run test:coverage:critical" in workflow
 
 
+def test_main_ci_uploads_the_generated_test_inventory() -> None:
+    workflow = _read(".github/workflows/ci.yml")
+
+    assert "make test-matrix" in workflow
+    assert "name: full-stack-test-inventory" in workflow
+    assert "artifacts/test-coverage-matrix.json" in workflow
+    assert "artifacts/test-coverage-matrix.md" in workflow
+    assert "if-no-files-found: error" in workflow
+
+
 def test_api_docs_workflow_actually_deploys_pages() -> None:
     workflow = _read(".github/workflows/api-docs.yml")
 

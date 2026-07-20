@@ -27,6 +27,7 @@ from app.core.database import get_db
 from app.models.prompt_template import PromptTemplate
 from app.rag.llm.prompts.builtin_library import list_builtin_prompt_templates
 from app.services.dataset_service import DatasetService
+from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -39,6 +40,16 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 router = APIRouter(tags=["prompt-templates"], responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 _PROMPT_TEMPLATE_NOT_FOUND_DETAIL = "Prompt template not found"
+
+
+def _ensure_write(db: Session, tenant_id: UUID, account_id: str) -> None:
+    ensure_tenant_permission(
+        db,
+        tenant_id,
+        account_id,
+        TenantPermissions.SETTINGS_WRITE,
+        detail="No permission to manage prompt templates",
+    )
 
 
 def _derive_template_key(name: str) -> str:
@@ -69,7 +80,7 @@ async def sync_builtin_prompt_templates(
     db: Annotated[Session, Depends(get_db)],
 ) -> BuiltinPromptTemplateSyncResponse:
     """Synchronize curated built-in prompt templates into the current tenant."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    _ensure_write(db, tenant_id, account_id)
 
     created = 0
     updated = 0
@@ -161,7 +172,7 @@ async def create_prompt_template(
     Raises:
         HTTPException: 403 if user is not a tenant member
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    _ensure_write(db, tenant_id, account_id)
 
     template_key = request.template_key or _derive_template_key(request.name)
     # If the key already has versions, increment by default for smooth versioning.
@@ -319,7 +330,7 @@ async def create_prompt_template_version(
     db: Annotated[Session, Depends(get_db)],
 ) -> PromptTemplate:
     """Create a new version from a template (deactivate old version by default)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    _ensure_write(db, tenant_id, account_id)
 
     current = (
         db.query(PromptTemplate).filter(PromptTemplate.id == template_id, PromptTemplate.tenant_id == tenant_id).first()
@@ -399,7 +410,7 @@ async def update_prompt_template(
         HTTPException: 403 if user is not a tenant member or template is system template
         HTTPException: 404 if template not found
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    _ensure_write(db, tenant_id, account_id)
 
     template = (
         db.query(PromptTemplate)
@@ -459,7 +470,7 @@ async def delete_prompt_template(
         HTTPException: 403 if user is not a tenant member or template is system template
         HTTPException: 404 if template not found
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    _ensure_write(db, tenant_id, account_id)
 
     template = (
         db.query(PromptTemplate)
@@ -518,7 +529,7 @@ async def duplicate_prompt_template(
         HTTPException: 403 if user is not a tenant member
         HTTPException: 404 if template not found
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    _ensure_write(db, tenant_id, account_id)
 
     original = (
         db.query(PromptTemplate)

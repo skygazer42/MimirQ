@@ -24,7 +24,7 @@ export function mintMarkdownImageProxyToken(rawUrl: string): string | null {
   if (!key) return null
 
   const iv = randomBytes(IV_BYTES)
-  const cipher = createCipheriv('aes-256-gcm', key, iv)
+  const cipher = createCipheriv('aes-256-gcm', key, iv, { authTagLength: AUTH_TAG_BYTES })
   const payload = Buffer.from(
     JSON.stringify({
       src: rawUrl,
@@ -57,7 +57,7 @@ export function resolveMarkdownImageProxyToken(rawToken: string | null | undefin
     const authTag = decoded.subarray(IV_BYTES, IV_BYTES + AUTH_TAG_BYTES)
     const ciphertext = decoded.subarray(IV_BYTES + AUTH_TAG_BYTES)
 
-    const decipher = createDecipheriv('aes-256-gcm', key, iv)
+    const decipher = createDecipheriv('aes-256-gcm', key, iv, { authTagLength: AUTH_TAG_BYTES })
     decipher.setAuthTag(authTag)
 
     const payload = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8')

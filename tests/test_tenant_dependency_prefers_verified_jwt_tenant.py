@@ -102,3 +102,50 @@ def test_tenant_dependency_prefers_verified_jwt_tenant_when_enabled(monkeypatch)
     res2 = client.get("/tid", headers={"Authorization": f"Bearer {token}"})
     assert res2.status_code == 200
     assert res2.json()["tenant_id"] == jwt_tid
+
+
+def test_scim_opaque_bearer_uses_tenant_header_without_jwt_decoding(monkeypatch):
+    import app.api.v1.scim as scim_module
+
+    monkeypatch.setenv("ENV", "production")
+    monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
+    monkeypatch.setattr(settings, "JWT_TENANT_CLAIM", "tenant_id", raising=False)
+    monkeypatch.setattr(settings, "SCIM_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "SCIM_BEARER_TOKEN", "opaque-scim-token", raising=False)
+    monkeypatch.setattr(settings, "SCIM_IP_ALLOWLIST_CIDRS", "", raising=False)
+
+    tenant_id = uuid.uuid4()
+    monkeypatch.setattr(settings, "SCIM_TENANT_ID", str(tenant_id), raising=False)
+    captured: dict[str, object] = {}
+
+    def _list_users(_db, *, tenant_id, skip, limit):  # noqa: ANN001
+        captured.update(tenant_id=tenant_id, skip=skip, limit=limit)
+        return 0, []
+
+    def _fake_db():  # noqa: ANN202
+        yield object()
+
+    monkeypatch.setattr(scim_module, "_list_users", _list_users, raising=True)
+    app = FastAPI()
+    app.include_router(scim_module.router, prefix="/scim/v2")
+    app.dependency_overrides[scim_module.get_db] = _fake_db
+
+    response = TestClient(app).get(
+        "/scim/v2/Users",
+        headers={
+            "Authorization": "Bearer opaque-scim-token",
+            "X-Tenant-ID": str(tenant_id),
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert captured["tenant_id"] == tenant_id
+
+    wrong_tenant = TestClient(app).get(
+        "/scim/v2/Users",
+        headers={
+            "Authorization": "Bearer opaque-scim-token",
+            "X-Tenant-ID": str(uuid.uuid4()),
+        },
+    )
+    assert wrong_tenant.status_code == 403

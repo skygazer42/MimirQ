@@ -20,6 +20,9 @@ SCIM_ENABLED=true
 # 例：两个 token 同时生效（轮换窗口）
 SCIM_BEARER_TOKEN="sha256:<hex_v1>,sha256:<hex_v2>"
 
+# 必填：该 SCIM 凭据唯一绑定的租户，防止令牌跨租户使用
+SCIM_TENANT_ID="<tenant_uuid>"
+
 # 可选：限制单次分页大小（默认 200）
 SCIM_PAGE_SIZE_MAX=200
 
@@ -41,7 +44,7 @@ SCIM_GROUPS_MUTATION_ENABLED=false
 请求时带上：
 
 - `Authorization: Bearer <SCIM_BEARER_TOKEN>`
-- `X-Tenant-ID: <tenant_uuid>`（与现有多租户 header 机制一致）
+- `X-Tenant-ID: <tenant_uuid>`（必须与 `SCIM_TENANT_ID` 一致）
 
 > 生产环境建议配合：Ingress/网关 allowlist、IP 限制、以及 token 轮换流程。
 

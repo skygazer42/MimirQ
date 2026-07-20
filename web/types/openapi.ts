@@ -109,7 +109,7 @@ export interface paths {
         put?: never;
         /**
          * Register User
-         * @description Register a user and return an access token.
+         * @description Bootstrap the first tenant owner and return an access token.
          */
         post: operations["register_user_api_v1_auth_register_post"];
         delete?: never;
@@ -38324,7 +38324,11 @@ export interface operations {
     k_hop_neighbors_api_v1_kg_network_k_hop_neighbors_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+                "x-tenant-id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -38394,7 +38398,11 @@ export interface operations {
     shortest_path_api_v1_kg_network_shortest_path_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+                "x-tenant-id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -38464,7 +38472,11 @@ export interface operations {
     paths_between_api_v1_kg_network_paths_between_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+                "x-tenant-id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -38534,7 +38546,11 @@ export interface operations {
     centrality_api_v1_kg_network_centrality_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+                "x-tenant-id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -38604,7 +38620,11 @@ export interface operations {
     community_of_api_v1_kg_network_community_of_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+                "x-tenant-id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -38674,7 +38694,11 @@ export interface operations {
     connected_component_api_v1_kg_network_connected_component_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+                "x-tenant-id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -44689,7 +44713,11 @@ export interface operations {
     put_industry_ruleset_glossary_api_v1_industry_rules_rulesets__name__glossary_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
             path: {
                 name: string;
             };
@@ -44759,7 +44787,11 @@ export interface operations {
     put_industry_ruleset_patterns_api_v1_industry_rules_rulesets__name__patterns_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
             path: {
                 name: string;
             };
@@ -44829,7 +44861,11 @@ export interface operations {
     put_industry_ruleset_intents_api_v1_industry_rules_rulesets__name__intents_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
             path: {
                 name: string;
             };

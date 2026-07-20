@@ -67,8 +67,14 @@ LLM_MODEL_HEAVY=qwen3-max
 - `WEB_PORT`：前端端口（默认 `3000`）
 - `NEXT_PUBLIC_API_URL`：浏览器访问后端的地址（默认 `http://localhost:8000`）
 - `API_INTERNAL_URL_DOCKER`：前端容器内（SSR）访问后端的地址（默认 `http://mimirq-api:8000`）
+- `FORWARDED_ALLOW_IPS_DOCKER`：允许覆盖客户端 IP 的可信代理地址；默认仅包含回环和 `web` 容器固定地址，禁止设为 `*`
+- `MIMIRQ_PROXY_SUBNET` / `WEB_PROXY_IP_DOCKER`：前后端代理专用网段及 `web` 地址；修改时必须同步更新 `FORWARDED_ALLOW_IPS_DOCKER`
 
 > 注意：不要把 `NEXT_PUBLIC_API_URL` 设置成 `http://mimirq-api:8000`，因为浏览器无法解析 Docker 内部服务名；SSR 需要容器内地址时请改 `API_INTERNAL_URL_DOCKER`。
+
+若在 Compose 外使用 Ingress 或反向代理，需把代理的实际来源 IP/CIDR 加入容器环境变量 `FORWARDED_ALLOW_IPS`。未列入的来源即使伪造 `X-Forwarded-For` 也不会改变审计、限流或 SCIM allowlist 使用的客户端 IP。
+
+Compose 内置的 Web 入口会在 Next.js rewrite 前把 `X-Forwarded-For` 强制重写为其 TCP peer，客户端不能自行提供该值。外部 Ingress 经 Web 转发时后端只能看到 Ingress 地址；若 SCIM 必须按 IdP 的真实出口 IP allowlist，请让受信 Ingress 直连 `mimirq-api`，并仅把该 Ingress 的来源地址加入 `FORWARDED_ALLOW_IPS`。
 
 ---
 

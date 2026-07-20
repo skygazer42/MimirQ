@@ -22,3 +22,8 @@ def test_audit_remediation_pins_known_fixed_versions() -> None:
     assert versions["torch"] == "2.13.0"
     assert versions["torchvision"] == "0.28.0"
     assert versions["nltk"] == "3.10.0"
+
+
+def test_unused_direct_dependencies_stay_removed() -> None:
+    versions = _requirement_versions()
+    assert {"grpcio-tools", "roman-numbers", "backports.tarfile"}.isdisjoint(versions)

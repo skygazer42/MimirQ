@@ -16,6 +16,7 @@ dist/
 *.egg-info/
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
 .pycache/
 *.trie
 

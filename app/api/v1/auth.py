@@ -35,7 +35,7 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 @router.post("/register", status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def register_user(payload: RegisterRequest, db: Annotated[Session, Depends(get_db)]) -> AuthResponse:
-    """Register a user and return an access token."""
+    """Bootstrap the first tenant owner and return an access token."""
     user = UserService.create_user(
         db,
         email=payload.email,

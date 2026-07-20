@@ -169,6 +169,19 @@ def _load_password(*, password: str, password_file: str) -> str:
     return ""
 
 
+def _write_private_text(path: Path, text: str) -> None:
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(path, flags, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as file_obj:
+            fd = -1
+            file_obj.write(text)
+    finally:
+        if fd >= 0:
+            os.close(fd)
+
+
 def refresh_storage_state(
     *,
     console_base_url: str,
@@ -202,14 +215,14 @@ def refresh_storage_state(
     )
 
     state_path = Path(storage_state)
-    state_path.write_text(
+    _write_private_text(
+        state_path,
         json.dumps(
             build_storage_state(console_origin=console_origin, console_token=console_token),
             ensure_ascii=False,
             indent=2,
         )
         + "\n",
-        encoding="utf-8",
     )
     return {
         "storage_state": str(state_path),
