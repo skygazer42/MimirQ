@@ -1,48 +1,89 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 160" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
+  <title id="title">MimirQ - Observable RAG, built for production</title>
+  <desc id="desc">MimirQ turns document parsing, retrieval, reranking, and citations into a visible and testable RAG pipeline.</desc>
   <defs>
-    <linearGradient id="bannerBg" x1="0" y1="0" x2="800" y2="160" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#0f172a"/>
-      <stop offset="100%" stop-color="#1e293b"/>
+    <linearGradient id="bg" x1="64" y1="18" x2="1128" y2="348" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#071722"/>
+      <stop offset="0.56" stop-color="#0A2531"/>
+      <stop offset="1" stop-color="#0B3540"/>
     </linearGradient>
-    <linearGradient id="logoGrad" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#818cf8"/>
-      <stop offset="50%" stop-color="#c084fc"/>
-      <stop offset="100%" stop-color="#f0abfc"/>
+    <linearGradient id="brand" x1="72" y1="78" x2="456" y2="238" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F5FBFF"/>
+      <stop offset="0.64" stop-color="#D8F5FA"/>
+      <stop offset="1" stop-color="#68D9E8"/>
     </linearGradient>
-    <linearGradient id="accentLine" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#6366f1" stop-opacity="0"/>
-      <stop offset="20%" stop-color="#6366f1"/>
-      <stop offset="50%" stop-color="#a855f7"/>
-      <stop offset="80%" stop-color="#6366f1"/>
-      <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
+    <linearGradient id="flow" x1="704" y1="78" x2="1092" y2="282" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#20C5D8"/>
+      <stop offset="1" stop-color="#38A3FF"/>
     </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(1010 102) rotate(130) scale(344 280)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22D3C5" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#22D3C5" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
+      <path d="M28 0H0V28" fill="none" stroke="#C8F5F8" stroke-opacity="0.055"/>
+    </pattern>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#02090D" flood-opacity="0.34"/>
+    </filter>
   </defs>
 
-  <rect width="800" height="160" rx="16" fill="url(#bannerBg)"/>
+  <rect width="1200" height="360" rx="28" fill="url(#bg)"/>
+  <rect width="1200" height="360" rx="28" fill="url(#grid)"/>
+  <rect width="1200" height="360" rx="28" fill="url(#glow)"/>
+  <path d="M0 304C204 253 358 337 556 300C761 262 919 212 1200 250V360H0V304Z" fill="#0B202A" fill-opacity="0.62"/>
 
-  <!-- Decorative orb -->
-  <circle cx="130" cy="80" r="38" fill="#6366f1" opacity="0.12"/>
-  <circle cx="130" cy="80" r="24" fill="#6366f1" opacity="0.18"/>
-  <!-- Mimir's well symbol -->
-  <path d="M118 68 L130 56 L142 68" stroke="#818cf8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <path d="M115 80 Q130 96 145 80" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" fill="none"/>
-  <circle cx="130" cy="76" r="3.5" fill="#c4b5fd"/>
-  <path d="M126 84 L130 92 L134 84" stroke="#818cf8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.6"/>
+  <g transform="translate(68 52)">
+    <rect width="235" height="28" rx="14" fill="#0F3440" stroke="#246171"/>
+    <circle cx="17" cy="14" r="4" fill="#43D6C8"/>
+    <text x="30" y="19" fill="#BEEEF2" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="700" letter-spacing="1.2">OPEN SOURCE · CHINESE FIRST</text>
 
-  <!-- Logo text -->
-  <text x="180" y="90" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="52" font-weight="800" fill="url(#logoGrad)" letter-spacing="-1">MimirQ</text>
+    <text x="0" y="130" fill="url(#brand)" font-family="Aptos, Inter, ui-sans-serif, system-ui, sans-serif" font-size="88" font-weight="780" letter-spacing="-4">MimirQ</text>
+    <text x="2" y="171" fill="#C7DDE3" font-family="Noto Sans SC, Microsoft YaHei, ui-sans-serif, system-ui, sans-serif" font-size="22" font-weight="600">把 RAG 黑盒变成可检查、可回归、可治理的工程系统</text>
+    <text x="2" y="205" fill="#7FA7B2" font-family="Noto Sans SC, Microsoft YaHei, ui-sans-serif, system-ui, sans-serif" font-size="15">深度文档理解 · 混合检索 · 逐句引用 · 评测门禁 · Dify 集成</text>
 
-  <!-- Tagline -->
-  <text x="182" y="116" font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#94a3b8" letter-spacing="3" font-weight="500">OPEN-SOURCE RAG KNOWLEDGE BASE</text>
+    <g transform="translate(0 230)" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="700">
+      <rect width="128" height="31" rx="8" fill="#10333D" stroke="#225664"/>
+      <text x="16" y="20" fill="#92E7E7">TRACEABLE RAG</text>
+      <rect x="140" width="112" height="31" rx="8" fill="#10333D" stroke="#225664"/>
+      <text x="156" y="20" fill="#92E7E7">DIFY READY</text>
+      <rect x="264" width="110" height="31" rx="8" fill="#10333D" stroke="#225664"/>
+      <text x="280" y="20" fill="#92E7E7">EVAL GATES</text>
+    </g>
+  </g>
 
-  <!-- Accent line -->
-  <line x1="100" y1="134" x2="700" y2="134" stroke="url(#accentLine)" stroke-width="1.5"/>
+  <g transform="translate(620 56)" filter="url(#shadow)" font-family="Aptos, Inter, ui-sans-serif, system-ui, sans-serif">
+    <path d="M70 54C132 54 124 132 190 132H228M70 54C148 54 144 216 228 216M340 132H374C420 132 410 94 444 94M340 216H374C420 216 410 254 444 254" fill="none" stroke="url(#flow)" stroke-width="3" stroke-linecap="round" stroke-opacity="0.72"/>
+    <circle cx="70" cy="54" r="6" fill="#43D6C8"/>
+    <circle cx="228" cy="132" r="6" fill="#43D6C8"/>
+    <circle cx="228" cy="216" r="6" fill="#38A3FF"/>
+    <circle cx="444" cy="94" r="6" fill="#43D6C8"/>
+    <circle cx="444" cy="254" r="6" fill="#38A3FF"/>
 
-  <!-- Right side decorative dots -->
-  <circle cx="640" cy="50" r="2" fill="#6366f1" opacity="0.3"/>
-  <circle cx="660" cy="42" r="1.5" fill="#a855f7" opacity="0.25"/>
-  <circle cx="680" cy="55" r="2.5" fill="#6366f1" opacity="0.2"/>
-  <circle cx="650" cy="65" r="1.5" fill="#c084fc" opacity="0.3"/>
-  <circle cx="700" cy="48" r="2" fill="#818cf8" opacity="0.2"/>
-  <circle cx="670" cy="72" r="1" fill="#a855f7" opacity="0.35"/>
+    <g>
+      <rect x="0" y="18" width="126" height="72" rx="13" fill="#102D37" stroke="#2C6673"/>
+      <text x="18" y="49" fill="#E7F7F8" font-size="15" font-weight="700">Parse</text>
+      <text x="18" y="70" fill="#78A8B3" font-size="12">layout · OCR</text>
+    </g>
+    <g>
+      <rect x="220" y="96" width="128" height="72" rx="13" fill="#102D37" stroke="#2C6673"/>
+      <text x="238" y="127" fill="#E7F7F8" font-size="15" font-weight="700">Retrieve</text>
+      <text x="238" y="148" fill="#78A8B3" font-size="12">hybrid · ACL</text>
+    </g>
+    <g>
+      <rect x="220" y="180" width="128" height="72" rx="13" fill="#102D37" stroke="#2C6673"/>
+      <text x="238" y="211" fill="#E7F7F8" font-size="15" font-weight="700">Rerank</text>
+      <text x="238" y="232" fill="#78A8B3" font-size="12">fusion · trace</text>
+    </g>
+    <g>
+      <rect x="436" y="58" width="126" height="72" rx="13" fill="#113742" stroke="#3197A6"/>
+      <text x="454" y="89" fill="#E7F7F8" font-size="15" font-weight="700">Citations</text>
+      <text x="454" y="110" fill="#79C9CF" font-size="12">sentence-level</text>
+    </g>
+    <g>
+      <rect x="436" y="218" width="126" height="72" rx="13" fill="#113742" stroke="#3197A6"/>
+      <text x="454" y="249" fill="#E7F7F8" font-size="15" font-weight="700">Evaluate</text>
+      <text x="454" y="270" fill="#79C9CF" font-size="12">regression gate</text>
+    </g>
+  </g>
 </svg>
