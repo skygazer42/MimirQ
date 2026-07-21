@@ -2,8 +2,8 @@
 
 本页是面向平台/运维团队的 **K8s 安全基线落地指南**，目标是让 MimirQ 的私有化部署：
 
-- 默认 **兼容优先**（不因为 chart “自作主张”而破坏现有集群习惯）
-- 提供 **opt-in hardening**（一键更安全的 securityContext）
+- 官方镜像默认启用 **安全上下文**（非 root、drop capabilities、seccomp）
+- 自定义镜像不兼容时可显式关闭 hardening
 - 关键配置 **可审计、可复用、可 copy/paste**
 
 > 原则：默认 PII-safe。不要为了安全审计在日志/导出里写入用户 query / 文档原文。
@@ -16,12 +16,14 @@ Chart：`deploy/helm/mimirq`
 
 ### 1.1 安全上下文（securityContext）
 
-启用 hardening 预设（推荐用于生产）：
+hardening 预设默认启用：
 
 ```yaml
 security:
   hardened: true
 ```
+
+仅当自定义镜像无法满足非 root、seccomp 或 capabilities 约束时，才显式设置为 `false`。
 
 你仍然可以显式覆盖：
 
@@ -174,4 +176,3 @@ make helm-lint
 helm get values mimirq -n <ns>
 kubectl -n <ns> get deploy,cronjob,networkpolicy,sa -l app.kubernetes.io/instance=mimirq
 ```
-

@@ -18,13 +18,13 @@ existingSecretName: ""
 # Optional security hardening presets for Kubernetes.
 #
 # Design:
-# - Default is minimal and compatibility-first (no behavior changes).
-# - When `security.hardened=true`, the chart will apply a set of safe defaults
-#   (non-root, seccomp RuntimeDefault, drop ALL capabilities, etc.).
+# - Safe defaults are enabled for the official non-root image.
+# - Set `security.hardened=false` only for a custom image that cannot run with
+#   non-root, seccomp RuntimeDefault, or dropped capabilities.
 # - You can override globally (security.*Context) and/or per component
 #   (api/worker/cronjobs.*.*Context).
 security:
-  hardened: false
+  hardened: true
 
   # Global defaults applied to all pods/containers (merged with per-component overrides).
   #

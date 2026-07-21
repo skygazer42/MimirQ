@@ -11,6 +11,7 @@ x-backend-env: &backend_env
   HOST: 0.0.0.0
   PORT: 8000
   UVICORN_WORKERS: ${BACKEND_WORKERS:-1}
+  SECRET_KEY: ${SECRET_KEY_RETRIEVAL_DEV:-retrieval-dev-only-secret-key-change-me}
   DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@mimirq-postgres:5432/${POSTGRES_DB:-mimirq}
   REDIS_URL: ${REDIS_URL_DOCKER:-redis://mimirq-redis:6379/0}
   # Retrieval-dev profile: keep startup light and deterministic.
@@ -80,8 +81,6 @@ services:
         condition: service_healthy
       mimirq-redis:
         condition: service_healthy
-    env_file:
-      - ../.env
     environment:
       <<: *backend_env
       TABLE_STORE_DIR: /data/uploads/table_store

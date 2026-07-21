@@ -105,7 +105,7 @@
 ## 7) 安全基线（必须）
 
 - [ ] **Helm/K8s 安全开关（推荐）**：
-  - [ ] `security.hardened=true`（opt-in 安全上下文默认值）
+  - [ ] `security.hardened=true`（默认开启；自定义 values 不应关闭）
   - [ ] `automountServiceAccountToken=false`（默认即为 false，除非明确需要）
   - [ ] 可选：`serviceAccount.create=true`（或 `serviceAccount.name=...`）
   - [ ] 可选：`networkPolicy.enabled=true`（先在预发演练；如开启 egress allowlist：`networkPolicy.egress.restrict=true`）

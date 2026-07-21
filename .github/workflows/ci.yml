@@ -38,7 +38,7 @@ jobs:
           --health-retries 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           clean: true
         env:
@@ -157,7 +157,7 @@ jobs:
         run: make verify
 
       - name: Upload full-stack test inventory
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: full-stack-test-inventory
           path: |
@@ -170,7 +170,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           clean: true
         env:
@@ -178,8 +178,24 @@ jobs:
           https_proxy: http://127.0.0.1:35983
           no_proxy: 127.0.0.1,localhost,${{ vars.CI_NO_PROXY }}
 
+      - name: Validate Helm chart
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work alpine/helm:3.19.0 lint deploy/helm/mimirq
+          docker run --rm -v "$PWD:/work" -w /work alpine/helm:3.19.0 template mimirq deploy/helm/mimirq >/dev/null
+          for values in deploy/helm/mimirq/examples/*.yaml; do
+            docker run --rm -v "$PWD:/work" -w /work alpine/helm:3.19.0 \
+              template mimirq deploy/helm/mimirq -f "$values" >/dev/null
+          done
+
       - name: Build backend image
-        run: docker build -t mimirq-backend -f docker/Dockerfile .
+        env:
+          HTTP_PROXY: http://127.0.0.1:35983
+          HTTPS_PROXY: http://127.0.0.1:35983
+          NO_PROXY: 127.0.0.1,localhost,${{ vars.CI_NO_PROXY }}
+        run: |
+          docker build --network host \
+            --build-arg HTTP_PROXY --build-arg HTTPS_PROXY --build-arg NO_PROXY \
+            -t mimirq-backend -f docker/Dockerfile .
 
       - name: Build web image
         run: docker build -t mimirq-web -f web/Dockerfile.prod web
@@ -190,7 +206,7 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           clean: true
         env:
@@ -904,7 +920,7 @@ jobs:
 
       - name: Upload bounded gate artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: retrieval-only-bounded-gate
           path: |
@@ -976,7 +992,7 @@ jobs:
           --health-retries 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           clean: true
         env:
@@ -1032,7 +1048,7 @@ jobs:
           python -m pip install --retries 5 --timeout 120 --no-deps xgboost==3.2.0
 
       - name: Download bounded gate artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: retrieval-only-bounded-gate
           path: bounded_gate_artifacts
@@ -1168,7 +1184,7 @@ jobs:
 
       - name: Upload gate artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: retrieval-regression-gate
           path: |
@@ -1212,7 +1228,7 @@ jobs:
           --health-retries 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           clean: true
         env:
@@ -1293,7 +1309,7 @@ jobs:
 
       - name: Upload gate artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: kg-search-regression-gate
           path: |

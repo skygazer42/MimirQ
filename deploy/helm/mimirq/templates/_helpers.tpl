@@ -106,6 +106,20 @@ Inputs:
 {{- $ctx = mergeOverwrite $ctx . -}}
 {{- end -}}
 
+{{- if $root.Values.security.hardened -}}
+{{- with $root.Values.security.hardenedContainerSecurityContext -}}
+{{- $ctx = mergeOverwrite $ctx . -}}
+{{- end -}}
+{{- end -}}
+{{- with $extra -}}
+{{- $ctx = mergeOverwrite $ctx . -}}
+{{- end -}}
+{{- if $ctx -}}
+securityContext:
+{{ toYaml $ctx | nindent 2 }}
+{{- end -}}
+{{- end -}}
+
 {{/*
 Render automountServiceAccountToken for a pod spec.
 
@@ -125,17 +139,4 @@ Inputs:
 {{- $val = $override -}}
 {{- end -}}
 automountServiceAccountToken: {{ $val }}
-{{- end -}}
-{{- if $root.Values.security.hardened -}}
-{{- with $root.Values.security.hardenedContainerSecurityContext -}}
-{{- $ctx = mergeOverwrite $ctx . -}}
-{{- end -}}
-{{- end -}}
-{{- with $extra -}}
-{{- $ctx = mergeOverwrite $ctx . -}}
-{{- end -}}
-{{- if $ctx -}}
-securityContext:
-{{ toYaml $ctx | nindent 2 }}
-{{- end -}}
 {{- end -}}

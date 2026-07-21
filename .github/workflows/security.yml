@@ -26,7 +26,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # Scan the checked-out snapshot / shallow history to keep signal on
           # the changes under review instead of historical credentials that are
@@ -47,12 +47,12 @@ jobs:
             git file://. --branch HEAD --results=verified --fail --no-update
 
   dependency-audit:
-    name: Dependency Audit (pip-audit, pnpm audit)
+    name: Dependency Audit (pip-audit, pnpm audit, npm audit)
     runs-on: [self-hosted, Linux, X64, mimirq]
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           clean: true
         env:
@@ -109,3 +109,11 @@ jobs:
       - name: Audit web prod deps (high+)
         working-directory: web
         run: pnpm audit --prod --audit-level high
+
+      - name: Install handbook deps
+        working-directory: docs-site
+        run: npm ci
+
+      - name: Audit handbook deps (high+)
+        working-directory: docs-site
+        run: npm audit --audit-level=high

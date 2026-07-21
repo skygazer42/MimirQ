@@ -100,9 +100,9 @@ ingress:
           pathType: Prefix
 ```
 
-### 4.1 安全基线（可选，但强烈建议用于生产）
+### 4.1 安全基线
 
-Chart 提供了一个 opt-in 的 hardening 预设：`security.hardened=true`。它会合并一组更安全的默认 `securityContext`（非 root、drop capabilities、seccomp 等），但**默认不会**强行开启可能破坏兼容性的选项（例如 `readOnlyRootFilesystem`）。
+Chart 默认启用 `security.hardened=true`，为官方非 root 镜像合并安全的 `securityContext`（非 root、drop capabilities、seccomp 等）。如果自定义镜像与这些约束不兼容，可显式设置 `security.hardened=false`；`readOnlyRootFilesystem` 仍不会被默认开启。
 
 常见配置示例：
 

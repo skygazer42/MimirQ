@@ -9,8 +9,8 @@ Prometheus Operator:
 - Set prometheus.serviceMonitor.enabled=true to create a ServiceMonitor
 - Remember to also set secretEnv.PROMETHEUS_ENABLED=true so /metrics is enabled
 
-Security / Hardening (optional):
-- Set security.hardened=true to apply recommended securityContext defaults
+Security / Hardening:
+- Recommended securityContext defaults are enabled; set security.hardened=false only for an incompatible custom image
 - By default automountServiceAccountToken=false (safer); set api/worker/cronjobs.*.automountServiceAccountToken=true if needed
 - Use serviceAccount.create=true (or serviceAccount.name=...) to run pods under a dedicated ServiceAccount
 

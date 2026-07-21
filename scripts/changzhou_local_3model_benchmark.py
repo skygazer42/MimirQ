@@ -5,8 +5,6 @@ The target MimirQ instance must already be configured with the embedding and rer
 services named in the run metadata.
 """
 
-from __future__ import annotations
-
 import argparse
 import hashlib
 import json
