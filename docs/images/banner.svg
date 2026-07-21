@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
   <title id="title">MimirQ - Observable RAG, built for production</title>
-  <desc id="desc">MimirQ turns document parsing, retrieval, reranking, and citations into a visible and testable RAG pipeline.</desc>
+  <desc id="desc">The MimirQ wordmark ends in a blue Q with a walking figure, alongside a visible and testable RAG pipeline.</desc>
   <style>
     @media (max-width: 600px) {
-      .hero-copy { transform: translate(70px, 78px); }
-      .brand-title { font-size: 150px; letter-spacing: -6px; }
-      .tagline { font-size: 42px; }
+      .hero-copy { transform: translate(70px, 40px); }
+      .brand-mark { transform: scale(1.4); }
+      .tagline { font-size: 42px; transform: translate(0, 100px); }
       .eyebrow, .features, .capabilities, .pipeline { display: none; }
     }
   </style>
@@ -19,6 +19,11 @@
       <stop stop-color="#F5FBFF"/>
       <stop offset="0.64" stop-color="#D8F5FA"/>
       <stop offset="1" stop-color="#68D9E8"/>
+    </linearGradient>
+    <linearGradient id="qBrand" x1="266" y1="42" x2="430" y2="142" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#67D8E8"/>
+      <stop offset="0.55" stop-color="#38A3FF"/>
+      <stop offset="1" stop-color="#2478E8"/>
     </linearGradient>
     <linearGradient id="flow" x1="704" y1="78" x2="1092" y2="282" gradientUnits="userSpaceOnUse">
       <stop stop-color="#20C5D8"/>
@@ -48,7 +53,15 @@
       <text x="30" y="19" fill="#BEEEF2" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="700" letter-spacing="1.2">OPEN SOURCE · CHINESE FIRST</text>
     </g>
 
-    <text class="brand-title" x="0" y="130" fill="url(#brand)" font-family="Aptos, Inter, ui-sans-serif, system-ui, sans-serif" font-size="88" font-weight="780" letter-spacing="-4">MimirQ</text>
+    <g class="brand-mark">
+      <text x="0" y="130" fill="url(#brand)" font-family="Aptos, Inter, ui-sans-serif, system-ui, sans-serif" font-size="88" font-weight="780" letter-spacing="-4">Mimir</text>
+      <circle cx="304" cy="94" r="43" fill="none" stroke="url(#qBrand)" stroke-width="18"/>
+      <path d="M329 116C350 130 377 132 425 136" fill="none" stroke="url(#qBrand)" stroke-width="18" stroke-linecap="round"/>
+      <g transform="translate(390 91)" fill="#E7F7F8" stroke="#E7F7F8" stroke-linecap="round" stroke-linejoin="round">
+        <circle r="5" stroke="none"/>
+        <path d="M-1 9C1 15 2 21 2 27M0 14L-10 21M0 14L9 20M2 27L-7 40M2 27L13 38" fill="none" stroke-width="4.5"/>
+      </g>
+    </g>
     <text class="tagline" x="2" y="171" fill="#C7DDE3" font-family="Noto Sans SC, Microsoft YaHei, ui-sans-serif, system-ui, sans-serif" font-size="22" font-weight="600">把 RAG 黑盒变成可检查、可回归、可治理的工程系统</text>
     <text class="features" x="2" y="205" fill="#7FA7B2" font-family="Noto Sans SC, Microsoft YaHei, ui-sans-serif, system-ui, sans-serif" font-size="15">深度文档理解 · 混合检索 · 逐句引用 · 评测门禁 · Dify 集成</text>
 
