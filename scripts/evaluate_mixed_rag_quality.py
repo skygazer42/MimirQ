@@ -131,6 +131,7 @@ def _record_text(record: dict[str, Any]) -> str:
         record.get("text"),
         metadata.get("title"),
         metadata.get("document_name"),
+        metadata.get("service_name"),
     ]
     return "\n".join(_text(field) for field in fields if _text(field))
 
@@ -441,7 +442,7 @@ def evaluate_item(case: dict[str, Any], run: dict[str, Any], item: dict[str, Any
         "missing_subquestion_ids": [row["id"] for row in subquestion_rows if not row["evidence_matched"]],
         "answer_clause_coverage": _round_float(_ratio(answer_clause_matched, evidence_total, empty=1.0)),
         "answer_subquestion_coverage": _round_float(
-            _ratio(answer_subquestion_matched, subquestion_total, empty=1.0 if not answer else 0.0)
+            _ratio(answer_subquestion_matched, subquestion_total, empty=1.0)
         ),
         "answer_supported_clause_rate": _round_float(answer_supported_clause_rate),
         "unsupported_answered_clause_ids": unsupported_answered_clause_ids,

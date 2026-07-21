@@ -6,7 +6,7 @@
 
 <p><b>不是又一个黑盒 RAG</b>——从文档怎么被切、检索命中了什么、答案凭什么这么答，每一步都摊开给你看、让你调。</p>
 
-<p>深度文档理解 · 混合检索 · 知识图谱 · 可视化切片 · 评测治理 · 企业级安全</p>
+<p>深度文档理解 · 混合检索 · 知识图谱 · 可视化切片 · 评测治理 · Dify 集成 · 企业级安全</p>
 
 <p>
   <a href="https://github.com/skygazer42/MimirQ/wiki"><b>文档</b></a> ·
@@ -63,6 +63,7 @@ MimirQ 最开始不是为了再造一个 RAG 框架，也不是为了把当时�
 - [我为什么做 MimirQ？](#-我为什么做-mimirq)
 - [MimirQ 是什么](#-mimirq-是什么)
 - [产品界面](#-产品界面)
+- [接入 Dify](#-接入-dify)
 - [快速开始](#-快速开始)
 - [核心功能对比](#-核心功能对比)
 - [已在真实场景验证](#-已在真实场景验证)
@@ -138,6 +139,39 @@ MimirQ 最开始不是为了再造一个 RAG 框架，也不是为了把当时�
     </td>
   </tr>
 </table>
+
+---
+
+## 🔌 接入 Dify
+
+MimirQ 不重复实现 Dify 的工作流画布，而是把可治理、可追溯的 RAG 能力接入已有 Dify 应用。当前支持两种方式：
+
+| 接入方式 | Dify 负责 | MimirQ 负责 | 适用场景 |
+|:---|:---|:---|:---|
+| **External Knowledge API** | Chatflow / Agent 编排、Prompt 与答案生成 | 文档治理、混合检索、重排、权限过滤与证据返回 | 把 MimirQ 当作 Dify 外部知识库 |
+| **Workflow HTTP 节点** | 自定义路由、参数组装与答案展示 | 按指定知识范围返回检索证据和 Trace | 需要多分支、动态知识库或自定义回传逻辑 |
+
+#### External Knowledge API
+
+<p align="center">
+  <a href="./docs/images/screenshots/dify-mimirq-workflow.png">
+    <img src="./docs/images/screenshots/dify-mimirq-workflow.png" alt="Dify 工作流通过区域路由接入八个 MimirQ 政务知识库" width="750"/>
+  </a>
+  <br/>
+  <sub>真实 Dify Chatflow（已脱敏）：区域分支路由到 7 个区域级 + 1 个市级 MimirQ 知识检索节点，再统一合并证据。</sub>
+</p>
+
+#### Workflow HTTP 节点
+
+<p align="center">
+  <a href="./docs/images/screenshots/dify-mimirq-http-workflow.png">
+    <img src="./docs/images/screenshots/dify-mimirq-http-workflow.png" alt="Dify HTTP 节点调用 MimirQ 检索接口并合并证据" width="1100"/>
+  </a>
+  <br/>
+  <sub>真实 Dify HTTP 子链（已脱敏）：安全构造 JSON 请求 → POST MimirQ 检索接口 → 转换 Dify 结果 → 合并知识证据。</sub>
+</p>
+
+Dify 标准外部知识库端点为 `POST /api/v1/integrations/dify/retrieval`；可选用 `POST /api/v1/integrations/dify/conversation-turns` 回传答案、引用与会话标识，在 MimirQ 中留存完整链路。配置项见 [`.env.example`](./.env.example)，部署前可使用 [Dify / MimirQ readiness gate](./scripts/README.md) 校验知识库映射、检索质量与工作流 Trace；实测结果见 [Dify 四路质量横评](#dify-四路质量横评)。
 
 ---
 
@@ -256,7 +290,7 @@ MimirQ 不是实验室 Demo——它已用于**市级政务智能问答助手**�
 |:---|:---|---:|---:|---:|
 | **MimirQ 检索直连** | 客户端 → MimirQ External Knowledge 检索 API（无 LLM 生成） | 1100 | **88.9%** | **88.7%** |
 | **Dify External → MimirQ** | Dify 负责生成；MimirQ 作为 External Knowledge 检索源 | 1100 | 67.4% | 65.9% |
-| **Dify HTTP → MimirQ** | Dify Workflow HTTP 节点调用 MimirQ 完整问答 API | 1100 | 69.6% | 67.9% |
+| **Dify HTTP → MimirQ** | Dify Workflow HTTP 节点调用 MimirQ 检索 API，再由 Dify 生成答案 | 1100 | 69.6% | 67.9% |
 | **Dify 原生知识库** | Dify 原生入库、检索与生成 | 1100 | 50.6% | 49.7% |
 
 1100 题由 800 道模拟用户问题、200 道事项直问和 100 道精确问答组成，统一使用确定性证据条款匹配，不使用 LLM judge。检索直连以 Top-3 证据文本作为输出，其余链路评估生成答案。四路工作量不同，因此不做延迟横向比较。延迟指标将在统一环境、固定并发和固定缓存状态下重新测试后发布。
@@ -275,7 +309,42 @@ MimirQ 不是实验室 Demo——它已用于**市级政务智能问答助手**�
 
 > 📝 **诚实说明**：同路复测证明了**完成率改善**，但不能证明整体答案质量提升。7 个区级知识库的条款覆盖合计 +3.0pp，市级知识库因输出变短而 -15.7pp，抵消了区级收益。每个版本只完整运行一次且 Dify 生成未固定随机种子，因此这是一组同参观测，不是统计显著性声明；延迟结论待统一环境重测后补充。完整逐题产物保存在本机 `artifacts/`，未随公开仓库发布；公开可复现测试见[中文评测指南](./docs/guides/public_benchmarks_zh.md)。
 
-接入时，如果希望 **Dify 保留 Prompt 与答案生成控制权**，使用 [Dify External Knowledge API](./docs/guides/pipeline_plugins.md)；如果希望 **MimirQ 完成检索、治理与最终回答**，在 Dify Workflow 中使用 HTTP 节点调用 MimirQ API。
+### 本地三模型 800 题复测
+
+<!-- 数据来源：artifacts/changzhou_local_3model_800_20260721/summary.json；输入 SHA-256 5a4c67c42e8f8123774279d46af39ccc793da1b89fdea19a7359f63c8cb2fac2；生成时间 2026-07-21T04:56:32Z。 -->
+
+2026-07-21 使用同一套固定 800 题，在局域网部署的 `bge-m3`、`bge-reranker-large` 和 `Qwen3-30B-A3B-Instruct-2507-FP16` 上重新测试完整链路：MimirQ External Knowledge 检索 Top-5 证据，再由本地 Qwen 生成答案。
+
+| 指标 | 结果 |
+|:---|---:|
+| 完整执行 | **800 / 800**（0 失败） |
+| 准确 / 部分准确 / 证据不足 | 717 / 68 / 15 |
+| 答案准确率 / 可用率 | 89.6% / **98.1%** |
+| 答案条款覆盖 / 证据覆盖 | **95.4%** / 97.6% |
+| 答案受证据支持率 / 错误证据率 | 97.4% / 5.4% |
+| 端到端平均 / P50 / P95 | 13.67s / 9.08s / 44.88s |
+| 检索平均 / 生成平均 | 11.47s / 2.20s |
+
+评分继续使用确定性证据条款匹配，不使用 LLM judge；固定并发为 6，单次运行保留了首批预热和复杂检索长尾。该链路改为本地 Qwen 生成答案，与上面的历史 Dify 生成链路不是同一实验条件，因此结果用于验证本地三模型链路的完整性和当前基线，不作升级前后的直接因果比较。
+
+### 本地化四路 800 题复测
+
+<!-- 数据来源：artifacts/changzhou_dify_4way_800_20260721/comparison_report.json；输入 SHA-256 5a4c67c42e8f8123774279d46af39ccc793da1b89fdea19a7359f63c8cb2fac2；生成时间 2026-07-21T04:56:03Z。 -->
+
+同一套固定 800 题也重新跑完四种实际接入方式。MimirQ 使用局域网部署的 `bge-m3`、`bge-reranker-large` 和 `Qwen3-30B-A3B-Instruct-2507-FP16`；三个 Dify 应用按各自发布工作流调用相同的本地模型服务。
+
+| 链路 | 成功执行 | 准确率 / 可用率 | 答案条款覆盖 | 答案受证据支持 | 错误证据率 | 平均 / P50 / P95 |
+|:---|---:|---:|---:|---:|---:|---:|
+| **MimirQ 检索直连** | **800 / 800** | **95.9% / 96.9%** | **96.3%** | **96.6%** | 5.4% | 12.10s / 7.47s / 36.05s |
+| **Dify External → MimirQ** | 798 / 800 | 60.5% / 88.5% | 81.6% | 93.3% | 7.0% | 11.57s / 7.68s / 40.16s |
+| **Dify HTTP → MimirQ** | **800 / 800** | 62.6% / 90.3% | 82.0% | 92.2% | 5.9% | **4.75s / 4.56s / 6.73s** |
+| **Dify 原生知识库** | **800 / 800** | 38.9% / 76.8% | 67.3% | 87.1% | 79.1% | 10.61s / 8.52s / 27.65s |
+
+2393 个必答条款中，四路共同未召回的只有 4 个；低分不是大面积知识源缺失。External 与 HTTP 的主要损失是证据已经召回、生成答案却未按必答字段完整输出；原生知识库还存在地区路由和 Top-K 噪声，已召回但未答出的条款占 19.8%，召回与答案均未匹配占 12.6%。这里的“错误证据率”表示返回记录中未命中本题严格条款的比例，不等于事实错误率。MimirQ 检索直连把 Top-3 证据文本直接作为输出，也不能与三条生成链路视为同等答案任务。
+
+本次复核还修正了两个确定性评分问题：无结构化子问题时不再把非空答案记为 0 分，并让证据匹配读取已有的 `metadata.service_name`。Dify External 的两道失败题在多轮低并发重试后仍由 Dify 前置 Nginx 返回 `504 Gateway Time-out`，报告按无答案计入 800 题分母；Dify 原生知识库首轮暴露的新北区 reranker provider 配置错误已改为 `xinference`，发布后复测为 800 / 800。评分不使用 LLM judge；四路工作量不同，延迟不应视为严格同条件性能对比。
+
+接入方式、真实工作流截图与部署前校验见[接入 Dify](#-接入-dify)。
 
 ---
 

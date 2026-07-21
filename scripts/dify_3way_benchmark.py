@@ -1128,7 +1128,7 @@ def _safe_error(message: Any, *, secrets: list[str]) -> str:
 
 def _is_timeout_error_text(value: Any) -> bool:
     text = _text(value).lower()
-    return "timed out" in text or "timeout" in text or "readtimeout" in text
+    return any(marker in text for marker in ("timed out", "time-out", "timeout", "readtimeout", "http 504"))
 
 
 def _retry_timeout_seconds(timeout: float) -> float:
