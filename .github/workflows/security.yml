@@ -106,9 +106,9 @@ jobs:
         working-directory: web
         run: pnpm install --frozen-lockfile
 
-      - name: Audit web prod deps (high+)
+      - name: Audit web deps (high+)
         working-directory: web
-        run: pnpm audit --prod --audit-level high
+        run: pnpm audit --audit-level high
 
       - name: Install handbook deps
         working-directory: docs-site
