@@ -172,29 +172,27 @@ curl http://localhost:8000/api/v1/health/ready
 
 MimirQ 不重复实现 Dify 的工作流画布，而是把可治理、可追溯的 RAG 能力接入已有 Dify 应用。当前支持两种方式：
 
-| 接入方式 | Dify 负责 | MimirQ 负责 | 适用场景 |
-|:---|:---|:---|:---|
-| **External Knowledge API** | Chatflow / Agent 编排、Prompt 与答案生成 | 文档治理、混合检索、重排、权限过滤与证据返回 | 把 MimirQ 当作 Dify 外部知识库 |
-| **Workflow HTTP 节点** | 自定义路由、参数组装与答案展示 | 按指定知识范围返回检索证据和 Trace | 需要多分支、动态知识库或自定义回传逻辑 |
-
-#### External Knowledge API
-
-<p align="center">
-  <a href="./docs/images/screenshots/dify-mimirq-workflow.png">
-    <img src="./docs/images/screenshots/dify-mimirq-workflow.png" alt="Dify 工作流通过区域路由接入八个 MimirQ 政务知识库" width="750"/>
-  </a>
-  <br/>
-  <sub>真实 Dify Chatflow（已脱敏）：区域分支路由到 7 个区域级 + 1 个市级 MimirQ 知识检索节点，再统一合并证据。</sub>
-</p>
+- **External Knowledge API**：Dify 负责编排与生成，MimirQ 负责文档治理、检索、重排、权限过滤和证据返回。
+- **Workflow HTTP 节点**：Dify 负责自定义路由与参数，MimirQ 按指定知识范围返回证据和 Trace。
 
 #### Workflow HTTP 节点
 
 <p align="center">
   <a href="./docs/images/screenshots/dify-mimirq-http-workflow.png">
-    <img src="./docs/images/screenshots/dify-mimirq-http-workflow.png" alt="Dify HTTP 节点调用 MimirQ 检索接口并合并证据" width="1100"/>
+    <img src="./docs/images/screenshots/dify-mimirq-http-workflow.png" alt="Dify HTTP 节点调用 MimirQ 检索接口并合并证据" width="1100" style="max-width: 100%; height: auto;"/>
   </a>
   <br/>
   <sub>真实 Dify HTTP 子链（已脱敏）：安全构造 JSON 请求 → POST MimirQ 检索接口 → 转换 Dify 结果 → 合并知识证据。</sub>
+</p>
+
+#### External Knowledge API
+
+<p align="center">
+  <a href="./docs/images/screenshots/dify-mimirq-workflow.png">
+    <img src="./docs/images/screenshots/dify-mimirq-workflow.png" alt="Dify 工作流通过区域路由接入八个 MimirQ 政务知识库" width="560" style="max-width: 100%; height: auto;"/>
+  </a>
+  <br/>
+  <sub>真实 Dify Chatflow（已脱敏）：区域分支路由到 7 个区域级 + 1 个市级 MimirQ 知识检索节点，再统一合并证据；点击查看原图。</sub>
 </p>
 
 Dify 标准外部知识库端点为 `POST /api/v1/integrations/dify/retrieval`；可选用 `POST /api/v1/integrations/dify/conversation-turns` 回传答案、引用与会话标识。配置见 [`.env.example`](./.env.example)，部署前校验见 [readiness gate](./scripts/README.md)，实测结果见[真实场景验证](#-已在真实场景验证)。

@@ -1,6 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
   <title id="title">MimirQ - Observable RAG, built for production</title>
   <desc id="desc">MimirQ turns document parsing, retrieval, reranking, and citations into a visible and testable RAG pipeline.</desc>
+  <style>
+    @media (max-width: 600px) {
+      .hero-copy { transform: translate(70px, 78px); }
+      .brand-title { font-size: 150px; letter-spacing: -6px; }
+      .tagline { font-size: 42px; }
+      .eyebrow, .features, .capabilities, .pipeline { display: none; }
+    }
+  </style>
   <defs>
     <linearGradient id="bg" x1="64" y1="18" x2="1128" y2="348" gradientUnits="userSpaceOnUse">
       <stop stop-color="#071722"/>
@@ -33,16 +41,18 @@
   <rect width="1200" height="360" rx="28" fill="url(#glow)"/>
   <path d="M0 304C204 253 358 337 556 300C761 262 919 212 1200 250V360H0V304Z" fill="#0B202A" fill-opacity="0.62"/>
 
-  <g transform="translate(68 52)">
-    <rect width="235" height="28" rx="14" fill="#0F3440" stroke="#246171"/>
-    <circle cx="17" cy="14" r="4" fill="#43D6C8"/>
-    <text x="30" y="19" fill="#BEEEF2" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="700" letter-spacing="1.2">OPEN SOURCE · CHINESE FIRST</text>
+  <g class="hero-copy" transform="translate(68 52)">
+    <g class="eyebrow">
+      <rect width="235" height="28" rx="14" fill="#0F3440" stroke="#246171"/>
+      <circle cx="17" cy="14" r="4" fill="#43D6C8"/>
+      <text x="30" y="19" fill="#BEEEF2" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="700" letter-spacing="1.2">OPEN SOURCE · CHINESE FIRST</text>
+    </g>
 
-    <text x="0" y="130" fill="url(#brand)" font-family="Aptos, Inter, ui-sans-serif, system-ui, sans-serif" font-size="88" font-weight="780" letter-spacing="-4">MimirQ</text>
-    <text x="2" y="171" fill="#C7DDE3" font-family="Noto Sans SC, Microsoft YaHei, ui-sans-serif, system-ui, sans-serif" font-size="22" font-weight="600">把 RAG 黑盒变成可检查、可回归、可治理的工程系统</text>
-    <text x="2" y="205" fill="#7FA7B2" font-family="Noto Sans SC, Microsoft YaHei, ui-sans-serif, system-ui, sans-serif" font-size="15">深度文档理解 · 混合检索 · 逐句引用 · 评测门禁 · Dify 集成</text>
+    <text class="brand-title" x="0" y="130" fill="url(#brand)" font-family="Aptos, Inter, ui-sans-serif, system-ui, sans-serif" font-size="88" font-weight="780" letter-spacing="-4">MimirQ</text>
+    <text class="tagline" x="2" y="171" fill="#C7DDE3" font-family="Noto Sans SC, Microsoft YaHei, ui-sans-serif, system-ui, sans-serif" font-size="22" font-weight="600">把 RAG 黑盒变成可检查、可回归、可治理的工程系统</text>
+    <text class="features" x="2" y="205" fill="#7FA7B2" font-family="Noto Sans SC, Microsoft YaHei, ui-sans-serif, system-ui, sans-serif" font-size="15">深度文档理解 · 混合检索 · 逐句引用 · 评测门禁 · Dify 集成</text>
 
-    <g transform="translate(0 230)" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="700">
+    <g class="capabilities" transform="translate(0 230)" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="700">
       <rect width="128" height="31" rx="8" fill="#10333D" stroke="#225664"/>
       <text x="16" y="20" fill="#92E7E7">TRACEABLE RAG</text>
       <rect x="140" width="112" height="31" rx="8" fill="#10333D" stroke="#225664"/>
@@ -52,7 +62,7 @@
     </g>
   </g>
 
-  <g transform="translate(620 56)" filter="url(#shadow)" font-family="Aptos, Inter, ui-sans-serif, system-ui, sans-serif">
+  <g class="pipeline" transform="translate(620 56)" filter="url(#shadow)" font-family="Aptos, Inter, ui-sans-serif, system-ui, sans-serif">
     <path d="M70 54C132 54 124 132 190 132H228M70 54C148 54 144 216 228 216M340 132H374C420 132 410 94 444 94M340 216H374C420 216 410 254 444 254" fill="none" stroke="url(#flow)" stroke-width="3" stroke-linecap="round" stroke-opacity="0.72"/>
     <circle cx="70" cy="54" r="6" fill="#43D6C8"/>
     <circle cx="228" cy="132" r="6" fill="#43D6C8"/>
