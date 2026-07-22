@@ -8,6 +8,7 @@ dataset IDs, runs the existing retrieval-only pipeline, and returns Dify records
 
 
 import asyncio
+import contextlib
 import hashlib
 import hmac
 import json
@@ -66,8 +67,19 @@ from app.rag.retrieval.plugin_policy import (
     record_retrieval_policy_bonus,
     records_retrieval_policy_diagnostics,
 )
+from app.services.chat_response_cache import InflightResponseLeaderCancelledError
+from app.services.chat_response_cache import (
+    acquire_inflight_chat_response as acquire_inflight_response,
+)
+from app.services.chat_response_cache import (
+    reject_inflight_chat_response as reject_inflight_response,
+)
+from app.services.chat_response_cache import (
+    resolve_inflight_chat_response as resolve_inflight_response,
+)
 from app.services.external_conversation_ingest import _mimirq_citations_for_storage
 from app.services.metrics_logger import log_metrics
+from app.services.rag_runtime_limiter import run_blocking_retrieval_call
 
 logger = get_logger(__name__)
 
@@ -228,7 +240,6 @@ _METADATA_ANCHOR_DB_FALLBACK_MIN_SCORE = 0.72
 _METADATA_ANCHOR_DB_FALLBACK_DEFAULT_SCORE = 0.74
 _METADATA_ANCHOR_DB_FALLBACK_MAX_QUERY_TERMS = 12
 _METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS = 8
-_SERVICE_ANCHOR_ADMIN_SUFFIXES = ("街道", "省", "市", "区", "县", "镇", "乡")
 _SERVICE_ANCHOR_ADMIN_MARKERS = ("在", "到")
 _SERVICE_ANCHOR_QUERY_TRAILING_CHARS = " \t\r\n?？。！!，,、：:；;"
 _METADATA_ANCHOR_DB_FALLBACK_ARRAY_FIELDS = (
@@ -384,6 +395,19 @@ _dify_external_warmup_state: dict[str, Any] = {
 
 def _clear_dify_response_cache() -> None:
     _dify_response_cache.clear()
+
+
+async def _acquire_or_wait_for_inflight_response(
+    key: str,
+) -> tuple[bool, dict[str, Any] | None]:
+    while True:
+        leader, future = await acquire_inflight_response(key)
+        if leader:
+            return True, None
+        try:
+            return False, await asyncio.shield(future)
+        except InflightResponseLeaderCancelledError:
+            continue
 
 
 def _set_dify_external_warmup_status(**updates: Any) -> None:
@@ -1361,6 +1385,9 @@ def _dify_response_cache_settings_signature() -> dict[str, Any]:
         "metadata_anchor_max_scan": int(
             getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_SCAN", 80) or 80
         ),
+        "metadata_anchor_total_budget_ms": int(
+            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_TOTAL_BUDGET_MS", 1500) or 0
+        ),
         "metadata_anchor_text_scan_enabled": bool(
             getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_TEXT_SCAN_ENABLED", False)
         ),
@@ -1509,24 +1536,40 @@ def _inherited_query_route_hints(
     if not base_set:
         return []
 
+    current_mapping = knowledge_map.get(current_key)
+    raw_inherited_sources = (
+        current_mapping.get("inherit_query_routes_from")
+        if isinstance(current_mapping, dict)
+        else None
+    )
+    raw_sources = (
+        sorted(raw_inherited_sources, key=str)
+        if isinstance(raw_inherited_sources, set)
+        else raw_inherited_sources
+        if isinstance(raw_inherited_sources, list | tuple)
+        else [raw_inherited_sources]
+    )
+    inherited_sources: list[str] = []
+    seen_sources: set[str] = set()
+    for source in raw_sources:
+        source_key = str(source or "").strip()
+        if not source_key or source_key in seen_sources:
+            continue
+        seen_sources.add(source_key)
+        inherited_sources.append(source_key)
+    if not inherited_sources:
+        return []
     inherited: list[DatasetRouteHint] = []
     seen: set[tuple[tuple[str, ...], tuple[UUID, ...], str]] = set()
-    inherit_city_shared_routes = (
-        current_key.startswith("changzhou_")
-        and current_key.endswith("_service")
-        and current_key not in {"changzhou_city_service", "changzhou_all_districts_service"}
-    )
-    for mapping_key, raw_mapping in knowledge_map.items():
-        if mapping_key == current_key or not isinstance(raw_mapping, dict):
+    for mapping_key in inherited_sources:
+        raw_mapping = knowledge_map.get(mapping_key)
+        if not isinstance(raw_mapping, dict):
             continue
-        is_city_shared_route_source = inherit_city_shared_routes and mapping_key == "changzhou_city_service"
         routes = _mapping_query_routes(raw_mapping)
         if not routes:
             continue
         for route_hint in _route_hints_from_routes(routes):
             if not route_hint.dataset_ids:
-                continue
-            if not set(route_hint.dataset_ids).issubset(base_set) and not is_city_shared_route_source:
                 continue
             identity = (route_hint.terms, route_hint.dataset_ids, route_hint.mode)
             if identity in seen:
@@ -1686,10 +1729,12 @@ def _plan_query_dataset_scope(
     if not routes and not inherited_route_hints:
         return plan_dataset_scope(base_dataset_ids=base_dataset_ids, query=query)
 
-    strict_routes = bool(routes and (mapping.get("strict_query_routes") or mapping.get("query_routes_strict")))
     route_hints = _merge_route_hints(
-        _route_hints_from_routes(routes or []),
         list(inherited_route_hints or []),
+        _route_hints_from_routes(routes or []),
+    )
+    strict_routes = bool(
+        route_hints and (mapping.get("strict_query_routes") or mapping.get("query_routes_strict"))
     )
     return plan_dataset_scope(
         base_dataset_ids=base_dataset_ids,
@@ -1995,6 +2040,38 @@ def _load_chunk_content_map(
     return out
 
 
+def _load_chunk_content_map_with_managed_session(
+    *,
+    tenant_id: UUID,
+    citations: list[dict[str, Any]],
+) -> dict[str, str]:
+    worker_db = SessionLocal()
+    try:
+        return _load_chunk_content_map(
+            db=worker_db,
+            tenant_id=tenant_id,
+            citations=citations,
+        )
+    finally:
+        worker_db.close()
+
+
+async def _offload_chunk_content_hydration(
+    *,
+    request_db: Session,
+    tenant_id: UUID,
+    citations: list[dict[str, Any]],
+) -> dict[str, str]:
+    rollback = getattr(request_db, "rollback", None)
+    if callable(rollback):
+        rollback()
+    return await run_blocking_retrieval_call(
+        _load_chunk_content_map_with_managed_session,
+        tenant_id=tenant_id,
+        citations=citations,
+    )
+
+
 def _iter_record_metadata_layers(record: dict[str, Any]) -> list[dict[str, Any]]:
     raw_metadata = record.get("metadata")
     if not isinstance(raw_metadata, dict):
@@ -2086,37 +2163,13 @@ def _iter_anchor_word_segments(value: str) -> list[str]:
     return segments
 
 
-def _is_service_anchor_admin_name(value: str) -> bool:
-    text = str(value or "").strip()
-    if text == "本级":
-        return True
-    for suffix in _SERVICE_ANCHOR_ADMIN_SUFFIXES:
-        if not text.endswith(suffix):
-            continue
-        stem = text[: -len(suffix)]
-        return 2 <= len(stem) <= 8 and all(_is_cjk_char(char) for char in stem)
-    return False
-
-
-def _split_service_anchor_admin_prefix(value: str) -> tuple[str, str] | None:
-    text = str(value or "").lstrip()
-    max_prefix_len = min(len(text), 10)
-    for end in range(1, max_prefix_len + 1):
-        prefix = text[:end]
-        if _is_service_anchor_admin_name(prefix):
-            return prefix, text[end:].strip()
-    return None
-
-
-def _strip_trailing_service_anchor_admin(value: str) -> str:
+def _strip_trailing_service_anchor_admin(value: str, *, admin_aliases: tuple[str, ...]) -> str:
     text = str(value or "").strip()
     for marker in _SERVICE_ANCHOR_ADMIN_MARKERS:
-        marker_pos = text.rfind(marker)
-        if marker_pos < 0:
-            continue
-        candidate = text[marker_pos + len(marker) :].strip()
-        if _is_service_anchor_admin_name(candidate):
-            return text[:marker_pos].strip()
+        for alias in admin_aliases:
+            suffix = f"{marker}{alias}"
+            if text.endswith(suffix):
+                return text[: -len(suffix)].strip()
     return text
 
 
@@ -3558,6 +3611,29 @@ def _service_anchor_cutoff_terms_for_policy_refs(policy_plugin_refs: tuple[str, 
     return _policy_string_terms_for_policy_refs(policy_plugin_refs, "service_anchor_cutoff_terms")
 
 
+def _service_anchor_admin_aliases_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
+    aliases: list[str] = []
+    seen: set[str] = set()
+    for plugin_ref in policy_plugin_refs or ():
+        policy = _retrieval_policy_for_plugin_ref(plugin_ref)
+        for raw_field in policy.get("anchor_fields") or ():
+            field = dict(raw_field) if isinstance(raw_field, dict) else {}
+            if str(field.get("role") or "").strip() != "administrative_area":
+                continue
+            raw_aliases = field.get("aliases")
+            if not isinstance(raw_aliases, dict):
+                continue
+            for canonical, values in raw_aliases.items():
+                for raw_value in (canonical, *_metadata_terms(values)):
+                    value = str(raw_value or "").strip()
+                    normalized = _normalize_match_term(value)
+                    if not value or not normalized or normalized in seen:
+                        continue
+                    seen.add(normalized)
+                    aliases.append(value)
+    return tuple(aliases)
+
+
 def _question_anchor_generic_subject_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
     return _policy_string_terms_for_policy_refs(policy_plugin_refs, "question_anchor_generic_subject_terms")
 
@@ -3876,7 +3952,7 @@ async def _final_rerank_records_for_query(
     try:
         reranker = get_reranker(provider)
         start = time.perf_counter()
-        result = await asyncio.to_thread(
+        result = await run_blocking_retrieval_call(
             reranker.rerank,
             query,
             candidates,
@@ -4388,9 +4464,10 @@ def _compact_records_for_response(
     compaction_enabled = bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_HIGH_CONFIDENCE_ENABLED", True))
     policy_compaction = _response_compaction_for_records(limited, policy_plugin_refs=policy_plugin_refs)
     if compaction_enabled and bool(policy_compaction.get("enabled")):
-        if (
-            _record_question_anchor_strength(limited[0], query=query, policy_plugin_refs=policy_plugin_refs)
-            >= _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH
+        if _record_has_strong_question_anchor(
+            limited[0],
+            query=query,
+            policy_plugin_refs=policy_plugin_refs,
         ):
             limited = _compact_by_strong_question_anchor(limited, query=query, policy_plugin_refs=policy_plugin_refs)
         else:
@@ -4445,8 +4522,11 @@ def _strong_question_anchor_records(
     return [
         record
         for record in records or []
-        if _record_question_anchor_strength(record, query=query, policy_plugin_refs=policy_plugin_refs)
-        >= _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH
+        if _record_has_strong_question_anchor(
+            record,
+            query=query,
+            policy_plugin_refs=policy_plugin_refs,
+        )
         and _record_content_is_answerful(record, policy_plugin_refs=policy_plugin_refs)
     ]
 
@@ -5124,6 +5204,27 @@ def _record_question_anchor_strength(
     return best
 
 
+def _record_has_strong_question_anchor(
+    record: dict[str, Any],
+    *,
+    query: str,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> bool:
+    return bool(
+        _record_question_anchor_strength(
+            record,
+            query=query,
+            policy_plugin_refs=policy_plugin_refs,
+        )
+        >= _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH
+        and not _record_question_anchor_has_intent_conflict(
+            record,
+            query=query,
+            anchor_fields=("question", "primary_alias"),
+        )
+    )
+
+
 def _compact_by_strong_question_anchor(
     records: list[dict[str, Any]],
     *,
@@ -5132,14 +5233,20 @@ def _compact_by_strong_question_anchor(
 ) -> list[dict[str, Any]]:
     if not records:
         return []
-    top_strength = _record_question_anchor_strength(records[0], query=query, policy_plugin_refs=policy_plugin_refs)
-    if top_strength < _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH:
+    if not _record_has_strong_question_anchor(
+        records[0],
+        query=query,
+        policy_plugin_refs=policy_plugin_refs,
+    ):
         return records
     anchored = [
         record
         for record in records
-        if _record_question_anchor_strength(record, query=query, policy_plugin_refs=policy_plugin_refs)
-        >= _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH
+        if _record_has_strong_question_anchor(
+            record,
+            query=query,
+            policy_plugin_refs=policy_plugin_refs,
+        )
     ]
     return anchored or records
 
@@ -5173,6 +5280,74 @@ def _records_can_skip_kg_on_demand(
         records,
         query=query,
         policy_plugin_refs=policy_plugin_refs,
+    )
+
+
+def _load_dify_kg_chunk_rows(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    dataset_ids: list[UUID],
+    chunk_ids: list[UUID],
+) -> list[Any]:
+    return (
+        db.query(
+            DocumentChunk.id.label("chunk_id"),
+            DocumentChunk.document_id.label("document_id"),
+            DocumentChunk.chunk_index.label("chunk_index"),
+            DocumentChunk.page_number.label("page_number"),
+            DocumentChunk.content.label("content"),
+            DocumentChunk.doc_metadata.label("metadata"),
+            Document.dataset_id.label("dataset_id"),
+            Document.filename.label("filename"),
+        )
+        .join(Document, DocumentChunk.document_id == Document.id)
+        .filter(
+            DocumentChunk.tenant_id == tenant_id,
+            DocumentChunk.id.in_(chunk_ids),
+            DocumentChunk.disabled_at.is_(None),
+            Document.tenant_id == tenant_id,
+            Document.dataset_id.in_(dataset_ids),
+            Document.disabled_at.is_(None),
+        )
+        .all()
+    )
+
+
+def _load_dify_kg_chunk_rows_with_managed_session(
+    *,
+    tenant_id: UUID,
+    dataset_ids: list[UUID],
+    chunk_ids: list[UUID],
+) -> list[Any]:
+    worker_db = SessionLocal()
+    try:
+        return _load_dify_kg_chunk_rows(
+            db=worker_db,
+            tenant_id=tenant_id,
+            dataset_ids=dataset_ids,
+            chunk_ids=chunk_ids,
+        )
+    finally:
+        worker_db.close()
+
+
+async def _offload_dify_kg_chunk_rows(
+    *,
+    request_db: Session,
+    tenant_id: UUID,
+    dataset_ids: list[UUID],
+    chunk_ids: list[UUID],
+) -> list[Any]:
+    rollback = getattr(request_db, "rollback", None)
+    if callable(rollback):
+        with contextlib.suppress(Exception):
+            rollback()
+    return await run_blocking_retrieval_call(
+        _load_dify_kg_chunk_rows_with_managed_session,
+        tenant_id=tenant_id,
+        dataset_ids=dataset_ids,
+        chunk_ids=chunk_ids,
     )
 
 
@@ -5240,27 +5415,11 @@ async def _dify_kg_on_demand_records(
 
     event_by_chunk_id = {chunk_id: event for chunk_id, event in chunk_events}
     try:
-        rows = (
-            db.query(
-                DocumentChunk.id.label("chunk_id"),
-                DocumentChunk.document_id.label("document_id"),
-                DocumentChunk.chunk_index.label("chunk_index"),
-                DocumentChunk.page_number.label("page_number"),
-                DocumentChunk.content.label("content"),
-                DocumentChunk.doc_metadata.label("metadata"),
-                Document.dataset_id.label("dataset_id"),
-                Document.filename.label("filename"),
-            )
-            .join(Document, DocumentChunk.document_id == Document.id)
-            .filter(
-                DocumentChunk.tenant_id == tenant_id,
-                DocumentChunk.id.in_(list(event_by_chunk_id.keys())),
-                DocumentChunk.disabled_at.is_(None),
-                Document.tenant_id == tenant_id,
-                Document.dataset_id.in_(scoped_dataset_ids),
-                Document.disabled_at.is_(None),
-            )
-            .all()
+        rows = await _offload_dify_kg_chunk_rows(
+            request_db=db,
+            tenant_id=tenant_id,
+            dataset_ids=scoped_dataset_ids,
+            chunk_ids=list(event_by_chunk_id),
         )
     except Exception:
         logger.debug("Dify KG on-demand chunk hydration failed", exc_info=True)
@@ -5402,6 +5561,31 @@ def _records_meet_primary_scope(
     return top_score >= min_top_score
 
 
+def _citation_needs_slot_content_hydration(
+    citation: dict[str, Any],
+    *,
+    query: str,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> bool:
+    content = _first_non_empty(citation, _CONTENT_KEYS)
+    if not content:
+        return True
+    if "..." not in content and "…" not in content:
+        return False
+    requested_slots = _requested_policy_slot_specs_for_query(
+        query,
+        policy_plugin_refs=policy_plugin_refs,
+    )
+    if not requested_slots:
+        return False
+    record = {
+        "content": content,
+        "title": _first_non_empty(citation, _TITLE_KEYS),
+        "metadata": dict(citation.get("metadata") or {}) if isinstance(citation.get("metadata"), dict) else {},
+    }
+    return _record_matches_requested_slot(record, requested_slots)
+
+
 def _records_from_citations(
     *,
     db: Session,
@@ -5409,22 +5593,32 @@ def _records_from_citations(
     citations: list[dict[str, Any]],
     fallback_dataset_id: UUID | None,
     query: str,
+    hydration_query: str | None = None,
     policy_plugin_refs: tuple[str, ...] = (),
+    hydrated_chunk_content_map: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
+    slot_hydration_query = hydration_query or query
     citations_needing_hydration = [
         citation
         for citation in citations or []
-        if not _first_non_empty(citation, _CONTENT_KEYS)
+        if _citation_needs_slot_content_hydration(
+            citation,
+            query=slot_hydration_query,
+            policy_plugin_refs=policy_plugin_refs,
+        )
     ]
-    chunk_content_map = (
-        _load_chunk_content_map(db=db, tenant_id=tenant_id, citations=citations_needing_hydration)
-        if citations_needing_hydration
-        else {}
-    )
+    if hydrated_chunk_content_map is None:
+        chunk_content_map = (
+            _load_chunk_content_map(db=db, tenant_id=tenant_id, citations=citations_needing_hydration)
+            if citations_needing_hydration
+            else {}
+        )
+    else:
+        chunk_content_map = hydrated_chunk_content_map
     records: list[dict[str, Any]] = []
     for citation in citations:
         chunk_id = _citation_chunk_id(citation)
-        if chunk_id and chunk_content_map.get(chunk_id) and not _first_non_empty(citation, _CONTENT_KEYS):
+        if chunk_id and chunk_content_map.get(chunk_id) and citation in citations_needing_hydration:
             citation = {**citation, "content": chunk_content_map[chunk_id]}
         record = _citation_to_dify_record(
             citation,
@@ -5435,6 +5629,49 @@ def _records_from_citations(
         if str(record.get("content") or "").strip():
             records.append(record)
     return records
+
+
+async def _records_from_citations_with_managed_hydration(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    citations: list[dict[str, Any]],
+    fallback_dataset_id: UUID | None,
+    query: str,
+    hydration_query: str | None = None,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
+    slot_hydration_query = hydration_query or query
+    citations_needing_hydration = [
+        citation
+        for citation in citations or []
+        if _citation_needs_slot_content_hydration(
+            citation,
+            query=slot_hydration_query,
+            policy_plugin_refs=policy_plugin_refs,
+        )
+    ]
+    chunk_content_map: dict[str, str] = {}
+    if citations_needing_hydration:
+        try:
+            chunk_content_map = await _offload_chunk_content_hydration(
+                request_db=db,
+                tenant_id=tenant_id,
+                citations=citations_needing_hydration,
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning("Failed to hydrate Dify chunk content; falling back to citation snippets", exc_info=True)
+
+    return _records_from_citations(
+        db=db,
+        tenant_id=tenant_id,
+        citations=citations,
+        fallback_dataset_id=fallback_dataset_id,
+        query=query,
+        hydration_query=hydration_query,
+        policy_plugin_refs=policy_plugin_refs,
+        hydrated_chunk_content_map=chunk_content_map,
+    )
 
 
 def _tag_mixed_intent_records(records: list[dict[str, Any]], *, subquery: str) -> list[dict[str, Any]]:
@@ -5498,8 +5735,11 @@ def _records_have_strong_question_anchor(
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> bool:
     return any(
-        _record_question_anchor_strength(record, query=query, policy_plugin_refs=policy_plugin_refs)
-        >= _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH
+        _record_has_strong_question_anchor(
+            record,
+            query=query,
+            policy_plugin_refs=policy_plugin_refs,
+        )
         and _record_content_is_answerful(record, policy_plugin_refs=policy_plugin_refs)
         for record in records or []
     )
@@ -5516,9 +5756,10 @@ def _records_have_confident_metadata_anchor(
             return True
         if not _record_content_is_answerful(record, policy_plugin_refs=policy_plugin_refs):
             continue
-        if (
-            _record_question_anchor_strength(record, query=query, policy_plugin_refs=policy_plugin_refs)
-            >= _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH
+        if _record_has_strong_question_anchor(
+            record,
+            query=query,
+            policy_plugin_refs=policy_plugin_refs,
         ):
             return True
     return False
@@ -5588,6 +5829,7 @@ def _strip_service_anchor_query_noise(
     noise_terms: tuple[str, ...] = (),
     leading_noise_terms: tuple[str, ...] = (),
     cutoff_terms: tuple[str, ...] = (),
+    admin_aliases: tuple[str, ...] = (),
 ) -> str:
     text = str(query or "").strip()
     if not text:
@@ -5598,15 +5840,18 @@ def _strip_service_anchor_query_noise(
         if text.startswith(phrase):
             text = text[len(phrase) :].strip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS)
             break
+    declared_admin_aliases = tuple(
+        sorted(
+            {str(alias or "").strip() for alias in admin_aliases if str(alias or "").strip()},
+            key=len,
+            reverse=True,
+        )
+    )
     for _ in range(2):
-        prefix_parts = _split_service_anchor_admin_prefix(text)
-        if prefix_parts is None:
+        prefix = next((alias for alias in declared_admin_aliases if text.startswith(alias)), None)
+        if prefix is None:
             break
-        prefix, text = prefix_parts
-        if text.startswith("本级"):
-            text = text[2:].strip()
-        if prefix.endswith(("区", "县", "镇", "乡", "街道")):
-            break
+        text = text[len(prefix) :].strip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS)
     cutoff_indexes = [
         index
         for marker in sorted((str(term or "").strip() for term in cutoff_terms), key=len, reverse=True)
@@ -5622,9 +5867,41 @@ def _strip_service_anchor_query_noise(
     previous = None
     while previous != text:
         previous = text
-        text = _strip_trailing_service_anchor_admin(text)
+        text = _strip_trailing_service_anchor_admin(
+            text,
+            admin_aliases=declared_admin_aliases,
+        )
         text = _rstrip_service_anchor_query_noise(text)
     return text
+
+
+def _service_anchor_query_noise_variants(
+    query: str,
+    *,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> tuple[str, ...]:
+    common_kwargs = {
+        "noise_terms": _service_anchor_noise_terms_for_policy_refs(policy_plugin_refs),
+        "leading_noise_terms": _service_anchor_leading_noise_terms_for_policy_refs(policy_plugin_refs),
+        "cutoff_terms": _service_anchor_cutoff_terms_for_policy_refs(policy_plugin_refs),
+    }
+    candidates = (
+        _strip_service_anchor_query_noise(query, **common_kwargs),
+        _strip_service_anchor_query_noise(
+            query,
+            **common_kwargs,
+            admin_aliases=_service_anchor_admin_aliases_for_policy_refs(policy_plugin_refs),
+        ),
+    )
+    variants: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        normalized = _normalize_match_term(candidate)
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        variants.append(candidate)
+    return tuple(variants)
 
 
 def _metadata_anchor_service_name_query_terms(
@@ -5632,42 +5909,52 @@ def _metadata_anchor_service_name_query_terms(
     *,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> list[str]:
-    cleaned = _strip_service_anchor_query_noise(
+    cleaned_variants = _service_anchor_query_noise_variants(
         query,
-        noise_terms=_service_anchor_noise_terms_for_policy_refs(policy_plugin_refs),
-        leading_noise_terms=_service_anchor_leading_noise_terms_for_policy_refs(policy_plugin_refs),
-        cutoff_terms=_service_anchor_cutoff_terms_for_policy_refs(policy_plugin_refs),
+        policy_plugin_refs=policy_plugin_refs,
     )
-    if not cleaned:
+    if not cleaned_variants:
         return []
 
     terms: list[str] = []
     seen: set[str] = set()
+    seen_text: set[str] = set()
 
     def add(raw: str) -> None:
         term = str(raw or "").strip()
         normalized = _normalize_match_term(term)
-        if len(normalized) < 4 or normalized in seen:
+        text_key = term.casefold()
+        if len(normalized) < 4 or normalized in seen or text_key in seen_text:
             return
         seen.add(normalized)
+        seen_text.add(text_key)
         terms.append(term)
 
-    for rewritten in _service_anchor_query_rewrite_terms_for_policy_refs(query, policy_plugin_refs):
-        add(rewritten)
+    for match in _QUOTED_ANCHOR_RE.finditer(str(query or "")):
+        literal = _quoted_anchor_match_text(match)
+        normalized = _normalize_match_term(literal)
+        text_key = literal.casefold()
+        if len(normalized) >= 4 and text_key not in seen_text:
+            seen_text.add(text_key)
+            terms.append(literal)
     for quoted_anchor in _quoted_query_anchor_terms(query):
         add(quoted_anchor)
-    add(cleaned)
-    for segment in _iter_anchor_word_segments(cleaned):
-        add(segment)
-        if not _contains_cjk(segment):
-            continue
-        for size in (12, 10, 8, 6, 4):
-            if len(segment) < size:
+    for cleaned in cleaned_variants:
+        add(cleaned)
+    for rewritten in _service_anchor_query_rewrite_terms_for_policy_refs(query, policy_plugin_refs):
+        add(rewritten)
+    for cleaned in cleaned_variants:
+        for segment in _iter_anchor_word_segments(cleaned):
+            add(segment)
+            if not _contains_cjk(segment):
                 continue
-            for start in range(0, len(segment) - size + 1):
-                add(segment[start : start + size])
-                if len(terms) >= _METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS:
-                    return terms
+            for size in (12, 10, 8, 6, 4):
+                if len(segment) < size:
+                    continue
+                for start in range(0, len(segment) - size + 1):
+                    add(segment[start : start + size])
+                    if len(terms) >= _METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS:
+                        return terms
     return terms[:_METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS]
 
 
@@ -5715,13 +6002,11 @@ def _metadata_anchor_title_query_terms(
     *,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> list[str]:
-    cleaned = _strip_service_anchor_query_noise(
+    cleaned_variants = _service_anchor_query_noise_variants(
         query,
-        noise_terms=_service_anchor_noise_terms_for_policy_refs(policy_plugin_refs),
-        leading_noise_terms=_service_anchor_leading_noise_terms_for_policy_refs(policy_plugin_refs),
-        cutoff_terms=_service_anchor_cutoff_terms_for_policy_refs(policy_plugin_refs),
+        policy_plugin_refs=policy_plugin_refs,
     )
-    if not cleaned:
+    if not cleaned_variants:
         return []
 
     terms: list[str] = []
@@ -5736,18 +6021,20 @@ def _metadata_anchor_title_query_terms(
         seen.add(normalized)
         terms.append(term)
 
-    add(cleaned)
-    for segment in _iter_anchor_word_segments(cleaned):
-        add(segment)
-        if not _contains_cjk(segment):
-            continue
-        for size in (8, 6, 4, 3):
-            if len(segment) < size:
+    for cleaned in cleaned_variants:
+        add(cleaned)
+    for cleaned in cleaned_variants:
+        for segment in _iter_anchor_word_segments(cleaned):
+            add(segment)
+            if not _contains_cjk(segment):
                 continue
-            for start in range(0, len(segment) - size + 1):
-                add(segment[start : start + size])
-                if len(terms) >= _METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS:
-                    return terms
+            for size in (8, 6, 4, 3):
+                if len(segment) < size:
+                    continue
+                for start in range(0, len(segment) - size + 1):
+                    add(segment[start : start + size])
+                    if len(terms) >= _METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS:
+                        return terms
     return terms[:_METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS]
 
 
@@ -5774,7 +6061,14 @@ def _metadata_anchor_fallback_record_score(
         metadata_layers_for_record=_iter_record_metadata_layers,
         policy_resolver=_retrieval_policy_for_plugin_ref,
     )
-    if question_strength >= _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH:
+    has_strong_question_anchor = _record_has_strong_question_anchor(
+        record,
+        query=query,
+        policy_plugin_refs=policy_plugin_refs,
+    )
+    if question_strength >= _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH and not has_strong_question_anchor:
+        return 0.0
+    if has_strong_question_anchor:
         base = 0.86 + min(0.1, question_strength * 0.1)
     elif anchor_bonus >= 0.08:
         base = _METADATA_ANCHOR_DB_FALLBACK_DEFAULT_SCORE
@@ -5933,11 +6227,7 @@ def _metadata_anchor_db_fallback_records(
             else getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_STATEMENT_TIMEOUT_MS", 2500)
         )
         statement_timeout_ms = max(0, min(30000, int(configured_statement_timeout or 0)))
-        if statement_timeout_ms and max_elapsed_ms_value:
-            statement_timeout_ms = min(statement_timeout_ms, max_elapsed_ms_value)
-        elif max_elapsed_ms_value:
-            statement_timeout_ms = max_elapsed_ms_value
-        if statement_timeout_ms:
+        if not max_elapsed_ms_value and statement_timeout_ms:
             db.execute(sql_text(f"SET LOCAL statement_timeout = {statement_timeout_ms}"))
 
         def append_unique(batch: list[Any] | tuple[Any, ...]) -> None:
@@ -5949,8 +6239,18 @@ def _metadata_anchor_db_fallback_records(
                 rows.append(row)
 
         def query_matching_rows(condition: Any, *, limit: int) -> list[Any]:
+            nonlocal statement_timeout_ms
             if budget_exceeded():
                 raise MetadataAnchorBudgetExceededError
+            if max_elapsed_ms_value:
+                elapsed_ms = max(0, int((time.perf_counter() - started) * 1000))
+                remaining_ms = max(1, max_elapsed_ms_value - elapsed_ms)
+                statement_timeout_ms = (
+                    min(statement_timeout_ms, remaining_ms) if statement_timeout_ms else remaining_ms
+                )
+                db.execute(sql_text(f"SET LOCAL statement_timeout = {statement_timeout_ms}"))
+                if budget_exceeded():
+                    raise MetadataAnchorBudgetExceededError
             return (
                 db.query(
                     DocumentChunk.id.label("chunk_id"),
@@ -6022,16 +6322,16 @@ def _metadata_anchor_db_fallback_records(
                 or len(mixed_intent_retrieval_queries) >= 2
             )
         ):
-            primary_service_name_term = (
-                service_name_terms[0].replace("%", "").replace("_", "").strip()
-                if service_name_terms
-                else ""
-            )
-            exact_service_name_conditions = [
-                DocumentChunk.doc_metadata["service_name"].astext == primary_service_name_term
-            ] if primary_service_name_term else []
-            if exact_service_name_conditions:
-                append_unique(query_matching_rows(or_(*exact_service_name_conditions), limit=max_scan))
+            for service_name_term in service_name_terms:
+                exact_service_name = service_name_term.replace("%", "").replace("_", "").strip()
+                if not exact_service_name:
+                    continue
+                append_unique(
+                    query_matching_rows(
+                        DocumentChunk.doc_metadata["service_name"].astext == exact_service_name,
+                        limit=max_scan,
+                    )
+                )
                 current_matches = matched_records()
                 if current_matches:
                     return current_matches
@@ -6403,6 +6703,12 @@ def _metadata_anchor_db_fallback_records(
         else:
             logger.warning("Failed to run Dify metadata anchor fallback", exc_info=True)
             return []
+    finally:
+        if max_elapsed_ms_value:
+            try:
+                db.rollback()
+            except Exception:  # noqa: BLE001
+                logger.debug("Failed to reset Dify metadata anchor fallback transaction", exc_info=True)
 
     return _metadata_anchor_fallback_records_from_rows(
         rows,
@@ -6412,6 +6718,24 @@ def _metadata_anchor_db_fallback_records(
         policy_plugin_refs=policy_plugin_refs,
         existing_records=existing_records,
     )
+
+
+def _metadata_anchor_db_fallback_records_with_managed_session(
+    *,
+    budget_deadline: float | None = None,
+    **kwargs: Any,
+) -> list[dict[str, Any]]:
+    if budget_deadline is not None:
+        remaining_ms = max(0, int((budget_deadline - time.perf_counter()) * 1000))
+        if remaining_ms <= 0:
+            return []
+        configured_budget = int(kwargs.get("max_elapsed_ms") or 0)
+        kwargs["max_elapsed_ms"] = min(remaining_ms, configured_budget) if configured_budget > 0 else remaining_ms
+    worker_db = SessionLocal()
+    try:
+        return _metadata_anchor_db_fallback_records(db=worker_db, **kwargs)
+    finally:
+        worker_db.close()
 
 
 async def _retrieve_dataset_citations(
@@ -6767,10 +7091,6 @@ async def warmup_dify_external_knowledge(
     return result
 
 
-def _run_warmup_dify_external_knowledge_sync() -> dict[str, Any]:
-    return asyncio.run(warmup_dify_external_knowledge())
-
-
 async def _delayed_warmup_dify_external_knowledge() -> dict[str, Any]:
     delay_sec = _resolve_dify_warmup_start_delay_sec()
     if delay_sec > 0:
@@ -6778,7 +7098,7 @@ async def _delayed_warmup_dify_external_knowledge() -> dict[str, Any]:
     else:
         # Yield once so lifespan can return before any cold retrieval work runs.
         await asyncio.sleep(0)
-    return await asyncio.to_thread(_run_warmup_dify_external_knowledge_sync)
+    return await warmup_dify_external_knowledge()
 
 
 def _log_dify_warmup_task_result(task: Any) -> None:
@@ -6854,6 +7174,16 @@ async def retrieve_external_knowledge(
     body: DifyExternalKnowledgeRequest,
     actor: Annotated[_DifyActor, Depends(_require_dify_actor)],
     db: Annotated[Session, Depends(get_db)],
+) -> DifyExternalKnowledgeResponse:
+    return await _retrieve_external_knowledge(request=request, body=body, actor=actor, db=db)
+
+
+async def _retrieve_external_knowledge(
+    *,
+    request: Request,
+    body: DifyExternalKnowledgeRequest,
+    actor: _DifyActor,
+    db: Session,
 ) -> DifyExternalKnowledgeResponse:
     started = time.perf_counter()
     scope_plan = _resolve_knowledge_dataset_scope(body.knowledge_id, query=body.query)
@@ -6956,14 +7286,21 @@ async def retrieve_external_knowledge(
         and response_cache_ttl_sec > 0
         and response_cache_max_entries > 0
     )
+    singleflight_enabled = bool(
+        getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_ENABLED", True)
+    )
     stage_timings_ms: dict[str, Any] = {}
-    if response_cache_enabled:
+    if response_cache_enabled or singleflight_enabled:
         cache_token_started = time.perf_counter()
-        corpus_token = _resolve_dify_response_cache_corpus_token(
-            db=db,
-            tenant_id=actor.tenant_id,
-            dataset_ids=dataset_ids,
-        )
+        try:
+            corpus_token = _resolve_dify_response_cache_corpus_token(
+                db=db,
+                tenant_id=actor.tenant_id,
+                dataset_ids=dataset_ids,
+            )
+        finally:
+            with contextlib.suppress(Exception):
+                db.rollback()
         stage_timings_ms["response_cache_corpus_token_ms"] = round(
             (time.perf_counter() - cache_token_started) * 1000,
             2,
@@ -6982,7 +7319,11 @@ async def retrieve_external_knowledge(
                 policy_plugin_refs=policy_plugin_refs,
                 corpus_token=corpus_token,
             )
-            cached_records = _dify_response_cache.get(response_cache_key, ttl_sec=response_cache_ttl_sec)
+            cached_records = (
+                _dify_response_cache.get(response_cache_key, ttl_sec=response_cache_ttl_sec)
+                if response_cache_enabled
+                else None
+            )
             if cached_records is not None:
                 elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
                 response_records = [DifyExternalKnowledgeRecord(**record) for record in cached_records]
@@ -7023,6 +7364,61 @@ async def retrieve_external_knowledge(
                 )
                 return DifyExternalKnowledgeResponse(records=response_records)
 
+    singleflight_key = response_cache_key if singleflight_enabled else None
+    singleflight_leader = False
+    if singleflight_key:
+        singleflight_wait_started = time.perf_counter()
+        singleflight_leader, shared_payload = await _acquire_or_wait_for_inflight_response(singleflight_key)
+        if not singleflight_leader:
+            shared_payload = shared_payload or {}
+            shared_records = shared_payload.get("records")
+            response_records = [
+                DifyExternalKnowledgeRecord(**record)
+                for record in (shared_records if isinstance(shared_records, list) else [])
+                if isinstance(record, dict)
+            ]
+            elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+            stage_timings_ms["singleflight_wait_ms"] = round(
+                (time.perf_counter() - singleflight_wait_started) * 1000,
+                2,
+            )
+            logger.info(
+                "Dify external retrieval singleflight hit client_ip_hash=%s knowledge_id_hash=%s "
+                "query_hash=%s records=%s elapsed_ms=%s",
+                log_extra_base["client_ip_hash"],
+                log_extra_base["knowledge_id_hash"],
+                log_extra_base["query_hash"],
+                len(response_records),
+                elapsed_ms,
+                extra={
+                    **log_extra_base,
+                    "phase": "singleflight_hit",
+                    "record_count": len(response_records),
+                    "elapsed_ms": elapsed_ms,
+                    "singleflight_hit": True,
+                    "stage_timings_ms": stage_timings_ms,
+                },
+            )
+            _log_dify_external_rag_trace(
+                tenant_id=actor.tenant_id,
+                conversation_id=trace_conversation_id,
+                request_id=trace_request_id,
+                question=body.query,
+                response_records=response_records,
+                top_k=top_k,
+                candidate_top_k=candidate_top_k,
+                retrieval_path="singleflight_hit",
+                elapsed_ms=elapsed_ms,
+                metadata_anchor_fallback_count=0,
+                mixed_intent_query_count=0,
+                retrieval_queries=[
+                    {"kind": "main", "query": body.query, "path": "singleflight_hit", "ok": True}
+                ],
+                dify_message_id=body.dify_message_id,
+                dify_workflow_run_id=body.dify_workflow_run_id,
+            )
+            return DifyExternalKnowledgeResponse(records=response_records)
+
     records: list[dict[str, Any]] = []
     citation_count = 0
     primary_citation_count = 0
@@ -7059,6 +7455,66 @@ async def retrieve_external_knowledge(
         metadata_anchor_db_fallback_enabled = bool(
             getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", False)
         )
+        metadata_anchor_total_budget_ms = max(
+            0,
+            int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_TOTAL_BUDGET_MS", 1500) or 0),
+        )
+        metadata_anchor_budget_spent_ms = 0.0
+
+        async def _run_metadata_anchor_fallback(**kwargs: Any) -> list[dict[str, Any]]:
+            nonlocal metadata_anchor_budget_spent_ms
+            call_kwargs = dict(kwargs)
+            call_kwargs.pop("db", None)
+            fallback_started = time.perf_counter()
+            budget_deadline: float | None = None
+            if not fast_latency_profile and metadata_anchor_total_budget_ms:
+                remaining_ms = metadata_anchor_total_budget_ms - int(metadata_anchor_budget_spent_ms)
+                if remaining_ms <= 0:
+                    return []
+                configured_call_budget = call_kwargs.get("max_elapsed_ms")
+                if configured_call_budget is not None and int(configured_call_budget or 0) > 0:
+                    remaining_ms = min(remaining_ms, int(configured_call_budget))
+                call_kwargs["max_elapsed_ms"] = remaining_ms
+                budget_deadline = fallback_started + remaining_ms / 1000
+
+            rollback = getattr(db, "rollback", None)
+            if callable(rollback):
+                rollback()
+            try:
+                if budget_deadline is None:
+                    return await run_blocking_retrieval_call(
+                        _metadata_anchor_db_fallback_records_with_managed_session,
+                        budget_deadline=None,
+                        **call_kwargs,
+                    )
+                remaining_sec = budget_deadline - time.perf_counter()
+                if remaining_sec <= 0:
+                    return []
+                try:
+                    return await asyncio.wait_for(
+                        run_blocking_retrieval_call(
+                            _metadata_anchor_db_fallback_records_with_managed_session,
+                            budget_deadline=budget_deadline,
+                            **call_kwargs,
+                        ),
+                        timeout=remaining_sec,
+                    )
+                except TimeoutError:
+                    logger.info(
+                        "Dify metadata anchor fallback exceeded request budget query_hash=%s",
+                        _diagnostic_query_hash(str(call_kwargs.get("query") or "")),
+                    )
+                    return []
+            finally:
+                metadata_anchor_budget_spent_ms += max(
+                    0.0,
+                    (time.perf_counter() - fallback_started) * 1000,
+                )
+                stage_timings_ms["metadata_anchor_budget_spent_ms"] = round(
+                    metadata_anchor_budget_spent_ms,
+                    2,
+                )
+
         mixed_intent_supplement_enabled = (
             not fast_latency_profile
             and bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED", True))
@@ -7080,7 +7536,7 @@ async def retrieve_external_knowledge(
         )
         if metadata_anchor_preflight_enabled:
             preflight_started = time.perf_counter()
-            metadata_anchor_records = _metadata_anchor_db_fallback_records(
+            metadata_anchor_records = await _run_metadata_anchor_fallback(
                 db=db,
                 tenant_id=actor.tenant_id,
                 dataset_ids=metadata_anchor_dataset_ids,
@@ -7180,7 +7636,7 @@ async def retrieve_external_knowledge(
                 ):
                     mixed_preflight_complete = False
                     break
-                subquery_anchor_records = _metadata_anchor_db_fallback_records(
+                subquery_anchor_records = await _run_metadata_anchor_fallback(
                     db=db,
                     tenant_id=actor.tenant_id,
                     dataset_ids=metadata_anchor_dataset_ids,
@@ -7246,7 +7702,7 @@ async def retrieve_external_knowledge(
             _set_main_trace_query(retrieval_path, ok=bool(primary_citations))
             records_started = time.perf_counter()
             records.extend(
-                _records_from_citations(
+                await _records_from_citations_with_managed_hydration(
                     db=db,
                     tenant_id=actor.tenant_id,
                     citations=primary_citations,
@@ -7298,7 +7754,7 @@ async def retrieve_external_knowledge(
                         )
                     )
                     if subquery_metadata_preflight_enabled:
-                        subquery_anchor_records = _metadata_anchor_db_fallback_records(
+                        subquery_anchor_records = await _run_metadata_anchor_fallback(
                             db=db,
                             tenant_id=actor.tenant_id,
                             dataset_ids=primary_dataset_ids,
@@ -7355,12 +7811,13 @@ async def retrieve_external_knowledge(
                     )
                     mixed_intent_query_count += 1
                     mixed_intent_citation_count += len(subquery_citations)
-                    subquery_records = _records_from_citations(
+                    subquery_records = await _records_from_citations_with_managed_hydration(
                         db=db,
                         tenant_id=actor.tenant_id,
                         citations=subquery_citations,
                         fallback_dataset_id=primary_dataset_ids[0] if primary_dataset_ids else None,
                         query=subquery,
+                        hydration_query=body.query,
                         policy_plugin_refs=policy_plugin_refs,
                     )
                     records.extend(_tag_mixed_intent_records(subquery_records, subquery=subquery))
@@ -7418,7 +7875,7 @@ async def retrieve_external_knowledge(
                 )
                 expansion_citation_count = len(expansion_citations)
                 records.extend(
-                    _records_from_citations(
+                    await _records_from_citations_with_managed_hydration(
                         db=db,
                         tenant_id=actor.tenant_id,
                         citations=expansion_citations,
@@ -7433,7 +7890,7 @@ async def retrieve_external_knowledge(
                 query=body.query,
                 policy_plugin_refs=policy_plugin_refs,
             ):
-                metadata_anchor_records = _metadata_anchor_db_fallback_records(
+                metadata_anchor_records = await _run_metadata_anchor_fallback(
                     db=db,
                     tenant_id=actor.tenant_id,
                     dataset_ids=metadata_anchor_dataset_ids,
@@ -7453,6 +7910,8 @@ async def retrieve_external_knowledge(
         records = _dedupe_records(records, query=body.query, policy_plugin_refs=policy_plugin_refs)
         _sort_records_for_query(records, query=body.query, policy_plugin_refs=policy_plugin_refs)
         if external_reranker_enabled:
+            with contextlib.suppress(Exception):
+                db.rollback()
             records = await _final_rerank_records_for_query(
                 records,
                 query=body.query,
@@ -7479,10 +7938,11 @@ async def retrieve_external_knowledge(
             )
         response_records = [DifyExternalKnowledgeRecord(**record) for record in compacted_records]
         stage_timings_ms["postprocess_ms"] = round((time.perf_counter() - postprocess_started) * 1000, 2)
-        if response_cache_key is not None:
+        serialized_response_records = [record.model_dump(mode="json") for record in response_records]
+        if response_cache_enabled and response_cache_key is not None:
             _dify_response_cache.set(
                 response_cache_key,
-                [record.model_dump(mode="json") for record in response_records],
+                serialized_response_records,
                 ttl_sec=response_cache_ttl_sec,
                 max_entries=response_cache_max_entries,
             )
@@ -7556,8 +8016,22 @@ async def retrieve_external_knowledge(
             dify_message_id=body.dify_message_id,
             dify_workflow_run_id=body.dify_workflow_run_id,
         )
+        if singleflight_key and singleflight_leader:
+            resolve_inflight_response(
+                singleflight_key,
+                {"records": serialized_response_records},
+            )
         return DifyExternalKnowledgeResponse(records=response_records)
-    except Exception:
+    except asyncio.CancelledError:
+        if singleflight_key and singleflight_leader:
+            reject_inflight_response(
+                singleflight_key,
+                InflightResponseLeaderCancelledError("singleflight leader request cancelled"),
+            )
+        raise
+    except Exception as exc:
+        if singleflight_key and singleflight_leader:
+            reject_inflight_response(singleflight_key, exc)
         elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
         policy_diagnostics = _records_retrieval_policy_diagnostics(
             records,

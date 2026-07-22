@@ -1,9 +1,13 @@
 
+import asyncio
 import json
 import logging
+import threading
+import time
 import uuid
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -314,6 +318,26 @@ async def test_dify_warmup_runs_internal_retrieval_for_configured_knowledge_ids(
     assert {call["enable_kg_query_expansion"] for call in retrieval_calls} == {False}
     assert {call["enable_kg_chunk_injection"] for call in retrieval_calls} == {False}
     assert {call["enable_kg_chunk_boost"] for call in retrieval_calls} == {False}
+
+
+@pytest.mark.asyncio
+async def test_dify_delayed_warmup_stays_on_startup_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    startup_loop = asyncio.get_running_loop()
+    observed_loops: list[asyncio.AbstractEventLoop] = []
+
+    async def fake_warmup() -> dict[str, object]:
+        observed_loops.append(asyncio.get_running_loop())
+        return {"enabled": True}
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_START_DELAY_SEC", 0.0)
+    monkeypatch.setattr(dify_api, "warmup_dify_external_knowledge", fake_warmup)
+
+    assert await dify_api._delayed_warmup_dify_external_knowledge() == {"enabled": True}
+    assert observed_loops == [startup_loop]
 
 
 def test_dify_warmup_scheduler_is_fire_and_forget(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1189,7 +1213,17 @@ def test_dify_metadata_anchor_db_fallback_prefers_service_anchor_before_broad_qu
 ) -> None:
     import app.api.v1.integrations_dify as dify_api
 
-    _patch_demo_policy(monkeypatch, dify_api)
+    _patch_demo_policy(
+        monkeypatch,
+        dify_api,
+        anchor_fields=[
+            {
+                "metadata": "city",
+                "role": "administrative_area",
+                "aliases": {"常州市": ["常州市", "常州"]},
+            }
+        ],
+    )
     monkeypatch.setattr(
         dify_api.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED",
@@ -1764,6 +1798,110 @@ def test_dify_metadata_anchor_db_fallback_sets_statement_timeout_and_rolls_back_
     assert fallback_records == []
     assert any("statement_timeout" in statement and "1234" in statement for statement in db.executed)
     assert db.rollback_count == 1
+
+
+def test_dify_metadata_anchor_worker_owns_and_closes_its_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    class _WorkerSession:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    worker_session = _WorkerSession()
+    observed_sessions: list[object] = []
+
+    monkeypatch.setattr(dify_api, "SessionLocal", lambda: worker_session, raising=True)
+    monkeypatch.setattr(
+        dify_api,
+        "_metadata_anchor_db_fallback_records",
+        lambda **kwargs: observed_sessions.append(kwargs["db"]) or [],
+        raising=True,
+    )
+
+    result = dify_api._metadata_anchor_db_fallback_records_with_managed_session(
+        tenant_id=uuid.uuid4(),
+        dataset_ids=[],
+        query="Alpha Desk",
+        top_k=1,
+    )
+
+    assert result == []
+    assert observed_sessions == [worker_session]
+    assert worker_session.closed is True
+
+
+def test_dify_metadata_anchor_db_fallback_caps_each_statement_to_remaining_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED",
+        True,
+        raising=False,
+    )
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+
+    class _SlowEmptyQuery:
+        def join(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return self
+
+        def filter(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return self
+
+        def order_by(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return self
+
+        def limit(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return self
+
+        def all(self):  # noqa: ANN202
+            time.sleep(0.03)
+            return []
+
+    class _FakeDB:
+        def __init__(self) -> None:
+            self.executed: list[str] = []
+            self.rollback_count = 0
+
+        def execute(self, statement):  # noqa: ANN001, ANN202
+            self.executed.append(str(statement))
+
+        def query(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return _SlowEmptyQuery()
+
+        def rollback(self) -> None:
+            self.rollback_count += 1
+
+    db = _FakeDB()
+    fallback_records = dify_api._metadata_anchor_db_fallback_records(
+        db=db,
+        tenant_id=tenant_id,
+        dataset_ids=[dataset_id],
+        query="常州市工伤保险待遇恢复在哪里办理",
+        top_k=5,
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+        existing_records=[],
+        statement_timeout_ms_override=80,
+        max_elapsed_ms=90,
+    )
+    statement_timeouts = [
+        int(statement.rsplit("=", 1)[1].strip())
+        for statement in db.executed
+        if "statement_timeout" in statement
+    ]
+
+    assert fallback_records == []
+    assert len(statement_timeouts) >= 2
+    assert statement_timeouts[0] <= 80
+    assert statement_timeouts[-1] < statement_timeouts[0]
+    assert db.rollback_count >= 1
 
 
 def test_dify_retrieval_uses_rag_before_question_anchor_fallback(
@@ -2856,7 +2994,8 @@ def test_dify_retrieval_skips_preflight_for_plugin_slot_query(
     assert res.json()["records"][0]["metadata"]["section_type"] == "channels"
 
 
-def test_dify_retrieval_response_cache_reuses_identical_request(
+@pytest.mark.asyncio
+async def test_dify_retrieval_singleflight_then_cache_reuses_identical_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import app.api.v1.integrations_dify as dify_api
@@ -2864,6 +3003,21 @@ def test_dify_retrieval_response_cache_reuses_identical_request(
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
     calls = {"rag": 0}
+    request_sessions = []
+    retrieval_started = asyncio.Event()
+    release_retrieval = asyncio.Event()
+
+    class _TrackingDB:
+        def __init__(self) -> None:
+            self.rollback_count = 0
+
+        def rollback(self) -> None:
+            self.rollback_count += 1
+
+    def _override_tracking_db():  # noqa: ANN202
+        session = _TrackingDB()
+        request_sessions.append(session)
+        yield session
 
     dify_api._clear_dify_response_cache()
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
@@ -2878,6 +3032,7 @@ def test_dify_retrieval_response_cache_reuses_identical_request(
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_ENABLED", True, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_TTL_SEC", 60, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_MAX_ENTRIES", 32, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_ENABLED", True, raising=False)
     monkeypatch.setattr(
         dify_api,
         "_resolve_dify_response_cache_corpus_token",
@@ -2888,6 +3043,8 @@ def test_dify_retrieval_response_cache_reuses_identical_request(
 
     async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
         calls["rag"] += 1
+        retrieval_started.set()
+        await release_retrieval.wait()
         return [
             {
                 "chunk_content": "事项名称：学区划分查询\n咨询方式：0519-69660631",
@@ -2908,25 +3065,348 @@ def test_dify_retrieval_response_cache_reuses_identical_request(
     monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
     app = FastAPI()
-    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_db] = _override_tracking_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
-    client = TestClient(app)
-
     payload = {
         "knowledge_id": "city",
         "query": "天宁区学区查询咨询电话是多少",
         "retrieval_setting": {"top_k": 5, "score_threshold": 0.0},
     }
-    try:
-        first = client.post("/api/v1/integrations/dify/retrieval", headers=_auth(token), json=payload)
-        second = client.post("/api/v1/integrations/dify/retrieval", headers=_auth(token), json=payload)
-    finally:
-        dify_api._clear_dify_response_cache()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        first_task = asyncio.create_task(
+            client.post("/api/v1/integrations/dify/retrieval", headers=_auth(token), json=payload)
+        )
+        await retrieval_started.wait()
+        second_task = asyncio.create_task(
+            client.post("/api/v1/integrations/dify/retrieval", headers=_auth(token), json=payload)
+        )
+        await asyncio.sleep(0.05)
+        release_retrieval.set()
+        try:
+            first, second = await asyncio.gather(first_task, second_task)
+            cached = await client.post(
+                "/api/v1/integrations/dify/retrieval",
+                headers=_auth(token),
+                json=payload,
+            )
+        finally:
+            dify_api._clear_dify_response_cache()
 
     assert first.status_code == 200, first.text
     assert second.status_code == 200, second.text
+    assert cached.status_code == 200, cached.text
     assert calls["rag"] == 1
+    assert len(request_sessions) == 3
+    assert all(session.rollback_count >= 1 for session in request_sessions)
     assert second.json() == first.json()
+    assert cached.json() == first.json()
+
+
+@pytest.mark.asyncio
+async def test_dify_singleflight_follower_takes_over_after_leader_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+    import app.services.chat_response_cache as cache_mod
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+    calls = 0
+    first_started = threading.Event()
+    second_started = threading.Event()
+    release_retrieval = threading.Event()
+    calls_lock = threading.Lock()
+
+    dify_api._clear_dify_response_cache()
+    cache_mod.clear_inflight_chat_responses()
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{dataset_id}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        dify_api,
+        "_resolve_dify_response_cache_corpus_token",
+        lambda **_kwargs: "corpus-v1",
+        raising=True,
+    )
+    _patch_demo_policy(monkeypatch, dify_api)
+
+    def _blocking_retrieve_dataset_citations() -> list[dict[str, object]]:
+        nonlocal calls
+        with calls_lock:
+            calls += 1
+            call_number = calls
+        first_started.set()
+        if call_number == 2:
+            second_started.set()
+        if not release_retrieval.wait(timeout=5):
+            raise TimeoutError("test retrieval was not released")
+        return [
+            {
+                "chunk_content": "事项名称：学区划分查询\n咨询方式：0519-69660631",
+                "relevance_score": 0.91,
+                "document_name": "service-rag.txt",
+                "chunk_id": str(uuid.uuid4()),
+                "dataset_id": str(dataset_id),
+                "metadata": {"dataset_id": str(dataset_id), "service_name": "学区划分查询"},
+            }
+        ]
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        return await asyncio.to_thread(_blocking_retrieve_dataset_citations)
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    payload = {
+        "knowledge_id": "city",
+        "query": "学区划分查询咨询电话是多少",
+        "retrieval_setting": {"top_k": 5, "score_threshold": 0.0},
+    }
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        leader = asyncio.create_task(
+            client.post("/api/v1/integrations/dify/retrieval", headers=_auth(token), json=payload)
+        )
+        assert await asyncio.to_thread(first_started.wait, 1)
+        follower = asyncio.create_task(
+            client.post("/api/v1/integrations/dify/retrieval", headers=_auth(token), json=payload)
+        )
+        await asyncio.sleep(0.05)
+        leader.cancel()
+        try:
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(leader, timeout=0.5)
+            assert await asyncio.to_thread(second_started.wait, 1)
+            release_retrieval.set()
+            response = await asyncio.wait_for(follower, timeout=2)
+        finally:
+            release_retrieval.set()
+            cache_mod.clear_inflight_chat_responses()
+            dify_api._clear_dify_response_cache()
+
+    assert response.status_code == 200, response.text
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_dify_uncacheable_request_cancellation_is_not_delayed_by_blocking_work(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+    retrieval_started = threading.Event()
+    release_retrieval = threading.Event()
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{dataset_id}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        dify_api,
+        "_resolve_dify_response_cache_corpus_token",
+        lambda **_kwargs: None,
+        raising=True,
+    )
+    _patch_demo_policy(monkeypatch, dify_api)
+
+    def _blocking_retrieve_dataset_citations() -> list[dict[str, object]]:
+        retrieval_started.set()
+        if not release_retrieval.wait(timeout=5):
+            raise TimeoutError("test retrieval was not released")
+        return []
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        return await asyncio.to_thread(_blocking_retrieve_dataset_citations)
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    payload = {
+        "knowledge_id": "city",
+        "query": "学区划分查询咨询电话是多少",
+        "retrieval_setting": {"top_k": 5, "score_threshold": 0.0},
+    }
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        request_task = asyncio.create_task(
+            client.post("/api/v1/integrations/dify/retrieval", headers=_auth(token), json=payload)
+        )
+        assert await asyncio.to_thread(retrieval_started.wait, 1)
+        request_task.cancel()
+        try:
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(request_task, timeout=0.5)
+        finally:
+            release_retrieval.set()
+
+
+def test_dify_quality_metadata_anchor_calls_share_request_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+    fallback_budgets: list[int | None] = []
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{dataset_id}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_ENABLED", False, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_TOTAL_BUDGET_MS",
+        1500,
+        raising=False,
+    )
+    _patch_demo_policy(monkeypatch, dify_api, question_anchor_bonus=0.9)
+
+    def _fake_metadata_anchor_db_fallback_records(**kwargs):  # noqa: ANN003, ANN202
+        fallback_budgets.append(kwargs.get("max_elapsed_ms"))
+        time.sleep(0.05)
+        return []
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        return []
+
+    monkeypatch.setattr(
+        dify_api,
+        "_metadata_anchor_db_fallback_records",
+        _fake_metadata_anchor_db_fallback_records,
+        raising=True,
+    )
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+    response = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": "网上申请调解是否影响法定诉权",
+            "retrieval_setting": {"top_k": 5, "score_threshold": 0.0},
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert 0 < int(fallback_budgets[0] or 0) <= 1500
+    assert len(fallback_budgets) == 2
+    assert 0 < int(fallback_budgets[1] or 0) < int(fallback_budgets[0] or 0)
+
+
+@pytest.mark.asyncio
+async def test_dify_metadata_anchor_budget_includes_offload_queue_wait(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{dataset_id}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_ENABLED", False, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_TOTAL_BUDGET_MS",
+        25,
+        raising=False,
+    )
+    _patch_demo_policy(monkeypatch, dify_api)
+
+    async def _blocked_offload(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        await asyncio.sleep(10)
+        return []
+
+    async def _empty_retrieval(**_kwargs):  # noqa: ANN003, ANN202
+        return []
+
+    monkeypatch.setattr(dify_api, "run_blocking_retrieval_call", _blocked_offload, raising=True)
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _empty_retrieval, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await asyncio.wait_for(
+            client.post(
+                "/api/v1/integrations/dify/retrieval",
+                headers=_auth(token),
+                json={
+                    "knowledge_id": "city",
+                    "query": "generic service application requirements",
+                    "retrieval_setting": {"top_k": 5, "score_threshold": 0.0},
+                },
+            ),
+            timeout=0.5,
+        )
+
+    assert response.status_code == 200, response.text
 
 
 def test_dify_kg_on_demand_skips_kg_for_confident_rag_anchor(
@@ -3628,7 +4108,8 @@ def test_dify_aggregate_routes_merge_explicit_and_inherited_hints(
             '{"terms": ["城市本级"], '
             f'"dataset_ids": ["{city_service_dataset}"], '
             '"mode": "replace"}'
-            "]"
+            "],"
+            '"inherit_query_routes_from": ["city"]'
             "},"
             '"city": {'
             f'"dataset_ids": ["{city_service_dataset}"],'
@@ -3659,7 +4140,38 @@ def test_dify_aggregate_routes_merge_explicit_and_inherited_hints(
     ]
 
 
-def test_changzhou_district_scope_inherits_city_shared_subject_routes(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_dify_mapping_does_not_inherit_routes_without_declaration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    first_dataset = uuid.uuid4()
+    second_dataset = uuid.uuid4()
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        (
+            "{"
+            '"source": {'
+            f'"dataset_ids": ["{first_dataset}"],'
+            '"query_routes": [{"terms": ["private route"], '
+            f'"dataset_ids": ["{second_dataset}"], "mode": "replace"}}]'
+            "},"
+            '"target": {'
+            f'"dataset_ids": ["{first_dataset}", "{second_dataset}"]'
+            "}"
+            "}"
+        ),
+        raising=False,
+    )
+
+    scope = dify_api._resolve_knowledge_dataset_scope("target", query="private route")
+
+    assert list(scope.primary_dataset_ids) == [first_dataset, second_dataset]
+    assert scope.matched_terms == ()
+
+
+def test_dify_mapping_can_inherit_shared_subject_routes(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.api.v1.integrations_dify as dify_api
 
     district_service_dataset = uuid.uuid4()
@@ -3671,7 +4183,7 @@ def test_changzhou_district_scope_inherits_city_shared_subject_routes(monkeypatc
         "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
         (
             "{"
-            '"changzhou_city_service": {'
+            '"city-service": {'
             f'"dataset_ids": ["{city_faq_dataset}"],'
             '"query_routes": ['
             '{"terms": ["汽车置换", "置换补贴"], '
@@ -3679,15 +4191,16 @@ def test_changzhou_district_scope_inherits_city_shared_subject_routes(monkeypatc
             '"mode": "replace"}'
             "]"
             "},"
-            '"changzhou_武进区_service": {'
-            f'"dataset_ids": ["{district_service_dataset}", "{district_qa_dataset}"]'
+            '"district-service": {'
+            f'"dataset_ids": ["{district_service_dataset}", "{district_qa_dataset}"],'
+            '"inherit_query_routes_from": ["city-service"]'
             "}"
             "}"
         ),
         raising=False,
     )
 
-    scope = dify_api._resolve_knowledge_dataset_scope("changzhou_武进区_service", query="武进区置换补贴到账时间")
+    scope = dify_api._resolve_knowledge_dataset_scope("district-service", query="区域甲置换补贴到账时间")
 
     assert list(scope.primary_dataset_ids) == [
         city_faq_dataset,
@@ -3695,6 +4208,106 @@ def test_changzhou_district_scope_inherits_city_shared_subject_routes(monkeypatc
         district_qa_dataset,
     ]
     assert scope.matched_terms == ("置换补贴",)
+
+
+def test_dify_mapping_applies_strict_scope_to_inherited_routes(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    base_dataset = uuid.uuid4()
+    route_dataset = uuid.uuid4()
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        (
+            "{"
+            '"route-source": {'
+            f'"dataset_ids": ["{route_dataset}"],'
+            '"query_routes": [{"terms": ["region alpha"], '
+            f'"dataset_ids": ["{route_dataset}"], "mode": "replace"}}]'
+            "},"
+            '"target": {'
+            f'"dataset_ids": ["{base_dataset}"],'
+            '"strict_query_routes": true,'
+            '"inherit_query_routes_from": ["route-source"]'
+            "}"
+            "}"
+        ),
+        raising=False,
+    )
+
+    scope = dify_api._resolve_knowledge_dataset_scope("target", query="region alpha service")
+
+    assert scope.strict_scope is True
+    assert list(scope.dataset_ids) == [route_dataset]
+    assert list(scope.primary_dataset_ids) == [route_dataset]
+
+
+def test_dify_inherited_query_routes_follow_declared_source_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    first_dataset = uuid.uuid4()
+    second_dataset = uuid.uuid4()
+    base_dataset = uuid.uuid4()
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        (
+            "{"
+            '"second": {'
+            f'"dataset_ids": ["{second_dataset}"],'
+            f'"query_routes": [{{"terms": ["shared"], "dataset_ids": ["{second_dataset}"], "mode": "replace"}}]'
+            "},"
+            '"first": {'
+            f'"dataset_ids": ["{first_dataset}"],'
+            f'"query_routes": [{{"terms": ["shared"], "dataset_ids": ["{first_dataset}"], "mode": "replace"}}]'
+            "},"
+            '"target": {'
+            f'"dataset_ids": ["{base_dataset}"],'
+            '"strict_query_routes": true,'
+            '"inherit_query_routes_from": ["first", "second"]'
+            "}"
+            "}"
+        ),
+        raising=False,
+    )
+
+    scope = dify_api._resolve_knowledge_dataset_scope("target", query="shared service")
+
+    assert list(scope.dataset_ids) == [second_dataset]
+
+
+def test_dify_local_query_route_overrides_inherited_route(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    inherited_dataset = uuid.uuid4()
+    local_dataset = uuid.uuid4()
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        (
+            "{"
+            '"source": {'
+            f'"dataset_ids": ["{inherited_dataset}"],'
+            f'"query_routes": [{{"terms": ["shared"], "dataset_ids": ["{inherited_dataset}"], "mode": "replace"}}]'
+            "},"
+            '"target": {'
+            f'"dataset_ids": ["{local_dataset}"],'
+            '"strict_query_routes": true,'
+            '"inherit_query_routes_from": ["source"],'
+            f'"query_routes": [{{"terms": ["shared"], "dataset_ids": ["{local_dataset}"], "mode": "replace"}}]'
+            "}"
+            "}"
+        ),
+        raising=False,
+    )
+
+    scope = dify_api._resolve_knowledge_dataset_scope("target", query="shared service")
+
+    assert list(scope.dataset_ids) == [local_dataset]
 
 
 def test_dify_metadata_anchor_fallback_query_terms_prioritize_specific_phrases() -> None:
@@ -3714,12 +4327,26 @@ def test_dify_metadata_anchor_fallback_query_terms_keep_short_service_names_earl
     assert "职业介绍" in terms[:10]
 
 
-def test_dify_metadata_anchor_service_terms_remove_area_and_question_noise(
+def test_dify_metadata_anchor_service_terms_only_remove_declared_area_and_question_noise(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import app.api.v1.integrations_dify as dify_api
 
-    _patch_demo_policy(monkeypatch, dify_api)
+    _patch_demo_policy(
+        monkeypatch,
+        dify_api,
+        anchor_fields=[
+            {
+                "metadata": "administrative_area",
+                "role": "administrative_area",
+                "aliases": {
+                    "常州市": ["常州市", "常州"],
+                    "经开区": ["经开区", "经开"],
+                    "天宁区": ["天宁区", "天宁"],
+                },
+            }
+        ],
+    )
 
     without_policy_terms = dify_api._metadata_anchor_service_name_query_terms(
         "经开区用水变更需要什么材料",
@@ -3745,16 +4372,17 @@ def test_dify_metadata_anchor_service_terms_remove_area_and_question_noise(
         policy_plugin_refs=(_DEMO_PLUGIN_REF,),
     )
 
-    assert without_policy_terms[0] == "用水变更需要什么材料"
-    assert district_terms[0] == "学区查询"
-    assert "天宁区" not in "".join(district_terms[:4])
+    assert without_policy_terms[0] == "经开区用水变更需要什么材料"
+    assert district_terms[:2] == ["天宁区学区查询", "学区查询"]
     assert "咨询电话" not in "".join(district_terms[:4])
-    assert city_terms[0] == "工伤保险待遇恢复"
-    assert "常州市" not in "".join(city_terms[:4])
+    assert city_terms[:2] == ["常州市工伤保险待遇恢复", "工伤保险待遇恢复"]
     assert "在哪里办理" not in "".join(city_terms[:4])
-    assert material_terms[0] == "用水变更"
+    assert material_terms[:2] == ["经开区用水变更", "用水变更"]
     assert "需要什么材料" not in "".join(material_terms[:4])
-    assert fee_terms[0] == "拖拉机和联合收割机驾驶证违法记分"
+    assert fee_terms[:2] == [
+        "经开区拖拉机和联合收割机驾驶证违法记分",
+        "拖拉机和联合收割机驾驶证违法记分",
+    ]
     assert "收费吗" not in "".join(fee_terms[:4])
     assert entry_terms[0] == "餐饮店设立“一件事”"
     assert "入口在哪里" not in "".join(entry_terms[:4])
@@ -3789,7 +4417,7 @@ def test_dify_query_treats_approval_verification_as_service_anchor(
     )
 
 
-def test_dify_metadata_anchor_service_terms_prepend_plugin_query_rewrites(
+def test_dify_metadata_anchor_service_terms_keep_literal_title_before_plugin_rewrites(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import app.api.v1.integrations_dify as dify_api
@@ -3799,18 +4427,201 @@ def test_dify_metadata_anchor_service_terms_prepend_plugin_query_rewrites(
         dify_api,
         service_anchor_query_rewrites=[
             {
-                "when_terms": ["社保卡", "补办"],
-                "terms": ["社会保障卡补卡", "社保卡补卡"],
+                "when_terms": ["服务卡", "补卡"],
+                "terms": ["服务卡（首次、延期）", "服务卡补卡"],
             }
         ],
     )
 
     terms = dify_api._metadata_anchor_service_name_query_terms(
-        "我在新北区补办社保卡，想一次知道去哪里、咨询电话和收费情况。",
+        "服务卡补卡这个事项，帮我直接说清楚：办理地点、收费情况。",
         policy_plugin_refs=(_DEMO_PLUGIN_REF,),
     )
 
-    assert terms[:2] == ["社会保障卡补卡", "社保卡补卡"]
+    assert terms[0] == "服务卡补卡"
+    assert terms[1] == "服务卡（首次、延期）"
+
+
+def test_dify_metadata_anchor_service_terms_preserve_quoted_title_punctuation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(monkeypatch, dify_api)
+
+    terms = dify_api._metadata_anchor_service_name_query_terms(
+        "请核对“Alpha 服务（市级权限）新申请”：办理地点、收费情况。",
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+    assert terms[0] == "Alpha 服务（市级权限）新申请"
+    assert terms[1] == "alpha服务市级权限新申请"
+
+
+def test_dify_metadata_anchor_service_terms_do_not_strip_long_title_as_admin_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(
+        monkeypatch,
+        dify_api,
+        anchor_fields=[
+            {
+                "metadata": "district",
+                "aliases": {"区域甲": ["区域甲", "甲区"]},
+            }
+        ],
+    )
+
+    terms = dify_api._metadata_anchor_service_name_query_terms(
+        "砍伐城市树木、迁移古树名木审批新申请是不是能办？",
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+    assert terms[0] == "砍伐城市树木、迁移古树名木审批新申请"
+
+
+def test_dify_metadata_anchor_service_terms_only_use_explicit_cutoffs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(
+        monkeypatch,
+        dify_api,
+        service_anchor_cutoff_terms=["在线办理地址", "咨询方式"],
+        fast_response_field_rules=[
+            {"label": "在线办理地址", "markers": ["在线办理地址"]},
+            {"label": "咨询方式", "markers": ["咨询方式"]},
+        ],
+    )
+
+    terms = dify_api._metadata_anchor_service_name_query_terms(
+        "对持证居民一次性奖励扶助：在线办理地址、咨询方式？",
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+    assert terms[0] == "对持证居民一次性奖励扶助"
+
+
+def test_dify_response_labels_do_not_become_service_title_cutoffs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(
+        monkeypatch,
+        dify_api,
+        service_anchor_cutoff_terms=[],
+        fast_response_field_rules=[{"label": "联系方式", "markers": ["联系电话"]}],
+    )
+
+    assert dify_api._service_anchor_cutoff_terms_for_policy_refs((_DEMO_PLUGIN_REF,)) == ()
+
+
+def test_dify_non_admin_anchor_alias_does_not_strip_service_title_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(
+        monkeypatch,
+        dify_api,
+        anchor_fields=[
+            {
+                "metadata": "product_line",
+                "aliases": {"旗舰专区": ["旗舰专区"]},
+            }
+        ],
+    )
+
+    terms = dify_api._metadata_anchor_service_name_query_terms(
+        "旗舰专区售后服务是不是能办？",
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+    assert terms[0] == "旗舰专区售后服务"
+
+
+def test_dify_declared_admin_anchor_alias_strips_long_area_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(
+        monkeypatch,
+        dify_api,
+        anchor_fields=[
+            {
+                "metadata": "region",
+                "role": "administrative_area",
+                "aliases": {"区域甲新区": ["区域甲新区"]},
+            }
+        ],
+    )
+
+    terms = dify_api._metadata_anchor_service_name_query_terms(
+        "区域甲新区售后服务是不是能办？",
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+    assert terms[:2] == ["区域甲新区售后服务", "售后服务"]
+
+
+def test_dify_declared_admin_alias_does_not_destroy_a_service_title_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(
+        monkeypatch,
+        dify_api,
+        anchor_fields=[
+            {
+                "metadata": "district",
+                "role": "administrative_area",
+                "aliases": {"常州市": ["常州市", "常州"]},
+            }
+        ],
+    )
+
+    service_terms = dify_api._metadata_anchor_service_name_query_terms(
+        "常州市民卡怎么办理？",
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+    title_terms = dify_api._metadata_anchor_title_query_terms(
+        "常州市民卡怎么办理？",
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+    assert service_terms[0] == "常州市民卡"
+    assert title_terms[0] == "常州市民卡"
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("开发区服务怎么办？", "开发区服务怎么办"),
+        ("示范县产品怎么申请？", "示范县产品"),
+        ("服务区收费怎么查？", "服务区收费怎么查"),
+    ],
+)
+def test_dify_does_not_guess_undeclared_administrative_areas(
+    monkeypatch: pytest.MonkeyPatch,
+    query: str,
+    expected: str,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(monkeypatch, dify_api, anchor_fields=[])
+
+    cleaned = dify_api._strip_service_anchor_query_noise(
+        query,
+        noise_terms=tuple(_demo_service_anchor_noise_terms()),
+    )
+
+    assert cleaned == expected
 
 
 def test_dify_metadata_anchor_service_terms_prioritize_quoted_service_title(
@@ -6294,6 +7105,47 @@ def test_dify_compaction_can_be_disabled(monkeypatch: pytest.MonkeyPatch) -> Non
     compacted = dify_api._compact_records_for_response(records, query="如何查询身份证办理进度？", top_k=2)
 
     assert [item["content"] for item in compacted] == ["exact", "backup"]
+
+
+def test_dify_strong_question_anchor_rejects_canonical_intent_conflict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(monkeypatch, dify_api)
+    record = {
+        "content": "答案要点：申请通过后通常会在若干工作日内到账。",
+        "score": 0.99,
+        "title": "faq.txt",
+        "metadata": {
+            "question": "汽车置换补贴通过了多久放款到账",
+            "primary_alias": "汽车置换补贴多久到账",
+            "aliases": ["汽车置换补贴怎么申请"],
+            "chunk_python_plugin": _DEMO_PLUGIN_REF,
+        },
+    }
+    query = "汽车置换补贴怎么申请"
+
+    assert dify_api._record_question_anchor_strength(
+        record,
+        query=query,
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    ) >= dify_api._QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH
+    assert dify_api._record_question_anchor_has_intent_conflict(
+        record,
+        query=query,
+        anchor_fields=("question", "primary_alias"),
+    )
+    assert not dify_api._records_have_strong_question_anchor(
+        [record],
+        query=query,
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+    assert dify_api._metadata_anchor_fallback_record_score(
+        record,
+        query=query,
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    ) == 0.0
 
 
 def test_dify_record_ranking_uses_registered_plugin_retrieval_policy(
@@ -8811,6 +9663,124 @@ def test_dify_response_hints_can_promote_plugin_declared_metadata_fields(
     assert "咨询方式：0519-12333" in hinted
     assert "答案：请携带身份证件到窗口办理。" in hinted
     assert hinted.endswith("咨询方式：0519-12333")
+
+
+def test_dify_records_hydrate_truncated_exact_anchor_slot_content(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    chunk_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    full_content = (
+        "Case: Alpha Package\n"
+        "Section: service channels\n"
+        "Apply online.\n"
+        "Contact: 555-0100"
+    )
+    _patch_demo_policy(
+        monkeypatch,
+        dify_api,
+        anchor_binding={
+            "enabled": True,
+            "anchor_fields": ["case_title"],
+            "slot_fields": ["section_type"],
+        },
+        query_expansion_values=[
+            {"metadata": "section_type", "value": "channels", "terms": ["channels", "contact"]},
+            {"metadata": "section_type", "value": "materials", "terms": ["materials"]},
+        ],
+    )
+    hydration_calls: list[list[dict[str, object]]] = []
+
+    def _fake_load_chunk_content_map(**kwargs):  # noqa: ANN003, ANN202
+        hydration_calls.append(kwargs["citations"])
+        return {str(chunk_id): full_content}
+
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", _fake_load_chunk_content_map, raising=True)
+    citations = [
+        {
+            "chunk_content": "Case: Alpha Package...",
+            "relevance_score": 0.91,
+            "document_name": "alpha.md",
+            "chunk_id": str(chunk_id),
+            "dataset_id": str(dataset_id),
+            "metadata": {
+                "case_title": "Alpha Package",
+                "section_type": "channels",
+                "chunk_python_plugin": _DEMO_PLUGIN_REF,
+            },
+        }
+    ]
+
+    records = dify_api._records_from_citations(
+        db=object(),
+        tenant_id=uuid.uuid4(),
+        citations=citations,
+        fallback_dataset_id=dataset_id,
+        query="Alpha Package materials, channels, and contact",
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+    assert hydration_calls == [citations]
+    assert full_content in records[0]["content"]
+
+
+def test_dify_subquery_records_hydrate_slots_requested_by_original_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    chunk_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    full_content = "Case: Alpha Package\nChannels\nContact: 555-0100"
+    _patch_demo_policy(
+        monkeypatch,
+        dify_api,
+        anchor_binding={
+            "enabled": True,
+            "anchor_fields": ["case_title"],
+            "slot_fields": ["section_type"],
+        },
+        query_expansion_values=[
+            {"metadata": "section_type", "value": "related_services", "terms": ["related services"]},
+            {"metadata": "section_type", "value": "channels", "terms": ["channels", "contact"]},
+        ],
+    )
+    hydration_calls: list[list[dict[str, object]]] = []
+
+    def _fake_load_chunk_content_map(**kwargs):  # noqa: ANN003, ANN202
+        hydration_calls.append(kwargs["citations"])
+        return {str(chunk_id): full_content}
+
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", _fake_load_chunk_content_map, raising=True)
+    citations = [
+        {
+            "chunk_content": "Case: Alpha Package...",
+            "relevance_score": 0.91,
+            "document_name": "alpha.md",
+            "chunk_id": str(chunk_id),
+            "dataset_id": str(dataset_id),
+            "metadata": {
+                "case_title": "Alpha Package",
+                "section_type": "channels",
+                "chunk_python_plugin": _DEMO_PLUGIN_REF,
+            },
+        }
+    ]
+
+    records = dify_api._records_from_citations(
+        db=object(),
+        tenant_id=uuid.uuid4(),
+        citations=citations,
+        fallback_dataset_id=dataset_id,
+        query="Alpha Package related services",
+        hydration_query="Alpha Package related services, channels, and contact",
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+    assert hydration_calls == [citations]
+    assert full_content in records[0]["content"]
 
 
 def test_dify_response_hints_can_prioritize_plugin_declared_query_fields(

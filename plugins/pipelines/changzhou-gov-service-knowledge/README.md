@@ -44,7 +44,7 @@ processing_templates.json
 `processing_templates.json` 记录本业务包的治理模板归属。常州政务、公积金、不动产、应急局等专项规则只在该插件包内维护，平台内置治理模板库保持业务中立。
 `retrieval_policy.json` 声明本插件哪些 metadata 可用于 query expansion、filter、boost、anchor demotion、rerank 和弱证据 fallback；它不写生产数据集 ID，也不写 Dify workflow 路由。
 其中 `query_expansion_values` 把本业务的 `section_type` 值映射为查询意图词，例如 `operation_steps -> 申报流程/网上办理怎么操作`。平台只读取这个通用映射，不在 Dify adapter 内硬编码政务词表。
-其中 `anchor_fields` 只声明区县别名到 `district` metadata 的通用锚点关系：当 query 明确包含某个区县，而候选 chunk 的 `district` 是另一个区县时，平台可做有界降权；query 没有区县词或 chunk 没有 `district` 时不做惩罚。
+其中 `anchor_fields` 声明市、区县别名到对应 metadata 的通用锚点关系，并用 `role: administrative_area` 明确允许平台剥离查询中的行政区限定词：当 query 明确包含某个区县，而候选 chunk 的 `district` 是另一个区县时，平台可做有界降权；query 没有行政区别名或 chunk 没有对应字段时不做惩罚。
 
 ## 规则
 
@@ -114,6 +114,10 @@ MimirQ 的 Dify external knowledge adapter 支持平台通用的 `knowledge_id -
 `replace` 表示只查路由命中的数据集。该配置应写入系统设置中的
 `DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON`，插件只负责生成可检索的 chunk、metadata、
 retrieval policy、KG 和 Golden，不持有生产数据集 ID。
+
+区县 knowledge id 需要复用本级共享路由时，必须在对应映射项显式声明
+`"inherit_query_routes_from": ["changzhou_city_service"]`。平台不会根据 knowledge id
+名称或数据集交集隐式继承，避免无关知识库的路由串入。
 
 上线前可先跑本地静态校验，避免缺区县 route 时才在远端 Dify trace 里暴露：
 

@@ -67,6 +67,8 @@
     "费用",
     "收费",
     "电话",
+    "联系方式",
+    "联系电话",
     "咨询",
     "监督投诉",
     "投诉方式",
@@ -300,6 +302,7 @@
     "可以办吗",
     "可以办理吗",
     "这个事项",
+    "这个事",
     "该事项",
     "这个业务",
     "该业务",
@@ -322,6 +325,8 @@
     "办结时限",
     "办理材料",
     "申请材料",
+    "在线办理地址",
+    "咨询方式",
     "收费情况",
     "是否收费",
     "最好",
@@ -406,6 +411,7 @@
     "answer_highlight_metadata": ["answer_highlights", "answer_key_points", "summary_points"],
     "answer_highlight_metadata_fields": [
       {"metadata": "answer", "label": "答案", "max_chars": 1600},
+      {"metadata": "service_name", "label": "事项名称", "when_metadata": {"gov_knowledge_type": "service_item"}, "max_chars": 200},
       {
         "metadata": "service_fields",
         "fields": [
@@ -541,8 +547,10 @@
   "anchor_fields": [
     {
       "metadata": "district",
+      "role": "administrative_area",
       "weight": 2.0,
       "aliases": {
+        "常州市": ["常州市", "常州"],
         "新北区": ["新北区", "新北"],
         "经开区": ["经开区", "经开", "常州经开区"],
         "天宁区": ["天宁区", "天宁"],

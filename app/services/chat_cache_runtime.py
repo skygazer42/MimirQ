@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.services.chat_response_cache import (
+    InflightResponseLeaderCancelledError,
     acquire_inflight_chat_response,
     get_cached_chat_response,
     resolve_chat_response_cache_key,
@@ -214,11 +215,16 @@ async def prepare_non_streaming_chat_cache_state(
     )
     singleflight_key = cache_key if singleflight_feature_enabled and cache_key else None
     if singleflight_key:
-        singleflight_leader, inflight_future = await acquire_inflight_chat_response(
-            singleflight_key
-        )
-        if not singleflight_leader:
-            shared_payload = await asyncio.shield(inflight_future)
+        while True:
+            singleflight_leader, inflight_future = await acquire_inflight_chat_response(
+                singleflight_key
+            )
+            if singleflight_leader:
+                break
+            try:
+                shared_payload = await asyncio.shield(inflight_future)
+            except InflightResponseLeaderCancelledError:
+                continue
             full_response = str(shared_payload.get("content") or "")
             citations_data = (
                 shared_payload.get("citations")
@@ -239,6 +245,7 @@ async def prepare_non_streaming_chat_cache_state(
             )
             structured_data = shared_payload.get("structured_data")
             singleflight_hit = True
+            break
 
     return PreparedNonStreamingChatCacheState(
         cache_feature_enabled=cache_feature_enabled,

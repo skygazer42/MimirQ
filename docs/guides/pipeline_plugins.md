@@ -422,6 +422,7 @@ field names.
   "anchor_fields": [
     {
       "metadata": "region",
+      "role": "administrative_area",
       "weight": 2.0,
       "aliases": {
         "north": ["north", "north district"],
@@ -464,8 +465,11 @@ intent.
 region, product line, department, or jurisdiction. When the query clearly
 matches one declared anchor value but a candidate record carries a different
 value for the same metadata field, adapters may apply a bounded demotion. The
-platform only understands the generic `metadata`, `weight`, and `aliases`
-contract; the plugin owns the actual business values and aliases.
+platform understands the generic `metadata`, `weight`, `aliases`, and optional
+`role` contract; the plugin owns the actual business values and aliases. Set
+`role: administrative_area` only when those aliases may be removed as a leading
+area qualifier during service-title parsing. Product or department anchors must
+omit that role.
 
 `boost_fields[]` entries are objects with `metadata`, optional `weight`, and
 optional `match`. Supported match modes are `exact`, `contains`, and `overlap`.

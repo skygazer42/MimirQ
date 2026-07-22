@@ -273,7 +273,7 @@ def _records_from_item(item: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _latency_ms(item: dict[str, Any]) -> float | None:
-    for key in ("latency_ms", "elapsed_ms", "duration_ms"):
+    for key in ("total_latency_ms", "latency_ms", "elapsed_ms", "duration_ms"):
         if key not in item:
             continue
         try:

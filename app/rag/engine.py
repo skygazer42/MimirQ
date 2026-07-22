@@ -92,11 +92,22 @@ from app.rag.retrieval.source_labels import maybe_build_source_identification_an
 from app.rag.retriever import hybrid_retriever
 from app.services.metrics_logger import log_metrics
 from app.services.prompt_resolver import resolve_prompt_template
+from app.services.rag_runtime_limiter import run_blocking_retrieval_call
 
 logger = get_logger("rag.engine")
 _RAG_ENGINE_FALLBACK_LOG_MESSAGE = "Ignoring non-critical RAG engine fallback failure: %s"
 
 _UNABLE_TO_ANSWER_MESSAGE = "Unable to answer this question based on the available materials."
+
+
+def _release_request_session(db: Any | None) -> None:
+    if db is None:
+        return
+    try:
+        db.rollback()
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Failed to release request DB session before async RAG work: %s", exc)
+
 
 def _retrieval_error_from_debug(debug: dict[str, Any] | None) -> str | None:
     if not isinstance(debug, dict) or not bool(debug.get("all_retrieval_channels_failed")):
@@ -1143,6 +1154,8 @@ Requirements:
                     # Best-effort only; fallback to legacy behavior.
                     logger.debug("Failed to constrain retrieval by active document pipeline hash: %s", exc)
 
+            _release_request_session(db)
+
             t_all_start = time.time()
             temporal_intent_enabled = bool(getattr(settings, "RAG_TEMPORAL_INTENT_ENABLED", False))
             temporal_intent_meta: dict[str, Any] = {"detected": False, "reason_codes": []}
@@ -1967,7 +1980,9 @@ Requirements:
             ) -> tuple[str, list[Document], str | None, float, dict[str, Any] | None]:
                 t0 = time.time()
                 try:
-                    docs_i = await asyncio.to_thread(r.invoke, q)
+                    # Acquire only around the sync invoke; wrapping stream_chat itself
+                    # would recursively acquire the same non-reentrant runtime gate.
+                    docs_i = await run_blocking_retrieval_call(r.invoke, q)
                     dbg = getattr(r, "_last_debug_metrics", None)
                     dbg = dbg if isinstance(dbg, dict) else None
                     retrieval_error = _retrieval_error_from_debug(dbg)
@@ -2286,6 +2301,8 @@ Requirements:
                 except Exception as exc:  # noqa: BLE001
                     image_docs = []
                     image_meta = {"enabled": False, "used": False, "reason": f"image_exception:{str(exc)[:120]}"}
+                finally:
+                    _release_request_session(db)
 
             if image_docs:
                 docs = (image_docs or []) + (docs or [])
@@ -2355,6 +2372,11 @@ Requirements:
             except Exception as exc:  # noqa: BLE001
                 tag_docs = []
                 tag_meta = {"enabled": False, "used": False, "reason": f"tag_exception:{str(exc)[:120]}"}
+
+            # KG/image/TAG enrichment can reopen the request transaction. No later
+            # engine stage needs that transaction, so return its connection before
+            # corrective retrieval or answer-generation awaits.
+            _release_request_session(db)
 
             if tag_docs:
                 docs = (tag_docs or []) + (docs or [])

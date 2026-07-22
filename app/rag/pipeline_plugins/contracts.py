@@ -40,7 +40,7 @@ _SUPPORTED_RETRIEVAL_STAGE_KEYS = {"fields"}
 _SUPPORTED_RETRIEVAL_FIELD_KEYS = {"metadata", "content", "label"}
 _SUPPORTED_RETRIEVAL_POLICY_BOOST_KEYS = {"metadata", "weight", "match"}
 _SUPPORTED_RETRIEVAL_POLICY_QUERY_VALUE_KEYS = {"metadata", "value", "values", "terms"}
-_SUPPORTED_RETRIEVAL_POLICY_ANCHOR_KEYS = {"metadata", "weight", "aliases"}
+_SUPPORTED_RETRIEVAL_POLICY_ANCHOR_KEYS = {"metadata", "weight", "aliases", "role"}
 _SUPPORTED_RETRIEVAL_POLICY_ANCHOR_BINDING_KEYS = {
     "enabled",
     "anchor_fields",
@@ -1261,6 +1261,11 @@ def validate_retrieval_policy_metadata_fields(
         if not field_name:
             raise PipelinePluginContractError(f"retrieval_policy.anchor_fields[{index}].metadata must be non-empty")
         anchor_field_names.append(field_name)
+        role = str(raw.get("role") or "").strip()
+        if role and role != "administrative_area":
+            raise PipelinePluginContractError(
+                f"retrieval_policy.anchor_fields[{index}].role is unsupported"
+            )
         weight = raw.get("weight", 1.0)
         if not isinstance(weight, (int, float)) or isinstance(weight, bool) or weight <= 0 or weight > 10:
             raise PipelinePluginContractError(f"retrieval_policy.anchor_fields[{index}].weight is out of range")

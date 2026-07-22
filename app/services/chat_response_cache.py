@@ -45,6 +45,15 @@ _inflight_response_futures: dict[str, asyncio.Future[dict[str, Any]]] = {}
 _inflight_response_lock: asyncio.Lock | None = None
 
 
+class InflightResponseLeaderCancelledError(RuntimeError):
+    """Signal followers to retry after the request leading their singleflight was cancelled."""
+
+
+def _consume_unobserved_future_exception(future: asyncio.Future[dict[str, Any]]) -> None:
+    if not future.cancelled():
+        future.exception()
+
+
 def _get_inflight_response_lock() -> asyncio.Lock:
     global _inflight_response_lock
     if _inflight_response_lock is None:
@@ -225,6 +234,7 @@ async def acquire_inflight_chat_response(key: str) -> tuple[bool, asyncio.Future
         if current is not None:
             return False, current
         future: asyncio.Future[dict[str, Any]] = loop.create_future()
+        future.add_done_callback(_consume_unobserved_future_exception)
         _inflight_response_futures[key] = future
         return True, future
 

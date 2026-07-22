@@ -64,83 +64,86 @@ async def stream_langchain_chat_session_events(
     metrics_data: dict[str, Any] | None = {}
     structured_data: object | None = None
 
-    while True:
-        if options.disconnect_check is not None:
+    try:
+        while True:
+            if options.disconnect_check is not None:
+                try:
+                    if await options.disconnect_check():
+                        disconnected = True
+                        producer_task.cancel()
+                        break
+                except Exception as exc:
+                    logger.debug("Ignoring chat stream disconnect check failure: %s", exc)
+
             try:
-                if await options.disconnect_check():
-                    disconnected = True
-                    producer_task.cancel()
-                    break
-            except Exception as exc:
-                logger.debug("Ignoring chat stream disconnect check failure: %s", exc)
-
-        try:
-            ev = (
-                await asyncio.wait_for(q.get(), timeout=options.heartbeat_sec)
-                if options.heartbeat_sec > 0
-                else await q.get()
-            )
-        except asyncio.TimeoutError:
-            yield ": keepalive\n\n"
-            continue
-
-        if ev is None:
-            break
-
-        event = ev
-        if event.get("type") == "citations":
-            citations_data = event.get("data") or []
-
-        if event.get("type") == "error":
-            data = event.get("data") if isinstance(event.get("data"), dict) else {}
-            message = str(data.get("message") or data.get("error") or "Chat stream error")
-            raise RuntimeError(message)
-
-        if event.get("type") == "done":
-            if isinstance(event.get("data"), dict):
-                event["data"]["assistant_message_id"] = str(
-                    options.persist_options.assistant_message_id
+                ev = (
+                    await asyncio.wait_for(q.get(), timeout=options.heartbeat_sec)
+                    if options.heartbeat_sec > 0
+                    else await q.get()
                 )
-                metrics_data = event["data"].get("metrics", {})  # type: ignore[assignment]
-                structured_data = event["data"].get("structured_data")
-            else:
-                metrics_data = {}
-            if isinstance(metrics_data, dict):
-                metrics_data = annotate_chat_cache_metrics(
-                    metrics_data,
-                    enabled=options.cache_feature_enabled,
-                    hit=options.cache_hit,
-                    skip_reason=None if options.cache_hit else options.cache_skip_reason,
+            except asyncio.TimeoutError:
+                yield ": keepalive\n\n"
+                continue
+
+            if ev is None:
+                break
+
+            event = ev
+            if event.get("type") == "citations":
+                citations_data = event.get("data") or []
+
+            if event.get("type") == "error":
+                data = event.get("data") if isinstance(event.get("data"), dict) else {}
+                message = str(data.get("message") or data.get("error") or "Chat stream error")
+                raise RuntimeError(message)
+
+            if event.get("type") == "done":
+                if isinstance(event.get("data"), dict):
+                    event["data"]["assistant_message_id"] = str(
+                        options.persist_options.assistant_message_id
+                    )
+                    metrics_data = event["data"].get("metrics", {})  # type: ignore[assignment]
+                    structured_data = event["data"].get("structured_data")
+                else:
+                    metrics_data = {}
+                if isinstance(metrics_data, dict):
+                    metrics_data = annotate_chat_cache_metrics(
+                        metrics_data,
+                        enabled=options.cache_feature_enabled,
+                        hit=options.cache_hit,
+                        skip_reason=None if options.cache_hit else options.cache_skip_reason,
+                    )
+                else:
+                    metrics_data = annotate_chat_cache_metrics(
+                        {},
+                        enabled=options.cache_feature_enabled,
+                        hit=options.cache_hit,
+                        skip_reason=None if options.cache_hit else options.cache_skip_reason,
+                    )
+                metrics_data = apply_chat_runtime_metrics_context(
+                    metrics_data if isinstance(metrics_data, dict) else {},
+                    dataset_id_used=dataset_id_used,
+                    dataset_rag_defaults_applied_fields=options.dataset_rag_defaults_applied_fields,
+                    dataset_rag_config_template_defaults_applied_fields=options.dataset_rag_config_template_defaults_applied_fields,
+                    rag_config_template_meta=rag_config_template_meta,
+                    dataset_prompt_defaults_applied_fields=options.dataset_prompt_defaults_applied_fields,
+                    tenant_qps_meta=options.tenant_qps_meta,
+                    quota_meta=options.quota_meta,
                 )
-            else:
-                metrics_data = annotate_chat_cache_metrics(
-                    {},
-                    enabled=options.cache_feature_enabled,
-                    hit=options.cache_hit,
-                    skip_reason=None if options.cache_hit else options.cache_skip_reason,
-                )
-            metrics_data = apply_chat_runtime_metrics_context(
-                metrics_data if isinstance(metrics_data, dict) else {},
-                dataset_id_used=dataset_id_used,
-                dataset_rag_defaults_applied_fields=options.dataset_rag_defaults_applied_fields,
-                dataset_rag_config_template_defaults_applied_fields=options.dataset_rag_config_template_defaults_applied_fields,
-                rag_config_template_meta=rag_config_template_meta,
-                dataset_prompt_defaults_applied_fields=options.dataset_prompt_defaults_applied_fields,
-                tenant_qps_meta=options.tenant_qps_meta,
-                quota_meta=options.quota_meta,
-            )
-            if isinstance(event.get("data"), dict):
-                event["data"]["metrics"] = dict(metrics_data)
+                if isinstance(event.get("data"), dict):
+                    event["data"]["metrics"] = dict(metrics_data)
 
-        if event.get("type") == "token":
-            data = event.get("data") if isinstance(event.get("data"), dict) else {}
-            response_parts.append(str((data or {}).get("content") or ""))
+            if event.get("type") == "token":
+                data = event.get("data") if isinstance(event.get("data"), dict) else {}
+                response_parts.append(str((data or {}).get("content") or ""))
 
-        event["request_id"] = str(request_id)
-        yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-
-    with contextlib.suppress(asyncio.CancelledError):
-        await producer_task
+            event["request_id"] = str(request_id)
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+    finally:
+        if not producer_task.done():
+            producer_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await producer_task
 
     if disconnected:
         return

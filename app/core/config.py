@@ -832,6 +832,8 @@ class Settings(BaseSettings):
     DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_ENABLED: bool = True
     DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_TTL_SEC: int = 30
     DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_MAX_ENTRIES: int = 512
+    # Coalesce identical in-flight retries before they consume another RAG slot.
+    DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_ENABLED: bool = True
     DIFY_EXTERNAL_KNOWLEDGE_COMPACT_HIGH_CONFIDENCE_ENABLED: bool = True
     DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE: float = 0.7
     DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR: float = 0.65
@@ -858,6 +860,9 @@ class Settings(BaseSettings):
     DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_SCAN: int = 80
     DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_RECORDS: int = 4
     DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_STATEMENT_TIMEOUT_MS: int = 2500
+    # Cumulative DB-fallback execution budget for one quality-profile request.
+    # Zero preserves the legacy unbounded behavior.
+    DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_TOTAL_BUDGET_MS: int = 1500
     # Exact-anchor lookup must stay inside the requested knowledge scope unless
     # a deployment explicitly opts into cross-sibling recovery.
     DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTEND_SIBLING_POLICY_SCOPE_ENABLED: bool = False
@@ -1362,7 +1367,6 @@ class Settings(BaseSettings):
     RAG_VISIBLE_EVIDENCE_ONLY_ENABLED: bool = False
     USE_LANGGRAPH_PIPELINE: bool = False
     RAG_GRAPH_MAX_RETRIES: int = 2
-    RAG_GRAPH_TIMEOUT_SEC: int = 20
     RAG_GRAPH_CACHE_TTL_SEC: int = 0
     # LangGraph 1.0+ Functional API (preferred when available)
     LANGGRAPH_USE_FUNCTIONAL_API: bool = True
@@ -2523,6 +2527,13 @@ class Settings(BaseSettings):
             if fast_metadata_preflight_max_elapsed_ms < 0 or fast_metadata_preflight_max_elapsed_ms > 30000:
                 raise ValueError(
                     "DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_MAX_ELAPSED_MS must be between 0 and 30000"
+                )
+            metadata_anchor_total_budget_ms = int(
+                getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_TOTAL_BUDGET_MS", 1500) or 0
+            )
+            if metadata_anchor_total_budget_ms < 0 or metadata_anchor_total_budget_ms > 30000:
+                raise ValueError(
+                    "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_TOTAL_BUDGET_MS must be between 0 and 30000"
                 )
             kg_injection_max_chunks = int(
                 getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_MAX_CHUNKS", 3) or 0

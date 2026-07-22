@@ -26,12 +26,13 @@ async def _iterate_sync_in_worker(
     factory: Callable[[], Any],
     *,
     max_queue_size: int = 16,
+    stop_event: threading.Event | None = None,
 ) -> AsyncIterator[Any]:
     """Iterate a blocking generator without running any of it on the event loop."""
 
     outbox: asyncio.Queue[tuple[bool, Any]] = asyncio.Queue()
     slots = threading.BoundedSemaphore(max(1, max_queue_size))
-    stop = threading.Event()
+    stop = stop_event or threading.Event()
     loop = asyncio.get_running_loop()
 
     def put(payload: tuple[bool, Any]) -> bool:
@@ -124,11 +125,13 @@ async def stream_graph_chat_events(
     rag_config_template_meta = context.rag_config_template_meta
 
     thread_id = str(conversation_id) if conversation_id else f"rag-{request_id}"
+    graph_cancel_event = threading.Event()
     runtime_context = {
         "request_id": str(request_id),
         "conversation_id": str(conversation_id) if conversation_id else None,
         "tenant_id": str(tenant_id) if tenant_id else None,
         "account_id": account_id,
+        "cancel_event": graph_cancel_event,
     }
 
     state = build_rag_state(
@@ -225,6 +228,9 @@ async def stream_graph_chat_events(
     response_parts: list[str] = []
     citations_data: list[dict[str, Any]] = []
 
+    db.rollback()
+    state.pop("db", None)
+
     def graph_events():
         return rag_workflow.stream(
             state,
@@ -233,7 +239,10 @@ async def stream_graph_chat_events(
             stream_mode=["custom", "values"],
         )
 
-    async for mode, chunk in _iterate_sync_in_worker(graph_events):
+    async for mode, chunk in _iterate_sync_in_worker(
+        graph_events,
+        stop_event=graph_cancel_event,
+    ):
         if mode == "custom":
             yield {"type": "graph", "data": chunk}
             continue

@@ -32,7 +32,7 @@ from app.services.chat_stream_common import (
 from app.services.chat_stream_graph import GraphChatStreamSessionInput, stream_graph_chat_session_events
 from app.services.chat_stream_langchain import LangChainChatStreamSessionInput, stream_langchain_chat_session_events
 from app.services.metrics_logger import set_metrics_context
-from app.services.rag_runtime_limiter import run_blocking_retrieval_call
+from app.services.rag_runtime_limiter import run_blocking_retrieval_call_with_managed_session
 
 logger = get_logger("services.chat_stream_orchestrator")
 
@@ -190,19 +190,21 @@ async def stream_chat_sse_events(
         original_error: BaseException | None = None,
         provider_error: str | None = None,
     ) -> AsyncIterator[str]:
-        chat_result = await run_blocking_retrieval_call(
-            execute_extractive_fallback_once,
-            db=db,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            request=request,
-            doc_ids_to_use=doc_ids_to_use,
-            history_for_llm=history_for_llm,
-            scope_dataset_id=scope_dataset_id,
-            dataset_id_used=dataset_id_used,
-            effective_rag_config=effective_rag_config,
-            original_error=original_error,
-            reason=reason,
+        chat_result = await run_blocking_retrieval_call_with_managed_session(
+            lambda worker_db: execute_extractive_fallback_once(
+                db=worker_db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                request=request,
+                doc_ids_to_use=doc_ids_to_use,
+                history_for_llm=history_for_llm,
+                scope_dataset_id=scope_dataset_id,
+                dataset_id_used=dataset_id_used,
+                effective_rag_config=effective_rag_config,
+                original_error=original_error,
+                reason=reason,
+            ),
+            request_db=db,
         )
         fallback_metrics = dict(chat_result.metrics or {})
         if provider_error:

@@ -98,7 +98,7 @@ make up-web
 
 > 想先轻量体验？`make up-lite` 用 Chroma/FAISS 替代 Milvus、免 MinIO。外部 LLM/Embedding 调用仍需配置你自己的模型供应商密钥；项目不会内置或提交密钥。
 
-高级模型、解析器和代理配置见 [`.env.example`](./.env.example)。更换 Embedding 模型后必须重建已有知识库索引；常州政务公开演示数据和测试命令见[插件说明](./plugins/pipelines/changzhou-gov-service-knowledge/README.md)。
+高级模型、解析器和代理配置见 [`.env.example`](./.env.example)。更换 Embedding 模型后必须重建已有知识库索引；可选的常州政务公开示例插件和测试命令见[插件说明](./plugins/pipelines/changzhou-gov-service-knowledge/README.md)。
 
 ### 验证服务
 
@@ -170,30 +170,32 @@ curl http://localhost:8000/api/v1/health/ready
 
 ## 🔌 接入 Dify
 
-MimirQ 不重复实现 Dify 的工作流画布，而是把可治理、可追溯的 RAG 能力接入已有 Dify 应用。当前支持两种方式：
+MimirQ 可作为 Dify 的可治理 RAG 层接入现有应用，不重复实现工作流画布。当前支持两种方式：
 
 - **External Knowledge API**：Dify 负责编排与生成，MimirQ 负责文档治理、检索、重排、权限过滤和证据返回。
 - **Workflow HTTP 节点**：Dify 负责自定义路由与参数，MimirQ 按指定知识范围返回证据和 Trace。
 
-#### Workflow HTTP 节点
+### Workflow HTTP 节点
 
 <p align="center">
   <a href="./docs/images/screenshots/dify-mimirq-http-workflow.png">
     <img src="./docs/images/screenshots/dify-mimirq-http-workflow.png" alt="Dify HTTP 节点调用 MimirQ 检索接口并合并证据" width="1100" style="max-width: 100%; height: auto;"/>
   </a>
   <br/>
-  <sub>真实 Dify HTTP 子链（已脱敏）：安全构造 JSON 请求 → POST MimirQ 检索接口 → 转换 Dify 结果 → 合并知识证据。</sub>
+  <sub>真实 Dify HTTP 子链（已脱敏）：安全构造 JSON 请求 → HTTP 节点调用 MimirQ retrieval endpoint → 转换结果 → 合并知识证据。</sub>
 </p>
 
-#### External Knowledge API
+### External Knowledge API
 
 <p align="center">
   <a href="./docs/images/screenshots/dify-mimirq-workflow.png">
     <img src="./docs/images/screenshots/dify-mimirq-workflow.png" alt="Dify 工作流通过区域路由接入八个 MimirQ 政务知识库" width="560" style="max-width: 100%; height: auto;"/>
   </a>
   <br/>
-  <sub>真实 Dify Chatflow（已脱敏）：区域分支路由到 7 个区域级 + 1 个市级 MimirQ 知识检索节点，再统一合并证据；点击查看原图。</sub>
+  <sub>真实 Dify Chatflow（已脱敏）：绿色知识检索节点通过 External Knowledge API 调用 MimirQ，再统一合并证据；点击查看原图。</sub>
 </p>
+
+> 图中的地区路由来自可选示例插件；MimirQ 核心不内置地区、事项或行业规则。
 
 Dify 标准外部知识库端点为 `POST /api/v1/integrations/dify/retrieval`；可选用 `POST /api/v1/integrations/dify/conversation-turns` 回传答案、引用与会话标识。配置见 [`.env.example`](./.env.example)，部署前校验见 [readiness gate](./scripts/README.md)，实测结果见[真实场景验证](#-已在真实场景验证)。
 
@@ -228,7 +230,24 @@ Dify 标准外部知识库端点为 `POST /api/v1/integrations/dify/retrieval`�
 
 ## 📍 已在真实场景验证
 
-MimirQ 已用于**市级政务智能问答助手**，覆盖 7 个区域级 + 1 个市级知识库。2026-07-21 使用同一套固定 800 题，复测四种实际接入链路：
+MimirQ 已用于**市级政务智能问答助手**，覆盖 7 个区域级 + 1 个市级知识库。最新固定题集复测使用输入 SHA-256 `5a4c67...fac2`：
+
+| 最新结果（2026-07-22） | 结果 |
+|:---|---:|
+| 成功执行 | **800 / 800**，0 超时 |
+| 准确 / 部分准确 / 证据不足 | **797 / 3 / 0** |
+| 准确率 / 可用率 | **99.6% / 100%** |
+| 平均 / P50 / P95 / P99 | **1.36s / 0.88s / 5.19s / 10.10s** |
+| 吞吐（并发 3） | **2.188 题/s** |
+
+相对前次同 SHA 复测，15 题由证据不足、5 题由部分准确提升为准确，**0 题退化**。剩余 3 题均为知识源版本与旧基准冲突，或问题未要求评分字段，没有加入领域硬编码。
+
+独立 E2E 负载测试在 reranker 开启、逐请求绕过响应缓存时，检索并发 3 将 12 请求总耗时从 41.46s 降至 30.14s，对话并发 3 将 6 请求从 54.61s 降至 31.60s，两档均为 0 错误。并发会提高单请求延迟；这里验证的是同批吞吐改善，不代表硬件容量上限。
+
+<details>
+<summary><b>展开 2026-07-21 四路同题历史对照</b></summary>
+
+同一固定 800 题曾用于复测四种实际接入链路：
 
 <!-- 数据来源：artifacts/changzhou_dify_4way_800_20260721/comparison_report.json；输入 SHA-256 5a4c67c42e8f8123774279d46af39ccc793da1b89fdea19a7359f63c8cb2fac2；生成时间 2026-07-21T04:56:03Z。 -->
 
@@ -239,7 +258,9 @@ MimirQ 已用于**市级政务智能问答助手**，覆盖 7 个区域级 + 1 �
 | **Dify HTTP → MimirQ** | **800 / 800** | 62.6% / 90.3% | 82.0% | 92.2% | 5.9% | **4.75s / 4.56s / 6.73s** |
 | **Dify 原生知识库** | **800 / 800** | 38.9% / 76.8% | 67.3% | 87.1% | 79.1% | 10.61s / 8.52s / 27.65s |
 
-2393 个必答条款中，四路共同未召回的只有 4 个。External 与 HTTP 的主要损失发生在答案生成阶段；Dify 原生知识库还存在地区路由和 Top-K 噪声。检索直连与生成链路的任务不同，延迟也不是严格同条件对比。
+2393 个必答条款中，四路共同未召回的只有 4 个。检索直连输出证据，另外三路输出生成答案，因此准确率和延迟不是严格同任务对比。
+
+</details>
 
 [完整方法、指标解释与历史复测](./docs/benchmarks/changzhou_dify.md) · [Dify 接入方式与真实工作流](#-接入-dify)
 
@@ -255,10 +276,6 @@ MimirQ 已用于**市级政务智能问答助手**，覆盖 7 个区域级 + 1 �
 | **本地 Swagger** | 后端启动后 [http://localhost:8000/docs](http://localhost:8000/docs) |
 | **导出 OpenAPI** | `make openapi-export` → `web/openapi.json` |
 | **构建静态站（与 CI 一致）** | `make api-docs-build` → `docs/api/site/` |
-
-> 认证约定：后端无全局认证中间件，**每个路由必须显式依赖 `get_current_account_id`**；访问租户数据时再同时依赖 `get_tenant_id`。详见 [backend_structure.md](./docs/backend_structure.md#添加新-api-路由)。
-
-首次启用 Pages：仓库 **Settings → Pages → Source: GitHub Actions**，推送 `main` 后由 [`.github/workflows/api-docs.yml`](./.github/workflows/api-docs.yml) 部署。
 
 ---
 

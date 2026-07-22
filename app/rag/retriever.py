@@ -53,8 +53,7 @@ from app.rag.reranker.types import RerankCandidate
 from app.rag.retrieval.context_expansion import expand_ranked_chunk_results
 from app.rag.retrieval.planner import compact_high_confidence_items, retrieval_policy_response_compaction
 from app.rag.retrieval.plugin_policy import (
-    record_retrieval_policy_bonus,
-    records_retrieval_policy_diagnostics,
+    evaluate_records_retrieval_policy,
 )
 from app.rag.retrieval.query_phrase_match import query_phrase_match
 from app.rag.retrieval.sibling_expand import select_document_expansion_mode
@@ -7526,16 +7525,18 @@ class HybridRetriever(BaseRetriever):
             ):
                 exact_adjusted += 1
 
+        policy_scores, diagnostics = evaluate_records_retrieval_policy(
+            out,
+            query=query_text,
+            plugin_ref_for_record=self._result_plugin_ref,
+            metadata_layers_for_record=self._result_metadata_layers,
+            policy_resolver=self._retrieval_policy_for_plugin_ref,
+        )
         bonuses: list[float] = []
         adjusted = 0
         for result in out:
-            bonus = record_retrieval_policy_bonus(
-                result,
-                query=query_text,
-                plugin_ref_for_record=self._result_plugin_ref,
-                metadata_layers_for_record=self._result_metadata_layers,
-                policy_resolver=self._retrieval_policy_for_plugin_ref,
-            )
+            scores = policy_scores.get(id(result))
+            bonus = float(scores.total) if scores is not None else 0.0
             if not bonus:
                 continue
             current_score = _float_or_default(result.get("score"), 0.0)
@@ -7544,13 +7545,6 @@ class HybridRetriever(BaseRetriever):
             adjusted += 1
             bonuses.append(float(bonus))
 
-        diagnostics = records_retrieval_policy_diagnostics(
-            out,
-            query=query_text,
-            plugin_ref_for_record=self._result_plugin_ref,
-            metadata_layers_for_record=self._result_metadata_layers,
-            policy_resolver=self._retrieval_policy_for_plugin_ref,
-        )
         if int(diagnostics.get("retrieval_policy_record_count") or 0) > 0 and isinstance(self._last_channel_metrics, dict):
             diagnostics["score_adjusted_record_count"] = int(adjusted)
             diagnostics["max_bonus"] = round(float(max(bonuses) if bonuses else 0.0), 6)
@@ -9138,22 +9132,27 @@ class HybridRetriever(BaseRetriever):
         query_tokens = self._bm25_tokenize(query)
         doc_tokens_list = [self._bm25_tokenize(doc.get("content", "")) for doc in documents]
 
-        all_tokens = {tok for tokens in doc_tokens_list for tok in tokens}
-        if not all_tokens:
+        doc_term_frequencies = [Counter(tokens) for tokens in doc_tokens_list]
+        document_frequencies: Counter[str] = Counter()
+        for term_frequencies in doc_term_frequencies:
+            document_frequencies.update(term_frequencies.keys())
+        if not document_frequencies:
             return documents
 
         doc_count = len(documents)
-        token_idf: dict[str, float] = {}
-        for tok in all_tokens:
-            df = sum(1 for tokens in doc_tokens_list if tok in tokens)
-            token_idf[tok] = math.log((1 + doc_count) / (1 + df)) + 1
+        token_idf = {
+            token: math.log((1 + doc_count) / (1 + document_count)) + 1
+            for token, document_count in document_frequencies.items()
+        }
 
-        def tfidf_vec(tokens: list[str]) -> dict[str, float]:
-            tf = Counter(tokens)
-            return {t: tf[t] * token_idf.get(t, 0.0) for t in tf}
+        def tfidf_vec(term_frequencies: Counter[str]) -> dict[str, float]:
+            return {
+                token: count * token_idf.get(token, 0.0)
+                for token, count in term_frequencies.items()
+            }
 
-        query_vec = tfidf_vec(query_tokens)
-        doc_vecs = [tfidf_vec(tokens) for tokens in doc_tokens_list]
+        query_vec = tfidf_vec(Counter(query_tokens))
+        doc_vecs = [tfidf_vec(term_frequencies) for term_frequencies in doc_term_frequencies]
 
         def cosine(a: dict[str, float], b: dict[str, float]) -> float:
             if not a or not b:

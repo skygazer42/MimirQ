@@ -4619,7 +4619,7 @@
       "dify_inputs": {
         "areaName": "常州市"
       },
-      "question": "准备办「企业上市合法合规信息核查“一件事”」，我需要先了解包含哪些事、要交什么材料，以及从哪个入口/渠道办。",
+      "question": "准备办「企业上市合法合规信息核查“一件事”」，我需要先了解申请材料、办理渠道、联系方式。",
       "subquestions": [
         {
           "id": "申请材料",
@@ -4670,7 +4670,7 @@
       "source_section": "02高效办成一件事",
       "source_record_title": "企业上市合法合规信息核查“一件事”",
       "case_type": "one_thing_guide_composite",
-      "query": "准备办「企业上市合法合规信息核查“一件事”」，我需要先了解包含哪些事、要交什么材料，以及从哪个入口/渠道办。",
+      "query": "准备办「企业上市合法合规信息核查“一件事”」，我需要先了解申请材料、办理渠道、联系方式。",
       "min_evidence_coverage": 0.67,
       "min_subquestion_coverage": 0.67,
       "max_wrong_evidence_rate": 0.75,
@@ -4829,7 +4829,7 @@
       "dify_inputs": {
         "areaName": "常州市"
       },
-      "question": "「社会保障卡居民服务“一件事”」如果要办，先帮我看下涉及事项、材料和办理入口/电话。",
+      "question": "「社会保障卡居民服务“一件事”」申请前，涉及事项、办理渠道、联系方式分别是什么？",
       "subquestions": [
         {
           "id": "涉及事项",
@@ -4880,7 +4880,7 @@
       "source_section": "02高效办成一件事",
       "source_record_title": "社会保障卡居民服务“一件事”",
       "case_type": "one_thing_guide_composite",
-      "query": "「社会保障卡居民服务“一件事”」如果要办，先帮我看下涉及事项、材料和办理入口/电话。",
+      "query": "「社会保障卡居民服务“一件事”」申请前，涉及事项、办理渠道、联系方式分别是什么？",
       "min_evidence_coverage": 0.67,
       "min_subquestion_coverage": 0.67,
       "max_wrong_evidence_rate": 0.75,

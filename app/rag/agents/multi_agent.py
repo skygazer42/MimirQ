@@ -17,6 +17,7 @@ from app.rag.core.logging import get_logger
 from app.rag.core.text import heuristic_decompose_query, parse_json_from_text
 from app.rag.pipelines.langgraph import _build_context, _build_history_text, build_rag_state
 from app.rag.retrieval.orchestrator import run_retrieval
+from app.services.rag_runtime_limiter import run_blocking_retrieval_call_with_managed_session
 
 if TYPE_CHECKING:
     from app.rag.engine import RAGEngine
@@ -167,7 +168,10 @@ class MultiAgentRAGRunner:
         state = dict(base_state)
         state["question"] = query
         started = time.time()
-        result = await asyncio.to_thread(run_retrieval, state)
+        result = await run_blocking_retrieval_call_with_managed_session(
+            lambda worker_db: run_retrieval({**state, "db": worker_db}),
+            request_db=None,
+        )
         elapsed = time.time() - started
         return _SubAgentResult(index=index, query=query, result=result, elapsed_sec=float(elapsed or 0.0))
 
@@ -254,38 +258,47 @@ class MultiAgentRAGRunner:
         yield {"type": "agentic_step", "data": {"step": "planning"}}
         plan_steps = await self._decompose(question=question, llm=llm, max_sub_questions=max_sub_questions)
 
-        tasks: list[asyncio.Task[_SubAgentResult]] = []
-        for idx, step in enumerate(plan_steps[:max_sub_questions], 1):
-            query = " ".join(str(step.query or "").split()).strip() or question
-            yield {
-                "type": "agentic_step",
-                "data": {
-                    "step": "retrieving",
-                    "status": "started",
-                    "round": int(idx),
-                    "query": query,
-                    "rationale": step.rationale,
-                },
-            }
-            tasks.append(asyncio.create_task(self._run_sub_agent(index=idx, query=query, base_state=base_state)))
+        if db is not None:
+            db.rollback()
 
+        tasks: list[asyncio.Task[_SubAgentResult]] = []
         results: list[_SubAgentResult] = []
-        for task in asyncio.as_completed(tasks):
-            sub_result = await task
-            results.append(sub_result)
-            sub_metrics = sub_result.result.get("metrics") or {}
-            yield {
-                "type": "agentic_step",
-                "data": {
-                    "step": "retrieving",
-                    "status": "completed",
-                    "round": int(sub_result.index),
-                    "query": sub_result.query,
-                    "docs_count": int(len(sub_result.result.get("docs") or [])),
-                    "citations_count": int(len(sub_result.result.get("citations") or [])),
-                    "top_relevance_score": float(sub_metrics.get("top_relevance_score") or 0.0),
-                },
-            }
+        try:
+            for idx, step in enumerate(plan_steps[:max_sub_questions], 1):
+                query = " ".join(str(step.query or "").split()).strip() or question
+                yield {
+                    "type": "agentic_step",
+                    "data": {
+                        "step": "retrieving",
+                        "status": "started",
+                        "round": int(idx),
+                        "query": query,
+                        "rationale": step.rationale,
+                    },
+                }
+                tasks.append(asyncio.create_task(self._run_sub_agent(index=idx, query=query, base_state=base_state)))
+
+            for task in asyncio.as_completed(tasks):
+                sub_result = await task
+                results.append(sub_result)
+                sub_metrics = sub_result.result.get("metrics") or {}
+                yield {
+                    "type": "agentic_step",
+                    "data": {
+                        "step": "retrieving",
+                        "status": "completed",
+                        "round": int(sub_result.index),
+                        "query": sub_result.query,
+                        "docs_count": int(len(sub_result.result.get("docs") or [])),
+                        "citations_count": int(len(sub_result.result.get("citations") or [])),
+                        "top_relevance_score": float(sub_metrics.get("top_relevance_score") or 0.0),
+                    },
+                }
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
         results.sort(key=lambda item: item.index)
         retrieval_elapsed_total = float(sum(item.elapsed_sec for item in results))

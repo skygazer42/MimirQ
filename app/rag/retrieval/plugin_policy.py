@@ -374,14 +374,15 @@ def record_retrieval_policy_bonus(
     ).total
 
 
-def records_retrieval_policy_diagnostics(
+def evaluate_records_retrieval_policy(
     records: list[dict[str, Any]] | tuple[dict[str, Any], ...],
     *,
     query: str,
     plugin_ref_for_record: PluginRefForRecord,
     metadata_layers_for_record: MetadataLayersForRecord,
     policy_resolver: PolicyResolver,
-) -> dict[str, Any]:
+) -> tuple[dict[int, RetrievalPolicySignalScores], dict[str, Any]]:
+    scores_by_record: dict[int, RetrievalPolicySignalScores] = {}
     plugin_refs: list[str] = []
     seen_refs: set[str] = set()
     policy_record_count = 0
@@ -406,6 +407,7 @@ def records_retrieval_policy_diagnostics(
             metadata_layers=metadata_layers_for_record(record),
             query=query,
         )
+        scores_by_record[id(record)] = scores
         if scores.positive_total > 0:
             boosted_record_count += 1
         if scores.boost_field > 0:
@@ -416,7 +418,7 @@ def records_retrieval_policy_diagnostics(
             rerank_feature_record_count += 1
         if scores.anchor_mismatch > 0:
             anchor_mismatch_record_count += 1
-    return {
+    diagnostics = {
         "retrieval_policy_record_count": policy_record_count,
         "retrieval_policy_boosted_record_count": boosted_record_count,
         "retrieval_policy_boost_field_record_count": boost_field_record_count,
@@ -425,6 +427,25 @@ def records_retrieval_policy_diagnostics(
         "retrieval_policy_anchor_mismatch_record_count": anchor_mismatch_record_count,
         "retrieval_policy_plugin_refs": plugin_refs[:20],
     }
+    return scores_by_record, diagnostics
+
+
+def records_retrieval_policy_diagnostics(
+    records: list[dict[str, Any]] | tuple[dict[str, Any], ...],
+    *,
+    query: str,
+    plugin_ref_for_record: PluginRefForRecord,
+    metadata_layers_for_record: MetadataLayersForRecord,
+    policy_resolver: PolicyResolver,
+) -> dict[str, Any]:
+    _, diagnostics = evaluate_records_retrieval_policy(
+        records,
+        query=query,
+        plugin_ref_for_record=plugin_ref_for_record,
+        metadata_layers_for_record=metadata_layers_for_record,
+        policy_resolver=policy_resolver,
+    )
+    return diagnostics
 
 
 def filter_records_by_retrieval_policy_alignment(
@@ -463,6 +484,7 @@ __all__ = [
     "PluginRefForRecord",
     "PolicyResolver",
     "RetrievalPolicySignalScores",
+    "evaluate_records_retrieval_policy",
     "filter_records_by_retrieval_policy_alignment",
     "record_retrieval_policy_anchor_binding_scores",
     "record_retrieval_policy_bonus",

@@ -45,6 +45,7 @@ from scripts.evaluate_mixed_rag_quality import (  # noqa: E402
     build_markdown_report,
     evaluate_mixed_rag_quality,
 )
+from scripts.rag_e2e_load_test import summarize_latencies_ms, throughput_per_sec  # noqa: E402
 
 DEFAULT_BASE_URL = "https://dify.example.com:5001/v1"
 DEFAULT_CASES = os.getenv("DIFY_3WAY_CASES", "")
@@ -1136,6 +1137,28 @@ def _retry_timeout_seconds(timeout: float) -> float:
     return min(max(base * TIMEOUT_RETRY_MULTIPLIER, base + TIMEOUT_RETRY_MIN_ADD_SEC), TIMEOUT_RETRY_MAX_SEC)
 
 
+def _execution_stats(
+    items: list[dict[str, Any]],
+    *,
+    executed_case_ids: set[str],
+    concurrency: int,
+    elapsed_ms: int,
+) -> dict[str, Any]:
+    executed = [item for item in items if _text(item.get("case_id") or item.get("id")) in executed_case_ids]
+    latencies = [
+        int(round(float(item.get("total_latency_ms", item.get("latency_ms")))))
+        for item in executed
+        if item.get("total_latency_ms", item.get("latency_ms")) is not None
+    ]
+    return {
+        "concurrency": max(1, int(concurrency)),
+        "cases": len(executed),
+        "elapsed_ms": max(0, int(elapsed_ms)),
+        "throughput_cases_per_sec": round(throughput_per_sec(count=len(executed), elapsed_ms=elapsed_ms), 6),
+        "latency_ms": summarize_latencies_ms(latencies),
+    }
+
+
 def _merge_items_by_case_id(items: list[dict[str, Any]], replacements: list[dict[str, Any]]) -> list[dict[str, Any]]:
     merged = {_text(item.get("case_id") or item.get("id")): dict(item) for item in items if _text(item.get("case_id") or item.get("id"))}
     for item in replacements:
@@ -1143,6 +1166,33 @@ def _merge_items_by_case_id(items: list[dict[str, Any]], replacements: list[dict
         if key:
             merged[key] = dict(item)
     return sorted(merged.values(), key=_run_item_sort_key)
+
+
+def _merge_retry_results(
+    items: list[dict[str, Any]],
+    replacements: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    previous_by_id = {
+        _text(item.get("case_id") or item.get("id")): item
+        for item in items
+        if _text(item.get("case_id") or item.get("id"))
+    }
+    enriched: list[dict[str, Any]] = []
+    for replacement in replacements:
+        current = dict(replacement)
+        key = _text(current.get("case_id") or current.get("id"))
+        previous = previous_by_id.get(key, {})
+        attempt_latencies = [float(value) for value in previous.get("attempt_latency_ms") or []]
+        if not attempt_latencies and previous.get("latency_ms") is not None:
+            attempt_latencies.append(float(previous["latency_ms"]))
+        if current.get("latency_ms") is not None:
+            attempt_latencies.append(float(current["latency_ms"]))
+        if attempt_latencies:
+            current["attempt_count"] = len(attempt_latencies)
+            current["attempt_latency_ms"] = attempt_latencies
+            current["total_latency_ms"] = round(sum(attempt_latencies), 2)
+        enriched.append(current)
+    return _merge_items_by_case_id(items, enriched)
 
 
 def _pending_cases(
@@ -1390,6 +1440,8 @@ def run_app(
 
     pending, reusable = _pending_cases(cases, existing_items, retry_failures=retry_failures)
     items: list[dict[str, Any]] = list(reusable)
+    executed_case_ids = {_case_id(case) for case in pending}
+    run_started = time.perf_counter()
     history_records_fn = (
         (lambda *, app, item, **_kwargs: lookup_mimirq_history_records(
             app=app,
@@ -1425,6 +1477,12 @@ def run_app(
                 "system": app.label,
                 "app": {k: getattr(app, k) for k in ("label", "app_id", "kind", "description", "mode")},
                 "source": {"provider": "dify", "base_url": base_url.rstrip("/"), "endpoint": _endpoint_url(base_url, app.mode)},
+                "execution": _execution_stats(
+                    ordered_items,
+                    executed_case_ids=executed_case_ids,
+                    concurrency=concurrency,
+                    elapsed_ms=int((time.perf_counter() - run_started) * 1000),
+                ),
                 "summary": {
                     "cases": len(cases),
                     "succeeded": succeeded,
@@ -1495,7 +1553,7 @@ def run_app(
                 ]
                 for future in as_completed(futures):
                     retry_results.append(future.result())
-            items = _merge_items_by_case_id(items, retry_results)
+            items = _merge_retry_results(items, retry_results)
             if run_path is not None:
                 snapshot()
 
@@ -1507,6 +1565,12 @@ def run_app(
         "system": app.label,
         "app": {k: getattr(app, k) for k in ("label", "app_id", "kind", "description", "mode")},
         "source": {"provider": "dify", "base_url": base_url.rstrip("/"), "endpoint": _endpoint_url(base_url, app.mode)},
+        "execution": _execution_stats(
+            items,
+            executed_case_ids=executed_case_ids,
+            concurrency=concurrency,
+            elapsed_ms=int((time.perf_counter() - run_started) * 1000),
+        ),
         "summary": {
             "cases": len(cases),
             "succeeded": succeeded,
@@ -1545,6 +1609,8 @@ def run_mimirq_direct(
 
     pending, reusable = _pending_cases(cases, existing_items, retry_failures=retry_failures)
     items: list[dict[str, Any]] = list(reusable)
+    executed_case_ids = {_case_id(case) for case in pending}
+    run_started = time.perf_counter()
 
     def snapshot() -> None:
         if run_path is None:
@@ -1559,6 +1625,12 @@ def run_mimirq_direct(
                 "system": "mimirq_direct",
                 "app": {"label": "mimirq_direct", "app_id": "local", "kind": "direct_external_knowledge", "mode": "retrieval"},
                 "source": {"provider": "mimirq", "base_url": base_url.rstrip("/"), "endpoint": f"{base_url.rstrip('/')}/api/v1/integrations/dify/retrieval"},
+                "execution": _execution_stats(
+                    ordered_items,
+                    executed_case_ids=executed_case_ids,
+                    concurrency=concurrency,
+                    elapsed_ms=int((time.perf_counter() - run_started) * 1000),
+                ),
                 "summary": {
                     "cases": len(cases),
                     "succeeded": succeeded,
@@ -1621,7 +1693,7 @@ def run_mimirq_direct(
                 ]
                 for future in as_completed(futures):
                     retry_results.append(future.result())
-            items = _merge_items_by_case_id(items, retry_results)
+            items = _merge_retry_results(items, retry_results)
             if run_path is not None:
                 snapshot()
 
@@ -1633,6 +1705,12 @@ def run_mimirq_direct(
         "system": "mimirq_direct",
         "app": {"label": "mimirq_direct", "app_id": "local", "kind": "direct_external_knowledge", "mode": "retrieval"},
         "source": {"provider": "mimirq", "base_url": base_url.rstrip("/"), "endpoint": f"{base_url.rstrip('/')}/api/v1/integrations/dify/retrieval"},
+        "execution": _execution_stats(
+            items,
+            executed_case_ids=executed_case_ids,
+            concurrency=concurrency,
+            elapsed_ms=int((time.perf_counter() - run_started) * 1000),
+        ),
         "summary": {
             "cases": len(cases),
             "succeeded": succeeded,

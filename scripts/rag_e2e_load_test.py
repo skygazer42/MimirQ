@@ -194,6 +194,7 @@ class E2ELoadTestConfig:
     chat_requests: int = 0
     chat_concurrency: int = 1
     message: str = "hello"
+    enable_reranker: bool = True
 
     doc_sample_size: int = 5
 
@@ -210,6 +211,8 @@ async def run_e2e_load_test(cfg: E2ELoadTestConfig, *, client: httpx.AsyncClient
 
     try:
         base_url = str(cfg.base_url or "").rstrip("/")
+        run_id = uuid.uuid4().hex
+        query_nonce = run_id[:6]
 
         dataset_id = cfg.dataset_id
         if not dataset_id:
@@ -296,24 +299,32 @@ async def run_e2e_load_test(cfg: E2ELoadTestConfig, *, client: httpx.AsyncClient
 
         retrieve_lat_ms: list[int] = []
         retrieve_errors = 0
+        retrieve_client_in_flight = 0
+        retrieve_client_peak_in_flight = 0
 
         retrieve_sem = asyncio.Semaphore(max(1, int(cfg.retrieve_concurrency or 1)))
 
-        async def _retrieve_once() -> None:
-            nonlocal retrieve_errors
+        async def _retrieve_once(i: int) -> None:
+            nonlocal retrieve_errors, retrieve_client_in_flight, retrieve_client_peak_in_flight
             async with retrieve_sem:
+                retrieve_client_in_flight += 1
+                retrieve_client_peak_in_flight = max(
+                    retrieve_client_peak_in_flight,
+                    retrieve_client_in_flight,
+                )
                 t0 = time.perf_counter()
                 try:
                     r = await client.post(
                         _join(base_url, "rag/retrieve-preview"),
-                        headers=headers,
+                        headers={**headers, "X-Request-ID": f"load-{run_id}-retrieve-{i}"},
                         json={
-                            "query": str(cfg.query or "hello"),
+                            "query": f"{str(cfg.query or 'hello')} [load:{query_nonce}:r:{i}]",
                             "dataset_id": dataset_id,
                             "document_ids": doc_ids_for_queries,
                             "rag_config": {
                                 "top_k": 10,
                                 "enable_multi_query": False,
+                                "enable_reranker": bool(cfg.enable_reranker),
                                 "use_graph": False,
                             },
                         },
@@ -321,6 +332,8 @@ async def run_e2e_load_test(cfg: E2ELoadTestConfig, *, client: httpx.AsyncClient
                 except Exception:
                     retrieve_errors += 1
                     return
+                finally:
+                    retrieve_client_in_flight -= 1
                 ms = int((time.perf_counter() - t0) * 1000)
                 if r.status_code < 200 or r.status_code >= 300:
                     retrieve_errors += 1
@@ -328,23 +341,30 @@ async def run_e2e_load_test(cfg: E2ELoadTestConfig, *, client: httpx.AsyncClient
                 retrieve_lat_ms.append(ms)
 
         retrieve_start = time.perf_counter()
-        await asyncio.gather(*[_retrieve_once() for _ in range(int(cfg.retrieve_requests or 0))])
+        await asyncio.gather(*[_retrieve_once(i) for i in range(int(cfg.retrieve_requests or 0))])
         retrieve_elapsed_ms = int((time.perf_counter() - retrieve_start) * 1000)
 
         chat_lat_ms: list[int] = []
         chat_errors = 0
+        chat_client_in_flight = 0
+        chat_client_peak_in_flight = 0
         chat_sem = asyncio.Semaphore(max(1, int(cfg.chat_concurrency or 1)))
 
-        async def _chat_once() -> None:
-            nonlocal chat_errors
+        async def _chat_once(i: int) -> None:
+            nonlocal chat_errors, chat_client_in_flight, chat_client_peak_in_flight
             async with chat_sem:
+                chat_client_in_flight += 1
+                chat_client_peak_in_flight = max(
+                    chat_client_peak_in_flight,
+                    chat_client_in_flight,
+                )
                 t0 = time.perf_counter()
                 try:
                     r = await client.post(
                         _join(base_url, "chat"),
-                        headers=headers,
+                        headers={**headers, "X-Request-ID": f"load-{run_id}-chat-{i}"},
                         json={
-                            "message": str(cfg.message or "hello"),
+                            "message": f"{str(cfg.message or 'hello')} [load:{query_nonce}:c:{i}]",
                             "dataset_id": dataset_id,
                             "document_ids": doc_ids_for_queries,
                             "structured_output": True,
@@ -352,6 +372,7 @@ async def run_e2e_load_test(cfg: E2ELoadTestConfig, *, client: httpx.AsyncClient
                             "rag_config": {
                                 "top_k": 10,
                                 "enable_multi_query": False,
+                                "enable_reranker": bool(cfg.enable_reranker),
                                 "use_graph": False,
                             },
                         },
@@ -359,6 +380,8 @@ async def run_e2e_load_test(cfg: E2ELoadTestConfig, *, client: httpx.AsyncClient
                 except Exception:
                     chat_errors += 1
                     return
+                finally:
+                    chat_client_in_flight -= 1
                 ms = int((time.perf_counter() - t0) * 1000)
                 if r.status_code < 200 or r.status_code >= 300:
                     chat_errors += 1
@@ -366,7 +389,7 @@ async def run_e2e_load_test(cfg: E2ELoadTestConfig, *, client: httpx.AsyncClient
                 chat_lat_ms.append(ms)
 
         chat_start = time.perf_counter()
-        await asyncio.gather(*[_chat_once() for _ in range(int(cfg.chat_requests or 0))])
+        await asyncio.gather(*[_chat_once(i) for i in range(int(cfg.chat_requests or 0))])
         chat_elapsed_ms = int((time.perf_counter() - chat_start) * 1000)
 
         return {
@@ -384,6 +407,10 @@ async def run_e2e_load_test(cfg: E2ELoadTestConfig, *, client: httpx.AsyncClient
             },
             "retrieve": {
                 "requested": int(cfg.retrieve_requests or 0),
+                "concurrency": max(1, int(cfg.retrieve_concurrency or 1)),
+                "client_peak_in_flight": retrieve_client_peak_in_flight,
+                "client_overlap_observed": retrieve_client_peak_in_flight > 1,
+                "reranker_enabled": bool(cfg.enable_reranker),
                 "ok": len(retrieve_lat_ms),
                 "errors": int(retrieve_errors),
                 "elapsed_ms": int(retrieve_elapsed_ms),
@@ -392,6 +419,10 @@ async def run_e2e_load_test(cfg: E2ELoadTestConfig, *, client: httpx.AsyncClient
             },
             "chat": {
                 "requested": int(cfg.chat_requests or 0),
+                "concurrency": max(1, int(cfg.chat_concurrency or 1)),
+                "client_peak_in_flight": chat_client_peak_in_flight,
+                "client_overlap_observed": chat_client_peak_in_flight > 1,
+                "reranker_enabled": bool(cfg.enable_reranker),
                 "ok": len(chat_lat_ms),
                 "errors": int(chat_errors),
                 "elapsed_ms": int(chat_elapsed_ms),
@@ -439,6 +470,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--chat-requests", type=int, default=10, help="Chat requests (default: %(default)s)")
     p.add_argument("--chat-concurrency", type=int, default=5, help="Chat concurrency (default: %(default)s)")
     p.add_argument("--message", default="Summarize this document.", help="Chat message (default: %(default)s)")
+    p.add_argument("--no-reranker", dest="enable_reranker", action="store_false", help="Disable reranking during retrieve/chat load")
 
     p.add_argument("--doc-sample-size", type=int, default=5, help="Max document ids per request (default: %(default)s)")
     p.add_argument("--timeout-sec", type=float, default=60.0, help="HTTP timeout seconds (default: %(default)s)")
@@ -478,6 +510,7 @@ def main(argv: list[str] | None = None) -> int:
         chat_requests=int(args.chat_requests or 0),
         chat_concurrency=int(args.chat_concurrency or 1),
         message=str(args.message or ""),
+        enable_reranker=bool(args.enable_reranker),
         doc_sample_size=int(args.doc_sample_size or 0),
     )
 
@@ -517,11 +550,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(
         f"[rag-e2e-loadtest] retrieve: ok={retrieve.get('ok')} errors={retrieve.get('errors')} "
-        f"throughput={float(retrieve.get('throughput_rps') or 0.0):.2f}/s p95={retrieve_p95}ms"
+        f"throughput={float(retrieve.get('throughput_rps') or 0.0):.2f}/s p95={retrieve_p95}ms "
+        f"client_peak_in_flight={retrieve.get('client_peak_in_flight')}"
     )
     print(
         f"[rag-e2e-loadtest] chat: ok={chat.get('ok')} errors={chat.get('errors')} "
-        f"throughput={float(chat.get('throughput_rps') or 0.0):.2f}/s p95={chat_p95}ms"
+        f"throughput={float(chat.get('throughput_rps') or 0.0):.2f}/s p95={chat_p95}ms "
+        f"client_peak_in_flight={chat.get('client_peak_in_flight')}"
     )
     gate = evaluate_load_gate(
         result,

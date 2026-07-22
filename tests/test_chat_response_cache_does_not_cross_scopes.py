@@ -1,3 +1,5 @@
+import asyncio
+import gc
 import inspect
 
 import pytest
@@ -88,3 +90,29 @@ def test_chat_cache_key_differs_across_corpus_cache_token(monkeypatch) -> None:
     key_a = build_chat_cache_key(**base)
     key_b = build_chat_cache_key(**{**base, "corpus_cache_token": "corp-b"})
     assert key_a != key_b
+
+
+@pytest.mark.asyncio
+async def test_rejected_singleflight_without_followers_consumes_exception() -> None:
+    import app.services.chat_response_cache as cache_mod
+
+    loop = asyncio.get_running_loop()
+    previous_handler = loop.get_exception_handler()
+    unhandled_contexts: list[dict[str, object]] = []
+    loop.set_exception_handler(lambda _loop, context: unhandled_contexts.append(context))
+    cache_mod.clear_inflight_chat_responses()
+    try:
+        leader, future = await cache_mod.acquire_inflight_chat_response("request-key")
+
+        assert leader
+        cache_mod.reject_inflight_chat_response("request-key", RuntimeError("retrieval failed"))
+        await asyncio.sleep(0)
+        assert future.done()
+        del future
+        gc.collect()
+        await asyncio.sleep(0)
+
+        assert unhandled_contexts == []
+    finally:
+        cache_mod.clear_inflight_chat_responses()
+        loop.set_exception_handler(previous_handler)

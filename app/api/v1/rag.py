@@ -28,7 +28,7 @@ from app.services.rag_config_template_apply import apply_rag_config_patch
 from app.services.rag_config_template_defaults import merge_rag_config_template_defaults_with_dataset
 from app.services.rag_config_template_resolver import build_rag_config_patch_hash, resolve_rag_config_template
 from app.services.rag_defaults import merge_rag_config_with_dataset_defaults
-from app.services.rag_runtime_limiter import run_blocking_retrieval_call
+from app.services.rag_runtime_limiter import run_blocking_retrieval_call_with_managed_session
 
 logger = get_logger(__name__)
 
@@ -649,9 +649,6 @@ async def retrieve_preview(
     )
     if rag_config_template_meta:
         state["rag_config_template"] = rag_config_template_meta
-    # Best-effort: allow retrieval-only orchestrator to load extra evidence from DB (e.g. KG chunk injection).
-    state["db"] = db
-
     multimodal_meta, image_meta = _inject_query_image_context(
         state=state,
         db=db,
@@ -667,7 +664,11 @@ async def retrieve_preview(
     state["image_meta"] = image_meta
 
     offload_metrics: dict[str, Any] = {}
-    result = await run_blocking_retrieval_call(run_retrieval, state, runtime_metrics=offload_metrics) or {}
+    result = await run_blocking_retrieval_call_with_managed_session(
+        lambda worker_db: run_retrieval({**state, "db": worker_db}),
+        request_db=db,
+        runtime_metrics=offload_metrics,
+    ) or {}
     citations = result.get("citations") or []
     metrics = result.get("metrics") or {}
     query_for_retrieval = (result.get("query_for_retrieval") or body.query or "").strip()
@@ -1112,9 +1113,6 @@ async def retrieve_evidence(
         except Exception as exc:
             # Best-effort only: seed must never break requests.
             logger.debug("Ignoring invalid retrieval preview seed %r: %s", body.seed, exc)
-    # Best-effort: allow retrieval-only orchestrator to load extra evidence from DB (e.g. KG chunk injection).
-    state["db"] = db
-
     # Optional: multi-modal routing (image/table/text).
     #
     # This endpoint is "retrieval-only" (no answer generation), so we keep routing deterministic:
@@ -1137,9 +1135,9 @@ async def retrieve_evidence(
     state["image_meta"] = image_meta
 
     primary_offload_metrics: dict[str, Any] = {}
-    primary = await run_blocking_retrieval_call(
-        run_retrieval,
-        state,
+    primary = await run_blocking_retrieval_call_with_managed_session(
+        lambda worker_db: run_retrieval({**state, "db": worker_db}),
+        request_db=db,
         runtime_metrics=primary_offload_metrics,
     ) or {}
     citations = primary.get("citations") or []
@@ -1211,9 +1209,9 @@ async def retrieve_evidence(
         fallback_state["score_threshold"] = 0.0
 
         fallback_offload_metrics: dict[str, Any] = {}
-        fallback = await run_blocking_retrieval_call(
-            run_retrieval,
-            fallback_state,
+        fallback = await run_blocking_retrieval_call_with_managed_session(
+            lambda worker_db: run_retrieval({**fallback_state, "db": worker_db}),
+            request_db=db,
             runtime_metrics=fallback_offload_metrics,
         ) or {}
         f_citations = fallback.get("citations") or []
@@ -1573,13 +1571,10 @@ async def prompt_preview(
         ab_user_key=account_id,
         db=db,
     )
-    # Best-effort: allow retrieval-only orchestrator to load extra evidence from DB (e.g. KG chunk injection).
-    state["db"] = db
-
     offload_metrics: dict[str, Any] = {}
-    retrieved = await run_blocking_retrieval_call(
-        run_retrieval,
-        state,
+    retrieved = await run_blocking_retrieval_call_with_managed_session(
+        lambda worker_db: run_retrieval({**state, "db": worker_db}),
+        request_db=db,
         runtime_metrics=offload_metrics,
     ) or {}
     citations = retrieved.get("citations") or []

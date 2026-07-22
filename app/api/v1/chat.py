@@ -4,6 +4,7 @@ Chat API.
 import asyncio
 import contextlib
 import uuid
+from dataclasses import replace
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -62,7 +63,10 @@ from app.services.chat_persistence import (
 from app.services.chat_persistence import (
     finalize_chat_response_sync as _finalize_chat_response_sync,
 )
-from app.services.chat_response_cache import reject_inflight_chat_response
+from app.services.chat_response_cache import (
+    InflightResponseLeaderCancelledError,
+    reject_inflight_chat_response,
+)
 from app.services.chat_runtime import (
     ChatCacheLookupInput as _ChatCacheLookupInput,
 )
@@ -98,7 +102,10 @@ from app.services.chat_turn_persistence import (
 )
 from app.services.metrics_logger import set_metrics_context
 from app.services.quota_service import check_chat_assistant_token_quota
-from app.services.rag_runtime_limiter import run_blocking_retrieval_call
+from app.services.rag_runtime_limiter import (
+    run_blocking_call_with_managed_session,
+    run_blocking_retrieval_call_with_managed_session,
+)
 
 logger = get_logger("api.chat")
 
@@ -106,6 +113,32 @@ _BACKGROUND_TASKS: set[asyncio.Task[Any]] = set()
 
 ChatCacheLookupInput = _ChatCacheLookupInput
 _prepare_chat_cache_lookup = _prepare_chat_cache_lookup_impl
+
+
+async def _offload_extractive_fallback(
+    *,
+    request_db: Session,
+    runtime_metrics: dict[str, Any],
+    **kwargs: Any,
+) -> Any:
+    return await run_blocking_retrieval_call_with_managed_session(
+        lambda worker_db: _execute_extractive_fallback_once(db=worker_db, **kwargs),
+        request_db=request_db,
+        runtime_metrics=runtime_metrics,
+    )
+
+
+async def _offload_graph_chat(
+    *,
+    request_db: Session,
+    context: _ChatExecutionContext,
+) -> Any:
+    return await run_blocking_call_with_managed_session(
+        lambda worker_db: _execute_graph_chat_once(
+            context=replace(context, db=worker_db),
+        ),
+        request_db=request_db,
+    )
 
 
 def _spawn_background_task(coro: Any) -> None:
@@ -292,9 +325,8 @@ async def chat(
     try:
         if not cache_hit and not singleflight_hit:
             if getattr(effective_rag_config, "answer_mode", "llm") == "extractive":
-                chat_result = await run_blocking_retrieval_call(
-                    _execute_extractive_fallback_once,
-                    db=db,
+                chat_result = await _offload_extractive_fallback(
+                    request_db=db,
                     tenant_id=tenant_id,
                     account_id=account_id,
                     request=request,
@@ -307,9 +339,8 @@ async def chat(
                     runtime_metrics=offload_metrics,
                 )
             elif _is_model_provider_unavailable_circuit_open():
-                chat_result = await run_blocking_retrieval_call(
-                    _execute_extractive_fallback_once,
-                    db=db,
+                chat_result = await _offload_extractive_fallback(
+                    request_db=db,
                     tenant_id=tenant_id,
                     account_id=account_id,
                     request=request,
@@ -324,9 +355,8 @@ async def chat(
             else:
                 provider_available, provider_error = await _preflight_model_provider_fast()
                 if not provider_available:
-                    chat_result = await run_blocking_retrieval_call(
-                        _execute_extractive_fallback_once,
-                        db=db,
+                    chat_result = await _offload_extractive_fallback(
+                        request_db=db,
                         tenant_id=tenant_id,
                         account_id=account_id,
                         request=request,
@@ -367,10 +397,9 @@ async def chat(
                             rag_config_template_meta=rag_config_template_meta,
                         )
                         if effective_rag_config.use_graph:
-                            chat_result = await run_blocking_retrieval_call(
-                                _execute_graph_chat_once,
+                            chat_result = await _offload_graph_chat(
+                                request_db=db,
                                 context=execution_context,
-                                runtime_metrics=offload_metrics,
                             )
                         else:
                             from app.rag.engine import get_rag_engine
@@ -384,9 +413,8 @@ async def chat(
                         if not _is_model_provider_unavailable_error(exc):
                             raise
                         _mark_model_provider_unavailable()
-                        chat_result = await run_blocking_retrieval_call(
-                            _execute_extractive_fallback_once,
-                            db=db,
+                        chat_result = await _offload_extractive_fallback(
+                            request_db=db,
                             tenant_id=tenant_id,
                             account_id=account_id,
                             request=request,
@@ -473,6 +501,13 @@ async def chat(
             ),
         )
 
+    except asyncio.CancelledError:
+        if singleflight_key and singleflight_leader:
+            reject_inflight_chat_response(
+                singleflight_key,
+                InflightResponseLeaderCancelledError("singleflight leader request cancelled"),
+            )
+        raise
     except Exception as exc:  # noqa: BLE001
         if singleflight_key and singleflight_leader:
             reject_inflight_chat_response(singleflight_key, exc)

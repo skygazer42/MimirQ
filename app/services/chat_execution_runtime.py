@@ -878,6 +878,8 @@ def execute_graph_chat_once(
     state["tag_meta"] = tag_meta
     state["image_meta"] = image_meta
     state["multimodal_router"] = multimodal_meta
+    state.pop("db", None)
+    db.rollback()
 
     recursion_limit = max(1, int(getattr(settings, "LANGGRAPH_RECURSION_LIMIT", 25) or 25))
     config = {"configurable": {"thread_id": thread_id}, "recursion_limit": recursion_limit}

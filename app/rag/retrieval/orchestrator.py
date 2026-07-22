@@ -3208,10 +3208,13 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             docs_by_query.append(docs_i or [])
     else:
         with concurrent.futures.ThreadPoolExecutor(max_workers=retrieval_parallelism) as pool:
-            futures = [pool.submit(_invoke_with_timing, kind, q, r) for kind, q, r in retrieval_plan]
-            for fut in futures:
+            futures = [
+                (q, pool.submit(_invoke_with_timing, kind, q, r))
+                for kind, q, r in retrieval_plan
+            ]
+            for query, fut in futures:
                 kind, docs_i, err, elapsed_i, dbg = fut.result()
-                retrieval_per_query.append({"kind": kind, "query_chars": len(q or ""), "elapsed_sec": round(elapsed_i, 3), "ok": err is None, "retriever_debug": dbg})
+                retrieval_per_query.append({"kind": kind, "query_chars": len(query or ""), "elapsed_sec": round(elapsed_i, 3), "ok": err is None, "retriever_debug": dbg})
                 if err:
                     retrieval_errors.append(f"{kind}:{err[:160]}")
                 docs_by_query_kinds.append(kind)

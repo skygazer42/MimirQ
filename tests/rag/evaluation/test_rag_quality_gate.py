@@ -187,7 +187,7 @@ def test_rag_quality_gate_workflow_exists() -> None:
     assert text.count("data/sample/retrieval_fixture_v1.json") >= 2
     assert "artifacts/answer_quality.summary.json" in text
     assert "artifacts/rag_quality_gate.report.json" in text
-    assert "actions/upload-artifact@v4" in text
+    assert "uses: actions/upload-artifact@" in text
     assert f"--out-dir {artifact_root}" in text
     assert f"--input {artifact_root}/summary.json" in text
     assert f"--out {artifact_root}/gate.json" in text

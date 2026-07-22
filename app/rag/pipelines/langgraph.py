@@ -6,7 +6,7 @@ This module is the canonical home for the non-streaming LangGraph-based runner.
 
 Refactored to use LangGraph 1.0+ Functional API with @entrypoint and @task decorators.
 """
-import concurrent.futures
+import contextlib
 import hashlib
 import json
 import time
@@ -24,10 +24,11 @@ from langgraph.config import get_stream_writer
 # LangGraph 1.0+ Functional API imports
 from langgraph.func import entrypoint, task
 from langgraph.graph import END, StateGraph
-from langgraph.runtime import Runtime
+from langgraph.runtime import Runtime, get_runtime
 from langgraph.types import CachePolicy, RetryPolicy
 
 from app.core.config import settings
+from app.core.database import SessionLocal
 from app.core.pii_redaction import pii_redaction_enabled, redact_text
 from app.core.token_utils import num_tokens_from_string, truncate
 from app.rag.checkpointer.factory import get_checkpointer
@@ -60,6 +61,7 @@ from app.rag.llm.structured_output import (
 from app.rag.retrieval.source_labels import maybe_build_source_identification_answer
 from app.rag.store.factory import get_langgraph_store
 from app.services.prompt_resolver import resolve_prompt_template
+from app.services.rag_runtime_limiter import run_blocking_retrieval_call_sync
 
 logger = get_logger("rag.pipelines.langgraph")
 
@@ -75,6 +77,7 @@ class RAGRuntimeContext:
     tenant_id: str | None = None
     account_id: str | None = None
     user_role: str | None = None
+    cancel_event: Any | None = None
 
 
 class RAGState(TypedDict, total=False):
@@ -378,18 +381,12 @@ def _build_history_text(history: list[dict[str, str]] | None) -> str:
 
 
 def _run_with_retry(node_name: str, func, state: RAGState) -> RAGState:
-    """Node-level retry + timeout (seconds)."""
-    timeout = max(settings.RAG_GRAPH_TIMEOUT_SEC, 0) or None
+    """Collect node attempt metrics; LangGraph owns retry policy."""
     metrics = dict(state.get("metrics") or {})
     attempts = int(metrics.get(f"{node_name}_attempts", 0) or 0) + 1
 
     try:
-        if timeout:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                fut = pool.submit(func, state)
-                result = fut.result(timeout=timeout)
-        else:
-            result = func(state)
+        result = func(state)
 
         merged = dict(metrics)
         merged.update(result.get("metrics") or {})
@@ -408,7 +405,28 @@ def _run_with_retry(node_name: str, func, state: RAGState) -> RAGState:
 def _retrieve_node(state: RAGState) -> RAGState:
     from app.rag.retrieval.orchestrator import run_retrieval
 
-    return run_retrieval(dict(state))  # type: ignore[return-value]
+    cancel_event = None
+    with contextlib.suppress(RuntimeError):
+        runtime = get_runtime(RAGRuntimeContext)
+        cancel_event = getattr(getattr(runtime, "context", None), "cancel_event", None)
+
+    def retrieve_with_session() -> RAGState:
+        db = SessionLocal()
+        try:
+            retrieval_state = dict(state)
+            retrieval_state["db"] = db
+            result = dict(run_retrieval(retrieval_state))
+            result.pop("db", None)
+            return cast(RAGState, result)
+        finally:
+            with contextlib.suppress(Exception):
+                db.rollback()
+            db.close()
+
+    return run_blocking_retrieval_call_sync(  # type: ignore[return-value]
+        retrieve_with_session,
+        cancel_event=cancel_event,
+    )
 
 
 def _generate_node(state: RAGState) -> RAGState:
@@ -1250,6 +1268,8 @@ def run_rag_workflow_functional(
     Returns:
         Execution result state
     """
+    state = dict(state)
+    state.pop("db", None)
     recursion_limit = max(1, int(getattr(settings, "LANGGRAPH_RECURSION_LIMIT", 25) or 25))
     config: dict[str, Any] = {
         "configurable": {"thread_id": thread_id or f"rag-{uuid4()}"},
@@ -1819,6 +1839,7 @@ def stream_rag_graph(
     Yields:
         Dict[str, Any]: State updates for each step
     """
+    kwargs.pop("db", None)
     state = {
         "question": question,
         "history": history or [],

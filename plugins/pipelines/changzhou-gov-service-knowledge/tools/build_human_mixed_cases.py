@@ -402,14 +402,17 @@ def _has_all(fields: set[str], *wanted: str) -> bool:
 
 def _human_question(case: dict[str, Any], *, variant_index: int = 0) -> str:
     title = _case_title(case)
-    fields = set(_subquestion_ids(case))
+    field_names = _subquestion_ids(case)
+    fields = set(field_names)
+    field_text = "、".join(field_names[:3]) if field_names else "关键信息"
     case_type = _case_type(case)
 
     if case_type == "one_thing_guide_composite":
+        field_text = "、".join(field_names) if field_names else "关键信息"
         templates = (
-            "我想走「{title}」，它包含哪些事项、主要材料要准备什么，线上或线下从哪里办？",
-            "「{title}」如果要办，先帮我看下涉及事项、材料和办理入口/电话。",
-            "准备办「{title}」，我需要先了解包含哪些事、要交什么材料，以及从哪个入口/渠道办。",
+            "我想走「{title}」，先帮我梳理{field_text}。",
+            "「{title}」申请前，{field_text}分别是什么？",
+            "准备办「{title}」，我需要先了解{field_text}。",
         )
     elif is_qa_like_case(case) and case_type.startswith("qa"):
         templates = (
@@ -431,7 +434,6 @@ def _human_question(case: dict[str, Any], *, variant_index: int = 0) -> str:
             "办「{title}」前先确认一下受理条件、承诺时限和咨询方式。",
         )
     else:
-        field_text = "、".join(fields[:3]) if fields else "关键信息"
         templates = (
             "我想了解「{title}」，{field_text}这些信息能帮我一起看下吗？",
             "「{title}」办理前我需要确认{field_text}，麻烦按实际材料说。",
@@ -439,7 +441,7 @@ def _human_question(case: dict[str, Any], *, variant_index: int = 0) -> str:
         )
         return _pick(templates, case, variant_index).format(title=title, field_text=field_text)
 
-    return _pick(templates, case, variant_index).format(title=title)
+    return _pick(templates, case, variant_index).format(title=title, field_text=field_text)
 
 
 def _normalize_one_thing_case(case: dict[str, Any]) -> None:

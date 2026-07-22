@@ -23,7 +23,7 @@ from app.rag.pipelines.langgraph import build_rag_state
 from app.rag.retrieval.orchestrator import run_retrieval
 from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids
-from app.services.rag_runtime_limiter import run_blocking_retrieval_call
+from app.services.rag_runtime_limiter import run_blocking_retrieval_call_with_managed_session
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -193,12 +193,11 @@ async def explain_retrieval(
         reranker_top_n=effective_rag_config.reranker_top_n,
         metadata_filter=effective_rag_config.metadata_filter,
         visible_evidence_only=effective_rag_config.visible_evidence_only,
-        db=db,
     )
     offload_metrics: dict[str, Any] = {}
-    out = await run_blocking_retrieval_call(
-        run_retrieval,
-        state,
+    out = await run_blocking_retrieval_call_with_managed_session(
+        lambda worker_db: run_retrieval({**state, "db": worker_db}),
+        request_db=db,
         runtime_metrics=offload_metrics,
     )
 

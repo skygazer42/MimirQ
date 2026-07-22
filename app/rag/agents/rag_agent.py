@@ -21,7 +21,7 @@ from app.rag.retrieval.orchestrator import run_retrieval
 from app.rag.workflows.crag_streaming import run_crag_streaming
 from app.rag.workflows.critic import run_critic_review
 from app.rag.workflows.self_rag import run_self_rag_reflection
-from app.services.rag_runtime_limiter import run_blocking_retrieval_call
+from app.services.rag_runtime_limiter import run_blocking_retrieval_call_with_managed_session
 
 if TYPE_CHECKING:
     from app.rag.engine import RAGEngine
@@ -555,7 +555,10 @@ class AgenticRAGRunner:
             round_state = dict(base_state)
             round_state["question"] = retrieval_query
             round_started = time.time()
-            result = await run_blocking_retrieval_call(run_retrieval, round_state)
+            result = await run_blocking_retrieval_call_with_managed_session(
+                lambda worker_db: run_retrieval({**round_state, "db": worker_db}),
+                request_db=db,
+            )
             retrieval_elapsed_total += time.time() - round_started
             rounds_executed = round_idx
             final_result = result
