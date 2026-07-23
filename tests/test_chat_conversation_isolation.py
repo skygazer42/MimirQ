@@ -189,7 +189,7 @@ def test_ensure_conversation_access_fails_closed_for_ownerless_rows() -> None:
     assert exc_info.value.status_code == 403
 
 
-def test_ensure_conversation_access_backfills_owner_from_legacy_user_id() -> None:
+def test_ensure_conversation_access_accepts_matching_legacy_user_id_without_writing() -> None:
     import app.services.chat_conversation_access as conversation_access
 
     tenant_id = uuid4()
@@ -434,7 +434,7 @@ async def test_list_conversations_hides_revoked_dataset_scope(
 
 
 @pytest.mark.asyncio
-async def test_list_conversations_includes_safe_ownerless_legacy_row(
+async def test_list_conversations_keeps_unmigrated_legacy_row_fail_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import app.api.v1.chat_conversations as conversations_api

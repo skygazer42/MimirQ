@@ -17,9 +17,11 @@ from app.services.feedback_service import FeedbackService
 
 
 class _FakeQuery:
-    def __init__(self, items, *, model=None):  # noqa: ANN001
+    def __init__(self, items, *, model=None, related_rows=None):  # noqa: ANN001
         self._items = list(items or [])
         self._model = model
+        self._related_rows = related_rows or {}
+        self._joined_conversations = {}
         self._limit = None
 
     def filter(self, *args, **kwargs):  # noqa: ANN001,D401
@@ -35,6 +37,18 @@ class _FakeQuery:
             value = getattr(getattr(cond, "right", None), "value", None)
             op_name = getattr(getattr(cond, "operator", None), "__name__", "")
             if not key:
+                continue
+            if self._model is MessageFeedback and key == "owner_account_id":
+                items = [
+                    row
+                    for row in items
+                    if getattr(
+                        self._joined_conversations.get((row.tenant_id, row.conversation_id)),
+                        "owner_account_id",
+                        None,
+                    )
+                    == value
+                ]
                 continue
             if op_name == "eq":
                 items = [row for row in items if getattr(row, key, None) == value]
@@ -86,6 +100,19 @@ class _FakeQuery:
     def with_for_update(self):  # noqa: D401
         return self
 
+    def join(self, model, *_args, **_kwargs):  # noqa: ANN001,D401
+        if self._model is MessageFeedback and model is Conversation:
+            self._joined_conversations = {
+                (row.tenant_id, row.id): row
+                for row in self._related_rows.get(Conversation, [])
+            }
+            self._items = [
+                row
+                for row in self._items
+                if (row.tenant_id, row.conversation_id) in self._joined_conversations
+            ]
+        return self
+
 
 class _FakeDB:
     def __init__(self, *, feedback_rows, messages, conversations):  # noqa: ANN001
@@ -96,7 +123,7 @@ class _FakeDB:
         }
 
     def query(self, model):  # noqa: ANN001
-        return _FakeQuery(self._rows.get(model, []), model=model)
+        return _FakeQuery(self._rows.get(model, []), model=model, related_rows=self._rows)
 
     def add(self, obj):  # noqa: ANN001
         if getattr(obj, "id", None) is None:
@@ -471,15 +498,13 @@ def test_list_message_feedback_enriched_filters_sorts_and_truncates() -> None:
         ensure_member_fn=lambda *_args, **_kwargs: None,
     )
 
-    assert listed["total"] == 2
-    assert [row.id for row in listed["items"]] == [feedback_orphan.id, feedback_old.id]
-    assert enriched["total"] == 2
-    assert [row.id for row in enriched["items"]] == [feedback_orphan.id, feedback_old.id]
-    assert enriched["items"][0].conversation_title is None
-    assert enriched["items"][0].message_content is None
-    assert enriched["items"][1].conversation_title == "Conversation A"
-    assert enriched["items"][1].message_created_at == assistant_a.created_at
-    assert len(enriched["items"][1].message_content or "") == 4000
+    assert listed["total"] == 1
+    assert [row.id for row in listed["items"]] == [feedback_old.id]
+    assert enriched["total"] == 1
+    assert [row.id for row in enriched["items"]] == [feedback_old.id]
+    assert enriched["items"][0].conversation_title == "Conversation A"
+    assert enriched["items"][0].message_created_at == assistant_a.created_at
+    assert len(enriched["items"][0].message_content or "") == 4000
     assert all(row.id != feedback_new.id for row in listed["items"])
 
 

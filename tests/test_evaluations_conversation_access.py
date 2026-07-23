@@ -213,7 +213,7 @@ async def test_create_ragas_run_rejects_cross_account_conversation(
 
 
 @pytest.mark.asyncio
-async def test_list_ragas_runs_hides_other_accounts_conversation_runs_but_keeps_global_runs(
+async def test_list_ragas_runs_is_scoped_to_creator_account(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import app.api.v1.evaluations as evaluations_api
@@ -248,8 +248,8 @@ async def test_list_ragas_runs_hides_other_accounts_conversation_runs_but_keeps_
         db=db,
     )
 
-    assert response["total"] == 2
-    assert [item.id for item in response["items"]] == [global_run.id, my_run.id]
+    assert response["total"] == 1
+    assert [item.id for item in response["items"]] == [my_run.id]
 
 
 @pytest.mark.asyncio
@@ -301,7 +301,7 @@ async def test_get_ragas_run_rejects_cross_account_conversation_run(
             db=db,
         )
 
-    assert exc_info.value.status_code == 403
+    assert exc_info.value.status_code == 404
 
 
 @pytest.mark.asyncio

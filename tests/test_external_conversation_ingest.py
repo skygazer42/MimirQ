@@ -50,6 +50,8 @@ def _matches(row: object, expr) -> bool:  # noqa: ANN001
         return True
     if operator == "eq":
         return getattr(row, key, None) == _criterion_value(expr)
+    if operator == "in_op":
+        return getattr(row, key, None) in set(_criterion_value(expr) or [])
     return True
 
 
@@ -410,7 +412,7 @@ def test_find_conversation_by_external_id_is_scoped_to_owner(monkeypatch) -> Non
     assert found is conversation_b
 
 
-def test_existing_source_message_ids_are_scoped_to_owner(monkeypatch) -> None:  # noqa: ANN001
+def test_existing_source_message_ids_are_scoped_to_conversation(monkeypatch) -> None:  # noqa: ANN001
     import app.services.external_conversation_ingest as ingest
 
     monkeypatch.setattr(ingest, "_metadata_text_field", lambda field: _FieldRef(field), raising=True)
@@ -440,7 +442,7 @@ def test_existing_source_message_ids_are_scoped_to_owner(monkeypatch) -> None:  
     existing = _existing_source_message_ids(
         db,
         tenant_id=tenant_id,
-        account_id="acct-1",
+        conversation_id=conversation_a.id,
         source="coze",
         source_conversation_id="shared-conv",
         source_message_ids=["m-shared", "m-other-owner"],
