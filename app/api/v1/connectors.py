@@ -419,32 +419,6 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def _build_retry_failed_run_config(
-    *,
-    connector_id: str,
-    base_cfg: dict[str, Any],
-    failed_urls: list[str],
-) -> tuple[str, dict[str, Any]]:
-    if connector_id == "url_batch":
-        new_cfg = dict(base_cfg)
-        new_cfg["urls"] = failed_urls
-        return "url_batch", new_cfg
-
-    if connector_id == "web_crawl":
-        new_cfg: dict[str, Any] = {"urls": failed_urls}
-        for key in ("filename", "user_agent", "auth", "parser_backend", "chunk_strategy", "pipeline", "access"):
-            if key in base_cfg:
-                new_cfg[key] = base_cfg.get(key)
-        return "url_batch", new_cfg
-
-    raise HTTPException(status_code=400, detail=UNSUPPORTED_CONNECTOR_ID_DETAIL)
-
-
-def _connector_run_has_abortable_task(*, task_queue_enabled: bool, task_id: object) -> bool:
-    return bool(task_queue_enabled and isinstance(task_id, str) and task_id)
-
-
-
 async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
     connectors_web_crawl._leader_module = _THIS_MODULE
     return await connectors_web_crawl._execute_web_crawl_run(

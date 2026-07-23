@@ -105,7 +105,6 @@ async def stream_graph_chat_events(
     context: ChatExecutionContext,
     result_holder: dict[str, Any],
 ) -> AsyncIterator[dict[str, Any]]:
-    from app.rag.core.text import parse_json_from_text
     from app.rag.pipelines.langgraph import build_rag_state, rag_workflow
 
     db = context.db
