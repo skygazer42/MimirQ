@@ -2458,6 +2458,10 @@ class Settings(BaseSettings):
                         raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_API_KEYS sha256 digest must be 64 hex chars")
 
             tenant_raw = str(getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", "") or "").strip()
+            if is_production and not tenant_raw:
+                raise ValueError(
+                    "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID is required when DIFY_EXTERNAL_KNOWLEDGE_ENABLED=true in production"
+                )
             if tenant_raw:
                 try:
                     UUID(tenant_raw)

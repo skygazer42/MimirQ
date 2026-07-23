@@ -3,11 +3,12 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from alembic.config import Config
-from alembic.script import ScriptDirectory
 from fastapi import HTTPException
 
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from app.models.chat import Conversation
+from app.models.tenant import TenantMember
 
 
 def _criterion_value(expr):  # noqa: ANN001
@@ -16,10 +17,18 @@ def _criterion_value(expr):  # noqa: ANN001
         return right.value
     if hasattr(right, "effective_value"):
         return right.effective_value
-    return None
+    return right
 
 
 def _matches(row: object, expr) -> bool:  # noqa: ANN001
+    if isinstance(expr, tuple) and expr[0] == "or":
+        return any(_matches(row, clause) for clause in expr[1])
+
+    clauses = getattr(expr, "clauses", None)
+    operator_name = getattr(getattr(expr, "operator", None), "__name__", "")
+    if clauses is not None and operator_name == "or_":
+        return any(_matches(row, clause) for clause in clauses)
+
     operator = getattr(getattr(expr, "operator", None), "__name__", "")
     left = getattr(expr, "left", None)
     key = getattr(left, "key", None)
@@ -27,6 +36,8 @@ def _matches(row: object, expr) -> bool:  # noqa: ANN001
         return True
     if operator == "eq":
         return getattr(row, key, None) == _criterion_value(expr)
+    if operator == "is_":
+        return getattr(row, key, None) is None
     return True
 
 
@@ -58,6 +69,15 @@ class _FakeQuery:
     def subquery(self):
         return SimpleNamespace(c=SimpleNamespace(id="id", rn="rn"))
 
+    def update(self, values, synchronize_session=False):  # noqa: ANN001
+        del synchronize_session
+        rows = self._filtered()
+        for row in rows:
+            for key, value in values.items():
+                attr = getattr(key, "key", key)
+                setattr(row, attr, value)
+        return len(rows)
+
     def _filtered(self) -> list[object]:
         rows = list(self._rows)
         for expr in self._filters:
@@ -81,8 +101,14 @@ class _FakeQuery:
 
 
 class _FakeDB:
-    def __init__(self, *, conversations: list[Conversation] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        conversations: list[Conversation] | None = None,
+        tenant_members: list[TenantMember] | None = None,
+    ) -> None:
         self.conversations = list(conversations or [])
+        self.tenant_members = list(tenant_members or [])
         self.added: list[object] = []
         self.deleted: list[object] = []
         self.commits = 0
@@ -91,6 +117,8 @@ class _FakeDB:
         first = entities[0] if entities else None
         if first is Conversation:
             return _FakeQuery(list(self.conversations))
+        if first is TenantMember:
+            return _FakeQuery(list(self.tenant_members))
         return _FakeQuery([])
 
     def add(self, value: object) -> None:
@@ -140,17 +168,83 @@ async def test_create_conversation_sets_owner_account_id(monkeypatch: pytest.Mon
 def test_ensure_conversation_access_fails_closed_for_ownerless_rows() -> None:
     import app.services.chat_conversation_access as conversation_access
 
-    conversation = Conversation(id=uuid4(), tenant_id=uuid4(), owner_account_id=None, document_ids=[])
+    tenant_id = uuid4()
+    conversation = Conversation(id=uuid4(), tenant_id=tenant_id, owner_account_id=None, document_ids=[])
+    db = _FakeDB(
+        conversations=[conversation],
+        tenant_members=[
+            TenantMember(tenant_id=tenant_id, user_id="acct-1", is_active=True, is_current=True),
+            TenantMember(tenant_id=tenant_id, user_id="acct-2", is_active=True, is_current=True),
+        ],
+    )
 
     with pytest.raises(HTTPException) as exc_info:
         conversation_access.ensure_conversation_access(
-            db=object(),
-            tenant_id=conversation.tenant_id,
+            db=db,
+            tenant_id=tenant_id,
             account_id="acct-1",
             conv=conversation,
         )
 
     assert exc_info.value.status_code == 403
+
+
+def test_ensure_conversation_access_backfills_owner_from_legacy_user_id() -> None:
+    import app.services.chat_conversation_access as conversation_access
+
+    tenant_id = uuid4()
+    legacy_user_id = uuid4()
+    conversation = Conversation(
+        id=uuid4(),
+        tenant_id=tenant_id,
+        user_id=legacy_user_id,
+        owner_account_id=None,
+        document_ids=[],
+    )
+    db = _FakeDB(conversations=[conversation])
+
+    allowed = conversation_access.ensure_conversation_access(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=str(legacy_user_id),
+        conv=conversation,
+    )
+
+    assert allowed == []
+    assert conversation.owner_account_id is None
+    assert db.commits == 0
+
+
+def test_ensure_conversation_access_fails_closed_for_ownerless_row_with_single_effective_member() -> None:
+    import app.services.chat_conversation_access as conversation_access
+
+    tenant_id = uuid4()
+    conversation = Conversation(
+        id=uuid4(),
+        tenant_id=tenant_id,
+        owner_account_id=None,
+        document_ids=[],
+    )
+    db = _FakeDB(
+        conversations=[conversation],
+        tenant_members=[
+            TenantMember(tenant_id=tenant_id, user_id="acct-1", is_active=True, is_current=True),
+            TenantMember(tenant_id=tenant_id, user_id="acct-1", is_active=True, is_current=False),
+            TenantMember(tenant_id=tenant_id, user_id="acct-2", is_active=False, is_current=True),
+        ],
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        conversation_access.ensure_conversation_access(
+            db=db,
+            tenant_id=tenant_id,
+            account_id="acct-1",
+            conv=conversation,
+        )
+
+    assert exc_info.value.status_code == 403
+    assert conversation.owner_account_id is None
+    assert db.commits == 0
 
 
 def test_ensure_conversation_access_rechecks_dataset_scope_readability(
@@ -334,6 +428,40 @@ async def test_list_conversations_hides_revoked_dataset_scope(
     )
 
     assert [item["id"] for item in response["items"]] == [allowed.id]
+    assert response["total"] == 1
+    assert response["returned"] == 1
+    assert response["next_skip"] is None
+
+
+@pytest.mark.asyncio
+async def test_list_conversations_includes_safe_ownerless_legacy_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.chat_conversations as conversations_api
+
+    tenant_id = uuid4()
+    legacy_user_id = uuid4()
+    legacy = Conversation(
+        id=uuid4(),
+        tenant_id=tenant_id,
+        user_id=legacy_user_id,
+        owner_account_id=None,
+        title="Legacy",
+        document_ids=[],
+        message_count=1,
+    )
+    db = _FakeDB(conversations=[legacy])
+    monkeypatch.setattr(conversations_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+
+    response = await conversations_api.list_conversations(
+        tenant_id=tenant_id,
+        account_id=str(legacy_user_id),
+        db=db,
+    )
+
+    assert response["total"] == 0
+    assert response["items"] == []
+    assert legacy.owner_account_id is None
 
 
 def test_resolve_chat_conversation_scope_sets_owner_for_new_conversation() -> None:
@@ -396,10 +524,13 @@ def test_resolve_chat_conversation_scope_rejects_cross_account_continuation() ->
 def test_conversation_owner_runtime_migration_contracts_present() -> None:
     migrations_text = Path("app/core/migrations.py").read_text(encoding="utf-8")
     model_text = Path("app/models/chat.py").read_text(encoding="utf-8")
+    alembic_text = Path("alembic/versions/0021_add_conversation_owner_account_id.py").read_text(encoding="utf-8")
 
     assert "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS owner_account_id VARCHAR(255);" in migrations_text
     assert "UPDATE conversations SET owner_account_id = user_id::text" in migrations_text
     assert "CREATE INDEX IF NOT EXISTS ix_conversations_tenant_owner_account_id " in migrations_text
+    assert "HAVING COUNT(DISTINCT tm.user_id) = 1" not in migrations_text
+    assert "HAVING COUNT(DISTINCT tm.user_id) = 1" not in alembic_text
     assert 'Index("ix_conversations_tenant_owner_account_id", "tenant_id", "owner_account_id")' in model_text
     assert "owner_account_id = Column(String(255), nullable=True, index=True)" not in model_text
 

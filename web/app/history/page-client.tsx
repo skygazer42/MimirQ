@@ -304,6 +304,14 @@ function HistoryPageContent({
     toast.error(formatApiError(conversationsQuery.error, t('loadConversationListFailed')))
   }, [conversationsQuery.error, t])
 
+  useEffect(() => {
+    if (historyView !== 'recent') return
+    const timer = globalThis.window.setInterval(() => {
+      setRecentConversationCutoff(Date.now() - RECENT_CONVERSATION_WINDOW_MS)
+    }, 60_000)
+    return () => globalThis.window.clearInterval(timer)
+  }, [historyView])
+
   const loadMoreConversations = useCallback(async () => {
     if (!hasMoreConversations || isLoadingMoreConversations) return
     try {

@@ -311,6 +311,13 @@ async def preview_feedback_loop_candidates(
     Read-only by design: this endpoint does not write hard negatives, rules, or
     models. Review/promote flows should use the returned candidates explicitly.
     """
+    ensure_tenant_permission(
+        db,
+        tenant_id,
+        account_id,
+        TenantPermissions.FEEDBACK_TRIAGE_WRITE,
+        detail="No permission to review feedback candidates",
+    )
     ruleset_obj = None
     ruleset_name = str(ruleset or "").strip()
     if ruleset_name:
@@ -348,6 +355,13 @@ async def export_feedback_loop_hard_negatives(
     - No realtime insert listener is registered.
     - Exported JSONL is PII-safe and contains lineage ids for audit/review.
     """
+    ensure_tenant_permission(
+        db,
+        tenant_id,
+        account_id,
+        TenantPermissions.FEEDBACK_TRIAGE_WRITE,
+        detail="No permission to export feedback candidates",
+    )
     ruleset_obj = None
     ruleset_name = str(ruleset or "").strip()
     if ruleset_name:

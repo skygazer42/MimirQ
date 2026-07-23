@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import sys
+import threading
 import uuid
 from pathlib import Path
 from types import ModuleType
@@ -60,6 +61,13 @@ def _build_capsule() -> dict:
     }
     payload["capsule_hash"] = stable_json_hash(payload, length=24)
     return payload
+
+
+def _rehash_capsule(payload: dict) -> dict:
+    capsule = dict(payload)
+    capsule.pop("capsule_hash", None)
+    capsule["capsule_hash"] = stable_json_hash(capsule, length=24)
+    return capsule
 
 
 def _load_evidence_capsules_module(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
@@ -126,6 +134,8 @@ def test_capsules_are_bucketed_by_tenant_and_bound_in_payload(tmp_path: Path, mo
     payload_b = json.loads((tmp_path / str(tenant_b) / f"{capsule_id}.json").read_text(encoding="utf-8"))
     assert payload_a["tenant_id"] == str(tenant_a)
     assert payload_b["tenant_id"] == str(tenant_b)
+    assert payload_a["owner_account_id"] == "user-a"
+    assert payload_b["owner_account_id"] == "user-b"
     assert payload_a["capsule_id"] == capsule_id
     assert payload_b["capsule_id"] == capsule_id
     assert payload_a["capsule"] == capsule_a
@@ -153,6 +163,110 @@ def test_capsules_are_bucketed_by_tenant_and_bound_in_payload(tmp_path: Path, mo
         )
 
 
+def test_capsules_are_owner_bound_within_same_tenant_for_get_and_overwrite(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tenant_id = uuid.uuid4()
+    capsule_id = "same-tenant-owner-bound"
+    module = _load_evidence_capsules_module(monkeypatch)
+
+    monkeypatch.setattr(module.settings, "EVIDENCE_CAPSULE_STORE_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(module.settings, "EVIDENCE_CAPSULE_ALLOW_OVERWRITE", True, raising=False)
+    monkeypatch.setattr(module.DatasetService, "ensure_member", staticmethod(lambda db, tenant_id, account_id: object()))
+
+    original = _build_capsule()
+    module.persist_evidence_capsule(
+        module.EvidenceCapsulePersistRequest(capsule=original, capsule_id=capsule_id),
+        tenant_id=tenant_id,
+        account_id="owner-a",
+        db=object(),
+    )
+
+    stored = json.loads((tmp_path / str(tenant_id) / f"{capsule_id}.json").read_text(encoding="utf-8"))
+    assert stored["owner_account_id"] == "owner-a"
+
+    own_read = module.get_evidence_capsule(capsule_id, tenant_id=tenant_id, account_id="owner-a", db=object())
+    assert own_read.capsule == original
+
+    with pytest.raises(HTTPException, match="capsule_not_found"):
+        module.get_evidence_capsule(capsule_id, tenant_id=tenant_id, account_id="owner-b", db=object())
+
+    intruder_capsule = _rehash_capsule({**_build_capsule(), "query_for_retrieval": "intruder overwrite"})
+    with pytest.raises(HTTPException, match="capsule_not_found"):
+        module.persist_evidence_capsule(
+            module.EvidenceCapsulePersistRequest(
+                capsule=intruder_capsule,
+                capsule_id=capsule_id,
+                overwrite=True,
+            ),
+            tenant_id=tenant_id,
+            account_id="owner-b",
+            db=object(),
+        )
+
+    replacement = _rehash_capsule({**_build_capsule(), "query_for_retrieval": "owner overwrite"})
+    overwritten = module.persist_evidence_capsule(
+        module.EvidenceCapsulePersistRequest(
+            capsule=replacement,
+            capsule_id=capsule_id,
+            overwrite=True,
+        ),
+        tenant_id=tenant_id,
+        account_id="owner-a",
+        db=object(),
+    )
+    assert overwritten.overwritten is True
+    got = module.get_evidence_capsule(capsule_id, tenant_id=tenant_id, account_id="owner-a", db=object())
+    assert got.capsule == replacement
+
+
+def test_legacy_global_capsule_file_is_readable_only_when_bound_to_same_tenant_and_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tenant_id = uuid.uuid4()
+    capsule_id = "legacy-bound-capsule-id"
+    module = _load_evidence_capsules_module(monkeypatch)
+    legacy_capsule = _rehash_capsule(
+        {
+            **_build_capsule(),
+            "tenant_id": str(tenant_id),
+            "owner_account_id": "owner-a",
+            "query_for_retrieval": "legacy bound capsule",
+        }
+    )
+    legacy_path = tmp_path / f"{capsule_id}.json"
+    legacy_path.write_text(json.dumps(legacy_capsule), encoding="utf-8")
+
+    monkeypatch.setattr(module.settings, "EVIDENCE_CAPSULE_STORE_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(module.settings, "EVIDENCE_CAPSULE_ALLOW_OVERWRITE", True, raising=False)
+    monkeypatch.setattr(module.DatasetService, "ensure_member", staticmethod(lambda db, tenant_id, account_id: object()))
+
+    matched = module.get_evidence_capsule(capsule_id, tenant_id=tenant_id, account_id="owner-a", db=object())
+    assert matched.capsule == legacy_capsule
+
+    updated = _rehash_capsule({**legacy_capsule, "query_for_retrieval": "legacy migrated overwrite"})
+    response = module.persist_evidence_capsule(
+        module.EvidenceCapsulePersistRequest(
+            capsule=updated,
+            capsule_id=capsule_id,
+            overwrite=True,
+        ),
+        tenant_id=tenant_id,
+        account_id="owner-a",
+        db=object(),
+    )
+    assert response.overwritten is True
+    tenant_scoped_payload = json.loads((tmp_path / str(tenant_id) / f"{capsule_id}.json").read_text(encoding="utf-8"))
+    assert tenant_scoped_payload["tenant_id"] == str(tenant_id)
+    assert tenant_scoped_payload["owner_account_id"] == "owner-a"
+    assert tenant_scoped_payload["capsule"] == updated
+
+    with pytest.raises(HTTPException, match="capsule_not_found"):
+        module.get_evidence_capsule(capsule_id, tenant_id=tenant_id, account_id="owner-b", db=object())
+
+
 def test_legacy_global_capsule_file_is_not_used_as_cross_tenant_fallback(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -170,3 +284,59 @@ def test_legacy_global_capsule_file_is_not_used_as_cross_tenant_fallback(
 
     with pytest.raises(HTTPException, match="capsule_not_found"):
         module.get_evidence_capsule(capsule_id, tenant_id=tenant_id, account_id="user-a", db=object())
+
+
+def test_concurrent_persist_does_not_allow_silent_overwrite(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tenant_id = uuid.uuid4()
+    capsule_id = "concurrent-capsule-id"
+    module = _load_evidence_capsules_module(monkeypatch)
+
+    monkeypatch.setattr(module.settings, "EVIDENCE_CAPSULE_STORE_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(module.settings, "EVIDENCE_CAPSULE_ALLOW_OVERWRITE", False, raising=False)
+    monkeypatch.setattr(module.DatasetService, "ensure_member", staticmethod(lambda db, tenant_id, account_id: object()))
+
+    target_path = tmp_path / str(tenant_id) / f"{capsule_id}.json"
+    original_exists = module.Path.exists
+    exists_barrier = threading.Barrier(2)
+
+    def gated_exists(self: Path) -> bool:
+        if self == target_path:
+            exists_barrier.wait(timeout=2)
+            return False
+        return original_exists(self)
+
+    monkeypatch.setattr(module.Path, "exists", gated_exists)
+
+    capsules = [
+        _rehash_capsule({**_build_capsule(), "query_for_retrieval": "writer-a"}),
+        _rehash_capsule({**_build_capsule(), "query_for_retrieval": "writer-b"}),
+    ]
+    results: list[str] = []
+    errors: list[str] = []
+
+    def persist_capsule(capsule: dict) -> None:
+        try:
+            module.persist_evidence_capsule(
+                module.EvidenceCapsulePersistRequest(capsule=capsule, capsule_id=capsule_id),
+                tenant_id=tenant_id,
+                account_id="owner-a",
+                db=object(),
+            )
+            results.append(str(capsule["query_for_retrieval"]))
+        except HTTPException as exc:
+            errors.append(str(exc.detail))
+
+    threads = [threading.Thread(target=persist_capsule, args=(capsule,)) for capsule in capsules]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert sorted(errors) == ["capsule_exists"]
+    assert len(results) == 1
+
+    stored = json.loads(target_path.read_text(encoding="utf-8"))
+    assert stored["capsule"]["query_for_retrieval"] == results[0]

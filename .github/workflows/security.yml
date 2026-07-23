@@ -32,7 +32,7 @@ jobs:
           docker run --rm \
             -v "$PWD:/repo" \
             -w /repo \
-            trufflesecurity/trufflehog:3.92.4 \
+            trufflesecurity/trufflehog@sha256:c28ab4a11e01d6fcc10776f65cce015bdf9795f2393cffa2ec0a7c8464ee58b6 \
             git file://. --branch HEAD --results=verified --fail --no-update
 
   dependency-audit:

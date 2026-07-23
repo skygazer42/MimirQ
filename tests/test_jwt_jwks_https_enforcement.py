@@ -159,9 +159,51 @@ async def test_oidc_discovery_rejects_non_https_jwks_uri(monkeypatch: pytest.Mon
     monkeypatch.setattr(jwt_verify, "_oidc_cache", {}, raising=False)
 
     async def _fake_fetch(url: str) -> dict:
-        return {"jwks_uri": "http://issuer.example/.well-known/jwks.json"}
+        return {
+            "issuer": "https://issuer.example",
+            "jwks_uri": "http://issuer.example/.well-known/jwks.json",
+        }
 
     monkeypatch.setattr(jwt_verify, "_fetch_oidc_configuration", _fake_fetch)
 
     with pytest.raises(ValueError, match="invalid_oidc_jwks_uri"):
         await jwt_verify._get_oidc_jwks_uri("https://issuer.example")
+
+
+@pytest.mark.asyncio
+async def test_oidc_discovery_rejects_mismatched_issuer(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ENV", raising=False)
+    monkeypatch.setattr(settings := jwt_verify.settings, "JWT_OIDC_DISCOVERY_CACHE_TTL_SEC", 3600, raising=False)
+    monkeypatch.setattr(settings, "JWT_OIDC_DISCOVERY_MAX_STALE_SEC", 0, raising=False)
+    monkeypatch.setattr(jwt_verify, "_oidc_cache", {}, raising=False)
+
+    async def _fake_fetch(url: str) -> dict:
+        return {
+            "issuer": "https://oidc.other.example",
+            "jwks_uri": "https://issuer.example/.well-known/jwks.json",
+        }
+
+    monkeypatch.setattr(jwt_verify, "_fetch_oidc_configuration", _fake_fetch)
+
+    with pytest.raises(ValueError, match="invalid_oidc_issuer_mismatch"):
+        await jwt_verify._get_oidc_jwks_uri("https://issuer.example")
+
+
+@pytest.mark.asyncio
+async def test_oidc_discovery_accepts_normalized_issuer(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ENV", raising=False)
+    monkeypatch.setattr(settings := jwt_verify.settings, "JWT_OIDC_DISCOVERY_CACHE_TTL_SEC", 3600, raising=False)
+    monkeypatch.setattr(settings, "JWT_OIDC_DISCOVERY_MAX_STALE_SEC", 0, raising=False)
+    monkeypatch.setattr(jwt_verify, "_oidc_cache", {}, raising=False)
+
+    async def _fake_fetch(url: str) -> dict:
+        return {
+            "issuer": "https://ISSUER.EXAMPLE",
+            "jwks_uri": "https://issuer.example/.well-known/jwks.json",
+        }
+
+    monkeypatch.setattr(jwt_verify, "_fetch_oidc_configuration", _fake_fetch)
+
+    assert (
+        await jwt_verify._get_oidc_jwks_uri("https://issuer.example/")
+    ) == "https://issuer.example/.well-known/jwks.json"

@@ -74,6 +74,7 @@ from app.rag.evaluation.test_generator import (
     generate_questions_from_documents,
 )
 from app.services.audit_log_service import audit_log_event
+from app.services.chat_conversation_access import ensure_conversation_access
 from app.services.dataset_service import DatasetService
 from app.services.ragas_conversation_readiness import conversation_readiness_items
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
@@ -162,6 +163,54 @@ def _assert_regression_cases_available(
     )
     if exists is None:
         raise HTTPException(status_code=400, detail="No regression cases found for selected dataset")
+
+
+def _load_accessible_conversation(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    conversation_id: UUID,
+    not_found_detail: str,
+) -> Conversation:
+    conversation = (
+        db.query(Conversation)
+        .filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id)
+        .first()
+    )
+    if not conversation:
+        raise HTTPException(status_code=404, detail=not_found_detail)
+    ensure_conversation_access(db, tenant_id, account_id, conversation)
+    return conversation
+
+
+def _accessible_requested_conversation_ids(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    conversation_ids: list[UUID],
+) -> list[UUID]:
+    requested_ids = list(dict.fromkeys(conversation_ids))
+    if not requested_ids:
+        return []
+    conversations = (
+        db.query(Conversation)
+        .filter(
+            Conversation.tenant_id == tenant_id,
+            Conversation.id.in_(requested_ids),
+        )
+        .all()
+    )
+    by_id = {conversation.id: conversation for conversation in conversations}
+    scoped_ids: list[UUID] = []
+    for conversation_id in requested_ids:
+        conversation = by_id.get(conversation_id)
+        if conversation is None:
+            continue
+        ensure_conversation_access(db, tenant_id, account_id, conversation)
+        scoped_ids.append(conversation_id)
+    return scoped_ids
 
 
 def _create_regression_run_and_enqueue(
@@ -477,17 +526,12 @@ async def get_ragas_conversation_readiness(
     """Return citation-backed evaluation readiness for a batch of conversations."""
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    requested_ids = list(dict.fromkeys(request.conversation_ids))
-    existing_ids = {
-        row[0]
-        for row in db.query(Conversation.id)
-        .filter(
-            Conversation.tenant_id == tenant_id,
-            Conversation.id.in_(requested_ids),
-        )
-        .all()
-    }
-    scoped_ids = [conversation_id for conversation_id in requested_ids if conversation_id in existing_ids]
+    scoped_ids = _accessible_requested_conversation_ids(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        conversation_ids=request.conversation_ids,
+    )
     if not scoped_ids:
         return RagasConversationReadinessResponse(total=0, items=[])
 
@@ -516,13 +560,13 @@ async def create_ragas_run(
     """Create a RAGAS evaluation run and execute it in background."""
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    conversation = (
-        db.query(Conversation)
-        .filter(Conversation.id == request.conversation_id, Conversation.tenant_id == tenant_id)
-        .first()
+    _load_accessible_conversation(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        conversation_id=request.conversation_id,
+        not_found_detail="Conversation not found",
     )
-    if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
 
     run = RagasEvaluationRun(
         tenant_id=tenant_id,
@@ -567,18 +611,28 @@ async def list_ragas_runs(
     """List RAGAS evaluation runs for current tenant."""
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    query = db.query(RagasEvaluationRun).filter(RagasEvaluationRun.tenant_id == tenant_id)
+    if conversation_id:
+        _load_accessible_conversation(
+            db=db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            conversation_id=conversation_id,
+            not_found_detail="Conversation not found",
+        )
+
+    query = db.query(RagasEvaluationRun).filter(
+        RagasEvaluationRun.tenant_id == tenant_id,
+        RagasEvaluationRun.account_id == str(account_id or "").strip(),
+    )
     if conversation_id:
         query = query.filter(RagasEvaluationRun.conversation_id == conversation_id)
 
     total = query.count()
-    runs = (
-        query.order_by(RagasEvaluationRun.created_at.desc())
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
-    return {"total": total, "items": runs}
+    runs = query.order_by(RagasEvaluationRun.created_at.desc()).offset(skip).limit(limit).all()
+    return {
+        "total": total,
+        "items": runs,
+    }
 
 
 @router.get("/ragas/runs/{run_id}", response_model=RagasRunDetail, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -596,11 +650,24 @@ async def get_ragas_run(
 
     run = (
         db.query(RagasEvaluationRun)
-        .filter(RagasEvaluationRun.id == run_id, RagasEvaluationRun.tenant_id == tenant_id)
+        .filter(
+            RagasEvaluationRun.id == run_id,
+            RagasEvaluationRun.tenant_id == tenant_id,
+            RagasEvaluationRun.account_id == str(account_id or "").strip(),
+        )
         .first()
     )
     if not run:
         raise HTTPException(status_code=404, detail=_DETAIL_RUN_NOT_FOUND)
+
+    if run.conversation_id is not None:
+        _load_accessible_conversation(
+            db=db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            conversation_id=run.conversation_id,
+            not_found_detail=_DETAIL_RUN_NOT_FOUND,
+        )
 
     items_out = []
     if include_items:
@@ -2191,6 +2258,9 @@ async def generate_test_cases_from_conversations(
             saved_case_ids=saved_case_ids,
         )
 
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
         return TestGenResponse(

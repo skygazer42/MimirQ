@@ -25,6 +25,7 @@ from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.rag.core.http import httpx_trust_env
 from app.rag.core.logging import get_logger
+from app.services.chat_conversation_access import ensure_conversation_access
 from app.services.document_access import filter_allowed_document_ids
 from app.services.prompt_resolver import resolve_prompt_template
 
@@ -552,14 +553,23 @@ def generate_questions_from_conversations(
         )
         .all()
     )
-    
+
     if not conversations:
         return []
-    
+
+    conversation_by_id = {conversation.id: conversation for conversation in conversations}
+    scoped_conversations: list[Conversation] = []
+    for conversation_id in dict.fromkeys(conversation_ids):
+        conversation = conversation_by_id.get(conversation_id)
+        if conversation is None:
+            continue
+        ensure_conversation_access(db, tenant_id, account_id, conversation)
+        scoped_conversations.append(conversation)
+
     # Collect high-quality user questions.
     high_quality_turns: list[tuple[str, str, UUID]] = []
-    
-    for conv in conversations:
+
+    for conv in scoped_conversations:
         messages = (
             db.query(Message)
             .filter(

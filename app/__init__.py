@@ -4,10 +4,12 @@ MimirQ backend application.
 Core backend service for knowledge base management and RAG chat.
 """
 
+import datetime as _datetime
 import os
 import sys
 
 import langchain
+from starlette import status as _starlette_status
 
 
 def _preload_conda_libstdcxx() -> None:
@@ -40,5 +42,19 @@ def _ensure_langchain_legacy_globals() -> None:
 
 _preload_conda_libstdcxx()
 _ensure_langchain_legacy_globals()
+if not hasattr(_datetime, "UTC"):
+    _datetime.UTC = _datetime.timezone.utc  # type: ignore[attr-defined]
+if not hasattr(_starlette_status, "HTTP_413_CONTENT_TOO_LARGE"):
+    _starlette_status.HTTP_413_CONTENT_TOO_LARGE = getattr(  # type: ignore[attr-defined]
+        _starlette_status,
+        "HTTP_413_REQUEST_ENTITY_TOO_LARGE",
+        413,
+    )
+if not hasattr(_starlette_status, "HTTP_422_UNPROCESSABLE_CONTENT"):
+    _starlette_status.HTTP_422_UNPROCESSABLE_CONTENT = getattr(  # type: ignore[attr-defined]
+        _starlette_status,
+        "HTTP_422_UNPROCESSABLE_ENTITY",
+        422,
+    )
 
 __version__ = "1.0.0"

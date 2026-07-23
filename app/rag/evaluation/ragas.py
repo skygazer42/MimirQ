@@ -16,6 +16,7 @@ from typing import Any
 from uuid import UUID
 
 import httpx
+from fastapi import HTTPException
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
@@ -56,6 +57,7 @@ from app.rag.pipeline_plugins.contracts import (
     INDEXED_METADATA_KEY,
     RECORD_IDENTITY_METADATA_KEY,
 )
+from app.services.chat_conversation_access import ensure_conversation_access
 from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, get_allowed_document_id_sets
 from app.services.prompt_resolver import resolve_prompt_template
@@ -1565,6 +1567,15 @@ def run_conversation_ragas_evaluation(
         if not conversation:
             run.status = "failed"
             run.error_message = "Conversation not found"
+            run.finished_at = datetime.now(UTC).replace(tzinfo=None)
+            db.commit()
+            return
+
+        try:
+            ensure_conversation_access(db, tenant_id, account_id, conversation)
+        except HTTPException as exc:
+            run.status = "failed"
+            run.error_message = str(exc.detail)
             run.finished_at = datetime.now(UTC).replace(tzinfo=None)
             db.commit()
             return

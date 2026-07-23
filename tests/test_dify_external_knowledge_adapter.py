@@ -11001,6 +11001,89 @@ def test_dify_retrieval_uses_server_tenant_when_header_attempts_override(
     assert seen_tenant_ids == [configured_tenant_id]
 
 
+def test_dify_retrieval_actor_requires_tenant_id_in_production(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    tenant_id = uuid.uuid4()
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", "dify-test-token", raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", "", raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    monkeypatch.setattr(dify_api, "is_production_env", lambda: True, raising=False)
+    request = SimpleNamespace(headers={})
+
+    with pytest.raises(HTTPException, match="Dify external knowledge tenant is not configured"):
+        dify_api._require_dify_actor(request, authorization="Bearer dify-test-token")
+
+    monkeypatch.setattr(dify_api, "is_production_env", lambda: False, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", "", raising=False)
+
+    actor = dify_api._require_dify_actor(
+        request=SimpleNamespace(headers={"X-Tenant-ID": str(tenant_id)}),
+        authorization="Bearer dify-test-token",
+    )
+    assert actor.tenant_id == tenant_id
+
+
+def test_dify_trace_conversation_id_rejects_access_to_other_account_conversation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    tenant_id = uuid.uuid4()
+    conversation_id = uuid.uuid4()
+    request = SimpleNamespace(headers={"x-mimirq-conversation-id": str(conversation_id)})
+    body = dify_api.DifyExternalKnowledgeRequest(knowledge_id="external-kb", query="query")
+
+    monkeypatch.setattr(
+        dify_api,
+        "_load_dify_trace_conversation",
+        lambda *_args, **_kwargs: SimpleNamespace(id=conversation_id, owner_account_id="other-account"),
+        raising=True,
+    )
+
+    with pytest.raises(HTTPException, match="Conversation is not accessible") as exc_info:
+        dify_api._dify_trace_conversation_id(
+            request=request,
+            body=body,
+            db=object(),
+            tenant_id=tenant_id,
+            account_id="system:dify",
+        )
+
+    assert exc_info.value.status_code == 403
+
+
+def test_dify_trace_conversation_id_accepts_conversation_id_for_same_account(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    tenant_id = uuid.uuid4()
+    conversation_id = uuid.uuid4()
+    request = SimpleNamespace(headers={"x-mimirq-conversation-id": str(conversation_id)})
+    body = dify_api.DifyExternalKnowledgeRequest(knowledge_id="external-kb", query="query")
+
+    monkeypatch.setattr(
+        dify_api,
+        "_load_dify_trace_conversation",
+        lambda *_args, **_kwargs: SimpleNamespace(id=conversation_id, owner_account_id="system:dify"),
+        raising=True,
+    )
+
+    resolved = dify_api._dify_trace_conversation_id(
+        request=request,
+        body=body,
+        db=object(),
+        tenant_id=tenant_id,
+        account_id="system:dify",
+    )
+    assert resolved == conversation_id
+
+
 def test_dify_metadata_anchor_db_fallback_enforces_normal_document_eligibility(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

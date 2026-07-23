@@ -433,6 +433,9 @@ def _build_retrieval_cache_behavior_hash(
     retriever: "HybridRetriever",
     options: HybridSearchOptions,
 ) -> str:
+    option_values = asdict(options)
+    if options.document_ids:
+        option_values["document_ids"] = sorted({str(document_id) for document_id in options.document_ids})
     prefixes = ("BM25_", "COLBERT_", "COLPALI_", "LEXICAL_", "RERANK", "RETRIEVAL_", "SPARSE_")
     runtime = {
         key: value
@@ -440,7 +443,7 @@ def _build_retrieval_cache_behavior_hash(
         if key.startswith(prefixes) or key == "VECTOR_BACKEND"
     }
     return stable_json_hash(
-        {"options": asdict(options), "retriever": retriever.model_dump(mode="json"), "runtime": runtime},
+        {"options": option_values, "retriever": retriever.model_dump(mode="json"), "runtime": runtime},
         length=24,
     )
 

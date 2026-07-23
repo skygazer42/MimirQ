@@ -37,10 +37,16 @@ def test_main_ci_uploads_the_generated_test_inventory() -> None:
 def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     workflow = _read(".github/workflows/ci.yml")
 
+    assert "permissions:\n  contents: read" in workflow
     assert "public-pr-verify:" in workflow
-    assert "python scripts/openapi_check.py" in workflow
-    assert "node web/scripts/check-openapi-coverage.mjs" in workflow
-    assert "node scripts/docs/check_doc_links.mjs" in workflow
+    assert "if: github.event_name == 'pull_request'" in workflow
+    assert "runs-on: ubuntu-latest" in workflow
+    assert "python ci/download_verified_wheels.py --cache-dir \"$TORCH_WHEEL_DIR\"" in workflow
+    assert "make openapi-check" in workflow
+    assert "make test" in workflow
+    assert "make verify" in workflow
+    assert "make test-web" in workflow
+    assert "pnpm run build" in workflow
     for job in (
         "test-and-verify",
         "docker-build",
@@ -66,6 +72,10 @@ def test_pull_request_lint_and_security_jobs_use_hosted_runners() -> None:
 def test_api_docs_workflow_actually_deploys_pages() -> None:
     workflow = _read(".github/workflows/api-docs.yml")
 
+    assert "pull_request:" in workflow
+    assert "\n  build:\n" in workflow
+    assert "runs-on: ubuntu-latest" in workflow
+    assert "make api-docs-build-static" in workflow
     assert "actions/configure-pages@" in workflow
     assert "actions/upload-pages-artifact@" in workflow
     assert "actions/deploy-pages@" in workflow
@@ -74,18 +84,29 @@ def test_api_docs_workflow_actually_deploys_pages() -> None:
 def test_api_docs_pages_actions_are_gated_before_runner_setup() -> None:
     workflow = _read(".github/workflows/api-docs.yml")
 
+    pr_build_job = workflow.split("\n  deploy:\n", 1)[0]
+    assert "actions/configure-pages@" not in pr_build_job
+    assert "actions/upload-pages-artifact@" not in pr_build_job
+    assert "actions/deploy-pages@" not in pr_build_job
+    assert "runs-on: [self-hosted" not in pr_build_job
     assert "\n  publish:\n" in workflow
     build_job, publish_job = workflow.split("\n  publish:\n", 1)
-    assert "\npull_request:\n" not in workflow
-    assert "actions/configure-pages@" not in build_job
-    assert "actions/upload-pages-artifact@" not in build_job
-    assert "actions/deploy-pages@" not in build_job
+    assert "if: github.event_name != 'pull_request'" in build_job
     assert "needs: deploy" in publish_job
     assert "needs.deploy.outputs.pages_enabled == 'true'" in publish_job
     assert "pages: write" not in build_job
     assert "id-token: write" not in build_job
     assert "pages: write" in publish_job
     assert "id-token: write" in publish_job
+
+
+def test_security_workflow_pins_trufflehog_by_digest() -> None:
+    workflow = _read(".github/workflows/security.yml")
+
+    assert (
+        "trufflesecurity/trufflehog@sha256:c28ab4a11e01d6fcc10776f65cce015bdf9795f2393cffa2ec0a7c8464ee58b6"
+        in workflow
+    )
 
 
 def test_fresh_database_migrations_widen_alembic_revision_storage() -> None:

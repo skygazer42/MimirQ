@@ -75,10 +75,11 @@ def _find_conversation_by_external_id(
     db: Session,
     *,
     tenant_id: UUID,
+    account_id: str,
     source: str,
     source_conversation_id: str,
 ) -> Conversation | None:
-    row = (
+    rows = (
         db.query(Message.conversation_id)
         .filter(
             Message.tenant_id == tenant_id,
@@ -86,16 +87,22 @@ def _find_conversation_by_external_id(
             _metadata_text_field("source_conversation_id") == source_conversation_id,
         )
         .order_by(Message.created_at.asc(), Message.id.asc())
-        .first()
+        .all()
     )
-    if not row:
+    conversation_ids = list(dict.fromkeys(row[0] for row in rows if row and row[0] is not None))
+    if not conversation_ids:
         return None
-    conversation_id = row[0]
-    return (
+    conversations = (
         db.query(Conversation)
-        .filter(Conversation.tenant_id == tenant_id, Conversation.id == conversation_id)
-        .first()
+        .filter(
+            Conversation.tenant_id == tenant_id,
+            Conversation.owner_account_id == str(account_id or "").strip(),
+            Conversation.id.in_(conversation_ids),
+        )
+        .all()
     )
+    by_id = {conversation.id: conversation for conversation in conversations}
+    return next((by_id[item] for item in conversation_ids if item in by_id), None)
 
 
 def _load_existing_conversation(
@@ -119,6 +126,7 @@ def _load_existing_conversation(
     mapped = _find_conversation_by_external_id(
         db,
         tenant_id=tenant_id,
+        account_id=account_id,
         source=request.source,
         source_conversation_id=request.source_conversation_id,
     )
@@ -162,6 +170,7 @@ def _existing_source_message_ids(
     db: Session,
     *,
     tenant_id: UUID,
+    conversation_id: UUID,
     source: str,
     source_conversation_id: str,
     source_message_ids: list[str],
@@ -173,13 +182,14 @@ def _existing_source_message_ids(
         db.query(_metadata_text_field("source_message_id"))
         .filter(
             Message.tenant_id == tenant_id,
+            Message.conversation_id == conversation_id,
             _metadata_text_field("source") == source,
             _metadata_text_field("source_conversation_id") == source_conversation_id,
             _metadata_text_field("source_message_id").in_(ids),
         )
         .all()
     )
-    return {str(row[0]) for row in rows if row and row[0]}
+    return {str(row[0]).strip() for row in rows if row and str(row[0] or "").strip()}
 
 
 def _external_message_metadata(
@@ -455,6 +465,7 @@ def ingest_external_conversation(
     existing_ids = _existing_source_message_ids(
         db,
         tenant_id=tenant_id,
+        conversation_id=conversation.id,
         source=request.source,
         source_conversation_id=request.source_conversation_id,
         source_message_ids=[str(item) for item in source_message_ids],

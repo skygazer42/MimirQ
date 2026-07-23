@@ -62,6 +62,17 @@ describe('DocumentViewerPanelShell accessibility', () => {
   })
 
   it('uses separator semantics and arrow keys for panel width', () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      width: 576,
+      height: 800,
+      top: 0,
+      right: 576,
+      bottom: 800,
+      left: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
     const setPanelWidthPx = vi.fn()
     const props = {
       activeTab: 'preview',
@@ -94,7 +105,7 @@ describe('DocumentViewerPanelShell accessibility', () => {
       matchChunkIds: [],
       openCreateChunk: vi.fn(),
       openEditChunk: vi.fn(),
-      panelWidthPx: 500,
+      panelWidthPx: null,
       parsedContent: null,
       parsedContentError: '',
       parsedContentLoading: false,
@@ -168,7 +179,7 @@ describe('DocumentViewerPanelShell accessibility', () => {
       '[data-document-viewer-resize-handle="true"]'
     ) as HTMLElement | null
     expect(handle?.getAttribute('role')).toBe('separator')
-    expect(handle?.getAttribute('aria-valuenow')).toBe('500')
+    expect(handle?.getAttribute('aria-valuenow')).toBe('576')
 
     act(() => {
       handle?.dispatchEvent(
@@ -179,7 +190,7 @@ describe('DocumentViewerPanelShell accessibility', () => {
       )
     })
 
-    expect(setPanelWidthPx).toHaveBeenNthCalledWith(1, 524)
-    expect(setPanelWidthPx).toHaveBeenNthCalledWith(2, 476)
+    expect(setPanelWidthPx).toHaveBeenNthCalledWith(1, 600)
+    expect(setPanelWidthPx).toHaveBeenNthCalledWith(2, 552)
   })
 })

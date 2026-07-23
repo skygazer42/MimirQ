@@ -16,7 +16,7 @@ import asyncio
 import time
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 from jose import ExpiredSignatureError, JWTError, jwt
@@ -118,6 +118,28 @@ def _oidc_config_url_for_issuer(issuer: str) -> str | None:
     return f"{base}/.well-known/openid-configuration"
 
 
+def _normalize_oidc_issuer(raw_issuer: str) -> str:
+    raw = str(raw_issuer or "").strip()
+    if not raw:
+        return ""
+    parsed = urlparse(raw)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return ""
+    host = (parsed.hostname or "").lower()
+    if parsed.port:
+        host = f"{host}:{parsed.port}"
+    return urlunparse(
+        (
+            parsed.scheme.lower(),
+            host,
+            (parsed.path or "").rstrip("/"),
+            "",
+            "",
+            "",
+        )
+    )
+
+
 async def _fetch_oidc_configuration(url: str) -> dict[str, Any]:
     timeout_sec = float(getattr(settings, "JWT_OIDC_DISCOVERY_HTTP_TIMEOUT_SEC", 5.0) or 5.0)
     timeout = httpx.Timeout(timeout_sec)
@@ -161,6 +183,10 @@ async def _get_oidc_jwks_uri(issuer: str, *, force_refresh: bool = False) -> str
 
         try:
             cfg = await _fetch_oidc_configuration(config_url)
+            configured_issuer = _normalize_oidc_issuer(issuer)
+            discovered_issuer = _normalize_oidc_issuer(str(cfg.get("issuer") or ""))
+            if configured_issuer and discovered_issuer != configured_issuer:
+                raise ValueError("invalid_oidc_issuer_mismatch")
             jwks_uri = str(cfg.get("jwks_uri") or "").strip()
             try:
                 validate_jwt_remote_url(jwks_uri, field_name="OIDC discovery jwks_uri")

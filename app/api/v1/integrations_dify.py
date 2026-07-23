@@ -38,6 +38,7 @@ from sqlalchemy.orm import Session
 from app.api.schemas.chat import ChatRAGConfig
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
+from app.core.env import is_production_env
 from app.models.chat import Conversation, Message
 from app.models.dataset import Dataset
 from app.models.document import Document, DocumentChunk
@@ -875,6 +876,25 @@ def _conversation_owner_matches_account(conversation: Conversation | None, *, ac
     return bool(owner_account_id) and owner_account_id == str(account_id or "").strip()
 
 
+def _ensure_dify_trace_conversation_accessible(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    conversation_id: UUID,
+    account_id: str,
+) -> Conversation:
+    conversation = _load_dify_trace_conversation(
+        db=db,
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+    )
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    if not _conversation_owner_matches_account(conversation, account_id=account_id):
+        raise HTTPException(status_code=403, detail="Conversation is not accessible")
+    return conversation
+
+
 def _load_dify_trace_conversation(
     db: Session,
     *,
@@ -1285,6 +1305,13 @@ def _dify_trace_conversation_id(
 ) -> UUID | None:
     body_conversation_id = _uuid_or_none(body.conversation_id)
     if body_conversation_id is not None:
+        if db is not None and tenant_id is not None and account_id is not None:
+            _ensure_dify_trace_conversation_accessible(
+                db=db,
+                tenant_id=tenant_id,
+                conversation_id=body_conversation_id,
+                account_id=account_id,
+            )
         return body_conversation_id
     for header_name in ("x-mimirq-conversation-id", "x-conversation-id"):
         raw = str(request.headers.get(header_name) or "").strip()
@@ -1292,6 +1319,13 @@ def _dify_trace_conversation_id(
             continue
         header_conversation_id = _uuid_or_none(raw)
         if header_conversation_id is not None:
+            if db is not None and tenant_id is not None and account_id is not None:
+                _ensure_dify_trace_conversation_accessible(
+                    db=db,
+                    tenant_id=tenant_id,
+                    conversation_id=header_conversation_id,
+                    account_id=account_id,
+                )
             return header_conversation_id
         else:
             logger.debug("Ignoring invalid Dify trace conversation header %s", header_name)
@@ -1373,6 +1407,11 @@ def _require_dify_actor(
 
     raw_tenant = str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", "") or "").strip()
     if not raw_tenant:
+        if is_production_env():
+            raise HTTPException(
+                status_code=503,
+                detail="Dify external knowledge tenant is not configured",
+            )
         raw_tenant = str(
             request.headers.get(str(getattr(settings, "TENANT_HEADER", "X-Tenant-ID") or "X-Tenant-ID"))
             or getattr(settings, "DEFAULT_TENANT_ID", "")
@@ -7606,7 +7645,7 @@ async def _retrieve_external_knowledge(
                         ),
                         timeout=remaining_sec,
                     )
-                except TimeoutError:
+                except (TimeoutError, asyncio.TimeoutError):
                     logger.info(
                         "Dify metadata anchor fallback exceeded request budget query_hash=%s",
                         _diagnostic_query_hash(str(call_kwargs.get("query") or "")),

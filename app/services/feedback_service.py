@@ -1,10 +1,10 @@
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any, Callable
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import func
+from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from app.models.chat import Conversation, Message
@@ -13,6 +13,7 @@ from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
 from app.rag.feedback_loop.candidates import build_feedback_loop_candidates as build_feedback_loop_candidate_payload
 from app.rag.industry_rules.schema import IndustryRuleset
+from app.services.chat_conversation_access import ensure_conversation_access
 from app.services.rag_trace_service import list_rag_traces
 
 _SERVER_MANAGED_FEEDBACK_EXTRA_KEYS = {
@@ -178,7 +179,10 @@ def _previous_user_question(
         if isinstance(assistant_created_at, datetime) and isinstance(created_at, datetime) and created_at > assistant_created_at:
             continue
         candidates.append(msg)
-    candidates.sort(key=lambda item: getattr(item, "created_at", None) or datetime.min.replace(tzinfo=UTC), reverse=True)
+    candidates.sort(
+        key=lambda item: getattr(item, "created_at", None) or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
     return _safe_text(getattr(candidates[0], "content", "") if candidates else "", max_len=4000)
 
 
@@ -192,8 +196,17 @@ class FeedbackService:
         message_id: UUID | None,
         min_rating: int | None,
         max_rating: int | None,
+        owner_account_id: str | None = None,
     ):
         query = db.query(MessageFeedback).filter(MessageFeedback.tenant_id == tenant_id)
+        if owner_account_id is not None:
+            query = query.join(
+                Conversation,
+                and_(
+                    Conversation.id == MessageFeedback.conversation_id,
+                    Conversation.tenant_id == MessageFeedback.tenant_id,
+                ),
+            ).filter(Conversation.owner_account_id == str(owner_account_id or "").strip())
         if conversation_id:
             query = query.filter(MessageFeedback.conversation_id == conversation_id)
         if message_id:
@@ -245,6 +258,8 @@ class FeedbackService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only assistant messages can be rated")
 
         conv = db.query(Conversation).filter(Conversation.id == msg.conversation_id, Conversation.tenant_id == tenant_id).first()
+        if conv is not None:
+            ensure_conversation_access(db, tenant_id, account_id, conv)
         meta = msg.message_metadata if isinstance(getattr(msg, "message_metadata", None), dict) else {}
         request_id = str(meta.get("request_id") or "").strip() if isinstance(meta, dict) else ""
 
@@ -365,6 +380,7 @@ class FeedbackService:
         skip: int,
         limit: int,
         ensure_member_fn: Callable[[Session, UUID, str], Any] | None = None,
+        enforce_conversation_owner: bool = True,
     ) -> dict[str, Any]:
         FeedbackService._ensure_member(
             db=db,
@@ -372,19 +388,23 @@ class FeedbackService:
             account_id=account_id,
             ensure_member_fn=ensure_member_fn,
         )
-        query = FeedbackService._build_feedback_query(
-            db=db,
-            tenant_id=tenant_id,
-            conversation_id=conversation_id,
-            message_id=message_id,
-            min_rating=min_rating,
-            max_rating=max_rating,
-        )
-        total = int(query.count())
         start = max(0, int(skip or 0))
         size = max(1, int(limit or 1))
         updated_at = func.coalesce(MessageFeedback.updated_at, MessageFeedback.created_at)
-        rows = query.order_by(updated_at.desc(), MessageFeedback.id.desc()).offset(start).limit(size).all()
+
+        def _ordered_query():
+            return FeedbackService._build_feedback_query(
+                db=db,
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                message_id=message_id,
+                min_rating=min_rating,
+                max_rating=max_rating,
+                owner_account_id=account_id if enforce_conversation_owner else None,
+            ).order_by(updated_at.desc(), MessageFeedback.id.desc())
+
+        total = int(_ordered_query().count())
+        rows = _ordered_query().offset(start).limit(size).all()
         return {"total": total, "items": list(rows)}
 
     @staticmethod
@@ -400,6 +420,7 @@ class FeedbackService:
         skip: int,
         limit: int,
         ensure_member_fn: Callable[[Session, UUID, str], Any] | None = None,
+        enforce_conversation_owner: bool = True,
     ) -> dict[str, Any]:
         base = FeedbackService.list_message_feedback(
             db=db,
@@ -412,6 +433,7 @@ class FeedbackService:
             skip=skip,
             limit=limit,
             ensure_member_fn=ensure_member_fn,
+            enforce_conversation_owner=enforce_conversation_owner,
         )
 
         rows: list[MessageFeedback] = list(base["items"])
@@ -478,7 +500,7 @@ class FeedbackService:
         if archived is not None:
             payload["archived"] = bool(archived)
             if archived:
-                payload["archived_at"] = datetime.now(UTC).isoformat()
+                payload["archived_at"] = datetime.now(timezone.utc).isoformat()
                 payload["archived_by"] = str(account_id or "")
             else:
                 payload.pop("archived_at", None)
@@ -530,6 +552,7 @@ class FeedbackService:
             skip=0,
             limit=max(1, int(limit or 1)),
             ensure_member_fn=None,
+            enforce_conversation_owner=False,
         )
         feedback_rows: list[MessageFeedback] = list(listed.get("items") or [])
         if not feedback_rows:

@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react"
+import { useCallback, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react"
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ChunkEditorDialog } from "@/components/document-viewer/chunk-editor-dialog"
@@ -114,6 +114,8 @@ export function DocumentViewerPanelShell({
   textValue,
 }: Readonly<DocumentViewerPanelState>) {
   const [isResizing, setIsResizing] = useState(false)
+  const [measuredPanelWidthPx, setMeasuredPanelWidthPx] = useState<number | null>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const resizeStartRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null)
 
   const panelStyle = !isExpanded && panelWidthPx
@@ -127,6 +129,14 @@ export function DocumentViewerPanelShell({
     const maxWidth = Math.max(420, Math.floor(globalThis.window.innerWidth * 0.86))
     return Math.max(MIN_DOCUMENT_VIEWER_PANEL_WIDTH, Math.min(maxWidth, Math.round(width)))
   }, [])
+
+  useLayoutEffect(() => {
+    if (!isOpen || isExpanded || panelWidthPx !== null) return
+    const width = panelRef.current?.getBoundingClientRect().width ?? 0
+    if (width > 0) setMeasuredPanelWidthPx(clampPanelWidth(width))
+  }, [clampPanelWidth, isExpanded, isOpen, panelWidthPx])
+
+  const effectivePanelWidthPx = panelWidthPx ?? measuredPanelWidthPx ?? 500
 
   const finishResize = useCallback((event: PointerEvent<HTMLDivElement>) => {
     const current = resizeStartRef.current
@@ -169,7 +179,7 @@ export function DocumentViewerPanelShell({
     const step = event.shiftKey
       ? DOCUMENT_VIEWER_PANEL_RESIZE_STEP * 2
       : DOCUMENT_VIEWER_PANEL_RESIZE_STEP
-    const currentWidth = panelWidthPx ?? 500
+    const currentWidth = panelWidthPx ?? panelRef.current?.getBoundingClientRect().width ?? effectivePanelWidthPx
 
     if (event.key === 'ArrowLeft') {
       event.preventDefault()
@@ -180,7 +190,7 @@ export function DocumentViewerPanelShell({
       event.preventDefault()
       setPanelWidthPx(clampPanelWidth(currentWidth - step))
     }
-  }, [clampPanelWidth, isExpanded, panelWidthPx, setPanelWidthPx])
+  }, [clampPanelWidth, effectivePanelWidthPx, isExpanded, panelWidthPx, setPanelWidthPx])
 
   if (!isOpen) return null
 
@@ -223,6 +233,7 @@ export function DocumentViewerPanelShell({
         onSubmit={() => detachPromise(runQaGeneration())}
       />
       <div
+        ref={panelRef}
         style={panelStyle}
         className={cn(
           "fixed inset-y-0 right-0 z-50 flex flex-col border-l border-sidebar-border/70 bg-sidebar/90 backdrop-blur-xl shadow-strong",
@@ -240,8 +251,8 @@ export function DocumentViewerPanelShell({
           aria-orientation="vertical"
           aria-valuemin={MIN_DOCUMENT_VIEWER_PANEL_WIDTH}
           aria-valuemax={clampPanelWidth(globalThis.window?.innerWidth ?? panelWidthPx ?? 500)}
-          aria-valuenow={panelWidthPx ?? 500}
-          aria-valuetext={`${panelWidthPx ?? 500}px`}
+          aria-valuenow={effectivePanelWidthPx}
+          aria-valuetext={`${effectivePanelWidthPx}px`}
           title="拖动调整文档查看器宽度"
           data-document-viewer-resize-handle="true"
           tabIndex={isExpanded ? -1 : 0}

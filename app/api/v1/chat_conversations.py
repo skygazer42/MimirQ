@@ -10,7 +10,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
@@ -27,7 +27,10 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.chat import Conversation, Message
 from app.services.audit_log_service import audit_log_event
-from app.services.chat_conversation_access import ensure_conversation_access, ensure_conversation_dataset_access
+from app.services.chat_conversation_access import (
+    ensure_conversation_access,
+    ensure_conversation_dataset_access,
+)
 from app.services.chat_conversation_titles import (
     CONVERSATION_TITLE_SOURCE_AUTO,
     CONVERSATION_TITLE_SOURCE_MANUAL,
@@ -177,11 +180,11 @@ async def list_conversations(
 ):
     """List conversations."""
     DatasetService.ensure_member(db, tenant_id, account_id)
+    normalized_account_id = str(account_id or "").strip()
     query = db.query(Conversation).filter(
         Conversation.tenant_id == tenant_id,
-        Conversation.owner_account_id == str(account_id or "").strip(),
+        Conversation.owner_account_id == normalized_account_id,
     )
-    total = query.count()
 
     # Fill the page with accessible conversations (avoid returning <limit when some are filtered).
     try:
@@ -192,15 +195,16 @@ async def list_conversations(
 
     ordered = query.order_by(Conversation.updated_at.desc())
     batch_size = max(50, limit_eff)
-    raw_offset = int(skip)
+    query_offset = 0
+    accessible_total = 0
     conversations: list[Conversation] = []
     dataset_access: dict[UUID, bool] = {}
 
-    while len(conversations) < limit_eff:
-        batch = ordered.offset(raw_offset).limit(batch_size).all()
+    while True:
+        batch = ordered.offset(query_offset).limit(batch_size).all()
         if not batch:
             break
-        raw_offset += len(batch)
+        query_offset += len(batch)
 
         doc_ids_by_conversation_id: dict[UUID, list[UUID]] = {}
         all_doc_ids: set[UUID] = set()
@@ -221,8 +225,6 @@ async def list_conversations(
             )
 
         for conv in batch:
-            if len(conversations) >= limit_eff:
-                break
             dataset_id = getattr(conv, "dataset_id", None)
             if dataset_id is not None and dataset_id not in dataset_access:
                 try:
@@ -237,21 +239,26 @@ async def list_conversations(
                     dataset_access[dataset_id] = False
             if dataset_id is not None and not dataset_access[dataset_id]:
                 continue
+
             doc_ids = doc_ids_by_conversation_id.get(conv.id) or []
+            is_accessible = False
             if not doc_ids:
-                conversations.append(conv)
+                is_accessible = True
+            else:
+                doc_id_set = set(doc_ids)
+                remaining_doc_ids = doc_id_set - missing_doc_ids
+                if not remaining_doc_ids or remaining_doc_ids & allowed_doc_ids:
+                    is_accessible = True
+
+            if not is_accessible:
                 continue
-            doc_id_set = set(doc_ids)
-            remaining_doc_ids = doc_id_set - missing_doc_ids
-            if not remaining_doc_ids:
-                conversations.append(conv)
+
+            accessible_total += 1
+            if accessible_total <= int(skip):
                 continue
-            if remaining_doc_ids & allowed_doc_ids:
+            if len(conversations) < limit_eff:
                 conversations.append(conv)
 
-        if raw_offset >= total:
-            break
-        # If we got a short batch, no more rows remain.
         if len(batch) < batch_size:
             break
 
@@ -309,11 +316,16 @@ async def list_conversations(
         reverse=True,
     )
 
+    returned = len(result_items)
+    total = accessible_total
+    next_skip = int(skip) + returned
+    has_more = next_skip < total
+
     return {
         "total": total,
-        "returned": len(result_items),
-        "has_more": raw_offset < total,
-        "next_skip": raw_offset if raw_offset < total else None,
+        "returned": returned,
+        "has_more": has_more,
+        "next_skip": next_skip if has_more else None,
         "items": result_items,
     }
 

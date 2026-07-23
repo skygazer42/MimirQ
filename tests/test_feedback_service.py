@@ -1,7 +1,7 @@
 
 import asyncio
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi import HTTPException
@@ -58,14 +58,14 @@ class _FakeQuery:
 
     def order_by(self, *_args, **_kwargs):  # noqa: ANN002,ANN003,D401
         if self._model is MessageFeedback:
-            floor = datetime.min.replace(tzinfo=UTC)
+            floor = datetime.min.replace(tzinfo=timezone.utc)
 
             def sort_key(row):  # noqa: ANN001
                 updated_at = getattr(row, "updated_at", None)
                 created_at = getattr(row, "created_at", None)
                 timestamp = updated_at or created_at or floor
                 if timestamp.tzinfo is None:
-                    timestamp = timestamp.replace(tzinfo=UTC)
+                    timestamp = timestamp.replace(tzinfo=timezone.utc)
                 return timestamp, str(getattr(row, "id", ""))
 
             self._items.sort(key=sort_key, reverse=True)
@@ -101,7 +101,7 @@ class _FakeDB:
     def add(self, obj):  # noqa: ANN001
         if getattr(obj, "id", None) is None:
             obj.id = uuid.uuid4()
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         if getattr(obj, "created_at", None) is None:
             obj.created_at = now
         if getattr(obj, "updated_at", None) is None:
@@ -123,7 +123,7 @@ def test_upsert_message_feedback_persists_trace_and_snapshot_metadata() -> None:
     dataset_id = uuid.uuid4()
     conversation_id = uuid.uuid4()
     request_id = "req-feedback-service-1"
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     user_msg = Message(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
@@ -152,7 +152,8 @@ def test_upsert_message_feedback_persists_trace_and_snapshot_metadata() -> None:
         id=conversation_id,
         tenant_id=tenant_id,
         user_id=None,
-        dataset_id=dataset_id,
+        owner_account_id="u",
+        dataset_id=None,
         title="demo",
         document_ids=[],
         message_count=2,
@@ -264,18 +265,74 @@ def test_upsert_message_feedback_persists_trace_and_snapshot_metadata() -> None:
     assert user_retry.category_source == "reviewer"
 
 
+def test_upsert_message_feedback_rejects_other_accounts_conversation() -> None:
+    tenant_id = uuid.uuid4()
+    conversation_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+    user_msg = Message(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        role="user",
+        content="owner question",
+        citations=[],
+        message_metadata={},
+        created_at=now - timedelta(seconds=1),
+    )
+    assistant_msg = Message(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        role="assistant",
+        content="owner answer",
+        citations=[],
+        message_metadata={},
+        created_at=now,
+    )
+    conv = Conversation(
+        id=conversation_id,
+        tenant_id=tenant_id,
+        user_id=None,
+        owner_account_id="owner",
+        dataset_id=None,
+        title="private",
+        document_ids=[],
+        message_count=2,
+        created_at=now,
+        updated_at=now,
+    )
+    db = _FakeDB(feedback_rows=[], messages=[user_msg, assistant_msg], conversations=[conv])
+
+    with pytest.raises(HTTPException) as exc_info:
+        FeedbackService.upsert_message_feedback(
+            db=db,
+            tenant_id=tenant_id,
+            account_id="intruder",
+            message_id=assistant_msg.id,
+            rating=1,
+            reason="spy",
+            tags=[],
+            expected_answer=None,
+            extra={},
+            ensure_member_fn=lambda *_args, **_kwargs: None,
+        )
+
+    assert exc_info.value.status_code == 403
+
+
 def test_list_message_feedback_enriched_filters_sorts_and_truncates() -> None:
     tenant_id = uuid.uuid4()
     other_tenant_id = uuid.uuid4()
     conversation_a = uuid.uuid4()
     conversation_b = uuid.uuid4()
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     long_content = "x" * 5000
 
     conv_a = Conversation(
         id=conversation_a,
         tenant_id=tenant_id,
         user_id=None,
+        owner_account_id="u",
         dataset_id=None,
         title="Conversation A",
         document_ids=[],
@@ -287,6 +344,7 @@ def test_list_message_feedback_enriched_filters_sorts_and_truncates() -> None:
         id=conversation_b,
         tenant_id=tenant_id,
         user_id=None,
+        owner_account_id="other-user",
         dataset_id=None,
         title="Conversation B",
         document_ids=[],
@@ -353,6 +411,20 @@ def test_list_message_feedback_enriched_filters_sorts_and_truncates() -> None:
         created_at=now - timedelta(minutes=1),
         updated_at=now - timedelta(minutes=1),
     )
+    feedback_orphan = MessageFeedback(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        conversation_id=None,
+        message_id=uuid.uuid4(),
+        account_id="u",
+        rating=4,
+        reason="system",
+        tags=["system"],
+        expected_answer=None,
+        extra={"source": "non-conversation"},
+        created_at=now - timedelta(seconds=30),
+        updated_at=now - timedelta(seconds=30),
+    )
     feedback_other = MessageFeedback(
         id=uuid.uuid4(),
         tenant_id=other_tenant_id,
@@ -369,7 +441,7 @@ def test_list_message_feedback_enriched_filters_sorts_and_truncates() -> None:
     )
 
     db = _FakeDB(
-        feedback_rows=[feedback_old, feedback_new, feedback_other],
+        feedback_rows=[feedback_old, feedback_new, feedback_orphan, feedback_other],
         messages=[assistant_a, assistant_b, assistant_other],
         conversations=[conv_a, conv_b],
     )
@@ -400,20 +472,22 @@ def test_list_message_feedback_enriched_filters_sorts_and_truncates() -> None:
     )
 
     assert listed["total"] == 2
-    assert [row.id for row in listed["items"]] == [feedback_new.id, feedback_old.id]
+    assert [row.id for row in listed["items"]] == [feedback_orphan.id, feedback_old.id]
     assert enriched["total"] == 2
-    assert [row.id for row in enriched["items"]] == [feedback_new.id, feedback_old.id]
-    assert enriched["items"][0].conversation_title == "Conversation B"
+    assert [row.id for row in enriched["items"]] == [feedback_orphan.id, feedback_old.id]
+    assert enriched["items"][0].conversation_title is None
+    assert enriched["items"][0].message_content is None
     assert enriched["items"][1].conversation_title == "Conversation A"
     assert enriched["items"][1].message_created_at == assistant_a.created_at
     assert len(enriched["items"][1].message_content or "") == 4000
+    assert all(row.id != feedback_new.id for row in listed["items"])
 
 
 def test_list_message_feedback_uses_stable_sql_page_boundaries() -> None:
     tenant_id = uuid.uuid4()
     conversation_id = uuid.uuid4()
     message_id = uuid.uuid4()
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
 
     def feedback(row_id: int) -> MessageFeedback:
         return MessageFeedback(
@@ -430,7 +504,19 @@ def test_list_message_feedback_uses_stable_sql_page_boundaries() -> None:
 
     older_id = feedback(1)
     newer_id = feedback(2)
-    db = _FakeDB(feedback_rows=[older_id, newer_id], messages=[], conversations=[])
+    conversation = Conversation(
+        id=conversation_id,
+        tenant_id=tenant_id,
+        user_id=None,
+        owner_account_id="u",
+        dataset_id=None,
+        title="paged",
+        document_ids=[],
+        message_count=0,
+        created_at=now,
+        updated_at=now,
+    )
+    db = _FakeDB(feedback_rows=[older_id, newer_id], messages=[], conversations=[conversation])
     args = {
         "db": db,
         "tenant_id": tenant_id,
@@ -457,7 +543,7 @@ def test_build_feedback_loop_candidates_uses_negative_feedback_context() -> None
     conversation_id = uuid.uuid4()
     user_message_id = uuid.uuid4()
     assistant_message_id = uuid.uuid4()
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     user_msg = Message(
         id=user_message_id,
         tenant_id=tenant_id,
@@ -482,6 +568,7 @@ def test_build_feedback_loop_candidates_uses_negative_feedback_context() -> None
         id=conversation_id,
         tenant_id=tenant_id,
         user_id=None,
+        owner_account_id="u",
         dataset_id=dataset_id,
         title="Loop",
         document_ids=[],
@@ -628,7 +715,7 @@ def test_feedback_promotion_keeps_server_lineage(monkeypatch: pytest.MonkeyPatch
     dataset_id = uuid.uuid4()
     conversation_id = uuid.uuid4()
     assistant_id = uuid.uuid4()
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     feedback = MessageFeedback(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
@@ -667,6 +754,7 @@ def test_feedback_promotion_keeps_server_lineage(monkeypatch: pytest.MonkeyPatch
         id=conversation_id,
         tenant_id=tenant_id,
         user_id=None,
+        owner_account_id="editor",
         dataset_id=dataset_id,
         title="feedback",
         document_ids=[],
@@ -720,7 +808,7 @@ def test_feedback_promotion_keeps_server_lineage(monkeypatch: pytest.MonkeyPatch
 def test_patch_message_feedback_archive_state_persists_in_extra() -> None:
     tenant_id = uuid.uuid4()
     conversation_id = uuid.uuid4()
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
 
     feedback_row = MessageFeedback(
         id=uuid.uuid4(),
@@ -764,3 +852,35 @@ def test_patch_message_feedback_archive_state_persists_in_extra() -> None:
     assert unarchived.extra["archived"] is False
     assert "archived_at" not in unarchived.extra
     assert "archived_by" not in unarchived.extra
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "kwargs"),
+    [
+        (
+            feedback_api.preview_feedback_loop_candidates,
+            {"max_rating": 2, "limit": 20, "ruleset": None},
+        ),
+        (
+            feedback_api.export_feedback_loop_hard_negatives,
+            {"max_rating": 2, "limit": 20, "dry_run": True, "append": True, "ruleset": None},
+        ),
+    ],
+)
+def test_feedback_loop_endpoints_require_triage_permission(monkeypatch, endpoint, kwargs) -> None:  # noqa: ANN001
+    def _deny(*_args, **_kwargs):  # noqa: ANN002,ANN003
+        raise HTTPException(status_code=403, detail="denied")
+
+    monkeypatch.setattr(feedback_api, "ensure_tenant_permission", _deny)
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(
+            endpoint(
+                **kwargs,
+                tenant_id=uuid.uuid4(),
+                account_id="member",
+                db=object(),
+            )
+        )
+
+    assert exc_info.value.status_code == 403

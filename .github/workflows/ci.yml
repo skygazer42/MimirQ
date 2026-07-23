@@ -7,6 +7,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -22,9 +25,25 @@ jobs:
   public-pr-verify:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
+    timeout-minutes: 60
+    env:
+      PIP_INDEX_URL: https://pypi.org/simple
+      PIP_CACHE_DIR: ${{ runner.temp }}/pip-cache
+      TORCH_WHEEL_DIR: ${{ runner.temp }}/torch-wheels
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mimirq_ci
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U postgres -d mimirq_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -39,14 +58,56 @@ jobs:
         with:
           node-version: "20"
 
-      - name: OpenAPI artifact sanity
-        run: python scripts/openapi_check.py
+      - name: Enable pnpm
+        run: corepack enable
 
-      - name: OpenAPI coverage guard
-        run: node web/scripts/check-openapi-coverage.mjs
+      - name: Install Python deps
+        run: |
+          mkdir -p "$PIP_CACHE_DIR" "$TORCH_WHEEL_DIR"
+          python -m pip install --upgrade pip
+          python ci/download_verified_wheels.py --cache-dir "$TORCH_WHEEL_DIR"
+          python -m pip install --retries 5 --timeout 120 \
+            "$TORCH_WHEEL_DIR/torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
+            "$TORCH_WHEEL_DIR/torchvision-0.28.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
+          python scripts/filter_cpu_ci_requirements.py requirements-dev.txt /tmp/requirements-dev.cpu-ci.txt
+          python -m pip install --retries 10 --timeout 120 -r /tmp/requirements-dev.cpu-ci.txt
+          python -m pip install --retries 5 --timeout 120 --no-deps xgboost==3.2.0
 
-      - name: Check handbook links
-        run: node scripts/docs/check_doc_links.mjs
+      - name: Install web deps
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
+      - name: OpenAPI types check
+        run: make openapi-check
+
+      - name: Backend tests
+        env:
+          LLM_MOCK_ENABLED: "true"
+          LLM_API_KEY: "sk-test"
+          OPENAI_API_KEY: "sk-test"
+        run: make test
+
+      - name: Database migrations and integration tests
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/mimirq_ci
+          MIMIRQ_DB_CREATE_ALL_ON_STARTUP: "false"
+          MIMIRQ_DB_RUNTIME_MIGRATIONS_ENABLED: "false"
+          MIMIRQ_INTEGRATION_TESTS: "1"
+        run: |
+          make db-upgrade
+          python -m pytest -q \
+            tests/test_document_version_diff_integration.py \
+            tests/test_document_versions_integration.py
+
+      - name: Frontend verify
+        run: make verify
+
+      - name: Frontend tests
+        run: make test-web
+
+      - name: Frontend build
+        working-directory: web
+        run: pnpm run build
 
   test-and-verify:
     if: github.event_name != 'pull_request'

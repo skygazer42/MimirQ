@@ -1,6 +1,8 @@
 
 import json
+import os
 import re
+import tempfile
 from pathlib import Path
 from typing import Annotated, Any
 from uuid import UUID
@@ -89,16 +91,122 @@ def _capsule_path(*, tenant_id: UUID, capsule_id: str) -> Path:
     return path
 
 
-def _capsule_envelope(*, capsule: dict[str, Any], tenant_id: UUID, capsule_id: str) -> dict[str, Any]:
+def _legacy_capsule_path(*, capsule_id: str) -> Path:
+    cid = _normalize_capsule_id(capsule_id)
+    root = _store_dir()
+    path = (root / f"{cid}.json").resolve()
+    try:
+        path.relative_to(root)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid_capsule_id") from exc
+    return path
+
+
+def _capsule_envelope(*, capsule: dict[str, Any], tenant_id: UUID, capsule_id: str, account_id: str) -> dict[str, Any]:
     bound_tenant_id = str(tenant_id)
+    bound_owner_account_id = str(account_id or "").strip()
     existing_tenant_id = str(capsule.get("tenant_id") or "").strip()
     if existing_tenant_id and existing_tenant_id != bound_tenant_id:
         raise HTTPException(status_code=400, detail="capsule_tenant_id_mismatch")
+    existing_owner_account_id = str(capsule.get("owner_account_id") or "").strip()
+    if existing_owner_account_id and existing_owner_account_id != bound_owner_account_id:
+        raise HTTPException(status_code=400, detail="capsule_owner_account_id_mismatch")
     return {
         "tenant_id": bound_tenant_id,
+        "owner_account_id": bound_owner_account_id,
         "capsule_id": capsule_id,
         "capsule": dict(capsule),
     }
+
+
+def _read_capsule_payload(path: Path) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"capsule_read_failed:{exc.__class__.__name__}") from exc
+
+
+def _extract_capsule_binding(
+    payload: Any,
+    *,
+    allow_legacy_raw: bool,
+) -> tuple[str, str, dict[str, Any]]:
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=500, detail="capsule_invalid_payload")
+
+    if "capsule" in payload:
+        capsule = payload.get("capsule")
+        if not isinstance(capsule, dict):
+            raise HTTPException(status_code=500, detail="capsule_invalid_payload")
+        return (
+            str(payload.get("tenant_id") or "").strip(),
+            str(payload.get("owner_account_id") or "").strip(),
+            capsule,
+        )
+
+    if not allow_legacy_raw:
+        raise HTTPException(status_code=500, detail="capsule_invalid_payload")
+
+    return (
+        str(payload.get("tenant_id") or "").strip(),
+        str(payload.get("owner_account_id") or "").strip(),
+        dict(payload),
+    )
+
+
+def _load_authorized_capsule(
+    path: Path,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    allow_legacy_raw: bool,
+) -> dict[str, Any]:
+    payload = _read_capsule_payload(path)
+    bound_tenant_id, bound_owner_account_id, capsule = _extract_capsule_binding(
+        payload,
+        allow_legacy_raw=allow_legacy_raw,
+    )
+    if bound_tenant_id != str(tenant_id) or bound_owner_account_id != str(account_id):
+        raise HTTPException(status_code=404, detail="capsule_not_found")
+    return capsule
+
+
+def _atomic_create_text(path: Path, content: str) -> bool:
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    try:
+        fd = os.open(path, flags, 0o644)
+    except FileExistsError:
+        return False
+
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+    except Exception:
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+
+    return True
+
+
+def _atomic_replace_text(path: Path, content: str) -> None:
+    fd, temp_path = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        text=True,
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+        os.replace(temp_path, path)
+    finally:
+        try:
+            os.unlink(temp_path)
+        except FileNotFoundError:
+            pass
 
 
 @router.post("/capsules", response_model=EvidenceCapsulePersistResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -129,16 +237,43 @@ def persist_evidence_capsule(
     capsule_hash = str(body.capsule.get("capsule_hash") or "").strip()
     capsule_id = _normalize_capsule_id(str(body.capsule_id or capsule_hash or ""))
     path = _capsule_path(tenant_id=tenant_id, capsule_id=capsule_id)
+    legacy_path = _legacy_capsule_path(capsule_id=capsule_id)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    existed = path.exists()
     allow_overwrite = bool(getattr(settings, "EVIDENCE_CAPSULE_ALLOW_OVERWRITE", False))
-    if existed and (not bool(body.overwrite) or not allow_overwrite):
-        raise HTTPException(status_code=409, detail="capsule_exists")
+    existed = False
+    overwrite_source_path: Path | None = None
 
-    payload = _capsule_envelope(capsule=body.capsule, tenant_id=tenant_id, capsule_id=capsule_id)
-    # capsule_id is validated and path is confined to EVIDENCE_CAPSULE_STORE_DIR in _capsule_path().
-    path.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2), encoding="utf-8")  # NOSONAR
+    if path.exists():
+        existed = True
+        overwrite_source_path = path
+    elif legacy_path.exists():
+        existed = True
+        overwrite_source_path = legacy_path
+
+    if existed:
+        if not bool(body.overwrite) or not allow_overwrite:
+            raise HTTPException(status_code=409, detail="capsule_exists")
+        if overwrite_source_path is not None:
+            _load_authorized_capsule(
+                overwrite_source_path,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                allow_legacy_raw=overwrite_source_path == legacy_path,
+            )
+
+    payload = _capsule_envelope(
+        capsule=body.capsule,
+        tenant_id=tenant_id,
+        capsule_id=capsule_id,
+        account_id=account_id,
+    )
+    serialized_payload = json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2)
+    if existed:
+        _atomic_replace_text(path, serialized_payload)
+    else:
+        if not _atomic_create_text(path, serialized_payload):
+            raise HTTPException(status_code=409, detail="capsule_exists")
     return EvidenceCapsulePersistResponse(
         capsule_id=capsule_id,
         capsule_hash=capsule_hash,
@@ -159,19 +294,25 @@ def get_evidence_capsule(
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
     path = _capsule_path(tenant_id=tenant_id, capsule_id=capsule_id)
-    if not path.exists():
+    legacy_path = _legacy_capsule_path(capsule_id=capsule_id)
+
+    if path.exists():
+        capsule = _load_authorized_capsule(
+            path,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            allow_legacy_raw=False,
+        )
+    elif legacy_path.exists():
+        capsule = _load_authorized_capsule(
+            legacy_path,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            allow_legacy_raw=True,
+        )
+    else:
         raise HTTPException(status_code=404, detail="capsule_not_found")
-    try:
-        envelope = json.loads(path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"capsule_read_failed:{exc.__class__.__name__}") from exc
-    if not isinstance(envelope, dict):
-        raise HTTPException(status_code=500, detail="capsule_invalid_payload")
-    if str(envelope.get("tenant_id") or "").strip() != str(tenant_id):
-        raise HTTPException(status_code=404, detail="capsule_not_found")
-    capsule = envelope.get("capsule")
-    if not isinstance(capsule, dict):
-        raise HTTPException(status_code=500, detail="capsule_invalid_payload")
+
     return EvidenceCapsuleGetResponse(
         capsule_id=capsule_id,
         capsule_hash=str(capsule.get("capsule_hash") or ""),

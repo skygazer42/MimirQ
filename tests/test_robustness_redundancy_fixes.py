@@ -689,9 +689,20 @@ def test_retrieval_behavior_changes_cache_signature(monkeypatch: pytest.MonkeyPa
         retriever=retriever,
         options=HybridSearchOptions(vector_weight=0.6),
     )
+    first_document_id = uuid.uuid4()
+    second_document_id = uuid.uuid4()
+    ordered_scope = _build_retrieval_cache_behavior_hash(
+        retriever=retriever,
+        options=HybridSearchOptions(document_ids=[first_document_id, second_document_id]),
+    )
+    reversed_scope = _build_retrieval_cache_behavior_hash(
+        retriever=retriever,
+        options=HybridSearchOptions(document_ids=[second_document_id, first_document_id]),
+    )
 
     assert behavior1 != behavior2
     assert behavior1 != behavior3
+    assert ordered_scope == reversed_scope
 
     base_kwargs = {
         "tenant_id": "tenant-1",
