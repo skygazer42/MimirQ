@@ -92,7 +92,10 @@ from app.rag.retrieval.source_labels import maybe_build_source_identification_an
 from app.rag.retriever import hybrid_retriever
 from app.services.metrics_logger import log_metrics
 from app.services.prompt_resolver import resolve_prompt_template
-from app.services.rag_runtime_limiter import run_blocking_retrieval_call
+from app.services.rag_runtime_limiter import (
+    RetrievalAdmissionTimeoutError,
+    run_blocking_retrieval_call,
+)
 
 logger = get_logger("rag.engine")
 _RAG_ENGINE_FALLBACK_LOG_MESSAGE = "Ignoring non-critical RAG engine fallback failure: %s"
@@ -1878,6 +1881,7 @@ Requirements:
                 "tenant_id": tenant_id,
                 "account_id": account_id,
                 "dataset_id": dataset_id,
+                "dataset_ids": dataset_ids,
                 "document_ids": document_ids,
                 "metadata_filter": metadata_filter,
                 "lexical_db_hybrid_fallback_only": lexical_db_hybrid_fallback_only,
@@ -1989,6 +1993,8 @@ Requirements:
                     if retrieval_error:
                         return kind, [], retrieval_error, time.time() - t0, dbg
                     return kind, (docs_i or []), None, time.time() - t0, dbg
+                except RetrievalAdmissionTimeoutError:
+                    raise
                 except Exception as exc:  # noqa: BLE001
                     return kind, [], str(exc)[:200], time.time() - t0, None
 
@@ -4442,6 +4448,8 @@ Requirements:
                 }
             )
 
+        except RetrievalAdmissionTimeoutError:
+            raise
         except Exception as e:
             # Error handling.
             log_metrics(

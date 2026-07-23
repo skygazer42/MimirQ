@@ -38,6 +38,7 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     404: {"description": "Not Found"},
     409: {"description": "Conflict"},
     416: {"description": "Range Not Satisfiable"},
+    503: {"description": "Service Unavailable"},
 }
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)

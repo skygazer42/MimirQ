@@ -32,9 +32,33 @@ from app.services.chat_stream_common import (
 from app.services.chat_stream_graph import GraphChatStreamSessionInput, stream_graph_chat_session_events
 from app.services.chat_stream_langchain import LangChainChatStreamSessionInput, stream_langchain_chat_session_events
 from app.services.metrics_logger import set_metrics_context
-from app.services.rag_runtime_limiter import run_blocking_retrieval_call_with_managed_session
+from app.services.rag_runtime_limiter import (
+    RetrievalAdmissionTimeoutError,
+    run_blocking_retrieval_call_with_managed_session,
+)
 
 logger = get_logger("services.chat_stream_orchestrator")
+
+
+def _format_retrieval_admission_timeout_sse(
+    exc: RetrievalAdmissionTimeoutError,
+    *,
+    request_id: str,
+    conversation_id: UUID | None,
+) -> str:
+    retry_after_sec = int((exc.headers or {}).get("Retry-After", "1"))
+    event = {
+        "type": "error",
+        "data": {
+            "message": str(exc.detail),
+            "conversation_id": str(conversation_id) if conversation_id else None,
+            "status_code": exc.status_code,
+            "error_code": "SERVICE_UNAVAILABLE",
+            "retry_after_sec": retry_after_sec,
+        },
+        "request_id": request_id,
+    }
+    return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
 
 async def stream_chat_sse_events(
@@ -312,6 +336,13 @@ async def stream_chat_sse_events(
             ):
                 yield f"data: {json.dumps(graph_event, ensure_ascii=False)}\n\n"
             return
+        except RetrievalAdmissionTimeoutError as exc:
+            yield _format_retrieval_admission_timeout_sse(
+                exc,
+                request_id=str(request_id),
+                conversation_id=conversation_id,
+            )
+            return
         except Exception as exc:  # noqa: BLE001
             if is_model_provider_unavailable_error(exc):
                 mark_model_provider_unavailable()
@@ -386,6 +417,13 @@ async def stream_chat_sse_events(
             ),
         ):
             yield stream_chunk
+    except RetrievalAdmissionTimeoutError as exc:
+        yield _format_retrieval_admission_timeout_sse(
+            exc,
+            request_id=str(request_id),
+            conversation_id=conversation_id,
+        )
+        return
     except Exception as exc:  # noqa: BLE001
         if is_model_provider_unavailable_error(exc):
             mark_model_provider_unavailable()

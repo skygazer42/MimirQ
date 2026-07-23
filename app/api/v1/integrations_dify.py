@@ -79,7 +79,10 @@ from app.services.chat_response_cache import (
 )
 from app.services.external_conversation_ingest import _mimirq_citations_for_storage
 from app.services.metrics_logger import log_metrics
-from app.services.rag_runtime_limiter import run_blocking_retrieval_call
+from app.services.rag_runtime_limiter import (
+    run_blocking_call_with_managed_session,
+    run_blocking_retrieval_call,
+)
 
 logger = get_logger(__name__)
 
@@ -870,6 +873,7 @@ def _load_dify_trace_conversation(
     return (
         db.query(Conversation)
         .filter(Conversation.tenant_id == tenant_id, Conversation.id == conversation_id)
+        .with_for_update()
         .first()
     )
 
@@ -943,6 +947,51 @@ def _find_reusable_dify_seed_message(
     return query.order_by(Message.created_at.asc(), Message.id.asc()).first()
 
 
+def _find_persisted_dify_conversation_turn(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    conversation_id: UUID,
+    source_conversation_id: str | None,
+    source_message_id: str | None,
+) -> tuple[Message, Message] | None:
+    if not source_message_id:
+        return None
+    query = db.query(Message).filter(
+        Message.tenant_id == tenant_id,
+        Message.conversation_id == conversation_id,
+        Message.role.in_(("user", "assistant")),
+        _external_conversation_metadata_text("source") == "dify",
+        _external_conversation_metadata_text("source_message_id") == source_message_id,
+        _external_conversation_metadata_text("turn_persisted") == "true",
+    )
+    if source_conversation_id:
+        query = query.filter(_external_conversation_metadata_text("source_conversation_id") == source_conversation_id)
+    messages = query.order_by(Message.created_at.asc(), Message.id.asc()).all()
+    user_message = next((message for message in messages if message.role == "user"), None)
+    assistant_message = next((message for message in messages if message.role == "assistant"), None)
+    if user_message is None or assistant_message is None:
+        return None
+    return user_message, assistant_message
+
+
+def _lock_dify_conversation_turn_scope(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    conversation_scope: str,
+) -> None:
+    get_bind = getattr(db, "get_bind", None)
+    if not callable(get_bind):
+        return
+    bind = get_bind()
+    if getattr(getattr(bind, "dialect", None), "name", "") != "postgresql":
+        return
+    digest = hashlib.sha256(f"dify-turn:{tenant_id}:{conversation_scope}".encode()).digest()
+    lock_key = int.from_bytes(digest[:8], byteorder="big", signed=True)
+    db.execute(sql_text("SELECT pg_advisory_xact_lock(:lock_key)"), {"lock_key": lock_key})
+
+
 def _dify_turn_citations_for_storage(citations: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return _mimirq_citations_for_storage([item for item in citations or [] if isinstance(item, dict)])
 
@@ -967,6 +1016,11 @@ def _ensure_dify_trace_conversation(
         return None
 
     try:
+        _lock_dify_conversation_turn_scope(
+            db=db,
+            tenant_id=tenant_id,
+            conversation_scope=source_conversation_id,
+        )
         existing_id = _find_dify_trace_conversation(
             db,
             tenant_id=tenant_id,
@@ -1048,6 +1102,12 @@ def _persist_dify_conversation_turn(
         raise HTTPException(status_code=400, detail="answer is required")
 
     if conversation_id is not None:
+        conversation_scope = source_conversation_id or str(conversation_id)
+        _lock_dify_conversation_turn_scope(
+            db=db,
+            tenant_id=tenant_id,
+            conversation_scope=conversation_scope,
+        )
         conversation = _load_dify_trace_conversation(db, tenant_id=tenant_id, conversation_id=conversation_id)
         if conversation is None:
             raise HTTPException(status_code=404, detail="Conversation not found")
@@ -1068,6 +1128,22 @@ def _persist_dify_conversation_turn(
         conversation = _load_dify_trace_conversation(db, tenant_id=tenant_id, conversation_id=resolved_id)
         if conversation is None:
             raise HTTPException(status_code=404, detail="Conversation not found")
+
+    persisted_turn = _find_persisted_dify_conversation_turn(
+        db,
+        tenant_id=tenant_id,
+        conversation_id=conversation.id,
+        source_conversation_id=source_conversation_id,
+        source_message_id=source_message_id,
+    )
+    if persisted_turn is not None:
+        user_message, assistant_message = persisted_turn
+        return DifyConversationTurnResponse(
+            conversation_id=conversation.id,
+            user_message_id=user_message.id,
+            assistant_message_id=assistant_message.id,
+            reused_user_message=True,
+        )
 
     now = datetime.now(UTC)
     user_metadata = _dify_external_conversation_metadata(
@@ -7152,19 +7228,22 @@ async def persist_dify_conversation_turn(
     actor: Annotated[_DifyActor, Depends(_require_dify_actor)],
     db: Annotated[Session, Depends(get_db)],
 ) -> DifyConversationTurnResponse:
-    return _persist_dify_conversation_turn(
-        db=db,
-        tenant_id=actor.tenant_id,
-        account_id=actor.account_id,
-        query=body.query,
-        answer=body.answer,
-        trace_request_id=body.trace_request_id,
-        source_conversation_id=_dify_turn_source_conversation_id(body),
-        source_message_id=_dify_turn_source_message_id(body),
-        source_run_id=_dify_turn_source_run_id(body),
-        citations=body.citations,
-        metadata=body.metadata,
-        conversation_id=_uuid_or_none(body.conversation_id),
+    return await run_blocking_call_with_managed_session(
+        lambda worker_db: _persist_dify_conversation_turn(
+            db=worker_db,
+            tenant_id=actor.tenant_id,
+            account_id=actor.account_id,
+            query=body.query,
+            answer=body.answer,
+            trace_request_id=body.trace_request_id,
+            source_conversation_id=_dify_turn_source_conversation_id(body),
+            source_message_id=_dify_turn_source_message_id(body),
+            source_run_id=_dify_turn_source_run_id(body),
+            citations=body.citations,
+            metadata=body.metadata,
+            conversation_id=_uuid_or_none(body.conversation_id),
+        ),
+        request_db=db,
     )
 
 

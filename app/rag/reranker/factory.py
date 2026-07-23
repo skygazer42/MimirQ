@@ -5,6 +5,7 @@ Provide a unified reranker creation interface.
 """
 
 import hashlib
+import json
 import threading
 from typing import Any
 
@@ -56,9 +57,29 @@ def describe_reranker_provider(provider: str | None, **kwargs: Any) -> dict[str,
     return {"provider": normalized, "tier": "experimental"}
 
 
-def _api_cache_key(provider: str, *, model: str, base_url: str, api_key: str) -> str:
-    key_hash = hashlib.sha256((api_key or "").encode("utf-8", errors="ignore")).hexdigest()[:12]
-    return f"{provider}:{model}:{base_url}:{key_hash}"
+def _api_cache_key(
+    provider: str,
+    *,
+    model: str,
+    base_url: str,
+    api_key: str,
+    timeout: float,
+    init_kwargs: dict[str, Any],
+) -> str:
+    payload = json.dumps(
+        {
+            "api_key": api_key,
+            "base_url": base_url,
+            "init_kwargs": init_kwargs,
+            "model": model,
+            "timeout": timeout,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        default=repr,
+    )
+    digest = hashlib.sha256(payload.encode("utf-8", errors="ignore")).hexdigest()
+    return f"{provider}:{digest}"
 
 
 def _local_cache_key(provider: str, parts: list[str]) -> str:
@@ -108,7 +129,14 @@ def get_reranker(
         
         timeout = float(kwargs.get("timeout") or settings.RERANKER_API_TIMEOUT_SEC or 30.0)
         kwargs_copy = {k: v for k, v in kwargs.items() if k != "timeout"}
-        cache_key = _api_cache_key(provider, model=model_name, base_url=base_url, api_key=api_key)
+        cache_key = _api_cache_key(
+            provider,
+            model=model_name,
+            base_url=base_url,
+            api_key=api_key,
+            timeout=timeout,
+            init_kwargs=kwargs_copy,
+        )
         with _api_reranker_lock:
             cached = _api_reranker_cache.get(cache_key)
             if cached is not None:
@@ -132,7 +160,14 @@ def get_reranker(
         
         timeout = float(kwargs.get("timeout") or settings.RERANKER_API_TIMEOUT_SEC or 30.0)
         kwargs_copy = {k: v for k, v in kwargs.items() if k != "timeout"}
-        cache_key = _api_cache_key(provider, model=model_name, base_url=base_url, api_key=api_key)
+        cache_key = _api_cache_key(
+            provider,
+            model=model_name,
+            base_url=base_url,
+            api_key=api_key,
+            timeout=timeout,
+            init_kwargs=kwargs_copy,
+        )
         with _api_reranker_lock:
             cached = _api_reranker_cache.get(cache_key)
             if cached is not None:
@@ -142,7 +177,7 @@ def get_reranker(
                 api_key=api_key,
                 base_url=base_url,
                 timeout=timeout,
-                **kwargs,
+                **kwargs_copy,
             )
             _api_reranker_cache[cache_key] = inst
             return inst
@@ -426,30 +461,8 @@ def get_reranker(
         strategy = RerankStrategy.PAGERANK if provider == "kg_pagerank" else RerankStrategy.RRF
         return KGReranker(strategy)
     
-    # Default to OpenAI-style API.
     else:
-        from app.rag.reranker.openai import OpenAIReranker
-        
-        model_name = model_name or settings.RERANKER_MODEL or DEFAULT_RERANKER_MODEL
-        api_key = api_key or settings.RERANKER_API_KEY or settings.LLM_API_KEY
-        base_url = base_url or settings.RERANKER_API_BASE or settings.LLM_API_BASE
-        
-        timeout = float(kwargs.get("timeout") or settings.RERANKER_API_TIMEOUT_SEC or 30.0)
-        kwargs_copy = {k: v for k, v in kwargs.items() if k != "timeout"}
-        cache_key = _api_cache_key("openai", model=model_name, base_url=base_url, api_key=api_key)
-        with _api_reranker_lock:
-            cached = _api_reranker_cache.get(cache_key)
-            if cached is not None:
-                return cached
-            inst = OpenAIReranker(
-                model_name=model_name,
-                api_key=api_key,
-                base_url=base_url,
-                timeout=timeout,
-                **kwargs_copy,
-            )
-            _api_reranker_cache[cache_key] = inst
-            return inst
+        raise ValueError(f"Unknown reranker provider: {provider!r}")
 
 
 # Backward compatibility: legacy factory function (kept for a while).

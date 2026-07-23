@@ -1203,6 +1203,8 @@ class Settings(BaseSettings):
     # heavy retrieval jobs so Milvus/embedding backends queue instead of saturating.
     # Set 0 to disable the process-local gate.
     RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY: int = 1
+    # Maximum time to wait for a retrieval slot. Set 0 to wait indefinitely.
+    RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC: float = 15.0
 
     # Prompt context guards (0 disables)
     RAG_CONTEXT_MAX_CHARS_PER_CHUNK: int = 1500
@@ -2893,6 +2895,8 @@ class Settings(BaseSettings):
 
         if int(getattr(self, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 0) or 0) < 0:
             raise ValueError("RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY must be >= 0")
+        if float(getattr(self, "RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC", 0.0) or 0.0) < 0.0:
+            raise ValueError("RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC must be >= 0")
         if int(getattr(self, "RAG_KG_CHUNK_INJECTION_MAX_CHUNKS", 0) or 0) < 0:
             raise ValueError("RAG_KG_CHUNK_INJECTION_MAX_CHUNKS must be >= 0")
         kg_chunk_boost_weight = float(getattr(self, "RAG_KG_CHUNK_BOOST_WEIGHT", 0.15) or 0.0)

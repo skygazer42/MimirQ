@@ -2684,6 +2684,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         "tenant_id": state.get("tenant_id"),
         "account_id": state.get("account_id"),
         "dataset_id": state.get("dataset_id"),
+        "dataset_ids": state.get("dataset_ids"),
         "document_ids": state.get("document_ids"),
         "metadata_filter": state.get("metadata_filter"),
         "lexical_db_hybrid_fallback_only": state.get("lexical_db_hybrid_fallback_only"),

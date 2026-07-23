@@ -193,6 +193,40 @@ async def test_retrieval_limiter_drops_cancelled_queued_work(
     assert queued_work_ran.is_set() is False
 
 
+@pytest.mark.asyncio
+async def test_retrieval_limiter_rejects_queued_work_after_admission_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.services.rag_runtime_limiter as limiter
+
+    first_started = threading.Event()
+    release_first = threading.Event()
+    queued_work_ran = threading.Event()
+    monkeypatch.setattr(limiter.settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 1)
+    monkeypatch.setattr(limiter.settings, "RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC", 0.03)
+
+    def first_work() -> None:
+        first_started.set()
+        assert release_first.wait(timeout=2)
+
+    first_task = asyncio.create_task(limiter.run_blocking_retrieval_call(first_work))
+    assert await asyncio.to_thread(first_started.wait, 1)
+
+    try:
+        with pytest.raises(limiter.RetrievalAdmissionTimeoutError):
+            await limiter.run_blocking_retrieval_call(queued_work_ran.set)
+        with pytest.raises(limiter.RetrievalAdmissionTimeoutError):
+            await asyncio.to_thread(
+                limiter.run_blocking_retrieval_call_sync,
+                queued_work_ran.set,
+            )
+    finally:
+        release_first.set()
+        await first_task
+
+    assert queued_work_ran.is_set() is False
+
+
 def test_sync_retrieval_limiter_drops_cancellation_racing_with_admission(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

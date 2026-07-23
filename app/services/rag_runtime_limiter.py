@@ -3,11 +3,14 @@
 
 import asyncio
 import contextlib
+import math
 import threading
 import time
 from collections.abc import Callable
 from contextlib import contextmanager
 from typing import Any, TypeVar
+
+from fastapi import HTTPException
 
 from app.core.config import settings
 from app.core.database import SessionLocal
@@ -22,6 +25,10 @@ _admission_state = threading.local()
 
 def _configured_limit() -> int:
     return max(0, int(getattr(settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 1) or 0))
+
+
+def _configured_admission_timeout_sec() -> float:
+    return max(0.0, float(getattr(settings, "RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC", 15.0) or 0.0))
 
 
 def _get_gate(limit: int) -> threading.BoundedSemaphore | None:
@@ -54,9 +61,32 @@ def _run_admitted(
         _admission_state.depth = previous_depth
 
 
-async def _acquire_gate(gate: threading.BoundedSemaphore) -> None:
-    while not gate.acquire(blocking=False):
-        await asyncio.sleep(0.01)
+class RetrievalAdmissionTimeoutError(HTTPException):
+    """Retrieval capacity stayed full past the configured queue deadline."""
+
+    def __init__(self, timeout_sec: float):
+        retry_after_sec = max(1, math.ceil(timeout_sec))
+        super().__init__(
+            status_code=503,
+            detail="Retrieval capacity is busy. Retry later.",
+            headers={"Retry-After": str(retry_after_sec)},
+        )
+
+
+async def _acquire_gate(
+    gate: threading.BoundedSemaphore,
+    *,
+    timeout_sec: float,
+) -> None:
+    deadline = time.perf_counter() + timeout_sec if timeout_sec > 0.0 else None
+    while True:
+        if deadline is not None:
+            remaining = deadline - time.perf_counter()
+            if remaining <= 0.0:
+                raise RetrievalAdmissionTimeoutError(timeout_sec)
+        if gate.acquire(blocking=False):
+            return
+        await asyncio.sleep(min(0.01, remaining) if deadline is not None else 0.01)
 
 
 @contextmanager
@@ -105,13 +135,14 @@ async def run_blocking_retrieval_call(
     """
 
     limit = _configured_limit()
+    admission_timeout_sec = _configured_admission_timeout_sec()
     gate = _get_gate(limit)
     queued_at = time.perf_counter()
     if gate is None:
         acquired_at = queued_at
         result = await asyncio.to_thread(func, *args, **kwargs)
     else:
-        await _acquire_gate(gate)
+        await _acquire_gate(gate, timeout_sec=admission_timeout_sec)
         acquired_at = time.perf_counter()
         worker_task = asyncio.create_task(
             asyncio.to_thread(_run_admitted, func, args, kwargs)
@@ -140,17 +171,25 @@ def run_blocking_retrieval_call_sync(
     """Run retrieval from an existing worker while sharing process admission."""
 
     limit = _configured_limit()
+    admission_timeout_sec = _configured_admission_timeout_sec()
     queued_at = time.perf_counter()
     gate = _get_gate(limit)
     already_admitted = bool(getattr(_admission_state, "depth", 0))
     acquired = False
     if gate is not None and not already_admitted:
         effective_cancel_event = cancel_event or getattr(_admission_state, "cancel_event", None)
-        if effective_cancel_event is not None and effective_cancel_event.is_set():
-            raise RetrievalAdmissionCancelledError("retrieval admission cancelled")
-        while not gate.acquire(timeout=0.05):
+        deadline = queued_at + admission_timeout_sec if admission_timeout_sec > 0.0 else None
+        while True:
             if effective_cancel_event is not None and effective_cancel_event.is_set():
                 raise RetrievalAdmissionCancelledError("retrieval admission cancelled")
+            wait_sec = 0.05
+            if deadline is not None:
+                remaining = deadline - time.perf_counter()
+                if remaining <= 0.0:
+                    raise RetrievalAdmissionTimeoutError(admission_timeout_sec)
+                wait_sec = min(wait_sec, remaining)
+            if gate.acquire(timeout=wait_sec):
+                break
         acquired = True
         if effective_cancel_event is not None and effective_cancel_event.is_set():
             gate.release()

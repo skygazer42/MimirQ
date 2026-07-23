@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.rag.retrieval.planner import (
+    _policy_value_fuzzy_overlaps_query,
     retrieval_policy_anchor_mismatch_penalty,
     retrieval_policy_boost_score,
     retrieval_policy_query_terms,
@@ -91,34 +92,6 @@ def _policy_float(value: Any, *, default: float, minimum: float = 0.0, maximum: 
     except (TypeError, ValueError):
         out = float(default)
     return max(float(minimum), min(float(maximum), float(out)))
-
-
-def _longest_common_substring_length(left: str, right: str) -> int:
-    if not left or not right:
-        return 0
-    previous = [0] * (len(right) + 1)
-    best = 0
-    for left_char in left:
-        current = [0] * (len(right) + 1)
-        for index, right_char in enumerate(right, start=1):
-            if left_char != right_char:
-                continue
-            current[index] = previous[index - 1] + 1
-            best = max(best, current[index])
-        previous = current
-    return best
-
-
-def _policy_value_fuzzy_overlaps_query(query_text: str, value_text: str) -> bool:
-    if not query_text or not value_text:
-        return False
-    if value_text in query_text or query_text in value_text:
-        return True
-    shortest = min(len(query_text), len(value_text))
-    if shortest < 4:
-        return False
-    overlap = _longest_common_substring_length(query_text, value_text)
-    return overlap >= 4 and (overlap / shortest) >= 0.72
 
 
 def _anchor_binding_config(policy: dict[str, Any]) -> dict[str, Any]:

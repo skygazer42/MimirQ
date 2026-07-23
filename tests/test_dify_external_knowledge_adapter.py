@@ -11424,6 +11424,43 @@ def test_dify_trace_context_auto_creates_mimirq_conversation_for_dify_conversati
     ]
 
 
+def test_dify_trace_conversation_resolution_locks_source_scope_before_lookup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api.v1 import integrations_dify as dify_api
+
+    tenant_id = uuid.uuid4()
+    conversation_id = uuid.uuid4()
+    db = object()
+    events: list[tuple[str, object]] = []
+
+    monkeypatch.setattr(
+        dify_api,
+        "_lock_dify_conversation_turn_scope",
+        lambda **kwargs: events.append(("lock", kwargs["conversation_scope"])),
+        raising=True,
+    )
+
+    def _find_existing(_db, **kwargs):  # noqa: ANN001, ANN003, ANN202
+        events.append(("find", kwargs["source_conversation_id"]))
+        return conversation_id
+
+    monkeypatch.setattr(dify_api, "_find_dify_trace_conversation", _find_existing, raising=True)
+
+    resolved = dify_api._ensure_dify_trace_conversation(
+        db=db,
+        tenant_id=tenant_id,
+        account_id="system:dify",
+        source_conversation_id="dify-conv-001",
+        source_message_id="dify-msg-001",
+        source_run_id="dify-run-001",
+        question="普通话考试要带什么？",
+    )
+
+    assert resolved == conversation_id
+    assert events == [("lock", "dify-conv-001"), ("find", "dify-conv-001")]
+
+
 def test_dify_retrieval_endpoint_logs_trace_for_dify_conversation_context(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -11608,6 +11645,8 @@ def test_dify_conversation_turn_endpoint_persists_final_answer(
     user_message_id = uuid.uuid4()
     assistant_message_id = uuid.uuid4()
     calls: list[dict[str, object]] = []
+    offload_request_dbs: list[object] = []
+    worker_db = _DummyDB()
 
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
@@ -11623,7 +11662,17 @@ def test_dify_conversation_turn_endpoint_persists_final_answer(
             reused_user_message=True,
         )
 
+    async def _fake_offload(func, *args, request_db, **kwargs):  # noqa: ANN001, ANN202
+        offload_request_dbs.append(request_db)
+        return func(worker_db, *args, **kwargs)
+
     monkeypatch.setattr(dify_api, "_persist_dify_conversation_turn", _fake_persist, raising=True)
+    monkeypatch.setattr(
+        dify_api,
+        "run_blocking_call_with_managed_session",
+        _fake_offload,
+        raising=False,
+    )
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db
@@ -11651,9 +11700,11 @@ def test_dify_conversation_turn_endpoint_persists_final_answer(
         "assistant_message_id": str(assistant_message_id),
         "reused_user_message": True,
     }
+    assert len(offload_request_dbs) == 1
+    assert offload_request_dbs[0] is not worker_db
     assert len(calls) == 1
     call = calls[0]
-    assert call["db"].__class__.__name__ == "_DummyDB"
+    assert call["db"] is worker_db
     assert call["tenant_id"] == tenant_id
     assert call["account_id"] == "system:dify"
     assert call["query"] == "麻烦帮我查一下普通话考试，主要想知道要带什么。（我在常州）"
@@ -11663,6 +11714,84 @@ def test_dify_conversation_turn_endpoint_persists_final_answer(
     assert call["source_message_id"] == "dify-msg-001"
     assert call["source_run_id"] == "dify-run-001"
     assert call["citations"] == [{"document_id": "doc-1", "chunk_id": "chunk-1"}]
+
+
+def test_dify_conversation_turn_retry_returns_existing_messages_without_writes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api.v1 import integrations_dify as dify_api
+
+    tenant_id = uuid.uuid4()
+    conversation_id = uuid.uuid4()
+    user_message = SimpleNamespace(id=uuid.uuid4(), role="user")
+    assistant_message = SimpleNamespace(id=uuid.uuid4(), role="assistant")
+    lookup_calls: list[dict[str, object]] = []
+    lock_calls: list[dict[str, object]] = []
+
+    class _NoWriteDB:
+        def add(self, _value) -> None:  # noqa: ANN001
+            raise AssertionError("an idempotent retry must not write")
+
+    monkeypatch.setattr(
+        dify_api,
+        "_lock_dify_conversation_turn_scope",
+        lambda **kwargs: lock_calls.append(dict(kwargs)),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api,
+        "_load_dify_trace_conversation",
+        lambda *_args, **_kwargs: SimpleNamespace(id=conversation_id),
+        raising=True,
+    )
+
+    def _fake_find_existing(_db, **kwargs):  # noqa: ANN001, ANN003, ANN202
+        lookup_calls.append(dict(kwargs))
+        return user_message, assistant_message
+
+    monkeypatch.setattr(
+        dify_api,
+        "_find_persisted_dify_conversation_turn",
+        _fake_find_existing,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api,
+        "_find_reusable_dify_seed_message",
+        lambda *_args, **_kwargs: None,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        dify_api,
+        "_log_dify_result_rag_trace",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("retry must not duplicate trace")),
+        raising=True,
+    )
+
+    results = [
+        dify_api._persist_dify_conversation_turn(
+            db=_NoWriteDB(),
+            tenant_id=tenant_id,
+            account_id="system:dify",
+            query="普通话考试要带什么？",
+            answer="请携带有效身份证件。",
+            trace_request_id="trace-req-001",
+            source_conversation_id="dify-conv-001",
+            source_message_id="  dify-msg-001  ",
+            source_run_id="dify-run-001",
+            citations=[],
+            conversation_id=conversation_id,
+        )
+        for _ in range(2)
+    ]
+
+    assert len(lookup_calls) == 2
+    assert [call["conversation_scope"] for call in lock_calls] == ["dify-conv-001", "dify-conv-001"]
+    assert all(call["source_message_id"] == "dify-msg-001" for call in lookup_calls)
+    assert all(result.conversation_id == conversation_id for result in results)
+    assert all(result.user_message_id == user_message.id for result in results)
+    assert all(result.assistant_message_id == assistant_message.id for result in results)
+    assert all(result.reused_user_message is True for result in results)
 
 
 def test_dify_turn_citations_for_storage_drops_invalid_frontend_citations() -> None:

@@ -32,10 +32,10 @@ def _terminate_process_group(proc: subprocess.Popen[str], *, grace_sec: float = 
         os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
     except ProcessLookupError:
         return
-    except Exception:
+    except OSError:
         try:
             proc.terminate()
-        except Exception:
+        except OSError:
             return
 
     try:
@@ -43,22 +43,22 @@ def _terminate_process_group(proc: subprocess.Popen[str], *, grace_sec: float = 
         return
     except subprocess.TimeoutExpired:
         pass
-    except Exception:
+    except OSError:
         return
 
     try:
         os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
     except ProcessLookupError:
         return
-    except Exception:
+    except OSError:
         try:
             proc.kill()
-        except Exception:
+        except OSError:
             return
 
     try:
         proc.wait(timeout=grace_sec)
-    except Exception:
+    except (OSError, subprocess.TimeoutExpired):
         return
 
 
@@ -155,7 +155,7 @@ async def convert(
     device = (device or os.environ.get("PADDLEOCR_DEVICE") or "cpu").strip() or "cpu"
     try:
         timeout_sec = int((os.environ.get("PADDLEOCR_PIPELINE_TIMEOUT_SEC") or "1800").strip() or "1800")
-    except Exception:
+    except ValueError:
         timeout_sec = 1800
 
     with tempfile.TemporaryDirectory(prefix="mimirq_paddlevl_") as tmp:

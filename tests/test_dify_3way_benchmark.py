@@ -1,10 +1,16 @@
-from scripts.dify_3way_benchmark import _execution_stats, _is_timeout_error_text, _merge_retry_results
+from scripts.dify_3way_benchmark import _execution_stats, _is_timeout_error_text, _merge_retry_results, load_app_specs
 from scripts.evaluate_mixed_rag_quality import evaluate_item, evaluate_mixed_rag_quality
 
 
 def test_timeout_detection_includes_gateway_504() -> None:
     assert _is_timeout_error_text("HTTP 504: Gateway Time-out") is True
     assert _is_timeout_error_text("HTTP 400: bad request") is False
+
+
+def test_http_mimirq_kind_alias_is_canonicalized() -> None:
+    [app] = load_app_specs(["http:app-id:http_mimirq:test-key:chat"], "")
+
+    assert app.kind == "http_to_mimirq"
 
 
 def test_execution_stats_only_measure_current_concurrent_run() -> None:

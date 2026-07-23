@@ -280,22 +280,6 @@ def _normalize_policy_match_text(value: Any) -> str:
     return "".join(char for char in text if char.isalnum())
 
 
-def _longest_common_substring_length(left: str, right: str) -> int:
-    if not left or not right:
-        return 0
-    previous = [0] * (len(right) + 1)
-    best = 0
-    for left_char in left:
-        current = [0] * (len(right) + 1)
-        for index, right_char in enumerate(right, start=1):
-            if left_char != right_char:
-                continue
-            current[index] = previous[index - 1] + 1
-            best = max(best, current[index])
-        previous = current
-    return best
-
-
 def _policy_value_fuzzy_overlaps_query(query_text: str, value_text: str) -> bool:
     if not query_text or not value_text:
         return False
@@ -304,8 +288,16 @@ def _policy_value_fuzzy_overlaps_query(query_text: str, value_text: str) -> bool
     shortest = min(len(query_text), len(value_text))
     if shortest < 4:
         return False
-    overlap = _longest_common_substring_length(query_text, value_text)
-    return overlap >= 4 and (overlap / shortest) >= 0.72
+    required = max(4, (72 * shortest + 99) // 100)
+    shorter, longer = (
+        (query_text, value_text)
+        if len(query_text) <= len(value_text)
+        else (value_text, query_text)
+    )
+    return any(
+        shorter[start : start + required] in longer
+        for start in range(len(shorter) - required + 1)
+    )
 
 
 def _policy_value_matches_query(query: str, value: str, *, match_mode: str) -> bool:

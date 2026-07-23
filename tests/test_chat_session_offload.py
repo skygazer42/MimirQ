@@ -395,12 +395,13 @@ async def test_chat_singleflight_follower_reacquires_after_leader_cancellation(
 
 
 @pytest.mark.asyncio
-async def test_chat_cancelled_leader_releases_singleflight_for_retry(
+async def test_chat_cancelled_or_overloaded_leader_releases_singleflight_for_retry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import app.api.v1.chat as chat_api
     import app.services.chat_response_cache as cache
     from app.api.schemas.chat import ChatRequest
+    from app.services.rag_runtime_limiter import RetrievalAdmissionTimeoutError
 
     key = "chat-endpoint-cancel"
     cache.clear_inflight_chat_responses()
@@ -425,7 +426,6 @@ async def test_chat_cancelled_leader_releases_singleflight_for_retry(
         rag_config_template_meta=None,
         history_for_llm=[],
     )
-
     monkeypatch.setattr(
         "app.services.tenant_quota_service.enforce_tenant_qps_quota",
         lambda **_kwargs: {},
@@ -498,12 +498,40 @@ async def test_chat_cancelled_leader_releases_singleflight_for_retry(
         assert replacement_leader is True
         cache.resolve_inflight_chat_response(key, {"content": "replacement"})
         await replacement_future
+
+        async def overloaded_offload(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            raise RetrievalAdmissionTimeoutError(0.03)
+
+        monkeypatch.setattr(
+            chat_api,
+            "run_blocking_retrieval_call_with_managed_session",
+            overloaded_offload,
+            raising=False,
+        )
+        with pytest.raises(RetrievalAdmissionTimeoutError) as exc_info:
+            await chat_api.chat(
+                SimpleNamespace(
+                    state=SimpleNamespace(request_id="overload-test"),
+                    client=SimpleNamespace(host="127.0.0.1"),
+                    headers={},
+                ),
+                request,
+                BackgroundTasks(),
+                tenant_id=uuid.uuid4(),
+                account_id="member-1",
+                db=request_db,
+            )
+
+        assert exc_info.value.status_code == 503
+        assert exc_info.value.headers == {"Retry-After": "1"}
+        assert acquired_future is not None
+        assert acquired_future.exception() is exc_info.value
     finally:
         cache.clear_inflight_chat_responses()
 
 
 @pytest.mark.asyncio
-async def test_langchain_engine_releases_request_session_before_retrieval_and_generation(
+async def test_langchain_engine_releases_session_and_propagates_admission_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from langchain_core.documents import Document
@@ -513,6 +541,7 @@ async def test_langchain_engine_releases_request_session_before_retrieval_and_ge
     import app.services.chat_tag_service as tag_service
     from app.core.config import settings
     from app.rag.engine import RAGEngine
+    from app.services.rag_runtime_limiter import RetrievalAdmissionTimeoutError
 
     for name, value in {
         "ENABLE_QUERY_REWRITE": False,
@@ -673,3 +702,26 @@ async def test_langchain_engine_releases_request_session_before_retrieval_and_ge
         finish_generation.set()
         await asyncio.wait_for(consumer, timeout=5)
         await stream.aclose()
+
+    async def overloaded_call(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        raise RetrievalAdmissionTimeoutError(0.03)
+
+    monkeypatch.setattr(engine_mod, "run_blocking_retrieval_call", overloaded_call)
+    overloaded_stream = engine.stream_chat(
+        question="What does the evidence say?",
+        history=[],
+        tenant_id=uuid.uuid4(),
+        account_id="member-1",
+        document_ids=[uuid.uuid4()],
+        top_k=1,
+        score_threshold=0.0,
+        retrieval_mode="vector",
+        db=request_db,
+        request_id="overload-test",
+    )
+    try:
+        with pytest.raises(RetrievalAdmissionTimeoutError):
+            async for _event in overloaded_stream:
+                pass
+    finally:
+        await overloaded_stream.aclose()

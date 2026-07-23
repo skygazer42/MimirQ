@@ -87,6 +87,7 @@ LEXICAL_DB_SEARCH_FAILED_LOG = "Lexical DB search failed: %s"
 NON_CRITICAL_RETRIEVER_FALLBACK_LOG = "Ignoring non-critical retriever fallback failure: %s"
 _RETRIEVAL_DISPLAY_CONTENT_KEY = "_retrieval_display_content"
 _RETRIEVAL_TEXT_KEY = RETRIEVAL_TEXT_METADATA_KEY
+_RETRIEVAL_EXPECTED_EMBEDDING_SPACE_KEY = "_retrieval_expected_embedding_space_hash"
 _RETRIEVAL_QUESTIONS_CHANNEL_KEY = "_retrieval_questions_channel_applied"
 _PIPELINE_PLUGIN_METADATA_KEYS = ("chunk_python_plugin", "governance_python_plugin", "kg_python_plugin")
 _INDEXED_METADATA_KEY = INDEXED_METADATA_KEY
@@ -512,6 +513,7 @@ class HybridRetriever(BaseRetriever):
     account_id: str | None = None
     # Optional: dataset scope. When set, results are restricted to documents within the dataset.
     dataset_id: UUID | None = None
+    dataset_ids: list[UUID] | None = None
     document_ids: list[UUID] | None = None
     # Metadata filtering
     metadata_filter: dict[str, Any] | None = None
@@ -612,8 +614,157 @@ class HybridRetriever(BaseRetriever):
         except (TypeError, ValueError, AttributeError):
             return None
 
-    def _dataset_scope_id(self, document_ids: list[UUID] | None) -> UUID | None:
-        return self.dataset_id if self.dataset_id is not None and not (document_ids or []) else None
+    def _explicit_dataset_scope_ids(self) -> tuple[UUID, ...]:
+        if self.dataset_id is not None:
+            return (self.dataset_id,)
+        return self._normalize_dataset_scope_ids(self.dataset_ids)
+
+    def _dataset_scope_ids(self, document_ids: list[UUID] | None) -> tuple[UUID, ...]:
+        return () if document_ids else self._explicit_dataset_scope_ids()
+
+    @classmethod
+    def _normalize_dataset_scope_ids(
+        cls,
+        dataset_scope_ids: list[UUID] | tuple[UUID, ...] | None,
+    ) -> tuple[UUID, ...]:
+        return tuple(sorted(cls._coerce_dataset_scope_values(dataset_scope_ids), key=str))
+
+    def _with_dataset_scope_filter(
+        self,
+        metadata_filter: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        dataset_ids = self._explicit_dataset_scope_ids()
+        if not dataset_ids:
+            return metadata_filter
+        scoped_filter = dict(metadata_filter or {})
+        scoped_filter.setdefault("dataset_id", self._dataset_scope_filter_value(dataset_ids))
+        return scoped_filter
+
+    @staticmethod
+    def _dataset_scope_filter_value(dataset_ids: tuple[UUID, ...]) -> str | dict[str, list[str]]:
+        if len(dataset_ids) == 1:
+            return str(dataset_ids[0])
+        return {"$in": [str(dataset_id) for dataset_id in dataset_ids]}
+
+    @staticmethod
+    def _build_vector_filter(
+        metadata_filter: dict[str, Any] | None,
+        *,
+        embedding_space: str,
+        dataset_ids: tuple[UUID, ...] | None = None,
+    ) -> dict[str, Any] | None:
+        if not metadata_filter and not embedding_space and not dataset_ids:
+            return None
+
+        vector_allowed = {
+            "tenant_id",
+            "dataset_id",
+            "document_id",
+            "embedding_space_hash",
+            "chunk_id",
+            "chunk_index",
+            "pipeline_hash",
+            "doc_pipeline_key",
+            "source",
+            "file_type",
+            "img_id",
+            "image_id",
+            "image_url",
+            "page_number",
+            "partition_keys",
+        }
+        vf: dict[str, Any] = {}
+        for k, v in (metadata_filter or {}).items():
+            if not isinstance(k, str):
+                continue
+            if "." in k:
+                continue
+            if k == "page":
+                vf["page_number"] = v
+                continue
+            if k == "img_url":
+                vf["image_url"] = v
+                continue
+            if k in vector_allowed:
+                vf[k] = v
+
+        if dataset_ids:
+            vf["dataset_id"] = HybridRetriever._dataset_scope_filter_value(dataset_ids)
+        if embedding_space:
+            vf["embedding_space_hash"] = {"$in": [embedding_space, ""]}
+        return vf or None
+
+    @staticmethod
+    def _tag_vector_hits_with_expected_space(
+        hits: list[dict[str, Any]],
+        *,
+        expected_space: str,
+    ) -> list[dict[str, Any]]:
+        if not expected_space:
+            return hits
+        for hit in hits:
+            meta = dict(hit.get("metadata") or {})
+            meta[_RETRIEVAL_EXPECTED_EMBEDDING_SPACE_KEY] = expected_space
+            hit["metadata"] = meta
+        return hits
+
+    def _search_vector_runtime_shards(
+        self,
+        *,
+        query: str,
+        top_k: int,
+        score_threshold: float,
+        document_ids: list[UUID] | None,
+        tenant_id: UUID | None,
+        metadata_filter: dict[str, Any] | None,
+        runtime_shards: list[tuple[DatasetEmbeddingRuntimeConfig, tuple[UUID, ...]]],
+        vector_store: Any,
+    ) -> tuple[list[dict[str, Any]], list[Exception]]:
+        shard_results: list[dict[str, Any]] = []
+        failures: list[Exception] = []
+        for shard_runtime, shard_dataset_ids in runtime_shards:
+            try:
+                shard_filter = self._build_vector_filter(
+                    metadata_filter,
+                    embedding_space=str(shard_runtime.embedding_space_hash or "").strip(),
+                    dataset_ids=shard_dataset_ids,
+                )
+                if shard_runtime.dataset_scoped:
+                    hits = self._search_dataset_scoped_vectors(
+                        query=query,
+                        top_k=top_k,
+                        score_threshold=score_threshold,
+                        document_ids=document_ids,
+                        tenant_id=tenant_id,
+                        metadata_filter=shard_filter,
+                        embedding_runtime=shard_runtime,
+                    )
+                else:
+                    hits = vector_store.search(
+                        query=query,
+                        top_k=top_k,
+                        score_threshold=score_threshold,
+                        document_ids=document_ids,
+                        tenant_id=tenant_id,
+                        metadata_filter=shard_filter,
+                    )
+                shard_results.extend(
+                    self._tag_vector_hits_with_expected_space(
+                        hits,
+                        expected_space=str(shard_runtime.embedding_space_hash or "").strip(),
+                    )
+                )
+            except Exception as exc:
+                failures.append(exc)
+                logger.warning(
+                    "Vector search shard failed for collection %s: %s",
+                    shard_runtime.collection_name,
+                    exc,
+                )
+        return (
+            heapq.nlargest(top_k, shard_results, key=lambda item: float(item.get("score") or 0.0)),
+            failures,
+        )
 
     @staticmethod
     def _query_maybe_call(query: Any, method_name: str, *args: Any, **kwargs: Any) -> Any:
@@ -639,7 +790,7 @@ class HybridRetriever(BaseRetriever):
         return []
 
     @staticmethod
-    def _unpack_chunk_row(row: Any) -> tuple[Any, Any, Any, Any, Any, Any, Any]:
+    def _unpack_chunk_row(row: Any) -> tuple[Any, Any, Any, Any, Any, Any, Any, Any]:
         try:
             (
                 chunk_id,
@@ -649,8 +800,18 @@ class HybridRetriever(BaseRetriever):
                 document_uuid_row,
                 chunk_index,
                 page_number,
+                dataset_uuid_row,
             ) = row
-            return chunk_id, content, doc_metadata, tenant_uuid_row, document_uuid_row, chunk_index, page_number
+            return (
+                chunk_id,
+                content,
+                doc_metadata,
+                tenant_uuid_row,
+                document_uuid_row,
+                chunk_index,
+                page_number,
+                dataset_uuid_row,
+            )
         except (TypeError, ValueError, AttributeError):
             return (
                 getattr(row, "id", None),
@@ -660,16 +821,26 @@ class HybridRetriever(BaseRetriever):
                 getattr(row, "document_id", None),
                 getattr(row, "chunk_index", None),
                 getattr(row, "page_number", None),
+                getattr(row, "dataset_id", None),
             )
 
     @staticmethod
     def _document_from_chunk_row(row: Any) -> Document:
-        chunk_id, content, doc_metadata, tenant_uuid_row, document_uuid_row, chunk_index, page_number = (
-            HybridRetriever._unpack_chunk_row(row)
-        )
+        (
+            chunk_id,
+            content,
+            doc_metadata,
+            tenant_uuid_row,
+            document_uuid_row,
+            chunk_index,
+            page_number,
+            dataset_uuid_row,
+        ) = HybridRetriever._unpack_chunk_row(row)
         meta = dict(doc_metadata or {})
         meta.setdefault("tenant_id", str(tenant_uuid_row))
         meta.setdefault("document_id", str(document_uuid_row))
+        if dataset_uuid_row is not None:
+            meta.setdefault("dataset_id", str(dataset_uuid_row))
         meta.setdefault("chunk_index", int(chunk_index) if chunk_index is not None else None)
         meta.setdefault("chunk_id", str(chunk_id))
         meta.setdefault("source", meta.get("source", "unknown"))
@@ -980,7 +1151,8 @@ class HybridRetriever(BaseRetriever):
         self,
         *,
         tenant_id: UUID,
-        dataset_id: UUID | None,
+        dataset_id: UUID | None = None,
+        dataset_ids: tuple[UUID, ...] | None = None,
         document_ids: list[UUID] | None,
     ) -> str:
         """
@@ -993,8 +1165,16 @@ class HybridRetriever(BaseRetriever):
         tenant_key = self._tenant_key(tenant_id)
         if document_ids:
             return tenant_key
-        if dataset_id is not None:
-            return f"{tenant_key}:dataset:{dataset_id}"
+        scope_dataset_ids = self._normalize_dataset_scope_ids(
+            [dataset_id]
+            if dataset_id is not None
+            else dataset_ids
+        )
+        if len(scope_dataset_ids) == 1:
+            return f"{tenant_key}:dataset:{scope_dataset_ids[0]}"
+        if scope_dataset_ids:
+            dataset_suffix = ",".join(str(ds_id) for ds_id in scope_dataset_ids)
+            return f"{tenant_key}:datasets:{len(scope_dataset_ids)}:{stable_hash(dataset_suffix, length=24)}"
         return tenant_key
 
     def _clear_bm25_cache_key(self, key: str) -> None:
@@ -1017,18 +1197,30 @@ class HybridRetriever(BaseRetriever):
                 locks.pop(key, None)
 
     def _resolve_embedding_runtime(self, *, tenant_id: UUID | None) -> DatasetEmbeddingRuntimeConfig:
-        if self.dataset_id is None or tenant_id is None:
+        dataset_ids = self._explicit_dataset_scope_ids()
+        if tenant_id is not None and dataset_ids:
+            shards = self._resolve_dataset_runtime_shards(tenant_id=tenant_id, dataset_ids=dataset_ids)
+            if len(shards) == 1:
+                return shards[0][0]
+            if len(shards) > 1:
+                runtime = resolve_dataset_embedding_runtime(None)
+                return cast(
+                    DatasetEmbeddingRuntimeConfig,
+                    replace(runtime, embedding_space_hash=current_embedding_space_hash()),
+                )
+        if len(dataset_ids) != 1 or tenant_id is None:
             runtime = resolve_dataset_embedding_runtime(None)
             return cast(
                 DatasetEmbeddingRuntimeConfig,
                 replace(runtime, embedding_space_hash=current_embedding_space_hash()),
             )
+        dataset_id = dataset_ids[0]
 
         db = SessionLocal()
         try:
             row = (
                 db.query(DBDataset.dataset_metadata)
-                .filter(DBDataset.tenant_id == tenant_id, DBDataset.id == self.dataset_id)
+                .filter(DBDataset.tenant_id == tenant_id, DBDataset.id == dataset_id)
                 .first()
             )
             meta = row[0] if row else None
@@ -1046,6 +1238,50 @@ class HybridRetriever(BaseRetriever):
                 DatasetEmbeddingRuntimeConfig,
                 replace(runtime, embedding_space_hash=current_embedding_space_hash()),
             )
+        finally:
+            try:
+                db.close()
+            except Exception as exc:
+                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+
+    def _resolve_dataset_runtime_shards(
+        self,
+        *,
+        tenant_id: UUID | None,
+        dataset_ids: tuple[UUID, ...] | None = None,
+    ) -> list[tuple[DatasetEmbeddingRuntimeConfig, tuple[UUID, ...]]]:
+        scope_dataset_ids = self._normalize_dataset_scope_ids(dataset_ids or self._explicit_dataset_scope_ids())
+        if tenant_id is None or not scope_dataset_ids:
+            return []
+
+        current_space = current_embedding_space_hash()
+        db = SessionLocal()
+        try:
+            rows = (
+                db.query(DBDataset.id, DBDataset.dataset_metadata)
+                .filter(DBDataset.tenant_id == tenant_id, DBDataset.id.in_(scope_dataset_ids))
+                .all()
+            )
+            metadata_by_id = {
+                str(dataset_id): dict(meta or {}) if isinstance(meta, dict) else {}
+                for dataset_id, meta in rows
+            }
+            grouped: "OrderedDict[DatasetEmbeddingRuntimeConfig, list[UUID]]" = OrderedDict()
+            for dataset_id in scope_dataset_ids:
+                metadata = metadata_by_id.get(str(dataset_id))
+                if metadata is None:
+                    continue
+                runtime = resolve_dataset_embedding_runtime(metadata)
+                if not runtime.dataset_scoped:
+                    runtime = cast(
+                        DatasetEmbeddingRuntimeConfig,
+                        replace(runtime, embedding_space_hash=current_space),
+                    )
+                grouped.setdefault(runtime, []).append(dataset_id)
+            return [(runtime, tuple(group_ids)) for runtime, group_ids in grouped.items()]
+        except Exception as exc:
+            _log_retriever_fallback('_resolve_dataset_runtime_shards', exc)
+            return []
         finally:
             try:
                 db.close()
@@ -1083,7 +1319,7 @@ class HybridRetriever(BaseRetriever):
         self,
         *,
         _tenant_id: UUID | None,
-        _dataset_id: UUID,
+        _dataset_ids: tuple[UUID, ...],
     ) -> str:
         """
         Return a stable dataset version string for BM25 cache invalidation.
@@ -1097,23 +1333,23 @@ class HybridRetriever(BaseRetriever):
                 tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
             except (TypeError, ValueError, AttributeError):
                 tenant_uuid = None
-        if tenant_uuid is None:
+        dataset_ids = self._normalize_dataset_scope_ids(_dataset_ids)
+        if tenant_uuid is None or not dataset_ids:
             return ""
 
         db = SessionLocal()
         try:
-            from app.models.dataset import Dataset  # noqa: WPS433
-
-            row = (
-                db.query(Dataset.updated_at)
-                .filter(Dataset.tenant_id == tenant_uuid, Dataset.id == _dataset_id)
-                .first()
+            rows = (
+                db.query(DBDataset.id, DBDataset.updated_at)
+                .filter(DBDataset.tenant_id == tenant_uuid, DBDataset.id.in_(dataset_ids))
+                .all()
             )
-            updated_at = row[0] if row else None
-            try:
-                return updated_at.isoformat() if updated_at is not None else ""
-            except (TypeError, ValueError, AttributeError):
-                return ""
+            updated_by_id = {str(dataset_id): updated_at for dataset_id, updated_at in rows}
+            signature = "|".join(
+                f"{dataset_id}:{updated_by_id[str(dataset_id)].isoformat() if updated_by_id.get(str(dataset_id)) else ''}"
+                for dataset_id in dataset_ids
+            )
+            return stable_hash(signature, length=None)
         except Exception as exc:
             _log_retriever_fallback('_bm25_dataset_cache_version', exc)
             return ""
@@ -1144,10 +1380,11 @@ class HybridRetriever(BaseRetriever):
 
         db = SessionLocal()
         try:
+            dataset_ids = self._explicit_dataset_scope_ids()
             return resolve_corpus_cache_token(
                 db,
                 tenant_id=tenant_uuid,
-                dataset_id=self.dataset_id,
+                dataset_id=dataset_ids[0] if len(dataset_ids) == 1 else None,
                 document_ids=document_ids or [],
             )
         except Exception as exc:
@@ -1886,14 +2123,14 @@ class HybridRetriever(BaseRetriever):
         *,
         tenant_uuid: UUID,
         document_ids: list[UUID] | None = None,
-        dataset_id: UUID | None = None,
+        dataset_ids: tuple[UUID, ...] | None = None,
         max_chunks: int = 0,
     ) -> list[Document]:
         query = self._base_completed_chunk_query(db, tenant_uuid)
         if document_ids:
             query = query.filter(DocumentChunk.document_id.in_(document_ids))
-        elif dataset_id is not None:
-            query = query.filter(DBDocument.dataset_id == dataset_id)
+        elif dataset_ids:
+            query = query.filter(DBDocument.dataset_id.in_(dataset_ids))
         query = query.order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
         return self._load_chunk_documents(query, max_chunks=max_chunks)
 
@@ -2003,14 +2240,14 @@ class HybridRetriever(BaseRetriever):
         tenant_uuid: UUID,
         cache_key: str,
         document_ids: list[UUID] | None,
-        dataset_id: UUID | None,
+        dataset_ids: tuple[UUID, ...],
         max_chunks: int,
     ) -> bool:
         docs = self._load_bm25_scope_documents(
             db,
             tenant_uuid=tenant_uuid,
             document_ids=document_ids,
-            dataset_id=dataset_id,
+            dataset_ids=dataset_ids,
             max_chunks=max_chunks,
         )
         if not docs:
@@ -2031,9 +2268,9 @@ class HybridRetriever(BaseRetriever):
         )
 
     @staticmethod
-    def _can_lazy_build_scope(*, document_ids: list[UUID] | None, dataset_id: UUID | None) -> bool:
+    def _can_lazy_build_scope(*, document_ids: list[UUID] | None, dataset_ids: tuple[UUID, ...]) -> bool:
         full_tenant = bool(getattr(settings, "BM25_LAZY_BUILD_FULL_TENANT", False))
-        return bool(document_ids or full_tenant or dataset_id is not None)
+        return bool(document_ids or full_tenant or dataset_ids)
 
     def _build_bm25_scope_inside_lock(
         self,
@@ -2042,7 +2279,7 @@ class HybridRetriever(BaseRetriever):
         tenant_key: str,
         cache_key: str,
         document_ids: list[UUID] | None,
-        dataset_id: UUID | None,
+        dataset_ids: tuple[UUID, ...],
     ) -> bool:
         with self._bm25_cache_lock:
             existing_retriever = self._bm25_retrievers.get(cache_key)
@@ -2053,7 +2290,7 @@ class HybridRetriever(BaseRetriever):
             document_ids=document_ids,
         ):
             return True
-        if not self._can_lazy_build_scope(document_ids=document_ids, dataset_id=dataset_id):
+        if not self._can_lazy_build_scope(document_ids=document_ids, dataset_ids=dataset_ids):
             return False
 
         if existing_retriever is None and existing_docs is not None and existing_docs:
@@ -2086,7 +2323,7 @@ class HybridRetriever(BaseRetriever):
                 tenant_uuid=tenant_uuid,
                 cache_key=cache_key,
                 document_ids=document_ids,
-                dataset_id=dataset_id,
+                dataset_ids=dataset_ids,
                 max_chunks=max_chunks,
             )
         except Exception as exc:
@@ -2103,7 +2340,7 @@ class HybridRetriever(BaseRetriever):
         *,
         tenant_id: UUID | None,
         document_ids: list[UUID] | None,
-        dataset_id: UUID | None = None,
+        dataset_ids: tuple[UUID, ...] = (),
     ) -> bool:
         """Build BM25 index on-demand to mitigate cold-start in multi-process deployments."""
         if not self._bm25_lazy_build_enabled():
@@ -2114,7 +2351,11 @@ class HybridRetriever(BaseRetriever):
             return False
 
         tenant_key = self._tenant_key(tenant_uuid)
-        cache_key = self._bm25_scope_key(tenant_id=tenant_uuid, dataset_id=dataset_id, document_ids=document_ids)
+        cache_key = self._bm25_scope_key(
+            tenant_id=tenant_uuid,
+            dataset_ids=dataset_ids,
+            document_ids=document_ids,
+        )
         if self._bm25_existing_scope_ready(cache_key=cache_key, document_ids=document_ids):
             return True
 
@@ -2125,7 +2366,7 @@ class HybridRetriever(BaseRetriever):
                 tenant_key=tenant_key,
                 cache_key=cache_key,
                 document_ids=document_ids,
-                dataset_id=dataset_id,
+                dataset_ids=dataset_ids,
             )
 
     @staticmethod
@@ -2502,12 +2743,12 @@ class HybridRetriever(BaseRetriever):
         )
 
     def _bm25_filter_scope_keys(self, *, tenant_key: str) -> list[str]:
-        scope_prefix = f"{tenant_key}:dataset:"
+        scope_prefixes = (f"{tenant_key}:dataset:", f"{tenant_key}:datasets:")
         with self._bm25_cache_lock:
             scope_keys = [
                 k
                 for k in set(self._bm25_docs) | set(self._bm25_retrievers)
-                if k == tenant_key or str(k).startswith(scope_prefix)
+                if k == tenant_key or str(k).startswith(scope_prefixes)
             ]
         return scope_keys or [tenant_key]
 
@@ -2674,34 +2915,34 @@ class HybridRetriever(BaseRetriever):
         tenant_id: UUID | None,
         document_ids: list[UUID] | None,
         metadata_filter: dict[str, Any] | None = None,
-    ) -> tuple[UUID | None, UUID | None, str | None]:
+    ) -> tuple[UUID | None, tuple[UUID, ...], str | None]:
         tenant_uuid = self._resolve_tenant_uuid(tenant_id)
         if tenant_uuid is None:
-            return None, None, None
-        dataset_scope_id = self._dataset_scope_id(document_ids)
-        if dataset_scope_id is None and not (document_ids or []):
-            dataset_scope = self._collect_lexical_dataset_scope(metadata_filter)
-            if len(dataset_scope) == 1:
-                dataset_scope_id = dataset_scope[0]
+            return None, (), None
+        dataset_scope_ids = self._dataset_scope_ids(document_ids)
+        if not dataset_scope_ids and not (document_ids or []):
+            dataset_scope_ids = self._normalize_dataset_scope_ids(
+                self._collect_lexical_dataset_scope(metadata_filter),
+            )
         cache_key = self._bm25_scope_key(
             tenant_id=tenant_uuid,
-            dataset_id=dataset_scope_id,
+            dataset_ids=dataset_scope_ids,
             document_ids=document_ids,
         )
-        return tenant_uuid, dataset_scope_id, cache_key
+        return tenant_uuid, dataset_scope_ids, cache_key
 
     def _refresh_bm25_dataset_cache_version(
         self,
         *,
         cache_key: str,
         tenant_uuid: UUID,
-        dataset_scope_id: UUID | None,
+        dataset_scope_ids: tuple[UUID, ...],
     ) -> str | None:
-        if dataset_scope_id is None:
+        if not dataset_scope_ids:
             return None
         current_version = self._bm25_dataset_cache_version(
             _tenant_id=tenant_uuid,
-            _dataset_id=dataset_scope_id,
+            _dataset_ids=dataset_scope_ids,
         )
         if not current_version:
             return None
@@ -2723,7 +2964,7 @@ class HybridRetriever(BaseRetriever):
         *,
         cache_key: str,
         tenant_uuid: UUID,
-        dataset_scope_id: UUID | None,
+        dataset_scope_ids: tuple[UUID, ...],
         document_ids: list[UUID] | None,
     ) -> tuple[BM25Retriever | None, list[Document] | None]:
         with self._bm25_cache_lock:
@@ -2742,12 +2983,12 @@ class HybridRetriever(BaseRetriever):
             return retriever, docs
         lazy_attempted = self._bm25_lazy_build_enabled() and self._can_lazy_build_scope(
             document_ids=document_ids,
-            dataset_id=dataset_scope_id,
+            dataset_ids=dataset_scope_ids,
         )
         lazy_success = self._lazy_build_bm25_index(
             tenant_id=tenant_uuid,
             document_ids=document_ids,
-            dataset_id=dataset_scope_id,
+            dataset_ids=dataset_scope_ids,
         )
         with self._bm25_cache_lock:
             retriever = self._bm25_retrievers.get(cache_key)
@@ -2886,14 +3127,14 @@ class HybridRetriever(BaseRetriever):
             self._last_bm25_status["reason"] = "index_disabled"
             return []
 
-        tenant_uuid, dataset_scope_id, cache_key = self._bm25_search_scope(
+        tenant_uuid, dataset_scope_ids, cache_key = self._bm25_search_scope(
             tenant_id=tenant_id,
             document_ids=document_ids,
             metadata_filter=metadata_filter,
         )
         if document_ids:
             scope_kind = "documents"
-        elif dataset_scope_id is not None:
+        elif dataset_scope_ids:
             scope_kind = "dataset"
         else:
             scope_kind = "tenant"
@@ -2902,7 +3143,7 @@ class HybridRetriever(BaseRetriever):
                 "scope": scope_kind,
                 "cache_key_type": scope_kind,
                 "document_scope_count": len(document_ids or []),
-                "dataset_scope": bool(dataset_scope_id is not None),
+                "dataset_scope": bool(dataset_scope_ids),
             }
         )
         if tenant_uuid is None or cache_key is None:
@@ -2912,12 +3153,12 @@ class HybridRetriever(BaseRetriever):
         current_version = self._refresh_bm25_dataset_cache_version(
             cache_key=cache_key,
             tenant_uuid=tenant_uuid,
-            dataset_scope_id=dataset_scope_id,
+            dataset_scope_ids=dataset_scope_ids,
         )
         retriever, docs = self._ensure_bm25_search_index(
             cache_key=cache_key,
             tenant_uuid=tenant_uuid,
-            dataset_scope_id=dataset_scope_id,
+            dataset_scope_ids=dataset_scope_ids,
             document_ids=document_ids,
         )
         if retriever is None or docs is None:
@@ -2925,7 +3166,7 @@ class HybridRetriever(BaseRetriever):
             self._last_bm25_status["cache_ready_after"] = False
             self._last_bm25_status.setdefault("reason", "index_unavailable")
             return []
-        if dataset_scope_id is not None and current_version:
+        if dataset_scope_ids and current_version:
             with self._bm25_cache_lock:
                 self._bm25_cache_versions[cache_key] = current_version
 
@@ -3031,7 +3272,7 @@ class HybridRetriever(BaseRetriever):
         tenant_id: UUID | None,
         document_ids: list[UUID] | None,
     ) -> tuple[UUID | None, str | None, list[Document]]:
-        tenant_uuid, _dataset_scope_id, cache_key = self._bm25_search_scope(
+        tenant_uuid, _dataset_scope_ids, cache_key = self._bm25_search_scope(
             tenant_id=tenant_id,
             document_ids=document_ids,
         )
@@ -4498,9 +4739,6 @@ class HybridRetriever(BaseRetriever):
         want_colpali = False
         colpali_reason = "disabled"
         tenant_uuid = tenant_id or self.tenant_id
-        embedding_runtime = embedding_runtime or self._resolve_embedding_runtime(tenant_id=tenant_uuid)
-        embedding_space = str(embedding_runtime.embedding_space_hash or "").strip()
-
         # Metadata filter strategy:
         # - BM25 sees Postgres chunk metadata (rich JSON) -> can apply most filters early.
         # - Milvus (document collection) stores a small fixed metadata schema -> only pass supported keys early
@@ -4517,13 +4755,30 @@ class HybridRetriever(BaseRetriever):
         # Dataset scope is a first-class retrieval boundary. Push it down via metadata_filter so:
         # - vector backends can apply it in their scalar expr/where clauses (when supported)
         # - BM25 can filter early and avoid "top_k filled by other datasets" trimming losses
-        if self.dataset_id is not None:
-            ds_val = str(self.dataset_id)
-            if isinstance(full_metadata_filter, dict) and full_metadata_filter:
-                full_metadata_filter = dict(full_metadata_filter)
-                full_metadata_filter.setdefault("dataset_id", ds_val)
-            else:
-                full_metadata_filter = {"dataset_id": ds_val}
+        full_metadata_filter = self._with_dataset_scope_filter(full_metadata_filter)
+        dataset_scope_ids = self._explicit_dataset_scope_ids()
+        runtime_scope_ids = dataset_scope_ids
+        if not runtime_scope_ids and not document_ids:
+            runtime_scope_ids = self._normalize_dataset_scope_ids(
+                self._collect_lexical_dataset_scope(full_metadata_filter),
+            )
+        runtime_shards = (
+            self._resolve_dataset_runtime_shards(tenant_id=tenant_uuid, dataset_ids=runtime_scope_ids)
+            if runtime_scope_ids
+            else []
+        )
+        runtime_shard_dataset_ids = {
+            dataset_id
+            for _runtime, shard_dataset_ids in runtime_shards
+            for dataset_id in shard_dataset_ids
+        }
+        runtime_scope_missing_dataset_ids = tuple(
+            dataset_id for dataset_id in runtime_scope_ids if dataset_id not in runtime_shard_dataset_ids
+        )
+        embedding_runtime = embedding_runtime or self._resolve_embedding_runtime(tenant_id=tenant_uuid)
+        if len(runtime_shards) == 1:
+            embedding_runtime = runtime_shards[0][0]
+        embedding_space = str(embedding_runtime.embedding_space_hash or "").strip()
         bm25_filter: dict[str, Any] | None = None
         vector_filter: dict[str, Any] | None = None
         if full_metadata_filter and isinstance(full_metadata_filter, dict):
@@ -4532,49 +4787,10 @@ class HybridRetriever(BaseRetriever):
                 for k, v in full_metadata_filter.items()
                 if isinstance(k, str) and not str(k).startswith("document_user.")
             }
-            # Milvus document vectors support only a subset of scalar fields.
-            # Keep keys top-level only (no dotted paths) and map common aliases.
-            vector_allowed = {
-                "tenant_id",
-                "dataset_id",
-                "document_id",
-                "embedding_space_hash",
-                "chunk_id",
-                "chunk_index",
-                "pipeline_hash",
-                "doc_pipeline_key",
-                "source",
-                "file_type",
-                "img_id",
-                "image_id",
-                "image_url",
-                "page_number",
-                "partition_keys",
-            }
-            vf: dict[str, Any] = {}
-            for k, v in bm25_filter.items():
-                if not isinstance(k, str):
-                    continue
-                if "." in k:
-                    continue
-                if k == "page":
-                    vf["page_number"] = v
-                    continue
-                if k == "img_url":
-                    vf["image_url"] = v
-                    continue
-                if k in vector_allowed:
-                    vf[k] = v
-
-            # Embedding space guard pushdown (backward compatible): include both the current
-            # embedding space and the empty-string legacy value.
-            try:
-                space = embedding_space
-            except (TypeError, ValueError, AttributeError):
-                space = ""
-            if space and "embedding_space_hash" not in vf:
-                vf["embedding_space_hash"] = {"$in": [space, ""]}
-            vector_filter = vf or None
+            vector_filter = self._build_vector_filter(
+                bm25_filter,
+                embedding_space=embedding_space,
+            )
 
         if bool(getattr(settings, "COLPALI_RETRIEVAL_ENABLED", False)):
             try:
@@ -4649,7 +4865,7 @@ class HybridRetriever(BaseRetriever):
 
         corpus_cache_token: str | None = None
         account_id0 = (self.account_id or "").strip()
-        dataset_id0 = str(self.dataset_id) if self.dataset_id is not None else None
+        dataset_id0 = str(dataset_scope_ids[0]) if len(dataset_scope_ids) == 1 else None
         metadata_filter_dataset_scoped = bool(
             self.metadata_filter_enabled
             and _metadata_filter_has_dataset_scope(full_metadata_filter if isinstance(full_metadata_filter, dict) else None)
@@ -4681,11 +4897,21 @@ class HybridRetriever(BaseRetriever):
             semantic_cache_eligible = False
             cache_meta["skip_reason"] = "missing_account"
             cache_meta["semantic"]["skip_reason"] = "missing_account"
-        elif not document_ids and self.dataset_id is None and not metadata_filter_dataset_scoped:
+        elif not document_ids and not dataset_scope_ids and not metadata_filter_dataset_scoped:
             cache_eligible = False
             semantic_cache_eligible = False
             cache_meta["skip_reason"] = "missing_scope"
             cache_meta["semantic"]["skip_reason"] = "missing_scope"
+        elif runtime_scope_ids and (not runtime_shards or runtime_scope_missing_dataset_ids):
+            cache_eligible = False
+            semantic_cache_eligible = False
+            cache_meta["skip_reason"] = "missing_dataset_runtime"
+            cache_meta["semantic"]["skip_reason"] = "missing_dataset_runtime"
+        elif len(runtime_shards) > 1:
+            cache_eligible = False
+            semantic_cache_eligible = False
+            cache_meta["skip_reason"] = "multi_runtime_scope"
+            cache_meta["semantic"]["skip_reason"] = "multi_runtime_scope"
 
         if cache_eligible:
             ttl = int(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_TTL_SEC", 0) or 0)
@@ -4798,32 +5024,55 @@ class HybridRetriever(BaseRetriever):
             vector_store = get_vector_store()
             _channel_started("vector")
             try:
-                search_kwargs = {
-                    "query": query,
-                    "top_k": fetch_k,
-                    "score_threshold": score_threshold,
-                    "document_ids": document_ids,
-                    "tenant_id": tenant_id,
-                }
-                # Add metadata filter if supported and provided
-                if vector_filter:
-                    search_kwargs["metadata_filter"] = vector_filter
-
                 t0 = time.perf_counter()
                 try:
-                    if embedding_runtime.dataset_scoped:
+                    if runtime_scope_ids and not runtime_shards:
+                        _channel_failed("vector", LookupError("MissingDatasetRuntime"))
+                        vector_results = []
+                    elif runtime_shards:
+                        vector_results, shard_failures = self._search_vector_runtime_shards(
+                            query=query,
+                            top_k=fetch_k,
+                            score_threshold=score_threshold,
+                            document_ids=document_ids,
+                            tenant_id=tenant_uuid,
+                            metadata_filter=bm25_filter,
+                            runtime_shards=runtime_shards,
+                            vector_store=vector_store,
+                        )
+                        for exc in shard_failures:
+                            _channel_failed("vector", exc)
+                        if runtime_scope_missing_dataset_ids:
+                            _channel_failed("vector", LookupError("MissingDatasetRuntime"))
+                        if len(shard_failures) < len(runtime_shards):
+                            _channel_succeeded("vector")
+                    elif embedding_runtime.dataset_scoped:
                         vector_results = self._search_dataset_scoped_vectors(
                             query=query,
                             top_k=fetch_k,
                             score_threshold=score_threshold,
                             document_ids=document_ids,
-                            tenant_id=tenant_id,
+                            tenant_id=tenant_uuid,
                             metadata_filter=vector_filter,
                             embedding_runtime=embedding_runtime,
                         )
+                        vector_results = self._tag_vector_hits_with_expected_space(
+                            vector_results,
+                            expected_space=str(embedding_runtime.embedding_space_hash or "").strip(),
+                        )
                     else:
+                        search_kwargs = {
+                            "query": query,
+                            "top_k": fetch_k,
+                            "score_threshold": score_threshold,
+                            "document_ids": document_ids,
+                            "tenant_id": tenant_uuid,
+                        }
+                        if vector_filter:
+                            search_kwargs["metadata_filter"] = vector_filter
                         vector_results = vector_store.search(**search_kwargs)
-                    _channel_succeeded("vector")
+                    if not runtime_shards:
+                        _channel_succeeded("vector")
                 finally:
                     vector_elapsed_ms += (time.perf_counter() - t0) * 1000
             except Exception as exc:
@@ -4842,7 +5091,7 @@ class HybridRetriever(BaseRetriever):
                         query=query,
                         top_k=fetch_k,
                         document_ids=document_ids,
-                        tenant_id=tenant_id,
+                        tenant_id=tenant_uuid,
                         metadata_filter=bm25_filter,
                     )
                     colbert_used = True
@@ -4874,7 +5123,7 @@ class HybridRetriever(BaseRetriever):
                         query=query,
                         top_k=fetch_k,
                         document_ids=document_ids,
-                        tenant_id=tenant_id,
+                        tenant_id=tenant_uuid,
                         metadata_filter=bm25_filter,
                     )
                     _channel_succeeded("lexical_db")
@@ -4894,7 +5143,7 @@ class HybridRetriever(BaseRetriever):
                         query=query,
                         top_k=fetch_k,
                         document_ids=document_ids,
-                        tenant_id=tenant_id,
+                        tenant_id=tenant_uuid,
                         metadata_filter=bm25_filter,
                     )
                     _channel_succeeded("bm25")
@@ -4914,7 +5163,7 @@ class HybridRetriever(BaseRetriever):
                         query=query,
                         top_k=fetch_k,
                         document_ids=document_ids,
-                        tenant_id=tenant_id,
+                        tenant_id=tenant_uuid,
                         metadata_filter=bm25_filter,
                     )
                     _channel_succeeded("bm25")
@@ -4962,7 +5211,7 @@ class HybridRetriever(BaseRetriever):
                         query=query,
                         top_k=fetch_k,
                         document_ids=document_ids,
-                        tenant_id=tenant_id,
+                        tenant_id=tenant_uuid,
                         metadata_filter=bm25_filter,
                     )
                     _channel_succeeded("lexical_db")
@@ -5001,7 +5250,7 @@ class HybridRetriever(BaseRetriever):
                         query=query,
                         top_k=fetch_k,
                         document_ids=document_ids,
-                        tenant_id=tenant_id,
+                        tenant_id=tenant_uuid,
                         metadata_filter=bm25_filter,
                     )
                     metadata_exact_db_reason = (
@@ -5065,7 +5314,7 @@ class HybridRetriever(BaseRetriever):
                     query=query,
                     top_k=fetch_k,
                     document_ids=document_ids,
-                    tenant_id=tenant_id,
+                    tenant_id=tenant_uuid,
                     metadata_filter=bm25_filter,
                 )
                 _channel_succeeded("sparse")
@@ -5081,7 +5330,7 @@ class HybridRetriever(BaseRetriever):
                     query=query,
                     top_k=fetch_k,
                     document_ids=document_ids,
-                    tenant_id=tenant_id,
+                    tenant_id=tenant_uuid,
                     metadata_filter=bm25_filter,
                 )
                 _channel_succeeded("colpali")
@@ -5099,7 +5348,7 @@ class HybridRetriever(BaseRetriever):
                     query=query,
                     top_k=fetch_k,
                     document_ids=document_ids,
-                    tenant_id=tenant_id,
+                    tenant_id=tenant_uuid,
                     metadata_filter=bm25_filter,
                 )
                 _channel_succeeded("bm25")
@@ -5116,7 +5365,7 @@ class HybridRetriever(BaseRetriever):
                     query=query,
                     top_k=fetch_k,
                     document_ids=document_ids,
-                    tenant_id=tenant_id,
+                    tenant_id=tenant_uuid,
                     metadata_filter=bm25_filter,
                 )
                 _channel_succeeded("lexical_db")
@@ -5135,7 +5384,7 @@ class HybridRetriever(BaseRetriever):
                         query=query,
                         top_k=fetch_k,
                         document_ids=document_ids,
-                        tenant_id=tenant_id,
+                        tenant_id=tenant_uuid,
                         metadata_filter=bm25_filter,
                     )
                     _channel_succeeded("sparse")
@@ -5147,30 +5396,55 @@ class HybridRetriever(BaseRetriever):
             vector_store = get_vector_store()
             _channel_started("vector")
             try:
-                fallback_kwargs = {
-                    "query": query,
-                    "top_k": fetch_k,
-                    "score_threshold": score_threshold,
-                    "document_ids": document_ids,
-                    "tenant_id": tenant_id,
-                }
-                if vector_filter:
-                    fallback_kwargs["metadata_filter"] = vector_filter
                 t0 = time.perf_counter()
                 try:
-                    if embedding_runtime.dataset_scoped:
+                    if runtime_scope_ids and not runtime_shards:
+                        _channel_failed("vector", LookupError("MissingDatasetRuntime"))
+                        vector_results = []
+                    elif runtime_shards:
+                        vector_results, shard_failures = self._search_vector_runtime_shards(
+                            query=query,
+                            top_k=fetch_k,
+                            score_threshold=score_threshold,
+                            document_ids=document_ids,
+                            tenant_id=tenant_uuid,
+                            metadata_filter=bm25_filter,
+                            runtime_shards=runtime_shards,
+                            vector_store=vector_store,
+                        )
+                        for exc in shard_failures:
+                            _channel_failed("vector", exc)
+                        if runtime_scope_missing_dataset_ids:
+                            _channel_failed("vector", LookupError("MissingDatasetRuntime"))
+                        if len(shard_failures) < len(runtime_shards):
+                            _channel_succeeded("vector")
+                    elif embedding_runtime.dataset_scoped:
                         vector_results = self._search_dataset_scoped_vectors(
                             query=query,
                             top_k=fetch_k,
                             score_threshold=score_threshold,
                             document_ids=document_ids,
-                            tenant_id=tenant_id,
+                            tenant_id=tenant_uuid,
                             metadata_filter=vector_filter,
                             embedding_runtime=embedding_runtime,
                         )
+                        vector_results = self._tag_vector_hits_with_expected_space(
+                            vector_results,
+                            expected_space=str(embedding_runtime.embedding_space_hash or "").strip(),
+                        )
+                        _channel_succeeded("vector")
                     else:
+                        fallback_kwargs = {
+                            "query": query,
+                            "top_k": fetch_k,
+                            "score_threshold": score_threshold,
+                            "document_ids": document_ids,
+                            "tenant_id": tenant_uuid,
+                        }
+                        if vector_filter:
+                            fallback_kwargs["metadata_filter"] = vector_filter
                         vector_results = vector_store.search(**fallback_kwargs)
-                    _channel_succeeded("vector")
+                        _channel_succeeded("vector")
                 finally:
                     vector_elapsed_ms += (time.perf_counter() - t0) * 1000
             except Exception as exc:
@@ -5197,8 +5471,15 @@ class HybridRetriever(BaseRetriever):
 
         # Try to fill in chunk_id for vector retrieval results (for citations / RAGAS contexts)
         if vector_results:
-            if vector_filter:
-                vector_results = [r for r in vector_results if self._match_metadata_filter((r.get("metadata") or {}), vector_filter)]
+            vector_client_filter = dict(vector_filter or {})
+            if runtime_shards:
+                vector_client_filter.pop("embedding_space_hash", None)
+            if vector_client_filter:
+                vector_results = [
+                    r
+                    for r in vector_results
+                    if self._match_metadata_filter((r.get("metadata") or {}), vector_client_filter)
+                ]
             tenant_key = self._tenant_key(tenant_id)
             lookup = self._chunk_id_lookup.get(tenant_key) or {}
             for r in vector_results:
@@ -5787,7 +6068,7 @@ class HybridRetriever(BaseRetriever):
         try:
             tenant_filter = self.tenant_id
             account_id = (self.account_id or "").strip() or None
-            dataset_filter = self.dataset_id
+            dataset_filters = {str(dataset_id) for dataset_id in self._explicit_dataset_scope_ids()}
             runtime = embedding_runtime or self._resolve_embedding_runtime(tenant_id=tenant_filter)
             embedding_space = runtime.embedding_space_hash
 
@@ -6016,10 +6297,11 @@ class HybridRetriever(BaseRetriever):
                             continue
                     candidate_doc_ids = candidate_doc_ids & ready_doc_ids if ready_doc_ids else candidate_doc_ids
 
-                    if dataset_filter is not None and doc_dataset_by_id:
-                        want = str(dataset_filter)
+                    if dataset_filters and doc_dataset_by_id:
                         candidate_doc_ids = {
-                            did for did in candidate_doc_ids if str(did) in doc_dataset_by_id and doc_dataset_by_id[str(did)] == want
+                            did
+                            for did in candidate_doc_ids
+                            if str(did) in doc_dataset_by_id and doc_dataset_by_id[str(did)] in dataset_filters
                         }
 
                     if candidate_doc_ids:
@@ -6072,9 +6354,8 @@ class HybridRetriever(BaseRetriever):
                         if stats0 is not None:
                             stats0["filtered_acl"] = int(stats0.get("filtered_acl", 0) or 0) + 1
                         continue
-                    if dataset_filter is not None:
-                        want = str(dataset_filter)
-                        if doc_dataset_by_id.get(doc_id_str) != want:
+                    if dataset_filters:
+                        if doc_dataset_by_id.get(doc_id_str) not in dataset_filters:
                             if stats0 is not None:
                                 stats0["filtered_dataset"] = int(stats0.get("filtered_dataset", 0) or 0) + 1
                             continue
@@ -6183,9 +6464,12 @@ class HybridRetriever(BaseRetriever):
                     # - We only enforce this when the hit came from vector search (Milvus attaches
                     #   `metadata.score`), because BM25 is embedding-space agnostic.
                     # - Missing embedding_space_hash is treated as "unknown" (backward compatible).
-                    if meta.get("score") is not None:
+                    expected_embedding_space = str(
+                        meta.get(_RETRIEVAL_EXPECTED_EMBEDDING_SPACE_KEY) or embedding_space or ""
+                    ).strip()
+                    if meta.get(_RETRIEVAL_EXPECTED_EMBEDDING_SPACE_KEY) is not None or meta.get("score") is not None:
                         ck_space = str(meta.get("embedding_space_hash") or "").strip()
-                        if ck_space and ck_space != embedding_space:
+                        if ck_space and expected_embedding_space and ck_space != expected_embedding_space:
                             if stats0 is not None:
                                 stats0["filtered_embedding_space"] = (
                                     int(stats0.get("filtered_embedding_space", 0) or 0) + 1
@@ -6905,7 +7189,8 @@ class HybridRetriever(BaseRetriever):
             self.metadata_filter_enabled
             and _metadata_filter_has_dataset_scope(self.metadata_filter)
         )
-        if self.dataset_id is None and not (self.document_ids or []) and not metadata_filter_dataset_scoped:
+        dataset_scope_ids = self._explicit_dataset_scope_ids()
+        if not dataset_scope_ids and not (self.document_ids or []) and not metadata_filter_dataset_scoped:
             if not bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False)):
                 raise ValueError("dataset_id is required when document_ids is empty")
 
@@ -6933,7 +7218,7 @@ class HybridRetriever(BaseRetriever):
         overfetch_enabled = False
         overfetch_reasons: list[str] = []
         if not (self.document_ids or []):
-            if self.dataset_id is None and self.tenant_id and (self.account_id or "").strip():
+            if not dataset_scope_ids and self.tenant_id and (self.account_id or "").strip():
                 overfetch_enabled = True
                 overfetch_reasons.append("open_scope_acl")
             if metadata_filter_requested:
@@ -6968,6 +7253,8 @@ class HybridRetriever(BaseRetriever):
             scope_kind = "document_ids"
         elif self.dataset_id is not None:
             scope_kind = "dataset_id"
+        elif dataset_scope_ids:
+            scope_kind = "dataset_ids"
         elif metadata_filter_dataset_scoped:
             scope_kind = "metadata_dataset_id"
         else:
@@ -7002,6 +7289,7 @@ class HybridRetriever(BaseRetriever):
                 "tenant_id": str(self.tenant_id or ""),
                 "account_id_present": bool((self.account_id or "").strip()),
                 "dataset_id": str(self.dataset_id or ""),
+                "dataset_ids_count": len(dataset_scope_ids),
                 "document_ids_count": len(self.document_ids or []),
                 "kind": scope_kind,
             },
@@ -7016,6 +7304,7 @@ class HybridRetriever(BaseRetriever):
                 partition_keys=self.partition_keys,
                 entity_candidates=self.entity_candidates,
             )
+        effective_metadata_filter = self._with_dataset_scope_filter(effective_metadata_filter)
         if entity_routing_meta:
             debug["entity_routing"] = entity_routing_meta
         try:
@@ -7167,6 +7456,7 @@ class HybridRetriever(BaseRetriever):
         docs: list[Document] = []
         for r in prefix:
             meta = dict(r.get("metadata") or {})
+            meta.pop(_RETRIEVAL_EXPECTED_EMBEDDING_SPACE_KEY, None)
             meta["score"] = r.get("score")
             meta["vector_score"] = r.get("vector_score")
             meta["bm25_score"] = r.get("bm25_score")

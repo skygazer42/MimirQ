@@ -103,6 +103,7 @@ from app.services.chat_turn_persistence import (
 from app.services.metrics_logger import set_metrics_context
 from app.services.quota_service import check_chat_assistant_token_quota
 from app.services.rag_runtime_limiter import (
+    RetrievalAdmissionTimeoutError,
     run_blocking_call_with_managed_session,
     run_blocking_retrieval_call_with_managed_session,
 )
@@ -171,6 +172,7 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     404: {"description": "Not Found"},
     409: {"description": "Conflict"},
     416: {"description": "Range Not Satisfiable"},
+    503: {"description": "Service Unavailable"},
 }
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -507,6 +509,10 @@ async def chat(
                 singleflight_key,
                 InflightResponseLeaderCancelledError("singleflight leader request cancelled"),
             )
+        raise
+    except RetrievalAdmissionTimeoutError as exc:
+        if singleflight_key and singleflight_leader:
+            reject_inflight_chat_response(singleflight_key, exc)
         raise
     except Exception as exc:  # noqa: BLE001
         if singleflight_key and singleflight_leader:

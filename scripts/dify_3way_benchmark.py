@@ -821,7 +821,7 @@ def load_app_specs(raw_specs: list[str], key_file: str) -> list[AppSpec]:
         AppSpec(
             label=_text(item.get("label")),
             app_id=_text(item.get("app_id")),
-            kind=_text(item.get("kind")),
+            kind=("http_to_mimirq" if _text(item.get("kind")) == "http_mimirq" else _text(item.get("kind"))),
             description=_text(item.get("description")),
             api_key=_text(item.get("api_key")),
             mode=_fixed_mode(_text(item.get("mode") or "chat")),
