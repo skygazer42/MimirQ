@@ -3,10 +3,10 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException
-
 from alembic.config import Config
 from alembic.script import ScriptDirectory
+from fastapi import HTTPException
+
 from app.models.chat import Conversation
 from app.models.tenant import TenantMember
 

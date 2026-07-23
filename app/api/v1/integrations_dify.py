@@ -7645,7 +7645,7 @@ async def _retrieve_external_knowledge(
                         ),
                         timeout=remaining_sec,
                     )
-                except (TimeoutError, asyncio.TimeoutError):
+                except TimeoutError:
                     logger.info(
                         "Dify metadata anchor fallback exceeded request budget query_hash=%s",
                         _diagnostic_query_hash(str(call_kwargs.get("query") or "")),
