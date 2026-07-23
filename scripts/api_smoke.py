@@ -502,40 +502,41 @@ def main(argv: list[str] | None = None) -> int:
         # Meta endpoint.
         runner.call("GET", "/api/v1/meta", "/api/v1/meta", expected=[200])
 
-        # Auth endpoints.
-        register_payload = {"email": user_email, "username": user_name, "password": user_password}
-        reg_resp = runner.call(
-            "POST",
-            "/api/v1/auth/register",
-            "/api/v1/auth/register",
-            expected=[201, 400],
-            json=register_payload,
-        )
-        reg_data = parse_json(reg_resp)
-        token = (reg_data.get("token") or {}).get("access_token")
-        user_id = (reg_data.get("user") or {}).get("id")
+        # Registration/login/me are JWT flows. Header auth trusts the upstream
+        # identity and does not require a local user record.
+        if auth_mode == "jwt":
+            register_payload = {"email": user_email, "username": user_name, "password": user_password}
+            reg_resp = runner.call(
+                "POST",
+                "/api/v1/auth/register",
+                "/api/v1/auth/register",
+                expected=[201, 400],
+                json=register_payload,
+            )
+            reg_data = parse_json(reg_resp)
+            token = (reg_data.get("token") or {}).get("access_token")
 
-        login_payload = {"identifier": user_email, "password": user_password}
-        login_resp = runner.call(
-            "POST",
-            "/api/v1/auth/login",
-            "/api/v1/auth/login",
-            expected=[200],
-            json=login_payload,
-        )
-        login_data = parse_json(login_resp)
-        token = token or (login_data.get("token") or {}).get("access_token")
-        user_id = user_id or (login_data.get("user") or {}).get("id")
-
-        if auth_mode == "jwt" and token:
+            login_payload = {"identifier": user_email, "password": user_password}
+            login_resp = runner.call(
+                "POST",
+                "/api/v1/auth/login",
+                "/api/v1/auth/login",
+                expected=[200],
+                json=login_payload,
+            )
+            login_data = parse_json(login_resp)
+            token = token or (login_data.get("token") or {}).get("access_token")
             runner.headers = build_headers(tenant_id, None, token)
-        elif user_id:
-            runner.headers = build_headers(tenant_id, user_id, None)
+            runner.call("GET", "/api/v1/auth/me", "/api/v1/auth/me", expected=[200])
         else:
-            fallback_user = env_or(dotenv, "NEXT_PUBLIC_USER_ID", "demo")
-            runner.headers = build_headers(tenant_id, fallback_user, None)
-
-        runner.call("GET", "/api/v1/auth/me", "/api/v1/auth/me", expected=[200])
+            runner.mark("POST", "/api/v1/auth/register")
+            runner.mark("POST", "/api/v1/auth/login")
+            runner.mark("GET", "/api/v1/auth/me")
+            runner.headers = build_headers(
+                tenant_id,
+                env_or(dotenv, "NEXT_PUBLIC_USER_ID", "demo"),
+                None,
+            )
 
         # Settings endpoints.
         runner.call("GET", API_SETTINGS, API_SETTINGS, expected=[200])

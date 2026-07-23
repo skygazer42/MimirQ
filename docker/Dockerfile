@@ -128,6 +128,12 @@ COPY scripts/bootstrap_mimirq_models.py ./scripts/bootstrap_mimirq_models.py
 RUN --mount=type=cache,target=/app/.cache/huggingface \
     /opt/venv/bin/python scripts/bootstrap_mimirq_models.py
 
+# Avoid making the first prompt-preview request download the token encoding.
+ENV TIKTOKEN_CACHE_DIR=/app/.cache/tiktoken
+RUN mkdir -p "$TIKTOKEN_CACHE_DIR" \
+    && /opt/venv/bin/python -c 'import tiktoken; tiktoken.get_encoding("cl100k_base")' \
+    && chown -R appuser:appuser "$TIKTOKEN_CACHE_DIR"
+
 # Build metadata changes frequently and must not invalidate the model layer above.
 ARG MIMIRQ_BUILD_SHA=""
 ARG MIMIRQ_BUILD_TIME=""
