@@ -145,6 +145,11 @@ def _retriever(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(HybridRetriever, "_resolve_embedding_runtime", lambda self, *, tenant_id: runtime)
     monkeypatch.setattr(
         HybridRetriever,
+        "_resolve_document_dataset_scope",
+        lambda self, *, tenant_id, document_ids: ((), True),  # noqa: ANN001,ARG005
+    )
+    monkeypatch.setattr(
+        HybridRetriever,
         "_enrich_results_with_db_metadata",
         lambda self, results, **kwargs: list(results),
     )
@@ -222,9 +227,11 @@ def test_multi_dataset_scope_is_a_first_class_retrieval_boundary(
 
 
 @pytest.mark.parametrize("retrieval_mode", ["vector", "keyword"])
+@pytest.mark.parametrize("scope_kind", ["dataset_ids", "document_ids"])
 def test_multi_runtime_dataset_scope_fans_out_vector_search_and_disables_cache(
     monkeypatch: pytest.MonkeyPatch,
     retrieval_mode: str,
+    scope_kind: str,
 ) -> None:
     import app.rag.retriever as retriever_module
     from app.core.config import settings
@@ -243,6 +250,8 @@ def test_multi_runtime_dataset_scope_fans_out_vector_search_and_disables_cache(
     tenant_id = uuid.uuid4()
     dataset_a = uuid.uuid4()
     dataset_b = uuid.uuid4()
+    document_a = uuid.uuid4()
+    document_b = uuid.uuid4()
     runtime_a = DatasetEmbeddingRuntimeConfig(
         provider="local",
         model="model-a",
@@ -293,7 +302,7 @@ def test_multi_runtime_dataset_scope_fans_out_vector_search_and_disables_cache(
                     "score": 0.91,
                     "metadata": {
                         "chunk_id": "chunk-a",
-                        "document_id": str(uuid.uuid4()),
+                        "document_id": str(document_a),
                         "dataset_id": str(dataset_a),
                         "embedding_space_hash": runtime_a.embedding_space_hash,
                     },
@@ -307,6 +316,12 @@ def test_multi_runtime_dataset_scope_fans_out_vector_search_and_disables_cache(
             (runtime_a, (dataset_a,)),
             (runtime_b, (dataset_b,)),
         ],
+    )
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_resolve_document_dataset_scope",
+        lambda self, *, tenant_id, document_ids: ((dataset_a, dataset_b), False),  # noqa: ANN001,ARG005
+        raising=False,
     )
     monkeypatch.setattr(
         HybridRetriever,
@@ -329,21 +344,27 @@ def test_multi_runtime_dataset_scope_fans_out_vector_search_and_disables_cache(
     monkeypatch.setattr(HybridRetriever, "_search_lexical_db", lambda self, **kwargs: [])  # noqa: ANN001
     monkeypatch.setattr(HybridRetriever, "_search_sparse", lambda self, **kwargs: [])  # noqa: ANN001
 
+    scope = (
+        {"dataset_ids": [dataset_b, dataset_a]}
+        if scope_kind == "dataset_ids"
+        else {"document_ids": [document_b, document_a]}
+    )
     retriever = HybridRetriever(
         tenant_id=tenant_id,
         account_id="member-1",
-        dataset_ids=[dataset_b, dataset_a],
         retrieval_mode=retrieval_mode,
         enable_reranker=False,
         sparse_enabled=False,
         dedup_enabled=False,
         k=2,
+        **scope,
     )
 
     results = retriever._hybrid_search(
         "scope query",
         top_k=2,
         score_threshold=0.0,
+        document_ids=retriever.document_ids,
         tenant_id=tenant_id,
         retrieval_mode=retrieval_mode,
     )
@@ -354,23 +375,33 @@ def test_multi_runtime_dataset_scope_fans_out_vector_search_and_disables_cache(
         runtime_a.collection_name,
         runtime_b.collection_name,
     ]
+    expected_document_filter = (
+        {"document_id": {"$in": [str(document_b), str(document_a)]}}
+        if scope_kind == "document_ids"
+        else {}
+    )
     assert search_calls[0]["metadata_filter"] == {
         "tenant_id": str(tenant_id),
         "dataset_id": str(dataset_a),
         "embedding_space_hash": {"$in": ["space-a", ""]},
+        **expected_document_filter,
     }
     assert search_calls[1]["metadata_filter"] == {
         "tenant_id": str(tenant_id),
         "dataset_id": str(dataset_b),
         "embedding_space_hash": {"$in": ["space-b", ""]},
+        **expected_document_filter,
     }
     assert retriever._last_channel_metrics["cache"]["skip_reason"] == "multi_runtime_scope"
     assert retriever._last_channel_metrics["cache"]["semantic"]["skip_reason"] == "multi_runtime_scope"
     assert retriever._last_channel_metrics["retrieval_degraded"] is True
+    assert retriever._last_channel_metrics["all_retrieval_channels_failed"] is False
+    assert {"channel": "vector", "error_type": "RuntimeError"} in retriever._last_channel_metrics[
+        "degraded_reasons"
+    ]
     successful_channels = retriever._last_channel_metrics["successful_channels"]
     assert "vector" in successful_channels
-    if retrieval_mode == "keyword":
-        assert "bm25" in successful_channels
+    assert "bm25" in successful_channels
 
 
 def test_metadata_filter_dataset_scope_drives_runtime_shards(
@@ -416,6 +447,108 @@ def test_metadata_filter_dataset_scope_drives_runtime_shards(
     assert captured["dataset_ids"] == tuple(sorted((dataset_a, dataset_b), key=str))
 
 
+def test_document_dataset_scope_is_tenant_bound_and_fails_closed_when_incomplete(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.retriever as retriever_module
+    from app.rag.retriever import HybridRetriever
+
+    tenant_id = uuid.uuid4()
+    document_a = uuid.uuid4()
+    document_b = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    rows = [(document_a, dataset_id), (document_b, None)]
+
+    class _Query:
+        def filter(self, *_args, **_kwargs):  # noqa: ANN002,ANN003
+            return self
+
+        def all(self):  # noqa: ANN202
+            return list(rows)
+
+    class _Session:
+        def query(self, *_args, **_kwargs):  # noqa: ANN002,ANN003
+            return _Query()
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(retriever_module, "SessionLocal", _Session)
+    retriever = HybridRetriever()
+
+    assert retriever._resolve_document_dataset_scope(
+        tenant_id=tenant_id,
+        document_ids=[document_b, document_a],
+    ) == ((dataset_id,), True)
+
+    rows.pop()
+    assert (
+        retriever._resolve_document_dataset_scope(
+            tenant_id=tenant_id,
+            document_ids=[document_b, document_a],
+        )
+        is None
+    )
+
+
+def test_unresolved_document_scope_does_not_fall_back_to_partial_channels(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.retriever as retriever_module
+    from app.rag.retriever import HybridRetriever
+
+    _configure_retrieval_test(monkeypatch)
+    tenant_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    fallback_calls: list[str] = []
+
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_resolve_document_dataset_scope",
+        lambda self, *, tenant_id, document_ids: None,  # noqa: ANN001,ARG005
+    )
+    monkeypatch.setattr(HybridRetriever, "_resolve_embedding_runtime", lambda self, *, tenant_id: _embedding_runtime())
+    monkeypatch.setattr(
+        retriever_module,
+        "get_vector_store",
+        lambda: SimpleNamespace(search=lambda **kwargs: fallback_calls.append("vector") or []),
+    )
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_search_bm25",
+        lambda self, **kwargs: fallback_calls.append("bm25") or [{"content": "partial", "score": 1.0}],
+    )
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_search_lexical_db",
+        lambda self, **kwargs: fallback_calls.append("lexical") or [{"content": "partial", "score": 1.0}],
+    )
+
+    retriever = HybridRetriever(
+        tenant_id=tenant_id,
+        document_ids=[document_id],
+        retrieval_mode="hybrid",
+        enable_reranker=False,
+        sparse_enabled=False,
+        dedup_enabled=False,
+    )
+    results = retriever._hybrid_search(
+        "scope query",
+        top_k=1,
+        score_threshold=0.0,
+        document_ids=[document_id],
+        tenant_id=tenant_id,
+        retrieval_mode="hybrid",
+    )
+
+    assert results == []
+    assert fallback_calls == []
+    assert retriever._last_channel_metrics["degraded_reasons"] == [
+        {"channel": "scope", "error_type": "LookupError"}
+    ]
+    assert retriever._last_channel_metrics["all_retrieval_channels_failed"] is True
+
+
 def test_partial_retrieval_failure_returns_results_and_marks_debug(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -446,6 +579,95 @@ def test_partial_retrieval_failure_returns_results_and_marks_debug(
         {"channel": "vector", "error_type": "ConnectionError"}
     ]
     assert retriever._last_debug_metrics["all_retrieval_channels_failed"] is False
+
+
+def test_degraded_retrieval_is_not_written_to_candidate_caches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.retriever as retriever_module
+    import app.services.semantic_cache as semantic_cache_module
+    from app.core.config import settings
+    from app.rag.retriever import HybridRetriever
+
+    _configure_retrieval_test(monkeypatch)
+    for name, value in {
+        "LEXICAL_DB_ENABLED": False,
+        "RETRIEVAL_CANDIDATE_CACHE_ENABLED": True,
+        "RETRIEVAL_CANDIDATE_CACHE_TTL_SEC": 60,
+        "SEMANTIC_CACHE_ENABLED": True,
+        "SEMANTIC_CACHE_TTL_SEC": 60,
+    }.items():
+        monkeypatch.setattr(settings, name, value, raising=False)
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    runtime = _embedding_runtime()
+    exact_stores: list[object] = []
+    semantic_stores: list[object] = []
+
+    def fail_vector(**_kwargs):  # noqa: ANN003,ANN202
+        raise ConnectionError("milvus unavailable")
+
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_resolve_dataset_runtime_shards",
+        lambda self, *, tenant_id, dataset_ids=None: [(runtime, (dataset_id,))],  # noqa: ANN001,ARG005
+    )
+    monkeypatch.setattr(HybridRetriever, "_resolve_embedding_runtime", lambda self, *, tenant_id: runtime)
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_resolve_candidate_cache_corpus_token",
+        lambda self, **kwargs: "corpus-token",  # noqa: ANN001,ARG005
+    )
+    monkeypatch.setattr(retriever_module, "get_vector_store", lambda: SimpleNamespace(search=fail_vector))
+    monkeypatch.setattr(retriever_module, "get_cached_retrieval_candidates", lambda _key: None)
+    monkeypatch.setattr(
+        retriever_module,
+        "set_cached_retrieval_candidates",
+        lambda *args, **kwargs: exact_stores.append((args, kwargs)) or True,
+    )
+    monkeypatch.setattr(semantic_cache_module, "get_cached_semantic_payload", lambda **kwargs: (None, {}))
+    monkeypatch.setattr(
+        semantic_cache_module,
+        "set_cached_semantic_payload",
+        lambda **kwargs: semantic_stores.append(kwargs) or True,
+    )
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_search_bm25",
+        lambda self, **kwargs: [  # noqa: ANN001,ARG005
+            {
+                "chunk_id": "chunk-1",
+                "content": "fallback result",
+                "score": 0.8,
+                "metadata": {"document_id": str(document_id), "dataset_id": str(dataset_id)},
+            }
+        ],
+    )
+    monkeypatch.setattr(HybridRetriever, "_search_lexical_db", lambda self, **kwargs: [])  # noqa: ANN001
+
+    results = HybridRetriever(
+        tenant_id=tenant_id,
+        account_id="member-1",
+        dataset_id=dataset_id,
+        document_ids=[document_id],
+        retrieval_mode="hybrid",
+        enable_reranker=False,
+        sparse_enabled=False,
+        dedup_enabled=False,
+    )._hybrid_search(
+        "fallback query",
+        top_k=1,
+        score_threshold=0.0,
+        tenant_id=tenant_id,
+        document_ids=[document_id],
+        retrieval_mode="hybrid",
+    )
+
+    assert [item["content"] for item in results] == ["fallback result"]
+    assert exact_stores == []
+    assert semantic_stores == []
 
 
 def test_all_retrieval_failures_build_engine_error_message(

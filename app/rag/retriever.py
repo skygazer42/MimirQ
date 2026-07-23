@@ -1288,6 +1288,41 @@ class HybridRetriever(BaseRetriever):
             except Exception as exc:
                 logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
 
+    def _resolve_document_dataset_scope(
+        self,
+        *,
+        tenant_id: UUID | None,
+        document_ids: list[UUID],
+    ) -> tuple[tuple[UUID, ...], bool] | None:
+        """Resolve document scope to dataset IDs and whether it includes legacy unscoped documents."""
+        requested = {str(document_id): document_id for document_id in document_ids if document_id is not None}
+        if tenant_id is None or not requested:
+            return None
+
+        db = SessionLocal()
+        try:
+            rows = (
+                db.query(DBDocument.id, DBDocument.dataset_id)
+                .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(tuple(requested.values())))
+                .all()
+            )
+            if {str(document_id) for document_id, _dataset_id in rows} != set(requested):
+                return None
+            return (
+                self._normalize_dataset_scope_ids(
+                    [dataset_id for _document_id, dataset_id in rows if dataset_id is not None]
+                ),
+                any(dataset_id is None for _document_id, dataset_id in rows),
+            )
+        except Exception as exc:
+            _log_retriever_fallback("_resolve_document_dataset_scope", exc)
+            return None
+        finally:
+            try:
+                db.close()
+            except Exception as exc:
+                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+
     def _search_dataset_scoped_vectors(
         self,
         *,
@@ -4758,15 +4793,32 @@ class HybridRetriever(BaseRetriever):
         full_metadata_filter = self._with_dataset_scope_filter(full_metadata_filter)
         dataset_scope_ids = self._explicit_dataset_scope_ids()
         runtime_scope_ids = dataset_scope_ids
-        if not runtime_scope_ids and not document_ids:
-            runtime_scope_ids = self._normalize_dataset_scope_ids(
-                self._collect_lexical_dataset_scope(full_metadata_filter),
-            )
+        document_scope_resolution_failed = False
+        has_unscoped_document_runtime = False
+        if not runtime_scope_ids:
+            if document_ids:
+                document_scope = self._resolve_document_dataset_scope(
+                    tenant_id=tenant_uuid,
+                    document_ids=document_ids,
+                )
+                if document_scope is None:
+                    document_scope_resolution_failed = True
+                else:
+                    runtime_scope_ids, has_unscoped_document_runtime = document_scope
+            else:
+                runtime_scope_ids = self._normalize_dataset_scope_ids(
+                    self._collect_lexical_dataset_scope(full_metadata_filter),
+                )
         runtime_shards = (
             self._resolve_dataset_runtime_shards(tenant_id=tenant_uuid, dataset_ids=runtime_scope_ids)
             if runtime_scope_ids
             else []
         )
+        if has_unscoped_document_runtime:
+            default_runtime = self._resolve_embedding_runtime(tenant_id=None)
+            runtime_shards_by_runtime = OrderedDict(runtime_shards)
+            runtime_shards_by_runtime[default_runtime] = ()
+            runtime_shards = list(runtime_shards_by_runtime.items())
         runtime_shard_dataset_ids = {
             dataset_id
             for _runtime, shard_dataset_ids in runtime_shards
@@ -4902,6 +4954,11 @@ class HybridRetriever(BaseRetriever):
             semantic_cache_eligible = False
             cache_meta["skip_reason"] = "missing_scope"
             cache_meta["semantic"]["skip_reason"] = "missing_scope"
+        elif document_scope_resolution_failed:
+            cache_eligible = False
+            semantic_cache_eligible = False
+            cache_meta["skip_reason"] = "missing_document_runtime"
+            cache_meta["semantic"]["skip_reason"] = "missing_document_runtime"
         elif runtime_scope_ids and (not runtime_shards or runtime_scope_missing_dataset_ids):
             cache_eligible = False
             semantic_cache_eligible = False
@@ -4912,6 +4969,11 @@ class HybridRetriever(BaseRetriever):
             semantic_cache_eligible = False
             cache_meta["skip_reason"] = "multi_runtime_scope"
             cache_meta["semantic"]["skip_reason"] = "multi_runtime_scope"
+
+        if document_scope_resolution_failed:
+            _channel_failed("scope", LookupError("MissingDocumentRuntime"))
+            _publish_channel_health()
+            return []
 
         if cache_eligible:
             ttl = int(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_TTL_SEC", 0) or 0)
@@ -5020,6 +5082,7 @@ class HybridRetriever(BaseRetriever):
 
         # 1) Vector retrieval
         vector_results: list[dict[str, Any]] = []
+        vector_shard_failed = False
         if want_vector:
             vector_store = get_vector_store()
             _channel_started("vector")
@@ -5042,8 +5105,10 @@ class HybridRetriever(BaseRetriever):
                         )
                         for exc in shard_failures:
                             _channel_failed("vector", exc)
+                        vector_shard_failed = bool(shard_failures)
                         if runtime_scope_missing_dataset_ids:
                             _channel_failed("vector", LookupError("MissingDatasetRuntime"))
+                            vector_shard_failed = True
                         if len(shard_failures) < len(runtime_shards):
                             _channel_succeeded("vector")
                     elif embedding_runtime.dataset_scoped:
@@ -5340,7 +5405,7 @@ class HybridRetriever(BaseRetriever):
                 colpali_results = []
 
         # Fallback: when single-channel mode fails, try the other channel.
-        if retrieval_mode == "vector" and not vector_results:
+        if retrieval_mode == "vector" and (not vector_results or vector_shard_failed):
             _channel_started("bm25")
             t0 = time.perf_counter()
             try:
@@ -5994,7 +6059,11 @@ class HybridRetriever(BaseRetriever):
                 logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
         out = merged_results[:top_k]
 
-        if cache_eligible and (not cache_hit) and cache_key and out:
+        cache_store_allowed = not bool(channel_metrics.get("retrieval_degraded", False))
+        if not cache_store_allowed:
+            cache_meta["store_skip_reason"] = "retrieval_degraded"
+            cache_meta["semantic"]["store_skip_reason"] = "retrieval_degraded"
+        if cache_store_allowed and cache_eligible and (not cache_hit) and cache_key and out:
             try:
                 stored = bool(set_cached_retrieval_candidates(cache_key, out))
                 if isinstance(self._last_channel_metrics, dict):
@@ -6002,7 +6071,7 @@ class HybridRetriever(BaseRetriever):
                     self._last_channel_metrics["cache"]["store_ok"] = stored
             except Exception as exc:
                 logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-        if semantic_cache_eligible and (not semantic_cache_hit) and corpus_cache_token and out:
+        if cache_store_allowed and semantic_cache_eligible and (not semantic_cache_hit) and corpus_cache_token and out:
             try:
                 from app.services.semantic_cache import set_cached_semantic_payload
 
