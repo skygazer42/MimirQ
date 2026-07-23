@@ -21,11 +21,28 @@ from urllib.parse import urlparse
 import httpx
 from jose import ExpiredSignatureError, JWTError, jwt
 
-from app.core.config import settings
+from app.core.config import settings, validate_jwt_remote_url
 from app.core.utils import parse_csv
 from app.rag.core.logging import get_logger
 
 logger = get_logger("core.jwt_verify")
+
+
+def _validate_response_url_chain(*, requested_url: str, response: Any, error_name: str) -> None:
+    requested = str(requested_url or "").strip()
+    response_urls = [str(getattr(item, "url", "") or "").strip() for item in getattr(response, "history", ())]
+    response_urls.append(str(getattr(response, "url", "") or "").strip())
+    if not response_urls[-1]:
+        raise ValueError(error_name)
+
+    requested_scheme = str(urlparse(requested).scheme or "").strip().lower()
+    for response_url in response_urls:
+        if requested_scheme == "https" and str(urlparse(response_url).scheme or "").lower() != "https":
+            raise ValueError(error_name)
+        try:
+            validate_jwt_remote_url(response_url, field_name="JWT_REMOTE_RESPONSE_URL")
+        except ValueError as exc:
+            raise ValueError(error_name) from exc
 
 
 def jwt_secret_key_candidates() -> list[str]:
@@ -107,6 +124,11 @@ async def _fetch_oidc_configuration(url: str) -> dict[str, Any]:
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, trust_env=True) as client:
         res = await client.get(str(url))
         res.raise_for_status()
+        _validate_response_url_chain(
+            requested_url=str(url),
+            response=res,
+            error_name="insecure_oidc_discovery_url",
+        )
         data = res.json()
     if not isinstance(data, dict):
         raise ValueError("invalid_oidc_configuration")
@@ -140,8 +162,11 @@ async def _get_oidc_jwks_uri(issuer: str, *, force_refresh: bool = False) -> str
         try:
             cfg = await _fetch_oidc_configuration(config_url)
             jwks_uri = str(cfg.get("jwks_uri") or "").strip()
-            parsed = urlparse(jwks_uri) if jwks_uri else None
-            if not jwks_uri or parsed is None or parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            try:
+                validate_jwt_remote_url(jwks_uri, field_name="OIDC discovery jwks_uri")
+            except ValueError as exc:
+                raise ValueError("invalid_oidc_jwks_uri") from exc
+            if not jwks_uri:
                 raise ValueError("invalid_oidc_jwks_uri")
         except Exception as exc:  # noqa: BLE001
             if cached and (now - cached.fetched_at_monotonic) <= max_stale_sec:
@@ -175,6 +200,11 @@ async def _fetch_jwks_keys(url: str) -> list[dict[str, Any]]:
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, trust_env=True) as client:
         res = await client.get(str(url))
         res.raise_for_status()
+        _validate_response_url_chain(
+            requested_url=str(url),
+            response=res,
+            error_name="insecure_jwks_response_url",
+        )
         data = res.json()
 
     keys = data.get("keys") if isinstance(data, dict) else None

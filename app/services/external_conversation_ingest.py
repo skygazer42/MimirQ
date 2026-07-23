@@ -136,6 +136,7 @@ def _create_external_conversation(
     db: Session,
     *,
     tenant_id: UUID,
+    account_id: str,
     request: ExternalConversationIngestRequest,
     dataset_id: UUID | None,
     document_ids: list[UUID],
@@ -143,6 +144,7 @@ def _create_external_conversation(
     title = _request_title(request)
     conversation = Conversation(
         tenant_id=tenant_id,
+        owner_account_id=str(account_id or "").strip() or None,
         title=title,
         title_source=CONVERSATION_TITLE_SOURCE_MANUAL if title else CONVERSATION_TITLE_SOURCE_AUTO,
         dataset_id=dataset_id,
@@ -439,6 +441,7 @@ def ingest_external_conversation(
         conversation = _create_external_conversation(
             db,
             tenant_id=tenant_id,
+            account_id=account_id,
             request=request,
             dataset_id=dataset_id,
             document_ids=document_ids,

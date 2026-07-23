@@ -28,6 +28,26 @@ interface ModelConfigDialogProps {
   onSave: (providerId: string, config: ProviderConfig) => void
 }
 
+function getDefaultApiBase(providerId: string): string {
+  const defaults: Record<string, string> = {
+    openai: 'https://api.openai.com/v1',
+    anthropic: 'https://api.anthropic.com',
+    deepseek: 'https://api.deepseek.com/v1',
+    zhipu: 'https://open.bigmodel.cn/api/paas/v4',
+    qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    'qwen-embedding': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    moonshot: 'https://api.moonshot.cn/v1',
+    ollama: 'http://localhost:11434/v1',
+    ark: 'https://ark.cn-beijing.volces.com/api/v3',
+    lingyiwanwu: 'https://api.lingyiwanwu.com/v1',
+    qianfan: 'https://qianfan.baidubce.com/v2',
+    siliconflow: 'https://api.siliconflow.cn/v1',
+    openrouter: 'https://openrouter.ai/api/v1',
+    together: 'https://api.together.xyz/v1',
+  }
+  return defaults[providerId] || ''
+}
+
 export function ModelConfigDialog({
   provider,
   open,
@@ -89,26 +109,6 @@ export function ModelConfigDialog({
     setTestResult(null)
     setShowAdvanced(false)
   }, [provider, open])
-
-  const getDefaultApiBase = (providerId: string): string => {
-    const defaults: Record<string, string> = {
-      openai: 'https://api.openai.com/v1',
-      anthropic: 'https://api.anthropic.com',
-      deepseek: 'https://api.deepseek.com/v1',
-      zhipu: 'https://open.bigmodel.cn/api/paas/v4',
-      qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-      'qwen-embedding': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-      moonshot: 'https://api.moonshot.cn/v1',
-      ollama: 'http://localhost:11434/v1',
-      ark: 'https://ark.cn-beijing.volces.com/api/v3',
-      lingyiwanwu: 'https://api.lingyiwanwu.com/v1',
-      qianfan: 'https://qianfan.baidubce.com/v2',
-      siliconflow: 'https://api.siliconflow.cn/v1',
-      openrouter: 'https://openrouter.ai/api/v1',
-      together: 'https://api.together.xyz/v1',
-    }
-    return defaults[providerId] || ''
-  }
 
   const handleSave = () => {
     if (!provider) return

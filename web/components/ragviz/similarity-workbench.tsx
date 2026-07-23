@@ -1,6 +1,10 @@
 'use client'
 
-import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
+import type {
+  KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
+  ReactNode,
+} from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ragvizApi } from '@/lib/api'
@@ -110,6 +114,10 @@ type PlotlyEventTarget = HTMLDivElement & {
   ) => void
   removeAllListeners?: (eventName?: string) => void
 }
+
+const MIN_RAGVIZ_SIDEBAR_WIDTH = 240
+const MAX_RAGVIZ_SIDEBAR_WIDTH = 560
+const RAGVIZ_SIDEBAR_RESIZE_STEP = 24
 
 function isRecord(value: unknown): value is JsonRecord {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -1341,6 +1349,24 @@ export function RagvizSimilarityWorkbench() {
     return { height: rightTopHeight }
   }, [rightTopHeight])
 
+  const clampSidebarWidth = useCallback((width: number) => {
+    return Math.max(
+      MIN_RAGVIZ_SIDEBAR_WIDTH,
+      Math.min(MAX_RAGVIZ_SIDEBAR_WIDTH, Math.round(width))
+    )
+  }, [])
+
+  const applySidebarResizeDelta = useCallback(
+    (side: 'left' | 'right', delta: number) => {
+      if (side === 'left') {
+        setLeftWidth((current) => clampSidebarWidth(current + delta))
+        return
+      }
+      setRightWidth((current) => clampSidebarWidth(current - delta))
+    },
+    [clampSidebarWidth]
+  )
+
   const startResizeSidebar = (
     side: 'left' | 'right',
     event: ReactMouseEvent
@@ -1352,7 +1378,7 @@ export function RagvizSimilarityWorkbench() {
     const onMove = (e: MouseEvent) => {
       const delta = e.clientX - startX
       const next = side === 'left' ? startWidth + delta : startWidth - delta
-      const clamped = Math.max(240, Math.min(560, next))
+      const clamped = clampSidebarWidth(next)
       if (side === 'left') setLeftWidth(clamped)
       else setRightWidth(clamped)
     }
@@ -1365,6 +1391,24 @@ export function RagvizSimilarityWorkbench() {
     globalThis.window.addEventListener('mousemove', onMove)
     globalThis.window.addEventListener('mouseup', onUp)
   }
+
+  const handleSidebarResizeKeyDown = useCallback(
+    (side: 'left' | 'right', event: ReactKeyboardEvent<HTMLElement>) => {
+      const step = event.shiftKey
+        ? RAGVIZ_SIDEBAR_RESIZE_STEP * 2
+        : RAGVIZ_SIDEBAR_RESIZE_STEP
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault()
+        applySidebarResizeDelta(side, -step)
+        return
+      }
+      if (event.key === 'ArrowRight') {
+        event.preventDefault()
+        applySidebarResizeDelta(side, step)
+      }
+    },
+    [applySidebarResizeDelta]
+  )
 
   const startResizeSplit = (side: 'left' | 'right', event: ReactMouseEvent) => {
     event.preventDefault()
@@ -1523,13 +1567,21 @@ export function RagvizSimilarityWorkbench() {
           )}
           style={{ width: isLeftSidebarOpen ? leftWidth : 0 }}
           aria-hidden={!isLeftSidebarOpen}
+          inert={!isLeftSidebarOpen}
         >
           {isLeftSidebarOpen && !isCompactLeftSidebar ? (
-            <button
-              type="button"
-              aria-label="Resize left sidebar"
+            <div
+              role="separator"
+              aria-label="调整左侧栏宽度"
+              aria-orientation="vertical"
+              aria-valuemin={MIN_RAGVIZ_SIDEBAR_WIDTH}
+              aria-valuemax={MAX_RAGVIZ_SIDEBAR_WIDTH}
+              aria-valuenow={leftWidth}
+              aria-valuetext={`${leftWidth}px`}
+              tabIndex={0}
               className="absolute top-0 right-0 h-full w-1 cursor-col-resize hover:bg-primary/20"
               onMouseDown={(e) => startResizeSidebar('left', e)}
+              onKeyDown={(event) => handleSidebarResizeKeyDown('left', event)}
             />
           ) : null}
 
@@ -2040,13 +2092,21 @@ export function RagvizSimilarityWorkbench() {
           )}
           style={{ width: isRightSidebarOpen ? rightWidth : 0 }}
           aria-hidden={!isRightSidebarOpen}
+          inert={!isRightSidebarOpen}
         >
           {isRightSidebarOpen && !isCompactRightSidebar ? (
-            <button
-              type="button"
-              aria-label="Resize right sidebar"
+            <div
+              role="separator"
+              aria-label="调整右侧栏宽度"
+              aria-orientation="vertical"
+              aria-valuemin={MIN_RAGVIZ_SIDEBAR_WIDTH}
+              aria-valuemax={MAX_RAGVIZ_SIDEBAR_WIDTH}
+              aria-valuenow={rightWidth}
+              aria-valuetext={`${rightWidth}px`}
+              tabIndex={0}
               className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-primary/20"
               onMouseDown={(e) => startResizeSidebar('right', e)}
+              onKeyDown={(event) => handleSidebarResizeKeyDown('right', event)}
             />
           ) : null}
 
@@ -2501,6 +2561,7 @@ function IconBtn({
     <button
       type="button"
       title={title}
+      aria-label={title}
       onClick={onClick}
       className={cn(
         'flex h-9 w-9 items-center justify-center rounded-[0.95rem] border shadow-[inset_0_1px_0_hsl(var(--card)/0.52)] transition-colors',

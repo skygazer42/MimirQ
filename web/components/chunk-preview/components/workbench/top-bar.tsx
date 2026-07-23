@@ -114,12 +114,6 @@ function getQualityGradeClass(grade: unknown): string {
   return 'border-warning/20 bg-warning/10 text-warning'
 }
 
-function getSubmitIcon(isSubmitting: boolean, submitSuccess: boolean) {
-  if (isSubmitting) return Loader2
-  if (submitSuccess) return Check
-  return Save
-}
-
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
 }
@@ -358,7 +352,6 @@ export function TopBar() {
     fail: t('topBar.status.qualityGrades.fail'),
   })
   const visibleQualityClass = getQualityGradeClass(visibleQualityGrade)
-  const SubmitIcon = getSubmitIcon(isSubmitting, submitSuccess)
   const topBarError = error ? formatTopBarError(error) : null
 
   const buildConfig = () => ({
@@ -1088,13 +1081,16 @@ export function TopBar() {
               : 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_4px_16px_-4px_rgba(var(--primary-rgb),0.4)]'
           )}
         >
-          <SubmitIcon
-            className={cn(
-              'w-4 h-4 mr-2',
-              isSubmitting && 'animate-spin motion-reduce:animate-none'
-            )}
-            strokeWidth={3}
-          />
+          {isSubmitting ? (
+            <Loader2
+              className="w-4 h-4 mr-2 animate-spin motion-reduce:animate-none"
+              strokeWidth={3}
+            />
+          ) : submitSuccess ? (
+            <Check className="w-4 h-4 mr-2" strokeWidth={3} />
+          ) : (
+            <Save className="w-4 h-4 mr-2" strokeWidth={3} />
+          )}
           {submitSuccess
             ? t('topBar.actions.completed')
             : t('topBar.actions.confirmIngest')}

@@ -4,7 +4,7 @@
 'use client'
 
 import type { Remote } from 'comlink'
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { AlertCircle, Loader2, RotateCcw } from 'lucide-react'
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
 import { ParsingBlock } from '@/lib/parsing-positions'
@@ -1099,7 +1099,9 @@ export function PdfViewer({
  }
  }, [renderPage, scheduleQueuedRenderFlush, unmarkPageLoading])
 
+ useLayoutEffect(() => {
  flushQueuedPageRendersRef.current = flushQueuedPageRenders
+ }, [flushQueuedPageRenders])
 
  // Re-observe after scale changes so the first visible pages are re-queued when an
  // initial render was invalidated by the post-layout scale measurement.

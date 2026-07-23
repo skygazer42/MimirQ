@@ -5,6 +5,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models.chat import Conversation
+from app.services.chat_conversation_access import ensure_conversation_access
 from app.services.chat_conversation_titles import (
     CONVERSATION_TITLE_SOURCE_AUTO,
     apply_auto_conversation_title,
@@ -142,6 +143,7 @@ def resolve_chat_conversation_scope(
         )
         if not conversation:
             raise HTTPException(status_code=404, detail=conversation_not_found_detail)
+        ensure_conversation_access(db, tenant_id, account_id, conversation)
 
         if request_document_ids:
             allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, request_document_ids)
@@ -203,6 +205,7 @@ def resolve_chat_conversation_scope(
         conversation = Conversation(
             id=uuid4(),
             tenant_id=tenant_id,
+            owner_account_id=str(account_id or "").strip() or None,
             title_source=CONVERSATION_TITLE_SOURCE_AUTO,
             dataset_id=scope_dataset_id,
             document_ids=allowed_doc_ids,

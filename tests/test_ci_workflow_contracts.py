@@ -34,6 +34,35 @@ def test_main_ci_uploads_the_generated_test_inventory() -> None:
     assert "if-no-files-found: error" in workflow
 
 
+def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
+    workflow = _read(".github/workflows/ci.yml")
+
+    assert "public-pr-verify:" in workflow
+    assert "python scripts/openapi_check.py" in workflow
+    assert "node web/scripts/check-openapi-coverage.mjs" in workflow
+    assert "node scripts/docs/check_doc_links.mjs" in workflow
+    for job in (
+        "test-and-verify",
+        "docker-build",
+        "retrieval-only-bounded-gate",
+        "retrieval-regression-gate",
+        "kg-search-regression-gate",
+    ):
+        assert f"{job}:\n    if: github.event_name != 'pull_request'" in workflow
+
+
+def test_pull_request_lint_and_security_jobs_use_hosted_runners() -> None:
+    for workflow_path in (
+        ".github/workflows/lint-fast.yml",
+        ".github/workflows/security.yml",
+    ):
+        workflow = _read(workflow_path)
+        assert "pull_request:" in workflow
+        assert "runs-on: ubuntu-latest" in workflow
+        assert "runs-on: [self-hosted" not in workflow
+        assert "contents: read" in workflow
+
+
 def test_api_docs_workflow_actually_deploys_pages() -> None:
     workflow = _read(".github/workflows/api-docs.yml")
 
@@ -47,11 +76,16 @@ def test_api_docs_pages_actions_are_gated_before_runner_setup() -> None:
 
     assert "\n  publish:\n" in workflow
     build_job, publish_job = workflow.split("\n  publish:\n", 1)
+    assert "\npull_request:\n" not in workflow
     assert "actions/configure-pages@" not in build_job
     assert "actions/upload-pages-artifact@" not in build_job
     assert "actions/deploy-pages@" not in build_job
     assert "needs: deploy" in publish_job
     assert "needs.deploy.outputs.pages_enabled == 'true'" in publish_job
+    assert "pages: write" not in build_job
+    assert "id-token: write" not in build_job
+    assert "pages: write" in publish_job
+    assert "id-token: write" in publish_job
 
 
 def test_fresh_database_migrations_widen_alembic_revision_storage() -> None:

@@ -98,8 +98,23 @@
 
 ---
 
+## 场景 K：Dify 外部知识与会话回填
+
+1. `POST /api/v1/integrations/dify/retrieval` — Dify External Knowledge 查询入口；`knowledge_id` 由服务端映射到一个或多个 dataset。
+2. `POST /api/v1/integrations/dify/conversation-turns` — 回填 Dify 的最终答案、引用和会话标识，便于后续 trace 对齐。
+3. `POST /api/v1/integrations/conversations/ingest` — 导入外部会话（source-agnostic），用于把第三方对话同步进 MimirQ。
+
+实现与验证入口：
+
+- [app/api/v1/integrations_dify.py](../../app/api/v1/integrations_dify.py)
+- [app/api/v1/integrations_conversations.py](../../app/api/v1/integrations_conversations.py)
+- [真实场景验证](../benchmarks/changzhou_dify.md)
+- [Dify 集成矩阵](../../docs-site/docs/integration/generated/fe-be-matrix.mdx)
+
+---
+
 ## 排障与契约
 
 - 联调清单：[../integration/FE_BE_DEBUG.md](../integration/FE_BE_DEBUG.md)  
 - 接口契约与前端覆盖：[../integration/API_CONTRACT.md](../integration/API_CONTRACT.md)  
-- 全量冒烟说明：[../integration/API_SMOKE.md](../integration/API_SMOKE.md)  
+- 全量冒烟说明：[../integration/API_SMOKE.md](../integration/API_SMOKE.md)

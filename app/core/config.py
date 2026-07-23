@@ -36,8 +36,41 @@ _COMMA_OR_WHITESPACE_RE = r"[,\\s]+"
 _LEGACY_DEV_SECRET_KEY = "".join(("your-secret-key", "-change-in-production"))
 _LOCAL_MINIO_DEFAULT_CREDENTIAL = "".join(("minio", "admin"))
 _ALL_INTERFACES_HOST = str(ipaddress.IPv4Address(0))
+_JWT_LOCAL_HOSTS = frozenset({"localhost", "localhost.localdomain", "127.0.0.1", "::1"})
 
 DEFAULT_RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS = "high,medium"
+
+
+def _is_local_jwt_http_host(host: str) -> bool:
+    normalized = str(host or "").strip().lower()
+    if not normalized:
+        return False
+    if normalized in _JWT_LOCAL_HOSTS or normalized.endswith(".localhost"):
+        return True
+    try:
+        ip = ipaddress.ip_address(normalized)
+    except ValueError:
+        return False
+    return bool(ip.is_loopback)
+
+
+def validate_jwt_remote_url(raw_url: str, *, field_name: str) -> None:
+    url = str(raw_url or "").strip()
+    if not url:
+        return
+
+    parsed = urlparse(url)
+    scheme = str(parsed.scheme or "").strip().lower()
+    host = str(parsed.hostname or "").strip().lower()
+    if scheme not in {"http", "https"} or not host:
+        raise ValueError(f"{field_name} must be a http(s) URL")
+    if parsed.username or parsed.password:
+        raise ValueError(f"{field_name} must not include userinfo")
+    if scheme == "https":
+        return
+    if not is_production_env() and _is_local_jwt_http_host(host):
+        return
+    raise ValueError(f"{field_name} must use https")
 
 
 class Settings(BaseSettings):
@@ -696,7 +729,8 @@ class Settings(BaseSettings):
     SECRET_KEY_FALLBACKS: str = ""
     ALGORITHM: str = "HS256"
     # Optional: verify JWTs via JWKS (typically for RS256/ES256 tokens issued by an external IdP).
-    # Comma-separated list of JWKS URLs, e.g. https://issuer.example/.well-known/jwks.json
+    # Comma-separated list of JWKS URLs. Use https in normal deployments; non-production may use
+    # http only for localhost/loopback testing.
     JWT_JWKS_URLS: str = ""
     # Optional: derive JWKS URL via OIDC discovery when JWT_JWKS_URLS is empty.
     # Uses {JWT_ISSUER}/.well-known/openid-configuration and reads jwks_uri.
@@ -712,6 +746,8 @@ class Settings(BaseSettings):
     JWT_OIDC_DISCOVERY_MAX_STALE_SEC: int = 86400
     JWT_OIDC_DISCOVERY_HTTP_TIMEOUT_SEC: float = 5.0
     # Optional JWT claim enforcement. When set, incoming JWTs must match.
+    # Keep this issuer as https in normal deployments; non-production may use
+    # http only for localhost/loopback testing.
     # NOTE: If you set these, tokens issued by /api/v1/auth/login will include these claims.
     JWT_ISSUER: str = ""
     JWT_AUDIENCE: str = ""
@@ -2369,6 +2405,15 @@ class Settings(BaseSettings):
             if not claim:
                 raise ValueError("JWT_TENANT_CLAIM required when JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED=true")
 
+        issuer = str(getattr(self, "JWT_ISSUER", "") or "").strip()
+        if issuer:
+            validate_jwt_remote_url(issuer, field_name="JWT_ISSUER")
+
+        jwks_urls_raw = str(getattr(self, "JWT_JWKS_URLS", "") or "").strip()
+        if jwks_urls_raw:
+            for raw_url in [item.strip() for item in jwks_urls_raw.split(",") if item.strip()]:
+                validate_jwt_remote_url(raw_url, field_name="JWT_JWKS_URLS")
+
         # Security: SCIM provisioning auth guard (enterprise).
         if bool(getattr(self, "SCIM_ENABLED", False)):
             token_raw = str(getattr(self, "SCIM_BEARER_TOKEN", "") or "").strip()
@@ -2566,10 +2611,8 @@ class Settings(BaseSettings):
                 pass
             else:
                 # RS*/ES* require a key source (JWKS) for verification.
-                jwks_urls = str(getattr(self, "JWT_JWKS_URLS", "") or "").strip()
-                if not jwks_urls:
+                if not jwks_urls_raw:
                     discovery_enabled = bool(getattr(self, "JWT_JWKS_DISCOVERY_ENABLED", False))
-                    issuer = str(getattr(self, "JWT_ISSUER", "") or "").strip()
                     if not discovery_enabled:
                         raise ValueError(f"JWT_JWKS_URLS required for ALGORITHM={algorithm}")
                     if not issuer:

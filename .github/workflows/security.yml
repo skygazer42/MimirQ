@@ -13,30 +13,19 @@ concurrency:
   group: security-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  SELF_HOSTED_PYTHON_BIN: /home/user/.local/share/uv/python/cpython-3.11.13-linux-x86_64-gnu/bin
-  SELF_HOSTED_VENV_DIR: /data/actions-runner/mimirq-main-01/_tool/mimirq-py311
-  PIP_INDEX_URL: https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
-  PIP_CACHE_DIR: /data/actions-runner/pip-cache
+permissions:
+  contents: read
 
 jobs:
   secret-scan:
     name: Secret Scan (TruffleHog)
-    runs-on: [self-hosted, Linux, X64, mimirq]
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          # Scan the checked-out snapshot / shallow history to keep signal on
-          # the changes under review instead of historical credentials that are
-          # outside the current remediation scope.
-          clean: true
           fetch-depth: 1
-        env:
-          http_proxy: http://127.0.0.1:35983
-          https_proxy: http://127.0.0.1:35983
-          no_proxy: 127.0.0.1,localhost,${{ vars.CI_NO_PROXY }}
 
       - name: TruffleHog
         run: |
@@ -48,40 +37,30 @@ jobs:
 
   dependency-audit:
     name: Dependency Audit (pip-audit, pnpm audit, npm audit)
-    runs-on: [self-hosted, Linux, X64, mimirq]
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          clean: true
-        env:
-          http_proxy: http://127.0.0.1:35983
-          https_proxy: http://127.0.0.1:35983
-          no_proxy: 127.0.0.1,localhost,${{ vars.CI_NO_PROXY }}
+          python-version: "3.11"
 
-      - name: Prepare self-hosted Python
-        if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
-        run: |
-          VENV_DIR="${SELF_HOSTED_VENV_DIR:-$RUNNER_TEMP/mimirq-py311}"
-          mkdir -p "$(dirname "$VENV_DIR")"
-          "$SELF_HOSTED_PYTHON_BIN/python3.11" -m venv "$VENV_DIR"
-          echo "$VENV_DIR/bin" >> "$GITHUB_PATH"
-          "$VENV_DIR/bin/python" --version
-          "$VENV_DIR/bin/pip" --version
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+
+      - name: Enable pnpm
+        run: corepack enable
 
       - name: Install pip-audit
         run: |
-          mkdir -p "$PIP_CACHE_DIR"
-          python -m pip install --upgrade pip
           # Keep aligned with repo tooling policy (see requirements.txt).
           python -m pip install pip-audit==2.10.0
 
       - name: Audit Python direct requirements
-        env:
-          http_proxy: http://127.0.0.1:35983
-          https_proxy: http://127.0.0.1:35983
-          no_proxy: 127.0.0.1,localhost,${{ vars.CI_NO_PROXY }}
         run: |
           pip-audit -r requirements.txt --no-deps --disable-pip \
             --extra-index-url https://download.pytorch.org/whl/cpu \
@@ -90,13 +69,6 @@ jobs:
             --ignore-vuln GHSA-rrmf-rvhw-rf47 \
             --ignore-vuln GHSA-f4j7-r4q5-qw2c \
             --ignore-vuln GHSA-95ww-475f-pr4f
-
-      - name: Prepare self-hosted Node
-        if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
-        run: |
-          node -v
-          npm -v
-          pnpm -v
 
       - name: Configure npm registry (audit endpoint)
         working-directory: web

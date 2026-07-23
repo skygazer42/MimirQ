@@ -68,15 +68,37 @@ def _normalize_capsule_id(value: str) -> str:
     return cid
 
 
-def _capsule_path(capsule_id: str) -> Path:
-    cid = _normalize_capsule_id(capsule_id)
+def _tenant_store_dir(tenant_id: UUID) -> Path:
     root = _store_dir()
+    path = (root / str(tenant_id)).resolve()
+    try:
+        path.relative_to(root)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid_tenant_id") from exc
+    return path
+
+
+def _capsule_path(*, tenant_id: UUID, capsule_id: str) -> Path:
+    cid = _normalize_capsule_id(capsule_id)
+    root = _tenant_store_dir(tenant_id)
     path = (root / f"{cid}.json").resolve()
     try:
         path.relative_to(root)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="invalid_capsule_id") from exc
     return path
+
+
+def _capsule_envelope(*, capsule: dict[str, Any], tenant_id: UUID, capsule_id: str) -> dict[str, Any]:
+    bound_tenant_id = str(tenant_id)
+    existing_tenant_id = str(capsule.get("tenant_id") or "").strip()
+    if existing_tenant_id and existing_tenant_id != bound_tenant_id:
+        raise HTTPException(status_code=400, detail="capsule_tenant_id_mismatch")
+    return {
+        "tenant_id": bound_tenant_id,
+        "capsule_id": capsule_id,
+        "capsule": dict(capsule),
+    }
 
 
 @router.post("/capsules", response_model=EvidenceCapsulePersistResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -106,7 +128,7 @@ def persist_evidence_capsule(
 
     capsule_hash = str(body.capsule.get("capsule_hash") or "").strip()
     capsule_id = _normalize_capsule_id(str(body.capsule_id or capsule_hash or ""))
-    path = _capsule_path(capsule_id)
+    path = _capsule_path(tenant_id=tenant_id, capsule_id=capsule_id)
     path.parent.mkdir(parents=True, exist_ok=True)
 
     existed = path.exists()
@@ -114,8 +136,7 @@ def persist_evidence_capsule(
     if existed and (not bool(body.overwrite) or not allow_overwrite):
         raise HTTPException(status_code=409, detail="capsule_exists")
 
-    payload = dict(body.capsule)
-    payload.setdefault("capsule_id", capsule_id)
+    payload = _capsule_envelope(capsule=body.capsule, tenant_id=tenant_id, capsule_id=capsule_id)
     # capsule_id is validated and path is confined to EVIDENCE_CAPSULE_STORE_DIR in _capsule_path().
     path.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2), encoding="utf-8")  # NOSONAR
     return EvidenceCapsulePersistResponse(
@@ -137,13 +158,18 @@ def get_evidence_capsule(
     db: Annotated[Session, Depends(get_db)],
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
-    path = _capsule_path(capsule_id)
+    path = _capsule_path(tenant_id=tenant_id, capsule_id=capsule_id)
     if not path.exists():
         raise HTTPException(status_code=404, detail="capsule_not_found")
     try:
-        capsule = json.loads(path.read_text(encoding="utf-8"))
+        envelope = json.loads(path.read_text(encoding="utf-8"))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"capsule_read_failed:{exc.__class__.__name__}") from exc
+    if not isinstance(envelope, dict):
+        raise HTTPException(status_code=500, detail="capsule_invalid_payload")
+    if str(envelope.get("tenant_id") or "").strip() != str(tenant_id):
+        raise HTTPException(status_code=404, detail="capsule_not_found")
+    capsule = envelope.get("capsule")
     if not isinstance(capsule, dict):
         raise HTTPException(status_code=500, detail="capsule_invalid_payload")
     return EvidenceCapsuleGetResponse(

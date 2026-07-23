@@ -7,12 +7,18 @@ import { authApi } from '@/lib/api/auth'
 import { clearAuthSession, getAccessToken, getStoredUser, setStoredUser } from '@/lib/auth-storage'
 import { queryKeys } from '@/lib/query-keys'
 
+function getHttpStatus(error: unknown): number | null {
+  const err = error as { response?: { status?: unknown }; status?: unknown }
+  const status = err?.response?.status ?? err?.status
+  return typeof status === 'number' ? status : null
+}
+
 export function useAuth() {
   const queryClient = useQueryClient()
   const accessToken = getAccessToken()
   const initialUser = getStoredUser()
 
-  const { data: user, isFetching, refetch } = useQuery<UserProfile | null>({
+  const { data: user, error, isFetching, refetch } = useQuery<UserProfile | null>({
     queryKey: queryKeys.auth.profile,
     queryFn: async () => {
       const token = getAccessToken()
@@ -22,9 +28,14 @@ export function useAuth() {
         const profile = await authApi.me()
         setStoredUser(profile)
         return profile
-      } catch {
-        clearAuthSession()
-        return null
+      } catch (err) {
+        if (getHttpStatus(err) === 401) {
+          if (getAccessToken()) {
+            clearAuthSession()
+          }
+          return null
+        }
+        throw err
       }
     },
     enabled: Boolean(accessToken),
@@ -53,6 +64,7 @@ export function useAuth() {
 
   return {
     user,
+    error,
     isLoading: isFetching,
     isAuthenticated,
     isDevMode,

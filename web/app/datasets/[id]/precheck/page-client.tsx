@@ -169,6 +169,7 @@ export default function DatasetPrecheckPage() {
 
   const [scanRunning, setScanRunning] = useState(false)
   const pollTimerRef = useRef<number | null>(null)
+  const pollRunRef = useRef<(datasetIdValue: string, runId: string) => Promise<void>>(async () => {})
   const sseAbortRef = useRef<AbortController | null>(null)
 
   const [isExporting, setIsExporting] = useState(false)
@@ -387,7 +388,7 @@ export default function DatasetPrecheckPage() {
         setSelectedRun(next)
         const st = String(next.status || '').toLowerCase()
         if (st === 'pending' || st === 'running') {
-          pollTimerRef.current = globalThis.window.setTimeout(() => detachPromise(pollRun(datasetIdValue, runId)), 2000)
+          pollTimerRef.current = globalThis.window.setTimeout(() => detachPromise(pollRunRef.current(datasetIdValue, runId)), 2000)
           return
         }
         setScanRunning(false)
@@ -407,6 +408,10 @@ export default function DatasetPrecheckPage() {
     },
     [refreshPrecheckRuns, stopPolling]
   )
+
+  useEffect(() => {
+    pollRunRef.current = pollRun
+  }, [pollRun])
 
   const startSse = useCallback(
     (datasetIdValue: string, runId: string) => {

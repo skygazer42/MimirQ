@@ -11,7 +11,7 @@ import threading
 import time
 import unicodedata
 from collections import Counter, OrderedDict
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from functools import lru_cache
 from typing import Any, ClassVar, cast
 from uuid import UUID
@@ -35,7 +35,7 @@ from app.models.dataset import Dataset as DBDataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.rag.core.filters import match_metadata_filter
-from app.rag.core.hashing import stable_hash
+from app.rag.core.hashing import stable_hash, stable_json_hash
 from app.rag.core.logging import get_logger
 from app.rag.embedding.utils import current_embedding_space_hash
 from app.rag.pipeline_plugins.contracts import (
@@ -426,6 +426,23 @@ def _resolve_hybrid_search_options(
     if not legacy_overrides:
         return options
     return cast(HybridSearchOptions, replace(options, **legacy_overrides))
+
+
+def _build_retrieval_cache_behavior_hash(
+    *,
+    retriever: "HybridRetriever",
+    options: HybridSearchOptions,
+) -> str:
+    prefixes = ("BM25_", "COLBERT_", "COLPALI_", "LEXICAL_", "RERANK", "RETRIEVAL_", "SPARSE_")
+    runtime = {
+        key: value
+        for key, value in settings.model_dump(mode="json").items()
+        if key.startswith(prefixes) or key == "VECTOR_BACKEND"
+    }
+    return stable_json_hash(
+        {"options": asdict(options), "retriever": retriever.model_dump(mode="json"), "runtime": runtime},
+        length=24,
+    )
 
 
 def _is_dataset_scope_condition(value: Any) -> bool:
@@ -4708,6 +4725,15 @@ class HybridRetriever(BaseRetriever):
         retrieval_mode = search_options.retrieval_mode
         mmr_lambda = search_options.mmr_lambda
         mmr_fetch_k_multiplier = search_options.mmr_fetch_k_multiplier
+        cache_enabled = bool(
+            getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_ENABLED", False)
+            or getattr(settings, "SEMANTIC_CACHE_ENABLED", False)
+        )
+        behavior_hash = (
+            _build_retrieval_cache_behavior_hash(retriever=self, options=search_options)
+            if cache_enabled
+            else None
+        )
         metadata_filter = search_options.metadata_filter
         entity_key = search_options.entity_key
         partition_keys = search_options.partition_keys
@@ -5013,6 +5039,7 @@ class HybridRetriever(BaseRetriever):
                     dataset_id=dataset_id0,
                     pipeline_key=pipeline_key,
                     corpus_cache_token=corpus_cache_token,
+                    behavior_hash=behavior_hash,
                     query=query,
                     top_k=int(top_k or 0),
                     score_threshold=float(score_threshold or 0.0),
@@ -5048,6 +5075,7 @@ class HybridRetriever(BaseRetriever):
                     account_id=account_id0,
                     dataset_id=dataset_id0,
                     corpus_cache_token=str(corpus_cache_token),
+                    behavior_hash=behavior_hash,
                     query=query,
                     top_k=int(top_k or 0),
                     score_threshold=float(score_threshold or 0.0),
@@ -6081,6 +6109,7 @@ class HybridRetriever(BaseRetriever):
                         account_id=account_id0,
                         dataset_id=dataset_id0,
                         corpus_cache_token=str(corpus_cache_token),
+                        behavior_hash=behavior_hash,
                         query=query,
                         top_k=int(top_k or 0),
                         score_threshold=float(score_threshold or 0.0),

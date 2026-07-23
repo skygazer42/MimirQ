@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useRef, useState, type CSSProperties, type PointerEvent } from "react"
+import { useCallback, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react"
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ChunkEditorDialog } from "@/components/document-viewer/chunk-editor-dialog"
@@ -13,6 +13,9 @@ import { TextTabPanel } from "@/components/document-viewer/text-tab-panel"
 import { cn, detachPromise } from "@/lib/utils"
 
 import type { DocumentViewerPanelState } from "./use-document-viewer-panel-state"
+
+const MIN_DOCUMENT_VIEWER_PANEL_WIDTH = 360
+const DOCUMENT_VIEWER_PANEL_RESIZE_STEP = 24
 
 export function DocumentViewerPanelShell({
   activeTab,
@@ -118,12 +121,14 @@ export function DocumentViewerPanelShell({
     : undefined
 
   const clampPanelWidth = useCallback((width: number) => {
-    if (globalThis.window === undefined) return Math.max(360, Math.round(width))
+    if (globalThis.window === undefined) {
+      return Math.max(MIN_DOCUMENT_VIEWER_PANEL_WIDTH, Math.round(width))
+    }
     const maxWidth = Math.max(420, Math.floor(globalThis.window.innerWidth * 0.86))
-    return Math.max(360, Math.min(maxWidth, Math.round(width)))
+    return Math.max(MIN_DOCUMENT_VIEWER_PANEL_WIDTH, Math.min(maxWidth, Math.round(width)))
   }, [])
 
-  const finishResize = useCallback((event: PointerEvent<HTMLButtonElement>) => {
+  const finishResize = useCallback((event: PointerEvent<HTMLDivElement>) => {
     const current = resizeStartRef.current
     if (current?.pointerId !== event.pointerId) return
     resizeStartRef.current = null
@@ -135,7 +140,7 @@ export function DocumentViewerPanelShell({
     }
   }, [])
 
-  const handleResizePointerDown = useCallback((event: PointerEvent<HTMLButtonElement>) => {
+  const handleResizePointerDown = useCallback((event: PointerEvent<HTMLDivElement>) => {
     if (isExpanded || globalThis.window === undefined || globalThis.window.innerWidth < 768) return
     event.preventDefault()
     const panel = event.currentTarget.parentElement
@@ -149,12 +154,33 @@ export function DocumentViewerPanelShell({
     event.currentTarget.setPointerCapture(event.pointerId)
   }, [isExpanded, panelWidthPx])
 
-  const handleResizePointerMove = useCallback((event: PointerEvent<HTMLButtonElement>) => {
+  const handleResizePointerMove = useCallback((event: PointerEvent<HTMLDivElement>) => {
     const current = resizeStartRef.current
     if (current?.pointerId !== event.pointerId) return
     event.preventDefault()
     setPanelWidthPx(clampPanelWidth(current.startWidth + current.startX - event.clientX))
   }, [clampPanelWidth, setPanelWidthPx])
+
+  const handleResizeKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
+    if (isExpanded || globalThis.window === undefined || globalThis.window.innerWidth < 768) {
+      return
+    }
+
+    const step = event.shiftKey
+      ? DOCUMENT_VIEWER_PANEL_RESIZE_STEP * 2
+      : DOCUMENT_VIEWER_PANEL_RESIZE_STEP
+    const currentWidth = panelWidthPx ?? 500
+
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault()
+      setPanelWidthPx(clampPanelWidth(currentWidth + step))
+      return
+    }
+    if (event.key === 'ArrowRight') {
+      event.preventDefault()
+      setPanelWidthPx(clampPanelWidth(currentWidth - step))
+    }
+  }, [clampPanelWidth, isExpanded, panelWidthPx, setPanelWidthPx])
 
   if (!isOpen) return null
 
@@ -208,15 +234,22 @@ export function DocumentViewerPanelShell({
               : "w-full md:w-[40vw] lg:w-[500px] xl:w-[40vw]"
         )}
       >
-        <button
-          type="button"
+        <div
+          role="separator"
           aria-label="拖动调整文档查看器宽度"
+          aria-orientation="vertical"
+          aria-valuemin={MIN_DOCUMENT_VIEWER_PANEL_WIDTH}
+          aria-valuemax={clampPanelWidth(globalThis.window?.innerWidth ?? panelWidthPx ?? 500)}
+          aria-valuenow={panelWidthPx ?? 500}
+          aria-valuetext={`${panelWidthPx ?? 500}px`}
           title="拖动调整文档查看器宽度"
           data-document-viewer-resize-handle="true"
+          tabIndex={isExpanded ? -1 : 0}
           onPointerDown={handleResizePointerDown}
           onPointerMove={handleResizePointerMove}
           onPointerUp={finishResize}
           onPointerCancel={finishResize}
+          onKeyDown={handleResizeKeyDown}
           className={cn(
             "group absolute -left-2 top-0 z-20 hidden h-full w-4 cursor-col-resize items-center justify-center md:flex",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
@@ -231,7 +264,7 @@ export function DocumentViewerPanelShell({
               isResizing ? "border-primary/50 bg-primary/35" : "group-hover:bg-primary/25"
             )}
           />
-        </button>
+        </div>
         <DocumentViewerHeader
           filename={doc?.filename}
           chunkCount={doc?.chunk_count ?? chunks.length}

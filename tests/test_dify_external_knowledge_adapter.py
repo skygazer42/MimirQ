@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from app.core.database import get_db
@@ -11446,6 +11446,12 @@ def test_dify_trace_conversation_resolution_locks_source_scope_before_lookup(
         return conversation_id
 
     monkeypatch.setattr(dify_api, "_find_dify_trace_conversation", _find_existing, raising=True)
+    monkeypatch.setattr(
+        dify_api,
+        "_load_dify_trace_conversation",
+        lambda *_args, **_kwargs: SimpleNamespace(id=conversation_id, owner_account_id="system:dify"),
+        raising=True,
+    )
 
     resolved = dify_api._ensure_dify_trace_conversation(
         db=db,
@@ -11459,6 +11465,59 @@ def test_dify_trace_conversation_resolution_locks_source_scope_before_lookup(
 
     assert resolved == conversation_id
     assert events == [("lock", "dify-conv-001"), ("find", "dify-conv-001")]
+
+
+def test_dify_trace_conversation_refuses_cross_account_reuse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api.v1 import integrations_dify as dify_api
+
+    tenant_id = uuid.uuid4()
+    conversation_id = uuid.uuid4()
+    add_called = False
+
+    class _NoWriteDB:
+        def add(self, _value) -> None:  # noqa: ANN001
+            nonlocal add_called
+            add_called = True
+
+    monkeypatch.setattr(
+        dify_api,
+        "_lock_dify_conversation_turn_scope",
+        lambda **_kwargs: None,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        dify_api,
+        "_find_dify_trace_conversation",
+        lambda *_args, **_kwargs: conversation_id,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        dify_api,
+        "_load_dify_trace_conversation",
+        lambda *_args, **_kwargs: SimpleNamespace(id=conversation_id, owner_account_id="acct-other"),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_TRACE_AUTO_CREATE_CONVERSATION_ENABLED",
+        True,
+        raising=False,
+    )
+
+    resolved = dify_api._ensure_dify_trace_conversation(
+        db=_NoWriteDB(),
+        tenant_id=tenant_id,
+        account_id="acct-1",
+        source_conversation_id="dify-conv-001",
+        source_message_id="dify-msg-001",
+        source_run_id="dify-run-001",
+        question="普通话考试要带什么？",
+    )
+
+    assert resolved is None
+    assert add_called is False
 
 
 def test_dify_retrieval_endpoint_logs_trace_for_dify_conversation_context(
@@ -11741,7 +11800,7 @@ def test_dify_conversation_turn_retry_returns_existing_messages_without_writes(
     monkeypatch.setattr(
         dify_api,
         "_load_dify_trace_conversation",
-        lambda *_args, **_kwargs: SimpleNamespace(id=conversation_id),
+        lambda *_args, **_kwargs: SimpleNamespace(id=conversation_id, owner_account_id="system:dify"),
         raising=True,
     )
 
@@ -11792,6 +11851,37 @@ def test_dify_conversation_turn_retry_returns_existing_messages_without_writes(
     assert all(result.user_message_id == user_message.id for result in results)
     assert all(result.assistant_message_id == assistant_message.id for result in results)
     assert all(result.reused_user_message is True for result in results)
+
+
+def test_dify_conversation_turn_rejects_explicit_conversation_owned_by_another_account(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api.v1 import integrations_dify as dify_api
+
+    conversation_id = uuid.uuid4()
+    monkeypatch.setattr(dify_api, "_lock_dify_conversation_turn_scope", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        dify_api,
+        "_load_dify_trace_conversation",
+        lambda *_args, **_kwargs: SimpleNamespace(id=conversation_id, owner_account_id="acct-other"),
+    )
+
+    with pytest.raises(HTTPException, match="Conversation is not accessible") as exc_info:
+        dify_api._persist_dify_conversation_turn(
+            db=_DummyDB(),
+            tenant_id=uuid.uuid4(),
+            account_id="acct-1",
+            query="普通话考试要带什么？",
+            answer="请携带有效身份证件。",
+            trace_request_id=None,
+            source_conversation_id="dify-conv-001",
+            source_message_id="dify-msg-001",
+            source_run_id=None,
+            citations=[],
+            conversation_id=conversation_id,
+        )
+
+    assert exc_info.value.status_code == 403
 
 
 def test_dify_turn_citations_for_storage_drops_invalid_frontend_citations() -> None:

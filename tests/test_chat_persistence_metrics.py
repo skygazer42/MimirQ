@@ -1,7 +1,49 @@
 
+from dataclasses import replace
 from uuid import uuid4
 
+import pytest
+
 from app.services import chat_persistence as persistence
+
+
+def _base_finalize_options(
+    **overrides: object,
+) -> persistence.ChatResponseFinalizationInput:
+    base = persistence.ChatResponseFinalizationInput(
+        db=None,  # type: ignore[arg-type]
+        tenant_id=uuid4(),
+        conversation_id=uuid4(),
+        account_id="demo",
+        assistant_message_id=uuid4(),
+        request_id=uuid4().hex,
+        question="What token belongs only to OBS?",
+        document_count=1,
+        full_response="Token OBS belongs only here.",
+        citations=[{"chunk_content": "Token OBS belongs only here."}],
+        metrics={
+            "generation_fallback_kind": "extractive_retrieval_summary",
+            "generation_fallback_reason": "explicit_extractive_answer_mode",
+            "retrieval_mode": "keyword",
+            "retrieval_elapsed_sec": 0.12,
+            "vector_backend": "milvus",
+        },
+        structured_data=None,
+        dataset_id_used=None,
+        cache_eligible=False,
+        cache_hit=False,
+        cache_key=None,
+        singleflight_key=None,
+        singleflight_leader=False,
+        request_enable_structured_memory=False,
+        ip=None,
+        user_agent=None,
+        enable_online_eval=False,
+        retrieval_mode_default="hybrid",
+    )
+    if not overrides:
+        return base
+    return replace(base, **overrides)
 
 
 def test_finalize_chat_response_sync_logs_rag_trace_for_extractive_fallback(
@@ -155,3 +197,71 @@ def test_finalize_chat_response_sync_skips_rag_trace_when_not_extractive_fallbac
     )
 
     assert captured == []
+
+
+def test_finalize_chat_response_sync_orders_persist_cache_then_resolve(
+    monkeypatch,
+) -> None:
+    events: list[tuple[str, str]] = []
+
+    def record_event(name: str, _label: str = "") -> None:
+        events.append((name, _label))
+
+    monkeypatch.setattr(
+        persistence,
+        "persist_chat_turn_sync",
+        lambda **_kwargs: record_event("persist", "persist"),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        persistence,
+        "store_chat_response_cache_if_needed",
+        lambda **_kwargs: record_event("cache", ""),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        persistence,
+        "resolve_inflight_chat_response",
+        lambda *args, **kwargs: record_event("resolve", str(args[0] if args else "")),
+        raising=True,
+    )
+    monkeypatch.setattr(persistence, "log_metrics", lambda payload: None, raising=True)
+
+    options = _base_finalize_options(singleflight_key="sf-key", singleflight_leader=True)
+
+    persistence.finalize_chat_response_sync(options=options)
+
+    assert [name for name, _ in events] == ["persist", "cache", "resolve"]
+
+
+def test_finalize_chat_response_sync_does_not_cache_or_resolve_when_persist_fails(
+    monkeypatch,
+) -> None:
+    events: list[str] = []
+
+    monkeypatch.setattr(
+        persistence,
+        "persist_chat_turn_sync",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("persist failed")),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        persistence,
+        "store_chat_response_cache_if_needed",
+        lambda **_kwargs: events.append("cache"),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        persistence,
+        "resolve_inflight_chat_response",
+        lambda *_args, **_kwargs: events.append("resolve"),
+        raising=True,
+    )
+    monkeypatch.setattr(persistence, "log_metrics", lambda payload: None, raising=True)
+
+    options = _base_finalize_options(singleflight_key="sf-key", singleflight_leader=True)
+
+    with pytest.raises(RuntimeError, match="persist failed"):
+        persistence.finalize_chat_response_sync(options=options)
+
+    assert events == []

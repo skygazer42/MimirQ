@@ -847,12 +847,16 @@ def _find_dify_trace_conversation(
     db: Session,
     *,
     tenant_id: UUID,
+    account_id: str,
     source_conversation_id: str,
 ) -> UUID | None:
     row = (
         db.query(Message.conversation_id)
+        .join(Conversation, Conversation.id == Message.conversation_id)
         .filter(
             Message.tenant_id == tenant_id,
+            Conversation.tenant_id == tenant_id,
+            Conversation.owner_account_id == str(account_id or "").strip(),
             _external_conversation_metadata_text("source") == "dify",
             _external_conversation_metadata_text("source_conversation_id") == source_conversation_id,
         )
@@ -862,6 +866,13 @@ def _find_dify_trace_conversation(
     if not row:
         return None
     return row[0]
+
+
+def _conversation_owner_matches_account(conversation: Conversation | None, *, account_id: str) -> bool:
+    if conversation is None:
+        return False
+    owner_account_id = str(getattr(conversation, "owner_account_id", "") or "").strip()
+    return bool(owner_account_id) and owner_account_id == str(account_id or "").strip()
 
 
 def _load_dify_trace_conversation(
@@ -1024,9 +1035,22 @@ def _ensure_dify_trace_conversation(
         existing_id = _find_dify_trace_conversation(
             db,
             tenant_id=tenant_id,
+            account_id=account_id,
             source_conversation_id=source_conversation_id,
         )
         if existing_id is not None:
+            existing = _load_dify_trace_conversation(
+                db,
+                tenant_id=tenant_id,
+                conversation_id=existing_id,
+            )
+            if not _conversation_owner_matches_account(existing, account_id=account_id):
+                logger.warning(
+                    "Refusing to reuse Dify trace conversation across owners: tenant=%s source_conversation_id=%s",
+                    tenant_id,
+                    source_conversation_id,
+                )
+                return None
             return existing_id
 
         if not settings.DIFY_EXTERNAL_KNOWLEDGE_TRACE_AUTO_CREATE_CONVERSATION_ENABLED:
@@ -1035,6 +1059,7 @@ def _ensure_dify_trace_conversation(
         now = datetime.now(UTC)
         conversation = Conversation(
             tenant_id=tenant_id,
+            owner_account_id=str(account_id or "").strip() or None,
             title=_dify_trace_title(question),
             title_source="auto",
             document_ids=[],
@@ -1128,6 +1153,9 @@ def _persist_dify_conversation_turn(
         conversation = _load_dify_trace_conversation(db, tenant_id=tenant_id, conversation_id=resolved_id)
         if conversation is None:
             raise HTTPException(status_code=404, detail="Conversation not found")
+
+    if not _conversation_owner_matches_account(conversation, account_id=account_id):
+        raise HTTPException(status_code=403, detail="Conversation is not accessible")
 
     persisted_turn = _find_persisted_dify_conversation_turn(
         db,

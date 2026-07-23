@@ -261,6 +261,7 @@ export default function DatasetProfilePage() {
   const [scanRun, setScanRun] = useState<DatasetProfileScanRunOut | null>(null)
   const [scanRunning, setScanRunning] = useState(false)
   const pollTimerRef = useRef<number | null>(null)
+  const pollScanRunRef = useRef<(datasetIdValue: string, runId: string) => Promise<void>>(async () => {})
   const [compareA, setCompareA] = useState<string>('')
   const [compareB, setCompareB] = useState<string>('')
 
@@ -651,7 +652,7 @@ export default function DatasetProfilePage() {
         setScanRun(next)
         const st = String(next.status || '').toLowerCase()
         if (st === 'pending' || st === 'running') {
-          pollTimerRef.current = globalThis.window.setTimeout(() => detachPromise(pollScanRun(datasetIdValue, runId)), 2000)
+          pollTimerRef.current = globalThis.window.setTimeout(() => detachPromise(pollScanRunRef.current(datasetIdValue, runId)), 2000)
           return
         }
         setScanRunning(false)
@@ -665,6 +666,10 @@ export default function DatasetProfilePage() {
     },
     [refreshProfileOverview, stopPolling]
   )
+
+  useEffect(() => {
+    pollScanRunRef.current = pollScanRun
+  }, [pollScanRun])
 
   // If a scan run is already running (e.g., user refreshed the page), resume polling.
   useEffect(() => {

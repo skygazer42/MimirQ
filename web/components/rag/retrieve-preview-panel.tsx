@@ -270,9 +270,6 @@ export function RetrievePreviewPanel({
     const documentId = String(hit.document_id || '').trim()
     if (!documentId) return
 
-    const key = toHitKey(hit)
-    if (prefetchedHitTargetsRef.current.has(key)) return
-    prefetchedHitTargetsRef.current.add(key)
     prefetchDocumentView({
       documentId,
       chunkId: String(hit.chunk_id || '').trim() || null,
@@ -365,7 +362,6 @@ export function RetrievePreviewPanel({
 
   const handleApplySuggestedQuery = useCallback((query: string) => {
     setSearchQuery(query)
-    searchInputRef.current?.focus()
   }, [])
 
   const handleClearRecentQueries = useCallback(() => {
@@ -499,7 +495,10 @@ export function RetrievePreviewPanel({
                 <button
                   key={question}
                   type="button"
-                  onClick={() => handleApplySuggestedQuery(question)}
+                  onClick={() => {
+                    handleApplySuggestedQuery(question)
+                    searchInputRef.current?.focus()
+                  }}
                   className="flex w-full items-center justify-between rounded-[14px] border border-info/20 bg-card/86 px-3 py-2.5 text-left transition-colors hover:border-primary/30 hover:bg-info/5 dark:border-border/70 dark:bg-background/58 dark:hover:bg-primary/[0.03]"
                 >
                   <span className="pr-4 text-[12px] leading-5 text-foreground/86">{question}</span>
@@ -663,7 +662,10 @@ export function RetrievePreviewPanel({
                 <button
                   key={`${item.query}-${item.timestampLabel}`}
                   type="button"
-                  onClick={() => handleApplySuggestedQuery(item.query)}
+                  onClick={() => {
+                    handleApplySuggestedQuery(item.query)
+                    searchInputRef.current?.focus()
+                  }}
                   className="flex w-full items-start justify-between gap-4 text-left"
                 >
                   <div className="min-w-0">
@@ -708,7 +710,10 @@ export function RetrievePreviewPanel({
                       <button
                         key={`history-${item.query}-${item.timestampLabel}`}
                         type="button"
-                        onClick={() => handleApplySuggestedQuery(item.query)}
+                        onClick={() => {
+                          handleApplySuggestedQuery(item.query)
+                          searchInputRef.current?.focus()
+                        }}
                         className="flex w-full items-center justify-between gap-3 rounded-[12px] border border-info/20 bg-card/88 px-3 py-2 text-left transition-colors hover:border-primary/30 hover:bg-info/5 dark:border-border/60 dark:bg-background/58 dark:hover:bg-primary/[0.03]"
                       >
                         <span className="line-clamp-1 text-[12px] text-foreground/86">{item.query}</span>
@@ -744,7 +749,10 @@ export function RetrievePreviewPanel({
               <button
                 key={label}
                 type="button"
-                onClick={() => handleApplySuggestedQuery(label)}
+                onClick={() => {
+                  handleApplySuggestedQuery(label)
+                  searchInputRef.current?.focus()
+                }}
                 className="rounded-full border border-info/20 bg-card/88 px-3 py-1.5 text-[12px] text-foreground/80 transition-colors hover:border-primary/30 hover:bg-info/5 dark:border-border/70 dark:bg-background/58 dark:hover:bg-primary/[0.04]"
               >
                 {label}
@@ -918,8 +926,18 @@ export function RetrievePreviewPanel({
                     key={key || String(idx)}
                     type="button"
                     onClick={() => setActiveHit(hit)}
-                    onMouseEnter={() => handlePrefetchHitDocument(hit)}
-                    onFocus={() => handlePrefetchHitDocument(hit)}
+                    onMouseEnter={() => {
+                      const hitKey = toHitKey(hit)
+                      if (prefetchedHitTargetsRef.current.has(hitKey)) return
+                      prefetchedHitTargetsRef.current.add(hitKey)
+                      handlePrefetchHitDocument(hit)
+                    }}
+                    onFocus={() => {
+                      const hitKey = toHitKey(hit)
+                      if (prefetchedHitTargetsRef.current.has(hitKey)) return
+                      prefetchedHitTargetsRef.current.add(hitKey)
+                      handlePrefetchHitDocument(hit)
+                    }}
                     style={{ animationDelay: `${staggerDelayMs}ms` }}
                     className={cn(
                       'animate-in fade-in-0 slide-in-from-bottom-1 duration-300 motion-reduce:animate-none w-full px-5 py-4 text-left transition-colors hover:bg-primary/[0.03]',

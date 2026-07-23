@@ -305,7 +305,7 @@ From a local look to a production cluster:
 | **Standard** | `make up` | Full stack: Postgres + Milvus + MinIO + Redis + API + Worker |
 | **Standard + Web** | `make up-web` | Recommended first run; initializes local config and starts the complete web stack |
 | **Lite Mode** | `make up-lite` | Chroma/FAISS instead of Milvus, no MinIO — quick evaluation |
-| **Dev Mode** | `make up-infra` | Infrastructure only, run backend/frontend locally |
+| **Dev Mode** | `make infra-up` | Infrastructure only, run backend/frontend locally |
 | **Helm / K8s** | `helm install` | Production-grade with HPA, PDB, CronJob, PrometheusRule |
 | **Parser Extensions** | `make up-etl4llm` | Enable ETL4LLM / Marker / MinerU / PaddleOCR-VL / Qianfan-OCR parsers |
 
@@ -404,7 +404,7 @@ cd MimirQ
 make init
 
 # Local development
-make up-infra          # Start infrastructure
+make infra-up           # Start infrastructure
 make models            # Download and verify the pinned DeepDoc models
 cd web && pnpm dev     # Frontend dev
 python main.py         # Backend dev

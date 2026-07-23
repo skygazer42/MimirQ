@@ -19,7 +19,37 @@ env:
   TORCH_WHEEL_DIR: /data/actions-runner/torch-wheels
 
 jobs:
+  public-pr-verify:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+
+      - name: OpenAPI artifact sanity
+        run: python scripts/openapi_check.py
+
+      - name: OpenAPI coverage guard
+        run: node web/scripts/check-openapi-coverage.mjs
+
+      - name: Check handbook links
+        run: node scripts/docs/check_doc_links.mjs
+
   test-and-verify:
+    if: github.event_name != 'pull_request'
     runs-on: [self-hosted, Linux, X64, mimirq]
     timeout-minutes: 45
     services:
@@ -73,34 +103,10 @@ jobs:
         run: |
           mkdir -p "$PIP_CACHE_DIR" "$TORCH_WHEEL_DIR"
           python -m pip install --upgrade pip
-          TORCH_WHL="torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
-          TORCHVISION_WHL="torchvision-0.28.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
-          download_wheel() {
-            local out="$1"
-            local url="$2"
-            if [ -f "$out" ] && python - "$out" <<'PY'
-          import sys
-          import zipfile
-          try:
-              with zipfile.ZipFile(sys.argv[1]) as wheel:
-                  bad = wheel.testzip()
-          except Exception:
-              raise SystemExit(1)
-          raise SystemExit(0 if bad is None else 1)
-          PY
-            then
-              echo "Using cached wheel: $out"
-              return 0
-            fi
-            curl --fail --location --continue-at - --retry 10 --retry-all-errors --retry-delay 5 -o "$out" "$url"
-          }
-          download_wheel "$TORCH_WHEEL_DIR/$TORCH_WHL" \
-            "https://download-r2.pytorch.org/whl/cpu/$TORCH_WHL"
-          download_wheel "$TORCH_WHEEL_DIR/$TORCHVISION_WHL" \
-            "https://download-r2.pytorch.org/whl/cpu/$TORCHVISION_WHL"
+          python ci/download_verified_wheels.py --cache-dir "$TORCH_WHEEL_DIR"
           python -m pip install --retries 5 --timeout 120 \
-            "$TORCH_WHEEL_DIR/$TORCH_WHL" \
-            "$TORCH_WHEEL_DIR/$TORCHVISION_WHL"
+            "$TORCH_WHEEL_DIR/torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
+            "$TORCH_WHEEL_DIR/torchvision-0.28.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
           python scripts/filter_cpu_ci_requirements.py requirements-dev.txt /tmp/requirements-dev.cpu-ci.txt
           python -m pip install --retries 10 --timeout 120 -r /tmp/requirements-dev.cpu-ci.txt
           python -m pip install --retries 5 --timeout 120 --no-deps xgboost==3.2.0
@@ -166,6 +172,7 @@ jobs:
           if-no-files-found: error
 
   docker-build:
+    if: github.event_name != 'pull_request'
     runs-on: [self-hosted, Linux, X64, mimirq]
     timeout-minutes: 60
     steps:
@@ -180,10 +187,10 @@ jobs:
 
       - name: Validate Helm chart
         run: |
-          docker run --rm -v "$PWD:/work" -w /work alpine/helm:3.19.0 lint deploy/helm/mimirq
-          docker run --rm -v "$PWD:/work" -w /work alpine/helm:3.19.0 template mimirq deploy/helm/mimirq >/dev/null
+          docker run --rm -v "$PWD:/work" -w /work alpine/helm@sha256:aef9b56f64e866207d9591d0abd8f6d767b36aadd12edf68f8a719716d9d29c9 lint deploy/helm/mimirq
+          docker run --rm -v "$PWD:/work" -w /work alpine/helm@sha256:aef9b56f64e866207d9591d0abd8f6d767b36aadd12edf68f8a719716d9d29c9 template mimirq deploy/helm/mimirq >/dev/null
           for values in deploy/helm/mimirq/examples/*.yaml; do
-            docker run --rm -v "$PWD:/work" -w /work alpine/helm:3.19.0 \
+            docker run --rm -v "$PWD:/work" -w /work alpine/helm@sha256:aef9b56f64e866207d9591d0abd8f6d767b36aadd12edf68f8a719716d9d29c9 \
               template mimirq deploy/helm/mimirq -f "$values" >/dev/null
           done
 
@@ -201,9 +208,9 @@ jobs:
         run: docker build -t mimirq-web -f web/Dockerfile.prod web
 
   retrieval-only-bounded-gate:
+    if: github.event_name != 'pull_request'
     runs-on: [self-hosted, Linux, X64, mimirq]
     timeout-minutes: 10
-    if: github.event_name == 'pull_request'
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -228,34 +235,10 @@ jobs:
         run: |
           mkdir -p "$PIP_CACHE_DIR" "$TORCH_WHEEL_DIR"
           python -m pip install --upgrade pip
-          TORCH_WHL="torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
-          TORCHVISION_WHL="torchvision-0.28.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
-          download_wheel() {
-            local out="$1"
-            local url="$2"
-            if [ -f "$out" ] && python - "$out" <<'PY'
-          import sys
-          import zipfile
-          try:
-              with zipfile.ZipFile(sys.argv[1]) as wheel:
-                  bad = wheel.testzip()
-          except Exception:
-              raise SystemExit(1)
-          raise SystemExit(0 if bad is None else 1)
-          PY
-            then
-              echo "Using cached wheel: $out"
-              return 0
-            fi
-            curl --fail --location --continue-at - --retry 10 --retry-all-errors --retry-delay 5 -o "$out" "$url"
-          }
-          download_wheel "$TORCH_WHEEL_DIR/$TORCH_WHL" \
-            "https://download-r2.pytorch.org/whl/cpu/$TORCH_WHL"
-          download_wheel "$TORCH_WHEEL_DIR/$TORCHVISION_WHL" \
-            "https://download-r2.pytorch.org/whl/cpu/$TORCHVISION_WHL"
+          python ci/download_verified_wheels.py --cache-dir "$TORCH_WHEEL_DIR"
           python -m pip install --retries 5 --timeout 120 \
-            "$TORCH_WHEEL_DIR/$TORCH_WHL" \
-            "$TORCH_WHEEL_DIR/$TORCHVISION_WHL"
+            "$TORCH_WHEEL_DIR/torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
+            "$TORCH_WHEEL_DIR/torchvision-0.28.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
           python scripts/filter_cpu_ci_requirements.py requirements.txt /tmp/requirements.cpu-ci.txt
           python -m pip install --retries 10 --timeout 120 -r /tmp/requirements.cpu-ci.txt
           python -m pip install --retries 5 --timeout 120 --no-deps xgboost==3.2.0
@@ -971,9 +954,9 @@ jobs:
             ci/retrieval_thresholds.v2.json
 
   retrieval-regression-gate:
+    if: github.event_name != 'pull_request'
     runs-on: [self-hosted, Linux, X64, mimirq]
     timeout-minutes: 30
-    if: github.event_name == 'pull_request'
     needs:
       - retrieval-only-bounded-gate
     services:
@@ -1014,35 +997,10 @@ jobs:
         run: |
           mkdir -p "$PIP_CACHE_DIR"
           python -m pip install --upgrade pip
-          TORCH_WHL="torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
-          TORCHVISION_WHL="torchvision-0.28.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
-          mkdir -p "$TORCH_WHEEL_DIR"
-          download_wheel() {
-            local out="$1"
-            local url="$2"
-            if [ -f "$out" ] && python - "$out" <<'PY'
-          import sys
-          import zipfile
-          try:
-              with zipfile.ZipFile(sys.argv[1]) as wheel:
-                  bad = wheel.testzip()
-          except Exception:
-              raise SystemExit(1)
-          raise SystemExit(0 if bad is None else 1)
-          PY
-            then
-              echo "Using cached wheel: $out"
-              return 0
-            fi
-            curl --fail --location --continue-at - --retry 10 --retry-all-errors --retry-delay 5 -o "$out" "$url"
-          }
-          download_wheel "$TORCH_WHEEL_DIR/$TORCH_WHL" \
-            "https://download-r2.pytorch.org/whl/cpu/$TORCH_WHL"
-          download_wheel "$TORCH_WHEEL_DIR/$TORCHVISION_WHL" \
-            "https://download-r2.pytorch.org/whl/cpu/$TORCHVISION_WHL"
+          python ci/download_verified_wheels.py --cache-dir "$TORCH_WHEEL_DIR"
           python -m pip install --retries 5 --timeout 120 \
-            "$TORCH_WHEEL_DIR/$TORCH_WHL" \
-            "$TORCH_WHEEL_DIR/$TORCHVISION_WHL"
+            "$TORCH_WHEEL_DIR/torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
+            "$TORCH_WHEEL_DIR/torchvision-0.28.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
           python scripts/filter_cpu_ci_requirements.py requirements.txt /tmp/requirements.cpu-ci.txt
           python -m pip install --retries 10 --timeout 120 -r /tmp/requirements.cpu-ci.txt
           python -m pip install --retries 5 --timeout 120 --no-deps xgboost==3.2.0
@@ -1209,9 +1167,9 @@ jobs:
           fi
 
   kg-search-regression-gate:
+    if: github.event_name != 'pull_request'
     runs-on: [self-hosted, Linux, X64, mimirq]
     timeout-minutes: 30
-    if: github.event_name == 'pull_request'
     services:
       postgres:
         image: postgres:15

@@ -70,6 +70,7 @@ type HistoryPageContentProps = {
 const EMPTY_CONVERSATIONS: Conversation[] = []
 const EMPTY_MESSAGES: Message[] = []
 const CONVERSATION_PAGE_SIZE = 100
+const RECENT_CONVERSATION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
 
 type ConversationPagesCache = {
   pages?: Array<{
@@ -176,6 +177,7 @@ function HistoryPageContent({
   const [historyView, setHistoryView] = useState<'all' | 'recent'>('all')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
   const [isTraceOpen, setIsTraceOpen] = useState(false)
+  const [recentConversationCutoff, setRecentConversationCutoff] = useState<number | null>(null)
 
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -400,12 +402,11 @@ function HistoryPageContent({
   // 过滤对话
   const filteredConversations = useMemo(() => {
     let base = conversations
-    if (historyView === 'recent') {
-      const now = Date.now()
+    if (historyView === 'recent' && recentConversationCutoff !== null) {
       base = base.filter((c) => {
         const activityDate = c.last_message_at || c.updated_at || c.created_at
         const ts = new Date(activityDate).getTime()
-        return Number.isFinite(ts) && now - ts <= 7 * 24 * 60 * 60 * 1000
+        return Number.isFinite(ts) && ts >= recentConversationCutoff
       })
     }
     const term = deferredSearchQuery.trim().toLowerCase()
@@ -415,7 +416,7 @@ function HistoryPageContent({
         (c.title || '').toLowerCase().includes(term) ||
         (c.last_message || '').toLowerCase().includes(term)
     )
-  }, [conversations, deferredSearchQuery, historyView])
+  }, [conversations, deferredSearchQuery, historyView, recentConversationCutoff])
 
   const groupLabels = useMemo(
     () => ({
@@ -538,7 +539,12 @@ function HistoryPageContent({
                     <button
                       key={value}
                       type="button"
-                      onClick={() => setHistoryView(value)}
+                      onClick={() => {
+                        setHistoryView(value)
+                        setRecentConversationCutoff(
+                          value === 'recent' ? Date.now() - RECENT_CONVERSATION_WINDOW_MS : null
+                        )
+                      }}
                       className={cn(
                         'rounded-full px-3 py-1 text-[11px] font-medium transition-colors',
                         historyView === value

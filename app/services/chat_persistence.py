@@ -202,6 +202,11 @@ def finalize_chat_response_sync(
 
     _maybe_enqueue_online_eval(options, metrics_out)
 
+    persist_chat_turn_sync(
+        db=options.db,
+        options=_chat_turn_persist_input(options, metrics_out),
+    )
+
     store_chat_response_cache_if_needed(
         cache_eligible=options.cache_eligible,
         cache_hit=options.cache_hit,
@@ -217,10 +222,5 @@ def finalize_chat_response_sync(
             options.singleflight_key,
             jsonable_encoder(_resolve_singleflight_payload(options, metrics_out)),
         )
-
-    persist_chat_turn_sync(
-        db=options.db,
-        options=_chat_turn_persist_input(options, metrics_out),
-    )
 
     return metrics_out

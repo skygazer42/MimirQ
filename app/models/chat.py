@@ -5,7 +5,7 @@ Defines conversation and message table structures.
 """
 import uuid
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -16,10 +16,14 @@ from app.core.database import Base
 class Conversation(Base):
     """Conversation table"""
     __tablename__ = "conversations"
+    __table_args__ = (
+        Index("ix_conversations_tenant_owner_account_id", "tenant_id", "owner_account_id"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     user_id = Column(UUID(as_uuid=True), nullable=True)
+    owner_account_id = Column(String(255), nullable=True)
     # Optional dataset scope for the conversation. When NULL and document_ids is empty,
     # the conversation uses "open scope" (retrieve across all accessible docs in tenant).
     dataset_id = Column(UUID(as_uuid=True), nullable=True, index=True)

@@ -2,15 +2,12 @@ name: Deploy API docs to GitHub Pages
 
 on:
   workflow_dispatch:
-  pull_request:
   push:
     branches:
       - main
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages-api-docs
@@ -95,6 +92,10 @@ jobs:
   publish:
     needs: deploy
     if: ${{ github.event_name != 'pull_request' && needs.deploy.outputs.pages_enabled == 'true' }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

@@ -4,7 +4,35 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models.chat import Conversation
+from app.services.dataset_service import DatasetService
 from app.services.document_access import get_allowed_document_id_sets
+
+CONVERSATION_NOT_ACCESSIBLE_DETAIL = "Conversation is not accessible"
+
+
+def _conversation_owner_account_id(conv: Conversation) -> str | None:
+    owner_account_id = str(getattr(conv, "owner_account_id", "") or "").strip()
+    return owner_account_id or None
+
+
+def _ensure_conversation_owner(account_id: str, conv: Conversation) -> None:
+    owner_account_id = _conversation_owner_account_id(conv)
+    if not owner_account_id or owner_account_id != str(account_id or "").strip():
+        raise HTTPException(status_code=403, detail=CONVERSATION_NOT_ACCESSIBLE_DETAIL)
+
+
+def ensure_conversation_dataset_access(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    conv: Conversation,
+) -> None:
+    dataset_id = getattr(conv, "dataset_id", None)
+    if dataset_id is None:
+        return
+    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_readable(db, dataset, account_id)
 
 
 def ensure_conversation_access(
@@ -17,6 +45,13 @@ def ensure_conversation_access(
     Ensure the current user can access all documents bound to the conversation.
     Returns the allowed document ids, or an empty list if the conversation is unscoped.
     """
+    _ensure_conversation_owner(account_id, conv)
+    ensure_conversation_dataset_access(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        conv=conv,
+    )
     if not conv.document_ids:
         return []
     doc_ids = list(conv.document_ids)

@@ -1,4 +1,3 @@
-
 import json
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
@@ -7,8 +6,13 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import app.api.v1.integrations_conversations as conversations_integration
-from app.api.schemas.external_conversation import ExternalConversationIngestResponse
+from app.api.schemas.external_conversation import (
+    ExternalConversationIngestRequest,
+    ExternalConversationIngestResponse,
+    ExternalConversationMessageIn,
+)
 from app.services.external_conversation_ingest import (
+    _create_external_conversation,
     _external_message_citation_candidates,
     _mimirq_citations_for_storage,
     _next_message_created_at,
@@ -222,3 +226,29 @@ def test_external_message_created_at_preserves_request_order():
     assert first == imported_at
     assert second == first + timedelta(microseconds=1)
     assert third == second + timedelta(microseconds=1)
+
+
+def test_create_external_conversation_sets_owner_account_id() -> None:
+    class _DB:
+        def add(self, _value) -> None:  # noqa: ANN001
+            return None
+
+        def flush(self) -> None:
+            return None
+
+    request = ExternalConversationIngestRequest(
+        source="coze",
+        source_conversation_id="coze-conv-1",
+        messages=[ExternalConversationMessageIn(role="user", content="hello")],
+    )
+
+    conversation = _create_external_conversation(
+        _DB(),
+        tenant_id=TENANT_ID,
+        account_id="acct-1",
+        request=request,
+        dataset_id=None,
+        document_ids=[],
+    )
+
+    assert conversation.owner_account_id == "acct-1"

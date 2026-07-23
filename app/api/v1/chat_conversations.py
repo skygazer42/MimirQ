@@ -27,7 +27,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.chat import Conversation, Message
 from app.services.audit_log_service import audit_log_event
-from app.services.chat_conversation_access import ensure_conversation_access
+from app.services.chat_conversation_access import ensure_conversation_access, ensure_conversation_dataset_access
 from app.services.chat_conversation_titles import (
     CONVERSATION_TITLE_SOURCE_AUTO,
     CONVERSATION_TITLE_SOURCE_MANUAL,
@@ -93,6 +93,7 @@ async def create_conversation(
 
     conversation = Conversation(
         tenant_id=tenant_id,
+        owner_account_id=str(account_id or "").strip() or None,
         title=requested_title or None,
         title_source=CONVERSATION_TITLE_SOURCE_MANUAL if requested_title else CONVERSATION_TITLE_SOURCE_AUTO,
         dataset_id=scope_dataset_id,
@@ -176,7 +177,10 @@ async def list_conversations(
 ):
     """List conversations."""
     DatasetService.ensure_member(db, tenant_id, account_id)
-    query = db.query(Conversation).filter(Conversation.tenant_id == tenant_id)
+    query = db.query(Conversation).filter(
+        Conversation.tenant_id == tenant_id,
+        Conversation.owner_account_id == str(account_id or "").strip(),
+    )
     total = query.count()
 
     # Fill the page with accessible conversations (avoid returning <limit when some are filtered).
@@ -190,6 +194,7 @@ async def list_conversations(
     batch_size = max(50, limit_eff)
     raw_offset = int(skip)
     conversations: list[Conversation] = []
+    dataset_access: dict[UUID, bool] = {}
 
     while len(conversations) < limit_eff:
         batch = ordered.offset(raw_offset).limit(batch_size).all()
@@ -218,6 +223,20 @@ async def list_conversations(
         for conv in batch:
             if len(conversations) >= limit_eff:
                 break
+            dataset_id = getattr(conv, "dataset_id", None)
+            if dataset_id is not None and dataset_id not in dataset_access:
+                try:
+                    ensure_conversation_dataset_access(
+                        db,
+                        tenant_id=tenant_id,
+                        account_id=account_id,
+                        conv=conv,
+                    )
+                    dataset_access[dataset_id] = True
+                except HTTPException:
+                    dataset_access[dataset_id] = False
+            if dataset_id is not None and not dataset_access[dataset_id]:
+                continue
             doc_ids = doc_ids_by_conversation_id.get(conv.id) or []
             if not doc_ids:
                 conversations.append(conv)

@@ -24,7 +24,7 @@ pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requiremen
 
 **配置**：
 ```bash
-# .env
+# .env（OpenAI API 示例，不是仓库默认部署值）
 EMBEDDING_PROVIDER=openai_compatible
 EMBEDDING_MODEL=text-embedding-3-small
 EMBEDDING_API_KEY=your-api-key
@@ -32,6 +32,8 @@ EMBEDDING_API_BASE=https://api.openai.com/v1
 ```
 
 **说明**：如需启用更多可选能力（本地 Embedding / OCR / 高级解析等），参考下方条目安装额外依赖。
+
+**对齐说明**：仓库随 `.env.example` 发布的默认 `EMBEDDING_MODEL` 是 `BAAI/bge-m3`，需要指向实际提供该模型的 OpenAI-compatible 服务；上面的官方 OpenAI 示例则使用 `text-embedding-3-small`。如果没有显式设置 `EMBEDDING_MODEL`，后端代码也以 `text-embedding-3-small` 作为回退值。生产和团队环境应以 `.env.example` / 部署配置为准，不要依赖进程内默认值。
 
 ---
 
@@ -86,6 +88,7 @@ EMBEDDING_MODEL=BAAI/bge-large-zh-v1.5
 EMBEDDING_PROVIDER=openai_compatible
 EMBEDDING_MODEL=text-embedding-3-small
 EMBEDDING_API_KEY=your-api-key
+EMBEDDING_API_BASE=https://api.openai.com/v1
 ```
 
 2. 重启服务即可（无需卸载依赖）

@@ -52,6 +52,8 @@
 | RAG | RAG 核心配置、生成、检索入口等 | `/rag` | [../guides/rag_optimization.md](../guides/rag_optimization.md) |
 | Retrieval | 检索配置档案、解释、配置哈希 | `/retrieval` | [../examples/retrieval_api_examples.md](../examples/retrieval_api_examples.md) |
 | RAG Visualization (RAGViz) | 检索可视化调试 | `/ragviz` | [../guides/retrieval_debugging.md](../guides/retrieval_debugging.md) |
+| External Conversation Integration | 外部会话导入与会话绑定 | `/integrations/conversations` | [workflows.md](./workflows.md) |
+| Dify Integration | Dify External Knowledge 检索与 conversation-turns 回填 | `/integrations/dify` | [workflows.md](./workflows.md) |
 | Groups | 用户组 | `/groups` | — |
 | RBAC | 角色权限 | `/rbac` | — |
 | SCIM v2 | SCIM 供应 | `/scim/v2` | — |

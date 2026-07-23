@@ -948,6 +948,7 @@ verify:
 	@$(MAKE) check-parsing-proof-governance
 	@$(MAKE) check-parsing-proof-rollout
 	@$(MAKE) api-check
+	node scripts/docs/check_doc_links.mjs
 	cd web && pnpm run lint
 	cd web && pnpm run typecheck
 	$(COMPILEALL_VERIFY)

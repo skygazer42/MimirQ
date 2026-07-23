@@ -75,7 +75,7 @@ graph LR
 
 ## Embedding 与模型支持
 
-后端内置多种 Embedding 模型，Provider 适配层覆盖 **OpenAI / Ollama / DashScope / Local** 等真实实现（Voyage / Cohere / Jina / Bedrock 目前为占位适配，复用 OpenAI 兼容协议，无原厂特性）。默认模型为 `text-embedding-3-small`，可通过 `EMBEDDING_MODEL` 切换（含 BGE-M3 等中文友好模型）。RAG Engine 默认 **Vector + BM25 + RRF** 混合检索，SPLADE / ColBERT ANN 为可选后端（需显式启用）。
+后端内置多种 Embedding 模型，Provider 适配层覆盖 **OpenAI / Ollama / DashScope / Local** 等真实实现（Voyage / Cohere / Jina / Bedrock 目前为占位适配，复用 OpenAI 兼容协议，无原厂特性）。仓库随 `.env.example` 发布的默认模型是 `BAAI/bge-m3`；如果你没有显式设置 `EMBEDDING_MODEL`，后端代码仍保留 `text-embedding-3-small` 作为回退值。生产和团队环境应以 `.env.example` / 部署配置为准，不要依赖进程内默认值。RAG Engine 默认 **Vector + BM25 + RRF** 混合检索，SPLADE / ColBERT ANN 为可选后端（需显式启用）。
 
 ## 关键配置与文件路径
 

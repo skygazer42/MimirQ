@@ -670,6 +670,158 @@ def test_degraded_retrieval_is_not_written_to_candidate_caches(
     assert semantic_stores == []
 
 
+def test_retrieval_behavior_changes_cache_signature(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.rag.retriever as retriever_module
+    from app.core.config import settings
+    from app.rag.retriever import HybridRetriever, HybridSearchOptions, _build_retrieval_cache_behavior_hash
+
+    retriever = HybridRetriever(enable_reranker=False)
+    behavior1 = _build_retrieval_cache_behavior_hash(
+        retriever=retriever,
+        options=HybridSearchOptions(vector_weight=0.6),
+    )
+    behavior2 = _build_retrieval_cache_behavior_hash(
+        retriever=retriever,
+        options=HybridSearchOptions(vector_weight=0.7),
+    )
+    monkeypatch.setattr(settings, "LEXICAL_DB_ENABLED", not settings.LEXICAL_DB_ENABLED)
+    behavior3 = _build_retrieval_cache_behavior_hash(
+        retriever=retriever,
+        options=HybridSearchOptions(vector_weight=0.6),
+    )
+
+    assert behavior1 != behavior2
+    assert behavior1 != behavior3
+
+    base_kwargs = {
+        "tenant_id": "tenant-1",
+        "account_id": "account-1",
+        "dataset_id": "dataset-1",
+        "pipeline_key": "space-1",
+        "corpus_cache_token": "corpus-1",
+        "query": "what is the capex budget",
+        "top_k": 8,
+        "score_threshold": 0.6,
+        "retrieval_mode": "hybrid",
+        "metadata_filter": {"tenant_id": "tenant-1"},
+        "document_ids": ["doc-1", "doc-2"],
+    }
+    key1 = retriever_module.build_retrieval_candidate_cache_key(
+        behavior_hash=behavior1,
+        **base_kwargs,
+    )
+    key2 = retriever_module.build_retrieval_candidate_cache_key(
+        behavior_hash=behavior2,
+        **base_kwargs,
+    )
+    assert key1 != key2
+
+
+def test_hybrid_search_propagates_behavior_hash_to_retrieval_and_semantic_cache_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.retriever as retriever_module
+    import app.services.semantic_cache as semantic_cache_module
+    from app.core.config import settings
+    from app.rag.retriever import HybridRetriever
+
+    _configure_retrieval_test(monkeypatch)
+    for name, value in {
+        "RETRIEVAL_CANDIDATE_CACHE_ENABLED": True,
+        "RETRIEVAL_CANDIDATE_CACHE_TTL_SEC": 60,
+        "SEMANTIC_CACHE_ENABLED": True,
+        "SEMANTIC_CACHE_TTL_SEC": 60,
+        "RERANK_PROFILE": "default",
+        "RERANKER_PROVIDER": "llm",
+    }.items():
+        monkeypatch.setattr(settings, name, value, raising=False)
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    runtime = _embedding_runtime()
+    doc_id = uuid.uuid4()
+    get_calls: list[object] = []
+    set_calls: list[object] = []
+    key_calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_resolve_dataset_runtime_shards",
+        lambda self, *, tenant_id, dataset_ids=None: [(runtime, (dataset_id,))],  # noqa: ANN001,ARG005
+    )
+    monkeypatch.setattr(HybridRetriever, "_resolve_embedding_runtime", lambda self, *, tenant_id: runtime)
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_resolve_candidate_cache_corpus_token",
+        lambda self, **kwargs: "corpus-token",  # noqa: ANN001,ARG005
+    )
+    monkeypatch.setattr(
+        retriever_module,
+        "get_vector_store",
+        lambda: SimpleNamespace(search=lambda **kwargs: []),  # noqa: ARG005
+    )
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_search_bm25",
+        lambda self, **kwargs: [  # noqa: ANN001,ARG005
+            {
+                "chunk_id": "chunk-1",
+                "content": "cacheable result",
+                "score": 0.9,
+                "metadata": {"document_id": str(doc_id), "dataset_id": str(dataset_id)},
+            }
+        ],
+    )
+    monkeypatch.setattr(HybridRetriever, "_search_lexical_db", lambda self, **kwargs: [])  # noqa: ANN001
+    monkeypatch.setattr(
+        retriever_module,
+        "build_retrieval_candidate_cache_key",
+        lambda **kwargs: key_calls.append(kwargs) or "cache-key",
+    )
+    monkeypatch.setattr(
+        retriever_module,
+        "get_cached_retrieval_candidates",
+        lambda _key: None,
+    )
+    monkeypatch.setattr(retriever_module, "set_cached_retrieval_candidates", lambda *args, **kwargs: True)
+    monkeypatch.setattr(
+        semantic_cache_module,
+        "get_cached_semantic_payload",
+        lambda **kwargs: get_calls.append(kwargs) or (None, {}),
+    )
+    monkeypatch.setattr(
+        semantic_cache_module,
+        "set_cached_semantic_payload",
+        lambda **kwargs: set_calls.append(kwargs) or True,
+    )
+
+    retriever = HybridRetriever(
+        tenant_id=tenant_id,
+        account_id="member-1",
+        dataset_id=dataset_id,
+        dataset_ids=[dataset_id],
+        retrieval_mode="hybrid",
+        enable_reranker=False,
+        sparse_enabled=False,
+        dedup_enabled=False,
+    )
+    retriever._hybrid_search(
+        "what is a budget",
+        top_k=1,
+        score_threshold=0.0,
+        tenant_id=tenant_id,
+        retrieval_mode="hybrid",
+    )
+
+    assert len(key_calls) == 1
+    assert len(get_calls) == 1
+    assert len(set_calls) == 1
+    behavior_hash = key_calls[0]["behavior_hash"]
+    assert isinstance(behavior_hash, str) and behavior_hash
+    assert get_calls[0]["behavior_hash"] == behavior_hash
+    assert set_calls[0]["behavior_hash"] == behavior_hash
+
+
 def test_all_retrieval_failures_build_engine_error_message(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

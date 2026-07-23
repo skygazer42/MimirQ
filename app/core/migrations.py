@@ -271,12 +271,17 @@ def apply_runtime_migrations(engine) -> None:
 
             # Conversations: common tenant timeline queries
             'ALTER TABLE conversations ADD COLUMN IF NOT EXISTS dataset_id UUID;',
+            'ALTER TABLE conversations ADD COLUMN IF NOT EXISTS owner_account_id VARCHAR(255);',
+            'UPDATE conversations SET owner_account_id = user_id::text '
+            'WHERE owner_account_id IS NULL AND user_id IS NOT NULL;',
             'CREATE INDEX IF NOT EXISTS ix_conversations_tenant_updated_at '
             'ON conversations (tenant_id, updated_at);',
             'CREATE INDEX IF NOT EXISTS ix_conversations_tenant_created_at '
             'ON conversations (tenant_id, created_at);',
             'CREATE INDEX IF NOT EXISTS ix_conversations_tenant_dataset_updated_at '
             'ON conversations (tenant_id, dataset_id, updated_at);',
+            'CREATE INDEX IF NOT EXISTS ix_conversations_tenant_owner_account_id '
+            'ON conversations (tenant_id, owner_account_id);',
 
             # Datasets / permissions: access control checks
             'CREATE INDEX IF NOT EXISTS ix_datasets_tenant_updated_at '

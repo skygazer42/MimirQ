@@ -450,6 +450,7 @@ def _upsert_feedback_records(records: list[FeedbackImportRecord]) -> dict[str, A
                 conversation = Conversation(
                     id=record.conversation_id,
                     tenant_id=record.tenant_id,
+                    owner_account_id=record.account_id,
                     title=record.conversation_title,
                     title_source="manual",
                     document_ids=[],
@@ -459,6 +460,10 @@ def _upsert_feedback_records(records: list[FeedbackImportRecord]) -> dict[str, A
                 )
                 db.add(conversation)
             else:
+                existing_owner = str(getattr(conversation, "owner_account_id", "") or "").strip()
+                if existing_owner and existing_owner != record.account_id:
+                    raise ValueError("benchmark conversation belongs to another account")
+                conversation.owner_account_id = record.account_id
                 conversation.title = record.conversation_title
                 conversation.title_source = "manual"
                 conversation.message_count = 2

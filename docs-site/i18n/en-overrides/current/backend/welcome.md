@@ -75,7 +75,7 @@ graph LR
 
 ## Embedding & Model Support
 
-The backend ships with 15 embedding models across 7 providers, defaulting to `BAAI/bge-m3`. The RAG Engine supports hybrid orchestration of four retrieval modes -- Vector, BM25, SPLADE, and ColBERT ANN -- and can be flexibly switched via configuration.
+The backend ships with 15 embedding models across 7 providers. The repository's `.env.example` defaults to `BAAI/bge-m3`; if `EMBEDDING_MODEL` is not set, the backend code still falls back to `text-embedding-3-small`. Production and team environments should follow `.env.example` / deployment config rather than the process fallback. The RAG Engine supports hybrid orchestration of four retrieval modes -- Vector, BM25, SPLADE, and ColBERT ANN -- and can be flexibly switched via configuration.
 
 ## Key Configuration & File Paths
 

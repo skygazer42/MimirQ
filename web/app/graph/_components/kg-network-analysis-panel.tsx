@@ -101,6 +101,7 @@ export function KgNetworkAnalysisPanel({
   links,
   selectedNodeId,
 }: KgNetworkAnalysisPanelProps) {
+  const keyboardMoveStep = 24
   const edges = useMemo(() => toNetworkEdges(links), [links])
   const selectedNode = useMemo(
     () =>
@@ -182,6 +183,17 @@ export function KgNetworkAnalysisPanel({
     transform: `translate3d(${panelOffset.x}px, ${panelOffset.y}px, 0)`,
   }
 
+  const movePanelBy = (deltaX: number, deltaY: number) => {
+    setPanelOffset((current) => ({
+      x: current.x + deltaX,
+      y: current.y + deltaY,
+    }))
+  }
+
+  const resetPanelPosition = () => {
+    setPanelOffset({ x: 0, y: 0 })
+  }
+
   function startPanelDrag(event: ReactPointerEvent<HTMLButtonElement>) {
     if (event.button !== 0) return
     event.preventDefault()
@@ -209,6 +221,36 @@ export function KgNetworkAnalysisPanel({
     if (drag?.pointerId !== event.pointerId) return
     dragStateRef.current = null
     event.currentTarget.releasePointerCapture(event.pointerId)
+  }
+
+  function handlePanelDragKeyDown(
+    event: React.KeyboardEvent<HTMLButtonElement>
+  ) {
+    const step = event.shiftKey ? keyboardMoveStep * 2 : keyboardMoveStep
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault()
+      movePanelBy(-step, 0)
+      return
+    }
+    if (event.key === 'ArrowRight') {
+      event.preventDefault()
+      movePanelBy(step, 0)
+      return
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      movePanelBy(0, -step)
+      return
+    }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      movePanelBy(0, step)
+      return
+    }
+    if (event.key === 'Home' || event.key === '0') {
+      event.preventDefault()
+      resetPanelPosition()
+    }
   }
 
   async function runAction(
@@ -279,10 +321,12 @@ export function KgNetworkAnalysisPanel({
               className="flex h-8 w-8 cursor-grab items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary active:cursor-grabbing"
               aria-label="拖动图谱统计栏"
               title="拖动图谱统计栏"
+              aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home"
               onPointerDown={startPanelDrag}
               onPointerMove={movePanel}
               onPointerUp={stopPanelDrag}
               onPointerCancel={stopPanelDrag}
+              onKeyDown={handlePanelDragKeyDown}
             >
               <GripHorizontal className="h-4 w-4" />
             </button>
