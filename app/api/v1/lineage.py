@@ -15,8 +15,11 @@ from app.models.document import DocumentChunk, DocumentPermission
 from app.services.lineage_service import (
     ANSWER_LINEAGE_SCHEMA,
     CHUNK_RETRIEVAL_LINEAGE_SCHEMA,
+    authorize_answer_lineage_access,
+    authorize_chunk_lineage_access,
     build_answer_lineage_payload,
     build_chunk_lineage_payload,
+    load_answer_lineage_trace,
     summarize_chunk_retrieval_usage_from_records,
 )
 
@@ -92,40 +95,28 @@ def _load_chunk_lineage_dependencies(
     }
 
 
-def _load_answer_lineage_trace(
-    *,
-    request_id: str,
-) -> dict[str, Any] | None:
-    if not bool(getattr(settings, "ENABLE_METRICS_LOG", False)):
-        return None
-    path = Path(str(getattr(settings, "METRICS_LOG_PATH", _DEFAULT_RAG_METRICS_LOG_PATH) or _DEFAULT_RAG_METRICS_LOG_PATH))
-    if not path.exists():
-        return None
-    from app.services.lineage_service import _read_jsonl_tail  # noqa: WPS433
-
-    records = _read_jsonl_tail(path, max_bytes=5_000_000)
-    for record in reversed(records):
-        if str(record.get("event") or "") != "rag_trace":
-            continue
-        if str(record.get("request_id") or "").strip() == request_id:
-            return dict(record)
-    return None
-
-
 @router.get("/chunk/{chunk_id}", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_chunk_lineage(
     chunk_id: UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
-    _account_id: Annotated[str, Depends(get_current_account_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, Any]:
     deps = _load_chunk_lineage_dependencies(db, tenant_id=tenant_id, chunk_id=chunk_id)
     if deps is None:
         raise HTTPException(status_code=404, detail="Chunk lineage not found")
+    document = deps["document"]
+    if not authorize_chunk_lineage_access(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        document_id=document.id,
+    ):
+        raise HTTPException(status_code=403, detail="No permission to access chunk lineage")
     return build_chunk_lineage_payload(
         chunk=deps["chunk"],
-        document=deps["document"],
+        document=document,
         permissions=deps["permissions"],
         retrieval_usage=deps["retrieval_usage"],
     )
@@ -135,13 +126,23 @@ async def get_chunk_lineage(
 async def get_answer_lineage(
     request_id: str,
     *,
-    _tenant_id: Annotated[UUID, Depends(get_tenant_id)],
-    _account_id: Annotated[str, Depends(get_current_account_id)],
-    _db: Annotated[Session, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, Any]:
-    record = _load_answer_lineage_trace(request_id=str(request_id or "").strip())
+    record = load_answer_lineage_trace(
+        tenant_id=tenant_id,
+        request_id=str(request_id or "").strip(),
+    )
     if not isinstance(record, dict):
         raise HTTPException(status_code=404, detail="Answer lineage not found")
+    if not authorize_answer_lineage_access(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        trace_record=record,
+    ):
+        raise HTTPException(status_code=403, detail="No permission to access answer lineage")
     payload = build_answer_lineage_payload(trace_record=record)
     if str(payload.get("schema") or "") != ANSWER_LINEAGE_SCHEMA:
         raise HTTPException(status_code=500, detail="Invalid answer lineage payload")

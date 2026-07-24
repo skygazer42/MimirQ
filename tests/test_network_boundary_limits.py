@@ -137,6 +137,21 @@ def test_url_ingest_rejects_private_dns_answers(monkeypatch: pytest.MonkeyPatch)
         asyncio.run(url_ingest._validated_fetch_target("https://example.com/image.png"))
 
 
+def test_url_ingest_can_skip_allowlists_without_skipping_dns_ssrf_checks(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def resolve(_host: str, _port: int) -> list[str]:
+        return ["93.184.216.34"]
+
+    monkeypatch.setattr(url_ingest, "_resolve_host_ips", resolve)
+    monkeypatch.setattr(url_ingest.settings, "URL_INGEST_ALLOW_PRIVATE_IPS", False)
+    monkeypatch.setattr(url_ingest.settings, "URL_INGEST_ALLOWED_HOSTS", "allowed.example.com")
+    monkeypatch.setattr(url_ingest.settings, "URL_INGEST_ALLOWED_PORTS", "443")
+
+    target = asyncio.run(url_ingest._validated_fetch_target("https://api.example.com/v1", enforce_allowlists=False))
+
+    assert target.connect_url == "https://93.184.216.34:443/v1"
+    assert target.host_header == "api.example.com:443"
+
+
 def test_url_download_connects_to_pinned_ip_with_original_sni(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

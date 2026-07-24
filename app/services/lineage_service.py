@@ -9,11 +9,16 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.models.chat import Conversation
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentPermission
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
+from app.services.chat_conversation_access import resolve_conversation_owner_account_id
 from app.services.connector_reconcile_service import extract_connector_source_identity
+from app.services.dataset_service import DatasetService
+from app.services.document_access import get_allowed_document_id_sets
+from app.services.rbac_service import TenantPermissions, role_allows
 
 CHUNK_RETRIEVAL_LINEAGE_SCHEMA = "mimirq.chunk_retrieval_lineage.v1"
 CHUNK_LINEAGE_SCHEMA = "mimirq.lineage.chunk.v1"
@@ -87,6 +92,132 @@ def _read_jsonl_tail(path: Path, *, max_bytes: int) -> list[dict[str, Any]]:
         if isinstance(obj, dict):
             records.append(obj)
     return records
+
+
+def _can_read_observability(member: Any) -> bool:
+    return role_allows(
+        TenantPermissions.OBSERVABILITY_READ,
+        role=str(getattr(member, "role", "") or ""),
+    )
+
+
+def load_answer_lineage_trace(
+    *,
+    tenant_id: UUID,
+    request_id: str,
+) -> dict[str, Any] | None:
+    tenant_key = str(tenant_id)
+    request_key = str(request_id or "").strip()
+    if not request_key or not bool(getattr(settings, "ENABLE_METRICS_LOG", False)):
+        return None
+    path = Path(str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl"))
+    if not path.exists():
+        return None
+
+    records = _read_jsonl_tail(path, max_bytes=5_000_000)
+    for record in reversed(records):
+        if str(record.get("event") or "") != "rag_trace":
+            continue
+        if str(record.get("tenant_id") or "") != tenant_key:
+            continue
+        if str(record.get("request_id") or "").strip() == request_key:
+            return dict(record)
+    return None
+
+
+def authorize_chunk_lineage_access(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    document_id: UUID,
+) -> bool:
+    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    if _can_read_observability(member):
+        return True
+    allowed_ids, _missing_ids = get_allowed_document_id_sets(
+        db,
+        tenant_id,
+        account_id,
+        [document_id],
+        check_member=False,
+    )
+    return document_id in allowed_ids
+
+
+def _trace_citation_document_ids(trace_record: Mapping[str, Any]) -> list[UUID] | None:
+    doc_ids: list[UUID] = []
+    seen: set[UUID] = set()
+    for citation_raw in _safe_list(trace_record.get("citations")):
+        citation = _safe_dict(citation_raw)
+        document_id_raw = citation.get("document_id")
+        document_id_text = str(document_id_raw or "").strip()
+        if not document_id_text:
+            continue
+        try:
+            document_id = UUID(document_id_text)
+        except Exception:
+            return None
+        if document_id in seen:
+            continue
+        seen.add(document_id)
+        doc_ids.append(document_id)
+    return doc_ids
+
+
+def authorize_answer_lineage_access(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    trace_record: Mapping[str, Any],
+) -> bool:
+    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    if _can_read_observability(member):
+        return True
+
+    normalized_account_id = str(account_id or "").strip()
+    owns_trace = str(trace_record.get("account_id") or "").strip() == normalized_account_id
+    if not owns_trace:
+        conversation_raw = _safe_str(trace_record.get("conversation_id"), max_len=120)
+        if not conversation_raw:
+            return False
+
+        try:
+            conversation_id = UUID(conversation_raw)
+        except Exception:
+            return False
+
+        conversation = (
+            db.query(Conversation)
+            .filter(
+                Conversation.id == conversation_id,
+                Conversation.tenant_id == tenant_id,
+            )
+            .first()
+        )
+        if conversation is None:
+            return False
+        owns_trace = resolve_conversation_owner_account_id(conversation) == normalized_account_id
+    if not owns_trace:
+        return False
+
+    citation_doc_ids = _trace_citation_document_ids(trace_record)
+    if citation_doc_ids is None:
+        return False
+    if not citation_doc_ids:
+        return True
+
+    allowed_ids, missing_ids = get_allowed_document_id_sets(
+        db,
+        tenant_id,
+        account_id,
+        citation_doc_ids,
+        check_member=False,
+    )
+    if missing_ids:
+        return False
+    return len(allowed_ids) == len(citation_doc_ids)
 
 
 def _hash_permission_ids(permissions: Iterable[Any] | None, *, max_items: int = 200) -> list[str]:
@@ -446,8 +577,11 @@ __all__ = [
     "ANSWER_LINEAGE_SCHEMA",
     "CHUNK_LINEAGE_SCHEMA",
     "CHUNK_RETRIEVAL_LINEAGE_SCHEMA",
+    "authorize_answer_lineage_access",
+    "authorize_chunk_lineage_access",
     "build_answer_lineage_payload",
     "build_chunk_lineage_payload",
     "get_chunk_lineage",
+    "load_answer_lineage_trace",
     "summarize_chunk_retrieval_usage_from_records",
 ]

@@ -5,7 +5,6 @@ Supports reading and updating .env configuration.
 
 import contextlib
 import importlib.util
-import ipaddress
 import json
 import os
 import tempfile
@@ -23,6 +22,12 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
+from app.api.utils.url_ingest import (
+    _URL_HOST_RESOLUTION_FAILED_DETAIL,
+    _build_pinned_http_clients,
+    _validated_fetch_target,
+    _ValidatedFetchTarget,
+)
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.jwt_inspect import format_unix_ts_utc, try_get_jwt_exp
@@ -186,30 +191,24 @@ def _ensure_settings_writable(db: Session, tenant_id: UUID, account_id: str) -> 
         raise HTTPException(status_code=403, detail="No permission to manage system settings")
 
 
-def _validate_public_base_url(base_url: str) -> None:
-    parsed = urlparse(str(base_url or "").strip())
-    if parsed.scheme not in {"https", "http"}:
-        raise HTTPException(status_code=400, detail="api_base must be http(s) URL")
-    if not parsed.netloc:
-        raise HTTPException(status_code=400, detail="api_base must include host")
-    if parsed.username or parsed.password:
-        raise HTTPException(status_code=400, detail="api_base must not include userinfo")
-
-    host = (parsed.hostname or "").strip()
-    if not host:
-        raise HTTPException(status_code=400, detail="api_base must include host")
-    host_lower = host.lower()
-    if host_lower in {"localhost"} or host_lower.endswith(".localhost"):
-        raise HTTPException(status_code=400, detail="api_base host not allowed")
-
-    # Block private/loopback/link-local IPs to reduce SSRF risk.
+async def _validate_public_base_url(base_url: str) -> _ValidatedFetchTarget:
     try:
-        ip = ipaddress.ip_address(host_lower)
-    except ValueError:
-        # hostname (best-effort): allow
-        return
-    if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
-        raise HTTPException(status_code=400, detail="api_base host not allowed")
+        return await _validated_fetch_target(base_url, enforce_allowlists=False)
+    except HTTPException as exc:
+        detail = str(exc.detail or "")
+        if detail in {"url is required", "url hostname is required"}:
+            detail = "api_base must include host"
+        elif detail == "url scheme must be http or https":
+            detail = "api_base must be http(s) URL"
+        elif detail == "url credentials are not allowed":
+            detail = "api_base must not include userinfo"
+        elif detail == "url port is not allowed":
+            detail = "api_base port is not allowed"
+        elif detail == _URL_HOST_RESOLUTION_FAILED_DETAIL:
+            detail = "failed to resolve api_base host"
+        else:
+            detail = "api_base host not allowed"
+        raise HTTPException(status_code=400, detail=detail) from exc
 
 
 class FeatureFlags(BaseModel):
@@ -2009,7 +2008,6 @@ async def test_llm_connection(
 ):
     """Test LLM connection (no config write)."""
     _ensure_settings_writable(db, tenant_id, account_id)
-    import httpx
     from langchain_core.messages import HumanMessage
     from langchain_openai import ChatOpenAI
 
@@ -2024,18 +2022,19 @@ async def test_llm_connection(
     if not request.model.strip():
         raise HTTPException(status_code=400, detail="model is required")
 
-    _validate_public_base_url(request.api_base)
-
+    normalized_base_url = normalize_openai_compatible_base_url(request.api_base)
+    validated_target = await _validate_public_base_url(normalized_base_url)
     trust_env = httpx_trust_env(logger=logger)
     timeout = float(request.timeout) if request.timeout else 20.0
 
     try:
-        with httpx.Client(trust_env=trust_env, timeout=timeout) as http_client:
-            async with httpx.AsyncClient(trust_env=trust_env, timeout=timeout) as http_async_client:
+        http_client, http_async_client = _build_pinned_http_clients(validated_target, trust_env=trust_env, timeout=timeout)
+        with http_client:
+            async with http_async_client:
                 llm = ChatOpenAI(
                     model=request.model,
                     api_key=request.api_key,
-                    base_url=normalize_openai_compatible_base_url(request.api_base),
+                    base_url=validated_target.connect_url,
                     temperature=float(request.temperature or 0.0),
                     streaming=False,
                     timeout=timeout,

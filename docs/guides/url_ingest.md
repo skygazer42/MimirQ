@@ -123,6 +123,7 @@ curl -X POST "http://localhost:8000/api/v1/connectors/runs" \
 - 仅允许 `http://` / `https://`
 - 默认阻止 `localhost`、回环地址与 `.local` 域名
 - 会做 DNS 解析并检查解析得到的 IP：默认只允许 **公网可路由** IP（`URL_INGEST_ALLOW_PRIVATE_IPS=false`）
+- 设置页的 LLM 连通测试复用同一私网开关；测试内网模型时需在受控环境显式开启
 - 默认不跟随重定向（避免“跳转到私网”绕过）
 - 采用流式下载并强制大小上限：超过上限返回 `413`
 

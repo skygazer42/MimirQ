@@ -126,7 +126,7 @@ export function UrlIngestSection({
               <div>
                 <div className={settingsTextTokens.panelTitle}>允许访问内网/私网 IP</div>
                 <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>
-                  高风险：可能访问到内网服务（强烈不建议）
+                  高风险：网页采集与 LLM 连通测试可能访问内网服务
                 </div>
               </div>
               {allowsPrivateIps ? (
@@ -149,7 +149,7 @@ export function UrlIngestSection({
                     <AlertDialogHeader>
                       <AlertDialogTitle>允许访问内网/私网 IP？</AlertDialogTitle>
                       <AlertDialogDescription>
-                        风险极高：可能访问到内网服务（强烈不建议）确认开启后，后端网页采集可能访问内网/私网地址
+                        风险极高：开启后，网页采集与 LLM 连通测试可能访问内网/私网地址
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

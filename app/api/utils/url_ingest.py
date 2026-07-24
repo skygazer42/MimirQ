@@ -230,11 +230,42 @@ class _ValidatedFetchTarget:
     host_header: str
 
 
-async def _validated_fetch_target(url: str) -> _ValidatedFetchTarget:
+def _build_pinned_http_clients(
+    target: _ValidatedFetchTarget,
+    *,
+    trust_env: bool,
+    timeout: httpx.Timeout | float,
+) -> tuple[httpx.Client, httpx.AsyncClient]:
+    def hook(request: httpx.Request) -> None:
+        request.headers["Host"] = target.host_header
+        request.extensions["sni_hostname"] = target.host
+
+    async def async_hook(request: httpx.Request) -> None:
+        hook(request)
+
+    client_kwargs = {
+        "follow_redirects": False,
+        "trust_env": trust_env,
+        "timeout": timeout,
+    }
+    return (
+        httpx.Client(
+            **client_kwargs,
+            event_hooks={"request": [hook]},
+        ),
+        httpx.AsyncClient(
+            **client_kwargs,
+            event_hooks={"request": [async_hook]},
+        ),
+    )
+
+
+async def _validated_fetch_target(url: str, *, enforce_allowlists: bool = True) -> _ValidatedFetchTarget:
     parsed_url = _parse_ingest_url(url)
     _validate_blocked_host(parsed_url.host)
-    _validate_host_allowlist(parsed_url.host)
-    _validate_port_allowlist(parsed_url.port)
+    if enforce_allowlists:
+        _validate_host_allowlist(parsed_url.host)
+        _validate_port_allowlist(parsed_url.port)
     allow_private = bool(getattr(settings, "URL_INGEST_ALLOW_PRIVATE_IPS", False))
 
     if ip := _ip_literal_or_none(parsed_url.host):

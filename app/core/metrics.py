@@ -31,13 +31,25 @@ def render_metrics() -> tuple[bytes, str]:
     return generate_latest(), CONTENT_TYPE_LATEST
 
 
+_IN_PROGRESS_PATH_LABEL = "__all__"
+_UNMATCHED_PATH_LABEL = "__unmatched__"
+
+
+def _completed_path_label_from_scope(scope) -> str:  # type: ignore[no-untyped-def]
+    route = scope.get("route")
+    path_template = getattr(route, "path", None)
+    if path_template:
+        return str(path_template)
+    return _UNMATCHED_PATH_LABEL
+
+
 class PrometheusMiddleware:
     """
     ASGI middleware that collects per-request count/latency metrics.
 
     Labels:
     - method: HTTP method
-    - path: route template when available, otherwise raw path
+    - path: route template for completed requests; bounded sentinels otherwise
     - status: HTTP response status code
     """
 
@@ -59,7 +71,7 @@ class PrometheusMiddleware:
         start = time.monotonic()
         status_code = 500
 
-        HTTP_REQUESTS_IN_PROGRESS.labels(method=method, path=raw_path).inc()
+        HTTP_REQUESTS_IN_PROGRESS.labels(method=method, path=_IN_PROGRESS_PATH_LABEL).inc()
 
         async def send_wrapper(message):  # type: ignore[no-untyped-def]
             nonlocal status_code
@@ -71,10 +83,7 @@ class PrometheusMiddleware:
             await self.app(scope, receive, send_wrapper)
         finally:
             duration = max(0.0, time.monotonic() - start)
-            route = scope.get("route")
-            path_template = getattr(route, "path", None) or raw_path
-            path_label = str(path_template)
+            path_label = _completed_path_label_from_scope(scope)
             HTTP_REQUESTS_TOTAL.labels(method=method, path=path_label, status=str(status_code)).inc()
             HTTP_REQUEST_DURATION_SECONDS.labels(method=method, path=path_label).observe(duration)
-            HTTP_REQUESTS_IN_PROGRESS.labels(method=method, path=raw_path).dec()
-
+            HTTP_REQUESTS_IN_PROGRESS.labels(method=method, path=_IN_PROGRESS_PATH_LABEL).dec()
