@@ -227,17 +227,17 @@ export function extractFrontendRoutesFromFile(rel) {
     out.push({ method, path: stripApiV1Prefix(normalized), src: rel })
   }
 
-  // fetch(`${API_V1_BASE_URL}/...`, { method: 'GET' })
+  // fetch/authenticatedFetch(`${API_V1_BASE_URL}/...`, { method: 'GET' })
   const fetchRe =
-    /fetch\(\s*`?\$\{API_V1_BASE_URL\}([^`"']+)`?\s*,\s*\{[\s\S]*?method\s*:\s*'([^']+)'/g
+    /\b(?:fetch|authenticatedFetch)\(\s*`?\$\{API_V1_BASE_URL\}([^`"']+)`?\s*,\s*\{[\s\S]*?method\s*:\s*'([^']+)'/g
   while ((m = fetchRe.exec(text))) {
     const rawPath = m[1] || ''
     const method = String(m[2] || 'GET').toUpperCase()
     out.push({ method, path: normalizeRoute(rawPath), src: rel })
   }
 
-  // fetch(`${API_V1_BASE_URL}/...`) with default method GET
-  const fetchNoOptsRe = /fetch\(\s*`?\$\{API_V1_BASE_URL\}([^`"']+)`?\s*\)/g
+  // fetch/authenticatedFetch(`${API_V1_BASE_URL}/...`) with default method GET
+  const fetchNoOptsRe = /\b(?:fetch|authenticatedFetch)\(\s*`?\$\{API_V1_BASE_URL\}([^`"']+)`?\s*\)/g
   while ((m = fetchNoOptsRe.exec(text))) {
     const rawPath = m[1] || ''
     out.push({ method: 'GET', path: normalizeRoute(rawPath), src: rel })

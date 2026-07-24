@@ -85,6 +85,7 @@ export function useChatStream({
   const currentCitationsRef = useRef<Citation[]>([])
   const rafIdRef = useRef<number | null>(null)
   const streamRequestIdRef = useRef<string | null>(null)
+  const stopActiveRequestRef = useRef<(() => void) | null>(null)
 
   const clearRaf = useCallback(() => {
     if (rafIdRef.current != null) {
@@ -110,6 +111,7 @@ export function useChatStream({
 
   useEffect(() => {
     return () => {
+      stopActiveRequestRef.current?.()
       abortControllerRef.current?.abort()
       clearRaf()
     }
@@ -146,12 +148,12 @@ export function useChatStream({
   )
 
   const stopGeneration = useCallback(() => {
-    abortControllerRef.current?.abort()
+    stopActiveRequestRef.current?.()
   }, [])
 
   const sendMessage = useCallback(
     async (message: string) => {
-      if (!message.trim() || isLoading) return
+      if (!message.trim() || isLoading || abortControllerRef.current) return
 
       const userMessage: Message = {
         id: Date.now().toString(),
@@ -164,14 +166,25 @@ export function useChatStream({
       setIsLoading(true)
       resetTransientState()
 
-      abortControllerRef.current?.abort()
-      abortControllerRef.current = new AbortController()
+      const controller = new AbortController()
+      abortControllerRef.current = controller
+      let userStopped = false
+      const stopActiveRequest = () => {
+        userStopped = true
+        controller.abort()
+      }
+      stopActiveRequestRef.current = stopActiveRequest
 
       let didTimeout = false
-      let timeoutId = globalThis.window.setTimeout(() => {
-        didTimeout = true
-        abortControllerRef.current?.abort()
-      }, API_TIMEOUT_MS)
+      let timeoutId: number | undefined
+      const armTimeout = (timeoutMs: number) => {
+        if (timeoutId !== undefined) globalThis.window.clearTimeout(timeoutId)
+        timeoutId = globalThis.window.setTimeout(() => {
+          didTimeout = true
+          controller.abort()
+        }, timeoutMs)
+      }
+      armTimeout(API_TIMEOUT_MS)
 
       try {
         const effectiveRagConfig = ragConfig
@@ -201,10 +214,8 @@ export function useChatStream({
           await chatApi.streamChat(
             chatRequest,
             (jsonStr) => {
-              if (!sawFirstEvent) {
-                sawFirstEvent = true
-                globalThis.window.clearTimeout(timeoutId)
-              }
+              sawFirstEvent = true
+              armTimeout(API_LONG_TIMEOUT_MS)
 
               const event = parseStreamEvent(jsonStr)
               if (!event) return
@@ -229,6 +240,7 @@ export function useChatStream({
               }
 
               if (event.type === 'done') {
+                if (timeoutId !== undefined) globalThis.window.clearTimeout(timeoutId)
                 sawDone = true
                 flushCurrentResponseUpdate()
 
@@ -257,10 +269,11 @@ export function useChatStream({
               }
             },
             {
-              signal: abortControllerRef.current.signal,
+              signal: controller.signal,
               onOpen: ({ requestId, conversationId: openedConversationId }) => {
                 streamAccepted = true
                 streamRequestIdRef.current = requestId
+                armTimeout(API_LONG_TIMEOUT_MS)
                 if (openedConversationId) {
                   activeConversationIdRef.current = openedConversationId
                   updateConversation(openedConversationId)
@@ -274,7 +287,8 @@ export function useChatStream({
             throw new Error('SSE stream ended unexpectedly')
           }
         } catch (streamErr) {
-          if ((streamErr as { name?: string })?.name === 'AbortError') throw streamErr
+          const streamWasAborted = (streamErr as { name?: string })?.name === 'AbortError'
+          if (streamWasAborted && (!streamAccepted || userStopped)) throw streamErr
 
           if (sawDone) {
             reportClientWarning('SSE closed after done', streamErr)
@@ -291,19 +305,17 @@ export function useChatStream({
                 return [...prev, recoveredMessage]
               })
               resetTransientState()
+            } else if (streamWasAborted && didTimeout) {
+              throw streamErr
             } else {
               throw new Error('Chat stream interrupted before completion and could not be recovered')
             }
           } else {
             reportClientWarning('SSE unavailable; falling back to non-streaming chat', streamErr)
-            globalThis.window.clearTimeout(timeoutId)
-            timeoutId = globalThis.window.setTimeout(() => {
-              didTimeout = true
-              abortControllerRef.current?.abort()
-            }, API_LONG_TIMEOUT_MS)
+            armTimeout(API_LONG_TIMEOUT_MS)
 
-            const response = await chatApi.chat(chatRequest, { signal: abortControllerRef.current.signal })
-            globalThis.window.clearTimeout(timeoutId)
+            const response = await chatApi.chat(chatRequest, { signal: controller.signal })
+            if (timeoutId !== undefined) globalThis.window.clearTimeout(timeoutId)
 
             updateConversation(getConversationId(response.conversation_id))
             setMessages((prev) => [
@@ -327,7 +339,7 @@ export function useChatStream({
         if (isAbort) {
           if (didTimeout) {
             onError?.('Request timed out')
-          } else {
+          } else if (userStopped) {
             // User stopped generation: preserve whatever was already streamed
             // instead of letting the in-flight bubble vanish once isLoading
             // flips to false. Commit the partial answer as a stopped message.
@@ -347,16 +359,23 @@ export function useChatStream({
               ])
             }
             resetTransientState()
+          } else {
+            onError?.(maybeError?.message || 'Failed to send message')
           }
         } else {
           reportClientError('Chat request failed', err)
           onError?.(maybeError?.message || 'Failed to send message')
         }
       } finally {
-        globalThis.window.clearTimeout(timeoutId)
+        if (timeoutId !== undefined) globalThis.window.clearTimeout(timeoutId)
         clearRaf()
-        setIsLoading(false)
-        abortControllerRef.current = null
+        if (abortControllerRef.current === controller) {
+          setIsLoading(false)
+          abortControllerRef.current = null
+        }
+        if (stopActiveRequestRef.current === stopActiveRequest) {
+          stopActiveRequestRef.current = null
+        }
       }
     },
     [

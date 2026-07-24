@@ -843,7 +843,7 @@ compose-diagnostics:
 api-check:
 	node web/scripts/check-api-contract.mjs
 	node web/scripts/check-api-coverage.mjs
-	node web/scripts/check-api-types-drift.mjs
+	node web/scripts/check-api-types-drift.mjs --strict --baseline web/scripts/api-types-drift-baseline.json
 
 api-ping:
 	$(PY) scripts/api_ping.py
@@ -869,8 +869,13 @@ lint-py-docker:
 compileall-docker:
 	$(COMPOSE) exec -T -w /app mimirq-api python -m compileall -q app
 
+# Chroma's affected HTTP server and Ragas' affected multimodal evaluator are not
+# exposed or imported by MimirQ; keep the exceptions centralized for local and CI audits.
 audit-py:
-	pip-audit -r requirements.txt --no-deps --disable-pip --extra-index-url https://download.pytorch.org/whl/cpu
+	pip-audit -r requirements.txt --no-deps --disable-pip \
+		--extra-index-url https://download.pytorch.org/whl/cpu \
+		--ignore-vuln GHSA-f4j7-r4q5-qw2c \
+		--ignore-vuln GHSA-95ww-475f-pr4f
 
 audit-web:
 	cd web && pnpm audit --prod --audit-level high --registry https://registry.npmjs.org/ --ignore-registry-errors

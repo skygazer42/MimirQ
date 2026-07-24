@@ -17,6 +17,7 @@ import type {
 } from '@/types'
 
 import { getAuthHeaders } from '@/lib/auth-headers'
+import { authenticatedFetch } from '@/lib/authenticated-fetch'
 import { buildFetchError } from '@/lib/fetch-errors'
 import { API_V1_BASE_URL } from '@/lib/env'
 import { withPreferredLanguageHeader } from '@/lib/preferred-language'
@@ -55,7 +56,7 @@ export const observabilityApi = {
     options: FrontendWebVitalReportOptions = {}
   ): Promise<void> {
     const requestId = generateRequestId()
-    const response = await fetch(`${API_V1_BASE_URL}/observability/frontend-vitals`, {
+    const response = await authenticatedFetch(`${API_V1_BASE_URL}/observability/frontend-vitals`, {
       method: 'POST',
       headers: withPreferredLanguageHeader({
         'Content-Type': 'application/json',
@@ -65,6 +66,7 @@ export const observabilityApi = {
       body: JSON.stringify(payload),
       keepalive: options.keepalive === true,
       signal: options.signal,
+      allowSessionLogoutOnUnauthorized: false,
     })
 
     if (!response.ok) {
@@ -77,7 +79,7 @@ export const observabilityApi = {
     options: FrontendWebVitalReportOptions = {}
   ): Promise<void> {
     const requestId = generateRequestId()
-    const response = await fetch(`${API_V1_BASE_URL}/observability/frontend-traces`, {
+    const response = await authenticatedFetch(`${API_V1_BASE_URL}/observability/frontend-traces`, {
       method: 'POST',
       headers: withPreferredLanguageHeader({
         'Content-Type': 'application/json',
@@ -87,6 +89,7 @@ export const observabilityApi = {
       body: JSON.stringify(payload),
       keepalive: options.keepalive === true,
       signal: options.signal,
+      allowSessionLogoutOnUnauthorized: false,
     })
 
     if (!response.ok) {

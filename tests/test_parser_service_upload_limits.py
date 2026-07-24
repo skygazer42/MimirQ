@@ -35,5 +35,6 @@ def test_parser_uploads_have_a_hard_streamed_limit(module: object, monkeypatch: 
 def test_parser_host_ports_bind_to_loopback() -> None:
     compose = yaml.safe_load(Path("docker/docker-compose.parsers.yml").read_text(encoding="utf-8"))
 
+    assert compose["services"]["mimirq-marker"]["ports"] == ["127.0.0.1:2080:2080"]
     assert compose["services"]["mimirq-magicpdf"]["ports"] == ["127.0.0.1:2095:2095"]
     assert compose["services"]["mimirq-qianfanocr"]["ports"] == ["127.0.0.1:2090:2090"]

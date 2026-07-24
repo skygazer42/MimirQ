@@ -19,6 +19,7 @@ from app.models.document import Document as DBDocument
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
 from app.rag.rerank_result_cache import clear_evidence_post_rerank_cache
+from app.services.dataset_embedding_config import resolve_dataset_embedding_runtime
 
 logger = get_logger(__name__)
 
@@ -41,7 +42,25 @@ def _active_pipeline_hash(meta: Any) -> str | None:
     return out or None
 
 
-def build_dataset_scope_corpus_cache_token(*, dataset_id: Any, updated_at: Any) -> str | None:
+def _dataset_embedding_binding(dataset_meta: Any) -> dict[str, Any]:
+    metadata = dict(dataset_meta or {}) if isinstance(dataset_meta, dict) else {}
+    runtime = resolve_dataset_embedding_runtime(metadata)
+    raw_defaults = metadata.get("embedding_defaults") if isinstance(metadata.get("embedding_defaults"), dict) else {}
+    return {
+        "dataset_scoped": bool(runtime.dataset_scoped),
+        "provider": runtime.provider,
+        "model": runtime.model,
+        "api_base": runtime.api_base,
+        "embedding_space_hash": runtime.embedding_space_hash,
+        "embedding_defaults": {
+            "provider": str(raw_defaults.get("provider") or "").strip() or None,
+            "model": str(raw_defaults.get("model") or "").strip() or None,
+            "api_base": str(raw_defaults.get("api_base") or "").strip() or None,
+        },
+    }
+
+
+def build_dataset_scope_corpus_cache_token(*, dataset_id: Any, updated_at: Any, dataset_embedding_binding: Any = None) -> str | None:
     ds = str(dataset_id or "").strip()
     if not ds:
         return None
@@ -49,6 +68,7 @@ def build_dataset_scope_corpus_cache_token(*, dataset_id: Any, updated_at: Any) 
         "schema": "mimirq.dataset_corpus_cache_token.v1",
         "dataset_id": ds,
         "updated_at": _as_iso(updated_at),
+        "dataset_embedding_binding": dataset_embedding_binding,
     }
     raw = json.dumps(sig, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
     return stable_hash(raw, length=24)
@@ -64,8 +84,10 @@ def build_document_scope_corpus_cache_token(rows: Sequence[Any]) -> str | None:
         items.append(
             {
                 "id": doc_id,
+                "dataset_id": str(payload.get("dataset_id") or "").strip() or None,
                 "updated_at": _as_iso(payload.get("updated_at")),
                 "active_pipeline_hash": _active_pipeline_hash(payload),
+                "dataset_embedding_binding": payload.get("dataset_embedding_binding"),
             }
         )
 
@@ -96,31 +118,54 @@ def resolve_corpus_cache_token(
     doc_ids = [d for d in (document_ids or []) if d is not None]
     if doc_ids:
         rows = (
-            db.query(DBDocument.id, DBDocument.updated_at, DBDocument.doc_metadata)
+            db.query(DBDocument.id, DBDocument.dataset_id, DBDocument.updated_at, DBDocument.doc_metadata)
             .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(list(doc_ids)))
             .all()
         )
         if len(rows) != len(doc_ids):
             return None
+        dataset_ids = sorted({dataset_id for _, dataset_id, _, _ in rows if dataset_id is not None}, key=str)
+        dataset_meta_by_id: dict[str, dict[str, Any]] = {}
+        if dataset_ids:
+            dataset_rows = (
+                db.query(Dataset.id, Dataset.dataset_metadata)
+                .filter(Dataset.tenant_id == tenant_id, Dataset.id.in_(dataset_ids))
+                .all()
+            )
+            dataset_meta_by_id = {
+                str(scope_dataset_id): dict(dataset_meta or {}) if isinstance(dataset_meta, dict) else {}
+                for scope_dataset_id, dataset_meta in dataset_rows
+            }
         docs: list[dict[str, Any]] = []
-        for doc_id, updated_at, doc_meta in rows:
+        for doc_id, scope_dataset_id, updated_at, doc_meta in rows:
             docs.append(
                 {
                     "id": str(doc_id),
+                    "dataset_id": str(scope_dataset_id) if scope_dataset_id is not None else None,
                     "updated_at": updated_at,
                     "active_pipeline_hash": _active_pipeline_hash(doc_meta),
+                    "dataset_embedding_binding": _dataset_embedding_binding(
+                        dataset_meta_by_id.get(str(scope_dataset_id))
+                    )
+                    if scope_dataset_id is not None
+                    else None,
                 }
             )
         return build_document_scope_corpus_cache_token(docs)
 
     if dataset_id is not None:
         row = (
-            db.query(Dataset.updated_at)
+            db.query(Dataset.updated_at, Dataset.dataset_metadata)
             .filter(Dataset.tenant_id == tenant_id, Dataset.id == dataset_id)
             .first()
         )
         updated_at = row[0] if row else None
-        return build_dataset_scope_corpus_cache_token(dataset_id=str(dataset_id), updated_at=updated_at)
+        dataset_meta = row[1] if row and len(row) > 1 else None
+        return build_dataset_scope_corpus_cache_token(
+            dataset_id=str(dataset_id),
+            updated_at=updated_at,
+            dataset_embedding_binding=_dataset_embedding_binding(dataset_meta),
+        )
 
     return None
 

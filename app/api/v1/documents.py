@@ -170,7 +170,7 @@ from app.core.env import is_production_env
 from app.models.dataset import Dataset, DatasetPermissionEnum
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.models.document import Document as DBDocument
-from app.models.document import DocumentChunk, DocumentPermission
+from app.models.document import DocumentChunk
 from app.parsing.factory import parser_factory
 from app.parsing.processors.processor import document_processor
 from app.parsing.subprocess_runner import run_subprocess_worker
@@ -180,10 +180,10 @@ from app.rag.kg.pipeline import extract_events
 from app.rag.preprocessing.html_canonical import extract_canonical_url, normalize_url_for_dedup
 from app.rag.preprocessing.processor import governance_processor
 from app.rag.preprocessing.rules import build_governance_rules
+from app.services import document_access_service
 from app.services.dataset_precheck_ingestion_suggestion import apply_ingestion_policy_suggestion
 from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
 from app.services.dataset_service import EDIT_ROLES, DatasetService
-from app.services.document_permission_service import DocumentGroupPermissionService
 from app.services.document_preview_utils import (
     _compute_chunk_preview_quality,
     _materialize_extracted_images_for_preview,
@@ -202,12 +202,16 @@ from app.services.pipeline_config import (
     resolve_pipeline_effective,
     upsert_pipeline_metadata,
 )
-from app.services.tenant_group_service import TenantGroupService
 from app.storage.object.minio import minio_service
 from app.tasks.queue import enqueue_document_processing
 from app.types.pipeline import PipelineOptions
 
 logger = get_logger("api.documents")
+
+NO_DOCUMENT_ACCESS_DETAIL = document_access_service.NO_DOCUMENT_ACCESS_DETAIL
+_assert_document_acl_readable = document_access_service.assert_document_acl_readable
+_assert_document_writable_for_lifecycle = document_access_service.assert_document_writable_for_lifecycle
+_get_document_for_lifecycle = document_access_service.get_document_for_lifecycle
 
 _background_processing_semaphores: dict[int, tuple[int, asyncio.Semaphore]] = {}
 
@@ -302,7 +306,6 @@ CHUNK_NOT_FOUND_DETAIL = 'Chunk not found'
 CHUNK_NOT_ACTIVE_PIPELINE_DETAIL = 'Chunk is not in the active pipeline version'
 DOCUMENT_FILE_ACCESS_DENIED_DETAIL = 'Document file access denied'
 DOCUMENT_FILE_NOT_FOUND_DETAIL = 'Document file not found'
-NO_DOCUMENT_ACCESS_DETAIL = 'No document access'
 DATA_IMAGE_PREFIX = 'data:image'
 CHUNK_OVERLAP_LESS_THAN_SIZE_DETAIL = 'chunk_overlap must be less than chunk_size'
 MANUAL_FILE_PATH_PREFIX = 'manual://'
@@ -1066,123 +1069,6 @@ def _validate_chunk_params(chunk_size: int, chunk_overlap: int) -> None:
             status_code=400,
             detail=CHUNK_OVERLAP_LESS_THAN_SIZE_DETAIL,
         )
-
-
-def _is_dataset_owner(dataset: Dataset | None, account_id: str) -> bool:
-    return dataset is not None and str(getattr(dataset, "owner_id", "") or "") == account_id
-
-
-def _document_acl_mode(document: DBDocument) -> str:
-    return (str(getattr(document, "access_mode", "") or "")).strip().lower()
-
-
-def _is_document_owner(document: DBDocument, account_id: str) -> bool:
-    owner_id = (str(getattr(document, "owner_id", "") or "")).strip()
-    return bool(owner_id and owner_id == account_id)
-
-
-def _document_partial_member_exists(db: Session, *, tenant_id: UUID, account_id: str, document: DBDocument) -> bool:
-    return (
-        db.query(DocumentPermission)
-        .filter(
-            DocumentPermission.tenant_id == tenant_id,
-            DocumentPermission.document_id == document.id,
-            DocumentPermission.account_id == account_id,
-        )
-        .first()
-        is not None
-    )
-
-
-def _document_partial_group_allowed(db: Session, *, tenant_id: UUID, account_id: str, document: DBDocument) -> bool:
-    group_ids = TenantGroupService.resolve_account_group_ids(db, tenant_id=tenant_id, account_id=account_id)
-    if not group_ids:
-        return False
-
-    allowlist_groups = DocumentGroupPermissionService.get_document_partial_group_list(
-        db,
-        tenant_id,
-        document.id,
-    )
-    if not allowlist_groups:
-        return False
-    allowed = set(allowlist_groups)
-    return any(gid in allowed for gid in group_ids)
-
-
-def _document_partial_access_allowed(db: Session, *, tenant_id: UUID, account_id: str, document: DBDocument) -> bool:
-    if _document_partial_member_exists(db, tenant_id=tenant_id, account_id=account_id, document=document):
-        return True
-    return _document_partial_group_allowed(db, tenant_id=tenant_id, account_id=account_id, document=document)
-
-
-def _assert_document_acl_readable(
-    db: Session,
-    *,
-    tenant_id: UUID,
-    account_id: str,
-    document: DBDocument,
-    dataset: Dataset | None = None,
-) -> None:
-    """
-    Enforce document-level ACL ("security trimming") in addition to dataset permission.
-
-    - Dataset permission is enforced by callers (or passed in via `dataset`).
-    - Dataset owners can always access documents in their dataset.
-    """
-    if not account_id:
-        return
-
-    # Dataset owner bypass for management.
-    if _is_dataset_owner(dataset, account_id):
-        return
-
-    mode = _document_acl_mode(document)
-    if not mode or mode in {"inherit", "all_team_members"}:
-        return
-
-    if _is_document_owner(document, account_id):
-        return
-
-    if mode == "only_me":
-        raise HTTPException(status_code=403, detail=NO_DOCUMENT_ACCESS_DETAIL)
-
-    if mode == "partial_members":
-        if _document_partial_access_allowed(db, tenant_id=tenant_id, account_id=account_id, document=document):
-            return
-
-        raise HTTPException(status_code=403, detail=NO_DOCUMENT_ACCESS_DETAIL)
-
-    # Unknown mode: fail closed.
-    raise HTTPException(status_code=403, detail=NO_DOCUMENT_ACCESS_DETAIL)
-
-
-def _get_document_for_lifecycle(db: Session, tenant_id: UUID, document_id: UUID) -> DBDocument | None:
-    return (
-        db.query(DBDocument)
-        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-        .first()
-    )
-
-
-def _assert_document_writable_for_lifecycle(
-    db: Session,
-    *,
-    tenant_id: UUID,
-    account_id: str,
-    document: DBDocument,
-) -> None:
-    ds: Dataset | None = None
-    if getattr(document, "dataset_id", None):
-        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_writable(db, ds, account_id)
-    else:
-        member = DatasetService.ensure_member(db, tenant_id, account_id)
-        role = (getattr(member, "role", None) or "").lower()
-        if role not in EDIT_ROLES:
-            raise HTTPException(status_code=403, detail="No permission to manage unassigned documents")
-
-    _assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=ds)
 
 
 def _get_document_for_chunk_ops(db: Session, tenant_id: UUID, document_id: UUID) -> DBDocument | None:

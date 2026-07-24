@@ -13,6 +13,7 @@ import { z } from 'zod'
 import type { OpenApiOkResponse, OpenApiRequestBody } from '@/types/openapi-helpers'
 
 import { getAuthHeaders } from '@/lib/auth-headers'
+import { authenticatedFetch } from '@/lib/authenticated-fetch'
 import { buildFetchError } from '@/lib/fetch-errors'
 import { API_LONG_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
 import { withPreferredLanguageHeader } from '@/lib/preferred-language'
@@ -105,7 +106,7 @@ export const chatApi = {
   ): Promise<{ requestId: string; conversationId?: string }> {
     const requestId = generateRequestId()
 
-    const response = await fetch(`${API_V1_BASE_URL}/chat/stream`, {
+    const response = await authenticatedFetch(`${API_V1_BASE_URL}/chat/stream`, {
       method: 'POST',
       headers: withPreferredLanguageHeader({
         'Content-Type': 'application/json',

@@ -164,16 +164,14 @@ def pg_session():
     Disabled by default. Enable with:
       - set MIMIRQ_INTEGRATION_TESTS=1
       - set DATABASE_URL to a dedicated test database
+      - run `make db-upgrade` before pytest
     """
     if not _integration_enabled():
         pytest.skip("Integration tests disabled (set MIMIRQ_INTEGRATION_TESTS=1)")
 
     # Import models lazily so pure unit tests don't pull DB config eagerly.
     import app.models._all  # noqa: F401
-    from app.core.database import Base, SessionLocal, engine  # noqa: WPS433
-
-    # Create tables (idempotent).
-    Base.metadata.create_all(bind=engine)
+    from app.core.database import SessionLocal, engine  # noqa: WPS433
 
     db = SessionLocal()
     try:
@@ -188,6 +186,8 @@ def pg_session():
     # Best-effort cleanup for the next test run.
     try:
         with engine.begin() as conn:
+            conn.execute(text("TRUNCATE TABLE messages RESTART IDENTITY CASCADE;"))
+            conn.execute(text("TRUNCATE TABLE conversations RESTART IDENTITY CASCADE;"))
             conn.execute(text("TRUNCATE TABLE dataset_profile_scan_runs RESTART IDENTITY CASCADE;"))
             conn.execute(text("TRUNCATE TABLE ingest_dead_letters RESTART IDENTITY CASCADE;"))
             conn.execute(text("TRUNCATE TABLE document_parsed_contents RESTART IDENTITY CASCADE;"))

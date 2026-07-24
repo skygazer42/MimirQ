@@ -96,6 +96,7 @@ jobs:
         run: |
           make db-upgrade
           python -m pytest -q \
+            tests/test_core_schema_integration.py \
             tests/test_document_version_diff_integration.py \
             tests/test_document_versions_integration.py
 
@@ -199,6 +200,7 @@ jobs:
         run: |
           make db-upgrade
           python -m pytest -q \
+            tests/test_core_schema_integration.py \
             tests/test_document_version_diff_integration.py \
             tests/test_document_versions_integration.py
 
@@ -267,6 +269,44 @@ jobs:
 
       - name: Build web image
         run: docker build -t mimirq-web -f web/Dockerfile.prod web
+
+      - name: Smoke built backend and web images
+        env:
+          BACKEND_PORT: "0"
+          COMPOSE_PROJECT_NAME: mimirq-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          MIMIRQ_BACKEND_IMAGE: mimirq-backend
+        run: |
+          compose=(docker compose -f docker/docker-compose.retrieval-dev.yml)
+          if ! "${compose[@]}" up -d --no-build --wait --wait-timeout 300; then
+            "${compose[@]}" ps
+            "${compose[@]}" logs --tail=200 mimirq-api
+            exit 1
+          fi
+
+          web_name="mimirq-web-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          docker run -d --name "$web_name" \
+            --network "${COMPOSE_PROJECT_NAME}_default" \
+            -e HOST=0.0.0.0 \
+            -e API_INTERNAL_URL=http://mimirq-api:8000 \
+            mimirq-web
+          for _ in {1..30}; do
+            if docker exec "$web_name" wget -Y off -qO- http://127.0.0.1:3000/ >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs "$web_name"
+          exit 1
+
+      - name: Clean up image smoke stack
+        if: always()
+        env:
+          BACKEND_PORT: "0"
+          COMPOSE_PROJECT_NAME: mimirq-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          MIMIRQ_BACKEND_IMAGE: mimirq-backend
+        run: |
+          docker rm -f "mimirq-web-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" || true
+          docker compose -f docker/docker-compose.retrieval-dev.yml down -v --remove-orphans
 
   retrieval-only-bounded-gate:
     if: github.event_name != 'pull_request'

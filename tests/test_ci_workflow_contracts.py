@@ -10,11 +10,25 @@ def _read(relative_path: str) -> str:
 
 def test_main_ci_runs_database_migrations_and_integrations() -> None:
     workflow = _read(".github/workflows/ci.yml")
+    conftest = _read("tests/conftest.py")
 
     assert "MIMIRQ_INTEGRATION_TESTS: \"1\"" in workflow
     assert "make db-upgrade" in workflow
+    assert "tests/test_core_schema_integration.py" in workflow
     assert "tests/test_document_version_diff_integration.py" in workflow
     assert "tests/test_document_versions_integration.py" in workflow
+    assert "Base.metadata.create_all" not in conftest
+
+
+def test_repo_checks_enforce_api_type_drift_and_shared_python_audit_policy() -> None:
+    makefile = _read("Makefile")
+    security_workflow = _read(".github/workflows/security.yml")
+
+    assert (
+        "node web/scripts/check-api-types-drift.mjs --strict "
+        "--baseline web/scripts/api-types-drift-baseline.json"
+    ) in makefile
+    assert "make audit-py" in security_workflow
 
 
 def test_main_ci_runs_all_browser_smoke_specs_and_critical_coverage() -> None:
@@ -148,11 +162,16 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     docker_job = workflow.split("\n  docker-build:", 1)[1].split(
         "\n  retrieval-only-bounded-gate:", 1
     )[0]
+    retrieval_compose = _read("docker/docker-compose.retrieval-dev.yml")
     web_dockerfile = _read("web/Dockerfile.prod")
 
     assert "timeout-minutes: 60" in docker_job
     assert "target=/root/.local/share/pnpm/store" in web_dockerfile
     assert "https://registry.npmmirror.com" in web_dockerfile
+    assert "Smoke built backend and web images" in docker_job
+    assert "up -d --no-build" in docker_job
+    assert "if: always()" in docker_job
+    assert "image: ${MIMIRQ_BACKEND_IMAGE:-mimirq-backend}" in retrieval_compose
 
 
 def test_dockerfiles_bypass_broken_docker_hub_mirror() -> None:

@@ -59,3 +59,93 @@ def test_resolve_chat_response_cache_key_fails_closed_when_corpus_token_missing(
 
     assert key is None
     assert skip_reason == "missing_corpus_cache_token"
+
+
+class _Query:
+    def __init__(self, *, rows=None, first_row=None) -> None:  # noqa: ANN001
+        self._rows = list(rows or [])
+        self._first_row = first_row
+
+    def filter(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        return self
+
+    def all(self):  # noqa: ANN202
+        return list(self._rows)
+
+    def first(self):  # noqa: ANN202
+        return self._first_row
+
+
+class _CorpusTokenDB:
+    def __init__(self, *, document_rows, dataset_rows) -> None:  # noqa: ANN001
+        self._document_rows = list(document_rows)
+        self._dataset_rows = list(dataset_rows)
+
+    def query(self, *entities):  # noqa: ANN002, ANN202
+        if len(entities) >= 3:
+            return _Query(rows=self._document_rows)
+        return _Query(rows=self._dataset_rows)
+
+
+def test_build_dataset_scope_corpus_cache_token_changes_with_dataset_embedding_binding() -> None:
+    import app.services.corpus_cache_tokens as token_mod
+
+    dataset_id = uuid4()
+    token_a = token_mod.build_dataset_scope_corpus_cache_token(
+        dataset_id=dataset_id,
+        updated_at=None,
+        dataset_embedding_binding={"embedding_space_hash": "emb-a", "dataset_scoped": True},
+    )
+    token_b = token_mod.build_dataset_scope_corpus_cache_token(
+        dataset_id=dataset_id,
+        updated_at=None,
+        dataset_embedding_binding={"embedding_space_hash": "emb-b", "dataset_scoped": True},
+    )
+
+    assert isinstance(token_a, str) and token_a
+    assert isinstance(token_b, str) and token_b
+    assert token_a != token_b
+
+
+def test_resolve_corpus_cache_token_fails_closed_when_document_scope_row_missing() -> None:
+    import app.services.corpus_cache_tokens as token_mod
+
+    token = token_mod.resolve_corpus_cache_token(
+        _CorpusTokenDB(document_rows=[], dataset_rows=[]),
+        tenant_id=uuid4(),
+        dataset_id=uuid4(),
+        document_ids=[uuid4()],
+    )
+
+    assert token is None
+
+
+def test_resolve_corpus_cache_token_changes_when_document_scope_dataset_embedding_defaults_change() -> None:
+    import app.services.corpus_cache_tokens as token_mod
+
+    tenant_id = uuid4()
+    document_id = uuid4()
+    dataset_id = uuid4()
+    db_a = _CorpusTokenDB(
+        document_rows=[(document_id, dataset_id, None, {})],
+        dataset_rows=[(dataset_id, {"embedding_defaults": {"provider": "local", "model": "embed-a"}})],
+    )
+    db_b = _CorpusTokenDB(
+        document_rows=[(document_id, dataset_id, None, {})],
+        dataset_rows=[(dataset_id, {"embedding_defaults": {"provider": "local", "model": "embed-b"}})],
+    )
+
+    token_a = token_mod.resolve_corpus_cache_token(
+        db_a,
+        tenant_id=tenant_id,
+        document_ids=[document_id],
+    )
+    token_b = token_mod.resolve_corpus_cache_token(
+        db_b,
+        tenant_id=tenant_id,
+        document_ids=[document_id],
+    )
+
+    assert isinstance(token_a, str) and token_a
+    assert isinstance(token_b, str) and token_b
+    assert token_a != token_b

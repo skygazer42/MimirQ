@@ -41,7 +41,7 @@ services:
     restart: unless-stopped
     hostname: mimirq-marker
     ports:
-      - "2080:2080"
+      - "127.0.0.1:2080:2080"
     environment:
       TZ: Asia/Shanghai
     networks:

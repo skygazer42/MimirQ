@@ -61,14 +61,7 @@ jobs:
           python -m pip install pip-audit==2.10.0
 
       - name: Audit Python direct requirements
-        run: |
-          pip-audit -r requirements.txt --no-deps --disable-pip \
-            --extra-index-url https://download.pytorch.org/whl/cpu \
-            --ignore-vuln PYSEC-2026-139 \
-            --ignore-vuln PYSEC-2026-597 \
-            --ignore-vuln GHSA-rrmf-rvhw-rf47 \
-            --ignore-vuln GHSA-f4j7-r4q5-qw2c \
-            --ignore-vuln GHSA-95ww-475f-pr4f
+        run: make audit-py
 
       - name: Configure npm registry (audit endpoint)
         working-directory: web

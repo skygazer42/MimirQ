@@ -47,6 +47,8 @@ from app.tasks.locks import (
 
 logger = get_logger("tasks.jobs")
 
+_TASK_SEMAPHORE_TTL_SEC = max(120, int(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30) + 60)
+
 
 def _kg_lock_flag(value: bool | None) -> str:
     if value is None:
@@ -199,7 +201,7 @@ async def evidence_reference_sources_repair_job(  # noqa: ANN001
                 tenant_id=tenant_id,
                 kind="evidence_repair",
                 limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_EVIDENCE_REPAIR", 0) or 0),
-                ttl_sec=120,
+                ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
             )
             lock_key = f"lock:evidence_repair:{tenant_id}:{suite_id}"
             lock_val = make_lock_value(requested_by)
@@ -340,7 +342,7 @@ async def connector_run_job(ctx, tenant_id: str, run_id: str, requested_by: str)
                 tenant_id=tenant_id,
                 kind="connector",
                 limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_CONNECTOR", 0) or 0),
-                ttl_sec=120,
+                ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
             )
 
             lock_key = f"lock:connector:{tenant_id}:{run_id}"
@@ -471,7 +473,7 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
                 tenant_id=tenant_id,
                 kind="doc",
                 limit=tenant_limit,
-                ttl_sec=120,
+                ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
                 retry_defer_sec=retry_defer_sec,
             )
             dataset_sem_key = await dataset_acquire(
@@ -480,7 +482,7 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
                 dataset_id=str(doc.dataset_id) if doc.dataset_id else "",
                 kind="doc",
                 limit=dataset_limit,
-                ttl_sec=120,
+                ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
                 retry_defer_sec=retry_defer_sec,
             )
             acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
@@ -797,7 +799,7 @@ async def dataset_profile_scan_job(ctx, tenant_id: str, dataset_id: str, scan_ru
                 tenant_id=tenant_id,
                 kind="scan",
                 limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_DOC", 0) or 0),
-                ttl_sec=120,
+                ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
             )
             acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
             if not acquired:
@@ -920,7 +922,7 @@ async def dataset_precheck_scan_job(ctx, tenant_id: str, dataset_id: str, scan_r
                 tenant_id=tenant_id,
                 kind="scan",
                 limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_DOC", 0) or 0),
-                ttl_sec=120,
+                ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
             )
             acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
             if not acquired:
@@ -1030,7 +1032,7 @@ async def extract_kg_job(
                 tenant_id=tenant_id,
                 kind="kg",
                 limit=kg_limit,
-                ttl_sec=120,
+                ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
                 retry_defer_sec=kg_retry_defer_sec,
             )
 
@@ -1073,7 +1075,7 @@ async def extract_kg_job(
                 dataset_id=str(doc.dataset_id) if doc.dataset_id else "",
                 kind="kg",
                 limit=dataset_kg_limit,
-                ttl_sec=120,
+                ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
                 retry_defer_sec=kg_retry_defer_sec,
             )
 
@@ -1228,7 +1230,7 @@ async def rebuild_indexes_job(ctx, tenant_id: str, requested_by: str) -> dict:  
                 tenant_id=tenant_id,
                 kind="rebuild",
                 limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_DOC", 0) or 0),
-                ttl_sec=120,
+                ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
             )
 
         lock_key = f"lock:rebuild:{tenant_id}"

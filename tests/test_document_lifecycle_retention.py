@@ -6,10 +6,14 @@ from unittest.mock import ANY
 import pytest
 
 
-def test_documents_lifecycle_exports_delegate_to_service() -> None:
+def test_documents_exports_delegate_to_shared_services() -> None:
     from app.api.v1 import documents
-    from app.services import document_lifecycle_service
+    from app.services import document_access_service, document_lifecycle_service
 
+    assert documents.NO_DOCUMENT_ACCESS_DETAIL == document_access_service.NO_DOCUMENT_ACCESS_DETAIL
+    assert documents._assert_document_acl_readable is document_access_service.assert_document_acl_readable
+    assert documents._get_document_for_lifecycle is document_access_service.get_document_for_lifecycle
+    assert documents._assert_document_writable_for_lifecycle is document_access_service.assert_document_writable_for_lifecycle
     assert documents._get_document_for_delete is document_lifecycle_service._get_document_for_delete
     assert documents._delete_document_file is document_lifecycle_service._delete_document_file
     assert documents._delete_document_lifecycle is document_lifecycle_service._delete_document_lifecycle

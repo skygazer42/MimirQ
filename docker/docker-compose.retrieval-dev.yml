@@ -64,11 +64,12 @@ services:
       retries: 10
 
   mimirq-api:
+    image: ${MIMIRQ_BACKEND_IMAGE:-mimirq-backend}
     build: *backend_build
     restart: unless-stopped
     logging: *docker_logging
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
     healthcheck:
       test: ["CMD", "curl", "--noproxy", "*", "-fsS", "http://localhost:8000/api/v1/health/ready"]
       interval: 10s

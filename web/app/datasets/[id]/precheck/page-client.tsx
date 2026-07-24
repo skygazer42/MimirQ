@@ -159,6 +159,35 @@ function getRunStatusTone(status?: string | null): string {
   return 'border-muted-foreground/20 bg-muted/50 text-muted-foreground'
 }
 
+export function isPrecheckSseAbortError(error: unknown): boolean {
+  const candidate = error as { code?: unknown; name?: unknown; message?: unknown } | null
+  if (!candidate || typeof candidate !== 'object') return false
+  if (candidate.code === 'ERR_CANCELED') return true
+  if (candidate.name === 'AbortError' || candidate.name === 'CanceledError') return true
+
+  const message = typeof candidate.message === 'string' ? candidate.message.trim().toLowerCase() : ''
+  return message === 'canceled'
+}
+
+export function isCurrentPrecheckSseStream(
+  controller: AbortController,
+  activeController: AbortController | null,
+  runId: string,
+  activeRunId: string | null
+): boolean {
+  return activeController === controller && activeRunId === runId
+}
+
+export function shouldFallbackToPrecheckPolling(
+  error: unknown,
+  controller: AbortController,
+  activeController: AbortController | null,
+  runId: string,
+  activeRunId: string | null
+): boolean {
+  return isCurrentPrecheckSseStream(controller, activeController, runId, activeRunId) && !isPrecheckSseAbortError(error)
+}
+
 export default function DatasetPrecheckPage() {
   const router = useRouter()
   const params = useParams()
@@ -171,6 +200,7 @@ export default function DatasetPrecheckPage() {
   const pollTimerRef = useRef<number | null>(null)
   const pollRunRef = useRef<(datasetIdValue: string, runId: string) => Promise<void>>(async () => {})
   const sseAbortRef = useRef<AbortController | null>(null)
+  const sseRunIdRef = useRef<string | null>(null)
 
   const [isExporting, setIsExporting] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
@@ -226,6 +256,7 @@ export default function DatasetPrecheckPage() {
     const ctrl = sseAbortRef.current
     if (ctrl) ctrl.abort()
     sseAbortRef.current = null
+    sseRunIdRef.current = null
   }, [])
 
   const datasetQuery = useQuery({
@@ -415,23 +446,29 @@ export default function DatasetPrecheckPage() {
 
   const startSse = useCallback(
     (datasetIdValue: string, runId: string) => {
+      const activeController = sseAbortRef.current
+      if (activeController && !activeController.signal.aborted && sseRunIdRef.current === runId) return
+
+      stopPolling()
       stopSse()
       const ctrl = new AbortController()
       sseAbortRef.current = ctrl
+      sseRunIdRef.current = runId
+      const isCurrentStream = () =>
+        isCurrentPrecheckSseStream(ctrl, sseAbortRef.current, runId, sseRunIdRef.current)
 
       detachPromise(sseApi
         .streamPrecheckScanEvents(
           datasetIdValue,
           runId,
           (jsonStr) => {
+            if (!isCurrentStream()) return
             try {
               const obj = JSON.parse(String(jsonStr || '') || '{}')
               if (obj?.id) setSelectedRun(obj)
               const st = String(obj?.status || '').toLowerCase()
-              if (st === 'completed') {
-                detachPromise(datasetApi.getPrecheckSummary(datasetIdValue, runId).then(setSummary).catch(() => setSummary(null)))
-              }
               if (st && st !== 'pending' && st !== 'running') {
+                if (!isCurrentStream()) return
                 setScanRunning(false)
                 stopSse()
                 stopPolling()
@@ -443,14 +480,20 @@ export default function DatasetPrecheckPage() {
           },
           {
             onError: (err) => {
+              if (!isCurrentStream() || isPrecheckSseAbortError(err)) return
               reportClientError('Precheck SSE error', err)
             },
             signal: ctrl.signal,
           }
         )
         .catch((e) => {
+          if (!shouldFallbackToPrecheckPolling(e, ctrl, sseAbortRef.current, runId, sseRunIdRef.current)) {
+            return
+          }
           reportClientWarning('Precheck SSE unavailable; fallback to polling', e)
-          stopSse()
+          if (isCurrentStream()) {
+            stopSse()
+          }
           pollTimerRef.current = globalThis.window.setTimeout(() => {
             detachPromise(pollRun(datasetIdValue, runId))
           }, 800)

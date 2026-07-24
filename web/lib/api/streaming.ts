@@ -1,4 +1,5 @@
 import { getAuthHeaders } from '@/lib/auth-headers'
+import { authenticatedFetch } from '@/lib/authenticated-fetch'
 import { buildFetchError } from '@/lib/fetch-errors'
 import { API_V1_BASE_URL } from '@/lib/env'
 import { withPreferredLanguageHeader } from '@/lib/preferred-language'
@@ -14,7 +15,7 @@ export const sseApi = {
   ): Promise<{ requestId: string }> {
     const requestId = generateRequestId()
 
-    const response = await fetch(`${API_V1_BASE_URL}/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/events`, {
+    const response = await authenticatedFetch(`${API_V1_BASE_URL}/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/events`, {
       method: 'GET',
       headers: withPreferredLanguageHeader({
         Accept: 'text/event-stream',

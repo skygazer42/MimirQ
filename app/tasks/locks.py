@@ -1,11 +1,22 @@
 
-import time
 from typing import Any
+from uuid import uuid4
 
 from app.core.optional_deps import require_dependency
 from app.rag.core.logging import get_logger
 
 logger = get_logger("tasks.locks")
+
+_SCRIPT_UNAVAILABLE = object()
+
+_COMPARE_DELETE_LUA = """
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+  return redis.call("DEL", KEYS[1])
+end
+return 0
+"""
+
+_SEMAPHORE_LEASE_SEPARATOR = "|"
 
 
 def get_retry_exc():  # noqa: ANN201
@@ -18,6 +29,43 @@ def get_retry_exc():  # noqa: ANN201
     return retry_cls
 
 
+async def _eval_redis_script(redis: Any, script: str, *, keys: tuple[str, ...], args: tuple[Any, ...]) -> Any:
+    eval_fn = getattr(redis, "eval", None)
+    if callable(eval_fn):
+        return await eval_fn(script, len(keys), *keys, *args)
+
+    execute_command = getattr(redis, "execute_command", None)
+    if callable(execute_command):
+        return await execute_command("EVAL", script, len(keys), *keys, *args)
+
+    return _SCRIPT_UNAVAILABLE
+
+
+async def _semaphore_acquire(
+    redis: Any,
+    *,
+    key_prefix: str,
+    limit: int,
+    ttl_sec: int,
+) -> str | None:
+    token = uuid4().hex
+    for slot in range(1, int(limit) + 1):
+        key = f"{key_prefix}:{slot}"
+        if await redis.set(key, token, ex=max(1, int(ttl_sec)), nx=True):
+            return f"{key}{_SEMAPHORE_LEASE_SEPARATOR}{token}"
+    return None
+
+
+async def _semaphore_release(redis: Any, lease: str) -> None:
+    try:
+        key, token = lease.rsplit(_SEMAPHORE_LEASE_SEPARATOR, 1)
+    except ValueError:
+        logger.warning("Ignoring malformed semaphore lease")
+        return
+    if key and token:
+        await release_lock(redis, key=key, value=token)
+
+
 async def tenant_acquire(  # noqa: ANN201
     redis: Any,
     *,
@@ -28,29 +76,26 @@ async def tenant_acquire(  # noqa: ANN201
     retry_defer_sec: int = 2,
 ):
     """
-    Simple per-tenant concurrency limit (Redis counting semaphore).
+    Per-tenant concurrency limit backed by expiring, owner-scoped Redis slots.
 
-    - If INCR > limit: roll back with DECR and raise arq.Retry (when available).
-    - Returns a semaphore key string on success, else None.
+    Returns an opaque lease string on success, else None.
     """
     if redis is None or limit <= 0:
         return None
 
-    key = f"sem:tenant:{tenant_id}:{kind}"
+    key_prefix = f"sem:tenant:{tenant_id}:{kind}"
     retry_cls = None
     try:
         retry_cls = get_retry_exc()
     except Exception:  # noqa: BLE001
         retry_cls = None
     try:
-        val = await redis.incr(key)
-        await redis.expire(key, ttl_sec)
-        if int(val) > int(limit):
-            await redis.decr(key)
+        lease = await _semaphore_acquire(redis, key_prefix=key_prefix, limit=limit, ttl_sec=ttl_sec)
+        if lease is None:
             if retry_cls:
                 raise retry_cls(defer=int(retry_defer_sec))
             return None
-        return key
+        return lease
     except Exception as exc:  # noqa: BLE001
         if retry_cls is not None:
             try:
@@ -73,7 +118,7 @@ async def dataset_acquire(  # noqa: ANN201
     retry_defer_sec: int = 2,
 ):
     """
-    Simple per-dataset concurrency limit (Redis counting semaphore).
+    Per-dataset concurrency limit backed by expiring, owner-scoped Redis slots.
 
     Semantics match tenant_acquire(), but the scope is a dataset within a tenant.
     """
@@ -84,21 +129,19 @@ async def dataset_acquire(  # noqa: ANN201
     if not ds:
         return None
 
-    key = f"sem:dataset:{tenant_id}:{ds}:{kind}"
+    key_prefix = f"sem:dataset:{tenant_id}:{ds}:{kind}"
     retry_cls = None
     try:
         retry_cls = get_retry_exc()
     except Exception:  # noqa: BLE001
         retry_cls = None
     try:
-        val = await redis.incr(key)
-        await redis.expire(key, ttl_sec)
-        if int(val) > int(limit):
-            await redis.decr(key)
+        lease = await _semaphore_acquire(redis, key_prefix=key_prefix, limit=limit, ttl_sec=ttl_sec)
+        if lease is None:
             if retry_cls:
                 raise retry_cls(defer=int(retry_defer_sec))
             return None
-        return key
+        return lease
     except Exception as exc:  # noqa: BLE001
         if retry_cls is not None:
             try:
@@ -114,9 +157,7 @@ async def dataset_release(redis: Any, key: str | None) -> None:
     if redis is None or not key:
         return
     try:
-        val = await redis.decr(key)
-        if int(val) <= 0:
-            await redis.delete(key)
+        await _semaphore_release(redis, key)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Dataset semaphore release failed: %s", str(exc)[:200])
 
@@ -125,9 +166,7 @@ async def tenant_release(redis: Any, key: str | None) -> None:
     if redis is None or not key:
         return
     try:
-        val = await redis.decr(key)
-        if int(val) <= 0:
-            await redis.delete(key)
+        await _semaphore_release(redis, key)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Tenant semaphore release failed: %s", str(exc)[:200])
 
@@ -159,13 +198,15 @@ async def release_lock(redis: Any, *, key: str, value: str) -> None:
     if redis is None:
         return
     try:
-        cur = await redis.get(key)
-        cur_decoded = cur.decode("utf-8", "ignore") if isinstance(cur, (bytes, bytearray)) else cur
-        if cur_decoded == value:
-            await redis.delete(key)
+        deleted = await _eval_redis_script(redis, _COMPARE_DELETE_LUA, keys=(key,), args=(value,))
+        if deleted is _SCRIPT_UNAVAILABLE:
+            cur = await redis.get(key)
+            cur_decoded = cur.decode("utf-8", "ignore") if isinstance(cur, (bytes, bytearray)) else cur
+            if cur_decoded == value:
+                await redis.delete(key)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Redis lock release failed: %s", str(exc)[:200])
 
 
 def make_lock_value(requested_by: str) -> str:
-    return f"{requested_by}:{int(time.time())}"
+    return f"{requested_by}:{uuid4().hex}"

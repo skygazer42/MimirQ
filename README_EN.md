@@ -301,32 +301,32 @@ The standard Dify external-knowledge endpoint is `POST /api/v1/integrations/dify
 
 MimirQ has powered a **municipal government Q&A assistant** across seven district-level and one city-level knowledge base. The latest direct-retrieval rerun used input SHA-256 `5a4c67...fac2`, with the following results:
 
-| Latest result (2026-07-23) | Result |
+| Latest result (2026-07-24) | Result |
 |:---|---:|
 | Successful execution | **800 / 800**, 0 timeouts |
 | Accurate / partially accurate / insufficient evidence | **797 / 3 / 0** |
 | Accuracy / usability | **99.6% / 100%** |
-| Mean / P50 / P95 / P99 | **1.08s / 0.81s / 3.61s / 7.73s** |
+| Mean / P50 / P95 / P99 | **1.15s / 0.83s / 4.00s / 8.95s** |
 
 This direct-retrieval run reached 99.7% evidence-clause coverage. Multi-knowledge-base retrieval across different embedding runtimes is sharded by a generic retrieval layer, with no domain hard-coding.
 
 An independent E2E load test — reranker enabled, response cache bypassed per request — cut total wall time for 12 requests from 41.46s to 30.14s at retrieval concurrency 3, and for 6 requests from 54.61s to 31.60s at conversation concurrency 3, both with 0 errors. Concurrency raises per-request latency; what is validated here is same-batch throughput improvement, not a hardware capacity ceiling.
 
 <details>
-<summary><b>Expand the 2026-07-23 four-way same-question rerun</b></summary>
+<summary><b>Expand the 2026-07-24 four-way same-question rerun</b></summary>
 
 The same fixed 800 questions were rerun across four real integration paths:
 
-<!-- Data source: MimirQ direct from artifacts/changzhou_mimirq_direct_800_corefix_20260723/comparison_report.json (2026-07-23T08:18:30Z); other paths from artifacts/changzhou_dify_4way_800_20260723/comparison_report.json; input SHA-256 5a4c67c42e8f8123774279d46af39ccc793da1b89fdea19a7359f63c8cb2fac2. -->
+<!-- Data source: artifacts/changzhou_dify_4way_800_20260724/comparison_report.json (2026-07-24T04:02:01Z); input SHA-256 5a4c67c42e8f8123774279d46af39ccc793da1b89fdea19a7359f63c8cb2fac2. -->
 
 | Path | Successful execution | Accuracy / usability | Answer clause coverage | Answer evidence-supported | Wrong-evidence rate | Mean / P50 / P95 |
 |:---|---:|---:|---:|---:|---:|---:|
-| **MimirQ direct retrieval** | **800 / 800** | **99.6% / 100%** | **99.7%** | **99.8%** | 3.0% | **1.08s / 0.81s / 3.61s** |
-| **Dify External → MimirQ** | **800 / 800**¹ | 59.8% / 89.5% | 81.9% | **97.0%** | **2.7%** | 10.06s / 9.47s / 16.52s |
-| **Dify HTTP → MimirQ** | **800 / 800** | **65.2% / 91.9%** | **84.0%** | 94.0% | 3.6% | 7.69s / 7.49s / 9.98s |
-| **Dify native knowledge**² | **800 / 800** | 38.9% / 76.7% | 67.3% | 87.1% | 79.1% | 10.61s / 8.51s / 27.64s |
+| **MimirQ direct retrieval** | **800 / 800** | **99.6% / 100%** | **99.7%** | **99.8%** | 3.0% | **1.15s / 0.83s / 4.00s** |
+| **Dify External → MimirQ** | **800 / 800** | 60.8% / 91.4% | 82.9% | **97.3%** | **2.7%** | 6.69s / 6.09s / 11.79s |
+| **Dify HTTP → MimirQ** | **800 / 800** | **67.6% / 93.0%** | **85.6%** | 94.6% | 3.6% | 5.20s / 5.04s / 7.19s |
+| **Dify native knowledge** | **800 / 800** | 38.8% / 74.9% | 66.0% | 85.6% | 79.1% | 10.34s / 8.28s / 26.49s |
 
-Retrieval evidence coverage on MimirQ's two Dify paths was 99.7% / 96.8%, but generated-answer clause coverage was 81.9% / 84.0% — the loss is in workflow answer generation, not knowledge recall. ¹ External at concurrency 4 first returned 788 / 800, with 11 remote disconnects and 1 upstream model 500; concurrency 1 recovered by retrying only the failed questions. ² Native knowledge does not go through MimirQ; it reuses the full 2026-07-21 result for the same input and same app, with a fresh 125 / 125 spot-run this round confirming the path still works.
+Retrieval evidence coverage on MimirQ's two Dify paths was 99.7% / 96.8%, but generated-answer clause coverage was 82.9% / 85.6%: the main loss is in workflow answer generation, not knowledge recall. All four paths ran the full 800 questions at concurrency 3 in this round. Dify native knowledge does not go through MimirQ; two upstream Nginx 504 responses on its first pass recovered automatically, yielding 800 / 800 final successes.
 
 </details>
 

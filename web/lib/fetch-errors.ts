@@ -1,23 +1,8 @@
 import { extractBackendMessage, extractBackendRequestId, withRequestId } from '@/lib/api-errors'
-import { clearAuthSession, getAccessToken } from '@/lib/auth-storage'
 
 export async function buildFetchError(response: Response, fallbackMessage: string): Promise<Error> {
   let requestId = response.headers.get('X-Request-ID') || undefined
   let message = `${fallbackMessage} (HTTP ${response.status})`
-
-  // Match axios behaviour: if a stored JWT token is rejected, clear it so the UI can recover.
-  if (response.status === 401) {
-    const token = getAccessToken()
-    if (token) {
-      clearAuthSession()
-      if (globalThis.window !== undefined) {
-        const path = String(globalThis.window.location?.pathname || '')
-        if (!path.startsWith('/auth')) {
-          globalThis.window.location.href = '/auth'
-        }
-      }
-    }
-  }
 
   try {
     const raw = await response.text()
