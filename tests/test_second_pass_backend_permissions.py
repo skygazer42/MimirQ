@@ -76,8 +76,7 @@ async def test_rtbf_execution_requires_lifecycle_permission(monkeypatch: pytest.
     assert cascade_called is False
 
 
-@pytest.mark.asyncio
-async def test_prompt_template_mutations_require_settings_write(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_prompt_template_mutations_require_settings_write(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.api.v1 import prompt_templates
 
     def _deny(*_args, **_kwargs) -> None:
@@ -130,7 +129,7 @@ async def test_prompt_template_mutations_require_settings_write(monkeypatch: pyt
 
     for operation in operations:
         with pytest.raises(HTTPException) as exc_info:
-            await operation()
+            operation()
         assert exc_info.value.status_code == 403
     assert db.commits == 0
 

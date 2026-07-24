@@ -2,9 +2,21 @@ import type { AuthResponse, LoginRequest, RegisterRequest, UserProfile } from '@
 
 import { apiClient, openapiRequest } from '@/lib/api/core'
 
+export type RegisterPayload = RegisterRequest & {
+  bootstrapToken?: string
+}
+
 export const authApi = {
-  async register(payload: RegisterRequest): Promise<AuthResponse> {
-    return openapiRequest({ path: '/api/v1/auth/register', method: 'post', body: payload })
+  async register(payload: RegisterPayload): Promise<AuthResponse> {
+    const { bootstrapToken, ...body } = payload
+    return openapiRequest({
+      path: '/api/v1/auth/register',
+      method: 'post',
+      body,
+      headers: bootstrapToken?.trim()
+        ? { 'X-Bootstrap-Token': bootstrapToken.trim() }
+        : undefined,
+    })
   },
 
   async login(payload: LoginRequest): Promise<AuthResponse> {

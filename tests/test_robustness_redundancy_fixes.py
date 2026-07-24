@@ -118,6 +118,35 @@ def test_dataset_scoped_vector_write_rejects_misaligned_ids(
         )
 
 
+def test_indexer_embedding_runtime_for_document_propagates_invalid_dataset_scoped_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.services.indexer as indexer_module
+
+    tenant_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+
+    class _Query:
+        def filter(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return self
+
+        def first(self):  # noqa: ANN202
+            return (uuid.uuid4(),)
+
+    indexer = indexer_module.Indexer.__new__(indexer_module.Indexer)
+    indexer._db = SimpleNamespace(query=lambda *_args, **_kwargs: _Query())
+    monkeypatch.setattr(indexer_module.settings, "VECTOR_BACKEND", "faiss", raising=False)
+    monkeypatch.setattr(
+        indexer,
+        "_load_dataset_metadata",
+        lambda **_kwargs: {"embedding_defaults": {"provider": "local", "model": "embed-a"}},
+        raising=False,
+    )
+
+    with pytest.raises(ValueError, match="VECTOR_BACKEND=milvus"):
+        indexer._embedding_runtime_for_document(tenant_id=tenant_id, document_id=document_id)
+
+
 def _configure_retrieval_test(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.core.config import settings
 
@@ -224,6 +253,39 @@ def test_multi_dataset_scope_is_a_first_class_retrieval_boundary(
     }
     assert retriever._last_debug_metrics["scope"]["kind"] == "dataset_ids"
     assert retriever._last_debug_metrics["scope"]["dataset_ids_count"] == 2
+
+
+def test_retriever_embedding_runtime_propagates_invalid_dataset_scoped_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.retriever as retriever_module
+    from app.rag.retriever import HybridRetriever
+
+    _configure_retrieval_test(monkeypatch)
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+
+    class _Query:
+        def filter(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return self
+
+        def first(self):  # noqa: ANN202
+            return ({"embedding_defaults": {"provider": "local", "model": "embed-a"}},)
+
+    class _Session:
+        def query(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return _Query()
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(retriever_module.settings, "VECTOR_BACKEND", "faiss", raising=False)
+    monkeypatch.setattr(retriever_module, "SessionLocal", lambda: _Session(), raising=True)
+
+    with pytest.raises(ValueError, match="VECTOR_BACKEND=milvus"):
+        HybridRetriever(tenant_id=tenant_id, dataset_ids=[dataset_id])._resolve_embedding_runtime(
+            tenant_id=tenant_id
+        )
 
 
 @pytest.mark.parametrize("retrieval_mode", ["vector", "keyword"])

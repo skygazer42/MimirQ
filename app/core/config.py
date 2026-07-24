@@ -2345,6 +2345,11 @@ class Settings(BaseSettings):
         # Security: Reduce public API surface in production by default.
         if is_production:
             fields_set = getattr(self, "model_fields_set", set()) or set()
+            for field_name in ("DB_CREATE_ALL_ON_STARTUP", "DB_RUNTIME_MIGRATIONS_ENABLED"):
+                if field_name not in fields_set:
+                    setattr(self, field_name, False)
+                elif bool(getattr(self, field_name, False)):
+                    raise ValueError(f"{field_name} must be false in production; run `make db-upgrade` before startup")
             if "API_DOCS_ENABLED" not in fields_set:
                 self.API_DOCS_ENABLED = False
             if "API_OPENAPI_ENABLED" not in fields_set:

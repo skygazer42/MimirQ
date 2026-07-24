@@ -80,36 +80,47 @@ class DatasetService:
         owner_id: str,
         partial_members: list[str] | None = None,
         partial_groups: list[UUID] | None = None,
+        dataset_metadata: dict | None = None,
     ) -> Dataset:
         member = DatasetService.ensure_member(db, tenant_id, owner_id)
         DatasetService._assert_edit_role(member)
-        if permission != DatasetPermissionEnum.PARTIAL_MEMBERS:
-            partial_members = []
-            partial_groups = []
+        try:
+            if permission != DatasetPermissionEnum.PARTIAL_MEMBERS:
+                partial_members = []
+                partial_groups = []
 
-        exists = db.query(Dataset.id).filter(Dataset.tenant_id == tenant_id, Dataset.name == name).first()
-        if exists:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Dataset name already exists")
+            exists = db.query(Dataset.id).filter(Dataset.tenant_id == tenant_id, Dataset.name == name).first()
+            if exists:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Dataset name already exists")
 
-        dataset = Dataset(
-            tenant_id=tenant_id, name=name, description=description, permission=permission, owner_id=owner_id
-        )
-        db.add(dataset)
-        db.commit()
-        db.refresh(dataset)
-
-        if permission == DatasetPermissionEnum.PARTIAL_MEMBERS and partial_members:
-            DatasetPermissionService.update_partial_member_list(db, tenant_id, dataset.id, partial_members)
-        if permission == DatasetPermissionEnum.PARTIAL_MEMBERS and partial_groups:
-            DatasetGroupPermissionService.update_partial_group_list(
-                db,
-                tenant_id,
-                dataset.id,
-                partial_groups,
-                actor_id=owner_id,
+            dataset = Dataset(
+                tenant_id=tenant_id,
+                name=name,
+                description=description,
+                permission=permission,
+                owner_id=owner_id,
+                dataset_metadata=dict(dataset_metadata or {}),
             )
+            db.add(dataset)
+            db.flush()
 
-        return dataset
+            if permission == DatasetPermissionEnum.PARTIAL_MEMBERS and partial_members:
+                DatasetPermissionService.update_partial_member_list(db, tenant_id, dataset.id, partial_members)
+            if permission == DatasetPermissionEnum.PARTIAL_MEMBERS and partial_groups:
+                DatasetGroupPermissionService.update_partial_group_list(
+                    db,
+                    tenant_id,
+                    dataset.id,
+                    partial_groups,
+                    actor_id=owner_id,
+                )
+
+            db.commit()
+            db.refresh(dataset)
+            return dataset
+        except Exception:
+            db.rollback()
+            raise
 
     @staticmethod
     def update_dataset(
@@ -121,61 +132,67 @@ class DatasetService:
         permission: DatasetPermissionEnum | None,
         partial_members: list[str] | None,
         partial_groups: list[UUID] | None,
+        dataset_metadata: dict | None = None,
     ) -> Dataset:
         member = DatasetService.ensure_member(db, dataset.tenant_id, updater_id)
         DatasetService._assert_edit_role(member)
-
-        if name is not None and name != dataset.name:
-            exists = (
-                db.query(Dataset.id)
-                .filter(Dataset.tenant_id == dataset.tenant_id, Dataset.name == name, Dataset.id != dataset.id)
-                .first()
-            )
-            if exists:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Dataset name already exists")
-            dataset.name = name
-        if description is not None:
-            dataset.description = description
-        if permission is not None:
-            dataset.permission = permission
-
-        db.commit()
-        db.refresh(dataset)
-
-        # handle partial members update
-        if permission is not None:
-            if permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
-                DatasetPermissionService.update_partial_member_list(
-                    db, dataset.tenant_id, dataset.id, partial_members or []
+        try:
+            if name is not None and name != dataset.name:
+                exists = (
+                    db.query(Dataset.id)
+                    .filter(Dataset.tenant_id == dataset.tenant_id, Dataset.name == name, Dataset.id != dataset.id)
+                    .first()
                 )
-                DatasetGroupPermissionService.update_partial_group_list(
-                    db,
-                    dataset.tenant_id,
-                    dataset.id,
-                    partial_groups or [],
-                    actor_id=updater_id,
-                )
+                if exists:
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Dataset name already exists")
+                dataset.name = name
+            if description is not None:
+                dataset.description = description
+            if permission is not None:
+                dataset.permission = permission
+            if dataset_metadata is not None:
+                dataset.dataset_metadata = dict(dataset_metadata)
+
+            if permission is not None:
+                if permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
+                    DatasetPermissionService.update_partial_member_list(
+                        db, dataset.tenant_id, dataset.id, partial_members or []
+                    )
+                    DatasetGroupPermissionService.update_partial_group_list(
+                        db,
+                        dataset.tenant_id,
+                        dataset.id,
+                        partial_groups or [],
+                        actor_id=updater_id,
+                    )
+                else:
+                    DatasetPermissionService.clear_partial_member_list(db, dataset.tenant_id, dataset.id)
+                    DatasetGroupPermissionService.clear_partial_group_list(
+                        db,
+                        dataset.tenant_id,
+                        dataset.id,
+                        actor_id=updater_id,
+                    )
             else:
-                DatasetPermissionService.clear_partial_member_list(db, dataset.tenant_id, dataset.id)
-                DatasetGroupPermissionService.clear_partial_group_list(
-                    db,
-                    dataset.tenant_id,
-                    dataset.id,
-                    actor_id=updater_id,
-                )
-        else:
-            if dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS and partial_members is not None:
-                DatasetPermissionService.update_partial_member_list(db, dataset.tenant_id, dataset.id, partial_members)
-            if dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS and partial_groups is not None:
-                DatasetGroupPermissionService.update_partial_group_list(
-                    db,
-                    dataset.tenant_id,
-                    dataset.id,
-                    partial_groups,
-                    actor_id=updater_id,
-                )
+                if dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS and partial_members is not None:
+                    DatasetPermissionService.update_partial_member_list(
+                        db, dataset.tenant_id, dataset.id, partial_members
+                    )
+                if dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS and partial_groups is not None:
+                    DatasetGroupPermissionService.update_partial_group_list(
+                        db,
+                        dataset.tenant_id,
+                        dataset.id,
+                        partial_groups,
+                        actor_id=updater_id,
+                    )
 
-        return dataset
+            db.commit()
+            db.refresh(dataset)
+            return dataset
+        except Exception:
+            db.rollback()
+            raise
 
     @staticmethod
     def check_dataset_permission(
@@ -345,14 +362,12 @@ class DatasetPermissionService:
                     for mid in normalized_member_ids
                 ]
             )
-        db.commit()
 
     @staticmethod
     def clear_partial_member_list(db: Session, tenant_id: UUID, dataset_id: UUID):
         db.query(DatasetPermission).filter(
             DatasetPermission.tenant_id == tenant_id, DatasetPermission.dataset_id == dataset_id
         ).delete()
-        db.commit()
 
 
 class DatasetGroupPermissionService:
@@ -435,7 +450,6 @@ class DatasetGroupPermissionService:
                 "group_count": int(len(normalized or [])),
             },
         )
-        db.commit()
 
     @staticmethod
     def clear_partial_group_list(
@@ -462,4 +476,3 @@ class DatasetGroupPermissionService:
                 "cleared": True,
             },
         )
-        db.commit()

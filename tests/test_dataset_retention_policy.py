@@ -110,20 +110,48 @@ def test_create_dataset_returns_retention_policy(monkeypatch: pytest.MonkeyPatch
         description=None,
         permission=DatasetPermissionEnum.ALL_TEAM_MEMBERS,
         owner_id="owner",
-        dataset_metadata={},
+        dataset_metadata={
+            "retention_policy": {
+                "enabled": True,
+                "action": "archive",
+                "max_age_days": 90,
+                "max_versions": 2,
+            }
+        },
         created_at=now,
         updated_at=now,
     )
 
     monkeypatch.setattr(ds_api, "audit_log_event", lambda *_a, **_k: None, raising=False)
 
-    def _create_dataset(*, db, tenant_id, name, description, permission, owner_id, partial_members, partial_groups):  # noqa: ANN001
+    def _create_dataset(  # noqa: ANN001
+        *,
+        db,
+        tenant_id,
+        name,
+        description,
+        permission,
+        owner_id,
+        partial_members,
+        partial_groups,
+        dataset_metadata=None,
+    ):
         assert tenant_id == dataset_obj.tenant_id
         assert owner_id == "owner"
         assert permission == DatasetPermissionEnum.ALL_TEAM_MEMBERS
+        assert dataset_metadata == {
+            "retention_policy": {
+                "enabled": True,
+                "action": "archive",
+                "max_age_days": 90,
+                "max_versions": 2,
+            }
+        }
         return dataset_obj
 
     monkeypatch.setattr(ds_api.DatasetService, "create_dataset", _create_dataset, raising=True)
+    monkeypatch.setattr(ds_api.DatasetService, "ensure_member", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(ds_api.DatasetService, "_assert_edit_role", lambda *_a, **_k: None, raising=True)
 
     def _override_get_tenant_id() -> uuid.UUID:
         return tenant_id

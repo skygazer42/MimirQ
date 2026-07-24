@@ -385,9 +385,16 @@ class MinIOService:
             logger.info("Image deleted: %s", object_name)
             self._log_metric("delete", True, time.perf_counter() - t0, object_name)
 
-        except Exception as e:  # noqa: BLE001
-            logger.warning("MinIO delete image failed: %s", e)
-            self._log_metric("delete", False, time.perf_counter() - t0, locals().get("object_name", ""), error=str(e))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("MinIO delete image failed: %s", exc)
+            self._log_metric(
+                "delete",
+                False,
+                time.perf_counter() - t0,
+                locals().get("object_name", ""),
+                error=str(exc),
+            )
+            raise RuntimeError(f"MinIO delete image failed: {exc}") from exc
 
     def build_document_object_name(
         self,
@@ -551,9 +558,13 @@ class MinIOService:
     def delete_object(self, *, object_name: str) -> None:
         client = self._get_client()
         t0 = time.perf_counter()
-        with contextlib.suppress(Exception):
+        try:
             client.remove_object(bucket_name=self._bucket_name, object_name=object_name)
             self._log_metric("delete_obj", True, time.perf_counter() - t0, object_name)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("MinIO delete object failed: %s", exc)
+            self._log_metric("delete_obj", False, time.perf_counter() - t0, object_name, error=str(exc))
+            raise RuntimeError(f"MinIO delete object failed: {exc}") from exc
 
     def iter_object_bytes(
         self,

@@ -13,11 +13,12 @@ Security posture:
 
 
 import asyncio
+import contextlib
 import hashlib
 import json
 from collections.abc import Sequence
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.core.config import settings
 from app.core.redis_client import LazyRedisClient
@@ -42,6 +43,8 @@ _redis_client_slot = LazyRedisClient(
 _get_redis_client = _redis_client_slot.get
 _invalidate_redis_client = _redis_client_slot.invalidate
 _inflight_response_futures: dict[str, asyncio.Future[dict[str, Any]]] = {}
+_inflight_response_leases: dict[str, tuple[str, str, asyncio.Task[None]]] = {}
+_inflight_response_cache_write_tasks: dict[str, asyncio.Task[bool]] = {}
 _inflight_response_lock: asyncio.Lock | None = None
 _COMPARE_DELETE_LUA = """
 if redis.call("GET", KEYS[1]) == ARGV[1] then
@@ -49,6 +52,20 @@ if redis.call("GET", KEYS[1]) == ARGV[1] then
 end
 return 0
 """
+_COMPARE_EXPIRE_LUA = """
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+  return redis.call("EXPIRE", KEYS[1], ARGV[2])
+end
+return 0
+"""
+_CHAT_RESPONSE_SINGLEFLIGHT_LEASE_SUFFIX = ":lease"
+_CHAT_RESPONSE_SINGLEFLIGHT_LEASE_POLL_INITIAL_SEC = 0.05
+_CHAT_RESPONSE_SINGLEFLIGHT_LEASE_POLL_MAX_SEC = 0.25
+
+
+def _forget_completed_cache_write(key: str, task: asyncio.Task[bool]) -> None:
+    if _inflight_response_cache_write_tasks.get(key) is task:
+        _inflight_response_cache_write_tasks.pop(key, None)
 
 
 class InflightResponseLeaderCancelledError(RuntimeError):
@@ -160,6 +177,34 @@ async def release_best_effort_redis_lease(key: str, *, value: str) -> None:
     except Exception as exc:  # noqa: BLE001
         logger.warning("Redis lease release failed: %s", str(exc)[:200])
         _invalidate_redis_client()
+
+
+async def extend_best_effort_redis_lease(
+    key: str,
+    *,
+    value: str,
+    ttl_sec: int,
+) -> bool | None:
+    if not key or not value or ttl_sec <= 0:
+        return False
+    client = _get_redis_client()
+    if client is None:
+        return None
+    try:
+        return bool(
+            await asyncio.to_thread(
+                client.eval,
+                _COMPARE_EXPIRE_LUA,
+                1,
+                key,
+                value,
+                max(1, int(ttl_sec)),
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Redis lease extend failed: %s", str(exc)[:200])
+        _invalidate_redis_client()
+        return None
 
 
 def build_chat_cache_key(
@@ -283,29 +328,63 @@ def get_cached_chat_response(key: str) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
+async def get_cached_chat_response_async(key: str) -> dict[str, Any] | None:
+    if not bool(getattr(settings, "CHAT_RESPONSE_CACHE_ENABLED", False)):
+        return None
+    payload = await get_best_effort_json_cache_value(key)
+    return payload if isinstance(payload, dict) else None
+
+
 def set_cached_chat_response(key: str, payload: dict[str, Any]) -> bool:
     """Store payload; returns True when stored."""
     if not bool(getattr(settings, "CHAT_RESPONSE_CACHE_ENABLED", False)):
         return False
 
+    ttl = int(getattr(settings, "CHAT_RESPONSE_CACHE_TTL_SEC", 300) or 0)
+    max_bytes = int(getattr(settings, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 200_000) or 0)
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return _set_cached_chat_response_sync(
+            key,
+            payload,
+            ttl_sec=ttl,
+            max_value_bytes=max_bytes,
+        )
+    task = asyncio.create_task(
+        set_cached_chat_response_async(
+            key,
+            payload,
+            ttl_sec=ttl,
+            max_value_bytes=max_bytes,
+        )
+    )
+    _inflight_response_cache_write_tasks[key] = task
+    task.add_done_callback(lambda done, cache_key=key: _forget_completed_cache_write(cache_key, done))
+    return True
+
+
+def _set_cached_chat_response_sync(
+    key: str,
+    payload: dict[str, Any],
+    *,
+    ttl_sec: int,
+    max_value_bytes: int,
+) -> bool:
+    if not key:
+        return False
     client = _get_redis_client()
     if client is None:
         return False
-
-    ttl = int(getattr(settings, "CHAT_RESPONSE_CACHE_TTL_SEC", 300) or 0)
-    max_bytes = int(getattr(settings, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 200_000) or 0)
-
     try:
         raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     except Exception:  # noqa: BLE001
         return False
-
-    if max_bytes > 0 and len(raw) > max_bytes:
+    if max_value_bytes > 0 and len(raw) > max_value_bytes:
         return False
-
     try:
-        if ttl > 0:
-            client.set(key, raw, ex=ttl)
+        if ttl_sec > 0:
+            client.set(key, raw, ex=ttl_sec)
         else:
             client.set(key, raw)
         return True
@@ -313,6 +392,33 @@ def set_cached_chat_response(key: str, payload: dict[str, Any]) -> bool:
         logger.warning("Chat cache write failed: %s", str(exc)[:200])
         _invalidate_redis_client()
         return False
+
+
+async def set_cached_chat_response_async(
+    key: str,
+    payload: dict[str, Any],
+    *,
+    ttl_sec: int | None = None,
+    max_value_bytes: int | None = None,
+) -> bool:
+    if not bool(getattr(settings, "CHAT_RESPONSE_CACHE_ENABLED", False)):
+        return False
+    ttl = int(
+        ttl_sec
+        if ttl_sec is not None
+        else (getattr(settings, "CHAT_RESPONSE_CACHE_TTL_SEC", 300) or 0)
+    )
+    max_bytes = int(
+        max_value_bytes
+        if max_value_bytes is not None
+        else (getattr(settings, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 200_000) or 0)
+    )
+    return await set_best_effort_json_cache_value(
+        key,
+        payload,
+        ttl_sec=ttl,
+        max_value_bytes=max_bytes,
+    )
 
 
 async def acquire_inflight_chat_response(key: str) -> tuple[bool, asyncio.Future[dict[str, Any]]]:
@@ -335,11 +441,106 @@ async def acquire_inflight_chat_response(key: str) -> tuple[bool, asyncio.Future
         return True, future
 
 
+def _chat_response_singleflight_lease_ttl_sec(response_cache_ttl_sec: int) -> int:
+    admission_timeout_sec = max(
+        15,
+        int(getattr(settings, "RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC", 15.0) or 15.0),
+    )
+    response_ttl_sec = max(60, int(response_cache_ttl_sec or 0))
+    return max(60, min(300, max(response_ttl_sec, admission_timeout_sec)))
+
+
+async def _maintain_inflight_chat_response_lease(
+    lease_key: str,
+    *,
+    owner: str,
+    ttl_sec: int,
+) -> None:
+    renew_interval_sec = max(5.0, min(float(ttl_sec) / 3.0, 30.0))
+    while True:
+        await asyncio.sleep(renew_interval_sec)
+        renewed = await extend_best_effort_redis_lease(
+            lease_key,
+            value=owner,
+            ttl_sec=ttl_sec,
+        )
+        if renewed is False:
+            return
+
+
+async def acquire_or_wait_for_distributed_inflight_chat_response(
+    key: str,
+    *,
+    response_cache_ttl_sec: int,
+) -> tuple[bool, dict[str, Any] | None]:
+    if not key or response_cache_ttl_sec <= 0:
+        return True, None
+
+    lease_key = f"{key}{_CHAT_RESPONSE_SINGLEFLIGHT_LEASE_SUFFIX}"
+    owner = uuid4().hex
+    lease_ttl_sec = _chat_response_singleflight_lease_ttl_sec(response_cache_ttl_sec)
+    poll_delay = _CHAT_RESPONSE_SINGLEFLIGHT_LEASE_POLL_INITIAL_SEC
+
+    while True:
+        cached = await get_cached_chat_response_async(key)
+        if isinstance(cached, dict):
+            return False, cached
+
+        acquired = await try_acquire_best_effort_redis_lease(
+            lease_key,
+            value=owner,
+            ttl_sec=lease_ttl_sec,
+        )
+        if acquired is None:
+            return True, None
+        if acquired:
+            heartbeat = asyncio.create_task(
+                _maintain_inflight_chat_response_lease(
+                    lease_key,
+                    owner=owner,
+                    ttl_sec=lease_ttl_sec,
+                )
+            )
+            _inflight_response_leases[key] = (lease_key, owner, heartbeat)
+            return True, None
+
+        await asyncio.sleep(poll_delay)
+        poll_delay = min(
+            _CHAT_RESPONSE_SINGLEFLIGHT_LEASE_POLL_MAX_SEC,
+            poll_delay * 1.5,
+        )
+
+
 def _pop_inflight_chat_response_future(key: str) -> asyncio.Future[dict[str, Any]] | None:
     return _inflight_response_futures.pop(key, None)
 
 
+def _pop_inflight_chat_response_lease(key: str) -> tuple[str, str, asyncio.Task[None]] | None:
+    return _inflight_response_leases.pop(key, None)
+
+
+def _schedule_inflight_chat_response_lease_release(key: str) -> None:
+    lease = _pop_inflight_chat_response_lease(key)
+    if lease is None:
+        return
+    lease_key, owner, heartbeat = lease
+    cache_write = _inflight_response_cache_write_tasks.get(key)
+
+    async def _release_after_cache_write() -> None:
+        if cache_write is not None:
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await asyncio.shield(cache_write)
+        heartbeat.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await heartbeat
+        await release_best_effort_redis_lease(lease_key, value=owner)
+
+    with contextlib.suppress(RuntimeError):
+        asyncio.create_task(_release_after_cache_write())
+
+
 def resolve_inflight_chat_response(key: str, payload: dict[str, Any]) -> None:
+    _schedule_inflight_chat_response_lease_release(key)
     future = _pop_inflight_chat_response_future(key)
     if future is None or future.done():
         return
@@ -347,6 +548,7 @@ def resolve_inflight_chat_response(key: str, payload: dict[str, Any]) -> None:
 
 
 def reject_inflight_chat_response(key: str, exc: BaseException) -> None:
+    _schedule_inflight_chat_response_lease_release(key)
     future = _pop_inflight_chat_response_future(key)
     if future is None or future.done():
         return
@@ -358,3 +560,7 @@ def clear_inflight_chat_responses() -> None:
     Test helper: drop all in-process singleflight state.
     """
     _inflight_response_futures.clear()
+    for _lease_key, _owner, heartbeat in _inflight_response_leases.values():
+        heartbeat.cancel()
+    _inflight_response_leases.clear()
+    _inflight_response_cache_write_tasks.clear()

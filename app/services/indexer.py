@@ -884,6 +884,8 @@ class Indexer:
             return resolve_dataset_embedding_runtime(
                 self._load_dataset_metadata(tenant_id=tenant_id, dataset_id=dataset_id)
             )
+        except ValueError:
+            raise
         except Exception:
             return resolve_dataset_embedding_runtime(None)
 
@@ -894,10 +896,14 @@ class Indexer:
         document_id: UUID,
         metadata_filter: dict[str, Any] | None = None,
     ) -> None:
-        runtime = self._embedding_runtime_for_document(tenant_id=tenant_id, document_id=document_id)
-        if not runtime.dataset_scoped:
-            return
         if str(getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").strip().lower() != "milvus":
+            return
+        try:
+            runtime = self._embedding_runtime_for_document(tenant_id=tenant_id, document_id=document_id)
+        except ValueError as exc:
+            logger.warning("Skipping dataset-scoped vector cleanup for invalid embedding config: %s", exc)
+            return
+        if not runtime.dataset_scoped:
             return
         adapter = get_milvus_adapter(resolve_collection_name(runtime.collection_name))
         if metadata_filter:
@@ -1094,6 +1100,8 @@ class Indexer:
                 dataset_meta = self._load_dataset_metadata(tenant_id=tenant_id, dataset_id=dataset_uuid)
                 embedding_runtime = resolve_dataset_embedding_runtime(dataset_meta)
                 embedding_space = embedding_runtime.embedding_space_hash
+        except ValueError:
+            raise
         except Exception:
             dataset_id_str = None
             file_type_str = None
@@ -1497,21 +1505,28 @@ class Indexer:
 
         return out
 
-    def delete_chunk_indexes(self, *, tenant_id: UUID, document_id: UUID) -> None:
+    def delete_chunk_indexes(self, *, tenant_id: UUID, document_id: UUID, strict: bool = False) -> None:
+        failures: list[Exception] = []
         try:
             self._delete_dataset_scoped_chunk_vectors(tenant_id=tenant_id, document_id=document_id)
         except Exception as exc:
             logger.warning("Failed to delete dataset-scoped vectors: %s", exc)
+            failures.append(exc)
 
         try:
             get_vector_store().delete_by_document_id(document_id, tenant_id=tenant_id)
         except Exception as exc:
             logger.warning("Failed to delete vectors: %s", exc)
+            failures.append(exc)
 
         try:
             hybrid_retriever.remove_document_from_bm25_index(document_id, tenant_id=tenant_id)
         except Exception as exc:
             logger.warning("Failed to update BM25 index after deletion: %s", exc)
+            failures.append(exc)
+
+        if strict and failures:
+            raise RuntimeError("Document index cleanup failed") from failures[0]
 
     def delete_chunk_indexes_for_doc_pipeline_key(
         self,
@@ -1562,6 +1577,7 @@ class Indexer:
         document_id: UUID,
         commit: bool = True,
         prune_orphan_entities: bool = False,
+        strict: bool = False,
     ) -> dict[str, int]:
         return self._delete_event_indexes(
             tenant_id=tenant_id,
@@ -1573,6 +1589,7 @@ class Indexer:
             ),
             commit=commit,
             prune_orphan_entities=prune_orphan_entities,
+            strict=strict,
         )
 
     def delete_event_indexes_for_chunks(
@@ -1583,6 +1600,7 @@ class Indexer:
         commit: bool = True,
         exclude_event_ids: Sequence[UUID] | None = None,
         prune_orphan_entities: bool = False,
+        strict: bool = False,
     ) -> dict[str, int]:
         """
         Delete KG events (and vectors) for a set of chunk_ids.
@@ -1608,6 +1626,7 @@ class Indexer:
             query=query,
             commit=commit,
             prune_orphan_entities=prune_orphan_entities,
+            strict=strict,
         )
 
     def prune_orphan_entities(
@@ -1616,6 +1635,7 @@ class Indexer:
         tenant_id: UUID,
         entity_ids: Sequence[UUID] | None = None,
         commit: bool = True,
+        strict: bool = False,
     ) -> int:
         """
         Delete KG entities (and vectors) that have no remaining references.
@@ -1657,6 +1677,8 @@ class Indexer:
             self._entity_vector.delete([str(eid) for eid in orphan_ids])
         except Exception as exc:
             logger.warning("Failed to delete KG entity vectors: %s", exc)
+            if strict:
+                raise
 
         self._db.query(KgEntity).filter(KgEntity.id.in_(orphan_ids)).delete(synchronize_session=False)
         if commit:
@@ -1672,6 +1694,7 @@ class Indexer:
         query,
         commit: bool,
         prune_orphan_entities: bool,
+        strict: bool,
     ) -> dict[str, int]:
         event_ids = [row[0] for row in query.with_entities(KgSourceEvent.id).all() if row and row[0]]
         if not event_ids:
@@ -1694,6 +1717,8 @@ class Indexer:
             self._event_vector.delete([str(ev_id) for ev_id in event_ids])
         except Exception as exc:
             logger.warning("Failed to delete KG event vectors: %s", exc)
+            if strict:
+                raise
 
         deleted = int(query.delete(synchronize_session=False) or 0)
         if commit:
@@ -1703,7 +1728,14 @@ class Indexer:
 
         pruned = 0
         if prune_orphan_entities and candidate_entity_ids:
-            pruned = int(self.prune_orphan_entities(tenant_id=tenant_id, entity_ids=candidate_entity_ids, commit=commit))
+            pruned = int(
+                self.prune_orphan_entities(
+                    tenant_id=tenant_id,
+                    entity_ids=candidate_entity_ids,
+                    commit=commit,
+                    strict=strict,
+                )
+            )
 
         return {"events_deleted": deleted, "entities_pruned": pruned}
 

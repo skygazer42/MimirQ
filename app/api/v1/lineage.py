@@ -113,7 +113,7 @@ async def get_chunk_lineage(
         account_id=account_id,
         document_id=document.id,
     ):
-        raise HTTPException(status_code=403, detail="No permission to access chunk lineage")
+        raise HTTPException(status_code=404, detail="Chunk lineage not found")
     return build_chunk_lineage_payload(
         chunk=deps["chunk"],
         document=document,
@@ -142,7 +142,7 @@ async def get_answer_lineage(
         account_id=account_id,
         trace_record=record,
     ):
-        raise HTTPException(status_code=403, detail="No permission to access answer lineage")
+        raise HTTPException(status_code=404, detail="Answer lineage not found")
     payload = build_answer_lineage_payload(trace_record=record)
     if str(payload.get("schema") or "") != ANSWER_LINEAGE_SCHEMA:
         raise HTTPException(status_code=500, detail="Invalid answer lineage payload")

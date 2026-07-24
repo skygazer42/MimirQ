@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
+from app.rag.core.logging import get_logger
 from app.services.dataset_service import DatasetService
 from app.storage.object.minio import is_minio_uri, parse_minio_uri
 
@@ -27,6 +28,7 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 }
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+logger = get_logger(__name__)
 
 
 def _documents_module() -> Any:
@@ -105,6 +107,7 @@ async def download_document(
         try:
             stat = docs_mod.minio_service.stat_object(object_name=ref.object_name)
         except Exception as exc:  # noqa: BLE001
+            logger.warning("Document asset stat failed for %r: %r", ref.object_name[:200], str(exc)[:200])
             raise HTTPException(status_code=404, detail=docs_mod.DOCUMENT_FILE_NOT_FOUND_DETAIL) from exc
 
         total_size = int(getattr(stat, "size", 0) or 0)
@@ -407,7 +410,8 @@ async def get_image_url(
     try:
         stat = docs_mod.minio_service.stat_object(object_name=object_name)
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=404, detail=f"Image not found or retrieval failed: {str(exc)}") from exc
+        logger.warning("Image asset stat failed for %r: %r", object_name[:200], str(exc)[:200])
+        raise HTTPException(status_code=404, detail=docs_mod.IMAGE_NOT_FOUND_DETAIL) from exc
 
     total_size = int(getattr(stat, "size", 0) or 0)
     if total_size <= 0:

@@ -140,27 +140,21 @@ def _delete_document_minio_images(db: Session, *, tenant_id: UUID, document_id: 
     _add_document_metadata_img_ids(img_ids, document)
     _add_chunk_metadata_img_ids(db, tenant_id=tenant_id, document_id=document_id, img_ids=img_ids)
     for img_id in sorted(img_ids):
-        try:
-            minio_service.delete_image(img_id, extension="jpg")
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to delete image %s from object storage: %s", img_id, exc)
+        minio_service.delete_image(img_id, extension="jpg")
 
 
 def _delete_document_table_store(*, tenant_id: UUID, document_id: UUID, document: DBDocument) -> None:
     if document.dataset_id is None or str(document.file_type or "").lower() not in {"csv", "xls", "xlsx"}:
         return
-    try:
-        from app.services.table_store import table_store_path
+    from app.services.table_store import table_store_path
 
-        db_path = table_store_path(tenant_id=tenant_id, dataset_id=document.dataset_id, document_id=document.id)
-        if db_path.exists():
-            db_path.unlink(missing_ok=True)
-        with contextlib.suppress(Exception):
-            db_path.parent.rmdir()
-        with contextlib.suppress(Exception):
-            db_path.parent.parent.rmdir()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to delete table store file for document %s: %s", document_id, str(exc)[:200])
+    db_path = table_store_path(tenant_id=tenant_id, dataset_id=document.dataset_id, document_id=document.id)
+    if db_path.exists():
+        db_path.unlink(missing_ok=True)
+    with contextlib.suppress(OSError):
+        db_path.parent.rmdir()
+    with contextlib.suppress(OSError):
+        db_path.parent.parent.rmdir()
 
 
 def _delete_minio_document_object(*, raw_path: str, tenant_id: UUID, document: DBDocument) -> None:
@@ -168,19 +162,20 @@ def _delete_minio_document_object(*, raw_path: str, tenant_id: UUID, document: D
         return
     try:
         ref = parse_minio_uri(raw_path)
-        if ref.bucket != str(getattr(settings, "MINIO_BUCKET_NAME", "")):
-            return
-        dataset_id = str(document.dataset_id) if document.dataset_id else str(tenant_id)
-        expected_object = minio_service.build_document_object_name(
-            tenant_id=str(tenant_id),
-            dataset_id=dataset_id,
-            document_id=str(document.id),
-            extension=f".{(document.file_type or '').lower()}",
-        )
-        if ref.object_name == expected_object:
-            minio_service.delete_object(object_name=ref.object_name)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to delete document from object storage: %s", exc)
+    except ValueError:
+        logger.warning("Skipping malformed MinIO document URI: %r", raw_path[:200])
+        return
+    if ref.bucket != str(getattr(settings, "MINIO_BUCKET_NAME", "")):
+        return
+    dataset_id = str(document.dataset_id) if document.dataset_id else str(tenant_id)
+    expected_object = minio_service.build_document_object_name(
+        tenant_id=str(tenant_id),
+        dataset_id=dataset_id,
+        document_id=str(document.id),
+        extension=f".{(document.file_type or '').lower()}",
+    )
+    if ref.object_name == expected_object:
+        minio_service.delete_object(object_name=ref.object_name)
 
 
 def _delete_local_document_file(*, raw_path: str, tenant_id: UUID) -> None:
@@ -199,16 +194,13 @@ def _delete_local_document_file(*, raw_path: str, tenant_id: UUID) -> None:
 
 
 def _delete_document_file(*, tenant_id: UUID, document: DBDocument) -> None:
-    try:
-        raw_path = str(document.file_path or "").strip()
-        if not raw_path or raw_path.startswith(MANUAL_FILE_PATH_PREFIX):
-            return
-        if is_minio_uri(raw_path):
-            _delete_minio_document_object(raw_path=raw_path, tenant_id=tenant_id, document=document)
-            return
-        _delete_local_document_file(raw_path=raw_path, tenant_id=tenant_id)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to delete file: %s", exc)
+    raw_path = str(document.file_path or "").strip()
+    if not raw_path or raw_path.startswith(MANUAL_FILE_PATH_PREFIX):
+        return
+    if is_minio_uri(raw_path):
+        _delete_minio_document_object(raw_path=raw_path, tenant_id=tenant_id, document=document)
+        return
+    _delete_local_document_file(raw_path=raw_path, tenant_id=tenant_id)
 
 
 def _touch_dataset_updated_after_delete(db: Session, *, tenant_id: UUID, document: DBDocument) -> None:
@@ -279,23 +271,19 @@ def _delete_document_record(
 
 
 def _cleanup_document_kg_artifacts(db: Session, *, tenant_id: UUID, document_id: UUID) -> None:
-    try:
-        from app.rag.kg.models import KgRelation
+    from app.rag.kg.models import KgRelation
 
-        db.query(KgRelation).filter(
-            KgRelation.tenant_id == tenant_id,
-            KgRelation.document_id == document_id,
-        ).delete(synchronize_session=False)
-        _get_indexer_class()(db).delete_event_indexes(
-            tenant_id=tenant_id,
-            document_id=document_id,
-            commit=False,
-            prune_orphan_entities=True,
-        )
-        db.commit()
-    except Exception:
-        with contextlib.suppress(Exception):
-            db.rollback()
+    db.query(KgRelation).filter(
+        KgRelation.tenant_id == tenant_id,
+        KgRelation.document_id == document_id,
+    ).delete(synchronize_session=False)
+    _get_indexer_class()(db).delete_event_indexes(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        commit=False,
+        prune_orphan_entities=True,
+        strict=True,
+    )
 
 
 async def _delete_document_lifecycle(
@@ -326,12 +314,19 @@ async def _delete_document_lifecycle(
     _cancel_processing_document(db, document)
     _persist_document_deleting_state(db, document=document, account_id=account_id)
     await _abort_document_tasks_before_delete(document_id=document_id, task_ids=_document_task_ids(document))
-    _delete_document_minio_images(db, tenant_id=tenant_id, document_id=document_id, document=document)
-    _get_indexer_class()(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
-    _delete_document_table_store(tenant_id=tenant_id, document_id=document_id, document=document)
-    _delete_document_file(tenant_id=tenant_id, document=document)
-    _touch_dataset_updated_after_delete(db, tenant_id=tenant_id, document=document)
     try:
+        # The committed `deleting` row is the retryable tombstone. External deletes
+        # are idempotent; only remove the row after every cleanup step succeeds.
+        _delete_document_minio_images(db, tenant_id=tenant_id, document_id=document_id, document=document)
+        _get_indexer_class()(db).delete_chunk_indexes(
+            tenant_id=tenant_id,
+            document_id=document_id,
+            strict=True,
+        )
+        _delete_document_table_store(tenant_id=tenant_id, document_id=document_id, document=document)
+        _delete_document_file(tenant_id=tenant_id, document=document)
+        _cleanup_document_kg_artifacts(db, tenant_id=tenant_id, document_id=document_id)
+        _touch_dataset_updated_after_delete(db, tenant_id=tenant_id, document=document)
         _delete_document_record(
             db,
             tenant_id=tenant_id,
@@ -343,4 +338,3 @@ async def _delete_document_lifecycle(
         with contextlib.suppress(Exception):
             db.rollback()
         raise
-    _cleanup_document_kg_artifacts(db, tenant_id=tenant_id, document_id=document_id)

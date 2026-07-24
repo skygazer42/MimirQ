@@ -347,7 +347,11 @@ MimirQ 两条 Dify 链路的检索证据覆盖为 99.7% / 96.8%，但生成答�
 # AUTH_MODE=jwt
 # SECRET_KEY=<至少 32 位随机字符串>
 # POSTGRES_PASSWORD=<强密码>
+# MIMIRQ_DB_CREATE_ALL_ON_STARTUP=false
+# MIMIRQ_DB_RUNTIME_MIGRATIONS_ENABLED=false
 
+make infra-up
+make db-upgrade
 make up
 ```
 

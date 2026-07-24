@@ -1251,6 +1251,8 @@ class HybridRetriever(BaseRetriever):
                 DatasetEmbeddingRuntimeConfig,
                 replace(runtime, embedding_space_hash=current_embedding_space_hash()),
             )
+        except ValueError:
+            raise
         except Exception as exc:
             _log_retriever_fallback('_resolve_embedding_runtime', exc)
             runtime = resolve_dataset_embedding_runtime(None)
@@ -1299,6 +1301,8 @@ class HybridRetriever(BaseRetriever):
                     )
                 grouped.setdefault(runtime, []).append(dataset_id)
             return [(runtime, tuple(group_ids)) for runtime, group_ids in grouped.items()]
+        except ValueError:
+            raise
         except Exception as exc:
             _log_retriever_fallback('_resolve_dataset_runtime_shards', exc)
             return []

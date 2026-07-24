@@ -70,6 +70,7 @@ from app.rag.retrieval.plugin_policy import (
 )
 from app.services.chat_response_cache import (
     InflightResponseLeaderCancelledError,
+    extend_best_effort_redis_lease,
     get_best_effort_json_cache_value,
     release_best_effort_redis_lease,
     set_best_effort_json_cache_value,
@@ -395,6 +396,7 @@ _DIFY_RESPONSE_CACHE_REDIS_SCHEMA = "mimirq.dify_external_response_cache.redis.v
 _DIFY_RESPONSE_SINGLEFLIGHT_LEASE_SUFFIX = ":lease"
 _DIFY_RESPONSE_SINGLEFLIGHT_LEASE_POLL_INITIAL_SEC = 0.05
 _DIFY_RESPONSE_SINGLEFLIGHT_LEASE_POLL_MAX_SEC = 0.25
+_DIFY_WARMUP_LEASE_KEY = "dify:warmup:lease"
 _dify_external_warmup_state_lock = threading.Lock()
 _dify_external_warmup_state: dict[str, Any] = {
     "enabled": False,
@@ -503,6 +505,61 @@ async def _release_distributed_dify_response_lease(lease: _DifyDistributedLease 
     if lease is None:
         return
     await release_best_effort_redis_lease(lease.lease_key, value=lease.owner)
+
+
+async def _maintain_best_effort_dify_lease(
+    lease: _DifyDistributedLease | None,
+    *,
+    ttl_sec: int,
+) -> None:
+    if lease is None or ttl_sec <= 0:
+        return
+    renew_interval_sec = max(5.0, min(float(ttl_sec) / 3.0, 30.0))
+    while True:
+        await asyncio.sleep(renew_interval_sec)
+        renewed = await extend_best_effort_redis_lease(
+            lease.lease_key,
+            value=lease.owner,
+            ttl_sec=ttl_sec,
+        )
+        if renewed is False:
+            return
+
+
+def _dify_warmup_lease_ttl_sec(*, knowledge_count: int, timeout_sec: float) -> int:
+    per_item_timeout_sec = max(1, int(timeout_sec or 0))
+    estimated_total_sec = max(60, per_item_timeout_sec * max(1, int(knowledge_count)) + 30)
+    return min(1800, estimated_total_sec)
+
+
+def _dify_warmup_can_use_retrieval_slot() -> bool:
+    try:
+        limit = int(getattr(settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 1) or 0)
+    except (TypeError, ValueError):
+        limit = 1
+    return limit <= 0 or limit > 1
+
+
+async def _acquire_dify_warmup_lease(
+    *,
+    knowledge_count: int,
+    timeout_sec: float,
+) -> tuple[_DifyDistributedLease | None, int] | tuple[None, None]:
+    lease_ttl_sec = _dify_warmup_lease_ttl_sec(
+        knowledge_count=knowledge_count,
+        timeout_sec=timeout_sec,
+    )
+    owner = uuid.uuid4().hex
+    acquired = await try_acquire_best_effort_redis_lease(
+        _DIFY_WARMUP_LEASE_KEY,
+        value=owner,
+        ttl_sec=lease_ttl_sec,
+    )
+    if acquired is None:
+        return None, None
+    if not acquired:
+        return None, lease_ttl_sec
+    return _DifyDistributedLease(lease_key=_DIFY_WARMUP_LEASE_KEY, owner=owner), lease_ttl_sec
 
 
 def _set_dify_external_warmup_status(**updates: Any) -> None:
@@ -7223,6 +7280,24 @@ async def warmup_dify_external_knowledge(
             elapsed_ms=round((time.perf_counter() - started) * 1000, 2),
         )
         return {"enabled": True, "reason": "no_knowledge_ids", "attempted": 0, "completed": 0, "failed": 0}
+    if not _dify_warmup_can_use_retrieval_slot():
+        elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+        _set_dify_external_warmup_status(
+            enabled=True,
+            status="skipped",
+            attempted=0,
+            completed=0,
+            failed=0,
+            elapsed_ms=elapsed_ms,
+        )
+        return {
+            "enabled": True,
+            "reason": "warmup_skipped_single_retrieval_slot",
+            "attempted": 0,
+            "completed": 0,
+            "failed": 0,
+            "elapsed_ms": elapsed_ms,
+        }
     _set_dify_external_warmup_status(enabled=True, status="running", attempted=len(knowledge_ids))
 
     factory = db_factory or SessionLocal
@@ -7231,71 +7306,112 @@ async def warmup_dify_external_knowledge(
     top_k = _resolve_dify_warmup_top_k()
     score_threshold = 0.0
     timeout_sec = _resolve_dify_warmup_timeout_sec()
+    warmup_lease, warmup_lease_ttl_sec = await _acquire_dify_warmup_lease(
+        knowledge_count=len(knowledge_ids),
+        timeout_sec=timeout_sec,
+    )
+    if warmup_lease is None:
+        elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+        reason = "warmup_lease_unavailable" if warmup_lease_ttl_sec is None else "warmup_locked"
+        _set_dify_external_warmup_status(
+            enabled=True,
+            status="skipped",
+            attempted=0,
+            completed=0,
+            failed=0,
+            elapsed_ms=elapsed_ms,
+        )
+        result = {
+            "enabled": True,
+            "reason": reason,
+            "attempted": 0,
+            "completed": 0,
+            "failed": 0,
+            "elapsed_ms": elapsed_ms,
+        }
+        if warmup_lease_ttl_sec is not None:
+            result["retry_after_sec"] = warmup_lease_ttl_sec
+        return result
+    lease_heartbeat_task: asyncio.Task[Any] | None = None
+    if warmup_lease is not None and warmup_lease_ttl_sec is not None:
+        lease_heartbeat_task = asyncio.create_task(
+            _maintain_best_effort_dify_lease(
+                warmup_lease,
+                ttl_sec=warmup_lease_ttl_sec,
+            )
+        )
     completed = 0
     failed = 0
 
-    for knowledge_id in knowledge_ids:
-        item_started = time.perf_counter()
-        db = None
-        try:
-            scope_plan = _resolve_knowledge_dataset_scope(knowledge_id, query=query)
-            primary_scope_enabled = bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_SCOPE_ENABLED", True))
-            dataset_ids = list(scope_plan.primary_dataset_ids if primary_scope_enabled else scope_plan.dataset_ids)
-            if not dataset_ids:
-                dataset_ids = list(scope_plan.dataset_ids)
-            db = factory()
-            await asyncio.wait_for(
-                _retrieve_dataset_citations(
-                    db=db,
-                    tenant_id=tenant_id,
-                    account_id=account_id,
-                    dataset_ids=dataset_ids,
-                    query=query,
-                    top_k=top_k,
-                    requested_top_k=top_k,
-                    score_threshold=score_threshold,
-                    enable_kg_query_expansion=False,
-                    enable_kg_chunk_injection=False,
-                    enable_kg_chunk_boost=False,
-                    enable_reranker=False,
-                ),
-                timeout=timeout_sec,
-            )
-            completed += 1
-            item_elapsed_ms = round((time.perf_counter() - item_started) * 1000, 2)
-            logger.info(
-                "Dify external warmup completed knowledge_id_hash=%s dataset_count=%s elapsed_ms=%s",
-                _diagnostic_value_hash(knowledge_id),
-                len(dataset_ids),
-                item_elapsed_ms,
-                extra={
-                    "event": "dify_external_warmup",
-                    "phase": "knowledge_completed",
-                    "knowledge_id_hash": _diagnostic_value_hash(knowledge_id),
-                    "dataset_count": len(dataset_ids),
-                    "elapsed_ms": item_elapsed_ms,
-                },
-            )
-        except Exception:  # noqa: BLE001
-            failed += 1
-            item_elapsed_ms = round((time.perf_counter() - item_started) * 1000, 2)
-            logger.warning(
-                "Dify external warmup failed knowledge_id_hash=%s elapsed_ms=%s",
-                _diagnostic_value_hash(knowledge_id),
-                item_elapsed_ms,
-                exc_info=True,
-                extra={
-                    "event": "dify_external_warmup",
-                    "phase": "knowledge_failed",
-                    "knowledge_id_hash": _diagnostic_value_hash(knowledge_id),
-                    "elapsed_ms": item_elapsed_ms,
-                },
-            )
-        finally:
-            if db is not None:
-                close = getattr(db, "close", None)
-                if callable(close):
-                    close()
+    try:
+        for knowledge_id in knowledge_ids:
+            item_started = time.perf_counter()
+            db = None
+            try:
+                scope_plan = _resolve_knowledge_dataset_scope(knowledge_id, query=query)
+                primary_scope_enabled = bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_SCOPE_ENABLED", True))
+                dataset_ids = list(scope_plan.primary_dataset_ids if primary_scope_enabled else scope_plan.dataset_ids)
+                if not dataset_ids:
+                    dataset_ids = list(scope_plan.dataset_ids)
+                db = factory()
+                await asyncio.wait_for(
+                    _retrieve_dataset_citations(
+                        db=db,
+                        tenant_id=tenant_id,
+                        account_id=account_id,
+                        dataset_ids=dataset_ids,
+                        query=query,
+                        top_k=top_k,
+                        requested_top_k=top_k,
+                        score_threshold=score_threshold,
+                        enable_kg_query_expansion=False,
+                        enable_kg_chunk_injection=False,
+                        enable_kg_chunk_boost=False,
+                        enable_reranker=False,
+                    ),
+                    timeout=timeout_sec,
+                )
+                completed += 1
+                item_elapsed_ms = round((time.perf_counter() - item_started) * 1000, 2)
+                logger.info(
+                    "Dify external warmup completed knowledge_id_hash=%s dataset_count=%s elapsed_ms=%s",
+                    _diagnostic_value_hash(knowledge_id),
+                    len(dataset_ids),
+                    item_elapsed_ms,
+                    extra={
+                        "event": "dify_external_warmup",
+                        "phase": "knowledge_completed",
+                        "knowledge_id_hash": _diagnostic_value_hash(knowledge_id),
+                        "dataset_count": len(dataset_ids),
+                        "elapsed_ms": item_elapsed_ms,
+                    },
+                )
+            except Exception:  # noqa: BLE001
+                failed += 1
+                item_elapsed_ms = round((time.perf_counter() - item_started) * 1000, 2)
+                logger.warning(
+                    "Dify external warmup failed knowledge_id_hash=%s elapsed_ms=%s",
+                    _diagnostic_value_hash(knowledge_id),
+                    item_elapsed_ms,
+                    exc_info=True,
+                    extra={
+                        "event": "dify_external_warmup",
+                        "phase": "knowledge_failed",
+                        "knowledge_id_hash": _diagnostic_value_hash(knowledge_id),
+                        "elapsed_ms": item_elapsed_ms,
+                    },
+                )
+            finally:
+                if db is not None:
+                    close = getattr(db, "close", None)
+                    if callable(close):
+                        close()
+    finally:
+        if lease_heartbeat_task is not None:
+            lease_heartbeat_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await lease_heartbeat_task
+        await _release_distributed_dify_response_lease(warmup_lease)
 
     elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
     result = {
@@ -7332,6 +7448,11 @@ async def _delayed_warmup_dify_external_knowledge() -> dict[str, Any]:
     else:
         # Yield once so lifespan can return before any cold retrieval work runs.
         await asyncio.sleep(0)
+    result = await warmup_dify_external_knowledge()
+    if result.get("reason") != "warmup_locked":
+        return result
+
+    await asyncio.sleep(max(1, int(result.get("retry_after_sec") or 1)))
     return await warmup_dify_external_knowledge()
 
 
@@ -7528,6 +7649,7 @@ async def _retrieve_external_knowledge(
     )
     stage_timings_ms: dict[str, Any] = {}
     distributed_singleflight_lease: _DifyDistributedLease | None = None
+    distributed_singleflight_lease_task: asyncio.Task[Any] | None = None
     if response_cache_enabled or singleflight_enabled:
         cache_token_started = time.perf_counter()
         try:
@@ -7694,6 +7816,13 @@ async def _retrieve_external_knowledge(
                 (time.perf_counter() - distributed_wait_started) * 1000,
                 2,
             )
+            if distributed_leader and distributed_singleflight_lease is not None:
+                distributed_singleflight_lease_task = asyncio.create_task(
+                    _maintain_best_effort_dify_lease(
+                        distributed_singleflight_lease,
+                        ttl_sec=_dify_singleflight_lease_ttl_sec(response_cache_ttl_sec),
+                    )
+                )
             if not distributed_leader:
                 serialized_records = [dict(record) for record in (distributed_records or [])]
                 _dify_response_cache.set(
@@ -8331,9 +8460,17 @@ async def _retrieve_external_knowledge(
                 singleflight_key,
                 {"records": serialized_response_records},
             )
+        if distributed_singleflight_lease_task is not None:
+            distributed_singleflight_lease_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await distributed_singleflight_lease_task
         await _release_distributed_dify_response_lease(distributed_singleflight_lease)
         return DifyExternalKnowledgeResponse(records=response_records)
     except asyncio.CancelledError:
+        if distributed_singleflight_lease_task is not None:
+            distributed_singleflight_lease_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await distributed_singleflight_lease_task
         await _release_distributed_dify_response_lease(distributed_singleflight_lease)
         if singleflight_key and singleflight_leader:
             reject_inflight_response(
@@ -8342,6 +8479,10 @@ async def _retrieve_external_knowledge(
             )
         raise
     except Exception as exc:
+        if distributed_singleflight_lease_task is not None:
+            distributed_singleflight_lease_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await distributed_singleflight_lease_task
         await _release_distributed_dify_response_lease(distributed_singleflight_lease)
         if singleflight_key and singleflight_leader:
             reject_inflight_response(singleflight_key, exc)

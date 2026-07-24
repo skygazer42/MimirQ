@@ -73,7 +73,7 @@ def _derive_template_key(name: str) -> str:
     "/builtins/sync",
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-async def sync_builtin_prompt_templates(
+def sync_builtin_prompt_templates(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -147,7 +147,7 @@ async def sync_builtin_prompt_templates(
     status_code=status.HTTP_201_CREATED,
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-async def create_prompt_template(
+def create_prompt_template(
     request: PromptTemplateCreate,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -213,7 +213,7 @@ async def create_prompt_template(
     summary="列出提示词模板",
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-async def list_prompt_templates(
+def list_prompt_templates(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     category: str | None = None,
@@ -272,7 +272,7 @@ async def list_prompt_templates(
 
 
 @router.get("/{template_id}", response_model=PromptTemplateOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def get_prompt_template(
+def get_prompt_template(
     template_id: UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -321,7 +321,7 @@ async def get_prompt_template(
     status_code=status.HTTP_201_CREATED,
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-async def create_prompt_template_version(
+def create_prompt_template_version(
     template_id: UUID,
     request: PromptTemplateNewVersion,
     *,
@@ -382,7 +382,7 @@ async def create_prompt_template_version(
 
 
 @router.put("/{template_id}", response_model=PromptTemplateOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def update_prompt_template(
+def update_prompt_template(
     template_id: UUID,
     request: PromptTemplateUpdate,
     *,
@@ -444,7 +444,7 @@ async def update_prompt_template(
 
 
 @router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def delete_prompt_template(
+def delete_prompt_template(
     template_id: UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -503,7 +503,7 @@ async def delete_prompt_template(
     status_code=status.HTTP_201_CREATED,
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-async def duplicate_prompt_template(
+def duplicate_prompt_template(
     template_id: UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],

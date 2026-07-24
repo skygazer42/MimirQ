@@ -145,7 +145,7 @@ def test_chunk_lineage_requires_document_acl_when_not_observability_admin(monkey
     client = TestClient(app)
     response = client.get(f"/api/v1/lineage/chunk/{chunk_id}")
 
-    assert response.status_code == 403
+    assert response.status_code == 404
     assert observed == {
         "tenant_id": tenant_id,
         "account_id": account_id,
@@ -200,4 +200,4 @@ def test_answer_lineage_forbidden_when_one_citation_document_is_not_readable(mon
     client = TestClient(app)
     response = client.get(f"/api/v1/lineage/answer/{request_id}")
 
-    assert response.status_code == 403
+    assert response.status_code == 404

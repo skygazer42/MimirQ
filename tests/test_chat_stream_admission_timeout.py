@@ -50,10 +50,13 @@ async def test_stream_chat_reports_retryable_admission_timeout(
         raise RetrievalAdmissionTimeoutError(2.1)
         yield  # pragma: no cover
 
+    async def prepare_stream_runtime(**_kwargs):  # noqa: ANN003, ANN202
+        return _stream_runtime(use_graph=use_graph)
+
     monkeypatch.setattr(
         orchestrator,
         "prepare_stream_chat_runtime",
-        lambda **_kwargs: _stream_runtime(use_graph=use_graph),
+        prepare_stream_runtime,
     )
     monkeypatch.setattr(orchestrator, "is_model_provider_unavailable_circuit_open", lambda: False)
     monkeypatch.setattr(orchestrator, "preflight_model_provider_fast", provider_available)

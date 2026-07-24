@@ -66,6 +66,23 @@ def test_lock_values_are_unique_for_same_requester() -> None:
     assert len(values) == 32
 
 
+def test_task_job_lock_ttl_tracks_timeout_setting(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.tasks import jobs
+
+    monkeypatch.setattr(jobs.settings, "TASK_JOB_TIMEOUT_SEC", 123, raising=False)
+
+    assert jobs._task_job_lock_ttl_sec() == 40 * 60
+    assert jobs._task_job_lock_ttl_sec(minimum_sec=60 * 60) == 60 * 60
+
+
+def test_task_semaphore_ttl_keeps_hour_floor(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.tasks import jobs
+
+    monkeypatch.setattr(jobs.settings, "TASK_JOB_TIMEOUT_SEC", 123, raising=False)
+
+    assert jobs._TASK_SEMAPHORE_TTL_SEC == 60 * 60
+
+
 @pytest.mark.asyncio
 async def test_release_lock_keeps_replaced_lock() -> None:
     redis = FakeRedis()

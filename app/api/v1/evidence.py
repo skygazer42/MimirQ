@@ -20,8 +20,8 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
-from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, aliased
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
@@ -189,10 +189,26 @@ def _collect_feedback_training_export_rows(
     dataset_id: UUID,
     limit: int,
 ) -> list[dict[str, Any]]:
+    candidate_user = aliased(Message)
+    user_message = aliased(Message)
+    latest_user_message_id = (
+        select(candidate_user.id)
+        .where(
+            candidate_user.tenant_id == tenant_id,
+            candidate_user.conversation_id == Conversation.id,
+            candidate_user.role == "user",
+            candidate_user.created_at <= Message.created_at,
+        )
+        .order_by(candidate_user.created_at.desc(), candidate_user.id.desc())
+        .limit(1)
+        .correlate(Message, Conversation)
+        .scalar_subquery()
+    )
     rows = (
-        db.query(MessageFeedback, Message, Conversation)
+        db.query(MessageFeedback, Message, Conversation, user_message)
         .join(Message, Message.id == MessageFeedback.message_id)
         .join(Conversation, Conversation.id == MessageFeedback.conversation_id)
+        .outerjoin(user_message, user_message.id == latest_user_message_id)
         .filter(
             MessageFeedback.tenant_id == tenant_id,
             Message.tenant_id == tenant_id,
@@ -206,25 +222,14 @@ def _collect_feedback_training_export_rows(
     )
 
     out: list[dict[str, Any]] = []
-    for feedback, assistant, conversation in rows:
-        user_message = (
-            db.query(Message)
-            .filter(
-                Message.tenant_id == tenant_id,
-                Message.conversation_id == conversation.id,
-                Message.role == "user",
-                Message.created_at <= assistant.created_at,
-            )
-            .order_by(Message.created_at.desc())
-            .first()
-        )
+    for feedback, assistant, conversation, preceding_user_message in rows:
         extra = dict(getattr(feedback, "extra", {}) or {})
         trace_payload = extra.get("retrieval_trace") if isinstance(extra.get("retrieval_trace"), dict) else None
         materialized = materialize_feedback_case(
             feedback=feedback,
             assistant=assistant,
             conversation=conversation,
-            user_message=user_message,
+            user_message=preceding_user_message,
             trace_payload=trace_payload,
         )
         out.append(

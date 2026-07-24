@@ -486,7 +486,10 @@ async def test_stream_extractive_fallback_runs_retrieval_off_event_loop(
         metrics_data={},
         structured_data=None,
     )
-    monkeypatch.setattr(orchestrator, "prepare_stream_chat_runtime", lambda **_kwargs: runtime)
+    async def _prepare_stream_runtime(**_kwargs):  # noqa: ANN202
+        return runtime
+
+    monkeypatch.setattr(orchestrator, "prepare_stream_chat_runtime", _prepare_stream_runtime)
 
     def fallback(**kwargs):
         assert kwargs["db"].marker is worker_db
@@ -668,6 +671,19 @@ def test_dataset_embedding_runtime_reuses_bounded_adapter(monkeypatch: pytest.Mo
     assert third is not first
     assert len(calls) == 2
     assert config_module.create_embeddings_for_runtime.cache_info().maxsize == 8
+
+
+def test_dataset_embedding_runtime_rejects_dataset_scoped_defaults_without_milvus(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.services.dataset_embedding_config as config_module
+
+    monkeypatch.setattr(config_module.settings, "VECTOR_BACKEND", "faiss", raising=False)
+
+    with pytest.raises(ValueError, match="VECTOR_BACKEND=milvus"):
+        config_module.resolve_dataset_embedding_runtime(
+            {"embedding_defaults": {"provider": "local", "model": "embed-a"}}
+        )
 
 
 @pytest.mark.asyncio

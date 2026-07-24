@@ -11,8 +11,10 @@ from app.core.config import settings
 from app.services.chat_response_cache import (
     InflightResponseLeaderCancelledError,
     acquire_inflight_chat_response,
-    get_cached_chat_response,
+    acquire_or_wait_for_distributed_inflight_chat_response,
+    get_cached_chat_response_async,
     resolve_chat_response_cache_key,
+    resolve_inflight_chat_response,
     set_cached_chat_response,
 )
 
@@ -170,7 +172,7 @@ async def prepare_non_streaming_chat_cache_state(
         options=options,
     )
     cache_eligible = bool(cache_key)
-    cached = get_cached_chat_response(cache_key) if cache_key else None
+    cached = await get_cached_chat_response_async(cache_key) if cache_key else None
     if isinstance(cached, dict):
         metrics_data = annotate_chat_cache_metrics(
             dict(cached.get("metrics") or {}),
@@ -213,6 +215,10 @@ async def prepare_non_streaming_chat_cache_state(
     singleflight_feature_enabled = bool(
         getattr(settings, "CHAT_RESPONSE_SINGLEFLIGHT_ENABLED", False)
     )
+    response_cache_ttl_sec = max(
+        0,
+        int(getattr(settings, "CHAT_RESPONSE_CACHE_TTL_SEC", 300) or 0),
+    )
     singleflight_key = cache_key if singleflight_feature_enabled and cache_key else None
     if singleflight_key:
         while True:
@@ -246,6 +252,35 @@ async def prepare_non_streaming_chat_cache_state(
             structured_data = shared_payload.get("structured_data")
             singleflight_hit = True
             break
+        if singleflight_leader and response_cache_ttl_sec > 0:
+            distributed_leader, shared_payload = await acquire_or_wait_for_distributed_inflight_chat_response(
+                singleflight_key,
+                response_cache_ttl_sec=response_cache_ttl_sec,
+            )
+            if not distributed_leader:
+                shared_payload = shared_payload or {}
+                resolve_inflight_chat_response(singleflight_key, shared_payload)
+                full_response = str(shared_payload.get("content") or "")
+                citations_data = (
+                    shared_payload.get("citations")
+                    if isinstance(shared_payload.get("citations"), list)
+                    else []
+                )
+                metrics_data = annotate_chat_cache_metrics(
+                    dict(shared_payload.get("metrics") or {}),
+                    enabled=cache_feature_enabled,
+                    hit=False,
+                    skip_reason=cache_skip_reason,
+                )
+                metrics_data = annotate_chat_singleflight_metrics(
+                    metrics_data,
+                    enabled=singleflight_feature_enabled,
+                    hit=True,
+                    role="follower",
+                )
+                structured_data = shared_payload.get("structured_data")
+                singleflight_hit = True
+                singleflight_leader = False
 
     return PreparedNonStreamingChatCacheState(
         cache_feature_enabled=cache_feature_enabled,

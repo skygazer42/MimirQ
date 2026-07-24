@@ -79,6 +79,7 @@ from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
 from app.services.audit_log_service import audit_log_event
 from app.services.dataset_category_service import DatasetCategoryService, collect_descendant_ids
+from app.services.dataset_embedding_config import resolve_dataset_embedding_runtime
 from app.services.dataset_profile_scan_runner import run_dataset_profile_deep_scan
 from app.services.dataset_profile_service import (
     compute_dataset_profile_summary,
@@ -336,6 +337,10 @@ def _upsert_dataset_embedding_defaults_metadata(
             normalized[key] = value
 
     if normalized:
+        try:
+            resolve_dataset_embedding_runtime({"embedding_defaults": normalized})
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         meta["embedding_defaults"] = normalized
     else:
         meta.pop("embedding_defaults", None)
@@ -830,6 +835,10 @@ def create_dataset(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)]
 ):
+    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    DatasetService._assert_edit_role(member)
+    meta: dict[str, Any] = {}
+    metadata_changed = _apply_create_dataset_metadata_defaults(meta, payload)
     dataset = DatasetService.create_dataset(
         db=db,
         tenant_id=tenant_id,
@@ -839,16 +848,8 @@ def create_dataset(
         owner_id=account_id,
         partial_members=payload.partial_member_list or [],
         partial_groups=payload.partial_group_list or [],
+        dataset_metadata=meta if metadata_changed else None,
     )
-
-    # Optional dataset-level defaults (stored in datasets.metadata).
-    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
-    changed = _apply_create_dataset_metadata_defaults(meta, payload)
-
-    if changed:
-        dataset.dataset_metadata = meta
-        db.commit()
-        db.refresh(dataset)
 
     # Best-effort audit log (commit separately; never block response).
     audit_log_event(
@@ -1117,6 +1118,9 @@ def update_dataset(
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_writable(db, dataset, account_id)
 
+    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
+    metadata_changed = _apply_update_dataset_metadata_defaults(meta, payload)
+
     updated = DatasetService.update_dataset(
         db=db,
         dataset=dataset,
@@ -1126,16 +1130,8 @@ def update_dataset(
         permission=payload.permission,
         partial_members=payload.partial_member_list,
         partial_groups=payload.partial_group_list,
+        dataset_metadata=meta if metadata_changed else None,
     )
-
-    # Update dataset-level defaults (stored in datasets.metadata).
-    meta = dict(getattr(updated, "dataset_metadata", None) or {})
-    changed = _apply_update_dataset_metadata_defaults(meta, payload)
-
-    if changed:
-        updated.dataset_metadata = meta
-        db.commit()
-        db.refresh(updated)
 
     audit_log_event(
         db,
@@ -1145,7 +1141,7 @@ def update_dataset(
         resource_type="dataset",
         resource_id=str(updated.id),
         details={
-            "changed": bool(changed),
+            "changed": bool(payload.model_fields_set),
             "name": str(updated.name or "")[:255],
             "permission": str(updated.permission or ""),
         },
@@ -1337,6 +1333,15 @@ def clone_dataset(
         partial_members = DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, src.id) or []
         partial_groups = DatasetGroupPermissionService.get_dataset_partial_group_list(db, tenant_id, src.id) or []
 
+    clone_cfg = _build_dataset_config_bundle(src)
+    if clone_cfg.embedding_defaults is not None:
+        try:
+            resolve_dataset_embedding_runtime({"embedding_defaults": clone_cfg.embedding_defaults.model_dump(exclude_none=True)})
+        except ValueError:
+            clone_cfg = clone_cfg.model_copy(update={"embedding_defaults": None})
+    copied_metadata: dict[str, Any] = {}
+    _apply_config_import_metadata(copied_metadata, clone_cfg, replace=True)
+
     created = DatasetService.create_dataset(
         db=db,
         tenant_id=tenant_id,
@@ -1346,12 +1351,8 @@ def clone_dataset(
         owner_id=account_id,
         partial_members=partial_members,
         partial_groups=partial_groups,
+        dataset_metadata=copied_metadata,
     )
-
-    # Copy portable config keys from the source dataset.
-    created.dataset_metadata = dict(getattr(src, "dataset_metadata", None) or {})
-    db.commit()
-    db.refresh(created)
 
     audit_log_event(
         db,

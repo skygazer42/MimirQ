@@ -369,7 +369,10 @@ async def test_chat_singleflight_follower_reacquires_after_leader_cancellation(
         "prepare_chat_cache_lookup",
         lambda **_kwargs: (True, key, None),
     )
-    monkeypatch.setattr(cache_runtime, "get_cached_chat_response", lambda _key: None)
+    async def _get_cached(_key: str):  # noqa: ANN202
+        return None
+
+    monkeypatch.setattr(cache_runtime, "get_cached_chat_response_async", _get_cached)
     monkeypatch.setattr(cache_runtime.settings, "CHAT_RESPONSE_SINGLEFLIGHT_ENABLED", True)
     options = SimpleNamespace()
 
@@ -392,6 +395,139 @@ async def test_chat_singleflight_follower_reacquires_after_leader_cancellation(
         cache.resolve_inflight_chat_response(key, {"content": "replacement"})
     finally:
         cache.clear_inflight_chat_responses()
+
+
+@pytest.mark.asyncio
+async def test_chat_distributed_singleflight_waits_for_redis_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.services.chat_response_cache as cache
+
+    key = "chat-distributed"
+    state = {
+        "payload": None,
+        "lease_owner": None,
+    }
+
+    async def _get_cached(_key: str):  # noqa: ANN202
+        assert _key == key
+        return state["payload"]
+
+    async def _acquire_lease(_key: str, *, value: str, ttl_sec: int):  # noqa: ANN202
+        assert _key == f"{key}:lease"
+        assert ttl_sec >= 60
+        if state["lease_owner"] is None:
+            state["lease_owner"] = value
+            return True
+        return False
+
+    async def _release_lease(_key: str, *, value: str):  # noqa: ANN202
+        if _key == f"{key}:lease" and state["lease_owner"] == value:
+            state["lease_owner"] = None
+
+    cache.clear_inflight_chat_responses()
+    monkeypatch.setattr(cache, "get_cached_chat_response_async", _get_cached, raising=True)
+    monkeypatch.setattr(cache, "try_acquire_best_effort_redis_lease", _acquire_lease, raising=True)
+    monkeypatch.setattr(cache, "release_best_effort_redis_lease", _release_lease, raising=True)
+
+    leader, leader_payload = await cache.acquire_or_wait_for_distributed_inflight_chat_response(
+        key,
+        response_cache_ttl_sec=30,
+    )
+    assert leader is True
+    assert leader_payload is None
+    assert state["lease_owner"] is not None
+
+    follower = asyncio.create_task(
+        cache.acquire_or_wait_for_distributed_inflight_chat_response(
+            key,
+            response_cache_ttl_sec=30,
+        )
+    )
+    await asyncio.sleep(0.05)
+    state["payload"] = {"content": "cached", "citations": [], "metrics": {}}
+    follower_is_leader, follower_payload = await asyncio.wait_for(follower, timeout=0.5)
+
+    assert follower_is_leader is False
+    assert follower_payload == state["payload"]
+
+    cache.resolve_inflight_chat_response(key, state["payload"])
+    for _ in range(10):
+        if state["lease_owner"] is None:
+            break
+        await asyncio.sleep(0)
+    assert state["lease_owner"] is None
+    cache.clear_inflight_chat_responses()
+
+
+@pytest.mark.asyncio
+async def test_set_cached_chat_response_schedules_async_write_in_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.services.chat_response_cache as cache
+
+    written = asyncio.Event()
+
+    async def _fake_set(key: str, payload: dict[str, object], *, ttl_sec: int | None = None, max_value_bytes: int | None = None):  # noqa: ANN202
+        assert key == "chat-write"
+        assert payload["content"] == "ok"
+        assert ttl_sec == 90
+        assert max_value_bytes == 1234
+        written.set()
+        return True
+
+    monkeypatch.setattr(cache.settings, "CHAT_RESPONSE_CACHE_ENABLED", True, raising=False)
+    monkeypatch.setattr(cache.settings, "CHAT_RESPONSE_CACHE_TTL_SEC", 90, raising=False)
+    monkeypatch.setattr(cache.settings, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 1234, raising=False)
+    monkeypatch.setattr(cache, "set_cached_chat_response_async", _fake_set, raising=True)
+
+    assert cache.set_cached_chat_response("chat-write", {"content": "ok"}) is True
+    await asyncio.wait_for(written.wait(), timeout=0.5)
+
+
+@pytest.mark.asyncio
+async def test_chat_singleflight_releases_lease_after_cache_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.services.chat_response_cache as cache
+
+    key = "chat-write-before-release"
+    allow_write = asyncio.Event()
+    released = asyncio.Event()
+
+    async def _get_cached(_key: str):  # noqa: ANN202
+        return None
+
+    async def _acquire(*_args, **_kwargs):  # noqa: ANN202
+        return True
+
+    async def _write(*_args, **_kwargs):  # noqa: ANN202
+        await allow_write.wait()
+        return True
+
+    async def _release(*_args, **_kwargs) -> None:  # noqa: ANN002, ANN003
+        released.set()
+
+    cache.clear_inflight_chat_responses()
+    monkeypatch.setattr(cache.settings, "CHAT_RESPONSE_CACHE_ENABLED", True, raising=False)
+    monkeypatch.setattr(cache, "get_cached_chat_response_async", _get_cached, raising=True)
+    monkeypatch.setattr(cache, "try_acquire_best_effort_redis_lease", _acquire, raising=True)
+    monkeypatch.setattr(cache, "set_cached_chat_response_async", _write, raising=True)
+    monkeypatch.setattr(cache, "release_best_effort_redis_lease", _release, raising=True)
+
+    leader, _payload = await cache.acquire_or_wait_for_distributed_inflight_chat_response(
+        key,
+        response_cache_ttl_sec=30,
+    )
+    assert leader is True
+    assert cache.set_cached_chat_response(key, {"content": "ok"}) is True
+    cache.resolve_inflight_chat_response(key, {"content": "ok"})
+    await asyncio.sleep(0)
+    assert released.is_set() is False
+
+    allow_write.set()
+    await asyncio.wait_for(released.wait(), timeout=0.5)
+    cache.clear_inflight_chat_responses()
 
 
 @pytest.mark.asyncio

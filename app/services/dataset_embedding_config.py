@@ -41,6 +41,10 @@ def _base_embedding_config() -> tuple[str, str, str, str]:
     return provider, model, api_base, api_key
 
 
+def _vector_backend() -> str:
+    return _clean(getattr(settings, "VECTOR_BACKEND", "milvus")).lower() or "milvus"
+
+
 def collection_name_for_embedding_space(*, space_hash: str, dataset_scoped: bool) -> str:
     base = _clean(getattr(settings, "MILVUS_COLLECTION_NAME", "")) or "documents"
     if not dataset_scoped:
@@ -59,6 +63,8 @@ def resolve_dataset_embedding_runtime(
         provider = EmbeddingProviders.PROVIDER_MAP.get(_clean(raw.get("provider")).lower(), _clean(raw.get("provider")).lower()) or provider
         model = _clean(raw.get("model")) or model
         api_base = _clean(raw.get("api_base")) or api_base
+    if dataset_scoped and _vector_backend() != "milvus":
+        raise ValueError("dataset-scoped embedding_defaults require VECTOR_BACKEND=milvus")
 
     space_hash = embedding_space_hash_for_config(
         provider=provider,

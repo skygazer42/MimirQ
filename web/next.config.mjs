@@ -71,9 +71,17 @@ function trimConfigUrl(value) {
   return String(value || '').trim().replace(/\/+$/, '')
 }
 
+function safeNetworkInterfaces() {
+  try {
+    return networkInterfaces()
+  } catch {
+    return {}
+  }
+}
+
 export function resolveAllowedDevOrigins(
   env = process.env,
-  interfaces = networkInterfaces()
+  interfaces = safeNetworkInterfaces()
 ) {
   const extra = String(env.NEXT_ALLOWED_DEV_ORIGINS || '')
     .split(',')

@@ -47,7 +47,11 @@ from app.tasks.locks import (
 
 logger = get_logger("tasks.jobs")
 
-_TASK_SEMAPHORE_TTL_SEC = max(120, int(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30) + 60)
+_TASK_SEMAPHORE_TTL_SEC = max(60 * 60, int(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30) + 60)
+
+
+def _task_job_lock_ttl_sec(*, minimum_sec: int = 40 * 60) -> int:
+    return max(minimum_sec, int(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30) + 60)
 
 
 def _kg_lock_flag(value: bool | None) -> str:
@@ -205,7 +209,7 @@ async def evidence_reference_sources_repair_job(  # noqa: ANN001
             )
             lock_key = f"lock:evidence_repair:{tenant_id}:{suite_id}"
             lock_val = make_lock_value(requested_by)
-            lock_ttl = 60 * 60  # 60 min
+            lock_ttl = _task_job_lock_ttl_sec(minimum_sec=60 * 60)
             acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
             if not acquired:
                 logger.info("Skip evidence repair job due to active lock: %s", lock_key)
@@ -347,7 +351,7 @@ async def connector_run_job(ctx, tenant_id: str, run_id: str, requested_by: str)
 
             lock_key = f"lock:connector:{tenant_id}:{run_id}"
             lock_val = make_lock_value(requested_by)
-            lock_ttl = 60 * 40  # 40 min
+            lock_ttl = _task_job_lock_ttl_sec()
             acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
             if not acquired:
                 logger.info("Skip connector job due to active lock: %s", lock_key)
@@ -454,7 +458,7 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
             redis = None
 
         lock_val = make_lock_value(requested_by)
-        lock_ttl = 60 * 40  # 40 min
+        lock_ttl = _task_job_lock_ttl_sec()
         if redis is not None:
             job_try = _current_job_try(ctx)
             max_doc_tries = _document_job_max_tries()
@@ -791,7 +795,7 @@ async def dataset_profile_scan_job(ctx, tenant_id: str, dataset_id: str, scan_ru
 
         lock_key = f"lock:dataset_profile_scan:{tenant_id}:{dataset_id}"
         lock_val = make_lock_value(requested_by)
-        lock_ttl = 60 * 40  # 40 min
+        lock_ttl = _task_job_lock_ttl_sec()
 
         if redis is not None:
             sem_key = await tenant_acquire(
@@ -914,7 +918,7 @@ async def dataset_precheck_scan_job(ctx, tenant_id: str, dataset_id: str, scan_r
 
         lock_key = f"lock:dataset_precheck_scan:{tenant_id}:{dataset_id}"
         lock_val = make_lock_value(requested_by)
-        lock_ttl = 60 * 60  # 60 min
+        lock_ttl = _task_job_lock_ttl_sec(minimum_sec=60 * 60)
 
         if redis is not None:
             sem_key = await tenant_acquire(
@@ -1096,7 +1100,7 @@ async def extract_kg_job(
         skill_key = _kg_lock_flag(extract_skills)
         lock_key = f"lock:kg:{tenant_id}:{document_id}:{selected_ph}:{replace_key}:{prune_key}:{rel_key}:{skill_key}"
         lock_val = make_lock_value(requested_by)
-        lock_ttl = 60 * 40  # 40 min
+        lock_ttl = _task_job_lock_ttl_sec()
         if redis is not None:
             acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
             if not acquired:
@@ -1235,7 +1239,7 @@ async def rebuild_indexes_job(ctx, tenant_id: str, requested_by: str) -> dict:  
 
         lock_key = f"lock:rebuild:{tenant_id}"
         lock_val = make_lock_value(requested_by)
-        lock_ttl = 60 * 40  # 40 min
+        lock_ttl = _task_job_lock_ttl_sec()
         if redis is not None:
             acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
             if not acquired:

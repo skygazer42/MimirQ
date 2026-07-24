@@ -120,10 +120,14 @@ make up-web
 - `ENV=production`
 - `AUTH_MODE=jwt`
 - `SECRET_KEY`（长度 >= 32）
+- `MIMIRQ_DB_CREATE_ALL_ON_STARTUP=false`
+- `MIMIRQ_DB_RUNTIME_MIGRATIONS_ENABLED=false`
 - 首次初始化前临时设置 `INITIAL_REGISTRATION_TOKEN`（首个本地 owner 注册一次性 token，请通过 `X-Bootstrap-Token` 发送；支持 `sha256:<hex>`，初始化完成后可移除）
 - `POSTGRES_PASSWORD`
 
 ```bash
+make infra-up
+make db-upgrade
 make up
 make ps
 ```

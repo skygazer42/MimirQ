@@ -100,7 +100,7 @@ async def stream_chat_sse_events(
         f"data: {json.dumps({'request_id': str(request_id), 'type': 'event', 'data': {'message': '开始处理…'}}, ensure_ascii=False)}\n\n"
     )
 
-    stream_runtime = prepare_stream_chat_runtime(
+    stream_runtime = await prepare_stream_chat_runtime(
         db=db,
         tenant_id=tenant_id,
         account_id=account_id,

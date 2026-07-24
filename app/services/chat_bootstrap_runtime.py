@@ -19,7 +19,7 @@ from app.services.chat_memory_runtime import (
     _retrieve_long_term_messages,
     _retrieve_structured_memory_records,
 )
-from app.services.chat_response_cache import get_cached_chat_response
+from app.services.chat_response_cache import get_cached_chat_response_async
 from app.services.chat_scope import resolve_chat_conversation_scope
 from app.services.conversation_summary_service import get_conversation_summary
 from app.services.dataset_defaults import (
@@ -326,7 +326,7 @@ def prepare_chat_request_runtime(
     )
 
 
-def prepare_stream_chat_runtime(
+async def prepare_stream_chat_runtime(
     *,
     db: Session,
     tenant_id: UUID,
@@ -387,7 +387,7 @@ def prepare_stream_chat_runtime(
         use_graph=bool(effective_rag_config.use_graph),
     )
     cache_eligible = bool(cache_key)
-    cached = get_cached_chat_response(cache_key) if cache_key else None
+    cached = await get_cached_chat_response_async(cache_key) if cache_key else None
 
     full_response = ""
     citations_data: list[Any] = []

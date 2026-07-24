@@ -41,6 +41,27 @@ function getAuthSubmitContent(isSubmitting: boolean, mode: Mode): ReactNode {
     )
 }
 
+function toAuthPageError(err: unknown, mode: Mode): ApiErrorInfo {
+    const info = toApiErrorInfo(err, '请求失败，请重试')
+    if (mode !== 'register') return info
+
+    if (info.status === 403) {
+        return {
+            ...info,
+            message: '首次 owner 注册需要 bootstrap token。请填写部署时配置的 bootstrap token 后重试。',
+        }
+    }
+
+    if (info.status === 409) {
+        return {
+            ...info,
+            message: '首次初始化已关闭，后续注册不能再自助创建 owner，请联系管理员开通账号。',
+        }
+    }
+
+    return info
+}
+
 export default function AuthPage() {
     const router = useRouter()
     const oidcProviders = getOidcPublicProvidersFromEnv()
@@ -51,6 +72,7 @@ export default function AuthPage() {
     const [identifier, setIdentifier] = useState('')
     const [password, setPassword] = useState('')
     const [confirmPassword, setConfirmPassword] = useState('')
+    const [bootstrapToken, setBootstrapToken] = useState('')
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [ssoProviderWorkingId, setSsoProviderWorkingId] = useState<string | null>(null)
     const [error, setError] = useState<ApiErrorInfo | null>(null)
@@ -82,11 +104,16 @@ export default function AuthPage() {
             const response =
                 mode === 'login'
                     ? await authApi.login({ identifier: identifier.trim(), password })
-                    : await authApi.register({ email: email.trim(), username: username.trim(), password })
+                    : await authApi.register({
+                          email: email.trim(),
+                          username: username.trim(),
+                          password,
+                          bootstrapToken: bootstrapToken.trim() || undefined,
+                      })
             setAuthSession({ token: response.token, user: response.user })
             router.push('/')
         } catch (err: unknown) {
-            setError(toApiErrorInfo(err, '请求失败，请重试'))
+            setError(toAuthPageError(err, mode))
         } finally {
             setIsSubmitting(false)
         }
@@ -217,7 +244,7 @@ export default function AuthPage() {
                         {mode === 'register' && (
                             <div className="space-y-4">
                                 <p className="text-xs leading-5 text-muted-foreground">
-                                    仅用于未初始化的部署。已有管理员时，请联系管理员开通账号。
+                                    仅用于未初始化的部署。生产环境首次 owner 注册可填写 bootstrap token；已有管理员时，请联系管理员开通账号。
                                 </p>
                                 <div className="space-y-2">
                                     <Label htmlFor="email" className="text-xs text-muted-foreground">邮箱地址</Label>
@@ -247,6 +274,20 @@ export default function AuthPage() {
                                             required
                                         />
                                     </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="bootstrapToken" className="text-xs text-muted-foreground">
+                                        Bootstrap Token（可选）
+                                    </Label>
+                                    <Input
+                                        id="bootstrapToken"
+                                        type="password"
+                                        placeholder="仅首次生产注册需要"
+                                        className="bg-background/50"
+                                        value={bootstrapToken}
+                                        onChange={(e) => setBootstrapToken(e.target.value)}
+                                        autoComplete="off"
+                                    />
                                 </div>
                             </div>
                         )}
@@ -305,7 +346,7 @@ export default function AuthPage() {
                         )}
 
                         {error && (
-                            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 flex items-start gap-2 motion-safe:animate-fade-in">
+                            <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 flex items-start gap-2 motion-safe:animate-fade-in">
                                 <div className="w-1 h-1 mt-2 rounded-full bg-destructive shrink-0" />
                                 <div className="min-w-0 flex-1">
                                   <p className="text-xs text-destructive">{error.message}</p>

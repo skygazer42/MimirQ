@@ -60,6 +60,13 @@ class _FakeRedis:
         self._expires_at.pop(key, None)
         return 1
 
+    def expire(self, key: str, ttl_sec: int) -> bool:
+        self._purge_expired(key)
+        if key not in self._values:
+            return False
+        self._expires_at[key] = time.monotonic() + max(1, int(ttl_sec))
+        return True
+
     def ttl_remaining(self, key: str) -> int | None:
         self._purge_expired(key)
         expires_at = self._expires_at.get(key)
@@ -88,10 +95,76 @@ def _patch_fake_dify_redis(monkeypatch: pytest.MonkeyPatch, dify_api, redis: _Fa
     async def _release(key: str, *, value: str):  # noqa: ANN202
         redis.eval("", 1, key, value)
 
+    async def _extend(key: str, *, value: str, ttl_sec: int):  # noqa: ANN202
+        current = redis.get(key)
+        if isinstance(current, bytes):
+            current = current.decode("utf-8", "ignore")
+        if current != value:
+            return False
+        return bool(redis.expire(key, ttl_sec))
+
     monkeypatch.setattr(dify_api, "get_best_effort_json_cache_value", _get_json, raising=True)
     monkeypatch.setattr(dify_api, "set_best_effort_json_cache_value", _set_json, raising=True)
     monkeypatch.setattr(dify_api, "try_acquire_best_effort_redis_lease", _acquire_lease, raising=True)
     monkeypatch.setattr(dify_api, "release_best_effort_redis_lease", _release, raising=True)
+    monkeypatch.setattr(dify_api, "extend_best_effort_redis_lease", _extend, raising=True)
+
+
+@pytest.mark.asyncio
+async def test_dify_lease_heartbeat_tolerates_transient_redis_extend_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    calls = 0
+
+    async def _extend(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        nonlocal calls
+        calls += 1
+        return None if calls == 1 else False
+
+    async def _sleep(*_args, **_kwargs) -> None:  # noqa: ANN003, ANN202
+        return None
+
+    monkeypatch.setattr(dify_api, "extend_best_effort_redis_lease", _extend, raising=True)
+    monkeypatch.setattr(dify_api.asyncio, "sleep", _sleep, raising=False)
+
+    await dify_api._maintain_best_effort_dify_lease(
+        dify_api._DifyDistributedLease(lease_key="lease", owner="owner"),
+        ttl_sec=15,
+    )
+
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_startup_warmup_retries_once_after_locked_lease(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    results = iter(
+        [
+            {"reason": "warmup_locked", "retry_after_sec": 120},
+            {"reason": "completed"},
+        ]
+    )
+    sleeps: list[float] = []
+
+    async def _warmup():  # noqa: ANN202
+        return next(results)
+
+    async def _sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(dify_api, "_resolve_dify_warmup_start_delay_sec", lambda: 0.0, raising=True)
+    monkeypatch.setattr(dify_api, "warmup_dify_external_knowledge", _warmup, raising=True)
+    monkeypatch.setattr(dify_api.asyncio, "sleep", _sleep, raising=False)
+
+    result = await dify_api._delayed_warmup_dify_external_knowledge()
+
+    assert result == {"reason": "completed"}
+    assert sleeps == [0, 120]
 
 
 def _auth(token: str) -> dict[str, str]:
@@ -361,11 +434,18 @@ async def test_dify_warmup_runs_internal_retrieval_for_configured_knowledge_ids(
         retrieval_calls.append(dict(kwargs))
         return []
 
+    async def _acquire_warmup_lease(**_kwargs):  # noqa: ANN003, ANN202
+        return dify_api._DifyDistributedLease(lease_key="warmup", owner="test"), 300
+
+    async def _release_warmup_lease(_lease) -> None:  # noqa: ANN001
+        return None
+
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", str(tenant_id), raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "city,faq", raising=False)
+    monkeypatch.setattr(dify_api.settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 2, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_QUERY", "warmup probe", raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TOP_K", 1, raising=False)
     monkeypatch.setattr(
@@ -374,6 +454,8 @@ async def test_dify_warmup_runs_internal_retrieval_for_configured_knowledge_ids(
         f'{{"city": "{city_dataset_id}", "faq": "{faq_dataset_id}"}}',
         raising=False,
     )
+    monkeypatch.setattr(dify_api, "_acquire_dify_warmup_lease", _acquire_warmup_lease, raising=True)
+    monkeypatch.setattr(dify_api, "_release_distributed_dify_response_lease", _release_warmup_lease, raising=True)
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
 
     result = await dify_api.warmup_dify_external_knowledge(db_factory=lambda: session)
@@ -409,6 +491,138 @@ async def test_dify_delayed_warmup_stays_on_startup_event_loop(
 
     assert await dify_api._delayed_warmup_dify_external_knowledge() == {"enabled": True}
     assert observed_loops == [startup_loop]
+
+
+@pytest.mark.asyncio
+async def test_dify_warmup_skips_when_only_one_retrieval_slot_exists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    tenant_id = uuid.uuid4()
+    retrieval_calls: list[dict[str, object]] = []
+
+    async def _fake_retrieve_dataset_citations(**kwargs):  # noqa: ANN003, ANN202
+        retrieval_calls.append(dict(kwargs))
+        return []
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", str(tenant_id), raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "city", raising=False)
+    monkeypatch.setattr(dify_api.settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 1, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{uuid.uuid4()}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+
+    result = await dify_api.warmup_dify_external_knowledge(db_factory=lambda: _DummyDB())
+
+    assert result["reason"] == "warmup_skipped_single_retrieval_slot"
+    assert retrieval_calls == []
+
+
+@pytest.mark.asyncio
+async def test_dify_warmup_skips_when_distributed_lease_is_held(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    tenant_id = uuid.uuid4()
+    fake_redis = _FakeRedis()
+    retrieval_calls: list[dict[str, object]] = []
+
+    async def _fake_retrieve_dataset_citations(**kwargs):  # noqa: ANN003, ANN202
+        retrieval_calls.append(dict(kwargs))
+        return []
+
+    _patch_fake_dify_redis(monkeypatch, dify_api, fake_redis)
+    fake_redis.set(dify_api._DIFY_WARMUP_LEASE_KEY, "owner-a", ex=300, nx=True)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", str(tenant_id), raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "city", raising=False)
+    monkeypatch.setattr(dify_api.settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 2, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{uuid.uuid4()}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+
+    result = await dify_api.warmup_dify_external_knowledge(db_factory=lambda: _DummyDB())
+
+    assert result["reason"] == "warmup_locked"
+    assert retrieval_calls == []
+
+
+@pytest.mark.asyncio
+async def test_dify_warmup_skips_when_distributed_lease_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    tenant_id = uuid.uuid4()
+    retrieval_calls: list[dict[str, object]] = []
+
+    async def _lease_unavailable(**_kwargs):  # noqa: ANN003, ANN202
+        return None, None
+
+    async def _fake_retrieve_dataset_citations(**kwargs):  # noqa: ANN003, ANN202
+        retrieval_calls.append(dict(kwargs))
+        return []
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", str(tenant_id), raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "city", raising=False)
+    monkeypatch.setattr(dify_api.settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 2, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{uuid.uuid4()}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api, "_acquire_dify_warmup_lease", _lease_unavailable, raising=True)
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+
+    result = await dify_api.warmup_dify_external_knowledge(db_factory=lambda: _DummyDB())
+
+    assert result["reason"] == "warmup_lease_unavailable"
+    assert retrieval_calls == []
+
+
+@pytest.mark.asyncio
+async def test_dify_lease_heartbeat_renews_owner_ttl(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    lease = dify_api._DifyDistributedLease(lease_key="lease:key", owner="owner-a")
+    renewals: list[tuple[str, str, int]] = []
+    sleeps = 0
+
+    async def _fake_extend(key: str, *, value: str, ttl_sec: int):  # noqa: ANN202
+        renewals.append((key, value, ttl_sec))
+        return True
+
+    async def _fake_sleep(_seconds: float):  # noqa: ANN202
+        nonlocal sleeps
+        sleeps += 1
+        if sleeps > 1:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(dify_api, "extend_best_effort_redis_lease", _fake_extend, raising=True)
+    monkeypatch.setattr(dify_api.asyncio, "sleep", _fake_sleep)
+
+    with pytest.raises(asyncio.CancelledError):
+        await dify_api._maintain_best_effort_dify_lease(lease, ttl_sec=90)
+
+    assert renewals == [("lease:key", "owner-a", 90)]
 
 
 def test_dify_warmup_scheduler_is_fire_and_forget(monkeypatch: pytest.MonkeyPatch) -> None:

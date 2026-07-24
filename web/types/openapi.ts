@@ -24605,7 +24605,9 @@ export interface operations {
     register_user_api_v1_auth_register_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Bootstrap-Token"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
