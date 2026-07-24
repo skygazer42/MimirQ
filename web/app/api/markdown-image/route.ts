@@ -5,6 +5,9 @@ import https from 'node:https'
 
 import { NextRequest, NextResponse } from 'next/server'
 
+import { API_V1_BASE_URL } from '@/lib/env'
+import { jsonNoStore, requireSameOrigin } from '@/lib/server-auth-route'
+import { buildMarkdownImageResponseHeaders } from './response-headers'
 import {
   isAllowedMarkdownImageContentType,
   isBlockedMarkdownImageTarget,
@@ -87,11 +90,18 @@ async function fetchPinnedImage(target: URL): Promise<PinnedImageResponse> {
   })
 }
 
-function jsonNoStore(data: unknown, init?: { status?: number }) {
-  const response = NextResponse.json(data, init)
-  response.headers.set('Cache-Control', 'no-store')
-  response.headers.set('Pragma', 'no-cache')
-  return response
+async function isAuthenticatedSameOriginRequest(req: NextRequest): Promise<boolean> {
+  const authorization = String(req.headers.get('authorization') || '').trim()
+  if (!requireSameOrigin(req) || !/^Bearer\s+\S+$/i.test(authorization)) return false
+
+  const headers: Record<string, string> = { Authorization: authorization }
+  const tenantId = String(req.headers.get('x-tenant-id') || '').trim()
+  if (tenantId) headers['X-Tenant-ID'] = tenantId
+  const response = await fetch(`${API_V1_BASE_URL}/auth/me`, {
+    headers,
+    cache: 'no-store',
+  }).catch(() => null)
+  return response?.ok === true
 }
 
 function resolveImageTarget(req: NextRequest): { target: URL | null; error: string | null } {
@@ -103,6 +113,10 @@ function resolveImageTarget(req: NextRequest): { target: URL | null; error: stri
       return { target: null, error: 'invalid_image_token' }
     }
     return { target, error: null }
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    return { target: null, error: 'image_token_required' }
   }
 
   const rawSrc = String(req.nextUrl.searchParams.get('src') || '').trim()
@@ -140,15 +154,7 @@ export async function GET(req: NextRequest) {
     return jsonNoStore({ error: 'image_content_type_invalid' }, { status: 415 })
   }
 
-  const headers = new Headers()
-  headers.set('Content-Type', contentType)
-  headers.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=86400')
-  headers.set('X-Content-Type-Options', 'nosniff')
-
-  const etag = headerValue(upstream.headers, 'etag')
-  if (etag) headers.set('ETag', etag)
-  const lastModified = headerValue(upstream.headers, 'last-modified')
-  if (lastModified) headers.set('Last-Modified', lastModified)
+  const headers = buildMarkdownImageResponseHeaders(contentType, upstream.headers)
 
   return new NextResponse(upstream.body, {
     status: 200,
@@ -157,6 +163,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  if (process.env.NODE_ENV === 'production' && !(await isAuthenticatedSameOriginRequest(req))) {
+    return jsonNoStore({ error: 'image_proxy_unauthorized' }, { status: 401 })
+  }
+
   let body: unknown
   try {
     body = await req.json()

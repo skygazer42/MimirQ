@@ -202,7 +202,7 @@ from app.services.pipeline_config import (
     resolve_pipeline_effective,
     upsert_pipeline_metadata,
 )
-from app.storage.object.minio import minio_service
+from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri
 from app.tasks.queue import enqueue_document_processing
 from app.types.pipeline import PipelineOptions
 
@@ -1558,16 +1558,96 @@ def _enforce_url_upload_quota(db: Session, *, tenant_id: UUID, additional_bytes:
         raise
 
 
+def _document_object_storage_enabled() -> bool:
+    return bool(getattr(settings, "MINIO_ENABLED", False)) and bool(getattr(settings, "MINIO_DOCUMENTS_ENABLED", False))
+
+
+def _unlink_ingest_temp(path: Path) -> None:
+    with contextlib.suppress(OSError):
+        path.unlink(missing_ok=True)
+
+
+async def _store_ingested_source(
+    *,
+    file_path: Path,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    document_id: UUID,
+    extension: str,
+    content_type: str | None,
+) -> str:
+    if not _document_object_storage_enabled():
+        return str(file_path)
+    try:
+        return await asyncio.to_thread(
+            minio_service.upload_document_file,
+            file_path=file_path,
+            tenant_id=str(tenant_id),
+            dataset_id=str(dataset_id),
+            document_id=str(document_id),
+            extension=extension,
+            content_type=content_type,
+        )
+    except Exception:
+        _unlink_ingest_temp(file_path)
+        raise
+
+
+async def _cleanup_unpersisted_ingested_source(stored_path: str) -> None:
+    if not is_minio_uri(stored_path):
+        return
+    try:
+        ref = parse_minio_uri(stored_path)
+        await asyncio.to_thread(minio_service.delete_object, object_name=ref.object_name)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to delete unpersisted ingest object: %s", str(exc)[:200])
+
+
+def _fresh_session_document_exists(*, document_id: UUID) -> bool | None:
+    try:
+        check_db = SessionLocal()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to open verification session after commit error: %s", str(exc)[:200])
+        return None
+
+    try:
+        getter = getattr(check_db, "get", None)
+        if callable(getter):
+            return getter(DBDocument, document_id) is not None
+        query = getattr(check_db, "query", None)
+        if callable(query):
+            row = query(DBDocument).filter(DBDocument.id == document_id).first()
+            return row is not None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to verify document existence after commit error: %s", str(exc)[:200])
+        return None
+    finally:
+        with contextlib.suppress(Exception):
+            check_db.close()
+
+    return None
+
+
+async def _cleanup_commit_ambiguous_ingested_source(*, document_id: UUID, stored_path: str, file_path: Path) -> None:
+    document_exists = _fresh_session_document_exists(document_id=document_id)
+    object_backed = is_minio_uri(stored_path)
+    if document_exists is False:
+        await _cleanup_unpersisted_ingested_source(stored_path)
+        _unlink_ingest_temp(file_path)
+        return
+    if object_backed:
+        _unlink_ingest_temp(file_path)
+
+
 def _create_pending_document_record(
     *,
-    db: Session,
     file_id: UUID,
     tenant_id: UUID,
     dataset: Dataset,
     filename: str,
     file_ext: str,
     file_size: int,
-    file_path: Path,
+    file_path: str | Path,
     account_id: str,
     doc_metadata: dict[str, Any],
 ) -> DBDocument:
@@ -1585,9 +1665,6 @@ def _create_pending_document_record(
         processing_progress=0,
         doc_metadata=doc_metadata,
     )
-    db.add(db_document)
-    db.commit()
-    db.refresh(db_document)
     return db_document
 
 
@@ -1614,6 +1691,25 @@ def _add_document_to_ingestion_run(
         )
 
 
+async def _run_document_processing_with_cleanup(
+    file_path: Path,
+    document_id: UUID,
+    tenant_id: UUID,
+    parser_backend: str,
+    chunk_strategy: str,
+) -> None:
+    try:
+        await run_document_processing_limited(
+            file_path,
+            document_id,
+            tenant_id,
+            parser_backend,
+            chunk_strategy,
+        )
+    finally:
+        _unlink_ingest_temp(file_path)
+
+
 async def _schedule_document_processing(
     *,
     db: Session,
@@ -1626,32 +1722,65 @@ async def _schedule_document_processing(
     parser_backend: str,
     chunk_strategy: str,
     db_document: DBDocument,
-) -> None:
+) -> bool:
     job_id = f"doc:{tenant_id}:{document_id}:{pipeline_hash}"
-    task_id = await enqueue_document_processing(
-        tenant_id=tenant_id,
-        document_id=document_id,
-        requested_by=requested_by,
-        job_id=job_id,
-    )
+    object_backed = is_minio_uri(str(getattr(db_document, "file_path", "") or ""))
+    task_id = None
+    try:
+        task_id = await enqueue_document_processing(
+            tenant_id=tenant_id,
+            document_id=document_id,
+            requested_by=requested_by,
+            job_id=job_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Document queue unavailable; using local processing fallback: %s", str(exc)[:200])
     if task_id:
-        meta = dict(db_document.doc_metadata or {})
-        meta["task_id"] = task_id
-        db_document.doc_metadata = meta
-        db.commit()
-        db.refresh(db_document)
-        return
+        try:
+            meta = dict(db_document.doc_metadata or {})
+            meta["task_id"] = task_id
+            db_document.doc_metadata = meta
+            db.commit()
+            db.refresh(db_document)
+        except Exception as exc:  # noqa: BLE001
+            with contextlib.suppress(Exception):
+                db.rollback()
+            logger.warning("Document task queued but task metadata refresh failed: %s", str(exc)[:200])
+        return not object_backed
 
     if background_tasks is not None:
-        background_tasks.add_task(
-            run_document_processing_limited,
-            file_path,
-            document_id,
-            tenant_id,
-            parser_backend,
-            chunk_strategy,
-        )
-        return
+        try:
+            if object_backed:
+                background_tasks.add_task(
+                    _run_document_processing_with_cleanup,
+                    file_path,
+                    document_id,
+                    tenant_id,
+                    parser_backend,
+                    chunk_strategy,
+                )
+            else:
+                background_tasks.add_task(
+                    run_document_processing_limited,
+                    file_path,
+                    document_id,
+                    tenant_id,
+                    parser_backend,
+                    chunk_strategy,
+                )
+        except Exception as exc:
+            db_document.status = "failed"
+            db_document.current_stage = "failed"
+            db_document.error_message = "document_processing_schedule_failed"
+            try:
+                db.commit()
+            except Exception as mark_exc:  # noqa: BLE001
+                with contextlib.suppress(Exception):
+                    db.rollback()
+                logger.error("Failed to mark unscheduled document as failed: %s", str(mark_exc)[:200])
+            logger.error("Failed to register document background task: %s", str(exc)[:200])
+            raise
+        return True
 
     await document_processor.process_document(
         file_path=file_path,
@@ -1661,6 +1790,7 @@ async def _schedule_document_processing(
         chunk_strategy=chunk_strategy,
         db=db,
     )
+    return not object_backed
 
 
 async def _download_url_ingest_file(*, url: str, body: UrlUploadRequest, tenant_id: UUID) -> UrlIngestFile:
@@ -1923,7 +2053,8 @@ async def _persist_and_process_ingested_document(
     filename: str,
     file_ext: str,
     file_size: int,
-    file_path: Path,
+    file_path: str | Path,
+    processing_file_path: Path,
     source_ref: str | None,
     doc_metadata: dict[str, Any],
     pipeline_hash: str,
@@ -1931,7 +2062,6 @@ async def _persist_and_process_ingested_document(
     ingestion_run_id: UUID | None,
 ) -> DBDocument:
     db_document = _create_pending_document_record(
-        db=db,
         file_id=file_id,
         tenant_id=tenant_id,
         dataset=dataset,
@@ -1942,6 +2072,33 @@ async def _persist_and_process_ingested_document(
         account_id=account_id,
         doc_metadata=doc_metadata,
     )
+    keep_local_processing_file = False
+    try:
+        db.add(db_document)
+    except Exception:
+        with contextlib.suppress(Exception):
+            db.rollback()
+        await _cleanup_unpersisted_ingested_source(str(file_path))
+        _unlink_ingest_temp(processing_file_path)
+        raise
+
+    try:
+        db.commit()
+    except Exception:
+        with contextlib.suppress(Exception):
+            db.rollback()
+        await _cleanup_commit_ambiguous_ingested_source(
+            document_id=file_id,
+            stored_path=str(file_path),
+            file_path=processing_file_path,
+        )
+        raise
+
+    try:
+        db.refresh(db_document)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Document committed but refresh failed: %s", str(exc)[:200])
+
     _add_document_to_ingestion_run(
         db=db,
         tenant_id=tenant_id,
@@ -1950,18 +2107,22 @@ async def _persist_and_process_ingested_document(
         source_ref=source_ref,
         doc_metadata=doc_metadata,
     )
-    await _schedule_document_processing(
-        db=db,
-        background_tasks=background_tasks,
-        tenant_id=tenant_id,
-        document_id=file_id,
-        file_path=file_path,
-        requested_by=account_id,
-        pipeline_hash=pipeline_hash,
-        parser_backend=pipeline.parser_backend,
-        chunk_strategy=pipeline.chunk_strategy,
-        db_document=db_document,
-    )
+    try:
+        keep_local_processing_file = await _schedule_document_processing(
+            db=db,
+            background_tasks=background_tasks,
+            tenant_id=tenant_id,
+            document_id=file_id,
+            file_path=processing_file_path,
+            requested_by=account_id,
+            pipeline_hash=pipeline_hash,
+            parser_backend=pipeline.parser_backend,
+            chunk_strategy=pipeline.chunk_strategy,
+            db_document=db_document,
+        )
+    finally:
+        if is_minio_uri(str(file_path)) and not keep_local_processing_file:
+            _unlink_ingest_temp(processing_file_path)
     return db_document
 
 
@@ -2032,6 +2193,14 @@ async def _ingest_url_upload_request(
 
     file_size = int(ingest_file.downloaded.size_bytes)
     _enforce_url_upload_quota(db, tenant_id=tenant_id, additional_bytes=file_size, final_path=ingest_file.final_path)
+    stored_path = await _store_ingested_source(
+        file_path=ingest_file.final_path,
+        tenant_id=tenant_id,
+        dataset_id=dataset.id,
+        document_id=ingest_file.file_id,
+        extension=ingest_file.file_ext,
+        content_type=ingest_file.content_type or None,
+    )
 
     return await _persist_and_process_ingested_document(
         db=db,
@@ -2043,7 +2212,8 @@ async def _ingest_url_upload_request(
         filename=safe_name,
         file_ext=ingest_file.file_ext,
         file_size=file_size,
-        file_path=ingest_file.final_path,
+        file_path=stored_path,
+        processing_file_path=ingest_file.final_path,
         source_ref=url,
         doc_metadata=doc_metadata,
         pipeline_hash=pipeline_hash,
@@ -2256,6 +2426,14 @@ async def _ingest_local_html_request(
         ingestion_kind=ingestion_kind,
         default_kind="connector_html",
     )
+    stored_path = await _store_ingested_source(
+        file_path=ingest_file.file_path,
+        tenant_id=tenant_id,
+        dataset_id=dataset.id,
+        document_id=ingest_file.file_id,
+        extension=ingest_file.file_ext,
+        content_type=content_type,
+    )
 
     return await _persist_and_process_ingested_document(
         db=db,
@@ -2267,7 +2445,8 @@ async def _ingest_local_html_request(
         filename=ingest_file.filename,
         file_ext=ingest_file.file_ext,
         file_size=ingest_file.file_size,
-        file_path=ingest_file.file_path,
+        file_path=stored_path,
+        processing_file_path=ingest_file.file_path,
         source_ref=(source_url or ingest_file.filename)[:1000] if (source_url or ingest_file.filename) else None,
         doc_metadata=doc_metadata,
         pipeline_hash=pipeline_hash,

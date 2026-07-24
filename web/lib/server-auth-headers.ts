@@ -17,9 +17,9 @@ export async function getServerAuthHeaders(): Promise<Record<string, string>> {
   }
 
   // Server Components cannot forward a rotated Set-Cookie from an internal refresh request.
-  const fallbackUserId =
-    String(process.env.NEXT_PUBLIC_USER_ID || '').trim() ||
-    (process.env.NODE_ENV === 'development' ? 'demo' : '')
+  const fallbackUserId = process.env.NODE_ENV === 'development'
+    ? String(process.env.NEXT_PUBLIC_USER_ID || '').trim() || 'demo'
+    : ''
   if (fallbackUserId) {
     out['X-User-ID'] = fallbackUserId
   }

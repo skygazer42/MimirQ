@@ -20,6 +20,7 @@ vi.mock('@/lib/oidc-providers', () => ({
   getOidcServerProvidersFromEnv: () => oidc.providers,
   resolveOidcServerProvider: () => oidc.providers[0],
 }))
+vi.mock('server-only', () => ({}))
 
 import { POST } from './route'
 

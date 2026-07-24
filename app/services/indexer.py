@@ -34,6 +34,7 @@ from app.rag.preprocessing.normalization import normalize_text
 from app.rag.retriever import hybrid_retriever
 from app.services.dataset_embedding_config import (
     DatasetEmbeddingRuntimeConfig,
+    collection_name_for_embedding_space,
     create_embeddings_for_runtime,
     resolve_dataset_embedding_runtime,
 )
@@ -57,6 +58,29 @@ _INDEXER_FALLBACK_LOG_MESSAGE = "Ignoring non-critical indexer fallback failure:
 _shadow_vector_writer_sig: str | None = None
 _shadow_vector_writer: tuple[Any, Any, str] | None = None  # (embeddings, adapter, embedding_space_hash)
 _SHADOW_VECTOR_WRITE_EVENT = "ingest.shadow_vector_write"
+
+
+class DatasetScopedEmbeddingRuntimeResolutionError(RuntimeError):
+    """Raised when a dataset-scoped document cannot safely resolve its embedding runtime."""
+
+
+def _dataset_scoped_runtime_unavailable(*, document_id: UUID, tenant_id: UUID) -> DatasetScopedEmbeddingRuntimeResolutionError:
+    return DatasetScopedEmbeddingRuntimeResolutionError(
+        "dataset-scoped embedding runtime unavailable during indexing "
+        f"(tenant_id={tenant_id}, document_id={document_id})"
+    )
+
+
+def _dataset_scoped_cleanup_ambiguous(
+    *,
+    document_id: UUID,
+    tenant_id: UUID,
+    embedding_space_hash: str,
+) -> DatasetScopedEmbeddingRuntimeResolutionError:
+    return DatasetScopedEmbeddingRuntimeResolutionError(
+        "dataset-scoped vector cleanup target ambiguous from persisted metadata "
+        f"(tenant_id={tenant_id}, document_id={document_id}, embedding_space_hash={embedding_space_hash})"
+    )
 
 
 def _milvus_backend_enabled() -> bool:
@@ -251,6 +275,34 @@ def _safe_int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _metadata_flag_enabled(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _first_column_value(row: Any) -> Any:
+    if row is None:
+        return None
+    if isinstance(row, dict):
+        return row
+    mapping = getattr(row, "_mapping", None)
+    if mapping is not None:
+        if "metadata" in mapping:
+            return mapping["metadata"]
+        values = list(mapping.values())
+        if len(values) == 1:
+            return values[0]
+    if isinstance(row, (tuple, list)):
+        return row[0] if row else None
+    try:
+        return row[0]
+    except (IndexError, KeyError, TypeError):
+        return row
 
 
 def _safe_uuid(value: Any) -> UUID | None:
@@ -889,6 +941,60 @@ class Indexer:
         except Exception:
             return resolve_dataset_embedding_runtime(None)
 
+    def _dataset_scoped_vector_collections_for_document(
+        self,
+        *,
+        tenant_id: UUID,
+        document_id: UUID,
+        assume_dataset_scoped: bool,
+    ) -> list[str]:
+        default_runtime = resolve_dataset_embedding_runtime(None)
+        try:
+            rows = (
+                self._db.query(DocumentChunk.doc_metadata)
+                .filter(
+                    DocumentChunk.tenant_id == tenant_id,
+                    DocumentChunk.document_id == document_id,
+                )
+                .all()
+            )
+        except Exception:
+            return []
+
+        collections: set[str] = set()
+        derived_spaces: set[str] = set()
+        for row in rows:
+            meta = _first_column_value(row)
+            if not isinstance(meta, dict):
+                continue
+            collection_name = str(meta.get("vector_collection_name") or "").strip()
+            if collection_name:
+                collections.add(collection_name)
+                continue
+            space_hash = str(meta.get("embedding_space_hash") or "").strip()
+            if not space_hash:
+                continue
+            if assume_dataset_scoped or _metadata_flag_enabled(meta.get("dataset_scoped")):
+                derived_spaces.add(space_hash)
+                continue
+            if space_hash != default_runtime.embedding_space_hash:
+                derived_spaces.add(space_hash)
+                continue
+            raise _dataset_scoped_cleanup_ambiguous(
+                tenant_id=tenant_id,
+                document_id=document_id,
+                embedding_space_hash=space_hash,
+            )
+
+        for space_hash in derived_spaces:
+            collections.add(
+                collection_name_for_embedding_space(
+                    space_hash=space_hash,
+                    dataset_scoped=True,
+                )
+            )
+        return sorted(collections)
+
     def _delete_dataset_scoped_chunk_vectors(
         self,
         *,
@@ -903,17 +1009,23 @@ class Indexer:
         except ValueError as exc:
             logger.warning("Skipping dataset-scoped vector cleanup for invalid embedding config: %s", exc)
             return
-        if not runtime.dataset_scoped:
+        collections = self._dataset_scoped_vector_collections_for_document(
+            tenant_id=tenant_id,
+            document_id=document_id,
+            assume_dataset_scoped=bool(runtime.dataset_scoped),
+        )
+        if not collections and not runtime.dataset_scoped:
             return
-        adapter = get_milvus_adapter(resolve_collection_name(runtime.collection_name))
-        if metadata_filter:
-            adapter.delete_by_document_id_and_filter(
-                document_id=document_id,
-                tenant_id=tenant_id,
-                metadata_filter=metadata_filter,
-            )
-        else:
-            adapter.delete_by_document_id(document_id, tenant_id=tenant_id)
+        for collection_name in collections or [runtime.collection_name]:
+            adapter = get_milvus_adapter(resolve_collection_name(collection_name))
+            if metadata_filter:
+                adapter.delete_by_document_id_and_filter(
+                    document_id=document_id,
+                    tenant_id=tenant_id,
+                    metadata_filter=metadata_filter,
+                )
+            else:
+                adapter.delete_by_document_id(document_id, tenant_id=tenant_id)
 
     def _document_vector_item(
         self,
@@ -1087,28 +1199,40 @@ class Indexer:
                 .filter(DBDocument.tenant_id == tenant_id, DBDocument.id == document_id)
                 .first()
             )
-            if row:
-                ds_id, ft, fn, doc_meta = row
-                if ds_id is not None:
-                    dataset_uuid = ds_id
-                    dataset_id_str = str(ds_id)
-                if ft is not None:
-                    file_type_str = str(ft)
-                if isinstance(doc_meta, dict):
-                    document_retrieval_metadata = dict(doc_meta)
-                document_title = _derive_document_title(fn, doc_meta)
-                dataset_meta = self._load_dataset_metadata(tenant_id=tenant_id, dataset_id=dataset_uuid)
-                embedding_runtime = resolve_dataset_embedding_runtime(dataset_meta)
-                embedding_space = embedding_runtime.embedding_space_hash
+            if row is None:
+                raise _dataset_scoped_runtime_unavailable(document_id=document_id, tenant_id=tenant_id)
+            ds_id, ft, fn, doc_meta = row
+            if ds_id is not None:
+                dataset_uuid = ds_id
+                dataset_id_str = str(ds_id)
+            if ft is not None:
+                file_type_str = str(ft)
+            if isinstance(doc_meta, dict):
+                document_retrieval_metadata = dict(doc_meta)
+            document_title = _derive_document_title(fn, doc_meta)
+            if dataset_uuid is not None:
+                dataset_row = (
+                    self._db.query(DBDataset.dataset_metadata)
+                    .filter(DBDataset.tenant_id == tenant_id, DBDataset.id == dataset_uuid)
+                    .first()
+                )
+                if dataset_row is None:
+                    raise _dataset_scoped_runtime_unavailable(document_id=document_id, tenant_id=tenant_id)
+                dataset_meta = dataset_row[0] if dataset_row else None
+                if dataset_meta is not None and not isinstance(dataset_meta, dict):
+                    raise _dataset_scoped_runtime_unavailable(document_id=document_id, tenant_id=tenant_id)
+                embedding_runtime = resolve_dataset_embedding_runtime(dict(dataset_meta or {}))
+            else:
+                embedding_runtime = resolve_dataset_embedding_runtime(None)
+            embedding_space = embedding_runtime.embedding_space_hash
         except ValueError:
             raise
-        except Exception:
-            dataset_id_str = None
-            file_type_str = None
-            document_title = None
-            document_retrieval_metadata = {}
-            embedding_runtime = resolve_dataset_embedding_runtime(None)
-            embedding_space = embedding_runtime.embedding_space_hash
+        except DatasetScopedEmbeddingRuntimeResolutionError:
+            raise
+        except Exception as exc:
+            if dataset_uuid is not None:
+                raise _dataset_scoped_runtime_unavailable(document_id=document_id, tenant_id=tenant_id) from exc
+            raise _dataset_scoped_runtime_unavailable(document_id=document_id, tenant_id=tenant_id) from exc
 
         source = str(default_source or "").strip() or "unknown"
         total_characters = sum(len(c.content or "") for c in chunks)
@@ -1152,6 +1276,9 @@ class Indexer:
             meta.setdefault("tenant_id", str(tenant_id))
             meta.setdefault("document_id", str(document_id))
             meta.setdefault("embedding_space_hash", embedding_space)
+            meta.setdefault("dataset_scoped", bool(embedding_runtime.dataset_scoped))
+            if embedding_runtime.dataset_scoped:
+                meta.setdefault("vector_collection_name", embedding_runtime.collection_name)
             if dataset_id_str:
                 meta.setdefault("dataset_id", dataset_id_str)
             meta.setdefault("source", source)

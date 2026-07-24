@@ -194,6 +194,13 @@ def test_helm_defaults_keep_single_replica_dev_path_usable() -> None:
     assert str(values["secretEnv"]["DB_RUNTIME_MIGRATIONS_ENABLED"]).lower() == "true"
     assert int(values["api"]["replicas"]) == 1
     assert int(values["worker"]["replicas"]) == 1
+    assert values["worker"]["healthcheckCommand"] == [
+        "arq",
+        "--check",
+        "app.tasks.queue.WorkerHealthSettings",
+    ]
+    assert values["worker"]["readinessProbe"]["enabled"] is True
+    assert "livenessProbe" not in values["worker"]
     assert values["migrations"]["enabled"] is False
 
 
@@ -217,6 +224,14 @@ def test_helm_env_lookup_helper_uses_helm_supported_string_coercion() -> None:
     assert 'printf "%v"' in helper
     assert "str (" not in helper
     assert "str(" not in helper
+
+
+def test_worker_deployment_uses_arq_check_for_readiness_only() -> None:
+    template = _read("deploy/helm/mimirq/templates/deployment-worker.yaml")
+
+    assert "readinessProbe:" in template
+    assert "{{- toYaml .Values.worker.healthcheckCommand | nindent 16 }}" in template
+    assert "livenessProbe:" not in template
 
 
 def test_helm_migration_job_is_a_pre_install_upgrade_hook_backed_by_existing_secret() -> None:

@@ -1,6 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 
 import { getOidcServerProvidersFromEnv, resolveOidcServerProvider } from '@/lib/oidc-providers'
+import {
+  OIDC_PROVIDER_COOKIE_NAME,
+  OIDC_REFRESH_COOKIE_NAME,
+  isFalsey,
+  jsonNoStore,
+  readEnv,
+  requireSameOrigin,
+} from '@/lib/server-auth-route'
 
 export const runtime = 'nodejs'
 
@@ -16,35 +24,6 @@ type TokenResponse = {
   id_token?: string
   error?: string
   error_description?: string
-}
-
-const REFRESH_COOKIE_NAME = 'mimirq_oidc_refresh_token'
-const PROVIDER_COOKIE_NAME = 'mimirq_oidc_provider_id'
-
-function jsonNoStore(data: unknown, init?: { status?: number }) {
-  const resp = NextResponse.json(data, init)
-  resp.headers.set('Cache-Control', 'no-store')
-  resp.headers.set('Pragma', 'no-cache')
-  return resp
-}
-
-function readEnv(name: string): string {
-  return String(process.env[name] || '').trim()
-}
-
-function isFalsey(value: string): boolean {
-  const v = String(value || '').trim().toLowerCase()
-  return v === '0' || v === 'false' || v === 'no' || v === 'off' || v === 'disabled'
-}
-
-function requireSameOrigin(req: NextRequest): boolean {
-  const origin = String(req.headers.get('origin') || '').trim()
-  if (!origin) return false
-
-  const xfProto = String(req.headers.get('x-forwarded-proto') || '').trim()
-  const xfHost = String(req.headers.get('x-forwarded-host') || '').trim()
-  const expected = xfProto && xfHost ? `${xfProto}://${xfHost}` : req.nextUrl.origin
-  return origin === expected
 }
 
 async function discoverTokenEndpoint(issuer: string): Promise<OidcDiscovery> {
@@ -79,7 +58,7 @@ export async function POST(req: NextRequest) {
     return jsonNoStore({ error: 'oidc_invalid_origin' }, { status: 403 })
   }
 
-  const providerId = String(req.cookies.get(PROVIDER_COOKIE_NAME)?.value || '').trim() || undefined
+  const providerId = String(req.cookies.get(OIDC_PROVIDER_COOKIE_NAME)?.value || '').trim() || undefined
   const provider = resolveOidcServerProvider(providerId)
   if (!provider) {
     const available = getOidcServerProvidersFromEnv()
@@ -91,7 +70,7 @@ export async function POST(req: NextRequest) {
   const issuer = provider.issuer.trim()
   const clientId = provider.client_id.trim()
 
-  const refreshToken = req.cookies.get(REFRESH_COOKIE_NAME)?.value?.trim() ?? ''
+  const refreshToken = req.cookies.get(OIDC_REFRESH_COOKIE_NAME)?.value?.trim() ?? ''
   if (!refreshToken) {
     return jsonNoStore({ error: 'oidc_missing_refresh_token' }, { status: 401 })
   }
@@ -137,7 +116,7 @@ export async function POST(req: NextRequest) {
     if (isTerminalRefreshFailure(errorCode)) {
       // Terminal OAuth failures mean the stored refresh token is no longer usable.
       resp.cookies.set({
-        name: REFRESH_COOKIE_NAME,
+        name: OIDC_REFRESH_COOKIE_NAME,
         value: '',
         httpOnly: true,
         secure,
@@ -146,7 +125,7 @@ export async function POST(req: NextRequest) {
         maxAge: 0,
       })
       resp.cookies.set({
-        name: PROVIDER_COOKIE_NAME,
+        name: OIDC_PROVIDER_COOKIE_NAME,
         value: '',
         httpOnly: true,
         secure,
@@ -175,7 +154,7 @@ export async function POST(req: NextRequest) {
   const nextRefresh = String(data?.refresh_token || '').trim()
   if (nextRefresh) {
     resp.cookies.set({
-      name: REFRESH_COOKIE_NAME,
+      name: OIDC_REFRESH_COOKIE_NAME,
       value: nextRefresh,
       httpOnly: true,
       secure,
@@ -184,7 +163,7 @@ export async function POST(req: NextRequest) {
       maxAge: 30 * 24 * 60 * 60,
     })
     resp.cookies.set({
-      name: PROVIDER_COOKIE_NAME,
+      name: OIDC_PROVIDER_COOKIE_NAME,
       value: provider.id,
       httpOnly: true,
       secure,

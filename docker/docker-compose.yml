@@ -196,10 +196,12 @@ services:
     build: *backend_build
     restart: unless-stopped
     logging: *docker_logging
-    # Worker uses the same image as backend, but does not expose HTTP; disable image healthcheck.
-    # NOTE: `disable: true` isn't supported by some older docker-compose versions; use NONE for compatibility.
     healthcheck:
-      test: ["NONE"]
+      test: ["CMD", "arq", "--check", "app.tasks.queue.WorkerHealthSettings"]
+      interval: ${WORKER_HEALTHCHECK_INTERVAL:-15s}
+      timeout: ${WORKER_HEALTHCHECK_TIMEOUT:-5s}
+      retries: ${WORKER_HEALTHCHECK_RETRIES:-3}
+      start_period: ${WORKER_HEALTHCHECK_START_PERIOD:-45s}
     depends_on:
       mimirq-redis:
         condition: service_healthy

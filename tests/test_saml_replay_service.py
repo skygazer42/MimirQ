@@ -187,6 +187,26 @@ def test_saml_replay_ttl_covers_effective_expiration_and_clock_skew(monkeypatch:
     assert 148 <= replay_ttl_sec <= 151
 
 
+def test_saml_conditions_reject_assertion_for_caller_supplied_acs_url() -> None:
+    root, assertion, provider = _saml_condition_nodes(
+        conditions_expires_at=datetime.now(UTC) + timedelta(minutes=5),
+        subject_expires_at=datetime.now(UTC) + timedelta(minutes=5),
+    )
+    caller_acs_url = "https://evil.example.com/api/saml/acs"
+    root.set("Destination", caller_acs_url)
+    subject_confirmation = assertion.find(
+        "./saml:Subject/saml:SubjectConfirmation/saml:SubjectConfirmationData",
+        namespaces=saml_service._NS,
+    )
+    assert subject_confirmation is not None
+    subject_confirmation.set("Recipient", caller_acs_url)
+
+    with pytest.raises(HTTPException, match="destination") as excinfo:
+        saml_service._validate_conditions(root, assertion, provider, caller_acs_url)
+
+    assert excinfo.value.status_code == 401
+
+
 def test_saml_exchange_requires_assertion_replay_identifier(monkeypatch: pytest.MonkeyPatch) -> None:
     root, assertion, provider = _saml_condition_nodes(
         conditions_expires_at=datetime.now(UTC) + timedelta(minutes=5),

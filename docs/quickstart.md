@@ -11,7 +11,7 @@ cd MimirQ
 ### 2. 启动完整 Web 栈
 
 ```bash
-# 生成 .env 和随机 JWT SECRET_KEY
+# 生成 .env、随机 JWT SECRET_KEY 和前端图片代理密钥
 make init
 ```
 

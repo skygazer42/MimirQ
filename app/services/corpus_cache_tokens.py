@@ -108,11 +108,44 @@ def build_document_scope_corpus_cache_token(rows: Sequence[Any]) -> str | None:
     return stable_hash(raw, length=24)
 
 
+def build_multi_dataset_scope_corpus_cache_token(rows: Sequence[Any]) -> str | None:
+    items: list[dict[str, Any]] = []
+    for row in rows or []:
+        payload = row if isinstance(row, dict) else {}
+        dataset_id = str(payload.get("dataset_id") or payload.get("id") or "").strip()
+        if not dataset_id:
+            continue
+        items.append(
+            {
+                "dataset_id": dataset_id,
+                "updated_at": _as_iso(payload.get("updated_at")),
+                "dataset_embedding_binding": payload.get("dataset_embedding_binding"),
+            }
+        )
+
+    if not items:
+        return None
+
+    items.sort(key=lambda item: item["dataset_id"])
+    raw = json.dumps(
+        {
+            "schema": "mimirq.multi_dataset_scope_corpus_cache_token.v1",
+            "datasets": items,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        default=str,
+    )
+    return stable_hash(raw, length=24)
+
+
 def resolve_corpus_cache_token(
     db: Session,
     *,
     tenant_id: UUID,
     dataset_id: UUID | None = None,
+    dataset_ids: Sequence[UUID] | None = None,
     document_ids: Sequence[UUID] | None = None,
 ) -> str | None:
     doc_ids = [d for d in (document_ids or []) if d is not None]
@@ -166,6 +199,26 @@ def resolve_corpus_cache_token(
             updated_at=updated_at,
             dataset_embedding_binding=_dataset_embedding_binding(dataset_meta),
         )
+
+    scope_dataset_ids = sorted({dataset_scope_id for dataset_scope_id in (dataset_ids or []) if dataset_scope_id is not None}, key=str)
+    if scope_dataset_ids:
+        rows = (
+            db.query(Dataset.id, Dataset.updated_at, Dataset.dataset_metadata)
+            .filter(Dataset.tenant_id == tenant_id, Dataset.id.in_(scope_dataset_ids))
+            .all()
+        )
+        if len(rows) != len(scope_dataset_ids):
+            return None
+        datasets: list[dict[str, Any]] = []
+        for scope_dataset_id, updated_at, dataset_meta in rows:
+            datasets.append(
+                {
+                    "dataset_id": str(scope_dataset_id),
+                    "updated_at": updated_at,
+                    "dataset_embedding_binding": _dataset_embedding_binding(dataset_meta),
+                }
+            )
+        return build_multi_dataset_scope_corpus_cache_token(datasets)
 
     return None
 
@@ -222,6 +275,7 @@ def invalidate_dataset_cache_namespace(
 __all__ = [
     "build_dataset_scope_corpus_cache_token",
     "build_document_scope_corpus_cache_token",
+    "build_multi_dataset_scope_corpus_cache_token",
     "invalidate_dataset_cache_namespace",
     "resolve_corpus_cache_token",
 ]

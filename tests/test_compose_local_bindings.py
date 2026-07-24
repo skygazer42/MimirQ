@@ -40,3 +40,15 @@ def test_local_chroma_volume_uses_image_owned_directory() -> None:
     assert lite["x-backend-env"]["CHROMA_PERSIST_PATH"] == "${CHROMA_PERSIST_PATH_DOCKER:-/app/vector_chroma}"
     assert "vector_data:/app/vector_chroma" in lite["services"]["mimirq-api"]["volumes"]
     assert "vector_data:/app/vector_chroma" in lite["services"]["mimirq-worker"]["volumes"]
+
+
+def test_worker_compose_healthcheck_uses_lightweight_arq_check() -> None:
+    for path in ("docker/docker-compose.yml", "docker/docker-compose.lite.yml"):
+        worker = _compose(path)["services"]["mimirq-worker"]
+        assert worker["healthcheck"]["test"] == [
+            "CMD",
+            "arq",
+            "--check",
+            "app.tasks.queue.WorkerHealthSettings",
+        ]
+        assert worker["healthcheck"]["start_period"] == "${WORKER_HEALTHCHECK_START_PERIOD:-45s}"

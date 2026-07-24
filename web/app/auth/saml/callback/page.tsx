@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { FullScreenFrame } from '@/components/full-screen-frame'
 import { useRouter } from '@/i18n/navigation'
 import { setAuthSession } from '@/lib/auth-storage'
-import { consumeSamlBridgeState } from '@/lib/saml-session'
+import { consumeSamlBridgeState, getSamlCallbackErrorMessage } from '@/lib/saml-session'
 
 export default function SamlCallbackPage() {
   const router = useRouter()
@@ -20,22 +20,31 @@ export default function SamlCallbackPage() {
     if (ranRef.current) return
     ranRef.current = true
 
-    const bridgeState = consumeSamlBridgeState()
-    if (!bridgeState) {
+    const routedError = new URLSearchParams(window.location.search).get('error')?.trim()
+    if (routedError) {
       setStatus('error')
-      setError('Missing SAML sign-in session.')
+      setError(getSamlCallbackErrorMessage(routedError))
       return
     }
 
-    if (bridgeState.kind === 'error') {
-      setStatus('error')
-      setError(bridgeState.error || 'SAML sign-in failed')
-      return
-    }
+    void (async () => {
+      const bridgeState = await consumeSamlBridgeState()
+      if (!bridgeState) {
+        setStatus('error')
+        setError('Missing SAML sign-in session.')
+        return
+      }
 
-    setAuthSession(bridgeState.session)
-    setStatus('success')
-    router.replace(bridgeState.returnTo || '/')
+      if (bridgeState.kind === 'error') {
+        setStatus('error')
+        setError(getSamlCallbackErrorMessage(bridgeState.error))
+        return
+      }
+
+      setAuthSession(bridgeState.session)
+      setStatus('success')
+      router.replace(bridgeState.returnTo || '/')
+    })()
   }, [router])
 
   return (

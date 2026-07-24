@@ -6,6 +6,7 @@ Switch via VECTOR_BACKEND to keep the retrieval path centralized.
 import json
 import math
 import os
+import threading
 from collections.abc import Mapping
 from typing import Any
 from uuid import UUID
@@ -13,6 +14,7 @@ from uuid import UUID
 from app.core.config import settings
 from app.core.constants import EmbeddingProviders
 from app.rag.core.filters import match_metadata_filter
+from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
 from app.rag.embedding import create_langchain_embeddings_from_config
 from app.storage.vector.milvus import milvus_store
@@ -640,6 +642,8 @@ class ChromaVectorStore(BaseVectorStore):
 
 
 _VECTOR_STORE_SINGLETONS: dict[str, BaseVectorStore] = {}
+_VECTOR_STORE_SINGLETONS_LOCK = threading.RLock()
+_EMBEDDING_AWARE_VECTOR_BACKENDS = frozenset({"memory", "faiss", "chroma", "qdrant", "pgvector"})
 
 
 def _normalize_region(region: str | None = None) -> str:
@@ -678,31 +682,57 @@ def _resolve_vector_backend(*, backend: str | None = None, region: str | None = 
     return requested, (region_key or None)
 
 
+def _embedding_client_cache_token() -> str:
+    provider = EmbeddingProviders.PROVIDER_MAP.get(
+        str(getattr(settings, "EMBEDDING_PROVIDER", "openai_compatible") or "openai_compatible").strip().lower(),
+        "openai_compatible",
+    )
+    model = str(getattr(settings, "EMBEDDING_MODEL", "") or "text-embedding-3-small").strip()
+    api_base = str(getattr(settings, "EMBEDDING_API_BASE", "") or getattr(settings, "LLM_API_BASE", "") or "").strip()
+    api_key = str(getattr(settings, "EMBEDDING_API_KEY", "") or getattr(settings, "LLM_API_KEY", "") or "").strip()
+    dimension = str(getattr(settings, "EMBEDDING_DIMENSION", "") or "").strip()
+    api_key_hash = stable_hash(api_key, length=16) if api_key else ""
+    return stable_hash(f"{provider}|{model}|{api_base}|{api_key_hash}|{dimension}", length=24)
+
+
+def _vector_store_cache_key(*, backend_name: str, region_key: str | None) -> str:
+    key = f"{region_key}:{backend_name}" if region_key else backend_name
+    if backend_name in _EMBEDDING_AWARE_VECTOR_BACKENDS:
+        key = f"{key}:{_embedding_client_cache_token()}"
+    return key
+
+
+def reset_vector_store_singletons() -> None:
+    with _VECTOR_STORE_SINGLETONS_LOCK:
+        _VECTOR_STORE_SINGLETONS.clear()
+
+
 def get_vector_store(*, backend: str | None = None, region: str | None = None) -> BaseVectorStore:
     """
     Return the configured vector store backend (singleton).
     Note: memory/faiss backends keep state in-process; singleton avoids losing data on each call.
     """
     backend_name, region_key = _resolve_vector_backend(backend=backend, region=region)
-    cache_key = f"{region_key}:{backend_name}" if region_key else backend_name
-    cached = _VECTOR_STORE_SINGLETONS.get(cache_key)
-    if cached is not None:
-        return cached
+    cache_key = _vector_store_cache_key(backend_name=backend_name, region_key=region_key)
+    with _VECTOR_STORE_SINGLETONS_LOCK:
+        cached = _VECTOR_STORE_SINGLETONS.get(cache_key)
+        if cached is not None:
+            return cached
 
-    if backend_name == "milvus":
-        store: BaseVectorStore = MilvusVectorStore()
-    elif backend_name == "memory":
-        store = MemoryVectorStore()
-    elif backend_name == "faiss":
-        store = FAISSVectorStore()
-    elif backend_name == "chroma":
-        store = ChromaVectorStore()
-    elif backend_name == "qdrant":
-        store = QdrantVectorStore()
-    elif backend_name == "pgvector":
-        store = PGVectorStore()
-    else:
-        store = StubVectorStore()
+        if backend_name == "milvus":
+            store: BaseVectorStore = MilvusVectorStore()
+        elif backend_name == "memory":
+            store = MemoryVectorStore()
+        elif backend_name == "faiss":
+            store = FAISSVectorStore()
+        elif backend_name == "chroma":
+            store = ChromaVectorStore()
+        elif backend_name == "qdrant":
+            store = QdrantVectorStore()
+        elif backend_name == "pgvector":
+            store = PGVectorStore()
+        else:
+            store = StubVectorStore()
 
-    _VECTOR_STORE_SINGLETONS[cache_key] = store
-    return store
+        _VECTOR_STORE_SINGLETONS[cache_key] = store
+        return store

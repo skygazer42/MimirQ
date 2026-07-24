@@ -87,6 +87,24 @@ jobs:
           OPENAI_API_KEY: "sk-test"
         run: make test
 
+      - name: PR bounded RAG quality gate
+        env:
+          LLM_MOCK_ENABLED: "true"
+          RAG_EVAL_GATE_ENABLED: "true"
+          RAG_EVAL_GATE_SUMMARY_PATH: artifacts/answer_quality.summary.json
+        run: |
+          mkdir -p artifacts
+          python scripts/run_sample_retrieval_benchmark.py \
+            --fixture data/sample/retrieval_fixture_v1.json \
+            --out artifacts/sample_retrieval_bench.json \
+            --retrieval-mode keyword \
+            --top-k 5
+          python scripts/build_rag_quality_gate_artifacts.py \
+            --benchmark artifacts/sample_retrieval_bench.json \
+            --summary-out artifacts/answer_quality.summary.json \
+            --report-out artifacts/rag_quality_gate.report.json
+          python -m pytest -q tests/rag/evaluation/test_rag_quality_gate.py
+
       - name: Database migrations and integration tests
         env:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/mimirq_ci
@@ -96,6 +114,7 @@ jobs:
         run: |
           make db-upgrade
           python -m pytest -q \
+            tests/test_alembic_upgrade_from_prior_revision.py \
             tests/test_core_schema_integration.py \
             tests/test_document_version_diff_integration.py \
             tests/test_document_versions_integration.py
@@ -200,6 +219,7 @@ jobs:
         run: |
           make db-upgrade
           python -m pytest -q \
+            tests/test_alembic_upgrade_from_prior_revision.py \
             tests/test_core_schema_integration.py \
             tests/test_document_version_diff_integration.py \
             tests/test_document_versions_integration.py
@@ -274,6 +294,7 @@ jobs:
         env:
           BACKEND_PORT: "0"
           COMPOSE_PROJECT_NAME: mimirq-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          MARKDOWN_IMAGE_PROXY_SECRET: ci-markdown-image-proxy-secret
           MIMIRQ_BACKEND_IMAGE: mimirq-backend
         run: |
           compose=(docker compose -f docker/docker-compose.retrieval-dev.yml)
@@ -288,6 +309,7 @@ jobs:
             --network "${COMPOSE_PROJECT_NAME}_default" \
             -e HOST=0.0.0.0 \
             -e API_INTERNAL_URL=http://mimirq-api:8000 \
+            -e MARKDOWN_IMAGE_PROXY_SECRET \
             mimirq-web
           for _ in {1..30}; do
             if docker exec "$web_name" wget -Y off -qO- http://127.0.0.1:3000/ >/dev/null; then

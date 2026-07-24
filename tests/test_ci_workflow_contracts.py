@@ -14,6 +14,7 @@ def test_main_ci_runs_database_migrations_and_integrations() -> None:
 
     assert "MIMIRQ_INTEGRATION_TESTS: \"1\"" in workflow
     assert "make db-upgrade" in workflow
+    assert "tests/test_alembic_upgrade_from_prior_revision.py" in workflow
     assert "tests/test_core_schema_integration.py" in workflow
     assert "tests/test_document_version_diff_integration.py" in workflow
     assert "tests/test_document_versions_integration.py" in workflow
@@ -58,6 +59,10 @@ def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     assert "python ci/download_verified_wheels.py --cache-dir \"$TORCH_WHEEL_DIR\"" in workflow
     assert "make openapi-check" in workflow
     assert "make test" in workflow
+    assert "PR bounded RAG quality gate" in workflow
+    assert "scripts/run_sample_retrieval_benchmark.py" in workflow
+    assert "scripts/build_rag_quality_gate_artifacts.py" in workflow
+    assert "tests/rag/evaluation/test_rag_quality_gate.py" in workflow
     assert "make verify" in workflow
     assert "make test-web" in workflow
     assert "pnpm run build" in workflow

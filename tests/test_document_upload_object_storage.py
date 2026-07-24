@@ -1,9 +1,18 @@
+import datetime as _datetime
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import starlette.status as _status
 from fastapi import BackgroundTasks
+
+if not hasattr(_datetime, "UTC"):
+    _datetime.UTC = _datetime.timezone.utc  # type: ignore[attr-defined]
+if not hasattr(_status, "HTTP_413_CONTENT_TOO_LARGE"):
+    _status.HTTP_413_CONTENT_TOO_LARGE = getattr(_status, "HTTP_413_REQUEST_ENTITY_TOO_LARGE", 413)
+if not hasattr(_status, "HTTP_422_UNPROCESSABLE_CONTENT"):
+    _status.HTTP_422_UNPROCESSABLE_CONTENT = getattr(_status, "HTTP_422_UNPROCESSABLE_ENTITY", 422)
 
 from app.api.v1 import documents as documents_module
 
@@ -251,7 +260,7 @@ async def test_persist_commit_failure_keeps_uploaded_object(monkeypatch, tmp_pat
     source.write_text("hello", encoding="utf-8")
     deleted: list[str] = []
     rollbacks: list[bool] = []
-    db_document = SimpleNamespace(file_path="minio://documents/documents/t/d/source.txt")
+    db_document = SimpleNamespace(id=uuid.uuid4(), file_path="minio://documents/documents/t/d/source.txt")
 
     class _FailingDB:
         def add(self, _document) -> None:  # noqa: ANN001
@@ -269,12 +278,113 @@ async def test_persist_commit_failure_keeps_uploaded_object(monkeypatch, tmp_pat
         lambda *, object_name: deleted.append(object_name),
         raising=True,
     )
+    monkeypatch.setattr(
+        documents_module,
+        "SessionLocal",
+        lambda: SimpleNamespace(get=lambda *_args, **_kwargs: object(), close=lambda: None),
+        raising=True,
+    )
 
     with pytest.raises(RuntimeError, match="commit failed"):
         await document_upload._persist_uploaded_document(_FailingDB(), db_document, file_path=source)
 
     assert rollbacks == [True]
     assert deleted == []
+    assert not source.exists()
+
+
+@pytest.mark.asyncio
+async def test_persist_commit_failure_deletes_uploaded_object_when_row_missing(monkeypatch, tmp_path: Path) -> None:
+    source = tmp_path / "source.txt"
+    source.write_text("hello", encoding="utf-8")
+    deleted: list[str] = []
+    db_document = SimpleNamespace(id=uuid.uuid4(), file_path="minio://documents/documents/t/d/source.txt")
+
+    class _FailingDB:
+        def add(self, _document) -> None:  # noqa: ANN001
+            return None
+
+        def commit(self) -> None:
+            raise RuntimeError("commit failed")
+
+        def rollback(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        document_upload.minio_service,
+        "delete_object",
+        lambda *, object_name: deleted.append(object_name),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        documents_module,
+        "SessionLocal",
+        lambda: SimpleNamespace(get=lambda *_args, **_kwargs: None, close=lambda: None),
+        raising=True,
+    )
+
+    with pytest.raises(RuntimeError, match="commit failed"):
+        await document_upload._persist_uploaded_document(_FailingDB(), db_document, file_path=source)
+
+    assert deleted == ["documents/t/d/source.txt"]
+    assert not source.exists()
+
+
+@pytest.mark.asyncio
+async def test_persist_commit_failure_keeps_local_source_when_row_exists(monkeypatch, tmp_path: Path) -> None:
+    source = tmp_path / "source.txt"
+    source.write_text("hello", encoding="utf-8")
+    db_document = SimpleNamespace(id=uuid.uuid4(), file_path=str(source))
+
+    class _FailingDB:
+        def add(self, _document) -> None:  # noqa: ANN001
+            return None
+
+        def commit(self) -> None:
+            raise RuntimeError("commit failed")
+
+        def rollback(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        documents_module,
+        "SessionLocal",
+        lambda: SimpleNamespace(get=lambda *_args, **_kwargs: object(), close=lambda: None),
+        raising=True,
+    )
+
+    with pytest.raises(RuntimeError, match="commit failed"):
+        await document_upload._persist_uploaded_document(_FailingDB(), db_document, file_path=source)
+
+    assert source.exists()
+
+
+@pytest.mark.asyncio
+async def test_persist_commit_failure_keeps_local_source_when_row_existence_unknown(monkeypatch, tmp_path: Path) -> None:
+    source = tmp_path / "source.txt"
+    source.write_text("hello", encoding="utf-8")
+    db_document = SimpleNamespace(id=uuid.uuid4(), file_path=str(source))
+
+    class _FailingDB:
+        def add(self, _document) -> None:  # noqa: ANN001
+            return None
+
+        def commit(self) -> None:
+            raise RuntimeError("commit failed")
+
+        def rollback(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        documents_module,
+        "SessionLocal",
+        lambda: (_ for _ in ()).throw(RuntimeError("session unavailable")),
+        raising=True,
+    )
+
+    with pytest.raises(RuntimeError, match="commit failed"):
+        await document_upload._persist_uploaded_document(_FailingDB(), db_document, file_path=source)
+
     assert source.exists()
 
 

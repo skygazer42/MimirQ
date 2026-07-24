@@ -8,6 +8,7 @@ from langchain_core.documents import Document
 from app.core.config import settings
 from app.rag.evaluation.evidence_retrieve_gate import build_retrieval_gate_summary, compute_retrieval_item_meta
 from app.rag.retriever import HybridRetriever
+from app.services.dataset_embedding_config import resolve_dataset_embedding_runtime
 
 
 def _mk_uuid(name: str) -> UUID:
@@ -123,6 +124,19 @@ def test_evidence_api_offline_regression_gate_hit_at_20_and_recall(monkeypatch: 
 
     retriever = HybridRetriever(tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
     retriever.upsert_bm25_documents(chunks, tenant_id=tenant_id)
+    fixture_runtime = resolve_dataset_embedding_runtime(None)
+    monkeypatch.setattr(
+        retriever,
+        "_resolve_dataset_runtime_shards",
+        lambda *, tenant_id, dataset_ids=None: [(fixture_runtime, tuple(dataset_ids or (dataset_id,)))],
+        raising=False,
+    )
+    monkeypatch.setattr(
+        retriever,
+        "_resolve_embedding_runtime",
+        lambda *, tenant_id: fixture_runtime,
+        raising=False,
+    )
     monkeypatch.setattr(
         retriever,
         "_enrich_results_with_db_metadata",

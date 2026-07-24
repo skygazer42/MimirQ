@@ -1,8 +1,10 @@
 import { expect, test } from '@playwright/test'
 
-test('browser reaches the live backend through the frontend', async ({ page }) => {
-  await page.goto('/diagnostics')
-  await expect(page.getByRole('heading', { name: '诊断中心' })).toBeVisible()
+test('browser reaches the live backend and shows the login form', async ({ page }) => {
+  await page.goto('/auth')
+  await expect(page.getByRole('button', { name: '登录' })).toBeVisible()
+  await expect(page.getByLabel('账号')).toBeVisible()
+  await expect(page.getByLabel('密码')).toBeVisible()
 
   const probes = await page.evaluate(async () => {
     const paths = ['/api/v1/health', '/api/v1/health/ready', '/api/v1/meta']
@@ -23,5 +25,4 @@ test('browser reaches the live backend through the frontend', async ({ page }) =
     expect.objectContaining({ path: '/api/v1/health/ready', status: 200, contentType: expect.stringContaining('json') }),
     expect.objectContaining({ path: '/api/v1/meta', status: 200, contentType: expect.stringContaining('json') }),
   ])
-  await expect(page.getByText('已就绪', { exact: true }).first()).toBeVisible()
 })

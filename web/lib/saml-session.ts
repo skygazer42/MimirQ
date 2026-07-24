@@ -1,14 +1,28 @@
 import type { AuthResponse } from '@/types'
-import { base64UrlDecodeToBytes, base64UrlEncode, decodeUtf8, encodeUtf8 } from '@/lib/encoding'
 
 export const SAML_BRIDGE_COOKIE_NAME = 'mimirq_saml_bridge'
-export const SAML_BRIDGE_COOKIE_PATH = '/auth/saml/callback'
-const SAML_BRIDGE_CLEAR_COOKIE_ATTRIBUTES = [
-  'Max-Age=0',
-  `Path=${SAML_BRIDGE_COOKIE_PATH}`,
-  'SameSite=Lax',
-  'Secure',
-] as const
+export const SAML_BRIDGE_COOKIE_PATH = '/api/saml'
+export const SAML_BRIDGE_SESSION_API_PATH = '/api/saml/session'
+export const SAML_CALLBACK_ERROR_FALLBACK = 'saml_sign_in_failed'
+
+export const SAML_CALLBACK_ERROR_MESSAGES = {
+  saml_access_denied: 'Your account is not allowed to sign in with this identity provider.',
+  saml_backend_unreachable: 'The sign-in service is temporarily unavailable. Please try again.',
+  saml_invalid_request: 'The sign-in request was invalid. Please start again from the login page.',
+  saml_invalid_response: 'The identity provider returned an invalid SAML response.',
+  saml_invalid_session: 'Your SAML sign-in session was invalid. Please try again.',
+  saml_missing_response: 'The identity provider did not return a SAML response.',
+  [SAML_CALLBACK_ERROR_FALLBACK]: 'SAML sign-in failed. Please try again.',
+} as const
+
+export function getSamlCallbackErrorMessage(raw: string | null | undefined): string {
+  const value = String(raw || '').trim()
+  if (!value) {
+    return SAML_CALLBACK_ERROR_MESSAGES[SAML_CALLBACK_ERROR_FALLBACK]
+  }
+  return SAML_CALLBACK_ERROR_MESSAGES[value as keyof typeof SAML_CALLBACK_ERROR_MESSAGES]
+    || SAML_CALLBACK_ERROR_MESSAGES[SAML_CALLBACK_ERROR_FALLBACK]
+}
 
 export type SamlBridgeState =
   | {
@@ -21,70 +35,38 @@ export type SamlBridgeState =
       error: string
     }
 
-function fromBase64Url(value: string): Uint8Array | null {
-  const normalized = String(value || '').trim()
-  if (!normalized) return null
+type SamlBridgeResponse = AuthResponse & {
+  return_to?: string
+  error?: string
+  detail?: string
+}
 
+export async function consumeSamlBridgeState(): Promise<SamlBridgeState | null> {
   try {
-    return base64UrlDecodeToBytes(normalized)
-  } catch {
-    return null
-  }
-}
+    const res = await fetch(SAML_BRIDGE_SESSION_API_PATH, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      cache: 'no-store',
+    })
+    const payload = (await res.json().catch(() => null)) as SamlBridgeResponse | null
 
-function readBridgeCookie(): string | null {
-  if (typeof document === 'undefined') return null
-  const prefix = `${SAML_BRIDGE_COOKIE_NAME}=`
-  const parts = document.cookie.split(';')
-  for (const rawPart of parts) {
-    const part = rawPart.trim()
-    if (part.startsWith(prefix)) {
-      return decodeURIComponent(part.slice(prefix.length))
+    if (!res.ok) {
+      const error = String(payload?.detail || payload?.error || '').trim()
+      return error ? { kind: 'error', error: getSamlCallbackErrorMessage(error) } : null
     }
-  }
-  return null
-}
-
-export function encodeSamlBridgeState(payload: SamlBridgeState): string {
-  return base64UrlEncode(encodeUtf8(JSON.stringify(payload)))
-}
-
-export function clearSamlBridgeState(): void {
-  if (typeof document === 'undefined') return
-  document.cookie = `${SAML_BRIDGE_COOKIE_NAME}=; ${SAML_BRIDGE_CLEAR_COOKIE_ATTRIBUTES.join('; ')}`
-}
-
-export function consumeSamlBridgeState(): SamlBridgeState | null {
-  const raw = readBridgeCookie()
-  clearSamlBridgeState()
-  if (!raw) return null
-
-  const bytes = fromBase64Url(raw)
-  if (!bytes) return null
-
-  try {
-    const parsed = JSON.parse(decodeUtf8(bytes)) as Partial<SamlBridgeState> | null
-    if (!parsed || typeof parsed !== 'object') return null
-
-    if (parsed.kind === 'error' && typeof parsed.error === 'string') {
-      return { kind: 'error', error: parsed.error }
+    if (!payload?.user || !payload?.token?.access_token) {
+      return null
     }
-
-    if (
-      parsed.kind === 'success' &&
-      parsed.session &&
-      typeof parsed.returnTo === 'string' &&
-      typeof (parsed.session).token?.access_token === 'string'
-    ) {
-      return {
-        kind: 'success',
-        session: parsed.session,
-        returnTo: parsed.returnTo,
-      }
+    return {
+      kind: 'success',
+      session: {
+        user: payload.user,
+        token: payload.token,
+      },
+      returnTo: String(payload.return_to || '/').trim() || '/',
     }
   } catch {
     return null
   }
-
-  return null
 }

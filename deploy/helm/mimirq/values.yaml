@@ -193,6 +193,17 @@ worker:
   command:
     - arq
     - app.tasks.worker.WorkerSettings
+  healthcheckCommand:
+    - arq
+    - --check
+    - app.tasks.queue.WorkerHealthSettings
+
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
 
   autoscaling:
     enabled: false

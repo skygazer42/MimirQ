@@ -13,6 +13,7 @@ from app.api.schemas.auth import (
     AuthResponse,
     LoginRequest,
     RegisterRequest,
+    SamlBridgeConsumeRequest,
     SamlExchangeRequest,
     SamlExchangeResponse,
     TokenResponse,
@@ -22,6 +23,12 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.env import is_production_env
 from app.core.jwt_utils import create_access_token
+from app.services.saml_bridge_service import (
+    consume_saml_bridge_session,
+    issue_saml_bridge_session,
+    saml_bridge_session_from_exchange,
+    saml_bridge_session_to_exchange,
+)
 from app.services.saml_service import build_saml_sp_metadata_xml, exchange_saml_response
 from app.services.user_service import UserService
 
@@ -123,13 +130,24 @@ def get_me(
 @router.post("/saml/exchange", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def saml_exchange(payload: SamlExchangeRequest, db: Annotated[Session, Depends(get_db)]) -> SamlExchangeResponse:
     """Exchange a SAML response for an application session."""
-    return exchange_saml_response(
+    session = exchange_saml_response(
         db=db,
         provider_id=payload.provider_id,
         saml_response=payload.saml_response,
         relay_state=payload.relay_state,
         acs_url=payload.acs_url,
     )
+    if not payload.bridge_mode:
+        return session
+    return session.model_copy(
+        update={"bridge_code": issue_saml_bridge_session(saml_bridge_session_from_exchange(session))}
+    )
+
+
+@router.post("/saml/bridge/consume", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def saml_bridge_consume(payload: SamlBridgeConsumeRequest) -> SamlExchangeResponse:
+    """Redeem a one-time SAML bridge code for an application session."""
+    return saml_bridge_session_to_exchange(consume_saml_bridge_session(payload.code))
 
 
 @router.get("/saml/metadata", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)

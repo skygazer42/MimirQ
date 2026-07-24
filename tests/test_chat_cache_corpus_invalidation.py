@@ -149,3 +149,48 @@ def test_resolve_corpus_cache_token_changes_when_document_scope_dataset_embeddin
     assert isinstance(token_a, str) and token_a
     assert isinstance(token_b, str) and token_b
     assert token_a != token_b
+
+
+class _DatasetScopeTokenDB:
+    def __init__(self, rows) -> None:  # noqa: ANN001
+        self._rows = list(rows)
+
+    def query(self, *_entities):  # noqa: ANN002, ANN202
+        return _Query(rows=self._rows)
+
+
+def test_resolve_corpus_cache_token_for_multi_dataset_scope_is_order_stable_and_binding_sensitive() -> None:
+    import app.services.corpus_cache_tokens as token_mod
+
+    tenant_id = uuid4()
+    dataset_a = uuid4()
+    dataset_b = uuid4()
+    rows_a = [
+        (dataset_a, "2026-01-01T00:00:00+00:00", {"embedding_defaults": {"provider": "local", "model": "embed-a"}}),
+        (dataset_b, "2026-01-02T00:00:00+00:00", {"embedding_defaults": {"provider": "local", "model": "embed-b"}}),
+    ]
+    rows_b = [
+        (dataset_a, "2026-01-01T00:00:00+00:00", {"embedding_defaults": {"provider": "local", "model": "embed-a"}}),
+        (dataset_b, "2026-01-03T00:00:00+00:00", {"embedding_defaults": {"provider": "local", "model": "embed-c"}}),
+    ]
+
+    token_a = token_mod.resolve_corpus_cache_token(
+        _DatasetScopeTokenDB(rows_a),
+        tenant_id=tenant_id,
+        dataset_ids=[dataset_b, dataset_a],
+    )
+    token_a_reordered = token_mod.resolve_corpus_cache_token(
+        _DatasetScopeTokenDB(list(reversed(rows_a))),
+        tenant_id=tenant_id,
+        dataset_ids=[dataset_a, dataset_b],
+    )
+    token_b = token_mod.resolve_corpus_cache_token(
+        _DatasetScopeTokenDB(rows_b),
+        tenant_id=tenant_id,
+        dataset_ids=[dataset_b, dataset_a],
+    )
+
+    assert isinstance(token_a, str) and token_a
+    assert token_a == token_a_reordered
+    assert isinstance(token_b, str) and token_b
+    assert token_a != token_b

@@ -81,6 +81,20 @@ def _log_retriever_fallback(context: str, exc: BaseException) -> None:
     logger.debug("retriever fallback failed in %s: %s", context, exc, exc_info=True)
 
 
+def _dataset_scoped_runtime_lookup_error(
+    *,
+    tenant_id: UUID | None,
+    dataset_ids: tuple[UUID, ...] = (),
+    document_ids: list[UUID] | None = None,
+    reason: str = "unavailable",
+) -> LookupError:
+    detail = reason.strip() or "unavailable"
+    return LookupError(
+        "dataset-scoped embedding runtime "
+        f"{detail} (tenant_id={tenant_id}, dataset_ids={len(dataset_ids)}, document_ids={len(document_ids or [])})"
+    )
+
+
 SPARSE_INDEX_DIR_FALLBACK = "./data/sparse_indexes"
 COLBERT_INDEX_DIR_FALLBACK = "./data/colbert_indexes"
 LEXICAL_DB_SEARCH_FAILED_LOG = "Lexical DB search failed: %s"
@@ -570,7 +584,7 @@ class HybridRetriever(BaseRetriever):
     _bm25_cache_lock: threading.Lock = PrivateAttr(default_factory=threading.RLock)
     # Cache versions per BM25 scope key (used to invalidate dataset-scoped indices after ingest).
     _bm25_cache_versions: dict[str, str] = PrivateAttr(default_factory=dict)
-    _corpus_token_cache: "OrderedDict[tuple[str, str, tuple[str, ...]], tuple[float, str]]" = PrivateAttr(
+    _corpus_token_cache: "OrderedDict[tuple[str, str, tuple[str, ...], tuple[str, ...]], tuple[float, str]]" = PrivateAttr(
         default_factory=OrderedDict
     )
     # Best-effort debug metrics for the last retrieval call (per retriever instance).
@@ -1250,8 +1264,20 @@ class HybridRetriever(BaseRetriever):
                 .filter(DBDataset.tenant_id == tenant_id, DBDataset.id == dataset_id)
                 .first()
             )
+            if row is None:
+                raise _dataset_scoped_runtime_lookup_error(
+                    tenant_id=tenant_id,
+                    dataset_ids=(dataset_id,),
+                    reason="unavailable",
+                )
             meta = row[0] if row else None
-            runtime = resolve_dataset_embedding_runtime(dict(meta or {}) if isinstance(meta, dict) else {})
+            if meta is not None and not isinstance(meta, dict):
+                raise _dataset_scoped_runtime_lookup_error(
+                    tenant_id=tenant_id,
+                    dataset_ids=(dataset_id,),
+                    reason="invalid",
+                )
+            runtime = resolve_dataset_embedding_runtime(dict(meta or {}))
             if runtime.dataset_scoped:
                 return runtime
             return cast(
@@ -1261,12 +1287,14 @@ class HybridRetriever(BaseRetriever):
         except ValueError:
             raise
         except Exception as exc:
+            if isinstance(exc, LookupError):
+                raise
             _log_retriever_fallback('_resolve_embedding_runtime', exc)
-            runtime = resolve_dataset_embedding_runtime(None)
-            return cast(
-                DatasetEmbeddingRuntimeConfig,
-                replace(runtime, embedding_space_hash=current_embedding_space_hash()),
-            )
+            raise _dataset_scoped_runtime_lookup_error(
+                tenant_id=tenant_id,
+                dataset_ids=(dataset_id,),
+                reason="unavailable",
+            ) from exc
         finally:
             try:
                 db.close()
@@ -1291,15 +1319,25 @@ class HybridRetriever(BaseRetriever):
                 .filter(DBDataset.tenant_id == tenant_id, DBDataset.id.in_(scope_dataset_ids))
                 .all()
             )
-            metadata_by_id = {
-                str(dataset_id): dict(meta or {}) if isinstance(meta, dict) else {}
-                for dataset_id, meta in rows
-            }
+            metadata_by_id: dict[str, dict[str, Any]] = {}
+            for dataset_id, meta in rows:
+                if meta is not None and not isinstance(meta, dict):
+                    raise _dataset_scoped_runtime_lookup_error(
+                        tenant_id=tenant_id,
+                        dataset_ids=(dataset_id,),
+                        reason="invalid",
+                    )
+                metadata_by_id[str(dataset_id)] = dict(meta or {})
+            missing_dataset_ids = tuple(dataset_id for dataset_id in scope_dataset_ids if str(dataset_id) not in metadata_by_id)
+            if missing_dataset_ids:
+                raise _dataset_scoped_runtime_lookup_error(
+                    tenant_id=tenant_id,
+                    dataset_ids=missing_dataset_ids,
+                    reason="unavailable",
+                )
             grouped: "OrderedDict[DatasetEmbeddingRuntimeConfig, list[UUID]]" = OrderedDict()
             for dataset_id in scope_dataset_ids:
                 metadata = metadata_by_id.get(str(dataset_id))
-                if metadata is None:
-                    continue
                 runtime = resolve_dataset_embedding_runtime(metadata)
                 if not runtime.dataset_scoped:
                     runtime = cast(
@@ -1311,8 +1349,14 @@ class HybridRetriever(BaseRetriever):
         except ValueError:
             raise
         except Exception as exc:
+            if isinstance(exc, LookupError):
+                raise
             _log_retriever_fallback('_resolve_dataset_runtime_shards', exc)
-            return []
+            raise _dataset_scoped_runtime_lookup_error(
+                tenant_id=tenant_id,
+                dataset_ids=scope_dataset_ids,
+                reason="unavailable",
+            ) from exc
         finally:
             try:
                 db.close()
@@ -1446,9 +1490,15 @@ class HybridRetriever(BaseRetriever):
 
         dataset_ids = self._explicit_dataset_scope_ids()
         dataset_id = dataset_ids[0] if len(dataset_ids) == 1 else None
+        multi_dataset_scope = dataset_ids if len(dataset_ids) > 1 else ()
         normalized_document_ids = list(dict.fromkeys(document_ids or []))
         document_scope = tuple(sorted(str(document_id) for document_id in normalized_document_ids))
-        scope_key = (str(tenant_uuid), str(dataset_id or ""), document_scope)
+        scope_key = (
+            str(tenant_uuid),
+            str(dataset_id or ""),
+            tuple(str(dataset_scope_id) for dataset_scope_id in multi_dataset_scope),
+            document_scope,
+        )
         now = time.monotonic()
         with self._bm25_cache_lock:
             cached = self._corpus_token_cache.get(scope_key)
@@ -1463,6 +1513,7 @@ class HybridRetriever(BaseRetriever):
                 db,
                 tenant_id=tenant_uuid,
                 dataset_id=dataset_id,
+                dataset_ids=multi_dataset_scope,
                 document_ids=normalized_document_ids,
             )
             if token:
@@ -5064,9 +5115,25 @@ class HybridRetriever(BaseRetriever):
             cache_meta["semantic"]["skip_reason"] = "multi_runtime_scope"
 
         if document_scope_resolution_failed:
-            _channel_failed("scope", LookupError("MissingDocumentRuntime"))
+            exc = _dataset_scoped_runtime_lookup_error(
+                tenant_id=tenant_uuid,
+                document_ids=document_ids,
+                reason="unavailable",
+            )
+            _channel_failed("scope", exc)
             _publish_channel_health()
-            return []
+            raise exc
+
+        if runtime_scope_ids and (not runtime_shards or runtime_scope_missing_dataset_ids):
+            exc = _dataset_scoped_runtime_lookup_error(
+                tenant_id=tenant_uuid,
+                dataset_ids=runtime_scope_missing_dataset_ids or runtime_scope_ids,
+                document_ids=document_ids,
+                reason="unavailable",
+            )
+            _channel_failed("scope", exc)
+            _publish_channel_health()
+            raise exc
 
         if cache_eligible:
             ttl = int(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_TTL_SEC", 0) or 0)

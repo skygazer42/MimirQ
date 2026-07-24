@@ -314,6 +314,9 @@ def test_retriever_embedding_runtime_propagates_invalid_dataset_scoped_config(
         def first(self):  # noqa: ANN202
             return ({"embedding_defaults": {"provider": "local", "model": "embed-a"}},)
 
+        def all(self):  # noqa: ANN202
+            return [(dataset_id, {"embedding_defaults": {"provider": "local", "model": "embed-a"}})]
+
     class _Session:
         def query(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
             return _Query()
@@ -539,14 +542,15 @@ def test_metadata_filter_dataset_scope_drives_runtime_shards(
         metadata_filter={"dataset_id": {"$in": [str(dataset_b), str(dataset_a), str(dataset_b)]}},
         enable_reranker=False,
     )
-    retriever._hybrid_search(
-        "scope query",
-        top_k=1,
-        score_threshold=0.0,
-        tenant_id=tenant_id,
-        retrieval_mode="vector",
-        metadata_filter=retriever.metadata_filter,
-    )
+    with pytest.raises(LookupError, match="dataset-scoped embedding runtime unavailable"):
+        retriever._hybrid_search(
+            "scope query",
+            top_k=1,
+            score_threshold=0.0,
+            tenant_id=tenant_id,
+            retrieval_mode="vector",
+            metadata_filter=retriever.metadata_filter,
+        )
 
     assert captured["dataset_ids"] == tuple(sorted((dataset_a, dataset_b), key=str))
 
@@ -636,16 +640,16 @@ def test_unresolved_document_scope_does_not_fall_back_to_partial_channels(
         sparse_enabled=False,
         dedup_enabled=False,
     )
-    results = retriever._hybrid_search(
-        "scope query",
-        top_k=1,
-        score_threshold=0.0,
-        document_ids=[document_id],
-        tenant_id=tenant_id,
-        retrieval_mode="hybrid",
-    )
+    with pytest.raises(LookupError, match="dataset-scoped embedding runtime unavailable"):
+        retriever._hybrid_search(
+            "scope query",
+            top_k=1,
+            score_threshold=0.0,
+            document_ids=[document_id],
+            tenant_id=tenant_id,
+            retrieval_mode="hybrid",
+        )
 
-    assert results == []
     assert fallback_calls == []
     assert retriever._last_channel_metrics["degraded_reasons"] == [
         {"channel": "scope", "error_type": "LookupError"}
@@ -1007,6 +1011,21 @@ async def test_worker_heartbeat_survives_transient_observation_failure() -> None
             await task
 
 
+@pytest.mark.asyncio
+async def test_worker_startup_registers_heartbeat_task(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.tasks.worker as worker
+
+    async def wait_forever(**_kwargs):  # noqa: ANN003, ANN202
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(worker, "_heartbeat_loop", wait_forever)
+    ctx = {"redis": object()}
+
+    await worker.startup(ctx)
+    assert worker._WORKER_HEARTBEAT_TASK_KEY in ctx
+    await worker.shutdown(ctx)
+
+
 def test_bm25_concurrent_first_build_uses_one_scope_lock(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1343,6 +1362,40 @@ def test_candidate_corpus_token_reuses_short_lived_lookup_and_invalidates_on_ups
         document_ids=[document_id],
     ) == "version-3"
     assert calls == 3
+
+
+def test_candidate_corpus_token_resolves_multi_dataset_scope_without_document_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.retriever as retriever_module
+    from app.rag.retriever import HybridRetriever
+
+    captured: dict[str, object] = {}
+
+    class _Session:
+        def close(self) -> None:
+            return None
+
+    def resolve_token(*_args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+        captured.update(kwargs)
+        return "multi-dataset-token"
+
+    tenant_id = uuid.uuid4()
+    dataset_a = uuid.uuid4()
+    dataset_b = uuid.uuid4()
+    monkeypatch.setattr(retriever_module, "SessionLocal", lambda: _Session(), raising=True)
+    monkeypatch.setattr(retriever_module, "resolve_corpus_cache_token", resolve_token, raising=True)
+
+    token = HybridRetriever(tenant_id=tenant_id, dataset_ids=[dataset_b, dataset_a, dataset_b])._resolve_candidate_cache_corpus_token(
+        tenant_id=tenant_id,
+        document_ids=None,
+    )
+
+    assert token == "multi-dataset-token"
+    assert captured["tenant_id"] == tenant_id
+    assert captured["dataset_id"] is None
+    assert captured["dataset_ids"] == tuple(sorted((dataset_a, dataset_b), key=str))
+    assert captured["document_ids"] == []
 
 
 def test_bm25_unversioned_existing_scope_is_rebuilt(
@@ -1690,54 +1743,10 @@ def test_missing_dataset_runtime_rows_fail_closed_instead_of_falling_back_global
             return None
 
     monkeypatch.setattr(retriever_module, "SessionLocal", lambda: _Session(), raising=True)
-    shards = HybridRetriever(dataset_ids=[dataset_a, dataset_b])._resolve_dataset_runtime_shards(
-        tenant_id=tenant_id,
-    )
-
-    assert len(shards) == 1
-    assert shards[0][1] == (dataset_a,)
-
-    global_called = False
-    cache_lookups: list[str] = []
-
-    def global_search(**kwargs):  # noqa: ANN003
-        nonlocal global_called
-        global_called = True
-        return []
-
-    monkeypatch.setattr(retriever_module, "get_vector_store", lambda: SimpleNamespace(search=global_search))
-    monkeypatch.setattr(
-        retriever_module,
-        "get_cached_retrieval_candidates",
-        lambda key: cache_lookups.append(key) or [{"content": "stale cached hit", "score": 1.0}],
-    )
-    monkeypatch.setattr(HybridRetriever, "_resolve_embedding_runtime", lambda self, *, tenant_id: _embedding_runtime())
-    monkeypatch.setattr(HybridRetriever, "_search_bm25", lambda self, **kwargs: [])  # noqa: ANN001
-    monkeypatch.setattr(HybridRetriever, "_search_lexical_db", lambda self, **kwargs: [])  # noqa: ANN001
-
-    retriever = HybridRetriever(
-        tenant_id=tenant_id,
-        account_id="member-1",
-        dataset_ids=[dataset_b],
-        retrieval_mode="vector",
-        enable_reranker=False,
-        sparse_enabled=False,
-        dedup_enabled=False,
-    )
-    results = retriever._hybrid_search(
-        "scope query",
-        top_k=1,
-        score_threshold=0.0,
-        tenant_id=tenant_id,
-        retrieval_mode="vector",
-    )
-
-    assert results == []
-    assert global_called is False
-    assert cache_lookups == []
-    assert retriever._last_channel_metrics["cache"]["skip_reason"] == "missing_dataset_runtime"
-    assert retriever._last_channel_metrics["cache"]["semantic"]["skip_reason"] == "missing_dataset_runtime"
-    assert retriever._last_channel_metrics["retrieval_degraded"] is True
+    with pytest.raises(LookupError, match="dataset-scoped embedding runtime unavailable"):
+        HybridRetriever(dataset_ids=[dataset_a, dataset_b])._resolve_dataset_runtime_shards(
+            tenant_id=tenant_id,
+        )
 
 
 def test_mixed_default_and_dataset_scoped_runtime_shards_use_native_search_paths(
@@ -1842,7 +1851,6 @@ def test_mixed_default_and_dataset_scoped_runtime_shards_use_native_search_paths
         "dataset_id": str(dataset_b),
         "embedding_space_hash": {"$in": ["space-custom", ""]},
     }
-
 
 def test_bm25_lru_eviction_keeps_cache_maps_aligned(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.core.config import settings

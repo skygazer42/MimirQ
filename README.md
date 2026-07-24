@@ -84,7 +84,7 @@ cd MimirQ
 make init
 ```
 
-`make init` 会生成完整 `.env` 和随机 JWT `SECRET_KEY`。`.env` 是高级配置参考，不是需要逐项填写的表单；默认硅基流动配置只需填写这一项：
+`make init` 会生成完整 `.env`、随机 JWT `SECRET_KEY` 和前端图片代理密钥。`.env` 是高级配置参考，不是需要逐项填写的表单；默认硅基流动配置只需填写这一项：
 
 ```dotenv
 # 唯一必填

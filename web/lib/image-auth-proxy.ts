@@ -59,17 +59,22 @@ export function needsAuthAssetProxy(rawUrl: string | null | undefined): boolean 
   }
 }
 
-async function mintOpaqueRemoteImageUrl(rawUrl: string): Promise<string> {
+async function mintOpaqueRemoteImageUrl(rawUrl: string): Promise<string | null> {
   const key = cacheKey(rawUrl)
   const cached = proxiedRemoteUrlCache.get(key)
   if (cached) return cached
 
   try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    }
+    const token = getAccessToken()
+    const tenantId = getTenantId()
+    if (token) headers.Authorization = `Bearer ${token}`
+    if (tenantId) headers['X-Tenant-ID'] = tenantId
     const response = await fetch('/api/markdown-image', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({
         src: rawUrl,
       }),
@@ -86,6 +91,8 @@ async function mintOpaqueRemoteImageUrl(rawUrl: string): Promise<string> {
   } catch {
     // Fall through to the legacy query proxy below.
   }
+
+  if (process.env.NODE_ENV === 'production') return null
 
   const fallbackUrl = buildMarkdownImageProxyUrl(rawUrl)
   if (key === cacheKey(rawUrl)) proxiedRemoteUrlCache.set(key, fallbackUrl)

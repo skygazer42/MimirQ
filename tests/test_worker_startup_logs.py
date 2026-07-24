@@ -2,6 +2,18 @@
 import importlib
 import logging
 import socket
+import subprocess
+import sys
+
+
+def test_worker_health_settings_do_not_import_torch() -> None:
+    result = subprocess.run(
+        [sys.executable, "-c", "import app.tasks.queue, sys; assert 'torch' not in sys.modules"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_worker_warns_when_redis_unreachable(caplog, monkeypatch):  # noqa: ANN001
@@ -25,4 +37,3 @@ def test_worker_warns_when_redis_unreachable(caplog, monkeypatch):  # noqa: ANN0
 
     assert worker_module.WorkerSettings.redis_settings.conn_retries >= 30
     assert any("Redis not reachable yet" in rec.message for rec in caplog.records)
-

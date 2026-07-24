@@ -21,6 +21,7 @@ describe('fetchAuthAssetUrl', () => {
   })
 
   afterEach(() => {
+    vi.unstubAllEnvs()
     global.fetch = originalFetch
     if (originalCreateObjectUrl) {
       ;(URL as typeof URL & { createObjectURL?: typeof URL.createObjectURL }).createObjectURL = originalCreateObjectUrl
@@ -115,5 +116,13 @@ describe('fetchAuthAssetUrl', () => {
     await expect(fetchAuthAssetUrl('https://example.com/private.png'))
       .resolves.toBe('/api/markdown-image?token=fresh')
     expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not expose a remote source URL when opaque token minting fails in production', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    global.fetch = vi.fn().mockResolvedValue({ ok: false }) as typeof fetch
+
+    await expect(fetchAuthAssetUrl('https://example.com/signed.png?token=secret'))
+      .resolves.toBeNull()
   })
 })

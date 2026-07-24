@@ -49,6 +49,39 @@ class _UploadFileLease:
             _unlink_upload(self.path)
 
 
+@dataclass
+class _IngestLockLease:
+    redis: Any = None
+    key: str | None = None
+    value: str | None = None
+    retained: bool = False
+
+    def acquire(self, *, redis: Any, key: str, value: str) -> None:
+        self.redis = redis
+        self.key = key
+        self.value = value
+
+    def retain(self) -> None:
+        self.retained = True
+
+    async def cleanup(self) -> None:
+        if self.retained or self.redis is None or not self.key or not self.value:
+            return
+        from app.tasks.locks import release_lock
+
+        await release_lock(self.redis, key=self.key, value=self.value)
+
+
+def _document_result_snapshot(document: Any, *, source_path: str | None) -> dict[str, Any]:
+    return {
+        "document_id": str(getattr(document, "id", "") or ""),
+        "filename": str(getattr(document, "filename", "") or ""),
+        "source_path": source_path,
+        "status": str(getattr(document, "status", "") or ""),
+        "doc_metadata": dict(getattr(document, "doc_metadata", None) or {}),
+    }
+
+
 def _document_object_storage_enabled() -> bool:
     return bool(getattr(settings, "MINIO_ENABLED", False)) and bool(getattr(settings, "MINIO_DOCUMENTS_ENABLED", False))
 
@@ -102,6 +135,88 @@ async def _cleanup_unpersisted_source(stored_path: str) -> None:
         logger.warning("Failed to delete unpersisted document object: %s", str(exc)[:200])
 
 
+def _fresh_session_document_exists(*, session_factory: Any, document_id: UUID) -> bool | None:
+    from app.api.v1 import documents as documents_module
+
+    try:
+        check_db = session_factory()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to open verification session after commit error: %s", str(exc)[:200])
+        return None
+
+    try:
+        getter = getattr(check_db, "get", None)
+        if callable(getter):
+            return getter(documents_module.DBDocument, document_id) is not None
+        query = getattr(check_db, "query", None)
+        if callable(query):
+            row = query(documents_module.DBDocument).filter(documents_module.DBDocument.id == document_id).first()
+            return row is not None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to verify document existence after commit error: %s", str(exc)[:200])
+        return None
+    finally:
+        with contextlib.suppress(Exception):
+            check_db.close()
+
+    return None
+
+
+async def _cleanup_commit_ambiguous_source(*, session_factory: Any, document_id: UUID, stored_path: str, file_path: Path) -> None:
+    document_exists = _fresh_session_document_exists(session_factory=session_factory, document_id=document_id)
+    object_backed = is_minio_uri(stored_path)
+    if document_exists is False:
+        await _cleanup_unpersisted_source(stored_path)
+        _unlink_upload(file_path)
+        return
+    if object_backed:
+        _unlink_upload(file_path)
+
+
+async def _maybe_acquire_ingest_lock(
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID | None,
+    file_sha256: str | None,
+    pipeline_hash: str | None,
+    account_id: str,
+    doc_metadata: dict[str, Any],
+    ingest_lock: _IngestLockLease,
+) -> None:
+    if not file_sha256 or not pipeline_hash or dataset_id is None:
+        return
+    try:
+        from app.tasks.locks import acquire_lock, make_lock_value
+        from app.tasks.queue import get_queue
+
+        redis = await get_queue()
+    except Exception:  # noqa: BLE001
+        redis = None
+
+    if redis is None:
+        return
+
+    ingest_lock_key = f"lock:ingest:{tenant_id}:{dataset_id}:{file_sha256}:{pipeline_hash}"
+    ingest_lock_value = make_lock_value(account_id)
+    acquired = await acquire_lock(
+        redis,
+        key=ingest_lock_key,
+        value=ingest_lock_value,
+        ttl_sec=60 * 40,
+    )
+    if not acquired:
+        raise HTTPException(status_code=409, detail="Duplicate ingest in progress")
+
+    doc_metadata["ingest_lock_key"] = ingest_lock_key
+    doc_metadata["ingest_lock_value"] = ingest_lock_value
+    ingest_lock.acquire(redis=redis, key=ingest_lock_key, value=ingest_lock_value)
+
+
+def _retain_ingest_lock_if_task_handed_off(document: Any, *, ingest_lock: _IngestLockLease) -> None:
+    if str((getattr(document, "doc_metadata", None) or {}).get("task_id") or "").strip():
+        ingest_lock.retain()
+
+
 async def _persist_uploaded_document(db: Session, db_document: Any, *, file_path: Path) -> None:
     try:
         db.add(db_document)
@@ -116,8 +231,20 @@ async def _persist_uploaded_document(db: Session, db_document: Any, *, file_path
         db.commit()
     except Exception:
         # The server may have committed even when the client lost the acknowledgement.
+        from app.api.v1 import documents as documents_module
+
         with contextlib.suppress(Exception):
             db.rollback()
+        document_id = getattr(db_document, "id", None)
+        if isinstance(document_id, UUID):
+            await _cleanup_commit_ambiguous_source(
+                session_factory=documents_module.SessionLocal,
+                document_id=document_id,
+                stored_path=str(getattr(db_document, "file_path", "") or ""),
+                file_path=file_path,
+            )
+        else:
+            _unlink_upload(file_path)
         raise
 
     try:
@@ -305,6 +432,7 @@ async def _upload_document_impl(
 ):
     from app.api.v1 import documents as documents_module  # Local import to avoid router circular import.
 
+    ingest_lock = _IngestLockLease()
     raw_filename = file.filename
     upload_key = documents_module._normalize_upload_key(raw_filename)
     source_path = upload_key if "/" in upload_key else None
@@ -498,218 +626,211 @@ async def _upload_document_impl(
     doc_metadata.setdefault("active_pipeline_hash", pipeline_hash)
     doc_metadata.setdefault("active_pipeline_ready", False)
 
-    if isinstance(file_sha256, str) and file_sha256 and pipeline_hash and dataset is not None:
-        try:
-            from app.tasks.locks import acquire_lock, make_lock_value
-            from app.tasks.queue import get_queue
+    await _maybe_acquire_ingest_lock(
+        tenant_id=tenant_id,
+        dataset_id=getattr(dataset, "id", None),
+        file_sha256=file_sha256 if isinstance(file_sha256, str) else None,
+        pipeline_hash=pipeline_hash,
+        account_id=account_id,
+        doc_metadata=doc_metadata,
+        ingest_lock=ingest_lock,
+    )
 
-            redis = await get_queue()
-        except Exception:  # noqa: BLE001
-            redis = None
-
-        if redis is not None:
-            ingest_lock_key = f"lock:ingest:{tenant_id}:{dataset.id}:{file_sha256}:{pipeline_hash}"
-            ingest_lock_value = make_lock_value(account_id)
-            lock_ttl = 60 * 40
-            acquired = await acquire_lock(
-                redis,
-                key=ingest_lock_key,
-                value=ingest_lock_value,
-                ttl_sec=lock_ttl,
-            )
-            if not acquired:
-                raise HTTPException(status_code=409, detail="Duplicate ingest in progress")
-
-            doc_metadata["ingest_lock_key"] = ingest_lock_key
-            doc_metadata["ingest_lock_value"] = ingest_lock_value
-
-    ingestion_run = None
     try:
-        ingestion_run = documents_module.IngestionRunService.create_run(
-            db,
-            tenant_id=tenant_id,
-            dataset_id=getattr(dataset, "id", None),
-            requested_by=account_id,
-            kind="upload",
-            config={
-                "filename": str(file.filename or "")[:255],
-                "source_path": (str(source_path)[:1000] if source_path else None),
-                "file_ext": str(file_ext or "")[:16],
-                "parser_backend_requested": str(parser_backend or "")[:80],
-                "chunk_strategy_requested": str(chunk_strategy or "")[:80],
-                "parser_backend": str(resolved_parser_backend or "")[:80],
-                "chunk_strategy": str(resolved_chunk_strategy or "")[:80],
-                "pipeline_hash": str(pipeline_hash or "")[:64],
-                "ingestion_meta": dict(ingestion_meta or {}),
-                "pipeline": (
-                    pipeline_parsed.model_dump(exclude_none=True) if pipeline_parsed is not None else None
-                ),
-            },
-            expected_documents=1,
-        )
-    except Exception:
         ingestion_run = None
-
-    def _attach_doc_to_ingestion_run(doc: documents_module.DBDocument, *, created: bool) -> None:
-        if ingestion_run is None or doc is None:
-            return
         try:
-            meta0 = dict(getattr(doc, "doc_metadata", None) or {})
-            if created and not meta0.get("created_by_run_id"):
-                meta0["created_by_run_id"] = str(ingestion_run.id)
-            meta0["last_ingestion_run_id"] = str(ingestion_run.id)
-            meta0["last_ingestion_kind"] = "upload"
-            doc.doc_metadata = meta0
-            db.commit()
-            db.refresh(doc)
-        except Exception:
-            meta0 = dict(getattr(doc, "doc_metadata", None) or {})
-
-        try:
-            documents_module.IngestionRunService.add_document(
+            ingestion_run = documents_module.IngestionRunService.create_run(
                 db,
                 tenant_id=tenant_id,
-                run_id=ingestion_run.id,
-                document_id=doc.id,
-                source_ref=(source_path or doc.filename),
-                initial_status=str(getattr(doc, "status", "") or "created"),
-                doc_meta=meta0 if isinstance(meta0, dict) else None,
+                dataset_id=getattr(dataset, "id", None),
+                requested_by=account_id,
+                kind="upload",
+                config={
+                    "filename": str(file.filename or "")[:255],
+                    "source_path": (str(source_path)[:1000] if source_path else None),
+                    "file_ext": str(file_ext or "")[:16],
+                    "parser_backend_requested": str(parser_backend or "")[:80],
+                    "chunk_strategy_requested": str(chunk_strategy or "")[:80],
+                    "parser_backend": str(resolved_parser_backend or "")[:80],
+                    "chunk_strategy": str(resolved_chunk_strategy or "")[:80],
+                    "pipeline_hash": str(pipeline_hash or "")[:64],
+                    "ingestion_meta": dict(ingestion_meta or {}),
+                    "pipeline": (
+                        pipeline_parsed.model_dump(exclude_none=True) if pipeline_parsed is not None else None
+                    ),
+                },
+                expected_documents=1,
             )
         except Exception:
-            return
+            ingestion_run = None
 
-    if bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)) and isinstance(file_sha256, str) and file_sha256:
-        dup = documents_module._find_duplicate_document(
-            db,
-            tenant_id=tenant_id,
-            dataset_id=getattr(dataset, "id", None),
-            file_sha256=file_sha256,
-            pipeline_hash=pipeline_hash,
-        )
-        if dup is not None and str(getattr(dup, "status", "") or "").lower() not in {"failed"}:
-            documents_module.logger.info(
-                "Upload dedup hit tenant_id=%s dataset_id=%s document_id=%s",
-                str(tenant_id),
-                str(getattr(dataset, "id", None)),
-                str(getattr(dup, "id", "")),
-            )
-            with contextlib.suppress(Exception):
-                _attach_doc_to_ingestion_run(dup, created=False)
-            return dup
+        def _attach_doc_to_ingestion_run(doc: documents_module.DBDocument, *, created: bool) -> None:
+            if ingestion_run is None or doc is None:
+                return
+            try:
+                meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+                if created and not meta0.get("created_by_run_id"):
+                    meta0["created_by_run_id"] = str(ingestion_run.id)
+                meta0["last_ingestion_run_id"] = str(ingestion_run.id)
+                meta0["last_ingestion_kind"] = "upload"
+                doc.doc_metadata = meta0
+                db.commit()
+                db.refresh(doc)
+            except Exception:
+                meta0 = dict(getattr(doc, "doc_metadata", None) or {})
 
-        dup_any = documents_module._find_duplicate_document_by_sha(
-            db,
-            tenant_id=tenant_id,
-            dataset_id=getattr(dataset, "id", None),
-            file_sha256=file_sha256,
-        )
-        if dup_any is not None:
-            status0 = str(getattr(dup_any, "status", "") or "").lower()
-            if status0 in {"pending", "processing"}:
-                raise HTTPException(status_code=409, detail=documents_module.DUPLICATE_DOCUMENT_PROCESSING_DETAIL)
-
-            meta_any = dict(getattr(dup_any, "doc_metadata", None) or {})
-            meta_any["parser_backend"] = resolved_parser_backend
-            meta_any["parser_backend_requested"] = (parser_backend or "").lower()
-            meta_any["chunk_strategy"] = resolved_chunk_strategy
-            meta_any["chunk_strategy_requested"] = (chunk_strategy or "").lower()
-            if source_path and not meta_any.get("source_path"):
-                meta_any["source_path"] = source_path
-            meta_any["file_sha256"] = str(file_sha256).strip().lower()
-            documents_module.upsert_pipeline_metadata(meta_any, options=pipeline_options)
-            if ingestion_meta:
-                meta_any["ingestion"] = ingestion_meta
-
-            if isinstance(user_metadata, str) and user_metadata.strip():
-                raw = user_metadata.strip()
-                max_len = int(settings.USER_METADATA_FORM_JSON_MAX_CHARS)
-                if max_len > 0 and len(raw) > max_len:
-                    raise HTTPException(status_code=400, detail="user_metadata is too large")
-                try:
-                    obj = json.loads(raw)
-                except Exception as exc:  # noqa: BLE001
-                    raise HTTPException(status_code=400, detail="Invalid user_metadata JSON (expect UTF-8)") from exc
-                if not isinstance(obj, dict):
-                    raise HTTPException(status_code=400, detail="user_metadata must be a JSON object")
-                current_user = meta_any.get("user") if isinstance(meta_any.get("user"), dict) else {}
-                meta_any["user"] = documents_module._apply_user_metadata_patch(
-                    current=current_user,
-                    patch=obj,
-                    replace=False,
+            try:
+                documents_module.IngestionRunService.add_document(
+                    db,
+                    tenant_id=tenant_id,
+                    run_id=ingestion_run.id,
+                    document_id=doc.id,
+                    source_ref=(source_path or doc.filename),
+                    initial_status=str(getattr(doc, "status", "") or "created"),
+                    doc_meta=meta0 if isinstance(meta0, dict) else None,
                 )
+            except Exception:
+                return
 
-            if "active_pipeline_hash" not in meta_any:
-                meta_any["active_pipeline_hash"] = str(meta_any.get("pipeline_hash") or "").strip() or None
-            if "active_pipeline_ready" not in meta_any:
-                meta_any["active_pipeline_ready"] = bool(status0 == "completed")
-
-            dup_any.doc_metadata = meta_any
-            db.commit()
-            db.refresh(dup_any)
-
-            await documents_module.retry_document_processing(
-                document_id=dup_any.id,
-                background_tasks=background_tasks,
-                force=True,
-                skip_if_unchanged=True,
+        if bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)) and isinstance(file_sha256, str) and file_sha256:
+            dup = documents_module._find_duplicate_document(
+                db,
                 tenant_id=tenant_id,
-                account_id=account_id,
-                db=db,
+                dataset_id=getattr(dataset, "id", None),
+                file_sha256=file_sha256,
+                pipeline_hash=pipeline_hash,
             )
-            db.refresh(dup_any)
-            with contextlib.suppress(Exception):
-                _attach_doc_to_ingestion_run(dup_any, created=False)
-            return dup_any
+            if dup is not None and str(getattr(dup, "status", "") or "").lower() not in {"failed"}:
+                documents_module.logger.info(
+                    "Upload dedup hit tenant_id=%s dataset_id=%s document_id=%s",
+                    str(tenant_id),
+                    str(getattr(dataset, "id", None)),
+                    str(getattr(dup, "id", "")),
+                )
+                with contextlib.suppress(Exception):
+                    _attach_doc_to_ingestion_run(dup, created=False)
+                return dup
 
-    stored_path = await _store_document_source(
-        file_path=file_path,
-        tenant_id=tenant_id,
-        dataset_id=dataset.id,
-        document_id=file_id,
-        extension=file_ext,
-        content_type=(file.content_type or "application/octet-stream"),
-    )
-    persistence_started = False
-    try:
-        db_document = documents_module.DBDocument(
-            id=file_id,
+            dup_any = documents_module._find_duplicate_document_by_sha(
+                db,
+                tenant_id=tenant_id,
+                dataset_id=getattr(dataset, "id", None),
+                file_sha256=file_sha256,
+            )
+            if dup_any is not None:
+                status0 = str(getattr(dup_any, "status", "") or "").lower()
+                if status0 in {"pending", "processing"}:
+                    raise HTTPException(status_code=409, detail=documents_module.DUPLICATE_DOCUMENT_PROCESSING_DETAIL)
+
+                meta_any = dict(getattr(dup_any, "doc_metadata", None) or {})
+                meta_any["parser_backend"] = resolved_parser_backend
+                meta_any["parser_backend_requested"] = (parser_backend or "").lower()
+                meta_any["chunk_strategy"] = resolved_chunk_strategy
+                meta_any["chunk_strategy_requested"] = (chunk_strategy or "").lower()
+                if source_path and not meta_any.get("source_path"):
+                    meta_any["source_path"] = source_path
+                meta_any["file_sha256"] = str(file_sha256).strip().lower()
+                documents_module.upsert_pipeline_metadata(meta_any, options=pipeline_options)
+                if ingestion_meta:
+                    meta_any["ingestion"] = ingestion_meta
+
+                if isinstance(user_metadata, str) and user_metadata.strip():
+                    raw = user_metadata.strip()
+                    max_len = int(settings.USER_METADATA_FORM_JSON_MAX_CHARS)
+                    if max_len > 0 and len(raw) > max_len:
+                        raise HTTPException(status_code=400, detail="user_metadata is too large")
+                    try:
+                        obj = json.loads(raw)
+                    except Exception as exc:  # noqa: BLE001
+                        raise HTTPException(status_code=400, detail="Invalid user_metadata JSON (expect UTF-8)") from exc
+                    if not isinstance(obj, dict):
+                        raise HTTPException(status_code=400, detail="user_metadata must be a JSON object")
+                    current_user = meta_any.get("user") if isinstance(meta_any.get("user"), dict) else {}
+                    meta_any["user"] = documents_module._apply_user_metadata_patch(
+                        current=current_user,
+                        patch=obj,
+                        replace=False,
+                    )
+
+                if "active_pipeline_hash" not in meta_any:
+                    meta_any["active_pipeline_hash"] = str(meta_any.get("pipeline_hash") or "").strip() or None
+                if "active_pipeline_ready" not in meta_any:
+                    meta_any["active_pipeline_ready"] = bool(status0 == "completed")
+                if ingest_lock.key and ingest_lock.value:
+                    meta_any["ingest_lock_key"] = ingest_lock.key
+                    meta_any["ingest_lock_value"] = ingest_lock.value
+
+                dup_any.doc_metadata = meta_any
+                db.commit()
+                db.refresh(dup_any)
+
+                await documents_module.retry_document_processing(
+                    document_id=dup_any.id,
+                    background_tasks=background_tasks,
+                    force=True,
+                    skip_if_unchanged=True,
+                    tenant_id=tenant_id,
+                    account_id=account_id,
+                    db=db,
+                )
+                db.refresh(dup_any)
+                _retain_ingest_lock_if_task_handed_off(dup_any, ingest_lock=ingest_lock)
+                with contextlib.suppress(Exception):
+                    _attach_doc_to_ingestion_run(dup_any, created=False)
+                return dup_any
+
+        stored_path = await _store_document_source(
+            file_path=file_path,
             tenant_id=tenant_id,
             dataset_id=dataset.id,
-            filename=file.filename,
-            file_type=file_ext.lstrip("."),
-            file_size=file_size,
-            file_path=stored_path,
-            owner_id=account_id,
-            access_mode=None,
-            status="pending",
-            processing_progress=0,
-            doc_metadata=doc_metadata,
+            document_id=file_id,
+            extension=file_ext,
+            content_type=(file.content_type or "application/octet-stream"),
         )
-        persistence_started = True
-        await _persist_uploaded_document(db, db_document, file_path=file_path)
-    except Exception:
-        if not persistence_started:
-            await _cleanup_unpersisted_source(stored_path)
-        raise
-    with contextlib.suppress(Exception):
-        _attach_doc_to_ingestion_run(db_document, created=True)
+        persistence_started = False
+        try:
+            db_document = documents_module.DBDocument(
+                id=file_id,
+                tenant_id=tenant_id,
+                dataset_id=dataset.id,
+                filename=file.filename,
+                file_type=file_ext.lstrip("."),
+                file_size=file_size,
+                file_path=stored_path,
+                owner_id=account_id,
+                access_mode=None,
+                status="pending",
+                processing_progress=0,
+                doc_metadata=doc_metadata,
+            )
+            persistence_started = True
+            await _persist_uploaded_document(db, db_document, file_path=file_path)
+        except Exception:
+            if not persistence_started:
+                await _cleanup_unpersisted_source(stored_path)
+            raise
+        with contextlib.suppress(Exception):
+            _attach_doc_to_ingestion_run(db_document, created=True)
 
-    keep_local_file = await _schedule_document_processing(
-        background_tasks=background_tasks,
-        file_path=file_path,
-        document_id=file_id,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        pipeline_hash=pipeline_hash,
-        parser_backend=resolved_parser_backend,
-        chunk_strategy=resolved_chunk_strategy,
-        db=db,
-        db_document=db_document,
-    )
-    if keep_local_file:
-        file_lease.transfer()
+        keep_local_file = await _schedule_document_processing(
+            background_tasks=background_tasks,
+            file_path=file_path,
+            document_id=file_id,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            pipeline_hash=pipeline_hash,
+            parser_backend=resolved_parser_backend,
+            chunk_strategy=resolved_chunk_strategy,
+            db=db,
+            db_document=db_document,
+        )
+        if keep_local_file:
+            file_lease.transfer()
+        _retain_ingest_lock_if_task_handed_off(db_document, ingest_lock=ingest_lock)
 
-    return db_document
+        return db_document
+    finally:
+        await ingest_lock.cleanup()
 
 
 @router.post("/upload-url", response_model=DocumentDetail, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -759,6 +880,10 @@ async def upload_documents_batch(
     if len(files) > 50:
         raise HTTPException(status_code=400, detail="Too many files. Maximum 50 files per batch.")
 
+    max_concurrent_raw = int(form.max_concurrent or 0)
+    if max_concurrent_raw <= 0:
+        raise HTTPException(status_code=400, detail="max_concurrent must be at least 1")
+
     from app.services.tenant_quota_service import enforce_tenant_upload_quotas
 
     enforce_tenant_upload_quotas(
@@ -778,7 +903,7 @@ async def upload_documents_batch(
     user_metadata_map = form.user_metadata_map
 
     pipeline_overrides = documents_module.PipelineOptionOverrides(**asdict(overrides_form))
-    max_concurrent = min(int(form.max_concurrent or 0), 10)
+    max_concurrent = min(max_concurrent_raw, 10)
     semaphore = asyncio.Semaphore(max_concurrent)
 
     pipeline_parsed = documents_module._parse_pipeline_json(pipeline)
@@ -1154,6 +1279,8 @@ async def upload_documents_batch(
 
         async def _finalize_staged_file(staged: dict) -> dict:
             async with semaphore:
+                item_db = documents_module.SessionLocal()
+                ingest_lock = _IngestLockLease()
                 source_path = staged.get("source_path")
                 upload_key = staged.get("upload_key")
                 filename0 = str(staged.get("filename") or "unknown")
@@ -1216,7 +1343,7 @@ async def upload_documents_batch(
                             if cached is None:
                                 try:
                                     cached = documents_module.resolve_governance_profile_ref(
-                                        db=db,
+                                        db=item_db,
                                         tenant_id=tenant_id,
                                         profile_ref=ref,
                                     )
@@ -1297,10 +1424,19 @@ async def upload_documents_batch(
                     doc_metadata["pipeline_hash"] = pipeline_hash
                     doc_metadata.setdefault("active_pipeline_hash", pipeline_hash)
                     doc_metadata.setdefault("active_pipeline_ready", False)
+                    await _maybe_acquire_ingest_lock(
+                        tenant_id=tenant_id,
+                        dataset_id=getattr(dataset, "id", None) if dataset is not None else None,
+                        file_sha256=file_sha256 if isinstance(file_sha256, str) else None,
+                        pipeline_hash=pipeline_hash,
+                        account_id=account_id,
+                        doc_metadata=doc_metadata,
+                        ingest_lock=ingest_lock,
+                    )
 
                     if bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)) and isinstance(file_sha256, str) and file_sha256:
                         dup = documents_module._find_duplicate_document(
-                            db,
+                            item_db,
                             tenant_id=tenant_id,
                             dataset_id=getattr(dataset, "id", None) if dataset is not None else None,
                             file_sha256=file_sha256,
@@ -1312,13 +1448,11 @@ async def upload_documents_batch(
                             return {
                                 "success": True,
                                 "filename": filename0,
-                                "source_path": source_path,
-                                "document_id": str(getattr(dup, "id", "")),
-                                "document": dup,
+                                **_document_result_snapshot(dup, source_path=source_path),
                             }
 
                         dup_any = documents_module._find_duplicate_document_by_sha(
-                            db,
+                            item_db,
                             tenant_id=tenant_id,
                             dataset_id=getattr(dataset, "id", None) if dataset is not None else None,
                             file_sha256=file_sha256,
@@ -1355,21 +1489,22 @@ async def upload_documents_batch(
                             if "active_pipeline_hash" not in meta_any:
                                 meta_any["active_pipeline_hash"] = (
                                     str(meta_any.get("pipeline_hash") or "").strip() or None
-                                )
+                            )
                             if "active_pipeline_ready" not in meta_any:
                                 meta_any["active_pipeline_ready"] = bool(status0 == "completed")
+                            if ingest_lock.key and ingest_lock.value:
+                                meta_any["ingest_lock_key"] = ingest_lock.key
+                                meta_any["ingest_lock_value"] = ingest_lock.value
 
                             dup_any.doc_metadata = meta_any
-                            db.commit()
-                            db.refresh(dup_any)
+                            item_db.commit()
+                            item_db.refresh(dup_any)
 
                             if upload_only:
                                 return {
                                     "success": True,
                                     "filename": filename0,
-                                    "source_path": source_path,
-                                    "document_id": str(getattr(dup_any, "id", "")),
-                                    "document": dup_any,
+                                    **_document_result_snapshot(dup_any, source_path=source_path),
                                 }
 
                             await documents_module.retry_document_processing(
@@ -1379,15 +1514,14 @@ async def upload_documents_batch(
                                 skip_if_unchanged=True,
                                 tenant_id=tenant_id,
                                 account_id=account_id,
-                                db=db,
+                                db=item_db,
                             )
-                            db.refresh(dup_any)
+                            item_db.refresh(dup_any)
+                            _retain_ingest_lock_if_task_handed_off(dup_any, ingest_lock=ingest_lock)
                             return {
                                 "success": True,
                                 "filename": filename0,
-                                "source_path": source_path,
-                                "document_id": str(getattr(dup_any, "id", "")),
-                                "document": dup_any,
+                                **_document_result_snapshot(dup_any, source_path=source_path),
                             }
 
                     stored_path = await _store_document_source(
@@ -1414,7 +1548,7 @@ async def upload_documents_batch(
                     )
 
                     persistence_started = True
-                    await _persist_uploaded_document(db, db_document, file_path=file_path)
+                    await _persist_uploaded_document(item_db, db_document, file_path=file_path)
 
                     if upload_only:
                         # Upload-only stores the source document but intentionally does not enqueue parsing.
@@ -1423,9 +1557,7 @@ async def upload_documents_batch(
                         return {
                             "success": True,
                             "filename": filename0,
-                            "source_path": source_path,
-                            "document_id": str(file_id),
-                            "document": db_document,
+                            **_document_result_snapshot(db_document, source_path=source_path),
                         }
 
                     keep_local_file = await _schedule_document_processing(
@@ -1437,18 +1569,17 @@ async def upload_documents_batch(
                         pipeline_hash=pipeline_hash,
                         parser_backend=resolved_parser_backend,
                         chunk_strategy=resolved_chunk_strategy,
-                        db=db,
+                        db=item_db,
                         db_document=db_document,
                     )
                     if not keep_local_file:
                         _unlink_upload(file_path)
+                    _retain_ingest_lock_if_task_handed_off(db_document, ingest_lock=ingest_lock)
 
                     return {
                         "success": True,
                         "filename": filename0,
-                        "source_path": source_path,
-                        "document_id": str(file_id),
-                        "document": db_document,
+                        **_document_result_snapshot(db_document, source_path=source_path),
                     }
                 except Exception as exc:  # noqa: BLE001
                     if file_path is not None and (not persistence_started or is_minio_uri(stored_path or "")):
@@ -1462,6 +1593,9 @@ async def upload_documents_batch(
                         "source_path": source_path,
                         "error": str(exc)[:200],
                     }
+                finally:
+                    await ingest_lock.cleanup()
+                    item_db.close()
 
         finalize_tasks = [_finalize_staged_file(item) for item in staged_successful]
         finalize_results = await asyncio.gather(*finalize_tasks, return_exceptions=True)
@@ -1480,7 +1614,21 @@ async def upload_documents_batch(
 
         if ingestion_run is not None:
             for result in successful:
-                doc = result.get("document")
+                doc_id_raw = str(result.get("document_id") or "").strip()
+                if not doc_id_raw:
+                    continue
+                try:
+                    doc_id = UUID(doc_id_raw)
+                except ValueError:
+                    continue
+                doc = (
+                    db.query(documents_module.DBDocument)
+                    .filter(
+                        documents_module.DBDocument.id == doc_id,
+                        documents_module.DBDocument.tenant_id == tenant_id,
+                    )
+                    .first()
+                )
                 if doc is None:
                     continue
                 try:
@@ -1500,7 +1648,7 @@ async def upload_documents_batch(
                         run_id=ingestion_run.id,
                         document_id=doc.id,
                         source_ref=(result.get("source_path") or getattr(doc, "filename", None)),
-                        initial_status=str(getattr(doc, "status", "") or "created"),
+                        initial_status=str(result.get("status") or getattr(doc, "status", "") or "created"),
                         doc_meta=meta0 if isinstance(meta0, dict) else None,
                     )
 
@@ -1513,7 +1661,7 @@ async def upload_documents_batch(
                     "document_id": result["document_id"],
                     "filename": result["filename"],
                     "source_path": result.get("source_path"),
-                    "status": result["document"].status,
+                    "status": result.get("status") or "pending",
                 }
                 for result in successful
             ],
@@ -1531,6 +1679,8 @@ async def upload_documents_batch(
 
     async def process_single_file(file: UploadFile) -> dict:
         async with semaphore:
+            item_db = documents_module.SessionLocal()
+            ingest_lock = _IngestLockLease()
             source_path: str | None = None
             upload_key: str | None = None
             file_path: Path | None = None
@@ -1595,7 +1745,7 @@ async def upload_documents_batch(
                         if cached is None:
                             try:
                                 cached = documents_module.resolve_governance_profile_ref(
-                                    db=db,
+                                    db=item_db,
                                     tenant_id=tenant_id,
                                     profile_ref=ref,
                                 )
@@ -1654,7 +1804,7 @@ async def upload_documents_batch(
 
                 try:
                     enforce_tenant_upload_quotas(
-                        db,
+                        item_db,
                         tenant_id=tenant_id,
                         additional_docs=1,
                         additional_bytes=int(file_size or 0),
@@ -1702,10 +1852,19 @@ async def upload_documents_batch(
                 doc_metadata["pipeline_hash"] = pipeline_hash
                 doc_metadata.setdefault("active_pipeline_hash", pipeline_hash)
                 doc_metadata.setdefault("active_pipeline_ready", False)
+                await _maybe_acquire_ingest_lock(
+                    tenant_id=tenant_id,
+                    dataset_id=getattr(dataset, "id", None) if dataset is not None else None,
+                    file_sha256=file_sha256 if isinstance(file_sha256, str) else None,
+                    pipeline_hash=pipeline_hash,
+                    account_id=account_id,
+                    doc_metadata=doc_metadata,
+                    ingest_lock=ingest_lock,
+                )
 
                 if bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)) and isinstance(file_sha256, str) and file_sha256:
                     dup = documents_module._find_duplicate_document(
-                        db,
+                        item_db,
                         tenant_id=tenant_id,
                         dataset_id=getattr(dataset, "id", None) if dataset is not None else None,
                         file_sha256=file_sha256,
@@ -1717,13 +1876,11 @@ async def upload_documents_batch(
                         return {
                             "success": True,
                             "filename": file.filename,
-                            "source_path": source_path,
-                            "document_id": str(getattr(dup, "id", "")),
-                            "document": dup,
+                            **_document_result_snapshot(dup, source_path=source_path),
                         }
 
                     dup_any = documents_module._find_duplicate_document_by_sha(
-                        db,
+                        item_db,
                         tenant_id=tenant_id,
                         dataset_id=getattr(dataset, "id", None) if dataset is not None else None,
                         file_sha256=file_sha256,
@@ -1763,18 +1920,19 @@ async def upload_documents_batch(
                             )
                         if "active_pipeline_ready" not in meta_any:
                             meta_any["active_pipeline_ready"] = bool(status0 == "completed")
+                        if ingest_lock.key and ingest_lock.value:
+                            meta_any["ingest_lock_key"] = ingest_lock.key
+                            meta_any["ingest_lock_value"] = ingest_lock.value
 
                         dup_any.doc_metadata = meta_any
-                        db.commit()
-                        db.refresh(dup_any)
+                        item_db.commit()
+                        item_db.refresh(dup_any)
 
                         if upload_only:
                             return {
                                 "success": True,
                                 "filename": file.filename,
-                                "source_path": source_path,
-                                "document_id": str(getattr(dup_any, "id", "")),
-                                "document": dup_any,
+                                **_document_result_snapshot(dup_any, source_path=source_path),
                             }
 
                         await documents_module.retry_document_processing(
@@ -1784,15 +1942,14 @@ async def upload_documents_batch(
                             skip_if_unchanged=True,
                             tenant_id=tenant_id,
                             account_id=account_id,
-                            db=db,
+                            db=item_db,
                         )
-                        db.refresh(dup_any)
+                        item_db.refresh(dup_any)
+                        _retain_ingest_lock_if_task_handed_off(dup_any, ingest_lock=ingest_lock)
                         return {
                             "success": True,
                             "filename": file.filename,
-                            "source_path": source_path,
-                            "document_id": str(getattr(dup_any, "id", "")),
-                            "document": dup_any,
+                            **_document_result_snapshot(dup_any, source_path=source_path),
                         }
 
                 stored_path = await _store_document_source(
@@ -1819,7 +1976,7 @@ async def upload_documents_batch(
                 )
 
                 persistence_started = True
-                await _persist_uploaded_document(db, db_document, file_path=file_path)
+                await _persist_uploaded_document(item_db, db_document, file_path=file_path)
 
                 if upload_only:
                     # Upload-only stores the source document but intentionally does not enqueue parsing.
@@ -1828,9 +1985,7 @@ async def upload_documents_batch(
                     return {
                         "success": True,
                         "filename": file.filename,
-                        "source_path": source_path,
-                        "document_id": str(file_id),
-                        "document": db_document,
+                        **_document_result_snapshot(db_document, source_path=source_path),
                     }
 
                 keep_local_file = await _schedule_document_processing(
@@ -1842,18 +1997,17 @@ async def upload_documents_batch(
                     pipeline_hash=pipeline_hash,
                     parser_backend=resolved_parser_backend,
                     chunk_strategy=resolved_chunk_strategy,
-                    db=db,
+                    db=item_db,
                     db_document=db_document,
                 )
                 if not keep_local_file:
                     _unlink_upload(file_path)
+                _retain_ingest_lock_if_task_handed_off(db_document, ingest_lock=ingest_lock)
 
                 return {
                     "success": True,
                     "filename": file.filename,
-                    "source_path": source_path,
-                    "document_id": str(file_id),
-                    "document": db_document,
+                    **_document_result_snapshot(db_document, source_path=source_path),
                 }
             except Exception as exc:  # noqa: BLE001
                 if file_path is not None and (not persistence_started or is_minio_uri(stored_path or "")):
@@ -1867,6 +2021,9 @@ async def upload_documents_batch(
                     "source_path": source_path,
                     "error": str(exc),
                 }
+            finally:
+                await ingest_lock.cleanup()
+                item_db.close()
 
     tasks = [process_single_file(file) for file in files]
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -1890,7 +2047,21 @@ async def upload_documents_batch(
 
     if ingestion_run is not None:
         for result in successful:
-            doc = result.get("document")
+            doc_id_raw = str(result.get("document_id") or "").strip()
+            if not doc_id_raw:
+                continue
+            try:
+                doc_id = UUID(doc_id_raw)
+            except ValueError:
+                continue
+            doc = (
+                db.query(documents_module.DBDocument)
+                .filter(
+                    documents_module.DBDocument.id == doc_id,
+                    documents_module.DBDocument.tenant_id == tenant_id,
+                )
+                .first()
+            )
             if doc is None:
                 continue
             try:
@@ -1910,7 +2081,7 @@ async def upload_documents_batch(
                     run_id=ingestion_run.id,
                     document_id=doc.id,
                     source_ref=(result.get("source_path") or getattr(doc, "filename", None)),
-                    initial_status=str(getattr(doc, "status", "") or "created"),
+                    initial_status=str(result.get("status") or getattr(doc, "status", "") or "created"),
                     doc_meta=meta0 if isinstance(meta0, dict) else None,
                 )
 
@@ -1923,7 +2094,7 @@ async def upload_documents_batch(
                 "document_id": result["document_id"],
                 "filename": result["filename"],
                 "source_path": result.get("source_path"),
-                "status": result["document"].status,
+                "status": result.get("status") or "pending",
             }
             for result in successful
         ],

@@ -6,6 +6,7 @@ const FRONTEND_CONTRACT_FILES = listFrontendSourceFiles().filter(
 
 // Service-to-service callbacks are intentionally not callable by the browser API layer.
 const SERVICE_ONLY_BACKEND_ROUTES = new Set([
+  'POST /auth/saml/bridge/consume',
   'POST /integrations/dify/conversation-turns',
 ])
 

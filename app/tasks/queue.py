@@ -32,6 +32,13 @@ def _redis_settings():
     return RedisSettings.from_dsn(settings.REDIS_URL)
 
 
+class WorkerHealthSettings:
+    """Lightweight settings for ``arq --check`` without importing worker jobs."""
+
+    redis_settings = _redis_settings()
+    queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
+
+
 async def init_queue() -> None:
     """Initialize queue connection on startup (optional)."""
     global _queue

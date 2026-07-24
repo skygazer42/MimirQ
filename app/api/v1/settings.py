@@ -52,6 +52,17 @@ _MISSING_API_URL_MESSAGE = "missing api_url"
 _CONFIGURED_HEALTH_UNREACHABLE_MESSAGE = "configured (health_unreachable)"
 _MINERU_BACKENDS = {"pipeline", "vlm-http-client"}
 _SYSTEM_DIFY_ACCOUNT_ID = "system:dify"
+_VECTOR_STORE_EMBEDDING_RESET_KEYS = frozenset(
+    {
+        "EMBEDDING_PROVIDER",
+        "EMBEDDING_MODEL",
+        "EMBEDDING_API_KEY",
+        "EMBEDDING_API_BASE",
+        "EMBEDDING_DIMENSION",
+        "LLM_API_KEY",
+        "LLM_API_BASE",
+    }
+)
 
 
 def _normalize_mineru_backend(value: Any) -> str:
@@ -632,6 +643,10 @@ def _apply_runtime_settings(env_vars: dict[str, str], updated_keys: list[str]) -
         settings.EMBEDDING_API_KEY = env_vars["EMBEDDING_API_KEY"]
     if "EMBEDDING_API_BASE" in updated_keys and "EMBEDDING_API_BASE" in env_vars:
         settings.EMBEDDING_API_BASE = env_vars["EMBEDDING_API_BASE"]
+    if _VECTOR_STORE_EMBEDDING_RESET_KEYS.intersection(updated_keys):
+        from app.storage.vector.factory import reset_vector_store_singletons
+
+        reset_vector_store_singletons()
 
     # Milvus
     if "MILVUS_HOST" in updated_keys and "MILVUS_HOST" in env_vars:

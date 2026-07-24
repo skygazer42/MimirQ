@@ -4,6 +4,8 @@ const PORT = Number(process.env.PLAYWRIGHT_PORT || 3100)
 const baseURL = `http://127.0.0.1:${PORT}`
 const useProdServer = Boolean(process.env.CI) || process.env.PLAYWRIGHT_USE_PROD_SERVER === '1'
 const browserChannel = process.env.PLAYWRIGHT_CHANNEL
+const markdownImageProxySecret =
+  process.env.MARKDOWN_IMAGE_PROXY_SECRET || 'playwright-markdown-image-proxy-secret'
 const LOCAL_NO_PROXY_HOSTS = ['127.0.0.1', 'localhost']
 
 function ensureLocalNoProxy(envName: 'NO_PROXY' | 'no_proxy') {
@@ -41,7 +43,7 @@ export default defineConfig({
   },
   webServer: {
     command: useProdServer
-      ? `pnpm exec next build --webpack && HOST=127.0.0.1 PORT=${PORT} pnpm start`
+      ? `MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} pnpm exec next build --webpack && MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} HOST=127.0.0.1 PORT=${PORT} pnpm start`
       : `pnpm exec next dev --webpack -H 127.0.0.1 -p ${PORT}`,
     url: baseURL,
     reuseExistingServer: !process.env.CI && !useProdServer,

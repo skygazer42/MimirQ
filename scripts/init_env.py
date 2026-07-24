@@ -14,29 +14,24 @@ def _plan(*, src: Path, dst: Path, force: bool) -> tuple[str, str]:
     return "write", f"WRITE: {dst.as_posix()} <= {src.as_posix()}"
 
 
-_SECRET_KEY_RE = re.compile(r"^(?P<key>SECRET_KEY)=(?P<val>.*)$", re.MULTILINE)
-
-
-def _maybe_set_secret_key(path: Path, *, secret_key: str) -> bool:
-    """
-    Best-effort: fill SECRET_KEY in an env file if it's empty.
-
-    We only touch the file when an explicit SECRET_KEY= line exists and the value is blank.
-    """
+def _ensure_secret(path: Path, *, key: str, value: str) -> bool:
+    """Best-effort: fill an empty secret or append it to an existing env file."""
     try:
         raw = path.read_text(encoding="utf-8")
     except OSError:
         return False
 
-    m = _SECRET_KEY_RE.search(raw)
+    pattern = re.compile(rf"^(?P<key>{re.escape(key)})=(?P<val>.*)$", re.MULTILINE)
+    m = pattern.search(raw)
     if not m:
-        return False
+        separator = "" if not raw or raw.endswith("\n") else "\n"
+        updated = f"{raw}{separator}{key}={value}\n"
+    else:
+        current = (m.group("val") or "").strip()
+        if current:
+            return False
+        updated = pattern.sub(lambda match: f"{match.group('key')}={value}", raw, count=1)
 
-    current = (m.group("val") or "").strip()
-    if current:
-        return False
-
-    updated = _SECRET_KEY_RE.sub(rf"\g<key>={secret_key}", raw, count=1)
     if updated == raw:
         return False
 
@@ -103,9 +98,15 @@ def main() -> int:
         wrote_any = True
 
     env_path = repo_root / ".env"
-    if env_path.exists() and _maybe_set_secret_key(env_path, secret_key=secrets.token_urlsafe(32)):
+    if env_path.exists() and _ensure_secret(env_path, key="SECRET_KEY", value=secrets.token_urlsafe(32)):
         print("[init-env] filled SECRET_KEY in .env")
         wrote_any = True
+
+    proxy_secret = secrets.token_urlsafe(32)
+    for path in (env_path, repo_root / "web" / ".env.local"):
+        if path.exists() and _ensure_secret(path, key="MARKDOWN_IMAGE_PROXY_SECRET", value=proxy_secret):
+            print(f"[init-env] filled MARKDOWN_IMAGE_PROXY_SECRET in {path.relative_to(repo_root)}")
+            wrote_any = True
 
     if not wrote_any:
         print("[init-env] no changes")

@@ -32,6 +32,7 @@ services:
       NEXT_PUBLIC_TENANT_ID: ${NEXT_PUBLIC_TENANT_ID:-00000000-0000-0000-0000-000000000000}
       # Server-side only: used when Next.js renders on the server (not exposed to browser).
       API_INTERNAL_URL: ${API_INTERNAL_URL_DOCKER:-http://mimirq-api:8000}
+      MARKDOWN_IMAGE_PROXY_SECRET: ${MARKDOWN_IMAGE_PROXY_SECRET:-}
       MIMIRQ_BUILD_SHA: ${MIMIRQ_BUILD_SHA:-}
       MIMIRQ_BUILD_TIME: ${MIMIRQ_BUILD_TIME:-}
     depends_on:

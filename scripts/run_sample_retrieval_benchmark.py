@@ -115,7 +115,7 @@ def _build_documents(
     *,
     fixture: dict[str, Any],
     tenant_id: uuid.UUID,
-    dataset_id: uuid.UUID,
+    dataset_id: uuid.UUID | None,
 ) -> list[Document]:
     out: list[Document] = []
     docs = fixture.get("documents") or []
@@ -133,7 +133,8 @@ def _build_documents(
         meta.setdefault("source", str(meta.get("source") or f"sample-{document_id}.md"))
         meta.setdefault("chunk_index", _safe_int(meta.get("chunk_index"), i))
         meta["tenant_id"] = str(tenant_id)
-        meta["dataset_id"] = str(dataset_id)
+        if dataset_id is not None:
+            meta["dataset_id"] = str(dataset_id)
         meta["document_id"] = document_id
         meta["chunk_id"] = chunk_id
 
@@ -306,6 +307,7 @@ def run_benchmark(
         effective_colbert_provider = "deterministic"
 
     settings_keys = (
+        "VECTOR_BACKEND",
         "BM25_INDEX_ENABLED",
         "LEXICAL_DB_ENABLED",
         "SPARSE_RETRIEVAL_ENABLED",
@@ -325,6 +327,7 @@ def run_benchmark(
         sparse_provider = "deterministic"
     try:
         # Deterministic local profile for OSS/dev reproducibility.
+        app_settings.VECTOR_BACKEND = "memory"
         app_settings.BM25_INDEX_ENABLED = True
         app_settings.LEXICAL_DB_ENABLED = False
         app_settings.SPARSE_RETRIEVAL_ENABLED = bool(sparse_retrieval_enabled)
@@ -339,8 +342,8 @@ def run_benchmark(
         app_settings.RETRIEVAL_QUERY_PARALLELISM = 1
 
         tenant_id = _uuid_from_seed("tenant")
-        dataset_id = _uuid_from_seed("dataset")
-        docs = _build_documents(fixture=fixture_obj, tenant_id=tenant_id, dataset_id=dataset_id)
+        # This gate measures fixture ranking, not database-backed dataset runtime resolution.
+        docs = _build_documents(fixture=fixture_obj, tenant_id=tenant_id, dataset_id=None)
 
         chunk_doc_ids: dict[str, str] = {}
         chunk_family_keys: dict[str, str] = {}
@@ -356,7 +359,6 @@ def run_benchmark(
 
         retriever = HybridRetriever(
             tenant_id=tenant_id,
-            dataset_id=dataset_id,
             enable_reranker=False,
             sparse_enabled=bool(sparse_retrieval_enabled),
             sparse_provider=sparse_provider,

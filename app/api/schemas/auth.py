@@ -47,7 +47,13 @@ class SamlExchangeRequest(BaseModel):
     saml_response: str
     relay_state: str | None = None
     acs_url: str | None = None
+    bridge_mode: bool = False
+
+
+class SamlBridgeConsumeRequest(BaseModel):
+    code: str
 
 
 class SamlExchangeResponse(AuthResponse):
     return_to: str = "/"
+    bridge_code: str | None = None

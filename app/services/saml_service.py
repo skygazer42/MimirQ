@@ -280,7 +280,7 @@ def _validate_conditions(
     provider: SamlProvider,
     acs_url: str | None,
 ) -> int:
-    expected_acs = str(acs_url or "").strip() or provider.acs_url
+    expected_acs = provider.acs_url
     expected_audience = provider.audience
     expected_issuer = provider.issuer
     skew = max(0, int(getattr(settings, "SAML_ALLOWED_CLOCK_SKEW_SEC", 60) or 60))
