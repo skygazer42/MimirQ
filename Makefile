@@ -148,6 +148,14 @@ MIMIRQ_ACCOUNT_ID ?= demo
 MIMIRQ_USER_ID ?= demo
 MIMIRQ_API_TOKEN ?= $(AUTH_TOKEN)
 MIMIRQ_API_TIMEOUT ?= 60
+CORE_E2E_BASE_URL ?= http://127.0.0.1:8000
+CORE_E2E_OUT ?= artifacts/core-e2e.json
+CORE_E2E_EXTRA_ARGS ?=
+RAG_CONCURRENCY_BASELINE ?=
+RAG_CONCURRENCY_CANDIDATE ?=
+RAG_CONCURRENCY_OUT ?= artifacts/rag-concurrency-gate.json
+RAG_CONCURRENCY_MIN_RETRIEVE_RATIO ?= 1.0
+RAG_CONCURRENCY_MIN_CHAT_RATIO ?= 1.0
 PYTEST_ARGS ?=
 VITEST_ARGS ?=
 
@@ -194,12 +202,15 @@ help:
 	@echo "  make test-web  - run all frontend unit/integration tests"
 	@echo "  make test-web-full - compatibility alias for test-web"
 	@echo "  make test-management-smoke - run Playwright smoke against management surfaces"
+	@echo "  make test-core-browser-smoke - run upload/parse/chat UI + live backend browser smoke"
 	@echo "  make test-matrix - generate full-stack test inventory artifacts"
 	@echo "  make perf-smoke - run perf harness in LLM mock mode (writes runs/perf/perf-smoke.json)"
 	@echo "  make api-check - verify web routes exist in backend"
 	@echo "  make api-ping  - ping backend health endpoints (quick reachability check)"
 	@echo "  make web-api-ping - ping backend endpoints using frontend URL logic (NEXT_PUBLIC_API_URL)"
 	@echo "  make api-smoke - smoke-test all OpenAPI endpoints on the running backend"
+	@echo "  make core-e2e  - verify ready -> ingest -> retrieval against a running host or Docker API"
+	@echo "  make rag-concurrency-gate - compare serial and concurrent RAG load reports"
 	@echo "  make typecheck - run web TypeScript typecheck"
 	@echo "  make ui-check  - verify web UI design tokens (no hard-coded white/cyan etc)"
 	@echo "  make lint-py   - run Python lint (ruff)"
@@ -399,6 +410,10 @@ test-web-e2e:
 
 test-management-smoke:
 	cd web && PLAYWRIGHT_USE_PROD_SERVER=1 pnpm exec playwright test e2e/management-surfaces.smoke.spec.ts
+
+.PHONY: test-core-browser-smoke
+test-core-browser-smoke:
+	cd web && PLAYWRIGHT_USE_PROD_SERVER=1 pnpm exec playwright test e2e/document-chat.smoke.spec.ts e2e/live-stack.smoke.spec.ts
 
 test-matrix: openapi-export
 	@mkdir -p artifacts
@@ -853,6 +868,22 @@ web-api-ping:
 
 api-smoke:
 	$(PY) scripts/api_smoke.py --base-url http://127.0.0.1:8000 --skip-llm-test --skip-mineru
+
+.PHONY: core-e2e
+core-e2e:
+	@mkdir -p $(dir $(CORE_E2E_OUT))
+	$(PY) scripts/smoke_test.py --base-url "$(CORE_E2E_BASE_URL)" --core-only --out "$(CORE_E2E_OUT)" $(CORE_E2E_EXTRA_ARGS)
+
+.PHONY: rag-concurrency-gate
+rag-concurrency-gate:
+	@test -n "$(RAG_CONCURRENCY_BASELINE)" || (echo "Set RAG_CONCURRENCY_BASELINE=<serial-report.json>" >&2; exit 2)
+	@test -n "$(RAG_CONCURRENCY_CANDIDATE)" || (echo "Set RAG_CONCURRENCY_CANDIDATE=<concurrent-report.json>" >&2; exit 2)
+	$(PY) scripts/rag_e2e_load_test.py \
+		--baseline-report "$(RAG_CONCURRENCY_BASELINE)" \
+		--candidate-report "$(RAG_CONCURRENCY_CANDIDATE)" \
+		--min-retrieve-throughput-ratio "$(RAG_CONCURRENCY_MIN_RETRIEVE_RATIO)" \
+		--min-chat-throughput-ratio "$(RAG_CONCURRENCY_MIN_CHAT_RATIO)" \
+		--out "$(RAG_CONCURRENCY_OUT)"
 
 typecheck:
 	cd web && pnpm run typecheck

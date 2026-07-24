@@ -31,6 +31,12 @@ The Makefile is the source of truth for common workflows; these scripts are the 
 - `api_smoke.py`: smoke test OpenAPI endpoints against a running backend (usually docker)
   - Example: `python scripts/api_smoke.py --help`
   - Live parser example: `python scripts/api_smoke.py --skip-llm-test --skip-mineru --live-parser-backends deepseek_ocr --live-parser-fixture runs/deepseek_ocr_smoke.pdf`
+- `smoke_test.py`: deployment-neutral knowledge-core gate (ready -> ingest -> retrieval evidence)
+  - Example: `make core-e2e` against either a host-run or Docker-run API; override with `CORE_E2E_BASE_URL=http://host:8000`.
+  - `--core-only` skips LLM generation and removes the temporary dataset after a successful run. Failed runs retain it for diagnosis; reused datasets are never deleted.
+- `rag_e2e_load_test.py`: live ingest/retrieve/chat load runner plus serial-vs-concurrent throughput gate
+  - Generate two reports with identical request counts and concurrency `1` / `N`, then run `RAG_CONCURRENCY_BASELINE=/tmp/c1.json RAG_CONCURRENCY_CANDIDATE=/tmp/cN.json make rag-concurrency-gate`.
+  - The comparison fails on errors, mismatched workloads, missing client overlap, or retrieval/chat throughput below the configured ratios.
 - `plugin_golden_closed_loop_smoke.py`: live plugin Golden import + retrieval-only regression smoke for an already-ingested dataset
   - Example: `python scripts/plugin_golden_closed_loop_smoke.py --base-url http://127.0.0.1:8000 --dataset-id <dataset_uuid>`
 - `plugin_corpus_closed_loop_smoke.py`: live plugin-backed corpus ingest + Golden regression smoke from a local directory

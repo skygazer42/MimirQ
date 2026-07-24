@@ -392,6 +392,24 @@ make verify && make test
 
 # 仅前端
 cd web && pnpm lint && pnpm test
+
+# 浏览器核心路径（上传/解析/对话 UI + 前端到真实后端）
+make test-core-browser-smoke
+```
+
+任一部署方式启动后，可运行同一套知识库核心闭环门禁；它验证就绪、入库、解析与检索证据，不依赖 LLM，并在成功后删除临时数据集：
+
+```bash
+make core-e2e
+# 远程或非默认端口：CORE_E2E_BASE_URL=http://host:8000 make core-e2e
+```
+
+已有同请求量的串行与并发负载报告时，可验证并发是否真正提高批量吞吐，而不只是客户端同时发起请求：
+
+```bash
+RAG_CONCURRENCY_BASELINE=/tmp/c1.json \
+RAG_CONCURRENCY_CANDIDATE=/tmp/cN.json \
+make rag-concurrency-gate
 ```
 
 ---

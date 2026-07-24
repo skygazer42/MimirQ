@@ -3,7 +3,56 @@ import json
 
 import httpx
 
-from scripts.rag_e2e_load_test import E2ELoadTestConfig, run_e2e_load_test
+from scripts.rag_e2e_load_test import E2ELoadTestConfig, evaluate_concurrency_gate, run_e2e_load_test
+
+
+def _load_report(*, concurrency: int, retrieve_rps: float, chat_rps: float, overlap: bool) -> dict:
+    return {
+        "ingest": {"requested": 0, "completed": 0, "errors": 0},
+        "retrieve": {
+            "requested": 6,
+            "ok": 6,
+            "errors": 0,
+            "concurrency": concurrency,
+            "client_overlap_observed": overlap,
+            "throughput_rps": retrieve_rps,
+            "latency_ms": {"p95_ms": 1000},
+        },
+        "chat": {
+            "requested": 3,
+            "ok": 3,
+            "errors": 0,
+            "concurrency": concurrency,
+            "client_overlap_observed": overlap,
+            "throughput_rps": chat_rps,
+            "latency_ms": {"p95_ms": 2000},
+        },
+    }
+
+
+def test_concurrency_gate_requires_real_throughput_gain() -> None:
+    gate = evaluate_concurrency_gate(
+        _load_report(concurrency=1, retrieve_rps=0.5, chat_rps=0.25, overlap=False),
+        _load_report(concurrency=3, retrieve_rps=0.8, chat_rps=0.4, overlap=True),
+        min_retrieve_throughput_ratio=1.1,
+        min_chat_throughput_ratio=1.1,
+    )
+
+    assert gate["passed"] is True
+    assert gate["observed"]["retrieve"]["throughput_ratio"] == 1.6
+    assert gate["observed"]["chat"]["throughput_ratio"] == 1.6
+
+
+def test_concurrency_gate_rejects_client_only_concurrency() -> None:
+    gate = evaluate_concurrency_gate(
+        _load_report(concurrency=1, retrieve_rps=0.5, chat_rps=0.25, overlap=False),
+        _load_report(concurrency=3, retrieve_rps=0.4, chat_rps=0.2, overlap=False),
+    )
+
+    assert gate["passed"] is False
+    assert "retrieve candidate did not overlap requests" in gate["failures"]
+    assert "retrieve throughput_ratio 0.8 < min 1.0" in gate["failures"]
+    assert "chat throughput_ratio 0.8 < min 1.0" in gate["failures"]
 
 
 def test_load_test_exercises_reranker_and_records_concurrency() -> None:

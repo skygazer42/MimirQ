@@ -81,6 +81,13 @@ def _as_int(value: Any) -> int:
         return 0
 
 
+def _as_float(value: Any) -> float:
+    try:
+        return float(value or 0.0)
+    except Exception:
+        return 0.0
+
+
 def _p95_ms(section: dict[str, Any], key: str) -> int:
     raw = section.get(key)
     if not isinstance(raw, dict):
@@ -151,6 +158,72 @@ def evaluate_load_gate(
     }
 
 
+def evaluate_concurrency_gate(
+    baseline: dict[str, Any],
+    candidate: dict[str, Any],
+    *,
+    min_retrieve_throughput_ratio: float = 1.0,
+    min_chat_throughput_ratio: float = 1.0,
+) -> dict[str, Any]:
+    """Verify that a concurrent run improves batch throughput over a serial run."""
+    failures: list[str] = []
+    observed: dict[str, Any] = {}
+
+    for label, report in (("baseline", baseline), ("candidate", candidate)):
+        gate = evaluate_load_gate(report)
+        failures.extend(f"{label}: {failure}" for failure in gate["failures"])
+
+    thresholds = {
+        "retrieve": max(0.0, float(min_retrieve_throughput_ratio)),
+        "chat": max(0.0, float(min_chat_throughput_ratio)),
+    }
+    for phase in ("retrieve", "chat"):
+        base = baseline.get(phase) if isinstance(baseline.get(phase), dict) else {}
+        current = candidate.get(phase) if isinstance(candidate.get(phase), dict) else {}
+        base_requested = _as_int(base.get("requested"))
+        current_requested = _as_int(current.get("requested"))
+        if base_requested == current_requested == 0:
+            continue
+        if base_requested != current_requested:
+            failures.append(f"{phase} requested {current_requested} != baseline {base_requested}")
+
+        base_concurrency = _as_int(base.get("concurrency"))
+        current_concurrency = _as_int(current.get("concurrency"))
+        if base_concurrency != 1:
+            failures.append(f"{phase} baseline concurrency {base_concurrency} != 1")
+        if current_concurrency <= base_concurrency:
+            failures.append(f"{phase} candidate concurrency {current_concurrency} <= baseline {base_concurrency}")
+        if not bool(current.get("client_overlap_observed")):
+            failures.append(f"{phase} candidate did not overlap requests")
+
+        base_throughput = _as_float(base.get("throughput_rps"))
+        current_throughput = _as_float(current.get("throughput_rps"))
+        throughput_ratio = current_throughput / base_throughput if base_throughput > 0.0 else 0.0
+        min_ratio = thresholds[phase]
+        if throughput_ratio < min_ratio:
+            failures.append(f"{phase} throughput_ratio {round(throughput_ratio, 6)} < min {min_ratio}")
+
+        observed[phase] = {
+            "baseline_concurrency": base_concurrency,
+            "candidate_concurrency": current_concurrency,
+            "baseline_throughput_rps": base_throughput,
+            "candidate_throughput_rps": current_throughput,
+            "throughput_ratio": round(throughput_ratio, 6),
+            "baseline_p95_ms": _p95_ms(base, "latency_ms"),
+            "candidate_p95_ms": _p95_ms(current, "latency_ms"),
+        }
+
+    return {
+        "passed": not failures,
+        "failures": failures,
+        "thresholds": {
+            "min_retrieve_throughput_ratio": thresholds["retrieve"],
+            "min_chat_throughput_ratio": thresholds["chat"],
+        },
+        "observed": observed,
+    }
+
+
 def _join(base_url: str, path: str) -> str:
     b = (base_url or "").rstrip("/")
     p = (path or "").lstrip("/")
@@ -207,7 +280,7 @@ async def run_e2e_load_test(cfg: E2ELoadTestConfig, *, client: httpx.AsyncClient
     close_client = False
     if client is None:
         close_client = True
-        client = httpx.AsyncClient(timeout=httpx.Timeout(60.0), headers=headers)
+        client = httpx.AsyncClient(timeout=httpx.Timeout(60.0), headers=headers, trust_env=False)
 
     try:
         base_url = str(cfg.base_url or "").rstrip("/")
@@ -477,10 +550,48 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--max-ingest-p95-ms", type=int, default=0, help="Fail if ingest P95 exceeds this value; 0 disables")
     p.add_argument("--max-retrieve-p95-ms", type=int, default=0, help="Fail if retrieve P95 exceeds this value; 0 disables")
     p.add_argument("--max-chat-p95-ms", type=int, default=0, help="Fail if chat P95 exceeds this value; 0 disables")
+    p.add_argument("--baseline-report", default="", help="Serial load report to compare without running network calls")
+    p.add_argument("--candidate-report", default="", help="Concurrent load report to compare without running network calls")
+    p.add_argument("--min-retrieve-throughput-ratio", type=float, default=1.0)
+    p.add_argument("--min-chat-throughput-ratio", type=float, default=1.0)
     p.add_argument("--out", default="", help="Write JSON report to path (or directory)")
     p.add_argument("--dry-run", action="store_true", help="Validate args and exit without network calls")
 
     args = p.parse_args(argv)
+
+    baseline_report = str(args.baseline_report or "").strip()
+    candidate_report = str(args.candidate_report or "").strip()
+    if bool(baseline_report) != bool(candidate_report):
+        print("[rag-e2e-loadtest] ERROR: --baseline-report and --candidate-report are required together", file=sys.stderr)
+        return 2
+    if baseline_report and candidate_report:
+        try:
+            baseline = json.loads(Path(baseline_report).read_text(encoding="utf-8"))
+            candidate = json.loads(Path(candidate_report).read_text(encoding="utf-8"))
+            if not isinstance(baseline, dict) or not isinstance(candidate, dict):
+                raise ValueError("load report roots must be JSON objects")
+        except Exception as exc:
+            print(f"[rag-e2e-loadtest] ERROR: {exc}", file=sys.stderr)
+            return 2
+
+        comparison = evaluate_concurrency_gate(
+            baseline,
+            candidate,
+            min_retrieve_throughput_ratio=float(args.min_retrieve_throughput_ratio),
+            min_chat_throughput_ratio=float(args.min_chat_throughput_ratio),
+        )
+        comparison["schema"] = "mimirq.rag_concurrency_gate.v1"
+        comparison["baseline_report"] = baseline_report
+        comparison["candidate_report"] = candidate_report
+        if args.out:
+            outp = Path(str(args.out))
+            outp.parent.mkdir(parents=True, exist_ok=True)
+            outp.write_text(json.dumps(comparison, ensure_ascii=False, indent=2), encoding="utf-8")
+            print(f"[rag-e2e-loadtest] wrote: {outp}")
+        for failure in comparison["failures"]:
+            print(f"[rag-e2e-loadtest] FAIL: {failure}", file=sys.stderr)
+        print("[rag-e2e-loadtest] CONCURRENCY PASS" if comparison["passed"] else "[rag-e2e-loadtest] CONCURRENCY FAIL")
+        return 0 if comparison["passed"] else 2
 
     file_path = Path(str(args.file))
     if not file_path.exists():
@@ -527,7 +638,7 @@ def main(argv: list[str] | None = None) -> int:
         max_conc = max(int(cfg.ingest_concurrency), int(cfg.retrieve_concurrency), int(cfg.chat_concurrency), 1)
         limits = httpx.Limits(max_connections=max_conc * 2, max_keepalive_connections=max_conc * 2)
         timeout = httpx.Timeout(float(args.timeout_sec))
-        async with httpx.AsyncClient(timeout=timeout, limits=limits) as client:
+        async with httpx.AsyncClient(timeout=timeout, limits=limits, trust_env=False) as client:
             return await run_e2e_load_test(cfg, client=client)
 
     try:

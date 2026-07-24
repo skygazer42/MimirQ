@@ -7,6 +7,8 @@ Purpose-built smoke test (CI / post-deploy):
 4) Poll until ingestion completes
 5) Ask a RAG question and validate structured output
 
+Use --core-only to validate retrieval without an LLM and remove the temporary dataset on success.
+
 Default behavior is PII-safe: it uploads synthetic content and avoids printing secrets.
 """
 
@@ -251,6 +253,56 @@ def _get_system_status_best_effort(
     return payload if isinstance(payload, dict) else None
 
 
+def _summarize_retrieval_evidence(
+    payload: Any,
+    *,
+    document_id: str,
+    marker: str,
+) -> dict[str, Any]:
+    citations = payload.get("citations") if isinstance(payload, dict) else None
+    rows = citations if isinstance(citations, list) else []
+    matched = any(
+        isinstance(item, dict)
+        and str(item.get("document_id") or "") == document_id
+        and marker in str(item.get("chunk_content") or "")
+        for item in rows
+    )
+    return {
+        "has_evidence": bool(isinstance(payload, dict) and payload.get("has_evidence") is True),
+        "citation_count": len(rows),
+        "matched": matched,
+    }
+
+
+def _cleanup_created_dataset(
+    client: httpx.Client,
+    *,
+    api_base: str,
+    headers: dict[str, str],
+    dataset_id: str,
+) -> dict[str, Any]:
+    purge_resp = request_with_retries(
+        client,
+        "POST",
+        _join(api_base, f"datasets/{dataset_id}/purge?dry_run=false&max_delete=1000"),
+        expected={200},
+        headers=headers,
+        json={},
+    )
+    purge_payload = _parse_json(purge_resp)
+    request_with_retries(
+        client,
+        "DELETE",
+        _join(api_base, f"datasets/{dataset_id}"),
+        expected={204},
+        headers=headers,
+    )
+    return {
+        "purged_documents": int(purge_payload.get("deleted") or 0) if isinstance(purge_payload, dict) else 0,
+        "dataset_deleted": True,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Smoke test: ready -> ingest -> structured RAG query.")
     p.add_argument("--base-url", default=None, help="API host (http://host:8000) OR API base (http://host:8000/api/v1).")
@@ -265,6 +317,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--parser-backend", default="auto", help="Parser backend for upload (default: %(default)s)")
     p.add_argument("--structured-preset", default="summary", help="Structured preset (faq|summary|action_items).")
     p.add_argument("--allow-unstructured", action="store_true", help="Do not fail if structured output cannot be validated.")
+    p.add_argument(
+        "--core-only",
+        action="store_true",
+        help="Validate retrieval without an LLM; delete a dataset created by this run after success.",
+    )
 
     p.add_argument("--ready-timeout-sec", type=float, default=60.0)
     p.add_argument("--ingest-timeout-sec", type=float, default=600.0)
@@ -333,6 +390,7 @@ def main(argv: list[str] | None = None) -> int:
             }
 
             dataset_id = (args.dataset_id or "").strip() or None
+            created_dataset = dataset_id is None
             if dataset_id:
                 print(f"[smoke] dataset: reuse {dataset_id}")
             else:
@@ -418,6 +476,57 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"[smoke] ingest: status={st} progress={prog_s} stage={stage_s}")
 
                 time.sleep(max(0.1, float(args.poll_interval_sec or 0.0)))
+
+            if args.core_only:
+                marker = f"launch_code={smoke_fact}"
+                retrieve_resp = request_with_retries(
+                    client,
+                    "POST",
+                    _join(api_base, "rag/retrieve"),
+                    expected={200},
+                    headers=headers,
+                    json={
+                        "query": marker,
+                        "dataset_id": str(dataset_id),
+                        "rag_config": {
+                            "use_graph": False,
+                            "top_k": 10,
+                            "score_threshold": 0.0,
+                            "enable_multi_query": False,
+                        },
+                    },
+                )
+                retrieve_json = _parse_json(retrieve_resp)
+                retrieval_summary = _summarize_retrieval_evidence(
+                    retrieve_json,
+                    document_id=doc_id,
+                    marker=marker,
+                )
+                report["retrieval"] = retrieval_summary
+                if not retrieval_summary["has_evidence"] or not retrieval_summary["matched"]:
+                    raise CallError(
+                        method="POST",
+                        url=_join(api_base, "rag/retrieve"),
+                        status_code=retrieve_resp.status_code,
+                        detail="retrieval did not return the uploaded synthetic fact",
+                    )
+                print("[smoke] retrieval: evidence ok")
+
+                if created_dataset:
+                    report["cleanup"] = _cleanup_created_dataset(
+                        client,
+                        api_base=api_base,
+                        headers=headers,
+                        dataset_id=str(dataset_id),
+                    )
+                    print("[smoke] cleanup: dataset deleted")
+                else:
+                    report["cleanup"] = {"skipped": True, "reason": "dataset_reused"}
+
+                report["ok"] = True
+                report["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
+                print(f"[smoke] OK in {report['elapsed_ms']}ms")
+                return 0
 
             require_structured = not bool(args.allow_unstructured)
             chat_payload: dict[str, Any] = {
