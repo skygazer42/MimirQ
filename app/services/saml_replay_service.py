@@ -1,4 +1,3 @@
-
 import threading
 import time
 
@@ -35,27 +34,30 @@ def _claim_in_memory(key: str, ttl_sec: int) -> None:
         _memory_seen_until[key] = now + float(ttl_sec)
 
 
-def ensure_saml_assertion_not_replayed(assertion_id: str) -> None:
+def ensure_saml_assertion_not_replayed(assertion_id: str, *, minimum_ttl_sec: int = 0) -> None:
     aid = str(assertion_id or "").strip()
     if not aid:
-        return
+        raise HTTPException(status_code=401, detail="Missing SAML replay identifier")
 
-    ttl_sec = max(1, int(getattr(settings, "SAML_REPLAY_TTL_SEC", 300) or 300))
+    configured_ttl_sec = max(1, int(getattr(settings, "SAML_REPLAY_TTL_SEC", 300) or 300))
+    ttl_sec = max(configured_ttl_sec, max(0, int(minimum_ttl_sec or 0)))
     key = f"saml:assertion:{aid}"
 
-    client = _get_redis_client()
-    if client is not None:
-        try:
-            acquired = client.set(key, b"1", ex=ttl_sec, nx=True)
-            if acquired:
-                return
-            raise HTTPException(status_code=409, detail="SAML assertion replayed")
-        except HTTPException:
-            raise
-        except Exception:  # noqa: BLE001
-            _invalidate_redis_client()
+    redis_enabled = bool(getattr(settings, "SAML_REPLAY_REDIS_ENABLED", False))
+    if not redis_enabled:
+        _claim_in_memory(key, ttl_sec)
+        return
 
-    _claim_in_memory(key, ttl_sec)
+    client = _get_redis_client()
+    if client is None:
+        raise HTTPException(status_code=503, detail="SAML replay protection unavailable")
+    try:
+        acquired = client.set(key, b"1", ex=ttl_sec, nx=True)
+    except Exception as exc:  # noqa: BLE001
+        _invalidate_redis_client()
+        raise HTTPException(status_code=503, detail="SAML replay protection unavailable") from exc
+    if not acquired:
+        raise HTTPException(status_code=409, detail="SAML assertion replayed")
 
 
 __all__ = ["ensure_saml_assertion_not_replayed"]

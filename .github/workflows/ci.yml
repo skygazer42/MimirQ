@@ -298,6 +298,21 @@ jobs:
           docker logs "$web_name"
           exit 1
 
+      - name: Core ready-ingest-retrieval smoke
+        env:
+          BACKEND_PORT: "0"
+          COMPOSE_PROJECT_NAME: mimirq-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          MIMIRQ_BACKEND_IMAGE: mimirq-backend
+        run: |
+          mkdir -p artifacts
+          docker compose -f docker/docker-compose.retrieval-dev.yml run --rm --no-deps -T \
+            -v "$PWD:/work" -w /work mimirq-api \
+            python scripts/smoke_test.py \
+              --base-url http://mimirq-api:8000 \
+              --core-only \
+              --bootstrap-register \
+              --out artifacts/core-e2e.compose.json
+
       - name: Clean up image smoke stack
         if: always()
         env:
@@ -1162,6 +1177,13 @@ jobs:
           done
           echo "backend not ready" >&2
           exit 1
+
+      - name: Core ready-ingest-retrieval smoke
+        run: |
+          mkdir -p artifacts
+          make core-e2e \
+            CORE_E2E_BASE_URL=http://127.0.0.1:8000 \
+            CORE_E2E_OUT=artifacts/core-e2e.retrieval-regression.json
 
       - name: Run retrieval-only regression gate + generate candidate thresholds
         env:

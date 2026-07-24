@@ -1177,6 +1177,356 @@ def test_bm25_database_row_keeps_dataset_scope_metadata() -> None:
     assert document.metadata["document_id"] == str(document_id)
 
 
+def test_bm25_document_scope_cache_key_is_isolated_and_stable() -> None:
+    from app.rag.retriever import HybridRetriever
+
+    tenant_id = uuid.uuid4()
+    document_a = uuid.uuid4()
+    document_b = uuid.uuid4()
+    retriever = HybridRetriever()
+
+    tenant_key = retriever._bm25_scope_key(
+        tenant_id=tenant_id,
+        document_ids=None,
+    )
+    document_key = retriever._bm25_scope_key(
+        tenant_id=tenant_id,
+        document_ids=[document_a, document_b],
+    )
+
+    assert document_key != tenant_key
+    assert document_key != retriever._bm25_scope_key(
+        tenant_id=tenant_id,
+        document_ids=[document_a],
+    )
+    assert document_key == retriever._bm25_scope_key(
+        tenant_id=tenant_id,
+        document_ids=[document_b, document_a, document_b],
+    )
+
+
+def test_bm25_document_scope_caches_are_mutation_scoped(monkeypatch: pytest.MonkeyPatch) -> None:
+    from langchain_core.documents import Document
+
+    from app.rag.retriever import HybridRetriever
+
+    tenant_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    retriever = HybridRetriever()
+    scope_key = f"{tenant_id}:documents:1:cached"
+    retriever._bm25_retrievers[scope_key] = object()  # type: ignore[assignment]
+    retriever._bm25_docs[scope_key] = [
+        Document(
+            page_content="old",
+            id=str(uuid.uuid4()),
+            metadata={"document_id": str(document_id), "chunk_index": 0},
+        )
+    ]
+    retriever._bm25_doc_ids[scope_key] = {str(document_id)}
+    retriever._chunk_id_lookup[scope_key] = {}
+    retriever._bm25_cache_versions[scope_key] = "old"
+
+    assert scope_key in retriever._bm25_filter_scope_keys(tenant_key=str(tenant_id))
+
+    monkeypatch.setattr(HybridRetriever, "_replace_bm25_scope_index", lambda self, **kwargs: None)
+    monkeypatch.setattr(HybridRetriever, "_sync_sparse_index_after_bm25_upsert", lambda self, **kwargs: None)
+    monkeypatch.setattr(HybridRetriever, "_sync_colbert_index_after_bm25_upsert", lambda self, **kwargs: None)
+    retriever.upsert_bm25_documents(
+        [
+            Document(
+                page_content="new",
+                id=str(uuid.uuid4()),
+                metadata={"document_id": str(document_id), "chunk_index": 0},
+            )
+        ],
+        tenant_id=tenant_id,
+    )
+
+    assert scope_key not in retriever._bm25_retrievers
+    assert scope_key not in retriever._bm25_docs
+    assert scope_key not in retriever._bm25_doc_ids
+    assert scope_key not in retriever._chunk_id_lookup
+    assert scope_key not in retriever._bm25_cache_versions
+
+
+def test_bm25_document_scope_cache_version_invalidates_stale_index(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from langchain_core.documents import Document
+
+    from app.rag.retriever import HybridRetriever
+
+    tenant_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    retriever = HybridRetriever()
+    scope_key = retriever._bm25_scope_key(
+        tenant_id=tenant_id,
+        document_ids=[document_id],
+    )
+    retriever._bm25_retrievers[scope_key] = object()  # type: ignore[assignment]
+    retriever._bm25_docs[scope_key] = [Document(page_content="old", id=str(uuid.uuid4()))]
+    retriever._bm25_cache_versions[scope_key] = "old-version"
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_resolve_candidate_cache_corpus_token",
+        lambda self, **kwargs: "new-version",
+    )
+
+    assert retriever._refresh_bm25_dataset_cache_version(
+        cache_key=scope_key,
+        tenant_uuid=tenant_id,
+        dataset_scope_ids=(),
+        document_ids=[document_id],
+    ) == "new-version"
+    assert scope_key not in retriever._bm25_retrievers
+    assert scope_key not in retriever._bm25_docs
+
+
+def test_candidate_corpus_token_reuses_short_lived_lookup_and_invalidates_on_upsert(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from langchain_core.documents import Document
+
+    import app.rag.retriever as retriever_module
+    from app.rag.retriever import HybridRetriever
+
+    calls = 0
+
+    class _Session:
+        def close(self) -> None:
+            return None
+
+    def resolve_token(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        nonlocal calls
+        calls += 1
+        return f"version-{calls}"
+
+    monkeypatch.setattr(retriever_module, "SessionLocal", lambda: _Session(), raising=True)
+    monkeypatch.setattr(retriever_module, "resolve_corpus_cache_token", resolve_token, raising=True)
+    clock = [0.0]
+    monkeypatch.setattr(retriever_module.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(HybridRetriever, "_replace_bm25_scope_index", lambda self, **kwargs: None)
+    monkeypatch.setattr(HybridRetriever, "_sync_sparse_index_after_bm25_upsert", lambda self, **kwargs: None)
+    monkeypatch.setattr(HybridRetriever, "_sync_colbert_index_after_bm25_upsert", lambda self, **kwargs: None)
+
+    tenant_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    retriever = HybridRetriever(tenant_id=tenant_id)
+
+    assert retriever._resolve_candidate_cache_corpus_token(
+        tenant_id=tenant_id,
+        document_ids=[document_id],
+    ) == "version-1"
+    assert retriever._resolve_candidate_cache_corpus_token(
+        tenant_id=tenant_id,
+        document_ids=[document_id],
+    ) == "version-1"
+
+    retriever.upsert_bm25_documents(
+        [
+            Document(
+                page_content="updated",
+                id=str(uuid.uuid4()),
+                metadata={"document_id": str(document_id), "chunk_index": 0},
+            )
+        ],
+        tenant_id=tenant_id,
+    )
+
+    assert retriever._resolve_candidate_cache_corpus_token(
+        tenant_id=tenant_id,
+        document_ids=[document_id],
+    ) == "version-2"
+    clock[0] = 2.0
+    assert retriever._resolve_candidate_cache_corpus_token(
+        tenant_id=tenant_id,
+        document_ids=[document_id],
+    ) == "version-3"
+    assert calls == 3
+
+
+def test_bm25_unversioned_existing_scope_is_rebuilt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from langchain_core.documents import Document
+
+    from app.rag.retriever import HybridRetriever
+
+    tenant_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    retriever = HybridRetriever()
+    scope_key = retriever._bm25_scope_key(
+        tenant_id=tenant_id,
+        document_ids=[document_id],
+    )
+    retriever._bm25_retrievers[scope_key] = object()  # type: ignore[assignment]
+    retriever._bm25_docs[scope_key] = [Document(page_content="unknown-version", id=str(uuid.uuid4()))]
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_resolve_candidate_cache_corpus_token",
+        lambda self, **kwargs: "current-version",
+    )
+
+    assert retriever._refresh_bm25_dataset_cache_version(
+        cache_key=scope_key,
+        tenant_uuid=tenant_id,
+        dataset_scope_ids=(),
+        document_ids=[document_id],
+    ) == "current-version"
+    assert scope_key not in retriever._bm25_retrievers
+    assert scope_key not in retriever._bm25_docs
+    assert scope_key not in retriever._bm25_cache_versions
+
+
+def test_bm25_document_scope_cache_rebuilds_when_requested_document_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from langchain_core.documents import Document
+
+    from app.rag.retriever import HybridRetriever
+
+    tenant_id = uuid.uuid4()
+    document_a = uuid.uuid4()
+    document_b = uuid.uuid4()
+    retriever = HybridRetriever()
+    scope_key = retriever._bm25_scope_key(
+        tenant_id=tenant_id,
+        document_ids=[document_a, document_b],
+    )
+    old_retriever = object()
+    new_retriever = object()
+    old_docs = [
+        Document(
+            page_content="a",
+            id=str(uuid.uuid4()),
+            metadata={"document_id": str(document_a)},
+        )
+    ]
+    new_docs = old_docs + [
+        Document(
+            page_content="b",
+            id=str(uuid.uuid4()),
+            metadata={"document_id": str(document_b)},
+        )
+    ]
+    retriever._bm25_retrievers[scope_key] = old_retriever  # type: ignore[assignment]
+    retriever._bm25_docs[scope_key] = old_docs
+
+    def rebuild(self, **kwargs):  # noqa: ANN001, ANN202
+        self._bm25_retrievers[scope_key] = new_retriever
+        self._bm25_docs[scope_key] = new_docs
+        return True
+
+    monkeypatch.setattr(HybridRetriever, "_lazy_build_bm25_index", rebuild)
+
+    cached_retriever, cached_docs = retriever._ensure_bm25_search_index(
+        cache_key=scope_key,
+        tenant_uuid=tenant_id,
+        dataset_scope_ids=(),
+        document_ids=[document_a, document_b],
+    )
+
+    assert cached_retriever is new_retriever
+    assert cached_docs == new_docs
+    assert retriever._last_bm25_status["reason"] == "lazy_build_success"
+
+
+def test_enrich_results_fails_closed_when_acl_lookup_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.rag.retriever as retriever_module
+    from app.rag.retriever import HybridRetriever
+
+    class _Session:
+        def query(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            raise RuntimeError("database unavailable")
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(retriever_module, "SessionLocal", lambda: _Session(), raising=True)
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_resolve_embedding_runtime",
+        lambda self, *, tenant_id: _embedding_runtime(),
+    )
+    stats: dict[str, object] = {}
+
+    results = HybridRetriever(tenant_id=uuid.uuid4())._enrich_results_with_db_metadata(
+        [
+            {
+                "chunk_id": str(uuid.uuid4()),
+                "content": "must not escape without ACL validation",
+                "metadata": {},
+            }
+        ],
+        stats=stats,
+    )
+
+    assert results == []
+    assert stats["output_results"] == 0
+    assert stats["exception"] == "database unavailable"
+
+
+def test_enrich_results_fails_closed_when_metadata_filter_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.rag.core.filters as filters_module
+    import app.rag.retriever as retriever_module
+    from app.rag.retriever import HybridRetriever
+
+    monkeypatch.setattr(
+        retriever_module,
+        "SessionLocal",
+        lambda: SimpleNamespace(close=lambda: None),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        filters_module,
+        "apply_metadata_filter_with_stats",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("filter unavailable")),
+    )
+    stats: dict[str, object] = {}
+
+    results = HybridRetriever(metadata_filter={"region": "east"})._enrich_results_with_db_metadata(
+        [{"content": "must not escape a failed final filter", "metadata": {"region": "east"}}],
+        stats=stats,
+        embedding_runtime=_embedding_runtime(),
+    )
+
+    assert results == []
+    assert stats["output_results"] == 0
+    assert stats["exception"] == "filter unavailable"
+
+
+def test_chunk_mutations_rotate_document_corpus_version_before_commit() -> None:
+    from pathlib import Path
+
+    source = Path("app/api/v1/document_chunks_write.py").read_text(encoding="utf-8")
+    version_touch = "document.updated_at = datetime.now(UTC)"
+    for function_name, next_decorator in (
+        ("create_document_chunk", "@router.patch("),
+        ("patch_document_chunk", "@router.delete("),
+        ("delete_document_chunk", "@router.post("),
+        ("disable_document_chunk", "@router.post("),
+        ("enable_document_chunk", "@router.post("),
+    ):
+        function_start = source.index(f"async def {function_name}(")
+        function_source = source[function_start : source.index(next_decorator, function_start)]
+        assert version_touch in function_source
+        assert function_source.index(version_touch) < function_source.index("db.commit()")
+
+
+def test_drift_replay_disable_rotates_document_corpus_version_before_commit() -> None:
+    from pathlib import Path
+
+    source = Path("app/services/index_audit_service.py").read_text(encoding="utf-8")
+    function_start = source.index("def _finalize_chunk_disable(")
+    function_source = source[function_start : source.index("def _finalize_chunk_delete(", function_start)]
+    version_touch = "document.updated_at = datetime.now(UTC)"
+
+    assert "document: DBDocument | None" in function_source
+    assert version_touch in function_source
+    assert function_source.index(version_touch) < function_source.index("db.commit()")
+    assert "_finalize_chunk_disable(db=db, document=document, chunk=chunk)" in source
+
+
 def test_enrich_results_uses_hit_expected_embedding_space_for_multi_runtime_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

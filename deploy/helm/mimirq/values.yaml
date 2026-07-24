@@ -72,6 +72,12 @@ serviceAccount:
 # IMPORTANT: Kubernetes Secrets are not encrypted by default; prefer creating an external secret
 # via your cluster's secret manager and setting existingSecretName.
 secretEnv:
+  # Runtime mode / DB ownership. Keep dev-friendly defaults here; production should
+  # override these explicitly and run Alembic out-of-band or via the optional hook Job.
+  ENV: "development"
+  DB_CREATE_ALL_ON_STARTUP: "true"
+  DB_RUNTIME_MIGRATIONS_ENABLED: "true"
+
   # Required for most real deployments
   AUTH_MODE: "jwt"
   SECRET_KEY: ""
@@ -113,6 +119,20 @@ secretEnv:
 
   # CORS (adjust for your frontend origin(s))
   CORS_ORIGINS: "http://localhost:3000"
+
+# Render-time hints used by Helm fail-fast validation.
+#
+# Why this exists:
+# - When `existingSecretName` is used, Helm cannot inspect the external Secret's env vars.
+# - These hints let the chart validate multi-instance safety without guessing.
+# - Empty values fall back to `api.extraEnv` first, then `secretEnv`.
+runtimeGuards:
+  environment: ""
+  vectorBackend: ""
+  minioEnabled: ""
+  minioDocumentsEnabled: ""
+  dbCreateAllOnStartup: ""
+  dbRuntimeMigrationsEnabled: ""
 
 api:
   enabled: true
@@ -256,6 +276,36 @@ persistence:
     accessModes:
       - ReadWriteOnce
     size: 20Gi
+
+migrations:
+  # Optional Alembic hook Job for production installs/upgrades.
+  #
+  # Safety:
+  # - Requires `existingSecretName`, because pre-install hooks run before the chart-managed
+  #   Secret exists.
+  # - Intended for deployments that also set DB_CREATE_ALL_ON_STARTUP=false and
+  #   DB_RUNTIME_MIGRATIONS_ENABLED=false.
+  enabled: false
+  backoffLimit: 1
+  activeDeadlineSeconds: 1800
+  ttlSecondsAfterFinished: 300
+  command:
+    - python
+    - scripts/alembic_cli.py
+    - -c
+    - alembic.ini
+    - upgrade
+    - head
+  podAnnotations: {}
+  resources: {}
+  podSecurityContext: {}
+  securityContext: {}
+  automountServiceAccountToken: null
+  priorityClassName: ""
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  extraEnv: []
 
 prometheus:
   serviceMonitor:

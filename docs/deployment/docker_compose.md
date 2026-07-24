@@ -158,7 +158,7 @@ make up-web
 - `postgres_data`：PostgreSQL 数据
 - `milvus_data` / `etcd_data` / `minio_data`：Milvus 相关数据
 - `upload_data`：上传文件（后端容器内路径默认为 `/data/uploads`）
-- `vector_data`：lite 模式下的本地向量库持久化目录（`CHROMA_PERSIST_PATH_DOCKER=/data/vector_chroma`）
+- `vector_data`：lite 模式下的本地向量库持久化目录（`CHROMA_PERSIST_PATH_DOCKER=/app/vector_chroma`）
 
 仅停止服务：
 

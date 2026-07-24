@@ -85,6 +85,8 @@ SPARSE_INDEX_DIR_FALLBACK = "./data/sparse_indexes"
 COLBERT_INDEX_DIR_FALLBACK = "./data/colbert_indexes"
 LEXICAL_DB_SEARCH_FAILED_LOG = "Lexical DB search failed: %s"
 NON_CRITICAL_RETRIEVER_FALLBACK_LOG = "Ignoring non-critical retriever fallback failure: %s"
+_CORPUS_TOKEN_LOCAL_CACHE_TTL_SEC = 1.0
+_CORPUS_TOKEN_LOCAL_CACHE_MAX_ENTRIES = 128
 _RETRIEVAL_DISPLAY_CONTENT_KEY = "_retrieval_display_content"
 _RETRIEVAL_TEXT_KEY = RETRIEVAL_TEXT_METADATA_KEY
 _RETRIEVAL_EXPECTED_EMBEDDING_SPACE_KEY = "_retrieval_expected_embedding_space_hash"
@@ -568,6 +570,9 @@ class HybridRetriever(BaseRetriever):
     _bm25_cache_lock: threading.Lock = PrivateAttr(default_factory=threading.RLock)
     # Cache versions per BM25 scope key (used to invalidate dataset-scoped indices after ingest).
     _bm25_cache_versions: dict[str, str] = PrivateAttr(default_factory=dict)
+    _corpus_token_cache: "OrderedDict[tuple[str, str, tuple[str, ...]], tuple[float, str]]" = PrivateAttr(
+        default_factory=OrderedDict
+    )
     # Best-effort debug metrics for the last retrieval call (per retriever instance).
     # Used by debug endpoints / observability to expose trimming/overfetch behavior.
     _last_debug_metrics: dict[str, Any] = PrivateAttr(default_factory=dict)
@@ -1178,13 +1183,15 @@ class HybridRetriever(BaseRetriever):
         """
         Return the in-memory BM25 cache key for a retrieval scope.
 
-        - document_ids scoped: cache per-tenant (small and request-specific)
+        - document_ids scoped: cache per exact document set
         - dataset scoped: cache per (tenant, dataset) to keep indices smaller and easier to invalidate
         - open scope: cache per-tenant (legacy; usually disabled at the API layer)
         """
         tenant_key = self._tenant_key(tenant_id)
         if document_ids:
-            return tenant_key
+            normalized_document_ids = sorted({str(document_id) for document_id in document_ids})
+            document_scope = ",".join(normalized_document_ids)
+            return f"{tenant_key}:documents:{len(normalized_document_ids)}:{stable_hash(document_scope, length=24)}"
         scope_dataset_ids = self._normalize_dataset_scope_ids(
             [dataset_id]
             if dataset_id is not None
@@ -1437,15 +1444,34 @@ class HybridRetriever(BaseRetriever):
         if tenant_uuid is None:
             return None
 
+        dataset_ids = self._explicit_dataset_scope_ids()
+        dataset_id = dataset_ids[0] if len(dataset_ids) == 1 else None
+        normalized_document_ids = list(dict.fromkeys(document_ids or []))
+        document_scope = tuple(sorted(str(document_id) for document_id in normalized_document_ids))
+        scope_key = (str(tenant_uuid), str(dataset_id or ""), document_scope)
+        now = time.monotonic()
+        with self._bm25_cache_lock:
+            cached = self._corpus_token_cache.get(scope_key)
+            if cached is not None and now - cached[0] <= _CORPUS_TOKEN_LOCAL_CACHE_TTL_SEC:
+                self._corpus_token_cache.move_to_end(scope_key)
+                return cached[1]
+            self._corpus_token_cache.pop(scope_key, None)
+
         db = SessionLocal()
         try:
-            dataset_ids = self._explicit_dataset_scope_ids()
-            return resolve_corpus_cache_token(
+            token = resolve_corpus_cache_token(
                 db,
                 tenant_id=tenant_uuid,
-                dataset_id=dataset_ids[0] if len(dataset_ids) == 1 else None,
-                document_ids=document_ids or [],
+                dataset_id=dataset_id,
+                document_ids=normalized_document_ids,
             )
+            if token:
+                with self._bm25_cache_lock:
+                    self._corpus_token_cache[scope_key] = (time.monotonic(), token)
+                    self._corpus_token_cache.move_to_end(scope_key)
+                    while len(self._corpus_token_cache) > _CORPUS_TOKEN_LOCAL_CACHE_MAX_ENTRIES:
+                        self._corpus_token_cache.popitem(last=False)
+            return token
         except Exception as exc:
             _log_retriever_fallback('_resolve_candidate_cache_corpus_token', exc)
             return None
@@ -1454,6 +1480,12 @@ class HybridRetriever(BaseRetriever):
                 db.close()
             except Exception as exc:
                 logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+
+    def _clear_candidate_corpus_token_cache(self, tenant_id: UUID | None) -> None:
+        tenant_key = self._tenant_key(tenant_id)
+        with self._bm25_cache_lock:
+            for scope_key in [key for key in self._corpus_token_cache if key[0] == tenant_key]:
+                self._corpus_token_cache.pop(scope_key, None)
 
     def _sparse_provider_name(self) -> str:
         return str(self.sparse_provider or "deterministic").strip().lower()
@@ -2225,7 +2257,7 @@ class HybridRetriever(BaseRetriever):
         db: Session,
         *,
         tenant_uuid: UUID,
-        tenant_key: str,
+        cache_key: str,
         missing: set[str],
         existing_count: int,
         max_chunks: int,
@@ -2242,11 +2274,17 @@ class HybridRetriever(BaseRetriever):
         )
         if not bm25_docs:
             return
-        self.upsert_bm25_documents(bm25_docs, tenant_id=tenant_uuid)
+        with self._bm25_cache_lock:
+            existing_docs = list(self._bm25_docs.get(cache_key) or [])
+        merged_docs = self._merge_bm25_scope_docs(
+            existing_docs,
+            self._prepare_bm25_upsert_docs(bm25_docs),
+        )
+        self._replace_bm25_scope_index(cache_key=cache_key, merged_docs=merged_docs)
         logger.info(
-            "BM25 lazy-extended %s chunks for tenant %s (missing_docs=%s)",
+            "BM25 lazy-extended %s chunks for scope %s (missing_docs=%s)",
             len(bm25_docs),
-            tenant_key,
+            cache_key,
             len(missing),
         )
 
@@ -2255,7 +2293,6 @@ class HybridRetriever(BaseRetriever):
         db: Session,
         *,
         tenant_uuid: UUID,
-        tenant_key: str,
         cache_key: str,
         existing_docs: list[Document] | None,
         document_ids: list[UUID] | None,
@@ -2285,7 +2322,7 @@ class HybridRetriever(BaseRetriever):
         self._extend_bm25_scope_for_missing_documents(
             db,
             tenant_uuid=tenant_uuid,
-            tenant_key=tenant_key,
+            cache_key=cache_key,
             missing=missing,
             existing_count=existing_count,
             max_chunks=max_chunks,
@@ -2335,7 +2372,6 @@ class HybridRetriever(BaseRetriever):
         self,
         *,
         tenant_uuid: UUID,
-        tenant_key: str,
         cache_key: str,
         document_ids: list[UUID] | None,
         dataset_ids: tuple[UUID, ...],
@@ -2368,7 +2404,6 @@ class HybridRetriever(BaseRetriever):
                 handled = self._handle_missing_bm25_scope_docs(
                     db,
                     tenant_uuid=tenant_uuid,
-                    tenant_key=tenant_key,
                     cache_key=cache_key,
                     existing_docs=existing_docs,
                     document_ids=document_ids,
@@ -2409,7 +2444,6 @@ class HybridRetriever(BaseRetriever):
         if tenant_uuid is None:
             return False
 
-        tenant_key = self._tenant_key(tenant_uuid)
         cache_key = self._bm25_scope_key(
             tenant_id=tenant_uuid,
             dataset_ids=dataset_ids,
@@ -2422,7 +2456,6 @@ class HybridRetriever(BaseRetriever):
         with lock:
             return self._build_bm25_scope_inside_lock(
                 tenant_uuid=tenant_uuid,
-                tenant_key=tenant_key,
                 cache_key=cache_key,
                 document_ids=document_ids,
                 dataset_ids=dataset_ids,
@@ -2760,6 +2793,18 @@ class HybridRetriever(BaseRetriever):
         if not upsert_docs:
             return
 
+        self._clear_candidate_corpus_token_cache(tenant_uuid)
+        tenant_key = self._tenant_key(tenant_uuid)
+        document_scope_prefix = f"{tenant_key}:documents:"
+        with self._bm25_cache_lock:
+            document_scope_keys = [
+                key
+                for key in set(self._bm25_docs) | set(self._bm25_retrievers)
+                if str(key).startswith(document_scope_prefix)
+            ]
+            for key in document_scope_keys:
+                self._drop_bm25_cache_key_locked(key)
+
         cache_key = self._bm25_scope_key(
             tenant_id=tenant_uuid,
             dataset_id=self.dataset_id or self._infer_single_dataset_scope_from_docs(upsert_docs),
@@ -2802,7 +2847,11 @@ class HybridRetriever(BaseRetriever):
         )
 
     def _bm25_filter_scope_keys(self, *, tenant_key: str) -> list[str]:
-        scope_prefixes = (f"{tenant_key}:dataset:", f"{tenant_key}:datasets:")
+        scope_prefixes = (
+            f"{tenant_key}:dataset:",
+            f"{tenant_key}:datasets:",
+            f"{tenant_key}:documents:",
+        )
         with self._bm25_cache_lock:
             scope_keys = [
                 k
@@ -2911,6 +2960,7 @@ class HybridRetriever(BaseRetriever):
             return 0
 
         tenant_key = self._tenant_key(tenant_id)
+        self._clear_candidate_corpus_token_cache(tenant_id)
         total_removed = 0
         for scope_key in self._bm25_filter_scope_keys(tenant_key=tenant_key):
             with self._get_bm25_build_lock(scope_key):
@@ -2962,6 +3012,7 @@ class HybridRetriever(BaseRetriever):
             self._chunk_id_lookup.clear()
             self._bm25_build_locks.clear()
             self._bm25_cache_versions.clear()
+            self._corpus_token_cache.clear()
             self._sparse_doc_vectors.clear()
             self._sparse_build_locks.clear()
             self._colbert_index_cache.clear()
@@ -2996,25 +3047,29 @@ class HybridRetriever(BaseRetriever):
         cache_key: str,
         tenant_uuid: UUID,
         dataset_scope_ids: tuple[UUID, ...],
+        document_ids: list[UUID] | None = None,
     ) -> str | None:
-        if not dataset_scope_ids:
+        if document_ids:
+            document_scope_ids = list(dict.fromkeys(document_ids))
+            current_version = self._resolve_candidate_cache_corpus_token(
+                tenant_id=tenant_uuid,
+                document_ids=document_scope_ids,
+            )
+        elif dataset_scope_ids:
+            current_version = self._bm25_dataset_cache_version(
+                _tenant_id=tenant_uuid,
+                _dataset_ids=dataset_scope_ids,
+            )
+        else:
             return None
-        current_version = self._bm25_dataset_cache_version(
-            _tenant_id=tenant_uuid,
-            _dataset_ids=dataset_scope_ids,
-        )
         if not current_version:
             return None
 
         with self._bm25_cache_lock:
             cached_version = self._bm25_cache_versions.get(cache_key)
-            if cached_version is None and (
-                self._bm25_retrievers.get(cache_key) is not None or bool(self._bm25_docs.get(cache_key))
-            ):
-                self._bm25_cache_versions[cache_key] = current_version
-                return current_version
+            cache_exists = self._bm25_retrievers.get(cache_key) is not None or bool(self._bm25_docs.get(cache_key))
 
-        if cached_version is not None and cached_version != current_version:
+        if cache_exists and (cached_version is None or cached_version != current_version):
             self._clear_bm25_cache_key(cache_key)
         return current_version
 
@@ -3029,7 +3084,11 @@ class HybridRetriever(BaseRetriever):
         with self._bm25_cache_lock:
             retriever = self._bm25_retrievers.get(cache_key)
             docs = self._bm25_docs.get(cache_key)
-        if retriever is not None and docs is not None:
+        if retriever is not None and docs is not None and self._bm25_scope_cache_ready(
+            cache_key=cache_key,
+            existing_docs=docs,
+            document_ids=document_ids,
+        ):
             self._last_bm25_status.update(
                 {
                     "cache_ready_before": True,
@@ -3213,6 +3272,7 @@ class HybridRetriever(BaseRetriever):
             cache_key=cache_key,
             tenant_uuid=tenant_uuid,
             dataset_scope_ids=dataset_scope_ids,
+            document_ids=document_ids,
         )
         retriever, docs = self._ensure_bm25_search_index(
             cache_key=cache_key,
@@ -3225,7 +3285,7 @@ class HybridRetriever(BaseRetriever):
             self._last_bm25_status["cache_ready_after"] = False
             self._last_bm25_status.setdefault("reason", "index_unavailable")
             return []
-        if dataset_scope_ids and current_version:
+        if current_version:
             with self._bm25_cache_lock:
                 self._bm25_cache_versions[cache_key] = current_version
 
@@ -6169,8 +6229,9 @@ class HybridRetriever(BaseRetriever):
             stats0["output_results"] = 0
             stats0["exception"] = None
 
-        db = SessionLocal()
+        db: Session | None = None
         try:
+            db = SessionLocal()
             tenant_filter = self.tenant_id
             account_id = (self.account_id or "").strip() or None
             dataset_filters = {str(dataset_id) for dataset_id in self._explicit_dataset_scope_ids()}
@@ -6620,6 +6681,10 @@ class HybridRetriever(BaseRetriever):
                             stats0["metadata_filter"] = summary
                 except Exception as exc:
                     logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+                    if stats0 is not None:
+                        stats0["exception"] = str(exc)[:200]
+                        stats0["output_results"] = 0
+                    return []
 
             if stats0 is not None:
                 stats0["output_results"] = len(resolved)
@@ -6628,10 +6693,11 @@ class HybridRetriever(BaseRetriever):
             _log_retriever_fallback('_enrich_results_with_db_metadata', exc)
             if stats0 is not None:
                 stats0["exception"] = str(exc)[:200]
-            return results
+            return []
         finally:
             try:
-                db.close()
+                if db is not None:
+                    db.close()
             except Exception as exc:
                 logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
 

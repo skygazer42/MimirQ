@@ -140,3 +140,18 @@ Inputs:
 {{- end -}}
 automountServiceAccountToken: {{ $val }}
 {{- end -}}
+
+{{/*
+Look up a named env var in a pod env list.
+Returns an empty string when the var is absent.
+*/}}
+{{- define "mimirq.envLookup" -}}
+{{- $name := printf "%v" (.name | default "") -}}
+{{- $value := "" -}}
+{{- range .env -}}
+{{- if eq (printf "%v" (.name | default "")) $name -}}
+{{- $value = printf "%v" (.value | default "") -}}
+{{- end -}}
+{{- end -}}
+{{- $value -}}
+{{- end -}}

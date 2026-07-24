@@ -48,7 +48,7 @@ Supporting controls:
 
 - `SAML_ALLOWED_CLOCK_SKEW_SEC` default `60`
 - `SAML_REPLAY_TTL_SEC` default `300`
-- `SAML_REPLAY_REDIS_ENABLED` default `false`
+- `SAML_REPLAY_REDIS_ENABLED` default `false`; required in production when providers are configured
 
 SP metadata controls (optional, enterprise IdP compatibility):
 
@@ -56,7 +56,7 @@ SP metadata controls (optional, enterprise IdP compatibility):
 - `SAML_SP_PRIVATE_KEY_PEM`: private key used to sign SP metadata (required when signing is enabled)
 - `SAML_SP_METADATA_SIGNED=true`: sign the generated metadata (safe default: `false`)
 
-When `SAML_REPLAY_REDIS_ENABLED=true`, replay protection uses Redis via `REDIS_URL`. Otherwise it falls back to an in-process TTL cache.
+When `SAML_REPLAY_REDIS_ENABLED=true`, replay protection uses Redis via `REDIS_URL` and rejects exchanges with `503` if Redis is unavailable. Production deployments with `SAML_PROVIDERS_JSON` configured require both settings, including Kubernetes deployments where multiple pods cannot be inferred from `UVICORN_WORKERS`. The in-process TTL cache is retained only for non-production, single-process development.
 
 ## Identity Mapping
 

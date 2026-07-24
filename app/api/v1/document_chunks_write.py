@@ -123,6 +123,7 @@ async def create_document_chunk(
         vector_id=vector_id,
     )
     db.add(chunk)
+    document.updated_at = datetime.now(UTC)
     db.commit()
     db.refresh(chunk)
 
@@ -257,6 +258,7 @@ async def patch_document_chunk(
             meta.setdefault("doc_pipeline_key", active_key)
         chunk.doc_metadata = meta
 
+    document.updated_at = datetime.now(UTC)
     db.commit()
     db.refresh(chunk)
 
@@ -489,6 +491,7 @@ async def delete_document_chunk(
             raise HTTPException(status_code=409, detail="Index consistency strict mode blocked delete; drift item recorded")
 
     db.delete(chunk)
+    document.updated_at = datetime.now(UTC)
     db.commit()
 
     try:
@@ -629,6 +632,7 @@ async def disable_document_chunk(
     if getattr(chunk, "disabled_at", None) is None:
         chunk.disabled_at = datetime.now(UTC)
     chunk.vector_id = None
+    document.updated_at = datetime.now(UTC)
 
     await documents_module._record_chunk_index_drift(
         db=db,
@@ -705,6 +709,7 @@ async def enable_document_chunk(
 
     if getattr(chunk, "disabled_at", None) is not None:
         chunk.disabled_at = None
+    document.updated_at = datetime.now(UTC)
 
     documents_module.audit_log_event(
         db,

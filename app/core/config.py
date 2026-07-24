@@ -785,7 +785,7 @@ class Settings(BaseSettings):
     SAML_ALLOWED_CLOCK_SKEW_SEC: int = 60
     # Replay-protection retention window for assertion IDs.
     SAML_REPLAY_TTL_SEC: int = 300
-    # Optional Redis-backed replay cache. When disabled, fall back to in-process memory.
+    # Redis-backed replay cache. Production SAML requires this for cross-process protection.
     SAML_REPLAY_REDIS_ENABLED: bool = False
     # Defense-in-depth size limit for inbound base64 SAMLResponse payloads.
     SAML_MAX_RESPONSE_BYTES: int = 500_000
@@ -2358,6 +2358,12 @@ class Settings(BaseSettings):
                 getattr(self, "BM25_LAZY_BUILD_ENABLED", False)
             ):
                 raise ValueError("BM25_LAZY_BUILD_ENABLED must be true when UVICORN_WORKERS > 1")
+
+        if is_production and str(getattr(self, "SAML_PROVIDERS_JSON", "") or "").strip():
+            if not bool(getattr(self, "SAML_REPLAY_REDIS_ENABLED", False)):
+                raise ValueError("SAML_REPLAY_REDIS_ENABLED=true is required for SAML in production")
+            if not str(getattr(self, "REDIS_URL", "") or "").strip():
+                raise ValueError("REDIS_URL is required for SAML replay protection in production")
 
         # Security: Host header hardening (production-only by default).
         if is_production and bool(getattr(self, "TRUSTED_HOSTS_ENABLED", True)):

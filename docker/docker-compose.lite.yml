@@ -18,7 +18,7 @@ x-backend-env: &backend_env
   # Lite defaults: local vector store and no object storage (lower resource usage).
   VECTOR_BACKEND: ${VECTOR_BACKEND_LITE:-chroma}
   FAISS_STORE_PATH: ${FAISS_STORE_PATH_DOCKER:-/data/vector_faiss}
-  CHROMA_PERSIST_PATH: ${CHROMA_PERSIST_PATH_DOCKER:-/data/vector_chroma}
+  CHROMA_PERSIST_PATH: ${CHROMA_PERSIST_PATH_DOCKER:-/app/vector_chroma}
   MINIO_ENABLED: ${MINIO_ENABLED_LITE_DOCKER:-false}
   MINIO_DOCUMENTS_ENABLED: ${MINIO_DOCUMENTS_ENABLED_LITE_DOCKER:-false}
   # CORS (frontend)
@@ -92,7 +92,7 @@ services:
       TABLE_STORE_DIR: /data/uploads/table_store
     volumes:
       - upload_data:/data/uploads
-      - vector_data:/data/vector_chroma
+      - vector_data:/app/vector_chroma
 
   # Arq worker（后台处理文档解析/索引）
   mimirq-worker:
@@ -115,7 +115,7 @@ services:
       TABLE_STORE_DIR: /data/uploads/table_store
     volumes:
       - upload_data:/data/uploads
-      - vector_data:/data/vector_chroma
+      - vector_data:/app/vector_chroma
     command: arq app.tasks.worker.WorkerSettings
 
 volumes:

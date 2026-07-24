@@ -171,6 +171,63 @@ def test_production_helm_example_uses_distributed_runtime_settings() -> None:
     extra_env = {str(item["name"]): str(item["value"]).lower() for item in values["api"]["extraEnv"]}
     assert extra_env["RATE_LIMIT_REDIS_ENABLED"] == "true"
     assert extra_env["BM25_INDEX_ENABLED"] == "false"
+    assert extra_env["ENV"] == "production"
+    assert extra_env["DB_CREATE_ALL_ON_STARTUP"] == "false"
+    assert extra_env["DB_RUNTIME_MIGRATIONS_ENABLED"] == "false"
+    worker_extra_env = {str(item["name"]): str(item["value"]).lower() for item in values["worker"]["extraEnv"]}
+    assert worker_extra_env["ENV"] == "production"
+    assert worker_extra_env["DB_CREATE_ALL_ON_STARTUP"] == "false"
+    assert worker_extra_env["DB_RUNTIME_MIGRATIONS_ENABLED"] == "false"
+    assert values["migrations"]["enabled"] is True
+    assert str(values["runtimeGuards"]["environment"]).lower() == "production"
+    assert str(values["runtimeGuards"]["vectorBackend"]).lower() == "milvus"
+    assert str(values["runtimeGuards"]["minioEnabled"]).lower() == "true"
+    assert str(values["runtimeGuards"]["minioDocumentsEnabled"]).lower() == "true"
+    assert str(values["runtimeGuards"]["dbCreateAllOnStartup"]).lower() == "false"
+    assert str(values["runtimeGuards"]["dbRuntimeMigrationsEnabled"]).lower() == "false"
+
+
+def test_helm_defaults_keep_single_replica_dev_path_usable() -> None:
+    values = yaml.safe_load(_read("deploy/helm/mimirq/values.yaml"))
+    assert values["secretEnv"]["ENV"] == "development"
+    assert str(values["secretEnv"]["DB_CREATE_ALL_ON_STARTUP"]).lower() == "true"
+    assert str(values["secretEnv"]["DB_RUNTIME_MIGRATIONS_ENABLED"]).lower() == "true"
+    assert int(values["api"]["replicas"]) == 1
+    assert int(values["worker"]["replicas"]) == 1
+    assert values["migrations"]["enabled"] is False
+
+
+def test_helm_runtime_validation_has_fail_fast_guards_for_multi_instance_risks() -> None:
+    template = _read("deploy/helm/mimirq/templates/validate-runtime.yaml")
+    assert "Distributed MimirQ deployments require ENV=production." in template
+    assert "Distributed MimirQ deployments require DB_CREATE_ALL_ON_STARTUP=false." in template
+    assert "Distributed MimirQ deployments require DB_RUNTIME_MIGRATIONS_ENABLED=false." in template
+    assert "Distributed MimirQ deployments cannot use VECTOR_BACKEND=faiss or VECTOR_BACKEND=chroma." in template
+    assert "Distributed MimirQ deployments with local document storage require persistence.uploads.accessModes to include ReadWriteMany." in template
+    assert "migrations.enabled=true requires existingSecretName" in template
+    assert template.count('"env" .Values.worker.extraEnv') >= 6
+    assert "$workerDbCreateAllOnStartup" in template
+    assert "$workerDbRuntimeMigrationsEnabled" in template
+    assert "$workerVectorBackend" in template
+    assert "$workerMinioDocumentsEnabled" in template
+
+
+def test_helm_env_lookup_helper_uses_helm_supported_string_coercion() -> None:
+    helper = _read("deploy/helm/mimirq/templates/_helpers.tpl")
+    assert 'printf "%v"' in helper
+    assert "str (" not in helper
+    assert "str(" not in helper
+
+
+def test_helm_migration_job_is_a_pre_install_upgrade_hook_backed_by_existing_secret() -> None:
+    template = _read("deploy/helm/mimirq/templates/job-migrate.yaml")
+    values = yaml.safe_load(_read("deploy/helm/mimirq/values.yaml"))
+    assert '"helm.sh/hook": pre-install,pre-upgrade' in template
+    assert '"helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded' in template
+    assert 'secretRef:' in template
+    assert 'name: {{ include "mimirq.secretName" . }}' in template
+    assert "{{- toYaml .Values.migrations.command | nindent 12 }}" in template
+    assert values["migrations"]["command"][:2] == ["python", "scripts/alembic_cli.py"]
 
 
 def test_web_production_healthcheck_uses_ipv4_loopback() -> None:

@@ -233,6 +233,59 @@ def _login_for_token(
     return token
 
 
+def _register_for_token(
+    client: httpx.Client,
+    *,
+    api_base: str,
+    email: str,
+    username: str,
+    password: str,
+) -> str:
+    resp = request_with_retries(
+        client,
+        "POST",
+        _join(api_base, "auth/register"),
+        expected={201},
+        json={"email": email, "username": username, "password": password},
+    )
+    payload = _parse_json(resp)
+    token = ""
+    if isinstance(payload, dict):
+        token = str(((payload.get("token") or {}) if isinstance(payload.get("token"), dict) else {}).get("access_token") or "")
+    if not token:
+        raise CallError(method="POST", url=_join(api_base, "auth/register"), status_code=resp.status_code, detail="no access_token in response")
+    return token
+
+
+def _upload_form_data(*, dataset_id: str, parser_backend: str, core_only: bool) -> dict[str, str]:
+    data = {"dataset_id": dataset_id, "parser_backend": parser_backend}
+    if core_only:
+        data.update(
+            {
+                "chunk_vector_enabled": "false",
+                "event_vector_enabled": "false",
+                "entity_vector_enabled": "false",
+                "kg_enabled": "false",
+            }
+        )
+    return data
+
+
+def _core_retrieve_payload(*, query: str, dataset_id: str) -> dict[str, Any]:
+    return {
+        "query": query,
+        "dataset_id": dataset_id,
+        "rag_config": {
+            "use_graph": False,
+            "top_k": 10,
+            "score_threshold": 0.0,
+            "retrieval_mode": "keyword",
+            "enable_reranker": False,
+            "enable_multi_query": False,
+        },
+    }
+
+
 def _get_system_status_best_effort(
     client: httpx.Client,
     *,
@@ -312,6 +365,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--token", default=None, help="Bearer token (AUTH_MODE=jwt).")
     p.add_argument("--identifier", default=None, help="Login identifier (email/username) when token is not provided.")
     p.add_argument("--password", default=None, help="Login password when token is not provided.")
+    p.add_argument(
+        "--bootstrap-register",
+        action="store_true",
+        help="Create a temporary local account via /auth/register when no JWT token or login credentials are provided.",
+    )
 
     p.add_argument("--dataset-id", default=None, help="Reuse an existing dataset id (skips dataset creation).")
     p.add_argument("--parser-backend", default="auto", help="Parser backend for upload (default: %(default)s)")
@@ -367,6 +425,10 @@ def main(argv: list[str] | None = None) -> int:
 
             token = (args.token or env_or(dotenv, "MIMIRQ_SMOKE_TOKEN", "") or env_or(dotenv, "MIMIRQ_DEMO_TOKEN", "") or "").strip()
             user_id = (args.user_id or env_or(dotenv, "NEXT_PUBLIC_USER_ID", "demo")).strip()
+            bootstrap_register = bool(
+                args.bootstrap_register
+                or str(env_or(dotenv, "MIMIRQ_SMOKE_BOOTSTRAP_REGISTER", "")).strip().lower() in {"1", "true", "yes", "on"}
+            )
 
             if auth_mode == "jwt":
                 if not token:
@@ -375,10 +437,20 @@ def main(argv: list[str] | None = None) -> int:
                     if identifier and password:
                         print("[smoke] login: using identifier/password")
                         token = _login_for_token(client, api_base=api_base, identifier=identifier, password=password)
+                    elif bootstrap_register:
+                        account_seed = uuid.uuid4().hex[:12]
+                        print("[smoke] login: bootstrapping local account via register")
+                        token = _register_for_token(
+                            client,
+                            api_base=api_base,
+                            email=f"smoke-{account_seed}@example.com",
+                            username=f"smoke-{account_seed}",
+                            password=f"smoke-{uuid.uuid4().hex}",
+                        )
                     else:
                         raise ValueError(
                             "AUTH_MODE=jwt but no token provided. Set --token / MIMIRQ_SMOKE_TOKEN, "
-                            "or provide --identifier + --password to login."
+                            "or provide --identifier + --password to login, or pass --bootstrap-register for local CI/dev stacks."
                         )
                 user_id = ""
 
@@ -422,7 +494,11 @@ def main(argv: list[str] | None = None) -> int:
                 "SMOKE_NOTE: This is a test artifact.\n"
             )
             files = {"file": ("smoke.txt", doc_text.encode("utf-8"), "text/plain")}
-            data = {"dataset_id": dataset_id, "parser_backend": str(args.parser_backend or "auto")}
+            data = _upload_form_data(
+                dataset_id=str(dataset_id),
+                parser_backend=str(args.parser_backend or "auto"),
+                core_only=bool(args.core_only),
+            )
             up_resp = request_with_retries(
                 client,
                 "POST",
@@ -485,16 +561,7 @@ def main(argv: list[str] | None = None) -> int:
                     _join(api_base, "rag/retrieve"),
                     expected={200},
                     headers=headers,
-                    json={
-                        "query": marker,
-                        "dataset_id": str(dataset_id),
-                        "rag_config": {
-                            "use_graph": False,
-                            "top_k": 10,
-                            "score_threshold": 0.0,
-                            "enable_multi_query": False,
-                        },
-                    },
+                    json=_core_retrieve_payload(query=marker, dataset_id=str(dataset_id)),
                 )
                 retrieve_json = _parse_json(retrieve_resp)
                 retrieval_summary = _summarize_retrieval_evidence(

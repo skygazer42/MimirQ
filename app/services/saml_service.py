@@ -1,5 +1,6 @@
 
 import json
+import math
 import uuid
 from base64 import b64decode
 from dataclasses import dataclass
@@ -273,7 +274,12 @@ def _collect_attribute_values(assertion: etree._Element, attr_name: str) -> list
     return out
 
 
-def _validate_conditions(root: etree._Element, assertion: etree._Element, provider: SamlProvider, acs_url: str | None) -> None:
+def _validate_conditions(
+    root: etree._Element,
+    assertion: etree._Element,
+    provider: SamlProvider,
+    acs_url: str | None,
+) -> int:
     expected_acs = str(acs_url or "").strip() or provider.acs_url
     expected_audience = provider.audience
     expected_issuer = provider.issuer
@@ -325,6 +331,12 @@ def _validate_conditions(root: etree._Element, assertion: etree._Element, provid
     if subject_not_on_or_after is not None and now - timedelta(seconds=skew) >= subject_not_on_or_after:
         raise HTTPException(status_code=401, detail="SAML assertion expired")
 
+    expiration_times = [value for value in (not_on_or_after, subject_not_on_or_after) if value is not None]
+    if not expiration_times:
+        raise HTTPException(status_code=401, detail="Missing SAML expiration")
+    replay_until = min(expiration_times) + timedelta(seconds=skew)
+    return max(1, math.ceil((replay_until - now).total_seconds()))
+
 
 def _resolve_user_identity(db: Any, assertion: etree._Element, provider: SamlProvider):
     name_id = _get_text(assertion, "./saml:Subject/saml:NameID")
@@ -362,10 +374,10 @@ def exchange_saml_response(
     provider = _resolve_provider(provider_id)
     root = _decode_saml_response(saml_response)
     assertion = _verify_signature(root, provider)
-    _validate_conditions(root, assertion, provider, acs_url)
+    minimum_replay_ttl_sec = _validate_conditions(root, assertion, provider, acs_url)
 
-    replay_key = str(assertion.get("ID") or root.get("ID") or "").strip()
-    ensure_saml_assertion_not_replayed(replay_key)
+    replay_key = str(assertion.get("ID") or "").strip()
+    ensure_saml_assertion_not_replayed(replay_key, minimum_ttl_sec=minimum_replay_ttl_sec)
 
     user, groups = _resolve_user_identity(db, assertion, provider)
     UserService.mark_login(db, user)

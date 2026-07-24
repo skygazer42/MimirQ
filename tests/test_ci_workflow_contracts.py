@@ -170,8 +170,23 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     assert "https://registry.npmmirror.com" in web_dockerfile
     assert "Smoke built backend and web images" in docker_job
     assert "up -d --no-build" in docker_job
+    assert "Core ready-ingest-retrieval smoke" in docker_job
+    assert "python scripts/smoke_test.py" in docker_job
+    assert "--bootstrap-register" in docker_job
     assert "if: always()" in docker_job
     assert "image: ${MIMIRQ_BACKEND_IMAGE:-mimirq-backend}" in retrieval_compose
+
+
+def test_main_ci_runs_core_e2e_against_the_existing_host_backend() -> None:
+    workflow = _read(".github/workflows/ci.yml")
+    regression_job = workflow.split("\n  retrieval-regression-gate:", 1)[1].split(
+        "\n  kg-search-regression-gate:", 1
+    )[0]
+
+    assert "Core ready-ingest-retrieval smoke" in regression_job
+    assert "make core-e2e" in regression_job
+    assert "CORE_E2E_BASE_URL=http://127.0.0.1:8000" in regression_job
+    assert "CORE_E2E_OUT=artifacts/core-e2e.retrieval-regression.json" in regression_job
 
 
 def test_dockerfiles_bypass_broken_docker_hub_mirror() -> None:

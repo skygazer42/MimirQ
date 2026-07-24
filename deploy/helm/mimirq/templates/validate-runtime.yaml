@@ -1,0 +1,53 @@
+{{- $apiReplicas := int (.Values.api.replicas | default 1) -}}
+{{- $workerReplicas := int (.Values.worker.replicas | default 1) -}}
+{{- $apiMinReplicas := ternary (int (.Values.api.autoscaling.minReplicas | default 1)) $apiReplicas .Values.api.autoscaling.enabled -}}
+{{- $workerMinReplicas := ternary (int (.Values.worker.autoscaling.minReplicas | default 1)) $workerReplicas .Values.worker.autoscaling.enabled -}}
+{{- $distributed := or (gt $apiReplicas 1) (gt $workerReplicas 1) (gt $apiMinReplicas 1) (gt $workerMinReplicas 1) -}}
+
+{{- $apiEnvironment := lower (trim (coalesce (include "mimirq.envLookup" (dict "env" .Values.api.extraEnv "name" "ENV")) .Values.runtimeGuards.environment .Values.secretEnv.ENV "development")) -}}
+{{- $workerEnvironment := lower (trim (coalesce (include "mimirq.envLookup" (dict "env" .Values.worker.extraEnv "name" "ENV")) .Values.runtimeGuards.environment .Values.secretEnv.ENV "development")) -}}
+{{- $apiVectorBackend := lower (trim (coalesce (include "mimirq.envLookup" (dict "env" .Values.api.extraEnv "name" "VECTOR_BACKEND")) .Values.runtimeGuards.vectorBackend .Values.secretEnv.VECTOR_BACKEND "milvus")) -}}
+{{- $workerVectorBackend := lower (trim (coalesce (include "mimirq.envLookup" (dict "env" .Values.worker.extraEnv "name" "VECTOR_BACKEND")) .Values.runtimeGuards.vectorBackend .Values.secretEnv.VECTOR_BACKEND "milvus")) -}}
+{{- $apiMinioEnabled := lower (trim (coalesce (include "mimirq.envLookup" (dict "env" .Values.api.extraEnv "name" "MINIO_ENABLED")) .Values.runtimeGuards.minioEnabled .Values.secretEnv.MINIO_ENABLED "false")) -}}
+{{- $workerMinioEnabled := lower (trim (coalesce (include "mimirq.envLookup" (dict "env" .Values.worker.extraEnv "name" "MINIO_ENABLED")) .Values.runtimeGuards.minioEnabled .Values.secretEnv.MINIO_ENABLED "false")) -}}
+{{- $apiMinioDocumentsEnabled := lower (trim (coalesce (include "mimirq.envLookup" (dict "env" .Values.api.extraEnv "name" "MINIO_DOCUMENTS_ENABLED")) .Values.runtimeGuards.minioDocumentsEnabled .Values.secretEnv.MINIO_DOCUMENTS_ENABLED "false")) -}}
+{{- $workerMinioDocumentsEnabled := lower (trim (coalesce (include "mimirq.envLookup" (dict "env" .Values.worker.extraEnv "name" "MINIO_DOCUMENTS_ENABLED")) .Values.runtimeGuards.minioDocumentsEnabled .Values.secretEnv.MINIO_DOCUMENTS_ENABLED "false")) -}}
+{{- $apiDbCreateAllOnStartup := lower (trim (coalesce (include "mimirq.envLookup" (dict "env" .Values.api.extraEnv "name" "DB_CREATE_ALL_ON_STARTUP")) .Values.runtimeGuards.dbCreateAllOnStartup .Values.secretEnv.DB_CREATE_ALL_ON_STARTUP "true")) -}}
+{{- $workerDbCreateAllOnStartup := lower (trim (coalesce (include "mimirq.envLookup" (dict "env" .Values.worker.extraEnv "name" "DB_CREATE_ALL_ON_STARTUP")) .Values.runtimeGuards.dbCreateAllOnStartup .Values.secretEnv.DB_CREATE_ALL_ON_STARTUP "true")) -}}
+{{- $apiDbRuntimeMigrationsEnabled := lower (trim (coalesce (include "mimirq.envLookup" (dict "env" .Values.api.extraEnv "name" "DB_RUNTIME_MIGRATIONS_ENABLED")) .Values.runtimeGuards.dbRuntimeMigrationsEnabled .Values.secretEnv.DB_RUNTIME_MIGRATIONS_ENABLED "true")) -}}
+{{- $workerDbRuntimeMigrationsEnabled := lower (trim (coalesce (include "mimirq.envLookup" (dict "env" .Values.worker.extraEnv "name" "DB_RUNTIME_MIGRATIONS_ENABLED")) .Values.runtimeGuards.dbRuntimeMigrationsEnabled .Values.secretEnv.DB_RUNTIME_MIGRATIONS_ENABLED "true")) -}}
+
+{{- $usesRemoteDocuments := and (eq $apiMinioEnabled "true") (eq $apiMinioDocumentsEnabled "true") (eq $workerMinioEnabled "true") (eq $workerMinioDocumentsEnabled "true") -}}
+{{- $sharedUploads := and .Values.persistence.uploads.enabled (has "ReadWriteMany" .Values.persistence.uploads.accessModes) -}}
+
+{{- if and .Values.migrations.enabled (not .Values.existingSecretName) -}}
+{{- fail "migrations.enabled=true requires existingSecretName because the pre-install migration hook cannot read the chart-managed Secret before it is created." -}}
+{{- end -}}
+
+{{- if and .Values.migrations.enabled (or (ne $apiDbCreateAllOnStartup "false") (ne $workerDbCreateAllOnStartup "false")) -}}
+{{- fail "migrations.enabled=true requires DB_CREATE_ALL_ON_STARTUP=false." -}}
+{{- end -}}
+
+{{- if and .Values.migrations.enabled (or (ne $apiDbRuntimeMigrationsEnabled "false") (ne $workerDbRuntimeMigrationsEnabled "false")) -}}
+{{- fail "migrations.enabled=true requires DB_RUNTIME_MIGRATIONS_ENABLED=false." -}}
+{{- end -}}
+
+{{- if and $distributed (or (ne $apiDbCreateAllOnStartup "false") (ne $workerDbCreateAllOnStartup "false")) -}}
+{{- fail "Distributed MimirQ deployments require DB_CREATE_ALL_ON_STARTUP=false." -}}
+{{- end -}}
+
+{{- if and $distributed (or (not (or (eq $apiEnvironment "prod") (eq $apiEnvironment "production"))) (not (or (eq $workerEnvironment "prod") (eq $workerEnvironment "production")))) -}}
+{{- fail "Distributed MimirQ deployments require ENV=production." -}}
+{{- end -}}
+
+{{- if and $distributed (or (ne $apiDbRuntimeMigrationsEnabled "false") (ne $workerDbRuntimeMigrationsEnabled "false")) -}}
+{{- fail "Distributed MimirQ deployments require DB_RUNTIME_MIGRATIONS_ENABLED=false." -}}
+{{- end -}}
+
+{{- if and $distributed (or (eq $apiVectorBackend "faiss") (eq $apiVectorBackend "chroma") (eq $workerVectorBackend "faiss") (eq $workerVectorBackend "chroma")) -}}
+{{- fail "Distributed MimirQ deployments cannot use VECTOR_BACKEND=faiss or VECTOR_BACKEND=chroma." -}}
+{{- end -}}
+
+{{- if and $distributed (not $usesRemoteDocuments) (not $sharedUploads) -}}
+{{- fail "Distributed MimirQ deployments with local document storage require persistence.uploads.accessModes to include ReadWriteMany." -}}
+{{- end -}}

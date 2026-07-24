@@ -302,13 +302,20 @@ def _replay_bm25_delete(*, item: IndexDriftItem) -> None:
     )
 
 
-def _finalize_chunk_disable(*, db: Session, chunk: DocumentChunk | None) -> None:
+def _finalize_chunk_disable(
+    *,
+    db: Session,
+    document: DBDocument | None,
+    chunk: DocumentChunk | None,
+) -> None:
     if chunk is None:
         return
     if getattr(chunk, "disabled_at", None) is None:
         chunk.disabled_at = datetime.now(UTC)
     with contextlib.suppress(Exception):
         chunk.vector_id = None
+    if document is not None:
+        document.updated_at = datetime.now(UTC)
     db.commit()
 
 
@@ -382,7 +389,7 @@ def _replay_index_drift_item(
             raise ValueError(f"unsupported chunk.disable drift channel: {channel}")
 
         if _count_open_index_drift_siblings(db=db, item=item) == 0:
-            _finalize_chunk_disable(db=db, chunk=chunk)
+            _finalize_chunk_disable(db=db, document=document, chunk=chunk)
         return "replayed disable drift item"
 
     if operation == "chunk.delete":

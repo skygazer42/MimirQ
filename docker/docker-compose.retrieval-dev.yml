@@ -16,7 +16,7 @@ x-backend-env: &backend_env
   REDIS_URL: ${REDIS_URL_DOCKER:-redis://mimirq-redis:6379/0}
   # Retrieval-dev profile: keep startup light and deterministic.
   VECTOR_BACKEND: ${VECTOR_BACKEND_RETRIEVAL_DEV:-chroma}
-  CHROMA_PERSIST_PATH: ${CHROMA_PERSIST_PATH_DOCKER:-/data/vector_chroma}
+  CHROMA_PERSIST_PATH: ${CHROMA_PERSIST_PATH_DOCKER:-/app/vector_chroma}
   FAISS_STORE_PATH: ${FAISS_STORE_PATH_DOCKER:-/data/vector_faiss}
   MINIO_ENABLED: ${MINIO_ENABLED_RETRIEVAL_DEV:-false}
   MINIO_DOCUMENTS_ENABLED: ${MINIO_DOCUMENTS_ENABLED_RETRIEVAL_DEV:-false}
@@ -87,7 +87,7 @@ services:
       TABLE_STORE_DIR: /data/uploads/table_store
     volumes:
       - upload_data:/data/uploads
-      - vector_data:/data/vector_chroma
+      - vector_data:/app/vector_chroma
 
 volumes:
   postgres_data:

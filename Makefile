@@ -150,6 +150,7 @@ MIMIRQ_API_TOKEN ?= $(AUTH_TOKEN)
 MIMIRQ_API_TIMEOUT ?= 60
 CORE_E2E_BASE_URL ?= http://127.0.0.1:8000
 CORE_E2E_OUT ?= artifacts/core-e2e.json
+CORE_E2E_BOOTSTRAP_REGISTER ?= 0
 CORE_E2E_EXTRA_ARGS ?=
 RAG_CONCURRENCY_BASELINE ?=
 RAG_CONCURRENCY_CANDIDATE ?=
@@ -872,7 +873,9 @@ api-smoke:
 .PHONY: core-e2e
 core-e2e:
 	@mkdir -p $(dir $(CORE_E2E_OUT))
-	$(PY) scripts/smoke_test.py --base-url "$(CORE_E2E_BASE_URL)" --core-only --out "$(CORE_E2E_OUT)" $(CORE_E2E_EXTRA_ARGS)
+	$(PY) scripts/smoke_test.py --base-url "$(CORE_E2E_BASE_URL)" --core-only --out "$(CORE_E2E_OUT)" \
+		$(if $(filter 1 true yes on,$(CORE_E2E_BOOTSTRAP_REGISTER)),--bootstrap-register,) \
+		$(CORE_E2E_EXTRA_ARGS)
 
 .PHONY: rag-concurrency-gate
 rag-concurrency-gate:

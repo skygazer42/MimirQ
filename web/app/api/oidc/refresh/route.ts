@@ -66,6 +66,10 @@ function normalizeTokenType(raw: unknown): string {
   return t ? t.toLowerCase() : 'bearer'
 }
 
+function isTerminalRefreshFailure(errorCode: string): boolean {
+  return errorCode === 'invalid_grant'
+}
+
 export async function POST(req: NextRequest) {
   const enabled = readEnv('OIDC_SERVER_EXCHANGE_ENABLED')
   if (enabled && isFalsey(enabled)) {
@@ -125,28 +129,32 @@ export async function POST(req: NextRequest) {
 
   const data = (await res.json().catch(() => null)) as TokenResponse | null
   if (!res.ok) {
+    const errorCode = String(data?.error || '').trim().toLowerCase()
     const msg = String(data?.error_description || data?.error || '').trim()
     const secure = process.env.NODE_ENV === 'production'
-    const resp = jsonNoStore({ error: msg || `oidc_token_refresh_failed_${res.status}` }, { status: 400 })
-    // Best-effort: clear refresh token on invalid_grant-like responses.
-    resp.cookies.set({
-      name: REFRESH_COOKIE_NAME,
-      value: '',
-      httpOnly: true,
-      secure,
-      sameSite: 'lax',
-      path: '/api/oidc',
-      maxAge: 0,
-    })
-    resp.cookies.set({
-      name: PROVIDER_COOKIE_NAME,
-      value: '',
-      httpOnly: true,
-      secure,
-      sameSite: 'lax',
-      path: '/api/oidc',
-      maxAge: 0,
-    })
+    const status = res.status === 429 || res.status >= 500 ? res.status : 400
+    const resp = jsonNoStore({ error: msg || `oidc_token_refresh_failed_${res.status}` }, { status })
+    if (isTerminalRefreshFailure(errorCode)) {
+      // Terminal OAuth failures mean the stored refresh token is no longer usable.
+      resp.cookies.set({
+        name: REFRESH_COOKIE_NAME,
+        value: '',
+        httpOnly: true,
+        secure,
+        sameSite: 'lax',
+        path: '/api/oidc',
+        maxAge: 0,
+      })
+      resp.cookies.set({
+        name: PROVIDER_COOKIE_NAME,
+        value: '',
+        httpOnly: true,
+        secure,
+        sameSite: 'lax',
+        path: '/api/oidc',
+        maxAge: 0,
+      })
+    }
     return resp
   }
 

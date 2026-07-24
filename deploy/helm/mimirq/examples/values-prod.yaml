@@ -15,6 +15,12 @@ api:
   # Multi-replica APIs must share rate-limit state. Use Postgres lexical
   # retrieval to avoid rebuilding the same in-memory BM25 index in every pod.
   extraEnv:
+    - name: ENV
+      value: "production"
+    - name: DB_CREATE_ALL_ON_STARTUP
+      value: "false"
+    - name: DB_RUNTIME_MIGRATIONS_ENABLED
+      value: "false"
     - name: RATE_LIMIT_REDIS_ENABLED
       value: "true"
     - name: BM25_INDEX_ENABLED
@@ -22,11 +28,30 @@ api:
 
 worker:
   replicas: 2
+  extraEnv:
+    - name: ENV
+      value: "production"
+    - name: DB_CREATE_ALL_ON_STARTUP
+      value: "false"
+    - name: DB_RUNTIME_MIGRATIONS_ENABLED
+      value: "false"
+
+# Validation hints for the chart. Keep these aligned with the external Secret.
+runtimeGuards:
+  environment: "production"
+  vectorBackend: "milvus"
+  minioEnabled: "true"
+  minioDocumentsEnabled: "true"
+  dbCreateAllOnStartup: "false"
+  dbRuntimeMigrationsEnabled: "false"
 
 persistence:
   uploads:
     enabled: true
     size: 50Gi
+
+migrations:
+  enabled: true
 
 prometheus:
   serviceMonitor:

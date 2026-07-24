@@ -33,7 +33,8 @@ The Makefile is the source of truth for common workflows; these scripts are the 
   - Live parser example: `python scripts/api_smoke.py --skip-llm-test --skip-mineru --live-parser-backends deepseek_ocr --live-parser-fixture runs/deepseek_ocr_smoke.pdf`
 - `smoke_test.py`: deployment-neutral knowledge-core gate (ready -> ingest -> retrieval evidence)
   - Example: `make core-e2e` against either a host-run or Docker-run API; override with `CORE_E2E_BASE_URL=http://host:8000`.
-  - `--core-only` skips LLM generation and removes the temporary dataset after a successful run. Failed runs retain it for diagnosis; reused datasets are never deleted.
+  - `--core-only` uses keyword retrieval, disables vector/KG/reranker dependencies, and removes the temporary dataset after a successful run. Failed runs retain it for diagnosis; reused datasets are never deleted.
+  - `--bootstrap-register` creates a temporary local JWT account for fresh non-production stacks that do not already have login credentials.
 - `rag_e2e_load_test.py`: live ingest/retrieve/chat load runner plus serial-vs-concurrent throughput gate
   - Generate two reports with identical request counts and concurrency `1` / `N`, then run `RAG_CONCURRENCY_BASELINE=/tmp/c1.json RAG_CONCURRENCY_CANDIDATE=/tmp/cN.json make rag-concurrency-gate`.
   - The comparison fails on errors, mismatched workloads, missing client overlap, or retrieval/chat throughput below the configured ratios.

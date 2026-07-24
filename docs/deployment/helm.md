@@ -52,13 +52,18 @@ docker push <your-registry>/mimirq:<tag>
 kubectl create namespace mimirq
 
 kubectl -n mimirq create secret generic mimirq-env \
+  --from-literal=ENV=production \
   --from-literal=AUTH_MODE=jwt \
   --from-literal=SECRET_KEY="<>=32 chars random>" \
   --from-literal=DATABASE_URL="postgresql://user:pass@postgres:5432/mimirq" \
+  --from-literal=DB_CREATE_ALL_ON_STARTUP=false \
+  --from-literal=DB_RUNTIME_MIGRATIONS_ENABLED=false \
   --from-literal=REDIS_URL="redis://redis:6379/0" \
   --from-literal=VECTOR_BACKEND="milvus" \
   --from-literal=MILVUS_HOST="milvus" \
   --from-literal=MILVUS_PORT="19530" \
+  --from-literal=MINIO_ENABLED=true \
+  --from-literal=MINIO_DOCUMENTS_ENABLED=true \
   --from-literal=LLM_API_KEY="<your-key>" \
   --from-literal=UPLOAD_DIR="/data/uploads"
 ```
@@ -76,11 +81,53 @@ image:
 
 existingSecretName: mimirq-env
 
+runtimeGuards:
+  environment: "production"
+  vectorBackend: "milvus"
+  minioEnabled: "true"
+  minioDocumentsEnabled: "true"
+  dbCreateAllOnStartup: "false"
+  dbRuntimeMigrationsEnabled: "false"
+
+api:
+  replicas: 2
+  extraEnv:
+    - name: ENV
+      value: "production"
+    - name: DB_CREATE_ALL_ON_STARTUP
+      value: "false"
+    - name: DB_RUNTIME_MIGRATIONS_ENABLED
+      value: "false"
+
+worker:
+  replicas: 2
+  extraEnv:
+    - name: ENV
+      value: "production"
+    - name: DB_CREATE_ALL_ON_STARTUP
+      value: "false"
+    - name: DB_RUNTIME_MIGRATIONS_ENABLED
+      value: "false"
+
 persistence:
   uploads:
     enabled: true
     size: 50Gi
+
+migrations:
+  enabled: true
 ```
+
+说明：
+
+- `runtimeGuards.*` 只用于 Helm 渲染期校验。使用 `existingSecretName` 时，Chart 读不到外部 Secret，必须靠这些提示值判断多副本部署边界。
+- 多副本 API / worker 会 fail-fast 要求：
+  - `ENV=production`
+  - `DB_CREATE_ALL_ON_STARTUP=false`
+  - `DB_RUNTIME_MIGRATIONS_ENABLED=false`
+  - 不使用 `VECTOR_BACKEND=faiss/chroma`
+  - 若未启用 `MINIO_ENABLED=true` 且 `MINIO_DOCUMENTS_ENABLED=true`，则 `persistence.uploads.accessModes` 必须包含 `ReadWriteMany`
+- `migrations.enabled=true` 只支持配合 `existingSecretName` 使用；pre-install hook 早于 chart 管理的 Secret 创建，不能安全依赖内置 Secret。
 
 你也可以直接从内置示例开始（推荐先复制一份再改）：
 
@@ -229,6 +276,13 @@ cronjobs:
 make helm-template
 make helm-lint
 ```
+
+如果开启了 `migrations.enabled=true`，渲染阶段会额外校验：
+
+- 必须设置 `existingSecretName`
+- 必须把 `DB_CREATE_ALL_ON_STARTUP` / `DB_RUNTIME_MIGRATIONS_ENABLED` 关闭
+- 多副本场景下不得使用本地 `faiss/chroma`
+- 多副本 + 本地文档存储时，uploads PVC 必须声明 `ReadWriteMany`
 
 ```bash
 helm upgrade --install mimirq deploy/helm/mimirq \

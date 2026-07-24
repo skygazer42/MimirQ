@@ -18,6 +18,7 @@ from app.api.v1.documents import UrlUploadRequest
 from app.core.config import settings
 from app.core.database import get_db
 from app.rag.core.logging import get_logger
+from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -28,6 +29,197 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 }
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+logger = get_logger(__name__)
+
+
+@dataclass
+class _UploadFileLease:
+    path: Path | None = None
+    owned: bool = False
+
+    def acquire(self, path: Path) -> None:
+        self.path = path
+        self.owned = True
+
+    def transfer(self) -> None:
+        self.owned = False
+
+    def cleanup(self) -> None:
+        if self.owned and self.path is not None:
+            _unlink_upload(self.path)
+
+
+def _document_object_storage_enabled() -> bool:
+    return bool(getattr(settings, "MINIO_ENABLED", False)) and bool(getattr(settings, "MINIO_DOCUMENTS_ENABLED", False))
+
+
+def _document_upload_path(tenant_id: UUID, document_id: UUID, extension: str) -> Path:
+    upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
+    if _document_object_storage_enabled():
+        upload_dir /= ".tmp"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    return upload_dir / f"{document_id}{extension}"
+
+
+def _unlink_upload(path: Path) -> None:
+    with contextlib.suppress(OSError):
+        path.unlink(missing_ok=True)
+
+
+async def _store_document_source(
+    *,
+    file_path: Path,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    document_id: UUID,
+    extension: str,
+    content_type: str | None,
+) -> str:
+    if not _document_object_storage_enabled():
+        return str(file_path)
+    try:
+        return await asyncio.to_thread(
+            minio_service.upload_document_file,
+            file_path=file_path,
+            tenant_id=str(tenant_id),
+            dataset_id=str(dataset_id),
+            document_id=str(document_id),
+            extension=extension,
+            content_type=content_type,
+        )
+    except Exception:
+        _unlink_upload(file_path)
+        raise
+
+
+async def _cleanup_unpersisted_source(stored_path: str) -> None:
+    if not is_minio_uri(stored_path):
+        return
+    try:
+        ref = parse_minio_uri(stored_path)
+        await asyncio.to_thread(minio_service.delete_object, object_name=ref.object_name)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to delete unpersisted document object: %s", str(exc)[:200])
+
+
+async def _persist_uploaded_document(db: Session, db_document: Any, *, file_path: Path) -> None:
+    try:
+        db.add(db_document)
+    except Exception:
+        with contextlib.suppress(Exception):
+            db.rollback()
+        await _cleanup_unpersisted_source(str(getattr(db_document, "file_path", "") or ""))
+        _unlink_upload(file_path)
+        raise
+
+    try:
+        db.commit()
+    except Exception:
+        # The server may have committed even when the client lost the acknowledgement.
+        with contextlib.suppress(Exception):
+            db.rollback()
+        raise
+
+    try:
+        db.refresh(db_document)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Document committed but refresh failed: %s", str(exc)[:200])
+
+
+async def _run_document_processing_with_cleanup(
+    file_path: Path,
+    document_id: UUID,
+    tenant_id: UUID,
+    parser_backend: str,
+    chunk_strategy: str,
+) -> None:
+    from app.api.v1 import documents as documents_module
+
+    try:
+        await documents_module.run_document_processing_limited(
+            file_path,
+            document_id,
+            tenant_id,
+            parser_backend,
+            chunk_strategy,
+        )
+    finally:
+        _unlink_upload(file_path)
+
+
+async def _schedule_document_processing(
+    *,
+    background_tasks: BackgroundTasks,
+    file_path: Path,
+    document_id: UUID,
+    tenant_id: UUID,
+    account_id: str,
+    pipeline_hash: str,
+    parser_backend: str,
+    chunk_strategy: str,
+    db: Session,
+    db_document: Any,
+) -> bool:
+    from app.api.v1 import documents as documents_module
+
+    object_backed = is_minio_uri(str(getattr(db_document, "file_path", "") or ""))
+    job_id = f"doc:{tenant_id}:{document_id}:{pipeline_hash}"
+    task_id = None
+    try:
+        task_id = await documents_module.enqueue_document_processing(
+            tenant_id=tenant_id,
+            document_id=document_id,
+            requested_by=account_id,
+            job_id=job_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Document queue unavailable; using API background task: %s", str(exc)[:200])
+
+    if task_id:
+        try:
+            meta = dict(db_document.doc_metadata or {})
+            meta["task_id"] = task_id
+            db_document.doc_metadata = meta
+            db.commit()
+            db.refresh(db_document)
+        except Exception as exc:  # noqa: BLE001
+            with contextlib.suppress(Exception):
+                db.rollback()
+            logger.warning("Document task queued but task metadata refresh failed: %s", str(exc)[:200])
+        return not object_backed
+
+    try:
+        if object_backed:
+            background_tasks.add_task(
+                _run_document_processing_with_cleanup,
+                file_path,
+                document_id,
+                tenant_id,
+                parser_backend,
+                chunk_strategy,
+            )
+        else:
+            background_tasks.add_task(
+                documents_module.run_document_processing_limited,
+                file_path,
+                document_id,
+                tenant_id,
+                parser_backend,
+                chunk_strategy,
+            )
+    except Exception as exc:
+        db_document.status = "failed"
+        db_document.current_stage = "failed"
+        db_document.error_message = "document_processing_schedule_failed"
+        try:
+            db.commit()
+        except Exception as mark_exc:  # noqa: BLE001
+            with contextlib.suppress(Exception):
+                db.rollback()
+            logger.error("Failed to mark unscheduled document as failed: %s", str(mark_exc)[:200])
+        logger.error("Failed to register document background task: %s", str(exc)[:200])
+        raise
+    return True
 
 
 @dataclass
@@ -83,6 +275,33 @@ async def upload_document(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
+):
+    file_lease = _UploadFileLease()
+    try:
+        return await _upload_document_impl(
+            background_tasks,
+            file,
+            form,
+            overrides_form,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            db=db,
+            file_lease=file_lease,
+        )
+    finally:
+        file_lease.cleanup()
+
+
+async def _upload_document_impl(
+    background_tasks: BackgroundTasks,
+    file: UploadFile,
+    form: UploadDocumentFormFields,
+    overrides_form: PipelineOverridesFormFields,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    db: Session,
+    file_lease: _UploadFileLease,
 ):
     from app.api.v1 import documents as documents_module  # Local import to avoid router circular import.
 
@@ -231,29 +450,22 @@ async def upload_document(
             pipeline_effective.chunk_overlap,
         )
 
-    upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
-    upload_dir.mkdir(parents=True, exist_ok=True)
-
     file_id = uuid.uuid4()
-    file_path = upload_dir / f"{file_id}{file_ext}"
+    file_path = _document_upload_path(tenant_id, file_id, file_ext)
+    file_lease.acquire(file_path)
 
     file_size, file_sha256 = await documents_module.save_upload_file_with_hash(
         file, file_path, max_bytes=settings.MAX_FILE_SIZE
     )
 
-    try:
-        from app.services.tenant_quota_service import enforce_tenant_upload_quotas
+    from app.services.tenant_quota_service import enforce_tenant_upload_quotas
 
-        enforce_tenant_upload_quotas(
-            db,
-            tenant_id=tenant_id,
-            additional_docs=1,
-            additional_bytes=int(file_size or 0),
-        )
-    except HTTPException:
-        with contextlib.suppress(OSError):
-            file_path.unlink(missing_ok=True)
-        raise
+    enforce_tenant_upload_quotas(
+        db,
+        tenant_id=tenant_id,
+        additional_docs=1,
+        additional_bytes=int(file_size or 0),
+    )
 
     doc_metadata = {
         "parser_backend": resolved_parser_backend,
@@ -306,8 +518,6 @@ async def upload_document(
                 ttl_sec=lock_ttl,
             )
             if not acquired:
-                with contextlib.suppress(OSError):
-                    file_path.unlink(missing_ok=True)
                 raise HTTPException(status_code=409, detail="Duplicate ingest in progress")
 
             doc_metadata["ingest_lock_key"] = ingest_lock_key
@@ -383,8 +593,6 @@ async def upload_document(
                 str(getattr(dataset, "id", None)),
                 str(getattr(dup, "id", "")),
             )
-            with contextlib.suppress(OSError):
-                file_path.unlink(missing_ok=True)
             with contextlib.suppress(Exception):
                 _attach_doc_to_ingestion_run(dup, created=False)
             return dup
@@ -399,9 +607,6 @@ async def upload_document(
             status0 = str(getattr(dup_any, "status", "") or "").lower()
             if status0 in {"pending", "processing"}:
                 raise HTTPException(status_code=409, detail=documents_module.DUPLICATE_DOCUMENT_PROCESSING_DETAIL)
-
-            with contextlib.suppress(OSError):
-                file_path.unlink(missing_ok=True)
 
             meta_any = dict(getattr(dup_any, "doc_metadata", None) or {})
             meta_any["parser_backend"] = resolved_parser_backend
@@ -456,49 +661,53 @@ async def upload_document(
                 _attach_doc_to_ingestion_run(dup_any, created=False)
             return dup_any
 
-    db_document = documents_module.DBDocument(
-        id=file_id,
+    stored_path = await _store_document_source(
+        file_path=file_path,
         tenant_id=tenant_id,
         dataset_id=dataset.id,
-        filename=file.filename,
-        file_type=file_ext.lstrip("."),
-        file_size=file_size,
-        file_path=str(file_path),
-        owner_id=account_id,
-        access_mode=None,
-        status="pending",
-        processing_progress=0,
-        doc_metadata=doc_metadata,
+        document_id=file_id,
+        extension=file_ext,
+        content_type=(file.content_type or "application/octet-stream"),
     )
-
-    db.add(db_document)
-    db.commit()
-    db.refresh(db_document)
+    persistence_started = False
+    try:
+        db_document = documents_module.DBDocument(
+            id=file_id,
+            tenant_id=tenant_id,
+            dataset_id=dataset.id,
+            filename=file.filename,
+            file_type=file_ext.lstrip("."),
+            file_size=file_size,
+            file_path=stored_path,
+            owner_id=account_id,
+            access_mode=None,
+            status="pending",
+            processing_progress=0,
+            doc_metadata=doc_metadata,
+        )
+        persistence_started = True
+        await _persist_uploaded_document(db, db_document, file_path=file_path)
+    except Exception:
+        if not persistence_started:
+            await _cleanup_unpersisted_source(stored_path)
+        raise
     with contextlib.suppress(Exception):
         _attach_doc_to_ingestion_run(db_document, created=True)
 
-    job_id = f"doc:{tenant_id}:{file_id}:{pipeline_hash}"
-    task_id = await documents_module.enqueue_document_processing(
-        tenant_id=tenant_id,
+    keep_local_file = await _schedule_document_processing(
+        background_tasks=background_tasks,
+        file_path=file_path,
         document_id=file_id,
-        requested_by=account_id,
-        job_id=job_id,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        pipeline_hash=pipeline_hash,
+        parser_backend=resolved_parser_backend,
+        chunk_strategy=resolved_chunk_strategy,
+        db=db,
+        db_document=db_document,
     )
-    if task_id:
-        meta = dict(db_document.doc_metadata or {})
-        meta["task_id"] = task_id
-        db_document.doc_metadata = meta
-        db.commit()
-        db.refresh(db_document)
-    else:
-        background_tasks.add_task(
-            documents_module.run_document_processing_limited,
-            file_path,
-            file_id,
-            tenant_id,
-            resolved_parser_backend,
-            resolved_chunk_strategy,
-        )
+    if keep_local_file:
+        file_lease.transfer()
 
     return db_document
 
@@ -658,6 +867,7 @@ async def upload_documents_batch(
             async with semaphore:
                 source_path: str | None = None
                 upload_key: str | None = None
+                file_path: Path | None = None
                 try:
                     raw_filename = file.filename
                     upload_key = documents_module._normalize_upload_key(raw_filename)
@@ -673,11 +883,8 @@ async def upload_documents_batch(
                             "error": f"Unsupported file type: {file_ext}",
                         }
 
-                    upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
-                    upload_dir.mkdir(parents=True, exist_ok=True)
-
                     file_id = uuid.uuid4()
-                    file_path = upload_dir / f"{file_id}{file_ext}"
+                    file_path = _document_upload_path(tenant_id, file_id, file_ext)
                     file_size, file_sha256 = await documents_module.save_upload_file_with_hash(
                         file,
                         file_path,
@@ -694,8 +901,11 @@ async def upload_documents_batch(
                         "file_path": str(file_path),
                         "file_size": int(file_size or 0),
                         "file_sha256": str(file_sha256 or "").strip().lower() or None,
+                        "content_type": file.content_type or "application/octet-stream",
                     }
                 except HTTPException as exc:
+                    if file_path is not None:
+                        _unlink_upload(file_path)
                     return {
                         "success": False,
                         "filename": str(getattr(file, "filename", "") or "unknown"),
@@ -703,6 +913,8 @@ async def upload_documents_batch(
                         "error": str(getattr(exc, "detail", "") or str(exc) or "upload_failed"),
                     }
                 except Exception as exc:  # noqa: BLE001
+                    if file_path is not None:
+                        _unlink_upload(file_path)
                     return {
                         "success": False,
                         "filename": str(getattr(file, "filename", "") or "unknown"),
@@ -945,6 +1157,9 @@ async def upload_documents_batch(
                 source_path = staged.get("source_path")
                 upload_key = staged.get("upload_key")
                 filename0 = str(staged.get("filename") or "unknown")
+                file_path: Path | None = None
+                stored_path: str | None = None
+                persistence_started = False
                 try:
                     file_ext = str(staged.get("file_ext") or "").strip().lower() or Path(filename0).suffix.lower()
                     file_id = staged.get("file_id")
@@ -1111,6 +1326,7 @@ async def upload_documents_batch(
                         if dup_any is not None:
                             status0 = str(getattr(dup_any, "status", "") or "").lower()
                             if status0 in {"pending", "processing"}:
+                                _unlink_upload(file_path)
                                 raise HTTPException(status_code=409, detail=documents_module.DUPLICATE_DOCUMENT_PROCESSING_DETAIL)
 
                             with contextlib.suppress(OSError):
@@ -1174,6 +1390,14 @@ async def upload_documents_batch(
                                 "document": dup_any,
                             }
 
+                    stored_path = await _store_document_source(
+                        file_path=file_path,
+                        tenant_id=tenant_id,
+                        dataset_id=dataset.id,
+                        document_id=file_id,
+                        extension=file_ext,
+                        content_type=str(staged.get("content_type") or "application/octet-stream"),
+                    )
                     db_document = documents_module.DBDocument(
                         id=file_id,
                         tenant_id=tenant_id,
@@ -1181,7 +1405,7 @@ async def upload_documents_batch(
                         filename=filename0,
                         file_type=file_ext.lstrip("."),
                         file_size=file_size,
-                        file_path=str(file_path),
+                        file_path=stored_path,
                         owner_id=account_id,
                         access_mode=None,
                         status="pending",
@@ -1189,12 +1413,13 @@ async def upload_documents_batch(
                         doc_metadata=doc_metadata,
                     )
 
-                    db.add(db_document)
-                    db.commit()
-                    db.refresh(db_document)
+                    persistence_started = True
+                    await _persist_uploaded_document(db, db_document, file_path=file_path)
 
                     if upload_only:
                         # Upload-only stores the source document but intentionally does not enqueue parsing.
+                        if is_minio_uri(stored_path):
+                            _unlink_upload(file_path)
                         return {
                             "success": True,
                             "filename": filename0,
@@ -1203,28 +1428,20 @@ async def upload_documents_batch(
                             "document": db_document,
                         }
 
-                    job_id = f"doc:{tenant_id}:{file_id}:{pipeline_hash}"
-                    task_id = await documents_module.enqueue_document_processing(
-                        tenant_id=tenant_id,
+                    keep_local_file = await _schedule_document_processing(
+                        background_tasks=background_tasks,
+                        file_path=file_path,
                         document_id=file_id,
-                        requested_by=account_id,
-                        job_id=job_id,
+                        tenant_id=tenant_id,
+                        account_id=account_id,
+                        pipeline_hash=pipeline_hash,
+                        parser_backend=resolved_parser_backend,
+                        chunk_strategy=resolved_chunk_strategy,
+                        db=db,
+                        db_document=db_document,
                     )
-                    if task_id:
-                        meta = dict(db_document.doc_metadata or {})
-                        meta["task_id"] = task_id
-                        db_document.doc_metadata = meta
-                        db.commit()
-                        db.refresh(db_document)
-                    else:
-                        background_tasks.add_task(
-                            documents_module.run_document_processing_limited,
-                            file_path,
-                            file_id,
-                            tenant_id,
-                            resolved_parser_backend,
-                            resolved_chunk_strategy,
-                        )
+                    if not keep_local_file:
+                        _unlink_upload(file_path)
 
                     return {
                         "success": True,
@@ -1234,6 +1451,10 @@ async def upload_documents_batch(
                         "document": db_document,
                     }
                 except Exception as exc:  # noqa: BLE001
+                    if file_path is not None and (not persistence_started or is_minio_uri(stored_path or "")):
+                        _unlink_upload(file_path)
+                    if stored_path is not None and not persistence_started:
+                        await _cleanup_unpersisted_source(stored_path)
                     documents_module.logger.error("Error processing staged file %s: %s", filename0, str(exc)[:200])
                     return {
                         "success": False,
@@ -1312,6 +1533,9 @@ async def upload_documents_batch(
         async with semaphore:
             source_path: str | None = None
             upload_key: str | None = None
+            file_path: Path | None = None
+            stored_path: str | None = None
+            persistence_started = False
             try:
                 raw_filename = file.filename
                 upload_key = documents_module._normalize_upload_key(raw_filename)
@@ -1419,11 +1643,8 @@ async def upload_documents_batch(
                         pipeline_effective.chunk_overlap,
                     )
 
-                upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
-                upload_dir.mkdir(parents=True, exist_ok=True)
-
                 file_id = uuid.uuid4()
-                file_path = upload_dir / f"{file_id}{file_ext}"
+                file_path = _document_upload_path(tenant_id, file_id, file_ext)
 
                 file_size, file_sha256 = await documents_module.save_upload_file_with_hash(
                     file,
@@ -1510,6 +1731,7 @@ async def upload_documents_batch(
                     if dup_any is not None:
                         status0 = str(getattr(dup_any, "status", "") or "").lower()
                         if status0 in {"pending", "processing"}:
+                            _unlink_upload(file_path)
                             raise HTTPException(status_code=409, detail=documents_module.DUPLICATE_DOCUMENT_PROCESSING_DETAIL)
 
                         with contextlib.suppress(OSError):
@@ -1573,6 +1795,14 @@ async def upload_documents_batch(
                             "document": dup_any,
                         }
 
+                stored_path = await _store_document_source(
+                    file_path=file_path,
+                    tenant_id=tenant_id,
+                    dataset_id=(dataset.id if dataset is not None else tenant_id),
+                    document_id=file_id,
+                    extension=file_ext,
+                    content_type=(file.content_type or "application/octet-stream"),
+                )
                 db_document = documents_module.DBDocument(
                     id=file_id,
                     tenant_id=tenant_id,
@@ -1580,7 +1810,7 @@ async def upload_documents_batch(
                     filename=file.filename,
                     file_type=file_ext.lstrip("."),
                     file_size=file_size,
-                    file_path=str(file_path),
+                    file_path=stored_path,
                     owner_id=account_id,
                     access_mode=None,
                     status="pending",
@@ -1588,12 +1818,13 @@ async def upload_documents_batch(
                     doc_metadata=doc_metadata,
                 )
 
-                db.add(db_document)
-                db.commit()
-                db.refresh(db_document)
+                persistence_started = True
+                await _persist_uploaded_document(db, db_document, file_path=file_path)
 
                 if upload_only:
                     # Upload-only stores the source document but intentionally does not enqueue parsing.
+                    if is_minio_uri(stored_path):
+                        _unlink_upload(file_path)
                     return {
                         "success": True,
                         "filename": file.filename,
@@ -1602,28 +1833,20 @@ async def upload_documents_batch(
                         "document": db_document,
                     }
 
-                job_id = f"doc:{tenant_id}:{file_id}:{pipeline_hash}"
-                task_id = await documents_module.enqueue_document_processing(
-                    tenant_id=tenant_id,
+                keep_local_file = await _schedule_document_processing(
+                    background_tasks=background_tasks,
+                    file_path=file_path,
                     document_id=file_id,
-                    requested_by=account_id,
-                    job_id=job_id,
+                    tenant_id=tenant_id,
+                    account_id=account_id,
+                    pipeline_hash=pipeline_hash,
+                    parser_backend=resolved_parser_backend,
+                    chunk_strategy=resolved_chunk_strategy,
+                    db=db,
+                    db_document=db_document,
                 )
-                if task_id:
-                    meta = dict(db_document.doc_metadata or {})
-                    meta["task_id"] = task_id
-                    db_document.doc_metadata = meta
-                    db.commit()
-                    db.refresh(db_document)
-                else:
-                    background_tasks.add_task(
-                        documents_module.run_document_processing_limited,
-                        file_path,
-                        file_id,
-                        tenant_id,
-                        resolved_parser_backend,
-                        resolved_chunk_strategy,
-                    )
+                if not keep_local_file:
+                    _unlink_upload(file_path)
 
                 return {
                     "success": True,
@@ -1633,6 +1856,10 @@ async def upload_documents_batch(
                     "document": db_document,
                 }
             except Exception as exc:  # noqa: BLE001
+                if file_path is not None and (not persistence_started or is_minio_uri(stored_path or "")):
+                    _unlink_upload(file_path)
+                if stored_path is not None and not persistence_started:
+                    await _cleanup_unpersisted_source(stored_path)
                 documents_module.logger.error("Error processing file %s: %s", file.filename, str(exc))
                 return {
                     "success": False,
