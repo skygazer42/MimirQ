@@ -1,27 +1,11 @@
+import type { OpenApiSchema } from '@/types/backend'
+
 import { apiClient } from './core'
 
-export interface DifyRetrievalSetting {
-  top_k?: number
-  score_threshold?: number
-}
-
-export interface DifyExternalKnowledgeRequest {
-  knowledge_id: string
-  query: string
-  retrieval_setting?: DifyRetrievalSetting
-  metadata_condition?: Record<string, unknown> | null
-}
-
-export interface DifyExternalKnowledgeRecord {
-  content: string
-  score: number
-  title: string
-  metadata: Record<string, unknown>
-}
-
-export interface DifyExternalKnowledgeResponse {
-  records: DifyExternalKnowledgeRecord[]
-}
+export type DifyRetrievalSetting = OpenApiSchema<'DifyRetrievalSetting'>
+export type DifyExternalKnowledgeRequest = OpenApiSchema<'DifyExternalKnowledgeRequest'>
+export type DifyExternalKnowledgeRecord = OpenApiSchema<'DifyExternalKnowledgeRecord'>
+export type DifyExternalKnowledgeResponse = OpenApiSchema<'DifyExternalKnowledgeResponse'>
 
 export const difyExternalKnowledgeApi = {
   async retrieve(

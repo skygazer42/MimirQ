@@ -6,12 +6,7 @@ import { API_LONG_TIMEOUT_MS } from '@/lib/env'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 
 export type AuditLogPurgeResponse = OpenApiSchema<'AuditLogPurgeResponse'>
-export type AuditLogDeleteResponse = {
-  requested: number
-  deleted: number
-  missing: number
-  ids: string[]
-}
+export type AuditLogDeleteResponse = OpenApiSchema<'AuditLogDeleteResponse'>
 
 const AUDIT_BULK_DELETE_CHUNK_SIZE = 500
 

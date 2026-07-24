@@ -1,19 +1,12 @@
+import type { OpenApiSchema } from '@/types/backend'
+
 import { apiClient } from '@/lib/api/core'
 
-export type RtbfRequest = {
-  subject_account_id: string
-  dry_run?: boolean
-  max_docs?: number
-  max_retries?: number
-}
+export type RtbfRequest = OpenApiSchema<'RTBFRequest'>
 
 export type RtbfCascadeResponse = Record<string, unknown>
 
-export type RtbfStatusResponse = {
-  ticket_id: string
-  status: string
-  note: string
-}
+export type RtbfStatusResponse = OpenApiSchema<'RTBFStatusResponse'>
 
 export const rtbfApi = {
   async request(body: RtbfRequest): Promise<RtbfCascadeResponse> {

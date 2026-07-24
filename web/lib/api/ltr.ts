@@ -1,30 +1,11 @@
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
+import type { OpenApiSchema } from '@/types/backend'
 import { apiClient } from '@/lib/api/core'
 
-export interface LTRModelInfo {
-  model_id: string
-  model_sha256: string
-  size_bytes: number
-  created_at: string
-  created_by?: string | null
-  feature_spec_version: number
-  feature_schema: string
-  feature_names: string[]
-  has_manifest: boolean
-  active: boolean
-}
-
-export interface LTRModelListResponse {
-  items: LTRModelInfo[]
-}
-
-export interface LTRModelRegisterResponse {
-  model: LTRModelInfo
-}
-
-export interface LTRModelActivateResponse {
-  active: Record<string, unknown>
-}
+export type LTRModelInfo = OpenApiSchema<'LTRModelInfo'>
+export type LTRModelListResponse = OpenApiSchema<'LTRModelListResponse'>
+export type LTRModelRegisterResponse = OpenApiSchema<'LTRModelRegisterResponse'>
+export type LTRModelActivateResponse = OpenApiSchema<'LTRModelActivateResponse'>
 
 export const ltrApi = {
   async listModels(): Promise<LTRModelListResponse> {

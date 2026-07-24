@@ -28,6 +28,8 @@
 - `RATE_LIMIT_REDIS_PREFIX`：key 前缀（默认 `rl`）
 - `RATE_LIMIT_REDIS_KEY_TTL_SEC`：key TTL（默认 600）
 
+生产环境使用多个 Uvicorn worker 时，启动检查会要求启用 Redis 分布式限流；Kubernetes 多 Pod 部署无法由单个进程感知，必须在 Helm values 中显式设置 `RATE_LIMIT_REDIS_ENABLED=true` 并提供共享 `REDIS_URL`。
+
 触发时的 `scope`：
 
 - `rate_limit:api`
@@ -46,11 +48,13 @@
 - `TENANT_QPS_QUOTA_BURST_SIZE`：突发容量（int；<=0 时会按 rps*2 估算）
 - `TENANT_QPS_QUOTA_MODE`：`block` / `warn`
 
-分布式（推荐）：
+分布式：
 
 - 复用 `RATE_LIMIT_REDIS_ENABLED=true` + `REDIS_URL`
 - `TENANT_QPS_QUOTA_REDIS_PREFIX`：key 前缀（默认 `tq`）
 - `TENANT_QPS_QUOTA_REDIS_KEY_TTL_SEC`：key TTL（默认 600）
+
+生产环境多 worker 或多 Pod 启用租户 QPS 配额时，Redis 是必需项，否则各进程会分别计数。
 
 触发时的 `scope`：
 
@@ -122,4 +126,3 @@
 2. 把 `scope` 打到日志/监控（用于定位是哪一类限流）
 
 Runbook：`docs/deployment/runbook.md`（429 小节）
-

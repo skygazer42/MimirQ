@@ -118,6 +118,48 @@ def test_dataset_scoped_vector_write_rejects_misaligned_ids(
         )
 
 
+def test_milvus_write_fallback_keeps_required_routing_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.storage.vector.milvus import MilvusVectorStore
+
+    calls: list[list[dict[str, object]]] = []
+
+    class _Store:
+        def add_texts(self, *, texts, metadatas, ids):  # noqa: ANN001, ANN202
+            calls.append([dict(metadata) for metadata in metadatas])
+            if len(calls) == 1:
+                raise RuntimeError("legacy collection rejects indexed metadata slots")
+            return ids
+
+    vector_store = object.__new__(MilvusVectorStore)
+    vector_store._store = _Store()
+    monkeypatch.setattr(vector_store, "_require_store", lambda: vector_store._store)
+
+    dataset_id = uuid.uuid4()
+    result = vector_store.add_documents(
+        [
+            {
+                "content": "chunk",
+                "metadata": {
+                    "chunk_id": "chunk-1",
+                    "dataset_id": str(dataset_id),
+                    "embedding_space_hash": "space-a",
+                    "_indexed_metadata": {"region": "east"},
+                },
+            }
+        ],
+        document_id=uuid.uuid4(),
+        tenant_id=uuid.uuid4(),
+    )
+
+    assert result == ["chunk-1"]
+    assert len(calls) == 2
+    assert calls[1][0]["dataset_id"] == str(dataset_id)
+    assert calls[1][0]["embedding_space_hash"] == "space-a"
+    assert not any(key.startswith("indexed_meta_") for key in calls[1][0])
+
+
 def test_indexer_embedding_runtime_for_document_propagates_invalid_dataset_scoped_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1146,6 +1188,7 @@ def test_enrich_results_uses_hit_expected_embedding_space_for_multi_runtime_scop
     dataset_b = uuid.uuid4()
     document_a = uuid.uuid4()
     document_b = uuid.uuid4()
+    document_unknown = uuid.uuid4()
     expected_key = retriever_module._RETRIEVAL_EXPECTED_EMBEDDING_SPACE_KEY
     chunk_a = SimpleNamespace(
         id=uuid.uuid4(),
@@ -1171,9 +1214,22 @@ def test_enrich_results_uses_hit_expected_embedding_space_for_multi_runtime_scop
         end_char=None,
         disabled_at=None,
     )
+    chunk_unknown = SimpleNamespace(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        document_id=document_unknown,
+        chunk_index=0,
+        content="chunk-unknown",
+        doc_metadata={},
+        page_number=None,
+        start_char=None,
+        end_char=None,
+        disabled_at=None,
+    )
     document_rows = [
         (document_a, "a.md", dataset_a, "completed", {}, None, None, "published", 0, None, None, None),
         (document_b, "b.md", dataset_b, "completed", {}, None, None, "published", 0, None, None, None),
+        (document_unknown, "unknown.md", dataset_a, "completed", {}, None, None, "published", 0, None, None, None),
     ]
 
     class _Query:
@@ -1189,7 +1245,7 @@ def test_enrich_results_uses_hit_expected_embedding_space_for_multi_runtime_scop
     class _Session:
         def __init__(self) -> None:
             self._rows = [
-                [chunk_a, chunk_b],
+                [chunk_a, chunk_b, chunk_unknown],
                 document_rows,
                 [],
             ]
@@ -1232,6 +1288,15 @@ def test_enrich_results_uses_hit_expected_embedding_space_for_multi_runtime_scop
                     "chunk_index": 0,
                 },
             },
+            {
+                "content": "legacy-unknown",
+                "score": 0.6,
+                "metadata": {
+                    "document_id": str(document_unknown),
+                    "chunk_index": 0,
+                    expected_key: "space-a",
+                },
+            },
         ],
         stats=stats,
         embedding_runtime=_embedding_runtime(),
@@ -1240,7 +1305,7 @@ def test_enrich_results_uses_hit_expected_embedding_space_for_multi_runtime_scop
     assert [item["metadata"]["document_id"] for item in enriched] == [str(document_a), str(document_b)]
     assert enriched[0]["content"] == "chunk-a"
     assert enriched[1]["content"] == "chunk-b"
-    assert stats["filtered_embedding_space"] == 1
+    assert stats["filtered_embedding_space"] == 2
     assert stats["output_results"] == 2
 
 

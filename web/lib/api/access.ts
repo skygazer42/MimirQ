@@ -1,4 +1,5 @@
 import type {
+  OpenApiSchema,
   TenantGroupCreateRequest,
   TenantGroupListResponse,
   TenantGroupMemberListResponse,
@@ -11,28 +12,9 @@ import type {
 import { apiClient } from '@/lib/api/core'
 import type { TenantAccess } from '@/lib/tenant-permissions'
 
-export interface TenantMember {
-  id: string
-  tenant_id: string
-  user_id?: string | null
-  role: string
-  is_current: boolean
-  created_at?: string | null
-  updated_at?: string | null
-}
-
-export interface TenantMemberListResponse {
-  total: number
-  items: TenantMember[]
-}
-
-export interface TenantMemberDeleteResponse {
-  user_id: string
-  removed: boolean
-  revoked_group_memberships: number
-  revoked_dataset_permissions: number
-  revoked_document_permissions: number
-}
+export type TenantMember = OpenApiSchema<'TenantMemberOut'>
+export type TenantMemberListResponse = OpenApiSchema<'TenantMemberListResponse'>
+export type TenantMemberDeleteResponse = OpenApiSchema<'TenantMemberDeleteResponse'>
 
 export const rbacApi = {
   async getCurrentTenantAccess(): Promise<TenantAccess> {

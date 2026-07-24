@@ -2333,6 +2333,32 @@ class Settings(BaseSettings):
         """Validate configuration settings at startup."""
         is_production = is_production_env()
 
+        workers_raw = str(os.getenv("UVICORN_WORKERS", "1") or "1").strip()
+        try:
+            uvicorn_workers = int(workers_raw)
+        except ValueError as exc:
+            raise ValueError("UVICORN_WORKERS must be a positive integer") from exc
+        if uvicorn_workers < 1:
+            raise ValueError("UVICORN_WORKERS must be a positive integer")
+
+        if is_production and uvicorn_workers > 1:
+            distributed_limiter = bool(getattr(self, "RATE_LIMIT_REDIS_ENABLED", False)) and bool(
+                str(getattr(self, "REDIS_URL", "") or "").strip()
+            )
+            if bool(getattr(self, "RATE_LIMIT_ENABLED", False)) and not distributed_limiter:
+                raise ValueError(
+                    "RATE_LIMIT_REDIS_ENABLED=true with REDIS_URL is required when UVICORN_WORKERS > 1"
+                )
+            if bool(getattr(self, "TENANT_QPS_QUOTA_ENABLED", False)) and not distributed_limiter:
+                raise ValueError(
+                    "TENANT_QPS_QUOTA_ENABLED with UVICORN_WORKERS > 1 requires "
+                    "RATE_LIMIT_REDIS_ENABLED=true and REDIS_URL"
+                )
+            if bool(getattr(self, "BM25_INDEX_ENABLED", False)) and not bool(
+                getattr(self, "BM25_LAZY_BUILD_ENABLED", False)
+            ):
+                raise ValueError("BM25_LAZY_BUILD_ENABLED must be true when UVICORN_WORKERS > 1")
+
         # Security: Host header hardening (production-only by default).
         if is_production and bool(getattr(self, "TRUSTED_HOSTS_ENABLED", True)):
             raw_allowed = str(getattr(self, "ALLOWED_HOSTS", "") or "").strip()

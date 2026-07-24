@@ -3,6 +3,7 @@ import re
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 SILENT_PASS_RE = re.compile(r"except[^\n]*:\n[ \t]*pass\b")
@@ -162,6 +163,14 @@ def test_backend_entrypoint_uses_an_explicit_forwarded_proxy_allowlist() -> None
     entrypoint = _read("docker/start_backend.sh")
     assert ': "${FORWARDED_ALLOW_IPS:=127.0.0.1}"' in entrypoint
     assert '--forwarded-allow-ips "${FORWARDED_ALLOW_IPS}"' in entrypoint
+
+
+def test_production_helm_example_uses_distributed_runtime_settings() -> None:
+    values = yaml.safe_load(_read("deploy/helm/mimirq/examples/values-prod.yaml"))
+    assert int(values["api"]["replicas"]) > 1
+    extra_env = {str(item["name"]): str(item["value"]).lower() for item in values["api"]["extraEnv"]}
+    assert extra_env["RATE_LIMIT_REDIS_ENABLED"] == "true"
+    assert extra_env["BM25_INDEX_ENABLED"] == "false"
 
 
 def test_web_production_healthcheck_uses_ipv4_loopback() -> None:

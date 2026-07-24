@@ -28,20 +28,20 @@ afterEach(() => {
 
 describe('API type drift ratchet', () => {
   it('passes at the checked-in module and type baseline', () => {
-    const result = runWithBaseline({ handwrittenModules: 15, handwrittenTypes: 87 })
+    const result = runWithBaseline({ handwrittenModules: 9, handwrittenTypes: 68 })
 
     expect(result.status).toBe(0)
   })
 
   it('fails when either drift count exceeds its baseline', () => {
-    const result = runWithBaseline({ handwrittenModules: 15, handwrittenTypes: 86 })
+    const result = runWithBaseline({ handwrittenModules: 9, handwrittenTypes: 67 })
 
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain('hand-written types=87 exceed baseline 86')
+    expect(result.stderr).toContain('hand-written types=68 exceed baseline 67')
   })
 
   it('prompts maintainers to lower a stale baseline', () => {
-    const result = runWithBaseline({ handwrittenModules: 16, handwrittenTypes: 88 })
+    const result = runWithBaseline({ handwrittenModules: 10, handwrittenTypes: 69 })
 
     expect(result.status).toBe(0)
     expect(result.stdout).toContain('baseline can be lowered')

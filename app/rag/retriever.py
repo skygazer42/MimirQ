@@ -6568,13 +6568,14 @@ class HybridRetriever(BaseRetriever):
                     # Notes:
                     # - We only enforce this when the hit came from vector search (Milvus attaches
                     #   `metadata.score`), because BM25 is embedding-space agnostic.
-                    # - Missing embedding_space_hash is treated as "unknown" (backward compatible).
+                    # - Legacy vector metadata may omit the hash, but DB metadata must recover a
+                    #   matching value before the candidate is allowed through.
                     expected_embedding_space = str(
                         meta.get(_RETRIEVAL_EXPECTED_EMBEDDING_SPACE_KEY) or embedding_space or ""
                     ).strip()
                     if meta.get(_RETRIEVAL_EXPECTED_EMBEDDING_SPACE_KEY) is not None or meta.get("score") is not None:
                         ck_space = str(meta.get("embedding_space_hash") or "").strip()
-                        if ck_space and expected_embedding_space and ck_space != expected_embedding_space:
+                        if expected_embedding_space and ck_space != expected_embedding_space:
                             if stats0 is not None:
                                 stats0["filtered_embedding_space"] = (
                                     int(stats0.get("filtered_embedding_space", 0) or 0) + 1

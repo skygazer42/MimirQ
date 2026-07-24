@@ -4,6 +4,16 @@
 
 > 当前结论（2026-07-24）：固定 SHA 的最新四路复测均为 800 / 800 成功；MimirQ 直连保持 797 题准确、3 题部分准确、0 题证据不足。两条 Dify + MimirQ 链路的检索证据覆盖为 99.7% / 96.8%，主要损失仍在生成答案而不是知识召回。
 
+## 2026-07-24：embedding space 隔离修复复测
+
+<!-- 数据来源：artifacts/changzhou_mimirq_direct_800_embedding_space_guard_20260724/ 下的 run_mimirq_direct.json（2026-07-24T09:59:21Z）、comparison_report.json（2026-07-24T09:59:33Z）和 runtime_conditions.json；输入 SHA-256 5a4c67c42e8f8123774279d46af39ccc793da1b89fdea19a7359f63c8cb2fac2。 -->
+
+| 链路 | 成功执行 | 准确 / 部分准确 / 证据不足 | 准确率 / 可用率 | 证据条款覆盖 | 错误证据率 | 平均 / P50 / P95 / P99 |
+|:---|---:|---:|---:|---:|---:|---:|
+| **MimirQ 检索直连** | **800 / 800** | **797 / 3 / 0** | **99.6% / 100%** | **99.7%** | 3.2% | **0.65s / 0.17s / 3.19s / 7.30s** |
+
+本轮并发 3、800 题全部重新请求，未复用历史答案；准确率与修复前基线一致。数据库 40,131 条已索引 chunk 与 Milvus `documents` collection 40,244 条实体中，必需的 `dataset_id` 和 `embedding_space_hash` 缺失数均为 0。为隔离检索核心，复测关闭 API 网关限流；使用生产默认 `10 RPS / burst 20` 时，首轮按设计返回了 35 次 429，不属于召回、超时或服务异常。
+
 ## 2026-07-24：四路 800 题完整重跑
 
 <!-- 数据来源：artifacts/changzhou_dify_4way_800_20260724/comparison_report.json（2026-07-24T04:02:01Z）；输入 SHA-256 5a4c67c42e8f8123774279d46af39ccc793da1b89fdea19a7359f63c8cb2fac2。 -->

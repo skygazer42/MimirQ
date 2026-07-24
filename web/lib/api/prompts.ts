@@ -1,66 +1,52 @@
+import type { OpenApiSchema } from '@/types/backend'
+
 import { apiClient } from '@/lib/api/core'
 
-export interface PromptTemplate {
-  id: string
-  tenant_id: string
-  template_key?: string | null
-  name: string
+export type PromptTemplate = OpenApiSchema<'PromptTemplateOut'>
+type PromptTemplateCreateSchema = OpenApiSchema<'PromptTemplateCreate'>
+type PromptTemplateUpdateSchema = OpenApiSchema<'PromptTemplateUpdate'>
+type PromptTemplateNewVersionSchema = OpenApiSchema<'PromptTemplateNewVersion'>
+
+export type PromptTemplateCreate = Omit<
+  PromptTemplateCreateSchema,
+  | 'template_key'
+  | 'description'
+  | 'category'
+  | 'version'
+  | 'ab_experiment_key'
+  | 'ab_variant'
+  | 'ab_weight'
+> & {
+  template_key?: string
   description?: string
-  content: string
-  variables: string[]
-  is_system: boolean
-  is_active: boolean
   category?: string
-  tags: string[]
-  usage_count: number
   version?: number
-  parent_id?: string | null
-  ab_experiment_key?: string | null
-  ab_variant?: string | null
-  ab_weight?: number
-  created_at: string
-  updated_at: string
-}
-
-export interface PromptTemplateCreate {
-  name: string
-  description?: string
-  content: string
-  variables?: string[]
-  category?: string
-  tags?: string[]
-  is_active?: boolean
-}
-
-export interface PromptTemplateUpdate {
-  name?: string
-  description?: string
-  content?: string
-  variables?: string[]
-  category?: string
-  tags?: string[]
-  is_active?: boolean
-}
-
-export interface PromptTemplateNewVersion {
-  name?: string
-  description?: string
-  content?: string
-  variables?: string[]
-  category?: string
-  tags?: string[]
-  is_active?: boolean
-  deactivate_previous?: boolean
   ab_experiment_key?: string
   ab_variant?: string
   ab_weight?: number
 }
 
-export interface PromptTemplateBuiltinSyncResponse {
-  created: number
-  updated: number
-  template_keys: string[]
+export type PromptTemplateUpdate = Omit<
+  PromptTemplateUpdateSchema,
+  'template_key' | 'description' | 'category' | 'ab_experiment_key' | 'ab_variant'
+> & {
+  template_key?: string
+  description?: string
+  category?: string
+  ab_experiment_key?: string
+  ab_variant?: string
 }
+
+export type PromptTemplateNewVersion = Omit<
+  PromptTemplateNewVersionSchema,
+  'description' | 'category' | 'ab_experiment_key' | 'ab_variant'
+> & {
+  description?: string
+  category?: string
+  ab_experiment_key?: string
+  ab_variant?: string
+}
+export type PromptTemplateBuiltinSyncResponse = OpenApiSchema<'BuiltinPromptTemplateSyncResponse'>
 
 export const promptTemplateApi = {
   async create(params: PromptTemplateCreate): Promise<PromptTemplate> {

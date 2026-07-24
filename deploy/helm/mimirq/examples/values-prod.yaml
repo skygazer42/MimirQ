@@ -12,6 +12,13 @@ existingSecretName: "mimirq-env"
 
 api:
   replicas: 2
+  # Multi-replica APIs must share rate-limit state. Use Postgres lexical
+  # retrieval to avoid rebuilding the same in-memory BM25 index in every pod.
+  extraEnv:
+    - name: RATE_LIMIT_REDIS_ENABLED
+      value: "true"
+    - name: BM25_INDEX_ENABLED
+      value: "false"
 
 worker:
   replicas: 2

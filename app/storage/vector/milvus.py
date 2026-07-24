@@ -964,24 +964,23 @@ class MilvusVectorStore:
             try:
                 pks = self._store.add_texts(texts=texts, metadatas=metadatas_norm, ids=ids)
             except Exception as exc:
-                # Backward compatibility: older collections might not have new scalar fields.
-                # Retry once with new optional fields dropped (safe, does not change retrieval semantics).
+                # Older collections may lack optional indexed metadata slots. Dataset and
+                # embedding-space fields are routing boundaries and must never be dropped.
                 global _MILVUS_WARNED_WRITE_COMPAT_FALLBACK
                 if not _MILVUS_WARNED_WRITE_COMPAT_FALLBACK:
                     logger.warning(
-                        "Milvus add_texts failed; retrying without optional scalar metadata fields (schema fallback). err=%s",
+                        "Milvus add_texts failed; retrying without optional indexed metadata slots. "
+                        "Legacy collections must be recreated if required routing fields are missing. err=%s",
                         str(exc)[:200],
                     )
                     _MILVUS_WARNED_WRITE_COMPAT_FALLBACK = True
                 try:
                     from app.storage.vector.milvus_prometheus_metrics import observe_milvus_write_compat_fallback
 
-                    observe_milvus_write_compat_fallback(dropped_fields="dataset_id_embedding_space_hash_indexed_meta_slots")
+                    observe_milvus_write_compat_fallback(dropped_fields="indexed_meta_slots")
                 except Exception as exc:
                     logger.debug(_MILVUS_FALLBACK_LOG_MESSAGE, exc)
                 for m in metadatas_norm:
-                    m.pop("dataset_id", None)
-                    m.pop("embedding_space_hash", None)
                     for slot_field in _INDEXED_METADATA_SLOT_FIELDS:
                         m.pop(slot_field, None)
                 pks = self._store.add_texts(texts=texts, metadatas=metadatas_norm, ids=ids)
