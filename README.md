@@ -22,6 +22,8 @@
 <p>
   <a href="./README.md"><img src="https://img.shields.io/badge/简体中文-d9d9d9" alt="简体中文"/></a>
   <a href="./README_EN.md"><img src="https://img.shields.io/badge/English-d9d9d9" alt="English"/></a>
+  <a href="./README_JA.md"><img src="https://img.shields.io/badge/日本語-d9d9d9" alt="日本語"/></a>
+  <a href="./README_KO.md"><img src="https://img.shields.io/badge/한국어-d9d9d9" alt="한국어"/></a>
 </p>
 
 </div>
@@ -69,11 +71,12 @@ MimirQ 起源于一个政务智能问答项目：系统已经能回答问题，�
 
 ### 前置要求
 
-- [Docker](https://docs.docker.com/get-docker/) 20.10+ & [Docker Compose](https://docs.docker.com/compose/install/) 2.0+
-- GNU Make 与 Python 3.9+（仅用于幂等生成本地配置和随机密钥）
+- [Docker](https://docs.docker.com/get-docker/) 20.10+ 与 [Docker Compose](https://docs.docker.com/compose/install/) 2.0+
+- GNU Make；Docker 一键启动另需 Python 3.9+ 生成配置
+- 主机源码启动另需 Python 3.11+、Node.js 20+ 与 pnpm 10.26
 - 至少 4 核 CPU / 16 GB RAM / 50 GB 磁盘
 
-### 最小启动
+### 公共准备
 
 ```bash
 git clone https://github.com/skygazer42/MimirQ.git
@@ -88,31 +91,75 @@ make init
 LLM_API_KEY=<your-siliconflow-api-key>
 ```
 
-然后启动：
+| 启动方式 | 适用场景 | 应用运行位置 |
+|:---|:---|:---|
+| **Docker 一键启动（推荐）** | 首次体验、服务器部署 | 前端、API、Worker 与依赖服务均在容器中 |
+| **主机源码启动** | 前后端开发、热更新调试 | 前端、API、Worker 在主机；依赖服务在 Docker 中 |
+
+### 方式一：Docker 一键启动
 
 ```bash
 make up-web
+make ps
+curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
 ```
 
 `make up-web` 会启动前端、后端、Worker、Postgres、Milvus、MinIO 与 Redis；已有配置不会被覆盖。打开 [http://localhost:3000](http://localhost:3000) 后创建本地账户即可进入系统。
 
-> 想先轻量体验？`make up-lite` 用 Chroma/FAISS 替代 Milvus、免 MinIO。外部 LLM/Embedding 调用仍需配置你自己的模型供应商密钥；项目不会内置或提交密钥。
+首次构建会下载固定版本的解析模型。如果代理仅监听 Linux 主机回环地址，请先配置 Docker 代理，或使用 `DOCKER_BUILD_NETWORK=host make up-web`。
 
-高级模型、解析器和代理配置见 [`.env.example`](./.env.example)。更换 Embedding 模型后必须重建已有知识库索引；可选的常州政务公开示例插件和测试命令见[插件说明](./plugins/pipelines/changzhou-gov-service-knowledge/README.md)。
-
-### 验证服务
+停止完整 Web 栈：
 
 ```bash
-make ps
-curl http://localhost:8000/api/v1/health/ready
+docker compose --env-file .env \
+  -f docker/docker-compose.yml \
+  -f docker/docker-compose.web.yml down
 ```
+
+### 方式二：主机源码启动前后端
+
+先安装主机依赖并启动基础设施：
+
+```bash
+python3.11 -m venv .venv
+.venv/bin/python -m pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+pnpm -C web install
+make models
+make infra-up
+```
+
+分别打开三个终端：
+
+```bash
+# 终端 1：FastAPI（热更新）
+make backend
+
+# 终端 2：文档解析与索引 Worker
+.venv/bin/arq app.tasks.worker.WorkerSettings
+
+# 终端 3：Next.js（热更新）
+make web
+```
+
+验证主机前后端：
+
+```bash
+make infra-ps
+curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
+```
+
+结束三个主机进程后，执行 `make infra-down` 停止依赖服务。
+
+### 服务地址
 
 | 服务 | 地址 |
 |:---:|:---|
 | **前端 UI** | [http://localhost:3000](http://localhost:3000) |
 | **API 文档** | [http://localhost:8000/docs](http://localhost:8000/docs) |
 
-> 如需从源码部署或本地开发，请参考[开发文档](./docs/quickstart.md)。
+> 低资源模式可使用 `make up-lite`，它用 Chroma/FAISS 替代 Milvus、免 MinIO，默认不含前端；需要 UI 时另运行 `make web`。外部 LLM/Embedding 调用仍需自己的模型供应商密钥。
+
+高级模型、解析器和代理配置见 [`.env.example`](./.env.example)。更换 Embedding 模型后必须重建已有知识库索引；更多平台与 Windows 步骤见[开发文档](./docs/quickstart.md)，可选政务示例见[插件说明](./plugins/pipelines/changzhou-gov-service-knowledge/README.md)。
 
 ---
 

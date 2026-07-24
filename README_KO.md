@@ -1,0 +1,487 @@
+<div align="center">
+
+<img src="./images/logo.png" alt="MimirQ: 검사·회귀·거버넌스가 가능한 오픈소스 RAG 지식베이스" width="100%"/>
+
+<p><b>풀스택 오픈소스, 중국어 우선 엔터프라이즈 RAG 지식베이스</b><br/>문서가 어떻게 청킹되는지, 검색이 실제로 무엇에 히트하는지, 왜 그런 답변이 생성되는지 — 전체 체인을 검사·디버깅·회귀 테스트할 수 있습니다.</p>
+
+<p>
+  <a href="#-빠른-시작"><b>빠른 시작</b></a> ·
+  <a href="#-제품-화면"><b>제품 화면</b></a> ·
+  <a href="#-dify-연동"><b>Dify 연동</b></a> ·
+  <a href="#-실제-운영에서-검증됨"><b>800문항 벤치마크</b></a> ·
+  <a href="https://skygazer42.github.io/MimirQ/"><b>API 문서</b></a>
+</p>
+
+<p>
+  <a href="https://www.apache.org/licenses/LICENSE-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"/></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+"/></a>
+  <img src="https://img.shields.io/badge/Dify-External_Knowledge_%2B_HTTP-1C64F2" alt="Dify External Knowledge and HTTP integration"/>
+  <img src="https://img.shields.io/badge/Benchmark-800_questions-0F766E" alt="800-question benchmark"/>
+</p>
+
+<p>
+  <a href="./README.md"><img src="https://img.shields.io/badge/简体中文-d9d9d9" alt="简体中文"/></a>
+  <a href="./README_EN.md"><img src="https://img.shields.io/badge/English-d9d9d9" alt="English"/></a>
+  <a href="./README_JA.md"><img src="https://img.shields.io/badge/日本語-d9d9d9" alt="日本語"/></a>
+  <a href="./README_KO.md"><img src="https://img.shields.io/badge/한국어-d9d9d9" alt="한국어"/></a>
+</p>
+
+</div>
+
+---
+
+## 💡 MimirQ란
+
+**MimirQ**(지혜의 샘을 지키는 북유럽 신화의 수호자 **Mímir**에서 유래)는 **전체 체인 관측 가능성**에 집중한 RAG 지식베이스 Q&A 플랫폼입니다. 프런트엔드와 백엔드 모두 오픈소스이며, Docker Compose 또는 Helm으로 배포할 수 있습니다.
+
+<table>
+  <tr>
+    <td align="center" width="25%"><strong>30+</strong><br/><sub>파싱 백엔드</sub></td>
+    <td align="center" width="25%"><strong>78</strong><br/><sub>청킹 전략</sub></td>
+    <td align="center" width="25%"><strong>15</strong><br/><sub>리랭커</sub></td>
+    <td align="center" width="25%"><strong>800</strong><br/><sub>고정 문항 세트 평가</sub></td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td width="50%"><strong>보인다</strong><br/><sub>파싱 결과, 청크 경계, 검색과 리랭크 과정</sub></td>
+    <td width="50%"><strong>추적된다</strong><br/><sub>문장 단위 인용, 버전, 근거, 전체 트레이스</sub></td>
+  </tr>
+  <tr>
+    <td><strong>지켜진다</strong><br/><sub>문서 ACL, RBAC, 마스킹, 감사, 세이프티 레일</sub></td>
+    <td><strong>회귀된다</strong><br/><sub>골든 세트, 평가 대시보드, 릴리스 게이트</sub></td>
+  </tr>
+</table>
+
+<details>
+<summary><b>왜 MimirQ를 만들었나?</b></summary>
+
+MimirQ는 하나의 구체적인 행정 서비스 Q&A 프로젝트에서 시작되었습니다. 시스템은 이미 질문에 답할 수 있었지만, 답이 틀렸을 때 그 원인이 파싱·청킹·검색·리랭크·생성 중 어디에 있는지 명확히 가려낼 수 없었습니다. 행정 지식에는 지역별 버전, 정책 갱신, 스캔 문서와 표가 있으며, 유창하지만 오래된 정책을 인용한 답변은 "모른다"라고 분명히 말하는 것보다 더 위험합니다.
+
+기존 플랫폼은 워크플로나 에이전트에는 강하지만, RAG 문제 해결에 필요한 파싱·인덱스·검색·인용·평가가 서로 다른 컴포넌트에 흩어져 있곤 합니다. MimirQ는 또 하나의 범용 노드 캔버스를 만드는 대신, 검사 가능한 RAG 체인에 집중합니다.
+
+> **MimirQ가 풀려는 문제는 "RAG가 돌아가는가"가 아니라 "이 RAG가 왜 신뢰할 만한가"입니다.**
+
+</details>
+
+---
+
+## 🚀 빠른 시작
+
+### 사전 요구 사항
+
+- [Docker](https://docs.docker.com/get-docker/) 20.10+ & [Docker Compose](https://docs.docker.com/compose/install/) 2.0+
+- GNU Make. Docker 시작에는 로컬 설정 생성을 위한 Python 3.9+도 필요
+- 호스트 소스 시작에는 Python 3.11+, Node.js 20+, pnpm 10.26도 필요
+- 최소 4 CPU 코어 / 16 GB RAM / 50 GB 디스크
+
+### 공통 준비
+
+```bash
+git clone https://github.com/skygazer42/MimirQ.git
+cd MimirQ
+make init
+```
+
+`make init`는 완전한 `.env`와 무작위 JWT `SECRET_KEY`를 생성합니다. `.env`는 고급 설정 레퍼런스이며, 한 줄씩 채워야 하는 양식이 아닙니다. 기본 SiliconFlow 구성에서는 다음 한 가지만 필수입니다.
+
+```dotenv
+# 유일한 필수 항목
+LLM_API_KEY=<your-siliconflow-api-key>
+```
+
+| 시작 방식 | 용도 | 애플리케이션 실행 위치 |
+|:---|:---|:---|
+| **Docker 일괄 시작(권장)** | 첫 사용, 서버 배포 | 웹, API, 워커, 의존 서비스를 컨테이너에서 실행 |
+| **호스트 소스 시작** | 프런트엔드·백엔드 개발, 핫 리로드 | 웹, API, 워커는 호스트에서, 의존 서비스는 Docker에서 실행 |
+
+### 방법 1: Docker로 일괄 시작
+
+```bash
+make up-web
+make ps
+curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
+```
+
+`make up-web`는 웹 앱, API, 워커, Postgres, Milvus, MinIO, Redis를 시작합니다. 기존 설정은 덮어쓰지 않습니다. [http://localhost:3000](http://localhost:3000)을 열고 로컬 계정을 만들면 시스템에 들어갈 수 있습니다.
+
+첫 Docker 빌드에서는 고정 버전의 DeepDoc 모델 번들을 내려받아 검증합니다. 프록시가 Linux 호스트 루프백에서만 수신 대기 중이라면 Docker 쪽에서 로컬로 설정하거나 `DOCKER_BUILD_NETWORK=host make up-web`을 실행하세요. 프록시 주소는 커밋하지 마세요.
+
+전체 웹 스택을 중지합니다.
+
+```bash
+docker compose --env-file .env \
+  -f docker/docker-compose.yml \
+  -f docker/docker-compose.web.yml down
+```
+
+### 방법 2: 프런트엔드와 백엔드를 호스트에서 시작
+
+호스트 의존성을 설치하고 인프라 서비스를 시작합니다.
+
+```bash
+python3.11 -m venv .venv
+.venv/bin/python -m pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+pnpm -C web install
+make models
+make infra-up
+```
+
+터미널 세 개를 엽니다.
+
+```bash
+# 터미널 1: FastAPI(핫 리로드)
+make backend
+
+# 터미널 2: 문서 파싱 및 인덱싱 워커
+.venv/bin/arq app.tasks.worker.WorkerSettings
+
+# 터미널 3: Next.js(핫 리로드)
+make web
+```
+
+호스트 서비스를 확인합니다.
+
+```bash
+make infra-ps
+curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
+```
+
+호스트 프로세스 세 개를 종료한 뒤 `make infra-down`으로 의존 서비스를 중지합니다.
+
+### 서비스 URL
+
+| 서비스 | URL |
+|:---:|:---|
+| **프런트엔드 UI** | [http://localhost:3000](http://localhost:3000) |
+| **API 문서** | [http://localhost:8000/docs](http://localhost:8000/docs) |
+
+> 경량 구성에는 `make up-lite`를 사용할 수 있습니다. Milvus를 Chroma/FAISS로 대체하고 MinIO를 생략하지만, 기본적으로 프런트엔드를 시작하지 않습니다. UI가 필요하면 `make web`을 별도로 실행하세요. 외부 LLM / Embedding 호출에는 본인의 모델 공급자 자격 증명이 필요합니다.
+
+| 시나리오 | 변경 | 필수? |
+|:---|:---|:---:|
+| 기본 SiliconFlow LLM + Embedding | `LLM_API_KEY` | **예** |
+| 다른 채팅 공급자나 모델 | `LLM_API_BASE`, `LLM_MODEL` | 아니오 |
+| Embedding을 별도 공급자로 | `EMBEDDING_API_KEY`, `EMBEDDING_API_BASE`, `EMBEDDING_MODEL` | 아니오; 키와 URL을 비우면 LLM 설정 재사용 |
+| SiliconFlow 리랭커 | `ENABLE_RERANKER=true` | 아니오; 검색 지연을 피하려 기본 비활성, LLM 키 재사용 |
+| MinerU 온라인 PDF 파싱 | `MINERU_ENABLED=true`, `MINERU_API_TOKEN` | 아니오; 업로드 시 `mineru` 선택 |
+| 그 밖의 모든 `.env` 설정 | 변경 없음 | 아니오; 기본값 유지 |
+
+모델 ID는 SiliconFlow의 `/v1/models` 응답에 존재해야 합니다. 검증된 채팅 모델에는 `Qwen/Qwen3-32B`와 `Qwen/Qwen3-8B`, 검증된 Embedding 모델에는 `BAAI/bge-m3`와 `Qwen/Qwen3-Embedding-0.6B`, 검증된 리랭커에는 `BAAI/bge-reranker-v2-m3`가 있습니다. Embedding 모델을 변경한 뒤에는 기존 지식베이스 인덱스를 다시 구축해야 하며, 이전 벡터와 새 벡터를 섞어서는 안 됩니다. 자격 증명은 [SiliconFlow 콘솔](https://cloud.siliconflow.cn/account/ak)과 [MinerU](https://mineru.net/)에서 만들고, 실제 키는 로컬 `.env`에만 보관하세요.
+
+### 행정 서비스 플러그인 샘플 실행
+
+리포지토리에는 여섯 개 소스 계열(서비스 항목, 원스톱 서비스, 자주 묻는 질문, 주제별 FAQ, 부서 FAQ, 구역 FAQ)을 위한 작은 공개 샘플이 포함된 창저우 행정 서비스 지식 플러그인이 들어 있습니다. 데이터베이스를 시작하지 않고도 거버넌스·청킹·KG 출력·골든 초안을 검증할 수 있습니다.
+
+```bash
+make changzhou-gov-plugin-test-report
+make changzhou-gov-plugin-chunk-report
+```
+
+리포트는 `/tmp/changzhou_gov_plugin_*` 아래에 기록되며, 이 명령들은 데이터베이스·벡터 스토어·KG에 쓰지 않습니다. 샘플 경로, 플러그인 참조, 실제 코퍼스 폐루프 명령은 [플러그인 가이드](./plugins/pipelines/changzhou-gov-service-knowledge/README.md)를 참조하세요.
+
+고급 모델, 파서, 프록시 설정은 [`.env.example`](./.env.example)을 참조하세요. Embedding 모델을 변경한 뒤에는 기존 지식베이스 인덱스를 다시 구축해야 합니다. 다른 플랫폼과 Windows 절차는 [개발 가이드](./docs/quickstart.md)를 참조하세요.
+
+---
+
+## 🖼️ 제품 화면
+
+아래 화면은 리포지토리에 포함된 공개 행정 서비스 플러그인 샘플로 생성했습니다. 운영 지식베이스 데이터는 포함되어 있지 않습니다.
+
+<table>
+  <tr>
+    <td colspan="2" align="center">
+      <img src="./docs/images/screenshots/knowledge-graph.png" alt="MimirQ 지식 그래프 화면" width="100%"/>
+      <br/><strong>지식 그래프</strong>
+      <br/><sub>엔티티·이벤트·관계를 하나의 캔버스에서 검색·분석.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="./docs/images/screenshots/dataset-management.png" alt="MimirQ 지식베이스 관리 화면" width="100%"/>
+      <br/><strong>지식베이스 관리</strong>
+      <br/><sub>데이터셋·문서·청크·수집 상태를 한곳에서 파악.</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="./docs/images/screenshots/rag-evaluation.png" alt="MimirQ 골든 회귀 평가 화면" width="100%"/>
+      <br/><strong>골든 회귀 평가</strong>
+      <br/><sub>표준 Q&A, 실행 기록, Recall / MRR 등의 지표를 같은 화면에서 확인.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="./docs/images/screenshots/settings.png" alt="MimirQ 시스템 설정 화면" width="100%"/>
+      <br/><strong>시스템 설정</strong>
+      <br/><sub>의존성 상태, 파싱 능력, 모델 서비스 연동을 한곳에서 확인.</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="./docs/images/screenshots/chat-history.png" alt="MimirQ 대화 기록 및 근거 확인 화면" width="100%"/>
+      <br/><strong>대화 기록 및 근거 확인</strong>
+      <br/><sub>지난 세션을 검색하고 완전한 답변·출처·피드백 경로를 되짚기.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="./docs/images/screenshots/ingestion-monitor.png" alt="MimirQ 수집 실행 모니터" width="100%"/>
+      <br/><strong>수집 실행 모니터</strong>
+      <br/><sub>데이터셋별로 파싱·청킹·거버넌스·내보내기·재시도 상태를 관찰.</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="./docs/images/screenshots/data-governance.png" alt="MimirQ 데이터 거버넌스 워크벤치" width="100%"/>
+      <br/><strong>데이터 거버넌스</strong>
+      <br/><sub>문서 미리보기·품질 검사·정제·주석을 하나의 워크벤치에서.</sub>
+    </td>
+  </tr>
+</table>
+
+---
+
+## 🔌 Dify 연동
+
+MimirQ는 워크플로 캔버스를 다시 구현하지 않고도, 거버넌스가 가능한 RAG 레이어로 기존 Dify 앱에 연결할 수 있습니다. 현재 두 가지 방식을 지원합니다.
+
+- **External Knowledge API**: Dify가 오케스트레이션과 생성을 담당하고, MimirQ가 문서 거버넌스·검색·리랭크·권한 필터링·근거 반환을 담당합니다.
+- **Workflow HTTP 노드**: Dify가 커스텀 라우팅과 파라미터를 담당하고, MimirQ가 지정된 지식 범위에 대해 근거와 트레이스를 반환합니다.
+
+### Workflow HTTP 노드
+
+<p align="center">
+  <a href="./docs/images/screenshots/dify-mimirq-http-workflow.png">
+    <img src="./docs/images/screenshots/dify-mimirq-http-workflow.png" alt="Dify HTTP 노드가 MimirQ 검색 API를 호출하고 근거를 병합" width="1100" style="max-width: 100%; height: auto;"/>
+  </a>
+  <br/>
+  <sub>실제 Dify HTTP 서브체인(마스킹됨): JSON 요청을 안전하게 구성 → HTTP 노드가 MimirQ retrieval 엔드포인트 호출 → 결과 변환 → 지식 근거 병합.</sub>
+</p>
+
+### External Knowledge API
+
+<p align="center">
+  <a href="./docs/images/screenshots/dify-mimirq-workflow.png">
+    <img src="./docs/images/screenshots/dify-mimirq-workflow.png" alt="Dify 워크플로가 지역 라우팅으로 여덟 개의 MimirQ 행정 지식베이스에 연결" width="560" style="max-width: 100%; height: auto;"/>
+  </a>
+  <br/>
+  <sub>실제 Dify Chatflow(마스킹됨): 초록색 지식 검색 노드가 External Knowledge API로 MimirQ를 호출한 뒤 근거를 통일적으로 병합; 클릭하면 원본 이미지.</sub>
+</p>
+
+> 그림의 지역 라우팅은 선택적 샘플 플러그인에서 온 것입니다. MimirQ 코어는 지역·항목·업종 규칙을 내장하지 않습니다.
+
+Dify 표준 외부 지식베이스 엔드포인트는 `POST /api/v1/integrations/dify/retrieval`입니다. 선택적으로 `POST /api/v1/integrations/dify/conversation-turns`를 사용해 답변·인용·대화 식별자를 회신할 수 있습니다. 설정은 [`.env.example`](./.env.example), 배포 전 검증은 [readiness gate](./scripts/README.md), 실측 결과는 [실제 운영에서 검증됨](#-실제-운영에서-검증됨)을 참조하세요.
+
+---
+
+## 🧭 핵심 기능 비교
+
+<details>
+<summary><b>Dify, RAGFlow, FastGPT, AnythingLLM, LangChain과의 기능 비교 펼치기</b></summary>
+
+
+| 기능 영역 | **MimirQ** | [Dify](https://github.com/langgenius/dify) | [RAGFlow](https://github.com/infiniflow/ragflow) | [FastGPT](https://github.com/labring/FastGPT) | [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) | [LangChain](https://github.com/langchain-ai/langchain) |
+|:---|:---|:---|:---|:---|:---|:---|
+| **문서 파싱** | **30+ 파싱 백엔드**: PDF, OCR, 레이아웃, 표, 수식, VLM | Knowledge Pipeline; PDF, PPT 등 일반 형식 | **DeepDoc**; 복잡한 레이아웃과 스캔; MinerU / Docling | PDF·스캔·표·수식을 Markdown으로 변환 | PDF, TXT, DOCX 등 문서 파이프라인 | Document Loaders와 서드파티 파서 연동 |
+| **청킹** | **78종 전략**: 재귀, 시맨틱, 부모-자식, RAPTOR, Late Chunking; 시각화 미리보기 | 범용, 부모-자식, Q&A, 파이프라인 정의 처리 | 템플릿 기반 청킹; 시각화된 수작업 개입 | 자동, 수동, Q&A, 강화 처리 | 문서 파이프라인 자동 청킹 | Text Splitters; 애플리케이션 코드로 조합 |
+| **검색 / 리랭크** | Milvus / FAISS / Chroma + BM25 / SPLADE / ColBERT / LTR / RRF; **15종 리랭커** | 시맨틱·전문·하이브리드 검색; 리랭크 설정 가능 | 다중 리콜 + 융합 리랭크 | 시맨틱·전문·하이브리드 검색 + RRF + 리랭크 | 여러 벡터 DB 검색 + 출처 인용 | Retriever / reranker 컴포넌트; 직접 구성 |
+| **지식 그래프** | 엔티티·관계·이벤트 추출; 엔티티 해소, 커뮤니티 탐지, 멀티홉 검색 | 워크플로·플러그인·외부 서비스로 연결 | GraphRAG 내장 | 워크플로나 외부 서비스로 연결 | 에이전트 / 툴로 연결 | 그래프 연동과 커스텀 체인 |
+| **에이전트 / MCP** | LangGraph 에이전트, Self-RAG / CRAG / FLARE; MCP 클라이언트 / 서버 | Function Calling / ReAct 에이전트, 툴, MCP | Agentic Workflow, MCP, 코드 실행기 | Agent V2, 툴, MCP, VM 실행 | 노코드 Agent Builder, MCP, 예약 작업 | Agents / LangGraph / MCP; 코드 우선 |
+| **시각화 워크플로** | **범용 노드 캔버스 없음**; RAG 디버깅·거버넌스 화면·API에 집중 | **핵심 기능**: 앱 / 에이전트 노드 편성 | 에이전트와 수집 파이프라인 편성 | **핵심 기능**: 플로 노드 편성 | 노코드 Agent Builder | 내장 제품 UI 없음; 애플리케이션이 구현 |
+| **평가 / 거버넌스** | RAGAS, 회귀 게이트, 리더보드, 유의성 검정, 근거 감사 | 실행 로그, 관측성, 수작업 주석 | 검색 테스트, 청크 검사, 인용 추적 | 실행 상세, 검색 디버깅, 로그 | 출처 인용; 내장 RAG 회귀 게이트 없음 | LangSmith 연동 또는 자체 평가 스택 필요 |
+| **세이프티 가드** | InputGuard / OutputGuard, PII / 시크릿 마스킹, 홉별 SSRF 검증 | 모더레이션 노드와 워크플로 규칙 | 코드 실행 샌드박스; 비즈니스 가드는 설정 필요 | 워크플로 기반 콘텐츠 심사와 VM 샌드박스 | 로컬 우선, 에이전트 툴 권한 | 애플리케이션 미들웨어와 배포 경계로 구현 |
+| **엔터프라이즈 권한 / 컴플라이언스** | 문서 ACL + Security Trimming, RBAC, SCIM / SSO / SAML, 감사 | 워크스페이스 권한; 엔터프라이즈 판에서 조직과 SSO | 계정과 API 인증; 세분화된 컴플라이언스는 배포 종속 | ABAC + RBAC; 팀·그룹·리소스 권한 | Docker 판 멀티유저 권한 | 프레임워크가 제공하지 않음; 애플리케이션이 구현 |
+| **RAG 디버깅 UI** | 청크 미리보기, 검색 트레이스, 리랭크 과정, 문장 인용, KG, 평가 대시보드 | 데이터셋 테스트, 워크플로 트레이스, 앱 로그 | 청크 시각화, 히트 조각, 인용 | 지식베이스 테스트, 워크플로 실행 상세 | 워크스페이스, 출처 인용, 채팅 UI | 내장 UI 없음; 관측 플랫폼 연결 |
+| **Dify 외부 지식베이스** | **Dify External Knowledge API 네이티브 호환** | 외부 지식베이스를 네이티브로 소비 | API 어댑터 필요 | API 어댑터 필요 | API 어댑터 필요 | 어댑터를 직접 구현 |
+| **시작 방식** | Docker Compose / Helm; 완전한 엔터프라이즈 RAG 스택 | Docker Compose / Cloud | Docker Compose; 공식 권장 4C / 16 GB / 50 GB | Docker / Cloud | Desktop / Docker | Python / JS 라이브러리; 애플리케이션을 직접 조립 |
+
+> 이 비교는 각 프로젝트의 공개 버전과 공식 문서(2026-07)를 기반으로 하며, **리포지토리가 직접 제공하는 능력 표면**을 설명하는 것이지 통일된 벤치마크가 아닙니다. 플러그인, 상용 판, 이후 릴리스에 따라 개별 항목이 달라질 수 있습니다.
+
+</details>
+
+---
+
+## 📍 실제 운영에서 검증됨
+
+MimirQ는 7개 구역 단위와 1개 시 단위 지식베이스에 걸친 **시 단위 행정 Q&A 어시스턴트**에 사용되고 있습니다. 최신 직접 검색 재측정은 입력 SHA-256 `5a4c67...fac2`를 사용했으며, 결과는 다음과 같습니다.
+
+| 최신 결과(2026-07-23) | 결과 |
+|:---|---:|
+| 실행 성공 | **800 / 800**, 타임아웃 0 |
+| 정확 / 부분 정확 / 근거 부족 | **797 / 3 / 0** |
+| 정확률 / 사용 가능률 | **99.6% / 100%** |
+| 평균 / P50 / P95 / P99 | **1.08s / 0.81s / 3.61s / 7.73s** |
+
+이번 직접 검색은 근거 조항 커버리지 99.7%를 달성했습니다. 서로 다른 embedding 런타임에 걸친 다중 지식베이스 검색은 범용 검색 레이어가 샤딩하여 처리하며, 도메인 하드코딩은 없습니다.
+
+독립적인 E2E 부하 테스트에서는, 리랭커를 켜고 요청마다 응답 캐시를 우회한 상태에서 검색 동시성 3으로 12개 요청의 총 소요를 41.46s에서 30.14s로, 대화 동시성 3으로 6개 요청을 54.61s에서 31.60s로 줄였으며, 두 경우 모두 오류 0이었습니다. 동시성은 단일 요청 지연을 높입니다. 여기서 검증한 것은 같은 배치의 처리량 개선이며, 하드웨어 용량 상한이 아닙니다.
+
+<details>
+<summary><b>2026-07-23 4방향 동일 문항 재측정 펼치기</b></summary>
+
+동일한 고정 800문항을 네 가지 실제 연동 경로로 재측정했습니다.
+
+<!-- 데이터 출처: MimirQ 직접은 artifacts/changzhou_mimirq_direct_800_corefix_20260723/comparison_report.json(2026-07-23T08:18:30Z), 그 외 경로는 artifacts/changzhou_dify_4way_800_20260723/comparison_report.json; 입력 SHA-256 5a4c67c42e8f8123774279d46af39ccc793da1b89fdea19a7359f63c8cb2fac2. -->
+
+| 경로 | 실행 성공 | 정확률 / 사용 가능률 | 답변 조항 커버리지 | 답변의 근거 뒷받침 | 오근거율 | 평균 / P50 / P95 |
+|:---|---:|---:|---:|---:|---:|---:|
+| **MimirQ 직접 검색** | **800 / 800** | **99.6% / 100%** | **99.7%** | **99.8%** | 3.0% | **1.08s / 0.81s / 3.61s** |
+| **Dify External → MimirQ** | **800 / 800**¹ | 59.8% / 89.5% | 81.9% | **97.0%** | **2.7%** | 10.06s / 9.47s / 16.52s |
+| **Dify HTTP → MimirQ** | **800 / 800** | **65.2% / 91.9%** | **84.0%** | 94.0% | 3.6% | 7.69s / 7.49s / 9.98s |
+| **Dify 네이티브 지식**² | **800 / 800** | 38.9% / 76.7% | 67.3% | 87.1% | 79.1% | 10.61s / 8.51s / 27.64s |
+
+MimirQ의 두 Dify 경로의 검색 근거 커버리지는 99.7% / 96.8%였지만, 생성된 답변의 조항 커버리지는 81.9% / 84.0%였습니다. 손실은 지식 리콜이 아니라 워크플로 답변 생성에서 발생합니다. ¹ External은 동시성 4의 첫 회차에서 788 / 800, 원격 끊김 11회, 상류 모델 500이 1회. 동시성 1에서 실패한 문항만 재시도해 회복. ² 네이티브 지식은 MimirQ를 거치지 않으며, 동일 입력·동일 앱의 2026-07-21 전체 결과를 재사용. 이번 회차에 추가로 125 / 125를 표본 실행해 경로가 여전히 유효함을 확인.
+
+</details>
+
+[전체 방법론, 지표 정의, 과거 재측정](./docs/benchmarks/changzhou_dify.md) · [Dify 연동 방식과 실제 워크플로](#-dify-연동)
+
+---
+
+## 📡 API 레퍼런스(OpenAPI / GitHub Pages)
+
+| 리소스 | 링크 / 설명 |
+|:---|:---|
+| **온라인 API 브라우저(GitHub Pages)** | [https://skygazer42.github.io/MimirQ/](https://skygazer42.github.io/MimirQ/)(Redoc + 전체 `openapi.json`; fork 후에는 `https://<owner>.github.io/<repo>/`로 변경) |
+| **리포지토리 가이드** | [docs/api/README.md](./docs/api/README.md)(인증, 베이스 경로, 전체 OpenAPI 태그 대응표) |
+| **시나리오별 플로** | [docs/api/workflows.md](./docs/api/workflows.md) |
+| **로컬 Swagger** | 백엔드 기동 후 [http://localhost:8000/docs](http://localhost:8000/docs) |
+| **OpenAPI 내보내기** | `make openapi-export` → `web/openapi.json` |
+| **정적 사이트 빌드** | `make api-docs-build` → `docs/api/site/` |
+
+> 인증 규약: 전역 인증 미들웨어가 없습니다. **모든 라우트는 명시적으로 `get_current_account_id`에 의존해야 합니다.** 테넌트 데이터에 접근하는 라우트는 `get_tenant_id`에도 의존해야 합니다. [backend_structure.md](./docs/backend_structure.md)를 참조하세요.
+
+리포지토리에서 **Settings → Pages → GitHub Actions**를 활성화하세요. `main`에 push하면 [`.github/workflows/api-docs.yml`](./.github/workflows/api-docs.yml)이 실행됩니다.
+
+---
+
+## 📦 배포 방식
+
+로컬 체험부터 프로덕션 클러스터까지 지원합니다.
+
+| 방식 | 명령 | 설명 |
+|:---:|:---|:---|
+| **표준 배포** | `make up` | 풀스택: Postgres + Milvus + MinIO + Redis + API + Worker |
+| **표준 + 프런트엔드** | `make up-web` | 첫 기동에 권장; 로컬 설정을 초기화하고 완전한 웹 스택 기동 |
+| **경량 모드** | `make up-lite` | Milvus 대신 Chroma/FAISS, MinIO 불필요, 빠른 체험용 |
+| **개발 모드** | `make infra-up` | 인프라만; 백엔드 / 프런트엔드를 로컬 실행 |
+| **Helm / K8s** | `helm install` | 프로덕션 등급, HPA, PDB, CronJob, PrometheusRule 포함 |
+| **파서 확장** | `make up-etl4llm` | ETL4LLM / Marker / MinerU / PaddleOCR-VL / Qianfan-OCR 등 파서 활성화 |
+
+<details>
+<summary><b>프로덕션 배포 팁</b></summary>
+
+```bash
+# docker/.env를 편집해 프로덕션 파라미터 설정
+# ENV=production
+# AUTH_MODE=jwt
+# SECRET_KEY=<32자 이상의 무작위 문자열>
+# POSTGRES_PASSWORD=<강력한 비밀번호>
+
+make up
+```
+
+Kubernetes 프로덕션 배포는 [Helm 배포 가이드](./docs/deployment/helm.md)와 [운영 핸드북](./docs/deployment/runbook.md)을 참조하세요.
+
+</details>
+
+---
+
+## 📖 기능 가이드
+
+| 가이드 | 설명 |
+|:---|:---|
+| [청크 미리보기](./docs/guides/chunk_preview.md) | 문서 분할 시각화와 파라미터 조정 |
+| [지식 그래프](./docs/guides/knowledge_graph.md) | KG 추출, 시각화, RAG 강화 |
+| [문서 ACL](./docs/guides/document_acl.md) | 문서 단위 접근 제어와 Security Trimming |
+| [URL 가져오기](./docs/guides/url_ingest.md) | 원격 URL 수집과 일괄 가져오기 |
+| [문서 버전](./docs/guides/document_versions.md) | 파이프라인 버전 관리와 롤백 |
+| [스파스 검색](./docs/guides/sparse_retrieval.md) | SPLADE 스파스 검색 채널 |
+| [ColBERT 리랭크](./docs/guides/reranking_colbert.md) | ColBERT 레이트 인터랙션 리랭크 |
+| [RAG 최적화](./docs/guides/rag_optimization.md) | 검색과 답변 품질 최적화 |
+| [검색 트러블슈팅](./docs/guides/retrieval_debugging.md) | 검색 문제 진단 |
+| [SAML SSO](./docs/guides/saml_sso.md) | SAML 싱글 사인온 연동 |
+| [공개 벤치마크](./docs/guides/public_benchmarks_zh.md) | 재현 가능한 중국어 벤치마크(MIRACL-zh / CFEVER) |
+| [API 가이드](./docs/api/README.md) | OpenAPI 태그 대응표, Pages 링크, 정적 빌드 |
+| [API 워크플로](./docs/api/workflows.md) | 시나리오별 엔드포인트 순서 |
+| [API 튜토리얼](./docs/API.md) | 빠른 시작과 코드 예제 |
+| [빠른 시작](./docs/quickstart.md) | 소스에서 개발 |
+| [운영 핸드북](./docs/deployment/runbook.md) | 프로덕션 운영과 트러블슈팅 |
+
+---
+
+## ✅ 개발
+
+push 전에 CI와 동일한 체크를 실행하세요(백엔드 + 프런트엔드).
+
+```bash
+# 전체 체크(백엔드 lint/test + 프런트엔드 lint/test)
+make enterprise-checks
+
+# 백엔드만
+make verify && make test
+
+# 프런트엔드만
+cd web && pnpm lint && pnpm test
+```
+
+---
+
+## 🗺 로드맵
+
+제공된 기능은 위의 비교표를 참조하세요. 단기 계획:
+
+- [ ] RAG 전용 디버깅 편성(범용 에이전트 캔버스가 아님)
+- [ ] 더 많은 데이터 소스 커넥터(Confluence / S3 / Notion)
+- [ ] 언어 간 검색
+- [ ] 통합 LLM-as-Judge(G-Eval + Self-Consistency)
+
+> 로드맵은 [GitHub Issues](https://github.com/skygazer42/MimirQ/issues)에서 공개적으로 추적합니다. 기능 요청과 투표를 환영합니다.
+
+---
+
+## 🤝 기여하기
+
+오타 수정, 버그 신고, 기능 제안 무엇이든 먼저 [CONTRIBUTING.md](./.github/CONTRIBUTING.md)를 읽어 주세요. 로컬 개발 흐름은 [빠른 시작](./docs/quickstart.md)을 참조하고, push 전에 `make enterprise-checks`를 실행하세요.
+
+```bash
+# 포크 후 클론
+git clone https://github.com/<your-username>/MimirQ.git
+cd MimirQ
+make init
+
+# 로컬 개발
+make infra-up           # 인프라 기동
+make models             # 고정 버전의 DeepDoc 모델 다운로드 및 검증
+cd web && pnpm dev      # 프런트엔드 개발
+python main.py          # 백엔드 개발
+
+# push 전 체크
+make enterprise-checks
+```
+
+---
+
+## 📜 라이선스
+
+이 프로젝트는 [Apache License 2.0](LICENSE)에 따라 라이선스됩니다. 서드파티 컴포넌트(RAGFlow/DeepDoc에서 vendored한 코드와 빌드 시 다운로드되는 모델 가중치 포함)의 귀속 표시는 [NOTICE](NOTICE)에 기록되어 있습니다.
+
+> ⚠️ **PyMuPDF (AGPL-3.0) 주의**: 기본 PDF 파싱은 PyMuPDF를 사용할 수 있으며, 그 라이선스는 AGPL-3.0 / 상용 듀얼 라이선스입니다. 이 소프트웨어를 SaaS 형태로 네트워크 서비스로 제공하는 경우, AGPL의 네트워크 조항에 따라 결합 저작물 전체의 소스 공개가 요구될 수 있습니다. 이를 피하려면 관대한 라이선스의 파싱 백엔드(pypdf / pdfplumber)로 전환하세요. 자세한 내용은 NOTICE를 참조하세요.
+
+---
+
+## 🙏 감사의 말
+
+MimirQ는 뛰어난 오픈소스 생태계 위에 구축되었습니다. 다음 프로젝트에 감사드립니다.
+
+[Dify](https://github.com/langgenius/dify) · [RAGFlow](https://github.com/infiniflow/ragflow) · [FastAPI](https://fastapi.tiangolo.com/) · [LangChain](https://langchain.com/) · [LangGraph](https://langchain-ai.github.io/langgraph/) · [Milvus](https://milvus.io/) · [Next.js](https://nextjs.org/) · [PostgreSQL](https://www.postgresql.org/) · [RAGAS](https://docs.ragas.io/) · [PyMuPDF](https://pymupdf.readthedocs.io/) · [MinerU](https://github.com/opendatalab/MinerU) · [Tailwind CSS](https://tailwindcss.com/) · [shadcn/ui](https://ui.shadcn.com/)
+
+MimirQ의 공개 연동 테스트를 위해 CNY 50의 API 체험 크레딧을 제공해 주신 [SiliconFlow](https://siliconflow.cn/)에 감사드립니다.
+
+---
+
+<div align="center">
+
+**MimirQ가 여러분의 RAG를 "돌아간다"에서 "출시할 수 있다"로 끌어올렸다면, ⭐ Star를 부탁드립니다!**
+
+하나하나의 Star가 블랙박스를 계속 열어 가는 저희의 원동력입니다.
+
+[![Star History Chart](https://api.star-history.com/svg?repos=skygazer42/MimirQ&type=Date)](https://star-history.com/#skygazer42/MimirQ&Date)
+
+</div>

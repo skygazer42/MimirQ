@@ -1,91 +1,187 @@
 <div align="center">
 
-<img src="./images/logo.png" alt="MimirQ" width="100%"/>
+<img src="./images/logo.png" alt="MimirQ: an inspectable, regression-testable, governable open-source RAG knowledge base" width="100%"/>
 
-<h3>The RAG You Can Actually See · Chinese-First Knowledge Base Platform</h3>
-
-<p><b>Not just another black-box RAG</b> — how your docs get chunked, what retrieval actually hit, and why the answer says what it says: every step is laid bare for you to inspect and tune.</p>
-
-<p>Deep Document Understanding · Hybrid Retrieval · Knowledge Graph · Visual Chunking · Evaluation Governance · Enterprise Security</p>
+<p><b>Full-stack open-source, Chinese-first enterprise RAG knowledge base</b><br/>From how a document gets chunked, to what retrieval actually hits, to why an answer is generated — the whole chain is inspectable, debuggable, and regression-testable.</p>
 
 <p>
-  <a href="https://github.com/skygazer42/MimirQ/wiki"><b>Docs</b></a> ·
-  <a href="https://skygazer42.github.io/MimirQ/"><b>API (Pages)</b></a> ·
-  <a href="./docs/api/README.md"><b>API Guide</b></a> ·
   <a href="#-quick-start"><b>Quick Start</b></a> ·
-  <a href="https://github.com/skygazer42/MimirQ/issues"><b>Feedback</b></a> ·
-  <a href="./.github/CONTRIBUTING.md"><b>Contributing</b></a>
+  <a href="#-product-screenshots"><b>Screenshots</b></a> ·
+  <a href="#-dify-integration"><b>Dify Integration</b></a> ·
+  <a href="#-proven-in-a-real-deployment"><b>800-question benchmark</b></a> ·
+  <a href="https://skygazer42.github.io/MimirQ/"><b>API Docs</b></a>
 </p>
 
 <p>
   <a href="https://www.apache.org/licenses/LICENSE-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"/></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+"/></a>
-  <a href="https://nextjs.org/"><img src="https://img.shields.io/badge/Next.js-14-black" alt="Next.js 14"/></a>
-  <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/FastAPI-0.135-009688.svg" alt="FastAPI"/></a>
-  <a href="https://langchain.com/"><img src="https://img.shields.io/badge/LangChain-1.x-green" alt="LangChain"/></a>
-  <a href="https://langchain-ai.github.io/langgraph/"><img src="https://img.shields.io/badge/LangGraph-1.0-1C3C3C" alt="LangGraph"/></a>
-  <a href="https://milvus.io/"><img src="https://img.shields.io/badge/Milvus-2.3-00a1e0" alt="Milvus"/></a>
-</p>
-
-<p>
-  <a href="https://github.com/skygazer42/MimirQ"><img src="https://img.shields.io/github/stars/skygazer42/MimirQ?style=social" alt="GitHub Stars"/></a>
-  <a href="https://github.com/skygazer42/MimirQ/issues"><img src="https://img.shields.io/github/issues/skygazer42/MimirQ" alt="GitHub Issues"/></a>
-  <a href="https://github.com/skygazer42/MimirQ/actions"><img src="https://img.shields.io/github/actions/workflow/status/skygazer42/MimirQ/ci.yml?label=CI" alt="CI Status"/></a>
+  <img src="https://img.shields.io/badge/Dify-External_Knowledge_%2B_HTTP-1C64F2" alt="Dify External Knowledge and HTTP integration"/>
+  <img src="https://img.shields.io/badge/Benchmark-800_questions-0F766E" alt="800-question benchmark"/>
 </p>
 
 <p>
   <a href="./README.md"><img src="https://img.shields.io/badge/简体中文-d9d9d9" alt="简体中文"/></a>
   <a href="./README_EN.md"><img src="https://img.shields.io/badge/English-d9d9d9" alt="English"/></a>
+  <a href="./README_JA.md"><img src="https://img.shields.io/badge/日本語-d9d9d9" alt="日本語"/></a>
+  <a href="./README_KO.md"><img src="https://img.shields.io/badge/한국어-d9d9d9" alt="한국어"/></a>
 </p>
 
 </div>
 
 ---
 
-## 🤔 Why I Built MimirQ
+## 💡 What is MimirQ
 
-MimirQ did not begin as an attempt to create another RAG framework or collect every fashionable model, agent, and GraphRAG technique in one repository. It began with a concrete government-service Q&A project. The knowledge bases existed and the system could answer questions, but whenever an answer was wrong, the team could not clearly explain where the failure happened. Was a scanned page parsed incorrectly? Did chunking separate an eligibility rule from its exception? Did retrieval miss the newer document? Did reranking bury the actual authority? Or did the model receive the right evidence and ignore it? Most systems exposed only the final answer, so diagnosis meant changing parameters, rebuilding the index, and asking again.
+**MimirQ** (named after **Mímir**, the Norse guardian of the Well of Wisdom) is a RAG knowledge-base Q&A platform focused on **full-chain observability**. Frontend and backend are both open source, and it deploys via Docker Compose or Helm.
 
-That black box is especially risky in government-service knowledge. The same service may have city-level and district-level versions, policies change, old documents are superseded, and critical conditions often sit inside tables, attachments, or scanned pages. Users rarely ask for a document title; they ask whether their situation qualifies, which materials are missing, or which department is responsible. A fluent answer grounded in an obsolete policy can be worse than an explicit refusal. The real problem is therefore not merely making a model sound more natural. The system must be able to show whether the source was read correctly, what entered the index, why particular evidence was retrieved, whether the user was allowed to see it, and which source sentence supports the final answer.
+<table>
+  <tr>
+    <td align="center" width="25%"><strong>30+</strong><br/><sub>parsing backends</sub></td>
+    <td align="center" width="25%"><strong>78</strong><br/><sub>chunking strategies</sub></td>
+    <td align="center" width="25%"><strong>15</strong><br/><sub>rerankers</sub></td>
+    <td align="center" width="25%"><strong>800</strong><br/><sub>fixed-set eval</sub></td>
+  </tr>
+</table>
 
-I tried assembling this path with existing platforms. Each has real strengths: some are excellent workflow builders, some focus on document parsing, and others make agents easy to prototype. In production diagnosis, however, parsing, chunking, indexing, retrieval, reranking, citations, and evaluation often live in separate components. When quality moves, tracing the cause across one request is difficult. Adding another retrieval leg or model call may improve recall while immediately increasing latency and cost. I did not want to build another general-purpose node canvas, or trade more online work for every quality gain. MimirQ therefore focuses on the RAG path itself: move work to ingestion where possible, improve the existing candidate set, and leave inspectable evidence at every stage.
+<table>
+  <tr>
+    <td width="50%"><strong>See it</strong><br/><sub>parsed output, chunk boundaries, retrieval and rerank steps</sub></td>
+    <td width="50%"><strong>Trace it</strong><br/><sub>sentence-level citations, versions, evidence, and full trace</sub></td>
+  </tr>
+  <tr>
+    <td><strong>Guard it</strong><br/><sub>document ACL, RBAC, redaction, audit, and safety rails</sub></td>
+    <td><strong>Regress it</strong><br/><sub>golden sets, evaluation dashboard, and release gates</sub></td>
+  </tr>
+</table>
 
-That decision shaped the system. During ingestion, you can inspect parsed output and chunk boundaries. After indexing, you can review metadata, versions, and permissions. During a query, you can follow each retrieval channel, fusion step, reranking decision, and sentence-level citation. The knowledge graph is not a disconnected showcase; it contributes entity relationships and multi-hop evidence. Evaluation is not a score produced once before release; the same questions can be rerun after every change. MimirQ covers a broad path not because it is trying to become an everything platform, but because the root cause of a wrong answer can cross that entire path.
+<details>
+<summary><b>Why build MimirQ?</b></summary>
 
-I am open-sourcing it to keep a working, inspectable reference implementation available. The public repository contains no production knowledge bases or private environment details. It includes a reduced government-service plugin sample, reproducible processing paths, and the tests needed to understand the behavior. You can run it as a complete system or reuse only the parser, chunking preview, retrieval tracing, Dify external-knowledge integration, or KG pieces. It does not claim to outperform every project on every dataset. Its more practical goal is this: when quality improves, you can explain why; when it regresses, you can find the cause.
+MimirQ began with a concrete government-service Q&A project: the system could already answer questions, but when an answer was wrong it was hard to tell whether the root cause was in parsing, chunking, retrieval, reranking, or generation. Government knowledge also carries multi-region versions, policy updates, scanned pages, and tables — and a fluent answer grounded in an obsolete policy is more dangerous than an explicit "I don't know."
 
-> **MimirQ is not trying to prove that RAG can run. It is trying to show why a RAG system deserves to be trusted.**
+Existing platforms are strong at workflows or agents, but the parsing, indexing, retrieval, citation, and evaluation needed to diagnose RAG are usually scattered across separate components. MimirQ does not build yet another general-purpose node canvas; it focuses on an inspectable RAG path.
+
+> **MimirQ is not trying to prove that RAG can run — it is trying to show why a RAG system deserves to be trusted.**
+
+</details>
 
 ---
 
-## 📑 Table of Contents
+## 🚀 Quick Start
 
-- [Why I Built MimirQ](#-why-i-built-mimirq)
-- [What is MimirQ?](#-what-is-mimirq)
-- [Product Screenshots](#-product-screenshots)
-- [Quick Start](#-quick-start)
-- [Core feature comparison](#-core-feature-comparison)
-- [Proven in a Real Deployment](#-proven-in-a-real-deployment)
-- [API Reference (OpenAPI / GitHub Pages)](#-api-reference-openapi--github-pages)
-- [Deployment Options](#-deployment-options)
-- [Feature Guides](#-feature-guides)
-- [Development](#-development)
-- [Roadmap](#-roadmap)
-- [Contributing](#-contributing)
-- [License](#-license)
-- [Acknowledgements](#-acknowledgements)
+### Prerequisites
 
----
+- [Docker](https://docs.docker.com/get-docker/) 20.10+ & [Docker Compose](https://docs.docker.com/compose/install/) 2.0+
+- GNU Make; Docker startup also needs Python 3.9+ to generate local config
+- Host source startup also needs Python 3.11+, Node.js 20+, and pnpm 10.26
+- At least 4 CPU cores / 16 GB RAM / 50 GB disk
 
-## 💡 What is MimirQ?
+### Common setup
 
-**MimirQ** (named after **Mímir**, the Norse guardian of the Well of Wisdom) is a **full-stack, open-source, Chinese-first** RAG knowledge base Q&A platform. It combines **deep document understanding, hybrid retrieval, knowledge graphs, visual chunking, evaluation governance, and enterprise security** into one system you can actually run — frontend and backend both open source, up and running with a single Docker command.
+```bash
+git clone https://github.com/skygazer42/MimirQ.git
+cd MimirQ
+make init
+```
 
-It's built for teams that:
+`make init` generates the complete `.env` and a random JWT `SECRET_KEY`. The `.env` file is an advanced configuration reference, not a form to fill in line by line. With the default SiliconFlow setup, only one value is required:
 
-- want a knowledge base that's **production-ready**, not just a working demo;
-- are tired of RAG tuning by superstition and want a **visible, reproducible, baseline-driven** way to iterate;
-- work with **Chinese documents** (contracts, government filings, finance, technical manuals) and need real Chinese parsing and compliance.
+```dotenv
+# The only required value
+LLM_API_KEY=<your-siliconflow-api-key>
+```
+
+| Startup mode | Best for | Where the app runs |
+|:---|:---|:---|
+| **Docker (recommended)** | First use and server deployment | Web, API, worker, and dependencies run in containers |
+| **Host source** | Frontend/backend development and hot reload | Web, API, and worker run on the host; dependencies run in Docker |
+
+### Option 1: Start everything with Docker
+
+```bash
+make up-web
+make ps
+curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
+```
+
+`make up-web` starts the web app, API, worker, Postgres, Milvus, MinIO, and Redis; existing configuration is never overwritten. Open [http://localhost:3000](http://localhost:3000) and create a local account to enter the system.
+
+The first Docker build downloads and verifies a pinned DeepDoc model bundle. If a proxy only listens on the Linux host loopback, configure it in Docker locally or run `DOCKER_BUILD_NETWORK=host make up-web`; never commit proxy addresses.
+
+Stop the complete web stack with:
+
+```bash
+docker compose --env-file .env \
+  -f docker/docker-compose.yml \
+  -f docker/docker-compose.web.yml down
+```
+
+### Option 2: Run the frontend and backend on the host
+
+Install host dependencies and start the infrastructure services:
+
+```bash
+python3.11 -m venv .venv
+.venv/bin/python -m pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+pnpm -C web install
+make models
+make infra-up
+```
+
+Open three terminals:
+
+```bash
+# Terminal 1: FastAPI with hot reload
+make backend
+
+# Terminal 2: document parsing and indexing worker
+.venv/bin/arq app.tasks.worker.WorkerSettings
+
+# Terminal 3: Next.js with hot reload
+make web
+```
+
+Verify the host services:
+
+```bash
+make infra-ps
+curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
+```
+
+After stopping the three host processes, run `make infra-down` to stop the dependency services.
+
+### Service URLs
+
+| Service | URL |
+|:---:|:---|
+| **Frontend UI** | [http://localhost:3000](http://localhost:3000) |
+| **API Docs** | [http://localhost:8000/docs](http://localhost:8000/docs) |
+
+> For a lighter setup, use `make up-lite`. It swaps Milvus for Chroma/FAISS and skips MinIO, but does not start the frontend by default; run `make web` separately when you need the UI. External LLM and embedding calls still require your own provider credentials.
+
+| Scenario | Change | Required? |
+|:---|:---|:---:|
+| Default SiliconFlow LLM + embeddings | `LLM_API_KEY` | **Yes** |
+| Different chat provider or model | `LLM_API_BASE`, `LLM_MODEL` | No |
+| Separate embedding provider | `EMBEDDING_API_KEY`, `EMBEDDING_API_BASE`, `EMBEDDING_MODEL` | No; blank key and URL reuse the LLM settings |
+| SiliconFlow reranker | `ENABLE_RERANKER=true` | No; disabled by default to avoid retrieval latency, reuses the LLM key |
+| MinerU online PDF parsing | `MINERU_ENABLED=true`, `MINERU_API_TOKEN` | No; select `mineru` when uploading |
+| Every other `.env` setting | Nothing | No; keep the defaults |
+
+Model IDs must appear in SiliconFlow's `/v1/models` response. Verified chat models include `Qwen/Qwen3-32B` and `Qwen/Qwen3-8B`; verified embedding models include `BAAI/bge-m3` and `Qwen/Qwen3-Embedding-0.6B`; the verified reranker is `BAAI/bge-reranker-v2-m3`. Rebuild existing knowledge-base indexes after changing the embedding model; old and new vectors must not be mixed. Create credentials in the [SiliconFlow console](https://cloud.siliconflow.cn/account/ak) and at [MinerU](https://mineru.net/), and keep real keys only in the local `.env`.
+
+### Run the government-service plugin sample
+
+The repository includes the Changzhou government-service knowledge plugin with small public samples for six source families: service items, one-stop services, common questions, topic FAQs, department FAQs, and district FAQs. Validate governance, chunking, KG output, and the Golden draft without starting a database:
+
+```bash
+make changzhou-gov-plugin-test-report
+make changzhou-gov-plugin-chunk-report
+```
+
+Reports are written under `/tmp/changzhou_gov_plugin_*`; these commands do not write to a database, vector store, or KG. See the [plugin guide](./plugins/pipelines/changzhou-gov-service-knowledge/README.md) for sample paths, plugin refs, and the real-corpus closed-loop command.
+
+For advanced model, parser, and proxy settings, see [`.env.example`](./.env.example). Rebuild existing knowledge-base indexes after changing the embedding model. For more platforms and Windows instructions, see the [Development Guide](./docs/quickstart.md).
 
 ---
 
@@ -141,89 +237,44 @@ These screens use the public government-service plugin samples included in the r
 
 ---
 
-## 🚀 Quick Start
+## 🔌 Dify Integration
 
-### Prerequisites
+MimirQ can plug into existing Dify applications as a governable RAG layer, without re-implementing the workflow canvas. Two integration modes are supported today:
 
-- [Docker](https://docs.docker.com/get-docker/) 20.10+ & [Docker Compose](https://docs.docker.com/compose/install/) 2.0+
-- GNU Make and Python 3.9+ (used only for idempotent local config and secret generation)
-- At least 4 CPU cores / 16 GB RAM / 50 GB disk
+- **External Knowledge API**: Dify handles orchestration and generation; MimirQ handles document governance, retrieval, reranking, permission filtering, and evidence return.
+- **Workflow HTTP node**: Dify handles custom routing and parameters; MimirQ returns evidence and a trace scoped to the requested knowledge range.
 
-### Minimum Setup
+### Workflow HTTP node
 
-```bash
-git clone https://github.com/skygazer42/MimirQ.git
-cd MimirQ
-make init
-```
+<p align="center">
+  <a href="./docs/images/screenshots/dify-mimirq-http-workflow.png">
+    <img src="./docs/images/screenshots/dify-mimirq-http-workflow.png" alt="A Dify HTTP node calls MimirQ's retrieval API and merges the evidence" width="1100" style="max-width: 100%; height: auto;"/>
+  </a>
+  <br/>
+  <sub>A real Dify HTTP sub-chain (redacted): safely build the JSON request → HTTP node calls MimirQ's retrieval endpoint → transform the result → merge knowledge evidence.</sub>
+</p>
 
-`make init` creates the complete `.env` and a random JWT `SECRET_KEY`. The file is an advanced configuration reference, not a form to fill in line by line. With the default SiliconFlow setup, only one value is required:
+### External Knowledge API
 
-```dotenv
-# The only required value
-LLM_API_KEY=<your-siliconflow-api-key>
-```
+<p align="center">
+  <a href="./docs/images/screenshots/dify-mimirq-workflow.png">
+    <img src="./docs/images/screenshots/dify-mimirq-workflow.png" alt="A Dify workflow routes by region into eight MimirQ government knowledge bases" width="560" style="max-width: 100%; height: auto;"/>
+  </a>
+  <br/>
+  <sub>A real Dify Chatflow (redacted): the green knowledge-retrieval node calls MimirQ through the External Knowledge API, then merges evidence uniformly; click to view the full image.</sub>
+</p>
 
-Then start the stack:
+> The regional routing in the diagram comes from the optional sample plugin; the MimirQ core ships no region, service-item, or industry rules.
 
-```bash
-make up-web
-```
-
-`make up-web` starts the web app, API, worker, Postgres, Milvus, MinIO, and Redis. Existing configuration is never overwritten. Open [http://localhost:3000](http://localhost:3000) and create a local account.
-
-> Want a lighter first look? `make up-lite` swaps Milvus for Chroma/FAISS and skips MinIO. External LLM and embedding calls still require credentials for your own model provider; MimirQ never ships or commits provider secrets.
-
-The first Docker build downloads and verifies a pinned DeepDoc model bundle. Run `make models` before using local source-based parsing. If a proxy only listens on the Linux host loopback, configure it in Docker locally and run `DOCKER_BUILD_NETWORK=host make up-web`; never commit proxy addresses.
-
-| Scenario | Change | Required? |
-|:---|:---|:---:|
-| Default SiliconFlow LLM + embeddings | `LLM_API_KEY` | **Yes** |
-| Different chat provider or model | `LLM_API_BASE`, `LLM_MODEL` | No |
-| Separate embedding provider | `EMBEDDING_API_KEY`, `EMBEDDING_API_BASE`, `EMBEDDING_MODEL` | No; blank key and URL reuse the LLM settings |
-| SiliconFlow reranker | `ENABLE_RERANKER=true` | No; disabled by default to avoid retrieval latency, and reuses the LLM key |
-| MinerU online PDF parsing | `MINERU_ENABLED=true`, `MINERU_API_TOKEN` | No; select `mineru` when uploading |
-| Every other `.env` setting | Nothing | No; keep the defaults |
-
-Model IDs must appear in SiliconFlow's `/v1/models` response. Verified chat models include `Qwen/Qwen3-32B` and `Qwen/Qwen3-8B`; verified embedding models include `BAAI/bge-m3` and `Qwen/Qwen3-Embedding-0.6B`; the verified reranker is `BAAI/bge-reranker-v2-m3`. Rebuild existing knowledge-base indexes after changing the embedding model; old and new vectors must not be mixed.
-
-Create credentials in the [SiliconFlow console](https://cloud.siliconflow.cn/account/ak) and at [MinerU](https://mineru.net/). Keep real keys only in the local `.env`; never commit them.
-
-### Run the government-service plugin sample
-
-The repository includes the Changzhou government-service knowledge plugin with small public samples for six source families: service items, one-stop services, common questions, topic FAQs, department FAQs, and district FAQs. Validate governance, chunking, KG output, and the Golden draft without starting a database:
-
-```bash
-make changzhou-gov-plugin-test-report
-make changzhou-gov-plugin-chunk-report
-```
-
-Reports are written under `/tmp/changzhou_gov_plugin_*`; these commands do not write to a database, vector store, or KG. See the [plugin guide](./plugins/pipelines/changzhou-gov-service-knowledge/README.md) for sample paths, plugin refs, and the real-corpus closed-loop command.
-
-### Verify Services
-
-```bash
-# Check service status
-make ps
-
-# Health checks
-curl http://localhost:8000/api/v1/health
-curl http://localhost:8000/api/v1/health/ready
-```
-
-After startup:
-
-| Service | URL |
-|:---:|:---|
-| **Frontend UI** | [http://localhost:3000](http://localhost:3000) |
-| **API Docs** | [http://localhost:8000/docs](http://localhost:8000/docs) |
-| **Health Check** | [http://localhost:8000/api/v1/health](http://localhost:8000/api/v1/health) |
-
-> For source-code deployment or local development, see the [Development Guide](./docs/quickstart.md)
+The standard Dify external-knowledge endpoint is `POST /api/v1/integrations/dify/retrieval`; you can optionally use `POST /api/v1/integrations/dify/conversation-turns` to report answers, citations, and a conversation identifier. See [`.env.example`](./.env.example) for configuration, the [readiness gate](./scripts/README.md) for pre-deploy validation, and [Proven in a Real Deployment](#-proven-in-a-real-deployment) for measured results.
 
 ---
 
 ## 🧭 Core Feature Comparison
+
+<details>
+<summary><b>Expand to compare with Dify, RAGFlow, FastGPT, AnythingLLM, and LangChain</b></summary>
+
 
 | Capability | **MimirQ** | [Dify](https://github.com/langgenius/dify) | [RAGFlow](https://github.com/infiniflow/ragflow) | [FastGPT](https://github.com/labring/FastGPT) | [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) | [LangChain](https://github.com/langchain-ai/langchain) |
 |:---|:---|:---|:---|:---|:---|:---|
@@ -242,40 +293,44 @@ After startup:
 
 > This comparison reflects the capability surface directly exposed by public releases and official documentation as of 2026-07; it is **not a uniform benchmark**. Plugins, commercial editions, and later releases may change individual entries.
 
+</details>
+
 ---
 
 ## 📍 Proven in a Real Deployment
 
-MimirQ is not a lab demo: it has powered a **municipal government Q&A assistant** across seven district-level and city-level knowledge bases. Validation has two layers: a same-dataset comparison of four real integration paths, followed by a strict before/after pairing on the same Dify HTTP path.
+MimirQ has powered a **municipal government Q&A assistant** across seven district-level and one city-level knowledge base. The latest direct-retrieval rerun used input SHA-256 `5a4c67...fac2`, with the following results:
 
-### Four-Way Dify Quality Comparison
+| Latest result (2026-07-23) | Result |
+|:---|---:|
+| Successful execution | **800 / 800**, 0 timeouts |
+| Accurate / partially accurate / insufficient evidence | **797 / 3 / 0** |
+| Accuracy / usability | **99.6% / 100%** |
+| Mean / P50 / P95 / P99 | **1.08s / 0.81s / 3.61s / 7.73s** |
 
-<!-- Source: artifacts/changzhou_dify_4way_partial/summary_for_sharing.md; complete_4way_1100=true, generated 2026-07-09T22:30:03Z. -->
+This direct-retrieval run reached 99.7% evidence-clause coverage. Multi-knowledge-base retrieval across different embedding runtimes is sharded by a generic retrieval layer, with no domain hard-coding.
 
-| Path | Actual call path | Cases | Answer usability | Answer evidence coverage |
-|:---|:---|---:|---:|---:|
-| **MimirQ direct retrieval** | Client → MimirQ External Knowledge retrieval API (no LLM generation) | 1100 | **88.9%** | **88.7%** |
-| **Dify External → MimirQ** | Dify generates; MimirQ serves as the External Knowledge retriever | 1100 | 67.4% | 65.9% |
-| **Dify HTTP → MimirQ** | A Dify Workflow HTTP node calls MimirQ's complete Q&A API | 1100 | 69.6% | 67.9% |
-| **Dify native knowledge** | Native Dify ingestion, retrieval, and generation | 1100 | 50.6% | 49.7% |
+An independent E2E load test — reranker enabled, response cache bypassed per request — cut total wall time for 12 requests from 41.46s to 30.14s at retrieval concurrency 3, and for 6 requests from 54.61s to 31.60s at conversation concurrency 3, both with 0 errors. Concurrency raises per-request latency; what is validated here is same-batch throughput improvement, not a hardware capacity ceiling.
 
-The 1,100 cases comprise 800 simulated user questions, 200 direct service questions, and 100 exact Q&A cases. All use deterministic evidence-clause matching with no LLM judge. Direct retrieval treats its top-three evidence records as output, while the other paths evaluate generated answers. Because these paths perform different work, their latency is not compared. Latency results will be published after a rerun with a fixed environment, concurrency, and cache state.
+<details>
+<summary><b>Expand the 2026-07-23 four-way same-question rerun</b></summary>
 
-### Same-Parameter Dify HTTP Before/After Rerun
+The same fixed 800 questions were rerun across four real integration paths:
 
-<!-- Source: artifacts/dify_3way_benchmark_ab_overlap_20260713/; same app, input SHA, truth SHA, and 687 mutually successful case IDs. -->
+<!-- Data source: MimirQ direct from artifacts/changzhou_mimirq_direct_800_corefix_20260723/comparison_report.json (2026-07-23T08:18:30Z); other paths from artifacts/changzhou_dify_4way_800_20260723/comparison_report.json; input SHA-256 5a4c67c42e8f8123774279d46af39ccc793da1b89fdea19a7359f63c8cb2fac2. -->
 
-| Metric (2026-07-13) | Before upgrade | Final | Change |
-|:---|---:|---:|---:|
-| Complete execution | 687 / 800 | **800 / 800** | +113 cases |
-| Paired answer-clause coverage | **84.4%** | 80.5% | -3.9pp |
-| Paired answer usability | **91.8%** | 86.5% | -5.4pp |
-| Final full 800 cases | — | 80.2% clause coverage / 86.4% usability | — |
-| Latency | — | Pending a controlled rerun | — |
+| Path | Successful execution | Accuracy / usability | Answer clause coverage | Answer evidence-supported | Wrong-evidence rate | Mean / P50 / P95 |
+|:---|---:|---:|---:|---:|---:|---:|
+| **MimirQ direct retrieval** | **800 / 800** | **99.6% / 100%** | **99.7%** | **99.8%** | 3.0% | **1.08s / 0.81s / 3.61s** |
+| **Dify External → MimirQ** | **800 / 800**¹ | 59.8% / 89.5% | 81.9% | **97.0%** | **2.7%** | 10.06s / 9.47s / 16.52s |
+| **Dify HTTP → MimirQ** | **800 / 800** | **65.2% / 91.9%** | **84.0%** | 94.0% | 3.6% | 7.69s / 7.49s / 9.98s |
+| **Dify native knowledge**² | **800 / 800** | 38.9% / 76.7% | 67.3% | 87.1% | 79.1% | 10.61s / 8.51s / 27.64s |
 
-> 📝 **An honest note**: the paired rerun proves a **completion-rate improvement**, not an overall answer-quality gain. Aggregate clause coverage across the seven district knowledge bases rose by 3.0pp, while the city-level base fell by 15.7pp because the new output became shorter, offsetting the district gains. Each version was run once and Dify generation had no fixed random seed, so this is a controlled observation rather than a statistical-significance claim; latency conclusions are pending a controlled rerun. Per-case artifacts remain in the local `artifacts/` directory and are not published; see the [Public Chinese Benchmarks guide](./docs/guides/public_benchmarks_zh.md) for reproducible tests.
+Retrieval evidence coverage on MimirQ's two Dify paths was 99.7% / 96.8%, but generated-answer clause coverage was 81.9% / 84.0% — the loss is in workflow answer generation, not knowledge recall. ¹ External at concurrency 4 first returned 788 / 800, with 11 remote disconnects and 1 upstream model 500; concurrency 1 recovered by retrying only the failed questions. ² Native knowledge does not go through MimirQ; it reuses the full 2026-07-21 result for the same input and same app, with a fresh 125 / 125 spot-run this round confirming the path still works.
 
-Choose [Dify External Knowledge API](./docs/guides/pipeline_plugins.md) when **Dify should retain prompt and answer-generation control**. Use a Dify Workflow HTTP node when **MimirQ should perform retrieval, governance, and final answer generation**.
+</details>
+
+[Full methodology, metric definitions, and historical reruns](./docs/benchmarks/changzhou_dify.md) · [Dify integration modes and real workflows](#-dify-integration)
 
 ---
 
@@ -290,7 +345,7 @@ Choose [Dify External Knowledge API](./docs/guides/pipeline_plugins.md) when **D
 | **Export OpenAPI** | `make openapi-export` → `web/openapi.json` |
 | **Build static site** | `make api-docs-build` → `docs/api/site/` |
 
-> Auth convention: there is no global auth middleware — **every route must explicitly depend on `get_current_account_id`**; routes accessing tenant data must also depend on `get_tenant_id`. See [backend_structure.md](./docs/backend_structure.md#添加新-api-路由).
+> Auth convention: there is no global auth middleware — **every route must explicitly depend on `get_current_account_id`**; routes accessing tenant data must also depend on `get_tenant_id`. See [backend_structure.md](./docs/backend_structure.md).
 
 Enable **Settings → Pages → GitHub Actions** on the repository; pushes to `main` run [`.github/workflows/api-docs.yml`](./.github/workflows/api-docs.yml).
 
@@ -353,7 +408,7 @@ For Kubernetes production deployment, see the [Helm Guide](./docs/deployment/hel
 
 ## ✅ Development
 
-Run CI-consistent checks before pushing:
+Run CI-consistent checks before pushing (backend + frontend):
 
 ```bash
 # Full check (backend lint/test + frontend lint/test)
@@ -370,32 +425,20 @@ cd web && pnpm lint && pnpm test
 
 ## 🗺 Roadmap
 
-**Delivered:**
+Delivered capabilities are in the comparison table above. Near-term plans:
 
-- [x] Hybrid Retrieval (Vector + BM25, optional SPLADE / ColBERT / LTR)
-- [x] Visual Chunk Preview (side-by-side strategies + boundary scoring)
-- [x] Knowledge Graph (extraction + visualization + search + snapshot-diff impact analysis)
-- [x] Evaluation Governance (RAGAS + regression gates + statistical significance tests)
-- [x] Document-Level ACL (Security Trimming)
-- [x] Document Version Management (Pipeline Versions)
-- [x] URL Connectors & Batch Import
-- [x] Self-correcting Agent pipelines (Self-RAG / CRAG / FLARE)
-- [x] Chinese PII redaction & safety guards
-
-**Planned:**
-
-- [ ] Visual RAG Workflow Editor
-- [ ] More Data Source Connectors (Confluence / S3 / Notion)
-- [ ] Cross-language Retrieval
+- [ ] RAG-specific debugging orchestration (not a general agent canvas)
+- [ ] More data-source connectors (Confluence / S3 / Notion)
+- [ ] Cross-language retrieval
 - [ ] Unified LLM-as-Judge (G-Eval + Self-Consistency)
 
-> Follow the public roadmap in [GitHub Issues](https://github.com/skygazer42/MimirQ/issues) — feature requests and votes welcome.
+> The roadmap is tracked publicly in [GitHub Issues](https://github.com/skygazer42/MimirQ/issues) — feature requests and votes welcome.
 
 ---
 
 ## 🤝 Contributing
 
-Whether it's fixing a typo, filing a bug, or proposing a feature — contributions of all kinds are welcome! See [CONTRIBUTING.md](./.github/CONTRIBUTING.md).
+Whether it's fixing a typo, filing a bug, or proposing a feature, please read [CONTRIBUTING.md](./.github/CONTRIBUTING.md) first. For the local development flow, see [Quick Start](./docs/quickstart.md), and run `make enterprise-checks` before pushing.
 
 ```bash
 # Fork and clone
@@ -405,9 +448,9 @@ make init
 
 # Local development
 make infra-up           # Start infrastructure
-make models            # Download and verify the pinned DeepDoc models
-cd web && pnpm dev     # Frontend dev
-python main.py         # Backend dev
+make models             # Download and verify the pinned DeepDoc models
+cd web && pnpm dev      # Frontend dev
+python main.py          # Backend dev
 
 # Pre-push checks
 make enterprise-checks
