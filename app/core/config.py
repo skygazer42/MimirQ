@@ -724,6 +724,9 @@ class Settings(BaseSettings):
     AUTH_MODE: Literal["jwt", "header"] = "jwt"
 
     SECRET_KEY: str = ""
+    # One-time bootstrap gate for the very first local owner registration in production.
+    # Provide either a raw token or `sha256:<hex>` and send it via `X-Bootstrap-Token`.
+    INITIAL_REGISTRATION_TOKEN: str = ""
     # Optional previous keys for decrypting already-encrypted secrets (comma-separated).
     # This enables key rotation for connector configs without breaking existing entries.
     SECRET_KEY_FALLBACKS: str = ""
@@ -2384,6 +2387,12 @@ class Settings(BaseSettings):
             raise ValueError(f"Unsupported AUTH_MODE: {auth_mode}")
         if auth_mode == "header" and is_production:
             raise ValueError("AUTH_MODE=header is not allowed in production")
+
+        initial_registration_token = str(getattr(self, "INITIAL_REGISTRATION_TOKEN", "") or "").strip()
+        if initial_registration_token.lower().startswith("sha256:"):
+            digest = initial_registration_token.split(":", 1)[1].strip()
+            if not re.fullmatch(r"[0-9a-fA-F]{64}", digest or ""):
+                raise ValueError("INITIAL_REGISTRATION_TOKEN sha256 digest must be 64 hex chars")
 
         # Security: tenant-source guard. Without a verified JWT tenant claim the tenant id comes
         # from the client-controlled tenant header (cross-tenant spoofing of team-shared

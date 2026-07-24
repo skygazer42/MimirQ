@@ -208,9 +208,9 @@ async def chat(
     allow_open_scope = bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False))
 
     # Best-effort per-tenant aggregate QPS limiter.
-    from app.services.tenant_quota_service import enforce_tenant_qps_quota
+    from app.services.tenant_quota_service import enforce_tenant_qps_quota_async
 
-    tenant_qps_meta = enforce_tenant_qps_quota(tenant_id=tenant_id, key="chat")
+    tenant_qps_meta = await enforce_tenant_qps_quota_async(tenant_id=tenant_id, key="chat")
 
     quota_meta = check_chat_assistant_token_quota(db, tenant_id=tenant_id)
     if quota_meta.get("enabled") and quota_meta.get("exceeded") and quota_meta.get("mode") == "block":
@@ -582,9 +582,9 @@ async def stream_chat(
     allow_open_scope = bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False))
 
     # Best-effort per-tenant aggregate QPS limiter.
-    from app.services.tenant_quota_service import enforce_tenant_qps_quota
+    from app.services.tenant_quota_service import enforce_tenant_qps_quota_async
 
-    tenant_qps_meta = enforce_tenant_qps_quota(tenant_id=tenant_id, key="chat")
+    tenant_qps_meta = await enforce_tenant_qps_quota_async(tenant_id=tenant_id, key="chat")
 
     quota_meta = check_chat_assistant_token_quota(db, tenant_id=tenant_id)
     if quota_meta.get("enabled") and quota_meta.get("exceeded") and quota_meta.get("mode") == "block":

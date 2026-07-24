@@ -381,6 +381,7 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
             sitemap_urls=list(settings_map.get("sitemap_urls") or []),
             respect_robots=bool(settings_map.get("respect_robots")),
             dedup_canonical=bool(settings_map.get("dedup_canonical")),
+            headers=dict(settings_map.get("auth_headers") or {}),
             user_agent=settings_map.get("user_agent"),
         )
 

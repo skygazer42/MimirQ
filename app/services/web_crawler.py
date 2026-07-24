@@ -31,7 +31,36 @@ from app.rag.core.logging import get_logger
 from app.rag.preprocessing.html_canonical import extract_canonical_url, normalize_url_for_dedup
 
 _DISALLOWED_SCHEMES = ("javascript:", "mailto:", "tel:", "data:", "file:")
+_SENSITIVE_REQUEST_HEADERS = frozenset({"authorization", "cookie", "proxy-authorization"})
 logger = get_logger("services.web_crawler")
+
+
+def _request_origin(url: str) -> tuple[str, str, int | None] | None:
+    try:
+        parsed = urlsplit(str(url or ""))
+        scheme = str(parsed.scheme or "").lower()
+        host = str(parsed.hostname or "").lower()
+        if scheme not in {"http", "https"} or not host:
+            return None
+        port = parsed.port or (443 if scheme == "https" else 80)
+        return scheme, host, port
+    except (TypeError, ValueError):
+        return None
+
+
+def _without_sensitive_request_headers(headers: dict[str, str]) -> dict[str, str]:
+    return {key: value for key, value in headers.items() if key.lower() not in _SENSITIVE_REQUEST_HEADERS}
+
+
+def _headers_for_crawl_target(
+    headers: dict[str, str],
+    *,
+    url: str,
+    credential_origins: set[tuple[str, str, int | None]],
+) -> dict[str, str]:
+    if _request_origin(url) in credential_origins:
+        return dict(headers)
+    return _without_sensitive_request_headers(headers)
 
 
 def _build_page_sync_token(*, url: str, text: str | None, content_type: str | None) -> str:
@@ -292,6 +321,8 @@ async def _fetch_page_text(
     client = await pool.get_external_client()
 
     current = await validate_url_for_ingest(url)
+    request_headers = dict(headers)
+    current_origin = _request_origin(current)
     hops = 0
     max_redirects = int(getattr(settings, "URL_INGEST_MAX_REDIRECTS", 5) or 5)
     max_redirects = max(0, min(max_redirects, 20))
@@ -300,7 +331,7 @@ async def _fetch_page_text(
         async with client.stream(
             "GET",
             current,
-            headers=headers,
+            headers=request_headers,
             timeout=httpx.Timeout(timeout_sec),
             follow_redirects=False,
         ) as resp:
@@ -313,7 +344,12 @@ async def _fetch_page_text(
                 if not loc:
                     raise HTTPException(status_code=400, detail="redirect location missing")
                 nxt = urljoin(str(resp.url), loc)
-                current = await validate_url_for_ingest(nxt)
+                next_url = await validate_url_for_ingest(nxt)
+                next_origin = _request_origin(next_url)
+                if next_origin != current_origin:
+                    request_headers = _without_sensitive_request_headers(request_headers)
+                current = next_url
+                current_origin = next_origin
                 hops += 1
                 continue
 
@@ -329,7 +365,7 @@ async def _fetch_page_text(
                     continue
                 size += len(chunk)
                 if max_bytes > 0 and size > max_bytes:
-                    break
+                    raise HTTPException(status_code=413, detail="remote file too large")
                 chunks.append(chunk)
             body = b"".join(chunks)
             text = body.decode("utf-8", "ignore")
@@ -454,9 +490,13 @@ async def crawl_site(
     exclude_re = _compile_patterns(exclude_patterns)
 
     allowed_netlocs: set[str] = set()
+    credential_origins: set[tuple[str, str, int | None]] = set()
     for s in seeds:
         try:
             allowed_netlocs.add(urlsplit(s).netloc.lower())
+            origin = _request_origin(s)
+            if origin is not None:
+                credential_origins.add(origin)
         except Exception:
             get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
             continue
@@ -528,7 +568,12 @@ async def crawl_site(
                     get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                     continue
                 base = urlunsplit((parsed.scheme, parsed.netloc, "/", "", ""))
-                await robots_cache._load(base_url=base, headers=h, timeout_sec=timeout_eff, follow_redirects=follow_eff)
+                await robots_cache._load(
+                    base_url=base,
+                    headers=_headers_for_crawl_target(h, url=base, credential_origins=credential_origins),
+                    timeout_sec=timeout_eff,
+                    follow_redirects=follow_eff,
+                )
                 raw_txt = robots_cache.get_raw((parsed.netloc or "").strip().lower()) or ""
                 if raw_txt:
                     sitemap_from_robots = _extract_sitemap_candidates_from_robots(raw_txt, base_url=base)
@@ -553,9 +598,15 @@ async def crawl_site(
                 continue
 
             try:
+                sitemap_headers = _headers_for_crawl_target(
+                    h,
+                    url=safe,
+                    credential_origins=credential_origins,
+                )
+                sitemap_headers["Accept"] = "application/xml,text/xml,application/xhtml+xml;q=0.9,*/*;q=0.1"
                 xml_text, final_url, _ct = await _fetch_page_text(
                     safe,
-                    headers={**h, "Accept": "application/xml,text/xml,application/xhtml+xml;q=0.9,*/*;q=0.1"},
+                    headers=sitemap_headers,
                     timeout_sec=timeout_eff,
                     max_bytes=max(1_000_000, min(max_bytes_eff, 10_000_000)),
                     follow_redirects=follow_eff,
@@ -590,7 +641,11 @@ async def crawl_site(
                     allowed = await robots_cache.can_fetch(
                         candidate,
                         user_agent=ua,
-                        headers=h,
+                        headers=_headers_for_crawl_target(
+                            h,
+                            url=candidate,
+                            credential_origins=credential_origins,
+                        ),
                         timeout_sec=timeout_eff,
                         follow_redirects=follow_eff,
                     )
@@ -671,7 +726,11 @@ async def crawl_site(
             allowed = await robots_cache.can_fetch(
                 safe_url,
                 user_agent=ua,
-                headers=h,
+                headers=_headers_for_crawl_target(
+                    h,
+                    url=safe_url,
+                    credential_origins=credential_origins,
+                ),
                 timeout_sec=timeout_eff,
                 follow_redirects=follow_eff,
             )
@@ -687,7 +746,11 @@ async def crawl_site(
             try:
                 text, final_url, content_type = await _fetch_page_text(
                     safe_url,
-                    headers=h,
+                    headers=_headers_for_crawl_target(
+                        h,
+                        url=safe_url,
+                        credential_origins=credential_origins,
+                    ),
                     timeout_sec=timeout_eff,
                     max_bytes=max_bytes_eff,
                     follow_redirects=follow_eff,
@@ -753,7 +816,11 @@ async def crawl_site(
                 allowed = await robots_cache.can_fetch(
                     link,
                     user_agent=ua,
-                    headers=h,
+                    headers=_headers_for_crawl_target(
+                        h,
+                        url=link,
+                        credential_origins=credential_origins,
+                    ),
                     timeout_sec=timeout_eff,
                     follow_redirects=follow_eff,
                 )

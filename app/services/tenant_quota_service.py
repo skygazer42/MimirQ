@@ -131,6 +131,33 @@ def check_tenant_qps_quota(*, tenant_id: UUID, key: str = "chat") -> dict[str, A
         return {"enabled": False, "mode": mode, "rps": rps, "burst": burst, "allowed": True, "retry_after": 0.0}
 
 
+async def check_tenant_qps_quota_async(*, tenant_id: UUID, key: str = "chat") -> dict[str, Any]:
+    enabled = bool(getattr(settings, "TENANT_QPS_QUOTA_ENABLED", False))
+    rps = float(getattr(settings, "TENANT_QPS_QUOTA_REQUESTS_PER_SECOND", 0.0) or 0.0)
+    burst = int(getattr(settings, "TENANT_QPS_QUOTA_BURST_SIZE", 0) or 0)
+    if burst <= 0:
+        burst = int(rps * 2) if rps > 0 else 1
+    mode = str(getattr(settings, "TENANT_QPS_QUOTA_MODE", "block") or "block").lower()
+
+    if not enabled or rps <= 0:
+        return {"enabled": False, "mode": mode, "rps": rps, "burst": burst, "allowed": True, "retry_after": 0.0}
+
+    try:
+        limiter = _get_tenant_qps_limiter()
+        allowed, retry_after = await limiter.acheck(f"tenant:{tenant_id}:{str(key or 'chat').strip() or 'chat'}")
+        return {
+            "enabled": True,
+            "mode": mode,
+            "rps": rps,
+            "burst": burst,
+            "allowed": bool(allowed),
+            "retry_after": float(retry_after or 0.0),
+        }
+    except Exception:
+        # Fail open.
+        return {"enabled": False, "mode": mode, "rps": rps, "burst": burst, "allowed": True, "retry_after": 0.0}
+
+
 def enforce_tenant_qps_quota(*, tenant_id: UUID, key: str = "chat") -> dict[str, Any]:
     """
     Enforce per-tenant QPS quota (best-effort).
@@ -139,6 +166,31 @@ def enforce_tenant_qps_quota(*, tenant_id: UUID, key: str = "chat") -> dict[str,
     and mode=="block".
     """
     meta = check_tenant_qps_quota(tenant_id=tenant_id, key=key)
+    if meta.get("enabled") and (not meta.get("allowed")) and str(meta.get("mode") or "block") == "block":
+        retry_after = float(meta.get("retry_after") or 0.0)
+        retry_after_sec = max(1, int(math.ceil(retry_after)))
+        scope_key = str(key or "chat").strip() or "chat"
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "message": "Tenant QPS quota exceeded",
+                "retry_after_sec": retry_after_sec,
+                "limit": float(meta.get("rps") or 0.0),
+                "scope": f"tenant_qps:{scope_key}",
+            },
+            headers={"Retry-After": str(retry_after_sec)},
+        )
+    return meta
+
+
+async def enforce_tenant_qps_quota_async(*, tenant_id: UUID, key: str = "chat") -> dict[str, Any]:
+    """
+    Async variant of per-tenant QPS enforcement for async request paths.
+
+    Returns the quota meta for metrics/debugging. Raises HTTPException(429) when exceeded
+    and mode=="block".
+    """
+    meta = await check_tenant_qps_quota_async(tenant_id=tenant_id, key=key)
     if meta.get("enabled") and (not meta.get("allowed")) and str(meta.get("mode") or "block") == "block":
         retry_after = float(meta.get("retry_after") or 0.0)
         retry_after_sec = max(1, int(math.ceil(retry_after)))
@@ -352,8 +404,10 @@ __all__ = [
     "check_tenant_storage_quota",
     "check_tenant_embedding_char_quota",
     "check_tenant_qps_quota",
+    "check_tenant_qps_quota_async",
     "enforce_tenant_embedding_char_quota",
     "enforce_tenant_qps_quota",
+    "enforce_tenant_qps_quota_async",
     "enforce_tenant_upload_quotas",
     "get_tenant_qps_quota_config",
     "TenantQuotaExceededError",

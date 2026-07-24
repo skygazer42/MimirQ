@@ -440,9 +440,9 @@ async def retrieve_preview(
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     # Best-effort per-tenant aggregate QPS limiter.
-    from app.services.tenant_quota_service import enforce_tenant_qps_quota
+    from app.services.tenant_quota_service import enforce_tenant_qps_quota_async
 
-    tenant_qps_meta = enforce_tenant_qps_quota(tenant_id=tenant_id, key="retrieval")
+    tenant_qps_meta = await enforce_tenant_qps_quota_async(tenant_id=tenant_id, key="retrieval")
 
     requested_dataset_ids = _unique_dataset_ids(body.dataset_ids)
     if body.dataset_id is not None and requested_dataset_ids:
@@ -855,9 +855,9 @@ async def image_search_preview(
     DatasetService.assert_dataset_readable(db, ds, account_id)
 
     # Best-effort per-tenant aggregate QPS limiter.
-    from app.services.tenant_quota_service import enforce_tenant_qps_quota
+    from app.services.tenant_quota_service import enforce_tenant_qps_quota_async
 
-    tenant_qps_meta = enforce_tenant_qps_quota(tenant_id=tenant_id, key="retrieval")
+    tenant_qps_meta = await enforce_tenant_qps_quota_async(tenant_id=tenant_id, key="retrieval")
 
     from app.services.image_embedding_index import (
         build_image_citations,
@@ -966,9 +966,9 @@ async def retrieve_evidence(
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     # Best-effort per-tenant aggregate QPS limiter.
-    from app.services.tenant_quota_service import enforce_tenant_qps_quota
+    from app.services.tenant_quota_service import enforce_tenant_qps_quota_async
 
-    tenant_qps_meta = enforce_tenant_qps_quota(tenant_id=tenant_id, key="retrieval")
+    tenant_qps_meta = await enforce_tenant_qps_quota_async(tenant_id=tenant_id, key="retrieval")
 
     requested_dataset_ids = _unique_dataset_ids(body.dataset_ids)
     if body.dataset_id is not None and requested_dataset_ids:
@@ -1453,9 +1453,9 @@ async def prompt_preview(
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     # Best-effort per-tenant aggregate QPS limiter.
-    from app.services.tenant_quota_service import enforce_tenant_qps_quota
+    from app.services.tenant_quota_service import enforce_tenant_qps_quota_async
 
-    tenant_qps_meta = enforce_tenant_qps_quota(tenant_id=tenant_id, key="retrieval")
+    tenant_qps_meta = await enforce_tenant_qps_quota_async(tenant_id=tenant_id, key="retrieval")
 
     scope_dataset_id: UUID | None = None
     scope_document_ids: list[UUID] = []

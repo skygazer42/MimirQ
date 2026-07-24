@@ -11,7 +11,7 @@
 
 ## 场景 A：账号与租户
 
-1. 未初始化部署仅可调用一次 `POST /api/v1/auth/register` 创建首个 owner；之后使用 `POST /api/v1/auth/login` 获取 `access_token`，其他账号由管理员、SSO 或 SCIM 配置。
+1. 未初始化部署仅可调用一次 `POST /api/v1/auth/register` 创建首个 owner；生产环境还必须临时配置 `INITIAL_REGISTRATION_TOKEN`，并通过 `X-Bootstrap-Token` 请求头发送原始 token。之后使用 `POST /api/v1/auth/login` 获取 `access_token`，其他账号由管理员、SSO 或 SCIM 配置。
 2. `GET /api/v1/auth/me` — 校验会话与用户信息。  
 
 （若启用 SAML/SCIM，见 OpenAPI 中 **Auth**、**SCIM v2** 下其余路径。）

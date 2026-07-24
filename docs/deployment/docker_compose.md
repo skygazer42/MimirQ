@@ -120,12 +120,24 @@ make up-web
 - `ENV=production`
 - `AUTH_MODE=jwt`
 - `SECRET_KEY`（长度 >= 32）
+- 首次初始化前临时设置 `INITIAL_REGISTRATION_TOKEN`（首个本地 owner 注册一次性 token，请通过 `X-Bootstrap-Token` 发送；支持 `sha256:<hex>`，初始化完成后可移除）
 - `POSTGRES_PASSWORD`
 
 ```bash
 make up
 make ps
 ```
+
+首次创建 owner 时发送原始 bootstrap token（如果 `.env` 保存的是 `sha256:<hex>`，这里仍发送计算摘要前的原始 token）：
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/auth/register \
+  -H 'Content-Type: application/json' \
+  -H 'X-Bootstrap-Token: <raw-bootstrap-token>' \
+  -d '{"email":"owner@example.com","username":"owner","password":"replace-with-a-strong-password"}'
+```
+
+创建成功后可从 `.env` 删除 `INITIAL_REGISTRATION_TOKEN` 并重启服务；后续注册请求仍会返回 `409`。
 
 生产模式 + 前端（可选）：
 

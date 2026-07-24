@@ -68,7 +68,13 @@ from app.rag.retrieval.plugin_policy import (
     record_retrieval_policy_bonus,
     records_retrieval_policy_diagnostics,
 )
-from app.services.chat_response_cache import InflightResponseLeaderCancelledError
+from app.services.chat_response_cache import (
+    InflightResponseLeaderCancelledError,
+    get_best_effort_json_cache_value,
+    release_best_effort_redis_lease,
+    set_best_effort_json_cache_value,
+    try_acquire_best_effort_redis_lease,
+)
 from app.services.chat_response_cache import (
     acquire_inflight_chat_response as acquire_inflight_response,
 )
@@ -385,6 +391,10 @@ class _DifyResponseCache:
 
 
 _dify_response_cache = _DifyResponseCache()
+_DIFY_RESPONSE_CACHE_REDIS_SCHEMA = "mimirq.dify_external_response_cache.redis.v1"
+_DIFY_RESPONSE_SINGLEFLIGHT_LEASE_SUFFIX = ":lease"
+_DIFY_RESPONSE_SINGLEFLIGHT_LEASE_POLL_INITIAL_SEC = 0.05
+_DIFY_RESPONSE_SINGLEFLIGHT_LEASE_POLL_MAX_SEC = 0.25
 _dify_external_warmup_state_lock = threading.Lock()
 _dify_external_warmup_state: dict[str, Any] = {
     "enabled": False,
@@ -412,6 +422,87 @@ async def _acquire_or_wait_for_inflight_response(
             return False, await asyncio.shield(future)
         except InflightResponseLeaderCancelledError:
             continue
+
+
+@dataclass(frozen=True)
+class _DifyDistributedLease:
+    lease_key: str
+    owner: str
+
+
+async def _dify_response_cache_redis_payload(key: str) -> list[dict[str, Any]] | None:
+    payload = await get_best_effort_json_cache_value(key)
+    records = payload.get("records") if isinstance(payload, dict) else None
+    if not isinstance(records, list):
+        return None
+    return [dict(record) for record in records if isinstance(record, dict)]
+
+
+async def _set_dify_response_cache_redis_payload(
+    key: str,
+    records: list[dict[str, Any]],
+    *,
+    ttl_sec: int,
+) -> bool:
+    max_value_bytes = max(0, int(getattr(settings, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 200_000) or 0))
+    return await set_best_effort_json_cache_value(
+        key,
+        {
+            "schema": _DIFY_RESPONSE_CACHE_REDIS_SCHEMA,
+            "records": [dict(record) for record in records if isinstance(record, dict)],
+        },
+        ttl_sec=ttl_sec,
+        max_value_bytes=max_value_bytes,
+    )
+
+
+def _dify_singleflight_lease_ttl_sec(response_cache_ttl_sec: int) -> int:
+    warmup_timeout_sec = 60
+    with contextlib.suppress(Exception):
+        warmup_timeout_sec = max(
+            60,
+            min(300, int(_resolve_dify_warmup_timeout_sec())),
+        )
+    response_ttl_sec = max(60, int(response_cache_ttl_sec or 0))
+    return max(60, min(300, max(response_ttl_sec, warmup_timeout_sec)))
+
+
+async def _acquire_or_wait_for_distributed_dify_response(
+    key: str,
+    *,
+    response_cache_ttl_sec: int,
+) -> tuple[bool, list[dict[str, Any]] | None, _DifyDistributedLease | None]:
+    if not key or response_cache_ttl_sec <= 0:
+        return True, None, None
+
+    lease_key = f"{key}{_DIFY_RESPONSE_SINGLEFLIGHT_LEASE_SUFFIX}"
+    owner = uuid.uuid4().hex
+    lease_ttl_sec = _dify_singleflight_lease_ttl_sec(response_cache_ttl_sec)
+    poll_delay = _DIFY_RESPONSE_SINGLEFLIGHT_LEASE_POLL_INITIAL_SEC
+
+    while True:
+        cached = await _dify_response_cache_redis_payload(key)
+        if cached is not None:
+            return False, cached, None
+
+        acquired = await try_acquire_best_effort_redis_lease(
+            lease_key,
+            value=owner,
+            ttl_sec=lease_ttl_sec,
+        )
+        if acquired is None:
+            return True, None, None
+        if acquired:
+            return True, None, _DifyDistributedLease(lease_key=lease_key, owner=owner)
+
+        await asyncio.sleep(poll_delay)
+        poll_delay = min(_DIFY_RESPONSE_SINGLEFLIGHT_LEASE_POLL_MAX_SEC, poll_delay * 1.5)
+
+
+async def _release_distributed_dify_response_lease(lease: _DifyDistributedLease | None) -> None:
+    if lease is None:
+        return
+    await release_best_effort_redis_lease(lease.lease_key, value=lease.owner)
 
 
 def _set_dify_external_warmup_status(**updates: Any) -> None:
@@ -7436,6 +7527,7 @@ async def _retrieve_external_knowledge(
         getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_ENABLED", True)
     )
     stage_timings_ms: dict[str, Any] = {}
+    distributed_singleflight_lease: _DifyDistributedLease | None = None
     if response_cache_enabled or singleflight_enabled:
         cache_token_started = time.perf_counter()
         try:
@@ -7465,11 +7557,18 @@ async def _retrieve_external_knowledge(
                 policy_plugin_refs=policy_plugin_refs,
                 corpus_token=corpus_token,
             )
-            cached_records = (
-                _dify_response_cache.get(response_cache_key, ttl_sec=response_cache_ttl_sec)
-                if response_cache_enabled
-                else None
-            )
+            cached_records = None
+            if response_cache_enabled:
+                cached_records = _dify_response_cache.get(response_cache_key, ttl_sec=response_cache_ttl_sec)
+                if cached_records is None:
+                    cached_records = await _dify_response_cache_redis_payload(response_cache_key)
+                    if cached_records is not None:
+                        _dify_response_cache.set(
+                            response_cache_key,
+                            cached_records,
+                            ttl_sec=response_cache_ttl_sec,
+                            max_entries=response_cache_max_entries,
+                        )
             if cached_records is not None:
                 elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
                 response_records = [DifyExternalKnowledgeRecord(**record) for record in cached_records]
@@ -7564,6 +7663,66 @@ async def _retrieve_external_knowledge(
                 dify_workflow_run_id=body.dify_workflow_run_id,
             )
             return DifyExternalKnowledgeResponse(records=response_records)
+        if response_cache_enabled:
+            cached_records = _dify_response_cache.get(singleflight_key, ttl_sec=response_cache_ttl_sec)
+            if cached_records is None:
+                cached_records = await _dify_response_cache_redis_payload(singleflight_key)
+                if cached_records is not None:
+                    _dify_response_cache.set(
+                        singleflight_key,
+                        cached_records,
+                        ttl_sec=response_cache_ttl_sec,
+                        max_entries=response_cache_max_entries,
+                    )
+            if cached_records is not None:
+                serialized_records = [dict(record) for record in cached_records]
+                resolve_inflight_response(singleflight_key, {"records": serialized_records})
+                elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+                response_records = [DifyExternalKnowledgeRecord(**record) for record in serialized_records]
+                return DifyExternalKnowledgeResponse(records=response_records)
+        if response_cache_enabled:
+            distributed_wait_started = time.perf_counter()
+            (
+                distributed_leader,
+                distributed_records,
+                distributed_singleflight_lease,
+            ) = await _acquire_or_wait_for_distributed_dify_response(
+                singleflight_key,
+                response_cache_ttl_sec=response_cache_ttl_sec,
+            )
+            stage_timings_ms["distributed_singleflight_wait_ms"] = round(
+                (time.perf_counter() - distributed_wait_started) * 1000,
+                2,
+            )
+            if not distributed_leader:
+                serialized_records = [dict(record) for record in (distributed_records or [])]
+                _dify_response_cache.set(
+                    singleflight_key,
+                    serialized_records,
+                    ttl_sec=response_cache_ttl_sec,
+                    max_entries=response_cache_max_entries,
+                )
+                resolve_inflight_response(singleflight_key, {"records": serialized_records})
+                elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+                response_records = [DifyExternalKnowledgeRecord(**record) for record in serialized_records]
+                logger.info(
+                    "Dify external retrieval distributed cache hit client_ip_hash=%s knowledge_id_hash=%s "
+                    "query_hash=%s records=%s elapsed_ms=%s",
+                    log_extra_base["client_ip_hash"],
+                    log_extra_base["knowledge_id_hash"],
+                    log_extra_base["query_hash"],
+                    len(response_records),
+                    elapsed_ms,
+                    extra={
+                        **log_extra_base,
+                        "phase": "distributed_cache_hit",
+                        "record_count": len(response_records),
+                        "elapsed_ms": elapsed_ms,
+                        "distributed_singleflight_hit": True,
+                        "stage_timings_ms": stage_timings_ms,
+                    },
+                )
+                return DifyExternalKnowledgeResponse(records=response_records)
 
     records: list[dict[str, Any]] = []
     citation_count = 0
@@ -8092,6 +8251,11 @@ async def _retrieve_external_knowledge(
                 ttl_sec=response_cache_ttl_sec,
                 max_entries=response_cache_max_entries,
             )
+            await _set_dify_response_cache_redis_payload(
+                response_cache_key,
+                serialized_response_records,
+                ttl_sec=response_cache_ttl_sec,
+            )
         elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
         record_count = len(response_records)
         logger.info(
@@ -8167,8 +8331,10 @@ async def _retrieve_external_knowledge(
                 singleflight_key,
                 {"records": serialized_response_records},
             )
+        await _release_distributed_dify_response_lease(distributed_singleflight_lease)
         return DifyExternalKnowledgeResponse(records=response_records)
     except asyncio.CancelledError:
+        await _release_distributed_dify_response_lease(distributed_singleflight_lease)
         if singleflight_key and singleflight_leader:
             reject_inflight_response(
                 singleflight_key,
@@ -8176,6 +8342,7 @@ async def _retrieve_external_knowledge(
             )
         raise
     except Exception as exc:
+        await _release_distributed_dify_response_lease(distributed_singleflight_lease)
         if singleflight_key and singleflight_leader:
             reject_inflight_response(singleflight_key, exc)
         elapsed_ms = round((time.perf_counter() - started) * 1000, 2)

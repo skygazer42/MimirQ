@@ -426,9 +426,12 @@ async def test_chat_cancelled_or_overloaded_leader_releases_singleflight_for_ret
         rag_config_template_meta=None,
         history_for_llm=[],
     )
+    async def _fake_enforce_tenant_qps_quota_async(**_kwargs):  # noqa: ANN202
+        return {}
+
     monkeypatch.setattr(
-        "app.services.tenant_quota_service.enforce_tenant_qps_quota",
-        lambda **_kwargs: {},
+        "app.services.tenant_quota_service.enforce_tenant_qps_quota_async",
+        _fake_enforce_tenant_qps_quota_async,
     )
     monkeypatch.setattr(chat_api, "check_chat_assistant_token_quota", lambda *_args, **_kwargs: {})
     monkeypatch.setattr(

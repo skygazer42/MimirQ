@@ -23,6 +23,77 @@ def _override_get_db():  # noqa: ANN202
     yield _DummyDB()
 
 
+class _FakeRedis:
+    def __init__(self) -> None:
+        self._values: dict[str, bytes | str] = {}
+        self._expires_at: dict[str, float] = {}
+
+    def _purge_expired(self, key: str) -> None:
+        expires_at = self._expires_at.get(key)
+        if expires_at is not None and expires_at <= time.monotonic():
+            self._values.pop(key, None)
+            self._expires_at.pop(key, None)
+
+    def get(self, key: str):  # noqa: ANN201
+        self._purge_expired(key)
+        return self._values.get(key)
+
+    def set(self, key: str, value: bytes | str, *, ex: int | None = None, nx: bool = False) -> bool:
+        self._purge_expired(key)
+        if nx and key in self._values:
+            return False
+        self._values[key] = value
+        if ex is not None:
+            self._expires_at[key] = time.monotonic() + max(1, int(ex))
+        else:
+            self._expires_at.pop(key, None)
+        return True
+
+    def eval(self, _script: str, _numkeys: int, key: str, value: str) -> int:
+        self._purge_expired(key)
+        current = self._values.get(key)
+        if isinstance(current, bytes):
+            current = current.decode("utf-8", "ignore")
+        if current != value:
+            return 0
+        self._values.pop(key, None)
+        self._expires_at.pop(key, None)
+        return 1
+
+    def ttl_remaining(self, key: str) -> int | None:
+        self._purge_expired(key)
+        expires_at = self._expires_at.get(key)
+        if expires_at is None:
+            return None
+        return max(0, int(expires_at - time.monotonic()))
+
+
+def _patch_fake_dify_redis(monkeypatch: pytest.MonkeyPatch, dify_api, redis: _FakeRedis) -> None:  # noqa: ANN001
+    async def _get_json(key: str):  # noqa: ANN202
+        raw = redis.get(key)
+        if not raw:
+            return None
+        text = raw.decode("utf-8", "ignore") if isinstance(raw, bytes) else str(raw)
+        return json.loads(text)
+
+    async def _set_json(key: str, payload, *, ttl_sec: int, max_value_bytes: int = 0):  # noqa: ANN001, ANN202
+        raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        if max_value_bytes > 0 and len(raw) > max_value_bytes:
+            return False
+        return bool(redis.set(key, raw, ex=ttl_sec))
+
+    async def _acquire_lease(key: str, *, value: str, ttl_sec: int):  # noqa: ANN202
+        return bool(redis.set(key, value, ex=ttl_sec, nx=True))
+
+    async def _release(key: str, *, value: str):  # noqa: ANN202
+        redis.eval("", 1, key, value)
+
+    monkeypatch.setattr(dify_api, "get_best_effort_json_cache_value", _get_json, raising=True)
+    monkeypatch.setattr(dify_api, "set_best_effort_json_cache_value", _set_json, raising=True)
+    monkeypatch.setattr(dify_api, "try_acquire_best_effort_redis_lease", _acquire_lease, raising=True)
+    monkeypatch.setattr(dify_api, "release_best_effort_redis_lease", _release, raising=True)
+
+
 def _auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
@@ -3104,6 +3175,108 @@ async def test_dify_retrieval_singleflight_then_cache_reuses_identical_request(
 
 
 @pytest.mark.asyncio
+async def test_dify_distributed_singleflight_and_redis_cache_reuse_across_instances(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+    calls = {"rag": 0}
+    retrieval_started = asyncio.Event()
+    release_retrieval = asyncio.Event()
+    fake_redis = _FakeRedis()
+
+    _patch_fake_dify_redis(monkeypatch, dify_api, fake_redis)
+    dify_api._clear_dify_response_cache()
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{dataset_id}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_TTL_SEC", 30, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_MAX_ENTRIES", 32, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC", 75.0, raising=False)
+    monkeypatch.setattr(
+        dify_api,
+        "_resolve_dify_response_cache_corpus_token",
+        lambda **_kwargs: "corpus-v1",
+        raising=True,
+    )
+    monkeypatch.setattr(
+        dify_api,
+        "_acquire_or_wait_for_inflight_response",
+        lambda _key: asyncio.sleep(0, result=(True, None)),
+        raising=True,
+    )
+    monkeypatch.setattr(dify_api, "resolve_inflight_response", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(dify_api, "reject_inflight_response", lambda *_args, **_kwargs: None, raising=True)
+    _patch_demo_policy(monkeypatch, dify_api)
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        calls["rag"] += 1
+        retrieval_started.set()
+        await release_retrieval.wait()
+        return [
+            {
+                "chunk_content": "事项名称：学区划分查询\n咨询方式：0519-69660631",
+                "relevance_score": 0.91,
+                "document_name": "service-rag.txt",
+                "chunk_id": str(uuid.uuid4()),
+                "dataset_id": str(dataset_id),
+                "metadata": {"dataset_id": str(dataset_id), "service_name": "学区划分查询"},
+            }
+        ]
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    payload = {
+        "knowledge_id": "city",
+        "query": "天宁区学区查询咨询电话是多少",
+        "retrieval_setting": {"top_k": 5, "score_threshold": 0.0},
+    }
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        leader = asyncio.create_task(
+            client.post("/api/v1/integrations/dify/retrieval", headers=_auth(token), json=payload)
+        )
+        await retrieval_started.wait()
+        lease_keys = [key for key in fake_redis._values if key.endswith(":lease")]
+        assert len(lease_keys) == 1
+        assert (fake_redis.ttl_remaining(lease_keys[0]) or 0) >= 60
+        follower = asyncio.create_task(
+            client.post("/api/v1/integrations/dify/retrieval", headers=_auth(token), json=payload)
+        )
+        await asyncio.sleep(0.05)
+        release_retrieval.set()
+        first, second = await asyncio.gather(leader, follower)
+        dify_api._clear_dify_response_cache()
+        cached = await client.post(
+            "/api/v1/integrations/dify/retrieval",
+            headers=_auth(token),
+            json=payload,
+        )
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    assert cached.status_code == 200, cached.text
+    assert calls["rag"] == 1
+    assert second.json() == first.json()
+    assert cached.json() == first.json()
+
+
+@pytest.mark.asyncio
 async def test_dify_singleflight_follower_takes_over_after_leader_cancellation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3195,6 +3368,113 @@ async def test_dify_singleflight_follower_takes_over_after_leader_cancellation(
             release_retrieval.set()
             cache_mod.clear_inflight_chat_responses()
             dify_api._clear_dify_response_cache()
+
+    assert response.status_code == 200, response.text
+    assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_dify_distributed_singleflight_releases_lease_after_leader_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+    calls = 0
+    first_started = threading.Event()
+    second_started = threading.Event()
+    release_retrieval = threading.Event()
+    calls_lock = threading.Lock()
+    fake_redis = _FakeRedis()
+
+    _patch_fake_dify_redis(monkeypatch, dify_api, fake_redis)
+    dify_api._clear_dify_response_cache()
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{dataset_id}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_TTL_SEC", 30, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_MAX_ENTRIES", 32, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC", 75.0, raising=False)
+    monkeypatch.setattr(
+        dify_api,
+        "_resolve_dify_response_cache_corpus_token",
+        lambda **_kwargs: "corpus-v1",
+        raising=True,
+    )
+    monkeypatch.setattr(
+        dify_api,
+        "_acquire_or_wait_for_inflight_response",
+        lambda _key: asyncio.sleep(0, result=(True, None)),
+        raising=True,
+    )
+    monkeypatch.setattr(dify_api, "resolve_inflight_response", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(dify_api, "reject_inflight_response", lambda *_args, **_kwargs: None, raising=True)
+    _patch_demo_policy(monkeypatch, dify_api)
+
+    def _blocking_retrieve_dataset_citations() -> list[dict[str, object]]:
+        nonlocal calls
+        with calls_lock:
+            calls += 1
+            call_number = calls
+        first_started.set()
+        if call_number == 2:
+            second_started.set()
+        if not release_retrieval.wait(timeout=5):
+            raise TimeoutError("test retrieval was not released")
+        return [
+            {
+                "chunk_content": "事项名称：学区划分查询\n咨询方式：0519-69660631",
+                "relevance_score": 0.91,
+                "document_name": "service-rag.txt",
+                "chunk_id": str(uuid.uuid4()),
+                "dataset_id": str(dataset_id),
+                "metadata": {"dataset_id": str(dataset_id), "service_name": "学区划分查询"},
+            }
+        ]
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        return await asyncio.to_thread(_blocking_retrieve_dataset_citations)
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    payload = {
+        "knowledge_id": "city",
+        "query": "学区划分查询咨询电话是多少",
+        "retrieval_setting": {"top_k": 5, "score_threshold": 0.0},
+    }
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        leader = asyncio.create_task(
+            client.post("/api/v1/integrations/dify/retrieval", headers=_auth(token), json=payload)
+        )
+        assert await asyncio.to_thread(first_started.wait, 1)
+        follower = asyncio.create_task(
+            client.post("/api/v1/integrations/dify/retrieval", headers=_auth(token), json=payload)
+        )
+        await asyncio.sleep(0.05)
+        leader.cancel()
+        try:
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(leader, timeout=0.5)
+            assert await asyncio.to_thread(second_started.wait, 1)
+            release_retrieval.set()
+            response = await asyncio.wait_for(follower, timeout=2)
+        finally:
+            release_retrieval.set()
 
     assert response.status_code == 200, response.text
     assert calls == 2

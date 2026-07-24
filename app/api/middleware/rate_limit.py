@@ -224,8 +224,7 @@ class RedisRateLimiter:
             return True, 0.0
 
     async def acheck(self, key: str) -> tuple[bool, float]:
-        await asyncio.sleep(0)
-        return self.check(key)
+        return await asyncio.to_thread(self.check, key)
 
 
 _default_limiter: RateLimiter | RedisRateLimiter | None = None

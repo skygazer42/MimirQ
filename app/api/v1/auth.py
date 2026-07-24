@@ -1,9 +1,11 @@
 """
 Auth endpoints: register, login, me.
 """
+import hashlib
+import hmac
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
@@ -18,6 +20,7 @@ from app.api.schemas.auth import (
 )
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.env import is_production_env
 from app.core.jwt_utils import create_access_token
 from app.services.saml_service import build_saml_sp_metadata_xml, exchange_saml_response
 from app.services.user_service import UserService
@@ -31,11 +34,46 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 }
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+_BOOTSTRAP_TOKEN_HEADER = "X-Bootstrap-Token"
+
+
+def _initial_registration_open(db: Session) -> bool:
+    return UserService.get_default_tenant_member_count(db) == 0
+
+
+def _bootstrap_token_matches(provided_token: str, expected_token: str) -> bool:
+    expected = str(expected_token or "").strip()
+    provided = str(provided_token or "").strip()
+    if not expected or not provided:
+        return False
+    if expected.lower().startswith("sha256:"):
+        digest = expected.split(":", 1)[1].strip().lower()
+        if not digest:
+            return False
+        provided_digest = hashlib.sha256(provided.encode("utf-8", "ignore")).hexdigest()
+        return hmac.compare_digest(provided_digest, digest)
+    return hmac.compare_digest(provided, expected)
+
+
+def _require_initial_registration_token(*, db: Session, bootstrap_token: str | None) -> None:
+    if not is_production_env():
+        return
+    if not _initial_registration_open(db):
+        return
+    expected_token = str(getattr(settings, "INITIAL_REGISTRATION_TOKEN", "") or "").strip()
+    if _bootstrap_token_matches(str(bootstrap_token or ""), expected_token):
+        return
+    raise HTTPException(status_code=403, detail="Initial registration bootstrap token required")
 
 
 @router.post("/register", status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-def register_user(payload: RegisterRequest, db: Annotated[Session, Depends(get_db)]) -> AuthResponse:
+def register_user(
+    payload: RegisterRequest,
+    db: Annotated[Session, Depends(get_db)],
+    bootstrap_token: Annotated[str | None, Header(alias=_BOOTSTRAP_TOKEN_HEADER)] = None,
+) -> AuthResponse:
     """Bootstrap the first tenant owner and return an access token."""
+    _require_initial_registration_token(db=db, bootstrap_token=bootstrap_token)
     user = UserService.create_user(
         db,
         email=payload.email,

@@ -122,6 +122,21 @@ class UserService:
         )
 
     @staticmethod
+    def get_default_tenant_member_count(db: Session) -> int:
+        raw_tenant = str(getattr(settings, "DEFAULT_TENANT_ID", "") or "").strip()
+        if not raw_tenant:
+            raise HTTPException(status_code=500, detail="DEFAULT_TENANT_ID is not configured")
+        try:
+            tenant_id = UUID(raw_tenant)
+        except ValueError as exc:
+            raise HTTPException(status_code=500, detail="DEFAULT_TENANT_ID is invalid") from exc
+        return int(
+            db.query(TenantMember)
+            .filter(TenantMember.tenant_id == tenant_id)
+            .count()
+        )
+
+    @staticmethod
     def mark_login(db: Session, user: User) -> None:
         user.last_login_at = datetime.now(UTC)
         db.add(user)

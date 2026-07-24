@@ -43,6 +43,12 @@ _get_redis_client = _redis_client_slot.get
 _invalidate_redis_client = _redis_client_slot.invalidate
 _inflight_response_futures: dict[str, asyncio.Future[dict[str, Any]]] = {}
 _inflight_response_lock: asyncio.Lock | None = None
+_COMPARE_DELETE_LUA = """
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+  return redis.call("DEL", KEYS[1])
+end
+return 0
+"""
 
 
 class InflightResponseLeaderCancelledError(RuntimeError):
@@ -64,6 +70,96 @@ def _get_inflight_response_lock() -> asyncio.Lock:
 def _hash_doc_scope(document_ids: list[str]) -> str:
     joined = ",".join(sorted(str(d) for d in document_ids if d))
     return hashlib.sha256(joined.encode("utf-8", "ignore")).hexdigest()
+
+
+async def get_best_effort_json_cache_value(key: str) -> Any | None:
+    if not key:
+        return None
+    client = _get_redis_client()
+    if client is None:
+        return None
+    try:
+        raw = await asyncio.to_thread(client.get, key)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Redis cache read failed: %s", str(exc)[:200])
+        _invalidate_redis_client()
+        return None
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+async def set_best_effort_json_cache_value(
+    key: str,
+    payload: Any,
+    *,
+    ttl_sec: int,
+    max_value_bytes: int = 0,
+) -> bool:
+    if not key:
+        return False
+    client = _get_redis_client()
+    if client is None:
+        return False
+    try:
+        raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    except Exception:  # noqa: BLE001
+        return False
+    if max_value_bytes > 0 and len(raw) > max_value_bytes:
+        return False
+    try:
+        if ttl_sec > 0:
+            await asyncio.to_thread(client.set, key, raw, ex=int(ttl_sec))
+        else:
+            await asyncio.to_thread(client.set, key, raw)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Redis cache write failed: %s", str(exc)[:200])
+        _invalidate_redis_client()
+        return False
+
+
+async def try_acquire_best_effort_redis_lease(
+    key: str,
+    *,
+    value: str,
+    ttl_sec: int,
+) -> bool | None:
+    if not key or not value or ttl_sec <= 0:
+        return False
+    client = _get_redis_client()
+    if client is None:
+        return None
+    try:
+        return bool(
+            await asyncio.to_thread(
+                client.set,
+                key,
+                value,
+                ex=max(1, int(ttl_sec)),
+                nx=True,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Redis lease acquire failed: %s", str(exc)[:200])
+        _invalidate_redis_client()
+        return None
+
+
+async def release_best_effort_redis_lease(key: str, *, value: str) -> None:
+    if not key or not value:
+        return
+    client = _get_redis_client()
+    if client is None:
+        return
+    try:
+        await asyncio.to_thread(client.eval, _COMPARE_DELETE_LUA, 1, key, value)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Redis lease release failed: %s", str(exc)[:200])
+        _invalidate_redis_client()
 
 
 def build_chat_cache_key(
