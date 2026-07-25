@@ -115,7 +115,7 @@ class OnlineQualitySummaryResponse(BaseModel):
 
 
 @router.post("/frontend-vitals", status_code=202, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def report_frontend_web_vital(
+def report_frontend_web_vital(
     body: FrontendWebVitalReportRequest,
     http_request: Request,
     *,
@@ -144,7 +144,7 @@ async def report_frontend_web_vital(
 
 
 @router.post("/frontend-traces", status_code=202, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def report_frontend_trace(
+def report_frontend_trace(
     body: FrontendTraceReportRequest,
     http_request: Request,
     *,

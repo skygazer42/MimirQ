@@ -97,7 +97,7 @@ def _read_local_text_source_fallback(
 
 
 @router.get("/{document_id}/parsed-content", response_model=DocumentParsedContentResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def get_document_parsed_content(
+def get_document_parsed_content(
     document_id: uuid.UUID,
     max_chars: Annotated[int, Query(ge=0, le=2000000)] = 200_000,
     *,
@@ -185,7 +185,7 @@ async def get_document_parsed_content(
 
 
 @router.get("/{document_id}/clean-docx", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def download_document_clean_docx(
+def download_document_clean_docx(
     document_id: uuid.UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],

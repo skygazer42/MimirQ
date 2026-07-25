@@ -1,3 +1,4 @@
+import ast
 import json
 import re
 from pathlib import Path
@@ -72,10 +73,93 @@ REQUESTS_GUARD_PATHS = (
 )
 
 FULL_SHA_RE = re.compile(r"@[0-9a-f]{40}(?:\s|$)")
+_FASTAPI_ROUTE_DECORATOR_NAMES = {"get", "post", "put", "delete", "patch", "options", "head", "api_route"}
 
 
 def _read(rel_path: str) -> str:
     return (ROOT / rel_path).read_text(encoding="utf-8")
+
+
+def _decorator_target(decorator: ast.expr) -> ast.expr:
+    return decorator.func if isinstance(decorator, ast.Call) else decorator
+
+
+def _is_fastapi_route(function: ast.AsyncFunctionDef) -> bool:
+    for decorator in function.decorator_list:
+        target = _decorator_target(decorator)
+        if (
+            isinstance(target, ast.Attribute)
+            and target.attr in _FASTAPI_ROUTE_DECORATOR_NAMES
+        ):
+            return True
+    return False
+
+
+def _uses_sync_session_dependency(function: ast.AsyncFunctionDef) -> bool:
+    for arg in (*function.args.args, *function.args.kwonlyargs):
+        if arg.annotation is None:
+            continue
+        annotation = ast.unparse(arg.annotation)
+        if "Session" in annotation and "AsyncSession" not in annotation and "Depends(" in annotation:
+            return True
+    return False
+
+
+def _function_body_has_async_ops(function: ast.AsyncFunctionDef) -> bool:
+    class _Visitor(ast.NodeVisitor):
+        def __init__(self) -> None:
+            self.found = False
+
+        def visit_Await(self, node: ast.Await) -> None:  # noqa: N802
+            self.found = True
+
+        def visit_AsyncFor(self, node: ast.AsyncFor) -> None:  # noqa: N802
+            self.found = True
+
+        def visit_AsyncWith(self, node: ast.AsyncWith) -> None:  # noqa: N802
+            self.found = True
+
+        def visit_Yield(self, node: ast.Yield) -> None:  # noqa: N802
+            self.found = True
+
+        def visit_YieldFrom(self, node: ast.YieldFrom) -> None:  # noqa: N802
+            self.found = True
+
+        def visit_FunctionDef(self, node: ast.FunctionDef) -> None:  # noqa: N802, ARG002
+            return None
+
+        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:  # noqa: N802
+            if node is function:
+                self.generic_visit(node)
+            return None
+
+        def visit_ClassDef(self, node: ast.ClassDef) -> None:  # noqa: N802, ARG002
+            return None
+
+        def visit_Lambda(self, node: ast.Lambda) -> None:  # noqa: N802, ARG002
+            return None
+
+    visitor = _Visitor()
+    visitor.visit(function)
+    return visitor.found
+
+
+def _iter_fake_async_sync_db_routes() -> list[tuple[str, int, str]]:
+    hits: list[tuple[str, int, str]] = []
+    for path in sorted((ROOT / "app").rglob("*.py")):
+        rel_path = str(path.relative_to(ROOT))
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in tree.body:
+            if not isinstance(node, ast.AsyncFunctionDef):
+                continue
+            if not _is_fastapi_route(node):
+                continue
+            if not _uses_sync_session_dependency(node):
+                continue
+            if _function_body_has_async_ops(node):
+                continue
+            hits.append((rel_path, node.lineno, node.name))
+    return hits
 
 
 @pytest.mark.parametrize("rel_path", SILENT_PASS_GUARD_PATHS)
@@ -91,6 +175,14 @@ def test_managed_http_modules_do_not_bypass_shared_clients(rel_path: str) -> Non
 def test_time_context_helpers_do_not_use_naive_datetime_now() -> None:
     assert 'datetime.now().strftime("%Y-%m-%d %H:%M")' not in _read("app/rag/middleware/base.py")
     assert 'datetime.now().strftime("%Y%m%d_%H%M%S")' not in _read("app/deepdoc/parser/tcadp_parser.py")
+
+
+def test_fastapi_sync_db_routes_do_not_run_on_event_loop() -> None:
+    offenders = [
+        f"{rel_path}:{lineno}:{name}"
+        for rel_path, lineno, name in _iter_fake_async_sync_db_routes()
+    ]
+    assert offenders == [], offenders
 
 
 def test_parser_service_dockerfiles_drop_root_after_install() -> None:

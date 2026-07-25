@@ -1022,7 +1022,7 @@ async def preview_chunking(
 
 
 @router.post("/chunk-preview/by-sha", response_model=ChunkPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def preview_chunking_by_sha(
+def preview_chunking_by_sha(
     request: Request,
     response: Response,
     file_fields: Annotated[ChunkPreviewByShaFileFields, Depends()],

@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id_from_headers
+from app.api.dependencies.tenant import _preferred_jwt_tenant_id
 from app.api.schemas.document import (
     DocumentPipelineOptions,
 )
@@ -621,16 +622,34 @@ def _get_tenant_id_from_request_if_provided(request) -> UUID | None:
     return None
 
 
-def _resolve_tenant_id_for_asset_request(request) -> UUID:
+async def _resolve_tenant_id_for_asset_request(
+    request,
+    *,
+    fallback_tenant_id: UUID | None = None,
+    conflict_detail: str = "Asset access denied for this tenant",
+) -> UUID:
     """
     Resolve tenant id for asset endpoints.
 
     Priority:
-    1) TENANT_HEADER (default: X-Tenant-ID)
-    2) ?tenant_id=... query param (or aliases)
-    3) settings.DEFAULT_TENANT_ID in non-production
+    1) Verified JWT tenant claim (when configured)
+    2) TENANT_HEADER (default: X-Tenant-ID)
+    3) ?tenant_id=... query param (or aliases)
+    4) settings.DEFAULT_TENANT_ID in non-production
     """
     provided = _get_tenant_id_from_request_if_provided(request)
+    preferred = await _preferred_jwt_tenant_id(request)
+    if preferred is not None:
+        for candidate in (provided, fallback_tenant_id):
+            if candidate is not None and candidate != preferred:
+                raise HTTPException(status_code=403, detail=conflict_detail)
+        return preferred
+
+    if fallback_tenant_id is not None:
+        if provided is not None and provided != fallback_tenant_id:
+            raise HTTPException(status_code=403, detail=conflict_detail)
+        return fallback_tenant_id
+
     if provided is not None:
         return provided
 
@@ -1567,6 +1586,41 @@ def _unlink_ingest_temp(path: Path) -> None:
         path.unlink(missing_ok=True)
 
 
+DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL = "Document processing queue unavailable"
+
+
+def _task_queue_required() -> bool:
+    return bool(getattr(settings, "TASK_QUEUE_ENABLED", False))
+
+
+def _mark_document_processing_schedule_failed(*, db: Session, db_document: DBDocument) -> None:
+    meta = dict(getattr(db_document, "doc_metadata", None) or {})
+    meta.pop("task_id", None)
+    meta.pop("kg_task_id", None)
+    db_document.doc_metadata = meta
+    db_document.status = "failed"
+    db_document.current_stage = "failed"
+    db_document.error_message = "document_processing_schedule_failed"
+    try:
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        with contextlib.suppress(Exception):
+            db.rollback()
+        logger.error("Failed to mark unscheduled document as failed: %s", str(exc)[:200])
+
+
+def _raise_document_processing_queue_unavailable(
+    *,
+    db: Session,
+    db_document: DBDocument,
+    exc: Exception | None = None,
+) -> None:
+    _mark_document_processing_schedule_failed(db=db, db_document=db_document)
+    if exc is not None:
+        raise HTTPException(status_code=503, detail=DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL) from exc
+    raise HTTPException(status_code=503, detail=DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL)
+
+
 async def _store_ingested_source(
     *,
     file_path: Path,
@@ -1725,6 +1779,7 @@ async def _schedule_document_processing(
 ) -> bool:
     job_id = f"doc:{tenant_id}:{document_id}:{pipeline_hash}"
     object_backed = is_minio_uri(str(getattr(db_document, "file_path", "") or ""))
+    queue_required = _task_queue_required()
     task_id = None
     try:
         task_id = await enqueue_document_processing(
@@ -1734,6 +1789,9 @@ async def _schedule_document_processing(
             job_id=job_id,
         )
     except Exception as exc:  # noqa: BLE001
+        if queue_required:
+            logger.error("Document queue unavailable while handoff is required: %s", str(exc)[:200])
+            _raise_document_processing_queue_unavailable(db=db, db_document=db_document, exc=exc)
         logger.warning("Document queue unavailable; using local processing fallback: %s", str(exc)[:200])
     if task_id:
         try:
@@ -1747,6 +1805,10 @@ async def _schedule_document_processing(
                 db.rollback()
             logger.warning("Document task queued but task metadata refresh failed: %s", str(exc)[:200])
         return not object_backed
+
+    if queue_required:
+        logger.error("Document queue returned no task id while handoff is required")
+        _raise_document_processing_queue_unavailable(db=db, db_document=db_document)
 
     if background_tasks is not None:
         try:
@@ -1769,15 +1831,7 @@ async def _schedule_document_processing(
                     chunk_strategy,
                 )
         except Exception as exc:
-            db_document.status = "failed"
-            db_document.current_stage = "failed"
-            db_document.error_message = "document_processing_schedule_failed"
-            try:
-                db.commit()
-            except Exception as mark_exc:  # noqa: BLE001
-                with contextlib.suppress(Exception):
-                    db.rollback()
-                logger.error("Failed to mark unscheduled document as failed: %s", str(mark_exc)[:200])
+            _mark_document_processing_schedule_failed(db=db, db_document=db_document)
             logger.error("Failed to register document background task: %s", str(exc)[:200])
             raise
         return True

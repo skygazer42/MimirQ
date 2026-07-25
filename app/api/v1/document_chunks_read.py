@@ -31,7 +31,7 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 @router.get("/{document_id}/chunks", response_model=DocumentChunkList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def list_document_chunks(
+def list_document_chunks(
     document_id: uuid.UUID,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=2000)] = 500,
@@ -94,7 +94,7 @@ async def list_document_chunks(
 
 
 @router.get("/{document_id}/chunks/matches", response_model=DocumentChunkMatchList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def list_document_chunk_matches(
+def list_document_chunk_matches(
     document_id: uuid.UUID,
     q: Annotated[str, Query(..., max_length=200, description="Case-insensitive substring match against chunk content")],
     limit: Annotated[int, Query(ge=1, le=5000, description="Max returned matches (may be truncated)")] = 2000,
@@ -178,7 +178,7 @@ async def list_document_chunk_matches(
 
 
 @router.get("/{document_id}/chunks/{chunk_id}", response_model=DocumentChunkSchema, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def get_document_chunk(
+def get_document_chunk(
     document_id: uuid.UUID,
     chunk_id: uuid.UUID,
     *,

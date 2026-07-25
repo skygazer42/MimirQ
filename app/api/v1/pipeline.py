@@ -2473,7 +2473,7 @@ async def _import_plugin_golden_draft_bundle(
     response_model=PipelinePluginGoldenDraftResponse,
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-async def build_pipeline_plugin_golden_draft(
+def build_pipeline_plugin_golden_draft(
     payload: PipelinePluginGoldenDraftRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -2567,7 +2567,7 @@ async def import_pipeline_plugin_golden_draft(
 
 
 @router.get("/capabilities", response_model=PipelineCapabilitiesResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def get_pipeline_capabilities(
+def get_pipeline_capabilities(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -2598,7 +2598,7 @@ async def get_pipeline_capabilities(
 
 
 @router.get("/governance-profiles", response_model=GovernanceProfileListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def list_governance_profiles(
+def list_governance_profiles(
     q: str | None = None,
     include_builtin: bool = True,
     limit: int = 200,
@@ -2688,7 +2688,7 @@ async def list_builtin_processing_scripts_endpoint(
 
 
 @router.post("/governance-profiles", response_model=GovernanceProfileOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def create_governance_profile(
+def create_governance_profile(
     body: GovernanceProfileCreate,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -2737,7 +2737,7 @@ async def create_governance_profile(
 
 
 @router.get("/governance-profiles/{profile_ref}", response_model=GovernanceProfileOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def get_governance_profile(
+def get_governance_profile(
     profile_ref: str,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -2749,7 +2749,7 @@ async def get_governance_profile(
 
 
 @router.get("/governance-profiles/{profile_ref}/resolved", response_model=GovernanceProfileResolvedResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def get_governance_profile_resolved(
+def get_governance_profile_resolved(
     profile_ref: str,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -2769,7 +2769,7 @@ async def get_governance_profile_resolved(
 
 
 @router.patch("/governance-profiles/{profile_ref}", response_model=GovernanceProfileOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def update_governance_profile(
+def update_governance_profile(
     profile_ref: str,
     body: GovernanceProfileUpdate,
     *,
@@ -2806,7 +2806,7 @@ async def update_governance_profile(
 
 
 @router.delete("/governance-profiles/{profile_ref}", status_code=204, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def delete_governance_profile(
+def delete_governance_profile(
     profile_ref: str,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -2861,7 +2861,7 @@ async def import_governance_profiles(
 
 
 @router.get("/governance-profiles/{profile_ref}/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def export_governance_profile(
+def export_governance_profile(
     profile_ref: str,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -2891,7 +2891,7 @@ async def export_governance_profile(
 
 
 @router.get("/governance-profiles/{profile_ref}/export-ingestion-policy", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def export_governance_profile_ingestion_policy(
+def export_governance_profile_ingestion_policy(
     profile_ref: str,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -3334,7 +3334,7 @@ async def ingestion_preview(
 
 
 @router.post("/chunk-preview", response_model=PipelineChunkPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def chunk_preview(
+def chunk_preview(
     body: PipelineChunkPreviewRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -3355,7 +3355,7 @@ async def chunk_preview(
     response_model_exclude_none=True,
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-async def clean_preview(
+def clean_preview(
     body: CleanPreviewRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -3446,7 +3446,7 @@ async def clean_preview(
 
 
 @router.post("/learn-common-lines", response_model=GovernanceCommonLinesLearnResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def learn_common_lines(
+def learn_common_lines(
     body: GovernanceCommonLinesLearnRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -3510,7 +3510,7 @@ async def learn_common_lines(
     response_model_exclude_none=True,
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-async def governance_analyze(
+def governance_analyze(
     body: GovernanceAnalyzeRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -3537,7 +3537,7 @@ async def governance_analyze(
 
 
 @router.get("/clean-rules", response_model=CleanRulesResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def list_clean_rules(
+def list_clean_rules(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -3553,7 +3553,7 @@ async def list_clean_rules(
 
 
 @router.post("/extract-keywords", response_model=KeywordExtractResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def extract_keywords(
+def extract_keywords(
     body: KeywordExtractRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],

@@ -51,6 +51,109 @@ def test_delete_chunk_indexes_ignores_invalid_dataset_scoped_embedding_cleanup(
     service.delete_chunk_indexes(tenant_id=uuid4(), document_id=uuid4(), strict=True)
 
 
+def test_delete_chunk_indexes_invalidates_scope_after_partial_backend_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import indexer
+
+    def _fail_scoped_delete(*_args, **_kwargs) -> None:  # noqa: ANN002, ANN003
+        raise RuntimeError("vector backend unavailable")
+
+    class _VectorStore:
+        def delete_by_document_id(self, *_args, **_kwargs) -> None:  # noqa: ANN002, ANN003
+            return None
+
+    flushed: list[bool] = []
+    touched: list[tuple] = []
+    monkeypatch.setattr(indexer.Indexer, "_delete_dataset_scoped_chunk_vectors", _fail_scoped_delete)
+    monkeypatch.setattr(indexer, "get_vector_store", lambda: _VectorStore())
+    monkeypatch.setattr(
+        type(indexer.hybrid_retriever),
+        "remove_document_from_bm25_index",
+        lambda *_a, **_k: None,
+    )
+    monkeypatch.setattr(
+        indexer.Indexer,
+        "_touch_chunk_retrieval_scope",
+        lambda _self, **kwargs: touched.append((kwargs["tenant_id"], kwargs["document_id"])),
+    )
+    service = object.__new__(indexer.Indexer)
+    service._db = SimpleNamespace(flush=lambda: flushed.append(True))
+    tenant_id = uuid4()
+    document_id = uuid4()
+
+    service.delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
+
+    assert touched == [(tenant_id, document_id)]
+    assert flushed == [True]
+
+
+def test_touch_chunk_retrieval_scope_updates_document_and_dataset_timestamps() -> None:
+    from app.services import indexer
+
+    tenant_id = uuid4()
+    document_id = uuid4()
+    dataset_id = uuid4()
+    document = SimpleNamespace(dataset_id=dataset_id, updated_at=None)
+    dataset = SimpleNamespace(updated_at=None)
+
+    class _Query:
+        def __init__(self, row) -> None:  # noqa: ANN001
+            self._row = row
+
+        def filter(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
+            return self
+
+        def first(self):
+            return self._row
+
+    class _DB:
+        def query(self, model):  # noqa: ANN001
+            if model is indexer.DBDocument:
+                return _Query(document)
+            if model is indexer.DBDataset:
+                return _Query(dataset)
+            raise AssertionError(f"unexpected model: {model}")
+
+    service = object.__new__(indexer.Indexer)
+    service._db = _DB()
+
+    service._touch_chunk_retrieval_scope(tenant_id=tenant_id, document_id=document_id)
+
+    assert document.updated_at is not None
+    assert dataset.updated_at == document.updated_at
+
+
+def test_persist_document_chunks_touches_retrieval_scope_before_commit() -> None:
+    from app.services import indexer
+    from app.types.indexing import ChunkInput
+
+    events: list[str] = []
+
+    class _DB:
+        def add_all(self, _items) -> None:  # noqa: ANN001
+            events.append("add")
+
+        def flush(self) -> None:
+            events.append("flush")
+
+        def commit(self) -> None:
+            events.append("commit")
+
+    service = object.__new__(indexer.Indexer)
+    service._db = _DB()
+    service._touch_chunk_retrieval_scope = lambda **_kwargs: events.append("touch")  # type: ignore[method-assign]
+
+    service._persist_document_chunks(
+        document_id=uuid4(),
+        tenant_id=uuid4(),
+        dataset_id=uuid4(),
+        chunks=[ChunkInput(content="content", metadata={})],
+    )
+
+    assert events == ["add", "touch", "flush", "commit"]
+
+
 def test_non_milvus_delete_skips_legacy_dataset_embedding_config(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.services import indexer
 

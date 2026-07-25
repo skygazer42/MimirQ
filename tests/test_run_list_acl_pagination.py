@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import BinaryExpression, BooleanClauseList
 
 import app.api.v1.connectors  # noqa: F401
+from app.api.v1 import connectors_configs as connectors_configs_module
 from app.api.v1 import connectors_runs as connectors_runs_module
 from app.api.v1 import ingestion_runs as ingestion_runs_module
 
@@ -29,6 +30,16 @@ class _FakeRun:
     started_at: datetime | None = None
     finished_at: datetime | None = None
     connector_id: str = "url_batch"
+
+
+@dataclass
+class _FakeConfig:
+    id: UUID
+    tenant_id: UUID
+    dataset_id: UUID
+    created_at: datetime
+    connector_id: str = "url_batch"
+    enabled: bool = True
 
 
 class _FakeQuery:
@@ -215,6 +226,48 @@ def test_list_connector_runs_applies_acl_before_count_and_pagination(monkeypatch
 
     assert response["total"] == 2
     assert [item["id"] for item in response["items"]] == [runs[2].id, runs[3].id]
+    assert calls == {"get_dataset": 0, "assert_dataset_writable": 0}
+
+
+def test_list_connector_configs_applies_acl_before_count_and_pagination(monkeypatch: pytest.MonkeyPatch) -> None:
+    tenant_id, runs, allowed_dataset_ids = _build_runs()
+    configs = [
+        _FakeConfig(id=run.id, tenant_id=run.tenant_id, dataset_id=run.dataset_id, created_at=run.created_at)
+        for run in runs
+        if run.dataset_id is not None
+    ]
+    db = _FakeSession(query=_FakeQuery(runs=configs))
+    calls = _install_acl_guards(
+        monkeypatch,
+        dataset_service=connectors_configs_module.connectors_module.DatasetService,
+        allowed_dataset_ids=allowed_dataset_ids,
+    )
+    monkeypatch.setattr(
+        connectors_configs_module,
+        "_writable_dataset_ids_subquery",
+        lambda **_kwargs: list(allowed_dataset_ids),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        connectors_configs_module.connectors_module,
+        "_config_out",
+        lambda cfg: {"id": cfg.id, "dataset_id": cfg.dataset_id},
+        raising=True,
+    )
+
+    response = connectors_configs_module.list_connector_configs(
+        skip=0,
+        limit=2,
+        dataset_id=None,
+        connector_id=None,
+        enabled=None,
+        tenant_id=tenant_id,
+        account_id="member-1",
+        db=db,
+    )
+
+    assert response["total"] == 2
+    assert [item["id"] for item in response["items"]] == [configs[2].id, configs[3].id]
     assert calls == {"get_dataset": 0, "assert_dataset_writable": 0}
 
 

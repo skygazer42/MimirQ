@@ -50,12 +50,17 @@ function setInputValue(input: HTMLInputElement | null, value: string) {
   })
 }
 
-function clickButtonByText(container: HTMLElement, text: string) {
+function findButtonByText(container: HTMLElement, text: string) {
   const button = Array.from(container.querySelectorAll('button')).find((candidate) =>
     candidate.textContent?.includes(text)
   )
   expect(button).not.toBeUndefined()
-  act(() => button?.dispatchEvent(new MouseEvent('click', { bubbles: true })))
+  return button as HTMLButtonElement
+}
+
+function clickButtonByText(container: HTMLElement, text: string) {
+  const button = findButtonByText(container, text)
+  act(() => button.dispatchEvent(new MouseEvent('click', { bubbles: true })))
 }
 
 async function submitForm(container: HTMLElement) {
@@ -148,6 +153,29 @@ describe('auth page registration', () => {
     await vi.waitFor(() => {
       expect(container.textContent).toContain('首次 owner 注册需要 bootstrap token。请填写部署时配置的 bootstrap token 后重试。')
     })
+
+    act(() => root.unmount())
+  })
+
+  it('announces the active auth mode through pressed button state', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    act(() => {
+      root.render(<AuthPage />)
+    })
+
+    const loginButton = findButtonByText(container, '登录')
+    const registerButton = findButtonByText(container, '首次设置')
+
+    expect(loginButton.getAttribute('aria-pressed')).toBe('true')
+    expect(registerButton.getAttribute('aria-pressed')).toBe('false')
+
+    clickButtonByText(container, '首次设置')
+
+    expect(loginButton.getAttribute('aria-pressed')).toBe('false')
+    expect(registerButton.getAttribute('aria-pressed')).toBe('true')
 
     act(() => root.unmount())
   })

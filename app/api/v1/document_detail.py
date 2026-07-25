@@ -31,7 +31,7 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 @router.get("/{document_id}", response_model=DocumentDetail, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def get_document(
+def get_document(
     document_id: uuid.UUID,
     include_chunks: bool = False,
     pipeline_hash: Annotated[

@@ -40,7 +40,7 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 @router.get("/{document_id}/health", response_model=DocumentHealthCard, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def get_document_health_card(
+def get_document_health_card(
     document_id: uuid.UUID,
     window_minutes: Annotated[int, Query(ge=1, le=60 * 24 * 30, description="Metrics lookback window (minutes)")] = 60,
     max_bytes: Annotated[int, Query(ge=1, le=50_000_000, description="Max bytes to read from metrics JSONL tail")] = 5_000_000,

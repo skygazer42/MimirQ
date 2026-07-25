@@ -398,7 +398,7 @@ class ImageSearchResponse(BaseModel):
 
 
 @router.post("/document-structure", response_model=dict[str, Any], responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def document_structure_preview(
+def document_structure_preview(
     body: DocumentStructureRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -800,7 +800,7 @@ async def tree_search_preview(
 
 
 @router.post("/image-index", response_model=ImageIndexResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def index_image_embeddings(
+def index_image_embeddings(
     body: ImageIndexRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],

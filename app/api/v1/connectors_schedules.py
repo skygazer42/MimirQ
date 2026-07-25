@@ -5,11 +5,17 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.v1 import connectors as connectors_module
+from app.api.v1.connectors_runs import (
+    CONNECTOR_QUEUE_HANDOFF_FAILED_ERROR,
+    _create_pending_connector_run,
+    _enqueue_or_schedule_connector_run,
+)
 from app.core.database import get_db
 from app.models.connector import ConnectorRun
 from app.models.connector_config import ConnectorConfig
@@ -74,21 +80,37 @@ def _scheduled_run_config(cfg: ConnectorConfig, connector_id: str) -> dict:
     return run_cfg
 
 
-def _create_scheduled_run(ctx: _ScheduledTickContext, cfg: ConnectorConfig, connector_id: str) -> ConnectorRun:
-    run = ConnectorRun(
-        tenant_id=ctx.tenant_id,
-        dataset_id=cfg.dataset_id,
-        connector_id=connector_id,
-        requested_by=ctx.account_id,
-        status="pending",
-        config=_scheduled_run_config(cfg, connector_id),
-        stats={"config_id": str(cfg.id), "scheduled": True},
+def _claim_scheduled_config_window(ctx: _ScheduledTickContext, cfg: ConnectorConfig) -> bool:
+    where = [
+        ConnectorConfig.id == cfg.id,
+        ConnectorConfig.tenant_id == ctx.tenant_id,
+        ConnectorConfig.enabled.is_(True),
+    ]
+    if cfg.last_run_at is None:
+        where.append(ConnectorConfig.last_run_at.is_(None))
+    else:
+        where.append(ConnectorConfig.last_run_at == cfg.last_run_at)
+
+    result = ctx.db.execute(
+        update(ConnectorConfig)
+        .where(*where)
+        .values(last_run_at=ctx.now, last_error=None)
     )
-    ctx.db.add(run)
-    cfg.last_run_at = ctx.now  # type: ignore[assignment]
-    cfg.last_error = None  # type: ignore[assignment]
-    ctx.db.commit()
-    ctx.db.refresh(run)
+    return bool(getattr(result, "rowcount", 0))
+
+
+def _create_scheduled_run(ctx: _ScheduledTickContext, cfg: ConnectorConfig, connector_id: str) -> ConnectorRun:
+    run = _create_pending_connector_run(
+        ctx.db,
+        values={
+            "tenant_id": ctx.tenant_id,
+            "dataset_id": cfg.dataset_id,
+            "connector_id": connector_id,
+            "requested_by": ctx.account_id,
+            "config": _scheduled_run_config(cfg, connector_id),
+            "stats": {"config_id": str(cfg.id), "scheduled": True},
+        },
+    )
     return run
 
 
@@ -104,33 +126,40 @@ def _mark_scheduled_run_failed(ctx: _ScheduledTickContext, cfg: ConnectorConfig,
     run.status = "failed"
     run.error_message = error
     run.finished_at = ctx.now
+    cfg.last_run_at = ctx.now  # type: ignore[assignment]
     cfg.last_error = error  # type: ignore[assignment]
     ctx.db.commit()
 
 
-def _enqueue_scheduled_connector(ctx: _ScheduledTickContext, connector_id: str, run: ConnectorRun) -> bool:
-    task_map = {
-        "url_batch": connectors_module._execute_url_batch_run,
-        "web_crawl": connectors_module._execute_web_crawl_run,
-        "github_repo": connectors_module._execute_github_repo_run,
-        "drive_files": connectors_module._execute_drive_files_run,
-        "minio_bucket": connectors_module._execute_minio_bucket_run,
-        "confluence_space": connectors_module._execute_confluence_space_run,
-        "jira_project": connectors_module._execute_jira_project_run,
-        "mysql_catalog": connectors_module._execute_db_catalog_run,
-        "sqlserver_catalog": connectors_module._execute_db_catalog_run,
-    }
-    task = task_map.get(connector_id)
-    if task is None:
-        return False
-    ctx.background_tasks.add_task(task, run_id=run.id, tenant_id=ctx.tenant_id, requested_by=ctx.account_id)
-    return True
+def _release_scheduled_config_window(
+    ctx: _ScheduledTickContext,
+    cfg: ConnectorConfig,
+    *,
+    previous_last_run_at: datetime | None,
+    error: str,
+) -> None:
+    result = ctx.db.execute(
+        update(ConnectorConfig)
+        .where(
+            ConnectorConfig.id == cfg.id,
+            ConnectorConfig.tenant_id == ctx.tenant_id,
+            ConnectorConfig.last_run_at == ctx.now,
+        )
+        .values(last_run_at=previous_last_run_at, last_error=error)
+    )
+    if getattr(result, "rowcount", 0):
+        cfg.last_run_at = previous_last_run_at  # type: ignore[assignment]
+        cfg.last_error = error  # type: ignore[assignment]
+    ctx.db.commit()
 
 
-def _process_scheduled_config(ctx: _ScheduledTickContext, cfg: ConnectorConfig) -> str:
+async def _process_scheduled_config(ctx: _ScheduledTickContext, cfg: ConnectorConfig) -> str:
     if not _is_scheduled_config_due(cfg, now=ctx.now):
         return "skipped"
     if not _config_dataset_is_writable(ctx, cfg):
+        return "skipped"
+    previous_last_run_at = cfg.last_run_at
+    if not _claim_scheduled_config_window(ctx, cfg):
         return "skipped"
 
     connector_id = str(cfg.connector_id or "").strip()
@@ -138,8 +167,30 @@ def _process_scheduled_config(ctx: _ScheduledTickContext, cfg: ConnectorConfig) 
     if disabled_error := _disabled_connector_error(connector_id):
         _mark_scheduled_run_failed(ctx, cfg, run, disabled_error)
         return "enqueued"
-    if not _enqueue_scheduled_connector(ctx, connector_id, run):
-        _mark_scheduled_run_failed(ctx, cfg, run, "unsupported_connector_id")
+    try:
+        await _enqueue_or_schedule_connector_run(
+            ctx.db,
+            background_tasks=ctx.background_tasks,
+            run=run,
+            tenant_id=ctx.tenant_id,
+            requested_by=ctx.account_id,
+        )
+    except HTTPException as exc:
+        if exc.status_code == 503:
+            _release_scheduled_config_window(
+                ctx,
+                cfg,
+                previous_last_run_at=previous_last_run_at,
+                error=CONNECTOR_QUEUE_HANDOFF_FAILED_ERROR,
+            )
+            raise
+        if exc.status_code == 400:
+            _mark_scheduled_run_failed(ctx, cfg, run, "unsupported_connector_id")
+        else:
+            raise
+    else:
+        cfg.last_run_at = ctx.now  # type: ignore[assignment]
+        cfg.last_error = None  # type: ignore[assignment]
     return "enqueued"
 
 
@@ -171,7 +222,7 @@ async def scheduled_tick(
     enqueued = 0
     skipped = 0
     for cfg in rows:
-        result = _process_scheduled_config(ctx, cfg)
+        result = await _process_scheduled_config(ctx, cfg)
         if result == "enqueued":
             enqueued += 1
         else:

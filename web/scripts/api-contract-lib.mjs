@@ -116,7 +116,7 @@ function parseRouterIncludes(pyText) {
   }
 
   const routesExtendRe =
-    /router\.routes\.extend\(\s*([A-Za-z_][A-Za-z0-9_]*)\.router\.routes\s*\)/g
+    /_?router\.routes\.extend\(\s*([A-Za-z_][A-Za-z0-9_]*)\.router\.routes\s*\)/g
   while ((m = routesExtendRe.exec(pyText))) {
     includes.push({ mod: m[1], prefix: '' })
   }
@@ -125,7 +125,7 @@ function parseRouterIncludes(pyText) {
 
 function parseRouterSelfPrefix(pyText) {
   const constants = parsePythonStringConstants(pyText)
-  const re = /router\s*=\s*APIRouter\(([\s\S]*?)\)/m
+  const re = /_?router\s*=\s*APIRouter\(([\s\S]*?)\)/m
   const match = re.exec(pyText)
   const args = match ? match[1] || '' : ''
   if (!args) return ''

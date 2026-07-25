@@ -16,7 +16,7 @@ from app.api.schemas.document import DocumentStatus
 from app.core.database import get_db
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
-from app.models.document import DocumentChunk, DocumentParsedContent
+from app.models.document import DocumentChunk
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -48,7 +48,7 @@ def _document_status_payload(document: DBDocument) -> dict:
 
 
 @router.get("/{document_id}/status", response_model=DocumentStatus, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def get_document_status(
+def get_document_status(
     document_id: uuid.UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -176,7 +176,7 @@ async def retry_document_processing(
     Retry a failed/cancelled document processing task.
 
     Notes:
-    - This will delete existing chunks (DB) and indexes (vector/BM25/KG) before reprocessing.
+    - Existing chunks and indexes are cleaned by the accepted worker before reprocessing.
     - Use `force=true` to allow retrying completed documents.
     """
     documents_module = _documents_module()
@@ -319,15 +319,6 @@ async def retry_document_processing(
     meta.pop("cancel_requested", None)
     meta.pop("task_id", None)
     meta.pop("kg_task_id", None)
-    if force:
-        meta.pop("ingest_checkpoint", None)
-        meta.pop("parsed_content_persisted", None)
-        with contextlib.suppress(Exception):
-            db.query(DocumentParsedContent).filter(
-                DocumentParsedContent.document_id == document_id,
-                DocumentParsedContent.tenant_id == tenant_id,
-            ).delete(synchronize_session=False)
-
     active_pipeline_hash = str(meta.get("active_pipeline_hash") or meta.get("pipeline_hash") or "").strip()
     if "active_pipeline_ready" not in meta:
         meta["active_pipeline_ready"] = bool(str(document.status or "").lower() == "completed")
@@ -339,53 +330,15 @@ async def retry_document_processing(
         meta["active_pipeline_hash"] = active_pipeline_hash
 
     preserve_existing_versions = bool(meta.get("active_pipeline_ready")) and pipeline_hash != active_pipeline_hash
-
-    cleanup_chunk_ids: list[UUID] = []
+    retry_cleanup = {
+        "version": "1",
+        "force": bool(force),
+        "pipeline_hash": pipeline_hash,
+        "scope": "pipeline" if preserve_existing_versions else "document",
+    }
     if preserve_existing_versions:
-        target_key = f"{document_id}:{pipeline_hash}"
-
-        with contextlib.suppress(Exception):
-            rows = (
-                db.query(DocumentChunk.id)
-                .filter(
-                    DocumentChunk.document_id == document_id,
-                    DocumentChunk.tenant_id == tenant_id,
-                    DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
-                )
-                .all()
-            )
-            cleanup_chunk_ids = [chunk_id for (chunk_id,) in rows if isinstance(chunk_id, UUID)]
-
-        with contextlib.suppress(Exception):
-            from app.storage.vector.factory import get_vector_store
-
-            get_vector_store().delete_by_document_id_and_filter(
-                document_id=document_id,
-                tenant_id=tenant_id,
-                metadata_filter={"doc_pipeline_key": {"$eq": target_key}},
-            )
-        with contextlib.suppress(Exception):
-            from app.rag.retriever import hybrid_retriever
-
-            hybrid_retriever.remove_from_bm25_index_by_metadata_filter(
-                tenant_id=tenant_id,
-                metadata_filter={"doc_pipeline_key": {"$eq": target_key}},
-            )
-        with contextlib.suppress(Exception):
-            db.query(DocumentChunk).filter(
-                DocumentChunk.document_id == document_id,
-                DocumentChunk.tenant_id == tenant_id,
-                DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
-            ).delete(synchronize_session=False)
-    else:
-        with contextlib.suppress(Exception):
-            documents_module.Indexer(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
-        with contextlib.suppress(Exception):
-            db.query(DocumentChunk).filter(
-                DocumentChunk.document_id == document_id,
-                DocumentChunk.tenant_id == tenant_id,
-            ).delete(synchronize_session=False)
-        meta.pop("img_ids", None)
+        retry_cleanup["doc_pipeline_key"] = f"{document_id}:{pipeline_hash}"
+    meta["retry_cleanup"] = retry_cleanup
 
     document.doc_metadata = meta
     document.status = "pending"
@@ -395,59 +348,27 @@ async def retry_document_processing(
     document.error_code = None
     document.next_retry_at = None
     document.error_message = None
-    if not preserve_existing_versions:
-        document.chunk_count = 0
-        document.total_characters = 0
     db.commit()
     db.refresh(document)
 
-    if preserve_existing_versions and cleanup_chunk_ids:
-        try:
-            from app.rag.kg.models import KgRelation
-
-            db.query(KgRelation).filter(
-                KgRelation.tenant_id == tenant_id,
-                KgRelation.chunk_id.in_(cleanup_chunk_ids),
-            ).delete(synchronize_session=False)
-
-            documents_module.Indexer(db).delete_event_indexes_for_chunks(
-                tenant_id=tenant_id,
-                chunk_ids=cleanup_chunk_ids,
-                commit=False,
-                prune_orphan_entities=True,
-            )
-            db.commit()
-        except Exception:
-            with contextlib.suppress(Exception):
-                db.rollback()
-
-    if not preserve_existing_versions:
-        try:
-            from app.rag.kg.models import KgRelation
-
-            db.query(KgRelation).filter(
-                KgRelation.tenant_id == tenant_id,
-                KgRelation.document_id == document_id,
-            ).delete(synchronize_session=False)
-
-            documents_module.Indexer(db).delete_event_indexes(
-                tenant_id=tenant_id,
-                document_id=document_id,
-                commit=False,
-                prune_orphan_entities=True,
-            )
-            db.commit()
-        except Exception:
-            with contextlib.suppress(Exception):
-                db.rollback()
-
     job_id = f"doc:{tenant_id}:{document_id}:{pipeline_hash}"
-    task_id = await documents_module.enqueue_document_processing(
-        tenant_id=tenant_id,
-        document_id=document_id,
-        requested_by=account_id,
-        job_id=job_id,
-    )
+    task_id = None
+    try:
+        task_id = await documents_module.enqueue_document_processing(
+            tenant_id=tenant_id,
+            document_id=document_id,
+            requested_by=account_id,
+            job_id=job_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        if documents_module._task_queue_required():
+            documents_module.logger.error(
+                "Document queue unavailable while retry handoff is required for document %s: %s",
+                document_id,
+                str(exc)[:200],
+            )
+            documents_module._raise_document_processing_queue_unavailable(db=db, db_document=document, exc=exc)
+        raise
     if task_id:
         meta = dict(document.doc_metadata or {})
         meta["task_id"] = task_id
@@ -455,6 +376,12 @@ async def retry_document_processing(
         db.commit()
         db.refresh(document)
     else:
+        if documents_module._task_queue_required():
+            documents_module.logger.error(
+                "Document queue returned no task id while retry handoff is required for document %s",
+                document_id,
+            )
+            documents_module._raise_document_processing_queue_unavailable(db=db, db_document=document)
         if file_path is not None:
             background_tasks.add_task(
                 documents_module.run_document_processing_limited,

@@ -59,7 +59,7 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
     status_code=201,
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-async def create_conversation(
+def create_conversation(
     request: ConversationCreate,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -115,7 +115,7 @@ async def create_conversation(
     response_model=ConversationSchema,
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-async def update_conversation(
+def update_conversation(
     conversation_id: UUID,
     payload: ConversationUpdate,
     *,
@@ -170,7 +170,7 @@ async def update_conversation(
 
 
 @router.get("/conversations", response_model=ConversationList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def list_conversations(
+def list_conversations(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 20,
     *,
@@ -331,7 +331,7 @@ async def list_conversations(
 
 
 @router.get("/conversations/{conversation_id}/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def export_conversation(
+def export_conversation(
     conversation_id: UUID,
     fmt: Annotated[str, Query(pattern="^(markdown|json)$")] = "markdown",
     include_citations: Annotated[bool, Query()] = True,
@@ -448,7 +448,7 @@ async def export_conversation(
     response_model=ConversationDetail,
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-async def get_conversation_messages(
+def get_conversation_messages(
     conversation_id: UUID,
     limit: Annotated[int | None, Query(ge=1, le=500)] = None,
     before: Annotated[UUID | None, Query()] = None,
@@ -532,7 +532,7 @@ async def get_conversation_messages(
     status_code=204,
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-async def delete_conversation(
+def delete_conversation(
     conversation_id: UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],

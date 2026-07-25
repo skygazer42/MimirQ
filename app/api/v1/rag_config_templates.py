@@ -77,7 +77,7 @@ def _derive_template_key(name: str) -> str:
 
 
 @router.post("", response_model=RagConfigTemplateOut, status_code=status.HTTP_201_CREATED, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def create_rag_config_template(
+def create_rag_config_template(
     request: RagConfigTemplateCreate,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -116,7 +116,7 @@ async def create_rag_config_template(
 
 
 @router.get("", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def list_rag_config_templates(
+def list_rag_config_templates(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     template_key: str | None = None,
@@ -154,7 +154,7 @@ async def list_rag_config_templates(
 
 
 @router.get("/{template_id}", response_model=RagConfigTemplateOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def get_rag_config_template(
+def get_rag_config_template(
     template_id: UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -175,7 +175,7 @@ async def get_rag_config_template(
 
 
 @router.patch("/{template_id}", response_model=RagConfigTemplateOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def update_rag_config_template(
+def update_rag_config_template(
     template_id: UUID,
     request: RagConfigTemplateUpdate,
     *,
@@ -221,7 +221,7 @@ async def update_rag_config_template(
 
 
 @router.post("/{template_id}/versions", response_model=RagConfigTemplateOut, status_code=status.HTTP_201_CREATED, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def create_rag_config_template_version(
+def create_rag_config_template_version(
     template_id: UUID,
     request: RagConfigTemplateNewVersion,
     *,

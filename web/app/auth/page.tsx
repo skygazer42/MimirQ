@@ -216,6 +216,7 @@ export default function AuthPage() {
                     <div className="flex p-1 bg-background/40 rounded-xl mb-8 border border-border/50">
                         <button
                             type="button"
+                            aria-pressed={mode === 'login'}
                             className={cn(
                                 "focus-ring flex-1 py-2 text-sm font-medium rounded-lg transition-colors duration-200 motion-reduce:transition-none",
                                 mode === 'login'
@@ -228,6 +229,7 @@ export default function AuthPage() {
                         </button>
                         <button
                             type="button"
+                            aria-pressed={mode === 'register'}
                             className={cn(
                                 "focus-ring flex-1 py-2 text-sm font-medium rounded-lg transition-colors duration-200 motion-reduce:transition-none",
                                 mode === 'register'

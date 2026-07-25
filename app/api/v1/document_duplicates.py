@@ -29,7 +29,7 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 @router.get("/duplicates", response_model=DocumentDuplicateList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def list_document_duplicates(
+def list_document_duplicates(
     dataset_id: Annotated[UUID, Query(..., description="Dataset scope for duplicate detection")],
     min_count: Annotated[int, Query(ge=2, le=50)] = 2,
     max_groups: Annotated[int, Query(ge=1, le=200)] = 50,

@@ -61,7 +61,7 @@ def _lock_active_admin_members(db: Session, tenant_id: UUID) -> list[TenantMembe
 
 
 @router.get("/me", response_model=TenantAccessOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def get_current_tenant_access(
+def get_current_tenant_access(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -82,7 +82,7 @@ async def get_current_tenant_access(
 
 
 @router.get("/members", response_model=TenantMemberListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def list_tenant_members(
+def list_tenant_members(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=1000)] = 200,
     *,
@@ -114,7 +114,7 @@ async def list_tenant_members(
 
 
 @router.patch("/members/{user_id}", response_model=TenantMemberOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def patch_tenant_member_role(
+def patch_tenant_member_role(
     user_id: str,
     payload: TenantMemberUpdateRequest,
     *,
@@ -160,7 +160,7 @@ async def patch_tenant_member_role(
     response_model=TenantMemberDeleteResponse,
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-async def delete_tenant_member(
+def delete_tenant_member(
     user_id: str,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],

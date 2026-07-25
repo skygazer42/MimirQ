@@ -374,6 +374,10 @@ async def connector_run_job(ctx, tenant_id: str, run_id: str, requested_by: str)
             requested_by=requested_by,
         )
         if not executed:
+            run.status = "failed"
+            run.error_message = "unsupported_connector_id"
+            run.finished_at = datetime.now(UTC)
+            db.commit()
             return await _job_result(
                 ctx,
                 job_name="connector_run_job",

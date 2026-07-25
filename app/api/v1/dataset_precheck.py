@@ -359,7 +359,7 @@ def cancel_dataset_precheck_scan_run(
 
 
 @router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}/events", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def stream_dataset_precheck_scan_events(
+def stream_dataset_precheck_scan_events(
     dataset_id: UUID,
     scan_run_id: UUID,
     *,

@@ -38,7 +38,7 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 @router.get("/{document_id}/versions", response_model=DocumentVersionList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def list_document_versions(
+def list_document_versions(
     document_id: uuid.UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -159,7 +159,7 @@ async def list_document_versions(
 
 
 @router.get("/{document_id}/versions/diff", response_model=DocumentVersionDiff, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def diff_document_versions(
+def diff_document_versions(
     document_id: uuid.UUID,
     from_pipeline_hash: Annotated[
         str,
@@ -310,7 +310,7 @@ async def diff_document_versions(
     response_model=DocumentDetail,
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-async def activate_document_version(
+def activate_document_version(
     document_id: uuid.UUID,
     pipeline_hash: str,
     *,
@@ -420,7 +420,7 @@ async def activate_document_version(
 
 
 @router.delete("/{document_id}/versions/{pipeline_hash}", status_code=204, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def delete_document_version(
+def delete_document_version(
     document_id: uuid.UUID,
     pipeline_hash: str,
     *,

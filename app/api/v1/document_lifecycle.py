@@ -32,7 +32,7 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 @router.get("/{document_id}/lifecycle-metadata", response_model=DocumentLifecycleMetadata, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def get_document_lifecycle_metadata(
+def get_document_lifecycle_metadata(
     document_id: uuid.UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -67,7 +67,7 @@ async def get_document_lifecycle_metadata(
 
 
 @router.patch("/{document_id}/lifecycle-metadata", response_model=DocumentLifecycleMetadata, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def patch_document_lifecycle_metadata(
+def patch_document_lifecycle_metadata(
     document_id: uuid.UUID,
     payload: DocumentLifecycleMetadataUpdateRequest,
     *,

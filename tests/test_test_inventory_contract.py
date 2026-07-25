@@ -43,6 +43,15 @@ def test_test_matrix_reads_openapi_and_collects_nested_tests(tmp_path: Path) -> 
     nested_test.parent.mkdir(parents=True)
     nested_test.write_text("def test_example(): pass\n", encoding="utf-8")
 
+    behavior_test = tmp_path / "web/lib/client.test.ts"
+    behavior_test.parent.mkdir(parents=True)
+    behavior_test.write_text("test('client', () => {})\n", encoding="utf-8")
+    source_test = tmp_path / "web/lib/client.source.test.ts"
+    source_test.write_text("test('source contract', () => {})\n", encoding="utf-8")
+    entry_test = tmp_path / "web/app/example/page.entry.test.tsx"
+    entry_test.parent.mkdir(parents=True)
+    entry_test.write_text("test('entry contract', () => {})\n", encoding="utf-8")
+
     matrix = build_matrix(tmp_path)
 
     assert matrix["backend_routes"] == [
@@ -53,3 +62,10 @@ def test_test_matrix_reads_openapi_and_collects_nested_tests(tmp_path: Path) -> 
         }
     ]
     assert matrix["backend_tests"] == [{"file": "tests/nested/test_example.py"}]
+    assert matrix["frontend_tests"] == [{"file": "web/lib/client.test.ts"}]
+    assert matrix["frontend_source_contract_tests"] == [
+        {"file": "web/app/example/page.entry.test.tsx"},
+        {"file": "web/lib/client.source.test.ts"},
+    ]
+    assert matrix["summary"]["frontend_tests"] == 1
+    assert matrix["summary"]["frontend_source_contract_tests"] == 2

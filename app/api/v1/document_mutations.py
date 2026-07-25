@@ -49,7 +49,7 @@ def _documents_module():
     response_model=DocumentQAGenerateResponse,
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-async def generate_document_qa(
+def generate_document_qa(
     document_id: uuid.UUID,
     payload: DocumentQAGenerateRequest,
     *,
@@ -127,7 +127,7 @@ async def generate_document_qa(
     response_model=DocumentDetail,
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-async def patch_document_pipeline(
+def patch_document_pipeline(
     document_id: uuid.UUID,
     payload: DocumentPipelinePatchRequest,
     *,
@@ -197,7 +197,7 @@ async def patch_document_pipeline(
     response_model=DocumentDetail,
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-async def patch_document_user_metadata(
+def patch_document_user_metadata(
     document_id: uuid.UUID,
     payload: DocumentUserMetadataPatchRequest,
     *,

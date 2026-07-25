@@ -139,8 +139,7 @@ class _FakeDB:
         return None
 
 
-@pytest.mark.asyncio
-async def test_create_conversation_sets_owner_account_id(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_create_conversation_sets_owner_account_id(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.api.v1.chat_conversations as conversations_api
 
     tenant_id = uuid4()
@@ -155,7 +154,7 @@ async def test_create_conversation_sets_owner_account_id(monkeypatch: pytest.Mon
         raising=True,
     )
 
-    created = await conversations_api.create_conversation(
+    created = conversations_api.create_conversation(
         SimpleNamespace(title="Owned", dataset_id=dataset_id, document_ids=[]),
         tenant_id=tenant_id,
         account_id="acct-1",
@@ -352,8 +351,7 @@ async def test_conversation_routes_reject_cross_account_access(
     assert exc_info.value.status_code == 403, name
 
 
-@pytest.mark.asyncio
-async def test_list_conversations_hides_other_accounts_open_scope_rows(
+def test_list_conversations_hides_other_accounts_open_scope_rows(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import app.api.v1.chat_conversations as conversations_api
@@ -378,7 +376,7 @@ async def test_list_conversations_hides_other_accounts_open_scope_rows(
     db = _FakeDB(conversations=[mine, theirs])
     monkeypatch.setattr(conversations_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
 
-    response = await conversations_api.list_conversations(
+    response = conversations_api.list_conversations(
         tenant_id=tenant_id,
         account_id="acct-1",
         db=db,
@@ -388,8 +386,7 @@ async def test_list_conversations_hides_other_accounts_open_scope_rows(
     assert [item["id"] for item in response["items"]] == [mine.id]
 
 
-@pytest.mark.asyncio
-async def test_list_conversations_hides_revoked_dataset_scope(
+def test_list_conversations_hides_revoked_dataset_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import app.api.v1.chat_conversations as conversations_api
@@ -421,7 +418,7 @@ async def test_list_conversations_hides_revoked_dataset_scope(
 
     monkeypatch.setattr(conversations_api.DatasetService, "assert_dataset_readable", _deny, raising=True)
 
-    response = await conversations_api.list_conversations(
+    response = conversations_api.list_conversations(
         tenant_id=tenant_id,
         account_id="acct-1",
         db=db,
@@ -433,8 +430,7 @@ async def test_list_conversations_hides_revoked_dataset_scope(
     assert response["next_skip"] is None
 
 
-@pytest.mark.asyncio
-async def test_list_conversations_keeps_unmigrated_legacy_row_fail_closed(
+def test_list_conversations_keeps_unmigrated_legacy_row_fail_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import app.api.v1.chat_conversations as conversations_api
@@ -453,7 +449,7 @@ async def test_list_conversations_keeps_unmigrated_legacy_row_fail_closed(
     db = _FakeDB(conversations=[legacy])
     monkeypatch.setattr(conversations_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
 
-    response = await conversations_api.list_conversations(
+    response = conversations_api.list_conversations(
         tenant_id=tenant_id,
         account_id=str(legacy_user_id),
         db=db,

@@ -74,7 +74,7 @@ class LTRModelActivateResponse(BaseModel):
 
 
 @router.get("/models", response_model=LTRModelListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def list_ltr_models(
+def list_ltr_models(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -183,7 +183,7 @@ async def register_ltr_model(
 
 
 @router.post("/models/activate", response_model=LTRModelActivateResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def activate_ltr_model(
+def activate_ltr_model(
     body: LTRModelActivateRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -228,7 +228,7 @@ async def activate_ltr_model(
 
 
 @router.post("/models/rollback", response_model=LTRModelActivateResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def rollback_ltr_model(
+def rollback_ltr_model(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],

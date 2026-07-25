@@ -40,7 +40,7 @@ def _documents_module():
 
 
 @router.post("/batch/metadata", response_model=DocumentBatchUserMetadataPatchResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def batch_patch_document_user_metadata(
+def batch_patch_document_user_metadata(
     payload: DocumentBatchUserMetadataPatchRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -287,7 +287,7 @@ async def batch_update_document_access(
 
 
 @router.post("/batch/move", response_model=DocumentBatchMoveResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def batch_move_documents(
+def batch_move_documents(
     payload: DocumentBatchMoveRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],

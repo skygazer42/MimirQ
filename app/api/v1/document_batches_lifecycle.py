@@ -33,7 +33,7 @@ def _documents_module():
 
 
 @router.post("/batch/disable", response_model=DocumentBatchLifecycleResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def batch_disable_documents(
+def batch_disable_documents(
     payload: DocumentBatchLifecycleRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -88,7 +88,7 @@ async def batch_disable_documents(
 
 
 @router.post("/batch/enable", response_model=DocumentBatchLifecycleResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def batch_enable_documents(
+def batch_enable_documents(
     payload: DocumentBatchLifecycleRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -141,7 +141,7 @@ async def batch_enable_documents(
 
 
 @router.post("/batch/archive", response_model=DocumentBatchLifecycleResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def batch_archive_documents(
+def batch_archive_documents(
     payload: DocumentBatchLifecycleRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -196,7 +196,7 @@ async def batch_archive_documents(
 
 
 @router.post("/batch/unarchive", response_model=DocumentBatchLifecycleResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def batch_unarchive_documents(
+def batch_unarchive_documents(
     payload: DocumentBatchLifecycleRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],

@@ -37,7 +37,7 @@ class GovernanceRulePackListResponse(BaseModel):
 
 
 @router.get("/rule-packs", response_model=GovernanceRulePackListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def list_rule_packs(
+def list_rule_packs(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],

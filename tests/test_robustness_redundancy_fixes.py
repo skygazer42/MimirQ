@@ -567,6 +567,88 @@ def test_metadata_filter_dataset_scope_drives_runtime_shards(
     assert captured["dataset_ids"] == tuple(sorted((dataset_a, dataset_b), key=str))
 
 
+def test_sparse_search_uses_metadata_scope_for_bm25_corpus(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from langchain_core.documents import Document
+
+    from app.rag.retriever import HybridRetriever
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    captured: dict[str, dict[str, object]] = {}
+
+    def record_scope_docs(self, **kwargs):  # noqa: ANN001,ANN003
+        captured["scope_kwargs"] = dict(kwargs)
+        return tenant_id, (dataset_id,), "scope-key", [
+            Document(
+                page_content="scoped corpus",
+                id=str(uuid.uuid4()),
+                metadata={"document_id": str(uuid.uuid4()), "dataset_id": str(dataset_id)},
+            )
+        ]
+
+    def record_sparse_docs(self, **kwargs):  # noqa: ANN001,ANN003
+        captured["search_kwargs"] = dict(kwargs)
+        return [], "empty", "no_candidates", 0
+
+    monkeypatch.setattr(HybridRetriever, "_bm25_scope_docs", record_scope_docs)
+    monkeypatch.setattr(HybridRetriever, "_search_sparse_docs", record_sparse_docs)
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_resolve_sparse_provider_status",
+        lambda self, *, sparse_enabled: {"effective_provider": "deterministic", "reason": "none"},
+    )
+
+    retriever = HybridRetriever(sparse_enabled=True, metadata_filter_enabled=True)
+    retriever._search_sparse(
+        "scope query",
+        top_k=2,
+        tenant_id=tenant_id,
+        metadata_filter={"dataset_id": str(dataset_id)},
+    )
+
+    assert captured["scope_kwargs"]["metadata_filter"] == {"dataset_id": str(dataset_id)}
+    assert captured["search_kwargs"]["dataset_scope_ids"] == (dataset_id,)
+
+
+def test_colbert_search_uses_metadata_scope_for_bm25_corpus(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from langchain_core.documents import Document
+
+    from app.core.config import settings
+    from app.rag.retriever import HybridRetriever
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    captured: dict[str, dict[str, object]] = {}
+
+    def record_scope_docs(self, **kwargs):  # noqa: ANN001,ANN003
+        captured["scope_kwargs"] = dict(kwargs)
+        return tenant_id, (dataset_id,), "scope-key", [
+            Document(
+                page_content="scoped corpus",
+                id=str(uuid.uuid4()),
+                metadata={"document_id": str(uuid.uuid4()), "dataset_id": str(dataset_id)},
+            )
+        ]
+
+    monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_ENABLED", True, raising=False)
+    monkeypatch.setattr(HybridRetriever, "_bm25_scope_docs", record_scope_docs)
+    monkeypatch.setattr(HybridRetriever, "_search_colbert_ann_docs", lambda self, **kwargs: [])  # noqa: ANN001
+
+    retriever = HybridRetriever(metadata_filter_enabled=True)
+    retriever._search_colbert_ann(
+        "scope query",
+        top_k=2,
+        tenant_id=tenant_id,
+        metadata_filter={"dataset_id": str(dataset_id)},
+    )
+
+    assert captured["scope_kwargs"]["metadata_filter"] == {"dataset_id": str(dataset_id)}
+
+
 def test_document_dataset_scope_is_tenant_bound_and_fails_closed_when_incomplete(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1585,6 +1667,41 @@ def test_candidate_corpus_token_resolves_multi_dataset_scope_without_document_id
     assert captured["document_ids"] == []
 
 
+def test_candidate_corpus_token_allows_explicit_dataset_scope_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.retriever as retriever_module
+    from app.rag.retriever import HybridRetriever
+
+    captured: dict[str, object] = {}
+
+    class _Session:
+        def close(self) -> None:
+            return None
+
+    def resolve_token(*_args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+        captured.update(kwargs)
+        return "dataset-scope-token"
+
+    tenant_id = uuid.uuid4()
+    dataset_a = uuid.uuid4()
+    dataset_b = uuid.uuid4()
+    monkeypatch.setattr(retriever_module, "SessionLocal", lambda: _Session(), raising=True)
+    monkeypatch.setattr(retriever_module, "resolve_corpus_cache_token", resolve_token, raising=True)
+
+    token = HybridRetriever(tenant_id=tenant_id)._resolve_candidate_cache_corpus_token(
+        tenant_id=tenant_id,
+        document_ids=None,
+        dataset_ids=[dataset_b, dataset_a, dataset_b],
+    )
+
+    assert token == "dataset-scope-token"
+    assert captured["tenant_id"] == tenant_id
+    assert captured["dataset_id"] is None
+    assert captured["dataset_ids"] == tuple(sorted((dataset_a, dataset_b), key=str))
+    assert captured["document_ids"] == []
+
+
 def test_bm25_unversioned_existing_scope_is_rebuilt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1747,7 +1864,7 @@ def test_chunk_mutations_rotate_document_corpus_version_before_commit() -> None:
         ("disable_document_chunk", "@router.post("),
         ("enable_document_chunk", "@router.post("),
     ):
-        function_start = source.index(f"async def {function_name}(")
+        function_start = source.index(f"def {function_name}(")
         function_source = source[function_start : source.index(next_decorator, function_start)]
         assert version_touch in function_source
         assert function_source.index(version_touch) < function_source.index("db.commit()")

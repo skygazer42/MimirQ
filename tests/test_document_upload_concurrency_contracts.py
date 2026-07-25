@@ -1,20 +1,11 @@
-import datetime as _datetime
 import io
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-import starlette.status as _status
 from fastapi import BackgroundTasks, HTTPException
 from starlette.datastructures import UploadFile
-
-if not hasattr(_datetime, "UTC"):
-    _datetime.UTC = _datetime.timezone.utc  # type: ignore[attr-defined]
-if not hasattr(_status, "HTTP_413_CONTENT_TOO_LARGE"):
-    _status.HTTP_413_CONTENT_TOO_LARGE = getattr(_status, "HTTP_413_REQUEST_ENTITY_TOO_LARGE", 413)
-if not hasattr(_status, "HTTP_422_UNPROCESSABLE_CONTENT"):
-    _status.HTTP_422_UNPROCESSABLE_CONTENT = getattr(_status, "HTTP_422_UNPROCESSABLE_ENTITY", 422)
 
 import app  # noqa: F401
 from app.api.v1 import documents as documents_module
@@ -561,6 +552,71 @@ async def test_single_upload_releases_ingest_lock_on_exception(monkeypatch: pyte
         )
 
     assert len(released) == 1
+
+
+@pytest.mark.asyncio
+async def test_single_upload_preserves_local_source_when_queue_handoff_fails_after_persist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dataset_id = uuid.uuid4()
+    captured_paths: list[Path] = []
+
+    _patch_quota(monkeypatch)
+    _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
+    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+    monkeypatch.setattr(document_upload.settings, "MINIO_ENABLED", False, raising=False)
+    monkeypatch.setattr(document_upload.settings, "MINIO_DOCUMENTS_ENABLED", False, raising=False)
+    monkeypatch.setattr(documents_module, "DBDocument", _DetachedStatusDocument, raising=True)
+    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+
+    async def _queue() -> object:
+        return object()
+
+    async def _acquire(redis, *, key: str, value: str, ttl_sec: int, fail_open: bool = True) -> bool:  # noqa: ANN001
+        return True
+
+    async def _persist(db, db_document, *, file_path: Path) -> None:  # noqa: ANN001
+        captured_paths.append(file_path)
+        db_document._session = db
+
+    async def _store(file_path: Path, **_kwargs) -> str:  # noqa: ANN003, ANN202
+        return str(file_path)
+
+    async def _schedule(**kwargs) -> bool:  # noqa: ANN003, ANN202
+        assert kwargs["file_path"].exists()
+        raise HTTPException(
+            status_code=503,
+            detail=documents_module.DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL,
+        )
+
+    monkeypatch.setattr("app.tasks.queue.get_queue", _queue, raising=False)
+    monkeypatch.setattr("app.tasks.locks.acquire_lock", _acquire, raising=False)
+    monkeypatch.setattr(document_upload, "_persist_uploaded_document", _persist, raising=True)
+    monkeypatch.setattr(document_upload, "_store_document_source", _store, raising=True)
+    monkeypatch.setattr(document_upload, "_schedule_document_processing", _schedule, raising=True)
+
+    db = _FakeItemSession("single-local-queue-fail")
+    with pytest.raises(HTTPException) as exc_info:
+        await document_upload.upload_document(
+            background_tasks=BackgroundTasks(),
+            file=_make_upload("local-queue-fail.txt"),
+            form=document_upload.UploadDocumentFormFields(
+                parser_backend="auto",
+                chunk_strategy="langchain_recursive",
+                pipeline=None,
+                dataset_id=dataset_id,
+                user_metadata=None,
+            ),
+            overrides_form=_build_overrides_form(),
+            tenant_id=uuid.uuid4(),
+            account_id="acct-1",
+            db=db,
+        )
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail == documents_module.DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL
+    assert len(captured_paths) == 1
+    assert captured_paths[0].exists()
 
 
 @pytest.mark.asyncio

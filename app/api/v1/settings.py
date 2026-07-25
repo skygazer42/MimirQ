@@ -991,7 +991,7 @@ def mask_secret(value: str) -> str:
 
 
 @router.get("", response_model=SystemSettings, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def get_settings(
+def get_settings(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1180,7 +1180,7 @@ async def get_settings(
 
 
 @router.put("", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def update_settings(
+def update_settings(
     request: UpdateSettingsRequest,
     http_request: Request,
     *,

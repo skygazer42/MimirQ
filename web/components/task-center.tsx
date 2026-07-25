@@ -10,26 +10,46 @@ import type { Document } from '@/types'
 import { Button } from './ui/button'
 import { ScrollArea } from './ui/scroll-area'
 import { toast } from 'sonner'
-import { useRouter } from '@/i18n/navigation'
+import { usePathname, useRouter } from '@/i18n/navigation'
 import { formatApiError } from '@/lib/api-errors'
+import { useAuth } from '@/hooks/use-auth'
+import { useBackendMeta } from '@/hooks/use-backend-meta'
+
+const TASK_CENTER_ACTIVE_ROUTE_PREFIXES = [
+  '/knowledge',
+  '/parsing',
+  '/chunk-preview',
+  '/data-governance',
+  '/datasets',
+]
 
 export function TaskCenter() {
   const [isOpen, setIsOpen] = useState(false)
   const [acting, setActing] = useState<{ id: string; action: 'cancel' | 'retry' } | null>(null)
   const router = useRouter()
+  const pathname = usePathname()
+  const { isAuthenticated } = useAuth()
+  const { data: backendMeta } = useBackendMeta()
   const t = useTranslations('TaskCenter')
   const commonT = useTranslations('Common')
+  const authMode = String(backendMeta?.features?.auth_mode || '').trim().toLowerCase()
+  const isTaskRoute = TASK_CENTER_ACTIVE_ROUTE_PREFIXES.some((prefix) =>
+    pathname === prefix || pathname.startsWith(`${prefix}/`)
+  )
+  const canLoadForAuthMode =
+    authMode === 'header' ? true : authMode === 'jwt' ? isAuthenticated : false
+  const shouldLoadTasks =
+    !pathname.startsWith('/auth') && canLoadForAuthMode && (isOpen || isTaskRoute)
   
-  // Poll for active tasks globally
   const { data: documents = [], refetch } = useQuery<Document[]>({
-    queryKey: ['documents'],
+    queryKey: ['documents', 'task-center'],
     queryFn: async ({ signal }) => {
       const res = await documentApi.list({ limit: 100 }, { signal })
       return res.items
     },
-    // Passive update, rely on other components to trigger fetches or slow poll
+    enabled: shouldLoadTasks,
     staleTime: 5000,
-    refetchInterval: 5000 
+    refetchInterval: shouldLoadTasks ? 5000 : false,
   })
 
   const activeTasks = documents.filter(d => d.status === 'processing' || d.status === 'pending')

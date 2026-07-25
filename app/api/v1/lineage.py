@@ -96,7 +96,7 @@ def _load_chunk_lineage_dependencies(
 
 
 @router.get("/chunk/{chunk_id}", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def get_chunk_lineage(
+def get_chunk_lineage(
     chunk_id: UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -123,7 +123,7 @@ async def get_chunk_lineage(
 
 
 @router.get("/answer/{request_id}", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def get_answer_lineage(
+def get_answer_lineage(
     request_id: str,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],

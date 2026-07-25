@@ -7,6 +7,7 @@ from typing import Iterable
 
 FRONTEND_TEST_GLOBS = ('*.test.ts', '*.test.tsx', '*.spec.ts', '*.spec.tsx')
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options"}
+SOURCE_CONTRACT_TEST_MARKERS = (".source.test.", ".entry.test.")
 
 
 def _normalize_frontend_route(app_root: Path, page_path: Path) -> str:
@@ -87,7 +88,14 @@ def _parse_frontend_pages(repo_root: Path) -> list[dict[str, str]]:
     return sorted(pages, key=lambda entry: entry["route"])
 
 
-def _collect_tests(repo_root: Path) -> tuple[list[dict[str, str]], list[dict[str, str]], list[dict[str, str]]]:
+def _collect_tests(
+    repo_root: Path,
+) -> tuple[
+    list[dict[str, str]],
+    list[dict[str, str]],
+    list[dict[str, str]],
+    list[dict[str, str]],
+]:
     backend_tests = [
         {"file": str(path.relative_to(repo_root))}
         for path in sorted((repo_root / "tests").rglob("test_*.py"))
@@ -95,22 +103,32 @@ def _collect_tests(repo_root: Path) -> tuple[list[dict[str, str]], list[dict[str
     ]
 
     frontend_root = repo_root / "web"
-    frontend_tests = [
-        {"file": str(path.relative_to(repo_root))}
+    frontend_test_paths = [
+        path
         for path in _iter_files(frontend_root, FRONTEND_TEST_GLOBS)
         if "e2e" not in path.parts
+    ]
+    frontend_tests = [
+        {"file": str(path.relative_to(repo_root))}
+        for path in frontend_test_paths
+        if not any(marker in path.name for marker in SOURCE_CONTRACT_TEST_MARKERS)
+    ]
+    frontend_source_contract_tests = [
+        {"file": str(path.relative_to(repo_root))}
+        for path in frontend_test_paths
+        if any(marker in path.name for marker in SOURCE_CONTRACT_TEST_MARKERS)
     ]
     playwright_specs = [
         {"file": str(path.relative_to(repo_root))}
         for path in _iter_files(frontend_root / "e2e", ("*.spec.ts", "*.spec.tsx"))
     ]
-    return backend_tests, frontend_tests, playwright_specs
+    return backend_tests, frontend_tests, frontend_source_contract_tests, playwright_specs
 
 
 def build_matrix(repo_root: Path) -> dict:
     backend_routes = _parse_backend_routes(repo_root)
     frontend_pages = _parse_frontend_pages(repo_root)
-    backend_tests, frontend_tests, playwright_specs = _collect_tests(repo_root)
+    backend_tests, frontend_tests, frontend_source_contract_tests, playwright_specs = _collect_tests(repo_root)
 
     return {
         "repo_root": str(repo_root),
@@ -119,12 +137,14 @@ def build_matrix(repo_root: Path) -> dict:
             "frontend_pages": len(frontend_pages),
             "backend_tests": len(backend_tests),
             "frontend_tests": len(frontend_tests),
+            "frontend_source_contract_tests": len(frontend_source_contract_tests),
             "playwright_specs": len(playwright_specs),
         },
         "backend_routes": backend_routes,
         "frontend_pages": frontend_pages,
         "backend_tests": backend_tests,
         "frontend_tests": frontend_tests,
+        "frontend_source_contract_tests": frontend_source_contract_tests,
         "playwright_specs": playwright_specs,
     }
 
@@ -141,7 +161,8 @@ def render_markdown(matrix: dict) -> str:
         f"| Backend routes | {summary['backend_routes']} |",
         f"| Frontend pages | {summary['frontend_pages']} |",
         f"| Backend tests | {summary['backend_tests']} |",
-        f"| Frontend tests | {summary['frontend_tests']} |",
+        f"| Frontend behavior tests | {summary['frontend_tests']} |",
+        f"| Frontend source-contract tests | {summary['frontend_source_contract_tests']} |",
         f"| Playwright specs | {summary['playwright_specs']} |",
         "",
         "## Backend Routes",
@@ -161,6 +182,10 @@ def render_markdown(matrix: dict) -> str:
 
     lines.extend(["", "## Frontend Tests", ""])
     for test in matrix["frontend_tests"]:
+        lines.append(f"- {test['file']}")
+
+    lines.extend(["", "## Frontend Source-Contract Tests", ""])
+    for test in matrix["frontend_source_contract_tests"]:
         lines.append(f"- {test['file']}")
 
     lines.extend(["", "## Playwright Specs", ""])

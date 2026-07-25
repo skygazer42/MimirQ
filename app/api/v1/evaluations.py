@@ -516,7 +516,7 @@ def _attach_reasoning_fields(case_row: Any) -> Any:
     response_model=RagasConversationReadinessResponse,
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-async def get_ragas_conversation_readiness(
+def get_ragas_conversation_readiness(
     request: RagasConversationReadinessRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -549,7 +549,7 @@ async def get_ragas_conversation_readiness(
 
 
 @router.post("/ragas/runs", response_model=RagasRunSchema, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def create_ragas_run(
+def create_ragas_run(
     request: RagasRunCreateRequest,
     background_tasks: BackgroundTasks,
     *,
@@ -599,7 +599,7 @@ async def create_ragas_run(
 
 
 @router.get("/ragas/runs", response_model=RagasRunList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def list_ragas_runs(
+def list_ragas_runs(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     conversation_id: UUID | None = None,
@@ -636,7 +636,7 @@ async def list_ragas_runs(
 
 
 @router.get("/ragas/runs/{run_id}", response_model=RagasRunDetail, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def get_ragas_run(
+def get_ragas_run(
     run_id: UUID,
     include_items: bool = True,
     include_contexts: bool = False,
@@ -687,7 +687,7 @@ async def get_ragas_run(
 
 
 @router.post("/ragas/regression/cases", response_model=RagasRegressionCaseOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def create_ragas_regression_case(
+def create_ragas_regression_case(
     request: RagasRegressionCaseCreateRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -738,7 +738,7 @@ async def create_ragas_regression_case(
 
 
 @router.patch("/ragas/regression/cases/{case_id}", response_model=RagasRegressionCaseOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def patch_ragas_regression_case(
+def patch_ragas_regression_case(
     case_id: UUID,
     request: RagasRegressionCasePatchRequest,
     *,
@@ -809,7 +809,7 @@ async def patch_ragas_regression_case(
 
 
 @router.get("/ragas/regression/cases", response_model=RagasRegressionCaseList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def list_ragas_regression_cases(
+def list_ragas_regression_cases(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     dataset_id: UUID | None = None,
@@ -837,7 +837,7 @@ async def list_ragas_regression_cases(
 
 
 @router.get("/ragas/regression/cases/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def export_ragas_regression_cases(
+def export_ragas_regression_cases(
     dataset_id: UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -868,7 +868,7 @@ async def export_ragas_regression_cases(
     response_model=RagasRegressionCaseImportResponse,
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-async def import_ragas_regression_cases(
+def import_ragas_regression_cases(
     payload: RagasRegressionCaseImportRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -1000,7 +1000,7 @@ async def import_ragas_regression_cases(
 
 
 @router.post("/ragas/regression/cases/synthetic-hardcases", response_model=SyntheticHardcaseGenerateResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def generate_synthetic_hardcases(
+def generate_synthetic_hardcases(
     payload: SyntheticHardcaseGenerateRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -1205,7 +1205,7 @@ async def generate_synthetic_hardcases(
 
 
 @router.delete("/ragas/regression/cases/{case_id}", status_code=204, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def delete_ragas_regression_case(
+def delete_ragas_regression_case(
     case_id: UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -1236,7 +1236,7 @@ async def delete_ragas_regression_case(
 
 
 @router.post("/ragas/regression/runs", response_model=RagasRegressionRunSchema, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def create_ragas_regression_run(
+def create_ragas_regression_run(
     request: RagasRegressionRunCreateRequest,
     background_tasks: BackgroundTasks,
     *,
@@ -1289,7 +1289,7 @@ async def create_ragas_regression_run(
     status_code=201,
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-async def create_ragas_regression_ablation_batch(
+def create_ragas_regression_ablation_batch(
     request: RagasRegressionAblationBatchRequest,
     background_tasks: BackgroundTasks,
     *,
@@ -1373,7 +1373,7 @@ async def create_ragas_regression_ablation_batch(
 
 
 @router.get("/ragas/regression/runs", response_model=RagasRegressionRunList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def list_ragas_regression_runs(
+def list_ragas_regression_runs(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     dataset_id: Annotated[UUID | None, Query(description="Optional dataset scope")] = None,
@@ -1400,7 +1400,7 @@ async def list_ragas_regression_runs(
 
 
 @router.get("/ragas/regression/runs/leaderboard", response_model=RagasRegressionRunLeaderboardResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def get_ragas_regression_run_leaderboard(
+def get_ragas_regression_run_leaderboard(
     dataset_id: Annotated[UUID, Query(..., description="Dataset to scope runs (required)")],
     metric_key: Annotated[str, Query(description='Metric key from run.summary')] = "retrieval_mrr",
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
@@ -1438,7 +1438,7 @@ async def get_ragas_regression_run_leaderboard(
 
 
 @router.get("/ragas/regression/runs/{run_id}", response_model=RagasRegressionRunDetail, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def get_ragas_regression_run(
+def get_ragas_regression_run(
     run_id: UUID,
     include_items: bool = True,
     include_contexts: bool = False,
@@ -1476,7 +1476,7 @@ async def get_ragas_regression_run(
 
 
 @router.get("/ragas/regression/runs/{run_id}/export-bundle", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def export_ragas_regression_run_bundle_api(
+def export_ragas_regression_run_bundle_api(
     run_id: UUID,
     include_text: Annotated[bool, Query(description='Include raw question/response (may include PII; default false)')] = False,
     include_contexts: Annotated[bool, Query(description='Include retrieved_contexts (may include PII; requires include_text=true)')] = False,
@@ -1627,7 +1627,7 @@ def purge_ragas_regression_runs(
 
 
 @router.get("/ragas/regression/runs/{run_id}/diff", response_model=RagasRegressionRunDiffResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def diff_ragas_regression_runs(
+def diff_ragas_regression_runs(
     run_id: UUID,
     base_run_id: Annotated[UUID, Query(..., description="Base run id to compare against")],
     include_significance: Annotated[
@@ -1742,7 +1742,7 @@ async def export_ragas_regression_run_diff_html(
 
 
 @router.post("/ragas/test-gen/from-documents", response_model=TestGenResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def generate_test_cases_from_documents(
+def generate_test_cases_from_documents(
     request: TestGenFromDocsRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -2088,7 +2088,7 @@ async def run_kg_search_diagnostics(
 
 
 @router.get("/kg/search/diagnostics/runs", response_model=KGSearchDiagnosticsRunList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def list_kg_search_diagnostics_runs(
+def list_kg_search_diagnostics_runs(
     dataset_id: Annotated[UUID, Query(..., description="Dataset ID (required)")],
     limit: Annotated[int, Query(ge=1, le=200, description='Max runs to return (default: 20)')] = 20,
     *,
@@ -2113,7 +2113,7 @@ async def list_kg_search_diagnostics_runs(
 
 
 @router.get("/kg/search/diagnostics/runs/{run_id}", response_model=KGSearchDiagnosticsRunDetail, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def get_kg_search_diagnostics_run(
+def get_kg_search_diagnostics_run(
     run_id: UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -2140,7 +2140,7 @@ async def get_kg_search_diagnostics_run(
 
 
 @router.get("/kg/quality/report", response_model=dict[str, Any], responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def get_kg_quality_report(
+def get_kg_quality_report(
     dataset_id: Annotated[UUID, Query(..., description="Dataset ID (required)")],
     document_limit: Annotated[int, Query(ge=1, le=2000, description="Max documents sampled for the report")] = 200,
     pipeline_hash: Annotated[str | None, Query(min_length=1, max_length=200, description="Optional pipeline hash filter")] = None,
@@ -2198,7 +2198,7 @@ async def get_kg_quality_report(
 
 
 @router.post("/ragas/test-gen/from-conversations", response_model=TestGenResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def generate_test_cases_from_conversations(
+def generate_test_cases_from_conversations(
     request: TestGenFromConversationsRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],

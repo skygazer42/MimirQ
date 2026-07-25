@@ -1487,14 +1487,17 @@ class HybridRetriever(BaseRetriever):
         *,
         tenant_id: UUID | None,
         document_ids: list[UUID] | None,
+        dataset_ids: list[UUID] | tuple[UUID, ...] | None = None,
     ) -> str | None:
         tenant_uuid = tenant_id or self.tenant_id
         if tenant_uuid is None:
             return None
 
-        dataset_ids = self._explicit_dataset_scope_ids()
-        dataset_id = dataset_ids[0] if len(dataset_ids) == 1 else None
-        multi_dataset_scope = dataset_ids if len(dataset_ids) > 1 else ()
+        scope_dataset_ids = self._normalize_dataset_scope_ids(
+            dataset_ids if dataset_ids is not None else self._explicit_dataset_scope_ids()
+        )
+        dataset_id = scope_dataset_ids[0] if len(scope_dataset_ids) == 1 else None
+        multi_dataset_scope = scope_dataset_ids if len(scope_dataset_ids) > 1 else ()
         normalized_document_ids = list(dict.fromkeys(document_ids or []))
         document_scope = tuple(sorted(str(document_id) for document_id in normalized_document_ids))
         scope_key = (
@@ -2792,6 +2795,7 @@ class HybridRetriever(BaseRetriever):
         *,
         cache_key: str,
         tenant_id: UUID,
+        dataset_scope_ids: tuple[UUID, ...],
         merged_docs: list[Document],
         upsert_docs: list[Document],
     ) -> None:
@@ -2803,6 +2807,7 @@ class HybridRetriever(BaseRetriever):
                 sparse_version_token = self._resolve_candidate_cache_corpus_token(
                     tenant_id=tenant_id,
                     document_ids=None,
+                    dataset_ids=dataset_scope_ids,
                 )
                 self._upsert_sparse_index_incremental(
                     cache_key=cache_key,
@@ -2860,9 +2865,15 @@ class HybridRetriever(BaseRetriever):
             for key in document_scope_keys:
                 self._drop_bm25_cache_key_locked(key)
 
+        dataset_scope_ids = self._explicit_dataset_scope_ids()
+        if not dataset_scope_ids:
+            inferred_dataset_id = self.dataset_id or self._infer_single_dataset_scope_from_docs(upsert_docs)
+            dataset_scope_ids = self._normalize_dataset_scope_ids(
+                [inferred_dataset_id] if inferred_dataset_id is not None else None
+            )
         cache_key = self._bm25_scope_key(
             tenant_id=tenant_uuid,
-            dataset_id=self.dataset_id or self._infer_single_dataset_scope_from_docs(upsert_docs),
+            dataset_ids=dataset_scope_ids,
             document_ids=None,
         )
         with self._get_bm25_build_lock(cache_key):
@@ -2885,6 +2896,7 @@ class HybridRetriever(BaseRetriever):
         self._sync_sparse_index_after_bm25_upsert(
             cache_key=cache_key,
             tenant_id=tenant_uuid,
+            dataset_scope_ids=dataset_scope_ids,
             merged_docs=merged_docs,
             upsert_docs=upsert_docs,
         )
@@ -3445,16 +3457,18 @@ class HybridRetriever(BaseRetriever):
         *,
         tenant_id: UUID | None,
         document_ids: list[UUID] | None,
-    ) -> tuple[UUID | None, str | None, list[Document]]:
-        tenant_uuid, _dataset_scope_ids, cache_key = self._bm25_search_scope(
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> tuple[UUID | None, tuple[UUID, ...], str | None, list[Document]]:
+        tenant_uuid, dataset_scope_ids, cache_key = self._bm25_search_scope(
             tenant_id=tenant_id,
             document_ids=document_ids,
+            metadata_filter=metadata_filter,
         )
         if tenant_uuid is None or cache_key is None:
-            return None, None, []
+            return None, (), None, []
         with self._bm25_cache_lock:
             docs = list(self._bm25_docs.get(cache_key) or [])
-        return tenant_uuid, cache_key, docs
+        return tenant_uuid, dataset_scope_ids, cache_key, docs
 
     @staticmethod
     def _result_allowed_by_scope(
@@ -3899,6 +3913,7 @@ class HybridRetriever(BaseRetriever):
         raw_query: str,
         top_k: int,
         tenant_uuid: UUID,
+        dataset_scope_ids: tuple[UUID, ...],
         cache_key: str,
         docs: list[Document],
         document_ids: list[UUID] | None,
@@ -3913,6 +3928,7 @@ class HybridRetriever(BaseRetriever):
         sparse_index_version_token = self._resolve_candidate_cache_corpus_token(
             tenant_id=tenant_uuid,
             document_ids=document_ids,
+            dataset_ids=dataset_scope_ids,
         )
 
         from app.rag.retrieval.sparse import (
@@ -3996,7 +4012,11 @@ class HybridRetriever(BaseRetriever):
         if not bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)):
             return []
 
-        _tenant_uuid, cache_key, docs = self._bm25_scope_docs(tenant_id=tenant_id, document_ids=document_ids)
+        _tenant_uuid, _dataset_scope_ids, cache_key, docs = self._bm25_scope_docs(
+            tenant_id=tenant_id,
+            document_ids=document_ids,
+            metadata_filter=metadata_filter,
+        )
         if cache_key is None:
             return []
         if not docs:
@@ -4030,7 +4050,11 @@ class HybridRetriever(BaseRetriever):
         if not self._effective_sparse_enabled():
             return []
 
-        tenant_uuid, cache_key, docs = self._bm25_scope_docs(tenant_id=tenant_id, document_ids=document_ids)
+        tenant_uuid, dataset_scope_ids, cache_key, docs = self._bm25_scope_docs(
+            tenant_id=tenant_id,
+            document_ids=document_ids,
+            metadata_filter=metadata_filter,
+        )
         if tenant_uuid is None or cache_key is None:
             return []
 
@@ -4051,6 +4075,7 @@ class HybridRetriever(BaseRetriever):
                 raw_query=raw_query,
                 top_k=top_k,
                 tenant_uuid=tenant_uuid,
+                dataset_scope_ids=dataset_scope_ids,
                 cache_key=cache_key,
                 docs=docs,
                 document_ids=document_ids,
@@ -5180,6 +5205,7 @@ class HybridRetriever(BaseRetriever):
                 corpus_cache_token = self._resolve_candidate_cache_corpus_token(
                     tenant_id=tenant_uuid,
                     document_ids=document_ids,
+                    dataset_ids=runtime_scope_ids,
                 )
             except Exception as exc:
                 _log_retriever_fallback('_hybrid_search', exc)

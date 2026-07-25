@@ -212,8 +212,7 @@ async def test_create_ragas_run_rejects_cross_account_conversation(
     assert db.runs == []
 
 
-@pytest.mark.asyncio
-async def test_list_ragas_runs_is_scoped_to_creator_account(
+def test_list_ragas_runs_is_scoped_to_creator_account(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import app.api.v1.evaluations as evaluations_api
@@ -242,7 +241,7 @@ async def test_list_ragas_runs_is_scoped_to_creator_account(
     db = _FakeDB(conversations=[my_conversation, their_conversation], runs=[global_run, my_run, their_run])
     monkeypatch.setattr(evaluations_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
 
-    response = await evaluations_api.list_ragas_runs(
+    response = evaluations_api.list_ragas_runs(
         tenant_id=tenant_id,
         account_id="acct-1",
         db=db,

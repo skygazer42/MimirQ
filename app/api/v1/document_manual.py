@@ -365,7 +365,7 @@ def _process_manual_document_chunks_background(
 
 
 @router.post("/manual", response_model=DocumentDetail, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def create_document_with_manual_chunks(
+def create_document_with_manual_chunks(
     request: ManualDocumentCreate,
     background_tasks: BackgroundTasks,
     *,

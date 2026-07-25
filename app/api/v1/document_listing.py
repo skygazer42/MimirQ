@@ -73,7 +73,7 @@ def _source_path_prefix_expr(prefix: str | None):  # noqa: ANN201
 
 
 @router.get("/", response_model=DocumentList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def list_documents(
+def list_documents(
     params: Annotated[ListDocumentsQueryFields, Depends()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],

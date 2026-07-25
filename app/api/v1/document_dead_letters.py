@@ -27,7 +27,7 @@ router = APIRouter(prefix="/dead-letters", responses=_DEFAULT_HTTP_EXCEPTION_RES
 
 
 @router.get("", response_model=IngestDeadLetterList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def list_ingest_dead_letters(
+def list_ingest_dead_letters(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],

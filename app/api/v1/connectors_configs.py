@@ -15,11 +15,17 @@ from app.api.schemas.connector import (
     ConnectorRunOut,
 )
 from app.api.v1 import connectors as connectors_module
+from app.api.v1.connectors_runs import (
+    CONNECTOR_QUEUE_HANDOFF_FAILED_ERROR,
+    _create_pending_connector_run,
+    _enqueue_or_schedule_connector_run,
+    _writable_dataset_ids_subquery,
+)
 from app.core.database import get_db
-from app.models.connector import ConnectorRun
 from app.models.connector_config import ConnectorConfig
 from app.models.document import Document as DBDocument
 from app.services.connector_egress_policy import validate_db_connector_config
+from app.services.dataset_service import EDIT_ROLES
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
 router = APIRouter(responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -44,7 +50,7 @@ def list_connector_configs(
     Note: configs may contain secrets (even if encrypted); we enforce dataset write permission
     semantics similar to connector runs to avoid leaking URLs/auth details to readers.
     """
-    connectors_module.DatasetService.ensure_member(db, tenant_id, account_id)
+    member = connectors_module.DatasetService.ensure_member(db, tenant_id, account_id)
 
     query = db.query(ConnectorConfig).filter(ConnectorConfig.tenant_id == tenant_id)
     if dataset_id is not None:
@@ -56,6 +62,13 @@ def list_connector_configs(
     if enabled is not None:
         query = query.filter(ConnectorConfig.enabled.is_(bool(enabled)))
 
+    if dataset_id is None:
+        if str(getattr(member, "role", "") or "").lower() not in EDIT_ROLES:
+            return {"total": 0, "items": []}
+        query = query.filter(
+            ConnectorConfig.dataset_id.in_(_writable_dataset_ids_subquery(tenant_id=tenant_id, account_id=account_id))
+        )
+
     total = int(query.count())
     items = (
         query.order_by(ConnectorConfig.created_at.desc())
@@ -63,17 +76,6 @@ def list_connector_configs(
         .limit(limit)
         .all()
     )
-
-    if dataset_id is None:
-        allowed: list[ConnectorConfig] = []
-        for cfg in items:
-            try:
-                dataset = connectors_module.DatasetService.get_dataset(db, tenant_id, cfg.dataset_id)
-                connectors_module.DatasetService.assert_dataset_writable(db, dataset, account_id)
-            except HTTPException:
-                continue
-            allowed.append(cfg)
-        items = allowed
 
     return {"total": total, "items": [connectors_module._config_out(cfg) for cfg in items]}
 
@@ -227,41 +229,35 @@ async def run_connector_config(
     if connector_definition is not None and connector_definition.supports_incremental:
         run_cfg["_state"] = dict(cfg.state or {})
 
-    run = ConnectorRun(
-        tenant_id=tenant_id,
-        dataset_id=cfg.dataset_id,
-        connector_id=connector_id,
-        requested_by=account_id,
-        status="pending",
-        config=run_cfg,
-        stats={"config_id": str(cfg.id)},
+    run = _create_pending_connector_run(
+        db,
+        values={
+            "tenant_id": tenant_id,
+            "dataset_id": cfg.dataset_id,
+            "connector_id": connector_id,
+            "requested_by": account_id,
+            "config": run_cfg,
+            "stats": {"config_id": str(cfg.id)},
+        },
     )
-    db.add(run)
+    try:
+        result = await _enqueue_or_schedule_connector_run(
+            db,
+            background_tasks=background_tasks,
+            run=run,
+            tenant_id=tenant_id,
+            requested_by=account_id,
+        )
+    except HTTPException as exc:
+        if exc.status_code == 503:
+            cfg.last_error = CONNECTOR_QUEUE_HANDOFF_FAILED_ERROR  # type: ignore[assignment]
+            db.commit()
+        raise
+
     cfg.last_run_at = connectors_module._now()  # type: ignore[assignment]
     cfg.last_error = None  # type: ignore[assignment]
     db.commit()
-    db.refresh(run)
-
-    if connector_id == "url_batch":
-        background_tasks.add_task(connectors_module._execute_url_batch_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
-    elif connector_id == "web_crawl":
-        background_tasks.add_task(connectors_module._execute_web_crawl_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
-    elif connector_id == "github_repo":
-        background_tasks.add_task(connectors_module._execute_github_repo_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
-    elif connector_id == "drive_files":
-        background_tasks.add_task(connectors_module._execute_drive_files_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
-    elif connector_id == "minio_bucket":
-        background_tasks.add_task(connectors_module._execute_minio_bucket_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
-    elif connector_id == "confluence_space":
-        background_tasks.add_task(connectors_module._execute_confluence_space_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
-    elif connector_id == "jira_project":
-        background_tasks.add_task(connectors_module._execute_jira_project_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
-    elif connector_id in {"mysql_catalog", "sqlserver_catalog"}:
-        background_tasks.add_task(connectors_module._execute_db_catalog_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
-    else:
-        raise HTTPException(status_code=400, detail=connectors_module.UNSUPPORTED_CONNECTOR_ID_DETAIL)
-
-    return connectors_module._run_out(run)
+    return result
 
 
 @router.post("/configs/{config_id}/reconcile", responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES)

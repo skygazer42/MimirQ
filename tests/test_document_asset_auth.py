@@ -205,6 +205,104 @@ def test_get_image_uses_header_auth_and_no_store_cache(monkeypatch, tmp_path):  
     ]
 
 
+def test_download_document_rejects_spoofed_request_tenant_when_verified_jwt_tenant_exists(monkeypatch, tmp_path):  # noqa: ANN001
+    import app.api.v1.documents as documents_module
+    from app.core.config import settings
+    from app.services.dataset_service import DatasetService
+
+    jwt_tenant_id = uuid.uuid4()
+    spoofed_tenant_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    upload_root = tmp_path / str(jwt_tenant_id)
+    upload_root.mkdir(parents=True)
+    file_path = upload_root / "asset.txt"
+    file_path.write_bytes(b"asset-bytes")
+
+    auth_calls: list[dict[str, Any]] = []
+
+    async def _fake_auth(**kwargs):  # noqa: ANN003, ANN202
+        auth_calls.append(kwargs)
+        return "acct-123"
+
+    async def _fake_preferred_tenant(_request):  # noqa: ANN202
+        return jwt_tenant_id
+
+    monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 600, raising=False)
+    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(documents_module, "_preferred_jwt_tenant_id", _fake_preferred_tenant, raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module, "_assert_document_acl_readable", lambda *_args, **_kwargs: None, raising=True)
+
+    client = _build_download_client(
+        SimpleNamespace(
+            id=document_id,
+            tenant_id=jwt_tenant_id,
+            dataset_id=None,
+            file_path=str(file_path),
+            filename="asset.txt",
+            file_type="txt",
+        )
+    )
+
+    response = client.get(
+        f"/api/v1/documents/{document_id}/download?tenant_id={spoofed_tenant_id}",
+        headers={
+            "Authorization": "Bearer header.jwt",
+            "X-Tenant-ID": str(spoofed_tenant_id),
+        },
+    )
+
+    assert response.status_code == 403, response.text
+    assert response.json() == {"detail": "Asset access denied for this tenant"}
+    assert auth_calls == []
+
+
+def test_get_image_rejects_spoofed_request_tenant_when_verified_jwt_tenant_exists(monkeypatch, tmp_path):  # noqa: ANN001
+    import app.api.v1.documents as documents_module
+    from app.core.config import settings
+    from app.services.dataset_service import DatasetService
+
+    jwt_tenant_id = uuid.uuid4()
+    spoofed_tenant_id = uuid.uuid4()
+    image_id = uuid.uuid4()
+    image_dir = tmp_path / str(jwt_tenant_id) / "images"
+    image_dir.mkdir(parents=True)
+    image_path = image_dir / f"{image_id.hex}.png"
+    image_path.write_bytes(b"\x89PNG\r\n\x1a\npng-data")
+
+    auth_calls: list[dict[str, Any]] = []
+
+    async def _fake_auth(**kwargs):  # noqa: ANN003, ANN202
+        auth_calls.append(kwargs)
+        return "acct-123"
+
+    async def _fake_preferred_tenant(_request):  # noqa: ANN202
+        return jwt_tenant_id
+
+    monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 600, raising=False)
+    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(documents_module, "_preferred_jwt_tenant_id", _fake_preferred_tenant, raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+
+    client = _build_image_client()
+
+    response = client.get(
+        f"/api/v1/documents/image/{image_id}?tenant_id={spoofed_tenant_id}",
+        headers={
+            "Authorization": "Bearer header.jwt",
+            "X-Tenant-ID": str(spoofed_tenant_id),
+        },
+    )
+
+    assert response.status_code == 403, response.text
+    assert response.json() == {"detail": "Asset access denied for this tenant"}
+    assert auth_calls == []
+
+
 def test_get_image_url_hides_object_storage_errors(monkeypatch):  # noqa: ANN001
     import app.api.v1.document_assets as document_assets
     import app.api.v1.documents as documents_module
@@ -253,6 +351,39 @@ def test_get_image_url_hides_object_storage_errors(monkeypatch):  # noqa: ANN001
     assert response.status_code == 404
     assert response.json() == {"detail": documents_module.IMAGE_NOT_FOUND_DETAIL}
     assert logged
+
+
+def test_get_image_url_rejects_img_tenant_that_conflicts_with_verified_jwt_tenant(monkeypatch):  # noqa: ANN001
+    import app.api.v1.documents as documents_module
+    from app.core.config import settings
+
+    jwt_tenant_id = uuid.uuid4()
+    img_tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    auth_calls: list[dict[str, Any]] = []
+
+    async def _fake_auth(**kwargs):  # noqa: ANN003, ANN202
+        auth_calls.append(kwargs)
+        return "acct-123"
+
+    async def _fake_preferred_tenant(_request):  # noqa: ANN202
+        return jwt_tenant_id
+
+    monkeypatch.setattr(settings, "MINIO_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
+    monkeypatch.setattr(documents_module, "_preferred_jwt_tenant_id", _fake_preferred_tenant, raising=True)
+    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
+
+    client = _build_image_url_client()
+    response = client.get(
+        f"/api/v1/documents/image-url/{img_tenant_id}:{dataset_id}:{document_id}:chunk-1",
+        headers={"Authorization": "Bearer header.jwt"},
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Image access denied for this tenant"}
+    assert auth_calls == []
 
 
 def test_download_document_hides_object_storage_errors(monkeypatch):  # noqa: ANN001

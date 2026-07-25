@@ -83,7 +83,7 @@ def _sanitize_timeline_details(details: Any, *, _depth: int = 0) -> dict[str, An
 
 
 @router.get("/{document_id}/timeline", response_model=DocumentTimelineResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def get_document_timeline(
+def get_document_timeline(
     document_id: uuid.UUID,
     limit: Annotated[int, Query(ge=1, le=200)] = 200,
     *,

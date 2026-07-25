@@ -301,6 +301,7 @@ async def _schedule_document_processing(
 
     object_backed = is_minio_uri(str(getattr(db_document, "file_path", "") or ""))
     job_id = f"doc:{tenant_id}:{document_id}:{pipeline_hash}"
+    queue_required = documents_module._task_queue_required()
     task_id = None
     try:
         task_id = await documents_module.enqueue_document_processing(
@@ -310,6 +311,9 @@ async def _schedule_document_processing(
             job_id=job_id,
         )
     except Exception as exc:  # noqa: BLE001
+        if queue_required:
+            logger.error("Document queue unavailable while handoff is required: %s", str(exc)[:200])
+            documents_module._raise_document_processing_queue_unavailable(db=db, db_document=db_document, exc=exc)
         logger.warning("Document queue unavailable; using API background task: %s", str(exc)[:200])
 
     if task_id:
@@ -324,6 +328,10 @@ async def _schedule_document_processing(
                 db.rollback()
             logger.warning("Document task queued but task metadata refresh failed: %s", str(exc)[:200])
         return not object_backed
+
+    if queue_required:
+        logger.error("Document queue returned no task id while handoff is required")
+        documents_module._raise_document_processing_queue_unavailable(db=db, db_document=db_document)
 
     try:
         if object_backed:
@@ -345,15 +353,7 @@ async def _schedule_document_processing(
                 chunk_strategy,
             )
     except Exception as exc:
-        db_document.status = "failed"
-        db_document.current_stage = "failed"
-        db_document.error_message = "document_processing_schedule_failed"
-        try:
-            db.commit()
-        except Exception as mark_exc:  # noqa: BLE001
-            with contextlib.suppress(Exception):
-                db.rollback()
-            logger.error("Failed to mark unscheduled document as failed: %s", str(mark_exc)[:200])
+        documents_module._mark_document_processing_schedule_failed(db=db, db_document=db_document)
         logger.error("Failed to register document background task: %s", str(exc)[:200])
         raise
     return True
@@ -821,6 +821,8 @@ async def _upload_document_impl(
             raise
         with contextlib.suppress(Exception):
             _attach_doc_to_ingestion_run(db_document, created=True)
+        if not is_minio_uri(str(stored_path)):
+            file_lease.transfer()
 
         keep_local_file = await _schedule_document_processing(
             background_tasks=background_tasks,

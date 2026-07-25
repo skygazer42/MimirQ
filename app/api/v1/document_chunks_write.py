@@ -30,7 +30,7 @@ router = APIRouter(responses=documents_module._DEFAULT_HTTP_EXCEPTION_RESPONSES)
     status_code=201,
     responses=documents_module._DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-async def create_document_chunk(
+def create_document_chunk(
     document_id: uuid.UUID,
     payload: DocumentChunkCreateRequest,
     *,
@@ -181,7 +181,7 @@ async def create_document_chunk(
     response_model=DocumentChunkSchema,
     responses=documents_module._DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-async def patch_document_chunk(
+def patch_document_chunk(
     document_id: uuid.UUID,
     chunk_id: uuid.UUID,
     payload: DocumentChunkUpdateRequest,
@@ -672,7 +672,7 @@ async def disable_document_chunk(
     response_model=DocumentChunkSchema,
     responses=documents_module._DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-async def enable_document_chunk(
+def enable_document_chunk(
     document_id: uuid.UUID,
     chunk_id: uuid.UUID,
     *,
@@ -732,7 +732,7 @@ async def enable_document_chunk(
     response_model=DocumentChunkReembedResponse,
     responses=documents_module._DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
-async def reembed_document_chunks(
+def reembed_document_chunks(
     document_id: uuid.UUID,
     payload: DocumentChunkReembedRequest,
     *,

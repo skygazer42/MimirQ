@@ -187,7 +187,7 @@ def _augment_feedback_extra_with_snapshots(
 
 
 @router.post("/messages", response_model=MessageFeedbackOut, status_code=status.HTTP_201_CREATED, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def upsert_message_feedback(
+def upsert_message_feedback(
     request: MessageFeedbackCreateRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -212,7 +212,7 @@ async def upsert_message_feedback(
 
 
 @router.get("/messages", response_model=MessageFeedbackList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def list_message_feedback(
+def list_message_feedback(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     conversation_id: UUID | None = None,
@@ -240,7 +240,7 @@ async def list_message_feedback(
 
 
 @router.get("/messages/enriched", response_model=MessageFeedbackEnrichedList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def list_message_feedback_enriched(
+def list_message_feedback_enriched(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     conversation_id: UUID | None = None,
@@ -268,7 +268,7 @@ async def list_message_feedback_enriched(
 
 
 @router.patch("/messages/{feedback_id}", response_model=MessageFeedbackOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def patch_message_feedback(
+def patch_message_feedback(
     feedback_id: UUID,
     request: MessageFeedbackPatchRequest,
     *,
@@ -296,7 +296,7 @@ async def patch_message_feedback(
 
 
 @router.get("/loop/candidates", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def preview_feedback_loop_candidates(
+def preview_feedback_loop_candidates(
     max_rating: Annotated[int, Query(ge=1, le=5)] = 2,
     limit: Annotated[int, Query(ge=1, le=1000)] = 200,
     ruleset: str | None = None,
@@ -336,7 +336,7 @@ async def preview_feedback_loop_candidates(
 
 
 @router.post("/loop/hard-negatives/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def export_feedback_loop_hard_negatives(
+def export_feedback_loop_hard_negatives(
     max_rating: Annotated[int, Query(ge=1, le=5)] = 2,
     limit: Annotated[int, Query(ge=1, le=1000)] = 200,
     dry_run: Annotated[bool, Query()] = True,
@@ -383,7 +383,7 @@ async def export_feedback_loop_hard_negatives(
 
 
 @router.post("/messages/{feedback_id}/to-regression-case", response_model=RagasRegressionCaseOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def create_regression_case_from_feedback(
+def create_regression_case_from_feedback(
     feedback_id: UUID,
     body: FeedbackToRegressionCaseRequest,
     *,
@@ -573,7 +573,7 @@ async def create_regression_case_from_feedback(
 
 
 @router.post("/messages/{feedback_id}/to-evidence-item", response_model=EvidenceItemOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def create_evidence_item_from_feedback(
+def create_evidence_item_from_feedback(
     feedback_id: UUID,
     body: FeedbackToEvidenceItemRequest,
     *,

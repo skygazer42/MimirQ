@@ -240,19 +240,29 @@ async def _enqueue_connector_run_if_enabled(
         return None
 
     job_id = f"connector:{tenant_id}:{run_id}"
-    try:
-        return await connectors_module.enqueue_connector_run(
-            tenant_id=tenant_id,
-            run_id=run_id,
-            requested_by=requested_by,
-            job_id=job_id,
-        )
-    except Exception:
-        return None
+    return await connectors_module.enqueue_connector_run(
+        tenant_id=tenant_id,
+        run_id=run_id,
+        requested_by=requested_by,
+        job_id=job_id,
+    )
 
 
 def _persist_connector_run_task_id(db: Session, *, run: ConnectorRun, task_id: str) -> None:
     run.task_id = task_id
+    db.commit()
+    db.refresh(run)
+
+
+CONNECTOR_QUEUE_UNAVAILABLE_DETAIL = "Connector processing queue unavailable"
+CONNECTOR_QUEUE_HANDOFF_FAILED_ERROR = "connector_queue_handoff_failed"
+
+
+def _mark_connector_run_failed(db: Session, *, run: ConnectorRun, error: str) -> None:
+    run.task_id = None
+    run.status = "failed"
+    run.error_message = error
+    run.finished_at = connectors_module._now()
     db.commit()
     db.refresh(run)
 
@@ -265,17 +275,32 @@ async def _enqueue_or_schedule_connector_run(
     tenant_id: UUID,
     requested_by: str,
 ) -> ConnectorRunOut:
-    task_id = await _enqueue_connector_run_if_enabled(
-        tenant_id=tenant_id,
-        run_id=run.id,
-        requested_by=requested_by,
-    )
-    if task_id:
+    connector_id = str(run.connector_id or "").strip()
+    try:
+        dispatcher = _connector_run_dispatcher(connector_id)
+    except HTTPException:
+        _mark_connector_run_failed(db, run=run, error="unsupported_connector_id")
+        raise
+
+    queue_required = bool(getattr(connectors_module.settings, "TASK_QUEUE_ENABLED", False))
+    if queue_required:
+        try:
+            task_id = await _enqueue_connector_run_if_enabled(
+                tenant_id=tenant_id,
+                run_id=run.id,
+                requested_by=requested_by,
+            )
+        except Exception as exc:
+            _mark_connector_run_failed(db, run=run, error=CONNECTOR_QUEUE_HANDOFF_FAILED_ERROR)
+            raise HTTPException(status_code=503, detail=CONNECTOR_QUEUE_UNAVAILABLE_DETAIL) from exc
+        if not task_id:
+            _mark_connector_run_failed(db, run=run, error=CONNECTOR_QUEUE_HANDOFF_FAILED_ERROR)
+            raise HTTPException(status_code=503, detail=CONNECTOR_QUEUE_UNAVAILABLE_DETAIL)
         _persist_connector_run_task_id(db, run=run, task_id=task_id)
     else:
         _schedule_connector_run_dispatch(
             background_tasks=background_tasks,
-            connector_id=str(run.connector_id or "").strip(),
+            dispatcher=dispatcher,
             run_id=run.id,
             tenant_id=tenant_id,
             requested_by=requested_by,
@@ -286,13 +311,13 @@ async def _enqueue_or_schedule_connector_run(
 def _schedule_connector_run_dispatch(
     *,
     background_tasks: BackgroundTasks,
-    connector_id: str,
+    dispatcher: Any,
     run_id: UUID,
     tenant_id: UUID,
     requested_by: str,
 ) -> None:
     background_tasks.add_task(
-        _connector_run_dispatcher(connector_id),
+        dispatcher,
         run_id=run_id,
         tenant_id=tenant_id,
         requested_by=requested_by,

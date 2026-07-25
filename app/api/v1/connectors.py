@@ -117,9 +117,9 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     416: {"description": "Range Not Satisfiable"},
 }
 
-router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-router.routes.extend(connectors_catalog.router.routes)
-router.routes.extend(connectors_validation.router.routes)
+_router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+_router.routes.extend(connectors_catalog.router.routes)
+_router.routes.extend(connectors_validation.router.routes)
 _DB_CONNECTOR_IDS = {"mysql_catalog", "sqlserver_catalog"}
 URL_SHA256_PREFIX = "url_sha256:"
 CONNECTOR_CONFIG_NOT_FOUND_DETAIL = "Connector config not found"
@@ -474,29 +474,56 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
     )
 
 
-if __name__ == "app.api.v1.connectors":
-    connectors_runs = importlib.import_module("app.api.v1.connectors_runs")
-    cancel_connector_run = connectors_runs.cancel_connector_run
-    create_connector_run = connectors_runs.create_connector_run
-    get_connector_run = connectors_runs.get_connector_run
-    list_connector_runs = connectors_runs.list_connector_runs
-    _build_retry_failed_run_config = connectors_runs._build_retry_failed_run_config
-    _connector_run_has_abortable_task = connectors_runs._connector_run_has_abortable_task
-    _get_queue_or_none = connectors_runs._get_queue_or_none
-    _load_arq_job_class = connectors_runs._load_arq_job_class
-    resume_connector_run = connectors_runs.resume_connector_run
-    retry_failed_connector_run = connectors_runs.retry_failed_connector_run
-    router.routes.extend(connectors_runs.router.routes)
+_ROUTE_MODULE_NAMES = (
+    "app.api.v1.connectors_runs",
+    "app.api.v1.connectors_configs",
+    "app.api.v1.connectors_schedules",
+)
+_ROUTES_ASSEMBLED = False
+_COMPAT_EXPORT_MODULES = {
+    "cancel_connector_run": _ROUTE_MODULE_NAMES[0],
+    "create_connector_run": _ROUTE_MODULE_NAMES[0],
+    "get_connector_run": _ROUTE_MODULE_NAMES[0],
+    "list_connector_runs": _ROUTE_MODULE_NAMES[0],
+    "_build_retry_failed_run_config": _ROUTE_MODULE_NAMES[0],
+    "_connector_run_has_abortable_task": _ROUTE_MODULE_NAMES[0],
+    "_get_queue_or_none": _ROUTE_MODULE_NAMES[0],
+    "_load_arq_job_class": _ROUTE_MODULE_NAMES[0],
+    "resume_connector_run": _ROUTE_MODULE_NAMES[0],
+    "retry_failed_connector_run": _ROUTE_MODULE_NAMES[0],
+    "create_connector_config": _ROUTE_MODULE_NAMES[1],
+    "delete_connector_config": _ROUTE_MODULE_NAMES[1],
+    "list_connector_configs": _ROUTE_MODULE_NAMES[1],
+    "reconcile_connector_config": _ROUTE_MODULE_NAMES[1],
+    "run_connector_config": _ROUTE_MODULE_NAMES[1],
+    "update_connector_config": _ROUTE_MODULE_NAMES[1],
+    "scheduled_tick": _ROUTE_MODULE_NAMES[2],
+}
 
-    connectors_configs = importlib.import_module("app.api.v1.connectors_configs")
-    create_connector_config = connectors_configs.create_connector_config
-    delete_connector_config = connectors_configs.delete_connector_config
-    list_connector_configs = connectors_configs.list_connector_configs
-    reconcile_connector_config = connectors_configs.reconcile_connector_config
-    run_connector_config = connectors_configs.run_connector_config
-    update_connector_config = connectors_configs.update_connector_config
-    router.routes.extend(connectors_configs.router.routes)
 
-    connectors_schedules = importlib.import_module("app.api.v1.connectors_schedules")
-    scheduled_tick = connectors_schedules.scheduled_tick
-    router.routes.extend(connectors_schedules.router.routes)
+def _assembled_router() -> APIRouter:
+    global _ROUTES_ASSEMBLED
+    if _ROUTES_ASSEMBLED:
+        return _router
+
+    connectors_runs = importlib.import_module(_ROUTE_MODULE_NAMES[0])
+    connectors_configs = importlib.import_module(_ROUTE_MODULE_NAMES[1])
+    connectors_schedules = importlib.import_module(_ROUTE_MODULE_NAMES[2])
+    _router.routes.extend(connectors_runs.router.routes)
+    _router.routes.extend(connectors_configs.router.routes)
+    _router.routes.extend(connectors_schedules.router.routes)
+    _ROUTES_ASSEMBLED = True
+    return _router
+
+
+def __getattr__(name: str):
+    if name == "router":
+        value = _assembled_router()
+    elif module_name := _COMPAT_EXPORT_MODULES.get(name):
+        value = getattr(importlib.import_module(module_name), name)
+    elif name in {"connectors_runs", "connectors_configs", "connectors_schedules"}:
+        value = importlib.import_module(f"app.api.v1.{name}")
+    else:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    globals()[name] = value
+    return value

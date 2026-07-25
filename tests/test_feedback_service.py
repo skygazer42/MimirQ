@@ -804,21 +804,19 @@ def test_feedback_promotion_keeps_server_lineage(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(feedback_api, "audit_log_event", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(feedback_api, "_find_trace_by_request_id", lambda **_kwargs: None)
 
-    row = asyncio.run(
-        feedback_api.create_regression_case_from_feedback(
-            feedback.id,
-            feedback_api.FeedbackToRegressionCaseRequest(
-                extra={
-                    "source": "spoofed",
-                    "feedback_id": "spoofed",
-                    "message_id": "spoofed",
-                    "rating": 5,
-                }
-            ),
-            tenant_id=tenant_id,
-            account_id="editor",
-            db=db,
-        )
+    row = feedback_api.create_regression_case_from_feedback(
+        feedback.id,
+        feedback_api.FeedbackToRegressionCaseRequest(
+            extra={
+                "source": "spoofed",
+                "feedback_id": "spoofed",
+                "message_id": "spoofed",
+                "rating": 5,
+            }
+        ),
+        tenant_id=tenant_id,
+        account_id="editor",
+        db=db,
     )
 
     assert isinstance(row, RagasRegressionCase)

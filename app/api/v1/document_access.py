@@ -31,7 +31,7 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 @router.get("/{document_id}/access", response_model=DocumentAccessInfo, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def get_document_access(
+def get_document_access(
     document_id: uuid.UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -71,7 +71,7 @@ async def get_document_access(
 
 
 @router.put("/{document_id}/access", response_model=DocumentAccessInfo, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def put_document_access(
+def put_document_access(
     document_id: uuid.UUID,
     payload: DocumentAccessUpdateRequest,
     *,

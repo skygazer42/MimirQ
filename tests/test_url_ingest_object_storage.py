@@ -1,18 +1,9 @@
-import datetime as _datetime
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-import starlette.status as _status
-from fastapi import BackgroundTasks
-
-if not hasattr(_datetime, "UTC"):
-    _datetime.UTC = _datetime.timezone.utc  # type: ignore[attr-defined]
-if not hasattr(_status, "HTTP_413_CONTENT_TOO_LARGE"):
-    _status.HTTP_413_CONTENT_TOO_LARGE = getattr(_status, "HTTP_413_REQUEST_ENTITY_TOO_LARGE", 413)
-if not hasattr(_status, "HTTP_422_UNPROCESSABLE_CONTENT"):
-    _status.HTTP_422_UNPROCESSABLE_CONTENT = getattr(_status, "HTTP_422_UNPROCESSABLE_ENTITY", 422)
+from fastapi import BackgroundTasks, HTTPException
 
 from app.api.utils.url_ingest import DownloadedURL
 from app.api.v1 import documents as documents_module
@@ -86,6 +77,7 @@ async def test_schedule_document_processing_falls_back_when_enqueue_fails(monkey
     async def _process(file_path, *_args):  # noqa: ANN001, ANN002, ANN202
         processed.append(file_path)
 
+    monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", False, raising=False)
     monkeypatch.setattr(documents_module, "enqueue_document_processing", _fail_enqueue, raising=True)
     monkeypatch.setattr(documents_module, "run_document_processing_limited", _process, raising=True)
 
@@ -106,6 +98,61 @@ async def test_schedule_document_processing_falls_back_when_enqueue_fails(monkey
     await background_tasks()
     assert processed == [source]
     assert not source.exists()
+
+
+@pytest.mark.asyncio
+async def test_schedule_document_processing_fails_closed_when_queue_handoff_fails(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source.html"
+    source.write_text("<html>ok</html>", encoding="utf-8")
+    db_document = SimpleNamespace(
+        status="pending",
+        current_stage="queued",
+        error_message=None,
+        doc_metadata={},
+        file_path="minio://documents/documents/t/d/source.html",
+    )
+    commits: list[str] = []
+
+    async def _fail_enqueue(**_kwargs):  # noqa: ANN003, ANN202
+        raise RuntimeError("redis unavailable")
+
+    class _FailingQueueDB:
+        def commit(self) -> None:
+            commits.append("commit")
+
+        def refresh(self, _obj) -> None:  # noqa: ANN001
+            return None
+
+        def rollback(self) -> None:
+            return None
+
+    monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+    monkeypatch.setattr(documents_module, "enqueue_document_processing", _fail_enqueue, raising=True)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await documents_module._schedule_document_processing(
+            db=_FailingQueueDB(),
+            background_tasks=BackgroundTasks(),
+            tenant_id=uuid.uuid4(),
+            document_id=uuid.uuid4(),
+            file_path=source,
+            requested_by="account-1",
+            pipeline_hash="pipeline-hash",
+            parser_backend="auto",
+            chunk_strategy="langchain_recursive",
+            db_document=db_document,
+        )
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail == documents_module.DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL
+    assert commits == ["commit"]
+    assert db_document.status == "failed"
+    assert db_document.current_stage == "failed"
+    assert db_document.error_message == "document_processing_schedule_failed"
+    assert source.exists()
 
 
 def _dataset(dataset_id: uuid.UUID) -> SimpleNamespace:

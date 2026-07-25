@@ -50,7 +50,7 @@ async def download_document(
     Tenant selection may still be provided via header or query parameter.
     """
     docs_mod = _documents_module()
-    tenant_id = docs_mod._resolve_tenant_id_for_asset_request(request)
+    tenant_id = await docs_mod._resolve_tenant_id_for_asset_request(request)
     account_id = await docs_mod._resolve_account_id_for_asset_request(request, tenant_id=tenant_id)
 
     # Best-effort permission check: allow anonymous in local/dev header mode.
@@ -237,7 +237,7 @@ async def get_image(
     Standard path: {UPLOAD_DIR}/{tenant_id}/images/{image_id}(.png|.jpg|.jpeg|.webp|.gif|.bmp)
     """
     docs_mod = _documents_module()
-    tenant_id = docs_mod._resolve_tenant_id_for_asset_request(request)
+    tenant_id = await docs_mod._resolve_tenant_id_for_asset_request(request)
     account_id = await docs_mod._resolve_account_id_for_asset_request(request, tenant_id=tenant_id)
 
     if account_id:
@@ -323,7 +323,6 @@ async def get_image_url(
     docs_mod = _documents_module()
     if not settings.MINIO_ENABLED:
         raise HTTPException(status_code=503, detail="MinIO is disabled; cannot retrieve image URL")
-    requested_tenant = docs_mod._get_tenant_id_from_request_if_provided(request)
 
     def _tenant_from_img_id(val: str) -> UUID | None:
         if ":" not in val:
@@ -337,15 +336,16 @@ async def get_image_url(
             return None
 
     tenant_in_img = _tenant_from_img_id(img_id)
-    if tenant_in_img and requested_tenant and tenant_in_img != requested_tenant:
-        raise HTTPException(status_code=403, detail="Image access denied for this tenant")
+    tenant_id = await docs_mod._resolve_tenant_id_for_asset_request(
+        request,
+        fallback_tenant_id=tenant_in_img,
+        conflict_detail="Image access denied for this tenant",
+    )
 
     account_id = await docs_mod._resolve_account_id_for_asset_request(
         request,
-        tenant_id=requested_tenant or tenant_in_img,
+        tenant_id=tenant_id,
     )
-
-    tenant_id = tenant_in_img or requested_tenant or docs_mod._resolve_tenant_id_for_asset_request(request)
 
     if account_id:
         DatasetService.ensure_member(db, tenant_id, account_id)

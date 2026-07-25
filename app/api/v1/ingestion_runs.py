@@ -316,7 +316,7 @@ def compare_ingestion_runs(
 
 
 @router.post("/runs/{run_id}/replay", response_model=IngestionRunOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def replay_ingestion_run(
+def replay_ingestion_run(
     run_id: UUID,
     background_tasks: BackgroundTasks,
     *,

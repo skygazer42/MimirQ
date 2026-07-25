@@ -27,7 +27,7 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 @router.get("/folders", response_model=DocumentFolderTreeResponse)
-async def list_document_folders(
+def list_document_folders(
     dataset_id: Annotated[UUID, Query(...)],
     lifecycle: Annotated[Literal["active", "archived", "disabled", "all"], Query()] = "active",
     max_depth: Annotated[int, Query(ge=1, le=50)] = 20,

@@ -393,7 +393,7 @@ def _compute_parsing_quality_gate(
 
 
 @router.post("/documents/{document_id}/extract", response_model=ParsingExtractResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def extract_parsing_document(
+def extract_parsing_document(
     document_id: uuid.UUID,
     payload: ParsingExtractRequest,
     *,
@@ -666,7 +666,7 @@ def _filter_parsing_workspace_documents(query):
 
 
 @router.get("/documents", response_model=DocumentList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def list_parsing_documents(
+def list_parsing_documents(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 200,
     status: str | None = None,
@@ -1498,7 +1498,7 @@ async def parse_workspace_document(
 
 
 @router.get("/documents/{document_id}/content", response_model=ParsingContentResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def get_parsing_content(
+def get_parsing_content(
     document_id: uuid.UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -1547,7 +1547,7 @@ async def get_parsing_content(
 
 
 @router.patch("/documents/{document_id}/content", response_model=ParsingContentResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def update_parsing_content(
+def update_parsing_content(
     document_id: uuid.UUID,
     payload: ParsingContentUpdateRequest,
     *,
@@ -1628,7 +1628,7 @@ async def update_parsing_content(
 
 
 @router.delete("/documents/{document_id}", status_code=204, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def delete_parsing_document(
+def delete_parsing_document(
     document_id: uuid.UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],

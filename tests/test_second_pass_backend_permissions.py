@@ -206,8 +206,7 @@ async def test_cannot_demote_the_only_active_admin() -> None:
         assert member.role == "owner"
 
 
-@pytest.mark.asyncio
-async def test_can_demote_an_admin_when_another_active_admin_remains() -> None:
+def test_can_demote_an_admin_when_another_active_admin_remains() -> None:
     from app.api.v1.rbac import patch_tenant_member_role
 
     engine = create_engine("sqlite:///:memory:")
@@ -235,7 +234,7 @@ async def test_can_demote_an_admin_when_another_active_admin_remains() -> None:
         )
         db.commit()
 
-        updated = await patch_tenant_member_role(
+        updated = patch_tenant_member_role(
             "admin",
             TenantMemberUpdateRequest(role="viewer"),
             tenant_id=tenant_id,

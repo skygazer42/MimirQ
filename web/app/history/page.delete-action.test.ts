@@ -1,17 +1,24 @@
 // @vitest-environment jsdom
 
 import React, { act, useState } from 'react'
-import { QueryClient } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const chatApiMock = vi.hoisted(() => ({
   deleteConversation: vi.fn(),
+  listConversations: vi.fn(),
 }))
 
+vi.mock('@/components/app-frame', () => ({
+  AppFrame: ({ children }: { children: React.ReactNode }) =>
+    React.createElement('div', { 'data-app-frame': 'true' }, children),
+}))
 vi.mock('@/lib/api', () => ({ chatApi: chatApiMock }))
 vi.mock('@/i18n/navigation', () => ({
-  Link: 'a',
+  Link: ({ prefetch: _prefetch, ...props }: React.ComponentProps<'a'> & { prefetch?: boolean }) =>
+    React.createElement('a', props),
+  usePathname: () => '/history',
   useRouter: () => ({ push: vi.fn() }),
 }))
 vi.mock('next/navigation', () => ({
@@ -22,12 +29,42 @@ vi.mock('next-intl', () => ({
   useTranslations: () => (key: string) => key,
 }))
 
-import { ConversationItem, deleteConversationFromHistory } from './page-client'
+import HistoryPageClient, { ConversationItem, deleteConversationFromHistory } from './page-client'
 import { queryKeys } from '@/lib/query-keys'
 
 beforeEach(() => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   chatApiMock.deleteConversation.mockResolvedValue(undefined)
+  chatApiMock.listConversations.mockResolvedValue({
+    items: [],
+    total: 0,
+    returned: 0,
+    has_more: false,
+    next_skip: null,
+  })
+  globalThis.window.matchMedia =
+    globalThis.window.matchMedia ||
+    ((query: string) =>
+      ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }) as MediaQueryList)
+  globalThis.window.requestAnimationFrame =
+    globalThis.window.requestAnimationFrame ||
+    ((cb: FrameRequestCallback) => setTimeout(() => cb(0), 0) as unknown as number)
+  globalThis.IntersectionObserver =
+    globalThis.IntersectionObserver ||
+    class IntersectionObserver {
+      disconnect() {}
+      observe() {}
+      unobserve() {}
+    }
 })
 
 afterEach(() => {
@@ -36,6 +73,43 @@ afterEach(() => {
 })
 
 describe('history page delete action', () => {
+  it('loads conversations at runtime when the server shell no longer prefetched them', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+        },
+      },
+    })
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    act(() => {
+      root.render(
+        React.createElement(
+          QueryClientProvider,
+          { client: queryClient },
+          React.createElement(HistoryPageClient, { initialConversationId: null })
+        )
+      )
+    })
+
+    await act(async () => {
+      await vi.waitFor(() =>
+        expect(chatApiMock.listConversations).toHaveBeenCalledWith({
+          skip: 0,
+          limit: 100,
+        })
+      )
+      await vi.waitFor(() =>
+        expect(container.querySelector('[data-history-empty-archive="true"]')).not.toBeNull()
+      )
+    })
+
+    act(() => root.unmount())
+  })
+
   it('confirms deletion, calls the API, and removes the cached conversation', async () => {
     const queryClient = new QueryClient()
     const conversation = {

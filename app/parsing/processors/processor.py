@@ -2585,6 +2585,114 @@ class DocumentProcessorService:
         except Exception as exc:
             logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
 
+    def _apply_pending_retry_cleanup(
+        self,
+        db: Session,
+        *,
+        db_document: DBDocument,
+        tenant_id: UUID,
+        document_id: UUID,
+    ) -> bool:
+        meta = dict(getattr(db_document, "doc_metadata", None) or {})
+        request = meta.get("retry_cleanup")
+        if request is None:
+            return True
+        if not isinstance(request, dict) or str(request.get("version") or "") != "1":
+            logger.error("Refusing unknown retry cleanup intent for document %s", document_id)
+            return False
+
+        pipeline_hash = str(meta.get("pipeline_hash") or "").strip()
+        scope = str(request.get("scope") or "").strip()
+        target_key = str(request.get("doc_pipeline_key") or "").strip()
+        if str(request.get("pipeline_hash") or "").strip() != pipeline_hash or scope not in {"document", "pipeline"}:
+            logger.error("Refusing stale retry cleanup intent for document %s", document_id)
+            return False
+        if scope == "pipeline" and target_key != f"{document_id}:{pipeline_hash}":
+            logger.error("Refusing invalid scoped retry cleanup intent for document %s", document_id)
+            return False
+
+        preserve_existing = scope == "pipeline"
+        indexer = Indexer(db)
+        cleanup_chunk_ids: list[UUID] = []
+
+        if bool(request.get("force")):
+            meta.pop("ingest_checkpoint", None)
+            meta.pop("parsed_content_persisted", None)
+            db.query(DocumentParsedContent).filter(
+                DocumentParsedContent.document_id == document_id,
+                DocumentParsedContent.tenant_id == tenant_id,
+            ).delete(synchronize_session=False)
+
+        if preserve_existing:
+            cleanup_chunk_ids = [
+                chunk_id
+                for (chunk_id,) in (
+                    db.query(DocumentChunk.id)
+                    .filter(
+                        DocumentChunk.document_id == document_id,
+                        DocumentChunk.tenant_id == tenant_id,
+                        DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
+                    )
+                    .all()
+                )
+                if isinstance(chunk_id, UUID)
+            ]
+            indexer.delete_chunk_indexes_for_doc_pipeline_key(
+                tenant_id=tenant_id,
+                document_id=document_id,
+                doc_pipeline_key=target_key,
+            )
+            db.query(DocumentChunk).filter(
+                DocumentChunk.document_id == document_id,
+                DocumentChunk.tenant_id == tenant_id,
+                DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
+            ).delete(synchronize_session=False)
+        else:
+            indexer.delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
+            db.query(DocumentChunk).filter(
+                DocumentChunk.document_id == document_id,
+                DocumentChunk.tenant_id == tenant_id,
+            ).delete(synchronize_session=False)
+            meta.pop("img_ids", None)
+            db_document.chunk_count = 0
+            db_document.total_characters = 0
+
+        db_document.doc_metadata = meta
+        db.commit()
+
+        try:
+            from app.rag.kg.models import KgRelation
+
+            relation_query = db.query(KgRelation).filter(KgRelation.tenant_id == tenant_id)
+            if preserve_existing:
+                if cleanup_chunk_ids:
+                    relation_query.filter(KgRelation.chunk_id.in_(cleanup_chunk_ids)).delete(synchronize_session=False)
+                    indexer.delete_event_indexes_for_chunks(
+                        tenant_id=tenant_id,
+                        chunk_ids=cleanup_chunk_ids,
+                        commit=False,
+                        prune_orphan_entities=True,
+                    )
+            else:
+                relation_query.filter(KgRelation.document_id == document_id).delete(synchronize_session=False)
+                indexer.delete_event_indexes(
+                    tenant_id=tenant_id,
+                    document_id=document_id,
+                    commit=False,
+                    prune_orphan_entities=True,
+                )
+            db.commit()
+        except Exception as exc:  # noqa: BLE001
+            db.rollback()
+            logger.warning("Failed to clean retry KG indexes for document %s: %s", document_id, str(exc)[:200])
+
+        meta = dict(getattr(db_document, "doc_metadata", None) or {})
+        meta.pop("retry_cleanup", None)
+        db_document.doc_metadata = meta
+        db.commit()
+        db.refresh(db_document)
+        return True
+
     async def process_document(
         self,
         file_path: Path,
@@ -2656,6 +2764,23 @@ class DocumentProcessorService:
 
             # If user already cancelled before the worker started, stop immediately.
             await raise_if_cancelled(force=True)
+
+            if not self._apply_pending_retry_cleanup(
+                db,
+                db_document=db_document,
+                tenant_id=tenant_id,
+                document_id=document_id,
+            ):
+                await self._update_status(
+                    db,
+                    tenant_id,
+                    document_id,
+                    "failed",
+                    0,
+                    "failed",
+                    error_message="invalid_retry_cleanup_intent",
+                )
+                return {"status": "failed", "reason": "invalid_retry_cleanup_intent"}
 
             # Step 1: update status to processing.
             await self._update_status(

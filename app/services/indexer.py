@@ -8,6 +8,7 @@ import logging
 import time
 import uuid
 from collections.abc import Iterable, Sequence
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -1399,6 +1400,7 @@ class Indexer:
         db_chunks = self._persist_document_chunks(
             document_id=document_id,
             tenant_id=tenant_id,
+            dataset_id=dataset_uuid,
             chunks=normalized_chunks,
             vector_ids=vector_ids,
             chunk_ids=chunk_ids,
@@ -1652,6 +1654,14 @@ class Indexer:
             logger.warning("Failed to update BM25 index after deletion: %s", exc)
             failures.append(exc)
 
+        if hasattr(self, "_db"):
+            try:
+                self._touch_chunk_retrieval_scope(tenant_id=tenant_id, document_id=document_id)
+                self._db.flush()
+            except Exception as exc:
+                logger.warning("Failed to touch retrieval scope after deletion: %s", exc)
+                failures.append(exc)
+
         if strict and failures:
             raise RuntimeError("Document index cleanup failed") from failures[0]
 
@@ -1696,6 +1706,13 @@ class Indexer:
             )
         except Exception as exc:
             logger.warning("Failed to update BM25 index after scoped deletion: %s", str(exc)[:200])
+
+        if hasattr(self, "_db"):
+            try:
+                self._touch_chunk_retrieval_scope(tenant_id=tenant_id, document_id=document_id)
+                self._db.flush()
+            except Exception as exc:
+                logger.warning("Failed to touch retrieval scope after scoped deletion: %s", str(exc)[:200])
 
     def delete_event_indexes(
         self,
@@ -1883,6 +1900,11 @@ class Indexer:
         )
         if not count:
             logger.warning("No chunks found for BM25 index")
+            return
+        if document_ids:
+            for document_id in list(dict.fromkeys(document_ids)):
+                self._touch_chunk_retrieval_scope(tenant_id=tenant_id, document_id=document_id)
+            self._db.flush()
 
     def rebuild_event_indexes(
         self,
@@ -1918,6 +1940,34 @@ class Indexer:
         )
         if entities and bool(getattr(settings, "ENTITY_VECTOR_ENABLED", True)):
             self._index_entity_vectors(entities)
+
+    def _touch_chunk_retrieval_scope(
+        self,
+        *,
+        tenant_id: UUID,
+        document_id: UUID,
+        dataset_id: UUID | None = None,
+    ) -> None:
+        now = datetime.now(UTC)
+        document = (
+            self._db.query(DBDocument)
+            .filter(DBDocument.tenant_id == tenant_id, DBDocument.id == document_id)
+            .first()
+        )
+        resolved_dataset_id = dataset_id
+        if document is not None:
+            document.updated_at = now
+            if resolved_dataset_id is None:
+                resolved_dataset_id = _safe_uuid(getattr(document, "dataset_id", None))
+        if resolved_dataset_id is None:
+            return
+        dataset = (
+            self._db.query(DBDataset)
+            .filter(DBDataset.tenant_id == tenant_id, DBDataset.id == resolved_dataset_id)
+            .first()
+        )
+        if dataset is not None:
+            dataset.updated_at = now
 
     def _record_to_chunk_input(self, record: IndexRecord) -> ChunkInput:
         meta = dict(record.metadata or {})
@@ -2106,6 +2156,7 @@ class Indexer:
         *,
         document_id: UUID,
         tenant_id: UUID,
+        dataset_id: UUID | None = None,
         chunks: list[ChunkInput],
         vector_ids: list[str | None] | None = None,
         chunk_ids: list[UUID] | None = None,
@@ -2145,6 +2196,11 @@ class Indexer:
             )
 
         self._db.add_all(db_chunks)
+        self._touch_chunk_retrieval_scope(
+            tenant_id=tenant_id,
+            document_id=document_id,
+            dataset_id=dataset_id,
+        )
         self._db.flush()
         if commit:
             self._db.commit()

@@ -26,7 +26,7 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 @router.get("/stats", response_model=DocumentStats, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-async def get_document_stats(
+def get_document_stats(
     dataset_id: UUID | None = None,
     lifecycle: Annotated[Literal["active", "archived", "disabled", "all"], Query()] = "active",
     file_type: Annotated[str | None, Query(max_length=20)] = None,
