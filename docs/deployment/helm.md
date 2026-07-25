@@ -55,6 +55,8 @@ kubectl -n mimirq create secret generic mimirq-env \
   --from-literal=ENV=production \
   --from-literal=AUTH_MODE=jwt \
   --from-literal=SECRET_KEY="<>=32 chars random>" \
+  --from-literal=JWT_TENANT_CLAIM="tenant_id" \
+  --from-literal=CORS_ORIGINS="https://mimirq.example.com" \
   --from-literal=DATABASE_URL="postgresql://user:pass@postgres:5432/mimirq" \
   --from-literal=DB_CREATE_ALL_ON_STARTUP=false \
   --from-literal=DB_RUNTIME_MIGRATIONS_ENABLED=false \
@@ -64,6 +66,8 @@ kubectl -n mimirq create secret generic mimirq-env \
   --from-literal=MILVUS_PORT="19530" \
   --from-literal=MINIO_ENABLED=true \
   --from-literal=MINIO_DOCUMENTS_ENABLED=true \
+  --from-literal=MINIO_ACCESS_KEY="<strong-minio-access-key>" \
+  --from-literal=MINIO_SECRET_KEY="<strong-minio-secret-key>" \
   --from-literal=LLM_API_KEY="<your-key>" \
   --from-literal=UPLOAD_DIR="/data/uploads"
 ```
@@ -81,6 +85,19 @@ image:
 
 existingSecretName: mimirq-env
 
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: mimirq.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: mimirq-example-com-tls
+      hosts:
+        - mimirq.example.com
+
 runtimeGuards:
   environment: "production"
   vectorBackend: "milvus"
@@ -88,6 +105,43 @@ runtimeGuards:
   minioDocumentsEnabled: "true"
   dbCreateAllOnStartup: "false"
   dbRuntimeMigrationsEnabled: "false"
+
+networkPolicy:
+  enabled: true
+  api:
+    ingress:
+      allowSameNamespace: false
+      extraFrom:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
+  worker:
+    ingress:
+      allowSameNamespace: false
+      extraFrom: []
+  egress:
+    restrict: true
+    allowDNS: true
+    rules:
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: data
+            podSelector:
+              matchLabels:
+                app.kubernetes.io/name: postgres
+        ports:
+          - protocol: TCP
+            port: 5432
+      - to:
+          - ipBlock:
+              cidr: 198.51.100.10/32
+        ports:
+          - protocol: TCP
+            port: 443
 
 api:
   replicas: 2
@@ -134,6 +188,18 @@ migrations:
 - `deploy/helm/mimirq/examples/values-prod.yaml`
 - `deploy/helm/mimirq/examples/values-hardened.yaml`
 
+推荐顺序：
+
+- 先复制 `values-prod.yaml` 作为可运行生产基线。
+- 再按需合并 `values-hardened.yaml` 中的安全加固项。
+- 不要直接把 chart 默认值当成生产 values；默认值保留了单机/开发便利。
+
+生产环境至少还要确认：
+
+- 外部 Secret 中已提供强 `SECRET_KEY`、Postgres 凭据、MinIO 凭据、`JWT_TENANT_CLAIM`、`CORS_ORIGINS`
+- `ingress.tls` 已配置真实证书
+- `networkPolicy.egress.rules` 已替换为你集群里的真实依赖 allowlist
+
 如果你要配置 Ingress：
 
 ```yaml
@@ -168,9 +234,9 @@ serviceAccount:
   create: true
   # name: "mimirq-sa"
 
-# 可选：限制网络访问（见 4.3）
+# 可选：限制网络访问（生产推荐开启；见 4.3）
 networkPolicy:
-  enabled: false
+  enabled: true
 ```
 
 ### 4.2 可观测（Prometheus / Grafana，可选）
@@ -201,13 +267,13 @@ grafana:
       grafana_dashboard: "1"
 ```
 
-### 4.3 NetworkPolicy（可选）
+### 4.3 NetworkPolicy（生产推荐）
 
 当 `networkPolicy.enabled=true` 时：
 
 - `api`：默认允许 **同 namespace** 的 ingress（你需要根据 Ingress Controller 所在 namespace 调整）
 - `worker`：默认拒绝 ingress
-- `egress`：默认仍是 allow-all；只有 `networkPolicy.egress.restrict=true` 才会变成 allowlist 模式（务必补全规则）
+- `egress`：只有 `networkPolicy.egress.restrict=true` 才会变成 allowlist 模式；生产建议开启并补全规则
 
 更多配方与注意事项见：`docs/deployment/security_baseline.md`。
 

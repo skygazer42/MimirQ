@@ -175,9 +175,13 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     assert "https://registry.npmmirror.com" in web_dockerfile
     assert "Smoke built backend and web images" in docker_job
     assert "up -d --no-build" in docker_job
-    assert "Core ready-ingest-retrieval smoke" in docker_job
+    assert "Docker web-proxy and dual-api core smoke" in docker_job
     assert "python scripts/smoke_test.py" in docker_job
     assert "--bootstrap-register" in docker_job
+    assert "--web-base-url http://mimirq-web-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}:3000" in docker_job
+    assert "--secondary-base-url http://$api2_name:8000" in docker_job
+    assert "artifacts/core-e2e.web-dual-api.json" in docker_job
+    assert '--name "$api2_name" --no-deps mimirq-api' in docker_job
     assert "if: always()" in docker_job
     assert "image: ${MIMIRQ_BACKEND_IMAGE:-mimirq-backend}" in retrieval_compose
 

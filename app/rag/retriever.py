@@ -60,9 +60,13 @@ from app.rag.retrieval.sibling_expand import select_document_expansion_mode
 from app.rag.retrieval.source_labels import derive_document_title, should_replace_source_label
 from app.rag.retrieval.sparse import SparseVector
 from app.rag.retrieval_candidate_cache import (
+    acquire_inflight_retrieval_candidates,
     build_retrieval_candidate_cache_key,
     get_cached_retrieval_candidates,
+    reject_current_inflight_retrieval_candidates,
+    resolve_inflight_retrieval_candidates,
     set_cached_retrieval_candidates,
+    wait_for_inflight_retrieval_candidates,
 )
 from app.services.corpus_cache_tokens import resolve_corpus_cache_token
 from app.services.dataset_embedding_config import (
@@ -4830,6 +4834,25 @@ class HybridRetriever(BaseRetriever):
         embedding_runtime: DatasetEmbeddingRuntimeConfig | None = None,
         **legacy_overrides: Any,
     ) -> list[dict[str, Any]]:
+        try:
+            return self._hybrid_search_impl(
+                query,
+                options=options,
+                embedding_runtime=embedding_runtime,
+                **legacy_overrides,
+            )
+        except Exception as exc:
+            reject_current_inflight_retrieval_candidates(exc)
+            raise
+
+    def _hybrid_search_impl(
+        self,
+        query: str,
+        *,
+        options: HybridSearchOptions | None = None,
+        embedding_runtime: DatasetEmbeddingRuntimeConfig | None = None,
+        **legacy_overrides: Any,
+    ) -> list[dict[str, Any]]:
         """Hybrid search: vector retrieval + BM25, optional reranking."""
         search_options = _resolve_hybrid_search_options(options=options, legacy_overrides=legacy_overrides)
         top_k = search_options.top_k
@@ -5066,7 +5089,14 @@ class HybridRetriever(BaseRetriever):
             self.metadata_filter_enabled
             and _metadata_filter_has_dataset_scope(full_metadata_filter if isinstance(full_metadata_filter, dict) else None)
         )
-        pipeline_key = embedding_space or None
+        runtime_pipeline_parts = sorted(
+            {
+                str(runtime.embedding_space_hash or "").strip()
+                for runtime, _shard_dataset_ids in runtime_shards
+                if str(runtime.embedding_space_hash or "").strip()
+            }
+        )
+        pipeline_key = ",".join(runtime_pipeline_parts) or (embedding_space or None)
         doc_ids = [str(d) for d in (document_ids or [])]
 
         cache_meta: dict[str, Any] = {
@@ -5109,9 +5139,7 @@ class HybridRetriever(BaseRetriever):
             cache_meta["skip_reason"] = "missing_dataset_runtime"
             cache_meta["semantic"]["skip_reason"] = "missing_dataset_runtime"
         elif len(runtime_shards) > 1:
-            cache_eligible = False
             semantic_cache_eligible = False
-            cache_meta["skip_reason"] = "multi_runtime_scope"
             cache_meta["semantic"]["skip_reason"] = "multi_runtime_scope"
 
         if document_scope_resolution_failed:
@@ -5135,9 +5163,9 @@ class HybridRetriever(BaseRetriever):
             _publish_channel_health()
             raise exc
 
+        cache_ttl = int(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_TTL_SEC", 0) or 0)
         if cache_eligible:
-            ttl = int(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_TTL_SEC", 0) or 0)
-            if ttl <= 0:
+            if cache_ttl <= 0:
                 cache_eligible = False
                 cache_meta["skip_reason"] = "ttl_zero"
 
@@ -5234,6 +5262,28 @@ class HybridRetriever(BaseRetriever):
             except Exception as exc:
                 logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
             return semantic_cached[:top_k]
+
+        singleflight_leader = False
+        if cache_eligible and cache_key and not cache_hit:
+            try:
+                singleflight_leader, inflight_future = acquire_inflight_retrieval_candidates(cache_key)
+                if not singleflight_leader:
+                    shared_payload = wait_for_inflight_retrieval_candidates(
+                        cache_key,
+                        inflight_future,
+                        timeout_sec=max(
+                            1.0,
+                            min(
+                                15.0,
+                                float(getattr(settings, "RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC", 15.0) or 15.0),
+                            ),
+                        ),
+                    )
+                    if isinstance(shared_payload, list):
+                        return shared_payload[:top_k]
+            except Exception as exc:
+                _log_retriever_fallback('_hybrid_search', exc)
+                singleflight_leader = False
 
         emit_stream_event("event", {"message": "正在召回候选…"}, dedupe_key="retrieval.recall")
 
@@ -6260,6 +6310,11 @@ class HybridRetriever(BaseRetriever):
             except Exception as exc:
                 logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
 
+        if singleflight_leader and cache_key:
+            if cache_store_allowed:
+                resolve_inflight_retrieval_candidates(cache_key, out)
+            else:
+                reject_current_inflight_retrieval_candidates(RuntimeError("retrieval degraded"))
         return out
 
     # ---- LangChain Retriever API ----

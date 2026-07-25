@@ -320,20 +320,26 @@ jobs:
           docker logs "$web_name"
           exit 1
 
-      - name: Core ready-ingest-retrieval smoke
+      - name: Docker web-proxy and dual-api core smoke
         env:
           BACKEND_PORT: "0"
           COMPOSE_PROJECT_NAME: mimirq-ci-${{ github.run_id }}-${{ github.run_attempt }}
           MIMIRQ_BACKEND_IMAGE: mimirq-backend
         run: |
           mkdir -p artifacts
+          api2_name="mimirq-api-secondary-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          trap 'docker rm -f "$api2_name" >/dev/null 2>&1 || true' EXIT
+          docker compose -f docker/docker-compose.retrieval-dev.yml run -d \
+            --name "$api2_name" --no-deps mimirq-api
           docker compose -f docker/docker-compose.retrieval-dev.yml run --rm --no-deps -T \
             -v "$PWD:/work" -w /work mimirq-api \
             python scripts/smoke_test.py \
-              --base-url http://mimirq-api:8000 \
+              --base-url http://mimirq-web-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}:3000 \
+              --web-base-url http://mimirq-web-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}:3000 \
+              --secondary-base-url http://$api2_name:8000 \
               --core-only \
               --bootstrap-register \
-              --out artifacts/core-e2e.compose.json
+              --out artifacts/core-e2e.web-dual-api.json
 
       - name: Clean up image smoke stack
         if: always()

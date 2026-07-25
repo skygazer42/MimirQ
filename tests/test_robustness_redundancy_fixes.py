@@ -335,7 +335,7 @@ def test_retriever_embedding_runtime_propagates_invalid_dataset_scoped_config(
 
 @pytest.mark.parametrize("retrieval_mode", ["vector", "keyword"])
 @pytest.mark.parametrize("scope_kind", ["dataset_ids", "document_ids"])
-def test_multi_runtime_dataset_scope_fans_out_vector_search_and_disables_cache(
+def test_multi_runtime_dataset_scope_fans_out_vector_search_and_keeps_exact_cache_enabled(
     monkeypatch: pytest.MonkeyPatch,
     retrieval_mode: str,
     scope_kind: str,
@@ -379,6 +379,7 @@ def test_multi_runtime_dataset_scope_fans_out_vector_search_and_disables_cache(
     )
     search_calls: list[dict[str, object]] = []
     cache_lookups: list[str] = []
+    cache_key_calls: list[dict[str, object]] = []
 
     class _Embeddings:
         def __init__(self, runtime: DatasetEmbeddingRuntimeConfig) -> None:
@@ -435,12 +436,22 @@ def test_multi_runtime_dataset_scope_fans_out_vector_search_and_disables_cache(
         "_resolve_embedding_runtime",
         lambda self, *, tenant_id: _embedding_runtime(),  # noqa: ANN001,ARG005
     )
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_resolve_candidate_cache_corpus_token",
+        lambda self, **kwargs: "corpus-token",  # noqa: ANN001,ARG005
+    )
     monkeypatch.setattr(retriever_module, "create_embeddings_for_runtime", lambda runtime: _Embeddings(runtime))
     monkeypatch.setattr(retriever_module, "resolve_collection_name", lambda name: name)
     monkeypatch.setattr(
         retriever_module,
         "get_milvus_adapter",
         lambda name: _Adapter(runtime_a if name == runtime_a.collection_name else runtime_b),
+    )
+    monkeypatch.setattr(
+        retriever_module,
+        "build_retrieval_candidate_cache_key",
+        lambda **kwargs: cache_key_calls.append(kwargs) or "multi-runtime-cache-key",
     )
     monkeypatch.setattr(
         retriever_module,
@@ -477,7 +488,6 @@ def test_multi_runtime_dataset_scope_fans_out_vector_search_and_disables_cache(
     )
 
     assert [item["content"] for item in results] == ["runtime a hit"]
-    assert cache_lookups == []
     assert [call["collection"] for call in search_calls] == [
         runtime_a.collection_name,
         runtime_b.collection_name,
@@ -499,7 +509,9 @@ def test_multi_runtime_dataset_scope_fans_out_vector_search_and_disables_cache(
         "embedding_space_hash": {"$in": ["space-b", ""]},
         **expected_document_filter,
     }
-    assert retriever._last_channel_metrics["cache"]["skip_reason"] == "multi_runtime_scope"
+    assert cache_lookups == ["multi-runtime-cache-key"]
+    assert cache_key_calls[0]["pipeline_key"] == "space-a,space-b"
+    assert retriever._last_channel_metrics["cache"].get("skip_reason") is None
     assert retriever._last_channel_metrics["cache"]["semantic"]["skip_reason"] == "multi_runtime_scope"
     assert retriever._last_channel_metrics["retrieval_degraded"] is True
     assert retriever._last_channel_metrics["all_retrieval_channels_failed"] is False
@@ -939,6 +951,181 @@ def test_hybrid_search_propagates_behavior_hash_to_retrieval_and_semantic_cache_
     assert isinstance(behavior_hash, str) and behavior_hash
     assert get_calls[0]["behavior_hash"] == behavior_hash
     assert set_calls[0]["behavior_hash"] == behavior_hash
+
+
+def test_retrieval_candidate_cache_singleflight_coalesces_concurrent_exact_misses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.retriever as retriever_module
+    from app.core.config import settings
+    from app.rag.retrieval_candidate_cache import clear_inflight_retrieval_candidates
+    from app.rag.retriever import HybridRetriever
+
+    _configure_retrieval_test(monkeypatch)
+    for name, value in {
+        "RETRIEVAL_CANDIDATE_CACHE_ENABLED": True,
+        "RETRIEVAL_CANDIDATE_CACHE_TTL_SEC": 60,
+        "SEMANTIC_CACHE_ENABLED": False,
+    }.items():
+        monkeypatch.setattr(settings, name, value, raising=False)
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    runtime = _embedding_runtime()
+    search_started = threading.Event()
+    release_search = threading.Event()
+    search_calls = 0
+    search_lock = threading.Lock()
+    results: list[list[dict[str, object]]] = []
+    errors: list[Exception] = []
+
+    def search(**_kwargs):  # noqa: ANN003,ANN202
+        nonlocal search_calls
+        with search_lock:
+            search_calls += 1
+        search_started.set()
+        release_search.wait(timeout=2.0)
+        return [
+            {
+                "chunk_id": "chunk-1",
+                "content": "singleflight result",
+                "score": 0.92,
+                "metadata": {
+                    "chunk_id": "chunk-1",
+                    "document_id": str(document_id),
+                    "dataset_id": str(dataset_id),
+                    "embedding_space_hash": runtime.embedding_space_hash,
+                },
+            }
+        ]
+
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_resolve_dataset_runtime_shards",
+        lambda self, *, tenant_id, dataset_ids=None: [(runtime, (dataset_id,))],  # noqa: ANN001,ARG005
+    )
+    monkeypatch.setattr(HybridRetriever, "_resolve_embedding_runtime", lambda self, *, tenant_id: runtime)
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_resolve_candidate_cache_corpus_token",
+        lambda self, **kwargs: "corpus-token",  # noqa: ANN001,ARG005
+    )
+    monkeypatch.setattr(HybridRetriever, "_enrich_results_with_db_metadata", lambda self, items, **kwargs: list(items))
+    monkeypatch.setattr(HybridRetriever, "_expand_results_with_neighbors", lambda self, items: list(items))
+    monkeypatch.setattr(HybridRetriever, "_auto_merge_parent_child", lambda self, items: list(items))
+    monkeypatch.setattr(retriever_module, "get_vector_store", lambda: SimpleNamespace(search=search))
+    monkeypatch.setattr(retriever_module, "get_cached_retrieval_candidates", lambda _key: None)
+    monkeypatch.setattr(retriever_module, "set_cached_retrieval_candidates", lambda *args, **kwargs: True)
+    monkeypatch.setattr(HybridRetriever, "_search_bm25", lambda self, **kwargs: [])  # noqa: ANN001
+    monkeypatch.setattr(HybridRetriever, "_search_lexical_db", lambda self, **kwargs: [])  # noqa: ANN001
+    monkeypatch.setattr(HybridRetriever, "_search_sparse", lambda self, **kwargs: [])  # noqa: ANN001
+
+    def run_search() -> None:
+        retriever = HybridRetriever(
+            tenant_id=tenant_id,
+            account_id="member-1",
+            dataset_id=dataset_id,
+            document_ids=[document_id],
+            retrieval_mode="vector",
+            enable_reranker=False,
+            sparse_enabled=False,
+            dedup_enabled=False,
+        )
+        try:
+            results.append(
+                retriever._hybrid_search(
+                    "singleflight query",
+                    top_k=1,
+                    score_threshold=0.0,
+                    tenant_id=tenant_id,
+                    document_ids=[document_id],
+                    retrieval_mode="vector",
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    clear_inflight_retrieval_candidates()
+    try:
+        threads = [threading.Thread(target=run_search), threading.Thread(target=run_search)]
+        for thread in threads:
+            thread.start()
+
+        assert search_started.wait(timeout=1.0)
+        time.sleep(0.1)
+        with search_lock:
+            assert search_calls == 1
+
+        release_search.set()
+        for thread in threads:
+            thread.join(timeout=2.0)
+
+        assert errors == []
+        assert search_calls == 1
+        assert len(results) == 2
+        assert all([item["content"] for item in payload] == ["singleflight result"] for payload in results)
+        assert results[0][0] is not results[1][0]
+    finally:
+        release_search.set()
+        clear_inflight_retrieval_candidates()
+
+
+def test_retrieval_candidate_cache_singleflight_wait_timeout_releases_key_without_cancelling_leader() -> None:
+    from app.rag.retrieval_candidate_cache import (
+        acquire_inflight_retrieval_candidates,
+        clear_inflight_retrieval_candidates,
+        wait_for_inflight_retrieval_candidates,
+    )
+
+    clear_inflight_retrieval_candidates()
+    try:
+        leader, future = acquire_inflight_retrieval_candidates("cache-key")
+        assert leader is True
+
+        follower, shared_future = acquire_inflight_retrieval_candidates("cache-key")
+        assert follower is False
+        assert shared_future is future
+
+        with pytest.raises(TimeoutError, match="singleflight timed out"):
+            wait_for_inflight_retrieval_candidates("cache-key", shared_future, timeout_sec=0.01)
+
+        leader_again, _future_again = acquire_inflight_retrieval_candidates("cache-key")
+        assert leader_again is True
+        assert future.cancelled() is False
+        future.set_result([{"chunk_id": "leader-result"}])
+        assert future.result() == [{"chunk_id": "leader-result"}]
+    finally:
+        clear_inflight_retrieval_candidates()
+
+
+def test_hybrid_search_wrapper_rejects_current_inflight_on_impl_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.retriever as retriever_module
+    from app.rag.retrieval_candidate_cache import (
+        acquire_inflight_retrieval_candidates,
+        clear_inflight_retrieval_candidates,
+    )
+    from app.rag.retriever import HybridRetriever
+
+    calls: list[str] = []
+
+    def fail_impl(self, query: str, *, options=None, embedding_runtime=None, **legacy_overrides):  # noqa: ANN001,ARG001
+        leader, _future = acquire_inflight_retrieval_candidates("cache-key")
+        assert leader is True
+        raise RuntimeError("leader failed")
+
+    monkeypatch.setattr(retriever_module, "reject_current_inflight_retrieval_candidates", lambda exc: calls.append(str(exc)))
+    monkeypatch.setattr(HybridRetriever, "_hybrid_search_impl", fail_impl)
+
+    clear_inflight_retrieval_candidates()
+    try:
+        with pytest.raises(RuntimeError, match="leader failed"):
+            HybridRetriever()._hybrid_search("query")
+        assert calls == ["leader failed"]
+    finally:
+        clear_inflight_retrieval_candidates()
 
 
 def test_all_retrieval_failures_build_engine_error_message(

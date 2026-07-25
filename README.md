@@ -350,6 +350,9 @@ MimirQ 两条 Dify 链路的检索证据覆盖为 99.7% / 96.8%，但生成答�
 # AUTH_MODE=jwt
 # SECRET_KEY=<至少 32 位随机字符串>
 # POSTGRES_PASSWORD=<强密码>
+# MINIO_ACCESS_KEY_DOCKER=<强访问密钥>
+# MINIO_SECRET_KEY_DOCKER=<强私密密钥>
+# JWT_TENANT_CLAIM=tenant_id
 # MIMIRQ_DB_CREATE_ALL_ON_STARTUP=false
 # MIMIRQ_DB_RUNTIME_MIGRATIONS_ENABLED=false
 
@@ -358,7 +361,7 @@ make db-upgrade
 make up
 ```
 
-Kubernetes 生产部署请参考 [Helm 部署文档](./docs/deployment/helm.md) 和 [运维手册](./docs/deployment/runbook.md)。
+若启用前端容器，还应设置非空 `MARKDOWN_IMAGE_PROXY_SECRET`，并确保 `FORWARDED_ALLOW_IPS_DOCKER` 只包含受信任代理地址。Kubernetes 生产部署请参考 [Helm 部署文档](./docs/deployment/helm.md) 和 [运维手册](./docs/deployment/runbook.md)。
 
 </details>
 

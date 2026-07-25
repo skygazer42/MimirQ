@@ -145,6 +145,24 @@ def _serialize_preview_parse_documents(documents: list[Document]) -> list[dict[s
     return out
 
 
+def _should_include_original_preview_text(*, include_original_text: bool, original_text_max_chars: int) -> bool:
+    return bool(include_original_text) and int(original_text_max_chars or 0) > 0
+
+
+def _is_original_preview_text_truncated(
+    *,
+    include_original: bool,
+    original_text_value: str | None,
+    total_characters: int,
+    original_text_max_chars: int,
+) -> bool:
+    return bool(
+        include_original
+        and original_text_value is None
+        and total_characters > int(original_text_max_chars or 0)
+    )
+
+
 @router.post("/chunk-preview", response_model=ChunkPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def preview_chunking(
     request: Request,
@@ -234,7 +252,10 @@ async def preview_chunking(
 
     if original_text_max_chars < 0 or original_text_max_chars > 2_000_000:
         raise HTTPException(status_code=400, detail="original_text_max_chars must be between 0 and 2000000")
-    include_original = bool(include_original_text) and int(original_text_max_chars or 0) > 0
+    include_original = _should_include_original_preview_text(
+        include_original_text=bool(include_original_text),
+        original_text_max_chars=int(original_text_max_chars or 0),
+    )
 
     if max_chunks < 0 or max_chunks > 20000:
         raise HTTPException(status_code=400, detail="max_chunks must be between 0 and 20000")
@@ -882,10 +903,11 @@ async def preview_chunking(
         if resolved_chunk_strategy == "auto" and auto_counts:
             auto_selected_strategy = auto_counts.most_common(1)[0][0]
 
-        original_text_truncated_val = bool(
-            include_original
-            and original_text_value is None
-            and total_characters > int(original_text_max_chars or 0)
+        original_text_truncated_val = _is_original_preview_text_truncated(
+            include_original=include_original,
+            original_text_value=original_text_value,
+            total_characters=int(total_characters or 0),
+            original_text_max_chars=int(original_text_max_chars or 0),
         )
         original_text_cleaned_value: str | None = None
         if original_text_value is not None and "@@" in original_text_value and "##" in original_text_value:
@@ -1097,7 +1119,10 @@ async def preview_chunking_by_sha(
 
     if original_text_max_chars < 0 or original_text_max_chars > 2_000_000:
         raise HTTPException(status_code=400, detail="original_text_max_chars must be between 0 and 2000000")
-    include_original = bool(include_original_text)
+    include_original = _should_include_original_preview_text(
+        include_original_text=bool(include_original_text),
+        original_text_max_chars=int(original_text_max_chars or 0),
+    )
 
     if resolved_chunk_strategy in chunker_factory.INTEGRATED_PIPELINE_STRATEGIES:
         raise HTTPException(
@@ -1582,10 +1607,11 @@ async def preview_chunking_by_sha(
     if resolved_chunk_strategy == "auto" and auto_counts:
         auto_selected_strategy = auto_counts.most_common(1)[0][0]
 
-    original_text_truncated_val = bool(
-        include_original
-        and original_text_value is None
-        and total_characters > int(original_text_max_chars or 0)
+    original_text_truncated_val = _is_original_preview_text_truncated(
+        include_original=include_original,
+        original_text_value=original_text_value,
+        total_characters=int(total_characters or 0),
+        original_text_max_chars=int(original_text_max_chars or 0),
     )
     original_text_cleaned_value: str | None = None
     if original_text_value is not None and "@@" in original_text_value and "##" in original_text_value:

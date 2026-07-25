@@ -230,6 +230,7 @@ async def test_single_upload_releases_ingest_lock_on_dedup_hit(monkeypatch: pyte
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
     monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
     monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
     monkeypatch.setattr(
         documents_module,
@@ -241,7 +242,7 @@ async def test_single_upload_releases_ingest_lock_on_dedup_hit(monkeypatch: pyte
     async def _queue() -> object:
         return object()
 
-    async def _acquire(redis, *, key: str, value: str, ttl_sec: int) -> bool:  # noqa: ANN001
+    async def _acquire(redis, *, key: str, value: str, ttl_sec: int, fail_open: bool = True) -> bool:  # noqa: ANN001
         return True
 
     async def _release(redis, *, key: str, value: str) -> None:  # noqa: ANN001
@@ -273,19 +274,141 @@ async def test_single_upload_releases_ingest_lock_on_dedup_hit(monkeypatch: pyte
 
 
 @pytest.mark.asyncio
+async def test_single_upload_fails_closed_when_ingest_lock_queue_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    dataset_id = uuid.uuid4()
+
+    _patch_quota(monkeypatch)
+    _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
+    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+
+    async def _queue() -> object:
+        raise RuntimeError("redis unavailable")
+
+    monkeypatch.setattr("app.tasks.queue.get_queue", _queue, raising=False)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await document_upload.upload_document(
+            background_tasks=BackgroundTasks(),
+            file=_make_upload("queue-down.txt"),
+            form=document_upload.UploadDocumentFormFields(
+                parser_backend="auto",
+                chunk_strategy="langchain_recursive",
+                pipeline=None,
+                dataset_id=dataset_id,
+                user_metadata=None,
+            ),
+            overrides_form=_build_overrides_form(),
+            tenant_id=uuid.uuid4(),
+            account_id="acct-1",
+            db=SimpleNamespace(),
+        )
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail == document_upload.INGEST_LOCK_UNAVAILABLE_DETAIL
+
+
+@pytest.mark.asyncio
+async def test_single_upload_fails_closed_when_ingest_lock_set_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    dataset_id = uuid.uuid4()
+
+    _patch_quota(monkeypatch)
+    _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
+    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+
+    class _FailingRedis:
+        async def set(self, *_args, **_kwargs) -> bool:  # noqa: ANN002, ANN003
+            raise RuntimeError("set failed")
+
+    async def _queue() -> object:
+        return _FailingRedis()
+
+    monkeypatch.setattr("app.tasks.queue.get_queue", _queue, raising=False)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await document_upload.upload_document(
+            background_tasks=BackgroundTasks(),
+            file=_make_upload("set-fails.txt"),
+            form=document_upload.UploadDocumentFormFields(
+                parser_backend="auto",
+                chunk_strategy="langchain_recursive",
+                pipeline=None,
+                dataset_id=dataset_id,
+                user_metadata=None,
+            ),
+            overrides_form=_build_overrides_form(),
+            tenant_id=uuid.uuid4(),
+            account_id="acct-1",
+            db=SimpleNamespace(),
+        )
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail == document_upload.INGEST_LOCK_UNAVAILABLE_DETAIL
+
+
+@pytest.mark.asyncio
+async def test_single_upload_skips_ingest_lock_when_queue_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    dataset_id = uuid.uuid4()
+
+    _patch_quota(monkeypatch)
+    _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
+    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", False, raising=False)
+    monkeypatch.setattr(documents_module, "DBDocument", _DetachedStatusDocument, raising=True)
+    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+
+    async def _queue() -> object:
+        raise AssertionError("queue probe should be skipped when disabled")
+
+    async def _persist(db, db_document, *, file_path: Path) -> None:  # noqa: ANN001
+        db_document._session = db
+
+    async def _store(file_path: Path, **_kwargs) -> str:  # noqa: ANN003, ANN202
+        return str(file_path)
+
+    async def _schedule(**_kwargs) -> bool:  # noqa: ANN003, ANN202
+        return True
+
+    monkeypatch.setattr("app.tasks.queue.get_queue", _queue, raising=False)
+    monkeypatch.setattr(document_upload, "_persist_uploaded_document", _persist, raising=True)
+    monkeypatch.setattr(document_upload, "_store_document_source", _store, raising=True)
+    monkeypatch.setattr(document_upload, "_schedule_document_processing", _schedule, raising=True)
+
+    db = _FakeItemSession("single-disabled")
+    result = await document_upload.upload_document(
+        background_tasks=BackgroundTasks(),
+        file=_make_upload("local-disabled.txt"),
+        form=document_upload.UploadDocumentFormFields(
+            parser_backend="auto",
+            chunk_strategy="langchain_recursive",
+            pipeline=None,
+            dataset_id=dataset_id,
+            user_metadata=None,
+        ),
+        overrides_form=_build_overrides_form(),
+        tenant_id=uuid.uuid4(),
+        account_id="acct-1",
+        db=db,
+    )
+
+    assert result.id
+
+
+@pytest.mark.asyncio
 async def test_single_upload_releases_ingest_lock_without_worker_handoff(monkeypatch: pytest.MonkeyPatch) -> None:
     dataset_id = uuid.uuid4()
     released: list[tuple[str, str]] = []
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
+    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
     monkeypatch.setattr(documents_module, "DBDocument", _DetachedStatusDocument, raising=True)
     monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
 
     async def _queue() -> object:
         return object()
 
-    async def _acquire(redis, *, key: str, value: str, ttl_sec: int) -> bool:  # noqa: ANN001
+    async def _acquire(redis, *, key: str, value: str, ttl_sec: int, fail_open: bool = True) -> bool:  # noqa: ANN001
         return True
 
     async def _release(redis, *, key: str, value: str) -> None:  # noqa: ANN001
@@ -342,6 +465,7 @@ async def test_single_upload_hands_retry_ingest_lock_to_worker(monkeypatch: pyte
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
     monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
     monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
     monkeypatch.setattr(
         documents_module,
@@ -353,7 +477,7 @@ async def test_single_upload_hands_retry_ingest_lock_to_worker(monkeypatch: pyte
     async def _queue() -> object:
         return object()
 
-    async def _acquire(redis, *, key: str, value: str, ttl_sec: int) -> bool:  # noqa: ANN001
+    async def _acquire(redis, *, key: str, value: str, ttl_sec: int, fail_open: bool = True) -> bool:  # noqa: ANN001
         return True
 
     async def _release(redis, *, key: str, value: str) -> None:  # noqa: ANN001
@@ -399,12 +523,13 @@ async def test_single_upload_releases_ingest_lock_on_exception(monkeypatch: pyte
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
+    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
     monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
 
     async def _queue() -> object:
         return object()
 
-    async def _acquire(redis, *, key: str, value: str, ttl_sec: int) -> bool:  # noqa: ANN001
+    async def _acquire(redis, *, key: str, value: str, ttl_sec: int, fail_open: bool = True) -> bool:  # noqa: ANN001
         return True
 
     async def _release(redis, *, key: str, value: str) -> None:  # noqa: ANN001
@@ -452,6 +577,7 @@ async def test_batch_upload_hands_retry_ingest_lock_to_worker(monkeypatch: pytes
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
     monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
     monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
     monkeypatch.setattr(
         documents_module,
@@ -469,7 +595,7 @@ async def test_batch_upload_hands_retry_ingest_lock_to_worker(monkeypatch: pytes
     async def _queue() -> object:
         return object()
 
-    async def _acquire(redis, *, key: str, value: str, ttl_sec: int) -> bool:  # noqa: ANN001
+    async def _acquire(redis, *, key: str, value: str, ttl_sec: int, fail_open: bool = True) -> bool:  # noqa: ANN001
         return True
 
     async def _release(redis, *, key: str, value: str) -> None:  # noqa: ANN001
@@ -537,6 +663,7 @@ async def test_precheck_staged_batch_hands_retry_ingest_lock_to_worker(monkeypat
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
     monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
     monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
     monkeypatch.setattr(
         documents_module,
@@ -556,7 +683,7 @@ async def test_precheck_staged_batch_hands_retry_ingest_lock_to_worker(monkeypat
     async def _queue() -> object:
         return object()
 
-    async def _acquire(redis, *, key: str, value: str, ttl_sec: int) -> bool:  # noqa: ANN001
+    async def _acquire(redis, *, key: str, value: str, ttl_sec: int, fail_open: bool = True) -> bool:  # noqa: ANN001
         return True
 
     async def _release(redis, *, key: str, value: str) -> None:  # noqa: ANN001

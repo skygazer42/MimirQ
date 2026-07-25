@@ -1,7 +1,14 @@
-# Example: production-ish Helm values for MimirQ.
+# Example: production baseline Helm values for MimirQ.
 #
 # Usage:
 #   helm upgrade --install mimirq deploy/helm/mimirq -n mimirq -f deploy/helm/mimirq/examples/values-prod.yaml
+#
+# Notes:
+# - This is the production starting point, not a dev convenience profile.
+# - Pair it with an externally managed Secret that provides strong Postgres/MinIO
+#   credentials plus `SECRET_KEY`, `JWT_TENANT_CLAIM`, and `CORS_ORIGINS`.
+# - Ingress/TLS and NetworkPolicy egress allowlists are explicit here so production
+#   installs do not silently inherit the chart's permissive defaults.
 
 image:
   repository: "<your-registry>/mimirq"
@@ -9,6 +16,19 @@ image:
 
 # Prefer creating this Secret outside Helm (Vault/ESO/KMS) and referencing it here.
 existingSecretName: "mimirq-env"
+
+ingress:
+  enabled: true
+  className: "nginx"
+  hosts:
+    - host: "mimirq.example.com"
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: "mimirq-example-com-tls"
+      hosts:
+        - "mimirq.example.com"
 
 api:
   replicas: 2
@@ -44,6 +64,73 @@ runtimeGuards:
   minioDocumentsEnabled: "true"
   dbCreateAllOnStartup: "false"
   dbRuntimeMigrationsEnabled: "false"
+
+networkPolicy:
+  enabled: true
+  api:
+    ingress:
+      allowSameNamespace: false
+      extraFrom:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
+  worker:
+    ingress:
+      allowSameNamespace: false
+      extraFrom: []
+  egress:
+    restrict: true
+    allowDNS: true
+    rules:
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: data
+            podSelector:
+              matchLabels:
+                app.kubernetes.io/name: postgres
+        ports:
+          - protocol: TCP
+            port: 5432
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: data
+            podSelector:
+              matchLabels:
+                app.kubernetes.io/name: redis
+        ports:
+          - protocol: TCP
+            port: 6379
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: data
+            podSelector:
+              matchLabels:
+                app.kubernetes.io/name: milvus
+        ports:
+          - protocol: TCP
+            port: 19530
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: data
+            podSelector:
+              matchLabels:
+                app.kubernetes.io/name: minio
+        ports:
+          - protocol: TCP
+            port: 9000
+      - to:
+          - ipBlock:
+              cidr: 198.51.100.10/32
+        ports:
+          - protocol: TCP
+            port: 443
 
 persistence:
   uploads:

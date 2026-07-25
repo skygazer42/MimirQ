@@ -5,6 +5,7 @@ import httpx
 from scripts.smoke_test import (
     _cleanup_created_dataset,
     _core_retrieve_payload,
+    _probe_web_auth_page,
     _register_for_token,
     _summarize_retrieval_evidence,
     _upload_form_data,
@@ -115,3 +116,14 @@ def test_core_only_retrieval_stays_offline() -> None:
 
     assert payload["rag_config"]["retrieval_mode"] == "keyword"
     assert payload["rag_config"]["enable_reranker"] is False
+
+
+def test_probe_web_auth_page_requires_login_labels() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == "http://web.test/auth"
+        return httpx.Response(200, text="<html><body>登录<label>账号</label><label>密码</label></body></html>")
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        summary = _probe_web_auth_page(client, web_base="http://web.test")
+
+    assert summary == {"status_code": 200, "labels": ["登录", "账号", "密码"]}

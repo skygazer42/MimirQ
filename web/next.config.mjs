@@ -119,6 +119,7 @@ export function resolveBackendProxyBase(env = process.env) {
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  skipTrailingSlashRedirect: true,
   allowedDevOrigins: resolveAllowedDevOrigins(),
   distDir:
     process.env.NEXT_DIST_DIR ||

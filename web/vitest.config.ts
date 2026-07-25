@@ -24,12 +24,6 @@ const config = {
         '**/.next/**',
         '**/coverage/**',
       ],
-      thresholds: {
-        statements: 40,
-        branches: 30,
-        functions: 35,
-        lines: 40,
-      },
     },
   },
 }

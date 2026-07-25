@@ -26,10 +26,12 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     404: {"description": "Not Found"},
     409: {"description": "Conflict"},
     416: {"description": "Range Not Satisfiable"},
+    503: {"description": "Service Unavailable"},
 }
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 logger = get_logger(__name__)
+INGEST_LOCK_UNAVAILABLE_DETAIL = "Ingest lock unavailable"
 
 
 @dataclass
@@ -185,25 +187,33 @@ async def _maybe_acquire_ingest_lock(
 ) -> None:
     if not file_sha256 or not pipeline_hash or dataset_id is None:
         return
+    if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+        return
     try:
         from app.tasks.locks import acquire_lock, make_lock_value
         from app.tasks.queue import get_queue
 
         redis = await get_queue()
-    except Exception:  # noqa: BLE001
-        redis = None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Ingest lock queue unavailable: %s", str(exc)[:200])
+        raise HTTPException(status_code=503, detail=INGEST_LOCK_UNAVAILABLE_DETAIL) from exc
 
     if redis is None:
-        return
+        raise HTTPException(status_code=503, detail=INGEST_LOCK_UNAVAILABLE_DETAIL)
 
     ingest_lock_key = f"lock:ingest:{tenant_id}:{dataset_id}:{file_sha256}:{pipeline_hash}"
     ingest_lock_value = make_lock_value(account_id)
-    acquired = await acquire_lock(
-        redis,
-        key=ingest_lock_key,
-        value=ingest_lock_value,
-        ttl_sec=60 * 40,
-    )
+    try:
+        acquired = await acquire_lock(
+            redis,
+            key=ingest_lock_key,
+            value=ingest_lock_value,
+            ttl_sec=60 * 40,
+            fail_open=False,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Ingest lock acquire failed: %s", str(exc)[:200])
+        raise HTTPException(status_code=503, detail=INGEST_LOCK_UNAVAILABLE_DETAIL) from exc
     if not acquired:
         raise HTTPException(status_code=409, detail="Duplicate ingest in progress")
 

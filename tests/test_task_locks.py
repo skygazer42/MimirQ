@@ -60,6 +60,11 @@ class FakeRedis:
         return await self.eval(script, numkeys, *values)
 
 
+class FailingRedis(FakeRedis):
+    async def set(self, key: str, value: object, *, ex: int | None = None, nx: bool = False) -> bool:
+        raise RuntimeError("redis unavailable")
+
+
 def test_lock_values_are_unique_for_same_requester() -> None:
     values = {locks.make_lock_value("account-a") for _ in range(32)}
 
@@ -93,6 +98,23 @@ async def test_release_lock_keeps_replaced_lock() -> None:
 
     assert redis.store["lock:doc:1"] == "owner-b"
     assert redis.eval_calls == [(("lock:doc:1",), ("owner-a",))]
+
+
+@pytest.mark.asyncio
+async def test_acquire_lock_defaults_fail_open_on_redis_error() -> None:
+    assert await locks.acquire_lock(FailingRedis(), key="lock:doc:1", value="owner-a", ttl_sec=60) is True
+
+
+@pytest.mark.asyncio
+async def test_acquire_lock_can_fail_closed_on_redis_error() -> None:
+    with pytest.raises(RuntimeError, match="redis unavailable"):
+        await locks.acquire_lock(FailingRedis(), key="lock:doc:1", value="owner-a", ttl_sec=60, fail_open=False)
+
+
+@pytest.mark.asyncio
+async def test_acquire_lock_can_fail_closed_without_redis_client() -> None:
+    with pytest.raises(RuntimeError, match="Redis client unavailable"):
+        await locks.acquire_lock(None, key="lock:doc:1", value="owner-a", ttl_sec=60, fail_open=False)
 
 
 @pytest.mark.asyncio

@@ -12,8 +12,12 @@ Security posture:
 """
 
 
+import concurrent.futures
+import copy
 import hashlib
 import json
+import threading
+from contextvars import ContextVar
 from typing import Any
 
 from app.core.config import settings
@@ -37,6 +41,12 @@ _redis_client_slot = LazyRedisClient(
 )
 _get_redis_client = _redis_client_slot.get
 _invalidate_redis_client = _redis_client_slot.invalidate
+_inflight_candidate_futures: dict[str, concurrent.futures.Future[list[dict[str, Any]]]] = {}
+_inflight_candidate_lock = threading.Lock()
+_inflight_candidate_leader_key: ContextVar[str | None] = ContextVar(
+    "retrieval_candidate_leader_key",
+    default=None,
+)
 
 
 def _hash_doc_scope(document_ids: list[str]) -> str:
@@ -87,6 +97,74 @@ def build_retrieval_candidate_cache_key(
     raw = json.dumps(signature, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
     digest = stable_hash(raw, length=32)
     return f"{prefix}:{tenant_id}:{digest}"
+
+
+def _current_inflight_retrieval_candidates_key() -> str | None:
+    key = _inflight_candidate_leader_key.get()
+    return str(key) if key else None
+
+
+def _clear_current_inflight_retrieval_candidates_key(key: str | None = None) -> None:
+    current = _current_inflight_retrieval_candidates_key()
+    if current is None:
+        return
+    if key is not None and current != key:
+        return
+    _inflight_candidate_leader_key.set(None)
+
+
+def _pop_inflight_retrieval_candidates(key: str) -> concurrent.futures.Future[list[dict[str, Any]]] | None:
+    with _inflight_candidate_lock:
+        return _inflight_candidate_futures.pop(key, None)
+
+
+def acquire_inflight_retrieval_candidates(key: str) -> tuple[bool, concurrent.futures.Future[list[dict[str, Any]]]]:
+    with _inflight_candidate_lock:
+        current = _inflight_candidate_futures.get(key)
+        if current is not None:
+            return False, current
+        future: concurrent.futures.Future[list[dict[str, Any]]] = concurrent.futures.Future()
+        _inflight_candidate_futures[key] = future
+        _inflight_candidate_leader_key.set(key)
+        return True, future
+
+
+def resolve_inflight_retrieval_candidates(key: str, payload: list[dict[str, Any]]) -> None:
+    future = _pop_inflight_retrieval_candidates(key)
+    _clear_current_inflight_retrieval_candidates_key(key)
+    if future is None or future.done():
+        return
+    future.set_result(payload)
+
+
+def reject_inflight_retrieval_candidates(key: str, exc: BaseException) -> None:
+    future = _pop_inflight_retrieval_candidates(key)
+    _clear_current_inflight_retrieval_candidates_key(key)
+    if future is None or future.done():
+        return
+    future.set_exception(exc)
+
+
+def reject_current_inflight_retrieval_candidates(exc: BaseException) -> None:
+    key = _current_inflight_retrieval_candidates_key()
+    if not key:
+        return
+    reject_inflight_retrieval_candidates(key, exc)
+
+
+def wait_for_inflight_retrieval_candidates(
+    key: str,
+    future: concurrent.futures.Future[list[dict[str, Any]]],
+    *,
+    timeout_sec: float,
+) -> list[dict[str, Any]]:
+    try:
+        return copy.deepcopy(future.result(timeout=max(1.0, float(timeout_sec or 0.0))))
+    except concurrent.futures.TimeoutError as exc:
+        with _inflight_candidate_lock:
+            if _inflight_candidate_futures.get(key) is future:
+                _inflight_candidate_futures.pop(key, None)
+        raise TimeoutError(f"retrieval candidate singleflight timed out for key={key}") from exc
 
 
 def get_cached_retrieval_candidates(key: str) -> list[dict[str, Any]] | None:
@@ -152,8 +230,25 @@ def set_cached_retrieval_candidates(key: str, payload: list[dict[str, Any]]) -> 
         return False
 
 
+def clear_inflight_retrieval_candidates() -> None:
+    with _inflight_candidate_lock:
+        futures = list(_inflight_candidate_futures.values())
+        _inflight_candidate_futures.clear()
+
+    for future in futures:
+        if not future.done():
+            future.cancel()
+    _clear_current_inflight_retrieval_candidates_key()
+
+
 __all__ = [
+    "acquire_inflight_retrieval_candidates",
     "build_retrieval_candidate_cache_key",
+    "clear_inflight_retrieval_candidates",
     "get_cached_retrieval_candidates",
+    "reject_current_inflight_retrieval_candidates",
+    "reject_inflight_retrieval_candidates",
+    "resolve_inflight_retrieval_candidates",
     "set_cached_retrieval_candidates",
+    "wait_for_inflight_retrieval_candidates",
 ]

@@ -27,17 +27,33 @@ export function isFalsey(value: string): boolean {
   )
 }
 
+function normalizeOrigin(value: string): string | null {
+  const trimmedValue = String(value || '').trim()
+  if (!trimmedValue) {
+    return null
+  }
+
+  try {
+    return new URL(trimmedValue).origin
+  }
+  catch {
+    return null
+  }
+}
+
 export function requireSameOrigin(req: NextRequest): boolean {
-  const origin = String(req.headers.get('origin') || '').trim()
+  const origin = normalizeOrigin(req.headers.get('origin') || '')
   if (!origin) {
     return false
   }
 
   const forwardedProto = String(req.headers.get('x-forwarded-proto') || '').trim()
   const forwardedHost = String(req.headers.get('x-forwarded-host') || '').trim()
-  const expectedOrigin = forwardedProto && forwardedHost
-    ? `${forwardedProto}://${forwardedHost}`
-    : req.nextUrl.origin
+  const expectedOrigin = normalizeOrigin(
+    forwardedProto && forwardedHost
+      ? `${forwardedProto}://${forwardedHost}`
+      : req.nextUrl.origin,
+  )
 
-  return origin === expectedOrigin
+  return expectedOrigin === origin
 }

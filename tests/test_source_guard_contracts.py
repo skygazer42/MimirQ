@@ -185,6 +185,13 @@ def test_production_helm_example_uses_distributed_runtime_settings() -> None:
     assert str(values["runtimeGuards"]["minioDocumentsEnabled"]).lower() == "true"
     assert str(values["runtimeGuards"]["dbCreateAllOnStartup"]).lower() == "false"
     assert str(values["runtimeGuards"]["dbRuntimeMigrationsEnabled"]).lower() == "false"
+    assert values["ingress"]["enabled"] is True
+    assert values["ingress"]["tls"]
+    assert values["networkPolicy"]["enabled"] is True
+    assert values["networkPolicy"]["api"]["ingress"]["allowSameNamespace"] is False
+    assert values["networkPolicy"]["api"]["ingress"]["extraFrom"]
+    assert values["networkPolicy"]["egress"]["restrict"] is True
+    assert values["networkPolicy"]["egress"]["rules"]
 
 
 def test_helm_defaults_keep_single_replica_dev_path_usable() -> None:
@@ -202,6 +209,40 @@ def test_helm_defaults_keep_single_replica_dev_path_usable() -> None:
     assert values["worker"]["readinessProbe"]["enabled"] is True
     assert "livenessProbe" not in values["worker"]
     assert values["migrations"]["enabled"] is False
+
+
+def test_hardened_helm_overlay_preserves_production_network_allowlists() -> None:
+    path = "deploy/helm/mimirq/examples/values-hardened.yaml"
+    values = yaml.safe_load(_read(path))
+    source = _read(path)
+
+    assert "networkPolicy" not in values
+    assert "-f deploy/helm/mimirq/examples/values-prod.yaml" in source
+    assert "-f deploy/helm/mimirq/examples/values-hardened.yaml" in source
+
+
+def test_production_docs_call_out_strong_compose_credentials_and_proxy_boundary() -> None:
+    docker_doc = _read("docs/deployment/docker_compose.md")
+    assert "MINIO_ACCESS_KEY_DOCKER" in docker_doc
+    assert "MINIO_SECRET_KEY_DOCKER" in docker_doc
+    assert "FORWARDED_ALLOW_IPS_DOCKER" in docker_doc
+    assert "禁止 `*`" in docker_doc
+
+    readme = _read("README.md")
+    assert "MINIO_ACCESS_KEY_DOCKER=<强访问密钥>" in readme
+    assert "MINIO_SECRET_KEY_DOCKER=<强私密密钥>" in readme
+    assert "MARKDOWN_IMAGE_PROXY_SECRET" in readme
+
+    env_example = _read(".env.example")
+    assert "生产环境必须改掉默认的 minioadmin" in env_example
+    assert "生产环境禁止设为 *" in env_example
+
+
+def test_helm_docs_call_out_tls_and_network_policy_for_production() -> None:
+    helm_doc = _read("docs/deployment/helm.md")
+    assert "ingress.tls" in helm_doc
+    assert "networkPolicy.egress.rules" in helm_doc
+    assert "不要直接把 chart 默认值当成生产 values" in helm_doc
 
 
 def test_helm_runtime_validation_has_fail_fast_guards_for_multi_instance_risks() -> None:

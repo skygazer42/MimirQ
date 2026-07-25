@@ -123,7 +123,10 @@ make up-web
 - `MIMIRQ_DB_CREATE_ALL_ON_STARTUP=false`
 - `MIMIRQ_DB_RUNTIME_MIGRATIONS_ENABLED=false`
 - 首次初始化前临时设置 `INITIAL_REGISTRATION_TOKEN`（首个本地 owner 注册一次性 token，请通过 `X-Bootstrap-Token` 发送；支持 `sha256:<hex>`，初始化完成后可移除）
-- `POSTGRES_PASSWORD`
+- `POSTGRES_PASSWORD`（强密码）
+- `MINIO_ACCESS_KEY_DOCKER` / `MINIO_SECRET_KEY_DOCKER`（强凭据；不要保留 `minioadmin`）
+- `JWT_TENANT_CLAIM`（推荐）或在可信网关会重写租户头时显式设 `TENANT_HEADER_TRUSTED=true`
+- 若启用 `make up-web`：`MARKDOWN_IMAGE_PROXY_SECRET` 必须非空，`FORWARDED_ALLOW_IPS_DOCKER` 只能填受信任代理 IP，禁止 `*`
 
 ```bash
 make infra-up
@@ -142,6 +145,12 @@ curl -X POST http://127.0.0.1:8000/api/v1/auth/register \
 ```
 
 创建成功后可从 `.env` 删除 `INITIAL_REGISTRATION_TOKEN` 并重启服务；后续注册请求仍会返回 `409`。
+
+生产前再核对一次：
+
+- 不要使用 Compose 默认的 `postgres` / `minioadmin` 凭据
+- 如果暴露前端，浏览器入口应走 HTTPS 终止的反向代理；只把受信任代理地址写入 `FORWARDED_ALLOW_IPS`
+- `NEXT_PUBLIC_API_URL_DOCKER` 保持浏览器可达地址；SSR 走 `API_INTERNAL_URL_DOCKER`
 
 生产模式 + 前端（可选）：
 

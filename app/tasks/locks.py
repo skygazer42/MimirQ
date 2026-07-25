@@ -171,22 +171,27 @@ async def tenant_release(redis: Any, key: str | None) -> None:
         logger.warning("Tenant semaphore release failed: %s", str(exc)[:200])
 
 
-async def acquire_lock(redis: Any, *, key: str, value: str, ttl_sec: int) -> bool:
+async def acquire_lock(redis: Any, *, key: str, value: str, ttl_sec: int, fail_open: bool = True) -> bool:
     """
     Best-effort idempotency lock (Redis SET NX EX).
 
     Returns:
-        True if lock acquired (or Redis unavailable)
+        True if lock acquired (or Redis unavailable / fail-open fallback)
         False if lock already held
     """
     if redis is None:
-        return True
+        if fail_open:
+            return True
+        raise RuntimeError("Redis client unavailable")
     try:
         acquired = await redis.set(key, value, ex=int(ttl_sec), nx=True)
         return bool(acquired)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Redis lock acquire failed (continue without lock): %s", str(exc)[:200])
-        return True
+        if fail_open:
+            logger.warning("Redis lock acquire failed (continue without lock): %s", str(exc)[:200])
+            return True
+        logger.warning("Redis lock acquire failed (fail closed): %s", str(exc)[:200])
+        raise
 
 
 async def release_lock(redis: Any, *, key: str, value: str) -> None:

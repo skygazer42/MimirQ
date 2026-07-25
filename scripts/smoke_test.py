@@ -14,6 +14,7 @@ Default behavior is PII-safe: it uploads synthetic content and avoids printing s
 
 
 import argparse
+import concurrent.futures
 import json
 import os
 import re
@@ -286,6 +287,23 @@ def _core_retrieve_payload(*, query: str, dataset_id: str) -> dict[str, Any]:
     }
 
 
+def _probe_web_auth_page(client: httpx.Client, *, web_base: str) -> dict[str, Any]:
+    web_root, _web_api = _normalize_base_urls(web_base)
+    url = _join(web_root, "auth")
+    resp = request_with_retries(client, "GET", url, expected={200})
+    html = resp.text or ""
+    required_labels = ("登录", "账号", "密码")
+    missing = [label for label in required_labels if label not in html]
+    if missing:
+        raise CallError(
+            method="GET",
+            url=url,
+            status_code=resp.status_code,
+            detail=f"auth page missing labels: {', '.join(missing)}",
+        )
+    return {"status_code": resp.status_code, "labels": list(required_labels)}
+
+
 def _get_system_status_best_effort(
     client: httpx.Client,
     *,
@@ -356,6 +374,79 @@ def _cleanup_created_dataset(
     }
 
 
+def _wait_for_document_completion(
+    client: httpx.Client,
+    *,
+    api_base: str,
+    headers: dict[str, str],
+    document_id: str,
+    timeout_sec: float,
+    poll_interval_sec: float,
+    verbose: bool,
+) -> dict[str, Any]:
+    status_url = _join(api_base, f"documents/{document_id}/status")
+    deadline = time.monotonic() + max(0.0, float(timeout_sec or 0.0))
+    last_print = 0.0
+    last_stage = None
+    while True:
+        st_resp = request_with_retries(client, "GET", status_url, expected={200}, headers=headers)
+        st_json = _parse_json(st_resp)
+        st = str(st_json.get("status") if isinstance(st_json, dict) else "") or ""
+        stage = st_json.get("current_stage") if isinstance(st_json, dict) else None
+        prog = st_json.get("processing_progress") if isinstance(st_json, dict) else None
+        now = time.monotonic()
+
+        if st == "completed":
+            return {"status": st, "stage": stage, "progress": prog}
+        if st == "failed":
+            raise CallError(method="GET", url=status_url, status_code=st_resp.status_code, detail="ingestion failed")
+        if now >= deadline:
+            raise CallError(method="GET", url=status_url, status_code=st_resp.status_code, detail="timeout waiting for ingestion")
+
+        should_print = verbose or (now - last_print) >= 10.0 or stage != last_stage
+        if should_print:
+            last_print = now
+            last_stage = stage
+            prog_s = "" if prog is None else f"{prog}"
+            stage_s = "" if stage is None else f"{stage}"
+            print(f"[smoke] ingest: status={st} progress={prog_s} stage={stage_s}")
+
+        time.sleep(max(0.1, float(poll_interval_sec or 0.0)))
+
+
+def _retrieve_core_evidence(
+    client: httpx.Client,
+    *,
+    api_base: str,
+    headers: dict[str, str],
+    dataset_id: str,
+    document_id: str,
+    marker: str,
+) -> dict[str, Any]:
+    retrieve_resp = request_with_retries(
+        client,
+        "POST",
+        _join(api_base, "rag/retrieve"),
+        expected={200},
+        headers=headers,
+        json=_core_retrieve_payload(query=marker, dataset_id=dataset_id),
+    )
+    retrieve_json = _parse_json(retrieve_resp)
+    retrieval_summary = _summarize_retrieval_evidence(
+        retrieve_json,
+        document_id=document_id,
+        marker=marker,
+    )
+    if not retrieval_summary["has_evidence"] or not retrieval_summary["matched"]:
+        raise CallError(
+            method="POST",
+            url=_join(api_base, "rag/retrieve"),
+            status_code=retrieve_resp.status_code,
+            detail="retrieval did not return the uploaded synthetic fact",
+        )
+    return retrieval_summary
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Smoke test: ready -> ingest -> structured RAG query.")
     p.add_argument("--base-url", default=None, help="API host (http://host:8000) OR API base (http://host:8000/api/v1).")
@@ -372,6 +463,8 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     p.add_argument("--dataset-id", default=None, help="Reuse an existing dataset id (skips dataset creation).")
+    p.add_argument("--secondary-base-url", default=None, help="Optional second API host/base used for shared-state checks.")
+    p.add_argument("--web-base-url", default=None, help="Optional frontend host/base used to verify the login page and API proxy entry.")
     p.add_argument("--parser-backend", default="auto", help="Parser backend for upload (default: %(default)s)")
     p.add_argument("--structured-preset", default="summary", help="Structured preset (faq|summary|action_items).")
     p.add_argument("--allow-unstructured", action="store_true", help="Do not fail if structured output cannot be validated.")
@@ -395,6 +488,9 @@ def main(argv: list[str] | None = None) -> int:
 
     raw_base_url = args.base_url or env_or(dotenv, "NEXT_PUBLIC_API_URL", "http://localhost:8000")
     _root_base, api_base = _normalize_base_urls(raw_base_url)
+    secondary_api_base = ""
+    if args.secondary_base_url:
+        _secondary_root, secondary_api_base = _normalize_base_urls(args.secondary_base_url)
 
     tenant_id = (args.tenant_id or env_or(dotenv, "NEXT_PUBLIC_TENANT_ID", "00000000-0000-0000-0000-000000000000")).strip()
     if args.verbose:
@@ -416,6 +512,17 @@ def main(argv: list[str] | None = None) -> int:
             )
             report["ready"] = ready_payload
             print("[smoke] ready: ok")
+            if args.web_base_url:
+                report["web_auth"] = _probe_web_auth_page(client, web_base=str(args.web_base_url))
+                print("[smoke] web: auth page ok")
+            if secondary_api_base:
+                report["secondary_ready"] = wait_ready(
+                    client,
+                    api_base=secondary_api_base,
+                    timeout_sec=float(args.ready_timeout_sec),
+                    poll_interval_sec=float(args.poll_interval_sec),
+                )
+                print("[smoke] secondary ready: ok")
 
             auth_mode = _detect_auth_mode(client, api_base=api_base, override=args.auth_mode)
             if auth_mode not in {"jwt", "header"}:
@@ -520,64 +627,61 @@ def main(argv: list[str] | None = None) -> int:
             report["document_id"] = doc_id
             print(f"[smoke] upload: document_id={doc_id}")
 
-            status_url = _join(api_base, f"documents/{doc_id}/status")
-            deadline = time.monotonic() + max(0.0, float(args.ingest_timeout_sec or 0.0))
-            last_print = 0.0
-            last_stage = None
-            while True:
-                st_resp = request_with_retries(client, "GET", status_url, expected={200}, headers=headers)
-                st_json = _parse_json(st_resp)
-                st = str(st_json.get("status") if isinstance(st_json, dict) else "") or ""
-                stage = (st_json.get("current_stage") if isinstance(st_json, dict) else None)
-                prog = (st_json.get("processing_progress") if isinstance(st_json, dict) else None)
-                now = time.monotonic()
-
-                if st == "completed":
-                    print("[smoke] ingest: completed")
-                    report["ingest_status"] = {"status": st, "stage": stage, "progress": prog}
-                    break
-                if st == "failed":
-                    report["ingest_status"] = st_json if isinstance(st_json, dict) else {"status": "failed"}
-                    raise CallError(method="GET", url=status_url, status_code=st_resp.status_code, detail="ingestion failed")
-                if now >= deadline:
-                    report["ingest_status"] = st_json if isinstance(st_json, dict) else {"status": st}
-                    raise CallError(method="GET", url=status_url, status_code=st_resp.status_code, detail="timeout waiting for ingestion")
-
-                should_print = args.verbose or (now - last_print) >= 10.0 or stage != last_stage
-                if should_print:
-                    last_print = now
-                    last_stage = stage
-                    prog_s = "" if prog is None else f"{prog}"
-                    stage_s = "" if stage is None else f"{stage}"
-                    print(f"[smoke] ingest: status={st} progress={prog_s} stage={stage_s}")
-
-                time.sleep(max(0.1, float(args.poll_interval_sec or 0.0)))
+            report["ingest_status"] = _wait_for_document_completion(
+                client,
+                api_base=api_base,
+                headers=headers,
+                document_id=doc_id,
+                timeout_sec=float(args.ingest_timeout_sec),
+                poll_interval_sec=float(args.poll_interval_sec),
+                verbose=bool(args.verbose),
+            )
+            print("[smoke] ingest: completed")
+            if secondary_api_base:
+                report["secondary_ingest_status"] = _wait_for_document_completion(
+                    client,
+                    api_base=secondary_api_base,
+                    headers=headers,
+                    document_id=doc_id,
+                    timeout_sec=float(args.ingest_timeout_sec),
+                    poll_interval_sec=float(args.poll_interval_sec),
+                    verbose=bool(args.verbose),
+                )
+                print("[smoke] secondary ingest view: completed")
 
             if args.core_only:
                 marker = f"launch_code={smoke_fact}"
-                retrieve_resp = request_with_retries(
-                    client,
-                    "POST",
-                    _join(api_base, "rag/retrieve"),
-                    expected={200},
-                    headers=headers,
-                    json=_core_retrieve_payload(query=marker, dataset_id=str(dataset_id)),
-                )
-                retrieve_json = _parse_json(retrieve_resp)
-                retrieval_summary = _summarize_retrieval_evidence(
-                    retrieve_json,
-                    document_id=doc_id,
-                    marker=marker,
-                )
-                report["retrieval"] = retrieval_summary
-                if not retrieval_summary["has_evidence"] or not retrieval_summary["matched"]:
-                    raise CallError(
-                        method="POST",
-                        url=_join(api_base, "rag/retrieve"),
-                        status_code=retrieve_resp.status_code,
-                        detail="retrieval did not return the uploaded synthetic fact",
+                if secondary_api_base:
+                    def _retrieve_summary(base: str) -> dict[str, Any]:
+                        with httpx.Client(timeout=timeout, limits=limits, follow_redirects=False, trust_env=False) as nested:
+                            return _retrieve_core_evidence(
+                                nested,
+                                api_base=base,
+                                headers=headers,
+                                dataset_id=str(dataset_id),
+                                document_id=doc_id,
+                                marker=marker,
+                            )
+
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                        primary_future = executor.submit(_retrieve_summary, api_base)
+                        secondary_future = executor.submit(_retrieve_summary, secondary_api_base)
+                        report["retrieval"] = {
+                            "primary": primary_future.result(),
+                            "secondary": secondary_future.result(),
+                            "concurrent": True,
+                        }
+                    print("[smoke] retrieval: primary+secondary evidence ok")
+                else:
+                    report["retrieval"] = _retrieve_core_evidence(
+                        client,
+                        api_base=api_base,
+                        headers=headers,
+                        dataset_id=str(dataset_id),
+                        document_id=doc_id,
+                        marker=marker,
                     )
-                print("[smoke] retrieval: evidence ok")
+                    print("[smoke] retrieval: evidence ok")
 
                 if created_dataset:
                     report["cleanup"] = _cleanup_created_dataset(

@@ -1,12 +1,14 @@
 # Example: hardened/security-focused Helm values for MimirQ.
 #
 # Notes:
-# - This enables opt-in hardening defaults (securityContext) and NetworkPolicy.
+# - This is a hardening overlay to stack on top of `values-prod.yaml`.
 # - You MUST tailor networkPolicy ingress/egress to your cluster topology.
 # - Ensure your external dependencies (Postgres/Redis/Milvus/MinIO/LLM) are reachable.
 #
 # Usage:
-#   helm upgrade --install mimirq deploy/helm/mimirq -n mimirq -f deploy/helm/mimirq/examples/values-hardened.yaml
+#   helm upgrade --install mimirq deploy/helm/mimirq -n mimirq \
+#     -f deploy/helm/mimirq/examples/values-prod.yaml \
+#     -f deploy/helm/mimirq/examples/values-hardened.yaml
 
 existingSecretName: "mimirq-env"
 
@@ -35,21 +37,3 @@ grafana:
     enabled: true
     labels:
       grafana_dashboard: "1"
-
-networkPolicy:
-  enabled: true
-  api:
-    ingress:
-      # Default is allowSameNamespace=true; if your Ingress controller is in another namespace,
-      # set allowSameNamespace=false and add an explicit namespaceSelector/podSelector here.
-      allowSameNamespace: true
-      extraFrom: []
-  worker:
-    ingress:
-      allowSameNamespace: false
-      extraFrom: []
-  egress:
-    # Turn this on only after you have a complete allowlist.
-    restrict: false
-    allowDNS: true
-    rules: []
