@@ -35,6 +35,8 @@
 - `PUT /api/v1/datasets/{dataset_id}/ingestion-policy`
 - `POST /api/v1/datasets/{dataset_id}/ingestion-policy/import`（JSON 脚本上传，默认 replace=true）
 - `GET /api/v1/datasets/{dataset_id}/ingestion-policy/export`
+- `GET /api/v1/datasets/{dataset_id}/ingestion-policy/versions`（版本历史）
+- `POST /api/v1/datasets/{dataset_id}/ingestion-policy/rollback`（回滚到指定版本）
 
 ### 一站式预览（用于页面“样例文件预览”）
 - `POST /api/v1/pipeline/ingestion-preview`
@@ -97,7 +99,7 @@
 
 ---
 
-## 4. 预处理步骤（v2 allowlist）
+## 4. 预处理步骤（allowlist）
 
 当前支持的 `preprocess.steps[].id`：
 - `text.reencode_utf8`
@@ -119,20 +121,39 @@
 
 ---
 
-## 4.1 内置治理预设（Governance Profiles，部分）
+## 4.1 内置治理预设（Governance Profiles）
 
-治理预设用于“解析后 Markdown 清洗”，会注入 `pipeline_patch + regex_rules`：
+治理预设用于"解析后 Markdown 清洗"，会注入 `pipeline_patch + regex_rules`。当前内置 26 个（`app/services/governance_profiles.py`），按场景分组：
+
+**通用 / 网页**
 - `builtin:kb_default`：通用保守清洗（去噪/去目录/断行修复/去重页眉页脚）
 - `builtin:html_web`：网页抓取/复制（去样板/去追踪参/段落去重）
 - `builtin:html_xpath_main`：网页 XPath 优先抽正文（默认 `//main`，未命中则回退）
+- `builtin:wiki_longform`：长文/Wiki（去重 + 参考文献裁剪）
+
+**PDF**
 - `builtin:pdf_text`：文本 PDF（断行修复/页眉页脚/表格规范化）
 - `builtin:pdf_scanned_ocr`：扫描/OCR PDF（更强容错 + parse fallback）
+- `builtin:policy_manual_pdf`：制度/手册类 PDF（条款结构友好）
+
+**结构化 / 代码**
 - `builtin:structured_data`：CSV/JSON/日志型（保留行边界，轻量去噪）
 - `builtin:code_repo`：代码仓库（保留格式 + secrets 脱敏）
+- `builtin:chat_exports`：聊天记录导出
+
+**SaaS 数据源**
+- `builtin:notion_database` · `builtin:confluence_enterprise` · `builtin:sharepoint_o365` · `builtin:feishu_lark_doc`
+
+**行业（金融 / 法律 / 政务 / 医疗 / 保险）**
+- `builtin:cn_a_share_annual_report` · `builtin:cn_prospectus` · `builtin:bank_compliance_report`
+- `builtin:china_law_regulation` · `builtin:court_judgment` · `builtin:government_redhead`
+- `builtin:medical_emr` · `builtin:insurance_policy_pdf`
+
+**元数据 / 质量与合规**
 - `builtin:metadata_enrich`：抽取 frontmatter/语言/关键词（best-effort）
 - `builtin:quality_gate_quarantine`：低质量/大纲-only/低密度 → 隔离队列
+- `builtin:pii_secrets_quarantine`：PII/密钥命中 → 隔离队列
 - `builtin:legal_compliance`：PII/密钥脱敏
-- `builtin:wiki_longform`：长文/Wiki（去重 + 参考文献裁剪）
 
 前端页面的规则编辑器里可以直接选择这些预设，也可以额外叠加 `pipeline_patch` 做细粒度覆盖。
 

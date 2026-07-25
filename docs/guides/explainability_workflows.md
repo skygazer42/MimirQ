@@ -239,5 +239,5 @@ curl -X POST "http://localhost:8000/api/v1/feedback/messages/<feedback_id>/to-ev
 
 - **只看最终答案，不看 citations**：可解释性链路的入口是 evidence/citations，而不是 LLM 文本。
 - **只看单次请求，不做对比**：没有 base/target diff，很难确定“变好还是变差”。
-- **用 token-bearing URL 做缓存调优**：当 URL 上带 `?token=` 时，后端会强制 `Cache-Control: no-store`（安全设计）。
+- **对资产接口做 HTTP 缓存调优**：文档/图片资产接口统一返回 `Cache-Control: private, no-store`（安全设计），浏览器通常不会自动复用缓存；显式发送匹配的 `If-None-Match` 时服务端仍可返回 304。图片加载统一走前端 `AuthImage`。
 - **混用 pipeline_hash**：对比时务必确认 scope 与版本（尤其是 KG、文档下载/预览）。

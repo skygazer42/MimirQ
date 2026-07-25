@@ -69,9 +69,9 @@ MimirQ 的多模态证据大体分两类：
   - 如果未启用 MinIO，多模态引用的 `img_id` 仍可能存在，但 `img_url` 无法加载
 - `MINIO_DOCUMENTS_ENABLED`
   - 影响文档源文件是否走 MinIO；与图片是否可用是两条独立开关
-- `ASSET_CACHE_MAX_AGE_SEC`
-  - 控制资产响应的 `Cache-Control: private, max-age=...`
-  - 注意：当 URL 上带 `?token=` / `?access_token=` 时，后端会强制 `Cache-Control: no-store`（避免缓存 token-bearing URL）
+- 资产响应缓存
+  - 当前文档/图片资产接口统一返回 `Cache-Control: private, no-store`（`app/api/v1/documents.py` 的 `_asset_cache_control`），不随 URL 是否带 token 变化
+  - `ASSET_CACHE_MAX_AGE_SEC` 仍存在于配置中，但当前不影响资产 `Cache-Control`
 - `MINIO_METRICS_LOG_PATH`（默认：`./logs/minio_metrics.jsonl`）
   - MinIO 相关操作的 best-effort 指标日志（presign/upload/download 等）
   - 当你怀疑“图片/文档其实没从 MinIO 成功拉下来”时，可以用它做旁路确认
@@ -107,16 +107,16 @@ MimirQ 的多模态证据大体分两类：
 2. `GET /api/v1/documents/image-url/{img_id}`
    - MinIO 存储的图片（推荐路径）
    - Wave19-T069：该接口会直接 proxy 返回 bytes，并支持 `Range: bytes=...`（避免大图全量下载）
-   - `?token=` 场景：`Cache-Control: no-store`（避免缓存 token-bearing URL）
-   - header auth（无 token query param）：`Cache-Control: private, max-age=...` + `ETag`（允许 304）
+   - `Cache-Control`：统一 `private, no-store`（不随 URL 是否带 token 变化）
+   - 仍返回 `ETag` 并支持 `If-None-Match` 条件请求（服务端可返 304）；但因 `no-store`，浏览器通常不会自动复用缓存
 
 文档源文件预览/下载（PDF iframe/下载按钮）一般走：
 
 3. `GET /api/v1/documents/{document_id}/download`
    - 本地文件系统与 MinIO 两条路径都支持 `Accept-Ranges: bytes`
    - MinIO 路径：支持单段 Range（`Range: bytes=...`）；多段 Range 会返回 416（目前不支持 multipart/byteranges）
-   - `?token=` 场景：`Cache-Control: no-store`（避免缓存 token-bearing URL）
-   - header auth（无 token query param）：`Cache-Control: private, max-age=...` + `ETag`（允许 304）
+   - `Cache-Control`：统一 `private, no-store`（不随 URL 是否带 token 变化）
+   - 仍返回 `ETag` 并支持 `If-None-Match` 条件请求（服务端可返 304）；但因 `no-store`，浏览器通常不会自动复用缓存
 
 如果前端渲染异常，优先在浏览器 Network 中确认：
 - 返回码是否为 200/206
@@ -158,8 +158,8 @@ MimirQ 的多模态证据大体分两类：
 ### Q3: 为什么 Network 里图片接口一直是 200，没有 304（好像没缓存）？
 
 说明：
-- 当请求 URL 上带 `?token=` / `?access_token=` 时，后端会强制 `Cache-Control: no-store`，这是**刻意的安全行为**（避免缓存 token-bearing URL）。
-- 如果你希望使用 304/缓存，推荐在可控场景下走 header auth（Authorization / X-User-ID 等），并确保 URL 不携带 token query param。
+- 当前文档/图片资产接口统一返回 `Cache-Control: private, no-store`，这是**刻意的安全行为**（受保护资产不进浏览器/共享缓存，也避免缓存曾带 token 的 URL）。
+- 不要依赖 HTTP 304 做资产缓存调优；前端图片加载统一走 `AuthImage`（带凭证请求，见 `web/components/auth-image.tsx`）。
 
 ### Q4: TAG 表格证据怎么确认“通道真的跑了”？
 

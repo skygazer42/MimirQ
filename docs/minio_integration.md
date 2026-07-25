@@ -63,8 +63,10 @@ docker run -d \
 
 ### 3. 安装依赖
 
+`minio` 客户端已固定在 `requirements.txt`（当前 `minio==7.2.20`），随后端依赖一起安装；如需单独安装：
+
 ```bash
-pip install minio==7.2.10
+pip install minio==7.2.20
 ```
 
 ## 工作流程
@@ -260,7 +262,7 @@ minio_service.delete_image(img_id)
 2. **SSL/TLS**：启用 `MINIO_USE_SSL=true` 并配置证书
 3. **访问控制**：配置 MinIO bucket 策略限制访问
 4. **预签名 URL**：合理设置有效期（当前 7 天）
-5. **图片访问鉴权**：生产环境建议使用 `AUTH_MODE=jwt`；`GET /api/v1/documents/image-url/{img_id}` 会校验租户/数据集/文档可读权限。前端 `<img>` 无法带自定义 Header 时，可通过 `?token=` + `tenant_id=` 传递鉴权信息（本项目前端已做处理）。
+5. **图片访问鉴权**：生产环境建议使用 `AUTH_MODE=jwt`；`GET /api/v1/documents/image-url/{img_id}` 会校验租户/数据集/文档可读权限。前端 `<img>` 无法携带自定义 Header，本项目前端统一通过 `AuthImage` 组件（`web/components/auth-image.tsx`，经 `lib/image-auth-proxy` 以带凭证请求取回图片并转为对象 URL）加载此类受保护图片，不使用 URL query 传递凭证。
 
 ## 监控
 

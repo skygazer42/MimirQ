@@ -89,6 +89,8 @@ MimirQ 支持用“治理预设（Profiles）”来统一管理数据治理策�
 
 ## 4) 推荐 Profiles（典型场景）
 
+> 内置预设共 26 个（`builtin:*`，覆盖通用/网页/PDF/结构化/SaaS 源/行业/质量合规），完整清单见 [ingestion-policy.md §4.1](./ingestion-policy.md)；下面挑典型场景说明组合思路。
+
 ### HTML -> Markdown（网页抓取/复制）
 常见问题：
 - 面包屑/导航/版权声明/分享按钮等样板信息混入

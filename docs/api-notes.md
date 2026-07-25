@@ -1,6 +1,6 @@
 # API Notes
 
-This document contains **hand-written API usage notes** that complement the generated OpenAPI docs (`docs/API.md`).
+This document contains **hand-written API usage notes** that complement the generated OpenAPI reference (see [API.md](./API.md) for the doc entry points).
 
 ## Evidence API (Retrieval-Only)
 
@@ -48,6 +48,7 @@ It performs retrieval only (no answer generation) and returns `citations` plus e
 
 ```json
 {
+  "schema": "mimirq.evidence.v1",
   "query_for_retrieval": "refund policy annual plan",
   "citations": [
     {
@@ -74,5 +75,7 @@ It performs retrieval only (no answer generation) and returns `citations` plus e
   }
 }
 ```
+
+Optional best-effort fields: `evidence_capsule`（immutable replay capsule，见 `docs/guides/evidence_capsule.md`）、`query_debug`（查询归一化/扩展调试信息）。
 
 See also: `docs/guides/evidence_api.md`.

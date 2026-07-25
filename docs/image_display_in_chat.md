@@ -2,26 +2,27 @@
 
 ## 概述
 
-当文档解析（MarkItDown/MinerU/DeepDoc）提取图片并上传到 MinIO 后，这些图片会与文本块关联。在 RAG 对话中，如果检索到包含图片的文本块，图片信息会随 citation 一起返回，前端可以显示这些图片。
+当文档解析（MarkItDown/MinerU/DeepDoc 等）提取图片并上传到 MinIO 后，这些图片会与文本块关联。在 RAG 对话中，如果检索到包含图片的文本块，图片信息会随 citation 一起返回，前端展示这些图片。
 
 ## 图片展示策略（当前实现）
 
-为避免“无关图片刷屏”，当前策略是 **只展示检索命中的 citations 里的图片**：
+为避免"无关图片刷屏"，当前策略是 **只展示检索命中的 citations 里的图片**：
 
-- **命中判定**：`citation.has_image=true` 才视为“可展示图片”。
+- **命中判定**：`citation.has_image=true` 才视为"可展示图片"。
   - `has_image` 的来源是 chunk 的 `metadata.img_id`（优先），或从 chunk 内容里反向提取 `/api/v1/documents/image-url/{img_id}`（兼容已替换 URL 的 Markdown/HTML）。
 - **展示位置 1（引用卡片）**：引用卡片里显示缩略图（点击可打开原图/文档定位）。
 - **展示位置 2（回答正文，可选）**：非结构化输出时，后端会把 citations 里的图片 URL 去重后追加到回答末尾（默认最多 3 张）。
-  - 开关：`SHOW_IMAGE_IN_ANSWER=true/false`
+  - 开关：`SHOW_IMAGE_IN_ANSWER=true/false`（默认 `true`）
   - 上限：`IMAGE_APPEND_MAX=3`
 
-> 如果你需要“命中段落附近的图片也一起展示”，建议把它做成可选策略（例如基于 header_path/邻居 chunk 额外回查），默认仍保持 citations-only，以保证相关性与可控的响应体积。
+> 如果你需要"命中段落附近的图片也一起展示"，建议把它做成可选策略（例如基于 header_path/邻居 chunk 额外回查），默认仍保持 citations-only，以保证相关性与可控的响应体积。
 
 ## 后端实现
 
 ### 1. 图片绑定到 Chunk
 
 在文档处理过程中：
+
 - 解析器提取图片（base64 或 ZIP 中的图片文件）
 - 上传到 MinIO，生成 `img_id = "{tenant_id}:{dataset_id}:{document_id}:{chunk_index}"`
 - `img_id` 存储在 chunk metadata 中
@@ -29,7 +30,7 @@
 
 ### 2. RAG 检索返回图片信息
 
-在 `rag_engine.py` 和 `rag_graph.py` 中，构建 citations 时会检查 chunk metadata 的 `img_id`：
+在 `app/rag/engine.py` 与 `app/rag/graph.py` 中，构建 citations 时会检查 chunk metadata 的 `img_id`：
 
 ```python
 # 提取图片信息（如果有）
@@ -42,6 +43,8 @@ if img_id:
 ```
 
 ### 3. Citation Schema
+
+Citation（`app/api/schemas/chat.py`）包含图片相关字段：
 
 ```python
 class Citation(BaseModel):
@@ -56,11 +59,7 @@ class Citation(BaseModel):
     img_url: Optional[str] = None  # 例如："/api/v1/documents/image-url/tenant123:dataset123:doc456:0"
 ```
 
-## 前端集成
-
-### 1. 接收 Citations
-
-流式对话响应中的 citations 事件：
+流式对话响应中的 citations 事件示例：
 
 ```json
 {
@@ -74,130 +73,20 @@ class Citation(BaseModel):
       "img_id": "tenant123:dataset123:doc456:0",
       "img_url": "/api/v1/documents/image-url/tenant123:dataset123:doc456:0",
       "relevance_score": 0.95
-    },
-    {
-      "chunk_id": "...",
-      "document_id": "...",
-      "chunk_content": "这是纯文本块...",
-      "has_image": false
     }
   ]
 }
 ```
 
-### 2. 显示图片
-
-**方式 1：直接嵌入 img 标签**
-
-```tsx
-{citation.has_image && citation.img_url && (
-  <div className="citation-image">
-    <img 
-      src={citation.img_url} 
-      alt="Referenced image"
-      loading="lazy"
-      onError={(e) => {
-        e.currentTarget.src = '/placeholder-image.png';
-      }}
-    />
-  </div>
-)}
-```
-
-**方式 2：点击查看大图**
-
-```tsx
-{citation.has_image && (
-  <button onClick={() => openImageModal(citation.img_url)}>
-    <ImageIcon /> 查看图片
-  </button>
-)}
-```
-
-**方式 3：缩略图 + 预览**
-
-```tsx
-{citation.has_image && (
-  <div 
-    className="citation-thumbnail"
-    onClick={() => setPreviewImage(citation.img_url)}
-  >
-    <img src={citation.img_url} alt="thumbnail" />
-  </div>
-)}
-```
-
-### 3. Markdown 渲染
-
-如果 chunk_content 或 LLM 回答中包含 Markdown 图片语法：
-
-```markdown
-![产品架构图](/api/v1/documents/image-url/dataset123-doc456-img0)
-```
-
-使用 `react-markdown` 渲染时会自动显示图片：
-
-```tsx
-import ReactMarkdown from 'react-markdown';
-
-<ReactMarkdown>{response}</ReactMarkdown>
-```
-
-### 4. 图片懒加载
-
-对于包含多个图片的回答，使用懒加载优化性能：
-
-```tsx
-<img 
-  src={citation.img_url}
-  loading="lazy"
-  decoding="async"
-/>
-```
-
-## 示例场景
-
-### 场景 1：用户上传包含图表的 PDF
-
-1. 用户上传产品手册 PDF（包含架构图）
-2. MinerU 解析，提取图片并上传到 MinIO
-3. 文本块 "产品架构说明" 绑定 `img_id`
-4. 用户提问："产品架构是什么？"
-5. RAG 检索到该文本块
-6. 前端收到 citation，包含 `has_image: true` 和 `img_url`
-7. 前端在引用卡片中显示架构图
-
-### 场景 2：用户上传 Word 文档
-
-1. 用户上传包含嵌入图片的 Word 文档
-2. MarkItDown 转换为 Markdown，提取图片
-3. 图片上传到 MinIO，Markdown 中引用替换为 MinIO URL
-4. 用户提问相关内容
-5. LLM 回答中可能包含图片链接（Markdown 格式）
-6. 前端用 ReactMarkdown 渲染，自动显示图片
-
-### 场景 3：用户上传 ZIP（Markdown + images）
-
-1. 用户通过 `/pipeline/upload-zip-with-images` 上传 ZIP
-2. 所有图片自动上传到 MinIO
-3. Markdown 引用替换为 MinIO URL
-4. 对话时，相关图片随 citations 返回
-
 ## API 端点
 
-### 获取图片（302 重定向）
+### 获取图片（鉴权字节流）
 
 ```
 GET /api/v1/documents/image-url/{img_id}
 ```
 
-返回：302 重定向到 MinIO 预签名 URL（有效期 7 天）
-
-**示例：**
-
-```bash
-curl -L http://localhost:8000/api/v1/documents/image-url/dataset123-doc456-img0
-```
+端点会校验租户/数据集/文档可读权限，然后代理返回图片字节（200，Range 请求为 206）。响应统一使用 `Cache-Control: private, no-store`，支持 `ETag`；客户端显式发送匹配的 `If-None-Match` 时可返回 304（见 `app/api/v1/document_assets.py`）。
 
 ### 向后兼容（本地存储）
 
@@ -207,156 +96,34 @@ curl -L http://localhost:8000/api/v1/documents/image-url/dataset123-doc456-img0
 GET /api/v1/documents/image/{image_id}
 ```
 
-## 前端显示建议
+### ZIP 上传（Markdown + images）
 
-### 1. Citations 卡片
+通过 `POST /api/v1/pipeline/upload-zip-with-images` 上传 ZIP 时，所有图片自动上传到 MinIO，Markdown 中的引用替换为图片 URL。
 
-```tsx
-<div className="citation-card">
-  <div className="citation-header">
-    <span>{citation.document_name}</span>
-    {citation.has_image && <ImageBadge />}
-  </div>
-  
-  <div className="citation-content">
-    {citation.chunk_content}
-  </div>
-  
-  {citation.has_image && (
-    <div className="citation-image">
-      <img src={citation.img_url} alt="引用图片" />
-    </div>
-  )}
-</div>
-```
+## 前端实现（当前）
 
-### 2. 回答中的图片
+图片端点需要认证，**裸 `<img src>` 无法携带凭证（会 401）**。前端统一使用 `AuthImage` 组件族（`web/components/auth-image.tsx`）：
 
-如果 LLM 在回答中引用了图片链接，使用 Markdown 渲染器自动显示：
+- `AuthImage` / `AuthImageLink` / `useResolvedAuthAssetUrl`：经 `lib/image-auth-proxy` 判断是否需要鉴权代理（`needsAuthAssetProxy`），需要时以带凭证请求取回图片并转为对象 URL 后再渲染；加载失败时不渲染（返回 `null`）。
+- **引用卡片缩略图**与 **Markdown 正文图片**走同一鉴权链路；Markdown 渲染（`markdown-renderer.tsx`）已将 `img` 节点交给 `AuthImage` 处理。
+- 生产启用前端容器时应设置非空 `MARKDOWN_IMAGE_PROXY_SECRET`（见 `web/lib/markdown-image-proxy-token.ts` 与 `web/app/api/markdown-image` 路由），保证代理 URL 端到端不透明。
 
-```tsx
-import ReactMarkdown from 'react-markdown';
+新增前端展示位时，直接复用 `AuthImage`，不要自行拼 `<img>` 或在 URL query 里传凭证。
 
-<ReactMarkdown
-  components={{
-    img: ({src, alt}) => (
-      <img 
-        src={src}
-        alt={alt}
-        className="response-image"
-        loading="lazy"
-      />
-    )
-  }}
->
-  {assistantResponse}
-</ReactMarkdown>
-```
+## 示例场景
 
-### 3. 图片预览模态框
-
-```tsx
-const [previewImage, setPreviewImage] = useState<string | null>(null);
-
-<Dialog open={!!previewImage} onOpenChange={() => setPreviewImage(null)}>
-  <DialogContent>
-    <img src={previewImage} alt="预览" style={{maxWidth: '100%'}} />
-  </DialogContent>
-</Dialog>
-```
-
-## 性能优化
-
-### 1. 缓存预签名 URL
-
-MinIO 预签名 URL 有效期 7 天，可在前端缓存：
-
-```typescript
-const imageCache = new Map<string, string>();
-
-async function getCachedImageUrl(imgUrl: string): Promise<string> {
-  if (imageCache.has(imgUrl)) {
-    return imageCache.get(imgUrl)!;
-  }
-  
-  const response = await fetch(imgUrl);
-  const actualUrl = response.url; // 302 后的真实 URL
-  imageCache.set(imgUrl, actualUrl);
-  return actualUrl;
-}
-```
-
-### 2. 图片懒加载
-
-```tsx
-import { useInView } from 'react-intersection-observer';
-
-function CitationImage({ imgUrl }: { imgUrl: string }) {
-  const { ref, inView } = useInView({
-    triggerOnce: true,
-    threshold: 0.1
-  });
-  
-  return (
-    <div ref={ref}>
-      {inView && <img src={imgUrl} loading="lazy" />}
-    </div>
-  );
-}
-```
-
-### 3. 响应式图片
-
-```tsx
-<img
-  src={imgUrl}
-  srcSet={`${imgUrl} 1x, ${imgUrl} 2x`}
-  sizes="(max-width: 768px) 100vw, 50vw"
-  alt="引用图片"
-/>
-```
+1. **包含图表的 PDF**：MinerU 解析提取架构图 → 上传 MinIO → 文本块绑定 `img_id` → 提问命中该块 → 引用卡片展示架构图。
+2. **嵌入图片的 Word**：MarkItDown 转 Markdown 并提取图片 → Markdown 引用替换为图片 URL → 回答正文经 Markdown 渲染显示图片。
+3. **ZIP（Markdown + images）**：`/pipeline/upload-zip-with-images` 上传 → 图片自动入 MinIO → 对话时相关图片随 citations 返回。
 
 ## 故障处理
 
-### 1. 图片加载失败
-
-```tsx
-<img
-  src={citation.img_url}
-  onError={(e) => {
-    e.currentTarget.src = '/placeholder-error.png';
-    e.currentTarget.alt = '图片加载失败';
-  }}
-/>
-```
-
-### 2. MinIO 不可用
-
-如果 MinIO 未启用或不可用，`has_image` 为 `false`，图片字段为空，不影响文本回答。
-
-### 3. 预签名 URL 过期
-
-MinIO 预签名 URL 有效期 7 天。如果过期：
-- 重新调用 `/api/v1/documents/image-url/{img_id}` 获取新 URL
-- 或实现自动刷新机制
+- **图片加载失败**：`AuthImage` 拿不到有效对象 URL 时不渲染该图片，不影响文本内容展示。
+- **MinIO 不可用**：图片端点返回 503；已有 citation 的文本内容仍可正常展示。
+- **图片返回 404**：检查 `img_id` 对应的租户、数据集、文档和 MinIO 对象是否仍然存在。
 
 ## 总结
 
 - **后端**：自动提取图片、上传 MinIO、绑定到 chunk、在 citations 中返回
-- **前端**：检查 `has_image` 标志，使用 `img_url` 显示图片
-- **用户体验**：在对话中看到相关图片，增强理解
-
-启用 `MINIO_ENABLED=true` 后，所有文档解析自动支持图片！
-
-
-
-
-
-
-
-
-
-
-
-
-
+- **前端**：检查 `has_image` 标志，统一用 `AuthImage` 加载受保护图片
+- 启用 `MINIO_ENABLED=true` 后，文档解析自动支持图片；细节配置见 [minio_integration.md](./minio_integration.md)
