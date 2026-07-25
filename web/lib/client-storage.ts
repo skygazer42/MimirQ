@@ -12,7 +12,9 @@ export function getClientStorage(kind: ClientStorageKind = 'local'): Storage | n
 
 export function readClientStorage(key: string, kind: ClientStorageKind = 'local'): string | null {
   try {
-    return getClientStorage(kind)?.getItem(key) ?? null
+    const storage = getClientStorage(kind)
+    if (!storage) return null
+    return storage.getItem(key)
   } catch {
     return null
   }
@@ -20,7 +22,9 @@ export function readClientStorage(key: string, kind: ClientStorageKind = 'local'
 
 export function writeClientStorage(key: string, value: string, kind: ClientStorageKind = 'local'): boolean {
   try {
-    getClientStorage(kind)?.setItem(key, value)
+    const storage = getClientStorage(kind)
+    if (!storage) return false
+    storage.setItem(key, value)
     return true
   } catch {
     return false
@@ -29,7 +33,9 @@ export function writeClientStorage(key: string, value: string, kind: ClientStora
 
 export function removeClientStorage(key: string, kind: ClientStorageKind = 'local'): boolean {
   try {
-    getClientStorage(kind)?.removeItem(key)
+    const storage = getClientStorage(kind)
+    if (!storage) return false
+    storage.removeItem(key)
     return true
   } catch {
     return false

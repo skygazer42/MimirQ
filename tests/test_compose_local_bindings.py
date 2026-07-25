@@ -42,6 +42,15 @@ def test_local_chroma_volume_uses_image_owned_directory() -> None:
     assert "vector_data:/app/vector_chroma" in lite["services"]["mimirq-worker"]["volumes"]
 
 
+def test_web_compose_uses_docker_scoped_api_env_vars_with_same_origin_default() -> None:
+    web = _compose("docker/docker-compose.web.yml")["services"]["web"]
+
+    assert web["build"]["args"]["NEXT_PUBLIC_API_URL"] == "${NEXT_PUBLIC_API_URL_DOCKER:-/}"
+    assert web["build"]["args"]["API_INTERNAL_URL"] == "${API_INTERNAL_URL_DOCKER:-http://mimirq-api:8000}"
+    assert web["environment"]["NEXT_PUBLIC_API_URL"] == "${NEXT_PUBLIC_API_URL_DOCKER:-/}"
+    assert web["environment"]["API_INTERNAL_URL"] == "${API_INTERNAL_URL_DOCKER:-http://mimirq-api:8000}"
+
+
 def test_worker_compose_healthcheck_uses_lightweight_arq_check() -> None:
     for path in ("docker/docker-compose.yml", "docker/docker-compose.lite.yml"):
         worker = _compose(path)["services"]["mimirq-worker"]

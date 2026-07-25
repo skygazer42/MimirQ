@@ -26,6 +26,7 @@ Embedding 默认复用同一地址和密钥。Reranker 默认关闭；需要时�
 ```bash
 make up-web
 make core-e2e CORE_E2E_BASE_URL=http://127.0.0.1:8000 CORE_E2E_BOOTSTRAP_REGISTER=1
+curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
 ```
 
 打开 [http://localhost:3000](http://localhost:3000)，创建本地账户即可进入系统。
@@ -78,6 +79,7 @@ docker compose --env-file .env -f docker/docker-compose.yml ps
 主机源码启动后，执行一条最小闭环验收：
 
 ```bash
+NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 make web-api-ping
 make core-e2e CORE_E2E_BASE_URL=http://127.0.0.1:8000 CORE_E2E_BOOTSTRAP_REGISTER=1
 ```
 
@@ -88,7 +90,7 @@ make core-e2e CORE_E2E_BASE_URL=http://127.0.0.1:8000 CORE_E2E_BOOTSTRAP_REGISTE
 - 热启动（镜像已缓存）：通常 20-60 秒即可达到 `api-ping` 全绿。
 - 该模式默认关闭重解析路径，适合做召回/排序离线对比，不适合高并发生产压测。
 
-> Docker 前端默认通过同源 `/api/*` 代理访问后端；浏览器地址由 `NEXT_PUBLIC_API_URL_DOCKER=/` 控制，SSR 容器内地址由 `API_INTERNAL_URL_DOCKER=http://mimirq-api:8000` 控制。不要把 Docker 内部主机名暴露给浏览器。
+> Docker 前端默认通过同源 `/api/*` 代理访问后端；浏览器地址由 `NEXT_PUBLIC_API_URL_DOCKER=/` 控制，SSR 容器内地址由 `API_INTERNAL_URL_DOCKER=http://mimirq-api:8000` 控制。`make up-web` 会启动完整 Docker Web 栈，不是“只起前端”；本地热更新前端请使用 `make web`。不要把 Docker 内部主机名暴露给浏览器。
 
 ### (可选) 启用 ETL4LLM（Bisheng Unstructured）版面解析
 

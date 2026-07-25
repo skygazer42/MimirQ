@@ -146,6 +146,7 @@ make web
 
 ```bash
 make infra-ps
+NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 make web-api-ping
 make core-e2e CORE_E2E_BASE_URL=http://127.0.0.1:8000 CORE_E2E_BOOTSTRAP_REGISTER=1
 curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
 ```
@@ -159,7 +160,7 @@ curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
 | **前端 UI** | [http://localhost:3000](http://localhost:3000) |
 | **API 文档** | [http://localhost:8000/docs](http://localhost:8000/docs) |
 
-> 低资源模式可使用 `make up-lite`，它用 Chroma/FAISS 替代 Milvus、免 MinIO，默认不含前端；需要 UI 时另运行 `make web`。外部 LLM/Embedding 调用仍需自己的模型供应商密钥。
+> 低资源模式可使用 `make up-lite`，它用 Chroma/FAISS 替代 Milvus、免 MinIO，默认不含前端；适合先验证 API `ready` 与 `make core-e2e` 最小闭环。需要 UI 时另运行 `make web`，或直接改用 `make up-web`。外部 LLM/Embedding 调用仍需自己的模型供应商密钥。
 
 高级模型、解析器和代理配置见 [`.env.example`](./.env.example)。更换 Embedding 模型后必须重建已有知识库索引；更多平台与 Windows 步骤见[开发文档](./docs/quickstart.md)，可选政务示例见[插件说明](./plugins/pipelines/changzhou-gov-service-knowledge/README.md)。
 

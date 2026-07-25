@@ -2580,6 +2580,7 @@ def _build_chunk_index_operation_result(
     vector: dict[str, Any],
     bm25: dict[str, Any],
     kg: dict[str, Any] | None = None,
+    reconcile: dict[str, Any] | None = None,
     drift_markers: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     vector_status = _index_channel_status(vector)
@@ -2594,6 +2595,7 @@ def _build_chunk_index_operation_result(
         "vector": dict(vector or {}),
         "bm25": dict(bm25 or {}),
         "kg": (dict(kg or {}) if isinstance(kg, dict) else None),
+        "reconcile": (dict(reconcile or {}) if isinstance(reconcile, dict) else None),
         "drift_markers": _index_drift_marker_rows(drift_markers),
     }
 
@@ -2634,6 +2636,7 @@ async def _enqueue_index_drift_reconcile(
 
         return await enqueue_rebuild_indexes(
             tenant_id=tenant_id,
+            document_id=document_id,
             requested_by=str(requested_by or "system:index-drift"),
             job_id=f"index-drift-reconcile:{tenant_id}:{document_id}",
         )
@@ -2707,19 +2710,46 @@ async def _record_chunk_index_drift(
         emit_drift_markers=emit_drift_markers,
     )
     reconcile_task_id: str | None = None
-    if drift_markers:
+    reconcile_result: dict[str, Any] | None = None
+    auto_reconcile_supported = vector_error is None and bm25_error is not None
+    if drift_markers and auto_reconcile_supported:
         reconcile_task_id = await _enqueue_index_drift_reconcile(
             tenant_id=tenant_id,
             document_id=document.id,
             requested_by=account_id,
         )
+        if reconcile_task_id:
+            reconcile_result = {
+                "status": "enqueued",
+                "scope": "document",
+                "channels": ["bm25"],
+                "task_id": reconcile_task_id,
+            }
+        else:
+            reconcile_result = {
+                "status": "not_enqueued",
+                "scope": "document",
+                "channels": ["bm25"],
+                "reason": "queue_disabled_duplicate_or_unavailable",
+            }
+    elif drift_markers and vector_error is not None:
+        reconcile_result = {
+            "status": "unsupported",
+            "reason": "document_scoped_auto_reconcile_only_supports_bm25",
+        }
+    elif drift_markers:
+        reconcile_result = {
+            "status": "skipped",
+        }
+
+    if drift_markers:
         for marker in drift_markers:
             with contextlib.suppress(Exception):
                 record_index_drift_item(
                     db=db,
                     dataset_id=getattr(document, "dataset_id", None),
                     marker=marker,
-                    reconcile_task_id=reconcile_task_id,
+                    reconcile_task_id=(reconcile_task_id if marker.get("channel") == "bm25" else None),
                 )
 
     vector_result = _build_index_channel_result(
@@ -2739,6 +2769,7 @@ async def _record_chunk_index_drift(
         vector=vector_result,
         bm25=bm25_result,
         kg=None,
+        reconcile=reconcile_result,
         drift_markers=drift_markers,
     )
     _persist_chunk_index_operation_result(

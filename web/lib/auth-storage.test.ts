@@ -94,6 +94,54 @@ describe('auth storage scope', () => {
     expect(localStorage.getItem('mimirq_token_expires_at')).toBeNull()
   })
 
+  it('keeps the legacy token when sessionStorage is unavailable during migration', () => {
+    localStorage.setItem('mimirq_access_token', 'legacy-token')
+    localStorage.setItem('mimirq_token_expires_at', '123')
+    localStorage.setItem('mimirq_user_profile', JSON.stringify({ id: 'legacy-user' }))
+    localStorage.setItem('mimirq_user_id', 'legacy-user')
+
+    const sessionStorageGetter = vi.spyOn(window, 'sessionStorage', 'get').mockImplementation(() => {
+      throw new Error('blocked')
+    })
+
+    try {
+      expect(getAccessToken()).toBe('legacy-token')
+      expect(getStoredUser()).toEqual({ id: 'legacy-user' })
+      expect(localStorage.getItem('mimirq_access_token')).toBe('legacy-token')
+      expect(localStorage.getItem('mimirq_token_expires_at')).toBe('123')
+    } finally {
+      sessionStorageGetter.mockRestore()
+    }
+  })
+
+  it('keeps the legacy token when sessionStorage writes fail during migration', () => {
+    localStorage.setItem('mimirq_access_token', 'legacy-token')
+    localStorage.setItem('mimirq_token_expires_at', '123')
+
+    const originalSessionStorage = window.sessionStorage
+    const blockedSessionStorage = {
+      getItem: originalSessionStorage.getItem.bind(originalSessionStorage),
+      setItem: vi.fn(() => {
+        throw new Error('blocked')
+      }),
+      removeItem: originalSessionStorage.removeItem.bind(originalSessionStorage),
+      clear: originalSessionStorage.clear.bind(originalSessionStorage),
+      key: originalSessionStorage.key.bind(originalSessionStorage),
+      get length() {
+        return originalSessionStorage.length
+      },
+    } as Storage
+    const sessionStorageGetter = vi.spyOn(window, 'sessionStorage', 'get').mockReturnValue(blockedSessionStorage)
+
+    try {
+      expect(getAccessToken()).toBe('legacy-token')
+      expect(localStorage.getItem('mimirq_access_token')).toBe('legacy-token')
+      expect(localStorage.getItem('mimirq_token_expires_at')).toBe('123')
+    } finally {
+      sessionStorageGetter.mockRestore()
+    }
+  })
+
   it('clears legacy and session token storage on logout', () => {
     localStorage.setItem('mimirq_access_token', 'legacy-token')
     localStorage.setItem('mimirq_token_expires_at', '123')
@@ -196,6 +244,26 @@ describe('auth storage scope', () => {
     expect(getAuthCacheScope()).toBe('default:anonymous')
     expect(listener).toHaveBeenCalledOnce()
     window.removeEventListener(AUTH_SCOPE_CHANGED_EVENT, listener)
+  })
+
+  it('drops a stale tenant when a different user logs in after a remote logout', () => {
+    localStorage.setItem('mimirq_tenant_id', 'tenant-a')
+    setAuthSession({ token, user: { id: 'user-a' } as never })
+
+    window.dispatchEvent(
+      new StorageEvent('storage', {
+        key: 'mimirq_auth_sync',
+        newValue: JSON.stringify({
+          id: 'clear-before-new-login',
+          source: 'tab:remote',
+          type: 'session-cleared',
+        }),
+      })
+    )
+    setAuthSession({ token: { ...token, access_token: 'token-b' }, user: { id: 'user-b' } as never })
+
+    expect(getTenantId()).toBeNull()
+    expect(getAuthCacheScope()).toBe('default:user-b')
   })
 
   it('closes the broadcast channel on pagehide and recreates it on the next auth write', async () => {

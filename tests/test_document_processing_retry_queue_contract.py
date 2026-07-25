@@ -322,12 +322,12 @@ def test_document_worker_applies_deferred_retry_cleanup(monkeypatch: pytest.Monk
 
     monkeypatch.setattr(processor, "Indexer", _Indexer)
 
-    processor.DocumentProcessorService()._apply_pending_retry_cleanup(
+    assert processor.DocumentProcessorService()._apply_pending_retry_cleanup(
         db,
         db_document=document,
         tenant_id=uuid.uuid4(),
         document_id=uuid.uuid4(),
-    )
+    ) == "applied"
 
     assert cleanup_calls == ["chunks", "events"]
     assert processor.DocumentParsedContent in db.deletes
@@ -463,3 +463,118 @@ def test_document_worker_scoped_retry_cleanup_only_deletes_target_version(
     assert document.doc_metadata.get("parsed_content_persisted") is None
     assert document.chunk_count == 12
     assert document.total_characters == 34
+
+
+def test_document_worker_preserves_retry_cleanup_when_kg_cleanup_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from app.parsing.processors import processor
+
+    document = SimpleNamespace(
+        doc_metadata={
+            "pipeline_hash": "stable-pipeline",
+            "active_pipeline_hash": "stable-pipeline",
+            "active_pipeline_ready": True,
+            "img_ids": ["old-image"],
+            "ingest_checkpoint": {"version": "1", "stage": "parsed"},
+            "parsed_content_persisted": {"cleaned": {"text": "old parsed text"}},
+            "retry_cleanup": {
+                "version": "1",
+                "force": True,
+                "pipeline_hash": "stable-pipeline",
+                "scope": "document",
+            },
+        },
+        chunk_count=12,
+        total_characters=34,
+    )
+    db = _DB(document)
+    cleanup_calls: list[str] = []
+
+    class _Indexer:
+        def __init__(self, _db) -> None:  # noqa: ANN001
+            pass
+
+        def delete_chunk_indexes(self, **_kwargs) -> None:  # noqa: ANN003
+            cleanup_calls.append("chunks")
+
+        def delete_event_indexes(self, **_kwargs) -> None:  # noqa: ANN003
+            cleanup_calls.append("events")
+            raise RuntimeError("kg boom")
+
+    monkeypatch.setattr(processor, "Indexer", _Indexer)
+
+    with caplog.at_level("WARNING"):
+        assert processor.DocumentProcessorService()._apply_pending_retry_cleanup(
+            db,
+            db_document=document,
+            tenant_id=uuid.uuid4(),
+            document_id=uuid.uuid4(),
+        ) == "deferred"
+
+    assert cleanup_calls == ["chunks", "events"]
+    assert processor.DocumentParsedContent in db.deletes
+    assert processor.DocumentChunk in db.deletes
+    assert any(getattr(model, "__name__", "") == "KgRelation" for model in db.deletes)
+    assert document.doc_metadata.get("retry_cleanup") == {
+        "version": "1",
+        "force": True,
+        "pipeline_hash": "stable-pipeline",
+        "scope": "document",
+    }
+    assert document.doc_metadata.get("img_ids") == ["old-image"]
+    assert document.doc_metadata.get("ingest_checkpoint") == {"version": "1", "stage": "parsed"}
+    assert document.doc_metadata.get("parsed_content_persisted") == {"cleaned": {"text": "old parsed text"}}
+    assert document.chunk_count == 12
+    assert document.total_characters == 34
+    assert db.commits == 0
+    assert db.rollbacks == 1
+    assert "keeping retry cleanup marker for a later retry" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_document_processing_stops_when_retry_cleanup_is_deferred(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from app.parsing.processors import processor
+
+    document_id = uuid.uuid4()
+    tenant_id = uuid.uuid4()
+    document = SimpleNamespace(id=document_id, tenant_id=tenant_id, dataset_id=None, doc_metadata={})
+    db = _DB(document)
+    service = processor.DocumentProcessorService()
+    status_updates: list[tuple[str, str, str | None]] = []
+
+    async def _cancel_check(*, force: bool = False) -> bool:
+        return False
+
+    async def _update_status(
+        _db,
+        _tenant_id,
+        _document_id,
+        status,
+        _progress,
+        stage,
+        *,
+        error_message=None,
+        **_kwargs,
+    ):  # noqa: ANN001, ANN003, ANN202
+        if status == "processing":
+            raise AssertionError("processing must not continue after deferred retry cleanup")
+        status_updates.append((status, stage, error_message))
+
+    monkeypatch.setattr(service, "_build_cancel_check", lambda **_kwargs: _cancel_check, raising=True)
+    monkeypatch.setattr(service, "_apply_pending_retry_cleanup", lambda *_args, **_kwargs: "deferred", raising=True)
+    monkeypatch.setattr(service, "_update_status", _update_status, raising=True)
+
+    result = await service.process_document(
+        file_path=tmp_path / "unused.txt",
+        document_id=document_id,
+        tenant_id=tenant_id,
+        db=db,
+    )
+
+    assert result == {"status": "failed", "reason": "retry_cleanup_deferred"}
+    assert status_updates == [("failed", "failed", "retry_cleanup_deferred")]

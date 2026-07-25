@@ -16,7 +16,12 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
-from app.services.ragviz_similarity import calculate_similarity_matrix, list_similarity_collections
+from app.services.ragviz_similarity import (
+    SimilarityLimitError,
+    calculate_similarity_matrix,
+    list_similarity_collections,
+    resolve_similarity_request_limits,
+)
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -24,6 +29,7 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     404: {"description": "Not Found"},
     409: {"description": "Conflict"},
     416: {"description": "Range Not Satisfiable"},
+    422: {"description": "Unprocessable Entity"},
 }
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -67,9 +73,9 @@ def get_similarity_collections(
 class SimilarityRequest(BaseModel):
     x_collection: str = Field(..., description="X axis collection id")
     y_collection: str = Field(..., description="Y axis collection id")
-    x_max_items: int | None = Field(100, description="X axis max items")
-    y_max_items: int | None = Field(100, description="Y axis max items")
-    max_items: int | None = Field(100, description="Back-compat max items")
+    x_max_items: int | None = Field(None, ge=1, description="X axis max items")
+    y_max_items: int | None = Field(None, ge=1, description="Y axis max items")
+    max_items: int | None = Field(100, ge=1, description="Back-compat max items")
 
 
 class SimilarityCalculateResponse(BaseModel):
@@ -92,14 +98,13 @@ def similarity_calculate(
 ):
     x_collection = request.x_collection
     y_collection = request.y_collection
-    x_max_items = int(request.x_max_items or request.max_items or 100)
-    y_max_items = int(request.y_max_items or request.max_items or 100)
-
-    # Hard limits to protect the service from excessive memory usage.
-    x_max_items = max(1, min(x_max_items, 3000))
-    y_max_items = max(1, min(y_max_items, 3000))
 
     try:
+        x_max_items, y_max_items = resolve_similarity_request_limits(
+            x_max_items=request.x_max_items,
+            y_max_items=request.y_max_items,
+            max_items=request.max_items,
+        )
         result = calculate_similarity_matrix(
             db,
             tenant_id,
@@ -114,6 +119,11 @@ def similarity_calculate(
             result=result,
             message=f"成功计算 {len(result.get('y_data') or [])} x {len(result.get('x_data') or [])} 相似度矩阵",
         )
+    except SimilarityLimitError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"message": str(exc), **(exc.detail or {})},
+        ) from exc
     except ValueError as exc:
         msg = str(exc)
         return SimilarityCalculateResponse(

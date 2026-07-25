@@ -23,6 +23,10 @@ from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.rag.core.errors import ConfigError
 from app.rag.core.logging import get_logger
+from app.rag.kg.extraction_job_options import (
+    build_kg_extraction_job_options,
+    kg_extraction_job_options_fingerprint,
+)
 from app.rag.kg.pipeline import extract_events, kg_search
 from app.rag.kg.provenance import build_event_entity_provenance
 from app.rag.kg.schemas import (
@@ -83,6 +87,8 @@ INCLUDE_RELATION_LINKS_DESC = "Include entity-entity relation links (triples)"
 KG_API_GRAPH_METRIC = "kg.api.graph"
 KG_API_GRAPH_EXPAND_METRIC = "kg.api.graph_expand"
 KG_API_FALLBACK_LOG_MESSAGE = "Ignoring non-critical KG API fallback failure: %s"
+KG_EXTRACTION_ALREADY_QUEUED_DETAIL = "A KG extraction job is already pending for this document and option set"
+KG_PIPELINE_CHUNKS_NOT_FOUND_DETAIL = "No chunks found for the selected pipeline version"
 
 
 class KGGraphProjectionParams(BaseModel):
@@ -3987,7 +3993,9 @@ def _scope_chunks_to_pipeline(chunks: list[DocumentChunk], *, document_id: UUID,
     if not pipeline_hash:
         return chunks
     scoped = [chunk for chunk in chunks if _chunk_matches_pipeline(chunk, document_id=document_id, pipeline_hash=pipeline_hash)]
-    return scoped or chunks
+    if not scoped:
+        raise HTTPException(status_code=409, detail=KG_PIPELINE_CHUNKS_NOT_FOUND_DETAIL)
+    return scoped
 
 
 def _default_prompt_template_id() -> UUID | None:
@@ -4114,19 +4122,51 @@ async def _enqueue_kg_extraction_response(
     try:
         from app.tasks.queue import enqueue_kg_extraction
 
-        pipeline_hash_for_job = effective.pipeline_hash or (document.doc_metadata or {}).get("pipeline_hash") or "unknown"
-        pipeline_hash_for_job = str(pipeline_hash_for_job).strip() or "unknown"
+        raw_pipeline_hash = effective.pipeline_hash or (document.doc_metadata or {}).get("pipeline_hash") or None
+        pipeline_hash_for_job = (str(raw_pipeline_hash).strip() or None) if raw_pipeline_hash is not None else None
+        pipeline_job_label = pipeline_hash_for_job or "unversioned"
+        frozen_extract_relations = (
+            effective.extract_relations
+            if isinstance(effective.extract_relations, bool)
+            else bool(getattr(settings, "KG_RELATION_ENABLED", False))
+        )
+        frozen_extract_skills = (
+            effective.extract_skills
+            if isinstance(effective.extract_skills, bool)
+            else bool(getattr(settings, "KG_SKILL_ENABLED", False))
+        )
+        effective_options = build_kg_extraction_job_options(
+            pipeline_hash=pipeline_hash_for_job,
+            prompt_template_id=effective.prompt_template_id,
+            prompt_template_key=effective.prompt_template_key,
+            prompt_ab_experiment_key=effective.prompt_ab_experiment_key,
+            extraction_backend=(
+                effective.extraction_backend
+                or (getattr(settings, "KG_EXTRACTION_BACKEND", "") or "").strip()
+                or None
+            ),
+            kg_python_plugin=effective.kg_python_plugin,
+            kg_python_params=effective.kg_python_params,
+            replace_existing=effective.replace_existing,
+            prune_orphan_entities=effective.prune_orphan_entities,
+            extract_relations=frozen_extract_relations,
+            extract_skills=frozen_extract_skills,
+        )
+        options_fingerprint = kg_extraction_job_options_fingerprint(effective_options)
         task_id = await enqueue_kg_extraction(
             tenant_id=tenant_id,
             document_id=document_id,
             requested_by=account_id,
-            job_id=f"kg:{tenant_id}:{document_id}:{pipeline_hash_for_job}",
+            job_id=f"kg:{tenant_id}:{document_id}:{pipeline_job_label}:{options_fingerprint}",
             pipeline_hash=pipeline_hash_for_job,
             replace_existing=effective.replace_existing,
             prune_orphan_entities=effective.prune_orphan_entities,
             extract_relations=effective.extract_relations,
             extract_skills=effective.extract_skills,
+            effective_options=effective_options,
         )
+        if task_id is None:
+            raise HTTPException(status_code=409, detail=KG_EXTRACTION_ALREADY_QUEUED_DETAIL)
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001

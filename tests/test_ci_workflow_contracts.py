@@ -276,6 +276,15 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     assert "README docker quickstart smoke" in docker_job
     assert "make up-web" in docker_job
     assert "artifacts/core-e2e.readme-docker.json" in docker_job
+    assert "README lite quickstart smoke" in docker_job
+    assert "make up-lite" in docker_job
+    assert "artifacts/core-e2e.readme-lite.json" in docker_job
+    assert "curl --noproxy '*' -fsS http://127.0.0.1:8000/api/v1/health/ready >/dev/null" in docker_job
+    assert "Clean up README lite quickstart stack" in docker_job
+    assert (
+        "docker compose --env-file .env -f docker/docker-compose.lite.yml down -v --remove-orphans"
+        in docker_job
+    )
     assert "Smoke built backend and web images" in docker_job
     assert "up -d --no-build" in docker_job
     assert "Docker web-proxy and dual-api core smoke" in docker_job
@@ -310,6 +319,12 @@ def test_main_ci_runs_core_e2e_against_the_existing_host_backend() -> None:
     assert "README host web contract smoke" in regression_job
     assert "node web/scripts/api-ping.mjs" in regression_job
     assert "NEXT_PUBLIC_API_URL: http://127.0.0.1:8000" in regression_job
+    assert "Install web deps" in regression_job
+    assert "pnpm install --frozen-lockfile" in regression_job
+    assert "Install Playwright browsers for host browser smoke" in regression_job
+    assert "README host browser smoke" in regression_job
+    assert 'PLAYWRIGHT_USE_PROD_SERVER: "1"' in regression_job
+    assert "pnpm exec playwright test e2e/live-stack.smoke.spec.ts" in regression_job
     assert "README host quickstart smoke" in regression_job
     assert "make core-e2e" in regression_job
     assert "CORE_E2E_BASE_URL=http://127.0.0.1:8000" in regression_job

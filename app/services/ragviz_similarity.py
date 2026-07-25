@@ -38,6 +38,13 @@ class RagvizCollection:
 
 
 _embeddings_adapter = None
+_DEFAULT_SIMILARITY_MAX_ITEMS = 100
+
+
+class SimilarityLimitError(ValueError):
+    def __init__(self, message: str, *, detail: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.detail = detail or {}
 
 
 def _get_embeddings_adapter():
@@ -70,6 +77,60 @@ def _parse_collection_id(collection_id: str) -> tuple[str, str]:
     if not kind or not value:
         raise ValueError("Invalid collection id")
     return kind, value
+
+
+def _similarity_axis_limit() -> int:
+    return max(1, int(getattr(settings, "RAGVIZ_SIMILARITY_MAX_AXIS_ITEMS", 500) or 500))
+
+
+def _similarity_pair_limit() -> int:
+    return max(1, int(getattr(settings, "RAGVIZ_SIMILARITY_MAX_PAIRS", 200_000) or 200_000))
+
+
+def resolve_similarity_request_limits(
+    *,
+    x_max_items: int | None,
+    y_max_items: int | None,
+    max_items: int | None = None,
+) -> tuple[int, int]:
+    fallback_items = max_items if max_items is not None else _DEFAULT_SIMILARITY_MAX_ITEMS
+    resolved = {
+        "x_max_items": x_max_items if x_max_items is not None else fallback_items,
+        "y_max_items": y_max_items if y_max_items is not None else fallback_items,
+    }
+    axis_limit = _similarity_axis_limit()
+    pair_limit = _similarity_pair_limit()
+
+    normalized: dict[str, int] = {}
+    for field_name, raw_value in resolved.items():
+        value = int(raw_value)
+        if value < 1:
+            raise SimilarityLimitError(
+                f"{field_name} must be greater than or equal to 1",
+                detail={"field": field_name, "requested": value, "minimum": 1},
+            )
+        if value > axis_limit:
+            raise SimilarityLimitError(
+                f"{field_name} exceeds ragviz similarity axis limit ({value} > {axis_limit})",
+                detail={"field": field_name, "requested": value, "limit": axis_limit},
+            )
+        normalized[field_name] = value
+
+    total_pairs = normalized["x_max_items"] * normalized["y_max_items"]
+    if total_pairs > pair_limit:
+        raise SimilarityLimitError(
+            "requested ragviz similarity matrix exceeds pair limit "
+            f"({normalized['x_max_items']} x {normalized['y_max_items']} = {total_pairs} > {pair_limit})",
+            detail={
+                "field": "total_pairs",
+                "x_max_items": normalized["x_max_items"],
+                "y_max_items": normalized["y_max_items"],
+                "requested": total_pairs,
+                "limit": pair_limit,
+            },
+        )
+
+    return normalized["x_max_items"], normalized["y_max_items"]
 
 
 def _is_dataset_readable(ds: Dataset, account_id: str, *, allowed_partial_ids: set[UUID]) -> bool:
@@ -436,6 +497,10 @@ def calculate_similarity_matrix(
     y_max_items: int,
 ) -> dict[str, Any]:
     start = time.time()
+    x_max_items, y_max_items = resolve_similarity_request_limits(
+        x_max_items=x_max_items,
+        y_max_items=y_max_items,
+    )
 
     x_items, x_texts = get_collection_items(db, tenant_id, account_id, x_collection, max_items=x_max_items)
     y_items, y_texts = get_collection_items(db, tenant_id, account_id, y_collection, max_items=y_max_items)

@@ -8,7 +8,7 @@
 
 ### A. 全 Docker（推荐）
 - 后端 + worker + infra：`make up`
-- 前端（可选）：`make up-web`
+- 完整 Web 栈（后端 + worker + infra + 前端）：`make up-web`
 
 ### B. 本地后端 + Docker 跑依赖（开发常用）
 - 依赖：`make infra-up`
@@ -42,8 +42,8 @@
 ## 2) 前端的 API URL 是否正确？
 
 前端默认读环境变量：
-- `NEXT_PUBLIC_API_URL`（浏览器用）
-- `API_INTERNAL_URL`（仅 SSR/容器内用，**不会**暴露给浏览器）
+- 本地开发：`NEXT_PUBLIC_API_URL`（浏览器用）、`API_INTERNAL_URL`（仅 SSR 用）
+- Docker 前端：`NEXT_PUBLIC_API_URL_DOCKER`（浏览器用）、`API_INTERNAL_URL_DOCKER`（仅容器内 SSR 用）
 
 ### 浏览器必须能访问到的地址
 一般是：
@@ -53,6 +53,7 @@
 
 ### Docker 前端（SSR）需要容器内地址时
 在 `.env` 配：
+- `NEXT_PUBLIC_API_URL_DOCKER=/`
 - `API_INTERNAL_URL_DOCKER=http://mimirq-api:8000`
 
 对应代码逻辑见：`web/lib/env.ts`
@@ -64,7 +65,7 @@
 ### ① 前端提示“网络错误/无法连接后端”
 - 后端没起：先测 `http://localhost:8000/api/v1/health/ready`
 - 端口不对：检查 `.env` 里的 `BACKEND_PORT`（若你改过）
-- 前端 API URL 不对：检查 `NEXT_PUBLIC_API_URL`
+- 前端 API URL 不对：本地开发检查 `NEXT_PUBLIC_API_URL`，Docker 检查 `NEXT_PUBLIC_API_URL_DOCKER`
 
 ### ② CORS 报错
 Docker 默认允许：
@@ -76,11 +77,12 @@ Docker 默认允许：
 
 ### ③ 401/403（未授权/无权限）
 若你显式使用 `AUTH_MODE=header`（仅限本地开发）：
-- 前端会发 `X-User-ID`（来自 `NEXT_PUBLIC_USER_ID` 或 localStorage）
-- 租户用 `X-Tenant-ID`（来自 `NEXT_PUBLIC_TENANT_ID` 或 localStorage）
+- 无 JWT 时，前端从 `NEXT_PUBLIC_USER_ID` / `NEXT_PUBLIC_TENANT_ID` 发送开发身份头
+- 登录态用户/租户元数据不会在 token 已清除后单独作为身份凭据发送，避免跨标签页串号
 
 若你用 `AUTH_MODE=jwt`：
-- 需要先登录拿 token（前端会写入 `localStorage.mimirq_access_token`）
+- 需要先登录拿 token；token 优先写入当前标签页的 `sessionStorage`
+- 旧版 `localStorage` token 会迁移；仅在浏览器禁用 `sessionStorage` 时保留兼容回退
 
 ### ④ 422（参数错误）
 看后端返回的 `detail`，并留意 `X-Request-ID`：

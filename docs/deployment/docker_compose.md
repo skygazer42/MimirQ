@@ -16,7 +16,7 @@ DeepDoc 的轻量解析模型不随源码仓库分发。Docker 构建会从
 `qwqqwq/mimirq@118452f3ea3ccd09a41b2d39ea82d7de535e2908` 下载并校验模型，
 因此首次构建需要访问 Hugging Face；镜像构建完成后，运行时不会联网下载模型。
 
-另外，前端服务 `web` 放在 `docker/docker-compose.web.yml`，默认不启动；需要时用 `-f` 叠加即可（或直接 `make up-web`）。
+另外，前端服务 `web` 放在 `docker/docker-compose.web.yml`，默认不启动；需要时用 `-f` 叠加即可（或直接 `make up-web`，它会启动后端、Worker、基础设施和前端整套 Docker Web 栈，而不是只启动前端）。
 
 ---
 
@@ -65,12 +65,12 @@ LLM_MODEL_HEAVY=qwen3-max
 前端（Docker）可选配置（`docker/docker-compose.web.yml` 使用）：
 
 - `WEB_PORT`：前端端口（默认 `3000`）
-- `NEXT_PUBLIC_API_URL`：浏览器访问后端的地址（默认 `http://localhost:8000`）
+- `NEXT_PUBLIC_API_URL_DOCKER`：浏览器访问后端的地址（默认同源 `/`）
 - `API_INTERNAL_URL_DOCKER`：前端容器内（SSR）访问后端的地址（默认 `http://mimirq-api:8000`）
 - `FORWARDED_ALLOW_IPS_DOCKER`：允许覆盖客户端 IP 的可信代理地址；默认仅包含回环和 `web` 容器固定地址，禁止设为 `*`
 - `MIMIRQ_PROXY_SUBNET` / `WEB_PROXY_IP_DOCKER`：前后端代理专用网段及 `web` 地址；修改时必须同步更新 `FORWARDED_ALLOW_IPS_DOCKER`
 
-> 注意：不要把 `NEXT_PUBLIC_API_URL` 设置成 `http://mimirq-api:8000`，因为浏览器无法解析 Docker 内部服务名；SSR 需要容器内地址时请改 `API_INTERNAL_URL_DOCKER`。
+> 注意：不要把 `NEXT_PUBLIC_API_URL_DOCKER` 设置成 `http://mimirq-api:8000`，因为浏览器无法解析 Docker 内部服务名；SSR 需要容器内地址时请改 `API_INTERNAL_URL_DOCKER`。
 
 若在 Compose 外使用 Ingress 或反向代理，需把代理的实际来源 IP/CIDR 加入容器环境变量 `FORWARDED_ALLOW_IPS`。未列入的来源即使伪造 `X-Forwarded-For` 也不会改变审计、限流或 SCIM allowlist 使用的客户端 IP。
 
@@ -106,7 +106,13 @@ make models
 python main.py
 ```
 
-启动前端（可选）：
+启动本地热更新前端（可选）：
+
+```bash
+make web
+```
+
+如需直接启动完整 Docker Web 栈（后端、Worker、基础设施与前端一起跑），再使用：
 
 ```bash
 make up-web

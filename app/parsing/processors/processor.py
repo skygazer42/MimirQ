@@ -13,7 +13,7 @@ import uuid
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import unquote, urlparse
 from uuid import UUID
 
@@ -63,6 +63,10 @@ from app.rag.core.metadata import (
     normalize_image_metadata,
     normalize_section_metadata,
 )
+from app.rag.kg.extraction_job_options import (
+    build_kg_extraction_job_options,
+    kg_extraction_job_options_fingerprint,
+)
 from app.rag.kg.pipeline import extract_events
 from app.rag.pipeline_plugins.registry import derive_registered_stage_plugin_ref
 from app.rag.pipeline_plugins.runtime import apply_chunk_python_plugin, apply_governance_python_plugin
@@ -95,6 +99,7 @@ from app.types.pipeline import PipelineEffective
 
 logger = get_logger("parsing.document_processor")
 _PROCESSOR_CLEANUP_LOG_MESSAGE = "Ignoring non-critical processor cleanup failure: %s"
+RetryCleanupStatus = Literal["applied", "deferred", "invalid"]
 
 
 def _log_processor_fallback(context: str, exc: BaseException) -> None:
@@ -2592,24 +2597,27 @@ class DocumentProcessorService:
         db_document: DBDocument,
         tenant_id: UUID,
         document_id: UUID,
-    ) -> bool:
-        meta = dict(getattr(db_document, "doc_metadata", None) or {})
+    ) -> RetryCleanupStatus:
+        original_meta = dict(getattr(db_document, "doc_metadata", None) or {})
+        original_chunk_count = getattr(db_document, "chunk_count", None)
+        original_total_characters = getattr(db_document, "total_characters", None)
+        meta = dict(original_meta)
         request = meta.get("retry_cleanup")
         if request is None:
-            return True
+            return "applied"
         if not isinstance(request, dict) or str(request.get("version") or "") != "1":
             logger.error("Refusing unknown retry cleanup intent for document %s", document_id)
-            return False
+            return "invalid"
 
         pipeline_hash = str(meta.get("pipeline_hash") or "").strip()
         scope = str(request.get("scope") or "").strip()
         target_key = str(request.get("doc_pipeline_key") or "").strip()
         if str(request.get("pipeline_hash") or "").strip() != pipeline_hash or scope not in {"document", "pipeline"}:
             logger.error("Refusing stale retry cleanup intent for document %s", document_id)
-            return False
+            return "invalid"
         if scope == "pipeline" and target_key != f"{document_id}:{pipeline_hash}":
             logger.error("Refusing invalid scoped retry cleanup intent for document %s", document_id)
-            return False
+            return "invalid"
 
         preserve_existing = scope == "pipeline"
         indexer = Indexer(db)
@@ -2658,7 +2666,6 @@ class DocumentProcessorService:
             db_document.total_characters = 0
 
         db_document.doc_metadata = meta
-        db.commit()
 
         try:
             from app.rag.kg.models import KgRelation
@@ -2681,17 +2688,25 @@ class DocumentProcessorService:
                     commit=False,
                     prune_orphan_entities=True,
                 )
+            meta.pop("retry_cleanup", None)
+            db_document.doc_metadata = meta
             db.commit()
         except Exception as exc:  # noqa: BLE001
             db.rollback()
-            logger.warning("Failed to clean retry KG indexes for document %s: %s", document_id, str(exc)[:200])
+            db_document.doc_metadata = original_meta
+            if original_chunk_count is not None:
+                db_document.chunk_count = original_chunk_count
+            if original_total_characters is not None:
+                db_document.total_characters = original_total_characters
+            logger.warning(
+                "Failed to complete retry cleanup for document %s; keeping retry cleanup marker for a later retry: %s",
+                document_id,
+                str(exc)[:200],
+            )
+            return "deferred"
 
-        meta = dict(getattr(db_document, "doc_metadata", None) or {})
-        meta.pop("retry_cleanup", None)
-        db_document.doc_metadata = meta
-        db.commit()
         db.refresh(db_document)
-        return True
+        return "applied"
 
     async def process_document(
         self,
@@ -2765,12 +2780,13 @@ class DocumentProcessorService:
             # If user already cancelled before the worker started, stop immediately.
             await raise_if_cancelled(force=True)
 
-            if not self._apply_pending_retry_cleanup(
+            retry_cleanup_status = self._apply_pending_retry_cleanup(
                 db,
                 db_document=db_document,
                 tenant_id=tenant_id,
                 document_id=document_id,
-            ):
+            )
+            if retry_cleanup_status == "invalid":
                 await self._update_status(
                     db,
                     tenant_id,
@@ -2781,6 +2797,17 @@ class DocumentProcessorService:
                     error_message="invalid_retry_cleanup_intent",
                 )
                 return {"status": "failed", "reason": "invalid_retry_cleanup_intent"}
+            if retry_cleanup_status == "deferred":
+                await self._update_status(
+                    db,
+                    tenant_id,
+                    document_id,
+                    "failed",
+                    0,
+                    "failed",
+                    error_message="retry_cleanup_deferred",
+                )
+                return {"status": "failed", "reason": "retry_cleanup_deferred"}
 
             # Step 1: update status to processing.
             await self._update_status(
@@ -4649,19 +4676,48 @@ class DocumentProcessorService:
                         from app.core.pipeline_versions import get_active_pipeline_hash  # noqa: WPS433
                         from app.tasks.queue import enqueue_kg_extraction
 
-                        pipeline_hash = (
+                        raw_pipeline_hash = (
                             get_active_pipeline_hash(db_document.doc_metadata or {})
                             or (db_document.doc_metadata or {}).get("pipeline_hash")
-                            or "unknown"
+                            or None
                         )
-                        pipeline_hash = str(pipeline_hash).strip() or "unknown"
-                        job_id = f"kg:{tenant_id}:{document_id}:{pipeline_hash}"
+                        pipeline_hash = (
+                            (str(raw_pipeline_hash).strip() or None) if raw_pipeline_hash is not None else None
+                        )
+                        raw_prompt_template_id = (getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_ID", "") or "").strip()
+                        prompt_template_id = UUID(raw_prompt_template_id) if raw_prompt_template_id else None
+                        kg_python_plugin_ref = str(getattr(pipeline_effective, "kg_python_plugin", "") or "").strip()
+                        if not kg_python_plugin_ref:
+                            kg_python_plugin_ref = derive_registered_stage_plugin_ref(
+                                str(getattr(pipeline_effective, "chunk_python_plugin", "") or "").strip(),
+                                "kg",
+                            )
+                        effective_options = build_kg_extraction_job_options(
+                            pipeline_hash=pipeline_hash,
+                            prompt_template_id=prompt_template_id,
+                            prompt_template_key=(getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", "") or "").strip() or None,
+                            prompt_ab_experiment_key=(
+                                getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or ""
+                            ).strip()
+                            or None,
+                            extraction_backend=(getattr(settings, "KG_EXTRACTION_BACKEND", "") or "").strip() or None,
+                            kg_python_plugin=kg_python_plugin_ref,
+                            kg_python_params=dict(getattr(pipeline_effective, "kg_python_params", {}) or {}),
+                            replace_existing=bool(getattr(settings, "KG_EXTRACT_REPLACE_EXISTING", True)),
+                            prune_orphan_entities=bool(getattr(settings, "KG_EXTRACT_PRUNE_ORPHAN_ENTITIES", True)),
+                            extract_relations=bool(getattr(settings, "KG_RELATION_ENABLED", False)),
+                            extract_skills=bool(getattr(settings, "KG_SKILL_ENABLED", False)),
+                        )
+                        options_fingerprint = kg_extraction_job_options_fingerprint(effective_options)
+                        pipeline_job_label = pipeline_hash or "unversioned"
+                        job_id = f"kg:{tenant_id}:{document_id}:{pipeline_job_label}:{options_fingerprint}"
                         kg_task_id = await enqueue_kg_extraction(
                             tenant_id=tenant_id,
                             document_id=document_id,
                             requested_by="system",
                             job_id=job_id,
                             pipeline_hash=pipeline_hash,
+                            effective_options=effective_options,
                         )
                         if kg_task_id:
                             meta = dict(db_document.doc_metadata or {})

@@ -121,8 +121,9 @@ async def enqueue_kg_extraction(
     prune_orphan_entities: bool | None = None,
     extract_relations: bool | None = None,
     extract_skills: bool | None = None,
+    effective_options: dict[str, Any] | None = None,
 ) -> str | None:
-    """Enqueue KG extraction job (returns None if queue disabled)."""
+    """Enqueue KG extraction job (returns None if queue disabled or deduped)."""
     q = await get_queue()
     if q is None:
         return None
@@ -137,20 +138,22 @@ async def enqueue_kg_extraction(
         bool(extract_relations) if extract_relations is not None else None,
         bool(extract_skills) if extract_skills is not None else None,
         str(pipeline_hash) if pipeline_hash is not None else None,
+        dict(effective_options) if effective_options is not None else None,
         _queue_name=queue_name,
         _job_id=job_id,
         _job_try=1,
     )
-    return getattr(job, "job_id", None) or job_id
+    return getattr(job, "job_id", None) if job is not None else None
 
 
 async def enqueue_rebuild_indexes(
     *,
     tenant_id: UUID,
     requested_by: str,
+    document_id: UUID | None = None,
     job_id: str | None = None,
 ) -> str | None:
-    """Enqueue index rebuild job (returns None if queue disabled)."""
+    """Enqueue index rebuild job (returns None if queue disabled or deduped)."""
     q = await get_queue()
     if q is None:
         return None
@@ -159,11 +162,12 @@ async def enqueue_rebuild_indexes(
         "rebuild_indexes_job",
         str(tenant_id),
         requested_by,
+        str(document_id) if document_id is not None else None,
         _queue_name=queue_name,
         _job_id=job_id,
         _job_try=1,
     )
-    return getattr(job, "job_id", None) or job_id
+    return getattr(job, "job_id", None) if job is not None else None
 
 
 async def enqueue_dataset_profile_scan(

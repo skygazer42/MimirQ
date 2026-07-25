@@ -31,6 +31,15 @@ function getEnvTenantId(): string | null {
   return process.env.NEXT_PUBLIC_TENANT_ID || null
 }
 
+function persistTokenValue(key: string, value: string) {
+  const wroteToSession = writeClientStorage(key, value, TOKEN_STORAGE_KIND)
+  if (wroteToSession) {
+    removeClientStorage(key, LEGACY_TOKEN_STORAGE_KIND)
+    return
+  }
+  writeClientStorage(key, value, LEGACY_TOKEN_STORAGE_KIND)
+}
+
 function readStoredAccessToken(): string | null {
   return (
     readClientStorage(ACCESS_TOKEN_KEY, TOKEN_STORAGE_KIND) ||
@@ -173,12 +182,13 @@ export function getAccessToken(): string | null {
   const legacyToken = readClientStorage(ACCESS_TOKEN_KEY, LEGACY_TOKEN_STORAGE_KIND)
   if (!legacyToken) return null
 
-  writeClientStorage(ACCESS_TOKEN_KEY, legacyToken, TOKEN_STORAGE_KIND)
+  if (!writeClientStorage(ACCESS_TOKEN_KEY, legacyToken, TOKEN_STORAGE_KIND)) {
+    return legacyToken
+  }
   removeClientStorage(ACCESS_TOKEN_KEY, LEGACY_TOKEN_STORAGE_KIND)
 
   const legacyExpiresAt = readClientStorage(TOKEN_EXPIRES_AT_KEY, LEGACY_TOKEN_STORAGE_KIND)
-  if (legacyExpiresAt) {
-    writeClientStorage(TOKEN_EXPIRES_AT_KEY, legacyExpiresAt, TOKEN_STORAGE_KIND)
+  if (legacyExpiresAt && writeClientStorage(TOKEN_EXPIRES_AT_KEY, legacyExpiresAt, TOKEN_STORAGE_KIND)) {
     removeClientStorage(TOKEN_EXPIRES_AT_KEY, LEGACY_TOKEN_STORAGE_KIND)
   }
 
@@ -186,10 +196,12 @@ export function getAccessToken(): string | null {
 }
 
 export function getTenantId(): string | null {
+  if (!hasStoredAccessToken()) return getEnvTenantId()
   return readClientStorage(TENANT_ID_KEY) || getEnvTenantId()
 }
 
 export function getStoredUserId(): string | null {
+  if (!hasStoredAccessToken()) return null
   return readClientStorage(USER_ID_KEY)
 }
 
@@ -212,27 +224,23 @@ export function setAuthSession(params: { token: AuthToken; user: UserProfile }) 
   if (globalThis.window === undefined) return
   const { token, user } = params
   const previousScope = getAuthCacheScope()
-  const previousUserId = getStoredUserId()
-  writeClientStorage(ACCESS_TOKEN_KEY, token.access_token, TOKEN_STORAGE_KIND)
-  removeClientStorage(ACCESS_TOKEN_KEY, LEGACY_TOKEN_STORAGE_KIND)
+  const previousUserId = readClientStorage(USER_ID_KEY)
+  persistTokenValue(ACCESS_TOKEN_KEY, token.access_token)
   writeClientStorage(USER_KEY, JSON.stringify(user))
   if (previousUserId && previousUserId !== user.id) {
     removeClientStorage(TENANT_ID_KEY)
   }
   writeClientStorage(USER_ID_KEY, user.id)
   const expiresAt = Date.now() + token.expires_in * 1000
-  writeClientStorage(TOKEN_EXPIRES_AT_KEY, String(expiresAt), TOKEN_STORAGE_KIND)
-  removeClientStorage(TOKEN_EXPIRES_AT_KEY, LEGACY_TOKEN_STORAGE_KIND)
+  persistTokenValue(TOKEN_EXPIRES_AT_KEY, String(expiresAt))
   notifyAuthScopeChanged(previousScope)
 }
 
 export function setAccessToken(token: AuthToken) {
   if (globalThis.window === undefined) return
-  writeClientStorage(ACCESS_TOKEN_KEY, token.access_token, TOKEN_STORAGE_KIND)
-  removeClientStorage(ACCESS_TOKEN_KEY, LEGACY_TOKEN_STORAGE_KIND)
+  persistTokenValue(ACCESS_TOKEN_KEY, token.access_token)
   const expiresAt = Date.now() + token.expires_in * 1000
-  writeClientStorage(TOKEN_EXPIRES_AT_KEY, String(expiresAt), TOKEN_STORAGE_KIND)
-  removeClientStorage(TOKEN_EXPIRES_AT_KEY, LEGACY_TOKEN_STORAGE_KIND)
+  persistTokenValue(TOKEN_EXPIRES_AT_KEY, String(expiresAt))
 }
 
 export function setStoredUser(user: UserProfile) {

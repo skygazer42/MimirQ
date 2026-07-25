@@ -847,12 +847,19 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
             if temp_path is not None:
                 with contextlib.suppress(Exception):
                     temp_path.unlink(missing_ok=True)
+        result_status = str(result.get("status") or "").strip().lower() if isinstance(result, dict) else ""
+        succeeded = result_status == "success"
         return await _job_result(
             ctx,
             job_name="process_document_job",
-            ok=True,
+            ok=succeeded,
             started_at=t0,
-            progress=_job_progress(stage="completed", done=1, total=1),
+            reason=(str(result.get("reason") or result_status or "processing_failed") if not succeeded else None),
+            progress=_job_progress(
+                stage="completed" if succeeded else (result_status or "failed"),
+                done=1 if succeeded else 0,
+                total=1,
+            ),
             tenant_id=tenant_id,
             document_id=document_id,
             pipeline_hash=pipeline_hash,
@@ -1163,14 +1170,20 @@ async def extract_kg_job(
     extract_relations: bool | None = None,
     extract_skills: bool | None = None,
     pipeline_hash: str | None = None,
+    effective_options: dict[str, Any] | None = None,
 ) -> dict:  # noqa: ANN001
     """
     KG extraction job: extract events/entities from completed chunks and index them.
     """
     from app.models.dataset import Dataset
     from app.models.document import DocumentChunk
+    from app.rag.kg.extraction_job_options import (
+        kg_extraction_job_options_fingerprint,
+        normalize_kg_extraction_job_options,
+    )
     from app.rag.kg.pipeline import extract_events
     from app.rag.pipeline_plugins.registry import derive_registered_stage_plugin_ref
+    from app.services.corpus_cache_tokens import invalidate_dataset_cache_namespace
     from app.services.pipeline_config import build_indexing_options, resolve_pipeline_effective
 
     t0 = time.perf_counter()
@@ -1185,6 +1198,25 @@ async def extract_kg_job(
     lock_val = None
     kg_retry_defer_sec = max(2, int(getattr(settings, "TASK_KG_RETRY_DEFER_SEC", 30) or 30))
     try:
+        frozen_options: dict[str, Any] | None = None
+        if effective_options is not None:
+            try:
+                frozen_options = normalize_kg_extraction_job_options(effective_options)
+            except ValueError:
+                return await _job_result(
+                    ctx,
+                    job_name="extract_kg_job",
+                    ok=False,
+                    started_at=t0,
+                    reason="invalid_effective_options",
+                    progress=_job_progress(stage="failed", done=0, total=1),
+                    tenant_id=tenant_id,
+                    document_id=document_id,
+                )
+        queued_pipeline_hash = (
+            str(frozen_options.get("pipeline_hash") or "").strip() if frozen_options is not None else ""
+        ) or (str(pipeline_hash or "").strip() or None)
+
         try:
             redis = _task_queue_redis_or_retry(ctx, retry_defer_sec=kg_retry_defer_sec)
             kg_limit = int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_KG", 0) or 0)
@@ -1209,7 +1241,7 @@ async def extract_kg_job(
                 progress=_job_progress(stage="failed", done=0, total=1),
                 tenant_id=tenant_id,
                 document_id=document_id,
-                pipeline_hash=pipeline_hash,
+                pipeline_hash=queued_pipeline_hash,
             )
 
         doc = db.query(DBDocument).filter(DBDocument.id == did, DBDocument.tenant_id == tid).first()
@@ -1245,18 +1277,29 @@ async def extract_kg_job(
         # multiple chunk versions for the same document.
         from app.core.pipeline_versions import get_active_pipeline_hash  # noqa: WPS433
 
-        explicit_ph = str(pipeline_hash or "").strip() or None
+        explicit_ph = queued_pipeline_hash
         doc_ph = (
             get_active_pipeline_hash(doc.doc_metadata or {})
             or (doc.doc_metadata or {}).get("pipeline_hash")
             or None
         )
         selected_ph = explicit_ph or (str(doc_ph).strip() if doc_ph is not None else None) or "unknown"
-        replace_key = _kg_lock_flag(replace_existing)
-        prune_key = _kg_lock_flag(prune_orphan_entities)
-        rel_key = _kg_lock_flag(extract_relations)
-        skill_key = _kg_lock_flag(extract_skills)
-        lock_key = f"lock:kg:{tenant_id}:{document_id}:{selected_ph}:{replace_key}:{prune_key}:{rel_key}:{skill_key}"
+        if frozen_options is not None:
+            replace_existing = bool(frozen_options["replace_existing"])
+            prune_orphan_entities = bool(frozen_options["prune_orphan_entities"])
+            extract_relations = frozen_options["extract_relations"]
+            extract_skills = frozen_options["extract_skills"]
+            options_key = kg_extraction_job_options_fingerprint(frozen_options)
+        else:
+            options_key = ":".join(
+                (
+                    _kg_lock_flag(replace_existing),
+                    _kg_lock_flag(prune_orphan_entities),
+                    _kg_lock_flag(extract_relations),
+                    _kg_lock_flag(extract_skills),
+                )
+            )
+        lock_key = f"lock:kg:{tenant_id}:{document_id}:{selected_ph}:{options_key}"
         lock_val = make_lock_value(requested_by)
         lock_ttl = _task_job_lock_ttl_sec()
         try:
@@ -1327,6 +1370,7 @@ async def extract_kg_job(
 
         # Versioning: keep only chunks that belong to the selected pipeline hash.
         scoped_ph = str(selected_ph or "").strip() or None
+        pipeline_scope_required = bool(explicit_ph or doc_ph)
         if scoped_ph:
             doc_key = f"{document_id}:{scoped_ph}"
 
@@ -1343,6 +1387,18 @@ async def extract_kg_job(
             scoped = [c for c in chunks if _chunk_matches(c)]
             if scoped:
                 chunks = scoped
+            elif pipeline_scope_required:
+                return await _job_result(
+                    ctx,
+                    job_name="extract_kg_job",
+                    ok=False,
+                    started_at=t0,
+                    reason="pipeline_chunks_not_found",
+                    progress=_job_progress(stage="failed", done=0, total=1),
+                    tenant_id=tenant_id,
+                    document_id=document_id,
+                    pipeline_hash=selected_ph,
+                )
 
         dataset_meta = {}
         if doc.dataset_id:
@@ -1356,27 +1412,58 @@ async def extract_kg_job(
             request_overrides=None,
         )
         index_options = build_indexing_options(effective)
-        kg_python_plugin_ref = str(getattr(effective, "kg_python_plugin", "") or "").strip()
-        if not kg_python_plugin_ref:
-            kg_python_plugin_ref = derive_registered_stage_plugin_ref(
-                str(getattr(effective, "chunk_python_plugin", "") or "").strip(),
-                "kg",
+        if frozen_options is not None:
+            prompt_template_id = (
+                UUID(str(frozen_options["prompt_template_id"])) if frozen_options["prompt_template_id"] else None
             )
-        kg_python_params = dict(getattr(effective, "kg_python_params", {}) or {})
+            prompt_template_key = frozen_options["prompt_template_key"]
+            prompt_ab_experiment_key = frozen_options["prompt_ab_experiment_key"]
+            extraction_backend = frozen_options["extraction_backend"]
+            kg_python_plugin_ref = str(frozen_options["kg_python_plugin"] or "").strip()
+            kg_python_params = dict(frozen_options["kg_python_params"] or {})
+        else:
+            prompt_template_id = None
+            prompt_template_key = None
+            prompt_ab_experiment_key = None
+            extraction_backend = None
+            kg_python_plugin_ref = str(getattr(effective, "kg_python_plugin", "") or "").strip()
+            if not kg_python_plugin_ref:
+                kg_python_plugin_ref = derive_registered_stage_plugin_ref(
+                    str(getattr(effective, "chunk_python_plugin", "") or "").strip(),
+                    "kg",
+                )
+            kg_python_params = dict(getattr(effective, "kg_python_params", {}) or {})
 
         events = await extract_events(
             [c.id for c in chunks],
             tenant_id=tid,
             chunks=chunks,
             index_options=index_options,
+            prompt_template_id=prompt_template_id,
+            prompt_template_key=prompt_template_key,
+            prompt_ab_experiment_key=prompt_ab_experiment_key,
             ab_user_key=requested_by,
             extract_relations=extract_relations,
             extract_skills=extract_skills,
+            extraction_backend=extraction_backend,
             kg_python_plugin=kg_python_plugin_ref,
             kg_python_params=kg_python_params,
             replace_existing=replace_existing,
             prune_orphan_entities=prune_orphan_entities,
         )
+        cache_invalidation: dict[str, Any] | None = None
+        if doc.dataset_id:
+            try:
+                cache_invalidation = invalidate_dataset_cache_namespace(
+                    db,
+                    tenant_id=tid,
+                    dataset_id=doc.dataset_id,
+                )
+                db.commit()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Failed to invalidate dataset cache after KG extraction: %s", str(exc)[:200])
+                with contextlib.suppress(Exception):
+                    db.rollback()
         return await _job_result(
             ctx,
             job_name="extract_kg_job",
@@ -1387,6 +1474,7 @@ async def extract_kg_job(
             document_id=document_id,
             pipeline_hash=selected_ph,
             event_count=len(events),
+            cache_invalidation=cache_invalidation,
         )
     finally:
         if redis is not None and lock_key and lock_val:
@@ -1396,7 +1484,12 @@ async def extract_kg_job(
         db.close()
 
 
-async def rebuild_indexes_job(ctx, tenant_id: str, requested_by: str) -> dict:  # noqa: ANN001
+async def rebuild_indexes_job(
+    ctx,
+    tenant_id: str,
+    requested_by: str,
+    document_id: str | None = None,
+) -> dict:  # noqa: ANN001
     """
     Rebuild indexes job (currently BM25; can extend to vectors/others).
     """
@@ -1423,7 +1516,8 @@ async def rebuild_indexes_job(ctx, tenant_id: str, requested_by: str) -> dict:  
                 retry_defer_sec=retry_defer_sec,
             )
 
-            lock_key = f"lock:rebuild:{tenant_id}"
+            lock_scope = str(document_id).strip() if document_id is not None else "tenant"
+            lock_key = f"lock:rebuild:{tenant_id}:{lock_scope}"
             lock_val = make_lock_value(requested_by)
             lock_ttl = _task_job_lock_ttl_sec()
             acquired = await _acquire_task_lock_or_retry(
@@ -1459,13 +1553,16 @@ async def rebuild_indexes_job(ctx, tenant_id: str, requested_by: str) -> dict:  
                 tenant_id=tenant_id,
             )
 
-        Indexer(db).rebuild_tenant(tenant_id=tid, kinds=[IndexKind.CHUNK])
+        document_uuid = UUID(str(document_id)) if document_id is not None else None
+        document_ids = [document_uuid] if document_uuid is not None else None
+        Indexer(db).rebuild_tenant(tenant_id=tid, document_ids=document_ids, kinds=[IndexKind.CHUNK])
         return await _job_result(
             ctx,
             job_name="rebuild_indexes_job",
             ok=True,
             started_at=t0,
             tenant_id=tenant_id,
+            document_id=str(document_uuid) if document_uuid is not None else None,
         )
     finally:
         if redis is not None and lock_key and lock_val:

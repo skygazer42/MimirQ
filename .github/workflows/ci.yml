@@ -320,6 +320,35 @@ jobs:
           COMPOSE_PROJECT_NAME: mimirq-readme-${{ github.run_id }}-${{ github.run_attempt }}
         run: docker compose --env-file .env -f docker/docker-compose.yml -f docker/docker-compose.web.yml down -v --remove-orphans
 
+      - name: README lite quickstart smoke
+        env:
+          COMPOSE_PROJECT_NAME: mimirq-lite-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          mkdir -p artifacts
+          compose=(docker compose --env-file .env -f docker/docker-compose.lite.yml)
+          make up-lite
+          for i in $(seq 1 60); do
+            if curl --noproxy '*' -fsS http://127.0.0.1:8000/api/v1/health/ready >/dev/null; then
+              break
+            fi
+            if [ "$i" -eq 60 ]; then
+              "${compose[@]}" ps
+              "${compose[@]}" logs --tail=200 mimirq-api mimirq-worker mimirq-postgres mimirq-redis
+              exit 1
+            fi
+            sleep 5
+          done
+          make core-e2e \
+            CORE_E2E_BASE_URL=http://127.0.0.1:8000 \
+            CORE_E2E_BOOTSTRAP_REGISTER=1 \
+            CORE_E2E_OUT=artifacts/core-e2e.readme-lite.json
+
+      - name: Clean up README lite quickstart stack
+        if: always()
+        env:
+          COMPOSE_PROJECT_NAME: mimirq-lite-${{ github.run_id }}-${{ github.run_attempt }}
+        run: docker compose --env-file .env -f docker/docker-compose.lite.yml down -v --remove-orphans
+
       - name: Smoke built backend and web images
         env:
           BACKEND_PORT: "0"
@@ -1212,6 +1241,17 @@ jobs:
           python -m pip install --retries 10 --timeout 120 -r /tmp/requirements.cpu-ci.txt
           python -m pip install --retries 5 --timeout 120 --no-deps xgboost==3.2.0
 
+      - name: Prepare self-hosted Node
+        if: ${{ runner.environment == 'self-hosted' }}
+        run: |
+          node -v
+          npm -v
+          pnpm -v
+
+      - name: Install web deps
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
       - name: Download bounded gate artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -1273,6 +1313,18 @@ jobs:
         env:
           NEXT_PUBLIC_API_URL: http://127.0.0.1:8000
         run: node web/scripts/api-ping.mjs
+
+      - name: Install Playwright browsers for host browser smoke
+        if: ${{ runner.environment == 'self-hosted' }}
+        working-directory: web
+        run: pnpm exec playwright install chromium
+
+      - name: README host browser smoke
+        working-directory: web
+        env:
+          NEXT_PUBLIC_API_URL: http://127.0.0.1:8000
+          PLAYWRIGHT_USE_PROD_SERVER: "1"
+        run: pnpm exec playwright test e2e/live-stack.smoke.spec.ts
 
       - name: README host quickstart smoke
         run: |

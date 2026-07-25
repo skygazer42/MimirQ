@@ -1697,6 +1697,10 @@ class Settings(BaseSettings):
     SENTENCE_CITATIONS_INLINE_STYLE: str = "appendix"  # appendix | inline
     SENTENCE_CITATIONS_INLINE_MAX_ITEMS: int = 8
     SENTENCE_CITATIONS_INLINE_MAX_EVIDENCE_PER_CLAIM: int = 2
+    # Ragviz similarity matrices are returned in full JSON; keep both the axis
+    # length and the total pair count bounded to avoid large dense responses.
+    RAGVIZ_SIMILARITY_MAX_AXIS_ITEMS: int = 500
+    RAGVIZ_SIMILARITY_MAX_PAIRS: int = 200_000
     # Corrective RAG (CRAG-like) loop: retry retrieval with a recall-first profile when
     # evidence is weak (abstain) or answer faithfulness is low. Default off.
     RAG_CORRECTIVE_ENABLED: bool = False
