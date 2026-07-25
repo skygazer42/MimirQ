@@ -8,6 +8,32 @@ def _read(relative_path: str) -> str:
     return (REPO_ROOT / relative_path).read_text(encoding="utf-8")
 
 
+def _assert_uses_self_hosted_bootstrap(workflow: str, command: str, *, count: int) -> None:
+    assert workflow.count(command) == count
+    assert "python3.11/python3 not found on self-hosted runner" not in workflow
+    assert 'if [ -d "$PY_BIN" ]; then' not in workflow
+    assert 'echo "PIP_CACHE_DIR=$PIP_CACHE_DIR_VALUE"' not in workflow
+
+
+def test_self_hosted_ci_bootstrap_script_contract() -> None:
+    script = _read("scripts/prepare_self_hosted_ci.sh")
+
+    assert script.startswith("#!/usr/bin/env bash\nset -euo pipefail\n")
+    assert "--include-torch-wheel-dir" in script
+    assert 'PY_BIN="$(command -v python3.11 || command -v python3 || true)"' in script
+    assert 'VENV_DIR="${SELF_HOSTED_VENV_DIR:-$RUNNER_TEMP/mimirq-py311}"' in script
+    assert 'PIP_CACHE_DIR_VALUE="${PIP_CACHE_DIR:-$RUNNER_TEMP/pip-cache}"' in script
+    assert 'TORCH_WHEEL_DIR_VALUE="${TORCH_WHEEL_DIR:-$RUNNER_TEMP/torch-wheels}"' in script
+    assert 'echo "$VENV_DIR/bin" >> "$GITHUB_PATH"' in script
+    assert 'echo "PIP_INDEX_URL=${PIP_INDEX_URL:-https://pypi.org/simple}"' in script
+    assert 'echo "PIP_CACHE_DIR=$PIP_CACHE_DIR_VALUE"' in script
+    assert 'echo "TORCH_WHEEL_DIR=$TORCH_WHEEL_DIR_VALUE"' in script
+    assert 'echo "NO_PROXY=$NO_PROXY_VALUE"' in script
+    assert "/home/user/.local/share/uv" not in script
+    assert "/data/actions-runner" not in script
+    assert "127.0.0.1:35983" not in script
+
+
 def test_main_ci_runs_database_migrations_and_integrations() -> None:
     workflow = _read(".github/workflows/ci.yml")
     conftest = _read("tests/conftest.py")
@@ -24,12 +50,40 @@ def test_main_ci_runs_database_migrations_and_integrations() -> None:
 def test_repo_checks_enforce_api_type_drift_and_shared_python_audit_policy() -> None:
     makefile = _read("Makefile")
     security_workflow = _read(".github/workflows/security.yml")
+    python_audit = makefile.split("audit-py:", 1)[1].split("audit-web:", 1)[0]
 
     assert (
         "node web/scripts/check-api-types-drift.mjs --strict "
         "--baseline web/scripts/api-types-drift-baseline.json"
     ) in makefile
     assert "make audit-py" in security_workflow
+    assert "--no-deps" not in python_audit
+    for advisory in (
+        "PYSEC-2026-311",
+        "PYSEC-2026-3046",
+        "PYSEC-2026-2447",
+        "PYSEC-2026-1325",
+    ):
+        assert f"--ignore-vuln {advisory}" in python_audit
+
+
+def test_dependency_audit_covers_web_and_handbook_with_shared_policy() -> None:
+    makefile = _read("Makefile")
+    powershell_audit = _read("scripts/audit.ps1")
+    security_workflow = _read(".github/workflows/security.yml")
+
+    assert "audit-docs:" in makefile
+    assert "pnpm --dir web audit --prod --audit-level high" in makefile
+    assert "scripts/check_pnpm_audit.py" in makefile
+    assert "--ignore-registry-errors" not in makefile
+    assert "npm audit --audit-level=high" in makefile
+    assert "npm audit --omit=dev" not in makefile
+    assert "$(MAKE) audit-web" in makefile
+    assert "$(MAKE) audit-docs" in makefile
+    assert "run: make audit-web" in security_workflow
+    assert "run: make audit-docs" in security_workflow
+    assert "npm --prefix docs-site audit --audit-level=high" in powershell_audit
+    assert powershell_audit.count("Assert-AuditSucceeded") == 5
 
 
 def test_main_ci_runs_all_browser_smoke_specs_and_critical_coverage() -> None:
@@ -53,19 +107,48 @@ def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     workflow = _read(".github/workflows/ci.yml")
 
     assert "permissions:\n  contents: read" in workflow
+    assert "SELF_HOSTED_PYTHON_BIN: ${{ vars.CI_SELF_HOSTED_PYTHON_BIN || '' }}" in workflow
+    assert "SELF_HOSTED_VENV_DIR: ${{ vars.CI_SELF_HOSTED_VENV_DIR || '' }}" in workflow
+    assert "PIP_INDEX_URL: ${{ vars.CI_PIP_INDEX_URL || 'https://pypi.org/simple' }}" in workflow
+    assert "PIP_CACHE_DIR: ${{ vars.CI_PIP_CACHE_DIR || '' }}" in workflow
+    assert "TORCH_WHEEL_DIR: ${{ vars.CI_TORCH_WHEEL_DIR || '' }}" in workflow
+    assert "SELF_HOSTED_HTTP_PROXY: ${{ vars.CI_HTTP_PROXY || '' }}" in workflow
+    assert "SELF_HOSTED_HTTPS_PROXY: ${{ vars.CI_HTTPS_PROXY || '' }}" in workflow
+    assert "SELF_HOSTED_NO_PROXY: ${{ vars.CI_NO_PROXY || '' }}" in workflow
+    _assert_uses_self_hosted_bootstrap(
+        workflow,
+        "bash scripts/prepare_self_hosted_ci.sh --include-torch-wheel-dir",
+        count=4,
+    )
+    assert "runner.name == 'mimirq-main-01'" not in workflow
+    assert "/home/user/.local/share/uv" not in workflow
+    assert "/data/actions-runner" not in workflow
+    assert "127.0.0.1:35983" not in workflow
     assert "public-pr-verify:" in workflow
     assert "if: github.event_name == 'pull_request'" in workflow
     assert "runs-on: ubuntu-latest" in workflow
     assert "python ci/download_verified_wheels.py --cache-dir \"$TORCH_WHEEL_DIR\"" in workflow
+    assert "command -v rg" in workflow
+    assert "rg --version | head -n 1" in workflow
     assert "make openapi-check" in workflow
+    assert "cp .env.example .env" in workflow
+    assert "docker compose --env-file .env -f docker/docker-compose.yml config --quiet" in workflow
+    assert "docker compose --env-file .env -f docker/docker-compose.yml -f docker/docker-compose.web.yml config --quiet" in workflow
+    assert "docker run --rm -v \"$PWD:/work\" -w /work alpine/helm@sha256:aef9b56f64e866207d9591d0abd8f6d767b36aadd12edf68f8a719716d9d29c9 lint deploy/helm/mimirq" in workflow
+    assert "template mimirq deploy/helm/mimirq >/dev/null" in workflow
     assert "make test" in workflow
-    assert "PR bounded RAG quality gate" in workflow
+    assert "PR bounded hybrid RAG quality gate" in workflow
     assert "scripts/run_sample_retrieval_benchmark.py" in workflow
     assert "scripts/build_rag_quality_gate_artifacts.py" in workflow
+    assert "data/sample/retrieval_fixture_hybrid_v1.json" in workflow
+    assert "--retrieval-mode hybrid" in workflow
     assert "tests/rag/evaluation/test_rag_quality_gate.py" in workflow
     assert "make verify" in workflow
     assert "make test-web" in workflow
     assert "pnpm run build" in workflow
+    assert "HTTP_PROXY: ${{ vars.CI_HTTP_PROXY || '' }}" in workflow
+    assert "HTTPS_PROXY: ${{ vars.CI_HTTPS_PROXY || '' }}" in workflow
+    assert "NO_PROXY: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}" in workflow
     for job in (
         "test-and-verify",
         "docker-build",
@@ -92,6 +175,22 @@ def test_api_docs_workflow_actually_deploys_pages() -> None:
     workflow = _read(".github/workflows/api-docs.yml")
 
     assert "pull_request:" in workflow
+    assert "SELF_HOSTED_PYTHON_BIN: ${{ vars.CI_SELF_HOSTED_PYTHON_BIN || '' }}" in workflow
+    assert "SELF_HOSTED_VENV_DIR: ${{ vars.CI_SELF_HOSTED_VENV_DIR || '' }}" in workflow
+    assert "PIP_INDEX_URL: ${{ vars.CI_PIP_INDEX_URL || 'https://pypi.org/simple' }}" in workflow
+    assert "PIP_CACHE_DIR: ${{ vars.CI_PIP_CACHE_DIR || '' }}" in workflow
+    assert "SELF_HOSTED_HTTP_PROXY: ${{ vars.CI_HTTP_PROXY || '' }}" in workflow
+    assert "SELF_HOSTED_HTTPS_PROXY: ${{ vars.CI_HTTPS_PROXY || '' }}" in workflow
+    assert "SELF_HOSTED_NO_PROXY: ${{ vars.CI_NO_PROXY || '' }}" in workflow
+    _assert_uses_self_hosted_bootstrap(
+        workflow,
+        "bash scripts/prepare_self_hosted_ci.sh",
+        count=1,
+    )
+    assert "runner.name == 'mimirq-main-01'" not in workflow
+    assert "/home/user/.local/share/uv" not in workflow
+    assert "/data/actions-runner" not in workflow
+    assert "127.0.0.1:35983" not in workflow
     assert "\n  build:\n" in workflow
     assert "runs-on: ubuntu-latest" in workflow
     assert "make api-docs-build-static" in workflow

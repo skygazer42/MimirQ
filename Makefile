@@ -1,4 +1,4 @@
-.PHONY: help init models up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-full test-web test-web-full test-web-e2e test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build api-docs-build-static diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure plugin-release-gate mixed-rag-quality check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init models up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-full test-web test-web-full test-web-e2e test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit-docs audit openapi-export openapi-types openapi-validate openapi-check api-docs-build api-docs-build-static diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure plugin-release-gate mixed-rag-quality check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -130,7 +130,8 @@ help:
 	@echo "  make verify-docker - run verify checks using Docker for Python"
 	@echo "  make audit-py  - audit Python deps (pip-audit)"
 	@echo "  make audit-web - audit web deps (pnpm audit)"
-	@echo "  make audit     - run both audits"
+	@echo "  make audit-docs - audit handbook deps (npm audit)"
+	@echo "  make audit     - run all dependency audits"
 	@echo "  make openapi-export - write web/openapi.json"
 	@echo "  make openapi-types  - generate web/types/openapi.ts"
 	@echo "  make openapi-validate - verify OpenAPI artifacts are present/clean"
@@ -423,20 +424,31 @@ lint-py-docker:
 compileall-docker:
 	$(COMPOSE) exec -T -w /app mimirq-api python -m compileall -q app
 
-# Chroma's affected HTTP server and Ragas' affected multimodal evaluator are not
-# exposed or imported by MimirQ; keep the exceptions centralized for local and CI audits.
+# No patched releases exist for these advisories yet. Keep the exceptions explicit
+# and centralized while still resolving and auditing every transitive dependency:
+# - Chroma: MimirQ does not expose Chroma's affected HTTP collection endpoint.
+# - Ragas: MimirQ does not call the affected multimodal URL evaluator.
+# - DiskCache: exploitation requires prior write access to the private cache directory.
+# - ecdsa: JWT signing uses the cryptography backend; verification is unaffected.
 audit-py:
-	pip-audit -r requirements.txt --no-deps --disable-pip \
-		--extra-index-url https://download.pytorch.org/whl/cpu \
-		--ignore-vuln GHSA-f4j7-r4q5-qw2c \
-		--ignore-vuln GHSA-95ww-475f-pr4f
+	$(PY) -m pip_audit -r requirements.txt \
+		--ignore-vuln PYSEC-2026-311 \
+		--ignore-vuln PYSEC-2026-3046 \
+		--ignore-vuln PYSEC-2026-2447 \
+		--ignore-vuln PYSEC-2026-1325
 
 audit-web:
-	cd web && pnpm audit --prod --audit-level high --registry https://registry.npmjs.org/ --ignore-registry-errors
+	pnpm --dir web audit --prod --audit-level high --registry https://registry.npmjs.org/
+	# Remaining unfixed brace-expansion versions are permitted only in bounded build tooling.
+	pnpm --dir web audit --audit-level high --json --registry https://registry.npmjs.org/ | $(PY) scripts/check_pnpm_audit.py
+
+audit-docs:
+	cd docs-site && npm audit --audit-level=high --registry https://registry.npmjs.org/
 
 audit:
 	@$(MAKE) audit-py
 	@$(MAKE) audit-web
+	@$(MAKE) audit-docs
 
 openapi-export:
 	$(PY) scripts/export_openapi.py --out web/openapi.json

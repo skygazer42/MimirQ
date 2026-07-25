@@ -10,7 +10,8 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, func, or_, select
+from sqlalchemy.orm import Query as ORMQuery
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
@@ -51,6 +52,65 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 CONVERSATION_NOT_FOUND_DETAIL = "Conversation not found"
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+
+
+def _get_latest_messages_by_conversation_id(
+    db: Session,
+    tenant_id: UUID,
+    conversation_ids: list[UUID],
+) -> dict[UUID, Message]:
+    if not conversation_ids:
+        return {}
+
+    latest_message_subq = (
+        db.query(
+            Message.id.label("id"),
+            Message.conversation_id.label("conversation_id"),
+            func.row_number()
+            .over(
+                partition_by=Message.conversation_id,
+                order_by=(Message.created_at.desc(), Message.id.desc()),
+            )
+            .label("rn"),
+        )
+        .filter(
+            Message.tenant_id == tenant_id,
+            Message.conversation_id.in_(conversation_ids),
+        )
+        .subquery()
+    )
+    latest_messages = (
+        db.query(Message)
+        .join(latest_message_subq, Message.id == latest_message_subq.c.id)
+        .filter(latest_message_subq.c.rn == 1)
+        .all()
+    )
+    return {message.conversation_id: message for message in latest_messages}
+
+
+def _apply_conversation_search(
+    query: ORMQuery,
+    *,
+    tenant_id: UUID,
+    search_term: str,
+) -> ORMQuery:
+    latest_message_content = (
+        select(Message.content)
+        .where(
+            Message.tenant_id == tenant_id,
+            Message.conversation_id == Conversation.id,
+        )
+        .order_by(Message.created_at.desc(), Message.id.desc())
+        .limit(1)
+        .correlate(Conversation)
+        .scalar_subquery()
+    )
+    return query.filter(
+        or_(
+            Conversation.title.icontains(search_term, autoescape=True),
+            latest_message_content.icontains(search_term, autoescape=True),
+        )
+    )
 
 
 @router.post(
@@ -173,6 +233,7 @@ def update_conversation(
 def list_conversations(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 20,
+    q: Annotated[str | None, Query(max_length=500)] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -181,10 +242,17 @@ def list_conversations(
     """List conversations."""
     DatasetService.ensure_member(db, tenant_id, account_id)
     normalized_account_id = str(account_id or "").strip()
+    search_term = str(q or "").strip()
     query = db.query(Conversation).filter(
         Conversation.tenant_id == tenant_id,
         Conversation.owner_account_id == normalized_account_id,
     )
+    if search_term:
+        query = _apply_conversation_search(
+            query,
+            tenant_id=tenant_id,
+            search_term=search_term,
+        )
 
     # Fill the page with accessible conversations (avoid returning <limit when some are filtered).
     try:
@@ -263,33 +331,12 @@ def list_conversations(
             break
 
     result_items = []
-    last_message_by_conversation_id: dict[UUID, Message] = {}
     conv_ids = [conv.id for conv in conversations]
-    if conv_ids:
-        latest_message_subq = (
-            db.query(
-                Message.id.label("id"),
-                Message.conversation_id.label("conversation_id"),
-                func.row_number()
-                .over(
-                    partition_by=Message.conversation_id,
-                    order_by=(Message.created_at.desc(), Message.id.desc()),
-                )
-                .label("rn"),
-            )
-            .filter(
-                Message.tenant_id == tenant_id,
-                Message.conversation_id.in_(conv_ids),
-            )
-            .subquery()
-        )
-        latest_messages = (
-            db.query(Message)
-            .join(latest_message_subq, Message.id == latest_message_subq.c.id)
-            .filter(latest_message_subq.c.rn == 1)
-            .all()
-        )
-        last_message_by_conversation_id = {m.conversation_id: m for m in latest_messages}
+    last_message_by_conversation_id = _get_latest_messages_by_conversation_id(
+        db,
+        tenant_id,
+        conv_ids,
+    )
 
     for conv in conversations:
         conv_dict = {

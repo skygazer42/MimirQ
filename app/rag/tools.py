@@ -15,7 +15,11 @@ current_tenant_id: ContextVar[UUID | None] = ContextVar("tenant_id", default=Non
 
 class RetrievalInput(BaseModel):
     """Retrieval tool input parameters"""
-    query: str = Field(description="User query or keywords")
+    query: str = Field(
+        min_length=1,
+        max_length=settings.RETRIEVAL_QUERY_MAX_CHARS,
+        description="User query or keywords",
+    )
     top_k: int = Field(
         default=5,
         description="Number of relevant document chunks to return",

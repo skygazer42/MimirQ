@@ -70,6 +70,7 @@ export const chatApi = {
   async listConversations(params?: {
     skip?: number
     limit?: number
+    q?: string
   }): Promise<{ total: number; returned?: number; has_more?: boolean; next_skip?: number | null; items: Conversation[] }> {
     const { data } = await apiClient.get('/chat/conversations', { params })
     return data

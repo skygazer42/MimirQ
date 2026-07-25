@@ -103,6 +103,7 @@ export const datasetApi = {
   async list(params?: {
     skip?: number
     limit?: number
+    q?: string
     category_id?: string
     include_descendants?: boolean
   }): Promise<DatasetListResponse> {

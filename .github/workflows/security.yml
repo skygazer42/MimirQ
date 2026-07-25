@@ -72,13 +72,11 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Audit web deps (high+)
-        working-directory: web
-        run: pnpm audit --audit-level high
+        run: make audit-web
 
       - name: Install handbook deps
         working-directory: docs-site
         run: npm ci
 
       - name: Audit handbook deps (high+)
-        working-directory: docs-site
-        run: npm audit --audit-level=high
+        run: make audit-docs

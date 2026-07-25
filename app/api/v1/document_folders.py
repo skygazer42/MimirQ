@@ -2,17 +2,15 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document_folders import DocumentFolderTreeResponse
 from app.core.database import get_db
-from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
-from app.models.document import DocumentPermission
 from app.services.dataset_service import DatasetService
+from app.services.document_access import build_document_read_filter
 from app.services.document_folders import build_document_folder_tree
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -53,25 +51,8 @@ def list_document_folders(
         DBDocument.dataset_id == dataset_id,
     )
 
-    doc_perm_subq = select(DocumentPermission.document_id).where(
-        DocumentPermission.tenant_id == tenant_id,
-        DocumentPermission.account_id == account_id,
-    )
-    owner_dataset_ids_subq = select(Dataset.id).where(
-        Dataset.tenant_id == tenant_id,
-        Dataset.owner_id == account_id,
-    )
     query = query.filter(
-        or_(
-            DBDocument.dataset_id.in_(owner_dataset_ids_subq),
-            DBDocument.access_mode.is_(None),
-            DBDocument.access_mode.in_(["inherit", "all_team_members"]),
-            DBDocument.owner_id == account_id,
-            and_(
-                DBDocument.access_mode == "partial_members",
-                DBDocument.id.in_(doc_perm_subq),
-            ),
-        )
+        build_document_read_filter(tenant_id=tenant_id, account_id=account_id)
     )
 
     lifecycle0 = str(lifecycle or "active").strip().lower()
@@ -92,7 +73,7 @@ def list_document_folders(
     source_paths = [
         row[0]
         for row in rows
-        if isinstance(row, tuple) and isinstance(row[0], str) and row[0].strip()
+        if isinstance(row[0], str) and row[0].strip()
     ]
 
     root = build_document_folder_tree(

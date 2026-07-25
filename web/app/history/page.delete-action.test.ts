@@ -117,6 +117,116 @@ describe('history page delete action', () => {
     act(() => root.unmount())
   })
 
+  it('searches the complete server-side history and renders zero-match semantics', async () => {
+    const selectedConversation = {
+      id: 'conversation-current',
+      title: 'Current selection',
+      message_count: 1,
+      last_message: 'current message',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    }
+    const olderMatch = {
+      id: 'conversation-101',
+      title: 'Older matching conversation',
+      message_count: 1,
+      last_message: 'needle in an older page',
+      created_at: '2025-01-01T00:00:00Z',
+      updated_at: '2025-01-01T00:00:00Z',
+    }
+    chatApiMock.listConversations.mockImplementation(async (params?: { q?: string }) => {
+      if (params?.q === 'needle') {
+        return {
+          items: [olderMatch],
+          total: 1,
+          returned: 1,
+          has_more: false,
+          next_skip: null,
+        }
+      }
+      if (params?.q === 'missing') {
+        return {
+          items: [],
+          total: 0,
+          returned: 0,
+          has_more: false,
+          next_skip: null,
+        }
+      }
+      return {
+        items: [selectedConversation],
+        total: 101,
+        returned: 1,
+        has_more: true,
+        next_skip: 100,
+      }
+    })
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    act(() => {
+      root.render(
+        React.createElement(
+          QueryClientProvider,
+          { client: queryClient },
+          React.createElement(HistoryPageClient, {
+            initialConversationId: selectedConversation.id,
+            initialSelectedConversation: selectedConversation,
+          })
+        )
+      )
+    })
+    await act(async () => {
+      await vi.waitFor(() => expect(chatApiMock.listConversations).toHaveBeenCalled())
+    })
+
+    const input = container.querySelector<HTMLInputElement>('input[placeholder="searchPlaceholder"]')
+    expect(input).not.toBeNull()
+    expect(input?.maxLength).toBe(500)
+    const recentButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(
+      (button) => button.textContent === '最近'
+    )
+    expect(recentButton).not.toBeUndefined()
+    act(() => recentButton?.click())
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    act(() => {
+      valueSetter?.call(input, 'needle')
+      input?.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+
+    await act(async () => {
+      await vi.waitFor(() =>
+        expect(chatApiMock.listConversations).toHaveBeenCalledWith({
+          skip: 0,
+          limit: 100,
+          q: 'needle',
+        })
+      )
+      await vi.waitFor(() => expect(container.textContent).toContain(olderMatch.title))
+    })
+
+    act(() => {
+      valueSetter?.call(input, 'missing')
+      input?.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => {
+      await vi.waitFor(() =>
+        expect(chatApiMock.listConversations).toHaveBeenCalledWith({
+          skip: 0,
+          limit: 100,
+          q: 'missing',
+        })
+      )
+      await vi.waitFor(() => expect(container.textContent).toContain('noMatchedConversation'))
+    })
+    expect(container.textContent).not.toContain('加载更早记录')
+    expect(container.textContent).toContain(selectedConversation.title)
+
+    act(() => root.unmount())
+  })
+
   it('loads messages directly for a deep-linked conversation outside the first conversation page', async () => {
     chatApiMock.listConversations.mockResolvedValue({
       items: Array.from({ length: 100 }, (_, index) => ({
@@ -227,10 +337,17 @@ describe('history page delete action', () => {
       updated_at: '2026-01-01T00:00:00Z',
     }
     const cacheKey = queryKeys.chat.conversationPages({ limit: 100 })
+    const searchCacheKey = queryKeys.chat.conversationPages({ limit: 100, q: 'delete' })
+    const commandCacheKey = queryKeys.chat.conversations({ limit: 6, q: 'delete' })
     queryClient.setQueryData(cacheKey, {
-      pages: [{ items: [conversation], returned: 1, total: 1 }],
+      pages: [{ items: [conversation], returned: 1, total: 2, has_more: true, next_skip: 1 }],
       pageParams: [0],
     })
+    queryClient.setQueryData(searchCacheKey, {
+      pages: [{ items: [conversation], returned: 1, total: 2, has_more: true, next_skip: 1 }],
+      pageParams: [0],
+    })
+    queryClient.setQueryData(commandCacheKey, [conversation])
     const container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
@@ -266,6 +383,11 @@ describe('history page delete action', () => {
     await vi.waitFor(() => {
       const cached = queryClient.getQueryData<{ pages: Array<{ items: unknown[] }> }>(cacheKey)
       expect(cached?.pages[0].items).toEqual([])
+      const searched = queryClient.getQueryData<{ pages: Array<{ items: unknown[] }> }>(searchCacheKey)
+      expect(searched?.pages[0].items).toEqual([])
+      expect(queryClient.getQueryState(cacheKey)?.isInvalidated).toBe(true)
+      expect(queryClient.getQueryState(searchCacheKey)?.isInvalidated).toBe(true)
+      expect(queryClient.getQueryState(commandCacheKey)?.isInvalidated).toBe(true)
     })
     act(() => root.unmount())
   })

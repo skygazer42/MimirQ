@@ -11,13 +11,28 @@ export const DOCUMENT_VIEW_STORAGE_KEY = 'mimirq_document_view_v1'
 export const AUTH_SCOPE_CHANGED_EVENT = 'mimirq:auth-scope-changed'
 const AUTH_SCOPE_STORAGE_KEYS = new Set([USER_ID_KEY, TENANT_ID_KEY])
 
-function notifyAuthScopeChanged() {
+function buildAuthCacheScope(tenantId: string | null, userId: string | null): string {
+  return `${encodeURIComponent(tenantId || 'default')}:${encodeURIComponent(userId || 'anonymous')}`
+}
+
+function notifyAuthScopeChanged(previousScope?: string) {
+  if (previousScope !== undefined && previousScope === getAuthCacheScope()) return
   removeClientStorage(DOCUMENT_VIEW_STORAGE_KEY)
   globalThis.window?.dispatchEvent(new Event(AUTH_SCOPE_CHANGED_EVENT))
 }
 
 globalThis.window?.addEventListener('storage', (event) => {
   if (event.key !== null && !AUTH_SCOPE_STORAGE_KEYS.has(event.key)) return
+  if (event.key === USER_ID_KEY) {
+    notifyAuthScopeChanged(buildAuthCacheScope(getTenantId(), event.oldValue))
+    return
+  }
+  if (event.key === TENANT_ID_KEY) {
+    notifyAuthScopeChanged(
+      buildAuthCacheScope(event.oldValue || process.env.NEXT_PUBLIC_TENANT_ID || null, getStoredUserId())
+    )
+    return
+  }
   notifyAuthScopeChanged()
 })
 
@@ -35,7 +50,7 @@ export function getStoredUserId(): string | null {
 }
 
 export function getAuthCacheScope(): string {
-  return `${encodeURIComponent(getTenantId() || 'default')}:${encodeURIComponent(getStoredUserId() || 'anonymous')}`
+  return buildAuthCacheScope(getTenantId(), getStoredUserId())
 }
 
 export function getStoredUser(): UserProfile | null {
@@ -51,13 +66,13 @@ export function getStoredUser(): UserProfile | null {
 export function setAuthSession(params: { token: AuthToken; user: UserProfile }) {
   if (globalThis.window === undefined) return
   const { token, user } = params
-  const previousUserId = getStoredUserId()
+  const previousScope = getAuthCacheScope()
   writeClientStorage(ACCESS_TOKEN_KEY, token.access_token)
   writeClientStorage(USER_KEY, JSON.stringify(user))
   writeClientStorage(USER_ID_KEY, user.id)
   const expiresAt = Date.now() + token.expires_in * 1000
   writeClientStorage(TOKEN_EXPIRES_AT_KEY, String(expiresAt))
-  if (previousUserId && previousUserId !== user.id) notifyAuthScopeChanged()
+  notifyAuthScopeChanged(previousScope)
 }
 
 export function setAccessToken(token: AuthToken) {
@@ -69,17 +84,18 @@ export function setAccessToken(token: AuthToken) {
 
 export function setStoredUser(user: UserProfile) {
   if (globalThis.window === undefined) return
-  const previousUserId = getStoredUserId()
+  const previousScope = getAuthCacheScope()
   writeClientStorage(USER_KEY, JSON.stringify(user))
   writeClientStorage(USER_ID_KEY, user.id)
-  if (previousUserId && previousUserId !== user.id) notifyAuthScopeChanged()
+  notifyAuthScopeChanged(previousScope)
 }
 
 export function clearAuthSession() {
   if (globalThis.window === undefined) return
+  const previousScope = getAuthCacheScope()
   removeClientStorage(ACCESS_TOKEN_KEY)
   removeClientStorage(USER_KEY)
   removeClientStorage(USER_ID_KEY)
   removeClientStorage(TOKEN_EXPIRES_AT_KEY)
-  notifyAuthScopeChanged()
+  notifyAuthScopeChanged(previousScope)
 }

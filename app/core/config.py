@@ -1244,6 +1244,10 @@ class Settings(BaseSettings):
     RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY: int = 1
     # Maximum time to wait for a retrieval slot. Set 0 to wait indefinitely.
     RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC: float = 15.0
+    # Bound retrieval input before embedding/query-rewrite work starts.
+    RETRIEVAL_QUERY_MAX_CHARS: int = Field(default=8_000, ge=1, le=100_000)
+    # Parallel searches across distinct embedding runtimes within one request.
+    RAG_VECTOR_SHARD_MAX_CONCURRENCY: int = Field(default=4, ge=1, le=32)
 
     # Prompt context guards (0 disables)
     RAG_CONTEXT_MAX_CHARS_PER_CHUNK: int = 1500

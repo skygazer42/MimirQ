@@ -27,6 +27,7 @@ def assert_document_acl_readable(
 
     - Dataset permission is enforced by callers (or passed in via `dataset`).
     - Dataset owners can always access documents in their dataset.
+    - Without a dataset, default/inherit access is owner-only because no parent ACL exists.
     """
     if not account_id:
         return
@@ -35,12 +36,17 @@ def assert_document_acl_readable(
         return
 
     mode = (str(getattr(document, "access_mode", "") or "")).strip().lower()
-    if not mode or mode in {"inherit", "all_team_members"}:
-        return
-
     owner_id = (str(getattr(document, "owner_id", "") or "")).strip()
     if owner_id and owner_id == account_id:
         return
+
+    if mode == "all_team_members":
+        return
+
+    if not mode or mode == "inherit":
+        if dataset is not None:
+            return
+        raise HTTPException(status_code=403, detail=NO_DOCUMENT_ACCESS_DETAIL)
 
     if mode == "only_me":
         raise HTTPException(status_code=403, detail=NO_DOCUMENT_ACCESS_DETAIL)

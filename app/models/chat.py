@@ -46,6 +46,9 @@ class Conversation(Base):
 class Message(Base):
     """Message table"""
     __tablename__ = "messages"
+    __table_args__ = (
+        Index("ix_messages_tenant_conversation_created_at", "tenant_id", "conversation_id", "created_at"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)

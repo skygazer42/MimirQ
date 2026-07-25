@@ -1,12 +1,15 @@
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentPermission
 from app.models.group_permissions import DatasetGroupPermission, DocumentGroupPermission
+from app.models.tenant_group import TenantGroupMember
 from app.services.authz_prometheus_metrics import observe_group_permission_check
 from app.services.dataset_service import DatasetService
 from app.services.tenant_group_service import TenantGroupService
@@ -28,6 +31,67 @@ def _resolve_account_group_ids(db: Session, *, tenant_id: UUID, account_id: str)
     return TenantGroupService.resolve_account_group_ids(db, tenant_id=tenant_id, account_id=account_id)
 
 
+def build_dataset_read_filter(*, tenant_id: UUID, account_id: str) -> ColumnElement[bool]:
+    """Build the tenant-scoped dataset read predicate used by list-style queries."""
+    member_group_ids = select(TenantGroupMember.group_id).where(
+        TenantGroupMember.tenant_id == tenant_id,
+        TenantGroupMember.user_id == account_id,
+    )
+    member_allowed = exists().where(
+        DatasetPermission.tenant_id == tenant_id,
+        DatasetPermission.dataset_id == Dataset.id,
+        DatasetPermission.account_id == account_id,
+    )
+    group_allowed = exists().where(
+        DatasetGroupPermission.tenant_id == tenant_id,
+        DatasetGroupPermission.dataset_id == Dataset.id,
+        DatasetGroupPermission.group_id.in_(member_group_ids),
+    )
+    return or_(
+        Dataset.owner_id == account_id,
+        Dataset.permission == DatasetPermissionEnum.ALL_TEAM_MEMBERS,
+        and_(
+            Dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS,
+            or_(member_allowed, group_allowed),
+        ),
+    )
+
+
+def build_document_read_filter(*, tenant_id: UUID, account_id: str) -> ColumnElement[bool]:
+    """Build document security trimming, including direct and group allowlists."""
+    member_group_ids = select(TenantGroupMember.group_id).where(
+        TenantGroupMember.tenant_id == tenant_id,
+        TenantGroupMember.user_id == account_id,
+    )
+    member_allowed = exists().where(
+        DocumentPermission.tenant_id == tenant_id,
+        DocumentPermission.document_id == DBDocument.id,
+        DocumentPermission.account_id == account_id,
+    )
+    group_allowed = exists().where(
+        DocumentGroupPermission.tenant_id == tenant_id,
+        DocumentGroupPermission.document_id == DBDocument.id,
+        DocumentGroupPermission.group_id.in_(member_group_ids),
+    )
+    owner_dataset_ids = select(Dataset.id).where(
+        Dataset.tenant_id == tenant_id,
+        Dataset.owner_id == account_id,
+    )
+    return or_(
+        DBDocument.dataset_id.in_(owner_dataset_ids),
+        and_(
+            DBDocument.dataset_id.isnot(None),
+            or_(DBDocument.access_mode.is_(None), DBDocument.access_mode == "inherit"),
+        ),
+        DBDocument.access_mode == _DOC_ACCESS_ALL,
+        DBDocument.owner_id == account_id,
+        and_(
+            DBDocument.access_mode == _DOC_ACCESS_PARTIAL,
+            or_(member_allowed, group_allowed),
+        ),
+    )
+
+
 def _normalize_doc_access_mode(value: object) -> str:
     return (str(value or "")).strip().lower()
 
@@ -39,6 +103,7 @@ def _doc_access_allows(
     owner_id: object,
     account_id: str,
     allowlist_doc_ids: set[UUID],
+    has_dataset: bool,
 ) -> bool:
     """
     Evaluate document-level ACL for a single doc.
@@ -50,7 +115,10 @@ def _doc_access_allows(
     mode = _normalize_doc_access_mode(access_mode)
     owner = (str(owner_id or "")).strip()
 
-    if mode in _DOC_ACCESS_DEFAULTS or mode == _DOC_ACCESS_ALL:
+    if mode in _DOC_ACCESS_DEFAULTS:
+        return has_dataset or bool(owner and owner == account_id)
+
+    if mode == _DOC_ACCESS_ALL:
         return True
 
     if mode == _DOC_ACCESS_OWNER_ONLY:
@@ -165,7 +233,7 @@ def get_allowed_document_id_sets(
     Resolve (allowed_ids, missing_ids) for a set of document IDs.
 
     - missing_ids: document ids not found under the tenant
-    - allowed_ids: ids the account can read (legacy docs without dataset are allowed)
+    - allowed_ids: ids the account can read; unbound documents require an explicit ACL or ownership
     """
     check_member0 = bool(_check_member) if _check_member is not None else bool(check_member)
     if check_member0:
@@ -227,7 +295,7 @@ def get_allowed_document_id_sets(
     allowed_ids: set[UUID] = set()
     for doc_id, dataset_id, access_mode, owner_id in documents:
         if not dataset_id:
-            # legacy document without dataset binding: allow for now
+            # No dataset ACL exists to inherit, so default/inherit access fails closed for non-owners.
             mode = _normalize_doc_access_mode(access_mode)
             if (
                 mode == _DOC_ACCESS_PARTIAL
@@ -246,6 +314,7 @@ def get_allowed_document_id_sets(
                 owner_id=owner_id,
                 account_id=account_id,
                 allowlist_doc_ids=allowlist_doc_ids,
+                has_dataset=False,
             ):
                 allowed_ids.add(doc_id)
             continue
@@ -275,6 +344,7 @@ def get_allowed_document_id_sets(
                 owner_id=owner_id,
                 account_id=account_id,
                 allowlist_doc_ids=allowlist_doc_ids,
+                has_dataset=True,
             ):
                 allowed_ids.add(doc_id)
 
@@ -413,6 +483,7 @@ def list_accessible_document_ids(
                 owner_id=owner_id,
                 account_id=account_id,
                 allowlist_doc_ids=allowlist_doc_ids,
+                has_dataset=False,
             ):
                 accessible.append(doc_id)
             continue
@@ -441,6 +512,7 @@ def list_accessible_document_ids(
                 owner_id=owner_id,
                 account_id=account_id,
                 allowlist_doc_ids=allowlist_doc_ids,
+                has_dataset=True,
             ):
                 accessible.append(doc_id)
     return accessible

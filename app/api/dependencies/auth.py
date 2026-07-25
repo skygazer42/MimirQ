@@ -4,6 +4,7 @@ Authentication dependency.
 Parses user identity from request headers.
 """
 
+import asyncio
 from uuid import UUID
 
 from fastapi import Header, HTTPException, Request
@@ -163,6 +164,11 @@ def _maybe_auto_provision_tenant_member(*, jwt_tenant_id: str, user_id: str, req
         logger.debug("JWT tenant member auto-provisioning failed during auth; continuing: %s", exc)
 
 
+def _run_optional_jwt_db_work(*, jwt_tenant_id: str, user_id: str, payload: dict, request: Request | None) -> None:
+    _maybe_sync_jwt_groups(jwt_tenant_id=jwt_tenant_id, user_id=user_id, payload=payload)
+    _maybe_auto_provision_tenant_member(jwt_tenant_id=jwt_tenant_id, user_id=user_id, request=request)
+
+
 async def get_current_account_id_from_headers(
     *,
     authorization: str | None,
@@ -191,9 +197,17 @@ async def get_current_account_id_from_headers(
     _enforce_tenant_header_match(jwt_tenant_id=jwt_tenant_id, x_tenant_id=x_tenant_id)
     user_id = str(user_id)
     _set_authenticated_context(user_id=user_id, jwt_tenant_id=jwt_tenant_id, request=request)
-    if jwt_tenant_id:
-        _maybe_sync_jwt_groups(jwt_tenant_id=jwt_tenant_id, user_id=user_id, payload=payload)
-        _maybe_auto_provision_tenant_member(jwt_tenant_id=jwt_tenant_id, user_id=user_id, request=request)
+    optional_db_work_enabled = bool(getattr(settings, "JWT_GROUPS_SYNC_ENABLED", False)) or bool(
+        getattr(settings, "JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED", False)
+    )
+    if jwt_tenant_id and optional_db_work_enabled:
+        await asyncio.to_thread(
+            _run_optional_jwt_db_work,
+            jwt_tenant_id=jwt_tenant_id,
+            user_id=user_id,
+            payload=payload,
+            request=request,
+        )
     return user_id
 
 

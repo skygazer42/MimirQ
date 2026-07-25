@@ -659,7 +659,7 @@ def _resolve_dify_kg_flags(setting: DifyRetrievalSetting) -> _DifyKGFlags:
 
 class DifyExternalKnowledgeRequest(BaseModel):
     knowledge_id: str = Field(min_length=1)
-    query: str = Field(min_length=1)
+    query: str = Field(min_length=1, max_length=settings.RETRIEVAL_QUERY_MAX_CHARS)
     retrieval_setting: DifyRetrievalSetting = Field(default_factory=DifyRetrievalSetting)
     metadata_condition: dict[str, Any] | None = None
     # MimirQ extension: lets Dify HTTP/workflow calls attach retrieval traces
@@ -695,7 +695,7 @@ def _resolve_dify_latency_profile(setting: DifyRetrievalSetting) -> str:
 
 
 class DifyConversationTurnRequest(BaseModel):
-    query: str = Field(min_length=1)
+    query: str = Field(min_length=1, max_length=settings.RETRIEVAL_QUERY_MAX_CHARS)
     answer: str = Field(min_length=1)
     conversation_id: UUID | str | None = None
     trace_request_id: str | None = Field(default=None, max_length=200)

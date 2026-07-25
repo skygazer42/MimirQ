@@ -97,6 +97,9 @@ def build_chat_image_context_docs(
     if not q:
         meta["reason"] = "empty_query"
         return [], meta
+    max_query_chars = int(getattr(settings, "RETRIEVAL_QUERY_MAX_CHARS", 8_000) or 8_000)
+    if len(q) > max_query_chars:
+        raise ValueError(f"image retrieval query exceeds RETRIEVAL_QUERY_MAX_CHARS={max_query_chars}")
 
     try:
         from app.services.dataset_service import DatasetService  # noqa: WPS433

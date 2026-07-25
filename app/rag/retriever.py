@@ -11,6 +11,7 @@ import threading
 import time
 import unicodedata
 from collections import Counter, OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, replace
 from functools import lru_cache
 from typing import Any, ClassVar, cast
@@ -763,9 +764,10 @@ class HybridRetriever(BaseRetriever):
         runtime_shards: list[tuple[DatasetEmbeddingRuntimeConfig, tuple[UUID, ...]]],
         vector_store: Any,
     ) -> tuple[list[dict[str, Any]], list[Exception]]:
-        shard_results: list[dict[str, Any]] = []
-        failures: list[Exception] = []
-        for shard_runtime, shard_dataset_ids in runtime_shards:
+        def search_shard(
+            shard: tuple[DatasetEmbeddingRuntimeConfig, tuple[UUID, ...]],
+        ) -> tuple[list[dict[str, Any]], Exception | None]:
+            shard_runtime, shard_dataset_ids = shard
             try:
                 shard_filter = self._build_vector_filter(
                     metadata_filter,
@@ -791,19 +793,32 @@ class HybridRetriever(BaseRetriever):
                         tenant_id=tenant_id,
                         metadata_filter=shard_filter,
                     )
-                shard_results.extend(
+                return (
                     self._tag_vector_hits_with_expected_space(
-                        hits,
-                        expected_space=str(shard_runtime.embedding_space_hash or "").strip(),
-                    )
+                        hits, expected_space=str(shard_runtime.embedding_space_hash or "").strip()
+                    ),
+                    None,
                 )
             except Exception as exc:
-                failures.append(exc)
                 logger.warning(
                     "Vector search shard failed for collection %s: %s",
                     shard_runtime.collection_name,
                     exc,
                 )
+                return [], exc
+
+        max_workers = min(
+            len(runtime_shards),
+            max(1, int(getattr(settings, "RAG_VECTOR_SHARD_MAX_CONCURRENCY", 4) or 1)),
+        )
+        if max_workers <= 1:
+            outcomes = [search_shard(shard) for shard in runtime_shards]
+        else:
+            with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="rag-vector-shard") as executor:
+                outcomes = list(executor.map(search_shard, runtime_shards))
+
+        shard_results = [hit for hits, _failure in outcomes for hit in hits]
+        failures = [failure for _hits, failure in outcomes if failure is not None]
         return (
             heapq.nlargest(top_k, shard_results, key=lambda item: float(item.get("score") or 0.0)),
             failures,
@@ -7493,6 +7508,10 @@ class HybridRetriever(BaseRetriever):
         *,
         run_manager: CallbackManagerForRetrieverRun,
     ) -> list[Document]:
+        max_query_chars = int(getattr(settings, "RETRIEVAL_QUERY_MAX_CHARS", 8_000) or 8_000)
+        if len(str(query or "")) > max_query_chars:
+            raise ValueError(f"retrieval query exceeds RETRIEVAL_QUERY_MAX_CHARS={max_query_chars}")
+
         # Deterministic query normalization applied upstream of all retrieval channels.
         # Keep the original for debugging/observability (stored in _last_debug_metrics below).
         from app.query.normalize import normalize_query

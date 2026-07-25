@@ -122,9 +122,9 @@ type CommandMenuTranslationGetter = (key: string) => string
 
 const KEY_CHORD_TIMEOUT_MS = 1600
 const COMMAND_MENU_SEARCH_DEBOUNCE_MS = 220
+const COMMAND_MENU_SEARCH_MAX_LENGTH = 200
 const COMMAND_MENU_DOCUMENT_SEARCH_LIMIT = 8
-const COMMAND_MENU_DATASET_SEARCH_PARAMS = { limit: 30 }
-const COMMAND_MENU_CONVERSATION_SEARCH_PARAMS = { limit: 30 }
+const COMMAND_MENU_ENTITY_SEARCH_LIMIT = 6
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
@@ -200,7 +200,7 @@ export function CommandMenu() {
   const { lastOpenedTarget, openDocument, reopenLastDocument } = useDocumentView()
   const tenantAccess = useTenantAccess()
   const currentViewPrompt = React.useMemo(() => buildCurrentViewPrompt(pathname || '/', t), [pathname, t])
-  const trimmedQuery = query.trim()
+  const trimmedQuery = query.trim().slice(0, COMMAND_MENU_SEARCH_MAX_LENGTH)
   const isSlashMode = trimmedQuery.startsWith("/")
   const slashNeedle = trimmedQuery.slice(1).toLowerCase()
   const shouldShowShortcutReference = trimmedQuery.length === 0
@@ -235,40 +235,37 @@ export function CommandMenu() {
     staleTime: 30_000,
   })
 
+  const datasetSearchParams = React.useMemo(
+    () => ({ q: debouncedSearchQuery, limit: COMMAND_MENU_ENTITY_SEARCH_LIMIT }),
+    [debouncedSearchQuery]
+  )
   const datasetSearchQuery = useQuery<Dataset[]>({
-    queryKey: queryKeys.datasets.list(COMMAND_MENU_DATASET_SEARCH_PARAMS),
+    queryKey: queryKeys.datasets.list(datasetSearchParams),
     queryFn: async () => {
-      const response = await datasetApi.list(COMMAND_MENU_DATASET_SEARCH_PARAMS)
+      const response = await datasetApi.list(datasetSearchParams)
       return response.items || []
     },
     enabled: Boolean(debouncedSearchQuery),
     staleTime: 60_000,
   })
 
+  const conversationSearchParams = React.useMemo(
+    () => ({ q: debouncedSearchQuery, limit: COMMAND_MENU_ENTITY_SEARCH_LIMIT }),
+    [debouncedSearchQuery]
+  )
   const conversationSearchQuery = useQuery<Conversation[]>({
-    queryKey: queryKeys.chat.conversations(COMMAND_MENU_CONVERSATION_SEARCH_PARAMS),
+    queryKey: queryKeys.chat.conversations(conversationSearchParams),
     queryFn: async () => {
-      const response = await chatApi.listConversations(COMMAND_MENU_CONVERSATION_SEARCH_PARAMS)
+      const response = await chatApi.listConversations(conversationSearchParams)
       return response.items || []
     },
     enabled: Boolean(debouncedSearchQuery),
     staleTime: 30_000,
   })
 
-  const searchNeedle = debouncedSearchQuery.toLowerCase()
   const docResults = debouncedSearchQuery ? documentSearchQuery.data || [] : []
-  const datasetResults = React.useMemo(() => {
-    if (!debouncedSearchQuery) return []
-    return (datasetSearchQuery.data || [])
-      .filter((dataset) => matchesSearchNeedle([dataset.name, dataset.description], searchNeedle))
-      .slice(0, 6)
-  }, [datasetSearchQuery.data, debouncedSearchQuery, searchNeedle])
-  const conversationResults = React.useMemo(() => {
-    if (!debouncedSearchQuery) return []
-    return (conversationSearchQuery.data || [])
-      .filter((conversation) => matchesSearchNeedle([conversation.title, conversation.last_message], searchNeedle))
-      .slice(0, 6)
-  }, [conversationSearchQuery.data, debouncedSearchQuery, searchNeedle])
+  const datasetResults = debouncedSearchQuery ? datasetSearchQuery.data || [] : []
+  const conversationResults = debouncedSearchQuery ? conversationSearchQuery.data || [] : []
   const docLoading = isSearchDebouncing || (Boolean(debouncedSearchQuery) && documentSearchQuery.isFetching)
   const datasetLoading = isSearchDebouncing || (Boolean(debouncedSearchQuery) && datasetSearchQuery.isFetching)
   const conversationLoading =
@@ -722,7 +719,12 @@ export function CommandMenu() {
         <span className="font-medium text-foreground/80">{t("header.title")}</span>
         <span>{t("header.hint")}</span>
       </div>
-      <CommandInput placeholder={t('search.placeholder')} value={query} onValueChange={setQuery} />
+      <CommandInput
+        maxLength={COMMAND_MENU_SEARCH_MAX_LENGTH}
+        placeholder={t('search.placeholder')}
+        value={query}
+        onValueChange={setQuery}
+      />
       <CommandList>
         <CommandEmpty>{t('search.empty')}</CommandEmpty>
 

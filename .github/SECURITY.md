@@ -50,4 +50,4 @@ We aim to acknowledge reports within 72 hours and provide a remediation plan or 
 
 CI includes:
 - Secret scanning (TruffleHog)
-- Dependency audits (`pip-audit`, `pnpm audit`)
+- Dependency audits (`pip-audit`, `pnpm audit`, `npm audit`)

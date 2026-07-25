@@ -1050,7 +1050,7 @@ export interface paths {
          * @description Retry a failed/cancelled document processing task.
          *
          *     Notes:
-         *     - This will delete existing chunks (DB) and indexes (vector/BM25/KG) before reprocessing.
+         *     - Existing chunks and indexes are cleaned by the accepted worker before reprocessing.
          *     - Use `force=true` to allow retrying completed documents.
          */
         post: operations["retry_document_processing_api_v1_documents__document_id__retry_post"];
@@ -16561,8 +16561,11 @@ export interface components {
          * @description History message.
          */
         HistoryMessage: {
-            /** Role */
-            role: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant";
             /** Content */
             content: string;
         };
@@ -28670,6 +28673,13 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     upload_document_from_url_api_v1_documents_upload_url_post: {
@@ -28742,6 +28752,13 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     upload_documents_batch_api_v1_documents_upload_batch_post: {
@@ -28813,6 +28830,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -30538,6 +30562,7 @@ export interface operations {
             query?: {
                 skip?: number;
                 limit?: number;
+                q?: string | null;
             };
             header?: {
                 "x-tenant-id"?: string | null;
@@ -31243,6 +31268,8 @@ export interface operations {
                 category_id?: string | null;
                 /** @description When filtering by category_id, include subtree */
                 include_descendants?: boolean;
+                /** @description Search dataset name or description */
+                q?: string | null;
             };
             header?: {
                 "x-tenant-id"?: string | null;

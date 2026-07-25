@@ -2,19 +2,17 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import and_, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import DocumentList
 from app.core.database import get_db
-from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
+from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
-from app.models.document import DocumentPermission
-from app.models.group_permissions import DocumentGroupPermission
-from app.models.tenant_group import TenantGroupMember
 from app.services.dataset_service import DatasetService
+from app.services.document_access import build_dataset_read_filter, build_document_read_filter
 from app.services.document_runtime_metadata import attach_runtime_document_metadata
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -104,23 +102,9 @@ def list_documents(
         DatasetService.assert_dataset_readable(db, dataset, account_id)
         query = query.filter(DBDocument.dataset_id == dataset_id)
     else:
-        partial_member_subq = select(DatasetPermission.dataset_id).where(
-            DatasetPermission.tenant_id == tenant_id,
-            DatasetPermission.account_id == account_id,
-        )
-
-        allowed_dataset_filter = or_(
-            Dataset.owner_id == account_id,
-            Dataset.permission == DatasetPermissionEnum.ALL_TEAM_MEMBERS,
-            and_(
-                Dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS,
-                Dataset.id.in_(partial_member_subq),
-            ),
-        )
-
         allowed_dataset_ids_subq = select(Dataset.id).where(
             Dataset.tenant_id == tenant_id,
-            allowed_dataset_filter,
+            build_dataset_read_filter(tenant_id=tenant_id, account_id=account_id),
         )
 
         query = query.filter(
@@ -130,37 +114,8 @@ def list_documents(
             )
         )
 
-    doc_perm_subq = select(DocumentPermission.document_id).where(
-        DocumentPermission.tenant_id == tenant_id,
-        DocumentPermission.account_id == account_id,
-    )
-    doc_group_perm_subq = select(DocumentGroupPermission.document_id).where(
-        DocumentGroupPermission.tenant_id == tenant_id,
-        DocumentGroupPermission.group_id.in_(
-            select(TenantGroupMember.group_id).where(
-                TenantGroupMember.tenant_id == tenant_id,
-                TenantGroupMember.user_id == account_id,
-            )
-        ),
-    )
-    owner_dataset_ids_subq = select(Dataset.id).where(
-        Dataset.tenant_id == tenant_id,
-        Dataset.owner_id == account_id,
-    )
     query = query.filter(
-        or_(
-            DBDocument.dataset_id.in_(owner_dataset_ids_subq),
-            DBDocument.access_mode.is_(None),
-            DBDocument.access_mode.in_(["inherit", "all_team_members"]),
-            DBDocument.owner_id == account_id,
-            and_(
-                DBDocument.access_mode == "partial_members",
-                or_(
-                    DBDocument.id.in_(doc_perm_subq),
-                    DBDocument.id.in_(doc_group_perm_subq),
-                ),
-            ),
-        )
+        build_document_read_filter(tenant_id=tenant_id, account_id=account_id)
     )
 
     if status and status != "all":

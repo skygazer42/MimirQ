@@ -3,7 +3,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import and_, func, or_
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
@@ -11,9 +11,9 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import DocumentDuplicateList
 from app.core.database import get_db
 from app.models.document import Document as DBDocument
-from app.models.document import DocumentPermission
 from app.rag.core.logging import get_logger
 from app.services.dataset_service import DatasetService
+from app.services.document_access import build_document_read_filter
 
 logger = get_logger(__name__)
 
@@ -66,27 +66,8 @@ def list_document_duplicates(
         DBDocument.dataset_id == dataset_id,
     )
 
-    # Document-level ACL filter (dataset owner bypass).
-    if str(getattr(ds, "owner_id", "") or "") != str(account_id or ""):
-        doc_perm_subq = (
-            db.query(DocumentPermission.document_id)
-            .filter(
-                DocumentPermission.tenant_id == tenant_id,
-                DocumentPermission.account_id == account_id,
-            )
-            .subquery()
-        )
-        base_query = base_query.filter(
-            or_(
-                DBDocument.access_mode.is_(None),
-                DBDocument.access_mode.in_(["inherit", "all_team_members"]),
-                DBDocument.owner_id == account_id,
-                and_(
-                    DBDocument.access_mode == "partial_members",
-                    DBDocument.id.in_(doc_perm_subq),
-                ),
-            )
-        )
+    document_read_filter = build_document_read_filter(tenant_id=tenant_id, account_id=account_id)
+    base_query = base_query.filter(document_read_filter)
 
     # Fast path: Postgres group-by on JSONB metadata.
     if sha_expr is not None and sha_key_expr is not None:
@@ -97,26 +78,7 @@ def list_document_duplicates(
                 .select_from(DBDocument)
                 .filter(DBDocument.tenant_id == tenant_id, DBDocument.dataset_id == dataset_id)
             )
-            if str(getattr(ds, "owner_id", "") or "") != str(account_id or ""):
-                doc_perm_subq = (
-                    db.query(DocumentPermission.document_id)
-                    .filter(
-                        DocumentPermission.tenant_id == tenant_id,
-                        DocumentPermission.account_id == account_id,
-                    )
-                    .subquery()
-                )
-                group_all_q = group_all_q.filter(
-                    or_(
-                        DBDocument.access_mode.is_(None),
-                        DBDocument.access_mode.in_(["inherit", "all_team_members"]),
-                        DBDocument.owner_id == account_id,
-                        and_(
-                            DBDocument.access_mode == "partial_members",
-                            DBDocument.id.in_(doc_perm_subq),
-                        ),
-                    )
-                )
+            group_all_q = group_all_q.filter(document_read_filter)
 
             group_all_q = group_all_q.filter(sha_expr.isnot(None), sha_expr != "").group_by(sha_key_expr).having(
                 func.count(DBDocument.id) >= int(min_count or 2)
@@ -133,26 +95,7 @@ def list_document_duplicates(
                 .select_from(DBDocument)
                 .filter(DBDocument.tenant_id == tenant_id, DBDocument.dataset_id == dataset_id)
             )
-            if str(getattr(ds, "owner_id", "") or "") != str(account_id or ""):
-                doc_perm_subq = (
-                    db.query(DocumentPermission.document_id)
-                    .filter(
-                        DocumentPermission.tenant_id == tenant_id,
-                        DocumentPermission.account_id == account_id,
-                    )
-                    .subquery()
-                )
-                group_top_q = group_top_q.filter(
-                    or_(
-                        DBDocument.access_mode.is_(None),
-                        DBDocument.access_mode.in_(["inherit", "all_team_members"]),
-                        DBDocument.owner_id == account_id,
-                        and_(
-                            DBDocument.access_mode == "partial_members",
-                            DBDocument.id.in_(doc_perm_subq),
-                        ),
-                    )
-                )
+            group_top_q = group_top_q.filter(document_read_filter)
 
             group_top_q = (
                 group_top_q.filter(sha_expr.isnot(None), sha_expr != "")
@@ -182,26 +125,7 @@ def list_document_duplicates(
                 .select_from(DBDocument)
                 .filter(DBDocument.tenant_id == tenant_id, DBDocument.dataset_id == dataset_id, sha_key_expr.in_(sha_list))
             )
-            if str(getattr(ds, "owner_id", "") or "") != str(account_id or ""):
-                doc_perm_subq = (
-                    db.query(DocumentPermission.document_id)
-                    .filter(
-                        DocumentPermission.tenant_id == tenant_id,
-                        DocumentPermission.account_id == account_id,
-                    )
-                    .subquery()
-                )
-                docs_q = docs_q.filter(
-                    or_(
-                        DBDocument.access_mode.is_(None),
-                        DBDocument.access_mode.in_(["inherit", "all_team_members"]),
-                        DBDocument.owner_id == account_id,
-                        and_(
-                            DBDocument.access_mode == "partial_members",
-                            DBDocument.id.in_(doc_perm_subq),
-                        ),
-                    )
-                )
+            docs_q = docs_q.filter(document_read_filter)
 
             docs_subq = docs_q.subquery()
             rows = (

@@ -241,8 +241,12 @@ def _inject_query_image_context(
 
 
 class RetrievePreviewRequest(BaseModel):
-    query: str = Field(min_length=1)
-    query_image: str | None = Field(default=None, description="Optional explicit image query routed to CLIP image retrieval")
+    query: str = Field(min_length=1, max_length=settings.RETRIEVAL_QUERY_MAX_CHARS)
+    query_image: str | None = Field(
+        default=None,
+        max_length=settings.RETRIEVAL_QUERY_MAX_CHARS,
+        description="Optional explicit image query routed to CLIP image retrieval",
+    )
     history: list[HistoryMessage] = Field(default_factory=list)
     dataset_id: UUID | None = None
     dataset_ids: list[UUID] = Field(
@@ -274,7 +278,7 @@ class DocumentStructureRequest(BaseModel):
 
 
 class TreeSearchPreviewRequest(BaseModel):
-    query: str = Field(min_length=1)
+    query: str = Field(min_length=1, max_length=settings.RETRIEVAL_QUERY_MAX_CHARS)
     dataset_id: UUID | None = None
     document_ids: list[UUID] = Field(default_factory=list)
     rag_config: ChatRAGConfig = Field(default_factory=lambda: ChatRAGConfig(retrieval_profile="recall20"))
@@ -392,7 +396,7 @@ class ImageIndexResponse(BaseModel):
 
 class ImageSearchRequest(BaseModel):
     dataset_id: UUID
-    query: str = Field(min_length=1)
+    query: str = Field(min_length=1, max_length=settings.RETRIEVAL_QUERY_MAX_CHARS)
     top_k: int = Field(default=8, ge=1, le=50)
     auto_index: bool = Field(default=False, description="Best-effort: index images for the dataset before searching")
 
@@ -912,8 +916,12 @@ class EvidenceRetrieveRequest(BaseModel):
     answer the question: "Do we have evidence for this query in the corpus?"
     """
 
-    query: str = Field(min_length=1)
-    query_image: str | None = Field(default=None, description="Optional explicit image query routed to CLIP image retrieval")
+    query: str = Field(min_length=1, max_length=settings.RETRIEVAL_QUERY_MAX_CHARS)
+    query_image: str | None = Field(
+        default=None,
+        max_length=settings.RETRIEVAL_QUERY_MAX_CHARS,
+        description="Optional explicit image query routed to CLIP image retrieval",
+    )
     history: list[HistoryMessage] = Field(default_factory=list)
     dataset_id: UUID | None = None
     dataset_ids: list[UUID] = Field(
@@ -1421,7 +1429,7 @@ async def retrieve_evidence(
 
 
 class PromptPreviewRequest(BaseModel):
-    query: str = Field(min_length=1)
+    query: str = Field(min_length=1, max_length=settings.RETRIEVAL_QUERY_MAX_CHARS)
     history: list[HistoryMessage] = Field(default_factory=list)
     dataset_id: UUID | None = None
     document_ids: list[UUID] = Field(default_factory=list)

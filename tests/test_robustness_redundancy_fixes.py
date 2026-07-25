@@ -488,22 +488,20 @@ def test_multi_runtime_dataset_scope_fans_out_vector_search_and_keeps_exact_cach
     )
 
     assert [item["content"] for item in results] == ["runtime a hit"]
-    assert [call["collection"] for call in search_calls] == [
-        runtime_a.collection_name,
-        runtime_b.collection_name,
-    ]
+    calls_by_collection = {str(call["collection"]): call for call in search_calls}
+    assert set(calls_by_collection) == {runtime_a.collection_name, runtime_b.collection_name}
     expected_document_filter = (
         {"document_id": {"$in": [str(document_b), str(document_a)]}}
         if scope_kind == "document_ids"
         else {}
     )
-    assert search_calls[0]["metadata_filter"] == {
+    assert calls_by_collection[runtime_a.collection_name]["metadata_filter"] == {
         "tenant_id": str(tenant_id),
         "dataset_id": str(dataset_a),
         "embedding_space_hash": {"$in": ["space-a", ""]},
         **expected_document_filter,
     }
-    assert search_calls[1]["metadata_filter"] == {
+    assert calls_by_collection[runtime_b.collection_name]["metadata_filter"] == {
         "tenant_id": str(tenant_id),
         "dataset_id": str(dataset_b),
         "embedding_space_hash": {"$in": ["space-b", ""]},

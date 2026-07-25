@@ -16,7 +16,7 @@ describe('auth storage scope', () => {
     localStorage.clear()
   })
 
-  it('isolates cache keys and notifies listeners when the user changes or logs out', () => {
+  it('notifies exactly once for login, user changes, and logout', () => {
     localStorage.setItem('mimirq_tenant_id', 'tenant-a')
     const listener = vi.fn()
     const notifiedScopes: string[] = []
@@ -26,21 +26,36 @@ describe('auth storage scope', () => {
 
     setAuthSession({ token, user: { id: 'user-a' } as never })
     expect(getAuthCacheScope()).toBe('tenant-a:user-a')
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(notifiedScopes).toEqual(['tenant-a:user-a'])
 
     localStorage.setItem('mimirq_document_view_v1', '{"private":true}')
     setAuthSession({ token, user: { id: 'user-b' } as never })
     expect(getAuthCacheScope()).toBe('tenant-a:user-b')
     expect(localStorage.getItem('mimirq_document_view_v1')).toBeNull()
-    expect(listener).toHaveBeenCalledTimes(1)
-    expect(notifiedScopes).toEqual(['tenant-a:user-b'])
+    expect(listener).toHaveBeenCalledTimes(2)
+    expect(notifiedScopes).toEqual(['tenant-a:user-a', 'tenant-a:user-b'])
 
     clearAuthSession()
     expect(getAuthCacheScope()).toBe('tenant-a:anonymous')
-    expect(listener).toHaveBeenCalledTimes(2)
-    expect(notifiedScopes).toEqual(['tenant-a:user-b', 'tenant-a:anonymous'])
+    expect(listener).toHaveBeenCalledTimes(3)
+    expect(notifiedScopes).toEqual(['tenant-a:user-a', 'tenant-a:user-b', 'tenant-a:anonymous'])
 
     window.removeEventListener(AUTH_SCOPE_CHANGED_EVENT, listener)
     window.removeEventListener(AUTH_SCOPE_CHANGED_EVENT, captureScope)
+  })
+
+  it('does not notify when writing or clearing the same auth scope', () => {
+    const listener = vi.fn()
+    window.addEventListener(AUTH_SCOPE_CHANGED_EVENT, listener)
+
+    setAuthSession({ token, user: { id: 'user-a' } as never })
+    setAuthSession({ token, user: { id: 'user-a' } as never })
+    clearAuthSession()
+    clearAuthSession()
+
+    expect(listener).toHaveBeenCalledTimes(2)
+    window.removeEventListener(AUTH_SCOPE_CHANGED_EVENT, listener)
   })
 
   it('bridges a cross-tab user scope change to the local auth event', () => {
@@ -53,6 +68,31 @@ describe('auth storage scope', () => {
         key: 'mimirq_user_id',
         oldValue: 'user-a',
         newValue: 'user-b',
+      })
+    )
+
+    expect(listener).toHaveBeenCalledOnce()
+    window.removeEventListener(AUTH_SCOPE_CHANGED_EVENT, listener)
+  })
+
+  it('bridges only effective cross-tab tenant scope changes', () => {
+    localStorage.setItem('mimirq_user_id', 'user-a')
+    localStorage.setItem('mimirq_tenant_id', 'tenant-b')
+    const listener = vi.fn()
+    window.addEventListener(AUTH_SCOPE_CHANGED_EVENT, listener)
+
+    window.dispatchEvent(
+      new StorageEvent('storage', {
+        key: 'mimirq_tenant_id',
+        oldValue: 'tenant-a',
+        newValue: 'tenant-b',
+      })
+    )
+    window.dispatchEvent(
+      new StorageEvent('storage', {
+        key: 'mimirq_tenant_id',
+        oldValue: 'tenant-b',
+        newValue: 'tenant-b',
       })
     )
 

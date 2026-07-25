@@ -63,6 +63,7 @@ powershell -File scripts/audit.ps1
 ```powershell
 powershell -File scripts/audit.ps1 -SkipPython
 powershell -File scripts/audit.ps1 -SkipWeb
+powershell -File scripts/audit.ps1 -SkipDocs
 ```
 
 ## 4) 生成 SECRET_KEY

@@ -15,11 +15,14 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SELF_HOSTED_PYTHON_BIN: /home/user/.local/share/uv/python/cpython-3.11.13-linux-x86_64-gnu/bin
-  SELF_HOSTED_VENV_DIR: /data/actions-runner/mimirq-main-01/_tool/mimirq-py311
-  PIP_INDEX_URL: https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
-  PIP_CACHE_DIR: /data/actions-runner/pip-cache
-  TORCH_WHEEL_DIR: /data/actions-runner/torch-wheels
+  SELF_HOSTED_PYTHON_BIN: ${{ vars.CI_SELF_HOSTED_PYTHON_BIN || '' }}
+  SELF_HOSTED_VENV_DIR: ${{ vars.CI_SELF_HOSTED_VENV_DIR || '' }}
+  PIP_INDEX_URL: ${{ vars.CI_PIP_INDEX_URL || 'https://pypi.org/simple' }}
+  PIP_CACHE_DIR: ${{ vars.CI_PIP_CACHE_DIR || '' }}
+  TORCH_WHEEL_DIR: ${{ vars.CI_TORCH_WHEEL_DIR || '' }}
+  SELF_HOSTED_HTTP_PROXY: ${{ vars.CI_HTTP_PROXY || '' }}
+  SELF_HOSTED_HTTPS_PROXY: ${{ vars.CI_HTTPS_PROXY || '' }}
+  SELF_HOSTED_NO_PROXY: ${{ vars.CI_NO_PROXY || '' }}
 
 jobs:
   public-pr-verify:
@@ -80,6 +83,23 @@ jobs:
       - name: OpenAPI types check
         run: make openapi-check
 
+      - name: Prepare CI env file
+        run: cp .env.example .env
+
+      - name: Validate Docker Compose manifests
+        run: |
+          docker compose --env-file .env -f docker/docker-compose.yml config --quiet
+          docker compose --env-file .env -f docker/docker-compose.yml -f docker/docker-compose.web.yml config --quiet
+
+      - name: Validate Helm chart
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work alpine/helm@sha256:aef9b56f64e866207d9591d0abd8f6d767b36aadd12edf68f8a719716d9d29c9 lint deploy/helm/mimirq
+          docker run --rm -v "$PWD:/work" -w /work alpine/helm@sha256:aef9b56f64e866207d9591d0abd8f6d767b36aadd12edf68f8a719716d9d29c9 template mimirq deploy/helm/mimirq >/dev/null
+          for values in deploy/helm/mimirq/examples/*.yaml; do
+            docker run --rm -v "$PWD:/work" -w /work alpine/helm@sha256:aef9b56f64e866207d9591d0abd8f6d767b36aadd12edf68f8a719716d9d29c9 \
+              template mimirq deploy/helm/mimirq -f "$values" >/dev/null
+          done
+
       - name: Backend tests
         env:
           LLM_MOCK_ENABLED: "true"
@@ -87,7 +107,7 @@ jobs:
           OPENAI_API_KEY: "sk-test"
         run: make test
 
-      - name: PR bounded RAG quality gate
+      - name: PR bounded hybrid RAG quality gate
         env:
           LLM_MOCK_ENABLED: "true"
           RAG_EVAL_GATE_ENABLED: "true"
@@ -95,9 +115,9 @@ jobs:
         run: |
           mkdir -p artifacts
           python scripts/run_sample_retrieval_benchmark.py \
-            --fixture data/sample/retrieval_fixture_v1.json \
+            --fixture data/sample/retrieval_fixture_hybrid_v1.json \
             --out artifacts/sample_retrieval_bench.json \
-            --retrieval-mode keyword \
+            --retrieval-mode hybrid \
             --top-k 5
           python scripts/build_rag_quality_gate_artifacts.py \
             --benchmark artifacts/sample_retrieval_bench.json \
@@ -153,34 +173,25 @@ jobs:
         with:
           clean: true
         env:
-          http_proxy: http://127.0.0.1:35983
-          https_proxy: http://127.0.0.1:35983
-          no_proxy: 127.0.0.1,localhost,${{ vars.CI_NO_PROXY }}
+          http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}
+          https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}
+          no_proxy: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}
 
       - name: Ensure self-hosted toolchain
-        if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
+        if: ${{ runner.environment == 'self-hosted' }}
         run: |
-          VENV_DIR="${SELF_HOSTED_VENV_DIR:-$RUNNER_TEMP/mimirq-py311}"
-          mkdir -p "$(dirname "$VENV_DIR")"
-          "$SELF_HOSTED_PYTHON_BIN/python3.11" -m venv "$VENV_DIR"
-          echo "$VENV_DIR/bin" >> "$GITHUB_PATH"
-          "$VENV_DIR/bin/python" --version
-          "$VENV_DIR/bin/pip" --version
+          bash scripts/prepare_self_hosted_ci.sh --include-torch-wheel-dir
           command -v rg
           rg --version | head -n 1
 
       - name: Prepare self-hosted Node
-        if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
+        if: ${{ runner.environment == 'self-hosted' }}
         run: |
           node -v
           npm -v
           pnpm -v
 
       - name: Install Python deps
-        env:
-          http_proxy: http://127.0.0.1:35983
-          https_proxy: http://127.0.0.1:35983
-          no_proxy: 127.0.0.1,localhost,${{ vars.CI_NO_PROXY }}
         run: |
           mkdir -p "$PIP_CACHE_DIR" "$TORCH_WHEEL_DIR"
           python -m pip install --upgrade pip
@@ -235,7 +246,7 @@ jobs:
         run: make test-matrix
 
       - name: Install Playwright browsers
-        if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
+        if: ${{ runner.environment == 'self-hosted' }}
         working-directory: web
         run: pnpm exec playwright install chromium
 
@@ -264,9 +275,9 @@ jobs:
         with:
           clean: true
         env:
-          http_proxy: http://127.0.0.1:35983
-          https_proxy: http://127.0.0.1:35983
-          no_proxy: 127.0.0.1,localhost,${{ vars.CI_NO_PROXY }}
+          http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}
+          https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}
+          no_proxy: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}
 
       - name: Validate Helm chart
         run: |
@@ -279,9 +290,9 @@ jobs:
 
       - name: Build backend image
         env:
-          HTTP_PROXY: http://127.0.0.1:35983
-          HTTPS_PROXY: http://127.0.0.1:35983
-          NO_PROXY: 127.0.0.1,localhost,${{ vars.CI_NO_PROXY }}
+          HTTP_PROXY: ${{ vars.CI_HTTP_PROXY || '' }}
+          HTTPS_PROXY: ${{ vars.CI_HTTPS_PROXY || '' }}
+          NO_PROXY: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}
         run: |
           docker build --network host \
             --build-arg HTTP_PROXY --build-arg HTTPS_PROXY --build-arg NO_PROXY \
@@ -361,19 +372,13 @@ jobs:
         with:
           clean: true
         env:
-          http_proxy: http://127.0.0.1:35983
-          https_proxy: http://127.0.0.1:35983
-          no_proxy: 127.0.0.1,localhost,${{ vars.CI_NO_PROXY }}
+          http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}
+          https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}
+          no_proxy: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}
 
       - name: Prepare self-hosted Python
-        if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
-        run: |
-          VENV_DIR="${SELF_HOSTED_VENV_DIR:-$RUNNER_TEMP/mimirq-py311}"
-          mkdir -p "$(dirname "$VENV_DIR")"
-          "$SELF_HOSTED_PYTHON_BIN/python3.11" -m venv "$VENV_DIR"
-          echo "$VENV_DIR/bin" >> "$GITHUB_PATH"
-          "$VENV_DIR/bin/python" --version
-          "$VENV_DIR/bin/pip" --version
+        if: ${{ runner.environment == 'self-hosted' }}
+        run: bash scripts/prepare_self_hosted_ci.sh --include-torch-wheel-dir
 
       - name: Install Python deps
         run: |
@@ -1123,19 +1128,13 @@ jobs:
         with:
           clean: true
         env:
-          http_proxy: http://127.0.0.1:35983
-          https_proxy: http://127.0.0.1:35983
-          no_proxy: 127.0.0.1,localhost,${{ vars.CI_NO_PROXY }}
+          http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}
+          https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}
+          no_proxy: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}
 
       - name: Prepare self-hosted Python
-        if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
-        run: |
-          VENV_DIR="${SELF_HOSTED_VENV_DIR:-$RUNNER_TEMP/mimirq-py311}"
-          mkdir -p "$(dirname "$VENV_DIR")"
-          "$SELF_HOSTED_PYTHON_BIN/python3.11" -m venv "$VENV_DIR"
-          echo "$VENV_DIR/bin" >> "$GITHUB_PATH"
-          "$VENV_DIR/bin/python" --version
-          "$VENV_DIR/bin/pip" --version
+        if: ${{ runner.environment == 'self-hosted' }}
+        run: bash scripts/prepare_self_hosted_ci.sh --include-torch-wheel-dir
 
       - name: Install Python deps
         run: |
@@ -1341,19 +1340,13 @@ jobs:
         with:
           clean: true
         env:
-          http_proxy: http://127.0.0.1:35983
-          https_proxy: http://127.0.0.1:35983
-          no_proxy: 127.0.0.1,localhost,${{ vars.CI_NO_PROXY }}
+          http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}
+          https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}
+          no_proxy: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}
 
       - name: Prepare self-hosted Python
-        if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
-        run: |
-          VENV_DIR="${SELF_HOSTED_VENV_DIR:-$RUNNER_TEMP/mimirq-py311}"
-          mkdir -p "$(dirname "$VENV_DIR")"
-          "$SELF_HOSTED_PYTHON_BIN/python3.11" -m venv "$VENV_DIR"
-          echo "$VENV_DIR/bin" >> "$GITHUB_PATH"
-          "$VENV_DIR/bin/python" --version
-          "$VENV_DIR/bin/pip" --version
+        if: ${{ runner.environment == 'self-hosted' }}
+        run: bash scripts/prepare_self_hosted_ci.sh --include-torch-wheel-dir
 
       - name: Install Python deps
         run: |

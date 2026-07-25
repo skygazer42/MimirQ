@@ -70,7 +70,6 @@ from app.models.dataset_category import DatasetCategory, DatasetCategoryMembersh
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.models.dataset_profile_scan import DatasetProfileScanRun as DBDatasetProfileScanRun
 from app.models.document import Document as DBDocument
-from app.models.document import DocumentPermission
 from app.models.group_permissions import DatasetGroupPermission
 from app.parsing.backends import normalize_parser_backend
 from app.parsing.factory import ParserFactory
@@ -87,6 +86,7 @@ from app.services.dataset_profile_service import (
     list_finding_documents,
 )
 from app.services.dataset_service import DatasetGroupPermissionService, DatasetPermissionService, DatasetService
+from app.services.document_access import build_dataset_read_filter, build_document_read_filter
 from app.services.fls_policy import parse_fls_policy_from_metadata, validate_and_normalize_fls_policy
 from app.services.ingestion_policy import (
     export_policy_json,
@@ -98,7 +98,6 @@ from app.services.rbac_service import TenantPermissions, ensure_tenant_permissio
 from app.services.report_html import render_dataset_profile_html
 from app.services.report_service import sanitize_retrieval_audit_snapshot
 from app.services.retention_policy import parse_retention_policy_from_metadata, upsert_retention_policy_metadata
-from app.services.tenant_group_service import TenantGroupService
 from app.tasks.queue import enqueue_dataset_profile_scan
 from app.types.pipeline import PipelineOptions
 
@@ -477,27 +476,7 @@ def get_dataset_ingestion_stats(
         DBDocument.dataset_id == dataset_id,
     )
 
-    # Document-level ACL filter (dataset owner bypass).
-    if str(getattr(ds, "owner_id", "") or "") != str(account_id or ""):
-        doc_perm_subq = (
-            db.query(DocumentPermission.document_id)
-            .filter(
-                DocumentPermission.tenant_id == tenant_id,
-                DocumentPermission.account_id == account_id,
-            )
-            .subquery()
-        )
-        query = query.filter(
-            or_(
-                DBDocument.access_mode.is_(None),
-                DBDocument.access_mode.in_(["inherit", "all_team_members"]),
-                DBDocument.owner_id == account_id,
-                and_(
-                    DBDocument.access_mode == "partial_members",
-                    DBDocument.id.in_(doc_perm_subq),
-                ),
-            )
-        )
+    query = query.filter(build_document_read_filter(tenant_id=tenant_id, account_id=account_id))
 
     status_rows = (
         query.with_entities(DBDocument.status, func.count(DBDocument.id))
@@ -882,6 +861,7 @@ def list_datasets(
     include_descendants: Annotated[
         bool, Query(description='When filtering by category_id, include subtree')
     ] = True,
+    q: Annotated[str | None, Query(max_length=200, description="Search dataset name or description")] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -889,39 +869,17 @@ def list_datasets(
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    group_ids = list(
-        TenantGroupService.resolve_account_group_ids(
-            db,
-            tenant_id=tenant_id,
-            account_id=account_id,
-        )
-    )
-
-    readable_filters = [
-        Dataset.owner_id == account_id,
-        Dataset.permission == DatasetPermissionEnum.ALL_TEAM_MEMBERS,
-        db.query(DatasetPermission.id)
-        .filter(
-            DatasetPermission.tenant_id == tenant_id,
-            DatasetPermission.dataset_id == Dataset.id,
-            DatasetPermission.account_id == account_id,
-        )
-        .exists(),
-    ]
-    if group_ids:
-        readable_filters.append(
-            db.query(DatasetGroupPermission.id)
-            .filter(
-                DatasetGroupPermission.tenant_id == tenant_id,
-                DatasetGroupPermission.dataset_id == Dataset.id,
-                DatasetGroupPermission.group_id.in_(group_ids),
-            )
-            .exists()
-        )
-
     # List only datasets readable by the current account.
     query = db.query(Dataset).filter(Dataset.tenant_id == tenant_id)
-    query = query.filter(or_(*readable_filters))
+    query = query.filter(build_dataset_read_filter(tenant_id=tenant_id, account_id=account_id))
+    term = str(q or "").strip()
+    if term:
+        query = query.filter(
+            or_(
+                Dataset.name.icontains(term, autoescape=True),
+                Dataset.description.icontains(term, autoescape=True),
+            )
+        )
     # Optional category filter (best-effort; default includes subtree).
     if category_id is not None:
         try:

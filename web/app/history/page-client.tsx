@@ -86,8 +86,8 @@ export async function deleteConversationFromHistory(
   queryClient: QueryClient
 ) {
   await chatApi.deleteConversation(conversationId)
-  queryClient.setQueryData(
-    queryKeys.chat.conversationPages({ limit: CONVERSATION_PAGE_SIZE }),
+  queryClient.setQueriesData<ConversationPagesCache>(
+    { queryKey: queryKeys.chat.conversationPagesAll },
     (current: ConversationPagesCache | undefined) =>
       current
         ? {
@@ -110,6 +110,10 @@ export async function deleteConversationFromHistory(
           }
         : current
   )
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: queryKeys.chat.conversationPagesAll }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.chat.conversationsAll }),
+  ])
 }
 
 export default function HistoryPageClient({
@@ -185,13 +189,21 @@ function HistoryPageContent({
   const pendingPrependScrollRef = useRef<{ top: number; height: number } | null>(null)
   const shouldScrollToEndRef = useRef(false)
   const deferredSearchQuery = useDeferredValue(searchQuery)
+  const conversationSearchTerm = deferredSearchQuery.trim()
+  const conversationListParams = useMemo(
+    () => ({
+      limit: CONVERSATION_PAGE_SIZE,
+      ...(conversationSearchTerm ? { q: conversationSearchTerm } : {}),
+    }),
+    [conversationSearchTerm]
+  )
   const conversationsQuery = useInfiniteQuery({
-    queryKey: queryKeys.chat.conversationPages({ limit: CONVERSATION_PAGE_SIZE }),
+    queryKey: queryKeys.chat.conversationPages(conversationListParams),
     initialPageParam: 0,
     queryFn: async ({ pageParam }) => {
       const result = await chatApi.listConversations({
         skip: Number(pageParam) || 0,
-        limit: CONVERSATION_PAGE_SIZE,
+        ...conversationListParams,
       })
       return {
         items: result.items || [],
@@ -206,7 +218,7 @@ function HistoryPageContent({
       if (typeof lastPage.next_skip === 'number') return lastPage.next_skip
       return allPages.reduce((sum, page) => sum + Number(page.returned ?? page.items?.length ?? 0), 0)
     },
-    initialData: initialConversationsLoaded
+    initialData: initialConversationsLoaded && !conversationSearchTerm
       ? {
           pages: [
             {
@@ -372,11 +384,12 @@ function HistoryPageContent({
       }
       return
     }
+    if (conversationSearchTerm) return
     if (selectedConversation) {
       shouldScrollToEndRef.current = true
       setSelectedConversation(null)
     }
-  }, [conversationId, conversations, selectedConversation, selectedConversation?.id])
+  }, [conversationId, conversations, conversationSearchTerm, selectedConversation, selectedConversation?.id])
 
   useEffect(() => {
     if (!selectedConversationId) return
@@ -433,24 +446,18 @@ function HistoryPageContent({
     }
   }
 
-  // 过滤对话
+  // 最近视图仍是本地时间筛选；文本搜索由服务端覆盖完整历史。
   const filteredConversations = useMemo(() => {
     let base = conversations
-    if (historyView === 'recent' && recentConversationCutoff !== null) {
+    if (!conversationSearchTerm && historyView === 'recent' && recentConversationCutoff !== null) {
       base = base.filter((c) => {
         const activityDate = c.last_message_at || c.updated_at || c.created_at
         const ts = new Date(activityDate).getTime()
         return Number.isFinite(ts) && ts >= recentConversationCutoff
       })
     }
-    const term = deferredSearchQuery.trim().toLowerCase()
-    if (!term) return base
-    return base.filter(
-      (c) =>
-        (c.title || '').toLowerCase().includes(term) ||
-        (c.last_message || '').toLowerCase().includes(term)
-    )
-  }, [conversations, deferredSearchQuery, historyView, recentConversationCutoff])
+    return base
+  }, [conversationSearchTerm, conversations, historyView, recentConversationCutoff])
 
   const groupLabels = useMemo(
     () => ({
@@ -558,6 +565,7 @@ function HistoryPageContent({
                 <div className="relative group">
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground/50 group-focus-within:text-primary transition-colors" />
                   <input
+                    maxLength={500}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder={t('searchPlaceholder')}

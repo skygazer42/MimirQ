@@ -429,6 +429,7 @@ def test_download_document_hides_object_storage_errors(monkeypatch):  # noqa: AN
             id=document_id,
             tenant_id=tenant_id,
             dataset_id=None,
+            access_mode="all_team_members",
             file_path=f"minio://bucket/{expected_object}",
             filename="asset.pdf",
             file_type="pdf",

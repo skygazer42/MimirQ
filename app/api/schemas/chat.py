@@ -244,7 +244,7 @@ class ConversationList(BaseModel):
 
 class HistoryMessage(BaseModel):
     """History message."""
-    role: str  # user | assistant
+    role: Literal["user", "assistant"]
     content: str
 
 
@@ -589,7 +589,7 @@ class ChatRAGConfig(BaseModel):
 class ChatRequest(BaseModel):
     """Chat request."""
     conversation_id: UUID | None = None
-    message: str
+    message: str = Field(min_length=1, max_length=settings.RETRIEVAL_QUERY_MAX_CHARS)
     history: list[HistoryMessage] = Field(default_factory=list)  # Conversation history.
     # Optional dataset scope. When set and document_ids is empty, retrieval is restricted to this dataset.
     dataset_id: UUID | None = None

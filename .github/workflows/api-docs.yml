@@ -15,10 +15,13 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SELF_HOSTED_PYTHON_BIN: /home/user/.local/share/uv/python/cpython-3.11.13-linux-x86_64-gnu/bin
-  SELF_HOSTED_VENV_DIR: /data/actions-runner/mimirq-main-01/_tool/mimirq-py311
-  PIP_INDEX_URL: https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
-  PIP_CACHE_DIR: /data/actions-runner/pip-cache
+  SELF_HOSTED_PYTHON_BIN: ${{ vars.CI_SELF_HOSTED_PYTHON_BIN || '' }}
+  SELF_HOSTED_VENV_DIR: ${{ vars.CI_SELF_HOSTED_VENV_DIR || '' }}
+  PIP_INDEX_URL: ${{ vars.CI_PIP_INDEX_URL || 'https://pypi.org/simple' }}
+  PIP_CACHE_DIR: ${{ vars.CI_PIP_CACHE_DIR || '' }}
+  SELF_HOSTED_HTTP_PROXY: ${{ vars.CI_HTTP_PROXY || '' }}
+  SELF_HOSTED_HTTPS_PROXY: ${{ vars.CI_HTTPS_PROXY || '' }}
+  SELF_HOSTED_NO_PROXY: ${{ vars.CI_NO_PROXY || '' }}
 
 jobs:
   build:
@@ -54,22 +57,16 @@ jobs:
         with:
           clean: true
         env:
-          http_proxy: http://127.0.0.1:35983
-          https_proxy: http://127.0.0.1:35983
-          no_proxy: 127.0.0.1,localhost,${{ vars.CI_NO_PROXY }}
+          http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}
+          https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}
+          no_proxy: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}
 
       - name: Prepare self-hosted Python
-        if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
-        run: |
-          VENV_DIR="${SELF_HOSTED_VENV_DIR:-$RUNNER_TEMP/mimirq-py311}"
-          mkdir -p "$(dirname "$VENV_DIR")"
-          "$SELF_HOSTED_PYTHON_BIN/python3.11" -m venv "$VENV_DIR"
-          echo "$VENV_DIR/bin" >> "$GITHUB_PATH"
-          "$VENV_DIR/bin/python" --version
-          "$VENV_DIR/bin/pip" --version
+        if: ${{ runner.environment == 'self-hosted' }}
+        run: bash scripts/prepare_self_hosted_ci.sh
 
       - name: Prepare self-hosted Node
-        if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
+        if: ${{ runner.environment == 'self-hosted' }}
         run: |
           node -v
           npm -v
