@@ -8,6 +8,7 @@ x-backend-build: &backend_build
     MIMIRQ_BUILD_TIME: ${MIMIRQ_BUILD_TIME:-}
 
 x-backend-env: &backend_env
+  ENV: ${ENV:-development}
   PYTHONDONTWRITEBYTECODE: 1
   # Process settings (overrides Dockerfile defaults)
   HOST: 0.0.0.0

@@ -426,10 +426,18 @@ def test_worker_marks_unsupported_connector_run_failed(monkeypatch) -> None:  # 
     async def _unsupported(**_kwargs):  # noqa: ANN003, ANN202
         return False
 
+    async def _tenant_acquire(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        return None
+
+    async def _acquire(_redis, **_kwargs):  # noqa: ANN001, ANN202
+        return True
+
     monkeypatch.setattr(jobs, "SessionLocal", lambda: db, raising=True)
     monkeypatch.setattr(jobs, "execute_connector_run", _unsupported, raising=True)
+    monkeypatch.setattr(jobs, "tenant_acquire", _tenant_acquire, raising=True)
+    monkeypatch.setattr(jobs, "acquire_lock", _acquire, raising=True)
 
-    result = asyncio.run(jobs.connector_run_job({}, str(tenant_id), str(run_id), "member-1"))
+    result = asyncio.run(jobs.connector_run_job({"redis": object()}, str(tenant_id), str(run_id), "member-1"))
 
     assert result["ok"] is False
     assert result["reason"] == "unsupported_connector_id"

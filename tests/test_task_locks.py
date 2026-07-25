@@ -1,4 +1,7 @@
+from uuid import uuid4
+
 import pytest
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.tasks import locks
 
@@ -65,6 +68,45 @@ class FailingRedis(FakeRedis):
         raise RuntimeError("redis unavailable")
 
 
+class _QueryStub:
+    def __init__(self, value) -> None:  # noqa: ANN001
+        self._value = value
+
+    def filter(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        return self
+
+    def first(self):  # noqa: ANN201
+        return self._value
+
+
+class _RunDB:
+    def __init__(self, run) -> None:  # noqa: ANN001
+        self.run = run
+        self.commits = 0
+        self.rollbacks = 0
+
+    def query(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN201
+        return _QueryStub(self.run)
+
+    def commit(self) -> None:
+        self.commits += 1
+
+    def rollback(self) -> None:
+        self.rollbacks += 1
+
+    def close(self) -> None:
+        return None
+
+
+class _ValueDB(_RunDB):
+    pass
+
+
+class _FailingCommitDB(_RunDB):
+    def commit(self) -> None:
+        raise SQLAlchemyError("commit failed")
+
+
 def test_lock_values_are_unique_for_same_requester() -> None:
     values = {locks.make_lock_value("account-a") for _ in range(32)}
 
@@ -118,6 +160,23 @@ async def test_acquire_lock_can_fail_closed_without_redis_client() -> None:
 
 
 @pytest.mark.asyncio
+async def test_acquire_lock_retries_on_redis_error_when_retry_requested(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(locks, "get_retry_exc", lambda: FakeRetryError)
+
+    with pytest.raises(FakeRetryError) as exc_info:
+        await locks.acquire_lock(
+            FailingRedis(),
+            key="lock:doc:1",
+            value="owner-a",
+            ttl_sec=60,
+            fail_open=False,
+            retry_defer_sec=9,
+        )
+
+    assert exc_info.value.defer == 9
+
+
+@pytest.mark.asyncio
 async def test_tenant_acquire_retries_without_mutating_full_semaphore(monkeypatch: pytest.MonkeyPatch) -> None:
     redis = FakeRedis()
     key = "sem:tenant:t1:doc:1"
@@ -129,9 +188,46 @@ async def test_tenant_acquire_retries_without_mutating_full_semaphore(monkeypatc
         await locks.tenant_acquire(redis, tenant_id="t1", kind="doc", limit=1, ttl_sec=120, retry_defer_sec=7)
 
     assert exc_info.value.defer == 7
+    assert locks.is_semaphore_busy_retry(exc_info.value) is True
     assert redis.store[key] == "owner-a"
     assert redis.ttl[key] == 30
     assert redis.eval_calls == []
+
+
+@pytest.mark.asyncio
+async def test_tenant_acquire_retries_on_redis_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(locks, "get_retry_exc", lambda: FakeRetryError)
+
+    with pytest.raises(FakeRetryError) as exc_info:
+        await locks.tenant_acquire(FailingRedis(), tenant_id="t1", kind="doc", limit=1, ttl_sec=120, retry_defer_sec=6)
+
+    assert exc_info.value.defer == 6
+    assert locks.is_semaphore_busy_retry(exc_info.value) is False
+
+
+@pytest.mark.asyncio
+async def test_limit_zero_explicitly_disables_semaphore_even_without_redis(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(locks, "get_retry_exc", lambda: FakeRetryError)
+
+    assert await locks.tenant_acquire(None, tenant_id="t1", kind="doc", limit=0, ttl_sec=120, retry_defer_sec=6) is None
+
+
+@pytest.mark.asyncio
+async def test_dataset_acquire_retries_when_redis_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(locks, "get_retry_exc", lambda: FakeRetryError)
+
+    with pytest.raises(FakeRetryError) as exc_info:
+        await locks.dataset_acquire(
+            None,
+            tenant_id="t1",
+            dataset_id="ds1",
+            kind="kg",
+            limit=1,
+            ttl_sec=45,
+            retry_defer_sec=4,
+        )
+
+    assert exc_info.value.defer == 4
 
 
 @pytest.mark.asyncio
@@ -192,3 +288,386 @@ async def test_expired_semaphore_owner_cannot_release_replacement() -> None:
     await locks.tenant_release(redis, first)
 
     assert redis.store[slot] == second.rsplit("|", 1)[1]
+
+
+@pytest.mark.asyncio
+async def test_connector_job_retries_when_redis_is_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from app.tasks import jobs
+
+    tenant_id = uuid4()
+    run_id = uuid4()
+    run = SimpleNamespace(
+        id=run_id,
+        tenant_id=tenant_id,
+        connector_id="url_batch",
+        status="pending",
+        error_message=None,
+        finished_at=None,
+    )
+    executed = False
+
+    async def _unexpected_execute(**_kwargs):  # noqa: ANN003, ANN202
+        nonlocal executed
+        executed = True
+        return True
+
+    monkeypatch.setattr(jobs, "SessionLocal", lambda: _RunDB(run), raising=True)
+    monkeypatch.setattr(jobs, "execute_connector_run", _unexpected_execute, raising=True)
+    monkeypatch.setattr(jobs, "get_retry_exc", lambda: FakeRetryError, raising=True)
+
+    with pytest.raises(FakeRetryError) as exc_info:
+        await jobs.connector_run_job({}, str(tenant_id), str(run_id), "member-1")
+
+    assert exc_info.value.defer == 30
+    assert executed is False
+
+
+@pytest.mark.asyncio
+async def test_connector_job_marks_failed_on_final_coordination_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from app.tasks import jobs
+
+    tenant_id = uuid4()
+    run_id = uuid4()
+    run = SimpleNamespace(
+        id=run_id,
+        tenant_id=tenant_id,
+        connector_id="url_batch",
+        status="pending",
+        error_message=None,
+        finished_at=None,
+    )
+    executed = False
+    db = _RunDB(run)
+
+    async def _unexpected_execute(**_kwargs):  # noqa: ANN003, ANN202
+        nonlocal executed
+        executed = True
+        return True
+
+    monkeypatch.setattr(jobs, "SessionLocal", lambda: db, raising=True)
+    monkeypatch.setattr(jobs, "execute_connector_run", _unexpected_execute, raising=True)
+    monkeypatch.setattr(jobs, "get_retry_exc", lambda: FakeRetryError, raising=True)
+    monkeypatch.setattr(jobs.settings, "TASK_JOB_MAX_TRIES", 3, raising=False)
+
+    result = await jobs.connector_run_job({"job_try": 3}, str(tenant_id), str(run_id), "member-1")
+
+    assert result["ok"] is False
+    assert result["reason"] == "task_coordination_unavailable"
+    assert run.status == "failed"
+    assert run.error_message == "task_coordination_unavailable"
+    assert run.finished_at is not None
+    assert db.commits == 1
+    assert executed is False
+
+
+@pytest.mark.asyncio
+async def test_document_job_marks_failed_on_final_coordination_retry_without_bypassing_limits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from app.tasks import jobs
+
+    tenant_id = uuid4()
+    document_id = uuid4()
+    dataset_id = uuid4()
+    doc = SimpleNamespace(
+        id=document_id,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        doc_metadata={},
+        status="pending",
+        error_message=None,
+    )
+    db = _ValueDB(doc)
+    observed: dict[str, int] = {}
+    processed = False
+
+    async def _tenant_retry(_redis, **kwargs):  # noqa: ANN001, ANN003, ANN202
+        observed["tenant_limit"] = int(kwargs["limit"])
+        raise FakeRetryError(defer=11)
+
+    async def _unexpected_lock(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        raise AssertionError("should stop after coordination retry")
+
+    async def _unexpected_process(**_kwargs):  # noqa: ANN003, ANN202
+        nonlocal processed
+        processed = True
+        return {"ok": True}
+
+    async def _update_status(_db, _tid, _did, status, _progress, _stage, *, error_message=None):  # noqa: ANN001, ANN202
+        doc.status = status
+        doc.error_message = error_message
+
+    monkeypatch.setattr(jobs, "SessionLocal", lambda: db, raising=True)
+    monkeypatch.setattr(jobs, "get_retry_exc", lambda: FakeRetryError, raising=True)
+    monkeypatch.setattr(jobs, "tenant_acquire", _tenant_retry, raising=True)
+    monkeypatch.setattr(jobs, "_acquire_task_lock_or_retry", _unexpected_lock, raising=True)
+    monkeypatch.setattr(jobs.document_processor, "process_document", _unexpected_process, raising=True)
+    monkeypatch.setattr(jobs.document_processor, "_update_status", _update_status, raising=True)
+    monkeypatch.setattr(jobs.settings, "TASK_DOCUMENT_JOB_MAX_TRIES", 5, raising=False)
+    monkeypatch.setattr(jobs.settings, "TASK_TENANT_MAX_CONCURRENCY_DOC", 2, raising=False)
+    monkeypatch.setattr(jobs.settings, "TASK_DATASET_MAX_CONCURRENCY_DOC", 3, raising=False)
+
+    result = await jobs.process_document_job({"job_try": 5, "redis": object()}, str(tenant_id), str(document_id), "member-1")
+
+    assert observed["tenant_limit"] == 2
+    assert result["ok"] is False
+    assert result["reason"] == "task_coordination_unavailable"
+    assert doc.status == "failed"
+    assert doc.error_message == "task_coordination_unavailable"
+    assert processed is False
+
+
+@pytest.mark.asyncio
+async def test_dataset_profile_scan_marks_failed_on_final_coordination_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from app.tasks import jobs
+
+    tenant_id = uuid4()
+    dataset_id = uuid4()
+    run_id = uuid4()
+    run = SimpleNamespace(
+        id=run_id,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        status="pending",
+        error_message=None,
+        finished_at=None,
+    )
+    executed = False
+    db = _RunDB(run)
+
+    def _unexpected_scan(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        nonlocal executed
+        executed = True
+        return {"ok": True}
+
+    monkeypatch.setattr(jobs, "SessionLocal", lambda: db, raising=True)
+    monkeypatch.setattr(jobs, "run_dataset_profile_deep_scan", _unexpected_scan, raising=True)
+    monkeypatch.setattr(jobs, "get_retry_exc", lambda: FakeRetryError, raising=True)
+    monkeypatch.setattr(jobs.settings, "TASK_JOB_MAX_TRIES", 3, raising=False)
+
+    result = await jobs.dataset_profile_scan_job(
+        {"job_try": 3},
+        str(tenant_id),
+        str(dataset_id),
+        str(run_id),
+        "member-1",
+    )
+
+    assert result["ok"] is False
+    assert result["reason"] == "task_coordination_unavailable"
+    assert run.status == "failed"
+    assert run.error_message == "task_coordination_unavailable"
+    assert run.finished_at is not None
+    assert db.commits == 1
+    assert executed is False
+
+
+@pytest.mark.asyncio
+async def test_dataset_precheck_scan_marks_failed_on_final_coordination_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from app.tasks import jobs
+
+    tenant_id = uuid4()
+    dataset_id = uuid4()
+    run_id = uuid4()
+    run = SimpleNamespace(
+        id=run_id,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        status="pending",
+        error_message=None,
+        finished_at=None,
+    )
+    executed = False
+    db = _RunDB(run)
+
+    def _unexpected_scan(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        nonlocal executed
+        executed = True
+        return {"ok": True}
+
+    monkeypatch.setattr(jobs, "SessionLocal", lambda: db, raising=True)
+    monkeypatch.setattr(jobs, "run_dataset_precheck_scan", _unexpected_scan, raising=True)
+    monkeypatch.setattr(jobs, "get_retry_exc", lambda: FakeRetryError, raising=True)
+    monkeypatch.setattr(jobs.settings, "TASK_JOB_MAX_TRIES", 3, raising=False)
+
+    result = await jobs.dataset_precheck_scan_job(
+        {"job_try": 3},
+        str(tenant_id),
+        str(dataset_id),
+        str(run_id),
+        "member-1",
+    )
+
+    assert result["ok"] is False
+    assert result["reason"] == "task_coordination_unavailable"
+    assert run.status == "failed"
+    assert run.error_message == "task_coordination_unavailable"
+    assert run.finished_at is not None
+    assert db.commits == 1
+    assert executed is False
+
+
+@pytest.mark.asyncio
+async def test_evidence_repair_job_marks_failed_on_final_coordination_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.tasks import jobs
+
+    tenant_id = uuid4()
+    suite_id = uuid4()
+
+    monkeypatch.setattr(jobs, "SessionLocal", lambda: _ValueDB(None), raising=True)
+    monkeypatch.setattr(jobs, "get_retry_exc", lambda: FakeRetryError, raising=True)
+    monkeypatch.setattr(jobs.settings, "TASK_JOB_MAX_TRIES", 3, raising=False)
+
+    result = await jobs.evidence_reference_sources_repair_job(
+        {"job_try": 3},
+        str(tenant_id),
+        str(suite_id),
+        "member-1",
+        False,
+        False,
+        False,
+        10,
+        10,
+        10,
+    )
+
+    assert result["ok"] is False
+    assert result["reason"] == "task_coordination_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_extract_kg_job_marks_failed_on_final_coordination_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.tasks import jobs
+
+    tenant_id = uuid4()
+    document_id = uuid4()
+
+    monkeypatch.setattr(jobs, "SessionLocal", lambda: _ValueDB(None), raising=True)
+    monkeypatch.setattr(jobs, "get_retry_exc", lambda: FakeRetryError, raising=True)
+    monkeypatch.setattr(jobs.settings, "TASK_KG_JOB_MAX_TRIES", 3, raising=False)
+
+    result = await jobs.extract_kg_job(
+        {"job_try": 3},
+        str(tenant_id),
+        str(document_id),
+        "member-1",
+    )
+
+    assert result["ok"] is False
+    assert result["reason"] == "task_coordination_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_extract_kg_job_keeps_concurrency_limits_on_final_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+
+    from app.tasks import jobs
+
+    tenant_id = uuid4()
+    document_id = uuid4()
+    dataset_id = uuid4()
+    doc = SimpleNamespace(
+        id=document_id,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        status="completed",
+        doc_metadata={},
+    )
+    observed: dict[str, int] = {}
+
+    async def _tenant_acquire(_redis, **kwargs):  # noqa: ANN001, ANN003, ANN202
+        observed["tenant_limit"] = int(kwargs["limit"])
+        return None
+
+    async def _dataset_acquire(_redis, **kwargs):  # noqa: ANN001, ANN003, ANN202
+        observed["dataset_limit"] = int(kwargs["limit"])
+        raise FakeRetryError(defer=11)
+
+    monkeypatch.setattr(jobs, "SessionLocal", lambda: _ValueDB(doc), raising=True)
+    monkeypatch.setattr(jobs, "get_retry_exc", lambda: FakeRetryError, raising=True)
+    monkeypatch.setattr(jobs, "tenant_acquire", _tenant_acquire, raising=True)
+    monkeypatch.setattr(jobs, "dataset_acquire", _dataset_acquire, raising=True)
+    monkeypatch.setattr(jobs, "is_semaphore_busy_retry", lambda _exc: True, raising=True)
+    monkeypatch.setattr(jobs.settings, "TASK_KG_JOB_MAX_TRIES", 3, raising=False)
+    monkeypatch.setattr(jobs.settings, "TASK_TENANT_MAX_CONCURRENCY_KG", 2, raising=False)
+    monkeypatch.setattr(jobs.settings, "TASK_DATASET_MAX_CONCURRENCY_KG", 4, raising=False)
+
+    result = await jobs.extract_kg_job(
+        {"job_try": 3, "redis": object()},
+        str(tenant_id),
+        str(document_id),
+        "member-1",
+    )
+
+    assert result["ok"] is False
+    assert result["reason"] == "task_concurrency_busy"
+    assert observed == {"tenant_limit": 2, "dataset_limit": 4}
+
+
+@pytest.mark.asyncio
+async def test_rebuild_job_marks_failed_on_final_coordination_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.tasks import jobs
+
+    tenant_id = uuid4()
+
+    monkeypatch.setattr(jobs, "SessionLocal", lambda: _ValueDB(None), raising=True)
+    monkeypatch.setattr(jobs, "get_retry_exc", lambda: FakeRetryError, raising=True)
+    monkeypatch.setattr(jobs.settings, "TASK_JOB_MAX_TRIES", 3, raising=False)
+
+    result = await jobs.rebuild_indexes_job({"job_try": 3}, str(tenant_id), "member-1")
+
+    assert result["ok"] is False
+    assert result["reason"] == "task_coordination_unavailable"
+
+
+def test_mark_run_failed_rolls_back_when_terminal_state_cannot_be_persisted() -> None:
+    from types import SimpleNamespace
+
+    from app.tasks import jobs
+
+    run = SimpleNamespace(status="pending", error_message=None, finished_at=None)
+    db = _FailingCommitDB(run)
+
+    with pytest.raises(RuntimeError, match="failed to persist task run terminal state"):
+        jobs._mark_run_failed(db, run, reason="task_coordination_unavailable")
+
+    assert db.rollbacks == 1
+
+
+@pytest.mark.asyncio
+async def test_document_terminal_state_rolls_back_when_status_update_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.tasks import jobs
+
+    db = _RunDB(None)
+
+    async def _fail_status_update(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        raise SQLAlchemyError("commit failed")
+
+    monkeypatch.setattr(jobs.document_processor, "_update_status", _fail_status_update, raising=True)
+    monkeypatch.setattr(jobs.settings, "TASK_DOCUMENT_JOB_MAX_TRIES", 1, raising=False)
+
+    with pytest.raises(RuntimeError, match="failed to persist document task terminal state"):
+        await jobs._mark_document_failed_on_exhausted_retry(
+            ctx={"job_try": 1},
+            db=db,
+            tenant_id=uuid4(),
+            document_id=uuid4(),
+            reason="task_coordination_unavailable",
+        )
+
+    assert db.rollbacks == 1

@@ -162,7 +162,7 @@ class WorkerSettings:
     ]
     max_jobs = int(getattr(settings, "TASK_WORKER_MAX_JOBS", 10) or 10)
     job_timeout = int(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30)
-    max_tries = int(getattr(settings, "TASK_JOB_MAX_TRIES", 3) or 3)
+    max_tries = int(getattr(settings, "TASK_JOB_MAX_TRIES", 80) or 80)
     allow_abort_jobs = True
     on_startup = startup
     on_shutdown = shutdown

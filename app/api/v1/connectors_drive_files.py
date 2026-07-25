@@ -301,6 +301,7 @@ async def _ingest_drive_file_source(
 
     dl_url = _resolve_connectors_helper("_drive_direct_download_url")(file_id)
     updated_existing = 0
+    connector_config_id = _resolve_connectors_helper("_connector_config_id_from_run")(run)
     if settings_map.get("enable_source_acl"):
         updated_existing = int(
             _resolve_connectors_helper("_delta_sync_connector_documents_acl_by_source_url")(
@@ -312,6 +313,7 @@ async def _ingest_drive_file_source(
                 requested_by=requested_by,
                 access=effective_access,
                 acl_provenance=acl_provenance,
+                connector_config_id=connector_config_id,
             )
         )
 
@@ -510,6 +512,7 @@ def _reconcile_removed_drive_sources(
 ) -> tuple[int, int]:
     removed_paths_reconciled = 0
     removed_documents_disabled = 0
+    connector_config_id = _resolve_connectors_helper("_connector_config_id_from_run")(run)
     for source_ref in removed_source_refs:
         try:
             if str(source_ref).startswith("url:"):
@@ -519,6 +522,7 @@ def _reconcile_removed_drive_sources(
                     dataset_id=run.dataset_id,
                     connector_id="drive_files",
                     source_ref=source_ref,
+                    connector_config_id=connector_config_id,
                 )
             else:
                 disabled = _resolve_connectors_helper("_soft_disable_connector_documents_by_source_url")(
@@ -527,6 +531,7 @@ def _reconcile_removed_drive_sources(
                     dataset_id=run.dataset_id,
                     connector_id="drive_files",
                     source_url=_resolve_connectors_helper("_drive_direct_download_url")(source_ref),
+                    connector_config_id=connector_config_id,
                 )
         except Exception as exc:  # noqa: BLE001
             stats = _resolve_connectors_helper("_append_connector_error")(dict(run.stats or {}), url=source_ref, exc=exc)

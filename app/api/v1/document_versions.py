@@ -500,9 +500,7 @@ def delete_document_version(
         raise HTTPException(status_code=404, detail="Document version not found (no chunks for this pipeline_hash)")
 
     with contextlib.suppress(Exception):
-        from app.storage.vector.factory import get_vector_store
-
-        get_vector_store().delete_by_document_id_and_filter(
+        Indexer(db).delete_document_chunk_vectors(
             document_id=document_id,
             tenant_id=tenant_id,
             metadata_filter={"doc_pipeline_key": {"$eq": target_key}},

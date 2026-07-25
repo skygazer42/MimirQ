@@ -151,6 +151,7 @@ def _delta_sync_connector_documents_acl_by_source_url(
     requested_by: str,
     access: dict | None,
     acl_provenance: dict | None,
+    connector_config_id: UUID | str | None = None,
     max_docs: int = 50_000,
 ) -> int:
     if dataset_id is None:
@@ -176,6 +177,8 @@ def _delta_sync_connector_documents_acl_by_source_url(
         .distinct()
         .order_by(DBDocument.created_at.desc())
     )
+    if connector_config_id is not None:
+        q = q.filter(ConnectorRun.stats["config_id"].astext == str(connector_config_id))  # type: ignore[attr-defined]
 
     max_docs = max(0, int(max_docs or 0))
     if max_docs:
@@ -210,7 +213,7 @@ def _soft_disable_connector_documents_by_source_url(
     dataset_id: UUID | None,
     connector_id: str,
     source_url: str,
-    connector_config_id: UUID | None = None,
+    connector_config_id: UUID | str | None = None,
     max_docs: int = 50_000,
 ) -> int:
     if dataset_id is None:
@@ -260,7 +263,7 @@ def _soft_disable_connector_documents_by_source_ref(
     dataset_id: UUID | None,
     connector_id: str,
     source_ref: str,
-    connector_config_id: UUID | None = None,
+    connector_config_id: UUID | str | None = None,
     exclude_document_id: UUID | None = None,
     max_docs: int = 50_000,
 ) -> int:

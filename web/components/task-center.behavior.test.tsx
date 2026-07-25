@@ -109,6 +109,7 @@ describe('TaskCenter auth and polling gates', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     document.body.innerHTML = ''
     vi.clearAllMocks()
   })
@@ -141,15 +142,114 @@ describe('TaskCenter auth and polling gates', () => {
     act(() => root.unmount())
   })
 
-  it('stays idle on unrelated routes until the panel is explicitly opened', async () => {
+  it('hides previously discovered tasks after navigating into auth routes', async () => {
     routeState.pathname = '/'
+    documentApiMock.list.mockResolvedValue({
+      items: [
+        {
+          id: 'doc-auth-hide',
+          filename: 'failed.pdf',
+          status: 'failed',
+          error_message: 'boom',
+        },
+      ],
+    })
 
-    const { root } = renderTaskCenter()
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    const Wrapper = createWrapper()
+
+    act(() => {
+      root.render(
+        <Wrapper>
+          <TaskCenter />
+        </Wrapper>
+      )
+    })
     await act(async () => {
+      await vi.waitFor(() => {
+        expect(documentApiMock.list).toHaveBeenCalledTimes(1)
+        expect(container.textContent).toContain('1')
+      })
+    })
+
+    routeState.pathname = '/auth/saml/callback'
+    await act(async () => {
+      root.render(
+        <Wrapper>
+          <TaskCenter />
+        </Wrapper>
+      )
       await Promise.resolve()
     })
 
-    expect(documentApiMock.list).not.toHaveBeenCalled()
+    expect(container.textContent).toBe('')
+    act(() => root.unmount())
+  })
+
+  it('discovers tasks on unrelated authenticated routes and stays on a low-frequency idle poll', async () => {
+    vi.useFakeTimers()
+    routeState.pathname = '/'
+    documentApiMock.list.mockResolvedValue({
+      items: [
+        {
+          id: 'doc-3',
+          filename: 'failed.pdf',
+          status: 'failed',
+          error_message: 'boom',
+        },
+      ],
+    })
+
+    const { root } = renderTaskCenter()
+    await act(async () => {
+      await vi.waitFor(() => expect(documentApiMock.list).toHaveBeenCalledTimes(1))
+    })
+
+    await act(async () => {
+      vi.advanceTimersByTime(5000)
+      await Promise.resolve()
+    })
+    expect(documentApiMock.list).toHaveBeenCalledTimes(1)
+    await act(async () => {
+      vi.advanceTimersByTime(55000)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(documentApiMock.list).toHaveBeenCalledTimes(2)
+    act(() => root.unmount())
+  })
+
+  it('switches to the fast poll when an active task is present outside task routes', async () => {
+    vi.useFakeTimers()
+    routeState.pathname = '/'
+    documentApiMock.list.mockResolvedValue({
+      items: [
+        {
+          id: 'doc-4',
+          filename: 'active.pdf',
+          status: 'processing',
+          processing_progress: 30,
+          current_stage: 'indexing',
+        },
+      ],
+    })
+
+    const { container, root } = renderTaskCenter()
+
+    await act(async () => {
+      await vi.waitFor(() => {
+        expect(documentApiMock.list).toHaveBeenCalledTimes(1)
+        expect(container.textContent).toContain('1')
+      })
+    })
+    await act(async () => {
+      vi.advanceTimersByTime(5000)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(documentApiMock.list).toHaveBeenCalledTimes(2)
     act(() => root.unmount())
   })
 
@@ -180,7 +280,8 @@ describe('TaskCenter auth and polling gates', () => {
     act(() => root.unmount())
   })
 
-  it('loads tasks on ingestion routes for authenticated users', async () => {
+  it('uses the fast poll cadence on task routes for authenticated users', async () => {
+    vi.useFakeTimers()
     documentApiMock.list.mockResolvedValue({
       items: [
         {
@@ -201,7 +302,48 @@ describe('TaskCenter auth and polling gates', () => {
         expect(container.textContent).toContain('1')
       })
     })
+    await act(async () => {
+      vi.advanceTimersByTime(5000)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(documentApiMock.list).toHaveBeenCalledTimes(2)
+    act(() => root.unmount())
+  })
 
+  it('uses the fast poll cadence while the panel is open', async () => {
+    vi.useFakeTimers()
+    routeState.pathname = '/'
+    documentApiMock.list.mockResolvedValue({
+      items: [
+        {
+          id: 'doc-5',
+          filename: 'failed.pdf',
+          status: 'failed',
+          error_message: 'boom',
+        },
+      ],
+    })
+
+    const { container, root } = renderTaskCenter()
+
+    await act(async () => {
+      await vi.waitFor(() => {
+        expect(documentApiMock.list).toHaveBeenCalledTimes(1)
+        expect(container.querySelector('[aria-label="title"]')).not.toBeNull()
+      })
+    })
+
+    const toggle = container.querySelector<HTMLButtonElement>('[aria-label="title"]')
+    expect(toggle).not.toBeNull()
+    act(() => toggle?.click())
+
+    await act(async () => {
+      vi.advanceTimersByTime(5000)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(documentApiMock.list).toHaveBeenCalledTimes(2)
     act(() => root.unmount())
   })
 })

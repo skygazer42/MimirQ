@@ -3,7 +3,7 @@ Queue job implementations (worker side).
 
 Notes:
 - Jobs must re-validate tenant/document ownership to avoid cross-tenant access.
-- Jobs use best-effort Redis locks/semaphores to avoid duplicate work.
+- Jobs require Redis locks/semaphores to avoid duplicate work.
 """
 
 import asyncio
@@ -39,6 +39,7 @@ from app.tasks.locks import (
     dataset_acquire,
     dataset_release,
     get_retry_exc,
+    is_semaphore_busy_retry,
     make_lock_value,
     release_lock,
     tenant_acquire,
@@ -48,6 +49,9 @@ from app.tasks.locks import (
 logger = get_logger("tasks.jobs")
 
 _TASK_SEMAPHORE_TTL_SEC = max(60 * 60, int(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30) + 60)
+_TASK_LOCK_RETRY_DEFER_SEC = 30
+_TASK_COORDINATION_UNAVAILABLE = "task_coordination_unavailable"
+_TASK_CONCURRENCY_BUSY = "task_concurrency_busy"
 
 
 def _task_job_lock_ttl_sec(*, minimum_sec: int = 40 * 60) -> int:
@@ -132,8 +136,49 @@ def _document_job_max_tries() -> int:
     return max(1, int(getattr(settings, "TASK_DOCUMENT_JOB_MAX_TRIES", 80) or 80))
 
 
+def _task_job_max_tries() -> int:
+    return max(1, int(getattr(settings, "TASK_JOB_MAX_TRIES", 80) or 80))
+
+
 def _kg_job_max_tries() -> int:
     return max(1, int(getattr(settings, "TASK_KG_JOB_MAX_TRIES", 80) or 80))
+
+
+def _raise_task_retry(*, defer_sec: int, cause: Exception | None = None) -> None:
+    retry_cls = get_retry_exc()
+    if cause is None:
+        raise retry_cls(defer=int(defer_sec))
+    raise retry_cls(defer=int(defer_sec)) from cause
+
+
+def _task_queue_redis_or_retry(ctx, *, retry_defer_sec: int):  # noqa: ANN001, ANN201
+    try:
+        redis = ctx.get("redis") if isinstance(ctx, dict) else None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Task job redis lookup failed (retry): %s", str(exc)[:200])
+        _raise_task_retry(defer_sec=retry_defer_sec, cause=exc)
+    if redis is None:
+        logger.warning("Task job redis unavailable (retry)")
+        _raise_task_retry(defer_sec=retry_defer_sec)
+    return redis
+
+
+async def _acquire_task_lock_or_retry(
+    redis: Any,
+    *,
+    key: str,
+    value: str,
+    ttl_sec: int,
+    retry_defer_sec: int,
+) -> bool:
+    return await acquire_lock(
+        redis,
+        key=key,
+        value=value,
+        ttl_sec=ttl_sec,
+        fail_open=False,
+        retry_defer_sec=retry_defer_sec,
+    )
 
 
 async def _mark_document_failed_on_exhausted_retry(
@@ -146,16 +191,40 @@ async def _mark_document_failed_on_exhausted_retry(
 ) -> bool:
     if _current_job_try(ctx) < _document_job_max_tries():
         return False
-    await document_processor._update_status(
-        db,
-        tenant_id,
-        document_id,
-        "failed",
-        0,
-        "failed",
-        error_message=reason,
-    )
+    try:
+        await document_processor._update_status(
+            db,
+            tenant_id,
+            document_id,
+            "failed",
+            0,
+            "failed",
+            error_message=reason,
+        )
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise RuntimeError("failed to persist document task terminal state") from exc
     return True
+
+
+def _is_retry_error(exc: Exception) -> bool:
+    retry_cls = get_retry_exc()
+    return bool(retry_cls) and isinstance(exc, retry_cls)
+
+
+def _coordination_retry_reason(exc: Exception) -> str:
+    return _TASK_CONCURRENCY_BUSY if is_semaphore_busy_retry(exc) else _TASK_COORDINATION_UNAVAILABLE
+
+
+def _mark_run_failed(db, run: Any, *, reason: str) -> None:  # noqa: ANN401
+    run.status = "failed"
+    run.error_message = reason
+    run.finished_at = datetime.now(UTC)
+    try:
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise RuntimeError("failed to persist task run terminal state") from exc
 
 
 async def ping_job(ctx) -> dict:  # noqa: ANN001
@@ -193,37 +262,55 @@ async def evidence_reference_sources_repair_job(  # noqa: ANN001
     lock_key = None
     lock_val = None
     sem_key = None
+    retry_defer_sec = _TASK_LOCK_RETRY_DEFER_SEC
     try:
         try:
-            redis = ctx.get("redis") if isinstance(ctx, dict) else None
-        except Exception:  # noqa: BLE001
-            redis = None
-
-        if redis is not None:
+            redis = _task_queue_redis_or_retry(ctx, retry_defer_sec=retry_defer_sec)
             sem_key = await tenant_acquire(
                 redis,
                 tenant_id=tenant_id,
                 kind="evidence_repair",
                 limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_EVIDENCE_REPAIR", 0) or 0),
                 ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
+                retry_defer_sec=retry_defer_sec,
             )
             lock_key = f"lock:evidence_repair:{tenant_id}:{suite_id}"
             lock_val = make_lock_value(requested_by)
             lock_ttl = _task_job_lock_ttl_sec(minimum_sec=60 * 60)
-            acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
-            if not acquired:
-                logger.info("Skip evidence repair job due to active lock: %s", lock_key)
-                return await _job_result(
-                    ctx,
-                    job_name="evidence_reference_sources_repair_job",
-                    ok=True,
-                    started_at=t0,
-                    reason="locked",
-                    progress=_job_progress(stage="locked", done=0, total=1),
-                    skipped="locked",
-                    tenant_id=tenant_id,
-                    suite_id=suite_id,
-                )
+            acquired = await _acquire_task_lock_or_retry(
+                redis,
+                key=lock_key,
+                value=lock_val,
+                ttl_sec=lock_ttl,
+                retry_defer_sec=retry_defer_sec,
+            )
+        except Exception as exc:
+            if not _is_retry_error(exc) or _current_job_try(ctx) < _task_job_max_tries():
+                raise
+            reason = _coordination_retry_reason(exc)
+            return await _job_result(
+                ctx,
+                job_name="evidence_reference_sources_repair_job",
+                ok=False,
+                started_at=t0,
+                reason=reason,
+                progress=_job_progress(stage="failed", done=0, total=1),
+                tenant_id=tenant_id,
+                suite_id=suite_id,
+            )
+        if not acquired:
+            logger.info("Skip evidence repair job due to active lock: %s", lock_key)
+            return await _job_result(
+                ctx,
+                job_name="evidence_reference_sources_repair_job",
+                ok=True,
+                started_at=t0,
+                reason="locked",
+                progress=_job_progress(stage="locked", done=0, total=1),
+                skipped="locked",
+                tenant_id=tenant_id,
+                suite_id=suite_id,
+            )
 
         try:
             result = repair_evidence_suite_reference_sources(
@@ -315,6 +402,7 @@ async def connector_run_job(ctx, tenant_id: str, run_id: str, requested_by: str)
     sem_key = None
     lock_key = None
     lock_val = None
+    retry_defer_sec = _TASK_LOCK_RETRY_DEFER_SEC
     try:
         run = (
             db.query(DBConnectorRun)
@@ -334,38 +422,56 @@ async def connector_run_job(ctx, tenant_id: str, run_id: str, requested_by: str)
             )
 
         connector_id = str(getattr(run, "connector_id", "") or "").strip()
-
         try:
-            redis = ctx.get("redis") if isinstance(ctx, dict) else None
-        except Exception:  # noqa: BLE001
-            redis = None
-
-        if redis is not None:
+            redis = _task_queue_redis_or_retry(ctx, retry_defer_sec=retry_defer_sec)
             sem_key = await tenant_acquire(
                 redis,
                 tenant_id=tenant_id,
                 kind="connector",
                 limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_CONNECTOR", 0) or 0),
                 ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
+                retry_defer_sec=retry_defer_sec,
             )
 
             lock_key = f"lock:connector:{tenant_id}:{run_id}"
             lock_val = make_lock_value(requested_by)
             lock_ttl = _task_job_lock_ttl_sec()
-            acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
-            if not acquired:
-                logger.info("Skip connector job due to active lock: %s", lock_key)
-                return await _job_result(
-                    ctx,
-                    job_name="connector_run_job",
-                    ok=True,
-                    started_at=t0,
-                    reason="locked",
-                    progress=_job_progress(stage="locked", done=0, total=1),
-                    skipped="locked",
-                    tenant_id=tenant_id,
-                    run_id=run_id,
-                )
+            acquired = await _acquire_task_lock_or_retry(
+                redis,
+                key=lock_key,
+                value=lock_val,
+                ttl_sec=lock_ttl,
+                retry_defer_sec=retry_defer_sec,
+            )
+        except Exception as exc:
+            if not _is_retry_error(exc) or _current_job_try(ctx) < _task_job_max_tries():
+                raise
+            reason = _coordination_retry_reason(exc)
+            _mark_run_failed(db, run, reason=reason)
+            return await _job_result(
+                ctx,
+                job_name="connector_run_job",
+                ok=False,
+                started_at=t0,
+                reason=reason,
+                progress=_job_progress(stage="failed", done=0, total=1),
+                tenant_id=tenant_id,
+                run_id=run_id,
+                connector_id=connector_id,
+            )
+        if not acquired:
+            logger.info("Skip connector job due to active lock: %s", lock_key)
+            return await _job_result(
+                ctx,
+                job_name="connector_run_job",
+                ok=True,
+                started_at=t0,
+                reason="locked",
+                progress=_job_progress(stage="locked", done=0, total=1),
+                skipped="locked",
+                tenant_id=tenant_id,
+                run_id=run_id,
+            )
 
         executed = await execute_connector_run(
             connector_id=connector_id,
@@ -427,6 +533,7 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
     ingest_lock_val = None
     sem_key = None
     dataset_sem_key = None
+    retry_defer_sec = _TASK_LOCK_RETRY_DEFER_SEC
     try:
         # Re-validate tenant/document ownership.
         doc = (
@@ -456,31 +563,16 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
         # Idempotent lock: avoid duplicate concurrent processing per doc+pipeline.
         # - Use Redis SET NX EX
         # - TTL slightly above job_timeout to avoid permanent lock on worker crash
-        try:
-            redis = ctx.get("redis") if isinstance(ctx, dict) else None
-        except Exception:  # noqa: BLE001
-            redis = None
-
         lock_val = make_lock_value(requested_by)
         lock_ttl = _task_job_lock_ttl_sec()
-        if redis is not None:
-            job_try = _current_job_try(ctx)
-            max_doc_tries = _document_job_max_tries()
-            retry_defer_sec = int(getattr(settings, "TASK_DOCUMENT_RETRY_DEFER_SEC", 30) or 30)
-            tenant_limit = int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_DOC", 0) or 0)
-            dataset_limit = int(getattr(settings, "TASK_DATASET_MAX_CONCURRENCY_DOC", 0) or 0)
-            # On the final attempt, run the job even if the semaphore is saturated;
-            # otherwise arq records "max retries exceeded" before the function can
-            # update the document status.
-            if job_try >= max_doc_tries:
-                tenant_limit = 0
-                dataset_limit = 0
-            # Per-tenant concurrency limit (doc).
+        retry_defer_sec = int(getattr(settings, "TASK_DOCUMENT_RETRY_DEFER_SEC", 30) or 30)
+        try:
+            redis = _task_queue_redis_or_retry(ctx, retry_defer_sec=retry_defer_sec)
             sem_key = await tenant_acquire(
                 redis,
                 tenant_id=tenant_id,
                 kind="doc",
-                limit=tenant_limit,
+                limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_DOC", 0) or 0),
                 ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
                 retry_defer_sec=retry_defer_sec,
             )
@@ -489,44 +581,73 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
                 tenant_id=tenant_id,
                 dataset_id=str(doc.dataset_id) if doc.dataset_id else "",
                 kind="doc",
-                limit=dataset_limit,
+                limit=int(getattr(settings, "TASK_DATASET_MAX_CONCURRENCY_DOC", 0) or 0),
                 ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
                 retry_defer_sec=retry_defer_sec,
             )
-            acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
-            if not acquired:
-                exhausted = await _mark_document_failed_on_exhausted_retry(
-                    ctx=ctx,
-                    db=db,
-                    tenant_id=tid,
-                    document_id=did,
-                    reason="document_processing_lock_timeout",
-                )
-                if exhausted:
-                    return await _job_result(
-                        ctx,
-                        job_name="process_document_job",
-                        ok=False,
-                        started_at=t0,
-                        reason="document_processing_lock_timeout",
-                        progress=_job_progress(stage="failed", done=0, total=1),
-                        tenant_id=tenant_id,
-                        document_id=document_id,
-                        pipeline_hash=pipeline_hash,
-                    )
-                logger.info("Skip document job due to active lock: %s", lock_key)
+            acquired = await _acquire_task_lock_or_retry(
+                redis,
+                key=lock_key,
+                value=lock_val,
+                ttl_sec=lock_ttl,
+                retry_defer_sec=retry_defer_sec,
+            )
+        except Exception as exc:
+            if not _is_retry_error(exc):
+                raise
+            reason = _coordination_retry_reason(exc)
+            if not await _mark_document_failed_on_exhausted_retry(
+                ctx=ctx,
+                db=db,
+                tenant_id=tid,
+                document_id=did,
+                reason=reason,
+            ):
+                raise
+            return await _job_result(
+                ctx,
+                job_name="process_document_job",
+                ok=False,
+                started_at=t0,
+                reason=reason,
+                progress=_job_progress(stage="failed", done=0, total=1),
+                tenant_id=tenant_id,
+                document_id=document_id,
+                pipeline_hash=pipeline_hash,
+            )
+        if not acquired:
+            exhausted = await _mark_document_failed_on_exhausted_retry(
+                ctx=ctx,
+                db=db,
+                tenant_id=tid,
+                document_id=did,
+                reason="document_processing_lock_timeout",
+            )
+            if exhausted:
                 return await _job_result(
                     ctx,
                     job_name="process_document_job",
-                    ok=True,
+                    ok=False,
                     started_at=t0,
-                    reason="locked",
-                    progress=_job_progress(stage="locked", done=0, total=1),
-                    skipped="locked",
+                    reason="document_processing_lock_timeout",
+                    progress=_job_progress(stage="failed", done=0, total=1),
                     tenant_id=tenant_id,
                     document_id=document_id,
                     pipeline_hash=pipeline_hash,
                 )
+            logger.info("Skip document job due to active lock: %s", lock_key)
+            return await _job_result(
+                ctx,
+                job_name="process_document_job",
+                ok=True,
+                started_at=t0,
+                reason="locked",
+                progress=_job_progress(stage="locked", done=0, total=1),
+                skipped="locked",
+                tenant_id=tenant_id,
+                document_id=document_id,
+                pipeline_hash=pipeline_hash,
+            )
 
         # Validation passed: execute document processing.
         parser_backend = (doc.doc_metadata or {}).get("parser_backend")
@@ -767,6 +888,7 @@ async def dataset_profile_scan_job(ctx, tenant_id: str, dataset_id: str, scan_ru
     lock_key = None
     lock_val = None
     sem_key = None
+    retry_defer_sec = _TASK_LOCK_RETRY_DEFER_SEC
     try:
         # Ensure scan run exists under tenant/dataset.
         run = (
@@ -792,38 +914,57 @@ async def dataset_profile_scan_job(ctx, tenant_id: str, dataset_id: str, scan_ru
             )
 
         # Idempotent lock: avoid concurrent scans per dataset.
-        try:
-            redis = ctx.get("redis") if isinstance(ctx, dict) else None
-        except Exception:  # noqa: BLE001
-            redis = None
-
         lock_key = f"lock:dataset_profile_scan:{tenant_id}:{dataset_id}"
         lock_val = make_lock_value(requested_by)
         lock_ttl = _task_job_lock_ttl_sec()
 
-        if redis is not None:
+        try:
+            redis = _task_queue_redis_or_retry(ctx, retry_defer_sec=retry_defer_sec)
             sem_key = await tenant_acquire(
                 redis,
                 tenant_id=tenant_id,
                 kind="scan",
                 limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_DOC", 0) or 0),
                 ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
+                retry_defer_sec=retry_defer_sec,
             )
-            acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
-            if not acquired:
-                logger.info("Skip dataset scan job due to active lock: %s", lock_key)
-                return await _job_result(
-                    ctx,
-                    job_name="dataset_profile_scan_job",
-                    ok=True,
-                    started_at=t0,
-                    reason="locked",
-                    progress=_job_progress(stage="locked", done=0, total=1),
-                    skipped="locked",
-                    tenant_id=tenant_id,
-                    dataset_id=dataset_id,
-                    scan_run_id=scan_run_id,
-                )
+            acquired = await _acquire_task_lock_or_retry(
+                redis,
+                key=lock_key,
+                value=lock_val,
+                ttl_sec=lock_ttl,
+                retry_defer_sec=retry_defer_sec,
+            )
+        except Exception as exc:
+            if not _is_retry_error(exc) or _current_job_try(ctx) < _task_job_max_tries():
+                raise
+            reason = _coordination_retry_reason(exc)
+            _mark_run_failed(db, run, reason=reason)
+            return await _job_result(
+                ctx,
+                job_name="dataset_profile_scan_job",
+                ok=False,
+                started_at=t0,
+                reason=reason,
+                progress=_job_progress(stage="failed", done=0, total=1),
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                scan_run_id=scan_run_id,
+            )
+        if not acquired:
+            logger.info("Skip dataset scan job due to active lock: %s", lock_key)
+            return await _job_result(
+                ctx,
+                job_name="dataset_profile_scan_job",
+                ok=True,
+                started_at=t0,
+                reason="locked",
+                progress=_job_progress(stage="locked", done=0, total=1),
+                skipped="locked",
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                scan_run_id=scan_run_id,
+            )
 
         # Execute deep scan (sync, best-effort).
         try:
@@ -892,6 +1033,7 @@ async def dataset_precheck_scan_job(ctx, tenant_id: str, dataset_id: str, scan_r
     lock_key = None
     lock_val = None
     sem_key = None
+    retry_defer_sec = _TASK_LOCK_RETRY_DEFER_SEC
     try:
         run = (
             db.query(DBDatasetPrecheckScanRun)
@@ -915,38 +1057,57 @@ async def dataset_precheck_scan_job(ctx, tenant_id: str, dataset_id: str, scan_r
                 scan_run_id=scan_run_id,
             )
 
-        try:
-            redis = ctx.get("redis") if isinstance(ctx, dict) else None
-        except Exception:  # noqa: BLE001
-            redis = None
-
         lock_key = f"lock:dataset_precheck_scan:{tenant_id}:{dataset_id}"
         lock_val = make_lock_value(requested_by)
         lock_ttl = _task_job_lock_ttl_sec(minimum_sec=60 * 60)
 
-        if redis is not None:
+        try:
+            redis = _task_queue_redis_or_retry(ctx, retry_defer_sec=retry_defer_sec)
             sem_key = await tenant_acquire(
                 redis,
                 tenant_id=tenant_id,
                 kind="scan",
                 limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_DOC", 0) or 0),
                 ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
+                retry_defer_sec=retry_defer_sec,
             )
-            acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
-            if not acquired:
-                logger.info("Skip dataset precheck scan job due to active lock: %s", lock_key)
-                return await _job_result(
-                    ctx,
-                    job_name="dataset_precheck_scan_job",
-                    ok=True,
-                    started_at=t0,
-                    reason="locked",
-                    progress=_job_progress(stage="locked", done=0, total=1),
-                    skipped="locked",
-                    tenant_id=tenant_id,
-                    dataset_id=dataset_id,
-                    scan_run_id=scan_run_id,
-                )
+            acquired = await _acquire_task_lock_or_retry(
+                redis,
+                key=lock_key,
+                value=lock_val,
+                ttl_sec=lock_ttl,
+                retry_defer_sec=retry_defer_sec,
+            )
+        except Exception as exc:
+            if not _is_retry_error(exc) or _current_job_try(ctx) < _task_job_max_tries():
+                raise
+            reason = _coordination_retry_reason(exc)
+            _mark_run_failed(db, run, reason=reason)
+            return await _job_result(
+                ctx,
+                job_name="dataset_precheck_scan_job",
+                ok=False,
+                started_at=t0,
+                reason=reason,
+                progress=_job_progress(stage="failed", done=0, total=1),
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                scan_run_id=scan_run_id,
+            )
+        if not acquired:
+            logger.info("Skip dataset precheck scan job due to active lock: %s", lock_key)
+            return await _job_result(
+                ctx,
+                job_name="dataset_precheck_scan_job",
+                ok=True,
+                started_at=t0,
+                reason="locked",
+                progress=_job_progress(stage="locked", done=0, total=1),
+                skipped="locked",
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                scan_run_id=scan_run_id,
+            )
 
         try:
             result = run_dataset_precheck_scan(
@@ -1025,16 +1186,8 @@ async def extract_kg_job(
     kg_retry_defer_sec = max(2, int(getattr(settings, "TASK_KG_RETRY_DEFER_SEC", 30) or 30))
     try:
         try:
-            redis = ctx.get("redis") if isinstance(ctx, dict) else None
-        except Exception:  # noqa: BLE001
-            redis = None
-
-        if redis is not None:
+            redis = _task_queue_redis_or_retry(ctx, retry_defer_sec=kg_retry_defer_sec)
             kg_limit = int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_KG", 0) or 0)
-            if _current_job_try(ctx) >= _kg_job_max_tries():
-                # Let the final attempt run instead of letting arq fail the job
-                # before the function has a chance to produce a structured result.
-                kg_limit = 0
             sem_key = await tenant_acquire(
                 redis,
                 tenant_id=tenant_id,
@@ -1042,6 +1195,21 @@ async def extract_kg_job(
                 limit=kg_limit,
                 ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
                 retry_defer_sec=kg_retry_defer_sec,
+            )
+        except Exception as exc:
+            if not _is_retry_error(exc) or _current_job_try(ctx) < _kg_job_max_tries():
+                raise
+            reason = _coordination_retry_reason(exc)
+            return await _job_result(
+                ctx,
+                job_name="extract_kg_job",
+                ok=False,
+                started_at=t0,
+                reason=reason,
+                progress=_job_progress(stage="failed", done=0, total=1),
+                tenant_id=tenant_id,
+                document_id=document_id,
+                pipeline_hash=pipeline_hash,
             )
 
         doc = db.query(DBDocument).filter(DBDocument.id == did, DBDocument.tenant_id == tid).first()
@@ -1073,20 +1241,6 @@ async def extract_kg_job(
                 status=doc.status,
             )
 
-        if redis is not None:
-            dataset_kg_limit = int(getattr(settings, "TASK_DATASET_MAX_CONCURRENCY_KG", 0) or 0)
-            if _current_job_try(ctx) >= _kg_job_max_tries():
-                dataset_kg_limit = 0
-            dataset_sem_key = await dataset_acquire(
-                redis,
-                tenant_id=tenant_id,
-                dataset_id=str(doc.dataset_id) if doc.dataset_id else "",
-                kind="kg",
-                limit=dataset_kg_limit,
-                ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
-                retry_defer_sec=kg_retry_defer_sec,
-            )
-
         # Versioning: default to the active pipeline version so extraction doesn't mix
         # multiple chunk versions for the same document.
         from app.core.pipeline_versions import get_active_pipeline_hash  # noqa: WPS433
@@ -1105,22 +1259,52 @@ async def extract_kg_job(
         lock_key = f"lock:kg:{tenant_id}:{document_id}:{selected_ph}:{replace_key}:{prune_key}:{rel_key}:{skill_key}"
         lock_val = make_lock_value(requested_by)
         lock_ttl = _task_job_lock_ttl_sec()
-        if redis is not None:
-            acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
-            if not acquired:
-                logger.info("Skip KG job due to active lock: %s", lock_key)
-                return await _job_result(
-                    ctx,
-                    job_name="extract_kg_job",
-                    ok=True,
-                    started_at=t0,
-                    reason="locked",
-                    progress=_job_progress(stage="locked", done=0, total=1),
-                    skipped="locked",
-                    tenant_id=tenant_id,
-                    document_id=document_id,
-                    pipeline_hash=selected_ph,
-                )
+        try:
+            dataset_sem_key = await dataset_acquire(
+                redis,
+                tenant_id=tenant_id,
+                dataset_id=str(doc.dataset_id) if doc.dataset_id else "",
+                kind="kg",
+                limit=int(getattr(settings, "TASK_DATASET_MAX_CONCURRENCY_KG", 0) or 0),
+                ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
+                retry_defer_sec=kg_retry_defer_sec,
+            )
+            acquired = await _acquire_task_lock_or_retry(
+                redis,
+                key=lock_key,
+                value=lock_val,
+                ttl_sec=lock_ttl,
+                retry_defer_sec=kg_retry_defer_sec,
+            )
+        except Exception as exc:
+            if not _is_retry_error(exc) or _current_job_try(ctx) < _kg_job_max_tries():
+                raise
+            reason = _coordination_retry_reason(exc)
+            return await _job_result(
+                ctx,
+                job_name="extract_kg_job",
+                ok=False,
+                started_at=t0,
+                reason=reason,
+                progress=_job_progress(stage="failed", done=0, total=1),
+                tenant_id=tenant_id,
+                document_id=document_id,
+                pipeline_hash=selected_ph,
+            )
+        if not acquired:
+            logger.info("Skip KG job due to active lock: %s", lock_key)
+            return await _job_result(
+                ctx,
+                job_name="extract_kg_job",
+                ok=True,
+                started_at=t0,
+                reason="locked",
+                progress=_job_progress(stage="locked", done=0, total=1),
+                skipped="locked",
+                tenant_id=tenant_id,
+                document_id=document_id,
+                pipeline_hash=selected_ph,
+            )
 
         chunks = (
             db.query(DocumentChunk)
@@ -1226,38 +1410,54 @@ async def rebuild_indexes_job(ctx, tenant_id: str, requested_by: str) -> dict:  
     sem_key = None
     lock_key = None
     lock_val = None
+    retry_defer_sec = _TASK_LOCK_RETRY_DEFER_SEC
     try:
         try:
-            redis = ctx.get("redis") if isinstance(ctx, dict) else None
-        except Exception:  # noqa: BLE001
-            redis = None
-
-        if redis is not None:
+            redis = _task_queue_redis_or_retry(ctx, retry_defer_sec=retry_defer_sec)
             sem_key = await tenant_acquire(
                 redis,
                 tenant_id=tenant_id,
                 kind="rebuild",
                 limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_DOC", 0) or 0),
                 ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
+                retry_defer_sec=retry_defer_sec,
             )
 
-        lock_key = f"lock:rebuild:{tenant_id}"
-        lock_val = make_lock_value(requested_by)
-        lock_ttl = _task_job_lock_ttl_sec()
-        if redis is not None:
-            acquired = await acquire_lock(redis, key=lock_key, value=lock_val, ttl_sec=lock_ttl)
-            if not acquired:
-                logger.info("Skip rebuild job due to active lock: %s", lock_key)
-                return await _job_result(
-                    ctx,
-                    job_name="rebuild_indexes_job",
-                    ok=True,
-                    started_at=t0,
-                    reason="locked",
-                    progress=_job_progress(stage="locked", done=0, total=1),
-                    skipped="locked",
-                    tenant_id=tenant_id,
-                )
+            lock_key = f"lock:rebuild:{tenant_id}"
+            lock_val = make_lock_value(requested_by)
+            lock_ttl = _task_job_lock_ttl_sec()
+            acquired = await _acquire_task_lock_or_retry(
+                redis,
+                key=lock_key,
+                value=lock_val,
+                ttl_sec=lock_ttl,
+                retry_defer_sec=retry_defer_sec,
+            )
+        except Exception as exc:
+            if not _is_retry_error(exc) or _current_job_try(ctx) < _task_job_max_tries():
+                raise
+            reason = _coordination_retry_reason(exc)
+            return await _job_result(
+                ctx,
+                job_name="rebuild_indexes_job",
+                ok=False,
+                started_at=t0,
+                reason=reason,
+                progress=_job_progress(stage="failed", done=0, total=1),
+                tenant_id=tenant_id,
+            )
+        if not acquired:
+            logger.info("Skip rebuild job due to active lock: %s", lock_key)
+            return await _job_result(
+                ctx,
+                job_name="rebuild_indexes_job",
+                ok=True,
+                started_at=t0,
+                reason="locked",
+                progress=_job_progress(stage="locked", done=0, total=1),
+                skipped="locked",
+                tenant_id=tenant_id,
+            )
 
         Indexer(db).rebuild_tenant(tenant_id=tid, kinds=[IndexKind.CHUNK])
         return await _job_result(

@@ -907,7 +907,13 @@ class Indexer:
             return bool(options.entity_vector_enabled)
         return bool(getattr(settings, "ENTITY_VECTOR_ENABLED", True))
 
-    def _load_dataset_metadata(self, *, tenant_id: UUID, dataset_id: UUID | None) -> dict[str, Any]:
+    def _load_dataset_metadata(
+        self,
+        *,
+        tenant_id: UUID,
+        dataset_id: UUID | None,
+        strict: bool = False,
+    ) -> dict[str, Any]:
         if dataset_id is None:
             return {}
         try:
@@ -916,9 +922,21 @@ class Indexer:
                 .filter(DBDataset.tenant_id == tenant_id, DBDataset.id == dataset_id)
                 .first()
             )
-            meta = row[0] if row else None
-            return dict(meta or {}) if isinstance(meta, dict) else {}
+            if row is None:
+                if strict:
+                    raise LookupError("dataset not found")
+                return {}
+            meta = row[0]
+            if meta is None:
+                return {}
+            if isinstance(meta, dict):
+                return dict(meta)
+            if strict:
+                raise TypeError("dataset metadata must be an object")
+            return {}
         except Exception:
+            if strict:
+                raise
             return {}
 
     def _embedding_runtime_for_document(
@@ -926,6 +944,7 @@ class Indexer:
         *,
         tenant_id: UUID,
         document_id: UUID,
+        strict: bool = False,
     ) -> DatasetEmbeddingRuntimeConfig:
         try:
             row = (
@@ -933,13 +952,26 @@ class Indexer:
                 .filter(DBDocument.tenant_id == tenant_id, DBDocument.id == document_id)
                 .first()
             )
+            if row is None and strict:
+                raise _dataset_scoped_runtime_unavailable(document_id=document_id, tenant_id=tenant_id)
             dataset_id = row[0] if row else None
             return resolve_dataset_embedding_runtime(
-                self._load_dataset_metadata(tenant_id=tenant_id, dataset_id=dataset_id)
+                self._load_dataset_metadata(
+                    tenant_id=tenant_id,
+                    dataset_id=dataset_id,
+                    strict=strict,
+                )
             )
+        except DatasetScopedEmbeddingRuntimeResolutionError:
+            raise
         except ValueError:
             raise
-        except Exception:
+        except Exception as exc:
+            if strict:
+                raise _dataset_scoped_runtime_unavailable(
+                    document_id=document_id,
+                    tenant_id=tenant_id,
+                ) from exc
             return resolve_dataset_embedding_runtime(None)
 
     def _dataset_scoped_vector_collections_for_document(
@@ -1027,6 +1059,58 @@ class Indexer:
                 )
             else:
                 adapter.delete_by_document_id(document_id, tenant_id=tenant_id)
+
+    def delete_document_chunk_vectors(
+        self,
+        *,
+        tenant_id: UUID,
+        document_id: UUID,
+        metadata_filter: dict[str, Any],
+    ) -> None:
+        if _milvus_backend_enabled():
+            self._delete_dataset_scoped_chunk_vectors(
+                tenant_id=tenant_id,
+                document_id=document_id,
+                metadata_filter=metadata_filter,
+            )
+        get_vector_store().delete_by_document_id_and_filter(
+            document_id=document_id,
+            tenant_id=tenant_id,
+            metadata_filter=metadata_filter,
+        )
+
+    def upsert_document_chunk_vector(
+        self,
+        *,
+        document_id: UUID,
+        tenant_id: UUID,
+        content: str,
+        metadata: dict[str, Any],
+    ) -> str | None:
+        runtime = self._embedding_runtime_for_document(
+            tenant_id=tenant_id,
+            document_id=document_id,
+            strict=True,
+        )
+        vector_metadata = dict(metadata or {})
+        vector_metadata["embedding_space_hash"] = runtime.embedding_space_hash
+        vector_metadata["dataset_scoped"] = bool(runtime.dataset_scoped)
+        if runtime.dataset_scoped:
+            vector_metadata["vector_collection_name"] = runtime.collection_name
+        else:
+            vector_metadata.pop("vector_collection_name", None)
+        ids = self._index_chunk_vectors(
+            [{"content": str(content or ""), "metadata": vector_metadata}],
+            document_id=document_id,
+            tenant_id=tenant_id,
+            enable_vectors=True,
+            embedding_runtime=runtime,
+        )
+        vector_id = ids[0] if ids else None
+        if vector_id:
+            metadata.clear()
+            metadata.update(vector_metadata)
+        return str(vector_id) if vector_id else None
 
     def _document_vector_item(
         self,

@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
@@ -123,6 +123,33 @@ def _resolve_allowed_dataset_ids(
                 observe_group_permission_check(resource="dataset", action="read", result="deny_no_match")
 
     return dataset_map, allowed_dataset_ids
+
+
+def get_readable_datasets_map(
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_ids: list[UUID] | None,
+    *,
+    check_member: bool = True,
+) -> dict[UUID, Dataset]:
+    requested_ids = list(dict.fromkeys(dataset_ids or []))
+    if check_member:
+        DatasetService.ensure_member(db, tenant_id, account_id)
+    if not requested_ids:
+        return {}
+
+    dataset_map, allowed_dataset_ids = _resolve_allowed_dataset_ids(db, tenant_id, account_id, set(requested_ids))
+
+    missing_ids = [dataset_id for dataset_id in requested_ids if dataset_id not in dataset_map]
+    if missing_ids:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
+
+    blocked_ids = [dataset_id for dataset_id in requested_ids if dataset_id not in allowed_dataset_ids]
+    if blocked_ids:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No dataset access")
+
+    return {dataset_id: dataset_map[dataset_id] for dataset_id in requested_ids}
 
 
 def get_allowed_document_id_sets(

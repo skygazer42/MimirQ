@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from unittest.mock import ANY
 from uuid import uuid4
 
 import pytest
@@ -341,3 +342,175 @@ def test_delete_dataset_scoped_chunk_vectors_rejects_ambiguous_default_space_wit
         match="cleanup target ambiguous",
     ):
         service._delete_dataset_scoped_chunk_vectors(tenant_id=tenant_id, document_id=document_id)
+
+
+def test_upsert_document_chunk_vector_uses_dataset_scoped_collection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import indexer
+    from app.services.dataset_embedding_config import DatasetEmbeddingRuntimeConfig
+
+    tenant_id = uuid4()
+    document_id = uuid4()
+    runtime = DatasetEmbeddingRuntimeConfig(
+        provider="local",
+        model="model-custom",
+        api_base="",
+        api_key="",
+        embedding_space_hash="space-custom",
+        collection_name="documents_emb_space_custom",
+        dataset_scoped=True,
+    )
+    writes: list[dict[str, object]] = []
+
+    monkeypatch.setattr(indexer.settings, "VECTOR_BACKEND", "milvus", raising=False)
+    monkeypatch.setattr(indexer.Indexer, "_embedding_runtime_for_document", lambda *_a, **_k: runtime)
+    monkeypatch.setattr(
+        indexer,
+        "create_embeddings_for_runtime",
+        lambda _runtime: SimpleNamespace(embed_documents=lambda texts: [[float(len(text))] for text in texts]),
+    )
+    monkeypatch.setattr(indexer, "resolve_collection_name", lambda name: name)
+    monkeypatch.setattr(
+        indexer,
+        "get_milvus_adapter",
+        lambda name: SimpleNamespace(
+            add_vectors=lambda items, embeddings, batch_size, upsert: writes.append(
+                {
+                    "collection": name,
+                    "items": items,
+                    "embeddings": embeddings,
+                    "batch_size": batch_size,
+                    "upsert": upsert,
+                }
+            )
+            or ["vector-1"]
+        ),
+    )
+    monkeypatch.setattr(
+        indexer,
+        "get_vector_store",
+        lambda: pytest.fail("dataset-scoped chunk upsert must not use the default vector store"),
+    )
+
+    service = object.__new__(indexer.Indexer)
+
+    metadata = {"chunk_id": "chunk-1", "chunk_index": 7, "dataset_id": "dataset-1"}
+    vector_id = service.upsert_document_chunk_vector(
+        document_id=document_id,
+        tenant_id=tenant_id,
+        content="chunk text",
+        metadata=metadata,
+    )
+
+    assert vector_id == "vector-1"
+    assert metadata["embedding_space_hash"] == runtime.embedding_space_hash
+    assert metadata["dataset_scoped"] is True
+    assert metadata["vector_collection_name"] == runtime.collection_name
+    assert writes == [
+        {
+            "collection": runtime.collection_name,
+            "items": [
+                {
+                    "id": "chunk-1",
+                    "content": "chunk text",
+                    "metadata": {
+                        "tenant_id": str(tenant_id),
+                        "dataset_id": "dataset-1",
+                        "embedding_space_hash": "space-custom",
+                        "document_id": str(document_id),
+                        "chunk_index": 7,
+                        "chunk_id": "chunk-1",
+                        "pipeline_hash": "",
+                        "doc_pipeline_key": str(document_id),
+                        "page_number": 0,
+                        "source": "unknown",
+                        "file_type": "unknown",
+                        "img_id": "",
+                        "image_id": "",
+                        "image_url": "",
+                    },
+                }
+            ],
+            "embeddings": [[10.0]],
+            "batch_size": ANY,
+            "upsert": True,
+        }
+    ]
+
+
+def test_upsert_document_chunk_vector_does_not_fall_back_on_runtime_lookup_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import indexer
+
+    class _FailingDB:
+        def query(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN201
+            raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(
+        indexer,
+        "get_vector_store",
+        lambda: pytest.fail("runtime lookup failure must not write to the default vector store"),
+    )
+    service = object.__new__(indexer.Indexer)
+    service._db = _FailingDB()
+
+    with pytest.raises(
+        indexer.DatasetScopedEmbeddingRuntimeResolutionError,
+        match="dataset-scoped embedding runtime unavailable",
+    ):
+        service.upsert_document_chunk_vector(
+            document_id=uuid4(),
+            tenant_id=uuid4(),
+            content="chunk text",
+            metadata={"chunk_id": "chunk-1"},
+        )
+
+
+def test_delete_document_chunk_vectors_cleans_scoped_and_default_collections(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import indexer
+
+    tenant_id = uuid4()
+    document_id = uuid4()
+    deletes: list[dict[str, object]] = []
+
+    monkeypatch.setattr(indexer.settings, "VECTOR_BACKEND", "milvus", raising=False)
+    monkeypatch.setattr(
+        indexer.Indexer,
+        "_delete_dataset_scoped_chunk_vectors",
+        lambda _self, **kwargs: deletes.append({"store": "scoped", **kwargs}),
+    )
+    monkeypatch.setattr(
+        indexer,
+        "get_vector_store",
+        lambda: SimpleNamespace(
+            delete_by_document_id_and_filter=lambda **kwargs: deletes.append(
+                {"store": "default", **kwargs}
+            )
+        ),
+    )
+
+    service = object.__new__(indexer.Indexer)
+    service.delete_document_chunk_vectors(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        metadata_filter={"chunk_id": {"$eq": "chunk-1"}},
+    )
+
+    assert deletes == [
+        {
+            "store": "scoped",
+            "tenant_id": tenant_id,
+            "document_id": document_id,
+            "metadata_filter": {"chunk_id": {"$eq": "chunk-1"}},
+        },
+        {
+            "store": "default",
+            "tenant_id": tenant_id,
+            "document_id": document_id,
+            "metadata_filter": {"chunk_id": {"$eq": "chunk-1"}},
+        },
+    ]

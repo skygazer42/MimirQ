@@ -23,6 +23,9 @@ const TASK_CENTER_ACTIVE_ROUTE_PREFIXES = [
   '/datasets',
 ]
 
+const ACTIVE_TASK_POLL_MS = 5000
+const IDLE_TASK_DISCOVERY_POLL_MS = 60000
+
 export function TaskCenter() {
   const [isOpen, setIsOpen] = useState(false)
   const [acting, setActing] = useState<{ id: string; action: 'cancel' | 'retry' } | null>(null)
@@ -38,22 +41,31 @@ export function TaskCenter() {
   )
   const canLoadForAuthMode =
     authMode === 'header' ? true : authMode === 'jwt' ? isAuthenticated : false
-  const shouldLoadTasks =
-    !pathname.startsWith('/auth') && canLoadForAuthMode && (isOpen || isTaskRoute)
-  
+  const canDiscoverTasks = !pathname.startsWith('/auth') && canLoadForAuthMode
+
   const { data: documents = [], refetch } = useQuery<Document[]>({
     queryKey: ['documents', 'task-center'],
     queryFn: async ({ signal }) => {
       const res = await documentApi.list({ limit: 100 }, { signal })
       return res.items
     },
-    enabled: shouldLoadTasks,
-    staleTime: 5000,
-    refetchInterval: shouldLoadTasks ? 5000 : false,
+    enabled: canDiscoverTasks,
+    staleTime: ACTIVE_TASK_POLL_MS,
+    refetchInterval: (query) => {
+      if (!canDiscoverTasks) return false
+      const knownDocuments = Array.isArray(query.state.data) ? query.state.data : []
+      const hasActiveTasks = knownDocuments.some(
+        (doc) => doc.status === 'processing' || doc.status === 'pending'
+      )
+      return isOpen || isTaskRoute || hasActiveTasks
+        ? ACTIVE_TASK_POLL_MS
+        : IDLE_TASK_DISCOVERY_POLL_MS
+    },
   })
 
-  const activeTasks = documents.filter(d => d.status === 'processing' || d.status === 'pending')
-  const failedTasks = documents.filter(d => d.status === 'failed' || d.status === 'quarantined')
+  const visibleDocuments = canDiscoverTasks ? documents : []
+  const activeTasks = visibleDocuments.filter(d => d.status === 'processing' || d.status === 'pending')
+  const failedTasks = visibleDocuments.filter(d => d.status === 'failed' || d.status === 'quarantined')
   
   const totalActive = activeTasks.length
   const totalFailed = failedTasks.length

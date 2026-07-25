@@ -126,12 +126,12 @@ make up-web
 - `POSTGRES_PASSWORD`（强密码）
 - `MINIO_ACCESS_KEY_DOCKER` / `MINIO_SECRET_KEY_DOCKER`（强凭据；不要保留 `minioadmin`）
 - `JWT_TENANT_CLAIM`（推荐）或在可信网关会重写租户头时显式设 `TENANT_HEADER_TRUSTED=true`
-- 若启用 `make up-web`：`MARKDOWN_IMAGE_PROXY_SECRET` 必须非空，`FORWARDED_ALLOW_IPS_DOCKER` 只能填受信任代理 IP，禁止 `*`
+- 若启用 `make up-prod-web`：`MARKDOWN_IMAGE_PROXY_SECRET` 必须非空，`FORWARDED_ALLOW_IPS_DOCKER` 只能填受信任代理 IP，禁止 `*`
 
 ```bash
 make infra-up
 make db-upgrade
-make up
+make up-prod
 make ps
 ```
 
@@ -155,7 +155,7 @@ curl -X POST http://127.0.0.1:8000/api/v1/auth/register \
 生产模式 + 前端（可选）：
 
 ```bash
-make up-web
+make up-prod-web
 ```
 
 ---

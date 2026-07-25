@@ -1,4 +1,3 @@
-
 import json
 from typing import Any
 from uuid import UUID
@@ -35,9 +34,7 @@ def _apply_connector_identity_metadata(
     meta0 = dict(getattr(doc, "doc_metadata", None) or {})
     connector_meta = dict(meta0.get("connector") or {})
     if isinstance(extra, dict):
-        connector_meta.update(
-            {key: value for key, value in extra.items() if value is not None}
-        )
+        connector_meta.update({key: value for key, value in extra.items() if value is not None})
 
     connector_meta["connector_id"] = str(connector_id or "").strip()
     connector_meta["run_id"] = str(run.id)
@@ -68,20 +65,32 @@ def _normalize_connector_string_list(values: object) -> list[str]:
 def _normalize_connector_principal_list(values: object) -> list[str]:
     if not isinstance(values, list):
         return []
-    return [
-        str(value).strip()
-        for value in values
-        if isinstance(value, (str, int, float)) and str(value).strip()
-    ]
+    return [str(value).strip() for value in values if isinstance(value, (str, int, float)) and str(value).strip()]
 
 
-def _db_row_sidecar_file_path(*, dataset_id: UUID, connector_id: str) -> str:
+def _db_row_sidecar_file_path(
+    *,
+    dataset_id: UUID,
+    connector_id: str,
+    connector_config_id: UUID | str | None = None,
+) -> str:
+    config_suffix = str(connector_config_id or "").strip()
+    if config_suffix:
+        return f"virtual://db_catalog/rows/{str(dataset_id)}/{str(connector_id or '').strip()}/{config_suffix}"
     return f"virtual://db_catalog/rows/{str(dataset_id)}/{str(connector_id or '').strip()}"
 
 
-def _db_row_sidecar_filename(*, dataset_id: UUID, connector_id: str) -> str:
+def _db_row_sidecar_filename(
+    *,
+    dataset_id: UUID,
+    connector_id: str,
+    connector_config_id: UUID | str | None = None,
+) -> str:
     ds = str(dataset_id)
     cid = str(connector_id or "").strip() or "db_catalog"
+    config_suffix = str(connector_config_id or "").strip()
+    if config_suffix:
+        return f"db_rows_{cid}_{config_suffix}_{ds}.sqlite"
     return f"db_rows_{cid}_{ds}.sqlite"
 
 
@@ -117,12 +126,22 @@ def _upsert_db_row_sidecar_document(
     from app.services.table_store_service import import_db_row_snapshots
 
     now = _resolve_artifact_helper("_now")()
+    connector_config_id = _resolve_artifact_helper("_connector_config_id_from_run")(run)
     file_path = _db_row_sidecar_file_path(
-        dataset_id=run.dataset_id, connector_id=connector_id
+        dataset_id=run.dataset_id,
+        connector_id=connector_id,
+        connector_config_id=connector_config_id,
     )
     filename = _db_row_sidecar_filename(
-        dataset_id=run.dataset_id, connector_id=connector_id
+        dataset_id=run.dataset_id,
+        connector_id=connector_id,
+        connector_config_id=connector_config_id,
     )
+    source_ref = f"db_catalog_rows:{connector_id}"
+    source_id = f"{connector_id}:{run.dataset_id}"
+    if str(connector_config_id or "").strip():
+        source_ref = f"{source_ref}:{connector_config_id}"
+        source_id = f"{source_id}:{connector_config_id}"
 
     doc = (
         db.query(DBDocument)
@@ -133,6 +152,27 @@ def _upsert_db_row_sidecar_document(
         )
         .first()
     )
+    if doc is None and connector_config_id:
+        legacy_path = _db_row_sidecar_file_path(
+            dataset_id=run.dataset_id,
+            connector_id=connector_id,
+        )
+        legacy_doc = (
+            db.query(DBDocument)
+            .filter(
+                DBDocument.tenant_id == run.tenant_id,
+                DBDocument.dataset_id == run.dataset_id,
+                DBDocument.file_path == legacy_path,
+            )
+            .first()
+        )
+        legacy_connector_meta = (
+            dict((getattr(legacy_doc, "doc_metadata", None) or {}).get("connector") or {})
+            if legacy_doc is not None
+            else {}
+        )
+        if str(legacy_connector_meta.get("config_id") or "").strip() == str(connector_config_id):
+            doc = legacy_doc
     if doc is None:
         doc = DBDocument(
             tenant_id=run.tenant_id,
@@ -207,8 +247,8 @@ def _upsert_db_row_sidecar_document(
         doc=doc,
         run=run,
         connector_id=connector_id,
-        source_ref=f"db_catalog_rows:{connector_id}",
-        source_id=f"{connector_id}:{run.dataset_id}",
+        source_ref=source_ref,
+        source_id=source_id,
         extra={"doc_kind": "db_row_sidecar"},
     )
     try:
@@ -233,7 +273,7 @@ def _upsert_db_row_sidecar_document(
                 tenant_id=run.tenant_id,
                 run_id=run.id,
                 document_id=doc.id,
-                source_ref=f"db_catalog_rows:{connector_id}",
+                source_ref=source_ref,
                 status="created",
             )
         )

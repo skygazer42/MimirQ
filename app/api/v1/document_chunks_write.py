@@ -43,7 +43,6 @@ def create_document_chunk(
 
     This is intended for post-ingest manual chunk editing. It does not re-parse the source file.
     """
-    from app.storage.vector.factory import get_vector_store
 
     documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -97,16 +96,14 @@ def create_document_chunk(
         meta.setdefault("doc_pipeline_key", active_key)
 
     vector_id: str | None = None
+    indexer = documents_module.Indexer(db)
     try:
-        ids = list(
-            get_vector_store().add_documents(
-                [{"content": payload.content, "metadata": meta}],
-                document_id,
-                tenant_id,
-            )
+        vector_id = indexer.upsert_document_chunk_vector(
+            document_id=document_id,
+            tenant_id=tenant_id,
+            content=payload.content,
+            metadata=meta,
         )
-        if ids and ids[0]:
-            vector_id = str(ids[0])
     except Exception:
         vector_id = None
 
@@ -193,7 +190,6 @@ def patch_document_chunk(
     """
     Patch a chunk and update its indexes (vector + BM25) best-effort.
     """
-    from app.storage.vector.factory import get_vector_store
 
     documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -269,9 +265,9 @@ def patch_document_chunk(
     bm25_error: str | None = None
     vector_id_after: str | None = None
 
-    vector_store = get_vector_store()
+    indexer = documents_module.Indexer(db)
     try:
-        vector_store.delete_by_document_id_and_filter(
+        indexer.delete_document_chunk_vectors(
             document_id=document_id,
             tenant_id=tenant_id,
             metadata_filter={"chunk_id": {"$eq": str(chunk.id)}},
@@ -283,15 +279,14 @@ def patch_document_chunk(
 
     try:
         meta_for_vector = dict(chunk.doc_metadata or {})
-        ids = list(
-            vector_store.add_documents(
-                [{"content": chunk.content, "metadata": meta_for_vector}],
-                document_id,
-                tenant_id,
-            )
+        vector_id_after = indexer.upsert_document_chunk_vector(
+            document_id=document_id,
+            tenant_id=tenant_id,
+            content=chunk.content,
+            metadata=meta_for_vector,
         )
-        if ids and ids[0]:
-            vector_id_after = str(ids[0])
+        if vector_id_after:
+            chunk.doc_metadata = meta_for_vector
             chunk.vector_id = vector_id_after
             db.commit()
             db.refresh(chunk)
@@ -403,7 +398,6 @@ async def delete_document_chunk(
     Delete a chunk and update its indexes (vector + BM25) best-effort.
     """
     from app.rag.retriever import hybrid_retriever
-    from app.storage.vector.factory import get_vector_store
 
     documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -453,9 +447,9 @@ async def delete_document_chunk(
     vector_error: str | None = None
     bm25_error: str | None = None
 
-    vector_store = get_vector_store()
+    indexer = documents_module.Indexer(db)
     try:
-        vector_store.delete_by_document_id_and_filter(
+        indexer.delete_document_chunk_vectors(
             document_id=document_id,
             tenant_id=tenant_id,
             metadata_filter={"chunk_id": {"$eq": str(chunk.id)}},
@@ -566,7 +560,6 @@ async def disable_document_chunk(
 ):
     """Disable a chunk (exclude it from retrieval/indexing)."""
     from app.rag.retriever import hybrid_retriever
-    from app.storage.vector.factory import get_vector_store
 
     documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -598,8 +591,9 @@ async def disable_document_chunk(
     vector_error: str | None = None
     bm25_error: str | None = None
 
+    indexer = documents_module.Indexer(db)
     try:
-        get_vector_store().delete_by_document_id_and_filter(
+        indexer.delete_document_chunk_vectors(
             document_id=document_id,
             tenant_id=tenant_id,
             metadata_filter={"chunk_id": {"$eq": str(chunk.id)}},
@@ -742,7 +736,6 @@ def reembed_document_chunks(
 ):
     """Re-embed selected chunks (vector + BM25) best-effort."""
     from app.rag.retriever import hybrid_retriever
-    from app.storage.vector.factory import get_vector_store
 
     documents_module.DatasetService.ensure_member(db, tenant_id, account_id)
 
@@ -768,7 +761,7 @@ def reembed_document_chunks(
     denied: list[UUID] = []
     conflicts: list[UUID] = []
 
-    vector_store = get_vector_store()
+    indexer = documents_module.Indexer(db)
 
     for chunk_id in payload.chunk_ids:
         chunk = documents_module._get_chunk_for_chunk_ops(db, tenant_id, document_id, chunk_id)
@@ -792,7 +785,7 @@ def reembed_document_chunks(
         meta_for_vector.setdefault("chunk_index", int(getattr(chunk, "chunk_index", 0) or 0))
 
         try:
-            vector_store.delete_by_document_id_and_filter(
+            indexer.delete_document_chunk_vectors(
                 document_id=document_id,
                 tenant_id=tenant_id,
                 metadata_filter={"chunk_id": {"$eq": str(chunk.id)}},
@@ -801,9 +794,15 @@ def reembed_document_chunks(
             documents_module.logger.debug("Vector filtered delete failed for chunk %s: %s", str(chunk.id), str(exc)[:160])
 
         try:
-            ids = list(vector_store.add_documents([{"content": chunk.content, "metadata": meta_for_vector}], document_id, tenant_id))
-            if ids and ids[0]:
-                chunk.vector_id = str(ids[0])
+            vector_id = indexer.upsert_document_chunk_vector(
+                document_id=document_id,
+                tenant_id=tenant_id,
+                content=chunk.content,
+                metadata=meta_for_vector,
+            )
+            if vector_id:
+                chunk.doc_metadata = meta_for_vector
+                chunk.vector_id = vector_id
         except Exception:
             conflicts.append(chunk_id)
             continue

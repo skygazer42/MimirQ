@@ -17,6 +17,7 @@ return 0
 """
 
 _SEMAPHORE_LEASE_SEPARATOR = "|"
+_SEMAPHORE_BUSY_ATTR = "_mimirq_semaphore_busy"
 
 
 def get_retry_exc():  # noqa: ANN201
@@ -27,6 +28,16 @@ def get_retry_exc():  # noqa: ANN201
         # If arq is installed but doesn't expose Retry, it's likely a version mismatch.
         raise RuntimeError("arq is installed but Retry is missing (version mismatch?)")
     return retry_cls
+
+
+def _semaphore_busy_retry(retry_cls, *, defer_sec: int) -> Exception:  # noqa: ANN001
+    exc = retry_cls(defer=int(defer_sec))
+    setattr(exc, _SEMAPHORE_BUSY_ATTR, True)
+    return exc
+
+
+def is_semaphore_busy_retry(exc: Exception) -> bool:
+    return bool(getattr(exc, _SEMAPHORE_BUSY_ATTR, False))
 
 
 async def _eval_redis_script(redis: Any, script: str, *, keys: tuple[str, ...], args: tuple[Any, ...]) -> Any:
@@ -80,31 +91,24 @@ async def tenant_acquire(  # noqa: ANN201
 
     Returns an opaque lease string on success, else None.
     """
-    if redis is None or limit <= 0:
+    if limit <= 0:
         return None
 
     key_prefix = f"sem:tenant:{tenant_id}:{kind}"
-    retry_cls = None
-    try:
-        retry_cls = get_retry_exc()
-    except Exception:  # noqa: BLE001
-        retry_cls = None
+    retry_cls = get_retry_exc()
+    if redis is None:
+        logger.warning("Tenant semaphore acquire failed (retry): Redis client unavailable")
+        raise retry_cls(defer=int(retry_defer_sec))
     try:
         lease = await _semaphore_acquire(redis, key_prefix=key_prefix, limit=limit, ttl_sec=ttl_sec)
         if lease is None:
-            if retry_cls:
-                raise retry_cls(defer=int(retry_defer_sec))
-            return None
+            raise _semaphore_busy_retry(retry_cls, defer_sec=retry_defer_sec)
         return lease
     except Exception as exc:  # noqa: BLE001
-        if retry_cls is not None:
-            try:
-                if isinstance(exc, retry_cls):
-                    raise
-            except TypeError as exc:
-                logger.debug("Ignoring non-critical task lock fallback failure: %s", exc)
-        logger.warning("Tenant semaphore acquire failed (skip limit): %s", str(exc)[:200])
-        return None
+        if isinstance(exc, retry_cls):
+            raise
+        logger.warning("Tenant semaphore acquire failed (retry): %s", str(exc)[:200])
+        raise retry_cls(defer=int(retry_defer_sec)) from exc
 
 
 async def dataset_acquire(  # noqa: ANN201
@@ -122,7 +126,7 @@ async def dataset_acquire(  # noqa: ANN201
 
     Semantics match tenant_acquire(), but the scope is a dataset within a tenant.
     """
-    if redis is None or limit <= 0:
+    if limit <= 0:
         return None
 
     ds = str(dataset_id or "").strip()
@@ -130,27 +134,20 @@ async def dataset_acquire(  # noqa: ANN201
         return None
 
     key_prefix = f"sem:dataset:{tenant_id}:{ds}:{kind}"
-    retry_cls = None
-    try:
-        retry_cls = get_retry_exc()
-    except Exception:  # noqa: BLE001
-        retry_cls = None
+    retry_cls = get_retry_exc()
+    if redis is None:
+        logger.warning("Dataset semaphore acquire failed (retry): Redis client unavailable")
+        raise retry_cls(defer=int(retry_defer_sec))
     try:
         lease = await _semaphore_acquire(redis, key_prefix=key_prefix, limit=limit, ttl_sec=ttl_sec)
         if lease is None:
-            if retry_cls:
-                raise retry_cls(defer=int(retry_defer_sec))
-            return None
+            raise _semaphore_busy_retry(retry_cls, defer_sec=retry_defer_sec)
         return lease
     except Exception as exc:  # noqa: BLE001
-        if retry_cls is not None:
-            try:
-                if isinstance(exc, retry_cls):
-                    raise
-            except TypeError as exc:
-                logger.debug("Ignoring non-critical task lock fallback failure: %s", exc)
-        logger.warning("Dataset semaphore acquire failed (skip limit): %s", str(exc)[:200])
-        return None
+        if isinstance(exc, retry_cls):
+            raise
+        logger.warning("Dataset semaphore acquire failed (retry): %s", str(exc)[:200])
+        raise retry_cls(defer=int(retry_defer_sec)) from exc
 
 
 async def dataset_release(redis: Any, key: str | None) -> None:
@@ -171,7 +168,15 @@ async def tenant_release(redis: Any, key: str | None) -> None:
         logger.warning("Tenant semaphore release failed: %s", str(exc)[:200])
 
 
-async def acquire_lock(redis: Any, *, key: str, value: str, ttl_sec: int, fail_open: bool = True) -> bool:
+async def acquire_lock(
+    redis: Any,
+    *,
+    key: str,
+    value: str,
+    ttl_sec: int,
+    fail_open: bool = True,
+    retry_defer_sec: int | None = None,
+) -> bool:
     """
     Best-effort idempotency lock (Redis SET NX EX).
 
@@ -180,6 +185,10 @@ async def acquire_lock(redis: Any, *, key: str, value: str, ttl_sec: int, fail_o
         False if lock already held
     """
     if redis is None:
+        if retry_defer_sec is not None:
+            retry_cls = get_retry_exc()
+            logger.warning("Redis lock acquire failed (retry): Redis client unavailable")
+            raise retry_cls(defer=int(retry_defer_sec))
         if fail_open:
             return True
         raise RuntimeError("Redis client unavailable")
@@ -187,6 +196,10 @@ async def acquire_lock(redis: Any, *, key: str, value: str, ttl_sec: int, fail_o
         acquired = await redis.set(key, value, ex=int(ttl_sec), nx=True)
         return bool(acquired)
     except Exception as exc:  # noqa: BLE001
+        if retry_defer_sec is not None:
+            retry_cls = get_retry_exc()
+            logger.warning("Redis lock acquire failed (retry): %s", str(exc)[:200])
+            raise retry_cls(defer=int(retry_defer_sec)) from exc
         if fail_open:
             logger.warning("Redis lock acquire failed (continue without lock): %s", str(exc)[:200])
             return True

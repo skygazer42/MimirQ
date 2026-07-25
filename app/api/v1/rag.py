@@ -23,7 +23,11 @@ from app.core.database import get_db
 from app.rag.core.logging import get_logger
 from app.services.dataset_defaults import load_dataset_metadata, resolve_single_dataset_id_for_documents
 from app.services.dataset_service import DatasetService
-from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
+from app.services.document_access import (
+    filter_allowed_document_ids,
+    get_readable_datasets_map,
+    list_accessible_document_ids,
+)
 from app.services.rag_config_template_apply import apply_rag_config_patch
 from app.services.rag_config_template_defaults import merge_rag_config_template_defaults_with_dataset
 from app.services.rag_config_template_resolver import build_rag_config_patch_hash, resolve_rag_config_template
@@ -46,6 +50,8 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 DATASET_REQUIRED_WHEN_DOC_IDS_EMPTY_DETAIL = "dataset_id is required when document_ids is empty"
 NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL = "No accessible documents for retrieval"
 DATASET_ID_AND_DATASET_IDS_CONFLICT_DETAIL = "dataset_id and dataset_ids are mutually exclusive"
+RETRIEVAL_SCOPE_MAX_DATASET_IDS = 80
+RETRIEVAL_SCOPE_MAX_DOCUMENT_IDS = 200
 
 
 def _unique_dataset_ids(dataset_ids: list[UUID] | None) -> list[UUID]:
@@ -66,9 +72,7 @@ def _assert_dataset_ids_readable(
     account_id: str,
     dataset_ids: list[UUID],
 ) -> None:
-    for dataset_id in dataset_ids:
-        ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-        DatasetService.assert_dataset_readable(db, ds, account_id)
+    get_readable_datasets_map(db, tenant_id, account_id, dataset_ids, check_member=False)
 
 
 def _merge_dataset_ids_metadata_filter(
@@ -243,9 +247,10 @@ class RetrievePreviewRequest(BaseModel):
     dataset_id: UUID | None = None
     dataset_ids: list[UUID] = Field(
         default_factory=list,
+        max_length=RETRIEVAL_SCOPE_MAX_DATASET_IDS,
         description="Optional multi-dataset retrieval scope for Dify-style knowledge retrieval nodes.",
     )
-    document_ids: list[UUID] = Field(default_factory=list)
+    document_ids: list[UUID] = Field(default_factory=list, max_length=RETRIEVAL_SCOPE_MAX_DOCUMENT_IDS)
     rag_config_template_id: UUID | None = None  # Optional: explicit RAG config template selection.
     rag_config_template_key: str | None = None  # Optional: select latest active template by key.
     rag_config_ab_experiment_key: str | None = None  # Optional: stable A/B split for templates.
@@ -913,9 +918,10 @@ class EvidenceRetrieveRequest(BaseModel):
     dataset_id: UUID | None = None
     dataset_ids: list[UUID] = Field(
         default_factory=list,
+        max_length=RETRIEVAL_SCOPE_MAX_DATASET_IDS,
         description="Optional multi-dataset retrieval scope for Dify-style knowledge retrieval nodes.",
     )
-    document_ids: list[UUID] = Field(default_factory=list)
+    document_ids: list[UUID] = Field(default_factory=list, max_length=RETRIEVAL_SCOPE_MAX_DOCUMENT_IDS)
     rag_config: ChatRAGConfig = Field(default_factory=ChatRAGConfig)
     # Optional deterministic seed for offline replay/regression.
     # PII-safe by construction (numeric only) and ignored by default.

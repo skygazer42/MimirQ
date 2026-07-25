@@ -330,6 +330,19 @@ def test_production_docs_call_out_strong_compose_credentials_and_proxy_boundary(
     assert "生产环境禁止设为 *" in env_example
 
 
+def test_production_make_targets_validate_and_propagate_environment() -> None:
+    compose = yaml.safe_load(_read("docker/docker-compose.yml"))
+    assert compose["x-backend-env"]["ENV"] == "${ENV:-development}"
+
+    makefile = _read("Makefile")
+    assert "prod-preflight: init" in makefile
+    assert 'ENV=production $(PY) -c "from app.core.config import settings"' in makefile
+    assert "up-prod: prod-preflight" in makefile
+    assert "ENV=production $(COMPOSE) up -d --build" in makefile
+    assert "up-prod-web: prod-preflight" in makefile
+    assert "ENV=production $(COMPOSE_WEB) up -d --build" in makefile
+
+
 def test_helm_docs_call_out_tls_and_network_policy_for_production() -> None:
     helm_doc = _read("docs/deployment/helm.md")
     assert "ingress.tls" in helm_doc

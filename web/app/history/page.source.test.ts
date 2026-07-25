@@ -52,7 +52,7 @@ describe('history route source', () => {
     const client = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
 
     expect(client).toContain('<span suppressHydrationWarning className="inline-flex items-center gap-1 rounded-md bg-muted/30 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground/50 border border-border/10">')
-    expect(client).toContain('{formatDate(selectedConversation.created_at, locale)}')
+    expect(client).toContain('{formatDate(displayConversation.created_at, locale)}')
   })
 
   it('suppresses hydration drift for sidebar conversation-group labels', () => {

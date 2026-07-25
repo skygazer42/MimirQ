@@ -168,8 +168,8 @@ class Settings(BaseSettings):
     TASK_WORKER_HEARTBEAT_TTL_SEC: int = 30
     # Task execution timeout (seconds).
     TASK_JOB_TIMEOUT_SEC: int = 60 * 30
-    # Default retry count (network/external API jitter).
-    TASK_JOB_MAX_TRIES: int = 3
+    # Generic jobs can wait behind long-running tenant work without bypassing limits.
+    TASK_JOB_MAX_TRIES: int = 80
     # Document jobs can wait behind large PDF/OCR work; keep them queued instead of
     # exhausting the generic retry budget while a per-tenant semaphore is held.
     TASK_DOCUMENT_JOB_MAX_TRIES: int = 80

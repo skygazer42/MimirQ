@@ -236,7 +236,7 @@ function HistoryPageContent({
   const isLoadingList = conversationsQuery.isLoading
   const hasMoreConversations = conversationsQuery.hasNextPage
   const isLoadingMoreConversations = conversationsQuery.isFetchingNextPage
-  const selectedConversationId = selectedConversation?.id || null
+  const selectedConversationId = selectedConversation?.id || conversationId || null
   const messagesQuery = useInfiniteQuery({
     queryKey: queryKeys.chat.messages(selectedConversationId || ''),
     enabled: Boolean(selectedConversationId),
@@ -275,6 +275,26 @@ function HistoryPageContent({
     () => messagesQuery.data?.pages.flatMap((page) => page.messages || []) ?? EMPTY_MESSAGES,
     [messagesQuery.data]
   )
+  const displayConversation = useMemo<Conversation | null>(() => {
+    if (selectedConversation) return selectedConversation
+    if (!selectedConversationId || messagesQuery.isError) return null
+    const firstMessage = messages[0]
+    const lastMessage = messages[messages.length - 1]
+    const createdAt =
+      firstMessage?.created_at
+      || lastMessage?.created_at
+      || new Date().toISOString()
+    const updatedAt = lastMessage?.created_at || createdAt
+    return {
+      id: selectedConversationId,
+      title: '',
+      last_message: lastMessage?.content,
+      last_message_at: lastMessage?.created_at,
+      message_count: messages.length,
+      created_at: createdAt,
+      updated_at: updatedAt,
+    }
+  }, [messages, messagesQuery.isError, selectedConversation, selectedConversationId])
   const hasMoreMessages = messagesQuery.hasPreviousPage
   const isLoadingOlder = messagesQuery.isFetchingPreviousPage
   const isLoadingMessages = Boolean(selectedConversationId) && messagesQuery.isLoading
@@ -343,14 +363,20 @@ function HistoryPageContent({
 
   // 当 URL 中有 id 参数时，自动选中对话
   useEffect(() => {
-    if (conversationId && conversations.length > 0) {
-      const conv = conversations.find((c) => c.id === conversationId)
-      if (conv && selectedConversation?.id !== conv.id) {
+    if (!conversationId) return
+    const conv = conversations.find((c) => c.id === conversationId)
+    if (conv) {
+      if (selectedConversation?.id !== conv.id) {
         shouldScrollToEndRef.current = true
         setSelectedConversation(conv)
       }
+      return
     }
-  }, [conversationId, conversations, selectedConversation?.id])
+    if (selectedConversation) {
+      shouldScrollToEndRef.current = true
+      setSelectedConversation(null)
+    }
+  }, [conversationId, conversations, selectedConversation, selectedConversation?.id])
 
   useEffect(() => {
     if (!selectedConversationId) return
@@ -384,7 +410,7 @@ function HistoryPageContent({
   const handleDeleteConversation = async (conversationId: string) => {
     try {
       await deleteConversationFromHistory(conversationId, queryClient)
-      if (selectedConversation?.id === conversationId) {
+      if (displayConversation?.id === conversationId) {
         setSelectedConversation(null)
         router.push('/history', { scroll: false })
       }
@@ -396,14 +422,14 @@ function HistoryPageContent({
   }
 
   const handleContinueChat = () => {
-    if (selectedConversation) {
-      router.push(`/?conversation=${selectedConversation.id}`)
+    if (displayConversation) {
+      router.push(`/?conversation=${displayConversation.id}`)
     }
   }
 
   const handleEvaluateConversation = () => {
-    if (selectedConversation) {
-      router.push(`/evaluations?conversation_id=${selectedConversation.id}`, { scroll: false })
+    if (displayConversation) {
+      router.push(`/evaluations?conversation_id=${displayConversation.id}`, { scroll: false })
     }
   }
 
@@ -664,7 +690,7 @@ function HistoryPageContent({
                 )}
               </AnimatePresence>
 
-              {selectedConversation ? (
+              {displayConversation ? (
                 <>
                   {/* 对话头部 - 极简重构版 */}
                   <div className="border-b border-border/40 bg-background/80 backdrop-blur sticky top-0 z-20 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
@@ -692,15 +718,15 @@ function HistoryPageContent({
                             isSidebarCollapsed ? "ml-12" : "ml-0"
                           )}>
                             <h2 className="truncate text-base font-medium text-foreground/92  leading-tight md:text-lg">
-                              {selectedConversation.title || t("untitledConversation")}
+                              {displayConversation.title || t("untitledConversation")}
                             </h2>
                             <div className="flex items-center gap-1 mt-0.5 tabular-nums">
                               <span className="inline-flex items-center rounded-md bg-muted/30 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground/50 border border-border/10">
-                                {t("messageCount", { count: selectedConversation.message_count })}
+                                {t("messageCount", { count: displayConversation.message_count })}
                               </span>
                               <span className="text-muted-foreground/20 text-[11px] leading-none px-0.5">•</span>
                               <span suppressHydrationWarning className="inline-flex items-center gap-1 rounded-md bg-muted/30 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground/50 border border-border/10">
-                                {formatDate(selectedConversation.created_at, locale)}
+                                {formatDate(displayConversation.created_at, locale)}
                               </span>
                             </div>
                           </div>
@@ -765,7 +791,7 @@ function HistoryPageContent({
             return (<AnimatePresence mode="wait">
                         <motion.div 
                           layout
-                          key={selectedConversation.id}
+                          key={displayConversation.id}
                           initial="hidden"
                           animate="visible"
                           variants={{
@@ -782,7 +808,7 @@ function HistoryPageContent({
                             isSidebarCollapsed ? "max-w-6xl" : "max-w-5xl"
                           )}
                         >
-                          <ConversationOpsPanel conversationId={selectedConversation.id} />
+                          <ConversationOpsPanel conversationId={displayConversation.id} />
                           {hasMoreMessages ? (<div className="flex justify-center mb-4">
                               <Button variant="ghost" size="sm" onClick={loadOlderMessages} disabled={isLoadingOlder} className="rounded-full text-[11px] font-bold uppercase  text-muted-foreground/60 hover:text-foreground">
                                 {isLoadingOlder ? t('loading') : t('loadOlderMessages')}
@@ -816,8 +842,8 @@ function HistoryPageContent({
         <RagTraceDialog
           open={isTraceOpen}
           onOpenChange={setIsTraceOpen}
-          conversationId={selectedConversation?.id || null}
-          title={selectedConversation?.title || null}
+          conversationId={displayConversation?.id || null}
+          title={displayConversation?.title || null}
         />
       </PageScaffold>
     </AppFrame>

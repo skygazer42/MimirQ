@@ -36,9 +36,9 @@
 
 <table>
   <tr>
-    <td align="center" width="25%"><strong>30+</strong><br/><sub>文档解析后端</sub></td>
-    <td align="center" width="25%"><strong>78</strong><br/><sub>切块策略</sub></td>
-    <td align="center" width="25%"><strong>15</strong><br/><sub>重排器</sub></td>
+    <td align="center" width="25%"><strong>30</strong><br/><sub>文档解析后端</sub></td>
+    <td align="center" width="25%"><strong>86</strong><br/><sub>切块策略</sub></td>
+    <td align="center" width="25%"><strong>13</strong><br/><sub>重排器</sub></td>
     <td align="center" width="25%"><strong>800</strong><br/><sub>固定题集实测</sub></td>
   </tr>
 </table>
@@ -256,9 +256,9 @@ Dify 标准外部知识库端点为 `POST /api/v1/integrations/dify/retrieval`�
 
 | 功能维度 | **MimirQ** | [Dify](https://github.com/langgenius/dify) | [RAGFlow](https://github.com/infiniflow/ragflow) | [FastGPT](https://github.com/labring/FastGPT) | [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) | [LangChain](https://github.com/langchain-ai/langchain) |
 |:---|:---|:---|:---|:---|:---|:---|
-| **文档解析** | **30+ 解析后端**：PDF、OCR、版式、表格、公式、VLM | Knowledge Pipeline；PDF、PPT 等常见格式 | **DeepDoc**；复杂版式、扫描件、MinerU / Docling | PDF、扫描件、表格、公式转 Markdown | PDF、TXT、DOCX 等文档管道 | Document Loaders 与第三方解析器集成 |
-| **切块能力** | **78 种策略**：递归、语义、父子、RAPTOR、Late Chunking；可视化预览 | 通用、父子、Q&A 与可编排处理 | 模板化切块；支持可视化人工干预 | 自动、手工、Q&A 与增强处理 | 文档管道自动分块 | Text Splitters；由应用代码组合 |
-| **检索 / 重排** | Milvus / FAISS / Chroma + BM25 / SPLADE / ColBERT / LTR / RRF；**15 种重排器** | 语义、全文、混合检索；可配置 rerank | 多路召回 + 融合重排 | 语义、全文、混合检索 + RRF + rerank | 多种向量库检索 + 来源引用 | Retriever / reranker 组件；自行编排 |
+| **文档解析** | **30 种解析后端**：PDF、OCR、版式、表格、公式、VLM | Knowledge Pipeline；PDF、PPT 等常见格式 | **DeepDoc**；复杂版式、扫描件、MinerU / Docling | PDF、扫描件、表格、公式转 Markdown | PDF、TXT、DOCX 等文档管道 | Document Loaders 与第三方解析器集成 |
+| **切块能力** | **86 种策略**：递归、语义、父子、RAPTOR、Late Chunking；可视化预览 | 通用、父子、Q&A 与可编排处理 | 模板化切块；支持可视化人工干预 | 自动、手工、Q&A 与增强处理 | 文档管道自动分块 | Text Splitters；由应用代码组合 |
+| **检索 / 重排** | Milvus / FAISS / Chroma + BM25 / SPLADE / ColBERT / LTR / RRF；**13 种重排器** | 语义、全文、混合检索；可配置 rerank | 多路召回 + 融合重排 | 语义、全文、混合检索 + RRF + rerank | 多种向量库检索 + 来源引用 | Retriever / reranker 组件；自行编排 |
 | **知识图谱** | 实体、关系、事件抽取；实体消解、社区发现与多跳检索 | 通过工作流、插件或外部服务接入 | 内建 GraphRAG | 通过工作流或外部服务接入 | 通过 Agent / Tool 外接 | 图数据库集成与自定义链路 |
 | **Agent / MCP** | LangGraph Agent、Self-RAG / CRAG / FLARE；MCP client / server | Function Calling / ReAct Agent、工具与 MCP | Agentic Workflow、MCP、代码执行器 | Agent V2、工具、MCP 与 VM 执行 | No-code Agent Builder、MCP、定时任务 | Agents / LangGraph / MCP；代码优先 |
 | **可视化工作流** | **无通用节点画布**；专注 RAG 调试、治理页面与 API | **核心能力**：应用 / Agent 节点编排 | Agent 与入库 Pipeline 编排 | **核心能力**：Flow 节点编排 | No-code Agent Builder | 无内建产品 UI；由应用实现 |
@@ -345,7 +345,7 @@ MimirQ 两条 Dify 链路的检索证据覆盖为 99.7% / 96.8%，但生成答�
 <summary><b>生产部署建议</b></summary>
 
 ```bash
-# 编辑 docker/.env 设置生产参数
+# 编辑 .env 设置生产参数
 # ENV=production
 # AUTH_MODE=jwt
 # SECRET_KEY=<至少 32 位随机字符串>
@@ -358,7 +358,7 @@ MimirQ 两条 Dify 链路的检索证据覆盖为 99.7% / 96.8%，但生成答�
 
 make infra-up
 make db-upgrade
-make up
+make up-prod
 ```
 
 若启用前端容器，还应设置非空 `MARKDOWN_IMAGE_PROXY_SECRET`，并确保 `FORWARDED_ALLOW_IPS_DOCKER` 只包含受信任代理地址。Kubernetes 生产部署请参考 [Helm 部署文档](./docs/deployment/helm.md) 和 [运维手册](./docs/deployment/runbook.md)。
@@ -383,7 +383,7 @@ make up
 | [SAML SSO](./docs/guides/saml_sso.md) | SAML 单点登录集成 |
 | [API 参考导读](./docs/api/README.md) | OpenAPI Tag 全表、GitHub Pages、静态站构建 |
 | [API 场景流程](./docs/api/workflows.md) | 认证 / 入库 / 检索 / 对话等端点顺序 |
-| [API 文档（教程）](./docs/API.md) | 快速入门与示例代码 |
+| [API 文档总览](./docs/API.md) | OpenAPI SSOT 导航、分片参考与手册入口 |
 | [快速开始](./docs/quickstart.md) | 从源码开发部署 |
 | [运维手册](./docs/deployment/runbook.md) | 生产运维与排障 |
 

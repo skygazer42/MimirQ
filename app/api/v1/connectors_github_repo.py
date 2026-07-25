@@ -266,6 +266,7 @@ def _apply_github_repo_source_acl_delta_sync(
     source_acl_access = source_acl_context.get("source_acl_access")
     source_acl_provenance = source_acl_context.get("source_acl_provenance")
     if effective_access is source_acl_access and isinstance(source_acl_access, dict):
+        connector_config_id = _resolve_connectors_helper("_connector_config_id_from_run")(run)
         return int(
             _resolve_connectors_helper("_delta_sync_connector_documents_acl_by_source_url")(
                 db,
@@ -276,6 +277,7 @@ def _apply_github_repo_source_acl_delta_sync(
                 requested_by=requested_by,
                 access=effective_access,
                 acl_provenance=source_acl_provenance,
+                connector_config_id=connector_config_id,
             )
         )
     return 0
@@ -543,6 +545,7 @@ def _reconcile_removed_github_repo_paths(
 ) -> tuple[int, int]:
     removed_paths_reconciled = 0
     removed_documents_disabled = 0
+    connector_config_id = _resolve_connectors_helper("_connector_config_id_from_run")(run)
     for path in removed_paths:
         raw_url = _resolve_connectors_helper("_github_raw_url")(
             owner=str(settings_map.get("owner") or ""),
@@ -557,6 +560,7 @@ def _reconcile_removed_github_repo_paths(
                 dataset_id=run.dataset_id,
                 connector_id="github_repo",
                 source_url=raw_url,
+                connector_config_id=connector_config_id,
             )
         except Exception as exc:  # noqa: BLE001
             stats = _resolve_connectors_helper("_append_connector_error")(dict(run.stats or {}), url=path, exc=exc)
