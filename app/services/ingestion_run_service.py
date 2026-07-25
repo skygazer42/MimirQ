@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.ingestion_run import IngestionRun, IngestionRunDocument
@@ -18,6 +19,8 @@ from app.rag.core.logging import get_logger
 
 logger = get_logger(__name__)
 _INGESTION_RUN_FALLBACK_LOG_MESSAGE = "Ignoring non-critical ingestion-run fallback failure: %s"
+_INGESTION_RUN_DOCUMENT_UNIQUE_CONSTRAINT = "uq_ingestion_run_documents_tenant_run_document"
+_TERMINAL_DOCUMENT_STATUSES = ("completed", "failed", "quarantined", "cancelled")
 
 
 def _now_utc() -> datetime:
@@ -78,6 +81,33 @@ def _bump_counter(mapping: dict[str, Any], key: str, delta: int) -> None:
         mapping[key] = int(nxt)
 
 
+def _is_duplicate_run_document_integrity_error(exc: IntegrityError) -> bool:
+    diag = getattr(getattr(exc, "orig", None), "diag", None)
+    if str(getattr(diag, "constraint_name", "") or "").strip() == _INGESTION_RUN_DOCUMENT_UNIQUE_CONSTRAINT:
+        return True
+    message = str(getattr(exc, "orig", "") or exc)
+    return _INGESTION_RUN_DOCUMENT_UNIQUE_CONSTRAINT in message
+
+
+def _lock_run_for_update(db: Session, *, tenant_id: UUID, run_id: UUID) -> IngestionRun | None:
+    return (
+        db.query(IngestionRun)
+        .filter(IngestionRun.id == run_id, IngestionRun.tenant_id == tenant_id)
+        .with_for_update()
+        .first()
+    )
+
+
+def _complete_transaction_quietly(db: Session) -> None:
+    try:
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception as rollback_exc:
+            logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, rollback_exc)
+
+
 class IngestionRunService:
     @staticmethod
     def create_run(
@@ -128,20 +158,32 @@ class IngestionRunService:
         """
         Attach a document to a run and update bounded run stats.
         """
-        # Idempotency: avoid duplicate attachments inflating counts.
+        try:
+            run = _lock_run_for_update(db, tenant_id=tenant_id, run_id=run_id)
+        except Exception:
+            try:
+                db.rollback()
+            except Exception as exc:
+                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, exc)
+            run = None
+        if run is None:
+            return
+
         try:
             existing = (
-                db.query(IngestionRunDocument.id)
+                db.query(IngestionRunDocument)
                 .filter(
                     IngestionRunDocument.tenant_id == tenant_id,
                     IngestionRunDocument.run_id == run_id,
                     IngestionRunDocument.document_id == document_id,
                 )
+                .with_for_update()
                 .first()
             )
         except Exception:
             existing = None
         if existing is not None:
+            _complete_transaction_quietly(db)
             return
 
         row = IngestionRunDocument(
@@ -152,70 +194,90 @@ class IngestionRunService:
             status=_normalize_status(initial_status),
         )
         db.add(row)
-        try:
-            run = (
-                db.query(IngestionRun)
-                .filter(IngestionRun.id == run_id, IngestionRun.tenant_id == tenant_id)
-                .first()
-            )
-        except Exception:
-            run = None
 
         finished_meta: tuple[str | None, str | None, float | None] | None = None
-        if run is not None:
+        try:
+            flush = getattr(db, "flush", None)
+            if callable(flush):
+                flush()
+        except IntegrityError as exc:
             try:
-                stats = _init_run_stats(dict(getattr(run, "stats", None) or {}))
-                stats["total_documents"] = _safe_int(stats.get("total_documents"), default=0) + 1
-                sc = stats.get("status_counts")
-                sc = sc if isinstance(sc, dict) else {}
-                _bump_counter(sc, _normalize_status(initial_status), +1)
-                stats["status_counts"] = sc
+                db.rollback()
+            except Exception as rollback_exc:
+                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, rollback_exc)
+            if _is_duplicate_run_document_integrity_error(exc):
+                return
+            return
+        except Exception:
+            try:
+                db.rollback()
+            except Exception as rollback_exc:
+                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, rollback_exc)
+            return
 
-                # Update progress/finalize when all current docs are terminal.
-                total_docs = _safe_int(stats.get("total_documents"), default=0)
-                terminal = sum(
-                    _safe_int(sc.get(k), default=0) for k in ("completed", "failed", "quarantined", "cancelled")
-                )
-                progress = int((terminal / max(1, total_docs)) * 100) if total_docs > 0 else 0
-                stats["progress"] = max(0, min(100, progress))
-                if total_docs > 0 and terminal >= total_docs:
-                    completed = _safe_int(sc.get("completed"), default=0)
-                    failed = _safe_int(sc.get("failed"), default=0)
-                    cancelled = _safe_int(sc.get("cancelled"), default=0)
-                    quarantined = _safe_int(sc.get("quarantined"), default=0)
-                    if cancelled >= total_docs and completed == 0 and failed == 0 and quarantined == 0:
-                        run.status = "cancelled"
-                    elif completed == 0 and (failed + quarantined) >= total_docs:
-                        run.status = "failed"
-                    else:
-                        run.status = "completed"
-                    if run.finished_at is None:
-                        run.finished_at = _now_utc()
-                        try:
-                            dur = None
-                            if run.started_at is not None and run.finished_at is not None:
-                                dur = float((run.finished_at - run.started_at).total_seconds())
-                            finished_meta = (getattr(run, "kind", None), getattr(run, "status", None), dur)
-                        except Exception:
-                            finished_meta = (getattr(run, "kind", None), getattr(run, "status", None), None)
+        try:
+            stats = _init_run_stats(dict(getattr(run, "stats", None) or {}))
+            stats["total_documents"] = _safe_int(stats.get("total_documents"), default=0) + 1
+            sc = stats.get("status_counts")
+            sc = sc if isinstance(sc, dict) else {}
+            _bump_counter(sc, _normalize_status(initial_status), +1)
+            stats["status_counts"] = sc
 
-                # Track pipeline version distribution (best-effort) to support run compare/audit.
-                meta = doc_meta if isinstance(doc_meta, dict) else {}
-                ph = str(meta.get("pipeline_hash") or "").strip()
-                if ph:
-                    dist = stats.get("pipeline_hash_docs")
-                    dist = dist if isinstance(dist, dict) else {}
-                    _bump_counter(dist, ph[:64], +1)
-                    stats["pipeline_hash_docs"] = dist
+            # Update progress/finalize when all current docs are terminal.
+            total_docs = _safe_int(stats.get("total_documents"), default=0)
+            terminal = sum(_safe_int(sc.get(k), default=0) for k in _TERMINAL_DOCUMENT_STATUSES)
+            progress = int((terminal / max(1, total_docs)) * 100) if total_docs > 0 else 0
+            stats["progress"] = max(0, min(100, progress))
+            if total_docs > 0 and terminal >= total_docs:
+                completed = _safe_int(sc.get("completed"), default=0)
+                failed = _safe_int(sc.get("failed"), default=0)
+                cancelled = _safe_int(sc.get("cancelled"), default=0)
+                quarantined = _safe_int(sc.get("quarantined"), default=0)
+                if cancelled >= total_docs and completed == 0 and failed == 0 and quarantined == 0:
+                    run.status = "cancelled"
+                elif completed == 0 and (failed + quarantined) >= total_docs:
+                    run.status = "failed"
+                else:
+                    run.status = "completed"
+                if run.finished_at is None:
+                    run.finished_at = _now_utc()
+                    try:
+                        dur = None
+                        if run.started_at is not None and run.finished_at is not None:
+                            dur = float((run.finished_at - run.started_at).total_seconds())
+                        finished_meta = (getattr(run, "kind", None), getattr(run, "status", None), dur)
+                    except Exception:
+                        finished_meta = (getattr(run, "kind", None), getattr(run, "status", None), None)
 
-                run.stats = stats
-            except Exception as exc:
-                # Stats update is best-effort; keep the mapping row.
-                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, exc)
+            # Track pipeline version distribution (best-effort) to support run compare/audit.
+            meta = doc_meta if isinstance(doc_meta, dict) else {}
+            ph = str(meta.get("pipeline_hash") or "").strip()
+            if ph:
+                dist = stats.get("pipeline_hash_docs")
+                dist = dist if isinstance(dist, dict) else {}
+                _bump_counter(dist, ph[:64], +1)
+                stats["pipeline_hash_docs"] = dist
+
+            run.stats = stats
+        except Exception as exc:
+            # Stats update is best-effort; keep the mapping row.
+            logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, exc)
 
         try:
             db.commit()
+        except IntegrityError as exc:
+            try:
+                db.rollback()
+            except Exception as rollback_exc:
+                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, rollback_exc)
+            if _is_duplicate_run_document_integrity_error(exc):
+                return
+            return
         except Exception:
+            try:
+                db.rollback()
+            except Exception as rollback_exc:
+                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, rollback_exc)
             # Best-effort only; callers should not fail ingestion because of manifest.
             return
         if finished_meta is not None:
@@ -251,44 +313,65 @@ class IngestionRunService:
                 except Exception:
                     target_run_id = None
 
-        try:
+        def _candidate_rows_for_run_ids(*, run_filter: UUID | None) -> list[IngestionRunDocument]:
             q = db.query(IngestionRunDocument).filter(
                 IngestionRunDocument.tenant_id == tenant_id,
                 IngestionRunDocument.document_id == document_id,
             )
-            if target_run_id is not None:
-                q = q.filter(IngestionRunDocument.run_id == target_run_id)
-            rows = q.all()
+            if run_filter is not None:
+                q = q.filter(IngestionRunDocument.run_id == run_filter)
+            return q.order_by(IngestionRunDocument.run_id, IngestionRunDocument.id).all()
+
+        try:
+            rows = _candidate_rows_for_run_ids(run_filter=target_run_id)
         except Exception:
             return
         if not rows and target_run_id is not None:
             # Backward-compatible fallback: if metadata was missing/malformed, update any active run attachments.
             try:
-                rows = (
-                    db.query(IngestionRunDocument)
-                    .filter(
-                        IngestionRunDocument.tenant_id == tenant_id,
-                        IngestionRunDocument.document_id == document_id,
-                    )
-                    .all()
-                )
+                rows = _candidate_rows_for_run_ids(run_filter=None)
             except Exception:
                 return
         if not rows:
+            return
+
+        candidate_run_ids = sorted({row.run_id for row in rows}, key=str)
+        locked_runs: dict[UUID, IngestionRun] = {}
+        for run_id in candidate_run_ids:
+            try:
+                run = _lock_run_for_update(db, tenant_id=tenant_id, run_id=run_id)
+            except Exception:
+                run = None
+            if run is not None:
+                locked_runs[run_id] = run
+        if not locked_runs:
+            _complete_transaction_quietly(db)
+            return
+
+        try:
+            rows = (
+                db.query(IngestionRunDocument)
+                .filter(
+                    IngestionRunDocument.tenant_id == tenant_id,
+                    IngestionRunDocument.document_id == document_id,
+                    IngestionRunDocument.run_id.in_(candidate_run_ids),
+                )
+                .order_by(IngestionRunDocument.run_id, IngestionRunDocument.id)
+                .with_for_update()
+                .all()
+            )
+        except Exception:
+            try:
+                db.rollback()
+            except Exception as rollback_exc:
+                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, rollback_exc)
             return
 
         # Update each run attachment (a doc may belong to multiple runs, e.g. replays).
         now = _now_utc()
         finished_runs: list[tuple[str | None, str | None, float | None]] = []
         for row in rows:
-            try:
-                run = (
-                    db.query(IngestionRun)
-                    .filter(IngestionRun.id == row.run_id, IngestionRun.tenant_id == tenant_id)
-                    .first()
-                )
-            except Exception:
-                run = None
+            run = locked_runs.get(row.run_id)
             if run is None:
                 continue
             # Freeze completed runs: a document can be reprocessed later and should not mutate old manifests.
@@ -334,7 +417,7 @@ class IngestionRunService:
 
             # Update progress and finalize status when all documents are terminal.
             total_docs = _safe_int(stats.get("total_documents"), default=0)
-            terminal = sum(_safe_int(sc.get(k), default=0) for k in ("completed", "failed", "quarantined", "cancelled"))
+            terminal = sum(_safe_int(sc.get(k), default=0) for k in _TERMINAL_DOCUMENT_STATUSES)
             progress = int((terminal / max(1, total_docs)) * 100) if total_docs > 0 else 0
             stats["progress"] = max(0, min(100, progress))
 
@@ -381,6 +464,10 @@ class IngestionRunService:
         try:
             db.commit()
         except Exception:
+            try:
+                db.rollback()
+            except Exception as rollback_exc:
+                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, rollback_exc)
             return
         if finished_runs:
             try:

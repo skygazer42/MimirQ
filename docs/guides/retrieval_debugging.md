@@ -81,7 +81,7 @@ Wave B 增加了 retrieval contract 与 claim verifier 的显式调试面，排�
   - `evidence_strict`：开启更严格的 evidence gate，证据不足时更倾向拒答。
   - `audit_trace`：保留默认行为但加强 trace/metrics 审计信息。
 - `rag_config.retrieval_profile`
-  - `grounded_strict`：一键启用 `evidence_strict + visible_evidence_only`，并固定 hybrid + cross-encoder 基线。
+  - `grounded_strict`：一键启用 `evidence_strict + visible_evidence_only`，并固定 hybrid 检索；重排后端沿用部署配置的 `RERANKER_PROVIDER`。
 - `RAG_CLAIM_VERIFIER_MODE`
   - `token_overlap`（默认）
   - `semantic_heuristic`（含数值/否定冲突检测）

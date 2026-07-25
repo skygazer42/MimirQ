@@ -12,6 +12,10 @@ def _set_valid_production_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ALLOWED_HOSTS", "api.example.com")
     monkeypatch.setenv("CORS_ORIGINS", "https://app.example.com")
     monkeypatch.setenv("JWT_TENANT_CLAIM", "tenant_id")
+    monkeypatch.setenv("DB_CREATE_ALL_ON_STARTUP", "false")
+    monkeypatch.setenv("MIMIRQ_DB_CREATE_ALL_ON_STARTUP", "false")
+    monkeypatch.setenv("DB_RUNTIME_MIGRATIONS_ENABLED", "false")
+    monkeypatch.setenv("MIMIRQ_DB_RUNTIME_MIGRATIONS_ENABLED", "false")
 
 
 def test_check_redis_reports_chat_retrieval_and_semantic_usage() -> None:

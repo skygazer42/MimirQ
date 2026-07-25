@@ -22,6 +22,7 @@ class DocumentStatusEnum(str, Enum):
     failed = "failed"
     quarantined = "quarantined"
     cancelled = "cancelled"
+    deleting = "deleting"
 
 
 DocumentPublicationStatus = Literal["draft", "published", "deprecated"]

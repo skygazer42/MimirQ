@@ -130,8 +130,8 @@ help:
 	@echo "  make typecheck - run web TypeScript typecheck"
 	@echo "  make ui-check  - verify web UI design tokens (no hard-coded white/cyan etc)"
 	@echo "  make lint-py   - run Python lint (ruff)"
-	@echo "  make lint-py-docker - run Python lint in Docker (when local env isn't set up)"
-	@echo "  make verify-docker - run verify checks using Docker for Python"
+	@echo "  make lint-py-docker - lint Docker source without adding dev tools to the runtime image"
+	@echo "  make verify-docker - run host static checks plus container compile checks"
 	@echo "  make audit-py  - audit Python deps (pip-audit)"
 	@echo "  make audit-web - audit web deps (pnpm audit)"
 	@echo "  make audit-docs - audit handbook deps (npm audit)"
@@ -428,10 +428,11 @@ lint-py:
 	$(PY) -m ruff check app tests scripts main.py
 
 lint-py-docker:
-	$(COMPOSE) exec -T -w /app mimirq-api ruff check app scripts main.py
+	@echo "Ruff is intentionally excluded from the production runtime image; using the project toolchain."
+	@$(MAKE) --no-print-directory lint-py
 
 compileall-docker:
-	$(COMPOSE) exec -T -w /app mimirq-api python -m compileall -q app
+	$(COMPOSE) exec -T -e PYTHONPYCACHEPREFIX=/tmp/mimirq-pycache -w /app mimirq-api python -m compileall -q app
 
 # No patched releases exist for these advisories yet. Keep the exceptions explicit
 # and centralized while still resolving and auditing every transitive dependency:

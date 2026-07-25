@@ -343,6 +343,16 @@ def test_production_make_targets_validate_and_propagate_environment() -> None:
     assert "ENV=production $(COMPOSE_WEB) up -d --build" in makefile
 
 
+def test_docker_verification_keeps_dev_lint_tools_out_of_the_runtime_image() -> None:
+    makefile = _read("Makefile")
+    lint_target = makefile.split("\nlint-py-docker:", 1)[1].split("\ncompileall-docker:", 1)[0]
+    compile_target = makefile.split("\ncompileall-docker:", 1)[1].split("\n# No patched releases", 1)[0]
+
+    assert "$(MAKE) --no-print-directory lint-py" in lint_target
+    assert "$(COMPOSE) exec" not in lint_target
+    assert "PYTHONPYCACHEPREFIX=/tmp/mimirq-pycache" in compile_target
+
+
 def test_helm_docs_call_out_tls_and_network_policy_for_production() -> None:
     helm_doc = _read("docs/deployment/helm.md")
     assert "ingress.tls" in helm_doc

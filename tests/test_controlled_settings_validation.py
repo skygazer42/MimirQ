@@ -1,6 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
+from app.core import config as config_module
 from app.core.config import Settings
 
 
@@ -36,6 +37,8 @@ def test_scim_requires_a_bound_tenant() -> None:
 
 def test_dify_enabled_requires_tenant_in_production(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENV", "production")
+    monkeypatch.delenv("DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", raising=False)
+    monkeypatch.delenv("MIMIRQ_DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", raising=False)
     with pytest.raises(ValidationError, match="DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID is required"):
         Settings.model_validate(
             {
@@ -44,7 +47,18 @@ def test_dify_enabled_requires_tenant_in_production(monkeypatch: pytest.MonkeyPa
                 "ALLOWED_HOSTS": "api.example.com",
                 "CORS_ORIGINS": "https://app.example.com",
                 "JWT_TENANT_CLAIM": "tid",
+                "DB_CREATE_ALL_ON_STARTUP": False,
+                "DB_RUNTIME_MIGRATIONS_ENABLED": False,
                 "DIFY_EXTERNAL_KNOWLEDGE_ENABLED": True,
                 "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS": "k",
             }
         )
+
+
+def test_pytest_argv_disables_repo_env_file_loading(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delitem(config_module.sys.modules, "pytest", raising=False)
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.delenv("PYTEST_VERSION", raising=False)
+    monkeypatch.setattr(config_module.sys, "argv", ["/tmp/pytest"])
+
+    assert config_module._should_disable_repo_env_file() is True

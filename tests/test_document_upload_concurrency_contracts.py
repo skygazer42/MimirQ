@@ -266,11 +266,127 @@ async def test_single_upload_releases_ingest_lock_on_dedup_hit(monkeypatch: pyte
 
 
 @pytest.mark.asyncio
+async def test_single_upload_uses_timeout_based_ingest_lock_ttl(monkeypatch: pytest.MonkeyPatch) -> None:
+    dataset_id = uuid.uuid4()
+    tenant_id = uuid.uuid4()
+    captured_ttls: list[int] = []
+
+    _patch_quota(monkeypatch)
+    _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
+    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+    monkeypatch.setattr(document_upload.settings, "TASK_JOB_TIMEOUT_SEC", 4_000, raising=False)
+    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(
+        documents_module,
+        "_find_duplicate_document",
+        lambda *args, **kwargs: SimpleNamespace(id=uuid.uuid4(), status="completed", doc_metadata={}),
+        raising=True,
+    )
+
+    async def _queue() -> object:
+        return object()
+
+    async def _acquire(redis, *, key: str, value: str, ttl_sec: int, fail_open: bool = True) -> bool:  # noqa: ANN001
+        captured_ttls.append(ttl_sec)
+        return True
+
+    async def _release(redis, *, key: str, value: str) -> None:  # noqa: ANN001
+        return None
+
+    monkeypatch.setattr("app.tasks.queue.get_queue", _queue, raising=False)
+    monkeypatch.setattr("app.tasks.locks.acquire_lock", _acquire, raising=False)
+    monkeypatch.setattr("app.tasks.locks.release_lock", _release, raising=False)
+
+    result = await document_upload.upload_document(
+        background_tasks=BackgroundTasks(),
+        file=_make_upload("dup.txt"),
+        form=document_upload.UploadDocumentFormFields(
+            parser_backend="auto",
+            chunk_strategy="langchain_recursive",
+            pipeline=None,
+            dataset_id=dataset_id,
+            user_metadata=None,
+        ),
+        overrides_form=_build_overrides_form(),
+        tenant_id=tenant_id,
+        account_id="acct-1",
+        db=SimpleNamespace(commit=lambda: None, refresh=lambda *_args: None),
+    )
+
+    assert result.id
+    assert captured_ttls == [4_060]
+
+
+@pytest.mark.asyncio
+async def test_ingest_lock_contention_falls_through_to_database_dedup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    metadata: dict[str, str] = {}
+    lease = document_upload._IngestLockLease()
+
+    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+
+    async def _queue() -> object:
+        return object()
+
+    async def _acquire(*_args, **_kwargs) -> bool:  # noqa: ANN002, ANN003
+        return False
+
+    monkeypatch.setattr("app.tasks.queue.get_queue", _queue, raising=False)
+    monkeypatch.setattr("app.tasks.locks.acquire_lock", _acquire, raising=False)
+
+    await document_upload._maybe_acquire_ingest_lock(
+        tenant_id=uuid.uuid4(),
+        dataset_id=uuid.uuid4(),
+        file_sha256="sha-1",
+        pipeline_hash="pipeline-1",
+        account_id="acct-1",
+        doc_metadata=metadata,
+        ingest_lock=lease,
+    )
+
+    assert metadata == {}
+    assert lease.redis is None
+
+
+@pytest.mark.asyncio
+async def test_ingest_lock_is_skipped_when_upload_dedup_is_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    metadata: dict[str, str] = {}
+    lease = document_upload._IngestLockLease()
+
+    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", False, raising=False)
+    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+
+    async def _queue() -> object:
+        raise AssertionError("queue probe should be skipped when upload dedup is disabled")
+
+    monkeypatch.setattr("app.tasks.queue.get_queue", _queue, raising=False)
+
+    await document_upload._maybe_acquire_ingest_lock(
+        tenant_id=uuid.uuid4(),
+        dataset_id=uuid.uuid4(),
+        file_sha256="sha-1",
+        pipeline_hash="pipeline-1",
+        account_id="acct-1",
+        doc_metadata=metadata,
+        ingest_lock=lease,
+    )
+
+    assert metadata == {}
+    assert lease.redis is None
+
+
+@pytest.mark.asyncio
 async def test_single_upload_fails_closed_when_ingest_lock_queue_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
     dataset_id = uuid.uuid4()
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
+    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
     monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
 
@@ -306,6 +422,7 @@ async def test_single_upload_fails_closed_when_ingest_lock_set_fails(monkeypatch
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
+    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
     monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
 
@@ -345,6 +462,7 @@ async def test_single_upload_skips_ingest_lock_when_queue_disabled(monkeypatch: 
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
+    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", False, raising=False)
     monkeypatch.setattr(documents_module, "DBDocument", _DetachedStatusDocument, raising=True)
     monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
@@ -393,6 +511,7 @@ async def test_single_upload_releases_ingest_lock_without_worker_handoff(monkeyp
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
+    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
     monkeypatch.setattr(documents_module, "DBDocument", _DetachedStatusDocument, raising=True)
     monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
@@ -515,6 +634,7 @@ async def test_single_upload_releases_ingest_lock_on_exception(monkeypatch: pyte
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
+    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
     monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
 
@@ -691,6 +811,7 @@ async def test_single_upload_preserves_local_source_when_queue_handoff_fails_aft
 
     _patch_quota(monkeypatch)
     _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
+    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", True, raising=False)
     monkeypatch.setattr(document_upload.settings, "MINIO_ENABLED", False, raising=False)
     monkeypatch.setattr(document_upload.settings, "MINIO_DOCUMENTS_ENABLED", False, raising=False)

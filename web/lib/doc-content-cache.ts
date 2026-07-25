@@ -46,9 +46,10 @@ const CONTENT_STORE = 'doc_contents'
 const SOURCE_STORE = 'doc_sources'
 const MB = 1024 * 1024
 const DEFAULT_STALE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+let authScopeGeneration = 0
 
-function scopedRecordId(id: string): string {
-  return `${getAuthCacheScope()}:${id}`
+function scopedRecordId(id: string, scope: string = getAuthCacheScope()): string {
+  return `${scope}:${id}`
 }
 
 function toError(reason: unknown, fallbackMessage: string): Error {
@@ -77,11 +78,17 @@ function openDb(): Promise<IDBDatabase> {
 function withStore<T>(
   storeName: string,
   mode: IDBTransactionMode,
-  fn: (store: IDBObjectStore) => IDBRequest<T>
+  fn: (store: IDBObjectStore) => IDBRequest<T>,
+  shouldStart?: () => boolean
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     void openDb()
       .then((db) => {
+        if (shouldStart && !shouldStart()) {
+          db.close()
+          resolve(undefined as T)
+          return
+        }
         const tx = db.transaction(storeName, mode)
         const store = tx.objectStore(storeName)
         const req = fn(store)
@@ -229,61 +236,83 @@ async function collectStoreRecords<T>(
   })
 }
 
-export async function saveDocContentToCache(record: Omit<DocContentCacheRecord, 'updatedAt'> & { updatedAt?: number }) {
+export async function saveDocContentToCache(
+  record: Omit<DocContentCacheRecord, 'updatedAt'> & { updatedAt?: number },
+  scope: string = getAuthCacheScope()
+) {
   if (globalThis.window === undefined) return
   if (!record?.id) return
+  const scopedId = scopedRecordId(record.id, scope)
+  const writeGeneration = authScopeGeneration
   await withStore(CONTENT_STORE, 'readwrite', (store) =>
     store.put({
-      id: scopedRecordId(record.id),
+      id: scopedId,
       markdownContent: record.markdownContent || '',
       originalMarkdownContent: record.originalMarkdownContent || '',
       updatedAt: record.updatedAt ?? Date.now(),
-    })
+    }),
+    () => authScopeGeneration === writeGeneration && getAuthCacheScope() === scope
   )
 }
 
-export async function getDocContentFromCache(id: string): Promise<DocContentCacheRecord | null> {
+export async function getDocContentFromCache(
+  id: string,
+  scope: string = getAuthCacheScope()
+): Promise<DocContentCacheRecord | null> {
   if (globalThis.window === undefined) return null
   if (!id) return null
-  const res = await withStore(CONTENT_STORE, 'readonly', (store) => store.get(scopedRecordId(id)))
+  const scopedId = scopedRecordId(id, scope)
+  const res = await withStore(CONTENT_STORE, 'readonly', (store) => store.get(scopedId))
   return res ? { ...(res as DocContentCacheRecord), id } : null
 }
 
-export async function deleteDocContentFromCache(id: string) {
+export async function deleteDocContentFromCache(id: string, scope: string = getAuthCacheScope()) {
   if (globalThis.window === undefined) return
   if (!id) return
-  await withStore(CONTENT_STORE, 'readwrite', (store) => store.delete(scopedRecordId(id)))
+  const scopedId = scopedRecordId(id, scope)
+  await withStore(CONTENT_STORE, 'readwrite', (store) => store.delete(scopedId))
 }
 
-export async function saveDocSourceToCache(record: { id: string; file: File; updatedAt?: number }) {
+export async function saveDocSourceToCache(
+  record: { id: string; file: File; updatedAt?: number },
+  scope: string = getAuthCacheScope()
+) {
   if (globalThis.window === undefined) return
   if (!record?.id) return
   if (!record.file) return
 
+  const scopedId = scopedRecordId(record.id, scope)
+  const writeGeneration = authScopeGeneration
   await withStore(SOURCE_STORE, 'readwrite', (store) =>
     store.put({
-      id: scopedRecordId(record.id),
+      id: scopedId,
       filename: record.file.name || 'document',
       mimeType: record.file.type || 'application/octet-stream',
       size: record.file.size || 0,
       lastModified: record.file.lastModified || Date.now(),
       blob: record.file,
       updatedAt: record.updatedAt ?? Date.now(),
-    } satisfies DocSourceCacheRecord)
+    } satisfies DocSourceCacheRecord),
+    () => authScopeGeneration === writeGeneration && getAuthCacheScope() === scope
   )
 }
 
-export async function getDocSourceFromCache(id: string): Promise<DocSourceCacheRecord | null> {
+export async function getDocSourceFromCache(
+  id: string,
+  scope: string = getAuthCacheScope()
+): Promise<DocSourceCacheRecord | null> {
   if (globalThis.window === undefined) return null
   if (!id) return null
-  const res = await withStore(SOURCE_STORE, 'readonly', (store) => store.get(scopedRecordId(id)))
+  const scopedId = scopedRecordId(id, scope)
+  const res = await withStore(SOURCE_STORE, 'readonly', (store) => store.get(scopedId))
   return res ? { ...(res as DocSourceCacheRecord), id } : null
 }
 
-export async function deleteDocSourceFromCache(id: string) {
+export async function deleteDocSourceFromCache(id: string, scope: string = getAuthCacheScope()) {
   if (globalThis.window === undefined) return
   if (!id) return
-  await withStore(SOURCE_STORE, 'readwrite', (store) => store.delete(scopedRecordId(id)))
+  const scopedId = scopedRecordId(id, scope)
+  await withStore(SOURCE_STORE, 'readwrite', (store) => store.delete(scopedId))
 }
 
 export async function getDocContentCacheStats(): Promise<DocContentCacheStats> {
@@ -331,6 +360,7 @@ export async function clearDocSourceCache() {
 
 if (globalThis.window !== undefined) {
   globalThis.window.addEventListener(AUTH_SCOPE_CHANGED_EVENT, () => {
+    authScopeGeneration += 1
     void Promise.all([clearDocContentCache(), clearDocSourceCache()]).catch(() => undefined)
   })
 }

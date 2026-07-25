@@ -73,6 +73,14 @@ def _apply_default_expansion_defaults(out: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _configured_reranker_provider(out: dict[str, Any]) -> str:
+    """Keep deployment-selected rerank backends while retaining the profile fallback."""
+    provider = str(out.get("reranker_provider") or "").strip().lower()
+    if provider and provider not in {"none", "off", "false", "0"}:
+        return provider
+    return "cross_encoder"
+
+
 def apply_retrieval_profile_overrides(
     *,
     profile: Any,
@@ -126,7 +134,7 @@ def apply_retrieval_profile_overrides(
             out["reranker_top_n"] = 1
             return out
         out["enable_reranker"] = True
-        out["reranker_provider"] = "cross_encoder"
+        out["reranker_provider"] = _configured_reranker_provider(out)
         out["reranker_top_n"] = 20
         return out
 
@@ -139,7 +147,7 @@ def apply_retrieval_profile_overrides(
             out["reranker_top_n"] = 1
             return out
         out["enable_reranker"] = True
-        out["reranker_provider"] = "cross_encoder"
+        out["reranker_provider"] = _configured_reranker_provider(out)
         out["reranker_top_n"] = max(40, int(out["top_k"] or 0))
         return out
 
@@ -186,7 +194,7 @@ def apply_retrieval_profile_overrides(
             out["reranker_provider"] = "none"
             return out
         out["enable_reranker"] = True
-        out["reranker_provider"] = "cross_encoder"
+        out["reranker_provider"] = _configured_reranker_provider(out)
         out["reranker_top_n"] = max(int(out["reranker_top_n"] or 0), int(out["top_k"] or 0), 20)
         return out
 
@@ -209,7 +217,7 @@ def apply_retrieval_profile_overrides(
             out["reranker_provider"] = "none"
             return _apply_hierarchy_overlay_defaults(out)
         out["enable_reranker"] = True
-        out["reranker_provider"] = "cross_encoder"
+        out["reranker_provider"] = _configured_reranker_provider(out)
         out["reranker_top_n"] = max(int(out["reranker_top_n"] or 0), int(out["top_k"] or 0), 20)
         return _apply_hierarchy_overlay_defaults(out)
 
@@ -218,7 +226,7 @@ def apply_retrieval_profile_overrides(
         out["top_k"] = max(int(out["top_k"] or 0), 20)
         out["score_threshold"] = 0.0
         out["enable_reranker"] = True
-        out["reranker_provider"] = "cross_encoder"
+        out["reranker_provider"] = _configured_reranker_provider(out)
         out["reranker_top_n"] = max(int(out["reranker_top_n"] or 0), int(out["top_k"] or 0), 20)
         out["enable_weight_rerank"] = False
         out["retrieval_contract_mode"] = "evidence_strict"
@@ -230,7 +238,7 @@ def apply_retrieval_profile_overrides(
         out["top_k"] = max(int(out["top_k"] or 0), 20)
         out["score_threshold"] = 0.0
         out["enable_reranker"] = True
-        out["reranker_provider"] = "cross_encoder"
+        out["reranker_provider"] = _configured_reranker_provider(out)
         out["reranker_top_n"] = max(int(out["reranker_top_n"] or 0), int(out["top_k"] or 0), 20)
         out["enable_weight_rerank"] = False
         out["retrieval_contract_mode"] = "evidence_strict"

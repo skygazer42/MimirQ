@@ -12,6 +12,10 @@ def _set_minimal_prod_jwt_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ALLOWED_HOSTS", "api.example.com")
     monkeypatch.setenv("CORS_ORIGINS", "https://app.example.com")
     monkeypatch.setenv("JWT_TENANT_CLAIM", "tid")
+    monkeypatch.setenv("DB_CREATE_ALL_ON_STARTUP", "false")
+    monkeypatch.setenv("MIMIRQ_DB_CREATE_ALL_ON_STARTUP", "false")
+    monkeypatch.setenv("DB_RUNTIME_MIGRATIONS_ENABLED", "false")
+    monkeypatch.setenv("MIMIRQ_DB_RUNTIME_MIGRATIONS_ENABLED", "false")
 
 
 def test_production_rejects_non_https_jwks_urls(monkeypatch: pytest.MonkeyPatch) -> None:

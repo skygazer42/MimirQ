@@ -917,10 +917,7 @@ export function ChatArea({
         >
           <div
             aria-label={t('conversationTools')}
-            className={cn(
-              'flex flex-col gap-2 rounded-[1.5rem] border border-border/55 bg-background/60 px-2.5 py-2 shadow-sm backdrop-blur-xl supports-[backdrop-filter]:bg-background/55 md:flex-row md:flex-nowrap md:items-center md:justify-between',
-              isWelcomeState && 'hidden'
-            )}
+            className="flex flex-col gap-2 rounded-[1.5rem] border border-border/55 bg-background/60 px-2.5 py-2 shadow-sm backdrop-blur-xl supports-[backdrop-filter]:bg-background/55 md:flex-row md:flex-nowrap md:items-center md:justify-between"
           >
             <div className="flex min-w-0 items-center gap-2 px-1">
               <div className="hidden size-7 shrink-0 items-center justify-center rounded-full border border-primary/15 bg-primary/10 text-primary sm:flex">
@@ -971,6 +968,7 @@ export function ChatArea({
                   <Button
                     variant="ghost"
                     size="sm"
+                    aria-label={t('selectDataset')}
                     className="h-8 max-w-full gap-2 rounded-full border border-border/60 bg-card/80 px-3 text-foreground shadow-sm hover:border-primary/25 hover:bg-secondary/70 md:max-w-[14rem]"
                   >
                     <Database className="w-3.5 h-3.5 text-primary" />

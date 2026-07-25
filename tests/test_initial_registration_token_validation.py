@@ -10,6 +10,10 @@ def _set_prod_bootstrap_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ALLOWED_HOSTS", "mimirq.example.com")
     monkeypatch.setenv("CORS_ORIGINS", "https://app.example.com")
     monkeypatch.setenv("JWT_TENANT_CLAIM", "tenant_id")
+    monkeypatch.setenv("DB_CREATE_ALL_ON_STARTUP", "false")
+    monkeypatch.setenv("MIMIRQ_DB_CREATE_ALL_ON_STARTUP", "false")
+    monkeypatch.setenv("DB_RUNTIME_MIGRATIONS_ENABLED", "false")
+    monkeypatch.setenv("MIMIRQ_DB_RUNTIME_MIGRATIONS_ENABLED", "false")
 
 
 def test_initial_registration_token_optional_in_production(monkeypatch: pytest.MonkeyPatch) -> None:

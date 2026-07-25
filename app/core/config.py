@@ -41,6 +41,25 @@ _JWT_LOCAL_HOSTS = frozenset({"localhost", "localhost.localdomain", "127.0.0.1",
 DEFAULT_RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS = "high,medium"
 
 
+def _should_disable_repo_env_file() -> bool:
+    """
+    Avoid loading a developer's repo `.env` during test/openapi generation paths.
+
+    Relying only on ``"pytest" in sys.modules`` is fragile because import timing can
+    vary during collection and subprocess entrypoints. Accept a few stable pytest
+    signals so settings instantiation stays hermetic in full-suite runs too.
+    """
+
+    if os.getenv("MIMIRQ_OPENAPI_EXPORT") == "1":
+        return True
+    if "pytest" in sys.modules:
+        return True
+    if os.getenv("PYTEST_CURRENT_TEST") or os.getenv("PYTEST_VERSION"):
+        return True
+    argv0 = Path(str(sys.argv[0] or "")).name.lower()
+    return "pytest" in argv0
+
+
 def _is_local_jwt_http_host(host: str) -> bool:
     normalized = str(host or "").strip().lower()
     if not normalized:
@@ -2344,7 +2363,7 @@ class Settings(BaseSettings):
         #
         # Note: unit tests and generated OpenAPI artifacts should not be influenced by
         # a developer's local `.env`, so disable dotenv loading for those paths.
-        env_file=None if "pytest" in sys.modules or os.getenv("MIMIRQ_OPENAPI_EXPORT") == "1" else str(_env_file),
+        env_file=None if _should_disable_repo_env_file() else str(_env_file),
         case_sensitive=True,
         extra="ignore",
     )

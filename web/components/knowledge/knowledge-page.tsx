@@ -305,6 +305,7 @@ export default function KnowledgePage() {
 
   const docGridColumns = 3
   const docGridRowCount = Math.ceil(paginatedDocuments.length / docGridColumns)
+  // eslint-disable-next-line react-hooks/incompatible-library
   const docsGridVirtualizer = useVirtualizer({
     count: docGridRowCount,
     getScrollElement: () => documentsScrollEl ?? mainPaneScrollEl,

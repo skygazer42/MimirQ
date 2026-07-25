@@ -140,6 +140,7 @@ export function useDocumentViewerPanelState() {
   const [qaSubmitting, setQaSubmitting] = React.useState(false)
   const [qaLastResult, setQaLastResult] = React.useState<DocumentQAGenerateResponse | null>(null)
 
+  // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
     count: chunks.length,
     getScrollElement: () => chunksListRef.current,

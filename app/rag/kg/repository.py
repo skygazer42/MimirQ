@@ -347,6 +347,28 @@ def _filter_formatted_events(formatted: list[dict], allowed_event_ids: set[UUID]
     return [item for item in formatted if str(item.get("event_id")) in allowed_strs][:limit]
 
 
+def _merge_formatted_events(formatted_batches: list[list[dict]]) -> list[dict]:
+    merged: dict[str, tuple[float, int, dict]] = {}
+    anonymous: list[tuple[float, int, dict]] = []
+    ordinal = 0
+    for batch in formatted_batches:
+        for item in batch:
+            score = float(item.get("similarity", 0.0) or 0.0)
+            event_id = str(item.get("event_id") or "").strip()
+            if not event_id:
+                anonymous.append((score, ordinal, item))
+                ordinal += 1
+                continue
+            existing = merged.get(event_id)
+            if existing is None or score > existing[0]:
+                first_seen = existing[1] if existing is not None else ordinal
+                merged[event_id] = (score, first_seen, item)
+            ordinal += 1
+    ranked = list(merged.values()) + anonymous
+    ranked.sort(key=lambda entry: (-entry[0], entry[1], str(entry[2].get("event_id") or "")))
+    return [entry[2] for entry in ranked]
+
+
 def _candidate_event_ids(formatted: list[dict]) -> list:
     return [item.get("event_id") for item in formatted if item.get("event_id")]
 
@@ -873,21 +895,28 @@ class EventRepository:
         dataset_id: UUID | None = None,
         account_id: str | None = None,
     ) -> list[dict]:
-        expr_parts = [f"tenant_id == {_quote_milvus_str(str(tenant_id))}"]
         if document_ids is not None and not document_ids:
             # Explicit empty scope must never broaden vector search to the full tenant.
             return []
-        if document_ids is not None:
-            doc_id_strs = [_quote_milvus_str(str(doc_id)) for doc_id in document_ids[:500]]
-            expr_parts.append(f"document_id in [{', '.join(doc_id_strs)}]")
-        expr = " and ".join(expr_parts)
         # Best-effort: over-fetch when we will post-filter by ACL/pipeline so we can still
         # return close to k results after trimming.
         want_k = max(1, int(k))
         fetch_k = _event_fetch_k(want_k, scoped=document_ids is not None or dataset_id is not None)
 
-        results = self._milvus.search(query_vector=query_vector, top_k=fetch_k, expr=expr)
-        formatted = [_format_event_vector_hit(result) for result in results]
+        expr_parts = [f"tenant_id == {_quote_milvus_str(str(tenant_id))}"]
+        if document_ids is not None:
+            formatted_batches: list[list[dict]] = []
+            for start in range(0, len(document_ids), 500):
+                batch = document_ids[start:start + 500]
+                doc_id_strs = [_quote_milvus_str(str(doc_id)) for doc_id in batch]
+                expr = " and ".join([*expr_parts, f"document_id in [{', '.join(doc_id_strs)}]"])
+                results = self._milvus.search(query_vector=query_vector, top_k=fetch_k, expr=expr)
+                formatted_batches.append([_format_event_vector_hit(result) for result in results])
+            formatted = _merge_formatted_events(formatted_batches)
+        else:
+            expr = " and ".join(expr_parts)
+            results = self._milvus.search(query_vector=query_vector, top_k=fetch_k, expr=expr)
+            formatted = [_format_event_vector_hit(result) for result in results]
 
         # Document-scoped search: post-filter to active pipeline to prevent stale KG drift.
         if document_ids is not None:
@@ -899,7 +928,12 @@ class EventRepository:
                 )
                 return _filter_formatted_events(formatted, allowed_event_ids, limit=want_k)
             except Exception:
-                return formatted[:want_k]
+                get_logger(__name__).warning(
+                    "Fail-closed KG content search after document scope filter exception",
+                    extra={"scope_type": "document_ids"},
+                    exc_info=True,
+                )
+                return []
 
         if dataset_id is None:
             return formatted[:want_k]
@@ -916,8 +950,12 @@ class EventRepository:
             )
             return _filter_formatted_events(formatted, allowed_event_ids, limit=want_k)
         except Exception:
-            # Best-effort: if filtering fails, fall back to raw vector hits (caller can still filter later).
-            return formatted[:want_k]
+            get_logger(__name__).warning(
+                "Fail-closed KG content search after dataset scope filter exception",
+                extra={"scope_type": "dataset_id"},
+                exc_info=True,
+            )
+            return []
 
     def search_events_lexical(
         self,

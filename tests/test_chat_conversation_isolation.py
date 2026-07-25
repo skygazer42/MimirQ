@@ -740,4 +740,4 @@ def test_latest_message_lookup_index_contract_present() -> None:
 def test_alembic_migration_graph_has_single_head() -> None:
     script = ScriptDirectory.from_config(Config("alembic.ini"))
 
-    assert script.get_heads() == ["0023_document_dedup_key"]
+    assert script.get_heads() == ["0024_ingestion_run_doc_unique"]

@@ -723,6 +723,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const loadError = docError || chunkError
   const timelineItems: DocumentTimelineItem[] = timeline?.items || []
   const timelineTotal = Number(timeline?.total || timelineItems.length)
+  // eslint-disable-next-line react-hooks/incompatible-library
   const chunkRowVirtualizer = useVirtualizer({
     count: activeView === 'chunks' ? chunks.length : 0,
     getScrollElement: () => scrollParentRef.current,

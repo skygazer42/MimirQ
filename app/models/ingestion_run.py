@@ -11,7 +11,7 @@ This is intentionally lightweight and "best-effort" (enterprise observability).
 
 import uuid
 
-from sqlalchemy import Column, DateTime, ForeignKey, ForeignKeyConstraint, String, Text
+from sqlalchemy import Column, DateTime, ForeignKey, ForeignKeyConstraint, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -59,6 +59,14 @@ class IngestionRunDocument(Base):
     """Mapping from ingestion_run -> document."""
 
     __tablename__ = "ingestion_run_documents"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "run_id",
+            "document_id",
+            name="uq_ingestion_run_documents_tenant_run_document",
+        ),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
@@ -72,4 +80,3 @@ class IngestionRunDocument(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     run = relationship("IngestionRun", back_populates="documents")
-

@@ -42,20 +42,22 @@ from app.tasks.locks import (
     is_semaphore_busy_retry,
     make_lock_value,
     release_lock,
+    task_job_lock_ttl_sec,
+    task_job_timeout_sec,
     tenant_acquire,
     tenant_release,
 )
 
 logger = get_logger("tasks.jobs")
 
-_TASK_SEMAPHORE_TTL_SEC = max(60 * 60, int(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30) + 60)
+_TASK_SEMAPHORE_TTL_SEC = max(60 * 60, task_job_timeout_sec() + 60)
 _TASK_LOCK_RETRY_DEFER_SEC = 30
 _TASK_COORDINATION_UNAVAILABLE = "task_coordination_unavailable"
 _TASK_CONCURRENCY_BUSY = "task_concurrency_busy"
 
 
 def _task_job_lock_ttl_sec(*, minimum_sec: int = 40 * 60) -> int:
-    return max(minimum_sec, int(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30) + 60)
+    return task_job_lock_ttl_sec(minimum_sec=minimum_sec)
 
 
 def _kg_lock_flag(value: bool | None) -> str:

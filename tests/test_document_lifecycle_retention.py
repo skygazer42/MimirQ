@@ -6,6 +6,18 @@ from unittest.mock import ANY
 import pytest
 
 
+def test_document_status_contract_accepts_deleting_tombstones() -> None:
+    from app.api.schemas.document import DocumentStatus, DocumentStatusEnum
+
+    payload = DocumentStatus(
+        id=uuid.uuid4(),
+        status="deleting",
+        processing_progress=100,
+    )
+
+    assert payload.status is DocumentStatusEnum.deleting
+
+
 def test_documents_exports_delegate_to_shared_services() -> None:
     from app.api.v1 import documents
     from app.services import document_access_service, document_lifecycle_service

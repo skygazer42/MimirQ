@@ -1,0 +1,5 @@
+MimirQ live browser smoke fixture
+
+Release token: LIVE-CLOSED-LOOP-AXIOM-2049
+Owner: CI host browser smoke
+Purpose: verify upload, processing, retrieval, and grounded chat evidence on the live stack.

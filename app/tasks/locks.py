@@ -2,6 +2,7 @@
 from typing import Any
 from uuid import uuid4
 
+from app.core.config import settings
 from app.core.optional_deps import require_dependency
 from app.rag.core.logging import get_logger
 
@@ -18,6 +19,16 @@ return 0
 
 _SEMAPHORE_LEASE_SEPARATOR = "|"
 _SEMAPHORE_BUSY_ATTR = "_mimirq_semaphore_busy"
+_DEFAULT_TASK_JOB_TIMEOUT_SEC = 60 * 30
+_TASK_JOB_LOCK_MIN_TTL_SEC = 40 * 60
+
+
+def task_job_timeout_sec(*, default_sec: int = _DEFAULT_TASK_JOB_TIMEOUT_SEC) -> int:
+    return max(1, int(getattr(settings, "TASK_JOB_TIMEOUT_SEC", default_sec) or default_sec))
+
+
+def task_job_lock_ttl_sec(*, minimum_sec: int = _TASK_JOB_LOCK_MIN_TTL_SEC) -> int:
+    return max(max(1, int(minimum_sec or 0)), task_job_timeout_sec() + 60)
 
 
 def get_retry_exc():  # noqa: ANN201

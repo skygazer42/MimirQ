@@ -7,6 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const authMock = vi.hoisted(() => ({
   token: 'token' as string | null,
 }))
+const backendMetaMock = vi.hoisted(() => ({
+  authMode: 'jwt' as string | null,
+  isPending: false,
+  isError: false,
+}))
+const navigationMock = vi.hoisted(() => ({
+  pathname: '/datasets',
+}))
 const routerMock = vi.hoisted(() => ({
   replace: vi.fn(),
 }))
@@ -16,10 +24,17 @@ vi.mock('@/lib/auth-storage', () => ({
   getAccessToken: () => authMock.token,
 }))
 vi.mock('@/hooks/use-backend-meta', () => ({
-  useBackendMeta: () => ({ data: { features: { auth_mode: 'jwt' } } }),
+  useBackendMeta: () => ({
+    data:
+      typeof backendMetaMock.authMode === 'string'
+        ? { features: { auth_mode: backendMetaMock.authMode } }
+        : undefined,
+    isPending: backendMetaMock.isPending,
+    isError: backendMetaMock.isError,
+  }),
 }))
 vi.mock('@/i18n/navigation', () => ({
-  usePathname: () => '/datasets',
+  usePathname: () => navigationMock.pathname,
   useRouter: () => routerMock,
 }))
 
@@ -32,6 +47,10 @@ beforeEach(() => {
 afterEach(() => {
   vi.clearAllMocks()
   authMock.token = 'token'
+  backendMetaMock.authMode = 'jwt'
+  backendMetaMock.isPending = false
+  backendMetaMock.isError = false
+  navigationMock.pathname = '/datasets'
   document.body.innerHTML = ''
 })
 
@@ -85,6 +104,68 @@ describe('AuthGuard session changes', () => {
     })
 
     expect(container.textContent).toBe('empty')
+    act(() => root.unmount())
+  })
+
+  it('keeps protected children unmounted while backend auth mode is unresolved', () => {
+    backendMetaMock.authMode = null
+    backendMetaMock.isPending = true
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    act(() => {
+      root.render(
+        <AuthGuard>
+          <div>private</div>
+        </AuthGuard>
+      )
+    })
+
+    expect(container.textContent).toBe('')
+    expect(routerMock.replace).not.toHaveBeenCalled()
+    act(() => root.unmount())
+  })
+
+  it('renders auth routes while backend auth mode is unresolved', () => {
+    backendMetaMock.authMode = null
+    backendMetaMock.isPending = true
+    navigationMock.pathname = '/auth'
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    act(() => {
+      root.render(
+        <AuthGuard>
+          <div>sign-in</div>
+        </AuthGuard>
+      )
+    })
+
+    expect(container.textContent).toBe('sign-in')
+    expect(routerMock.replace).not.toHaveBeenCalled()
+    act(() => root.unmount())
+  })
+
+  it('fails closed when backend auth mode cannot be resolved on a protected route', () => {
+    backendMetaMock.authMode = null
+    backendMetaMock.isError = true
+    authMock.token = null
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    act(() => {
+      root.render(
+        <AuthGuard>
+          <div>private</div>
+        </AuthGuard>
+      )
+    })
+
+    expect(container.textContent).toBe('')
+    expect(routerMock.replace).toHaveBeenCalledWith('/auth')
     act(() => root.unmount())
   })
 })

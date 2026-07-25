@@ -4,7 +4,7 @@
 
 当前建议：
 - `recall20/recall50/coverage80`：偏召回型 profile，用来观察 Recall/Hit 的上限
-- `hybrid_ce`：当前显式 production baseline，用来观察“hybrid recall + cross_encoder rerank”相对默认路径的收益
+- `hybrid_ce`：当前显式 production baseline，用来观察“hybrid recall + rerank”相对默认路径的收益。名称为历史兼容保留；启用重排时优先使用部署配置的 `RERANKER_PROVIDER`，未配置有效 provider 时才回退本地 `cross_encoder`
 
 脚本：`scripts/retrieval_ablation.py`
 

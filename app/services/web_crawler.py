@@ -22,10 +22,11 @@ import httpx
 from defusedxml import ElementTree as DefusedET
 from fastapi import HTTPException
 
-from app.api.utils.url_ingest import validate_url_for_ingest
+from app.api.utils.url_ingest import _validated_fetch_target, _ValidatedFetchTarget, validate_url_for_ingest
 from app.core.config import settings
 from app.core.constants import NON_CRITICAL_EXCEPTION_LOG_MESSAGE
 from app.core.http_client import get_http_client_pool
+from app.core.http_env import httpx_trust_env
 from app.core.optional_deps import optional_import
 from app.rag.core.logging import get_logger
 from app.rag.preprocessing.html_canonical import extract_canonical_url, normalize_url_for_dedup
@@ -318,58 +319,88 @@ async def _fetch_page_text(
     """
     pool = get_http_client_pool()
     # Security/compliance: do not propagate internal tenant/user headers to crawled websites.
-    client = await pool.get_external_client()
+    pooled_client = await pool.get_external_client()
 
-    current = await validate_url_for_ingest(url)
+    current_target = await _validated_fetch_target(url)
+    current = current_target.raw
     request_headers = dict(headers)
     current_origin = _request_origin(current)
     hops = 0
     max_redirects = int(getattr(settings, "URL_INGEST_MAX_REDIRECTS", 5) or 5)
     max_redirects = max(0, min(max_redirects, 20))
+    pinned_https_client: httpx.AsyncClient | None = None
+    pinned_https_host: str | None = None
 
-    while True:
-        async with client.stream(
-            "GET",
-            current,
-            headers=request_headers,
-            timeout=httpx.Timeout(timeout_sec),
-            follow_redirects=False,
-        ) as resp:
-            if resp.status_code in {301, 302, 303, 307, 308}:
-                if not follow_redirects:
-                    raise HTTPException(status_code=400, detail="redirects are not allowed")
-                if hops >= max_redirects:
-                    raise HTTPException(status_code=400, detail="too many redirects")
-                loc = (resp.headers.get("location") or "").strip()
-                if not loc:
-                    raise HTTPException(status_code=400, detail="redirect location missing")
-                nxt = urljoin(str(resp.url), loc)
-                next_url = await validate_url_for_ingest(nxt)
-                next_origin = _request_origin(next_url)
-                if next_origin != current_origin:
-                    request_headers = _without_sensitive_request_headers(request_headers)
-                current = next_url
-                current_origin = next_origin
-                hops += 1
-                continue
+    async def _client_for_target(target: _ValidatedFetchTarget) -> httpx.AsyncClient:
+        nonlocal pinned_https_client, pinned_https_host
+        if urlsplit(target.raw).scheme != "https":
+            return pooled_client
+        if pinned_https_client is None or pinned_https_host != target.host_header:
+            if pinned_https_client is not None:
+                await pinned_https_client.aclose()
+            # A short-lived HTTP/1.1 client prevents a TLS connection pinned for one
+            # hostname from being reused for another hostname on the same address.
+            pinned_https_client = httpx.AsyncClient(
+                http2=False,
+                follow_redirects=False,
+                trust_env=httpx_trust_env(logger=logger),
+            )
+            pinned_https_host = target.host_header
+        return pinned_https_client
 
-            if resp.status_code >= 400:
-                raise HTTPException(status_code=400, detail=f"failed to fetch url (status={resp.status_code})")
-
-            content_type = (resp.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
-
-            chunks: list[bytes] = []
-            size = 0
-            async for chunk in resp.aiter_bytes():
-                if not chunk:
+    try:
+        while True:
+            target = current_target
+            client = await _client_for_target(target)
+            pinned_headers = {**request_headers, "Host": target.host_header}
+            async with client.stream(
+                "GET",
+                target.connect_url,
+                headers=pinned_headers,
+                timeout=httpx.Timeout(timeout_sec),
+                follow_redirects=False,
+                extensions={"sni_hostname": target.host},
+            ) as resp:
+                if resp.status_code in {301, 302, 303, 307, 308}:
+                    if not follow_redirects:
+                        raise HTTPException(status_code=400, detail="redirects are not allowed")
+                    if hops >= max_redirects:
+                        raise HTTPException(status_code=400, detail="too many redirects")
+                    loc = (resp.headers.get("location") or "").strip()
+                    if not loc:
+                        raise HTTPException(status_code=400, detail="redirect location missing")
+                    nxt = urljoin(current, loc)
+                    next_target = await _validated_fetch_target(nxt)
+                    next_url = next_target.raw
+                    next_origin = _request_origin(next_url)
+                    if next_origin != current_origin:
+                        request_headers = _without_sensitive_request_headers(request_headers)
+                    current_target = next_target
+                    current = next_url
+                    current_origin = next_origin
+                    hops += 1
                     continue
-                size += len(chunk)
-                if max_bytes > 0 and size > max_bytes:
-                    raise HTTPException(status_code=413, detail="remote file too large")
-                chunks.append(chunk)
-            body = b"".join(chunks)
-            text = body.decode("utf-8", "ignore")
-            return text, str(resp.url), content_type
+
+                if resp.status_code >= 400:
+                    raise HTTPException(status_code=400, detail=f"failed to fetch url (status={resp.status_code})")
+
+                content_type = (resp.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
+
+                chunks: list[bytes] = []
+                size = 0
+                async for chunk in resp.aiter_bytes():
+                    if not chunk:
+                        continue
+                    size += len(chunk)
+                    if max_bytes > 0 and size > max_bytes:
+                        raise HTTPException(status_code=413, detail="remote file too large")
+                    chunks.append(chunk)
+                body = b"".join(chunks)
+                text = body.decode("utf-8", "ignore")
+                return text, current, content_type
+    finally:
+        if pinned_https_client is not None:
+            await pinned_https_client.aclose()
 
 
 def _extract_links_from_html(html_text: str, *, base_url: str) -> tuple[list[str], dict[str, Any] | None]:

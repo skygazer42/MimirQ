@@ -95,6 +95,28 @@ _MILVUS_FILTER_KEY_ALIASES: dict[str, str] = {
 }
 
 
+def _ensure_milvus_collection_loaded(store: Any) -> bool:
+    """Ensure a LangChain Milvus store has a loaded collection before delete ops."""
+    from pymilvus import Collection
+
+    if isinstance(getattr(store, "col", None), Collection):
+        return True
+
+    init_kwargs: dict[str, Any] = {}
+    partition_names = getattr(store, "partition_names", None)
+    if partition_names:
+        init_kwargs["partition_names"] = partition_names
+    replica_number = getattr(store, "replica_number", None)
+    if replica_number:
+        init_kwargs["replica_number"] = replica_number
+    store_timeout = getattr(store, "timeout", None)
+    if store_timeout:
+        init_kwargs["timeout"] = store_timeout
+
+    store._init(**init_kwargs)  # type: ignore[attr-defined]
+    return isinstance(getattr(store, "col", None), Collection)
+
+
 def _normalize_indexed_metadata_filter_key(raw_key: str) -> str | None:
     key = str(raw_key or "").strip()
     if not key:
@@ -705,20 +727,24 @@ class MilvusAdapter:
         """Delete vectors with specified IDs."""
         if not ids:
             return
-        self._require_store()
-        self._store.delete(ids)
+        store = self._require_store()
+        if not _ensure_milvus_collection_loaded(store):
+            return
+        store.delete(ids)
 
     def delete_by_document_id(self, document_id: UUID, tenant_id: UUID | None = None) -> None:
         """Delete all vectors for a document from this collection."""
-        self._require_store()
+        store = self._require_store()
+        if not _ensure_milvus_collection_loaded(store):
+            return
         parts = []
         if tenant_id:
             parts.append(f'tenant_id == "{_escape_milvus_string(str(tenant_id))}"')
         parts.append(f'document_id == "{_escape_milvus_string(str(document_id))}"')
         expr = _MILVUS_EXPR_AND.join(parts)
-        self._store.delete(expr=expr)
+        store.delete(expr=expr)
         try:
-            self._store.col.flush()  # type: ignore[union-attr]
+            store.col.flush()
         except Exception as exc:
             logger.debug(_MILVUS_FALLBACK_LOG_MESSAGE, exc)
 
@@ -733,16 +759,18 @@ class MilvusAdapter:
         metadata_expr = _build_milvus_metadata_expr(metadata_filter)
         if not metadata_expr:
             return
-        self._require_store()
+        store = self._require_store()
+        if not _ensure_milvus_collection_loaded(store):
+            return
         parts = []
         if tenant_id:
             parts.append(f'tenant_id == "{_escape_milvus_string(str(tenant_id))}"')
         parts.append(f'document_id == "{_escape_milvus_string(str(document_id))}"')
         base_expr = _MILVUS_EXPR_AND.join(parts)
         expr = f"({base_expr}) and ({metadata_expr})"
-        self._store.delete(expr=expr)
+        store.delete(expr=expr)
         try:
-            self._store.col.flush()  # type: ignore[union-attr]
+            store.col.flush()
         except Exception as exc:
             logger.debug(_MILVUS_FALLBACK_LOG_MESSAGE, exc)
 
@@ -1139,13 +1167,15 @@ class MilvusVectorStore:
 
     def delete_by_document_id(self, document_id: UUID, tenant_id: UUID | None = None) -> None:
         """Delete all vectors for a given document."""
-        self._require_store()
+        store = self._require_store()
+        if not _ensure_milvus_collection_loaded(store):
+            return
 
         expr = self._build_expr(document_ids=[document_id], tenant_id=tenant_id)
         if expr:
-            self._store.delete(expr=expr)
+            store.delete(expr=expr)
             try:
-                self._store.col.flush()  # type: ignore[union-attr]
+                store.col.flush()
             except Exception as exc:
                 logger.debug(_MILVUS_FALLBACK_LOG_MESSAGE, exc)
 
@@ -1163,7 +1193,9 @@ class MilvusVectorStore:
         - If the filter cannot be translated into a safe Milvus expr, this is a no-op (never "delete all").
         - Caller can still fall back to full delete_by_document_id when appropriate.
         """
-        self._require_store()
+        store = self._require_store()
+        if not _ensure_milvus_collection_loaded(store):
+            return
 
         base_expr = self._build_expr(document_ids=[document_id], tenant_id=tenant_id)
         metadata_expr = _build_milvus_metadata_expr(metadata_filter)
@@ -1171,9 +1203,9 @@ class MilvusVectorStore:
             return
 
         expr = f"({base_expr}) and ({metadata_expr})" if base_expr else metadata_expr
-        self._store.delete(expr=expr)
+        store.delete(expr=expr)
         try:
-            self._store.col.flush()  # type: ignore[union-attr]
+            store.col.flush()
         except Exception as exc:
             logger.debug(_MILVUS_FALLBACK_LOG_MESSAGE, exc)
 

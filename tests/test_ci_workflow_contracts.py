@@ -93,6 +93,23 @@ def test_main_ci_runs_all_browser_smoke_specs_and_critical_coverage() -> None:
     assert "pnpm run test:coverage:critical" in workflow
 
 
+def test_main_ci_host_browser_smoke_stays_on_the_live_stack_spec_in_non_pr_jobs() -> None:
+    workflow = _read(".github/workflows/ci.yml")
+
+    assert "README host browser smoke" in workflow
+    assert "pnpm exec playwright test e2e/live-stack.smoke.spec.ts" in workflow
+    retrieval_regression_job = workflow.split("\n  retrieval-regression-gate:\n", 1)[1].split(
+        "\n  kg-search-regression-gate:\n",
+        1,
+    )[0]
+    assert "if: github.event_name != 'pull_request'" in retrieval_regression_job
+    assert 'AUTH_MODE: header' in retrieval_regression_job
+    assert "README host browser smoke" in retrieval_regression_job
+    assert "NEXT_PUBLIC_USER_ID: ci-bot" in retrieval_regression_job
+    assert "NEXT_PUBLIC_TENANT_ID: 00000000-0000-0000-0000-000000000000" in retrieval_regression_job
+    assert "pnpm exec playwright test e2e/live-stack.smoke.spec.ts" in retrieval_regression_job
+
+
 def test_main_ci_uploads_the_generated_test_inventory() -> None:
     workflow = _read(".github/workflows/ci.yml")
 
@@ -329,6 +346,15 @@ def test_main_ci_runs_core_e2e_against_the_existing_host_backend() -> None:
     assert "make core-e2e" in regression_job
     assert "CORE_E2E_BASE_URL=http://127.0.0.1:8000" in regression_job
     assert "CORE_E2E_OUT=artifacts/core-e2e.retrieval-regression.json" in regression_job
+
+
+def test_live_browser_smoke_never_bootstraps_a_persistent_admin() -> None:
+    live_spec = _read("web/e2e/live-stack.smoke.spec.ts")
+
+    assert "PLAYWRIGHT_LIVE_IDENTIFIER" in live_spec
+    assert "PLAYWRIGHT_LIVE_PASSWORD" in live_spec
+    assert "JWT live smoke requires" in live_spec
+    assert "getByRole('button', { name: '首次设置' })" not in live_spec
 
 
 def test_dockerfiles_bypass_broken_docker_hub_mirror() -> None:

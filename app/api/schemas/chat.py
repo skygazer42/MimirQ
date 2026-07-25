@@ -265,7 +265,7 @@ class ChatRAGConfig(BaseModel):
     # - "recall50": recall-first for larger corpora (top_k>=50, score_threshold=0.0)
     # - "coverage80": aggressive recall/coverage preset (top_k>=80, score_threshold=0.0)
     # - "expanded": recall-first expansion preset (hierarchy recall + parent/sibling context expansion)
-    # - "hybrid_ce": explicit production baseline (hybrid recall; cross-encoder only when reranker stays enabled)
+    # - "hybrid_ce": production hybrid baseline; uses the configured reranker backend when enabled
     retrieval_profile: str | None = None
     # Optional retrieval contract override.
     # - None: use server default RETRIEVAL_CONTRACT_MODE

@@ -15,6 +15,10 @@ def _set_prod_auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENV", "production")
     monkeypatch.setenv("AUTH_MODE", "jwt")
     monkeypatch.setenv("SECRET_KEY", "x" * 32)
+    monkeypatch.setenv("DB_CREATE_ALL_ON_STARTUP", "false")
+    monkeypatch.setenv("MIMIRQ_DB_CREATE_ALL_ON_STARTUP", "false")
+    monkeypatch.setenv("DB_RUNTIME_MIGRATIONS_ENABLED", "false")
+    monkeypatch.setenv("MIMIRQ_DB_RUNTIME_MIGRATIONS_ENABLED", "false")
 
 
 def test_allowed_hosts_required_in_production(monkeypatch: pytest.MonkeyPatch):

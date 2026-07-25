@@ -265,3 +265,30 @@ def test_enterprise_profiles_gate_expensive_work_on_runtime_readiness() -> None:
 
     fast_config = ChatRAGConfig(retrieval_profile="fast")
     assert ChatRAGConfig.model_validate(fast_config.model_dump()).reranker_top_n >= 1
+
+
+@pytest.mark.parametrize(
+    "profile",
+    [
+        "balanced",
+        "quality",
+        "hybrid_ce",
+        "grounded_strict",
+        "hierarchy_hybrid_ce",
+        "hierarchy_grounded_strict",
+    ],
+)
+def test_reranking_profiles_preserve_configured_remote_provider(profile: str) -> None:
+    applied = apply_retrieval_profile_overrides(
+        profile=profile,
+        top_k=10,
+        score_threshold=0.0,
+        retrieval_mode="hybrid",
+        enable_reranker=True,
+        reranker_provider="openai",
+        reranker_top_n=20,
+        enable_weight_rerank=False,
+    )
+
+    assert applied["enable_reranker"] is True
+    assert applied["reranker_provider"] == "openai"

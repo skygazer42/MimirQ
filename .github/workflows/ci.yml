@@ -1323,6 +1323,8 @@ jobs:
         working-directory: web
         env:
           NEXT_PUBLIC_API_URL: http://127.0.0.1:8000
+          NEXT_PUBLIC_USER_ID: ci-bot
+          NEXT_PUBLIC_TENANT_ID: 00000000-0000-0000-0000-000000000000
           PLAYWRIGHT_USE_PROD_SERVER: "1"
         run: pnpm exec playwright test e2e/live-stack.smoke.spec.ts
 

@@ -20,6 +20,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.rag.core.logging import get_logger
 from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri
+from app.tasks.locks import task_job_lock_ttl_sec
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -216,6 +217,8 @@ async def _maybe_acquire_ingest_lock(
 ) -> None:
     if not file_sha256 or not pipeline_hash or dataset_id is None:
         return
+    if not bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)):
+        return
     if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
         return
     try:
@@ -237,14 +240,22 @@ async def _maybe_acquire_ingest_lock(
             redis,
             key=ingest_lock_key,
             value=ingest_lock_value,
-            ttl_sec=60 * 40,
+            ttl_sec=task_job_lock_ttl_sec(),
             fail_open=False,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Ingest lock acquire failed: %s", str(exc)[:200])
         raise HTTPException(status_code=503, detail=INGEST_LOCK_UNAVAILABLE_DETAIL) from exc
     if not acquired:
-        raise HTTPException(status_code=409, detail="Duplicate ingest in progress")
+        # A same-key request is already between hash calculation and persistence.
+        # Continue as an idempotent follower: the document lookup or the database
+        # uniqueness constraint below will return the winner's document.
+        logger.info(
+            "Ingest lock follower tenant_id=%s dataset_id=%s; deferring to database dedup",
+            str(tenant_id),
+            str(dataset_id),
+        )
+        return
 
     doc_metadata["ingest_lock_key"] = ingest_lock_key
     doc_metadata["ingest_lock_value"] = ingest_lock_value
