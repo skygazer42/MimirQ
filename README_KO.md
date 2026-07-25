@@ -36,9 +36,9 @@
 
 <table>
   <tr>
-    <td align="center" width="25%"><strong>30+</strong><br/><sub>파싱 백엔드</sub></td>
-    <td align="center" width="25%"><strong>78</strong><br/><sub>청킹 전략</sub></td>
-    <td align="center" width="25%"><strong>15</strong><br/><sub>리랭커</sub></td>
+    <td align="center" width="25%"><strong>30</strong><br/><sub>파싱 백엔드</sub></td>
+    <td align="center" width="25%"><strong>86</strong><br/><sub>청킹 전략</sub></td>
+    <td align="center" width="25%"><strong>13</strong><br/><sub>리랭커</sub></td>
     <td align="center" width="25%"><strong>800</strong><br/><sub>고정 문항 세트 평가</sub></td>
   </tr>
 </table>
@@ -278,9 +278,9 @@ Dify 표준 외부 지식베이스 엔드포인트는 `POST /api/v1/integrations
 
 | 기능 영역 | **MimirQ** | [Dify](https://github.com/langgenius/dify) | [RAGFlow](https://github.com/infiniflow/ragflow) | [FastGPT](https://github.com/labring/FastGPT) | [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) | [LangChain](https://github.com/langchain-ai/langchain) |
 |:---|:---|:---|:---|:---|:---|:---|
-| **문서 파싱** | **30+ 파싱 백엔드**: PDF, OCR, 레이아웃, 표, 수식, VLM | Knowledge Pipeline; PDF, PPT 등 일반 형식 | **DeepDoc**; 복잡한 레이아웃과 스캔; MinerU / Docling | PDF·스캔·표·수식을 Markdown으로 변환 | PDF, TXT, DOCX 등 문서 파이프라인 | Document Loaders와 서드파티 파서 연동 |
-| **청킹** | **78종 전략**: 재귀, 시맨틱, 부모-자식, RAPTOR, Late Chunking; 시각화 미리보기 | 범용, 부모-자식, Q&A, 파이프라인 정의 처리 | 템플릿 기반 청킹; 시각화된 수작업 개입 | 자동, 수동, Q&A, 강화 처리 | 문서 파이프라인 자동 청킹 | Text Splitters; 애플리케이션 코드로 조합 |
-| **검색 / 리랭크** | Milvus / FAISS / Chroma + BM25 / SPLADE / ColBERT / LTR / RRF; **15종 리랭커** | 시맨틱·전문·하이브리드 검색; 리랭크 설정 가능 | 다중 리콜 + 융합 리랭크 | 시맨틱·전문·하이브리드 검색 + RRF + 리랭크 | 여러 벡터 DB 검색 + 출처 인용 | Retriever / reranker 컴포넌트; 직접 구성 |
+| **문서 파싱** | **30 파싱 백엔드**: PDF, OCR, 레이아웃, 표, 수식, VLM | Knowledge Pipeline; PDF, PPT 등 일반 형식 | **DeepDoc**; 복잡한 레이아웃과 스캔; MinerU / Docling | PDF·스캔·표·수식을 Markdown으로 변환 | PDF, TXT, DOCX 등 문서 파이프라인 | Document Loaders와 서드파티 파서 연동 |
+| **청킹** | **86종 전략**: 재귀, 시맨틱, 부모-자식, RAPTOR, Late Chunking; 시각화 미리보기 | 범용, 부모-자식, Q&A, 파이프라인 정의 처리 | 템플릿 기반 청킹; 시각화된 수작업 개입 | 자동, 수동, Q&A, 강화 처리 | 문서 파이프라인 자동 청킹 | Text Splitters; 애플리케이션 코드로 조합 |
+| **검색 / 리랭크** | Milvus / FAISS / Chroma + BM25 / SPLADE / ColBERT / LTR / RRF; **13종 리랭커** | 시맨틱·전문·하이브리드 검색; 리랭크 설정 가능 | 다중 리콜 + 융합 리랭크 | 시맨틱·전문·하이브리드 검색 + RRF + 리랭크 | 여러 벡터 DB 검색 + 출처 인용 | Retriever / reranker 컴포넌트; 직접 구성 |
 | **지식 그래프** | 엔티티·관계·이벤트 추출; 엔티티 해소, 커뮤니티 탐지, 멀티홉 검색 | 워크플로·플러그인·외부 서비스로 연결 | GraphRAG 내장 | 워크플로나 외부 서비스로 연결 | 에이전트 / 툴로 연결 | 그래프 연동과 커스텀 체인 |
 | **에이전트 / MCP** | LangGraph 에이전트, Self-RAG / CRAG / FLARE; MCP 클라이언트 / 서버 | Function Calling / ReAct 에이전트, 툴, MCP | Agentic Workflow, MCP, 코드 실행기 | Agent V2, 툴, MCP, VM 실행 | 노코드 Agent Builder, MCP, 예약 작업 | Agents / LangGraph / MCP; 코드 우선 |
 | **시각화 워크플로** | **범용 노드 캔버스 없음**; RAG 디버깅·거버넌스 화면·API에 집중 | **핵심 기능**: 앱 / 에이전트 노드 편성 | 에이전트와 수집 파이프라인 편성 | **핵심 기능**: 플로 노드 편성 | 노코드 Agent Builder | 내장 제품 UI 없음; 애플리케이션이 구현 |
@@ -368,13 +368,13 @@ MimirQ의 두 Dify 경로의 검색 근거 커버리지는 99.7% / 96.8%였지�
 <summary><b>프로덕션 배포 팁</b></summary>
 
 ```bash
-# docker/.env를 편집해 프로덕션 파라미터 설정
+# .env를 편집해 프로덕션 파라미터 설정
 # ENV=production
 # AUTH_MODE=jwt
 # SECRET_KEY=<32자 이상의 무작위 문자열>
 # POSTGRES_PASSWORD=<강력한 비밀번호>
 
-make up
+make up-prod
 ```
 
 Kubernetes 프로덕션 배포는 [Helm 배포 가이드](./docs/deployment/helm.md)와 [운영 핸드북](./docs/deployment/runbook.md)을 참조하세요.
@@ -400,7 +400,7 @@ Kubernetes 프로덕션 배포는 [Helm 배포 가이드](./docs/deployment/helm
 | [공개 벤치마크](./docs/guides/public_benchmarks_zh.md) | 재현 가능한 중국어 벤치마크(MIRACL-zh / CFEVER) |
 | [API 가이드](./docs/api/README.md) | OpenAPI 태그 대응표, Pages 링크, 정적 빌드 |
 | [API 워크플로](./docs/api/workflows.md) | 시나리오별 엔드포인트 순서 |
-| [API 튜토리얼](./docs/API.md) | 빠른 시작과 코드 예제 |
+| [API 개요](./docs/API.md) | OpenAPI SSOT 내비게이션, 분할 레퍼런스, 핸드북 링크 |
 | [빠른 시작](./docs/quickstart.md) | 소스에서 개발 |
 | [운영 핸드북](./docs/deployment/runbook.md) | 프로덕션 운영과 트러블슈팅 |
 

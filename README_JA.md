@@ -36,9 +36,9 @@
 
 <table>
   <tr>
-    <td align="center" width="25%"><strong>30+</strong><br/><sub>パース基盤</sub></td>
-    <td align="center" width="25%"><strong>78</strong><br/><sub>チャンク分割戦略</sub></td>
-    <td align="center" width="25%"><strong>15</strong><br/><sub>リランカー</sub></td>
+    <td align="center" width="25%"><strong>30</strong><br/><sub>パース基盤</sub></td>
+    <td align="center" width="25%"><strong>86</strong><br/><sub>チャンク分割戦略</sub></td>
+    <td align="center" width="25%"><strong>13</strong><br/><sub>リランカー</sub></td>
     <td align="center" width="25%"><strong>800</strong><br/><sub>固定問題セット評価</sub></td>
   </tr>
 </table>
@@ -278,9 +278,9 @@ Dify 標準の外部ナレッジベースエンドポイントは `POST /api/v1/
 
 | 機能領域 | **MimirQ** | [Dify](https://github.com/langgenius/dify) | [RAGFlow](https://github.com/infiniflow/ragflow) | [FastGPT](https://github.com/labring/FastGPT) | [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) | [LangChain](https://github.com/langchain-ai/langchain) |
 |:---|:---|:---|:---|:---|:---|:---|
-| **ドキュメントパース** | **30+ のパース基盤**：PDF、OCR、レイアウト、表、数式、VLM | Knowledge Pipeline；PDF、PPT など一般的な形式 | **DeepDoc**；複雑なレイアウトとスキャン；MinerU / Docling | PDF・スキャン・表・数式を Markdown 化 | PDF、TXT、DOCX などのドキュメントパイプライン | Document Loaders とサードパーティパーサー連携 |
-| **チャンク分割** | **78 種の戦略**：再帰、セマンティック、親子、RAPTOR、Late Chunking；可視化プレビュー | 汎用、親子、Q&A、パイプライン定義の処理 | テンプレートベースのチャンク分割；可視化した人手介入 | 自動、手動、Q&A、拡張処理 | ドキュメントパイプラインの自動チャンク分割 | Text Splitters；アプリケーションコードで組み立て |
-| **検索 / リランク** | Milvus / FAISS / Chroma + BM25 / SPLADE / ColBERT / LTR / RRF；**15 種のリランカー** | セマンティック・全文・ハイブリッド検索；リランク設定可 | 複数リコール + 融合リランク | セマンティック・全文・ハイブリッド検索 + RRF + リランク | 複数のベクトル DB 検索 + 出典引用 | Retriever / reranker コンポーネント；自前で編成 |
+| **ドキュメントパース** | **30 のパース基盤**：PDF、OCR、レイアウト、表、数式、VLM | Knowledge Pipeline；PDF、PPT など一般的な形式 | **DeepDoc**；複雑なレイアウトとスキャン；MinerU / Docling | PDF・スキャン・表・数式を Markdown 化 | PDF、TXT、DOCX などのドキュメントパイプライン | Document Loaders とサードパーティパーサー連携 |
+| **チャンク分割** | **86 種の戦略**：再帰、セマンティック、親子、RAPTOR、Late Chunking；可視化プレビュー | 汎用、親子、Q&A、パイプライン定義の処理 | テンプレートベースのチャンク分割；可視化した人手介入 | 自動、手動、Q&A、拡張処理 | ドキュメントパイプラインの自動チャンク分割 | Text Splitters；アプリケーションコードで組み立て |
+| **検索 / リランク** | Milvus / FAISS / Chroma + BM25 / SPLADE / ColBERT / LTR / RRF；**13 種のリランカー** | セマンティック・全文・ハイブリッド検索；リランク設定可 | 複数リコール + 融合リランク | セマンティック・全文・ハイブリッド検索 + RRF + リランク | 複数のベクトル DB 検索 + 出典引用 | Retriever / reranker コンポーネント；自前で編成 |
 | **ナレッジグラフ** | エンティティ・関係・イベント抽出；エンティティ解決、コミュニティ検出、マルチホップ検索 | ワークフロー・プラグイン・外部サービス経由で接続 | GraphRAG を内蔵 | ワークフローや外部サービス経由で接続 | エージェント / ツール経由で接続 | グラフ連携とカスタムチェーン |
 | **エージェント / MCP** | LangGraph エージェント、Self-RAG / CRAG / FLARE；MCP クライアント / サーバー | Function Calling / ReAct エージェント、ツール、MCP | Agentic Workflow、MCP、コード実行 | Agent V2、ツール、MCP、VM 実行 | ノーコード Agent Builder、MCP、定期タスク | Agents / LangGraph / MCP；コードファースト |
 | **可視化ワークフロー** | **汎用ノードキャンバスなし**；RAG デバッグ・ガバナンス画面・API に注力 | **中核機能**：アプリ / エージェントのノード編成 | エージェントと取り込みパイプラインの編成 | **中核機能**：フローノード編成 | ノーコード Agent Builder | 組み込みの製品 UI なし；アプリ側で実装 |
@@ -368,13 +368,13 @@ MimirQ の 2 つの Dify 経路の検索エビデンスカバレッジは 99.7% 
 <summary><b>本番デプロイのヒント</b></summary>
 
 ```bash
-# docker/.env を編集して本番パラメータを設定
+# .env を編集して本番パラメータを設定
 # ENV=production
 # AUTH_MODE=jwt
 # SECRET_KEY=<32 文字以上のランダム文字列>
 # POSTGRES_PASSWORD=<強いパスワード>
 
-make up
+make up-prod
 ```
 
 Kubernetes の本番デプロイについては [Helm デプロイガイド](./docs/deployment/helm.md) と [運用ハンドブック](./docs/deployment/runbook.md) を参照してください。
@@ -400,7 +400,7 @@ Kubernetes の本番デプロイについては [Helm デプロイガイド](./d
 | [公開ベンチマーク](./docs/guides/public_benchmarks_zh.md) | 再現可能な中国語ベンチマーク（MIRACL-zh / CFEVER） |
 | [API ガイド](./docs/api/README.md) | OpenAPI タグ対応表、Pages リンク、静的ビルド |
 | [API ワークフロー](./docs/api/workflows.md) | シナリオ別のエンドポイント順序 |
-| [API チュートリアル](./docs/API.md) | クイックスタートとコード例 |
+| [API 総覧](./docs/API.md) | OpenAPI SSOT ナビゲーション・分割リファレンス・ハンドブックへの入口 |
 | [クイックスタート](./docs/quickstart.md) | ソースからの開発 |
 | [運用ハンドブック](./docs/deployment/runbook.md) | 本番運用とトラブルシューティング |
 

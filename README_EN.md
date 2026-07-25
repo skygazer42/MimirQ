@@ -36,9 +36,9 @@
 
 <table>
   <tr>
-    <td align="center" width="25%"><strong>30+</strong><br/><sub>parsing backends</sub></td>
-    <td align="center" width="25%"><strong>78</strong><br/><sub>chunking strategies</sub></td>
-    <td align="center" width="25%"><strong>15</strong><br/><sub>rerankers</sub></td>
+    <td align="center" width="25%"><strong>30</strong><br/><sub>parsing backends</sub></td>
+    <td align="center" width="25%"><strong>86</strong><br/><sub>chunking strategies</sub></td>
+    <td align="center" width="25%"><strong>13</strong><br/><sub>rerankers</sub></td>
     <td align="center" width="25%"><strong>800</strong><br/><sub>fixed-set eval</sub></td>
   </tr>
 </table>
@@ -278,9 +278,9 @@ The standard Dify external-knowledge endpoint is `POST /api/v1/integrations/dify
 
 | Capability | **MimirQ** | [Dify](https://github.com/langgenius/dify) | [RAGFlow](https://github.com/infiniflow/ragflow) | [FastGPT](https://github.com/labring/FastGPT) | [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) | [LangChain](https://github.com/langchain-ai/langchain) |
 |:---|:---|:---|:---|:---|:---|:---|
-| **Document parsing** | **30+ backends** for PDF, OCR, layout, tables, formulas, and VLM | Knowledge Pipeline for PDF, PPT, and other common formats | **DeepDoc** for complex layouts and scans; MinerU / Docling | PDF and scans with tables and formulas converted to Markdown | Document pipeline for PDF, TXT, DOCX, and more | Document Loaders and third-party parser integrations |
-| **Chunking** | **78 strategies** including recursive, semantic, parent-child, RAPTOR, and late chunking; visual preview | General, parent-child, Q&A, and pipeline-defined processing | Template-based chunking with visual human intervention | Automatic, manual, Q&A, and enhanced processing | Automatic document-pipeline chunking | Text Splitters composed in application code |
-| **Retrieval / reranking** | Milvus / FAISS / Chroma + BM25 / SPLADE / ColBERT / LTR / RRF; **15 rerankers** | Semantic, full-text, and hybrid retrieval with optional reranking | Multiple recall with fused reranking | Semantic, full-text, and hybrid retrieval + RRF + reranking | Multiple vector databases with source citations | Retriever and reranker components assembled by the application |
+| **Document parsing** | **30 backends** for PDF, OCR, layout, tables, formulas, and VLM | Knowledge Pipeline for PDF, PPT, and other common formats | **DeepDoc** for complex layouts and scans; MinerU / Docling | PDF and scans with tables and formulas converted to Markdown | Document pipeline for PDF, TXT, DOCX, and more | Document Loaders and third-party parser integrations |
+| **Chunking** | **86 strategies** including recursive, semantic, parent-child, RAPTOR, and late chunking; visual preview | General, parent-child, Q&A, and pipeline-defined processing | Template-based chunking with visual human intervention | Automatic, manual, Q&A, and enhanced processing | Automatic document-pipeline chunking | Text Splitters composed in application code |
+| **Retrieval / reranking** | Milvus / FAISS / Chroma + BM25 / SPLADE / ColBERT / LTR / RRF; **13 rerankers** | Semantic, full-text, and hybrid retrieval with optional reranking | Multiple recall with fused reranking | Semantic, full-text, and hybrid retrieval + RRF + reranking | Multiple vector databases with source citations | Retriever and reranker components assembled by the application |
 | **Knowledge graph** | Entity, relation, and event extraction; entity resolution, community discovery, and multi-hop retrieval | Connected through workflows, plugins, or external services | Built-in GraphRAG | Connected through workflows or external services | Connected through agents or tools | Graph integrations and custom chains |
 | **Agents / MCP** | LangGraph agents, Self-RAG / CRAG / FLARE, and MCP client / server | Function Calling / ReAct agents, tools, and MCP | Agentic Workflow, MCP, and code executor | Agent V2, tools, MCP, and VM execution | No-code Agent Builder, MCP, and scheduled tasks | Agents / LangGraph / MCP with a code-first model |
 | **Visual workflows** | **No general node canvas**; focused on RAG debugging, governance screens, and APIs | **Core feature** for application and agent orchestration | Agent and ingestion-pipeline orchestration | **Core feature** with flow-node orchestration | No-code Agent Builder | No built-in product UI; supplied by the application |
@@ -368,13 +368,13 @@ From a local look to a production cluster:
 <summary><b>Production Deployment Tips</b></summary>
 
 ```bash
-# Edit docker/.env for production settings
+# Edit .env for production settings
 # ENV=production
 # AUTH_MODE=jwt
 # SECRET_KEY=<random string, 32+ chars>
 # POSTGRES_PASSWORD=<strong password>
 
-make up
+make up-prod
 ```
 
 For Kubernetes production deployment, see the [Helm Guide](./docs/deployment/helm.md) and [Runbook](./docs/deployment/runbook.md).
@@ -400,7 +400,7 @@ For Kubernetes production deployment, see the [Helm Guide](./docs/deployment/hel
 | [Public Benchmarks](./docs/guides/public_benchmarks_zh.md) | Reproducible Chinese benchmarks (MIRACL-zh / CFEVER) |
 | [API guide](./docs/api/README.md) | OpenAPI tag map, Pages link, static build |
 | [API workflows](./docs/api/workflows.md) | Endpoint order by scenario |
-| [API tutorial](./docs/API.md) | Quick start and code-oriented examples |
+| [API overview](./docs/API.md) | OpenAPI SSOT navigation, sharded reference, and handbook entry |
 | [Quick Start](./docs/quickstart.md) | Development from source |
 | [Runbook](./docs/deployment/runbook.md) | Production operations & troubleshooting |
 
