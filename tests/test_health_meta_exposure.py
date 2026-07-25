@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 
 import starlette.status as _starlette_status
@@ -37,6 +38,16 @@ def _build_app() -> tuple[FastAPI, object, object, object]:
 def _reset_caches(health_module: object) -> None:
     health_module._ready_cache.update({"ts": 0.0, "payload": None, "status": 200, "key": None})  # type: ignore[attr-defined]
     health_module._redis_client_slot.invalidate()  # type: ignore[attr-defined]
+
+
+def test_public_version_metadata_matches_package_version() -> None:
+    import app as app_package
+    import app.main as main_module
+
+    root_payload = asyncio.run(main_module.root())
+
+    assert main_module.app.version == app_package.__version__
+    assert root_payload["version"] == app_package.__version__
 
 
 def test_public_health_endpoints_expose_only_minimal_status_fields(monkeypatch):  # noqa: ANN001

@@ -81,6 +81,7 @@ import app.models.user  # noqa: F401
 
 # Ensure KG models are registered for metadata creation
 import app.rag.kg.models  # noqa: F401
+from app import __version__
 from app.api.dependencies.logging import bind_route_context
 from app.api.middleware.process_time import ProcessTimeMiddleware
 from app.api.middleware.request_id import RequestIDMiddleware
@@ -392,7 +393,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="MimirQ - Knowledge Base RAG System",
     description="Knowledge Base Management and RAG Conversation System",
-    version="0.7.17",
+    version=__version__,
     docs_url=_DOCS_PATH if bool(getattr(settings, "API_DOCS_ENABLED", True)) else None,
     redoc_url="/redoc" if bool(getattr(settings, "API_DOCS_ENABLED", True)) else None,
     openapi_url=(
@@ -583,7 +584,7 @@ async def root():
     """Root path."""
     return {
         "message": "Welcome to MimirQ API",
-        "version": "1.0.0",
+        "version": __version__,
         "docs": _DOCS_PATH
     }
 
