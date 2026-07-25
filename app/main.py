@@ -392,7 +392,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="MimirQ - Knowledge Base RAG System",
     description="Knowledge Base Management and RAG Conversation System",
-    version="1.0.0",
+    version="0.7.17",
     docs_url=_DOCS_PATH if bool(getattr(settings, "API_DOCS_ENABLED", True)) else None,
     redoc_url="/redoc" if bool(getattr(settings, "API_DOCS_ENABLED", True)) else None,
     openapi_url=(
