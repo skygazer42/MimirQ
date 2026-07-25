@@ -1483,6 +1483,9 @@ class Settings(BaseSettings):
     BM25_STARTUP_BUILD_ENABLED: bool = False
     # Upper bound for startup-built chunks across the whole instance (0 disables the cap).
     BM25_STARTUP_BUILD_MAX_CHUNKS: int = 8000
+    # Hard cap for operator-triggered retrieval rebuilds across BM25/sparse/ColBERT.
+    # 0 disables the cap (not recommended in production).
+    RETRIEVAL_REBUILD_MAX_CHUNKS: int = 8000
     # Max cached BM25 indices kept in memory (0 = unlimited). Useful for multi-tenant deployments.
     BM25_CACHE_MAX_TENANTS: int = 32
     # BM25 tokenization knobs (recall tuning).
@@ -2840,6 +2843,8 @@ class Settings(BaseSettings):
             raise ValueError("BM25_CACHE_MAX_TENANTS must be >= 0")
         if int(getattr(self, "BM25_EAGER_UPSERT_MAX_CHUNKS", 0) or 0) < 0:
             raise ValueError("BM25_EAGER_UPSERT_MAX_CHUNKS must be >= 0")
+        if int(getattr(self, "RETRIEVAL_REBUILD_MAX_CHUNKS", 0) or 0) < 0:
+            raise ValueError("RETRIEVAL_REBUILD_MAX_CHUNKS must be >= 0")
         if int(getattr(self, "BM25_TOKENIZE_CJK_OOV_MAX_TERM_CHARS", 0) or 0) < 2:
             raise ValueError("BM25_TOKENIZE_CJK_OOV_MAX_TERM_CHARS must be >= 2")
         if int(getattr(self, "BM25_TOKENIZE_CJK_OOV_MAX_EXTRA_TOKENS", 0) or 0) < 0:

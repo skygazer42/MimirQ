@@ -62,9 +62,12 @@ from app.rag.retrieval.source_labels import derive_document_title, should_replac
 from app.rag.retrieval.sparse import SparseVector
 from app.rag.retrieval_candidate_cache import (
     acquire_inflight_retrieval_candidates,
+    acquire_or_wait_for_distributed_inflight_retrieval_candidates,
     build_retrieval_candidate_cache_key,
     get_cached_retrieval_candidates,
     reject_current_inflight_retrieval_candidates,
+    release_current_distributed_inflight_retrieval_candidates,
+    release_distributed_inflight_retrieval_candidates,
     resolve_inflight_retrieval_candidates,
     set_cached_retrieval_candidates,
     wait_for_inflight_retrieval_candidates,
@@ -2619,6 +2622,113 @@ class HybridRetriever(BaseRetriever):
         self._build_bm25_index_from_documents(docs, tenant_id=tenant_id, cache_key=cache_key)
         return len(docs)
 
+    def _count_retrieval_docs_in_db(
+        self,
+        db: Session,
+        *,
+        tenant_id: UUID,
+        dataset_id: UUID | None = None,
+        document_ids: list[UUID] | None = None,
+    ) -> int:
+        q = (
+            db.query(func.count(DocumentChunk.id))
+            .join(DBDocument)
+            .filter(DBDocument.status == "completed")
+            .filter(DBDocument.publication_status == "published")
+            .filter(DocumentChunk.tenant_id == tenant_id)
+        )
+        if dataset_id is not None:
+            q = q.filter(DBDocument.dataset_id == dataset_id)
+        if document_ids:
+            q = q.filter(DocumentChunk.document_id.in_(document_ids))
+        return int(q.scalar() or 0)
+
+    def _raise_retrieval_rebuild_limit_exceeded(
+        self,
+        *,
+        chunk_count: int,
+        limit: int,
+        tenant_id: UUID,
+        dataset_id: UUID | None = None,
+        document_ids: list[UUID] | None = None,
+    ) -> None:
+        raise RuntimeError(
+            "Retrieval rebuild aborted: "
+            f"scope has {int(chunk_count)} published chunks, exceeds "
+            f"RETRIEVAL_REBUILD_MAX_CHUNKS={int(limit)} "
+            f"(tenant_id={tenant_id}, dataset_id={dataset_id}, document_ids={len(document_ids or [])}). "
+            "Narrow the rebuild scope or raise RETRIEVAL_REBUILD_MAX_CHUNKS."
+        )
+
+    def _load_retrieval_docs_for_rebuild(
+        self,
+        db: Session,
+        *,
+        tenant_id: UUID,
+        dataset_id: UUID | None = None,
+        document_ids: list[UUID] | None = None,
+        batch_size: int = 2000,
+    ) -> list[Document]:
+        rebuild_limit = max(0, int(getattr(settings, "RETRIEVAL_REBUILD_MAX_CHUNKS", 0) or 0))
+        if rebuild_limit > 0:
+            scope_count = self._count_retrieval_docs_in_db(
+                db,
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                document_ids=document_ids,
+            )
+            if scope_count > rebuild_limit:
+                self._raise_retrieval_rebuild_limit_exceeded(
+                    chunk_count=scope_count,
+                    limit=rebuild_limit,
+                    tenant_id=tenant_id,
+                    dataset_id=dataset_id,
+                    document_ids=document_ids,
+                )
+
+        load_limit = rebuild_limit + 1 if rebuild_limit > 0 else 0
+        docs = self._load_retrieval_docs_from_db(
+            db,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            document_ids=document_ids,
+            max_chunks=load_limit,
+            batch_size=batch_size,
+        )
+        if rebuild_limit > 0 and len(docs) > rebuild_limit:
+            self._raise_retrieval_rebuild_limit_exceeded(
+                chunk_count=len(docs),
+                limit=rebuild_limit,
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                document_ids=document_ids,
+            )
+        return docs
+
+    def rebuild_bm25_index_for_operational_scope(
+        self,
+        db: Session,
+        *,
+        tenant_id: UUID,
+        dataset_id: UUID | None = None,
+        document_ids: list[UUID] | None = None,
+        batch_size: int = 2000,
+    ) -> int:
+        docs = self._load_retrieval_docs_for_rebuild(
+            db,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            document_ids=document_ids,
+            batch_size=batch_size,
+        )
+        cache_key = self._bm25_scope_key(
+            tenant_id=tenant_id,
+            dataset_id=dataset_id if not document_ids else None,
+            document_ids=document_ids,
+        )
+        self._build_bm25_index_from_documents(docs, tenant_id=tenant_id, cache_key=cache_key)
+        return len(docs)
+
     def _load_retrieval_docs_from_db(
         self,
         db: Session,
@@ -2697,12 +2807,10 @@ class HybridRetriever(BaseRetriever):
         It refreshes the shared retrieval corpus from Postgres and writes persisted index artifacts
         for the active retrieval channels.
         """
-        docs = self._load_retrieval_docs_from_db(
+        docs = self._load_retrieval_docs_for_rebuild(
             db,
             tenant_id=tenant_id,
             dataset_id=dataset_id,
-            document_ids=None,
-            max_chunks=0,
             batch_size=batch_size,
         )
         cache_key = self._bm25_scope_key(
@@ -4882,6 +4990,7 @@ class HybridRetriever(BaseRetriever):
                 **legacy_overrides,
             )
         except Exception as exc:
+            release_current_distributed_inflight_retrieval_candidates()
             reject_current_inflight_retrieval_candidates(exc)
             raise
 
@@ -5305,6 +5414,7 @@ class HybridRetriever(BaseRetriever):
             return semantic_cached[:top_k]
 
         singleflight_leader = False
+        distributed_singleflight_lease = None
         if cache_eligible and cache_key and not cache_hit:
             try:
                 singleflight_leader, inflight_future = acquire_inflight_retrieval_candidates(cache_key)
@@ -5322,9 +5432,18 @@ class HybridRetriever(BaseRetriever):
                     )
                     if isinstance(shared_payload, list):
                         return shared_payload[:top_k]
+                distributed_leader, distributed_payload, distributed_singleflight_lease = (
+                    acquire_or_wait_for_distributed_inflight_retrieval_candidates(cache_key)
+                )
+                if not distributed_leader:
+                    if isinstance(distributed_payload, list):
+                        resolve_inflight_retrieval_candidates(cache_key, distributed_payload)
+                        return distributed_payload[:top_k]
+                    singleflight_leader = False
             except Exception as exc:
                 _log_retriever_fallback('_hybrid_search', exc)
                 singleflight_leader = False
+                distributed_singleflight_lease = None
 
         emit_stream_event("event", {"message": "正在召回候选…"}, dedupe_key="retrieval.recall")
 
@@ -6356,6 +6475,7 @@ class HybridRetriever(BaseRetriever):
                 resolve_inflight_retrieval_candidates(cache_key, out)
             else:
                 reject_current_inflight_retrieval_candidates(RuntimeError("retrieval degraded"))
+        release_distributed_inflight_retrieval_candidates(distributed_singleflight_lease)
         return out
 
     # ---- LangChain Retriever API ----

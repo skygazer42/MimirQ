@@ -1,4 +1,4 @@
-.PHONY: help init models up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-full test-web test-web-full test-web-e2e test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit-docs audit openapi-export openapi-types openapi-validate openapi-check api-docs-build api-docs-build-static diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure plugin-release-gate mixed-rag-quality check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init models up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-full test-web test-web-full test-web-e2e test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit-docs audit openapi-export openapi-types openapi-validate openapi-check api-docs-build api-docs-build-static diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure plugin-release-gate mixed-rag-quality live-core-release-gate check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -64,6 +64,9 @@ RAG_CONCURRENCY_CANDIDATE ?=
 RAG_CONCURRENCY_OUT ?= artifacts/rag-concurrency-gate.json
 RAG_CONCURRENCY_MIN_RETRIEVE_RATIO ?= 1.0
 RAG_CONCURRENCY_MIN_CHAT_RATIO ?= 1.0
+LIVE_CORE_GATE_BASE_URL ?= http://127.0.0.1:8000
+LIVE_CORE_GATE_OUT ?= artifacts/live-core-release-gate.json
+LIVE_CORE_GATE_EXTRA_ARGS ?=
 PYTEST_ARGS ?=
 VITEST_ARGS ?=
 PLUGIN_HELP_TARGETS ?=
@@ -123,6 +126,7 @@ help:
 	@echo "  make api-smoke - smoke-test all OpenAPI endpoints on the running backend"
 	@echo "  make core-e2e  - verify ready -> ingest -> retrieval against a running host or Docker API"
 	@echo "  make rag-concurrency-gate - compare serial and concurrent RAG load reports"
+	@echo "  make live-core-release-gate - live retrieval-only gate for dedup + concurrency + tenant isolation"
 	@echo "  make typecheck - run web TypeScript typecheck"
 	@echo "  make ui-check  - verify web UI design tokens (no hard-coded white/cyan etc)"
 	@echo "  make lint-py   - run Python lint (ruff)"
@@ -408,6 +412,11 @@ rag-concurrency-gate:
 		--min-retrieve-throughput-ratio "$(RAG_CONCURRENCY_MIN_RETRIEVE_RATIO)" \
 		--min-chat-throughput-ratio "$(RAG_CONCURRENCY_MIN_CHAT_RATIO)" \
 		--out "$(RAG_CONCURRENCY_OUT)"
+
+.PHONY: live-core-release-gate
+live-core-release-gate:
+	@mkdir -p $(dir $(LIVE_CORE_GATE_OUT))
+	$(PY) scripts/live_core_release_gate.py --base-url "$(LIVE_CORE_GATE_BASE_URL)" --out "$(LIVE_CORE_GATE_OUT)" $(LIVE_CORE_GATE_EXTRA_ARGS)
 
 typecheck:
 	cd web && pnpm run typecheck

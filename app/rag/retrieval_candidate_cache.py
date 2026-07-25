@@ -17,11 +17,15 @@ import copy
 import hashlib
 import json
 import threading
+import time
 from contextvars import ContextVar
+from dataclasses import dataclass
 from typing import Any
+from uuid import uuid4
 
 from app.core.config import settings
 from app.core.redis_client import LazyRedisClient
+from app.core.redis_lease import release_redis_lease, try_acquire_redis_lease
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
 
@@ -45,6 +49,21 @@ _inflight_candidate_futures: dict[str, concurrent.futures.Future[list[dict[str, 
 _inflight_candidate_lock = threading.Lock()
 _inflight_candidate_leader_key: ContextVar[str | None] = ContextVar(
     "retrieval_candidate_leader_key",
+    default=None,
+)
+_RETRIEVAL_CANDIDATE_SINGLEFLIGHT_LEASE_SUFFIX = ":lease"
+_RETRIEVAL_CANDIDATE_SINGLEFLIGHT_LEASE_POLL_INITIAL_SEC = 0.05
+_RETRIEVAL_CANDIDATE_SINGLEFLIGHT_LEASE_POLL_MAX_SEC = 0.25
+
+
+@dataclass(frozen=True)
+class _DistributedRetrievalLease:
+    lease_key: str
+    owner: str
+
+
+_current_distributed_candidate_lease: ContextVar[_DistributedRetrievalLease | None] = ContextVar(
+    "retrieval_candidate_distributed_lease",
     default=None,
 )
 
@@ -113,6 +132,19 @@ def _clear_current_inflight_retrieval_candidates_key(key: str | None = None) -> 
     _inflight_candidate_leader_key.set(None)
 
 
+def _set_current_distributed_retrieval_lease(lease: _DistributedRetrievalLease | None) -> None:
+    _current_distributed_candidate_lease.set(lease)
+
+
+def _clear_current_distributed_retrieval_lease(lease: _DistributedRetrievalLease | None = None) -> None:
+    current = _current_distributed_candidate_lease.get()
+    if current is None:
+        return
+    if lease is not None and current != lease:
+        return
+    _current_distributed_candidate_lease.set(None)
+
+
 def _pop_inflight_retrieval_candidates(key: str) -> concurrent.futures.Future[list[dict[str, Any]]] | None:
     with _inflight_candidate_lock:
         return _inflight_candidate_futures.pop(key, None)
@@ -165,6 +197,102 @@ def wait_for_inflight_retrieval_candidates(
             if _inflight_candidate_futures.get(key) is future:
                 _inflight_candidate_futures.pop(key, None)
         raise TimeoutError(f"retrieval candidate singleflight timed out for key={key}") from exc
+
+
+def _retrieval_candidate_singleflight_lease_ttl_sec(cache_ttl_sec: int) -> int:
+    admission_timeout_sec = max(
+        15,
+        int(getattr(settings, "RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC", 15.0) or 15.0),
+    )
+    response_ttl_sec = max(60, int(cache_ttl_sec or 0))
+    return max(60, min(300, max(response_ttl_sec, admission_timeout_sec)))
+
+
+def acquire_or_wait_for_distributed_inflight_retrieval_candidates(
+    key: str,
+) -> tuple[bool, list[dict[str, Any]] | None, _DistributedRetrievalLease | None]:
+    if not key or not bool(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_ENABLED", False)):
+        return True, None, None
+
+    cache_ttl_sec = int(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_TTL_SEC", 0) or 0)
+    if cache_ttl_sec <= 0:
+        return True, None, None
+
+    client = _get_redis_client()
+    if client is None:
+        return True, None, None
+
+    lease_key = f"{key}{_RETRIEVAL_CANDIDATE_SINGLEFLIGHT_LEASE_SUFFIX}"
+    owner = uuid4().hex
+    lease_ttl_sec = _retrieval_candidate_singleflight_lease_ttl_sec(cache_ttl_sec)
+    poll_delay = _RETRIEVAL_CANDIDATE_SINGLEFLIGHT_LEASE_POLL_INITIAL_SEC
+    wait_timeout_sec = max(
+        1.0,
+        min(15.0, float(getattr(settings, "RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC", 15.0) or 15.0)),
+    )
+    deadline = time.monotonic() + wait_timeout_sec
+
+    while True:
+        cached = get_cached_retrieval_candidates(key)
+        if isinstance(cached, list):
+            return False, cached, None
+
+        try:
+            acquired = try_acquire_redis_lease(
+                client,
+                lease_key,
+                value=owner,
+                ttl_sec=lease_ttl_sec,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Retrieval candidate lease acquire failed: %s", str(exc)[:200])
+            _invalidate_redis_client()
+            return True, None, None
+
+        if acquired:
+            lease = _DistributedRetrievalLease(lease_key=lease_key, owner=owner)
+            _set_current_distributed_retrieval_lease(lease)
+            cached = get_cached_retrieval_candidates(key)
+            if isinstance(cached, list):
+                release_distributed_inflight_retrieval_candidates(lease)
+                return False, cached, None
+            return True, None, lease
+
+        if time.monotonic() >= deadline:
+            logger.warning(
+                "Retrieval candidate distributed singleflight timed out waiting for lease payload: %s (timeout=%.2fs)",
+                key,
+                wait_timeout_sec,
+            )
+            return True, None, None
+
+        time.sleep(poll_delay)
+        poll_delay = min(
+            _RETRIEVAL_CANDIDATE_SINGLEFLIGHT_LEASE_POLL_MAX_SEC,
+            poll_delay * 1.5,
+        )
+
+
+def release_distributed_inflight_retrieval_candidates(lease: _DistributedRetrievalLease | None) -> None:
+    if lease is None:
+        return
+    _clear_current_distributed_retrieval_lease(lease)
+    client = _get_redis_client()
+    if client is None:
+        return
+    try:
+        release_redis_lease(
+            client,
+            lease.lease_key,
+            value=lease.owner,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Retrieval candidate lease release failed: %s", str(exc)[:200])
+        _invalidate_redis_client()
+
+
+def release_current_distributed_inflight_retrieval_candidates() -> None:
+    release_distributed_inflight_retrieval_candidates(_current_distributed_candidate_lease.get())
 
 
 def get_cached_retrieval_candidates(key: str) -> list[dict[str, Any]] | None:
@@ -239,15 +367,19 @@ def clear_inflight_retrieval_candidates() -> None:
         if not future.done():
             future.cancel()
     _clear_current_inflight_retrieval_candidates_key()
+    _clear_current_distributed_retrieval_lease()
 
 
 __all__ = [
+    "acquire_or_wait_for_distributed_inflight_retrieval_candidates",
     "acquire_inflight_retrieval_candidates",
     "build_retrieval_candidate_cache_key",
     "clear_inflight_retrieval_candidates",
     "get_cached_retrieval_candidates",
     "reject_current_inflight_retrieval_candidates",
     "reject_inflight_retrieval_candidates",
+    "release_current_distributed_inflight_retrieval_candidates",
+    "release_distributed_inflight_retrieval_candidates",
     "resolve_inflight_retrieval_candidates",
     "set_cached_retrieval_candidates",
     "wait_for_inflight_retrieval_candidates",

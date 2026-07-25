@@ -74,6 +74,7 @@ def test_load_test_exercises_reranker_and_records_concurrency() -> None:
             ingest_count=0,
             retrieve_requests=1,
             retrieve_concurrency=2,
+            retrieval_mode="keyword",
             chat_requests=1,
             chat_concurrency=3,
         )
@@ -83,6 +84,7 @@ def test_load_test_exercises_reranker_and_records_concurrency() -> None:
     result = asyncio.run(run())
 
     assert payloads["/api/v1/rag/retrieve-preview"]["rag_config"]["enable_reranker"] is True
+    assert payloads["/api/v1/rag/retrieve-preview"]["rag_config"]["retrieval_mode"] == "keyword"
     assert payloads["/api/v1/chat"]["rag_config"]["enable_reranker"] is True
     assert result["retrieve"]["concurrency"] == 2
     assert result["chat"]["concurrency"] == 3

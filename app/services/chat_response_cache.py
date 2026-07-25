@@ -22,6 +22,7 @@ from uuid import UUID, uuid4
 
 from app.core.config import settings
 from app.core.redis_client import LazyRedisClient
+from app.core.redis_lease import extend_redis_lease, release_redis_lease, try_acquire_redis_lease
 from app.rag.core.logging import get_logger
 from app.rag.embedding.utils import current_embedding_space_hash
 from app.services.corpus_cache_tokens import resolve_corpus_cache_token
@@ -46,18 +47,6 @@ _inflight_response_futures: dict[str, asyncio.Future[dict[str, Any]]] = {}
 _inflight_response_leases: dict[str, tuple[str, str, asyncio.Task[None]]] = {}
 _inflight_response_cache_write_tasks: dict[str, asyncio.Task[bool]] = {}
 _inflight_response_lock: asyncio.Lock | None = None
-_COMPARE_DELETE_LUA = """
-if redis.call("GET", KEYS[1]) == ARGV[1] then
-  return redis.call("DEL", KEYS[1])
-end
-return 0
-"""
-_COMPARE_EXPIRE_LUA = """
-if redis.call("GET", KEYS[1]) == ARGV[1] then
-  return redis.call("EXPIRE", KEYS[1], ARGV[2])
-end
-return 0
-"""
 _CHAT_RESPONSE_SINGLEFLIGHT_LEASE_SUFFIX = ":lease"
 _CHAT_RESPONSE_SINGLEFLIGHT_LEASE_POLL_INITIAL_SEC = 0.05
 _CHAT_RESPONSE_SINGLEFLIGHT_LEASE_POLL_MAX_SEC = 0.25
@@ -151,15 +140,7 @@ async def try_acquire_best_effort_redis_lease(
     if client is None:
         return None
     try:
-        return bool(
-            await asyncio.to_thread(
-                client.set,
-                key,
-                value,
-                ex=max(1, int(ttl_sec)),
-                nx=True,
-            )
-        )
+        return bool(await asyncio.to_thread(try_acquire_redis_lease, client, key, value=value, ttl_sec=ttl_sec))
     except Exception as exc:  # noqa: BLE001
         logger.warning("Redis lease acquire failed: %s", str(exc)[:200])
         _invalidate_redis_client()
@@ -173,7 +154,7 @@ async def release_best_effort_redis_lease(key: str, *, value: str) -> None:
     if client is None:
         return
     try:
-        await asyncio.to_thread(client.eval, _COMPARE_DELETE_LUA, 1, key, value)
+        await asyncio.to_thread(release_redis_lease, client, key, value=value)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Redis lease release failed: %s", str(exc)[:200])
         _invalidate_redis_client()
@@ -193,12 +174,11 @@ async def extend_best_effort_redis_lease(
     try:
         return bool(
             await asyncio.to_thread(
-                client.eval,
-                _COMPARE_EXPIRE_LUA,
-                1,
+                extend_redis_lease,
+                client,
                 key,
-                value,
-                max(1, int(ttl_sec)),
+                value=value,
+                ttl_sec=ttl_sec,
             )
         )
     except Exception as exc:  # noqa: BLE001

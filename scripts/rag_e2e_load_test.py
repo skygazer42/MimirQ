@@ -263,6 +263,7 @@ class E2ELoadTestConfig:
     retrieve_requests: int = 0
     retrieve_concurrency: int = 1
     query: str = "hello"
+    retrieval_mode: str = "hybrid"
 
     chat_requests: int = 0
     chat_concurrency: int = 1
@@ -396,6 +397,7 @@ async def run_e2e_load_test(cfg: E2ELoadTestConfig, *, client: httpx.AsyncClient
                             "document_ids": doc_ids_for_queries,
                             "rag_config": {
                                 "top_k": 10,
+                                "retrieval_mode": str(cfg.retrieval_mode or "hybrid"),
                                 "enable_multi_query": False,
                                 "enable_reranker": bool(cfg.enable_reranker),
                                 "use_graph": False,

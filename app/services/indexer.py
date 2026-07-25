@@ -1975,11 +1975,10 @@ class Indexer:
     ) -> None:
         if not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
             return
-        count = hybrid_retriever.build_bm25_index_from_db(
+        count = hybrid_retriever.rebuild_bm25_index_for_operational_scope(
             self._db,
             tenant_id=tenant_id,
             document_ids=document_ids,
-            max_chunks=0,
             batch_size=2000,
         )
         if not count:

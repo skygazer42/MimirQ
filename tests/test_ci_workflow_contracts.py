@@ -281,8 +281,14 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     assert "--secondary-base-url http://$api2_name:8000" in docker_job
     assert "artifacts/core-e2e.web-dual-api.json" in docker_job
     assert '--name "$api2_name" --no-deps mimirq-api' in docker_job
+    assert "Docker live core release gate" in docker_job
+    assert "python scripts/live_core_release_gate.py" in docker_job
+    assert "AUTH_MODE_RETRIEVAL_DEV: header" in docker_job
+    assert 'UPLOAD_DEDUP_ENABLED_RETRIEVAL_DEV: "true"' in docker_job
+    assert 'RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY_RETRIEVAL_DEV: "3"' in docker_job
     assert "if: always()" in docker_job
     assert "image: ${MIMIRQ_BACKEND_IMAGE:-mimirq-backend}" in retrieval_compose
+    assert "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY_RETRIEVAL_DEV:-1" in retrieval_compose
 
 
 def test_main_ci_runs_core_e2e_against_the_existing_host_backend() -> None:
