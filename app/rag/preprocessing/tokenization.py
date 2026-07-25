@@ -317,3 +317,9 @@ def tokenize_for_bm25(text: str) -> list[str]:
     if len(raw) <= _BM25_TOKENIZE_CACHE_MAX_CHARS:
         return list(_tokenize_for_bm25_cached(raw))
     return _tokenize_for_bm25_impl(raw)
+
+
+def warmup_bm25_tokenizer() -> None:
+    """Pay the per-process Jieba initialization cost before serving traffic."""
+    jieba.initialize()
+    tokenize_for_bm25("MimirQ knowledge retrieval 知识库检索预热")

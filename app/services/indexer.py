@@ -1013,11 +1013,12 @@ class Indexer:
             if space_hash != default_runtime.embedding_space_hash:
                 derived_spaces.add(space_hash)
                 continue
-            raise _dataset_scoped_cleanup_ambiguous(
-                tenant_id=tenant_id,
-                document_id=document_id,
-                embedding_space_hash=space_hash,
-            )
+            # Older chunk metadata may be missing the persisted dataset-scoped marker even
+            # though vectors were written into the dataset-scoped collection for this
+            # embedding space. Full document cleanup always deletes the default store
+            # separately, so include the derived dataset-scoped collection here to clear
+            # both plausible locations instead of leaving stale vectors behind.
+            derived_spaces.add(space_hash)
 
         for space_hash in derived_spaces:
             collections.add(
@@ -1722,6 +1723,12 @@ class Indexer:
         failures: list[Exception] = []
         try:
             self._delete_dataset_scoped_chunk_vectors(tenant_id=tenant_id, document_id=document_id)
+        except DatasetScopedEmbeddingRuntimeResolutionError as exc:
+            if "cleanup target ambiguous" in str(exc) and not strict:
+                logger.warning("Skipping ambiguous dataset-scoped vector cleanup: %s", exc)
+            else:
+                logger.warning("Failed to delete dataset-scoped vectors: %s", exc)
+                failures.append(exc)
         except Exception as exc:
             logger.warning("Failed to delete dataset-scoped vectors: %s", exc)
             failures.append(exc)

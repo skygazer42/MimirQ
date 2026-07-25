@@ -38,6 +38,7 @@ from uuid import UUID, uuid5
 
 from huggingface_hub import HfApi, hf_hub_download
 
+import app.models._all  # noqa: F401
 from app.core.database import Base, SessionLocal, engine
 from app.core.migrations import apply_runtime_migrations
 from app.models.dataset import Dataset, DatasetPermissionEnum
@@ -88,22 +89,6 @@ def _download_file(filename: str, *, revision: str | None = None) -> Path:
 
 
 def _ensure_schema() -> None:
-    # Ensure all ORM models are registered (mirrors scripts/seed_ci_retrieval_regression.py).
-    import app.models.audit_log  # noqa: F401
-    import app.models.chunk_preset  # noqa: F401
-    import app.models.connector  # noqa: F401
-    import app.models.connector_config  # noqa: F401
-    import app.models.conversation_summary  # noqa: F401
-    import app.models.dataset_category  # noqa: F401
-    import app.models.db_catalog  # noqa: F401
-    import app.models.evaluation  # noqa: F401
-    import app.models.evidence  # noqa: F401
-    import app.models.feedback  # noqa: F401
-    import app.models.ingestion_run  # noqa: F401
-    import app.models.tenant  # noqa: F401
-    import app.models.user  # noqa: F401
-    import app.rag.kg.models  # noqa: F401
-
     apply_runtime_migrations(engine)
     Base.metadata.create_all(bind=engine)
     apply_runtime_migrations(engine)

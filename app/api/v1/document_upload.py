@@ -9,6 +9,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
@@ -32,6 +33,13 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 logger = get_logger(__name__)
 INGEST_LOCK_UNAVAILABLE_DETAIL = "Ingest lock unavailable"
+DOCUMENT_DEDUP_CONSTRAINT_NAME = "uq_documents_tenant_dataset_dedup_key_active"
+
+
+class _DuplicatePersistedDocumentError(RuntimeError):
+    def __init__(self, document: Any) -> None:
+        super().__init__("duplicate persisted document")
+        self.document = document
 
 
 @dataclass
@@ -175,6 +183,27 @@ async def _cleanup_commit_ambiguous_source(*, session_factory: Any, document_id:
         _unlink_upload(file_path)
 
 
+def _find_duplicate_document_for_persist_conflict(db: Session, *, db_document: Any) -> Any | None:
+    from app.api.v1 import documents as documents_module
+
+    dataset_id = getattr(db_document, "dataset_id", None)
+    tenant_id = getattr(db_document, "tenant_id", None)
+    if not isinstance(dataset_id, UUID) or not isinstance(tenant_id, UUID):
+        return None
+    doc_metadata = dict(getattr(db_document, "doc_metadata", None) or {})
+    file_sha256 = str(doc_metadata.get("file_sha256") or "").strip().lower()
+    pipeline_hash = str(doc_metadata.get("pipeline_hash") or "").strip()
+    if file_sha256 and pipeline_hash:
+        return documents_module._find_duplicate_document(
+            db,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            file_sha256=file_sha256,
+            pipeline_hash=pipeline_hash,
+        )
+    return None
+
+
 async def _maybe_acquire_ingest_lock(
     *,
     tenant_id: UUID,
@@ -227,6 +256,60 @@ def _retain_ingest_lock_if_task_handed_off(document: Any, *, ingest_lock: _Inges
         ingest_lock.retain()
 
 
+def _build_document_dedup_key(*, file_sha256: str | None, pipeline_hash: str | None) -> str | None:
+    sha = str(file_sha256 or "").strip().lower()
+    ph = str(pipeline_hash or "").strip()
+    if not sha or not ph:
+        return None
+    return f"{sha}:{ph}"
+
+
+def _is_document_dedup_integrity_error(exc: IntegrityError) -> bool:
+    diag = getattr(getattr(exc, "orig", None), "diag", None)
+    if str(getattr(diag, "constraint_name", "") or "").strip() == DOCUMENT_DEDUP_CONSTRAINT_NAME:
+        return True
+    message = str(getattr(exc, "orig", "") or exc)
+    return DOCUMENT_DEDUP_CONSTRAINT_NAME in message
+
+
+def _sync_duplicate_document_pipeline_identity(
+    duplicate_document: Any,
+    *,
+    doc_metadata: dict[str, Any],
+    file_sha256: str,
+    pipeline_hash: str,
+) -> None:
+    doc_metadata["file_sha256"] = str(file_sha256).strip().lower()
+    doc_metadata["pipeline_hash"] = str(pipeline_hash or "").strip() or None
+    if hasattr(duplicate_document, "dedup_key"):
+        duplicate_document.dedup_key = _build_document_dedup_key(file_sha256=file_sha256, pipeline_hash=pipeline_hash)
+
+
+async def _retry_failed_persisted_duplicate(
+    document: Any,
+    *,
+    background_tasks: BackgroundTasks,
+    tenant_id: UUID,
+    account_id: str,
+    db: Session,
+) -> None:
+    if str(getattr(document, "status", "") or "").lower() != "failed":
+        return
+    from app.api.v1 import documents as documents_module
+
+    await documents_module.retry_document_processing(
+        document_id=document.id,
+        background_tasks=background_tasks,
+        force=True,
+        skip_if_unchanged=True,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        db=db,
+    )
+    with contextlib.suppress(Exception):
+        db.refresh(document)
+
+
 async def _persist_uploaded_document(db: Session, db_document: Any, *, file_path: Path) -> None:
     try:
         db.add(db_document)
@@ -239,6 +322,19 @@ async def _persist_uploaded_document(db: Session, db_document: Any, *, file_path
 
     try:
         db.commit()
+    except IntegrityError as exc:
+        with contextlib.suppress(Exception):
+            db.rollback()
+        duplicate = (
+            _find_duplicate_document_for_persist_conflict(db, db_document=db_document)
+            if _is_document_dedup_integrity_error(exc)
+            else None
+        )
+        await _cleanup_unpersisted_source(str(getattr(db_document, "file_path", "") or ""))
+        _unlink_upload(file_path)
+        if duplicate is not None:
+            raise _DuplicatePersistedDocumentError(duplicate) from exc
+        raise
     except Exception:
         # The server may have committed even when the client lost the acknowledgement.
         from app.api.v1 import documents as documents_module
@@ -739,7 +835,12 @@ async def _upload_document_impl(
                 meta_any["chunk_strategy_requested"] = (chunk_strategy or "").lower()
                 if source_path and not meta_any.get("source_path"):
                     meta_any["source_path"] = source_path
-                meta_any["file_sha256"] = str(file_sha256).strip().lower()
+                _sync_duplicate_document_pipeline_identity(
+                    dup_any,
+                    doc_metadata=meta_any,
+                    file_sha256=file_sha256,
+                    pipeline_hash=pipeline_hash,
+                )
                 documents_module.upsert_pipeline_metadata(meta_any, options=pipeline_options)
                 if ingestion_meta:
                     meta_any["ingestion"] = ingestion_meta
@@ -813,8 +914,22 @@ async def _upload_document_impl(
                 processing_progress=0,
                 doc_metadata=doc_metadata,
             )
+            if bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)):
+                db_document.dedup_key = _build_document_dedup_key(file_sha256=file_sha256, pipeline_hash=pipeline_hash)
             persistence_started = True
             await _persist_uploaded_document(db, db_document, file_path=file_path)
+        except _DuplicatePersistedDocumentError as exc:
+            await _retry_failed_persisted_duplicate(
+                exc.document,
+                background_tasks=background_tasks,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                db=db,
+            )
+            _retain_ingest_lock_if_task_handed_off(exc.document, ingest_lock=ingest_lock)
+            with contextlib.suppress(Exception):
+                _attach_doc_to_ingestion_run(exc.document, created=False)
+            return exc.document
         except Exception:
             if not persistence_started:
                 await _cleanup_unpersisted_source(stored_path)
@@ -1485,7 +1600,12 @@ async def upload_documents_batch(
                             meta_any["chunk_strategy_requested"] = (chunk_strategy or "").lower()
                             if source_path and not meta_any.get("source_path"):
                                 meta_any["source_path"] = source_path
-                            meta_any["file_sha256"] = str(file_sha256).strip().lower()
+                            _sync_duplicate_document_pipeline_identity(
+                                dup_any,
+                                doc_metadata=meta_any,
+                                file_sha256=file_sha256,
+                                pipeline_hash=pipeline_hash,
+                            )
                             documents_module.upsert_pipeline_metadata(meta_any, options=pipeline_options)
                             if ingestion_meta:
                                 meta_any["ingestion"] = ingestion_meta
@@ -1558,9 +1678,26 @@ async def upload_documents_batch(
                         processing_progress=0,
                         doc_metadata=doc_metadata,
                     )
+                    if bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)):
+                        db_document.dedup_key = _build_document_dedup_key(file_sha256=file_sha256, pipeline_hash=pipeline_hash)
 
                     persistence_started = True
-                    await _persist_uploaded_document(item_db, db_document, file_path=file_path)
+                    try:
+                        await _persist_uploaded_document(item_db, db_document, file_path=file_path)
+                    except _DuplicatePersistedDocumentError as exc:
+                        await _retry_failed_persisted_duplicate(
+                            exc.document,
+                            background_tasks=background_tasks,
+                            tenant_id=tenant_id,
+                            account_id=account_id,
+                            db=item_db,
+                        )
+                        _retain_ingest_lock_if_task_handed_off(exc.document, ingest_lock=ingest_lock)
+                        return {
+                            "success": True,
+                            "filename": filename0,
+                            **_document_result_snapshot(exc.document, source_path=source_path),
+                        }
 
                     if upload_only:
                         # Upload-only stores the source document but intentionally does not enqueue parsing.
@@ -1913,7 +2050,12 @@ async def upload_documents_batch(
                         meta_any["chunk_strategy_requested"] = (chunk_strategy or "").lower()
                         if source_path and not meta_any.get("source_path"):
                             meta_any["source_path"] = source_path
-                        meta_any["file_sha256"] = str(file_sha256).strip().lower()
+                        _sync_duplicate_document_pipeline_identity(
+                            dup_any,
+                            doc_metadata=meta_any,
+                            file_sha256=file_sha256,
+                            pipeline_hash=pipeline_hash,
+                        )
                         documents_module.upsert_pipeline_metadata(meta_any, options=pipeline_options)
                         if ingestion_meta:
                             meta_any["ingestion"] = ingestion_meta
@@ -1986,9 +2128,26 @@ async def upload_documents_batch(
                     processing_progress=0,
                     doc_metadata=doc_metadata,
                 )
+                if bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)):
+                    db_document.dedup_key = _build_document_dedup_key(file_sha256=file_sha256, pipeline_hash=pipeline_hash)
 
                 persistence_started = True
-                await _persist_uploaded_document(item_db, db_document, file_path=file_path)
+                try:
+                    await _persist_uploaded_document(item_db, db_document, file_path=file_path)
+                except _DuplicatePersistedDocumentError as exc:
+                    await _retry_failed_persisted_duplicate(
+                        exc.document,
+                        background_tasks=background_tasks,
+                        tenant_id=tenant_id,
+                        account_id=account_id,
+                        db=item_db,
+                    )
+                    _retain_ingest_lock_if_task_handed_off(exc.document, ingest_lock=ingest_lock)
+                    return {
+                        "success": True,
+                        "filename": file.filename,
+                        **_document_result_snapshot(exc.document, source_path=source_path),
+                    }
 
                 if upload_only:
                     # Upload-only stores the source document but intentionally does not enqueue parsing.

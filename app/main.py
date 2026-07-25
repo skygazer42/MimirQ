@@ -3,6 +3,7 @@ FastAPI main entry point.
 """
 import logging
 import os
+import time
 import warnings
 from contextlib import asynccontextmanager
 from ipaddress import IPv4Address
@@ -39,48 +40,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
-# Ensure audit log models are registered for metadata creation
-import app.models.audit_log  # noqa: F401
-
-# Ensure chunk preset models are registered for metadata creation
-import app.models.chunk_preset  # noqa: F401
-
-# Ensure connector models are registered for metadata creation
-import app.models.connector  # noqa: F401
-import app.models.connector_config  # noqa: F401
-
-# Ensure conversation summary models are registered for metadata creation
-import app.models.conversation_summary  # noqa: F401
-
-# Ensure dataset category models are registered for metadata creation
-import app.models.dataset_category  # noqa: F401
-
-# Ensure DB catalog models are registered for metadata creation
-import app.models.db_catalog  # noqa: F401
-
-# Ensure evaluation models are registered for metadata creation
-import app.models.evaluation  # noqa: F401
-
-# Ensure evidence suite models are registered for metadata creation
-import app.models.evidence  # noqa: F401
-
-# Ensure feedback models are registered for metadata creation
-import app.models.feedback  # noqa: F401
-
-# Ensure index drift models are registered for metadata creation
-import app.models.index_drift_item  # noqa: F401
-
-# Ensure ingestion run manifest models are registered for metadata creation
-import app.models.ingestion_run  # noqa: F401
-
-# Ensure RAG config template models are registered for metadata creation
-import app.models.rag_config_template  # noqa: F401
-
-# Ensure user models are registered for metadata creation
-import app.models.user  # noqa: F401
-
-# Ensure KG models are registered for metadata creation
-import app.rag.kg.models  # noqa: F401
+import app.models._all  # noqa: F401
 from app import __version__
 from app.api.dependencies.logging import bind_route_context
 from app.api.middleware.process_time import ProcessTimeMiddleware
@@ -210,6 +170,17 @@ if not _OPENAPI_EXPORT_MODE and init_otel():
     instrument_httpx()
 
 
+def _warmup_retrieval_tokenizer() -> None:
+    if not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
+        return
+
+    from app.rag.preprocessing.tokenization import warmup_bm25_tokenizer
+
+    started_at = time.perf_counter()
+    warmup_bm25_tokenizer()
+    logger.info("BM25 tokenizer initialized in %.3fs", time.perf_counter() - started_at)
+
+
 # Lifespan management
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -288,6 +259,10 @@ async def lifespan(app: FastAPI):
             start_task_queue_observability_poller()
         except Exception as exc:  # noqa: BLE001
             logger.warning("Failed to start task queue observability poller: %s", str(exc)[:200])
+
+    # Tokenizer initialization is process-local. Complete it before readiness so a
+    # newly added API replica does not serialize its first concurrent requests.
+    _warmup_retrieval_tokenizer()
 
     # Initialize BM25 index (optional; large deployments can rely on lazy-build).
     if not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):

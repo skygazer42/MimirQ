@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import BackgroundTasks, HTTPException
+from sqlalchemy.exc import IntegrityError
 from starlette.datastructures import UploadFile
 
 import app  # noqa: F401
@@ -555,6 +556,133 @@ async def test_single_upload_releases_ingest_lock_on_exception(monkeypatch: pyte
 
 
 @pytest.mark.asyncio
+async def test_persist_uploaded_document_reuses_duplicate_after_integrity_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    duplicate = SimpleNamespace(id=uuid.uuid4(), filename="existing.txt", status="pending", doc_metadata={})
+    file_path = tmp_path / "upload.txt"
+    file_path.write_text("payload", encoding="utf-8")
+
+    class _FakeDB:
+        def add(self, _obj) -> None:  # noqa: ANN001
+            return None
+
+        class _Diag:
+            constraint_name = document_upload.DOCUMENT_DEDUP_CONSTRAINT_NAME
+
+        class _OrigError(Exception):
+            def __init__(self) -> None:
+                super().__init__(document_upload.DOCUMENT_DEDUP_CONSTRAINT_NAME)
+                self.diag = _FakeDB._Diag()
+
+        def commit(self) -> None:
+            raise IntegrityError("insert", {}, _FakeDB._OrigError())
+
+        def rollback(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        documents_module,
+        "_find_duplicate_document",
+        lambda *args, **kwargs: duplicate,
+        raising=True,
+    )
+
+    db_document = SimpleNamespace(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        doc_metadata={"file_sha256": "sha-1", "pipeline_hash": "pipe-1"},
+        file_path=str(file_path),
+    )
+
+    with pytest.raises(document_upload._DuplicatePersistedDocumentError) as exc_info:
+        await document_upload._persist_uploaded_document(_FakeDB(), db_document, file_path=file_path)
+
+    assert exc_info.value.document is duplicate
+    assert not file_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_persist_uploaded_document_cleans_source_for_unrelated_integrity_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    file_path = tmp_path / "upload.txt"
+    file_path.write_text("payload", encoding="utf-8")
+    cleaned: list[str] = []
+
+    async def _cleanup(stored_path: str) -> None:
+        cleaned.append(stored_path)
+
+    class _FakeDB:
+        def add(self, _obj) -> None:  # noqa: ANN001
+            return None
+
+        def commit(self) -> None:
+            raise IntegrityError("insert", {}, RuntimeError("uq_documents_other_constraint"))
+
+        def rollback(self) -> None:
+            return None
+
+    monkeypatch.setattr(document_upload, "_cleanup_unpersisted_source", _cleanup, raising=True)
+    db_document = SimpleNamespace(
+        id=uuid.uuid4(),
+        tenant_id=uuid.uuid4(),
+        dataset_id=uuid.uuid4(),
+        doc_metadata={"file_sha256": "sha-1", "pipeline_hash": "pipe-1"},
+        file_path="minio://documents/upload.txt",
+    )
+
+    with pytest.raises(IntegrityError, match="uq_documents_other_constraint"):
+        await document_upload._persist_uploaded_document(_FakeDB(), db_document, file_path=file_path)
+
+    assert cleaned == ["minio://documents/upload.txt"]
+    assert not file_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_failed_persisted_duplicate_reuses_existing_retry_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    tenant_id = uuid.uuid4()
+    document = SimpleNamespace(id=uuid.uuid4(), status="failed")
+    retried: list[dict] = []
+
+    async def _retry(**kwargs) -> None:  # noqa: ANN003
+        retried.append(kwargs)
+
+    class _FakeDB:
+        def refresh(self, _document) -> None:  # noqa: ANN001
+            return None
+
+    monkeypatch.setattr(documents_module, "retry_document_processing", _retry, raising=True)
+    db = _FakeDB()
+    background_tasks = BackgroundTasks()
+
+    await document_upload._retry_failed_persisted_duplicate(
+        document,
+        background_tasks=background_tasks,
+        tenant_id=tenant_id,
+        account_id="acct-1",
+        db=db,
+    )
+
+    assert retried == [
+        {
+            "document_id": document.id,
+            "background_tasks": background_tasks,
+            "force": True,
+            "skip_if_unchanged": True,
+            "tenant_id": tenant_id,
+            "account_id": "acct-1",
+            "db": db,
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_single_upload_preserves_local_source_when_queue_handoff_fails_after_persist(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -692,6 +820,90 @@ async def test_batch_upload_hands_retry_ingest_lock_to_worker(monkeypatch: pytes
     assert duplicate.doc_metadata["task_id"] == "task-1"
     assert duplicate.doc_metadata["ingest_lock_key"].startswith("lock:ingest:")
     assert duplicate.doc_metadata["ingest_lock_value"]
+
+
+@pytest.mark.asyncio
+async def test_single_upload_returns_existing_document_after_dedup_constraint_conflict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dataset_id = uuid.uuid4()
+    tenant_id = uuid.uuid4()
+    duplicate_document = SimpleNamespace(
+        id=uuid.uuid4(),
+        filename="dup.txt",
+        status="pending",
+        doc_metadata={"file_sha256": "sha-dup.txt", "pipeline_hash": "pipeline-hash"},
+        dedup_key="sha-dup.txt:pipeline-hash",
+    )
+
+    class _DedupDiag:
+        constraint_name = document_upload.DOCUMENT_DEDUP_CONSTRAINT_NAME
+
+    class _DedupOrigError(Exception):
+        def __init__(self) -> None:
+            super().__init__(document_upload.DOCUMENT_DEDUP_CONSTRAINT_NAME)
+            self.diag = _DedupDiag()
+
+    class _ConflictDB:
+        def __init__(self) -> None:
+            self.commit_calls = 0
+            self.rollback_calls = 0
+
+        def add(self, _document) -> None:  # noqa: ANN001
+            return None
+
+        def commit(self) -> None:
+            self.commit_calls += 1
+            raise IntegrityError("insert", {}, _DedupOrigError())
+
+        def rollback(self) -> None:
+            self.rollback_calls += 1
+
+        def refresh(self, _document) -> None:  # noqa: ANN001
+            return None
+
+    _patch_quota(monkeypatch)
+    _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
+    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", False, raising=False)
+    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+
+    duplicate_hits = {"count": 0}
+
+    def _find_duplicate_document(*args, **kwargs):  # noqa: ANN001, ANN003
+        duplicate_hits["count"] += 1
+        if duplicate_hits["count"] == 1:
+            return None
+        return duplicate_document
+
+    monkeypatch.setattr(documents_module, "_find_duplicate_document", _find_duplicate_document, raising=True)
+
+    async def _schedule(**_kwargs) -> bool:  # noqa: ANN003, ANN202
+        raise AssertionError("dedup conflict should return the winning document without requeueing")
+
+    monkeypatch.setattr(document_upload, "_schedule_document_processing", _schedule, raising=True)
+
+    db = _ConflictDB()
+    result = await document_upload.upload_document(
+        background_tasks=BackgroundTasks(),
+        file=_make_upload("dup.txt"),
+        form=document_upload.UploadDocumentFormFields(
+            parser_backend="auto",
+            chunk_strategy="langchain_recursive",
+            pipeline=None,
+            dataset_id=dataset_id,
+            user_metadata=None,
+        ),
+        overrides_form=_build_overrides_form(),
+        tenant_id=tenant_id,
+        account_id="acct-1",
+        db=db,
+    )
+
+    assert result.id == duplicate_document.id
+    assert db.commit_calls == 1
+    assert db.rollback_calls == 1
+    assert duplicate_hits["count"] == 2
 
 
 @pytest.mark.asyncio

@@ -61,6 +61,7 @@ def test_evidence_api_offline_regression_gate_hit_at_20_and_recall(monkeypatch: 
     monkeypatch.setattr(settings, "RETRIEVAL_QUERY_PARALLELISM", 1, raising=False)
     monkeypatch.setattr(settings, "RAG_ABSTAIN_ENABLED", False, raising=False)
     monkeypatch.setattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED", False, raising=False)
 
     # Keep the gate fully offline even if a future change triggers vector fallbacks.
     import app.rag.retriever as retriever_mod
@@ -141,6 +142,12 @@ def test_evidence_api_offline_regression_gate_hit_at_20_and_recall(monkeypatch: 
         retriever,
         "_enrich_results_with_db_metadata",
         lambda results, **_kwargs: results,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        retriever,
+        "_refresh_bm25_dataset_cache_version",
+        lambda **_kwargs: None,
         raising=False,
     )
     monkeypatch.setattr(orch_mod, "hybrid_retriever", retriever, raising=True)

@@ -279,57 +279,137 @@ def _scrub_report_for_redaction(report: Any) -> dict:
     if not isinstance(report, dict):
         return {"redacted": True}
 
+    def _select(source: Any, keys: set[str]) -> dict[str, Any]:
+        if not isinstance(source, dict):
+            return {}
+        return {key: source[key] for key in keys if key in source}
+
+    def _objective_metrics(value: Any) -> Any:
+        if value is None or isinstance(value, (bool, int, float)):
+            return value
+        if isinstance(value, dict):
+            return {
+                str(key): scrubbed
+                for key, item in value.items()
+                if (scrubbed := _objective_metrics(item)) is not None
+            }
+        if isinstance(value, list):
+            return [scrubbed for item in value if (scrubbed := _objective_metrics(item)) is not None]
+        return None
+
     safe: dict[str, Any] = {"redacted": True}
-
-    # Keep core aggregate sections (numeric summaries).
-    for key in ("profile", "compliance", "governance_metrics", "governance_audit", "chunk_quality_metrics", "pipeline_versions"):
-        if key in report:
-            safe[key] = report.get(key)
-
-    # KG: keep counts/types but remove drilldown rows (may contain sources/paths).
-    kg = report.get("kg_stats")
-    if isinstance(kg, dict):
-        kg_safe = dict(kg)
-        if "top_documents" in kg_safe:
-            kg_safe["top_documents"] = []
-        safe["kg_stats"] = kg_safe
-
-    # Eval: keep summary, but drop directory slicing (paths).
-    rr = report.get("latest_regression_run")
-    if isinstance(rr, dict):
-        rr_safe = dict(rr)
-        summ = rr_safe.get("summary")
-        if isinstance(summ, dict):
-            summ_safe = dict(summ)
-            rs = summ_safe.get("retrieval_slices")
-            if isinstance(rs, dict) and "directory" in rs:
-                rs_safe = dict(rs)
-                rs_safe["directory"] = {"redacted": True}
-                summ_safe["retrieval_slices"] = rs_safe
-            rr_safe["summary"] = summ_safe
-        safe["latest_regression_run"] = rr_safe
-
-    retrieval_audit = _safe_retrieval_audit_payload(report.get("retrieval_audit"))
-    if retrieval_audit is not None:
-        safe["retrieval_audit"] = retrieval_audit
-
-    # Precheck: keep distributions but remove IDs + directory structure.
-    pre = report.get("precheck_summary")
-    if isinstance(pre, dict):
-        pre_safe = dict(pre)
-        if "dataset_id" in pre_safe:
-            pre_safe["dataset_id"] = REDACTED_TEXT
-        if "scan_run_id" in pre_safe:
-            pre_safe["scan_run_id"] = REDACTED_TEXT
-        if "directory_stats" in pre_safe:
-            pre_safe["directory_stats"] = []
-        safe["precheck_summary"] = pre_safe
-
-    # Always redact dataset identity fields if present.
     if "dataset_name" in report:
         safe["dataset_name"] = REDACTED_TEXT
     if "dataset_id" in report:
         safe["dataset_id"] = REDACTED_TEXT
+
+    profile = _select(
+        report.get("profile"),
+        {
+            "generated_at",
+            "total_documents",
+            "total_size_bytes",
+            "by_status",
+            "by_file_type",
+            "by_quality_bucket",
+            "file_size_histogram",
+            "length_percentiles",
+            "length_histogram",
+            "chunk_count_percentiles",
+            "chunk_count_histogram",
+            "avg_chunk_chars_percentiles",
+            "avg_chunk_chars_histogram",
+            "chunk_length_percentiles",
+            "chunk_length_histogram",
+            "chunk_token_percentiles",
+            "chunk_token_histogram",
+            "avg_chunk_tokens_percentiles",
+            "avg_chunk_tokens_histogram",
+            "chunk_coverage_percentiles",
+            "chunk_coverage_histogram",
+            "chunk_overlap_waste_percentiles",
+            "chunk_overlap_waste_histogram",
+            "page_number_histogram",
+            "parse_quality_histogram",
+            "language_mix",
+            "pdf_scan",
+            "parsing_provenance",
+            "pii_hits_total",
+            "secrets_hits_total",
+        },
+    )
+    if profile:
+        safe["profile"] = profile
+
+    compliance = _select(
+        report.get("compliance"),
+        {"pii_hits_total", "secrets_hits_total", "quarantined_documents", "failed_documents"},
+    )
+    if compliance:
+        safe["compliance"] = compliance
+
+    for section in ("governance_metrics", "governance_audit", "chunk_quality_metrics"):
+        objective = _objective_metrics(report.get(section))
+        if isinstance(objective, dict) and objective:
+            safe[section] = objective
+
+    kg = _select(
+        report.get("kg_stats"),
+        {
+            "events",
+            "entities",
+            "links",
+            "events_with_document_id",
+            "events_with_chunk_id",
+            "events_with_page_ref",
+            "links_with_provenance",
+            "links_with_page_ref",
+            "documents_with_kg_extracted_at",
+            "documents_with_kg_events",
+            "event_count_from_documents",
+            "skipped_chunks_total",
+            "skipped_short_chunks_total",
+            "failed_chunks_total",
+            "retry_chunks_total",
+            "entity_types",
+            "updated_at",
+        },
+    )
+    if kg:
+        safe["kg_stats"] = kg
+
+    regression = report.get("latest_regression_run")
+    if isinstance(regression, dict):
+        regression_safe = _select(regression, {"status", "metrics"})
+        summary = _objective_metrics(regression.get("summary"))
+        if isinstance(summary, dict) and summary:
+            regression_safe["summary"] = summary
+        if regression_safe:
+            safe["latest_regression_run"] = regression_safe
+
+    retrieval_audit = report.get("retrieval_audit")
+    if isinstance(retrieval_audit, dict):
+        audit_safe = _select(retrieval_audit, {"status", "failure_categories"})
+        if audit_safe:
+            safe["retrieval_audit"] = audit_safe
+
+    precheck = _select(
+        report.get("precheck_summary"),
+        {
+            "generated_at",
+            "total_files",
+            "total_size_bytes",
+            "by_file_type",
+            "file_size_histogram",
+            "token_histogram",
+            "language_mix",
+            "pii_hits_total",
+            "secrets_hits_total",
+            "pdf_scan",
+        },
+    )
+    if precheck:
+        safe["precheck_summary"] = precheck
 
     return safe
 
@@ -577,6 +657,8 @@ def render_dataset_report_html(
     """
     import json
 
+    if redact:
+        report = _scrub_report_for_redaction(report)
     name = REDACTED_TEXT if redact else (dataset_name or "")
     dsid = REDACTED_TEXT if redact else (dataset_id or "")
     ts = generated_at.isoformat() if isinstance(generated_at, datetime) else (str(generated_at or "") or "")
@@ -1110,6 +1192,8 @@ def render_rag_audit_html(
     """
     import json
 
+    if redact:
+        report = _scrub_report_for_redaction(report)
     name = REDACTED_TEXT if redact else (dataset_name or "")
     dsid = REDACTED_TEXT if redact else (dataset_id or "")
     ts = generated_at.isoformat() if isinstance(generated_at, datetime) else (str(generated_at or "") or "")

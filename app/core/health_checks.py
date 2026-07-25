@@ -14,6 +14,20 @@ from typing import Any, Literal
 HealthMode = Literal["ready", "health"]
 
 
+def redis_usage_flags(settings) -> dict[str, bool]:
+    singleflight_redis_enabled = bool(
+        getattr(settings, "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED", True)
+    ) and len(str(getattr(settings, "SECRET_KEY", "") or "").strip()) >= 32
+    return {
+        "task_queue": bool(getattr(settings, "TASK_QUEUE_ENABLED", False)),
+        "embedding_cache": bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", False)),
+        "chat_response_cache": bool(getattr(settings, "CHAT_RESPONSE_CACHE_ENABLED", False)),
+        "retrieval_candidate_singleflight": singleflight_redis_enabled,
+        "retrieval_candidate_cache": bool(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_ENABLED", False)),
+        "semantic_cache": bool(getattr(settings, "SEMANTIC_CACHE_ENABLED", False)),
+    }
+
+
 def check_database(session_local) -> tuple[dict[str, Any], bool]:
     """Return (db_status, ok)."""
     from sqlalchemy import text
@@ -110,9 +124,9 @@ def check_redis(
 
     ok is False only when Redis is required (task queue enabled) and ping fails.
     """
-    redis_required = bool(getattr(settings, "TASK_QUEUE_ENABLED", False))
-    redis_optional_cache = bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", False))
-    redis_enabled = redis_required or redis_optional_cache
+    usage = redis_usage_flags(settings)
+    redis_required = bool(usage["task_queue"])
+    redis_enabled = any(usage.values())
 
     ok = True
     should_reset_client = False
@@ -120,7 +134,12 @@ def check_redis(
         "status": "disabled",
         "enabled": redis_enabled,
         "required": redis_required,
-        "embedding_cache_enabled": redis_optional_cache,
+        "embedding_cache_enabled": usage["embedding_cache"],
+        "chat_response_cache_enabled": usage["chat_response_cache"],
+        "retrieval_candidate_singleflight_enabled": usage["retrieval_candidate_singleflight"],
+        "retrieval_candidate_cache_enabled": usage["retrieval_candidate_cache"],
+        "semantic_cache_enabled": usage["semantic_cache"],
+        "usage": usage,
     }
 
     if not redis_enabled:

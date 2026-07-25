@@ -81,6 +81,42 @@ def _json_compact(payload: object, *, default: object | None = None) -> str:
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=default)
 
 
+def _report_filename(
+    *,
+    dataset_name: str | None,
+    pipeline_hash: str | None,
+    stem: str,
+    suffix: str,
+    redact: bool = False,
+) -> str:
+    prefix = "dataset" if redact else (_SAFE_DATASET_NAME_RE.sub("_", str(dataset_name or "dataset"))[:64] or "dataset")
+    pipeline_suffix = f".{pipeline_hash[:8]}" if pipeline_hash and not redact else ""
+    return f"{prefix}.{stem}{pipeline_suffix}.{suffix}"
+
+
+def _report_bundle_manifest(
+    *,
+    report: DatasetReportOut,
+    dataset_id: UUID,
+    pipeline_hash: str | None,
+    files: list[str],
+    redact: bool,
+) -> dict[str, object]:
+    manifest: dict[str, object] = {
+        "schema": "mimirq.report_bundle.v2",
+        "generated_at": report.generated_at.isoformat() if hasattr(report.generated_at, "isoformat") else str(report.generated_at or ""),
+        "redact": bool(redact),
+        "files": files,
+    }
+    if redact:
+        manifest["dataset"] = {"redacted": True}
+    else:
+        manifest["dataset_id"] = str(dataset_id)
+        manifest["dataset_name"] = str(report.dataset_name or "")
+        manifest["pipeline_hash"] = pipeline_hash
+    return manifest
+
+
 def _regression_run_payload(row: object) -> dict:
     return {
         "run_id": str(getattr(row, "id", "")),
@@ -141,6 +177,8 @@ def _regression_diff_artifacts(base: object, target: object, *, redact: bool) ->
 
 
 def _regression_bundle_artifacts(context: ReportContext, dataset_id: UUID, *, redact: bool) -> dict[str, str]:
+    if redact:
+        return {}
     try:
         from app.models.evaluation import RagasRegressionRun
 
@@ -192,9 +230,7 @@ def export_dataset_report_json(
 ):
     report = _build_report(context, dataset_id=dataset_id, pipeline_hash=pipeline_hash, connector_runs_limit=connector_runs_limit)
     content = _json_compact(report.model_dump(mode="json"))
-    safe = _SAFE_DATASET_NAME_RE.sub("_", str(report.dataset_name or "dataset"))[:64]
-    suffix = f".{pipeline_hash[:8]}" if pipeline_hash else ""
-    filename = f"{safe}.report{suffix}.json"
+    filename = _report_filename(dataset_name=report.dataset_name, pipeline_hash=pipeline_hash, stem="report", suffix="json")
     return Response(
         content=content,
         media_type="application/json",
@@ -222,9 +258,13 @@ def export_dataset_report_html(
         redact=bool(redact),
     )
 
-    safe = _SAFE_DATASET_NAME_RE.sub("_", str(report.dataset_name or "dataset"))[:64]
-    suffix = f".{pipeline_hash[:8]}" if pipeline_hash else ""
-    filename = f"{safe}.report{suffix}.html"
+    filename = _report_filename(
+        dataset_name=report.dataset_name,
+        pipeline_hash=pipeline_hash,
+        stem="report",
+        suffix="html",
+        redact=bool(redact),
+    )
     return Response(
         content=html,
         media_type="text/html; charset=utf-8",
@@ -252,9 +292,13 @@ def export_dataset_rag_audit_html(
         redact=bool(redact),
     )
 
-    safe = _SAFE_DATASET_NAME_RE.sub("_", str(report.dataset_name or "dataset"))[:64]
-    suffix = f".{pipeline_hash[:8]}" if pipeline_hash else ""
-    filename = f"{safe}.rag_audit{suffix}.html"
+    filename = _report_filename(
+        dataset_name=report.dataset_name,
+        pipeline_hash=pipeline_hash,
+        stem="rag_audit",
+        suffix="html",
+        redact=bool(redact),
+    )
     return Response(
         content=html,
         media_type="text/html; charset=utf-8",
@@ -310,27 +354,33 @@ def export_dataset_report_bundle_zip(
 
     artifacts = _regression_bundle_artifacts(context, dataset_id, redact=bool(redact))
     files = ["manifest.json", "report.json", "report.html", "rag_audit.html", *artifacts]
-    manifest = {
-        "schema": "mimirq.report_bundle.v2",
-        "generated_at": report.generated_at.isoformat() if hasattr(report.generated_at, "isoformat") else str(report.generated_at or ""),
-        "dataset_id": str(dataset_id),
-        "pipeline_hash": pipeline_hash,
-        "redact": bool(redact),
-        "files": files,
-    }
+    manifest = _report_bundle_manifest(
+        report=report,
+        dataset_id=dataset_id,
+        pipeline_hash=pipeline_hash,
+        files=files,
+        redact=bool(redact),
+    )
 
+    bundle_entries = [
+        ("manifest.json", _json_compact(manifest)),
+        ("report.json", report_json),
+        ("report.html", report_html),
+        ("rag_audit.html", rag_audit_html),
+        *artifacts.items(),
+    ]
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("manifest.json", _json_compact(manifest))
-        zf.writestr("report.json", report_json)
-        zf.writestr("report.html", report_html)
-        zf.writestr("rag_audit.html", rag_audit_html)
-        for artifact_name, artifact_content in artifacts.items():
+        for artifact_name, artifact_content in bundle_entries:
             zf.writestr(artifact_name, artifact_content)
 
-    safe = _SAFE_DATASET_NAME_RE.sub("_", str(report.dataset_name or "dataset"))[:64]
-    suffix = f".{pipeline_hash[:8]}" if pipeline_hash else ""
-    filename = f"{safe}.report_bundle{suffix}.zip"
+    filename = _report_filename(
+        dataset_name=report.dataset_name,
+        pipeline_hash=pipeline_hash,
+        stem="report_bundle",
+        suffix="zip",
+        redact=bool(redact),
+    )
     return Response(
         content=buf.getvalue(),
         media_type="application/zip",

@@ -1151,8 +1151,9 @@ def test_retrieval_candidate_cache_singleflight_coalesces_concurrent_exact_misse
         clear_inflight_retrieval_candidates()
 
 
-def test_retrieval_candidate_cache_singleflight_wait_timeout_releases_key_without_cancelling_leader() -> None:
+def test_retrieval_candidate_cache_singleflight_wait_timeout_preserves_leader() -> None:
     from app.rag.retrieval_candidate_cache import (
+        RetrievalCandidateSingleflightTimeoutError,
         acquire_inflight_retrieval_candidates,
         clear_inflight_retrieval_candidates,
         wait_for_inflight_retrieval_candidates,
@@ -1167,11 +1168,12 @@ def test_retrieval_candidate_cache_singleflight_wait_timeout_releases_key_withou
         assert follower is False
         assert shared_future is future
 
-        with pytest.raises(TimeoutError, match="singleflight timed out"):
+        with pytest.raises(RetrievalCandidateSingleflightTimeoutError, match="singleflight timed out"):
             wait_for_inflight_retrieval_candidates("cache-key", shared_future, timeout_sec=0.01)
 
-        leader_again, _future_again = acquire_inflight_retrieval_candidates("cache-key")
-        assert leader_again is True
+        leader_again, future_again = acquire_inflight_retrieval_candidates("cache-key")
+        assert leader_again is False
+        assert future_again is future
         assert future.cancelled() is False
         future.set_result([{"chunk_id": "leader-result"}])
         assert future.result() == [{"chunk_id": "leader-result"}]

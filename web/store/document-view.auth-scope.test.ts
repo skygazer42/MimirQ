@@ -2,12 +2,13 @@
 
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { AUTH_SCOPE_CHANGED_EVENT } from '@/lib/auth-storage'
+import { AUTH_SCOPE_CHANGED_EVENT, getAccessToken, setAccessToken } from '@/lib/auth-storage'
 import { useDocumentView } from './document-view'
 
 describe('document view auth scope', () => {
   beforeEach(() => {
     localStorage.clear()
+    sessionStorage.clear()
   })
 
   it('drops persisted document context when the auth scope changes', () => {
@@ -55,6 +56,7 @@ describe('document view auth scope', () => {
   })
 
   it('clears open source context when another tab changes user', () => {
+    setAccessToken({ access_token: 'user-a-token', token_type: 'bearer', expires_in: 3600 })
     localStorage.setItem('mimirq_user_id', 'user-a')
     useDocumentView.getState().openDocument('private-doc', 'private-chunk', undefined, {
       sourceContext: {
@@ -75,11 +77,12 @@ describe('document view auth scope', () => {
     )
 
     expect(useDocumentView.getState()).toMatchObject({
-      authScope: 'default:user-b',
+      authScope: 'default:anonymous',
       isOpen: false,
       documentId: null,
       sourceContext: null,
     })
+    expect(getAccessToken()).toBeNull()
     expect(localStorage.getItem('mimirq_document_view_v1')).toBeNull()
   })
 })

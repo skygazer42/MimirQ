@@ -90,6 +90,7 @@ jobs:
         run: |
           docker compose --env-file .env -f docker/docker-compose.yml config --quiet
           docker compose --env-file .env -f docker/docker-compose.yml -f docker/docker-compose.web.yml config --quiet
+          docker compose -f docker/docker-compose.retrieval-dev.yml config --quiet
 
       - name: Validate Helm chart
         run: |
@@ -301,6 +302,24 @@ jobs:
       - name: Build web image
         run: docker build -t mimirq-web -f web/Dockerfile.prod web
 
+      - name: README docker quickstart smoke
+        env:
+          COMPOSE_PROJECT_NAME: mimirq-readme-${{ github.run_id }}-${{ github.run_attempt }}
+          MARKDOWN_IMAGE_PROXY_SECRET: ci-markdown-image-proxy-secret
+        run: |
+          mkdir -p artifacts
+          make up-web
+          make core-e2e \
+            CORE_E2E_BASE_URL=http://127.0.0.1:8000 \
+            CORE_E2E_BOOTSTRAP_REGISTER=1 \
+            CORE_E2E_OUT=artifacts/core-e2e.readme-docker.json
+
+      - name: Clean up README docker quickstart stack
+        if: always()
+        env:
+          COMPOSE_PROJECT_NAME: mimirq-readme-${{ github.run_id }}-${{ github.run_attempt }}
+        run: docker compose --env-file .env -f docker/docker-compose.yml -f docker/docker-compose.web.yml down -v --remove-orphans
+
       - name: Smoke built backend and web images
         env:
           BACKEND_PORT: "0"
@@ -369,19 +388,26 @@ jobs:
           MIMIRQ_BACKEND_IMAGE: mimirq-backend
           AUTH_MODE_RETRIEVAL_DEV: header
           UPLOAD_DEDUP_ENABLED_RETRIEVAL_DEV: "true"
+          RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED_RETRIEVAL_DEV: "true"
+          RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY_RETRIEVAL_DEV: "3"
           RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY_RETRIEVAL_DEV: "3"
         run: |
           mkdir -p artifacts
           compose=(docker compose -f docker/docker-compose.retrieval-dev.yml)
+          api2_name="mimirq-api-live-secondary-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          trap 'docker rm -f "$api2_name" >/dev/null 2>&1 || true' EXIT
           if ! "${compose[@]}" up -d --no-build --wait --wait-timeout 300; then
             "${compose[@]}" ps
             "${compose[@]}" logs --tail=200 mimirq-api
             exit 1
           fi
+          docker compose -f docker/docker-compose.retrieval-dev.yml run -d \
+            --name "$api2_name" --no-deps mimirq-api
           "${compose[@]}" run --rm --no-deps -T \
             -v "$PWD:/work" -w /work mimirq-api \
             python scripts/live_core_release_gate.py \
               --base-url http://mimirq-api:8000 \
+              --secondary-base-url http://$api2_name:8000 \
               --tenant-id 11111111-1111-1111-1111-111111111111 \
               --secondary-tenant-id 22222222-2222-2222-2222-222222222222 \
               --user-id ci-live-gate \
@@ -395,6 +421,8 @@ jobs:
           MIMIRQ_BACKEND_IMAGE: mimirq-backend
           AUTH_MODE_RETRIEVAL_DEV: header
           UPLOAD_DEDUP_ENABLED_RETRIEVAL_DEV: "true"
+          RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED_RETRIEVAL_DEV: "true"
+          RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY_RETRIEVAL_DEV: "3"
           RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY_RETRIEVAL_DEV: "3"
         run: docker compose -f docker/docker-compose.retrieval-dev.yml down -v --remove-orphans
 
@@ -1241,7 +1269,12 @@ jobs:
           echo "backend not ready" >&2
           exit 1
 
-      - name: Core ready-ingest-retrieval smoke
+      - name: README host web contract smoke
+        env:
+          NEXT_PUBLIC_API_URL: http://127.0.0.1:8000
+        run: node web/scripts/api-ping.mjs
+
+      - name: README host quickstart smoke
         run: |
           mkdir -p artifacts
           make core-e2e \

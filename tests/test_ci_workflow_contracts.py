@@ -270,8 +270,12 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     web_dockerfile = _read("web/Dockerfile.prod")
 
     assert "timeout-minutes: 60" in docker_job
+    assert "docker compose -f docker/docker-compose.retrieval-dev.yml config --quiet" in workflow
     assert "target=/root/.local/share/pnpm/store" in web_dockerfile
     assert "https://registry.npmmirror.com" in web_dockerfile
+    assert "README docker quickstart smoke" in docker_job
+    assert "make up-web" in docker_job
+    assert "artifacts/core-e2e.readme-docker.json" in docker_job
     assert "Smoke built backend and web images" in docker_job
     assert "up -d --no-build" in docker_job
     assert "Docker web-proxy and dual-api core smoke" in docker_job
@@ -283,12 +287,18 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     assert '--name "$api2_name" --no-deps mimirq-api' in docker_job
     assert "Docker live core release gate" in docker_job
     assert "python scripts/live_core_release_gate.py" in docker_job
+    assert "--secondary-base-url http://$api2_name:8000" in docker_job
     assert "AUTH_MODE_RETRIEVAL_DEV: header" in docker_job
     assert 'UPLOAD_DEDUP_ENABLED_RETRIEVAL_DEV: "true"' in docker_job
+    assert 'RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED_RETRIEVAL_DEV: "true"' in docker_job
+    assert 'RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY_RETRIEVAL_DEV: "3"' in docker_job
     assert 'RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY_RETRIEVAL_DEV: "3"' in docker_job
     assert "if: always()" in docker_job
     assert "image: ${MIMIRQ_BACKEND_IMAGE:-mimirq-backend}" in retrieval_compose
-    assert "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY_RETRIEVAL_DEV:-1" in retrieval_compose
+    assert "RETRIEVAL_CANDIDATE_CACHE_ENABLED_RETRIEVAL_DEV:-false" in retrieval_compose
+    assert "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED_RETRIEVAL_DEV:-true" in retrieval_compose
+    assert "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY_RETRIEVAL_DEV:-3" in retrieval_compose
+    assert "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY_RETRIEVAL_DEV:-3" in retrieval_compose
 
 
 def test_main_ci_runs_core_e2e_against_the_existing_host_backend() -> None:
@@ -297,7 +307,10 @@ def test_main_ci_runs_core_e2e_against_the_existing_host_backend() -> None:
         "\n  kg-search-regression-gate:", 1
     )[0]
 
-    assert "Core ready-ingest-retrieval smoke" in regression_job
+    assert "README host web contract smoke" in regression_job
+    assert "node web/scripts/api-ping.mjs" in regression_job
+    assert "NEXT_PUBLIC_API_URL: http://127.0.0.1:8000" in regression_job
+    assert "README host quickstart smoke" in regression_job
     assert "make core-e2e" in regression_job
     assert "CORE_E2E_BASE_URL=http://127.0.0.1:8000" in regression_job
     assert "CORE_E2E_OUT=artifacts/core-e2e.retrieval-regression.json" in regression_job

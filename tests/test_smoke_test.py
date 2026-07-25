@@ -69,6 +69,67 @@ def test_cleanup_created_dataset_purges_before_delete() -> None:
     assert summary == {"purged_documents": 1, "dataset_deleted": True}
 
 
+def test_cleanup_created_dataset_deletes_document_before_dataset() -> None:
+    calls: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.method, str(request.url)))
+        if request.method == "DELETE" and "/documents/" in str(request.url):
+            return httpx.Response(204)
+        if request.method == "POST":
+            return httpx.Response(200, json={"deleted": 1})
+        return httpx.Response(204)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        summary = _cleanup_created_dataset(
+            client,
+            api_base="http://mimirq.test/api/v1",
+            headers={"X-User-ID": "demo"},
+            dataset_id="dataset-1",
+            document_id="document-1",
+        )
+
+    assert calls == [
+        ("DELETE", "http://mimirq.test/api/v1/documents/document-1"),
+        ("POST", "http://mimirq.test/api/v1/datasets/dataset-1/purge?dry_run=false&max_delete=1000"),
+        ("DELETE", "http://mimirq.test/api/v1/datasets/dataset-1"),
+    ]
+    assert summary == {"purged_documents": 1, "dataset_deleted": True}
+
+
+def test_cleanup_created_dataset_retries_delete_after_conflict() -> None:
+    calls: list[tuple[str, str]] = []
+    delete_attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal delete_attempts
+        calls.append((request.method, str(request.url)))
+        if request.method == "POST":
+            if len([method for method, _ in calls if method == "POST"]) == 1:
+                return httpx.Response(200, json={"deleted": 0})
+            return httpx.Response(200, json={"deleted": 1})
+        delete_attempts += 1
+        if delete_attempts == 1:
+            return httpx.Response(409, json={"error": "CONFLICT", "message": "dataset still has documents"})
+        return httpx.Response(204)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        summary = _cleanup_created_dataset(
+            client,
+            api_base="http://mimirq.test/api/v1",
+            headers={"X-User-ID": "demo"},
+            dataset_id="dataset-1",
+        )
+
+    assert calls == [
+        ("POST", "http://mimirq.test/api/v1/datasets/dataset-1/purge?dry_run=false&max_delete=1000"),
+        ("DELETE", "http://mimirq.test/api/v1/datasets/dataset-1"),
+        ("POST", "http://mimirq.test/api/v1/datasets/dataset-1/purge?dry_run=false&max_delete=1000"),
+        ("DELETE", "http://mimirq.test/api/v1/datasets/dataset-1"),
+    ]
+    assert summary == {"purged_documents": 1, "dataset_deleted": True}
+
+
 def test_register_for_token_uses_local_bootstrap_account() -> None:
     calls: list[tuple[str, str, dict[str, str]]] = []
 

@@ -11,6 +11,7 @@ import argparse
 import asyncio
 import json
 import sys
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,6 +41,7 @@ from scripts.smoke_test import (
 @dataclass(frozen=True)
 class LiveCoreReleaseGateConfig:
     api_base: str
+    secondary_api_base: str | None
     primary_tenant_id: str
     secondary_tenant_id: str
     user_id: str
@@ -179,15 +181,144 @@ def _probe_cross_tenant_denial(
     }
 
 
+def _shared_async_transport(client: httpx.Client | None) -> Any | None:
+    transport = getattr(client, "_transport", None) if client is not None else None
+    return transport if isinstance(transport, httpx.MockTransport) else None
+
+
+def _concurrent_duplicate_upload_ids(
+    *,
+    config: LiveCoreReleaseGateConfig,
+    headers: dict[str, str],
+    dataset_id: str,
+    text: str,
+    client: httpx.Client | None = None,
+) -> list[str]:
+    async def _run() -> list[str]:
+        limits = httpx.Limits(max_connections=4, max_keepalive_connections=4)
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(config.timeout_sec),
+            limits=limits,
+            follow_redirects=False,
+            trust_env=False,
+            transport=_shared_async_transport(client),
+        ) as async_client:
+            targets = [
+                config.api_base,
+                str(config.secondary_api_base or "").strip() or config.api_base,
+            ]
+
+            async def _upload_once(target_base: str) -> str:
+                response = await async_client.post(
+                    _join(target_base, "documents/upload"),
+                    headers=headers,
+                    files={"file": ("live-core-gate.txt", text.encode("utf-8"), "text/plain")},
+                    data=_upload_form_data(dataset_id=dataset_id, parser_backend=config.parser_backend, core_only=True),
+                )
+                response.raise_for_status()
+                payload = _parse_json(response)
+                document_id = str(payload.get("id") if isinstance(payload, dict) else "").strip()
+                if not document_id:
+                    raise ValueError("upload returned no document id")
+                return document_id
+
+            return list(await asyncio.gather(*[_upload_once(target) for target in targets]))
+
+    return asyncio.run(_run())
+
+
+def _same_key_dual_instance_probe(
+    *,
+    config: LiveCoreReleaseGateConfig,
+    headers: dict[str, str],
+    dataset_id: str,
+    query: str,
+    client: httpx.Client | None = None,
+) -> dict[str, Any]:
+    secondary_base = str(config.secondary_api_base or "").strip()
+    if not secondary_base:
+        return {"skipped": True, "reason": "secondary_api_base_missing"}
+
+    async def _run() -> list[dict[str, Any]]:
+        limits = httpx.Limits(max_connections=4, max_keepalive_connections=4)
+        payload = _core_retrieve_payload(query=query, dataset_id=dataset_id)
+        start_gate = asyncio.Event()
+        ready = 0
+        ready_lock = asyncio.Lock()
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(config.timeout_sec),
+            limits=limits,
+            follow_redirects=False,
+            trust_env=False,
+            transport=_shared_async_transport(client),
+        ) as async_client:
+            async def _request(target_base: str, request_id: str) -> dict[str, Any]:
+                nonlocal ready
+                async with ready_lock:
+                    ready += 1
+                    if ready == 2:
+                        start_gate.set()
+                await start_gate.wait()
+                started_at = time.perf_counter()
+                response = await async_client.post(
+                    _join(target_base, "rag/retrieve"),
+                    headers={**headers, "X-Request-ID": request_id},
+                    json=payload,
+                )
+                finished_at = time.perf_counter()
+                body = _parse_json(response)
+                query_debug = body.get("query_debug") if isinstance(body, dict) else None
+                channels = query_debug.get("channels") if isinstance(query_debug, dict) else None
+                cache = channels.get("cache") if isinstance(channels, dict) else None
+                if not isinstance(cache, dict):
+                    metrics = body.get("metrics") if isinstance(body, dict) else None
+                    cache = metrics.get("cache") if isinstance(metrics, dict) else None
+                return {
+                    "base_url": target_base,
+                    "status_code": int(response.status_code),
+                    "cache": cache if isinstance(cache, dict) else {},
+                    "started_at": started_at,
+                    "finished_at": finished_at,
+                }
+
+            return list(
+                await asyncio.gather(
+                    _request(config.api_base, "same-key-primary"),
+                    _request(secondary_base, "same-key-secondary"),
+                )
+            )
+
+    requests = asyncio.run(_run())
+    ok = all(int(item.get("status_code") or 0) == 200 for item in requests)
+    leader_seen = any(str((item.get("cache") or {}).get("singleflight_role") or "") == "leader" for item in requests)
+    follower_seen = any(bool((item.get("cache") or {}).get("distributed_singleflight_hit")) for item in requests)
+    overlap_observed = bool(
+        len(requests) == 2
+        and max(float(item.get("started_at") or 0.0) for item in requests)
+        < min(float(item.get("finished_at") or 0.0) for item in requests)
+    )
+    return {
+        "requests": requests,
+        "overlap_observed": overlap_observed,
+        "passed": bool(ok and overlap_observed and leader_seen and follower_seen),
+    }
+
+
 def _run_retrieve_only_load_pair(
     *,
     config: LiveCoreReleaseGateConfig,
     dataset_id: str,
     query: str,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    async def _run_once(concurrency: int, *, retrieve_requests: int | None = None) -> dict[str, Any]:
+    async def _run_once(
+        concurrency: int,
+        *,
+        retrieve_requests: int | None = None,
+        request_base_urls: tuple[str, ...] = (),
+    ) -> dict[str, Any]:
         cfg = E2ELoadTestConfig(
             base_url=config.api_base,
+            request_base_urls=request_base_urls,
             tenant_id=config.primary_tenant_id,
             user_id=config.user_id,
             bearer="",
@@ -209,9 +340,25 @@ def _run_retrieve_only_load_pair(
         async with httpx.AsyncClient(timeout=httpx.Timeout(config.timeout_sec), limits=limits, trust_env=False) as client:
             return await run_e2e_load_test(cfg, client=client)
 
-    asyncio.run(_run_once(1, retrieve_requests=1))
-    baseline = asyncio.run(_run_once(1))
-    candidate = asyncio.run(_run_once(max(2, int(config.candidate_concurrency or 0))))
+    candidate_base_urls = tuple(
+        dict.fromkeys(
+            base
+            for base in (
+                config.api_base,
+                str(config.secondary_api_base or "").strip() or None,
+            )
+            if base
+        )
+    )
+    for base_url in candidate_base_urls or (config.api_base,):
+        asyncio.run(_run_once(1, retrieve_requests=1, request_base_urls=(base_url,)))
+    baseline = asyncio.run(_run_once(1, request_base_urls=(config.api_base,)))
+    candidate = asyncio.run(
+        _run_once(
+            max(2, int(config.candidate_concurrency or 0)),
+            request_base_urls=candidate_base_urls or (config.api_base,),
+        )
+    )
     return baseline, candidate
 
 
@@ -223,6 +370,7 @@ def run_live_core_release_gate(
     report: dict[str, Any] = {
         "schema": "mimirq.live_core_release_gate.v1",
         "api_base": config.api_base,
+        "secondary_api_base": config.secondary_api_base,
         "auth_mode": "header",
         "tenant_ids": {
             "primary": config.primary_tenant_id,
@@ -233,6 +381,7 @@ def run_live_core_release_gate(
 
     close_client = False
     created_datasets: list[tuple[str, dict[str, str]]] = []
+    run_completed = False
     if client is None:
         close_client = True
         client = httpx.Client(
@@ -249,6 +398,13 @@ def run_live_core_release_gate(
             timeout_sec=config.ready_timeout_sec,
             poll_interval_sec=config.poll_interval_sec,
         )
+        if str(config.secondary_api_base or "").strip():
+            report["secondary_ready"] = wait_ready(
+                client,
+                api_base=str(config.secondary_api_base or ""),
+                timeout_sec=config.ready_timeout_sec,
+                poll_interval_sec=config.poll_interval_sec,
+            )
 
         primary_headers = build_headers(
             tenant_id=config.primary_tenant_id,
@@ -275,19 +431,29 @@ def run_live_core_release_gate(
             poll_interval_sec=config.poll_interval_sec,
         )
 
-        duplicate_document_id = _upload_text_document(
-            client,
-            api_base=config.api_base,
+        duplicate_marker = _make_marker("duplicate")
+        duplicate_text = (
+            "MimirQ live core release gate synthetic document.\n\n"
+            f"LIVE_GATE_DUPLICATE: {duplicate_marker}\n"
+        )
+        duplicate_document_ids = _concurrent_duplicate_upload_ids(
+            config=config,
             headers=primary_headers,
             dataset_id=primary_dataset_id,
-            parser_backend=config.parser_backend,
-            text=(
-                "MimirQ live core release gate synthetic document.\n\n"
-                f"LIVE_GATE_FACT: {primary_marker}\n"
-                "LIVE_GATE_NOTE: retrieval-only probe.\n"
-            ),
+            text=duplicate_text,
+            client=client,
         )
-        duplicate_passed = duplicate_document_id == primary_document_id
+        for duplicate_document_id in sorted(set(duplicate_document_ids)):
+            _wait_for_document_completion(
+                client,
+                api_base=config.api_base,
+                headers=primary_headers,
+                document_id=duplicate_document_id,
+                timeout_sec=config.ingest_timeout_sec,
+                poll_interval_sec=config.poll_interval_sec,
+                verbose=False,
+            )
+        duplicate_passed = bool(duplicate_document_ids) and len(set(duplicate_document_ids)) == 1 and duplicate_document_ids[0] != primary_document_id
         report["primary"] = {
             "dataset_id": primary_dataset_id,
             "document_id": primary_document_id,
@@ -295,16 +461,31 @@ def run_live_core_release_gate(
         }
         report["duplicate_upload"] = {
             "first_document_id": primary_document_id,
-            "second_document_id": duplicate_document_id,
+            "concurrent_document_ids": duplicate_document_ids,
+            "marker": duplicate_marker,
             "passed": duplicate_passed,
         }
         if not duplicate_passed:
-            _failures_extend(report, "duplicate upload returned a different document id")
+            _failures_extend(report, "concurrent duplicate upload returned different document ids")
 
+        singleflight_query = f"{primary_marker} {_make_marker('singleflight')}"
+        same_key_probe = _same_key_dual_instance_probe(
+            config=config,
+            headers=primary_headers,
+            dataset_id=primary_dataset_id,
+            query=singleflight_query,
+            client=client,
+        )
+        same_key_probe["query"] = singleflight_query
+        report["same_key_dual_instance"] = same_key_probe
+        if not bool(same_key_probe.get("skipped")) and not bool(same_key_probe.get("passed")):
+            _failures_extend(report, "same-key dual-instance probe did not prove distributed singleflight follower reuse")
+
+        throughput_query = f"{primary_marker} varied-throughput"
         baseline, candidate = _run_retrieve_only_load_pair(
             config=config,
             dataset_id=primary_dataset_id,
-            query=primary_marker,
+            query=throughput_query,
         )
         concurrency_gate = evaluate_concurrency_gate(
             baseline,
@@ -313,6 +494,7 @@ def run_live_core_release_gate(
             min_chat_throughput_ratio=0.0,
         )
         report["concurrency"] = {
+            "query": throughput_query,
             "baseline": baseline,
             "candidate": candidate,
             "gate": concurrency_gate,
@@ -374,26 +556,42 @@ def run_live_core_release_gate(
                 ),
             )
 
-        report["passed"] = not bool(report["failures"])
-        if bool(report["passed"]) and bool(config.cleanup_on_success):
-            cleanup: dict[str, Any] = {}
-            for dataset_id, headers in reversed(created_datasets):
-                cleanup[dataset_id] = _cleanup_created_dataset(
-                    client,
-                    api_base=config.api_base,
-                    headers=headers,
-                    dataset_id=dataset_id,
-                )
-            report["cleanup"] = cleanup
-        return report
+        run_completed = True
     finally:
+        should_cleanup = bool(created_datasets) and (
+            not run_completed or bool(config.cleanup_on_success) or bool(report["failures"])
+        )
+        if should_cleanup:
+            cleanup: dict[str, Any] = {}
+            cleanup_failures: list[str] = []
+            for dataset_id, headers in reversed(created_datasets):
+                try:
+                    cleanup[dataset_id] = _cleanup_created_dataset(
+                        client,
+                        api_base=config.api_base,
+                        headers=headers,
+                        dataset_id=dataset_id,
+                    )
+                except Exception as exc:
+                    cleanup_failures.append(f"cleanup failed for dataset {dataset_id}: {exc}")
+            report["cleanup"] = cleanup
+            if cleanup_failures:
+                report["cleanup_failures"] = cleanup_failures
+                _failures_extend(report, *cleanup_failures)
+        if run_completed:
+            report["passed"] = not bool(report["failures"])
         if close_client and client is not None:
             client.close()
+
+    return report
 
 
 def _resolve_runtime_config(args: argparse.Namespace) -> LiveCoreReleaseGateConfig:
     raw_base_url = args.base_url or "http://localhost:8000"
     _root_base, api_base = _normalize_base_urls(str(raw_base_url))
+    secondary_api_base = None
+    if str(args.secondary_base_url or "").strip():
+        _secondary_root, secondary_api_base = _normalize_base_urls(str(args.secondary_base_url))
     timeout = float(args.timeout_sec or 60.0)
     ready_timeout = float(args.ready_timeout_sec or 60.0)
     poll_interval = float(args.poll_interval_sec or 2.0)
@@ -403,6 +601,7 @@ def _resolve_runtime_config(args: argparse.Namespace) -> LiveCoreReleaseGateConf
 
     return LiveCoreReleaseGateConfig(
         api_base=api_base,
+        secondary_api_base=secondary_api_base,
         primary_tenant_id=tenant_id,
         secondary_tenant_id=secondary_tenant_id,
         user_id=user_id,
@@ -423,6 +622,7 @@ def main(argv: list[str] | None = None) -> int:
         description="Header-auth live HTTP gate for core retrieval concurrency, upload idempotency, and tenant isolation."
     )
     parser.add_argument("--base-url", default="", help="API host (http://host:8000) or API base (/api/v1).")
+    parser.add_argument("--secondary-base-url", default="", help="Optional second API host/base for dual-instance checks.")
     parser.add_argument("--tenant-id", default="", help="Primary tenant id/header.")
     parser.add_argument("--secondary-tenant-id", default="", help="Secondary tenant id/header.")
     parser.add_argument("--user-id", default="", help="Header auth user id.")

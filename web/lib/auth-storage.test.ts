@@ -6,8 +6,11 @@ import {
   AUTH_SCOPE_CHANGED_EVENT,
   clearAuthSession,
   getAuthCacheScope,
+  getAccessToken,
+  getStoredUser,
   getTenantId,
   setAuthSession,
+  setAccessToken,
 } from './auth-storage'
 
 const token = { access_token: 'token', token_type: 'bearer', expires_in: 3600 }
@@ -15,6 +18,7 @@ const token = { access_token: 'token', token_type: 'bearer', expires_in: 3600 }
 describe('auth storage scope', () => {
   beforeEach(() => {
     localStorage.clear()
+    sessionStorage.clear()
   })
 
   it('preserves an explicitly selected tenant for the first login only', () => {
@@ -67,6 +71,42 @@ describe('auth storage scope', () => {
     expect(getAuthCacheScope()).toBe('tenant-a:user-a')
   })
 
+  it('stores the access token in sessionStorage instead of localStorage', () => {
+    setAuthSession({ token, user: { id: 'user-a' } as never })
+
+    expect(sessionStorage.getItem('mimirq_access_token')).toBe('token')
+    expect(localStorage.getItem('mimirq_access_token')).toBeNull()
+    expect(sessionStorage.getItem('mimirq_token_expires_at')).toBeTruthy()
+    expect(localStorage.getItem('mimirq_token_expires_at')).toBeNull()
+  })
+
+  it('migrates a legacy localStorage access token into sessionStorage on read', () => {
+    localStorage.setItem('mimirq_access_token', 'legacy-token')
+    localStorage.setItem('mimirq_token_expires_at', '123')
+    localStorage.setItem('mimirq_user_profile', JSON.stringify({ id: 'legacy-user' }))
+    localStorage.setItem('mimirq_user_id', 'legacy-user')
+
+    expect(getAccessToken()).toBe('legacy-token')
+    expect(sessionStorage.getItem('mimirq_access_token')).toBe('legacy-token')
+    expect(sessionStorage.getItem('mimirq_token_expires_at')).toBe('123')
+    expect(getStoredUser()).toEqual({ id: 'legacy-user' })
+    expect(localStorage.getItem('mimirq_access_token')).toBeNull()
+    expect(localStorage.getItem('mimirq_token_expires_at')).toBeNull()
+  })
+
+  it('clears legacy and session token storage on logout', () => {
+    localStorage.setItem('mimirq_access_token', 'legacy-token')
+    localStorage.setItem('mimirq_token_expires_at', '123')
+    setAccessToken(token)
+
+    clearAuthSession()
+
+    expect(sessionStorage.getItem('mimirq_access_token')).toBeNull()
+    expect(sessionStorage.getItem('mimirq_token_expires_at')).toBeNull()
+    expect(localStorage.getItem('mimirq_access_token')).toBeNull()
+    expect(localStorage.getItem('mimirq_token_expires_at')).toBeNull()
+  })
+
   it('does not notify when writing or clearing the same auth scope', () => {
     const listener = vi.fn()
     window.addEventListener(AUTH_SCOPE_CHANGED_EVENT, listener)
@@ -80,7 +120,17 @@ describe('auth storage scope', () => {
     window.removeEventListener(AUTH_SCOPE_CHANGED_EVENT, listener)
   })
 
-  it('bridges a cross-tab user scope change to the local auth event', () => {
+  it('does not expose a persisted user profile or authenticated scope without a token', () => {
+    localStorage.setItem('mimirq_user_profile', JSON.stringify({ id: 'user-a', email: 'user@example.com' }))
+    localStorage.setItem('mimirq_user_id', 'user-a')
+    localStorage.setItem('mimirq_tenant_id', 'tenant-a')
+
+    expect(getStoredUser()).toBeNull()
+    expect(getAuthCacheScope()).toBe('default:anonymous')
+  })
+
+  it('invalidates the current tab token when another tab changes user', () => {
+    setAccessToken(token)
     localStorage.setItem('mimirq_user_id', 'user-b')
     const listener = vi.fn()
     window.addEventListener(AUTH_SCOPE_CHANGED_EVENT, listener)
@@ -93,11 +143,14 @@ describe('auth storage scope', () => {
       })
     )
 
+    expect(getAccessToken()).toBeNull()
+    expect(getAuthCacheScope()).toBe('default:anonymous')
     expect(listener).toHaveBeenCalledOnce()
     window.removeEventListener(AUTH_SCOPE_CHANGED_EVENT, listener)
   })
 
   it('bridges only effective cross-tab tenant scope changes', () => {
+    setAccessToken(token)
     localStorage.setItem('mimirq_user_id', 'user-a')
     localStorage.setItem('mimirq_tenant_id', 'tenant-b')
     const listener = vi.fn()
@@ -120,5 +173,66 @@ describe('auth storage scope', () => {
 
     expect(listener).toHaveBeenCalledOnce()
     window.removeEventListener(AUTH_SCOPE_CHANGED_EVENT, listener)
+  })
+
+  it('clears the current tab session token when another tab broadcasts a logout fallback event', () => {
+    setAuthSession({ token, user: { id: 'user-a', email: 'user@example.com' } as never })
+    const listener = vi.fn()
+    window.addEventListener(AUTH_SCOPE_CHANGED_EVENT, listener)
+
+    window.dispatchEvent(
+      new StorageEvent('storage', {
+        key: 'mimirq_auth_sync',
+        newValue: JSON.stringify({
+          id: 'clear-1',
+          source: 'tab:remote',
+          type: 'session-cleared',
+        }),
+      })
+    )
+
+    expect(getAccessToken()).toBeNull()
+    expect(getStoredUser()).toBeNull()
+    expect(getAuthCacheScope()).toBe('default:anonymous')
+    expect(listener).toHaveBeenCalledOnce()
+    window.removeEventListener(AUTH_SCOPE_CHANGED_EVENT, listener)
+  })
+
+  it('closes the broadcast channel on pagehide and recreates it on the next auth write', async () => {
+    class MockBroadcastChannel {
+      static instances: MockBroadcastChannel[] = []
+      static reset() {
+        MockBroadcastChannel.instances = []
+      }
+
+      close = vi.fn()
+      listeners = new Set<(event: MessageEvent) => void>()
+
+      constructor(public readonly name: string) {
+        MockBroadcastChannel.instances.push(this)
+      }
+
+      addEventListener(_type: 'message', listener: (event: MessageEvent) => void) {
+        this.listeners.add(listener)
+      }
+
+      postMessage(_message: unknown) {}
+    }
+
+    MockBroadcastChannel.reset()
+    vi.resetModules()
+    vi.stubGlobal('BroadcastChannel', MockBroadcastChannel)
+
+    const authStorage = await import('./auth-storage')
+    expect(MockBroadcastChannel.instances).toHaveLength(1)
+
+    window.dispatchEvent(new Event('pagehide'))
+    expect(MockBroadcastChannel.instances[0]?.close).toHaveBeenCalledOnce()
+
+    authStorage.setAccessToken(token)
+    authStorage.clearAuthSession()
+
+    expect(MockBroadcastChannel.instances).toHaveLength(2)
+    vi.unstubAllGlobals()
   })
 })

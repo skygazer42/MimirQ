@@ -61,10 +61,12 @@ from app.rag.retrieval.sibling_expand import select_document_expansion_mode
 from app.rag.retrieval.source_labels import derive_document_title, should_replace_source_label
 from app.rag.retrieval.sparse import SparseVector
 from app.rag.retrieval_candidate_cache import (
+    RetrievalCandidateSingleflightTimeoutError,
     acquire_inflight_retrieval_candidates,
     acquire_or_wait_for_distributed_inflight_retrieval_candidates,
     build_retrieval_candidate_cache_key,
     get_cached_retrieval_candidates,
+    publish_distributed_inflight_retrieval_candidates,
     reject_current_inflight_retrieval_candidates,
     release_current_distributed_inflight_retrieval_candidates,
     release_distributed_inflight_retrieval_candidates,
@@ -5016,7 +5018,8 @@ class HybridRetriever(BaseRetriever):
         mmr_lambda = search_options.mmr_lambda
         mmr_fetch_k_multiplier = search_options.mmr_fetch_k_multiplier
         cache_enabled = bool(
-            getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_ENABLED", False)
+            getattr(settings, "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED", True)
+            or getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_ENABLED", False)
             or getattr(settings, "SEMANTIC_CACHE_ENABLED", False)
         )
         behavior_hash = (
@@ -5223,6 +5226,9 @@ class HybridRetriever(BaseRetriever):
         cached = None
         cache_hit = False
         cache_eligible = bool(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_ENABLED", False))
+        distributed_singleflight_eligible = bool(
+            getattr(settings, "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED", True)
+        )
 
         semantic_cache_eligible = bool(getattr(settings, "SEMANTIC_CACHE_ENABLED", False))
         if embedding_runtime.dataset_scoped:
@@ -5252,6 +5258,7 @@ class HybridRetriever(BaseRetriever):
             "enabled": bool(cache_eligible),
             "backend": "redis",
             "hit": False,
+            "singleflight_enabled": bool(distributed_singleflight_eligible),
             "semantic": {
                 "enabled": bool(semantic_cache_eligible),
                 "backend": "milvus+redis",
@@ -5264,26 +5271,31 @@ class HybridRetriever(BaseRetriever):
         # Shared scope checks (fail closed).
         if tenant_uuid is None:
             cache_eligible = False
+            distributed_singleflight_eligible = False
             semantic_cache_eligible = False
             cache_meta["skip_reason"] = "missing_tenant"
             cache_meta["semantic"]["skip_reason"] = "missing_tenant"
         elif not account_id0:
             cache_eligible = False
+            distributed_singleflight_eligible = False
             semantic_cache_eligible = False
             cache_meta["skip_reason"] = "missing_account"
             cache_meta["semantic"]["skip_reason"] = "missing_account"
         elif not document_ids and not dataset_scope_ids and not metadata_filter_dataset_scoped:
             cache_eligible = False
+            distributed_singleflight_eligible = False
             semantic_cache_eligible = False
             cache_meta["skip_reason"] = "missing_scope"
             cache_meta["semantic"]["skip_reason"] = "missing_scope"
         elif document_scope_resolution_failed:
             cache_eligible = False
+            distributed_singleflight_eligible = False
             semantic_cache_eligible = False
             cache_meta["skip_reason"] = "missing_document_runtime"
             cache_meta["semantic"]["skip_reason"] = "missing_document_runtime"
         elif runtime_scope_ids and (not runtime_shards or runtime_scope_missing_dataset_ids):
             cache_eligible = False
+            distributed_singleflight_eligible = False
             semantic_cache_eligible = False
             cache_meta["skip_reason"] = "missing_dataset_runtime"
             cache_meta["semantic"]["skip_reason"] = "missing_dataset_runtime"
@@ -5324,7 +5336,7 @@ class HybridRetriever(BaseRetriever):
                 semantic_cache_eligible = False
                 cache_meta["semantic"]["skip_reason"] = "ttl_zero"
 
-        if cache_eligible or semantic_cache_eligible:
+        if cache_eligible or distributed_singleflight_eligible or semantic_cache_eligible:
             try:
                 corpus_cache_token = self._resolve_candidate_cache_corpus_token(
                     tenant_id=tenant_uuid,
@@ -5339,11 +5351,16 @@ class HybridRetriever(BaseRetriever):
                 if cache_eligible:
                     cache_eligible = False
                     cache_meta["skip_reason"] = "missing_corpus_cache_token"
+                if distributed_singleflight_eligible:
+                    distributed_singleflight_eligible = False
                 if semantic_cache_eligible:
                     semantic_cache_eligible = False
                     cache_meta["semantic"]["skip_reason"] = "missing_corpus_cache_token"
+        cache_meta["enabled"] = bool(cache_eligible)
+        cache_meta["singleflight_enabled"] = bool(distributed_singleflight_eligible)
+        cache_meta["semantic"]["enabled"] = bool(semantic_cache_eligible)
 
-        if cache_eligible:
+        if cache_eligible or distributed_singleflight_eligible:
             try:
                 cache_key = build_retrieval_candidate_cache_key(
                     tenant_id=str(tenant_uuid),
@@ -5359,11 +5376,12 @@ class HybridRetriever(BaseRetriever):
                     metadata_filter=full_metadata_filter if isinstance(full_metadata_filter, dict) else None,
                     document_ids=doc_ids,
                 )
-                cached = get_cached_retrieval_candidates(cache_key) if cache_key else None
+                cached = get_cached_retrieval_candidates(cache_key) if (cache_eligible and cache_key) else None
             except Exception as exc:
                 _log_retriever_fallback('_hybrid_search', exc)
                 cached = None
                 cache_eligible = False
+                distributed_singleflight_eligible = False
                 cache_meta["skip_reason"] = "lookup_error"
 
         if cached:
@@ -5415,34 +5433,48 @@ class HybridRetriever(BaseRetriever):
 
         singleflight_leader = False
         distributed_singleflight_lease = None
-        if cache_eligible and cache_key and not cache_hit:
+        if distributed_singleflight_eligible and cache_key and not cache_hit:
+            local_singleflight_leader = False
             try:
                 singleflight_leader, inflight_future = acquire_inflight_retrieval_candidates(cache_key)
+                local_singleflight_leader = bool(singleflight_leader)
                 if not singleflight_leader:
                     shared_payload = wait_for_inflight_retrieval_candidates(
                         cache_key,
                         inflight_future,
                         timeout_sec=max(
                             1.0,
-                            min(
-                                15.0,
-                                float(getattr(settings, "RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC", 15.0) or 15.0),
+                            float(
+                                getattr(
+                                    settings,
+                                    "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC",
+                                    60.0,
+                                )
+                                or 60.0
                             ),
                         ),
                     )
                     if isinstance(shared_payload, list):
+                        cache_meta["singleflight_hit"] = True
+                        cache_meta["singleflight_role"] = "follower"
                         return shared_payload[:top_k]
+                cache_meta["singleflight_role"] = "leader"
                 distributed_leader, distributed_payload, distributed_singleflight_lease = (
                     acquire_or_wait_for_distributed_inflight_retrieval_candidates(cache_key)
                 )
                 if not distributed_leader:
                     if isinstance(distributed_payload, list):
+                        cache_meta["singleflight_hit"] = True
+                        cache_meta["singleflight_role"] = "follower"
+                        cache_meta["distributed_singleflight_hit"] = True
                         resolve_inflight_retrieval_candidates(cache_key, distributed_payload)
                         return distributed_payload[:top_k]
                     singleflight_leader = False
+            except RetrievalCandidateSingleflightTimeoutError:
+                raise
             except Exception as exc:
                 _log_retriever_fallback('_hybrid_search', exc)
-                singleflight_leader = False
+                singleflight_leader = local_singleflight_leader
                 distributed_singleflight_lease = None
 
         emit_stream_event("event", {"message": "正在召回候选…"}, dedupe_key="retrieval.recall")
@@ -6472,6 +6504,7 @@ class HybridRetriever(BaseRetriever):
 
         if singleflight_leader and cache_key:
             if cache_store_allowed:
+                publish_distributed_inflight_retrieval_candidates(cache_key, out)
                 resolve_inflight_retrieval_candidates(cache_key, out)
             else:
                 reject_current_inflight_retrieval_candidates(RuntimeError("retrieval degraded"))

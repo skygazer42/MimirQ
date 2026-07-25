@@ -25,6 +25,7 @@ Embedding 默认复用同一地址和密钥。Reranker 默认关闭；需要时�
 
 ```bash
 make up-web
+make core-e2e CORE_E2E_BASE_URL=http://127.0.0.1:8000 CORE_E2E_BOOTSTRAP_REGISTER=1
 ```
 
 打开 [http://localhost:3000](http://localhost:3000)，创建本地账户即可进入系统。
@@ -73,6 +74,12 @@ docker compose --env-file .env -f docker/docker-compose.yml ps
 > ```bash
 > make backend-no-reload
 > ```
+
+主机源码启动后，执行一条最小闭环验收：
+
+```bash
+make core-e2e CORE_E2E_BASE_URL=http://127.0.0.1:8000 CORE_E2E_BOOTSTRAP_REGISTER=1
+```
 
 #### retrieval-dev 资源与时延预期（经验值）
 

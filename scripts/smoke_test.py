@@ -351,27 +351,56 @@ def _cleanup_created_dataset(
     api_base: str,
     headers: dict[str, str],
     dataset_id: str,
+    document_id: str | None = None,
 ) -> dict[str, Any]:
-    purge_resp = request_with_retries(
-        client,
-        "POST",
-        _join(api_base, f"datasets/{dataset_id}/purge?dry_run=false&max_delete=1000"),
-        expected={200},
-        headers=headers,
-        json={},
-    )
-    purge_payload = _parse_json(purge_resp)
-    request_with_retries(
-        client,
-        "DELETE",
-        _join(api_base, f"datasets/{dataset_id}"),
-        expected={204},
-        headers=headers,
-    )
-    return {
-        "purged_documents": int(purge_payload.get("deleted") or 0) if isinstance(purge_payload, dict) else 0,
-        "dataset_deleted": True,
-    }
+    if document_id:
+        request_with_retries(
+            client,
+            "DELETE",
+            _join(api_base, f"documents/{document_id}"),
+            expected={204, 404},
+            headers=headers,
+        )
+
+    purge_url = _join(api_base, f"datasets/{dataset_id}/purge?dry_run=false&max_delete=1000")
+    delete_url = _join(api_base, f"datasets/{dataset_id}")
+    total_purged = 0
+    last_error: CallError | None = None
+
+    for attempt in range(5):
+        purge_resp = request_with_retries(
+            client,
+            "POST",
+            purge_url,
+            expected={200},
+            headers=headers,
+            json={},
+        )
+        purge_payload = _parse_json(purge_resp)
+        if isinstance(purge_payload, dict):
+            total_purged += int(purge_payload.get("deleted") or 0)
+
+        try:
+            request_with_retries(
+                client,
+                "DELETE",
+                delete_url,
+                expected={204},
+                headers=headers,
+            )
+            return {
+                "purged_documents": total_purged,
+                "dataset_deleted": True,
+            }
+        except CallError as exc:
+            last_error = exc
+            if exc.status_code != 409 or attempt >= 4:
+                raise
+            time.sleep(0.5)
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("dataset cleanup failed without a specific error")
 
 
 def _wait_for_document_completion(
@@ -689,6 +718,7 @@ def main(argv: list[str] | None = None) -> int:
                         api_base=api_base,
                         headers=headers,
                         dataset_id=str(dataset_id),
+                        document_id=doc_id,
                     )
                     print("[smoke] cleanup: dataset deleted")
                 else:

@@ -428,10 +428,16 @@ def test_dataset_report_export_html(monkeypatch):  # noqa: ANN001
     app.include_router(v1_router, prefix="/api/v1")
     client = TestClient(app)
 
-    res = client.get(f"/api/v1/reports/datasets/{dataset_id}/export-html")
+    res = client.get(f"/api/v1/reports/datasets/{dataset_id}/export-html?redact=false")
     assert res.status_code == 200, res.text
     assert "text/html" in res.headers.get("content-type", "")
     assert "<!doctype html" in res.text.lower()
+    assert "Test_Dataset.report.html" in (res.headers.get("content-disposition", "") or "")
+
+    redacted = client.get(f"/api/v1/reports/datasets/{dataset_id}/export-html?redact=true")
+    assert redacted.status_code == 200, redacted.text
+    assert "Test_Dataset" not in (redacted.headers.get("content-disposition", "") or "")
+    assert str(dataset_id) not in (redacted.headers.get("content-disposition", "") or "")
 
 
 def test_dataset_rag_audit_export_html(monkeypatch):  # noqa: ANN001
@@ -472,7 +478,13 @@ def test_dataset_rag_audit_export_html(monkeypatch):  # noqa: ANN001
     app.include_router(v1_router, prefix="/api/v1")
     client = TestClient(app)
 
-    res = client.get(f"/api/v1/reports/datasets/{dataset_id}/rag-audit/export-html")
+    res = client.get(f"/api/v1/reports/datasets/{dataset_id}/rag-audit/export-html?redact=false")
     assert res.status_code == 200, res.text
     assert "text/html" in res.headers.get("content-type", "")
     assert "<!doctype html" in res.text.lower()
+    assert "Test_Dataset.rag_audit.html" in (res.headers.get("content-disposition", "") or "")
+
+    redacted = client.get(f"/api/v1/reports/datasets/{dataset_id}/rag-audit/export-html?redact=true")
+    assert redacted.status_code == 200, redacted.text
+    assert "Test_Dataset" not in (redacted.headers.get("content-disposition", "") or "")
+    assert str(dataset_id) not in (redacted.headers.get("content-disposition", "") or "")

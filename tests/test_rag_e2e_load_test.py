@@ -150,3 +150,43 @@ def test_load_test_varies_requests_and_observes_in_flight_peak() -> None:
     assert result["retrieve"]["client_overlap_observed"] is True
     assert result["chat"]["client_peak_in_flight"] == 3
     assert result["chat"]["client_overlap_observed"] is True
+
+
+def test_load_test_round_robins_request_base_urls() -> None:
+    hosts: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        hosts.append(request.url.host)
+        return httpx.Response(200, json={})
+
+    async def run() -> dict:
+        config = E2ELoadTestConfig(
+            base_url="http://primary.test/api/v1",
+            request_base_urls=("http://primary.test/api/v1", "http://secondary.test/api/v1"),
+            tenant_id="tenant",
+            user_id="user",
+            bearer="",
+            file_bytes=b"",
+            filename="test.txt",
+            dataset_id="dataset",
+            ingest_count=0,
+            retrieve_requests=4,
+            retrieve_concurrency=2,
+            chat_requests=2,
+            chat_concurrency=1,
+        )
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await run_e2e_load_test(config, client=client)
+
+    result = asyncio.run(run())
+
+    assert result["retrieve"]["ok"] == 4
+    assert result["chat"]["ok"] == 2
+    assert hosts == [
+        "primary.test",
+        "secondary.test",
+        "primary.test",
+        "secondary.test",
+        "primary.test",
+        "secondary.test",
+    ]

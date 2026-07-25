@@ -101,6 +101,7 @@ LLM_API_KEY=<your-siliconflow-api-key>
 ```bash
 make up-web
 make ps
+make core-e2e CORE_E2E_BASE_URL=http://127.0.0.1:8000 CORE_E2E_BOOTSTRAP_REGISTER=1
 curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
 ```
 
@@ -145,6 +146,7 @@ make web
 
 ```bash
 make infra-ps
+make core-e2e CORE_E2E_BASE_URL=http://127.0.0.1:8000 CORE_E2E_BOOTSTRAP_REGISTER=1
 curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
 ```
 

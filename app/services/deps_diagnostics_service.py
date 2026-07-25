@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.core.config import settings
+from app.core.health_checks import redis_usage_flags
 from app.rag.core.logging import get_logger
 
 _SCHEMA_V1 = "mimirq.observability.deps.v1"
@@ -71,20 +72,21 @@ def _probe_redis() -> dict[str, Any]:
     - Returns server version when available.
     """
 
-    redis_required = bool(getattr(settings, "TASK_QUEUE_ENABLED", False))
-    redis_optional_cache = bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", False))
-    enabled = redis_required or redis_optional_cache
+    usage = redis_usage_flags(settings)
+    redis_required = bool(usage["task_queue"])
+    enabled = any(usage.values())
     if not enabled:
         return {
             "status": "disabled",
             "enabled": False,
             "required": redis_required,
+            "usage": usage,
             "version": None,
             "elapsed_ms": 0.0,
         }
 
     t0 = time.perf_counter()
-    status: dict[str, Any] = {"status": "disconnected", "enabled": True, "required": redis_required}
+    status: dict[str, Any] = {"status": "disconnected", "enabled": True, "required": redis_required, "usage": usage}
     try:
         import redis  # type: ignore
 

@@ -27,9 +27,13 @@ from app.models import evaluation as _evaluation  # noqa: F401
 from app.models import evidence as _evidence  # noqa: F401
 from app.models import feedback as _feedback  # noqa: F401
 from app.models import governance_profile as _governance_profile  # noqa: F401
+from app.models import group_permissions as _group_permissions  # noqa: F401
 from app.models import index_drift_item as _index_drift_item  # noqa: F401
+from app.models import ingest_dead_letter as _ingest_dead_letter  # noqa: F401
 from app.models import ingestion_run as _ingestion_run  # noqa: F401
 from app.models import prompt_template as _prompt_template  # noqa: F401
+from app.models import rag_config_template as _rag_config_template  # noqa: F401
 from app.models import tenant as _tenant  # noqa: F401
+from app.models import tenant_group as _tenant_group  # noqa: F401
 from app.models import user as _user  # noqa: F401
 from app.rag.kg import models as _kg_models  # noqa: F401

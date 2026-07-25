@@ -218,7 +218,13 @@ class Settings(BaseSettings):
     # identical LLM call.
     CHAT_RESPONSE_SINGLEFLIGHT_ENABLED: bool = True
 
-    # Retrieval candidate cache (Redis, short TTL; best-effort; safe by default).
+    # Retrieval candidate singleflight (Redis lease + in-process future; safe by default).
+    # Deduplicates concurrent identical retrieval work across threads/instances without
+    # requiring the persistent exact-result cache to be enabled.
+    RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED: bool = True
+    # Followers fail with a retryable response rather than duplicating still-running work.
+    RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC: float = 60.0
+    # Retrieval candidate cache (Redis, short TTL; best-effort; opt-in exact-result reuse).
     # Stores retrieval outputs for identical scoped requests to reduce repeated vector/BM25 work.
     RETRIEVAL_CANDIDATE_CACHE_ENABLED: bool = False
     RETRIEVAL_CANDIDATE_CACHE_TTL_SEC: int = 30
@@ -1244,6 +1250,10 @@ class Settings(BaseSettings):
     RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY: int = 1
     # Maximum time to wait for a retrieval slot. Set 0 to wait indefinitely.
     RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC: float = 15.0
+    # Optional best-effort cross-instance retrieval admission gate via Redis leases.
+    RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED: bool = False
+    RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY: int = 0
+    RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX: str = "ragadm"
     # Bound retrieval input before embedding/query-rewrite work starts.
     RETRIEVAL_QUERY_MAX_CHARS: int = Field(default=8_000, ge=1, le=100_000)
     # Parallel searches across distinct embedding runtimes within one request.
@@ -2845,6 +2855,8 @@ class Settings(BaseSettings):
             raise ValueError("BM25_EAGER_UPSERT_MAX_CHUNKS must be >= 0")
         if int(getattr(self, "RETRIEVAL_REBUILD_MAX_CHUNKS", 0) or 0) < 0:
             raise ValueError("RETRIEVAL_REBUILD_MAX_CHUNKS must be >= 0")
+        if is_production and int(getattr(self, "RETRIEVAL_REBUILD_MAX_CHUNKS", 0) or 0) <= 0:
+            raise ValueError("RETRIEVAL_REBUILD_MAX_CHUNKS must be > 0 in production")
         if int(getattr(self, "BM25_TOKENIZE_CJK_OOV_MAX_TERM_CHARS", 0) or 0) < 2:
             raise ValueError("BM25_TOKENIZE_CJK_OOV_MAX_TERM_CHARS must be >= 2")
         if int(getattr(self, "BM25_TOKENIZE_CJK_OOV_MAX_EXTRA_TOKENS", 0) or 0) < 0:
@@ -2932,6 +2944,8 @@ class Settings(BaseSettings):
 
         if int(getattr(self, "RETRIEVAL_CANDIDATE_CACHE_TTL_SEC", 0) or 0) < 0:
             raise ValueError("RETRIEVAL_CANDIDATE_CACHE_TTL_SEC must be >= 0")
+        if float(getattr(self, "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC", 0.0) or 0.0) <= 0.0:
+            raise ValueError("RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC must be > 0")
         if int(getattr(self, "RETRIEVAL_CANDIDATE_CACHE_MAX_VALUE_BYTES", 0) or 0) < 0:
             raise ValueError("RETRIEVAL_CANDIDATE_CACHE_MAX_VALUE_BYTES must be >= 0")
 
@@ -2999,6 +3013,15 @@ class Settings(BaseSettings):
             raise ValueError("RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY must be >= 0")
         if float(getattr(self, "RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC", 0.0) or 0.0) < 0.0:
             raise ValueError("RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC must be >= 0")
+        if int(getattr(self, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY", 0) or 0) < 0:
+            raise ValueError("RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY must be >= 0")
+        adm_prefix = (getattr(self, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX", "") or "").strip()
+        if not adm_prefix:
+            raise ValueError("RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX must be non-empty")
+        if any(ch.isspace() for ch in adm_prefix):
+            raise ValueError("RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX must not contain whitespace")
+        if self.RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX != adm_prefix:
+            self.RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX = adm_prefix
         if int(getattr(self, "RAG_KG_CHUNK_INJECTION_MAX_CHUNKS", 0) or 0) < 0:
             raise ValueError("RAG_KG_CHUNK_INJECTION_MAX_CHUNKS must be >= 0")
         kg_chunk_boost_weight = float(getattr(self, "RAG_KG_CHUNK_BOOST_WEIGHT", 0.15) or 0.0)

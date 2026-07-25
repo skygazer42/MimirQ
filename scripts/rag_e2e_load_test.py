@@ -250,6 +250,7 @@ class E2ELoadTestConfig:
 
     file_bytes: bytes
     filename: str
+    request_base_urls: tuple[str, ...] = ()
     parser_backend: str = "auto"
 
     dataset_id: str | None = None
@@ -285,6 +286,7 @@ async def run_e2e_load_test(cfg: E2ELoadTestConfig, *, client: httpx.AsyncClient
 
     try:
         base_url = str(cfg.base_url or "").rstrip("/")
+        request_base_urls = tuple(str(item or "").rstrip("/") for item in cfg.request_base_urls if str(item or "").strip())
         run_id = uuid.uuid4().hex
         query_nonce = run_id[:6]
 
@@ -388,8 +390,9 @@ async def run_e2e_load_test(cfg: E2ELoadTestConfig, *, client: httpx.AsyncClient
                 )
                 t0 = time.perf_counter()
                 try:
+                    request_base_url = request_base_urls[i % len(request_base_urls)] if request_base_urls else base_url
                     r = await client.post(
-                        _join(base_url, "rag/retrieve-preview"),
+                        _join(request_base_url, "rag/retrieve-preview"),
                         headers={**headers, "X-Request-ID": f"load-{run_id}-retrieve-{i}"},
                         json={
                             "query": f"{str(cfg.query or 'hello')} [load:{query_nonce}:r:{i}]",
@@ -435,8 +438,9 @@ async def run_e2e_load_test(cfg: E2ELoadTestConfig, *, client: httpx.AsyncClient
                 )
                 t0 = time.perf_counter()
                 try:
+                    request_base_url = request_base_urls[i % len(request_base_urls)] if request_base_urls else base_url
                     r = await client.post(
-                        _join(base_url, "chat"),
+                        _join(request_base_url, "chat"),
                         headers={**headers, "X-Request-ID": f"load-{run_id}-chat-{i}"},
                         json={
                             "message": f"{str(cfg.message or 'hello')} [load:{query_nonce}:c:{i}]",

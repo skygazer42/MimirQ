@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+import app.models._all  # noqa: F401
 from app.core.database import Base, SessionLocal, engine
 from app.core.migrations import apply_runtime_migrations
 from app.models.dataset import Dataset, DatasetPermissionEnum
@@ -299,24 +300,6 @@ def seed_fixture(*, fixture: dict[str, Any]) -> None:
     documents = fixture.get("documents")
     if not isinstance(documents, list) or not documents:
         raise ValueError("fixture.documents must be a non-empty list")
-
-    # Ensure all ORM models are registered so Base.metadata.create_all() has a complete
-    # foreign-key graph. This mirrors app startup (app/main.py) but keeps this script
-    # runnable standalone in CI.
-    import app.models.audit_log  # noqa: F401
-    import app.models.chunk_preset  # noqa: F401
-    import app.models.connector  # noqa: F401
-    import app.models.connector_config  # noqa: F401
-    import app.models.conversation_summary  # noqa: F401
-    import app.models.dataset_category  # noqa: F401
-    import app.models.db_catalog  # noqa: F401
-    import app.models.evaluation  # noqa: F401
-    import app.models.evidence  # noqa: F401
-    import app.models.feedback  # noqa: F401
-    import app.models.ingestion_run  # noqa: F401
-    import app.models.tenant  # noqa: F401
-    import app.models.user  # noqa: F401
-    import app.rag.kg.models  # noqa: F401
 
     # Ensure schema is up-to-date (best-effort; mirrors app startup).
     apply_runtime_migrations(engine)

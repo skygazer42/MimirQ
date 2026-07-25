@@ -11,10 +11,12 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
@@ -34,6 +36,14 @@ class Document(Base):
             ["tenant_id", "dataset_id"],
             ["datasets.tenant_id", "datasets.id"],
             name="fk_documents_tenant_dataset",
+        ),
+        Index(
+            "uq_documents_tenant_dataset_dedup_key_active",
+            "tenant_id",
+            "dataset_id",
+            "dedup_key",
+            unique=True,
+            postgresql_where=text("archived_at IS NULL AND dataset_id IS NOT NULL AND dedup_key IS NOT NULL"),
         ),
     )
 
@@ -86,6 +96,7 @@ class Document(Base):
 
     # Metadata
     doc_metadata = Column("metadata", JSONB, default=dict)
+    dedup_key = Column(String(255), nullable=True)
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())

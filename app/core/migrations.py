@@ -374,6 +374,7 @@ def apply_runtime_migrations(engine) -> None:
             'ON documents (tenant_id, access_mode);',
             'CREATE INDEX IF NOT EXISTS ix_documents_tenant_file_type '
             'ON documents (tenant_id, file_type);',
+            'ALTER TABLE documents ADD COLUMN IF NOT EXISTS dedup_key VARCHAR(255);',
             'CREATE INDEX IF NOT EXISTS ix_datasets_tenant_owner_id '
             'ON datasets (tenant_id, owner_id);',
             # Optional: file hashing (upload dedupe / duplicate detection).
@@ -381,6 +382,29 @@ def apply_runtime_migrations(engine) -> None:
             "ON documents (tenant_id, dataset_id, ((metadata->>'file_sha256')));",
             "CREATE INDEX IF NOT EXISTS ix_documents_tenant_dataset_sha_ph "
             "ON documents (tenant_id, dataset_id, ((metadata->>'file_sha256')), ((metadata->>'pipeline_hash')));",
+            "WITH ranked AS ("
+            "  SELECT id, "
+            "         concat(lower(metadata->>'file_sha256'), ':', metadata->>'pipeline_hash') AS dedup_key, "
+            "         row_number() OVER ("
+            "           PARTITION BY tenant_id, dataset_id, lower(metadata->>'file_sha256'), metadata->>'pipeline_hash' "
+            "           ORDER BY CASE WHEN status = 'failed' THEN 1 ELSE 0 END, "
+            "                    updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC"
+            "         ) AS rn "
+            "  FROM documents "
+            "  WHERE archived_at IS NULL "
+            "    AND dataset_id IS NOT NULL "
+            "    AND COALESCE(NULLIF(lower(metadata->>'file_sha256'), ''), '') <> '' "
+            "    AND COALESCE(NULLIF(metadata->>'pipeline_hash', ''), '') <> ''"
+            ") "
+            "UPDATE documents AS d "
+            "SET dedup_key = ranked.dedup_key "
+            "FROM ranked "
+            "WHERE d.id = ranked.id "
+            "  AND ranked.rn = 1 "
+            "  AND COALESCE(d.dedup_key, '') = '';",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_documents_tenant_dataset_dedup_key_active "
+            "ON documents (tenant_id, dataset_id, dedup_key) "
+            "WHERE archived_at IS NULL AND dataset_id IS NOT NULL AND dedup_key IS NOT NULL;",
 
             # =========================
             # Document pipeline versioning (best-effort backfill for legacy deployments)
