@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -37,12 +37,15 @@ class UserService:
     def authenticate(db: Session, identifier: str, password: str) -> User:
         ident = (identifier or "").strip()
         ident_lower = ident.lower()
-        user = (
+        users = (
             db.query(User)
             .filter((User.email == ident_lower) | (User.username == ident))
-            .first()
+            .all()
         )
-        if not user or not verify_password(password, user.password_hash):
+        if len(users) != 1:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        user = users[0]
+        if not verify_password(password, user.password_hash):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
         if not user.is_active:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User disabled")
@@ -62,7 +65,11 @@ class UserService:
 
         if UserService.get_by_email(db, normalized_email):
             raise HTTPException(status_code=400, detail="Email already registered")
+        if db.query(User.id).filter(func.lower(User.username) == normalized_email).first():
+            raise HTTPException(status_code=400, detail="Email already registered")
         if UserService.get_by_username(db, normalized_username):
+            raise HTTPException(status_code=400, detail="Username already registered")
+        if db.query(User.id).filter(User.email == normalized_username.lower()).first():
             raise HTTPException(status_code=400, detail="Username already registered")
 
         try:
@@ -162,9 +169,12 @@ class UserService:
 
         member = (
             db.query(TenantMember)
+            .join(Tenant, Tenant.id == TenantMember.tenant_id)
             .filter(
                 TenantMember.user_id == uid,
+                TenantMember.is_active.is_(True),
                 TenantMember.is_current.is_(True),
+                func.lower(Tenant.status) == "active",
             )
             .order_by(desc(TenantMember.updated_at), desc(TenantMember.created_at))
             .first()
@@ -174,7 +184,12 @@ class UserService:
 
         member = (
             db.query(TenantMember)
-            .filter(TenantMember.user_id == uid)
+            .join(Tenant, Tenant.id == TenantMember.tenant_id)
+            .filter(
+                TenantMember.user_id == uid,
+                TenantMember.is_active.is_(True),
+                func.lower(Tenant.status) == "active",
+            )
             .order_by(desc(TenantMember.updated_at), desc(TenantMember.created_at))
             .first()
         )

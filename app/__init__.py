@@ -4,8 +4,10 @@ MimirQ backend application.
 Core backend service for knowledge base management and RAG chat.
 """
 
+import datetime as _datetime
 import os
 import sys
+from datetime import timezone
 
 import langchain
 
@@ -40,5 +42,8 @@ def _ensure_langchain_legacy_globals() -> None:
 
 _preload_conda_libstdcxx()
 _ensure_langchain_legacy_globals()
+
+if not hasattr(_datetime, "UTC"):
+    _datetime.UTC = timezone.utc  # type: ignore[attr-defined]
 
 __version__ = "1.0.0"

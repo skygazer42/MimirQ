@@ -6,6 +6,7 @@ import {
   AUTH_SCOPE_CHANGED_EVENT,
   clearAuthSession,
   getAuthCacheScope,
+  getTenantId,
   setAuthSession,
 } from './auth-storage'
 
@@ -16,7 +17,16 @@ describe('auth storage scope', () => {
     localStorage.clear()
   })
 
-  it('notifies exactly once for login, user changes, and logout', () => {
+  it('preserves an explicitly selected tenant for the first login only', () => {
+    localStorage.setItem('mimirq_tenant_id', 'tenant-a')
+
+    setAuthSession({ token, user: { id: 'user-a' } as never })
+
+    expect(getTenantId()).toBe('tenant-a')
+    expect(getAuthCacheScope()).toBe('tenant-a:user-a')
+  })
+
+  it('clears a stale tenant exactly once when switching to another user and on logout', () => {
     localStorage.setItem('mimirq_tenant_id', 'tenant-a')
     const listener = vi.fn()
     const notifiedScopes: string[] = []
@@ -31,18 +41,30 @@ describe('auth storage scope', () => {
 
     localStorage.setItem('mimirq_document_view_v1', '{"private":true}')
     setAuthSession({ token, user: { id: 'user-b' } as never })
-    expect(getAuthCacheScope()).toBe('tenant-a:user-b')
+    expect(getTenantId()).toBeNull()
+    expect(getAuthCacheScope()).toBe('default:user-b')
     expect(localStorage.getItem('mimirq_document_view_v1')).toBeNull()
     expect(listener).toHaveBeenCalledTimes(2)
-    expect(notifiedScopes).toEqual(['tenant-a:user-a', 'tenant-a:user-b'])
+    expect(notifiedScopes).toEqual(['tenant-a:user-a', 'default:user-b'])
 
     clearAuthSession()
-    expect(getAuthCacheScope()).toBe('tenant-a:anonymous')
+    expect(getTenantId()).toBeNull()
+    expect(getAuthCacheScope()).toBe('default:anonymous')
     expect(listener).toHaveBeenCalledTimes(3)
-    expect(notifiedScopes).toEqual(['tenant-a:user-a', 'tenant-a:user-b', 'tenant-a:anonymous'])
+    expect(notifiedScopes).toEqual(['tenant-a:user-a', 'default:user-b', 'default:anonymous'])
 
     window.removeEventListener(AUTH_SCOPE_CHANGED_EVENT, listener)
     window.removeEventListener(AUTH_SCOPE_CHANGED_EVENT, captureScope)
+  })
+
+  it('keeps the tenant when refreshing the same user session', () => {
+    localStorage.setItem('mimirq_tenant_id', 'tenant-a')
+
+    setAuthSession({ token, user: { id: 'user-a' } as never })
+    setAuthSession({ token: { ...token, access_token: 'token-2' }, user: { id: 'user-a' } as never })
+
+    expect(getTenantId()).toBe('tenant-a')
+    expect(getAuthCacheScope()).toBe('tenant-a:user-a')
   })
 
   it('does not notify when writing or clearing the same auth scope', () => {

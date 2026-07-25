@@ -1,6 +1,8 @@
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-from fastapi import FastAPI
+import pytest
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -9,8 +11,10 @@ from sqlalchemy.pool import StaticPool
 import app.api.v1.auth as auth_module
 from app.core.config import settings
 from app.core.database import Base
+from app.core.security import hash_password
 from app.models.tenant import Tenant, TenantMember
 from app.models.user import User
+from app.services.user_service import UserService
 
 
 def _build_auth_test_client():
@@ -229,5 +233,171 @@ def test_production_existing_owner_registration_still_returns_conflict_without_t
             )
             assert second.status_code == 409
             assert second.json()["detail"] == "Initial registration is closed; contact an administrator"
+    finally:
+        engine.dispose()
+
+
+def test_get_current_tenant_id_ignores_inactive_memberships_and_tenants() -> None:
+    engine, test_session, _app = _build_auth_test_client()
+
+    try:
+        with test_session() as db:
+            user = User(
+                email="owner@example.com",
+                username="owner",
+                password_hash=hash_password("correct-horse-battery-staple"),
+                is_active=True,
+            )
+            db.add(user)
+            db.flush()
+
+            active_current_tenant = Tenant(name="active-current", status="active", plan="basic")
+            active_fallback_tenant = Tenant(name="active-fallback", status="active", plan="basic")
+            inactive_member_tenant = Tenant(name="inactive-member-tenant", status="active", plan="basic")
+            inactive_tenant = Tenant(name="inactive-tenant", status="inactive", plan="basic")
+            db.add_all([active_current_tenant, active_fallback_tenant, inactive_member_tenant, inactive_tenant])
+            db.flush()
+
+            now = datetime.now(timezone.utc)
+            db.add_all(
+                [
+                    TenantMember(
+                        tenant_id=active_current_tenant.id,
+                        user_id=str(user.id),
+                        role="owner",
+                        is_active=True,
+                        is_current=True,
+                        created_at=now - timedelta(hours=4),
+                        updated_at=now - timedelta(hours=4),
+                    ),
+                    TenantMember(
+                        tenant_id=active_fallback_tenant.id,
+                        user_id=str(user.id),
+                        role="owner",
+                        is_active=True,
+                        is_current=False,
+                        created_at=now - timedelta(hours=3),
+                        updated_at=now - timedelta(hours=3),
+                    ),
+                    TenantMember(
+                        tenant_id=inactive_member_tenant.id,
+                        user_id=str(user.id),
+                        role="owner",
+                        is_active=False,
+                        is_current=True,
+                        created_at=now - timedelta(hours=2),
+                        updated_at=now - timedelta(hours=2),
+                    ),
+                    TenantMember(
+                        tenant_id=inactive_tenant.id,
+                        user_id=str(user.id),
+                        role="owner",
+                        is_active=True,
+                        is_current=True,
+                        created_at=now - timedelta(hours=1),
+                        updated_at=now - timedelta(hours=1),
+                    ),
+                ]
+            )
+            db.commit()
+
+            assert UserService.get_current_tenant_id(db, user_id=str(user.id)) == active_current_tenant.id
+
+            current_member = (
+                db.query(TenantMember)
+                .filter(
+                    TenantMember.user_id == str(user.id),
+                    TenantMember.tenant_id == active_current_tenant.id,
+                )
+                .one()
+            )
+            current_member.is_active = False
+            current_member.is_current = False
+            db.commit()
+
+            assert UserService.get_current_tenant_id(db, user_id=str(user.id)) == active_fallback_tenant.id
+
+            fallback_member = (
+                db.query(TenantMember)
+                .filter(
+                    TenantMember.user_id == str(user.id),
+                    TenantMember.tenant_id == active_fallback_tenant.id,
+                    TenantMember.is_active.is_(True),
+                )
+                .one()
+            )
+            fallback_member.is_active = False
+            db.commit()
+
+            assert UserService.get_current_tenant_id(db, user_id=str(user.id)) is None
+    finally:
+        engine.dispose()
+
+
+def test_authenticate_rejects_ambiguous_identifier_collision() -> None:
+    engine, test_session, _app = _build_auth_test_client()
+
+    try:
+        with test_session() as db:
+            db.add_all(
+                [
+                    User(
+                        email="owner@example.com",
+                        username="owner",
+                        password_hash=hash_password("owner-password"),
+                        is_active=True,
+                    ),
+                    User(
+                        email="other@example.com",
+                        username="owner@example.com",
+                        password_hash=hash_password("other-password"),
+                        is_active=True,
+                    ),
+                ]
+            )
+            db.commit()
+
+            for password in ("owner-password", "other-password"):
+                with pytest.raises(HTTPException) as excinfo:
+                    UserService.authenticate(db, "owner@example.com", password)
+
+                assert excinfo.value.status_code == 401
+                assert excinfo.value.detail == "Invalid credentials"
+    finally:
+        engine.dispose()
+
+
+def test_create_user_rejects_cross_field_namespace_collisions_case_insensitively() -> None:
+    engine, test_session, _app = _build_auth_test_client()
+
+    try:
+        with test_session() as db:
+            db.add(
+                User(
+                    email="owner@example.com",
+                    username="Owner",
+                    password_hash=hash_password("correct-horse-battery-staple"),
+                    is_active=True,
+                )
+            )
+            db.commit()
+
+            with pytest.raises(HTTPException) as username_exc:
+                UserService.create_user(
+                    db,
+                    email="other@example.com",
+                    username="OWNER@example.com",
+                    password="another-valid-password",
+                )
+            assert username_exc.value.status_code == 400
+
+            with pytest.raises(HTTPException) as email_exc:
+                UserService.create_user(
+                    db,
+                    email="owner",
+                    username="later",
+                    password="another-valid-password",
+                )
+            assert email_exc.value.status_code == 400
     finally:
         engine.dispose()

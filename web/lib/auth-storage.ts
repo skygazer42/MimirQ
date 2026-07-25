@@ -67,8 +67,12 @@ export function setAuthSession(params: { token: AuthToken; user: UserProfile }) 
   if (globalThis.window === undefined) return
   const { token, user } = params
   const previousScope = getAuthCacheScope()
+  const previousUserId = getStoredUserId()
   writeClientStorage(ACCESS_TOKEN_KEY, token.access_token)
   writeClientStorage(USER_KEY, JSON.stringify(user))
+  if (previousUserId && previousUserId !== user.id) {
+    removeClientStorage(TENANT_ID_KEY)
+  }
   writeClientStorage(USER_ID_KEY, user.id)
   const expiresAt = Date.now() + token.expires_in * 1000
   writeClientStorage(TOKEN_EXPIRES_AT_KEY, String(expiresAt))
@@ -96,6 +100,7 @@ export function clearAuthSession() {
   removeClientStorage(ACCESS_TOKEN_KEY)
   removeClientStorage(USER_KEY)
   removeClientStorage(USER_ID_KEY)
+  removeClientStorage(TENANT_ID_KEY)
   removeClientStorage(TOKEN_EXPIRES_AT_KEY)
   notifyAuthScopeChanged(previousScope)
 }
