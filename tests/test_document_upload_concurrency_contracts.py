@@ -1,3 +1,4 @@
+import asyncio
 import io
 import uuid
 from pathlib import Path
@@ -180,6 +181,131 @@ async def test_upload_batch_rejects_nonpositive_max_concurrent() -> None:
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == "max_concurrent must be at least 1"
+
+
+@pytest.mark.asyncio
+async def test_gather_with_concurrency_limit_preserves_order_and_bounds_inflight() -> None:
+    active = 0
+    max_active = 0
+    started: list[int] = []
+    first_wave_ready = asyncio.Event()
+    release = asyncio.Event()
+
+    def _factory(index: int):
+        async def _run() -> int:
+            nonlocal active, max_active
+            started.append(index)
+            active += 1
+            max_active = max(max_active, active)
+            if len(started) == 2:
+                first_wave_ready.set()
+            await release.wait()
+            active -= 1
+            return index
+
+        return _run
+
+    runner = asyncio.create_task(
+        document_upload._gather_with_concurrency_limit([_factory(index) for index in range(4)], limit=2)
+    )
+
+    await asyncio.wait_for(first_wave_ready.wait(), timeout=1)
+    await asyncio.sleep(0)
+    assert started == [0, 1]
+    assert max_active == 2
+
+    release.set()
+    assert await runner == [0, 1, 2, 3]
+
+
+@pytest.mark.asyncio
+async def test_gather_with_concurrency_limit_cancels_inflight_tasks() -> None:
+    started: list[int] = []
+    cleaned: list[int] = []
+    first_wave_ready = asyncio.Event()
+    release = asyncio.Event()
+
+    def _factory(index: int):
+        async def _run() -> int:
+            started.append(index)
+            if len(started) == 2:
+                first_wave_ready.set()
+            try:
+                await release.wait()
+            finally:
+                cleaned.append(index)
+            return index
+
+        return _run
+
+    runner = asyncio.create_task(
+        document_upload._gather_with_concurrency_limit([_factory(index) for index in range(4)], limit=2)
+    )
+
+    await asyncio.wait_for(first_wave_ready.wait(), timeout=1)
+    runner.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await runner
+
+    assert started == [0, 1]
+    assert sorted(cleaned) == [0, 1]
+
+
+@pytest.mark.asyncio
+async def test_upload_batch_cancellation_cleans_staged_temp_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    dataset_id = uuid.uuid4()
+    started = asyncio.Event()
+    staged_paths: list[Path] = []
+
+    _patch_quota(monkeypatch)
+    _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
+    monkeypatch.setattr(document_upload.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(document_upload, "_document_object_storage_enabled", lambda: False, raising=True)
+
+    async def _slow_save(file: UploadFile, file_path: Path, max_bytes: int) -> tuple[int, str]:
+        data = await file.read()
+        await file.seek(0)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_bytes(data)
+        staged_paths.append(file_path)
+        started.set()
+        await asyncio.Event().wait()
+        return len(data), f"sha-{file.filename}"
+
+    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _slow_save, raising=True)
+
+    task = asyncio.create_task(
+        document_upload.upload_documents_batch(
+            background_tasks=BackgroundTasks(),
+            files=[_make_upload("staged.txt")],
+            form=document_upload.UploadDocumentsBatchFormFields(
+                parser_backend="auto",
+                chunk_strategy="langchain_recursive",
+                pipeline=None,
+                dataset_id=dataset_id,
+                precheck_first=True,
+                precheck_only=False,
+                upload_only=False,
+                user_metadata_map=None,
+                max_concurrent=1,
+            ),
+            overrides_form=_build_overrides_form(),
+            tenant_id=uuid.uuid4(),
+            account_id="acct-1",
+            db=SimpleNamespace(),
+        )
+    )
+
+    await asyncio.wait_for(started.wait(), timeout=1)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert len(staged_paths) == 1
+    assert not staged_paths[0].exists()
 
 
 @pytest.mark.asyncio

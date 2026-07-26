@@ -800,7 +800,7 @@ def reembed_document_chunks(
                 id=str(chunk.id),
                 metadata=bm25_meta,
             )
-            hybrid_retriever.upsert_bm25_documents([bm25_doc], tenant_id=tenant_id)
+            hybrid_retriever.upsert_bm25_documents([bm25_doc], tenant_id=tenant_id, db=db)
         except Exception as exc:  # noqa: BLE001
             documents_module.logger.debug("BM25 upsert failed for chunk %s: %s", str(chunk.id), str(exc)[:160])
 

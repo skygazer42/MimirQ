@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import json
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -117,6 +118,48 @@ def _document_upload_path(tenant_id: UUID, document_id: UUID, extension: str) ->
 def _unlink_upload(path: Path) -> None:
     with contextlib.suppress(OSError):
         path.unlink(missing_ok=True)
+
+
+async def _gather_with_concurrency_limit(
+    factories: list[Callable[[], Awaitable[Any]]],
+    *,
+    limit: int,
+) -> list[Any]:
+    if limit <= 0:
+        raise ValueError("limit must be at least 1")
+
+    results: list[Any] = [None] * len(factories)
+    in_flight: dict[asyncio.Task[Any], int] = {}
+    next_index = 0
+
+    def _schedule_ready() -> None:
+        nonlocal next_index
+        while next_index < len(factories) and len(in_flight) < limit:
+            index = next_index
+            next_index += 1
+            in_flight[asyncio.create_task(factories[index]())] = index
+
+    _schedule_ready()
+    try:
+        while in_flight:
+            done, _ = await asyncio.wait(in_flight, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                index = in_flight.pop(task)
+                try:
+                    results[index] = task.result()
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:  # noqa: BLE001
+                    results[index] = exc
+            _schedule_ready()
+    except BaseException:
+        for task in in_flight:
+            task.cancel()
+        if in_flight:
+            await asyncio.gather(*in_flight, return_exceptions=True)
+        raise
+
+    return results
 
 
 async def _store_document_source(
@@ -1285,6 +1328,10 @@ async def upload_documents_batch(
                         "source_path": source_path,
                         "error": str(getattr(exc, "detail", "") or str(exc) or "upload_failed"),
                     }
+                except asyncio.CancelledError:
+                    if file_path is not None:
+                        _unlink_upload(file_path)
+                    raise
                 except Exception as exc:  # noqa: BLE001
                     if file_path is not None:
                         _unlink_upload(file_path)
@@ -1295,8 +1342,10 @@ async def upload_documents_batch(
                         "error": str(exc)[:200],
                     }
 
-        save_tasks = [_save_upload_only(file) for file in files]
-        save_results = await asyncio.gather(*save_tasks, return_exceptions=True)
+        save_results = await _gather_with_concurrency_limit(
+            [lambda file=file: _save_upload_only(file) for file in files],
+            limit=max_concurrent,
+        )
 
         staged_results: list[dict[str, Any]] = []
         for result in save_results:

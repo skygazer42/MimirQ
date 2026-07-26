@@ -20,7 +20,7 @@ from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from difflib import SequenceMatcher
+from difflib import SequenceMatcher as SequenceMatcher
 from functools import lru_cache
 from typing import Annotated, Any
 from uuid import UUID
@@ -36,6 +36,390 @@ from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session
 
 from app.api.schemas.chat import ChatRAGConfig
+from app.api.v1.dify_support.anchor_strength import (
+    _composite_section_text as _composite_section_text,
+)
+from app.api.v1.dify_support.anchor_strength import (
+    _composite_stitched_section_text as _composite_stitched_section_text,
+)
+from app.api.v1.dify_support.anchor_strength import (
+    _dify_kg_bool as _dify_kg_bool,
+)
+from app.api.v1.dify_support.anchor_strength import (
+    _dify_kg_float as _dify_kg_float,
+)
+from app.api.v1.dify_support.anchor_strength import (
+    _dify_kg_int as _dify_kg_int,
+)
+from app.api.v1.dify_support.anchor_strength import (
+    _ordered_section_sibling_records as _ordered_section_sibling_records,
+)
+from app.api.v1.dify_support.anchor_strength import (
+    _query_intent_terms as _query_intent_terms,
+)
+from app.api.v1.dify_support.anchor_strength import (
+    _question_anchor_intent_groups as _question_anchor_intent_groups,
+)
+from app.api.v1.dify_support.anchor_strength import (
+    _question_anchor_subject_text as _question_anchor_subject_text,
+)
+from app.api.v1.dify_support.anchor_strength import (
+    _record_has_any_requested_slot_field as _record_has_any_requested_slot_field,
+)
+from app.api.v1.dify_support.anchor_strength import (
+    _record_is_composite_exact_anchor_answer as _record_is_composite_exact_anchor_answer,
+)
+from app.api.v1.dify_support.anchor_strength import (
+    _record_is_full_answer_chunk as _record_is_full_answer_chunk,
+)
+from app.api.v1.dify_support.anchor_strength import (
+    _record_matches_requested_slot as _record_matches_requested_slot,
+)
+from app.api.v1.dify_support.anchor_strength import (
+    _record_question_anchor_has_intent_conflict as _record_question_anchor_has_intent_conflict,
+)
+from app.api.v1.dify_support.anchor_strength import (
+    _record_section_type_values as _record_section_type_values,
+)
+from app.api.v1.dify_support.anchor_strength import (
+    _record_slot_field_values as _record_slot_field_values,
+)
+from app.api.v1.dify_support.anchor_strength import (
+    _safe_int as _safe_int,
+)
+from app.api.v1.dify_support.common import (
+    _CJK_RE as _CJK_RE,
+)
+from app.api.v1.dify_support.common import (
+    _DEFAULT_RESPONSE_HINT_ANSWER_PREFIX as _DEFAULT_RESPONSE_HINT_ANSWER_PREFIX,
+)
+from app.api.v1.dify_support.common import (
+    _EXACT_PRIMARY_ALIAS_MATCH_BONUS as _EXACT_PRIMARY_ALIAS_MATCH_BONUS,
+)
+from app.api.v1.dify_support.common import (
+    _EXPLICIT_QUESTION_FORM_MARKERS as _EXPLICIT_QUESTION_FORM_MARKERS,
+)
+from app.api.v1.dify_support.common import (
+    _FAST_ANSWER_QUERY_STOP_TERMS as _FAST_ANSWER_QUERY_STOP_TERMS,
+)
+from app.api.v1.dify_support.common import (
+    _FUZZY_METADATA_ANCHOR_KEYS as _FUZZY_METADATA_ANCHOR_KEYS,
+)
+from app.api.v1.dify_support.common import (
+    _MAX_HINT_VALUE_CHARS as _MAX_HINT_VALUE_CHARS,
+)
+from app.api.v1.dify_support.common import (
+    _MAX_QA_HINT_VALUE_CHARS as _MAX_QA_HINT_VALUE_CHARS,
+)
+from app.api.v1.dify_support.common import (
+    _METADATA_ANCHOR_KEYS as _METADATA_ANCHOR_KEYS,
+)
+from app.api.v1.dify_support.common import (
+    _METADATA_SCORE_KEYS as _METADATA_SCORE_KEYS,
+)
+from app.api.v1.dify_support.common import (
+    _MIN_REGION_ANCHOR_OVERLAP_CHARS as _MIN_REGION_ANCHOR_OVERLAP_CHARS,
+)
+from app.api.v1.dify_support.common import (
+    _MIN_REGIONAL_QUESTION_OVERLAP_CHARS as _MIN_REGIONAL_QUESTION_OVERLAP_CHARS,
+)
+from app.api.v1.dify_support.common import (
+    _MIN_SPECIFIC_INTENT_CHARS as _MIN_SPECIFIC_INTENT_CHARS,
+)
+from app.api.v1.dify_support.common import (
+    _MIXED_INTENT_LIST_SPLIT_RE as _MIXED_INTENT_LIST_SPLIT_RE,
+)
+from app.api.v1.dify_support.common import (
+    _MIXED_INTENT_QUERY_MARKERS as _MIXED_INTENT_QUERY_MARKERS,
+)
+from app.api.v1.dify_support.common import (
+    _MIXED_INTENT_SUBJECT_TRAILING_INSTRUCTION_RE as _MIXED_INTENT_SUBJECT_TRAILING_INSTRUCTION_RE,
+)
+from app.api.v1.dify_support.common import (
+    _PUBLIC_METADATA_VIEW_KEYS as _PUBLIC_METADATA_VIEW_KEYS,
+)
+from app.api.v1.dify_support.common import (
+    _QUESTION_ANCHOR_INTENT_GROUPS as _QUESTION_ANCHOR_INTENT_GROUPS,
+)
+from app.api.v1.dify_support.common import (
+    _QUESTION_ANCHOR_NEAR_MATCH_MIN_CHARS as _QUESTION_ANCHOR_NEAR_MATCH_MIN_CHARS,
+)
+from app.api.v1.dify_support.common import (
+    _QUESTION_ANCHOR_NEAR_MATCH_MIN_RATIO as _QUESTION_ANCHOR_NEAR_MATCH_MIN_RATIO,
+)
+from app.api.v1.dify_support.common import (
+    _QUESTION_ANCHOR_QUERY_MARKERS as _QUESTION_ANCHOR_QUERY_MARKERS,
+)
+from app.api.v1.dify_support.common import (
+    _QUESTION_ANCHOR_SHORT_QUERY_MAX_CHARS as _QUESTION_ANCHOR_SHORT_QUERY_MAX_CHARS,
+)
+from app.api.v1.dify_support.common import (
+    _QUESTION_ANCHOR_SHORT_QUERY_MIN_CHARS as _QUESTION_ANCHOR_SHORT_QUERY_MIN_CHARS,
+)
+from app.api.v1.dify_support.common import (
+    _QUESTION_ANCHOR_SUBJECT_NOISE_TERMS as _QUESTION_ANCHOR_SUBJECT_NOISE_TERMS,
+)
+from app.api.v1.dify_support.common import (
+    _QUOTED_ANCHOR_RE as _QUOTED_ANCHOR_RE,
+)
+from app.api.v1.dify_support.common import (
+    _REGION_ANCHOR_KEYS as _REGION_ANCHOR_KEYS,
+)
+from app.api.v1.dify_support.common import (
+    _RETRIEVAL_METADATA_VIEW_KEYS as _RETRIEVAL_METADATA_VIEW_KEYS,
+)
+from app.api.v1.dify_support.common import (
+    _SCORE_KEYS as _SCORE_KEYS,
+)
+from app.api.v1.dify_support.common import (
+    _SERVICE_ANCHOR_ADMIN_MARKERS as _SERVICE_ANCHOR_ADMIN_MARKERS,
+)
+from app.api.v1.dify_support.common import (
+    _SERVICE_ANCHOR_QUERY_TRAILING_CHARS as _SERVICE_ANCHOR_QUERY_TRAILING_CHARS,
+)
+from app.api.v1.dify_support.common import (
+    _SOURCE_RECORD_ID_KEYS as _SOURCE_RECORD_ID_KEYS,
+)
+from app.api.v1.dify_support.common import (
+    _SOURCE_RECORD_SCOPE_KEYS as _SOURCE_RECORD_SCOPE_KEYS,
+)
+from app.api.v1.dify_support.common import (
+    _URL_EVIDENCE_BONUS as _URL_EVIDENCE_BONUS,
+)
+from app.api.v1.dify_support.common import (
+    _URL_EVIDENCE_BONUS_MAX as _URL_EVIDENCE_BONUS_MAX,
+)
+from app.api.v1.dify_support.common import (
+    _URL_EVIDENCE_QUERY_MARKERS as _URL_EVIDENCE_QUERY_MARKERS,
+)
+from app.api.v1.dify_support.common import (
+    _citation_chunk_id as _citation_chunk_id,
+)
+from app.api.v1.dify_support.common import (
+    _citation_dataset_id as _citation_dataset_id,
+)
+from app.api.v1.dify_support.common import (
+    _citation_score as _citation_score,
+)
+from app.api.v1.dify_support.common import (
+    _clamp_score as _clamp_score,
+)
+from app.api.v1.dify_support.common import (
+    _first_non_empty as _first_non_empty,
+)
+from app.api.v1.dify_support.common import (
+    _iter_record_metadata_layers as _iter_record_metadata_layers,
+)
+from app.api.v1.dify_support.common import (
+    _metadata_terms as _metadata_terms,
+)
+from app.api.v1.dify_support.common import (
+    _normalize_match_term as _normalize_match_term,
+)
+from app.api.v1.dify_support.common import (
+    _response_hint_metadata_conditions_match as _response_hint_metadata_conditions_match,
+)
+from app.api.v1.dify_support.compaction import (
+    _compact_fast_answer_value as _compact_fast_answer_value,
+)
+from app.api.v1.dify_support.compaction import (
+    _dify_fast_candidate_top_k as _dify_fast_candidate_top_k,
+)
+from app.api.v1.dify_support.compaction import (
+    _dify_fast_content_max_chars as _dify_fast_content_max_chars,
+)
+from app.api.v1.dify_support.compaction import (
+    _dify_fast_response_top_k as _dify_fast_response_top_k,
+)
+from app.api.v1.dify_support.compaction import (
+    _dify_fast_total_content_max_chars as _dify_fast_total_content_max_chars,
+)
+from app.api.v1.dify_support.compaction import (
+    _fast_answer_query_terms as _fast_answer_query_terms,
+)
+from app.api.v1.dify_support.compaction import (
+    _fast_answer_snippet_segments as _fast_answer_snippet_segments,
+)
+from app.api.v1.dify_support.compaction import (
+    _query_requests_url_evidence as _query_requests_url_evidence,
+)
+from app.api.v1.dify_support.compaction import (
+    _record_url_evidence_bonus as _record_url_evidence_bonus,
+)
+from app.api.v1.dify_support.compaction import (
+    _structured_label_values_from_content as _structured_label_values_from_content,
+)
+from app.api.v1.dify_support.records import (
+    _coerce_uuid_text as _coerce_uuid_text,
+)
+from app.api.v1.dify_support.records import (
+    _record_dedupe_key as _record_dedupe_key,
+)
+from app.api.v1.dify_support.records import (
+    _row_value as _row_value,
+)
+from app.api.v1.dify_support.records import (
+    _tag_mixed_intent_records as _tag_mixed_intent_records,
+)
+from app.api.v1.dify_support.scoring import (
+    _answer_hints_from_fields as _answer_hints_from_fields,
+)
+from app.api.v1.dify_support.scoring import (
+    _cjk_bigram_overlap_count as _cjk_bigram_overlap_count,
+)
+from app.api.v1.dify_support.scoring import (
+    _cjk_bigram_overlap_ratio as _cjk_bigram_overlap_ratio,
+)
+from app.api.v1.dify_support.scoring import (
+    _cjk_bigrams as _cjk_bigrams,
+)
+from app.api.v1.dify_support.scoring import (
+    _clamp_hint_value as _clamp_hint_value,
+)
+from app.api.v1.dify_support.scoring import (
+    _contains_cjk as _contains_cjk,
+)
+from app.api.v1.dify_support.scoring import (
+    _content_starts_with_response_hint as _content_starts_with_response_hint,
+)
+from app.api.v1.dify_support.scoring import (
+    _diagnostic_query_hash as _diagnostic_query_hash,
+)
+from app.api.v1.dify_support.scoring import (
+    _diagnostic_value_hash as _diagnostic_value_hash,
+)
+from app.api.v1.dify_support.scoring import (
+    _dify_external_reranker_enabled as _dify_external_reranker_enabled,
+)
+from app.api.v1.dify_support.scoring import (
+    _enumerated_answer_hints as _enumerated_answer_hints,
+)
+from app.api.v1.dify_support.scoring import (
+    _extract_numbered_option_terms as _extract_numbered_option_terms,
+)
+from app.api.v1.dify_support.scoring import (
+    _field_line_parts as _field_line_parts,
+)
+from app.api.v1.dify_support.scoring import (
+    _find_numbered_marker as _find_numbered_marker,
+)
+from app.api.v1.dify_support.scoring import (
+    _is_anchor_word_char as _is_anchor_word_char,
+)
+from app.api.v1.dify_support.scoring import (
+    _is_cjk_char as _is_cjk_char,
+)
+from app.api.v1.dify_support.scoring import (
+    _is_specific_intent_term as _is_specific_intent_term,
+)
+from app.api.v1.dify_support.scoring import (
+    _iter_anchor_word_segments as _iter_anchor_word_segments,
+)
+from app.api.v1.dify_support.scoring import (
+    _longest_common_substring_length as _longest_common_substring_length,
+)
+from app.api.v1.dify_support.scoring import (
+    _matching_response_hint_group as _matching_response_hint_group,
+)
+from app.api.v1.dify_support.scoring import (
+    _mixed_intent_segment_parts as _mixed_intent_segment_parts,
+)
+from app.api.v1.dify_support.scoring import (
+    _near_question_anchor_match as _near_question_anchor_match,
+)
+from app.api.v1.dify_support.scoring import (
+    _query_has_explicit_question_form as _query_has_explicit_question_form,
+)
+from app.api.v1.dify_support.scoring import (
+    _query_has_mixed_intent as _query_has_mixed_intent,
+)
+from app.api.v1.dify_support.scoring import (
+    _query_has_quoted_anchor_candidate as _query_has_quoted_anchor_candidate,
+)
+from app.api.v1.dify_support.scoring import (
+    _query_is_short_question_anchor_candidate as _query_is_short_question_anchor_candidate,
+)
+from app.api.v1.dify_support.scoring import (
+    _question_marker_overlap_bonus as _question_marker_overlap_bonus,
+)
+from app.api.v1.dify_support.scoring import (
+    _quoted_anchor_match_text as _quoted_anchor_match_text,
+)
+from app.api.v1.dify_support.scoring import (
+    _quoted_query_anchor_display_terms as _quoted_query_anchor_display_terms,
+)
+from app.api.v1.dify_support.scoring import (
+    _quoted_query_anchor_terms as _quoted_query_anchor_terms,
+)
+from app.api.v1.dify_support.scoring import (
+    _record_exact_primary_alias_bonus as _record_exact_primary_alias_bonus,
+)
+from app.api.v1.dify_support.scoring import (
+    _record_final_rerank_candidate_id as _record_final_rerank_candidate_id,
+)
+from app.api.v1.dify_support.scoring import (
+    _record_has_query_region_anchor as _record_has_query_region_anchor,
+)
+from app.api.v1.dify_support.scoring import (
+    _record_metadata_anchor_bonus as _record_metadata_anchor_bonus,
+)
+from app.api.v1.dify_support.scoring import (
+    _record_needs_final_rerank as _record_needs_final_rerank,
+)
+from app.api.v1.dify_support.scoring import (
+    _record_plugin_ref as _record_plugin_ref,
+)
+from app.api.v1.dify_support.scoring import (
+    _record_policy_slot_coverage_text as _record_policy_slot_coverage_text,
+)
+from app.api.v1.dify_support.scoring import (
+    _record_region_terms as _record_region_terms,
+)
+from app.api.v1.dify_support.scoring import (
+    _record_source_identity_key as _record_source_identity_key,
+)
+from app.api.v1.dify_support.scoring import (
+    _request_client_ip as _request_client_ip,
+)
+from app.api.v1.dify_support.scoring import (
+    _response_hint_candidate_terms as _response_hint_candidate_terms,
+)
+from app.api.v1.dify_support.scoring import (
+    _response_hint_dict as _response_hint_dict,
+)
+from app.api.v1.dify_support.scoring import (
+    _response_hint_dict_list as _response_hint_dict_list,
+)
+from app.api.v1.dify_support.scoring import (
+    _response_hint_group_has_required_fields as _response_hint_group_has_required_fields,
+)
+from app.api.v1.dify_support.scoring import (
+    _response_hint_group_matches_query as _response_hint_group_matches_query,
+)
+from app.api.v1.dify_support.scoring import (
+    _response_hint_groups as _response_hint_groups,
+)
+from app.api.v1.dify_support.scoring import (
+    _response_hint_string_list as _response_hint_string_list,
+)
+from app.api.v1.dify_support.scoring import (
+    _response_hint_text as _response_hint_text,
+)
+from app.api.v1.dify_support.scoring import (
+    _rstrip_service_anchor_query_noise as _rstrip_service_anchor_query_noise,
+)
+from app.api.v1.dify_support.scoring import (
+    _strip_mixed_intent_noise as _strip_mixed_intent_noise,
+)
+from app.api.v1.dify_support.scoring import (
+    _strip_mixed_intent_subject_instruction_tail as _strip_mixed_intent_subject_instruction_tail,
+)
+from app.api.v1.dify_support.scoring import (
+    _strip_trailing_service_anchor_admin as _strip_trailing_service_anchor_admin,
+)
+from app.api.v1.dify_support.scoring import (
+    _structured_fields_from_content as _structured_fields_from_content,
+)
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.core.env import is_production_env
@@ -43,7 +427,15 @@ from app.models.chat import Conversation, Message
 from app.models.dataset import Dataset
 from app.models.document import Document, DocumentChunk
 from app.rag.core.logging import get_logger
-from app.rag.pipeline_plugins.contracts import DISPLAY_METADATA_KEY, EVALUABLE_METADATA_KEY, INDEXED_METADATA_KEY
+from app.rag.pipeline_plugins.contracts import (
+    DISPLAY_METADATA_KEY as DISPLAY_METADATA_KEY,
+)
+from app.rag.pipeline_plugins.contracts import (
+    EVALUABLE_METADATA_KEY as EVALUABLE_METADATA_KEY,
+)
+from app.rag.pipeline_plugins.contracts import (
+    INDEXED_METADATA_KEY as INDEXED_METADATA_KEY,
+)
 from app.rag.reranker.factory import get_reranker
 from app.rag.reranker.types import RerankCandidate
 from app.rag.retrieval.planner import (
@@ -105,17 +497,6 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 _TOKEN_SPLIT_RE = re.compile(r"[,\s]+")
 _CONTENT_KEYS = ("content", "chunk_content", "text", "quote", "snippet", "page_content")
 _TITLE_KEYS = ("title", "document_name", "filename", "source", "document_id", "chunk_id")
-_SCORE_KEYS = (
-    "score",
-    "relevance_score",
-    "retrieval_score",
-    "rerank_score",
-    "vector_score",
-    "bm25_score",
-    "keyword_score",
-    "mimirq_score",
-)
-_METADATA_SCORE_KEYS = tuple(key for key in _SCORE_KEYS if key != "score")
 _METADATA_KEYS = (
     "document_id",
     "chunk_id",
@@ -141,8 +522,6 @@ _METADATA_KEYS = (
     "kg_edge_conf_mid",
     "kg_edge_conf_high",
 )
-_PUBLIC_METADATA_VIEW_KEYS = (EVALUABLE_METADATA_KEY, DISPLAY_METADATA_KEY)
-_RETRIEVAL_METADATA_VIEW_KEYS = (INDEXED_METADATA_KEY, *_PUBLIC_METADATA_VIEW_KEYS)
 _RETRIEVAL_INTENT_KEYS = ("retrieval_intents", "query_intents", "intent_terms")
 _EXACT_QUERY_ANCHOR_FIELDS = (
     "question",
@@ -151,69 +530,16 @@ _EXACT_QUERY_ANCHOR_FIELDS = (
     "source_topic",
     "title",
 )
-_METADATA_ANCHOR_KEYS = (
-    "question",
-    "aliases",
-    "primary_alias",
-    "service_name",
-    "service_aliases",
-    "case_title",
-    "source_topic",
-    "title",
-)
-_FUZZY_METADATA_ANCHOR_KEYS = (
-    "service_name",
-    "aliases",
-    "primary_alias",
-    "service_aliases",
-    "case_title",
-    "source_topic",
-    "title",
-)
-_REGION_ANCHOR_KEYS = ("district", "applicable_area")
-_MIN_REGION_ANCHOR_OVERLAP_CHARS = 3
-_MIN_REGIONAL_QUESTION_OVERLAP_CHARS = 8
-_MIN_SPECIFIC_INTENT_CHARS = 7
 _MIN_QUERY_INTENT_SUBJECT_OVERLAP_CHARS = 3
 _INTENT_MATCH_BONUS = 0.06
 _INTENT_MATCH_BONUS_MAX = 0.18
 _QUESTION_INTENT_MATCH_BONUS = 0.2
-_EXACT_PRIMARY_ALIAS_MATCH_BONUS = 0.16
-_URL_EVIDENCE_BONUS = 0.04
-_URL_EVIDENCE_BONUS_MAX = 0.08
-_SOURCE_RECORD_ID_KEYS = ("source_record_id", "record_id")
-_SOURCE_RECORD_SCOPE_KEYS = ("knowledge_section", "source_file", "source_topic", "document_id")
-_DEFAULT_RESPONSE_HINT_ANSWER_PREFIX = "Answer highlights"
 _DEFAULT_RESPONSE_HINT_SOURCE_PREFIX = "Source evidence"
-_MAX_HINT_VALUE_CHARS = 700
-_MAX_QA_HINT_VALUE_CHARS = 420
 _ANSWERFUL_RECORD_BONUS = 0.08
 _ANCHOR_ONLY_QA_RECORD_PENALTY = 0.28
 _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH = 0.8
-_QUESTION_ANCHOR_NEAR_MATCH_MIN_CHARS = 8
-_QUESTION_ANCHOR_NEAR_MATCH_MIN_RATIO = 0.86
 _QUESTION_ANCHOR_BIGRAM_MIN_OVERLAP = 3
 _QUESTION_ANCHOR_BIGRAM_MIN_RATIO = 0.5
-_QUESTION_ANCHOR_QUERY_MARKERS = ("是否", "能否", "可否", "什么是", "为什么", "怎么", "如何", "哪里", "吗", "？", "?")
-_EXPLICIT_QUESTION_FORM_MARKERS = ("请问", "是否", "能否", "可否", "吗", "？", "?", "什么是", "为什么")
-_MIXED_INTENT_QUERY_MARKERS = (
-    "另外",
-    "同时",
-    "以及",
-    "并且",
-    "还想",
-    "还要",
-    "一次知道",
-    "分别",
-    "顺便",
-    "合并回答",
-    "一并回答",
-    "一起回答",
-    "分别回答",
-    "分开回答",
-    "请合并",
-    "请分别",
-)
 _MIXED_INTENT_DEFAULT_LEADING_NOISE_TERMS = (
     "关于",
     "回答",
@@ -231,28 +557,10 @@ _MIXED_INTENT_SPLIT_RE = re.compile(
     r"(?:另外|同时|以及|并且|还想|还要|一次知道|分别|顺便|请合并回答|请分别回答|合并回答|一并回答|一起回答|分别回答|分开回答|请合并|请分别)\s*"
     r"|[；;]"
 )
-_MIXED_INTENT_LIST_SPLIT_RE = re.compile(r"[、,，/]|以及|或者|或|和")
-_MIXED_INTENT_SUBJECT_TRAILING_INSTRUCTION_RE = re.compile(
-    r"(?:[，,、：:；;]\s*)?"
-    r"(?:请|麻烦|帮我|帮忙)?"
-    r"(?:合并回答|一并回答|一起回答|分别回答|分开回答|同时说明|说明一下|告诉我|给一下|列一下|回答)\s*$"
-)
-_QUOTED_ANCHOR_RE = re.compile(
-    r'"([^"]{3,80})"'
-    r"|“([^”]{3,80})”"
-    r"|「([^」]{3,80})」"
-    r"|『([^』]{3,80})』"
-    r"|《([^》]{3,80})》"
-    r"|'([^']{3,80})'"
-)
-_QUESTION_ANCHOR_SHORT_QUERY_MIN_CHARS = 4
-_QUESTION_ANCHOR_SHORT_QUERY_MAX_CHARS = 24
 _METADATA_ANCHOR_DB_FALLBACK_MIN_SCORE = 0.72
 _METADATA_ANCHOR_DB_FALLBACK_DEFAULT_SCORE = 0.74
 _METADATA_ANCHOR_DB_FALLBACK_MAX_QUERY_TERMS = 12
 _METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS = 8
-_SERVICE_ANCHOR_ADMIN_MARKERS = ("在", "到")
-_SERVICE_ANCHOR_QUERY_TRAILING_CHARS = " \t\r\n?？。！!，,、：:；;"
 _METADATA_ANCHOR_DB_FALLBACK_ARRAY_FIELDS = (
     "retrieval_intents",
     "query_intents",
@@ -271,7 +579,6 @@ _METADATA_ANCHOR_DB_FALLBACK_SCALAR_FIELDS = (
     "title",
 )
 _METADATA_ANCHOR_DB_FALLBACK_TITLE_FIELDS = ("case_title", "source_topic", "title")
-_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 _DIFY_WARMUP_DEFAULT_QUERY = "warmup probe"
 _DIFY_TRACE_QUERY_PREVIEW_MAX_CHARS = 160
 _DIFY_TRACE_QUERY_PATH_MAX_CHARS = 120
@@ -2239,62 +2546,14 @@ def _dify_metadata_condition_item_to_filter(condition: dict[str, Any]) -> dict[s
     raise HTTPException(status_code=400, detail=f"Unsupported Dify metadata comparison operator: {op}")
 
 
-def _first_non_empty(citation: dict[str, Any], keys: tuple[str, ...]) -> str:
-    for key in keys:
-        value = citation.get(key)
-        if value is None:
-            continue
-        text = str(value).strip()
-        if text:
-            return text
-    return ""
 
 
-def _clamp_score(value: object) -> float:
-    try:
-        score = float(value)
-    except (TypeError, ValueError):
-        return 0.0
-    if score < 0.0:
-        return 0.0
-    if score > 1.0:
-        return 1.0
-    return score
 
 
-def _citation_score(citation: dict[str, Any]) -> float:
-    for key in _SCORE_KEYS:
-        if citation.get(key) is not None:
-            return _clamp_score(citation.get(key))
-    metadata = citation.get("metadata")
-    if isinstance(metadata, dict):
-        for key in _METADATA_SCORE_KEYS:
-            if metadata.get(key) is not None:
-                return _clamp_score(metadata.get(key))
-    return 0.0
 
 
-def _citation_dataset_id(citation: dict[str, Any], *, fallback_dataset_id: UUID | None) -> UUID | None:
-    raw_metadata = citation.get("metadata")
-    metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
-    for value in (citation.get("dataset_id"), metadata.get("dataset_id"), fallback_dataset_id):
-        if value is None:
-            continue
-        try:
-            return UUID(str(value))
-        except ValueError:
-            continue
-    return None
 
 
-def _citation_chunk_id(citation: dict[str, Any]) -> str:
-    raw_metadata = citation.get("metadata")
-    metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
-    for value in (citation.get("chunk_id"), metadata.get("chunk_id")):
-        text = str(value or "").strip()
-        if text:
-            return text
-    return ""
 
 
 def _load_chunk_content_map(
@@ -2373,173 +2632,42 @@ async def _offload_chunk_content_hydration(
     )
 
 
-def _iter_record_metadata_layers(record: dict[str, Any]) -> list[dict[str, Any]]:
-    raw_metadata = record.get("metadata")
-    if not isinstance(raw_metadata, dict):
-        return []
-    layers = [raw_metadata]
-    for key in _RETRIEVAL_METADATA_VIEW_KEYS:
-        nested = raw_metadata.get(key)
-        if isinstance(nested, dict) and nested:
-            layers.append(nested)
-    return layers
 
 
-def _metadata_terms(value: Any) -> list[str]:
-    raw_items = value if isinstance(value, list | tuple | set) else [value]
-    out: list[str] = []
-    seen: set[str] = set()
-    for raw in raw_items:
-        text = str(raw or "").strip()
-        if not text or text in seen:
-            continue
-        seen.add(text)
-        out.append(text)
-    return out
 
 
-def _response_hint_metadata_conditions_match(layer: dict[str, Any], field_spec: dict[str, Any]) -> bool:
-    conditions = field_spec.get("when_metadata")
-    if conditions is None:
-        conditions = field_spec.get("metadata_when")
-    if not isinstance(conditions, dict) or not conditions:
-        return True
-    for key, expected in conditions.items():
-        name = str(key or "").strip()
-        if not name:
-            return False
-        expected_terms = {_normalize_match_term(term) for term in _metadata_terms(expected)}
-        if not expected_terms:
-            return False
-        actual_terms = {_normalize_match_term(term) for term in _metadata_terms(layer.get(name))}
-        if not actual_terms or actual_terms.isdisjoint(expected_terms):
-            return False
-    return True
 
 
-def _request_client_ip(request: Request) -> str:
-    forwarded_for = str(request.headers.get("x-forwarded-for") or "").strip()
-    if forwarded_for:
-        first = forwarded_for.split(",", 1)[0].strip()
-        if first:
-            return first
-    return str(getattr(getattr(request, "client", None), "host", "") or "").strip()
 
 
-def _diagnostic_value_hash(value: object) -> str:
-    text = str(value or "").strip()
-    if not text:
-        return ""
-    return hashlib.sha256(text.encode("utf-8", "ignore")).hexdigest()[:16]
 
 
-def _diagnostic_query_hash(query: str) -> str:
-    return _diagnostic_value_hash(query)
 
 
-def _is_cjk_char(char: str) -> bool:
-    return "\u4e00" <= char <= "\u9fff"
 
 
-def _contains_cjk(value: str) -> bool:
-    return any(_is_cjk_char(char) for char in str(value or ""))
 
 
-def _is_anchor_word_char(char: str) -> bool:
-    return (char.isascii() and char.isalnum()) or _is_cjk_char(char)
 
 
-def _iter_anchor_word_segments(value: str) -> list[str]:
-    segments: list[str] = []
-    current: list[str] = []
-    for char in str(value or ""):
-        if _is_anchor_word_char(char):
-            current.append(char)
-            continue
-        if current:
-            segments.append("".join(current))
-            current = []
-    if current:
-        segments.append("".join(current))
-    return segments
 
 
-def _strip_trailing_service_anchor_admin(value: str, *, admin_aliases: tuple[str, ...]) -> str:
-    text = str(value or "").strip()
-    for marker in _SERVICE_ANCHOR_ADMIN_MARKERS:
-        for alias in admin_aliases:
-            suffix = f"{marker}{alias}"
-            if text.endswith(suffix):
-                return text[: -len(suffix)].strip()
-    return text
 
 
-def _rstrip_service_anchor_query_noise(value: str) -> str:
-    return str(value or "").rstrip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS).strip()
 
 
-def _clamp_hint_value(value: str, *, limit: int = _MAX_HINT_VALUE_CHARS) -> str:
-    text = str(value or "").strip()
-    if len(text) <= limit:
-        return text
-    return f"{text[:limit].rstrip()}..."
 
 
-def _field_line_parts(line: str) -> tuple[str, str] | None:
-    text = str(line or "").strip()
-    if not text:
-        return None
-    colon_positions = [index for index in (text.find("："), text.find(":")) if index >= 0]
-    if not colon_positions:
-        return None
-    split_at = min(colon_positions)
-    label = text[:split_at].strip()
-    value = text[split_at + 1 :].strip()
-    if not label or not value or len(label) > 20:
-        return None
-    return label, value
 
 
-def _response_hint_string_list(response_hints: dict[str, Any], key: str, *, default: tuple[str, ...] = ()) -> tuple[str, ...]:
-    raw = response_hints.get(key) if isinstance(response_hints, dict) else None
-    if raw is None:
-        return default
-    if not isinstance(raw, list | tuple | set):
-        return ()
-    out: list[str] = []
-    seen: set[str] = set()
-    for item in raw:
-        text = str(item or "").strip()
-        if not text or text in seen:
-            continue
-        seen.add(text)
-        out.append(text)
-    return tuple(out)
 
 
-def _response_hint_text(response_hints: dict[str, Any], key: str, *, default: str) -> str:
-    value = response_hints.get(key) if isinstance(response_hints, dict) else None
-    text = str(value or "").strip()
-    return text or default
 
 
-def _response_hint_dict(response_hints: dict[str, Any], key: str) -> dict[str, Any]:
-    raw = response_hints.get(key) if isinstance(response_hints, dict) else None
-    return dict(raw) if isinstance(raw, dict) else {}
 
 
-def _response_hint_dict_list(response_hints: dict[str, Any], key: str) -> tuple[dict[str, Any], ...]:
-    raw = response_hints.get(key) if isinstance(response_hints, dict) else None
-    if not isinstance(raw, list | tuple):
-        return ()
-    return tuple(dict(item) for item in raw if isinstance(item, dict))
 
 
-def _response_hint_groups(response_hints: dict[str, Any]) -> tuple[dict[str, Any], ...]:
-    raw_groups = response_hints.get("groups") if isinstance(response_hints, dict) else None
-    if not isinstance(raw_groups, list):
-        return ()
-    return tuple(dict(group) for group in raw_groups if isinstance(group, dict))
 
 
 def _response_hints_for_record(
@@ -2563,22 +2691,6 @@ def _response_hints_for_metadata(
     return _response_hints_for_record({"metadata": metadata}, policy_plugin_refs=policy_plugin_refs)
 
 
-def _structured_fields_from_content(content: str, *, response_hints: dict[str, Any]) -> dict[str, str]:
-    labels = set(_response_hint_string_list(response_hints, "structured_labels"))
-    if not labels:
-        return {}
-    fields: dict[str, str] = {}
-    for line in str(content or "").splitlines():
-        parts = _field_line_parts(line)
-        if parts is None:
-            continue
-        label, value = parts
-        if label not in labels or label in fields:
-            continue
-        answer_labels = set(_response_hint_string_list(response_hints, "answer_labels"))
-        limit = _MAX_QA_HINT_VALUE_CHARS if label in answer_labels else _MAX_HINT_VALUE_CHARS
-        fields[label] = _clamp_hint_value(value, limit=limit)
-    return fields
 
 
 def _metadata_answer_highlights(
@@ -2660,61 +2772,16 @@ def _metadata_answer_highlights(
     return highlights
 
 
-def _normalize_match_term(value: Any) -> str:
-    text = str(value or "").strip().casefold()
-    out: list[str] = []
-    for char in text:
-        if char.isspace():
-            continue
-        if re.match(r"[\W_]", char, flags=re.UNICODE):
-            continue
-        out.append(char)
-    return "".join(out)
 
 
-def _longest_common_substring_length(left: str, right: str) -> int:
-    if not left or not right:
-        return 0
-    previous = [0] * (len(right) + 1)
-    best = 0
-    for left_char in left:
-        current = [0] * (len(right) + 1)
-        for index, right_char in enumerate(right, start=1):
-            if left_char != right_char:
-                continue
-            current[index] = previous[index - 1] + 1
-            best = max(best, current[index])
-        previous = current
-    return best
 
 
-def _near_question_anchor_match(query_term: str, candidate: str) -> bool:
-    if (
-        len(query_term) < _QUESTION_ANCHOR_NEAR_MATCH_MIN_CHARS
-        or len(candidate) < _QUESTION_ANCHOR_NEAR_MATCH_MIN_CHARS
-    ):
-        return False
-    ratio = SequenceMatcher(a=query_term, b=candidate, autojunk=False).ratio()
-    return ratio >= _QUESTION_ANCHOR_NEAR_MATCH_MIN_RATIO
 
 
-def _cjk_bigrams(value: str) -> set[str]:
-    text = "".join(char for char in str(value or "") if _CJK_RE.match(char))
-    if len(text) < 2:
-        return set()
-    return {text[index : index + 2] for index in range(0, len(text) - 1)}
 
 
-def _cjk_bigram_overlap_count(left: str, right: str) -> int:
-    return len(_cjk_bigrams(left) & _cjk_bigrams(right))
 
 
-def _cjk_bigram_overlap_ratio(left: str, right: str) -> float:
-    left_bigrams = _cjk_bigrams(left)
-    right_bigrams = _cjk_bigrams(right)
-    if not left_bigrams or not right_bigrams:
-        return 0.0
-    return len(left_bigrams & right_bigrams) / max(1, min(len(left_bigrams), len(right_bigrams)))
 
 
 def _question_anchor_intent_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
@@ -2747,11 +2814,6 @@ def _query_prefers_question_anchor(query: str, *, policy_plugin_refs: tuple[str,
     )
 
 
-def _query_is_short_question_anchor_candidate(query: str, *, policy_plugin_refs: tuple[str, ...] = ()) -> bool:
-    if not policy_plugin_refs:
-        return False
-    normalized = _normalize_match_term(query)
-    return _QUESTION_ANCHOR_SHORT_QUERY_MIN_CHARS <= len(normalized) <= _QUESTION_ANCHOR_SHORT_QUERY_MAX_CHARS
 
 
 def _query_prefers_service_anchor(query: str, *, policy_plugin_refs: tuple[str, ...] = ()) -> bool:
@@ -2778,13 +2840,6 @@ def _query_prefers_service_anchor(query: str, *, policy_plugin_refs: tuple[str, 
     return False
 
 
-def _query_has_mixed_intent(query: str) -> bool:
-    text = str(query or "").strip()
-    if not text:
-        return False
-    if any(marker in text for marker in _MIXED_INTENT_QUERY_MARKERS):
-        return True
-    return len(_mixed_intent_segment_parts(text)) >= 2 and bool(re.search(r"[？?。.]?$", text))
 
 
 def _query_has_mixed_intent_for_policy(query: str, *, policy_plugin_refs: tuple[str, ...] = ()) -> bool:
@@ -2794,50 +2849,14 @@ def _query_has_mixed_intent_for_policy(query: str, *, policy_plugin_refs: tuple[
     return len({(field, value) for field, value in requested_slots}) >= 2
 
 
-def _query_has_explicit_question_form(query: str) -> bool:
-    text = str(query or "").strip()
-    return bool(text) and any(marker in text for marker in _EXPLICIT_QUESTION_FORM_MARKERS)
 
 
-def _query_has_quoted_anchor_candidate(query: str) -> bool:
-    text = str(query or "").strip()
-    if not text:
-        return False
-    for match in _QUOTED_ANCHOR_RE.finditer(text):
-        if len(_normalize_match_term(_quoted_anchor_match_text(match))) >= 4:
-            return True
-    return False
 
 
-def _quoted_anchor_match_text(match: re.Match[str]) -> str:
-    for group in match.groups():
-        text = str(group or "").strip()
-        if text:
-            return text
-    return ""
 
 
-def _quoted_query_anchor_display_terms(query: str) -> tuple[str, ...]:
-    out: list[str] = []
-    seen: set[str] = set()
-    for match in _QUOTED_ANCHOR_RE.finditer(str(query or "")):
-        text = match.group(0).strip()
-        normalized = _normalize_match_term(_quoted_anchor_match_text(match))
-        if len(normalized) >= 4 and normalized not in seen:
-            seen.add(normalized)
-            out.append(text)
-    return tuple(out)
 
 
-def _quoted_query_anchor_terms(query: str) -> tuple[str, ...]:
-    out: list[str] = []
-    seen: set[str] = set()
-    for match in _QUOTED_ANCHOR_RE.finditer(str(query or "")):
-        normalized = _normalize_match_term(_quoted_anchor_match_text(match))
-        if len(normalized) >= 4 and normalized not in seen:
-            seen.add(normalized)
-            out.append(normalized)
-    return tuple(out)
 
 
 def _record_matches_quoted_query_anchor(record: dict[str, Any], *, query: str) -> bool:
@@ -3077,25 +3096,8 @@ def _metadata_anchor_should_query_question_first(
     )
 
 
-def _strip_mixed_intent_noise(value: str, *, terms: tuple[str, ...]) -> str:
-    text = str(value or "").strip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS)
-    previous = None
-    while previous != text:
-        previous = text
-        for term in sorted(terms, key=len, reverse=True):
-            if text.startswith(term):
-                text = text[len(term) :].strip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS)
-                break
-    return text
 
 
-def _strip_mixed_intent_subject_instruction_tail(value: str) -> str:
-    text = str(value or "").strip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS)
-    previous = None
-    while previous != text:
-        previous = text
-        text = _MIXED_INTENT_SUBJECT_TRAILING_INSTRUCTION_RE.sub("", text).strip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS)
-    return text
 
 
 def _mixed_intent_subject_anchor(segment: str, *, policy_plugin_refs: tuple[str, ...] = ()) -> str:
@@ -3314,12 +3316,6 @@ def _policy_slot_query_terms(
     return tuple(out)
 
 
-def _record_policy_slot_coverage_text(record: dict[str, Any]) -> str:
-    parts: list[str] = [str(record.get("title") or ""), str(record.get("content") or "")]
-    for metadata in _iter_record_metadata_layers(record):
-        for value in metadata.values():
-            parts.extend(str(term or "") for term in _metadata_terms(value))
-    return _normalize_match_term("\n".join(part for part in parts if part))
 
 
 def _record_covers_requested_policy_slots(
@@ -3403,11 +3399,6 @@ def _mixed_intent_policy_slot_queries(
     return tuple(out)
 
 
-def _mixed_intent_segment_parts(segment: str) -> tuple[str, ...]:
-    text = str(segment or "").strip()
-    if not text:
-        return ()
-    return tuple(part.strip() for part in _MIXED_INTENT_LIST_SPLIT_RE.split(text) if part.strip())
 
 
 def _mixed_intent_segment_has_intent_marker(segment: str, *, policy_plugin_refs: tuple[str, ...] = ()) -> bool:
@@ -3442,248 +3433,28 @@ def _filter_records_by_mixed_intent_subject_anchor(
     return anchored or records
 
 
-def _question_marker_overlap_bonus(query_term: str, candidate: str) -> float:
-    query_has_marker = False
-    for marker in _QUESTION_ANCHOR_QUERY_MARKERS:
-        normalized_marker = _normalize_match_term(marker)
-        if not normalized_marker:
-            continue
-        query_has_marker = query_has_marker or normalized_marker in query_term
-        if normalized_marker in query_term and normalized_marker in candidate:
-            return 0.08
-    if not query_has_marker and any(
-        normalized_marker and normalized_marker in candidate
-        for normalized_marker in (_normalize_match_term(marker) for marker in _QUESTION_ANCHOR_QUERY_MARKERS)
-    ):
-        return 0.08
-    return 0.0
 
 
-def _record_region_terms(record: dict[str, Any]) -> list[str]:
-    out: list[str] = []
-    seen: set[str] = set()
-    for metadata in _iter_record_metadata_layers(record):
-        for key in _REGION_ANCHOR_KEYS:
-            for term in _metadata_terms(metadata.get(key)):
-                normalized = _normalize_match_term(term)
-                if len(normalized) < 2 or normalized in seen:
-                    continue
-                seen.add(normalized)
-                out.append(normalized)
-    return out
 
 
-def _record_has_query_region_anchor(record: dict[str, Any], *, query_term: str) -> bool:
-    if not query_term:
-        return False
-    for region in _record_region_terms(record):
-        if region in query_term:
-            return True
-        if _longest_common_substring_length(region, query_term) >= _MIN_REGION_ANCHOR_OVERLAP_CHARS:
-            return True
-    return False
 
 
-def _response_hint_candidate_terms(
-    fields: dict[str, str],
-    metadata: dict[str, Any],
-    *,
-    group: dict[str, Any],
-) -> list[str]:
-    out: list[str] = []
-    seen: set[str] = set()
-    gate = _response_hint_dict(group, "query_gate")
-    for label in _response_hint_string_list(gate, "content_labels"):
-        for value in _metadata_terms(fields.get(label)):
-            if value in seen:
-                continue
-            seen.add(value)
-            out.append(value)
-    for layer in [metadata, *[metadata.get(key) for key in _PUBLIC_METADATA_VIEW_KEYS]]:
-        if not isinstance(layer, dict):
-            continue
-        for key in _response_hint_string_list(gate, "metadata"):
-            for value in _metadata_terms(layer.get(key)):
-                if value in seen:
-                    continue
-                seen.add(value)
-                out.append(value)
-    return out
 
 
-def _response_hint_group_matches_query(
-    fields: dict[str, str],
-    metadata: dict[str, Any],
-    *,
-    group: dict[str, Any],
-    query: str,
-) -> bool:
-    gate = _response_hint_dict(group, "query_gate")
-    if not gate:
-        return True
-    query_term = _normalize_match_term(query)
-    if not query_term:
-        return True
-    min_chars = max(1, int(gate.get("min_chars") or 4))
-    min_common_chars = max(0, int(gate.get("min_common_chars") or 0))
-    for candidate in _response_hint_candidate_terms(fields, metadata, group=group):
-        term = _normalize_match_term(candidate)
-        if len(term) >= min_chars and (term in query_term or query_term in term):
-            return True
-        if min_common_chars and min(len(term), len(query_term)) >= min_common_chars:
-            if _longest_common_substring_length(query_term, term) >= min_common_chars:
-                return True
-    return False
 
 
-def _response_hint_group_has_required_fields(fields: dict[str, str], *, group: dict[str, Any]) -> bool:
-    required = _response_hint_string_list(group, "required_any_labels")
-    if not required:
-        return False
-    return any(label in fields for label in required)
 
 
-def _matching_response_hint_group(
-    fields: dict[str, str],
-    metadata: dict[str, Any],
-    *,
-    response_hints: dict[str, Any],
-    query: str = "",
-) -> dict[str, Any] | None:
-    for group in _response_hint_groups(response_hints):
-        if not _response_hint_group_has_required_fields(fields, group=group):
-            continue
-        if not _response_hint_group_matches_query(fields, metadata, group=group, query=query):
-            continue
-        return group
-    return None
 
 
-def _answer_hints_from_fields(
-    fields: dict[str, str],
-    metadata: dict[str, Any],
-    *,
-    response_hints: dict[str, Any],
-    query: str = "",
-) -> list[str]:
-    group = _matching_response_hint_group(fields, metadata, response_hints=response_hints, query=query)
-    if group is not None:
-        labels = _response_hint_string_list(group, "hint_labels")
-        bits = [f"{label}：{fields[label]}" for label in labels if fields.get(label)]
-        question = str(query or "").strip()
-        question_label = str(group.get("question_from_query_label") or "").strip()
-        answer_label = str(group.get("answer_label") or "").strip()
-        if question and question_label and answer_label and bits:
-            return [f"{question_label}：{question}", f"{answer_label}：{'；'.join(bits)}"]
-        return bits
-    return [f"{label}：{value}" for label, value in fields.items()]
 
 
-def _find_numbered_marker(
-    text: str,
-    number: int,
-    *,
-    start: int,
-    named_markers: dict[str, Any] | None = None,
-) -> tuple[int, str]:
-    markers = [
-        f"{number}.",
-        f"{number}、",
-        f"{number}．",
-        f"{number})",
-        f"{number}）",
-        f"({number})",
-        f"（{number}）",
-    ]
-    named_marker = str((named_markers or {}).get(str(number)) or "").strip()
-    if named_marker:
-        markers.append(named_marker)
-    best_index = -1
-    best_marker = ""
-    for marker in markers:
-        index = text.find(marker, start)
-        if index < 0:
-            continue
-        if best_index < 0 or index < best_index:
-            best_index = index
-            best_marker = marker
-    return best_index, best_marker
 
 
-def _extract_numbered_option_terms(
-    text: str,
-    *,
-    max_terms: int = 4,
-    named_markers: dict[str, Any] | None = None,
-) -> list[str]:
-    normalized = " ".join(str(text or "").split())
-    named_marker_values = {str(value or "").strip() for value in (named_markers or {}).values() if str(value or "").strip()}
-    terms: list[str] = []
-    cursor = 0
-    for number in range(1, max_terms + 1):
-        marker_index, marker = _find_numbered_marker(normalized, number, start=cursor, named_markers=named_markers)
-        if marker_index < 0:
-            break
-        start = marker_index + len(marker)
-        while start < len(normalized) and (normalized[start].isspace() or normalized[start] in "，、,:："):
-            start += 1
-        end = start
-        stop_chars = "（(：:；;。"
-        if marker in named_marker_values:
-            stop_chars += "，,"
-        while end < len(normalized) and normalized[end] not in stop_chars:
-            end += 1
-        term = normalized[start:end].strip()
-        if 2 <= len(term) <= 40:
-            terms.append(term)
-        cursor = end
-    return terms
 
 
-def _enumerated_answer_hints(content: str, *, query: str = "", response_hints: dict[str, Any]) -> list[str]:
-    enumeration = _response_hint_dict(response_hints, "enumeration")
-    if enumeration.get("enabled") is not True:
-        return []
-    text = str(content or "").strip()
-    if not text:
-        return []
-    named_markers = _response_hint_dict(enumeration, "named_markers")
-    first_marker_index, marker = _find_numbered_marker(" ".join(text.split()), 1, start=0, named_markers=named_markers)
-    if first_marker_index < 0:
-        return []
-    prefix = " ".join(text.split())[:first_marker_index][-90:]
-    query_text = str(query or "").strip()
-    intro_terms = _response_hint_string_list(enumeration, "intro_terms")
-    query_terms = _response_hint_string_list(enumeration, "query_terms")
-    if not intro_terms:
-        return []
-    if not any(term in prefix for term in intro_terms) and not any(marker.startswith(term) for term in intro_terms):
-        return []
-    if query_text and query_terms and not any(term in query_text for term in query_terms):
-        return []
-    max_terms = max(1, int(enumeration.get("max_terms") or 4))
-    terms = _extract_numbered_option_terms(text, max_terms=max_terms, named_markers=named_markers)
-    if len(terms) < 2:
-        return []
-    separator = str(enumeration.get("term_separator") or ", ")
-    terms_text = separator.join(terms)
-    template = str(enumeration.get("message_template") or "Preserve these option names: {terms}")
-    message = template.format(terms=terms_text)
-    message_prefix = str(enumeration.get("prefix") or "").strip()
-    return [f"{message_prefix}：{message}" if message_prefix else message]
 
 
-def _content_starts_with_response_hint(content: str, *, response_hints: dict[str, Any]) -> bool:
-    prefixes = list(_response_hint_string_list(response_hints, "existing_hint_prefixes"))
-    answer_prefix = _response_hint_text(
-        response_hints,
-        "answer_prefix",
-        default=_DEFAULT_RESPONSE_HINT_ANSWER_PREFIX,
-    )
-    if answer_prefix:
-        prefixes.append(answer_prefix)
-    normalized = str(content or "").lstrip()
-    return any(normalized.startswith(prefix) for prefix in prefixes if prefix)
 
 
 def _content_with_answer_hints(
@@ -3766,9 +3537,6 @@ def _record_retrieval_intents(
     return out
 
 
-def _is_specific_intent_term(term: str) -> bool:
-    text = str(term or "").strip()
-    return len(text) >= _MIN_SPECIFIC_INTENT_CHARS
 
 
 def _record_intent_bonus(
@@ -3826,44 +3594,8 @@ def _record_mixed_intent_subquery_bonus(
     return min(best, 1.4)
 
 
-def _record_metadata_anchor_bonus(record: dict[str, Any], *, query: str) -> float:
-    query_term = _normalize_match_term(query)
-    if len(query_term) < 4:
-        return 0.0
-    best = 0.0
-    has_query_region = _record_has_query_region_anchor(record, query_term=query_term)
-    for metadata in _iter_record_metadata_layers(record):
-        for key in _METADATA_ANCHOR_KEYS:
-            for term in _metadata_terms(metadata.get(key)):
-                candidate = _normalize_match_term(term)
-                if len(candidate) < 4:
-                    continue
-                if candidate == query_term:
-                    best = max(best, 0.14)
-                elif candidate in query_term or query_term in candidate:
-                    best = max(best, 0.1 if key in _FUZZY_METADATA_ANCHOR_KEYS else 0.08)
-                elif key in _FUZZY_METADATA_ANCHOR_KEYS and _cjk_bigram_overlap_count(query_term, candidate) >= 2:
-                    best = max(best, 0.1)
-                elif key == "question" and has_query_region:
-                    overlap = _longest_common_substring_length(query_term, candidate)
-                    if overlap >= _MIN_REGIONAL_QUESTION_OVERLAP_CHARS:
-                        best = max(best, 0.12)
-    if best > 0 and has_query_region:
-        best += 0.02
-    return best
 
 
-def _record_plugin_ref(record: dict[str, Any], *, fallback_plugin_refs: tuple[str, ...] = ()) -> str:
-    for metadata in _iter_record_metadata_layers(record):
-        for key in ("chunk_python_plugin", "governance_python_plugin"):
-            value = str(metadata.get(key) or "").strip()
-            if value:
-                return value
-    for fallback in fallback_plugin_refs or ():
-        value = str(fallback or "").strip()
-        if value:
-            return value
-    return ""
 
 
 @lru_cache(maxsize=128)
@@ -4152,36 +3884,10 @@ def _record_exact_anchor_protection_scores(
     return {id(record): 1.2 for record in exact_anchor_records}
 
 
-def _dify_external_reranker_enabled() -> bool:
-    return bool(getattr(settings, "ENABLE_RERANKER", False)) and bool(
-        getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RERANKER_ENABLED", True)
-    )
 
 
-def _record_needs_final_rerank(record: dict[str, Any]) -> bool:
-    metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
-    return not bool(record.get("reranker_provider") or metadata.get("reranker_provider"))
 
 
-def _record_final_rerank_candidate_id(record: dict[str, Any], *, index: int, used: set[str]) -> str:
-    metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
-    candidates = [
-        _record_source_identity_key(record),
-        str(metadata.get("chunk_id") or "").strip(),
-        str(metadata.get("document_id") or "").strip(),
-        str(record.get("title") or "").strip(),
-    ]
-    base = next((item for item in candidates if item), "")
-    if not base:
-        payload = f"{record.get('title') or ''}\n{record.get('content') or ''}"
-        base = hashlib.sha256(payload.encode("utf-8", errors="ignore")).hexdigest()[:16]
-    candidate_id = base
-    suffix = 1
-    while candidate_id in used:
-        suffix += 1
-        candidate_id = f"{base}#{suffix}"
-    used.add(candidate_id)
-    return candidate_id or f"idx:{index}"
 
 
 def _record_final_rerank_text(
@@ -4326,91 +4032,22 @@ def _record_rank_score(
     )
 
 
-def _record_exact_primary_alias_bonus(record: dict[str, Any], *, query: str) -> float:
-    query_term = _normalize_match_term(query)
-    if len(query_term) < 3:
-        return 0.0
-    for metadata in _iter_record_metadata_layers(record):
-        for term in _metadata_terms(metadata.get("primary_alias")):
-            if _normalize_match_term(term) == query_term:
-                return _EXACT_PRIMARY_ALIAS_MATCH_BONUS
-    return 0.0
 
 
-_URL_EVIDENCE_QUERY_MARKERS = (
-    "入口",
-    "链接",
-    "网址",
-    "网站",
-    "网页",
-    "在线",
-    "线上",
-    "网上",
-    "app",
-    "小程序",
-    "二维码",
-    "url",
-    "http",
-)
 
 
-def _query_requests_url_evidence(query: str) -> bool:
-    text = str(query or "").casefold()
-    if not text:
-        return False
-    normalized = _normalize_match_term(text)
-    return any(marker in text or _normalize_match_term(marker) in normalized for marker in _URL_EVIDENCE_QUERY_MARKERS)
 
 
-def _record_url_evidence_bonus(record: dict[str, Any], *, query: str = "") -> float:
-    if not _query_requests_url_evidence(query):
-        return 0.0
-    urls = 0
-    for metadata in _iter_record_metadata_layers(record):
-        urls += len(_metadata_terms(metadata.get("urls")))
-    return min(_URL_EVIDENCE_BONUS_MAX, _URL_EVIDENCE_BONUS * urls)
 
 
-def _dify_fast_candidate_top_k(top_k: int) -> int:
-    configured = max(1, int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CANDIDATE_TOP_K_MAX", 3) or 3))
-    return max(1, min(max(1, int(top_k or 1)), configured))
 
 
-def _dify_fast_response_top_k(top_k: int) -> int:
-    configured = max(1, int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_RESPONSE_TOP_K_MAX", 2) or 2))
-    return max(1, min(max(1, int(top_k or 1)), configured))
 
 
-def _dify_fast_content_max_chars() -> int:
-    return max(200, min(10000, int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS", 1400) or 1400)))
 
 
-def _dify_fast_total_content_max_chars() -> int:
-    return max(
-        200,
-        min(
-            50000,
-            int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_TOTAL_CONTENT_MAX_CHARS", 2200) or 2200),
-        ),
-    )
 
 
-def _structured_label_values_from_content(content: str) -> dict[str, str]:
-    fields: dict[str, str] = {}
-    current_label = ""
-    for segment in re.split(r"\s*\|\s*|\n+", str(content or "")):
-        text = segment.strip()
-        if not text:
-            continue
-        parts = _field_line_parts(text)
-        if parts is None:
-            if current_label and len(fields[current_label]) < _dify_fast_content_max_chars():
-                fields[current_label] = f"{fields[current_label]}；{text}"
-            continue
-        label, value = parts
-        current_label = label
-        fields.setdefault(label, value)
-    return fields
 
 
 def _requested_fast_response_labels(
@@ -4521,86 +4158,12 @@ def _prioritized_response_hint_metadata_fields(
     return tuple(ordered)
 
 
-_FAST_ANSWER_QUERY_STOP_TERMS = {
-    "什么",
-    "哪些",
-    "怎么",
-    "如何",
-    "申请",
-    "办理",
-    "查询",
-    "帮我",
-    "核对",
-    "依据",
-    "最好",
-    "是不是能办",
-}
 
 
-def _fast_answer_query_terms(query: str) -> tuple[str, ...]:
-    terms: list[str] = []
-    seen: set[str] = set()
-
-    def add(value: str) -> None:
-        term = str(value or "").strip(" \t\r\n，。；;、：:？?！!（）()“”\"'《》「」")
-        normalized = _normalize_match_term(term)
-        if len(normalized) < 2 or normalized in seen or normalized in _FAST_ANSWER_QUERY_STOP_TERMS:
-            return
-        seen.add(normalized)
-        terms.append(term)
-
-    for anchor in _quoted_query_anchor_terms(query):
-        add(anchor)
-    for segment in _iter_anchor_word_segments(query):
-        add(segment)
-        for suffix in ("怎么申请", "如何申请", "怎么办理", "如何办理", "怎么查", "如何查", "是什么"):
-            if segment.endswith(suffix):
-                add(segment[: -len(suffix)])
-                break
-    terms.sort(key=lambda item: len(_normalize_match_term(item)), reverse=True)
-    return tuple(terms)
 
 
-def _fast_answer_snippet_segments(answer: str) -> list[str]:
-    text = re.sub(r"\s+", " ", str(answer or "")).strip()
-    if not text:
-        return []
-    return [
-        segment.strip()
-        for segment in re.split(r"(?<=[。；;！？!?])\s*|\n+|(?<!\d)(?=[1-9][.)）])", text)
-        if segment.strip()
-    ]
 
 
-def _compact_fast_answer_value(answer: str, *, query: str, limit: int) -> str:
-    text = str(answer or "").strip()
-    if len(text) <= limit:
-        return text
-    normalized_terms = tuple(
-        _normalize_match_term(term)
-        for term in _fast_answer_query_terms(query)
-        if _normalize_match_term(term)
-    )
-    if not normalized_terms:
-        return _clamp_hint_value(text, limit=limit)
-    scored: list[tuple[int, int, str]] = []
-    for index, segment in enumerate(_fast_answer_snippet_segments(text)):
-        normalized_segment = _normalize_match_term(segment)
-        matched = {term for term in normalized_terms if term and term in normalized_segment}
-        if not matched:
-            continue
-        scored.append((index, sum(len(term) for term in matched), segment))
-    if not scored:
-        return _clamp_hint_value(text, limit=limit)
-    target_limit = max(240, min(limit, 700))
-    selected_indices = {
-        index
-        for index, _score, _segment in sorted(scored, key=lambda item: (-item[1], item[0]))[:6]
-    }
-    snippet = "".join(segment for index, _score, segment in scored if index in selected_indices).strip()
-    if not snippet:
-        return _clamp_hint_value(text, limit=limit)
-    return _clamp_hint_value(snippet, limit=target_limit)
 
 
 def _compact_fast_record_content(
@@ -4880,56 +4443,12 @@ def _record_exact_query_anchor_terms(
     return tuple(out)
 
 
-def _record_section_type_values(record: dict[str, Any]) -> tuple[str, ...]:
-    return _record_slot_field_values(record, "section_type")
 
 
-def _record_slot_field_values(record: dict[str, Any], field: str) -> tuple[str, ...]:
-    out: list[str] = []
-    seen: set[str] = set()
-    field_name = str(field or "").strip()
-    if not field_name:
-        return ()
-    for metadata in _iter_record_metadata_layers(record):
-        for value in _metadata_terms(metadata.get(field_name)):
-            text = str(value or "").strip()
-            normalized = _normalize_match_term(text)
-            if not text or not normalized or normalized in seen:
-                continue
-            seen.add(normalized)
-            out.append(text)
-    if field_name == "section_type":
-        for metadata in _iter_record_metadata_layers(record):
-            for value in _metadata_terms(metadata.get("section")):
-                text = str(value or "").strip()
-                normalized = _normalize_match_term(text)
-                if not text or not normalized or normalized in seen:
-                    continue
-                seen.add(normalized)
-                out.append(text)
-    return tuple(out)
 
 
-def _record_matches_requested_slot(record: dict[str, Any], requested_slot_specs: tuple[tuple[str, str], ...]) -> bool:
-    if not requested_slot_specs:
-        return False
-    for field, value in requested_slot_specs:
-        requested_value = _normalize_match_term(value)
-        if not field or not requested_value:
-            continue
-        record_values = {_normalize_match_term(item) for item in _record_slot_field_values(record, field)}
-        record_values.discard("")
-        if requested_value in record_values:
-            return True
-    return False
 
 
-def _record_has_any_requested_slot_field(
-    record: dict[str, Any],
-    requested_slot_specs: tuple[tuple[str, str], ...],
-) -> bool:
-    fields = tuple(dict.fromkeys(field for field, _value in requested_slot_specs if str(field or "").strip()))
-    return any(_record_slot_field_values(record, field) for field in fields)
 
 
 def _record_content_is_answerful(
@@ -4945,24 +4464,8 @@ def _record_content_is_answerful(
     )
 
 
-def _record_is_full_answer_chunk(record: dict[str, Any]) -> bool:
-    for metadata in _iter_record_metadata_layers(record):
-        chunk_kind = str(metadata.get("chunk_kind") or "").strip().lower()
-        answer_kind = str(metadata.get("answer_kind") or "").strip().lower()
-        if answer_kind in {"full_record", "record_full"}:
-            return True
-        if chunk_kind in {"full_record", "record_full"}:
-            return True
-        if chunk_kind.endswith("_full") or chunk_kind.endswith("_record_full"):
-            return True
-    return False
 
 
-def _record_is_composite_exact_anchor_answer(record: dict[str, Any]) -> bool:
-    return any(
-        bool(metadata.get("dify_composite_exact_anchor_slots"))
-        for metadata in _iter_record_metadata_layers(record)
-    )
 
 
 def _compact_mixed_intent_exact_anchor_records(
@@ -5149,56 +4652,12 @@ def _composite_record_for_exact_anchor_slots(
     }
 
 
-def _composite_stitched_section_text(records: list[dict[str, Any]]) -> str:
-    section_texts = [
-        text
-        for text in (_composite_section_text(record) for record in records or [])
-        if text
-    ]
-    if not section_texts:
-        return ""
-    return "合并章节原文：\n" + "\n".join(section_texts)
 
 
-def _composite_section_text(record: dict[str, Any]) -> str:
-    content = str(record.get("content") or "").strip()
-    if not content:
-        return ""
-    source_text = content.split("原始证据：", 1)[-1].strip() if "原始证据：" in content else content
-    lines = [line.strip() for line in source_text.splitlines() if line.strip()]
-    if not lines:
-        return ""
-    for index, line in enumerate(lines):
-        if not line.startswith("章节："):
-            continue
-        label = line.split("：", 1)[1].strip() or line
-        body = lines[index + 1 :]
-        return "\n".join([label, *body]).strip()
-    return "\n".join(lines).strip()
 
 
-def _ordered_section_sibling_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    def sequence_key(record: dict[str, Any]) -> tuple[str, str, int, int, int, float]:
-        metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
-        source_record_id = str(metadata.get("source_record_id") or "").strip()
-        section_type = str(metadata.get("section_type") or "").strip()
-        return (
-            source_record_id,
-            section_type,
-            _safe_int(metadata.get("source_chunk_index"), default=1_000_000),
-            _safe_int(metadata.get("chunk_part_index"), default=1_000_000),
-            _safe_int(metadata.get("chunk_index"), default=1_000_000),
-            -float(record.get("score") or 0.0),
-        )
-
-    return sorted(records, key=sequence_key)
 
 
-def _safe_int(value: Any, *, default: int) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
 
 
 def _record_answerfulness_score(record: dict[str, Any], *, policy_plugin_refs: tuple[str, ...] = ()) -> float:
@@ -5263,18 +4722,6 @@ def _record_is_anchor_only_qa(
     return any(marker and marker in normalized for marker in markers)
 
 
-def _query_intent_terms(query: str, *, intent_terms: tuple[str, ...]) -> tuple[str, ...]:
-    query_term = _normalize_match_term(query)
-    if not query_term:
-        return ()
-    out: list[str] = []
-    seen: set[str] = set()
-    for term in intent_terms:
-        normalized = _normalize_match_term(term)
-        if normalized and normalized in query_term and normalized not in seen:
-            seen.add(normalized)
-            out.append(normalized)
-    return tuple(out)
 
 
 def _record_question_intent_terms(record: dict[str, Any], *, policy_plugin_refs: tuple[str, ...] = ()) -> tuple[str, ...]:
@@ -5301,59 +4748,8 @@ def _record_question_anchor_bonus_value(
     return max(0.0, min(2.0, value))
 
 
-_QUESTION_ANCHOR_INTENT_GROUPS = (
-    ("application", ("申请", "申报", "办理", "申领", "领取", "怎么领", "怎么申请", "如何申请", "流程", "步骤")),
-    ("amount", ("怎么算", "计算", "多少钱", "多少", "补贴多少", "标准", "金额")),
-    ("timing", ("多久", "多久到账", "何时", "什么时候", "时间", "进度")),
-)
-_QUESTION_ANCHOR_SUBJECT_NOISE_TERMS = (
-    "办理",
-    "办",
-    "事项",
-    "这个事项",
-    "这个",
-    "请问",
-    "可以",
-    "能否",
-    "是否",
-    "怎么",
-    "如何",
-    "是什么",
-    "什么",
-    "帮我",
-    "直接说清楚",
-    "麻烦查一下",
-    "麻烦帮我查一下",
-    "主要想确认",
-)
-def _question_anchor_intent_groups(text: str) -> set[str]:
-    normalized = _normalize_match_term(text)
-    if not normalized:
-        return set()
-    groups: set[str] = set()
-    for group, terms in _QUESTION_ANCHOR_INTENT_GROUPS:
-        if any((term_text := _normalize_match_term(term)) and term_text in normalized for term in terms):
-            groups.add(group)
-    return groups
 
 
-def _record_question_anchor_has_intent_conflict(
-    record: dict[str, Any],
-    *,
-    query: str,
-    anchor_fields: tuple[str, ...],
-) -> bool:
-    query_groups = _question_anchor_intent_groups(query)
-    if not query_groups:
-        return False
-    matching_groups: set[str] = set()
-    for metadata in _iter_record_metadata_layers(record):
-        for field in anchor_fields:
-            for anchor_value in _metadata_terms(metadata.get(field)):
-                candidate_groups = _question_anchor_intent_groups(anchor_value)
-                if candidate_groups:
-                    matching_groups.update(candidate_groups)
-    return bool(matching_groups and not query_groups.intersection(matching_groups))
 
 
 def _record_question_anchor_lacks_specific_query_subject(
@@ -5390,17 +4786,6 @@ def _record_question_anchor_lacks_specific_query_subject(
     return not any(term in record_subject for term in query_subject_terms)
 
 
-def _question_anchor_subject_text(value: str, *, intent_terms: tuple[str, ...]) -> str:
-    text = _normalize_match_term(value)
-    if not text:
-        return ""
-    noise_terms = [
-        *(_normalize_match_term(term) for term in intent_terms),
-        *(_normalize_match_term(term) for term in _QUESTION_ANCHOR_SUBJECT_NOISE_TERMS),
-    ]
-    for term in sorted((term for term in noise_terms if term), key=len, reverse=True):
-        text = text.replace(term, "")
-    return text
 
 
 def _record_question_intent_bonus(
@@ -5764,64 +5149,14 @@ async def _dify_kg_on_demand_records(
     return records
 
 
-def _dify_kg_bool(name: str, default: bool) -> bool:
-    return bool(getattr(settings, name, default))
 
 
-def _dify_kg_int(name: str, default: int, *, minimum: int = 0, maximum: int = 50) -> int:
-    try:
-        value = int(getattr(settings, name, default) or 0)
-    except (TypeError, ValueError):
-        value = int(default)
-    return max(int(minimum), min(int(maximum), int(value)))
 
 
-def _dify_kg_float(name: str, default: float, *, minimum: float = 0.0, maximum: float = 1.0) -> float:
-    try:
-        value = float(getattr(settings, name, default) or 0.0)
-    except (TypeError, ValueError):
-        value = float(default)
-    return max(float(minimum), min(float(maximum), float(value)))
 
 
-def _record_dedupe_key(record: dict[str, Any]) -> tuple[str, str, str]:
-    source_identity = _record_source_identity_key(record)
-    if source_identity:
-        return ("source_record", source_identity, "")
-
-    metadata = record.get("metadata")
-    metadata = metadata if isinstance(metadata, dict) else {}
-    chunk_id = str(metadata.get("chunk_id") or "").strip()
-    document_id = str(metadata.get("document_id") or "").strip()
-    content = str(record.get("content") or "").strip()
-    title = str(record.get("title") or "").strip()
-    return (chunk_id, document_id, content or title)
 
 
-def _record_source_identity_key(record: dict[str, Any]) -> str:
-    for metadata in _iter_record_metadata_layers(record):
-        identity = metadata.get("_record_identity")
-        if isinstance(identity, dict):
-            key = str(identity.get("key") or "").strip()
-            if key:
-                return key
-
-    for metadata in _iter_record_metadata_layers(record):
-        source_record_id = ""
-        for key in _SOURCE_RECORD_ID_KEYS:
-            source_record_id = str(metadata.get(key) or "").strip()
-            if source_record_id:
-                break
-        if not source_record_id:
-            continue
-        scope_parts: list[str] = []
-        for key in _SOURCE_RECORD_SCOPE_KEYS:
-            value = str(metadata.get(key) or "").strip()
-            if value:
-                scope_parts.append(f"{key}={value}")
-        scope = "|".join(scope_parts)
-        return f"{scope}|source_record_id={source_record_id}" if scope else f"source_record_id={source_record_id}"
-    return ""
 
 
 def _dedupe_records(
@@ -5975,13 +5310,6 @@ async def _records_from_citations_with_managed_hydration(
     )
 
 
-def _tag_mixed_intent_records(records: list[dict[str, Any]], *, subquery: str) -> list[dict[str, Any]]:
-    tagged: list[dict[str, Any]] = []
-    for record in records:
-        metadata = dict(record.get("metadata") if isinstance(record.get("metadata"), dict) else {})
-        metadata["dify_mixed_intent_subquery"] = subquery
-        tagged.append({**record, "metadata": metadata})
-    return tagged
 
 
 def _citation_to_dify_record(
@@ -6013,20 +5341,8 @@ def _citation_to_dify_record(
     }
 
 
-def _row_value(row: Any, key: str, default: Any = None) -> Any:
-    if isinstance(row, dict):
-        return row.get(key, default)
-    mapping = getattr(row, "_mapping", None)
-    if mapping is not None:
-        return mapping.get(key, default)
-    return getattr(row, key, default)
 
 
-def _coerce_uuid_text(value: Any) -> str:
-    try:
-        return str(UUID(str(value)))
-    except (TypeError, ValueError):
-        return ""
 
 
 def _records_have_strong_question_anchor(

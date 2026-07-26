@@ -91,11 +91,21 @@ async function fetchPinnedImage(target: URL): Promise<PinnedImageResponse> {
 }
 
 async function isAuthenticatedSameOriginRequest(req: NextRequest): Promise<boolean> {
-  const authorization = String(req.headers.get('authorization') || '').trim()
-  if (!requireSameOrigin(req) || !/^Bearer\s+\S+$/i.test(authorization)) return false
+  if (!requireSameOrigin(req)) return false
 
-  const headers: Record<string, string> = { Authorization: authorization }
+  const authorization = String(req.headers.get('authorization') || '').trim()
+  const userId = String(req.headers.get('x-user-id') || '').trim()
   const tenantId = String(req.headers.get('x-tenant-id') || '').trim()
+
+  if (!/^Bearer\s+\S+$/i.test(authorization) && !userId) return false
+
+  const headers: Record<string, string> = {}
+  if (/^Bearer\s+\S+$/i.test(authorization)) {
+    headers.Authorization = authorization
+  }
+  if (userId) {
+    headers['X-User-ID'] = userId
+  }
   if (tenantId) headers['X-Tenant-ID'] = tenantId
   const response = await fetch(`${API_V1_BASE_URL}/auth/me`, {
     headers,

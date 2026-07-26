@@ -138,6 +138,37 @@ def _decode_chroma_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     return decoded
 
 
+def _search_candidate_limit(top_k: int, total_candidates: int | None) -> int:
+    limit = max(top_k, top_k * 2)
+    if total_candidates is None:
+        return limit
+    return max(0, min(limit, total_candidates))
+
+
+def _should_expand_candidate_window(
+    *,
+    accepted_hits: int,
+    top_k: int,
+    requested_k: int,
+    returned_hits: int,
+    total_candidates: int | None,
+) -> bool:
+    if accepted_hits >= top_k:
+        return False
+    if returned_hits < requested_k:
+        return False
+    if total_candidates is None:
+        return True
+    return requested_k < total_candidates
+
+
+def _next_candidate_limit(requested_k: int, total_candidates: int | None) -> int:
+    next_limit = max(requested_k + 1, requested_k * 2)
+    if total_candidates is None:
+        return next_limit
+    return min(next_limit, total_candidates)
+
+
 class BaseVectorStore:
     """Unified interface for future FAISS/Chroma/Memory extensions."""
 
@@ -485,26 +516,43 @@ class FAISSVectorStore(BaseVectorStore):
             if store is None:
                 return []
             allowed = {str(did) for did in document_ids} if document_ids else None
-            results = store.similarity_search_with_score(query, k=top_k * 2)
+            docstore = getattr(getattr(store, "docstore", None), "_dict", None)
+            total_candidates = len(docstore) if isinstance(docstore, Mapping) else None
+            requested_k = _search_candidate_limit(top_k, total_candidates)
             out: list[dict[str, Any]] = []
-            for doc, score in results:
-                meta = doc.metadata or {}
-                if allowed and meta.get("document_id") not in allowed:
-                    continue
-                if metadata_filter and not _match_metadata_filter(meta, metadata_filter):
-                    continue
-                similarity = 1.0 / (1.0 + float(score))
-                if similarity < score_threshold:
-                    continue
-                out.append(
-                    {
-                        "chunk_id": doc.id,
-                        "content": doc.page_content,
-                        "metadata": meta,
-                        "score": similarity,
-                        "vector_score": similarity,
-                    }
-                )
+            while requested_k > 0:
+                results = store.similarity_search_with_score(query, k=requested_k)
+                out = []
+                for doc, score in results:
+                    meta = doc.metadata or {}
+                    if allowed and meta.get("document_id") not in allowed:
+                        continue
+                    if metadata_filter and not _match_metadata_filter(meta, metadata_filter):
+                        continue
+                    similarity = 1.0 / (1.0 + float(score))
+                    if similarity < score_threshold:
+                        continue
+                    out.append(
+                        {
+                            "chunk_id": doc.id,
+                            "content": doc.page_content,
+                            "metadata": meta,
+                            "score": similarity,
+                            "vector_score": similarity,
+                        }
+                    )
+                if not _should_expand_candidate_window(
+                    accepted_hits=len(out),
+                    top_k=top_k,
+                    requested_k=requested_k,
+                    returned_hits=len(results),
+                    total_candidates=total_candidates,
+                ):
+                    break
+                next_k = _next_candidate_limit(requested_k, total_candidates)
+                if next_k <= requested_k:
+                    break
+                requested_k = next_k
             out.sort(key=lambda x: x["score"], reverse=True)
             return out[:top_k]
 
@@ -667,26 +715,49 @@ class ChromaVectorStore(BaseVectorStore):
         with self._get_tenant_lock(tenant_id):
             _, store = self._get_store(tenant_id)
             allowed = {str(did) for did in document_ids} if document_ids else None
-            results = store.similarity_search_with_score(query, k=top_k * 2)
+            total_candidates = None
+            collection = getattr(store, "_collection", None)
+            count_fn = getattr(collection, "count", None)
+            if callable(count_fn):
+                try:
+                    total_candidates = int(count_fn())
+                except Exception:
+                    total_candidates = None
+            requested_k = _search_candidate_limit(top_k, total_candidates)
             out: list[dict[str, Any]] = []
-            for doc, score in results:
-                meta = _decode_chroma_metadata(doc.metadata or {})
-                if allowed and meta.get("document_id") not in allowed:
-                    continue
-                if metadata_filter and not _match_metadata_filter(meta, metadata_filter):
-                    continue
-                similarity = 1.0 / (1.0 + float(score))
-                if similarity < score_threshold:
-                    continue
-                out.append(
-                    {
-                        "chunk_id": doc.id,
-                        "content": doc.page_content,
-                        "metadata": meta,
-                        "score": similarity,
-                        "vector_score": similarity,
-                    }
-                )
+            while requested_k > 0:
+                results = store.similarity_search_with_score(query, k=requested_k)
+                out = []
+                for doc, score in results:
+                    meta = _decode_chroma_metadata(doc.metadata or {})
+                    if allowed and meta.get("document_id") not in allowed:
+                        continue
+                    if metadata_filter and not _match_metadata_filter(meta, metadata_filter):
+                        continue
+                    similarity = 1.0 / (1.0 + float(score))
+                    if similarity < score_threshold:
+                        continue
+                    out.append(
+                        {
+                            "chunk_id": doc.id,
+                            "content": doc.page_content,
+                            "metadata": meta,
+                            "score": similarity,
+                            "vector_score": similarity,
+                        }
+                    )
+                if not _should_expand_candidate_window(
+                    accepted_hits=len(out),
+                    top_k=top_k,
+                    requested_k=requested_k,
+                    returned_hits=len(results),
+                    total_candidates=total_candidates,
+                ):
+                    break
+                next_k = _next_candidate_limit(requested_k, total_candidates)
+                if next_k <= requested_k:
+                    break
+                requested_k = next_k
             out.sort(key=lambda x: x["score"], reverse=True)
             return out[:top_k]
 

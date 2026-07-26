@@ -16,7 +16,6 @@ import asyncio
 import concurrent.futures
 import json
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -85,7 +84,294 @@ from app.rag.reranker.types import RerankCandidate
 from app.rag.retrieval.contextual_followup import build_contextual_followup_query
 from app.rag.retrieval.contract import resolve_retrieval_contract_policy
 from app.rag.retrieval.evidence_gap import detect_evidence_gap
-from app.rag.retriever import _apply_metadata_exact_anchor_to_result, _float_or_default, hybrid_retriever
+from app.rag.retrieval.orchestration.anchors import (
+    _apply_metadata_exact_anchor_doc_ordering as _apply_metadata_exact_anchor_doc_ordering,
+)
+from app.rag.retrieval.orchestration.anchors import (
+    _metadata_exact_anchor_doc_order_meta as _metadata_exact_anchor_doc_order_meta,
+)
+from app.rag.retrieval.orchestration.channel_budget import (
+    _CHANNEL_BUDGET_POLICY_SCHEMA_V1 as _CHANNEL_BUDGET_POLICY_SCHEMA_V1,
+)
+from app.rag.retrieval.orchestration.channel_budget import (
+    _channel_budget_policy_applied_meta as _channel_budget_policy_applied_meta,
+)
+from app.rag.retrieval.orchestration.channel_budget import (
+    _channel_budget_policy_overrides as _channel_budget_policy_overrides,
+)
+from app.rag.retrieval.orchestration.channel_budget import (
+    _channel_budget_policy_profiles as _channel_budget_policy_profiles,
+)
+from app.rag.retrieval.orchestration.channel_budget import (
+    _channel_budget_policy_schema_meta as _channel_budget_policy_schema_meta,
+)
+from app.rag.retrieval.orchestration.channel_budget import (
+    _channel_budget_policy_selected as _channel_budget_policy_selected,
+)
+from app.rag.retrieval.orchestration.channel_budget import (
+    _coerce_channel_budgets as _coerce_channel_budgets,
+)
+from app.rag.retrieval.orchestration.channel_budget import (
+    _coerce_channel_min_scores as _coerce_channel_min_scores,
+)
+from app.rag.retrieval.orchestration.channel_budget import (
+    _safe_post_rerank_pipeline_item as _safe_post_rerank_pipeline_item,
+)
+from app.rag.retrieval.orchestration.channel_budget import (
+    _safe_post_rerank_pipeline_summary as _safe_post_rerank_pipeline_summary,
+)
+from app.rag.retrieval.orchestration.channel_budget import (
+    _select_channel_budget_profile as _select_channel_budget_profile,
+)
+from app.rag.retrieval.orchestration.channel_budget import (
+    resolve_channel_budget_policy_overrides as resolve_channel_budget_policy_overrides,
+)
+from app.rag.retrieval.orchestration.citation_quality import (
+    _build_empty_retrieval_diagnosis as _build_empty_retrieval_diagnosis,
+)
+from app.rag.retrieval.orchestration.citation_quality import (
+    _build_parse_repair_actions_summary as _build_parse_repair_actions_summary,
+)
+from app.rag.retrieval.orchestration.citation_quality import (
+    _citation_coverage_lists as _citation_coverage_lists,
+)
+from app.rag.retrieval.orchestration.citation_quality import (
+    _classify_parse_risk as _classify_parse_risk,
+)
+from app.rag.retrieval.orchestration.citation_quality import (
+    _count_parse_repair_actions as _count_parse_repair_actions,
+)
+from app.rag.retrieval.orchestration.citation_quality import (
+    _coverage_proxy_from_citations as _coverage_proxy_from_citations,
+)
+from app.rag.retrieval.orchestration.citation_quality import (
+    _diagnose_empty_retrieval as _diagnose_empty_retrieval,
+)
+from app.rag.retrieval.orchestration.citation_quality import (
+    _empty_retrieval_reason_counts as _empty_retrieval_reason_counts,
+)
+from app.rag.retrieval.orchestration.citation_quality import (
+    _extract_parse_quality_score as _extract_parse_quality_score,
+)
+from app.rag.retrieval.orchestration.citation_quality import (
+    _main_retrieval_per_query_item as _main_retrieval_per_query_item,
+)
+from app.rag.retrieval.orchestration.citation_quality import (
+    _normalize_parse_repair_payload as _normalize_parse_repair_payload,
+)
+from app.rag.retrieval.orchestration.citation_quality import (
+    _parse_quality_low_sample as _parse_quality_low_sample,
+)
+from app.rag.retrieval.orchestration.citation_quality import (
+    _parse_quality_recommendation as _parse_quality_recommendation,
+)
+from app.rag.retrieval.orchestration.citation_quality import (
+    _parse_quality_risk_counters as _parse_quality_risk_counters,
+)
+from app.rag.retrieval.orchestration.citation_quality import (
+    _parse_repair_gate_passed as _parse_repair_gate_passed,
+)
+from app.rag.retrieval.orchestration.citation_quality import (
+    _parse_repair_run_id as _parse_repair_run_id,
+)
+from app.rag.retrieval.orchestration.citation_quality import (
+    _parse_risk_hardcase_eligible as _parse_risk_hardcase_eligible,
+)
+from app.rag.retrieval.orchestration.citation_quality import (
+    _parse_risk_level as _parse_risk_level,
+)
+from app.rag.retrieval.orchestration.citation_quality import (
+    _retriever_enrichment_debug as _retriever_enrichment_debug,
+)
+from app.rag.retrieval.orchestration.citation_quality import (
+    _sanitize_parse_repair_actions as _sanitize_parse_repair_actions,
+)
+from app.rag.retrieval.orchestration.citation_quality import (
+    _summarize_parse_quality_risk as _summarize_parse_quality_risk,
+)
+from app.rag.retrieval.orchestration.citation_quality import (
+    _top_doc_share as _top_doc_share,
+)
+from app.rag.retrieval.orchestration.common import (
+    _coerce_optional_bool as _coerce_optional_bool,
+)
+from app.rag.retrieval.orchestration.common import (
+    _coerce_optional_float as _coerce_optional_float,
+)
+from app.rag.retrieval.orchestration.common import (
+    _coerce_optional_int as _coerce_optional_int,
+)
+from app.rag.retrieval.orchestration.common import (
+    _doc_key as _doc_key,
+)
+from app.rag.retrieval.orchestration.common import (
+    _log_orchestrator_fallback as _log_orchestrator_fallback,
+)
+from app.rag.retrieval.orchestration.common import (
+    _safe_float as _safe_float,
+)
+from app.rag.retrieval.orchestration.common import (
+    _safe_int as _safe_int,
+)
+from app.rag.retrieval.orchestration.debug_sanitize import (
+    _bounded_string_sample as _bounded_string_sample,
+)
+from app.rag.retrieval.orchestration.debug_sanitize import (
+    _copy_present_debug_keys as _copy_present_debug_keys,
+)
+from app.rag.retrieval.orchestration.debug_sanitize import (
+    _sanitize_counts_debug as _sanitize_counts_debug,
+)
+from app.rag.retrieval.orchestration.debug_sanitize import (
+    _sanitize_diversity_debug as _sanitize_diversity_debug,
+)
+from app.rag.retrieval.orchestration.debug_sanitize import (
+    _sanitize_enrich_pass_debug as _sanitize_enrich_pass_debug,
+)
+from app.rag.retrieval.orchestration.debug_sanitize import (
+    _sanitize_governance_policy_debug as _sanitize_governance_policy_debug,
+)
+from app.rag.retrieval.orchestration.debug_sanitize import (
+    _sanitize_metadata_filter_debug as _sanitize_metadata_filter_debug,
+)
+from app.rag.retrieval.orchestration.debug_sanitize import (
+    _sanitize_metadata_filter_ops as _sanitize_metadata_filter_ops,
+)
+from app.rag.retrieval.orchestration.debug_sanitize import (
+    _sanitize_query_normalization_debug as _sanitize_query_normalization_debug,
+)
+from app.rag.retrieval.orchestration.debug_sanitize import (
+    _sanitize_retriever_debug as _sanitize_retriever_debug,
+)
+from app.rag.retrieval.orchestration.debug_sanitize import (
+    _sanitize_timing_debug as _sanitize_timing_debug,
+)
+from app.rag.retrieval.orchestration.hierarchy import (
+    _apply_hierarchy_family_aggregation as _apply_hierarchy_family_aggregation,
+)
+from app.rag.retrieval.orchestration.hierarchy import (
+    _apply_hierarchy_tree_dedup as _apply_hierarchy_tree_dedup,
+)
+from app.rag.retrieval.orchestration.hierarchy import (
+    _build_hierarchy_family_feature_payload as _build_hierarchy_family_feature_payload,
+)
+from app.rag.retrieval.orchestration.hierarchy import (
+    _build_hierarchy_family_features as _build_hierarchy_family_features,
+)
+from app.rag.retrieval.orchestration.hierarchy import (
+    _doc_base_score as _doc_base_score,
+)
+from app.rag.retrieval.orchestration.hierarchy import (
+    _doc_stable_debug_id as _doc_stable_debug_id,
+)
+from app.rag.retrieval.orchestration.hierarchy import (
+    _family_aggregation_meta as _family_aggregation_meta,
+)
+from app.rag.retrieval.orchestration.hierarchy import (
+    _family_aggregation_sort_key as _family_aggregation_sort_key,
+)
+from app.rag.retrieval.orchestration.hierarchy import (
+    _hierarchy_dedup_candidates as _hierarchy_dedup_candidates,
+)
+from app.rag.retrieval.orchestration.hierarchy import (
+    _hierarchy_dedup_limits as _hierarchy_dedup_limits,
+)
+from app.rag.retrieval.orchestration.hierarchy import (
+    _hierarchy_dedup_meta as _hierarchy_dedup_meta,
+)
+from app.rag.retrieval.orchestration.hierarchy import (
+    _hierarchy_dedup_output as _hierarchy_dedup_output,
+)
+from app.rag.retrieval.orchestration.hierarchy import (
+    _hierarchy_node_parent_keys as _hierarchy_node_parent_keys,
+)
+from app.rag.retrieval.orchestration.hierarchy import (
+    _HierarchyDedupState as _HierarchyDedupState,
+)
+from app.rag.retrieval.orchestration.hierarchy import (
+    _keep_hierarchy_dedup_doc as _keep_hierarchy_dedup_doc,
+)
+from app.rag.retrieval.orchestration.hierarchy import (
+    _new_hierarchy_dedup_state as _new_hierarchy_dedup_state,
+)
+from app.rag.retrieval.orchestration.hierarchy import (
+    _rank_hierarchy_family_docs as _rank_hierarchy_family_docs,
+)
+from app.rag.retrieval.orchestration.hierarchy import (
+    _remove_hierarchy_dedup_doc as _remove_hierarchy_dedup_doc,
+)
+from app.rag.retrieval.orchestration.hierarchy import (
+    _resolve_family_aggregation_strategy as _resolve_family_aggregation_strategy,
+)
+from app.rag.retrieval.orchestration.hierarchy import (
+    _resolve_hierarchy_family_collapse_key as _resolve_hierarchy_family_collapse_key,
+)
+from app.rag.retrieval.orchestration.hierarchy import (
+    _resolve_hierarchy_node_key as _resolve_hierarchy_node_key,
+)
+from app.rag.retrieval.orchestration.hierarchy import (
+    _resolve_hierarchy_parent_key as _resolve_hierarchy_parent_key,
+)
+from app.rag.retrieval.orchestration.hierarchy import (
+    _scan_hierarchy_dedup_candidates as _scan_hierarchy_dedup_candidates,
+)
+from app.rag.retrieval.orchestration.hierarchy import (
+    _update_hierarchy_family_feature as _update_hierarchy_family_feature,
+)
+from app.rag.retrieval.orchestration.kg_merge_boost import (
+    _apply_kg_chunk_boost as _apply_kg_chunk_boost,
+)
+from app.rag.retrieval.orchestration.kg_merge_boost import (
+    _coerce_uuid_list as _coerce_uuid_list,
+)
+from app.rag.retrieval.orchestration.kg_merge_boost import (
+    _fetch_document_chunks_for_kg_injection as _fetch_document_chunks_for_kg_injection,
+)
+from app.rag.retrieval.orchestration.kg_merge_boost import (
+    _kg_boost_document as _kg_boost_document,
+)
+from app.rag.retrieval.orchestration.kg_merge_boost import (
+    _kg_boost_output as _kg_boost_output,
+)
+from app.rag.retrieval.orchestration.kg_merge_boost import (
+    _kg_boost_promoted_indexes as _kg_boost_promoted_indexes,
+)
+from app.rag.retrieval.orchestration.kg_merge_boost import (
+    _kg_boost_ranked_rows as _kg_boost_ranked_rows,
+)
+from app.rag.retrieval.orchestration.kg_merge_boost import (
+    _kg_boost_row as _kg_boost_row,
+)
+from app.rag.retrieval.orchestration.kg_merge_boost import (
+    _kg_boost_rows as _kg_boost_rows,
+)
+from app.rag.retrieval.orchestration.kg_merge_boost import (
+    _kg_chunk_boost_disabled_reason as _kg_chunk_boost_disabled_reason,
+)
+from app.rag.retrieval.orchestration.kg_merge_boost import (
+    _kg_chunk_boost_meta as _kg_chunk_boost_meta,
+)
+from app.rag.retrieval.orchestration.kg_merge_boost import (
+    _kg_signal_score as _kg_signal_score,
+)
+from app.rag.retrieval.orchestration.kg_merge_boost import (
+    _merge_kg_docs_preserving_main as _merge_kg_docs_preserving_main,
+)
+from app.rag.retrieval.orchestration.kg_merge_boost import (
+    _merge_kg_metadata_into_main as _merge_kg_metadata_into_main,
+)
+from app.rag.retrieval.orchestration.kg_merge_boost import (
+    _resolve_kg_scope as _resolve_kg_scope,
+)
+from app.rag.retriever import (
+    _apply_metadata_exact_anchor_to_result as _apply_metadata_exact_anchor_to_result,
+)
+from app.rag.retriever import (
+    _float_or_default as _float_or_default,
+)
+from app.rag.retriever import (
+    hybrid_retriever,
+)
 from app.services.chunk_quality_scoring import summarize_retrieved_chunk_quality
 from app.services.corpus_cache_tokens import resolve_corpus_cache_token
 from app.services.hardcase_discovery_service import (
@@ -94,13 +380,8 @@ from app.services.hardcase_discovery_service import (
 )
 from app.services.router_prometheus_metrics import observe_router_layers
 
-_CHANNEL_BUDGET_POLICY_SCHEMA_V1 = "mimirq.channel_budget_policy.v1"
 logger = get_logger(__name__)
 _RETRIEVAL_ORCHESTRATOR_FALLBACK_LOG_MESSAGE = "Ignoring non-critical retrieval orchestrator fallback failure: %s"
-
-
-def _log_orchestrator_fallback(context: str, exc: BaseException) -> None:
-    logger.debug("retrieval orchestrator fallback failed in %s: %s", context, exc, exc_info=True)
 
 
 def get_rag_engine():  # noqa: ANN201
@@ -154,68 +435,9 @@ async def kg_search(  # noqa: ANN201
     return result if isinstance(result, dict) else {}
 
 
-def _coerce_uuid_list(values: Any) -> list[UUID]:
-    out: list[UUID] = []
-    seen: set[UUID] = set()
-    for value in values or []:
-        try:
-            item = value if isinstance(value, UUID) else UUID(str(value))
-        except Exception as exc:
-            _log_orchestrator_fallback("_coerce_uuid_list", exc)
-            continue
-        if item in seen:
-            continue
-        seen.add(item)
-        out.append(item)
-    return out
-
-
-def _resolve_kg_scope(state: dict[str, Any]) -> tuple[list[UUID], UUID | None, list[UUID]]:
-    document_ids = _coerce_uuid_list(state.get("document_ids") or [])
-    if document_ids:
-        return document_ids, None, []
-
-    dataset_id_raw = state.get("dataset_id")
-    dataset_id: UUID | None = None
-    if dataset_id_raw is not None:
-        try:
-            dataset_id = dataset_id_raw if isinstance(dataset_id_raw, UUID) else UUID(str(dataset_id_raw))
-        except Exception as exc:
-            _log_orchestrator_fallback("_resolve_kg_scope.dataset_id", exc)
-            dataset_id = None
-    if dataset_id is not None:
-        return [], dataset_id, []
-
-    return [], None, _coerce_uuid_list(state.get("dataset_ids") or [])
-
-
 def _build_history_text(history: list[dict[str, str]] | None) -> str:
     """Compress history to readable text, keep only within window."""
     return format_history_text(history, window=settings.CHAT_HISTORY_WINDOW)
-
-
-def _safe_int(value: Any, *, default: int = 0, minimum: int | None = None, maximum: int | None = None) -> int:
-    try:
-        out = int(value) if value is not None else int(default)
-    except (TypeError, ValueError, AttributeError):
-        out = int(default)
-    if minimum is not None:
-        out = max(int(minimum), out)
-    if maximum is not None:
-        out = min(int(maximum), out)
-    return int(out)
-
-
-def _safe_float(value: Any, *, default: float = 0.0, minimum: float | None = None, maximum: float | None = None) -> float:
-    try:
-        out = float(value) if value is not None else float(default)
-    except (TypeError, ValueError, AttributeError):
-        out = float(default)
-    if minimum is not None:
-        out = max(float(minimum), out)
-    if maximum is not None:
-        out = min(float(maximum), out)
-    return float(out)
 
 
 def _query_decomposition_settings(enabled: bool | None) -> tuple[bool, int, int, int, bool, str]:
@@ -330,1641 +552,8 @@ def _decompose_query(
     return sub_questions, elapsed, model_used, parse_meta
 
 
-def _copy_present_debug_keys(out: dict[str, Any], source: dict[str, Any], keys: tuple[str, ...]) -> None:
-    for key in keys:
-        value = source.get(key)
-        if value is not None:
-            out[key] = value
-
-
-def _sanitize_query_normalization_debug(raw: Any) -> dict[str, Any] | None:
-    qn = raw if isinstance(raw, dict) else {}
-    normalized = qn.get("normalized") if isinstance(qn.get("normalized"), str) else ""
-    applied_rules = qn.get("applied_rules") if isinstance(qn.get("applied_rules"), list) else []
-    if not normalized and not applied_rules:
-        return None
-    return {
-        "applied_rules": [str(x) for x in applied_rules if x is not None][:20],
-        "original_chars": len(str(qn.get("original") or "")),
-        "normalized_chars": len(str(normalized or "")),
-    }
-
-
-def _sanitize_diversity_debug(raw: Any) -> dict[str, int] | None:
-    if not isinstance(raw, dict):
-        return None
-    out: dict[str, int] = {}
-    for key in (
-        "max_chunks_per_doc",
-        "max_chunks_per_page",
-        "min_distinct_docs",
-        "pre_unique_docs",
-        "post_unique_docs",
-        "pre_unique_pages",
-        "post_unique_pages",
-        "moved_out",
-        "moved_in",
-    ):
-        if key in raw:
-            out[key] = _safe_int(raw.get(key), minimum=0, maximum=1_000_000_000)
-    return out or None
-
-
-def _bounded_string_sample(raw: Any, *, limit: int) -> list[str]:
-    if not isinstance(raw, list):
-        return []
-    out: list[str] = []
-    for item in raw:
-        if isinstance(item, str) and item.strip():
-            out.append(item.strip())
-        if len(out) >= limit:
-            break
-    return out
-
-
-def _sanitize_metadata_filter_ops(raw: Any) -> dict[str, int]:
-    if not isinstance(raw, dict):
-        return {}
-    ops: dict[str, int] = {}
-    for op_key, op_value in raw.items():
-        if not isinstance(op_key, str) or not op_key.startswith("$"):
-            continue
-        ops[op_key] = _safe_int(op_value)
-        if len(ops) >= 30:
-            break
-    return dict(sorted(ops.items(), key=lambda item: item[0]))
-
-
-def _sanitize_metadata_filter_debug(raw: Any) -> dict[str, Any] | None:
-    if not isinstance(raw, dict):
-        return None
-    keys_count = raw.get("keys_count")
-    return {
-        "keys_count": (_safe_int(keys_count) if keys_count is not None else None),
-        "keys_sample": _bounded_string_sample(raw.get("keys_sample"), limit=10),
-        "ops": _sanitize_metadata_filter_ops(raw.get("ops")),
-    }
-
-
-def _sanitize_enrich_pass_debug(raw: Any) -> dict[str, Any] | None:
-    if not isinstance(raw, dict):
-        return None
-    out = {
-        "input_results": _safe_int(raw.get("input_results")),
-        "output_results": _safe_int(raw.get("output_results")),
-        "filtered_orphaned": _safe_int(raw.get("filtered_orphaned")),
-        "filtered_acl": _safe_int(raw.get("filtered_acl")),
-        "filtered_dataset": _safe_int(raw.get("filtered_dataset")),
-        "filtered_not_ready": _safe_int(raw.get("filtered_not_ready")),
-        "filtered_embedding_space": _safe_int(raw.get("filtered_embedding_space")),
-        "filtered_pipeline_version": _safe_int(raw.get("filtered_pipeline_version")),
-        "filtered_metadata_filter": _safe_int(raw.get("filtered_metadata_filter")),
-    }
-    for key in ("metadata_filter_blocked", "metadata_filter_matched"):
-        if raw.get(key) is not None:
-            out[key] = _safe_int(raw.get(key))
-    metadata_filter = _sanitize_metadata_filter_debug(raw.get("metadata_filter"))
-    if metadata_filter is not None:
-        out["metadata_filter"] = metadata_filter
-    return out
-
-
-def _sanitize_timing_debug(raw: Any) -> dict[str, float] | None:
-    if not isinstance(raw, dict):
-        return None
-    return {
-        "vector_ms": _safe_float(raw.get("vector_ms")),
-        "bm25_ms": _safe_float(raw.get("bm25_ms")),
-        "lexical_ms": _safe_float(raw.get("lexical_ms")),
-        "fusion_ms": _safe_float(raw.get("fusion_ms")),
-    }
-
-
-def _sanitize_counts_debug(raw: Any) -> dict[str, int] | None:
-    if not isinstance(raw, dict):
-        return None
-    return {
-        "vector_candidates": _safe_int(raw.get("vector_candidates")),
-        "bm25_candidates": _safe_int(raw.get("bm25_candidates")),
-    }
-
-
-def _sanitize_governance_policy_debug(raw: Any) -> dict[str, Any] | None:
-    if not isinstance(raw, dict):
-        return None
-    out: dict[str, Any] = {}
-    for key in ("enabled", "prefer_authority", "prefer_latest", "filter_superseded", "reordered"):
-        if key in raw:
-            out[key] = bool(raw.get(key))
-    for key in ("input_results", "output_results", "candidate_docs", "filtered_superseded"):
-        if key in raw:
-            out[key] = _safe_int(raw.get(key))
-    for key in ("avg_boost", "max_boost"):
-        if key in raw:
-            out[key] = _safe_float(raw.get(key))
-    skip_reason = str(raw.get("skip_reason") or "").strip() if raw.get("skip_reason") is not None else ""
-    if skip_reason:
-        out["skip_reason"] = skip_reason[:80]
-    return out or None
-
-
-def _sanitize_retriever_debug(dbg: dict[str, Any] | None) -> dict[str, Any] | None:
-    """
-    Shrink retriever debug payloads for API responses / metrics.
-
-    Rationale:
-    - Debug payloads may include large generated queries (HyDE) and verbose internal stats.
-    - Evidence API returns metrics to downstream systems; keep payloads bounded and avoid leaking scope identifiers.
-    """
-    if not isinstance(dbg, dict) or not dbg:
-        return None
-
-    out: dict[str, Any] = {}
-    _copy_present_debug_keys(out, dbg, (
-        "requested_k",
-        "search_k",
-        "fetch_k",
-        "overfetch_enabled",
-        "overfetch_reasons",
-        "overfetch_multiplier",
-        "overfetch_cap_k",
-        "milvus_doc_id_pushdown_skipped",
-        "milvus_expr_max_doc_ids",
-    ))
-
-    qn = _sanitize_query_normalization_debug(dbg.get("query_normalization"))
-    if qn is not None:
-        out["query_normalization"] = qn
-
-    # Doc/page diversity caps (PII-safe): expose only bounded numeric counters/settings.
-    diversity = _sanitize_diversity_debug(dbg.get("diversity"))
-    if diversity:
-        out["diversity"] = diversity
-
-    for key in ("enrich_pass1", "enrich_pass2"):
-        enrich = _sanitize_enrich_pass_debug(dbg.get(key))
-        if enrich is not None:
-            out[key] = enrich
-
-    timing = _sanitize_timing_debug(dbg.get("timing"))
-    if timing is not None:
-        out["timing"] = timing
-
-    counts = _sanitize_counts_debug(dbg.get("counts"))
-    if counts is not None:
-        out["counts"] = counts
-
-    governance_policy = _sanitize_governance_policy_debug(dbg.get("governance_policy"))
-    if governance_policy is not None:
-        out["governance_policy"] = governance_policy
-
-    channels = dbg.get("channels")
-    if isinstance(channels, dict):
-        out["channels"] = channels
-
-    return out or None
-
-
 def _is_recall_profile(profile: str | None) -> bool:
     return is_recall_first_profile(profile)
-
-
-def _resolve_hierarchy_family_collapse_key(meta: dict[str, Any]) -> str:
-    for k in ("hierarchy_family_key", "parent_id", "parent_node_id"):
-        v = meta.get(k)
-        if v is None:
-            continue
-        s = str(v).strip()
-        if s:
-            return s
-    return ""
-
-
-def _doc_base_score(meta: dict[str, Any]) -> float:
-    for k in ("query_expansion_base_score", "retrieval_score", "score"):
-        v = meta.get(k)
-        if v is None:
-            continue
-        try:
-            return float(v or 0.0)
-        except (TypeError, ValueError, AttributeError):
-            continue
-    return 0.0
-
-
-def _update_hierarchy_family_feature(
-    *,
-    family_key: str,
-    rank: int,
-    score: float,
-    doc_hits: dict[str, int],
-    best_rank: dict[str, int],
-    best_score: dict[str, float],
-) -> None:
-    doc_hits[family_key] = int(doc_hits.get(family_key, 0) or 0) + 1
-    if family_key not in best_rank or rank < int(best_rank.get(family_key) or 0):
-        best_rank[family_key] = int(rank)
-    if family_key not in best_score or float(score) > float(best_score.get(family_key) or 0.0):
-        best_score[family_key] = float(score)
-
-
-def _build_hierarchy_family_feature_payload(
-    family_key: str,
-    *,
-    variant_hits: dict[str, int],
-    doc_hits: dict[str, int],
-    best_rank: dict[str, int],
-    best_score: dict[str, float],
-) -> dict[str, Any]:
-    return {
-        "variant_hits": int(variant_hits.get(family_key, 0) or 0),
-        "doc_hits": int(doc_hits.get(family_key, 0) or 0),
-        "best_rank": int(best_rank.get(family_key, 0) or 0),
-        "best_score": float(best_score.get(family_key, 0.0) or 0.0),
-    }
-
-
-def _build_hierarchy_family_features(docs_by_query: list[list[Document]]) -> dict[str, dict[str, Any]]:
-    """
-    Aggregate family-level features across query variants (PII-safe; does not return ids in outputs).
-    """
-    variant_hits: dict[str, int] = {}
-    doc_hits: dict[str, int] = {}
-    best_rank: dict[str, int] = {}
-    best_score: dict[str, float] = {}
-
-    for docs_i in docs_by_query or []:
-        seen_in_variant: set[str] = set()
-        for rank, d in enumerate(docs_i or [], 1):
-            meta = d.metadata or {}
-            family_key = _resolve_hierarchy_family_collapse_key(meta)
-            if not family_key:
-                continue
-            seen_in_variant.add(family_key)
-            _update_hierarchy_family_feature(
-                family_key=family_key,
-                rank=rank,
-                score=_doc_base_score(meta),
-                doc_hits=doc_hits,
-                best_rank=best_rank,
-                best_score=best_score,
-            )
-        for fk in seen_in_variant:
-            variant_hits[fk] = int(variant_hits.get(fk, 0) or 0) + 1
-
-    out: dict[str, dict[str, Any]] = {}
-    all_keys = set(variant_hits) | set(doc_hits) | set(best_rank) | set(best_score)
-    for fk in all_keys:
-        out[fk] = _build_hierarchy_family_feature_payload(
-            fk,
-            variant_hits=variant_hits,
-            doc_hits=doc_hits,
-            best_rank=best_rank,
-            best_score=best_score,
-        )
-    return out
-
-
-def _resolve_family_aggregation_strategy(docs: list[Document], family_features: dict[str, dict[str, Any]], strategy: str) -> tuple[str, dict[str, Any] | None]:
-    if not docs:
-        return "", {"enabled": False, "reason": "no_docs"}
-    if not family_features:
-        return "", {"enabled": False, "reason": "no_families"}
-    strat = str(strategy or "").strip().lower()
-    if strat not in {"frequency", "score", "combined"}:
-        return strat, {"enabled": False, "reason": "invalid_strategy"}
-    return strat, None
-
-
-def _family_aggregation_sort_key(
-    family_key: str,
-    *,
-    family_features: dict[str, dict[str, Any]],
-    strategy: str,
-) -> tuple[float, float, float, str]:
-    feats = family_features.get(family_key) if family_key else None
-    feats = feats if isinstance(feats, dict) else {}
-    variant_hits = int(feats.get("variant_hits") or 0)
-    best_rank = int(feats.get("best_rank") or 0) or 1_000_000
-    best_score = float(feats.get("best_score") or 0.0)
-    if strategy == "frequency":
-        return (-float(variant_hits), float(best_rank), -float(best_score), family_key)
-    if strategy == "score":
-        return (-float(best_score), -float(variant_hits), float(best_rank), family_key)
-    return (-float(variant_hits), -float(best_score), float(best_rank), family_key)
-
-
-def _doc_stable_debug_id(doc: Document) -> str:
-    meta = doc.metadata or {}
-    return str(getattr(doc, "id", None) or meta.get("chunk_id") or "")
-
-
-def _rank_hierarchy_family_docs(
-    docs: list[Document],
-    *,
-    family_features: dict[str, dict[str, Any]],
-    strategy: str,
-) -> list[Document]:
-    ranked: list[tuple[tuple[float, float, float, str], float, int, str, Document]] = []
-    for index, doc in enumerate(docs):
-        meta = doc.metadata or {}
-        family_key = _resolve_hierarchy_family_collapse_key(meta)
-        family_key_tuple = _family_aggregation_sort_key(
-            family_key or "",
-            family_features=family_features,
-            strategy=strategy,
-        )
-        ranked.append((family_key_tuple, -float(_doc_base_score(meta)), int(index), _doc_stable_debug_id(doc), doc))
-    ranked.sort(key=lambda item: (item[0], item[1], item[2], item[3]))
-    return [doc for *_rest, doc in ranked]
-
-
-def _family_aggregation_meta(
-    *,
-    docs: list[Document],
-    out_docs: list[Document],
-    family_features: dict[str, dict[str, Any]],
-    strategy: str,
-) -> dict[str, Any]:
-    before_ids = [_doc_stable_debug_id(doc) for doc in docs]
-    after_ids = [_doc_stable_debug_id(doc) for doc in out_docs]
-    moved = sum(1 for index, doc_id in enumerate(after_ids) if index < len(before_ids) and doc_id != before_ids[index])
-    return {
-        "enabled": True,
-        "strategy": strategy,
-        "input_docs": int(len(docs)),
-        "families": int(len(family_features)),
-        "moved_positions": int(moved),
-        "top_changed": bool(before_ids) and bool(after_ids) and before_ids[0] != after_ids[0],
-    }
-
-
-def _apply_hierarchy_family_aggregation(
-    docs: list[Document],
-    *,
-    family_features: dict[str, dict[str, Any]],
-    strategy: str,
-) -> tuple[list[Document], dict[str, Any]]:
-    strat, disabled_meta = _resolve_family_aggregation_strategy(docs, family_features, strategy)
-    if disabled_meta is not None:
-        return docs, disabled_meta
-    out_docs = _rank_hierarchy_family_docs(docs, family_features=family_features, strategy=strat)
-    return out_docs, _family_aggregation_meta(
-        docs=docs,
-        out_docs=out_docs,
-        family_features=family_features,
-        strategy=strat,
-    )
-
-
-def _resolve_hierarchy_node_key(meta: dict[str, Any]) -> str:
-    for k in ("hierarchy_node_key", "chunk_key", "chunk_id"):
-        v = meta.get(k)
-        if v is None:
-            continue
-        s = str(v).strip()
-        if s:
-            return s
-    return ""
-
-
-def _resolve_hierarchy_parent_key(meta: dict[str, Any]) -> str:
-    # Respect explicit hierarchy_parent_key=None emitted by chunkers. Only fall back to
-    # legacy parent_id fields when the hierarchy_parent_key field is absent entirely.
-    raw = meta.get("hierarchy_parent_key") if "hierarchy_parent_key" in meta else (meta.get("parent_id") or meta.get("parent_node_id"))
-    s = str(raw or "").strip()
-    return s if s else ""
-
-
-@dataclass
-class _HierarchyDedupState:
-    seen_doc_keys: set[str]
-    kept_doc_keys: set[str]
-    kept_node_keys: set[str]
-    order: list[str]
-    doc_by_key: dict[str, Document]
-    node_by_doc_key: dict[str, str]
-    parent_by_doc_key: dict[str, str]
-    children_by_parent_node: dict[str, set[str]]
-    dropped_as_descendant: int = 0
-    removed_by_ancestor: int = 0
-    scanned_unique: int = 0
-
-
-def _new_hierarchy_dedup_state() -> _HierarchyDedupState:
-    return _HierarchyDedupState(
-        seen_doc_keys=set(),
-        kept_doc_keys=set(),
-        kept_node_keys=set(),
-        order=[],
-        doc_by_key={},
-        node_by_doc_key={},
-        parent_by_doc_key={},
-        children_by_parent_node={},
-    )
-
-
-def _hierarchy_dedup_limits(top_k: int, overfetch_factor: int) -> tuple[int, int, int, dict[str, Any] | None]:
-    top_k_i = _safe_int(top_k)
-    if top_k_i <= 0:
-        return top_k_i, 1, 0, {"enabled": False, "reason": "top_k_le_0"}
-    factor = max(1, _safe_int(overfetch_factor, default=1))
-    max_candidates = max(int(top_k_i), int(top_k_i) * int(factor))
-    return top_k_i, factor, max_candidates, None
-
-
-def _hierarchy_dedup_candidates(primary_list: list[Document], refill: list[Document] | None) -> list[Document]:
-    candidates: list[Document] = list(primary_list)
-    if refill:
-        candidates.extend([doc for doc in (refill or []) if doc is not None])
-    return candidates
-
-
-def _hierarchy_node_parent_keys(doc: Document) -> tuple[str, str]:
-    meta = doc.metadata or {}
-    node_key = _resolve_hierarchy_node_key(meta)
-    parent_key = _resolve_hierarchy_parent_key(meta)
-    if parent_key and node_key and parent_key == node_key:
-        parent_key = ""
-    return node_key, parent_key
-
-
-def _remove_hierarchy_dedup_doc(state: _HierarchyDedupState, doc_key: str) -> int:
-    if doc_key not in state.kept_doc_keys:
-        return 0
-    state.kept_doc_keys.discard(doc_key)
-    state.removed_by_ancestor += 1
-
-    node_key = state.node_by_doc_key.get(doc_key) or ""
-    parent_key = state.parent_by_doc_key.get(doc_key) or ""
-    if parent_key:
-        kids = state.children_by_parent_node.get(parent_key)
-        if kids:
-            kids.discard(doc_key)
-            if not kids:
-                state.children_by_parent_node.pop(parent_key, None)
-
-    if node_key:
-        state.kept_node_keys.discard(node_key)
-        for child_doc_key in state.children_by_parent_node.get(node_key, set()).copy():
-            _remove_hierarchy_dedup_doc(state, child_doc_key)
-        state.children_by_parent_node.pop(node_key, None)
-    return 1
-
-
-def _keep_hierarchy_dedup_doc(
-    state: _HierarchyDedupState,
-    *,
-    doc_key: str,
-    doc: Document,
-    node_key: str,
-    parent_key: str,
-) -> None:
-    state.doc_by_key[doc_key] = doc
-    state.node_by_doc_key[doc_key] = node_key
-    state.parent_by_doc_key[doc_key] = parent_key
-    state.kept_doc_keys.add(doc_key)
-    state.order.append(doc_key)
-    if node_key:
-        state.kept_node_keys.add(node_key)
-    if parent_key:
-        state.children_by_parent_node.setdefault(parent_key, set()).add(doc_key)
-    if node_key:
-        for child_doc_key in state.children_by_parent_node.get(node_key, set()).copy():
-            _remove_hierarchy_dedup_doc(state, child_doc_key)
-        if not state.children_by_parent_node.get(node_key):
-            state.children_by_parent_node.pop(node_key, None)
-
-
-def _scan_hierarchy_dedup_candidates(
-    candidates: list[Document],
-    *,
-    max_candidates: int,
-    state: _HierarchyDedupState,
-) -> None:
-    for doc in candidates:
-        if doc is None:
-            continue
-        doc_key = _doc_key(doc)
-        if doc_key in state.seen_doc_keys:
-            continue
-        state.seen_doc_keys.add(doc_key)
-        state.scanned_unique += 1
-        if state.scanned_unique > max_candidates:
-            break
-
-        node_key, parent_key = _hierarchy_node_parent_keys(doc)
-        if parent_key and parent_key in state.kept_node_keys:
-            state.dropped_as_descendant += 1
-            continue
-        _keep_hierarchy_dedup_doc(state, doc_key=doc_key, doc=doc, node_key=node_key, parent_key=parent_key)
-
-
-def _hierarchy_dedup_output(state: _HierarchyDedupState, *, top_k: int) -> list[Document]:
-    out: list[Document] = []
-    for doc_key in state.order:
-        if doc_key not in state.kept_doc_keys:
-            continue
-        doc = state.doc_by_key.get(doc_key)
-        if doc is not None:
-            out.append(doc)
-    return out[: int(top_k)]
-
-
-def _hierarchy_dedup_meta(
-    *,
-    top_k: int,
-    factor: int,
-    max_candidates: int,
-    primary_list: list[Document],
-    refill: list[Document] | None,
-    out_sliced: list[Document],
-    state: _HierarchyDedupState,
-) -> dict[str, Any]:
-    return {
-        "enabled": True,
-        "top_k": int(top_k),
-        "overfetch_factor": int(factor),
-        "max_candidates": int(max_candidates),
-        "scanned_unique": int(state.scanned_unique),
-        "input_primary": int(len(primary_list)),
-        "input_refill": int(len(refill or [])),
-        "output": int(len(out_sliced)),
-        "dropped_as_descendant": int(state.dropped_as_descendant),
-        "removed_by_ancestor": int(state.removed_by_ancestor),
-    }
-
-
-def _apply_hierarchy_tree_dedup(
-    primary: list[Document],
-    *,
-    refill: list[Document] | None,
-    top_k: int,
-    overfetch_factor: int,
-) -> tuple[list[Document], dict[str, Any]]:
-    """
-    Ancestor-wins tree deduplication for hierarchy-aware retrieval.
-
-    If we see both a node and any of its descendants, prefer the ancestor and drop
-    descendants to reclaim context slots (useful when hierarchical chunking returns
-    both parent + child content).
-
-    Notes:
-    - Best-effort only; bounded by a scan window of `top_k * overfetch_factor`.
-    - Keeps survivor order stable (does not reorder; only drops).
-    - Uses (hierarchy_node_key, hierarchy_parent_key) as the tree edge.
-    """
-    primary_list = [d for d in (primary or []) if d is not None]
-    if not primary_list:
-        return primary_list, {"enabled": False, "reason": "no_primary"}
-
-    top_k_i, factor, max_candidates, disabled_meta = _hierarchy_dedup_limits(top_k, overfetch_factor)
-    if disabled_meta is not None:
-        return primary_list, disabled_meta
-
-    state = _new_hierarchy_dedup_state()
-    candidates = _hierarchy_dedup_candidates(primary_list, refill)
-    _scan_hierarchy_dedup_candidates(candidates, max_candidates=max_candidates, state=state)
-    out_sliced = _hierarchy_dedup_output(state, top_k=top_k_i)
-    return out_sliced, _hierarchy_dedup_meta(
-        top_k=top_k_i,
-        factor=factor,
-        max_candidates=max_candidates,
-        primary_list=primary_list,
-        refill=refill,
-        out_sliced=out_sliced,
-        state=state,
-    )
-
-
-def _citation_coverage_lists(citations: list[Any]) -> tuple[int, list[str], list[str], list[str]]:
-    total = 0
-    doc_ids: list[str] = []
-    pipeline_keys: list[str] = []
-    roles: list[str] = []
-    for citation in citations:
-        if not isinstance(citation, dict):
-            continue
-        total += 1
-        document_id = str(citation.get("document_id") or "").strip()
-        pipeline_key = str(citation.get("doc_pipeline_key") or citation.get("pipeline_hash") or "").strip()
-        role = str(citation.get("retrieval_role") or "").strip().lower()
-        if document_id:
-            doc_ids.append(document_id)
-        if pipeline_key:
-            pipeline_keys.append(pipeline_key)
-        if role:
-            roles.append(role)
-    return total, doc_ids, pipeline_keys, roles
-
-
-def _top_doc_share(doc_ids: list[str]) -> float | None:
-    if not doc_ids:
-        return None
-    from collections import Counter  # local import: keep module import-light
-
-    counts = Counter(doc_ids)
-    if not counts:
-        return None
-    return round(float(max(counts.values())) / float(len(doc_ids)), 3)
-
-
-def _coverage_proxy_from_citations(citations: Any) -> dict[str, Any] | None:
-    """
-    Compute a lightweight, PII-safe coverage proxy from citations.
-
-    This is intentionally *not* a semantic quality metric; it is used for:
-    - quick diagnosis (e.g., "all citations come from 1 doc")
-    - low-cost gating/alerts
-    """
-    if not isinstance(citations, list) or not citations:
-        return None
-
-    total, doc_ids, pipeline_keys, roles = _citation_coverage_lists(citations)
-    if total <= 0:
-        return None
-
-    out: dict[str, Any] = {
-        "citations_total": int(total),
-        "distinct_documents": int(len(set(doc_ids)) if doc_ids else 0),
-        "distinct_pipeline_keys": int(len(set(pipeline_keys)) if pipeline_keys else 0),
-        "distinct_roles": int(len(set(roles)) if roles else 0),
-        "top_doc_share": _top_doc_share(doc_ids),
-    }
-    return {k: v for k, v in out.items() if v is not None} or None
-
-
-def _main_retrieval_per_query_item(retrieval_per_query: Any) -> dict[str, Any] | None:
-    if not isinstance(retrieval_per_query, list):
-        return None
-    for item in retrieval_per_query:
-        if isinstance(item, dict) and item.get("kind") == "main":
-            return item
-    return None
-
-
-def _retriever_enrichment_debug(debug_payload: Any) -> dict[str, Any] | None:
-    if not isinstance(debug_payload, dict):
-        return None
-    enrich = debug_payload.get("enrich_pass2")
-    if not isinstance(enrich, dict):
-        enrich = debug_payload.get("enrich_pass1")
-    return enrich if isinstance(enrich, dict) else None
-
-
-def _empty_retrieval_reason_counts(enrich: dict[str, Any]) -> tuple[dict[str, int], list[tuple[str, int]]]:
-    signals: dict[str, int] = {}
-    reason_counts: list[tuple[str, int]] = []
-    for key, reason in (
-        ("filtered_metadata_filter", "metadata_filter"),
-        ("filtered_acl", "acl"),
-        ("filtered_dataset", "dataset"),
-        ("filtered_pipeline_version", "pipeline_version"),
-        ("filtered_embedding_space", "embedding_space"),
-        ("filtered_not_ready", "not_ready"),
-        ("filtered_orphaned", "orphaned_vectors"),
-    ):
-        count = _safe_int(enrich.get(key))
-        if count > 0:
-            signals[key] = int(count)
-            reason_counts.append((reason, int(count)))
-    reason_counts.sort(key=lambda item: (-item[1], item[0]))
-    return signals, reason_counts
-
-
-def _build_empty_retrieval_diagnosis(enrich: dict[str, Any], signals: dict[str, int], reason_counts: list[tuple[str, int]]) -> dict[str, Any] | None:
-    if not reason_counts:
-        return None
-    diag: dict[str, Any] = {
-        "reasons": [reason for reason, _count in reason_counts],
-        "signals": signals,
-    }
-    for key in ("input_results", "output_results"):
-        if enrich.get(key) is not None:
-            diag[key] = _safe_int(enrich.get(key))
-    return {key: value for key, value in diag.items() if value is not None} or None
-
-
-def _diagnose_empty_retrieval(retrieval_per_query: Any) -> dict[str, Any] | None:
-    """
-    Best-effort diagnosis for "no citations returned" cases.
-
-    This is intentionally PII-safe: it only reports counters from retriever_debug.
-    """
-    if not isinstance(retrieval_per_query, list) or not retrieval_per_query:
-        return None
-
-    main = _main_retrieval_per_query_item(retrieval_per_query)
-    if main is None:
-        return None
-
-    enrich = _retriever_enrichment_debug(main.get("retriever_debug"))
-    if enrich is None:
-        return None
-    signals, reason_counts = _empty_retrieval_reason_counts(enrich)
-    return _build_empty_retrieval_diagnosis(enrich, signals, reason_counts)
-
-
-def _extract_parse_quality_score(meta: Any) -> float | None:
-    if not isinstance(meta, dict):
-        return None
-
-    candidates = [
-        meta.get("doc_parse_quality_score"),
-        meta.get("parse_quality_score"),
-    ]
-    pq = meta.get("parse_quality")
-    if isinstance(pq, dict):
-        candidates.append(pq.get("score"))
-    elif pq is not None:
-        candidates.append(pq)
-
-    for raw in candidates:
-        try:
-            if raw is None:
-                continue
-            score = float(raw)
-            if score < 0.0:
-                score = 0.0
-            if score > 1.0:
-                score = 1.0
-            return float(score)
-        except (TypeError, ValueError, AttributeError):
-            continue
-    return None
-
-
-def _parse_quality_recommendation(*, low_ratio: float, considered: int) -> str | None:
-    if considered <= 0:
-        return "no_parse_quality_metadata"
-    if low_ratio >= 0.8:
-        return "high_parse_risk_reparse_documents"
-    if low_ratio >= 0.5:
-        return "medium_parse_risk_prioritize_low_quality_docs"
-    if low_ratio >= 0.2:
-        return "monitor_parse_quality_tail"
-    return "parse_quality_healthy"
-
-
-def _parse_quality_low_sample(doc: Document, *, rank: int, score: float) -> dict[str, Any]:
-    meta = doc.metadata if isinstance(getattr(doc, "metadata", None), dict) else {}
-    return {
-        "rank": int(rank),
-        "chunk_id": str(getattr(doc, "id", None) or meta.get("chunk_id") or ""),
-        "document_id": str(meta.get("document_id") or ""),
-        "score": round(float(score), 3),
-    }
-
-
-def _parse_quality_risk_counters(docs: list[Document] | None, *, low_threshold: float) -> tuple[int, int, list[float], list[dict[str, Any]]]:
-    considered = 0
-    low_count = 0
-    scores: list[float] = []
-    low_samples: list[dict[str, Any]] = []
-    for index, doc in enumerate(list(docs or [])[:50]):
-        meta = doc.metadata if isinstance(getattr(doc, "metadata", None), dict) else {}
-        score = _extract_parse_quality_score(meta)
-        if score is None:
-            continue
-        considered += 1
-        scores.append(float(score))
-        if float(score) < float(low_threshold):
-            low_count += 1
-            if len(low_samples) < 5:
-                low_samples.append(_parse_quality_low_sample(doc, rank=index + 1, score=score))
-    return considered, low_count, scores, low_samples
-
-
-def _summarize_parse_quality_risk(
-    docs: list[Document] | None,
-    *,
-    low_threshold: float,
-    alert_ratio: float,
-) -> dict[str, Any]:
-    considered, low_count, scores, low_samples = _parse_quality_risk_counters(docs, low_threshold=low_threshold)
-    low_ratio = (float(low_count) / float(considered)) if considered > 0 else 0.0
-    avg_score = (float(sum(scores) / float(len(scores))) if scores else None)
-    alert = bool(considered > 0 and low_ratio >= float(alert_ratio))
-    recommendation = _parse_quality_recommendation(low_ratio=float(low_ratio), considered=int(considered))
-
-    return {
-        "enabled": True,
-        "low_threshold": round(float(low_threshold), 3),
-        "alert_ratio": round(float(alert_ratio), 3),
-        "considered": int(considered),
-        "low_count": int(low_count),
-        "low_ratio": round(float(low_ratio), 3),
-        "avg_score": (round(float(avg_score), 3) if avg_score is not None else None),
-        "alert": bool(alert),
-        "recommendation": recommendation,
-        "low_samples": low_samples,
-    }
-
-
-def _classify_parse_risk(
-    *,
-    summary: dict[str, Any] | None,
-    hardcase_min_low_ratio: float,
-    hardcase_min_considered: int,
-) -> dict[str, Any]:
-    payload = summary if isinstance(summary, dict) else {}
-    considered = int(payload.get("considered") or 0)
-    low_ratio = float(payload.get("low_ratio") or 0.0)
-    recommendation = str(payload.get("recommendation") or "").strip()
-
-    level = _parse_risk_level(considered=considered, low_ratio=low_ratio, recommendation=recommendation)
-    return {
-        "level": level,
-        "score": round(float(low_ratio), 3),
-        "reason": recommendation or ("no_parse_quality_metadata" if considered <= 0 else "parse_quality_healthy"),
-        "considered": int(considered),
-        "low_ratio": round(float(low_ratio), 3),
-        "hardcase_eligible": _parse_risk_hardcase_eligible(
-            level=level,
-            considered=considered,
-            low_ratio=low_ratio,
-            hardcase_min_low_ratio=hardcase_min_low_ratio,
-            hardcase_min_considered=hardcase_min_considered,
-        ),
-    }
-
-
-def _parse_risk_level(*, considered: int, low_ratio: float, recommendation: str) -> str:
-    if considered <= 0:
-        return "unknown"
-    if recommendation == "high_parse_risk_reparse_documents" or low_ratio >= 0.8:
-        return "high"
-    if recommendation == "medium_parse_risk_prioritize_low_quality_docs" or low_ratio >= 0.5:
-        return "medium"
-    if recommendation == "monitor_parse_quality_tail" or low_ratio >= 0.2:
-        return "low"
-    return "healthy"
-
-
-def _parse_risk_hardcase_eligible(
-    *,
-    level: str,
-    considered: int,
-    low_ratio: float,
-    hardcase_min_low_ratio: float,
-    hardcase_min_considered: int,
-) -> bool:
-    return bool(
-        str(level) in {"high", "medium"}
-        and considered >= int(max(1, hardcase_min_considered))
-        and low_ratio >= float(max(0.0, hardcase_min_low_ratio))
-    )
-
-
-def _normalize_parse_repair_payload(raw: Any) -> dict[str, Any] | None:
-    if raw is None:
-        return None
-    if isinstance(raw, list):
-        return {"actions": raw}
-    if isinstance(raw, dict):
-        return dict(raw)
-    return None
-
-
-def _count_parse_repair_actions(actions: list[Any]) -> tuple[dict[str, int], dict[str, int], dict[str, int], set[str]]:
-    action_counts: dict[str, int] = {}
-    status_counts: dict[str, int] = {}
-    priority_counts: dict[str, int] = {}
-    docs_seen: set[str] = set()
-    for item in actions[:200]:
-        if not isinstance(item, dict):
-            continue
-        action = str(item.get("action") or "reparse_document").strip().lower() or "reparse_document"
-        status = str(item.get("status") or "scheduled").strip().lower() or "scheduled"
-        priority = str(item.get("priority") or "medium").strip().lower() or "medium"
-        action_counts[action] = int(action_counts.get(action, 0) + 1)
-        status_counts[status] = int(status_counts.get(status, 0) + 1)
-        priority_counts[priority] = int(priority_counts.get(priority, 0) + 1)
-        doc_id = str(item.get("document_id") or "").strip()
-        if doc_id:
-            docs_seen.add(doc_id)
-    return action_counts, status_counts, priority_counts, docs_seen
-
-
-def _parse_repair_run_id(payload: dict[str, Any]) -> str:
-    return str(
-        payload.get("scheduler_run_id")
-        or payload.get("schedule_run_id")
-        or payload.get("run_id")
-        or ""
-    ).strip()
-
-
-def _parse_repair_gate_passed(payload: dict[str, Any]) -> Any:
-    gate_passed = payload.get("gate_passed")
-    return payload.get("passed") if gate_passed is None else gate_passed
-
-
-def _build_parse_repair_actions_summary(
-    payload: dict[str, Any],
-    *,
-    action_counts: dict[str, int],
-    status_counts: dict[str, int],
-    priority_counts: dict[str, int],
-    docs_seen: set[str],
-) -> dict[str, Any]:
-    out: dict[str, Any] = {
-        "enabled": True,
-        "actions_total": int(sum(action_counts.values())),
-        "unique_documents": int(len(docs_seen)),
-        "action_counts": dict(sorted(action_counts.items(), key=lambda item: item[0])),
-        "status_counts": dict(sorted(status_counts.items(), key=lambda item: item[0])),
-        "priority_counts": dict(sorted(priority_counts.items(), key=lambda item: item[0])),
-        "high_priority_count": int(priority_counts.get("high", 0)),
-    }
-    run_id = _parse_repair_run_id(payload)
-    source = str(payload.get("source") or payload.get("schema") or "").strip()
-    gate_passed = _parse_repair_gate_passed(payload)
-    if run_id:
-        out["run_id"] = run_id[:120]
-    if source:
-        out["source"] = source[:120]
-    if gate_passed is not None:
-        out["gate_passed"] = bool(gate_passed)
-    return out
-
-
-def _sanitize_parse_repair_actions(raw: Any) -> dict[str, Any] | None:
-    """
-    Normalize parse-repair action payloads into bounded diagnostics.
-
-    Expected input:
-    - list[{"document_id", "action", "status", "priority", ...}]
-    - {"actions":[...], "scheduler_run_id"/"run_id", "gate_passed", ...}
-    """
-    payload = _normalize_parse_repair_payload(raw)
-    if payload is None:
-        return None
-
-    actions = payload.get("actions")
-    if not isinstance(actions, list):
-        actions = []
-
-    action_counts, status_counts, priority_counts, docs_seen = _count_parse_repair_actions(actions)
-    if not action_counts and not status_counts and not priority_counts and not docs_seen:
-        return None
-
-    return _build_parse_repair_actions_summary(
-        payload,
-        action_counts=action_counts,
-        status_counts=status_counts,
-        priority_counts=priority_counts,
-        docs_seen=docs_seen,
-    )
-
-
-def _doc_key(doc: Document) -> str:
-    meta = doc.metadata or {}
-    doc_id = meta.get("document_id")
-    chunk_index = meta.get("chunk_index")
-    if doc_id is not None and chunk_index is not None:
-        return f"{doc_id}:{chunk_index}"
-    cid = getattr(doc, "id", None) or meta.get("chunk_id")
-    if cid:
-        return str(cid)
-    content = (doc.page_content or "").strip()
-    return f"content:{stable_hash(content)}"
-
-
-def _kg_signal_score(meta: dict[str, Any]) -> float:
-    for key in ("kg_pagerank", "score", "retrieval_score"):
-        try:
-            value = meta.get(key)
-            if value is None:
-                continue
-            return max(0.0, float(value or 0.0))
-        except (TypeError, ValueError, AttributeError):
-            continue
-    return 0.0
-
-
-def _merge_kg_metadata_into_main(main_doc: Document, kg_doc: Document) -> Document:
-    main_meta = dict(main_doc.metadata or {})
-    kg_meta = dict(kg_doc.metadata or {})
-
-    main_kg_score = _kg_signal_score({"kg_pagerank": main_meta.get("kg_pagerank")})
-    kg_score = _kg_signal_score(kg_meta)
-    if kg_score > 0.0 or main_kg_score > 0.0:
-        main_meta["kg_pagerank"] = max(main_kg_score, kg_score)
-
-    for key in ("kg_path", "kg_path_provenance"):
-        if kg_meta.get(key) and not main_meta.get(key):
-            main_meta[key] = kg_meta[key]
-
-    try:
-        kg_path_length = int(kg_meta.get("kg_path_length")) if kg_meta.get("kg_path_length") is not None else None
-    except (TypeError, ValueError, AttributeError):
-        kg_path_length = None
-    if kg_path_length is not None:
-        try:
-            current = int(main_meta.get("kg_path_length")) if main_meta.get("kg_path_length") is not None else None
-        except (TypeError, ValueError, AttributeError):
-            current = None
-        main_meta["kg_path_length"] = min(current, kg_path_length) if current is not None else kg_path_length
-
-    try:
-        kg_shared_events = int(kg_meta.get("kg_shared_events")) if kg_meta.get("kg_shared_events") is not None else None
-    except (TypeError, ValueError, AttributeError):
-        kg_shared_events = None
-    if kg_shared_events is not None:
-        try:
-            current = int(main_meta.get("kg_shared_events")) if main_meta.get("kg_shared_events") is not None else None
-        except (TypeError, ValueError, AttributeError):
-            current = None
-        main_meta["kg_shared_events"] = max(current, kg_shared_events) if current is not None else kg_shared_events
-
-    if "kg_evidence_anchored" in kg_meta:
-        main_meta["kg_evidence_anchored"] = bool(main_meta.get("kg_evidence_anchored") or kg_meta.get("kg_evidence_anchored"))
-
-    main_meta["kg_duplicate_candidate"] = True
-    return Document(
-        page_content=main_doc.page_content,
-        metadata=main_meta,
-        id=getattr(main_doc, "id", None) or main_meta.get("chunk_id"),
-    )
-
-
-def _merge_kg_docs_preserving_main(docs: list[Document] | None, kg_docs: list[Document] | None) -> list[Document]:
-    merged = [d for d in (docs or []) if d is not None]
-    index_by_key: dict[str, int] = {}
-    for i, doc in enumerate(merged):
-        try:
-            index_by_key[_doc_key(doc)] = i
-        except Exception as exc:
-            _log_orchestrator_fallback("_merge_kg_docs_preserving_main", exc)
-
-    for kg_doc in kg_docs or []:
-        if kg_doc is None:
-            continue
-        try:
-            key = _doc_key(kg_doc)
-        except Exception as exc:
-            _log_orchestrator_fallback("_merge_kg_docs_preserving_main", exc)
-            continue
-        if key in index_by_key:
-            existing_index = index_by_key[key]
-            merged[existing_index] = _merge_kg_metadata_into_main(merged[existing_index], kg_doc)
-            continue
-        index_by_key[key] = len(merged)
-        merged.append(kg_doc)
-    return merged
-
-
-def _safe_post_rerank_pipeline_summary(raw: Any) -> list[dict[str, Any]]:
-    """
-    Parse/normalize the Evidence post-rerank pipeline config into a low-cardinality summary.
-
-    Notes:
-    - We intentionally keep only {provider, top_n} so this can be embedded into retrieval_config_hash
-      without leaking secrets or environment-specific paths.
-    - Expected input is JSON from settings.EVIDENCE_POST_RERANK_PIPELINE.
-    """
-    text = str(raw or "").strip()
-    if not text:
-        return []
-    try:
-        obj = json.loads(text)
-    except (TypeError, ValueError, AttributeError):
-        return []
-    if not isinstance(obj, list):
-        return []
-
-    out: list[dict[str, Any]] = []
-    for item in obj:
-        row = _safe_post_rerank_pipeline_item(item)
-        if row is None:
-            continue
-        out.append(row)
-        if len(out) >= 4:
-            break
-    return out
-
-
-def _safe_post_rerank_pipeline_item(item: Any) -> dict[str, Any] | None:
-    if not isinstance(item, dict):
-        return None
-    provider = str(item.get("provider") or "").strip().lower()
-    if not provider or provider in {"none", "off", "false", "0"}:
-        return None
-    top_n = _safe_int(item.get("top_n"), minimum=0)
-    return {"provider": provider, "top_n": top_n or None}
-
-
-def _coerce_channel_budgets(raw: Any) -> dict[str, int]:
-    if not isinstance(raw, dict):
-        return {}
-    allowed = {"vector", "bm25", "lexical", "sparse"}
-    out: dict[str, int] = {}
-    for k, v in raw.items():
-        key = str(k or "").strip().lower()
-        if not key or key not in allowed:
-            continue
-        try:
-            iv = int(v) if v is not None else 0
-        except (TypeError, ValueError, AttributeError):
-            continue
-        out[key] = max(0, int(iv))
-    return out
-
-
-def _coerce_channel_min_scores(raw: Any) -> dict[str, float]:
-    if not isinstance(raw, dict):
-        return {}
-    allowed = {"vector", "bm25", "lexical", "sparse"}
-    out: dict[str, float] = {}
-    for k, v in raw.items():
-        key = str(k or "").strip().lower()
-        if not key or key not in allowed:
-            continue
-        try:
-            fv = float(v) if v is not None else 0.0
-        except (TypeError, ValueError, AttributeError):
-            continue
-        out[key] = max(0.0, min(1.0, float(fv)))
-    return out
-
-
-def resolve_channel_budget_policy_overrides(
-    *,
-    policy: dict[str, Any] | None,
-    retrieval_mode: str,
-    retrieval_profile: str | None,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    meta: dict[str, Any] = {"enabled": bool(isinstance(policy, dict)), "used": False}
-    if not isinstance(policy, dict):
-        meta["reason"] = "policy_missing"
-        return {}, meta
-
-    profiles, disabled_meta = _channel_budget_policy_profiles(policy)
-    if disabled_meta is not None:
-        meta.update(disabled_meta)
-        return {}, meta
-
-    mode_norm = str(retrieval_mode or "").strip().lower() or "hybrid"
-    profile_norm = str(retrieval_profile or "").strip().lower()
-    selected_key, selected, disabled_meta = _channel_budget_policy_selected(
-        profiles,
-        mode_norm=mode_norm,
-        profile_norm=profile_norm,
-    )
-    if disabled_meta is not None:
-        meta.update(disabled_meta)
-        return {}, meta
-
-    budgets = _coerce_channel_budgets((selected or {}).get("fusion_budgets"))
-    if not budgets:
-        meta["reason"] = "budgets_missing"
-        meta["selected_profile"] = selected_key
-        return {}, meta
-
-    overrides = _channel_budget_policy_overrides(policy, selected=selected, budgets=budgets)
-    meta.update(_channel_budget_policy_applied_meta(policy, selected_key=selected_key, mode_norm=mode_norm, profile_norm=profile_norm, budgets=budgets))
-    return overrides, meta
-
-
-def _channel_budget_policy_profiles(policy: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None]:
-    schema_meta = _channel_budget_policy_schema_meta(policy)
-    if schema_meta is not None:
-        return {}, schema_meta
-    profiles = policy.get("profiles") if isinstance(policy.get("profiles"), dict) else {}
-    if not profiles:
-        return {}, {"reason": "profiles_missing"}
-    return profiles, None
-
-
-def _channel_budget_policy_schema_meta(policy: dict[str, Any]) -> dict[str, Any] | None:
-    schema = str(policy.get("schema") or "").strip()
-    if schema and schema != _CHANNEL_BUDGET_POLICY_SCHEMA_V1:
-        return {"reason": "schema_mismatch", "schema": schema}
-    return None
-
-
-def _select_channel_budget_profile(profiles: dict[str, Any], *, profile_norm: str, mode_norm: str) -> str:
-    for key in (profile_norm, mode_norm, "default"):
-        if key and isinstance(profiles.get(key), dict):
-            return key
-    return ""
-
-
-def _channel_budget_policy_selected(
-    profiles: dict[str, Any],
-    *,
-    mode_norm: str,
-    profile_norm: str,
-) -> tuple[str, dict[str, Any], dict[str, Any] | None]:
-    selected_key = _select_channel_budget_profile(profiles, profile_norm=profile_norm, mode_norm=mode_norm)
-    if not selected_key:
-        return "", {}, {
-            "reason": "profile_not_found",
-            "retrieval_mode": mode_norm,
-            "retrieval_profile": profile_norm or None,
-        }
-    selected = profiles.get(selected_key) if isinstance(profiles.get(selected_key), dict) else {}
-    return selected_key, selected, None
-
-
-def _channel_budget_policy_overrides(
-    policy: dict[str, Any],
-    *,
-    selected: dict[str, Any],
-    budgets: dict[str, int],
-) -> dict[str, Any]:
-    fusion_strategy = str(
-        (selected or {}).get("fusion_strategy") or policy.get("fusion_strategy") or "budgeted_rrf"
-    ).strip().lower() or "budgeted_rrf"
-    overrides: dict[str, Any] = {
-        "fusion_strategy": fusion_strategy,
-        "fusion_budgets": budgets,
-    }
-    min_scores = _coerce_channel_min_scores((selected or {}).get("fusion_min_scores"))
-    if min_scores:
-        overrides["fusion_min_scores"] = min_scores
-    return overrides
-
-
-def _channel_budget_policy_applied_meta(
-    policy: dict[str, Any],
-    *,
-    selected_key: str,
-    mode_norm: str,
-    profile_norm: str,
-    budgets: dict[str, int],
-) -> dict[str, Any]:
-    return {
-        "used": True,
-        "reason": "applied",
-        "selected_profile": selected_key,
-        "retrieval_mode": mode_norm,
-        "retrieval_profile": profile_norm or None,
-        "budget_channels": sorted(budgets.keys()),
-        "policy_hash": stable_hash(json.dumps(policy, ensure_ascii=False, sort_keys=True), length=16),
-    }
-
-
-def _fetch_document_chunks_for_kg_injection(
-    *,
-    db: Any,
-    tenant_id: Any,
-    account_id: Any,
-    dataset_id: Any,
-    dataset_ids: list[Any] | None = None,
-    document_ids: list[Any],
-    chunk_ids: list[UUID],
-) -> list[Any]:
-    """
-    Best-effort load DocumentChunk rows for KG chunk injection.
-
-    This is intentionally a small helper so tests can monkeypatch it without setting up a real DB.
-    """
-    if not chunk_ids:
-        return []
-
-    if db is None or tenant_id is None:
-        return []
-
-    from app.models.document import DocumentChunk as DBDocumentChunk  # noqa: WPS433
-
-    # Prefer explicit document_ids scope (already ACL-filtered by the API layer when present).
-    if document_ids:
-        return (
-            db.query(DBDocumentChunk)
-            .filter(
-                DBDocumentChunk.tenant_id == tenant_id,
-                DBDocumentChunk.document_id.in_(list(document_ids)),
-                DBDocumentChunk.id.in_(list(chunk_ids)),
-            )
-            .all()
-        )
-
-    # Dataset-scoped retrieval: enforce dataset permission + doc-level ACL via shared helper.
-    scoped_dataset_ids = _coerce_uuid_list(dataset_ids or [])
-    if dataset_id is not None:
-        scoped_dataset_ids = _coerce_uuid_list([dataset_id])
-
-    if not scoped_dataset_ids or not str(account_id or "").strip():
-        return []
-
-    try:
-        from sqlalchemy import or_, select  # noqa: WPS433
-
-        from app.models.document import Document as DBDocument  # noqa: WPS433
-        from app.services.dataset_profile_service import build_dataset_documents_query  # noqa: WPS433
-
-        allowed_doc_filters = []
-        for scoped_dataset_id in scoped_dataset_ids:
-            _ds, q = build_dataset_documents_query(
-                db,
-                tenant_id=tenant_id,
-                account_id=str(account_id),
-                dataset_id=scoped_dataset_id,
-            )
-            doc_ids_subq = q.with_entities(DBDocument.id).subquery()
-            allowed_doc_filters.append(DBDocumentChunk.document_id.in_(select(doc_ids_subq.c.id)))
-
-        if not allowed_doc_filters:
-            return []
-
-        return (
-            db.query(DBDocumentChunk)
-            .filter(
-                DBDocumentChunk.tenant_id == tenant_id,
-                or_(*allowed_doc_filters),
-                DBDocumentChunk.id.in_(list(chunk_ids)),
-            )
-            .all()
-        )
-    except Exception as exc:
-        _log_orchestrator_fallback('_fetch_document_chunks_for_kg_injection', exc)
-        return []
-
-
-def _coerce_optional_bool(value: Any, *, default: bool) -> bool:
-    if value is None:
-        return bool(default)
-    if isinstance(value, bool):
-        return value
-    text = str(value).strip().lower()
-    if text in {"1", "true", "yes", "on"}:
-        return True
-    if text in {"0", "false", "no", "off"}:
-        return False
-    return bool(default)
-
-
-def _coerce_optional_int(value: Any, *, default: int, minimum: int = 0, maximum: int | None = None) -> int:
-    try:
-        out = int(value) if value is not None else int(default)
-    except (TypeError, ValueError, AttributeError):
-        out = int(default)
-    out = max(int(minimum), int(out))
-    if maximum is not None:
-        out = min(int(maximum), int(out))
-    return out
-
-
-def _coerce_optional_float(value: Any, *, default: float, minimum: float = 0.0, maximum: float | None = None) -> float:
-    try:
-        out = float(value) if value is not None else float(default)
-    except (TypeError, ValueError, AttributeError):
-        out = float(default)
-    out = max(float(minimum), float(out))
-    if maximum is not None:
-        out = min(float(maximum), float(out))
-    return out
-
-
-def _kg_chunk_boost_meta(*, enabled: bool, weight: float, max_promoted: int) -> dict[str, Any]:
-    return {
-        "enabled": bool(enabled),
-        "weight": round(float(weight), 4),
-        "max_promoted": int(max_promoted),
-        "eligible": 0,
-        "promoted": 0,
-        "top_changed": False,
-    }
-
-
-def _kg_chunk_boost_disabled_reason(*, enabled: bool, docs: list[Document], weight: float, max_promoted: int) -> str | None:
-    if enabled and docs and weight > 0.0 and max_promoted > 0:
-        return None
-    if not enabled:
-        return "disabled"
-    if weight <= 0.0:
-        return "zero_weight"
-    if max_promoted <= 0:
-        return "zero_max_promoted"
-    return "no_docs"
-
-
-def _kg_boost_row(doc: Document, *, index: int, weight: float) -> dict[str, Any]:
-    row_meta = dict(doc.metadata or {})
-    base_raw = row_meta.get("retrieval_score")
-    if base_raw is None:
-        base_raw = row_meta.get("score", 0.0)
-    base_score = _coerce_optional_float(base_raw, default=0.0, minimum=0.0)
-    role = str(row_meta.get("retrieval_role") or "").strip().lower()
-    kg_raw = row_meta.get("kg_pagerank")
-    if kg_raw is None and role == "kg":
-        kg_raw = row_meta.get("score", 0.0)
-    kg_score = _coerce_optional_float(kg_raw, default=0.0, minimum=0.0)
-    is_kg = bool(role == "kg" or kg_score > 0.0)
-    boosted_score = float(base_score) + (float(weight) * float(kg_score)) if is_kg else float(base_score)
-    return {
-        "idx": int(index),
-        "doc": doc,
-        "meta": row_meta,
-        "base_score": float(base_score),
-        "kg_score": float(kg_score),
-        "boosted_score": float(boosted_score),
-        "is_kg": bool(is_kg),
-    }
-
-
-def _kg_boost_rows(docs: list[Document], *, weight: float) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    rows: list[dict[str, Any]] = []
-    eligible_rows: list[dict[str, Any]] = []
-    for index, doc in enumerate(docs):
-        if not isinstance(doc, Document):
-            continue
-        row = _kg_boost_row(doc, index=index, weight=weight)
-        rows.append(row)
-        if bool(row.get("is_kg")) and float(row.get("kg_score") or 0.0) > 0.0:
-            eligible_rows.append(row)
-    return rows, eligible_rows
-
-
-def _kg_boost_promoted_indexes(eligible_rows: list[dict[str, Any]], *, max_promoted: int) -> set[int]:
-    eligible_rows.sort(
-        key=lambda row: (
-            -(float(row.get("boosted_score") or 0.0) - float(row.get("base_score") or 0.0)),
-            -float(row.get("kg_score") or 0.0),
-            int(row.get("idx") or 0),
-        )
-    )
-    return {int(row["idx"]) for row in eligible_rows[:max_promoted]}
-
-
-def _kg_boost_ranked_rows(rows: list[dict[str, Any]], *, promoted_indexes: set[int]) -> list[dict[str, Any]]:
-    return sorted(
-        rows,
-        key=lambda row: (
-            -(
-                float(row.get("boosted_score") or 0.0)
-                if int(row.get("idx") or 0) in promoted_indexes
-                else float(row.get("base_score") or 0.0)
-            ),
-            int(row.get("idx") or 0),
-        ),
-    )
-
-
-def _kg_boost_document(row: dict[str, Any], *, promoted_indexes: set[int]) -> tuple[Document | None, int]:
-    doc = row.get("doc")
-    if not isinstance(doc, Document):
-        return None, 0
-    doc_meta = dict(row.get("meta") or {})
-    original_index = int(row.get("idx") or 0)
-    if original_index in promoted_indexes:
-        doc_meta["kg_boost_applied"] = True
-        doc_meta["kg_boost_score"] = round(float(row.get("boosted_score") or 0.0), 6)
-    out_doc = Document(
-        page_content=doc.page_content,
-        metadata=doc_meta,
-        id=getattr(doc, "id", None) or doc_meta.get("chunk_id"),
-    )
-    return out_doc, original_index
-
-
-def _kg_boost_output(ranked_rows: list[dict[str, Any]], *, promoted_indexes: set[int]) -> tuple[list[Document], int]:
-    out: list[Document] = []
-    promoted = 0
-    for new_index, row in enumerate(ranked_rows):
-        doc, original_index = _kg_boost_document(row, promoted_indexes=promoted_indexes)
-        if doc is None:
-            continue
-        if original_index in promoted_indexes and new_index < original_index:
-            promoted += 1
-        out.append(doc)
-    return out, promoted
-
-
-def _apply_kg_chunk_boost(
-    docs: list[Document],
-    *,
-    enabled: bool,
-    weight: float,
-    max_promoted: int,
-) -> tuple[list[Document], dict[str, Any]]:
-    meta = _kg_chunk_boost_meta(enabled=enabled, weight=weight, max_promoted=max_promoted)
-    disabled_reason = _kg_chunk_boost_disabled_reason(
-        enabled=enabled,
-        docs=docs,
-        weight=weight,
-        max_promoted=max_promoted,
-    )
-    if disabled_reason is not None:
-        meta["reason"] = disabled_reason
-        return docs, meta
-
-    rows, eligible_rows = _kg_boost_rows(docs, weight=weight)
-    if not rows or not eligible_rows:
-        meta["reason"] = "no_kg_candidates"
-        return docs, meta
-
-    promoted_indexes = _kg_boost_promoted_indexes(eligible_rows, max_promoted=max_promoted)
-    meta["eligible"] = int(len(eligible_rows))
-    out, promoted = _kg_boost_output(
-        _kg_boost_ranked_rows(rows, promoted_indexes=promoted_indexes),
-        promoted_indexes=promoted_indexes,
-    )
-
-    meta["promoted"] = int(promoted)
-    meta["top_changed"] = bool(out and docs and _doc_key(out[0]) != _doc_key(docs[0]))
-    meta["reason"] = "applied"
-    return out, meta
-
-
-def _metadata_exact_anchor_doc_order_meta() -> dict[str, Any]:
-    return {
-        "applied": False,
-        "annotated": 0,
-        "score_promoted": 0,
-        "top_changed": False,
-    }
-
-
-def _apply_metadata_exact_anchor_doc_ordering(
-    query: str,
-    docs: list[Document],
-) -> tuple[list[Document], dict[str, Any]]:
-    meta = _metadata_exact_anchor_doc_order_meta()
-    if not query or not docs:
-        meta["reason"] = "empty"
-        return docs, meta
-
-    phrase_boost_weight = max(
-        0.0,
-        float(getattr(settings, "RETRIEVAL_EXACT_PHRASE_RERANK_BOOST", 0.35) or 0.0),
-    )
-    rows: list[tuple[Document, int]] = []
-    annotated = 0
-    promoted = 0
-    for idx, doc in enumerate(docs):
-        if not isinstance(doc, Document):
-            continue
-        doc_meta = dict(doc.metadata or {})
-        result = {"metadata": doc_meta, "score": doc_meta.get("score")}
-        changed = _apply_metadata_exact_anchor_to_result(
-            query=query,
-            result=result,
-            phrase_boost_weight=phrase_boost_weight,
-            promote_score=True,
-        )
-        if changed:
-            annotated += 1
-            for key in (
-                "metadata_exact_match_score",
-                "metadata_exact_match_primary_score",
-                "metadata_exact_match_boost",
-                "metadata_exact_match_field",
-                "metadata_exact_match_value",
-                "metadata_exact_match_fields",
-                "metadata_exact_match_values",
-                "metadata_exact_match_promoted_score",
-            ):
-                if key in result:
-                    doc_meta[key] = result.get(key)
-            if "score" in result:
-                old_score = _float_or_default(doc.metadata.get("score") if isinstance(doc.metadata, dict) else None, 0.0)
-                new_score = _float_or_default(result.get("score"), 0.0)
-                if new_score > old_score:
-                    promoted += 1
-                doc_meta["score"] = result.get("score")
-            doc = Document(
-                page_content=doc.page_content,
-                metadata=doc_meta,
-                id=getattr(doc, "id", None) or doc_meta.get("chunk_id"),
-            )
-        rows.append((doc, idx))
-
-    if annotated <= 0:
-        meta["reason"] = "no_anchor_matches"
-        return [doc for doc, _idx in rows], meta
-
-    before_top = _doc_key(rows[0][0]) if rows else ""
-    best_anchor_score = max(
-        _float_or_default(
-            row[0].metadata.get("metadata_exact_match_score") if isinstance(row[0].metadata, dict) else None,
-            0.0,
-        )
-        for row in rows
-    )
-
-    def _doc_order_key(row: tuple[Document, int]) -> tuple[float, float, int]:
-        doc, idx = row
-        doc_meta = doc.metadata if isinstance(doc.metadata, dict) else {}
-        metadata_score = _float_or_default(doc_meta.get("metadata_exact_match_score"), 0.0)
-        score = _float_or_default(doc_meta.get("score"), 0.0)
-        if best_anchor_score >= 0.65:
-            return (-metadata_score, -score, int(idx))
-        return (-score, -metadata_score, int(idx))
-
-    rows.sort(
-        key=_doc_order_key
-    )
-    out = [doc for doc, _idx in rows]
-    after_top = _doc_key(out[0]) if out else ""
-    meta["applied"] = True
-    meta["annotated"] = int(annotated)
-    meta["score_promoted"] = int(promoted)
-    meta["top_changed"] = bool(before_top and after_top and before_top != after_top)
-    meta["reason"] = "applied"
-    return out, meta
 
 
 def _resolve_post_rerank_corpus_cache_token(state: dict[str, Any]) -> str | None:

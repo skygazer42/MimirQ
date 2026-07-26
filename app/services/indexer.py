@@ -1954,23 +1954,40 @@ class Indexer:
             else:
                 return 0
 
-        orphan_ids = [row[0] for row in q.all() if row and row[0]]
-        if not orphan_ids:
-            return 0
+        batch_size = max(1, _vector_write_batch_size())
+        last_entity_id: UUID | None = None
+        deleted = 0
+        while True:
+            batch_query = q
+            if last_entity_id is not None:
+                batch_query = batch_query.filter(KgEntity.id > last_entity_id)
+            batch_query = batch_query.order_by(KgEntity.id).limit(batch_size)
+            orphan_ids = [row[0] for row in batch_query.all() if row and row[0]]
+            if not orphan_ids:
+                break
 
-        try:
-            self._entity_vector.delete([str(eid) for eid in orphan_ids])
-        except Exception as exc:
-            logger.warning("Failed to delete KG entity vectors: %s", exc)
-            if strict:
+            try:
+                try:
+                    self._entity_vector.delete([str(eid) for eid in orphan_ids])
+                except Exception as exc:
+                    logger.warning("Failed to delete KG entity vectors: %s", exc)
+                    if strict:
+                        raise
+
+                self._db.query(KgEntity).filter(KgEntity.id.in_(orphan_ids)).delete(synchronize_session=False)
+                if commit:
+                    self._db.commit()
+                else:
+                    self._db.flush()
+            except Exception:
+                if commit and hasattr(self._db, "rollback"):
+                    self._db.rollback()
                 raise
 
-        self._db.query(KgEntity).filter(KgEntity.id.in_(orphan_ids)).delete(synchronize_session=False)
-        if commit:
-            self._db.commit()
-        else:
-            self._db.flush()
-        return len(orphan_ids)
+            deleted += len(orphan_ids)
+            last_entity_id = orphan_ids[-1]
+
+        return deleted
 
     def _delete_event_indexes(
         self,
@@ -1981,46 +1998,73 @@ class Indexer:
         prune_orphan_entities: bool,
         strict: bool,
     ) -> dict[str, int]:
-        event_ids = [row[0] for row in query.with_entities(KgSourceEvent.id).all() if row and row[0]]
-        if not event_ids:
-            return {"events_deleted": 0, "entities_pruned": 0}
+        batch_size = max(1, _vector_write_batch_size())
+        deleted = 0
+        pruned = 0
+        last_event_id: UUID | None = None
 
-        candidate_entity_ids: list[UUID] = []
-        if prune_orphan_entities:
-            candidate_entity_ids = [
-                row[0]
-                for row in (
-                    self._db.query(KgEventEntity.entity_id)
-                    .filter(KgEventEntity.event_id.in_(event_ids))
-                    .distinct()
-                    .all()
+        while True:
+            batch_query = query.with_entities(KgSourceEvent.id)
+            if last_event_id is not None:
+                batch_query = batch_query.filter(KgSourceEvent.id > last_event_id)
+            batch_query = batch_query.order_by(KgSourceEvent.id).limit(batch_size)
+            event_ids = [row[0] for row in batch_query.all() if row and row[0]]
+            if not event_ids:
+                break
+
+            candidate_entity_ids: list[UUID] = []
+            if prune_orphan_entities:
+                candidate_entity_ids = [
+                    row[0]
+                    for row in (
+                        self._db.query(KgEventEntity.entity_id)
+                        .filter(KgEventEntity.event_id.in_(event_ids))
+                        .distinct()
+                        .all()
+                    )
+                    if row and row[0]
+                ]
+
+            try:
+                try:
+                    self._event_vector.delete([str(ev_id) for ev_id in event_ids])
+                except Exception as exc:
+                    logger.warning("Failed to delete KG event vectors: %s", exc)
+                    if strict:
+                        raise
+
+                batch_deleted = int(
+                    self._db.query(KgSourceEvent)
+                    .filter(KgSourceEvent.id.in_(event_ids))
+                    .delete(synchronize_session=False)
+                    or 0
                 )
-                if row and row[0]
-            ]
+                if commit or candidate_entity_ids:
+                    self._db.flush()
 
-        try:
-            self._event_vector.delete([str(ev_id) for ev_id in event_ids])
-        except Exception as exc:
-            logger.warning("Failed to delete KG event vectors: %s", exc)
-            if strict:
+                batch_pruned = 0
+                if prune_orphan_entities and candidate_entity_ids:
+                    batch_pruned = int(
+                        self.prune_orphan_entities(
+                            tenant_id=tenant_id,
+                            entity_ids=candidate_entity_ids,
+                            commit=False,
+                            strict=strict,
+                        )
+                    )
+
+                if commit:
+                    self._db.commit()
+                elif not candidate_entity_ids:
+                    self._db.flush()
+            except Exception:
+                if commit and hasattr(self._db, "rollback"):
+                    self._db.rollback()
                 raise
 
-        deleted = int(query.delete(synchronize_session=False) or 0)
-        if commit:
-            self._db.commit()
-        else:
-            self._db.flush()
-
-        pruned = 0
-        if prune_orphan_entities and candidate_entity_ids:
-            pruned = int(
-                self.prune_orphan_entities(
-                    tenant_id=tenant_id,
-                    entity_ids=candidate_entity_ids,
-                    commit=commit,
-                    strict=strict,
-                )
-            )
+            deleted += batch_deleted
+            pruned += batch_pruned
+            last_event_id = event_ids[-1]
 
         return {"events_deleted": deleted, "entities_pruned": pruned}
 
@@ -2152,49 +2196,54 @@ class Indexer:
         tenant_id: UUID,
         runtime: DatasetEmbeddingRuntimeConfig,
     ) -> list[str | None]:
+        adapter: Any = None
+        ids: list[str | None] = []
         try:
             embeddings = create_embeddings_for_runtime(runtime)
-            vectors = embeddings.embed_documents([str(doc.get("content") or "") for doc in docs])
             adapter = get_milvus_adapter(resolve_collection_name(runtime.collection_name))
-            items = [
-                self._document_vector_item(
-                    doc=doc,
-                    document_id=document_id,
-                    tenant_id=tenant_id,
-                    index=index,
-                )
-                for index, doc in enumerate(docs)
-            ]
-            # Retry the Milvus write on transient errors, mirroring the default
-            # path (_write_chunk_vector_batch_with_retries). Embeddings are a pure
-            # function of the input and already batched inside the provider, so we
-            # only re-run the vector-store write, not the embedding step.
             max_retries, backoff = _vector_write_retry_policy()
-            ids: list[str | None] = []
-            for attempt in range(max_retries + 1):
-                try:
-                    ids = adapter.add_vectors(
-                        items, embeddings=vectors, batch_size=_vector_write_batch_size(), upsert=True
-                    )
-                    break
-                except Exception as exc:  # noqa: BLE001
-                    if attempt >= max_retries:
-                        raise
-                    _log_chunk_vector_retry(
-                        tenant_id=tenant_id,
+            batch_size = max(1, _vector_write_batch_size())
+            for batch_start in range(0, len(docs), batch_size):
+                batch_docs = docs[batch_start : batch_start + batch_size]
+                items = [
+                    self._document_vector_item(
+                        doc=doc,
                         document_id=document_id,
-                        attempt=attempt + 1,
-                        max_attempts=max_retries + 1,
-                        batch_size=len(items),
-                        backoff=backoff,
-                        error=exc,
+                        tenant_id=tenant_id,
+                        index=batch_start + index,
                     )
-                    time.sleep(backoff)
-                    backoff *= 2
-            # Fail closed on a short/long id list so a partial Milvus write cannot
-            # silently desynchronize chunk<->vector_id alignment downstream.
-            if len(ids) != len(docs):
-                raise ValueError(f"vector ids length {len(ids)} != docs length {len(docs)}")
+                    for index, doc in enumerate(batch_docs)
+                ]
+                vectors = embeddings.embed_documents([str(doc.get("content") or "") for doc in batch_docs])
+                batch_ids: list[str | None] = []
+                attempt_backoff = backoff
+                for attempt in range(max_retries + 1):
+                    try:
+                        batch_ids = adapter.add_vectors(
+                            items,
+                            embeddings=vectors,
+                            batch_size=batch_size,
+                            upsert=True,
+                        )
+                        break
+                    except Exception as exc:  # noqa: BLE001
+                        if attempt >= max_retries:
+                            raise
+                        _log_chunk_vector_retry(
+                            tenant_id=tenant_id,
+                            document_id=document_id,
+                            attempt=attempt + 1,
+                            max_attempts=max_retries + 1,
+                            batch_size=len(items),
+                            backoff=attempt_backoff,
+                            error=exc,
+                        )
+                        time.sleep(attempt_backoff)
+                        attempt_backoff *= 2
+                if len(batch_ids) != len(batch_docs):
+                    raise ValueError(f"vector ids length {len(batch_ids)} != docs length {len(batch_docs)}")
+                ids.extend(batch_ids)
+
             return ids
         except Exception as exc:
             logger.warning(
@@ -2203,7 +2252,39 @@ class Indexer:
                 runtime.embedding_space_hash,
                 str(exc)[:200],
             )
+            # Batched writes are not atomic: earlier batches are already committed to the
+            # collection when a later batch fails. The caller treats this as a failed write
+            # and will retry or mark the document failed, so drop the partial vectors instead
+            # of leaving orphans that no chunk row points at.
+            self._rollback_partial_dataset_scoped_vectors(
+                adapter,
+                ids,
+                document_id=document_id,
+                collection_name=runtime.collection_name,
+            )
             raise
+
+    def _rollback_partial_dataset_scoped_vectors(
+        self,
+        adapter: Any,
+        written_ids: list[str | None],
+        *,
+        document_id: UUID,
+        collection_name: str,
+    ) -> None:
+        stale_ids = [str(vector_id) for vector_id in written_ids if vector_id]
+        if adapter is None or not stale_ids:
+            return
+        try:
+            adapter.delete(stale_ids)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Failed to roll back %s partial dataset-scoped vectors document=%s collection=%s: %s",
+                len(stale_ids),
+                str(document_id),
+                collection_name,
+                str(exc)[:200],
+            )
 
     def _write_chunk_vector_batch_with_retries(
         self,
@@ -2385,7 +2466,7 @@ class Indexer:
             page_content, meta = _chunk_index_content(db_chunk.content or "", meta)
             bm25_docs.append(LCDocument(page_content=page_content, id=str(db_chunk.id), metadata=meta))
 
-        hybrid_retriever.upsert_bm25_documents(bm25_docs, tenant_id=tenant_id)
+        hybrid_retriever.upsert_bm25_documents(bm25_docs, tenant_id=tenant_id, db=self._db)
 
     def _get_or_create_entity(
         self,

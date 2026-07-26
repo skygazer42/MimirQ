@@ -78,4 +78,41 @@ describe('markdown image proxy', () => {
       src: expect.stringMatching(/^\/api\/markdown-image\?token=v1\./),
     })
   })
+
+  it('accepts production header-mode auth when backend /auth/me validates it', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('MARKDOWN_IMAGE_PROXY_SECRET', 'test-proxy-secret')
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { POST } = await import('./route')
+    const request = new NextRequest('http://web:3000/api/markdown-image', {
+      method: 'POST',
+      headers: {
+        origin: 'https://app.example.com',
+        'content-type': 'application/json',
+        'x-forwarded-host': 'app.example.com',
+        'x-forwarded-proto': 'https',
+        'x-tenant-id': 'tenant-123',
+        'x-user-id': 'user-1',
+      },
+      body: JSON.stringify({ src: 'https://example.com/image.png' }),
+    })
+
+    const response = await POST(request)
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/auth\/me$/),
+      expect.objectContaining({
+        cache: 'no-store',
+        headers: {
+          'X-Tenant-ID': 'tenant-123',
+          'X-User-ID': 'user-1',
+        },
+      }),
+    )
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      src: expect.stringMatching(/^\/api\/markdown-image\?token=v1\./),
+    })
+  })
 })

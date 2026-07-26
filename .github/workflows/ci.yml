@@ -178,6 +178,16 @@ jobs:
         working-directory: web
         run: pnpm run build
 
+      - name: Install Playwright browsers for PR browser smoke
+        working-directory: web
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: PR hosted browser smoke
+        working-directory: web
+        env:
+          PLAYWRIGHT_REUSE_BUILD: "1"
+        run: pnpm exec playwright test e2e/document-chat.smoke.spec.ts
+
   test-and-verify:
     if: github.event_name != 'pull_request'
     runs-on: [self-hosted, Linux, X64, mimirq]

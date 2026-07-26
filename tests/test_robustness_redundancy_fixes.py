@@ -118,6 +118,107 @@ def test_dataset_scoped_vector_write_rejects_misaligned_ids(
         )
 
 
+def test_dataset_scoped_vector_write_batches_embeddings_and_preserves_id_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.services.indexer as indexer_module
+
+    embed_calls: list[list[str]] = []
+    add_calls: list[list[str]] = []
+
+    class _Embeddings:
+        def embed_documents(self, texts):  # noqa: ANN001
+            embed_calls.append(list(texts))
+            return [[float(len(text))] for text in texts]
+
+    class _Adapter:
+        attempts = 0
+
+        def add_vectors(self, items, **_kwargs):  # noqa: ANN001
+            chunk_ids = [str(item["id"]) for item in items]
+            add_calls.append(chunk_ids)
+            self.attempts += 1
+            if self.attempts == 1:
+                raise ConnectionError("transient")
+            return chunk_ids
+
+    monkeypatch.setattr(indexer_module, "create_embeddings_for_runtime", lambda _runtime: _Embeddings())
+    monkeypatch.setattr(indexer_module, "get_milvus_adapter", lambda _name: _Adapter())
+    monkeypatch.setattr(indexer_module, "_vector_write_retry_policy", lambda: (1, 0.0))
+    monkeypatch.setattr(indexer_module, "_vector_write_batch_size", lambda: 2)
+    monkeypatch.setattr(indexer_module.time, "sleep", lambda _seconds: None)
+
+    docs = [
+        {"content": f"chunk-{index}", "metadata": {"chunk_id": f"chunk-{index}"}}
+        for index in range(5)
+    ]
+
+    result = indexer_module.Indexer.__new__(indexer_module.Indexer)._write_dataset_scoped_chunk_vectors(
+        docs,
+        document_id=uuid.uuid4(),
+        tenant_id=uuid.uuid4(),
+        runtime=replace(_embedding_runtime(), dataset_scoped=True),
+    )
+
+    assert result == [f"chunk-{index}" for index in range(5)]
+    assert embed_calls == [
+        ["chunk-0", "chunk-1"],
+        ["chunk-2", "chunk-3"],
+        ["chunk-4"],
+    ]
+    assert add_calls == [
+        ["chunk-0", "chunk-1"],
+        ["chunk-0", "chunk-1"],
+        ["chunk-2", "chunk-3"],
+        ["chunk-4"],
+    ]
+
+
+def test_dataset_scoped_vector_write_cleans_completed_batches_after_later_embedding_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.services.indexer as indexer_module
+
+    class _Embeddings:
+        calls = 0
+
+        def embed_documents(self, texts):  # noqa: ANN001
+            self.calls += 1
+            if self.calls == 2:
+                raise RuntimeError("later embedding batch failed")
+            return [[1.0] for _ in texts]
+
+    class _Adapter:
+        def __init__(self) -> None:
+            self.deleted: list[list[str]] = []
+
+        def add_vectors(self, items, **_kwargs):  # noqa: ANN001
+            return [str(item["id"]) for item in items]
+
+        def delete(self, ids: list[str]) -> None:
+            self.deleted.append(list(ids))
+
+    adapter = _Adapter()
+    monkeypatch.setattr(indexer_module, "create_embeddings_for_runtime", lambda _runtime: _Embeddings())
+    monkeypatch.setattr(indexer_module, "get_milvus_adapter", lambda _name: adapter)
+    monkeypatch.setattr(indexer_module, "_vector_write_batch_size", lambda: 2)
+
+    docs = [
+        {"content": f"chunk-{index}", "metadata": {"chunk_id": f"chunk-{index}"}}
+        for index in range(4)
+    ]
+
+    with pytest.raises(RuntimeError, match="later embedding batch failed"):
+        indexer_module.Indexer.__new__(indexer_module.Indexer)._write_dataset_scoped_chunk_vectors(
+            docs,
+            document_id=uuid.uuid4(),
+            tenant_id=uuid.uuid4(),
+            runtime=replace(_embedding_runtime(), dataset_scoped=True),
+        )
+
+    assert adapter.deleted == [["chunk-0", "chunk-1"]]
+
+
 def test_milvus_write_fallback_keeps_required_routing_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1534,6 +1635,7 @@ def test_bm25_document_scope_caches_are_mutation_scoped(monkeypatch: pytest.Monk
     assert scope_key not in retriever._bm25_docs
     assert scope_key not in retriever._bm25_doc_ids
     assert scope_key not in retriever._chunk_id_lookup
+    assert scope_key not in retriever._bm25_deferred_scopes
     assert scope_key not in retriever._bm25_cache_versions
 
 
@@ -1786,6 +1888,260 @@ def test_bm25_document_scope_cache_rebuilds_when_requested_document_is_missing(
     assert cached_retriever is new_retriever
     assert cached_docs == new_docs
     assert retriever._last_bm25_status["reason"] == "lazy_build_success"
+
+
+def test_bm25_deferred_scope_uses_db_lazy_rebuild_without_materialized_docs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from langchain_core.documents import Document
+
+    import app.rag.retriever as retriever_module
+    from app.rag.retriever import HybridRetriever
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    retriever = HybridRetriever(dataset_id=dataset_id)
+    scope_key = retriever._bm25_scope_key(
+        tenant_id=tenant_id,
+        dataset_ids=(dataset_id,),
+        document_ids=None,
+    )
+
+    retriever._defer_bm25_scope_index(
+        cache_key=scope_key,
+        merged_docs=[
+            Document(
+                page_content="should not stay materialized",
+                id=str(uuid.uuid4()),
+                metadata={"document_id": str(uuid.uuid4()), "chunk_index": 0},
+            )
+        ],
+    )
+
+    assert scope_key in retriever._bm25_deferred_scopes
+    assert scope_key not in retriever._bm25_docs
+    assert scope_key not in retriever._bm25_doc_ids
+    assert scope_key not in retriever._chunk_id_lookup
+
+    class _Session:
+        def close(self) -> None:
+            return None
+
+    rebuilt = [
+        Document(
+            page_content="rebuilt from db",
+            id=str(uuid.uuid4()),
+            metadata={"document_id": str(uuid.uuid4()), "chunk_index": 0, "dataset_id": str(dataset_id)},
+        )
+    ]
+    captured: dict[str, object] = {}
+
+    def load_scope_docs(self, db, **kwargs):  # noqa: ANN001,ARG001
+        captured["dataset_ids"] = kwargs["dataset_ids"]
+        return list(rebuilt)
+
+    monkeypatch.setattr(retriever_module, "SessionLocal", lambda: _Session(), raising=True)
+    monkeypatch.setattr(HybridRetriever, "_load_bm25_scope_documents", load_scope_docs)
+
+    assert retriever._lazy_build_bm25_index(
+        tenant_id=tenant_id,
+        document_ids=None,
+        dataset_ids=(dataset_id,),
+    )
+    assert captured["dataset_ids"] == (dataset_id,)
+    assert scope_key not in retriever._bm25_deferred_scopes
+    assert [doc.page_content for doc in retriever._bm25_docs[scope_key]] == ["rebuilt from db"]
+
+
+def test_bm25_deferred_scope_upsert_uses_db_corpus_for_incremental_sync(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from langchain_core.documents import Document
+
+    import app.rag.retriever as retriever_module
+    from app.core.config import settings
+    from app.rag.retriever import HybridRetriever
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    retriever = HybridRetriever(dataset_id=dataset_id, sparse_enabled=True)
+    scope_key = retriever._bm25_scope_key(
+        tenant_id=tenant_id,
+        dataset_ids=(dataset_id,),
+        document_ids=None,
+    )
+    retriever._bm25_deferred_scopes.add(scope_key)
+
+    existing_doc = Document(
+        page_content="existing corpus doc",
+        id=str(uuid.uuid4()),
+        metadata={"document_id": str(uuid.uuid4()), "chunk_index": 0, "dataset_id": str(dataset_id)},
+    )
+    upsert_doc = Document(
+        page_content="fresh upsert doc",
+        id=str(uuid.uuid4()),
+        metadata={"document_id": str(uuid.uuid4()), "chunk_index": 0, "dataset_id": str(dataset_id)},
+    )
+    captured: dict[str, object] = {}
+
+    class _Session:
+        def close(self) -> None:
+            return None
+
+    def load_scope_docs(self, db, **kwargs):  # noqa: ANN001,ARG001
+        captured["dataset_ids"] = kwargs["dataset_ids"]
+        return [existing_doc]
+
+    def fail_replace(self, **kwargs):  # noqa: ANN001,ANN202
+        raise AssertionError("deferred scope should not materialize a partial BM25 index")
+
+    def record_sparse_sync(self, **kwargs):  # noqa: ANN001,ANN202
+        captured["merged_ids"] = {doc.id for doc in kwargs["merged_docs"]}
+        captured["upsert_ids"] = {doc.id for doc in kwargs["upsert_docs"]}
+
+    monkeypatch.setattr(settings, "BM25_EAGER_UPSERT_MAX_CHUNKS", 1, raising=False)
+    monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_ENABLED", False, raising=False)
+    monkeypatch.setattr(retriever_module, "SessionLocal", lambda: _Session(), raising=True)
+    monkeypatch.setattr(HybridRetriever, "_load_bm25_scope_documents", load_scope_docs)
+    monkeypatch.setattr(HybridRetriever, "_replace_bm25_scope_index", fail_replace)
+    monkeypatch.setattr(HybridRetriever, "_sync_sparse_index_after_bm25_upsert", record_sparse_sync)
+    monkeypatch.setattr(HybridRetriever, "_sync_colbert_index_after_bm25_upsert", lambda self, **kwargs: None)
+
+    retriever.upsert_bm25_documents([upsert_doc], tenant_id=tenant_id)
+
+    assert captured["dataset_ids"] == (dataset_id,)
+    assert captured["merged_ids"] == {existing_doc.id, upsert_doc.id}
+    assert captured["upsert_ids"] == {upsert_doc.id}
+    assert scope_key in retriever._bm25_deferred_scopes
+    assert scope_key not in retriever._bm25_docs
+    assert scope_key not in retriever._bm25_retrievers
+
+
+def test_bm25_deferred_scope_uses_caller_session_for_transaction_visible_corpus(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from langchain_core.documents import Document
+
+    import app.rag.retriever as retriever_module
+    from app.core.config import settings
+    from app.rag.retriever import HybridRetriever
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    retriever = HybridRetriever(dataset_id=dataset_id, sparse_enabled=True)
+    scope_key = retriever._bm25_scope_key(
+        tenant_id=tenant_id,
+        dataset_ids=(dataset_id,),
+        document_ids=None,
+    )
+    retriever._bm25_deferred_scopes.add(scope_key)
+    current_db = object()
+    current_doc = Document(
+        page_content="transaction-visible corpus",
+        id=str(uuid.uuid4()),
+        metadata={"document_id": str(uuid.uuid4()), "dataset_id": str(dataset_id), "chunk_index": 0},
+    )
+    upsert_doc = Document(
+        page_content="fresh upsert",
+        id=str(uuid.uuid4()),
+        metadata={"document_id": str(uuid.uuid4()), "dataset_id": str(dataset_id), "chunk_index": 0},
+    )
+    captured: dict[str, object] = {}
+
+    def load_scope_docs(self, db, **_kwargs):  # noqa: ANN001,ANN202
+        captured["db"] = db
+        return [current_doc]
+
+    def record_sparse_sync(self, **kwargs):  # noqa: ANN001,ANN202
+        captured["merged_ids"] = {doc.id for doc in kwargs["merged_docs"]}
+
+    monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_ENABLED", False, raising=False)
+    monkeypatch.setattr(
+        retriever_module,
+        "SessionLocal",
+        lambda: (_ for _ in ()).throw(AssertionError("caller session should be reused")),
+        raising=True,
+    )
+    monkeypatch.setattr(HybridRetriever, "_load_bm25_scope_documents", load_scope_docs)
+    monkeypatch.setattr(HybridRetriever, "_sync_sparse_index_after_bm25_upsert", record_sparse_sync)
+
+    retriever.upsert_bm25_documents([upsert_doc], tenant_id=tenant_id, db=current_db)
+
+    assert captured["db"] is current_db
+    assert captured["merged_ids"] == {current_doc.id, upsert_doc.id}
+    assert scope_key in retriever._bm25_deferred_scopes
+    assert scope_key not in retriever._bm25_docs
+
+
+def test_bm25_threshold_defer_keeps_corpus_transient_for_same_upsert_sync(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from langchain_core.documents import Document
+
+    from app.core.config import settings
+    from app.rag.retriever import HybridRetriever
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    retriever = HybridRetriever(dataset_id=dataset_id, sparse_enabled=True)
+    scope_key = retriever._bm25_scope_key(
+        tenant_id=tenant_id,
+        dataset_ids=(dataset_id,),
+        document_ids=None,
+    )
+    existing_doc = Document(
+        page_content="existing",
+        id=str(uuid.uuid4()),
+        metadata={"document_id": str(uuid.uuid4()), "dataset_id": str(dataset_id), "chunk_index": 0},
+    )
+    upsert_doc = Document(
+        page_content="new",
+        id=str(uuid.uuid4()),
+        metadata={"document_id": str(uuid.uuid4()), "dataset_id": str(dataset_id), "chunk_index": 0},
+    )
+    retriever._bm25_docs[scope_key] = [existing_doc]
+    retriever._bm25_retrievers[scope_key] = object()  # type: ignore[assignment]
+    captured: dict[str, set[str]] = {}
+
+    def record_sparse_sync(self, **kwargs):  # noqa: ANN001,ANN202
+        captured["merged"] = {str(doc.id) for doc in kwargs["merged_docs"]}
+
+    monkeypatch.setattr(settings, "BM25_EAGER_UPSERT_MAX_CHUNKS", 1, raising=False)
+    monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_ENABLED", False, raising=False)
+    monkeypatch.setattr(HybridRetriever, "_sync_sparse_index_after_bm25_upsert", record_sparse_sync)
+
+    retriever.upsert_bm25_documents([upsert_doc], tenant_id=tenant_id)
+
+    assert captured["merged"] == {str(existing_doc.id), str(upsert_doc.id)}
+    assert scope_key in retriever._bm25_deferred_scopes
+    assert scope_key not in retriever._bm25_docs
+    assert scope_key not in retriever._bm25_retrievers
+
+
+def test_bm25_deferred_scope_version_invalidation_clears_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.rag.retriever import HybridRetriever
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    retriever = HybridRetriever(dataset_id=dataset_id)
+    scope_key = retriever._bm25_scope_key(
+        tenant_id=tenant_id,
+        dataset_ids=(dataset_id,),
+        document_ids=None,
+    )
+    retriever._bm25_deferred_scopes.add(scope_key)
+    retriever._bm25_cache_versions[scope_key] = "old-version"
+
+    monkeypatch.setattr(HybridRetriever, "_bm25_dataset_cache_version", lambda self, *, _tenant_id, _dataset_ids: "new-version")
+
+    assert retriever._refresh_bm25_dataset_cache_version(
+        cache_key=scope_key,
+        tenant_uuid=tenant_id,
+        dataset_scope_ids=(dataset_id,),
+    ) == "new-version"
+    assert scope_key not in retriever._bm25_deferred_scopes
 
 
 def test_enrich_results_fails_closed_when_acl_lookup_fails(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2169,6 +2525,7 @@ def test_bm25_lru_eviction_keeps_cache_maps_aligned(monkeypatch: pytest.MonkeyPa
         retriever._bm25_doc_ids[key] = set()
         retriever._chunk_id_lookup[key] = {}
         retriever._bm25_cache_versions[key] = key
+        retriever._bm25_deferred_scopes.add(key)
         retriever._touch_bm25_cache(key)
 
     expected = {"scope-b", "scope-c"}
@@ -2178,4 +2535,5 @@ def test_bm25_lru_eviction_keeps_cache_maps_aligned(monkeypatch: pytest.MonkeyPa
     assert set(retriever._bm25_doc_ids) == expected
     assert set(retriever._chunk_id_lookup) == expected
     assert set(retriever._bm25_cache_versions) == expected
+    assert set(retriever._bm25_deferred_scopes) == expected
     assert isinstance(retriever._bm25_cache_order, OrderedDict)

@@ -209,6 +209,11 @@ def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     assert "make verify" in workflow
     assert "make test-web" in workflow
     assert "pnpm run build" in workflow
+    assert "Install Playwright browsers for PR browser smoke" in public_pr_job
+    assert "pnpm exec playwright install --with-deps chromium" in public_pr_job
+    assert "PR hosted browser smoke" in public_pr_job
+    assert 'PLAYWRIGHT_REUSE_BUILD: "1"' in public_pr_job
+    assert "pnpm exec playwright test e2e/document-chat.smoke.spec.ts" in public_pr_job
     assert "HTTP_PROXY: ${{ vars.CI_HTTP_PROXY || '' }}" in workflow
     assert "HTTPS_PROXY: ${{ vars.CI_HTTPS_PROXY || '' }}" in workflow
     assert "NO_PROXY: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}" in workflow
@@ -415,7 +420,6 @@ def test_built_web_jwt_browser_smoke_is_explicitly_wired() -> None:
 
     assert "PLAYWRIGHT_EXTERNAL_SERVER" in playwright_config
     assert "webServer: useExternalServer ? undefined" in playwright_config
-
     assert "Install JWT browser smoke dependencies" in docker_job
     assert "Prepare self-hosted Node" in docker_job
     assert "node -v" in docker_job
@@ -434,6 +438,14 @@ def test_built_web_jwt_browser_smoke_is_explicitly_wired() -> None:
     assert "--bootstrap-register" not in dual_api_step
     assert "-e MIMIRQ_SMOKE_IDENTIFIER" in dual_api_step
     assert "-e MIMIRQ_SMOKE_PASSWORD" in dual_api_step
+
+
+def test_playwright_prod_server_can_reuse_an_existing_build_artifact() -> None:
+    playwright_config = _read("web/playwright.config.ts")
+
+    assert "const reuseBuildOutput = process.env.PLAYWRIGHT_REUSE_BUILD === '1'" in playwright_config
+    assert "MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} HOST=127.0.0.1 PORT=${PORT} pnpm start" in playwright_config
+    assert "MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} pnpm exec next build --webpack && MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} HOST=127.0.0.1 PORT=${PORT} pnpm start" in playwright_config
 
 
 def test_main_ci_runs_core_e2e_against_the_existing_host_backend() -> None:

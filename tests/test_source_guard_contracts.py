@@ -19,6 +19,11 @@ SILENT_PASS_GUARD_PATHS = (
     "app/api/v1/ltr.py",
     "app/api/v1/parsing.py",
     "app/api/v1/pipeline.py",
+    "app/api/v1/pipeline_support/auto_annotations.py",
+    "app/api/v1/pipeline_support/capabilities.py",
+    "app/api/v1/pipeline_support/clean_preview.py",
+    "app/api/v1/pipeline_support/governance_profiles.py",
+    "app/api/v1/pipeline_support/ingestion_preview.py",
     "app/deepdoc/parser/docling_parser.py",
     "app/deepdoc/parser/excel_parser.py",
     "app/parsing/enrich/image_understanding.py",
@@ -35,11 +40,29 @@ SILENT_PASS_GUARD_PATHS = (
     "app/rag/core/citations.py",
     "app/rag/embedding/adapter.py",
     "app/rag/engine.py",
+    "app/rag/engine_support/common.py",
+    "app/rag/engine_support/doc_utils.py",
+    "app/rag/engine_support/llm_routing.py",
     "app/rag/evaluation/ragas.py",
     "app/rag/evaluation/regression_sample_builder.py",
     "app/rag/kg/extraction/extractor.py",
     "app/rag/preprocessing/diagnostics.py",
     "app/rag/preprocessing/processor.py",
+    "app/rag/retrieval/hybrid/bm25_index.py",
+    "app/rag/retrieval/hybrid/colbert_index.py",
+    "app/rag/retrieval/hybrid/common.py",
+    "app/rag/retrieval/hybrid/dedup.py",
+    "app/rag/retrieval/hybrid/fusion.py",
+    "app/rag/retrieval/hybrid/lexical.py",
+    "app/rag/retrieval/hybrid/post_process.py",
+    "app/rag/retrieval/hybrid/sparse_index.py",
+    "app/rag/retrieval/orchestration/anchors.py",
+    "app/rag/retrieval/orchestration/channel_budget.py",
+    "app/rag/retrieval/orchestration/citation_quality.py",
+    "app/rag/retrieval/orchestration/common.py",
+    "app/rag/retrieval/orchestration/debug_sanitize.py",
+    "app/rag/retrieval/orchestration/hierarchy.py",
+    "app/rag/retrieval/orchestration/kg_merge_boost.py",
     "app/rag/retrieval/orchestrator.py",
     "app/rag/retriever.py",
     "app/rag/workflows/evaluator_optimizer.py",
@@ -71,6 +94,25 @@ REQUESTS_GUARD_PATHS = (
     "app/services/mineru_service.py",
     "app/third_party/integrated_pipeline/chunkers/naive.py",
 )
+
+# Line-count ratchet for modules that were deliberately split into support
+# packages. Budgets may only go DOWN (keep splitting) or be raised explicitly
+# in the same change that justifies the growth — never drift back up silently.
+MODULE_LINE_BUDGETS = {
+    "app/api/v1/integrations_dify.py": 8000,
+    "app/api/v1/pipeline.py": 1800,
+    "app/core/config.py": 2550,
+    "app/parsing/processors/processor.py": 4750,
+    "app/rag/engine.py": 4100,
+    "app/rag/kg/api/routes.py": 2600,
+    "app/rag/retrieval/orchestrator.py": 4800,
+    "app/rag/retriever.py": 3400,
+    "web/app/knowledge/ingestion/page-client.tsx": 4200,
+    "web/app/knowledge/quarantine/page.tsx": 1950,
+    "web/app/reports/page-client.tsx": 800,
+    "web/components/graph/kg-snapshots-page.tsx": 50,
+    "web/components/ragviz/similarity-workbench.tsx": 2300,
+}
 
 FULL_SHA_RE = re.compile(r"@[0-9a-f]{40}(?:\s|$)")
 _FASTAPI_ROUTE_DECORATOR_NAMES = {"get", "post", "put", "delete", "patch", "options", "head", "api_route"}
@@ -165,6 +207,17 @@ def _iter_fake_async_sync_db_routes() -> list[tuple[str, int, str]]:
 @pytest.mark.parametrize("rel_path", SILENT_PASS_GUARD_PATHS)
 def test_critical_modules_do_not_use_silent_pass_fallbacks(rel_path: str) -> None:
     assert SILENT_PASS_RE.search(_read(rel_path)) is None, rel_path
+
+
+@pytest.mark.parametrize("rel_path", sorted(MODULE_LINE_BUDGETS))
+def test_split_modules_stay_within_line_budgets(rel_path: str) -> None:
+    budget = MODULE_LINE_BUDGETS[rel_path]
+    lines = _read(rel_path).count("\n") + 1
+    assert lines <= budget, (
+        f"{rel_path} is {lines} lines (budget {budget}). Move code into its "
+        "support package instead of growing the module, or raise the budget "
+        "explicitly in this table with a justification."
+    )
 
 
 @pytest.mark.parametrize("rel_path", REQUESTS_GUARD_PATHS)

@@ -5,11 +5,9 @@ RAG Conversation Engine
 import asyncio
 import hashlib
 import json
-import re
 import threading
 import time
 from collections.abc import AsyncGenerator
-from dataclasses import dataclass, replace
 from typing import Any
 from uuid import UUID
 
@@ -21,7 +19,6 @@ from langchain_openai import ChatOpenAI
 from app.api.schemas.chat import ChatRAGConfig
 from app.core.config import settings
 from app.core.http_client import get_http_client_pool
-from app.core.openai_compat import normalize_openai_compatible_base_url
 from app.core.pii_redaction import pii_redaction_enabled, redact_text
 from app.core.token_utils import num_tokens_from_string, truncate
 from app.core.utils import parse_csv
@@ -31,7 +28,6 @@ from app.rag.core.confidence import compute_confidence_score
 from app.rag.core.context_cliff import compute_context_cliff_metrics
 from app.rag.core.conversation import format_history_text
 from app.rag.core.faithfulness import compute_faithfulness_score
-from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
 from app.rag.core.query_rewrite_strategy import (
     build_query_rewrite_strategy_spec,
@@ -66,8 +62,19 @@ from app.rag.core.vision_reader import (
     build_vision_reader_context_docs,
     stream_vision_chat_completions_tokens,
 )
+from app.rag.engine_support.common import (
+    _RAG_ENGINE_FALLBACK_LOG_MESSAGE,
+    _UNABLE_TO_ANSWER_MESSAGE,
+    RAGChatContext,
+    RAGPromptSelection,
+    RAGResponseOptions,
+    _release_request_session,
+    _resolve_stream_chat_inputs,
+    _retrieval_error_from_debug,
+)
+from app.rag.engine_support.doc_utils import DocUtilsMixin
+from app.rag.engine_support.llm_routing import LlmRoutingMixin
 from app.rag.kg.pipeline import kg_search
-from app.rag.llm.langchain_chat import build_chat_model_from_config
 from app.rag.llm.structured_output import (
     build_structured_abstain_payload,
     build_structured_output_instructions,
@@ -98,133 +105,6 @@ from app.services.rag_runtime_limiter import (
 )
 
 logger = get_logger("rag.engine")
-_RAG_ENGINE_FALLBACK_LOG_MESSAGE = "Ignoring non-critical RAG engine fallback failure: %s"
-
-_UNABLE_TO_ANSWER_MESSAGE = "Unable to answer this question based on the available materials."
-
-
-def _release_request_session(db: Any | None) -> None:
-    if db is None:
-        return
-    try:
-        db.rollback()
-    except Exception as exc:  # noqa: BLE001
-        logger.debug("Failed to release request DB session before async RAG work: %s", exc)
-
-
-def _retrieval_error_from_debug(debug: dict[str, Any] | None) -> str | None:
-    if not isinstance(debug, dict) or not bool(debug.get("all_retrieval_channels_failed")):
-        return None
-    reasons = debug.get("retrieval_degraded_reasons")
-    details = sorted(
-        f"{item.get('channel')}:{item.get('error_type')}"
-        for item in (reasons if isinstance(reasons, list) else [])
-        if isinstance(item, dict) and item.get("channel") and item.get("error_type")
-    )
-    suffix = ", ".join(details) if details else "unknown retrieval failure"
-    return f"all retrieval channels failed: {suffix}"
-
-
-@dataclass(frozen=True)
-class RAGChatContext:
-    history: list[dict[str, str]] | None = None
-    conversation_id: UUID | None = None
-    document_ids: list[UUID] | None = None
-    tenant_id: UUID | None = None
-    account_id: str | None = None
-    dataset_id: UUID | None = None
-    dataset_ids: list[UUID] | None = None
-    request_id: str | None = None
-
-
-@dataclass(frozen=True)
-class RAGResponseOptions:
-    structured_output: bool = False
-    structured_preset: str | None = None
-
-
-@dataclass(frozen=True)
-class RAGPromptSelection:
-    prompt_template_id: UUID | None = None
-    prompt_template_key: str | None = None
-    prompt_ab_experiment_key: str | None = None
-    rag_config_template: dict[str, Any] | None = None
-    ab_user_key: str | None = None
-
-
-_STREAM_CONTEXT_KEYS = {
-    "history",
-    "conversation_id",
-    "document_ids",
-    "tenant_id",
-    "account_id",
-    "dataset_id",
-    "dataset_ids",
-    "request_id",
-}
-_STREAM_RESPONSE_KEYS = {"structured_output", "structured_preset"}
-_STREAM_PROMPT_KEYS = {
-    "prompt_template_id",
-    "prompt_template_key",
-    "prompt_ab_experiment_key",
-    "rag_config_template",
-    "ab_user_key",
-}
-_STREAM_RAG_CONFIG_KEYS = set(ChatRAGConfig.model_fields)
-
-
-def _pop_stream_chat_values(source: dict[str, Any], keys: set[str]) -> dict[str, Any]:
-    out: dict[str, Any] = {}
-    for key in tuple(source):
-        if key in keys:
-            out[key] = source.pop(key)
-    return out
-
-
-def _resolve_stream_chat_inputs(
-    *,
-    context: RAGChatContext | None,
-    rag_config: ChatRAGConfig | None,
-    response_options: RAGResponseOptions | None,
-    prompt_selection: RAGPromptSelection | None,
-    legacy_overrides: dict[str, Any],
-) -> tuple[RAGChatContext, ChatRAGConfig, RAGResponseOptions, RAGPromptSelection]:
-    remaining = dict(legacy_overrides)
-
-    context_updates = _pop_stream_chat_values(remaining, _STREAM_CONTEXT_KEYS)
-    if context is None:
-        context = RAGChatContext(**context_updates)
-    elif context_updates:
-        context = replace(context, **context_updates)
-
-    rag_updates = _pop_stream_chat_values(remaining, _STREAM_RAG_CONFIG_KEYS)
-    if rag_config is None:
-        rag_config = ChatRAGConfig(**rag_updates)
-    elif rag_updates:
-        rag_config = rag_config.model_copy(update=rag_updates)
-
-    response_updates = _pop_stream_chat_values(remaining, _STREAM_RESPONSE_KEYS)
-    if response_options is None:
-        response_options = RAGResponseOptions(**response_updates)
-    elif response_updates:
-        response_options = replace(response_options, **response_updates)
-
-    prompt_updates = _pop_stream_chat_values(remaining, _STREAM_PROMPT_KEYS)
-    if prompt_selection is None:
-        prompt_selection = RAGPromptSelection(**prompt_updates)
-    elif prompt_updates:
-        prompt_selection = replace(prompt_selection, **prompt_updates)
-
-    if remaining:
-        unknown = ", ".join(sorted(remaining))
-        raise TypeError(f"Unexpected stream_chat options: {unknown}")
-
-    return (
-        context or RAGChatContext(),
-        rag_config or ChatRAGConfig(),
-        response_options or RAGResponseOptions(),
-        prompt_selection or RAGPromptSelection(),
-    )
 
 
 def get_agentic_runner(*, engine: "RAGEngine | None" = None) -> Any:
@@ -233,21 +113,8 @@ def get_agentic_runner(*, engine: "RAGEngine | None" = None) -> Any:
     return _get_agentic_runner(engine=engine)
 
 
-class RAGEngine:
+class RAGEngine(LlmRoutingMixin, DocUtilsMixin):
     """RAG Conversation Engine"""
-
-    # Coarse, low-dependency "complex query" indicators used for dynamic model routing.
-    # Intentionally conservative: we only use these signals when routing is enabled.
-    _COMPLEXITY_PATTERNS: tuple[re.Pattern[str], ...] = (
-        re.compile(r"\b(analyze|compare|contrast|evaluate|synthesize)\b", flags=re.IGNORECASE),
-        re.compile(r"\b(step[- ]by[- ]step|first.*then|multiple|several)\b", flags=re.IGNORECASE),
-        re.compile(r"\b(calculate|compute|solve|prove|derive)\b", flags=re.IGNORECASE),
-        re.compile(r"\b(code|function|algorithm|implement|debug)\b", flags=re.IGNORECASE),
-        re.compile(r"\b(because|therefore|however|although|despite)\b", flags=re.IGNORECASE),
-        re.compile(r"\$.*\$", flags=re.DOTALL),  # inline math-ish blocks
-        re.compile(r"```"),  # fenced code blocks
-        re.compile(r"\d+\.\s+"),  # numbered list
-    )
 
     def __init__(self) -> None:
         # LLM config: share process-wide HTTP clients for connection reuse and consistent timeouts.
@@ -387,231 +254,6 @@ Requirements:
         )
 
 
-    def _build_llm(self, chat_cls: type[ChatOpenAI], model_name: str) -> Any:
-        """Create a ChatOpenAI-compatible LLM with shared HTTP clients.
-
-        In dev/E2E we optionally use a fake streaming LLM to avoid external network calls.
-        """
-        _ = chat_cls
-        if bool(getattr(settings, "LLM_MOCK_ENABLED", False)):
-            # Lazy import to keep default startup lightweight.
-            from langchain_core.language_models.fake import FakeStreamingListLLM
-
-            response = str(getattr(settings, "LLM_MOCK_RESPONSE", "") or "Hello from mock LLM.")
-            return FakeStreamingListLLM(responses=[response])
-
-        return build_chat_model_from_config(
-            model_config={
-                "model": model_name,
-                "api_key": settings.LLM_API_KEY,
-                "base_url": normalize_openai_compatible_base_url(settings.LLM_API_BASE),
-                "temperature": settings.LLM_TEMPERATURE,
-                "timeout": settings.LLM_TIMEOUT,
-                "max_retries": settings.LLM_MAX_RETRIES,
-            },
-            http_client=self.http_client,
-            http_async_client=self.http_async_client,
-            streaming=True,
-        )
-
-    @staticmethod
-    def _is_route_model_compatible(
-        *,
-        route_model_name: str | None,
-        default_model_name: str,
-    ) -> bool:
-        """Avoid routing to stale fast/heavy model aliases after provider changes."""
-        route_model = str(route_model_name or "").strip()
-        default_model = str(default_model_name or "").strip()
-        if not route_model:
-            return False
-        if not default_model or route_model == default_model:
-            return True
-
-        # OpenAI-compatible providers use very different model-id namespaces.
-        # If the primary model changed from a plain provider alias
-        # (e.g. qwen3.6-plus) to a registry path (e.g. deepseek-ai/DeepSeek-V3),
-        # the previous fast/heavy aliases are almost certainly stale and should
-        # not be selected automatically.
-        if ("/" in route_model) != ("/" in default_model):
-            return False
-
-        api_base = str(getattr(settings, "LLM_API_BASE", "") or "").casefold()
-        if "siliconflow" in api_base and "/" not in route_model:
-            return False
-        return True
-
-    @staticmethod
-    def _model_name_for_route(*, llm: Any, model_route: str) -> str:
-        route = str(model_route or "").strip().lower()
-        if route == "heavy" and settings.LLM_MODEL_HEAVY:
-            return str(settings.LLM_MODEL_HEAVY)
-        if route == "fast" and settings.LLM_MODEL_FAST:
-            return str(settings.LLM_MODEL_FAST)
-        value = getattr(llm, "model_name", None) or getattr(llm, "model", None) or settings.LLM_MODEL
-        return str(value or settings.LLM_MODEL or "gpt-5.4-mini")
-
-    def _maybe_override_llm_for_request(
-        self,
-        *,
-        llm: Any,
-        model_route: str,
-        structured_output: bool,
-    ) -> tuple[Any, dict[str, Any]]:
-        base_temperature = float(getattr(settings, "LLM_TEMPERATURE", 0.0) or 0.0)
-        target_temperature = float(getattr(settings, "LLM_STRUCTURED_TEMPERATURE", base_temperature) or 0.0)
-        meta = {
-            "structured_temperature": target_temperature,
-            "base_temperature": base_temperature,
-            "structured_temperature_override_applied": False,
-        }
-
-        if not structured_output or bool(getattr(settings, "LLM_MOCK_ENABLED", False)):
-            return llm, meta
-        if abs(target_temperature - base_temperature) < 1e-9:
-            return llm, meta
-
-        model_name = self._model_name_for_route(llm=llm, model_route=model_route)
-        request_llm = build_chat_model_from_config(
-            model_config={
-                "model": model_name,
-                "api_key": settings.LLM_API_KEY,
-                "base_url": normalize_openai_compatible_base_url(settings.LLM_API_BASE),
-                "temperature": target_temperature,
-                "timeout": settings.LLM_TIMEOUT,
-                "max_retries": settings.LLM_MAX_RETRIES,
-            },
-            http_client=self.http_client,
-            http_async_client=self.http_async_client,
-            streaming=True,
-        )
-        meta["structured_temperature_override_applied"] = True
-        meta["model_name"] = model_name
-        return request_llm, meta
-
-    def _score_question_complexity(self, question: str, history: list[dict[str, str]] | None) -> float:
-        """
-        Coarse-grained complexity scoring:
-        - question length
-        - history length * weight
-        - "complex query" indicators (analysis/code/multi-step phrasing)
-
-        This stays dependency-free and is only used for model routing heuristics.
-        """
-        q = question or ""
-
-        history = history or []
-        history_len = sum(len(msg.get("content", "")) for msg in history if isinstance(msg, dict))
-        score = float(len(q)) + settings.MODEL_COMPLEXITY_HISTORY_WEIGHT * float(history_len)
-
-        # If routing is enabled, treat certain patterns as "complex" even when the
-        # question is short (e.g., "analyze/compare", step-by-step requests, code).
-        # Scale the bonus relative to the configured threshold so deployments can tune one knob.
-        try:
-            pattern_matches = sum(1 for p in self._COMPLEXITY_PATTERNS if p.search(q))
-        except re.error:
-            pattern_matches = 0
-
-        if pattern_matches > 0:
-            threshold = float(getattr(settings, "MODEL_COMPLEXITY_THRESHOLD", 160) or 160)
-            bonus_per_match = max(0.0, threshold * 0.35)
-            score += float(min(pattern_matches, 6)) * bonus_per_match
-
-        return score
-
-    def _select_llm(self, question: str, history: list[dict[str, str]] | None) -> tuple[Any, str, str]:
-        """
-        Dynamic model routing: inspired by agent/middleware dynamic model selection pattern.
-        Returns: (llm instance, route identifier, reason)
-        """
-        if not settings.ENABLE_DYNAMIC_MODEL_ROUTING:
-            return self.models["default"], "default", "routing disabled"
-
-        score = self._score_question_complexity(question, history)
-        threshold = settings.MODEL_COMPLEXITY_THRESHOLD
-
-        if "heavy" in self.models and score >= threshold:
-            return self.models["heavy"], "heavy", f"score {score:.1f} >= threshold {threshold}"
-
-        if "fast" in self.models:
-            return self.models["fast"], "fast", f"score {score:.1f} < threshold {threshold}"
-
-        return self.models["default"], "default", "fallback to default"
-
-    def _route_retrieval_params(self, complexity_score: float) -> dict[str, Any]:
-        """Apply coarse retrieval overrides for simple vs. complex queries."""
-        if not bool(getattr(settings, "ADAPTIVE_RETRIEVAL_ROUTING_ENABLED", False)):
-            return {}
-
-        simple_threshold = float(getattr(settings, "ADAPTIVE_RETRIEVAL_SIMPLE_THRESHOLD", 80.0) or 80.0)
-        complex_threshold = float(getattr(settings, "ADAPTIVE_RETRIEVAL_COMPLEX_THRESHOLD", 200.0) or 200.0)
-
-        if complexity_score < simple_threshold:
-            return {
-                "top_k": max(1, int(getattr(settings, "ADAPTIVE_RETRIEVAL_SIMPLE_TOP_K", 10) or 10)),
-                "enable_multi_query": False,
-            }
-
-        if complexity_score >= complex_threshold:
-            return {
-                "top_k": max(1, int(getattr(settings, "ADAPTIVE_RETRIEVAL_COMPLEX_TOP_K", 40) or 40)),
-                "enable_multi_query": True,
-                "multi_query_count": max(
-                    1,
-                    int(getattr(settings, "ADAPTIVE_RETRIEVAL_COMPLEX_MQ_COUNT", 5) or 5),
-                ),
-                "retrieval_profile": "recall50",
-            }
-
-        return {}
-
-    async def _generate_multi_queries(
-        self,
-        *,
-        query: str,
-        llm: Any,
-        enabled: bool,
-        count: int,
-        temperature: float,
-        max_chars: int,
-    ) -> tuple[list[str], float, str | None, dict[str, Any]]:
-        if not enabled or count <= 0 or max_chars <= 0 or len(query or "") > max_chars:
-            return [], 0.0, None, {"ok": False, "method": None, "error": None}
-
-        mq_llm = self.models.get("fast") or llm
-        model_used = getattr(mq_llm, "model_name", None) or getattr(mq_llm, "model", None)
-        parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
-        queries: list[str] = []
-        elapsed = 0.0
-
-        try:
-            mq_chain = self.multi_query_prompt | mq_llm.bind(temperature=temperature) | StrOutputParser()
-            mq_start = time.time()
-            mq_raw = await mq_chain.ainvoke({"query": query, "n": count})
-            elapsed = time.time() - mq_start
-            mq_data, parse_meta = parse_json_from_text(mq_raw, expected="array")
-
-            if isinstance(mq_data, list):
-                seen: set[str] = set()
-                for item in mq_data:
-                    if not isinstance(item, str):
-                        continue
-                    candidate = (item or "").strip().strip('"').strip()
-                    if not candidate or candidate == query or candidate in seen:
-                        continue
-                    if len(candidate) > 400:
-                        candidate = candidate[:400] + "..."
-                    seen.add(candidate)
-                    queries.append(candidate)
-                    if len(queries) >= count:
-                        break
-        except Exception as exc:  # noqa: BLE001
-            elapsed = 0.0
-            parse_meta = {"ok": False, "method": None, "error": str(exc)[:200]}
-            queries = []
-
-        return queries, elapsed, model_used, parse_meta
-
     @staticmethod
     def _build_stream_status_event(
         *,
@@ -657,170 +299,6 @@ Requirements:
                 "retrieval_profile": (str(retrieval_profile).strip().lower() or None) if retrieval_profile is not None else None,
             },
         }
-
-    @staticmethod
-    def _doc_key(doc: Document) -> str:
-        meta = doc.metadata or {}
-        doc_id = meta.get("document_id")
-        chunk_index = meta.get("chunk_index")
-        if doc_id is not None and chunk_index is not None:
-            return f"{doc_id}:{chunk_index}"
-        cid = getattr(doc, "id", None) or meta.get("chunk_id")
-        if cid:
-            return str(cid)
-        content = (doc.page_content or "").strip()
-        return f"content:{stable_hash(content)}"
-
-    @staticmethod
-    def _normalize_query_text(text: str) -> str:
-        return " ".join((text or "").strip().split())
-
-    @classmethod
-    def _dedup_retrieval_queries(cls, queries: list[tuple[str, str]]) -> list[tuple[str, str]]:
-        if not queries:
-            return []
-        seen: set[str] = set()
-        out: list[tuple[str, str]] = []
-        for kind, q in queries:
-            norm = cls._normalize_query_text(q)
-            if not norm:
-                continue
-            key = norm.casefold() if norm.isascii() else norm
-            if key in seen:
-                continue
-            seen.add(key)
-            out.append((kind, norm))
-        return out
-
-    @staticmethod
-    def _annotate_docs_with_role(docs: list[Document], role: str) -> list[Document]:
-        if not docs:
-            return []
-        out: list[Document] = []
-        for d in docs:
-            meta = dict(d.metadata or {})
-            if str(role or "").strip() == "main":
-                meta.setdefault("retrieval_role", "main")
-            else:
-                meta["retrieval_role"] = str(role or "").strip() or "main"
-            out.append(
-                Document(
-                    page_content=d.page_content,
-                    metadata=meta,
-                    id=getattr(d, "id", None) or meta.get("chunk_id"),
-                )
-            )
-        return out
-
-    @staticmethod
-    def _merge_meta(dst: dict[str, Any], src: dict[str, Any]) -> dict[str, Any]:
-        for k, v in (src or {}).items():
-            if k not in dst or dst.get(k) in (None, "", [], {}):
-                dst[k] = v
-        return dst
-
-    @staticmethod
-    def _doc_is_reranked(doc: Document) -> bool:
-        meta = doc.metadata or {}
-        return meta.get("rerank_score") is not None
-
-    @classmethod
-    def _prefer_doc(cls, current: Document, candidate: Document) -> Document:
-        if cls._doc_is_reranked(candidate) and not cls._doc_is_reranked(current):
-            return candidate
-        if cls._doc_is_reranked(current) and not cls._doc_is_reranked(candidate):
-            return current
-        a = float((current.metadata or {}).get("score", 0.0) or 0.0)
-        b = float((candidate.metadata or {}).get("score", 0.0) or 0.0)
-        return candidate if b > a else current
-
-    @classmethod
-    def fuse_docs_rrf(
-        cls,
-        docs_by_query: list[list[Document]],
-        *,
-        rrf_k: int | None = None,
-        meta_prefix: str = "query_expansion",
-    ) -> list[Document]:
-        if not docs_by_query:
-            return []
-
-        k0 = int(rrf_k or 0) or int(settings.RETRIEVAL_RRF_K or 60)
-        k0 = max(1, k0)
-
-        score_map: dict[str, float] = {}
-        hit_counts: dict[str, int] = {}
-        best_docs: dict[str, Document] = {}
-        merged_meta: dict[str, dict[str, Any]] = {}
-
-        for docs in docs_by_query:
-            seen_in_query: set[str] = set()
-            for rank, doc in enumerate(docs or [], 1):
-                key = cls._doc_key(doc)
-                if key in seen_in_query:
-                    continue
-                seen_in_query.add(key)
-
-                score_map[key] = float(score_map.get(key, 0.0) or 0.0) + (1.0 / (k0 + rank))
-                hit_counts[key] = int(hit_counts.get(key, 0) or 0) + 1
-
-                meta = dict(doc.metadata or {})
-                if key not in best_docs:
-                    best_docs[key] = doc
-                    merged_meta[key] = meta
-                else:
-                    merged_meta[key] = cls._merge_meta(merged_meta.get(key) or {}, meta)
-                    best_docs[key] = cls._prefer_doc(best_docs[key], doc)
-
-        if not score_map:
-            return []
-
-        raw_scores = list(score_map.values())
-        min_s = min(raw_scores) if raw_scores else 0.0
-        max_s = max(raw_scores) if raw_scores else 0.0
-        # When every fused doc shares one RRF score (single hit, or all docs hit
-        # the same number of queries at the same rank), min == max. Min-max
-        # normalization would map them all to 0.0 and wipe out the signal, so
-        # treat that degenerate case as "uniformly relevant" (1.0) instead.
-        degenerate_range = not (max_s > min_s)
-        rng = 1.0 if degenerate_range else (max_s - min_s)
-
-        fused_items: list[tuple[str, Document]] = []
-        for key, doc in best_docs.items():
-            meta = dict(merged_meta.get(key) or {})
-            base_score = meta.get("score")
-            if base_score is not None and f"{meta_prefix}_base_score" not in meta:
-                meta[f"{meta_prefix}_base_score"] = base_score
-            raw_rrf = float(score_map.get(key, 0.0) or 0.0)
-            meta[f"{meta_prefix}_rrf_raw"] = raw_rrf
-            meta[f"{meta_prefix}_rrf_k"] = k0
-            meta[f"{meta_prefix}_hits"] = int(hit_counts.get(key, 0) or 0)
-            meta[f"{meta_prefix}_fused"] = True
-            meta["score"] = 1.0 if degenerate_range else (raw_rrf - min_s) / rng
-            fused_items.append(
-                (
-                    key,
-                Document(
-                    page_content=doc.page_content,
-                    metadata=meta,
-                    id=getattr(doc, "id", None) or meta.get("chunk_id"),
-                )
-                ),
-            )
-
-        # Deterministic tie-breakers are important for replay/regression:
-        # prefer higher hit-count across queries, then higher base score, then doc key.
-        def _sort_key(item: tuple[str, Document]) -> tuple[float, float, int, float, str]:
-            k, d = item
-            m = d.metadata or {}
-            fused_score = float(m.get("score", 0.0) or 0.0)
-            raw = float(m.get(f"{meta_prefix}_rrf_raw", 0.0) or 0.0)
-            hits = int(m.get(f"{meta_prefix}_hits", 0) or 0)
-            base = float(m.get(f"{meta_prefix}_base_score", 0.0) or 0.0)
-            return (-fused_score, -raw, -hits, -base, k)
-
-        fused_items.sort(key=_sort_key)
-        return [d for _k, d in fused_items]
 
     async def stream_chat(
         self,

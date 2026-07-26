@@ -4,6 +4,7 @@ const PORT = Number(process.env.PLAYWRIGHT_PORT || 3100)
 const baseURL = `http://127.0.0.1:${PORT}`
 const useProdServer = Boolean(process.env.CI) || process.env.PLAYWRIGHT_USE_PROD_SERVER === '1'
 const useExternalServer = process.env.PLAYWRIGHT_EXTERNAL_SERVER === '1'
+const reuseBuildOutput = process.env.PLAYWRIGHT_REUSE_BUILD === '1'
 const browserChannel = process.env.PLAYWRIGHT_CHANNEL
 const markdownImageProxySecret =
   process.env.MARKDOWN_IMAGE_PROXY_SECRET || 'playwright-markdown-image-proxy-secret'
@@ -44,7 +45,9 @@ export default defineConfig({
   },
   webServer: useExternalServer ? undefined : {
     command: useProdServer
-      ? `MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} pnpm exec next build --webpack && MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} HOST=127.0.0.1 PORT=${PORT} pnpm start`
+      ? reuseBuildOutput
+        ? `MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} HOST=127.0.0.1 PORT=${PORT} pnpm start`
+        : `MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} pnpm exec next build --webpack && MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} HOST=127.0.0.1 PORT=${PORT} pnpm start`
       : `pnpm exec next dev --webpack -H 127.0.0.1 -p ${PORT}`,
     url: baseURL,
     reuseExistingServer: !process.env.CI && !useProdServer,

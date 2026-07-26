@@ -85,6 +85,7 @@ chunk-preview-*.png
 graph-snapshots-*.png
 web/coverage/
 web/test-results/
+web/playwright-report/
 app/deepdoc/resources/models/
 web/.next/
 web/.next_build/
