@@ -19,7 +19,8 @@ from typing import Any
 from urllib.parse import urlparse, urlunparse
 
 import httpx
-from jose import ExpiredSignatureError, JWTError, jwt
+import jwt
+from jwt import ExpiredSignatureError, InvalidTokenError, PyJWK
 
 from app.core.config import settings, validate_jwt_remote_url
 from app.core.utils import parse_csv
@@ -303,7 +304,7 @@ async def _jwks_key_for_token(token: str) -> dict[str, Any]:
         jwks_uri = await _get_oidc_jwks_uri(issuer)
         urls = [jwks_uri] if jwks_uri else []
     if not urls:
-        raise JWTError("JWKS not configured")
+        raise InvalidTokenError("JWKS not configured")
 
     header = jwt.get_unverified_header(token)
     kid = str(header.get("kid") or "").strip() or None
@@ -325,14 +326,14 @@ async def _jwks_key_for_token(token: str) -> dict[str, Any]:
             last_exc = exc
             continue
 
-    raise JWTError("Unable to find a signing key") from last_exc
+    raise InvalidTokenError("Unable to find a signing key") from last_exc
 
 
 async def decode_access_token(token: str) -> dict:
     """
     Decode and verify an access token according to configured auth settings.
 
-    Raises jose.JWTError / jose.ExpiredSignatureError on verification failures.
+    Raises jwt.InvalidTokenError / jwt.ExpiredSignatureError on verification failures.
     """
     algorithm = str(getattr(settings, "ALGORITHM", "HS256") or "HS256").strip() or "HS256"
     algorithms = [algorithm]
@@ -356,10 +357,15 @@ async def decode_access_token(token: str) -> dict:
             except ExpiredSignatureError:
                 # ExpiredSignatureError implies signature validation succeeded; do not try other keys.
                 raise
-            except JWTError as exc:
+            except InvalidTokenError as exc:
                 last_exc = exc
                 continue
-        raise JWTError("Signature verification failed") from last_exc
+        raise InvalidTokenError("Signature verification failed") from last_exc
 
     jwk_key = await _jwks_key_for_token(token)
-    return jwt.decode(token, jwk_key, **decode_kwargs)
+    try:
+        signing_key = PyJWK.from_dict(jwk_key)
+    except Exception as exc:  # noqa: BLE001
+        # Malformed JWKS entries must surface as token verification failures (401), not 500s.
+        raise InvalidTokenError("Invalid JWKS signing key") from exc
+    return jwt.decode(token, signing_key, **decode_kwargs)

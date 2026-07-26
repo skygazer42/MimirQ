@@ -137,12 +137,22 @@ export const COLOR_SCHEMES: Array<{
   },
 ]
 
-export function toPlotlyColorScale(key: ColorSchemeKey) {
-  return (
+function colorStopsToVisualMapColors(stops: Array<[number, string]>) {
+  // COLOR_SCHEMES stops are evenly spaced (0 / 0.5 / 1), so a plain color
+  // array reproduces the exact same gradient in echarts visualMap.inRange.
+  return stops.map(([, color]) => color)
+}
+
+export function toEchartsVisualMapColors(key: ColorSchemeKey) {
+  return colorStopsToVisualMapColors(
     COLOR_SCHEMES.find((scheme) => scheme.key === key)?.colorscale ??
-    COLOR_SCHEMES[0].colorscale
+      COLOR_SCHEMES[0].colorscale
   )
 }
+
+export const DIFFERENCE_VISUALMAP_COLORS = colorStopsToVisualMapColors(
+  DIFFERENCE_COLORSCALE
+)
 
 export function heatmapLegendBackground(
   key: ColorSchemeKey,

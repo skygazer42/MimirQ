@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 
 import React, { act, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'

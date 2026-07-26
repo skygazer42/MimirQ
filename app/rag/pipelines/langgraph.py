@@ -1821,46 +1821,6 @@ def run_rag_graph(
     }
 
 
-def stream_rag_graph(
-    question: str,
-    history: list[dict[str, str]] | None = None,
-    document_ids: list[UUID] | None = None,
-    tenant_id: UUID | None = None,
-    top_k: int = 5,
-    score_threshold: float = 0.7,
-    retrieval_mode: str = "hybrid",
-    thread_id: str | None = None,
-    context: dict[str, Any] | None = None,
-    **kwargs,
-):
-    """
-    Stream RAG workflow execution, supports LangGraph 1.0+ Functional API.
-
-    Yields:
-        Dict[str, Any]: State updates for each step
-    """
-    kwargs.pop("db", None)
-    state = {
-        "question": question,
-        "history": history or [],
-        "document_ids": document_ids,
-        "tenant_id": tenant_id,
-        "top_k": top_k,
-        "score_threshold": score_threshold,
-        "retrieval_mode": retrieval_mode,
-        **kwargs,
-    }
-
-    recursion_limit = max(1, int(getattr(settings, "LANGGRAPH_RECURSION_LIMIT", 25) or 25))
-    config: dict[str, Any] = {
-        "configurable": {"thread_id": thread_id or f"rag-{uuid4()}"},
-        "recursion_limit": recursion_limit,
-    }
-
-    for step in rag_workflow.stream(state, config=config, stream_mode="updates", context=context):
-        yield step
-
-
 # =============================================================================
 # Public API Exports
 # =============================================================================
@@ -1876,5 +1836,4 @@ __all__ = [
     "generate_task",
     "rag_workflow",
     "run_rag_workflow_functional",
-    "stream_rag_graph",
 ]

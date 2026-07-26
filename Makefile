@@ -1,4 +1,4 @@
-.PHONY: help init models up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-full test-web test-web-full test-web-e2e test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit-docs audit openapi-export openapi-types openapi-validate openapi-check api-docs-build api-docs-build-static diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure plugin-release-gate mixed-rag-quality live-core-release-gate check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init models up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-serial test-full test-web test-web-full test-web-e2e test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit-docs audit openapi-export openapi-types openapi-validate openapi-check api-docs-build api-docs-build-static diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure plugin-release-gate mixed-rag-quality live-core-release-gate check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -112,7 +112,8 @@ help:
 	@echo "  make backend   - run backend locally from the project venv (uvicorn --reload)"
 	@echo "  make backend-no-reload - run backend locally from the project venv without file watching"
 	@echo "  make web       - run web locally (pnpm dev)"
-	@echo "  make test      - run all backend tests"
+	@echo "  make test      - run all backend tests (parallel via pytest-xdist)"
+	@echo "  make test-serial - run all backend tests serially (escape hatch / debugging)"
 	@echo "  make test-full - compatibility alias for test"
 	@echo "  make test-web  - run all frontend unit/integration tests"
 	@echo "  make test-web-full - compatibility alias for test-web"
@@ -287,6 +288,9 @@ web:
 	cd web && pnpm dev
 
 test:
+	$(PY) -m pytest -q -n auto $(PYTEST_ARGS)
+
+test-serial:
 	$(PY) -m pytest -q $(PYTEST_ARGS)
 
 test-full: test

@@ -124,9 +124,27 @@ def test_dependency_audit_covers_web_and_handbook_with_shared_policy() -> None:
 
 def test_main_ci_runs_all_browser_smoke_specs_and_critical_coverage() -> None:
     workflow = _read(".github/workflows/ci.yml")
+    web_job = workflow.split("\n  web-test-and-verify:\n", 1)[1].split("\n  docker-build:", 1)[0]
 
-    assert "make test-web-e2e" in workflow
-    assert "pnpm run test:coverage:critical" in workflow
+    assert "make test-web-e2e" in web_job
+    assert "pnpm run test:coverage:critical" in web_job
+    assert "make test-web" in web_job
+    assert "pnpm install --frozen-lockfile" in web_job
+    assert "pnpm exec playwright install chromium" in web_job
+    assert "clean: true" in web_job
+    assert "runs-on: [self-hosted, Linux, X64, mimirq]" in web_job
+    # The web job is intentionally frontend-only: no Python dep install, no needs
+    # chain, so it runs in parallel with the backend test-and-verify job.
+    assert "needs:" not in web_job
+    assert "filter_cpu_ci_requirements.py" not in web_job
+    backend_job = workflow.split("\n  test-and-verify:\n", 1)[1].split(
+        "\n  web-test-and-verify:\n", 1
+    )[0]
+    assert "make test-web-e2e" not in backend_job
+    assert "pnpm run test:coverage:critical" not in backend_job
+    assert "make test\n" in backend_job
+    assert "make test-matrix" in backend_job
+    assert "make verify" in backend_job
 
 
 def test_main_ci_host_browser_smoke_stays_on_the_live_stack_spec_in_non_pr_jobs() -> None:
@@ -182,6 +200,38 @@ def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     assert "if: github.event_name == 'pull_request'" in workflow
     assert "runs-on: ubuntu-latest" in workflow
     assert "redis:\n        image: redis:7-alpine" in public_pr_job
+    # Hosted PR job caching: stable cache paths + pip/pnpm/torch-wheel/Playwright caches.
+    assert "PIP_CACHE_DIR: /home/runner/.cache/pip" in public_pr_job
+    assert "TORCH_WHEEL_DIR: /home/runner/.cache/torch-wheels" in public_pr_job
+    assert "${{ runner.temp }}/pip-cache" not in workflow
+    assert "${{ runner.temp }}/torch-wheels" not in workflow
+    assert "corepack enable" not in public_pr_job
+    assert (
+        "uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0"
+        in public_pr_job
+    )
+    assert "package_json_file: web/package.json" in public_pr_job
+    assert "cache: pip" in public_pr_job
+    assert (
+        "cache-dependency-path: |\n            requirements.txt\n            requirements-dev.txt"
+        in public_pr_job
+    )
+    assert "cache: pnpm" in public_pr_job
+    assert "cache-dependency-path: web/pnpm-lock.yaml" in public_pr_job
+    assert (
+        public_pr_job.count("uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0")
+        == 2
+    )
+    assert "path: /home/runner/.cache/torch-wheels" in public_pr_job
+    assert (
+        "key: torch-wheels-${{ runner.os }}-py311-${{ hashFiles('ci/download_verified_wheels.py') }}"
+        in public_pr_job
+    )
+    assert "path: /home/runner/.cache/ms-playwright" in public_pr_job
+    assert (
+        "key: playwright-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}"
+        in public_pr_job
+    )
     assert "python ci/download_verified_wheels.py --cache-dir \"$TORCH_WHEEL_DIR\"" in workflow
     assert "command -v rg" in workflow
     assert "rg --version | head -n 1" in workflow
@@ -219,12 +269,33 @@ def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     assert "NO_PROXY: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}" in workflow
     for job in (
         "test-and-verify",
+        "web-test-and-verify",
         "docker-build",
         "retrieval-only-bounded-gate",
         "retrieval-regression-gate",
         "kg-search-regression-gate",
     ):
         assert f"{job}:\n    if: github.event_name != 'pull_request'" in workflow
+
+
+def test_ci_backend_full_suite_runs_pytest_xdist_in_parallel() -> None:
+    makefile = _read("Makefile")
+    requirements_dev = _read("requirements-dev.txt")
+    workflow = _read(".github/workflows/ci.yml")
+
+    # Both full backend suite runs in ci.yml go through `make test`, which is
+    # parallelized with pytest-xdist (`-n auto`).
+    assert "$(PY) -m pytest -q -n auto $(PYTEST_ARGS)" in makefile
+    assert "pytest-xdist==3.8.0" in requirements_dev
+    # The two jobs that run `make test` install the filtered requirements-dev
+    # set; the CPU filter only drops the xgboost pin, so pytest-xdist is kept.
+    assert (
+        workflow.count(
+            "python scripts/filter_cpu_ci_requirements.py requirements-dev.txt /tmp/requirements-dev.cpu-ci.txt"
+        )
+        == 2
+    )
+    assert workflow.count("run: make test\n") == 2
 
 
 def test_pull_request_lint_and_security_jobs_use_hosted_runners() -> None:

@@ -55,7 +55,7 @@ import {
   SimilarityMainPanel,
   type MainViewMode,
 } from '@/components/ragviz/similarity/panels'
-import type { SelectedHeatmapCell } from '@/components/ragviz/similarity/plotly-types'
+import type { SelectedHeatmapCell } from '@/components/ragviz/similarity/heatmap-types'
 import {
   applyMask,
   calculateDifferenceModeStatistics,

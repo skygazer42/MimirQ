@@ -4,10 +4,10 @@ import threading
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
+import jwt
 import pytest
 from fastapi import Depends, FastAPI, Request
 from fastapi.testclient import TestClient
-from jose import jwt
 
 import app.api.dependencies.auth as auth_module
 from app.api.dependencies.auth import get_current_account_id

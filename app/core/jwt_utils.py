@@ -4,7 +4,7 @@ JWT helpers for issuing access tokens.
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from jose import jwt
+import jwt
 
 from app.core.config import settings
 

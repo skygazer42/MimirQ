@@ -7,7 +7,7 @@ Parses tenant ID from request headers with default value fallback.
 from uuid import UUID
 
 from fastapi import Header, HTTPException, Request
-from jose import ExpiredSignatureError, JWTError
+from jwt import ExpiredSignatureError, InvalidTokenError
 
 from app.core.config import settings
 from app.core.env import is_production_env
@@ -37,7 +37,7 @@ async def _decode_tenant_jwt_payload(token: str) -> dict:
         return await decode_access_token(token)
     except ExpiredSignatureError as exc:
         raise HTTPException(status_code=401, detail="Token expired") from exc
-    except JWTError as exc:
+    except InvalidTokenError as exc:
         raise HTTPException(status_code=401, detail="Invalid token") from exc
 
 

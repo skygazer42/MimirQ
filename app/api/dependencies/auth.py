@@ -8,7 +8,7 @@ import asyncio
 from uuid import UUID
 
 from fastapi import Header, HTTPException, Request
-from jose import ExpiredSignatureError, JWTError
+from jwt import ExpiredSignatureError, InvalidTokenError
 
 from app.core.config import settings
 from app.core.jwt_verify import decode_access_token
@@ -84,7 +84,7 @@ async def _decode_or_cached_jwt_payload(*, token: str, request: Request | None) 
     except ExpiredSignatureError as exc:
         logger.warning("Expired token attempted for access")
         raise HTTPException(status_code=401, detail="Token expired") from exc
-    except JWTError as exc:
+    except InvalidTokenError as exc:
         logger.warning("Invalid token")
         raise HTTPException(status_code=401, detail=INVALID_TOKEN_DETAIL) from exc
     if request is not None:

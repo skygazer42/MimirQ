@@ -3,9 +3,9 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
+import jwt
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
-from jose import jwt
 
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.config import settings

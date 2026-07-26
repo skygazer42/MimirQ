@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 
 import chroma from 'chroma-js'
 import { describe, expect, it } from 'vitest'

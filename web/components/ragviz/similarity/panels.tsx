@@ -10,8 +10,8 @@ import {
   SimilarityDiagnosticsView,
   SimilarityEmptyState,
 } from './display-components'
-import { PlotlyHeatmap } from './plotly-heatmap'
-import type { SelectedHeatmapCell } from './plotly-types'
+import { EchartsHeatmap } from './echarts-heatmap'
+import type { SelectedHeatmapCell } from './heatmap-types'
 
 export type MainViewMode = 'heatmap' | 'diagnostics'
 export type DisplayLabels = { xLabels: string[]; yLabels: string[] }
@@ -140,7 +140,7 @@ function SimilarityHeatmapPanel({
         </div>
 
         <div className="min-h-0 flex-1 p-3">
-          <PlotlyHeatmap
+          <EchartsHeatmap
             matrix={maskedMatrix ?? displayMatrix}
             xLabels={displayLabels.xLabels}
             yLabels={displayLabels.yLabels}
