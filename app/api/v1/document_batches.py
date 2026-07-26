@@ -67,31 +67,21 @@ def batch_patch_document_user_metadata(
     found_map = {document.id: document for document in documents}
     not_found = [document_id for document_id in ids if document_id not in found_map]
 
-    dataset_ids = {document.dataset_id for document in documents if document.dataset_id is not None}
-    dataset_map: dict[UUID, Dataset] = {}
-    if dataset_ids:
-        rows = (
-            db.query(Dataset)
-            .filter(Dataset.tenant_id == tenant_id, Dataset.id.in_(sorted(dataset_ids)))
-            .all()
-        )
-        dataset_map = {dataset.id: dataset for dataset in rows}
-
     denied: list[UUID] = []
     updated = 0
 
     patch = payload.patch if isinstance(payload.patch, dict) else {}
     for document in documents:
-        if document.dataset_id:
-            dataset = dataset_map.get(document.dataset_id)
-            if dataset is None:
-                denied.append(document.id)
-                continue
-            try:
-                documents_module.DatasetService.assert_dataset_writable(db, dataset, account_id)
-            except HTTPException:
-                denied.append(document.id)
-                continue
+        try:
+            documents_module._assert_document_writable_for_lifecycle(
+                db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                document=document,
+            )
+        except HTTPException:
+            denied.append(document.id)
+            continue
 
         meta = dict(document.doc_metadata or {})
         current_user = meta.get("user") if isinstance(meta.get("user"), dict) else {}
@@ -329,10 +319,24 @@ def batch_move_documents(
             not_found.append(document_id)
             continue
 
-        if doc.dataset_id:
+        try:
+            documents_module._assert_document_writable_for_lifecycle(
+                db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                document=doc,
+            )
+        except HTTPException:
+            denied.append(document_id)
+            continue
+        if payload.target_dataset_id is None:
             try:
-                dataset = documents_module.DatasetService.get_dataset(db, tenant_id, doc.dataset_id)
-                documents_module.DatasetService.assert_dataset_writable(db, dataset, account_id)
+                documents_module._assert_document_writable_for_unassigned_target(
+                    db,
+                    tenant_id=tenant_id,
+                    account_id=account_id,
+                    document=doc,
+                )
             except HTTPException:
                 denied.append(document_id)
                 continue

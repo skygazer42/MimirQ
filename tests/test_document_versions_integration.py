@@ -1,5 +1,6 @@
 
 import uuid
+from types import SimpleNamespace
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -141,3 +142,56 @@ def test_document_versions_list_activate_delete(pg_session, monkeypatch):  # noq
     active_item = next(it for it in body["items"] if it["pipeline_hash"] == "v2")
     assert active_item["active"] is True
 
+
+def test_unassigned_document_versions_require_write_role_for_activate_delete(pg_session, monkeypatch):  # noqa: ANN001
+    monkeypatch.delenv("ENV", raising=False)
+
+    tenant_id = uuid.uuid4()
+    owner_id = "owner-account"
+    account_id = "viewer-account"
+    document_id = uuid.uuid4()
+
+    pg_session.add(
+        DBDocument(
+            id=document_id,
+            tenant_id=tenant_id,
+            dataset_id=None,
+            filename="doc.txt",
+            file_type="txt",
+            file_size=3,
+            file_path="uploads/doc.txt",
+            status="completed",
+            processing_progress=100,
+            chunk_count=2,
+            total_characters=0,
+            owner_id=owner_id,
+            access_mode="all_team_members",
+            doc_metadata={
+                "active_pipeline_hash": "v1",
+                "pipeline_hash": "v2",
+            },
+        )
+    )
+
+    _add_chunk(pg_session, tenant_id=tenant_id, document_id=document_id, pipeline_hash="v1", chunk_index=0, content="hello v1-0")
+    _add_chunk(pg_session, tenant_id=tenant_id, document_id=document_id, pipeline_hash="v2", chunk_index=1, content="hello v2-0")
+    pg_session.commit()
+
+    monkeypatch.setattr(
+        "app.api.v1.document_versions.DatasetService.ensure_member",
+        lambda *_args, **_kwargs: SimpleNamespace(role="viewer"),
+    )
+
+    app = _make_app(pg_session, tenant_id=tenant_id, account_id=account_id)
+    client = TestClient(app)
+
+    res = client.get(f"/api/v1/documents/{document_id}/versions")
+    assert res.status_code == 200, res.text
+
+    res = client.post(f"/api/v1/documents/{document_id}/versions/v2/activate")
+    assert res.status_code == 403, res.text
+    assert res.json()["detail"] == "No permission to manage unassigned documents"
+
+    res = client.delete(f"/api/v1/documents/{document_id}/versions/v1")
+    assert res.status_code == 403, res.text
+    assert res.json()["detail"] == "No permission to manage unassigned documents"

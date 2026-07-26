@@ -99,7 +99,7 @@ from app.api.dependencies.tenant import get_tenant_id
 
 **关键词 API：**
 - `POST /api/v1/pipeline/extract-keywords`（`provider=auto/jieba/jieba_tfidf/jieba_textrank/hanlp/simple`；HanLP 可用 `HANLP_TOKENIZER_MODEL` 指定 tokenizer 模型）
-  - 停用词：`app/governance/stopwords.py`
+  - 停用词：`app/rag/preprocessing/stopwords.py`
 
 #### 使用示例
 

@@ -199,6 +199,7 @@ Labels（低基数、默认安全）：
 - Dataset purge（删除 dataset 内 documents/chunks/KG 衍生物；bounded，默认 dry-run）：`POST /api/v1/datasets/{dataset_id}/purge`
 - Regression runs purge（评估工件保留清理；bounded，默认 dry-run）：`POST /api/v1/evaluations/ragas/regression/runs/purge`
 - Regression runs retention runner（适合 CronJob）：`python scripts/run_retention_jobs.py --regression-runs --dry-run`
+- Semantic cache retention runner（清理过期或 Redis payload 已丢失的 Milvus 缓存行）：`python scripts/run_retention_jobs.py --semantic-cache --dry-run --max-scan 1000 --max-delete 100`
 - DB maintenance runner（VACUUM/ANALYZE + retention；适合 CronJob，默认 dry-run）：`python scripts/run_db_maintenance_jobs.py --vacuum --analyze --audit-logs --dry-run`（详见：`docs/deployment/db_maintenance.md`）
 - 备份/恢复指南（Postgres + MinIO + vector backend）：`docs/deployment/backup_restore.md`
 - DR drill（恢复验证 checklist + automation）：`docs/deployment/dr_drill.md`

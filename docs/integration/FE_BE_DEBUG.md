@@ -64,7 +64,7 @@
 
 ### ① 前端提示“网络错误/无法连接后端”
 - 后端没起：先测 `http://localhost:8000/api/v1/health/ready`
-- 端口不对：检查 `.env` 里的 `BACKEND_PORT`（若你改过）
+- 端口不对：Docker 部署检查 `.env` 里的 `BACKEND_PORT`（宿主机端口映射，默认 8000）；主机源码模式 `make backend` 固定监听 8000
 - 前端 API URL 不对：本地开发检查 `NEXT_PUBLIC_API_URL`，Docker 检查 `NEXT_PUBLIC_API_URL_DOCKER`
 
 ### ② CORS 报错

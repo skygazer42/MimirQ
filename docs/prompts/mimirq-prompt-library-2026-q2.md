@@ -1009,9 +1009,9 @@ JSON Schema:
 
 **MimirQ 使用位置**：
 - `app/rag/safety/input_guard.py` (规则)
-- `app/rag/safety/prompt_guard.py` (规则)
+- `app/rag/safety/regex_prompt_screen.py` (规则)
 - `app/rag/safety/output_guard.py` (规则)
-- `app/rag/safety/llama_guard.py` / `llm_guard.py` (外部分类器)
+- `app/rag/safety/regex_safety_guard.py` (规则) / `llm_guard.py` (Guard 编排，当前仍基于上述规则实现)
 
 **输入变量**：`{{user_input}}` / `{{response}}`
 

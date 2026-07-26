@@ -34,6 +34,18 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
+def _require_dataset_readable(*, db: Session, tenant_id: UUID, dataset_id: UUID, account_id: str):
+    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    return dataset
+
+
+def _require_dataset_writable(*, db: Session, tenant_id: UUID, dataset_id: UUID, account_id: str):
+    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_writable(db, dataset, account_id)
+    return dataset
+
+
 @router.get("/analysis/dashboard", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_tenant_dataset_analysis_dashboard(
     from_ts: Annotated[str | None, Query()] = None,
@@ -72,7 +84,7 @@ def get_dataset_analysis_summary(
 ):
     """Return an analysis summary for one dataset."""
     DatasetService.ensure_member(db, tenant_id, account_id)
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    dataset = _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
     return build_dataset_analysis_summary(
         db=db,
         tenant_id=tenant_id,
@@ -100,7 +112,7 @@ def get_dataset_analysis_examples(
 ):
     """Return representative analysis examples for one dataset."""
     DatasetService.ensure_member(db, tenant_id, account_id)
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    dataset = _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
     return build_dataset_analysis_examples(
         db=db,
         tenant_id=tenant_id,
@@ -129,7 +141,7 @@ def get_dataset_analysis_rule_suggestions(
 ):
     """Return glossary and rule suggestions for dataset analysis."""
     DatasetService.ensure_member(db, tenant_id, account_id)
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    dataset = _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
     return build_dataset_analysis_rule_suggestions(
         db=db,
         tenant_id=tenant_id,
@@ -157,7 +169,7 @@ def export_dataset_analysis_json_endpoint(
 ):
     """Export dataset analysis as JSON."""
     DatasetService.ensure_member(db, tenant_id, account_id)
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    dataset = _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
     return export_dataset_analysis_json(
         db=db,
         tenant_id=tenant_id,
@@ -184,7 +196,7 @@ def export_dataset_analysis_jsonl_endpoint(
 ):
     """Export dataset analysis as newline-delimited JSON."""
     DatasetService.ensure_member(db, tenant_id, account_id)
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    dataset = _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
     payload = export_dataset_analysis_jsonl(
         db=db,
         tenant_id=tenant_id,
@@ -212,7 +224,7 @@ def export_dataset_analysis_html_endpoint(
 ):
     """Export dataset analysis as an HTML report."""
     DatasetService.ensure_member(db, tenant_id, account_id)
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    dataset = _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
     payload = export_dataset_analysis_html(
         db=db,
         tenant_id=tenant_id,
@@ -242,7 +254,7 @@ def writeback_dataset_analysis_glossary_endpoint(
 ):
     """Write suggested glossary entries back to a ruleset."""
     DatasetService.ensure_member(db, tenant_id, account_id)
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    dataset = _require_dataset_writable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
     return writeback_dataset_analysis_glossary_candidates(
         db=db,
         tenant_id=tenant_id,
@@ -272,18 +284,21 @@ def create_dataset_analysis_png_task_endpoint(
 ):
     """Create an asynchronous PNG export task for dataset analysis."""
     DatasetService.ensure_member(db, tenant_id, account_id)
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    return create_dataset_analysis_png_task(
-        db=db,
-        tenant_id=tenant_id,
-        dataset_id=dataset_id,
-        dataset_name=str(getattr(dataset, "name", "") or ""),
-        background_tasks=background_tasks,
-        from_ts=from_ts,
-        to_ts=to_ts,
-        feedback_polarity=feedback_polarity,
-        category=category,
-    )
+    dataset = _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
+    try:
+        return create_dataset_analysis_png_task(
+            db=db,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            dataset_name=str(getattr(dataset, "name", "") or ""),
+            background_tasks=background_tasks,
+            from_ts=from_ts,
+            to_ts=to_ts,
+            feedback_polarity=feedback_polarity,
+            category=category,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="PNG export task state unavailable") from exc
 
 
 @router.get("/{dataset_id}/analysis/export-tasks/{task_id}", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -297,11 +312,17 @@ def get_dataset_analysis_png_task_endpoint(
 ):
     """Return the status of a dataset analysis PNG export task."""
     DatasetService.ensure_member(db, tenant_id, account_id)
-    DatasetService.get_dataset(db, tenant_id, dataset_id)
+    _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
     try:
-        return get_dataset_analysis_png_task_status(task_id=task_id)
+        return get_dataset_analysis_png_task_status(
+            task_id=task_id,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+        )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="PNG export task not found") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="PNG export task state unavailable") from exc
 
 
 @router.get("/{dataset_id}/analysis/export-tasks/{task_id}/result.png", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -315,15 +336,27 @@ def get_dataset_analysis_png_task_result_endpoint(
 ):
     """Return the PNG result for a completed dataset analysis export task."""
     DatasetService.ensure_member(db, tenant_id, account_id)
-    DatasetService.get_dataset(db, tenant_id, dataset_id)
+    _require_dataset_readable(db=db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
     try:
-        status = get_dataset_analysis_png_task_status(task_id=task_id)
+        status = get_dataset_analysis_png_task_status(
+            task_id=task_id,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+        )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="PNG export task not found") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="PNG export task state unavailable") from exc
     if str(status.get("status") or "") != "done":
         raise HTTPException(status_code=409, detail="PNG export task is not finished")
     try:
-        payload = get_dataset_analysis_png_result(task_id=task_id)
+        payload = get_dataset_analysis_png_result(
+            task_id=task_id,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+        )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="PNG export task result not found") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="PNG export task state unavailable") from exc
     return Response(content=payload, media_type="image/png")

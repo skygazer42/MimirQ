@@ -262,6 +262,11 @@ class Settings(BaseSettings):
     TASK_QUEUE_OBSERVABILITY_POLL_INTERVAL_SEC: float = 10.0
     # Number of recent task job outcomes kept for the admin observability snapshot.
     TASK_QUEUE_RECENT_JOB_OUTCOMES_LIMIT: int = 20
+    # Dataset-analysis PNG export shared state (Redis, fail-closed).
+    DATASET_ANALYSIS_PNG_REDIS_PREFIX: str = "dataset-analysis-png"
+    DATASET_ANALYSIS_PNG_STALE_AFTER_SEC: int = 60
+    DATASET_ANALYSIS_PNG_TERMINAL_TTL_SEC: int = 600
+    DATASET_ANALYSIS_PNG_RESULT_MAX_BYTES: int = 5_000_000
 
     # Subprocess worker guardrails (parsing backends).
     # 0 disables.

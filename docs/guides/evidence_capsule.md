@@ -11,7 +11,7 @@ Evidence capsule 用于把一次 retrieval 结果固化为可回放、可审计�
 
 ## 返回位置
 
-`POST /api/v1/rag/evidence/retrieve` 响应新增：
+`POST /api/v1/rag/retrieve` 响应新增：
 
 - `evidence_capsule`
 

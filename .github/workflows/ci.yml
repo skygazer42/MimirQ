@@ -308,6 +308,12 @@ jobs:
           https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}
           no_proxy: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}
 
+      - name: Prepare self-hosted Node
+        run: |
+          node -v
+          npm -v
+          pnpm -v
+
       - name: Validate Helm chart
         run: |
           docker run --rm -v "$PWD:/work" -w /work alpine/helm@sha256:aef9b56f64e866207d9591d0abd8f6d767b36aadd12edf68f8a719716d9d29c9 lint deploy/helm/mimirq
@@ -329,6 +335,12 @@ jobs:
 
       - name: Build web image
         run: docker build -t mimirq-web -f web/Dockerfile.prod web
+
+      - name: Install JWT browser smoke dependencies
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install chromium
 
       - name: README docker quickstart smoke
         env:
@@ -393,6 +405,7 @@ jobs:
 
           web_name="mimirq-web-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           docker run -d --name "$web_name" \
+            -p 127.0.0.1::3000 \
             --network "${COMPOSE_PROJECT_NAME}_default" \
             -e HOST=0.0.0.0 \
             -e API_INTERNAL_URL=http://mimirq-api:8000 \
@@ -407,6 +420,11 @@ jobs:
           docker logs "$web_name"
           exit 1
 
+      - name: JWT built-web browser smoke
+        env:
+          MIMIRQ_WEB_CONTAINER: mimirq-web-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+        run: bash scripts/run_ci_jwt_browser_smoke.sh
+
       - name: Docker web-proxy and dual-api core smoke
         env:
           BACKEND_PORT: "0"
@@ -419,13 +437,14 @@ jobs:
           docker compose -f docker/docker-compose.retrieval-dev.yml run -d \
             --name "$api2_name" --no-deps mimirq-api
           docker compose -f docker/docker-compose.retrieval-dev.yml run --rm --no-deps -T \
+            -e MIMIRQ_SMOKE_IDENTIFIER \
+            -e MIMIRQ_SMOKE_PASSWORD \
             -v "$PWD:/work" -w /work mimirq-api \
             python scripts/smoke_test.py \
               --base-url http://mimirq-web-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}:3000 \
               --web-base-url http://mimirq-web-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}:3000 \
               --secondary-base-url http://$api2_name:8000 \
               --core-only \
-              --bootstrap-register \
               --out artifacts/core-e2e.web-dual-api.json
 
       - name: Clean up image smoke stack
@@ -448,6 +467,7 @@ jobs:
           RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED_RETRIEVAL_DEV: "true"
           RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY_RETRIEVAL_DEV: "3"
           RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY_RETRIEVAL_DEV: "3"
+          DATASET_ANALYSIS_PNG_STALE_AFTER_SEC_RETRIEVAL_DEV: "2"
         run: |
           mkdir -p artifacts
           compose=(docker compose -f docker/docker-compose.retrieval-dev.yml)
@@ -481,6 +501,7 @@ jobs:
           RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED_RETRIEVAL_DEV: "true"
           RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY_RETRIEVAL_DEV: "3"
           RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY_RETRIEVAL_DEV: "3"
+          DATASET_ANALYSIS_PNG_STALE_AFTER_SEC_RETRIEVAL_DEV: "2"
         run: docker compose -f docker/docker-compose.retrieval-dev.yml down -v --remove-orphans
 
   retrieval-only-bounded-gate:

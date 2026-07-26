@@ -31,10 +31,22 @@ function createRequest<T>() {
 function createIndexedDbHarness() {
   const stores = new Map<string, Map<string, Record<string, unknown>>>()
   let deferredOpenCount = 0
+  let deferredWriteCount = 0
+  let deferredWriteCompletionCount = 0
   const pendingOpenRequests: DeferredOpenRequest[] = []
+  const pendingWriteResolvers: Array<() => void> = []
+  const pendingWriteCompletionResolvers: Array<() => void> = []
 
   const deferNextOpen = () => {
     deferredOpenCount += 1
+  }
+
+  const deferNextWrite = () => {
+    deferredWriteCount += 1
+  }
+
+  const deferNextWriteCompletion = () => {
+    deferredWriteCompletionCount += 1
   }
 
   const flushPendingOpens = () => {
@@ -44,6 +56,20 @@ function createIndexedDbHarness() {
         request.onupgradeneeded?.()
         request.onsuccess?.()
       })
+    }
+  }
+
+  const flushPendingWrites = () => {
+    const resolvers = pendingWriteResolvers.splice(0, pendingWriteResolvers.length)
+    for (const resolve of resolvers) {
+      queueMicrotask(resolve)
+    }
+  }
+
+  const flushPendingWriteCompletions = () => {
+    const resolvers = pendingWriteCompletionResolvers.splice(0, pendingWriteCompletionResolvers.length)
+    for (const resolve of resolvers) {
+      queueMicrotask(resolve)
     }
   }
 
@@ -60,10 +86,18 @@ function createIndexedDbHarness() {
       return {}
     },
     transaction: (storeName: string) => {
+      let aborted = false
       const tx = {
         onabort: null as (() => void) | null,
         onerror: null as (() => void) | null,
         oncomplete: null as (() => void) | null,
+        abort: () => {
+          if (aborted) return
+          aborted = true
+          queueMicrotask(() => {
+            tx.onabort?.()
+          })
+        },
         objectStore: () => {
           const ensureStore = () => {
             if (!stores.has(storeName)) {
@@ -75,12 +109,29 @@ function createIndexedDbHarness() {
           return {
             put: (value: Record<string, unknown>) => {
               const req = createRequest<Record<string, unknown>>()
-              queueMicrotask(() => {
-                ensureStore().set(String(value.id), { ...value })
+              const execute = () => {
+                if (aborted) return
                 req.result = value
                 req.onsuccess?.()
-                tx.oncomplete?.()
-              })
+                if (aborted) return
+                const finalize = () => {
+                  if (aborted) return
+                  ensureStore().set(String(value.id), { ...value })
+                  tx.oncomplete?.()
+                }
+                if (deferredWriteCompletionCount > 0) {
+                  deferredWriteCompletionCount -= 1
+                  pendingWriteCompletionResolvers.push(finalize)
+                } else {
+                  queueMicrotask(finalize)
+                }
+              }
+              if (deferredWriteCount > 0) {
+                deferredWriteCount -= 1
+                pendingWriteResolvers.push(execute)
+              } else {
+                queueMicrotask(execute)
+              }
               return req as unknown as IDBRequest<Record<string, unknown>>
             },
             get: (key: string) => {
@@ -173,7 +224,11 @@ function createIndexedDbHarness() {
       }),
     },
     deferNextOpen,
+    deferNextWrite,
+    deferNextWriteCompletion,
     flushPendingOpens,
+    flushPendingWrites,
+    flushPendingWriteCompletions,
     listStoreKeys,
   }
 }
@@ -334,6 +389,99 @@ describe('document content cache auth scope writes', () => {
       originalMarkdownContent: 'tenant-b-safe',
     })
     expect(harness.listStoreKeys('doc_contents')).toEqual(['tenant-b:user-b:shared-document-id'])
+  })
+
+  it('aborts a write that started before same-scope invalidation once the transaction is already open', async () => {
+    const harness = createIndexedDbHarness()
+    vi.stubGlobal('indexedDB', harness.indexedDB)
+
+    const {
+      getDocContentFromCache,
+      invalidateDocCacheScopeWrites,
+      saveDocContentToCache,
+    } = await import('./doc-content-cache')
+
+    authMock.scope = 'tenant-a:user-a'
+    harness.deferNextWrite()
+    const staleWrite = saveDocContentToCache(
+      {
+        id: 'shared-document-id',
+        markdownContent: 'tenant-a-secret',
+        originalMarkdownContent: 'tenant-a-secret',
+      },
+      'tenant-a:user-a'
+    )
+    await Promise.resolve()
+    await Promise.resolve()
+
+    invalidateDocCacheScopeWrites('tenant-a:user-a')
+    harness.flushPendingWrites()
+    await staleWrite
+
+    await expect(getDocContentFromCache('shared-document-id', 'tenant-a:user-a')).resolves.toBeNull()
+    expect(harness.listStoreKeys('doc_contents')).toEqual([])
+  })
+
+  it('aborts a write if same-scope invalidation happens after request success but before transaction completion', async () => {
+    const harness = createIndexedDbHarness()
+    vi.stubGlobal('indexedDB', harness.indexedDB)
+
+    const {
+      getDocContentFromCache,
+      invalidateDocCacheScopeWrites,
+      saveDocContentToCache,
+    } = await import('./doc-content-cache')
+
+    authMock.scope = 'tenant-a:user-a'
+    harness.deferNextWriteCompletion()
+    const staleWrite = saveDocContentToCache(
+      {
+        id: 'shared-document-id',
+        markdownContent: 'tenant-a-secret',
+        originalMarkdownContent: 'tenant-a-secret',
+      },
+      'tenant-a:user-a'
+    )
+    await Promise.resolve()
+    await Promise.resolve()
+
+    invalidateDocCacheScopeWrites('tenant-a:user-a')
+    harness.flushPendingWriteCompletions()
+    await staleWrite
+
+    await expect(getDocContentFromCache('shared-document-id', 'tenant-a:user-a')).resolves.toBeNull()
+    expect(harness.listStoreKeys('doc_contents')).toEqual([])
+  })
+
+  it('shares scope generations across module reloads so stale writes cannot commit afterward', async () => {
+    const harness = createIndexedDbHarness()
+    vi.stubGlobal('indexedDB', harness.indexedDB)
+
+    authMock.scope = 'tenant-a:user-a'
+    const initialModule = await import('./doc-content-cache')
+    harness.deferNextWrite()
+    const staleWrite = initialModule.saveDocContentToCache(
+      {
+        id: 'shared-document-id',
+        markdownContent: 'tenant-a-secret',
+        originalMarkdownContent: 'tenant-a-secret',
+      },
+      'tenant-a:user-a'
+    )
+    await Promise.resolve()
+    await Promise.resolve()
+
+    vi.resetModules()
+    const reloadedModule = await import('./doc-content-cache')
+    reloadedModule.invalidateDocCacheScopeWrites('tenant-a:user-a')
+
+    harness.flushPendingWrites()
+    await staleWrite
+
+    await expect(
+      reloadedModule.getDocContentFromCache('shared-document-id', 'tenant-a:user-a')
+    ).resolves.toBeNull()
+    expect(harness.listStoreKeys('doc_contents')).toEqual([])
   })
 
   it('keeps current-scope cache readable after module reload resets in-memory generations', async () => {

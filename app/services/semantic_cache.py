@@ -24,9 +24,11 @@ from app.core.redis_client import LazyRedisClient
 from app.rag.core.hashing import stable_hash, stable_json_dumps
 from app.rag.core.logging import get_logger
 from app.rag.embedding.utils import current_embedding_space_hash
-from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
+from app.storage.vector.milvus import MilvusMaintenanceError, get_milvus_adapter, resolve_collection_name
 
 logger = get_logger("semantic_cache")
+_LOOKUP_CLEANUP_MAX_DELETE = 4
+_RETENTION_MAX_SCAN_DEFAULT = 1000
 
 _redis_client_slot = LazyRedisClient(
     url=lambda: settings.REDIS_URL,
@@ -140,6 +142,30 @@ def _redis_payload_key(*, tenant_id: str, vector_id: str) -> str:
     return f"{prefix}:{tenant_id}:{vector_id}"
 
 
+def _coerce_epoch(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except Exception:
+        return None
+
+
+def _flush_lookup_cleanup(
+    *,
+    adapter: Any,
+    cleanup_ids: list[str],
+    meta: dict[str, Any],
+) -> None:
+    meta["cleanup_attempted"] = len(cleanup_ids)
+    if not cleanup_ids:
+        return
+    try:
+        adapter.delete(cleanup_ids)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Ignoring semantic cache lookup cleanup failure: %s", exc)
+
+
 def get_cached_semantic_payload(
     *,
     tenant_id: str,
@@ -221,7 +247,8 @@ def get_cached_semantic_payload(
     try:
         t0 = time.perf_counter()
         # Server-side pushdown is best-effort; we always re-check scope client-side.
-        results = _get_adapter().search(vec, top_k=search_k, metadata_filter={"tenant_id": str(tenant_id)})
+        adapter = _get_adapter()
+        results = adapter.search(vec, top_k=search_k, metadata_filter={"tenant_id": str(tenant_id)})
         meta["search_ms"] = round((time.perf_counter() - t0) * 1000, 2)
     except Exception as exc:  # noqa: BLE001
         meta["skip_reason"] = "search_error"
@@ -229,6 +256,11 @@ def get_cached_semantic_payload(
         return None, meta
 
     pipeline_key = str(current_embedding_space_hash() or "") or ""
+    now_epoch = int(time.time())
+    cleanup_budget = max(0, int(_LOOKUP_CLEANUP_MAX_DELETE))
+    cleanup_ids: list[str] = []
+    cleanup_seen: set[str] = set()
+    meta["cleanup_budget"] = cleanup_budget
     for r in results or []:
         try:
             score = float(r.get("score") or 0.0)
@@ -251,20 +283,27 @@ def get_cached_semantic_payload(
         rid = str(r.get("id") or "").strip()
         if not rid:
             continue
+        expires_at = _coerce_epoch(md.get("expires_at_epoch"))
+        if expires_at is not None and expires_at <= now_epoch:
+            meta["expired_vectors_skipped"] = int(meta.get("expired_vectors_skipped", 0) or 0) + 1
+            if len(cleanup_ids) < cleanup_budget and rid not in cleanup_seen:
+                cleanup_seen.add(rid)
+                cleanup_ids.append(rid)
+            continue
         key = _redis_payload_key(tenant_id=str(tenant_id), vector_id=rid)
         try:
             raw = client.get(key)
         except Exception as exc:  # noqa: BLE001
+            _flush_lookup_cleanup(adapter=adapter, cleanup_ids=cleanup_ids, meta=meta)
             meta["skip_reason"] = "redis_read_error"
             meta["error"] = str(exc)[:200]
             _invalidate_redis_client()
             return None, meta
         if not raw:
-            # Best-effort cleanup: drop orphaned vector pointer.
-            try:
-                _get_adapter().delete([rid])
-            except Exception as exc:
-                logger.debug("Ignoring semantic cache orphan vector cleanup failure: %s", exc)
+            meta["orphan_vectors_skipped"] = int(meta.get("orphan_vectors_skipped", 0) or 0) + 1
+            if len(cleanup_ids) < cleanup_budget and rid not in cleanup_seen:
+                cleanup_seen.add(rid)
+                cleanup_ids.append(rid)
             continue
 
         try:
@@ -282,8 +321,10 @@ def get_cached_semantic_payload(
         meta["hit"] = True
         meta["score"] = float(score)
         meta["vector_id"] = rid
+        _flush_lookup_cleanup(adapter=adapter, cleanup_ids=cleanup_ids, meta=meta)
         return out, meta
 
+    _flush_lookup_cleanup(adapter=adapter, cleanup_ids=cleanup_ids, meta=meta)
     return None, meta
 
 
@@ -378,8 +419,147 @@ def set_cached_semantic_payload(
         return False
 
 
+def run_semantic_cache_retention(
+    *,
+    tenant_id: str | Any | None = None,
+    dry_run: bool,
+    max_delete: int,
+    max_scan: int | None = None,
+    now_epoch: int | None = None,
+) -> dict[str, Any]:
+    now_epoch_i = int(now_epoch or time.time())
+    try:
+        max_delete_i = max(1, int(max_delete or 0))
+    except Exception:
+        max_delete_i = 1000
+    try:
+        max_scan_i = max(1, int(max_scan or _RETENTION_MAX_SCAN_DEFAULT))
+    except Exception:
+        max_scan_i = _RETENTION_MAX_SCAN_DEFAULT
+
+    tenant_id_s = None if tenant_id is None else str(tenant_id)
+    summary: dict[str, Any] = {
+        "job": "semantic-cache",
+        "tenant_id": tenant_id_s,
+        "dry_run": bool(dry_run),
+        "max_delete": int(max_delete_i),
+        "max_scan": int(max_scan_i),
+        "ran_at_epoch": int(now_epoch_i),
+        "scanned": 0,
+        "exhausted": False,
+        "scan_limit_reached": False,
+        "eligible": 0,
+        "deleted": 0,
+        "expired_candidates": 0,
+        "legacy_rows_seen": 0,
+        "legacy_orphan_candidates": 0,
+        "legacy_rows_preserved": 0,
+        "legacy_rows_skipped": 0,
+        "failed": False,
+        "errors": [],
+    }
+
+    try:
+        adapter = _get_adapter()
+    except Exception as exc:  # noqa: BLE001
+        summary["failed"] = True
+        summary["errors"].append(str(exc)[:200])
+        return summary
+
+    client = _get_redis_client()
+    delete_ids: list[str] = []
+    exhausted = False
+    page_size = max(1, min(max_delete_i, 250))
+    iterator = None
+
+    try:
+        iterator = adapter.open_semantic_cache_maintenance_iterator(
+            tenant_id=str(tenant_id_s or ""),
+            batch_size=min(page_size, max_scan_i),
+        )
+        while (not exhausted) and summary["scanned"] < max_scan_i and len(delete_ids) < max_delete_i:
+            rows = iterator.next_batch()
+            if not rows:
+                exhausted = True
+                break
+
+            remaining_scan = max_scan_i - int(summary["scanned"] or 0)
+            batch_rows = rows[:remaining_scan]
+            summary["scanned"] += len(batch_rows)
+            if len(rows) > len(batch_rows):
+                exhausted = False
+
+            for row in batch_rows:
+                if len(delete_ids) >= max_delete_i:
+                    break
+                if not isinstance(row, dict):
+                    continue
+                rid = str(row.get("id") or "").strip()
+                row_tenant_id = str(row.get("tenant_id") or "").strip()
+                if not rid or not row_tenant_id:
+                    summary["failed"] = True
+                    summary["errors"].append("semantic cache maintenance row missing tenant scope")
+                    break
+
+                expires_at = _coerce_epoch(row.get("expires_at_epoch"))
+                if expires_at is not None:
+                    if expires_at <= now_epoch_i:
+                        summary["expired_candidates"] += 1
+                        delete_ids.append(rid)
+                    continue
+
+                summary["legacy_rows_seen"] += 1
+                if client is None:
+                    summary["legacy_rows_skipped"] += 1
+                    continue
+
+                key = _redis_payload_key(tenant_id=row_tenant_id, vector_id=rid)
+                try:
+                    raw = client.get(key)
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("Ignoring semantic cache retention redis check failure: %s", exc)
+                    client = None
+                    summary["legacy_rows_skipped"] += 1
+                    continue
+                if raw:
+                    summary["legacy_rows_preserved"] += 1
+                    continue
+                summary["legacy_orphan_candidates"] += 1
+                delete_ids.append(rid)
+
+            if summary["failed"]:
+                break
+    except MilvusMaintenanceError as exc:
+        summary["failed"] = True
+        summary["errors"].append(str(exc)[:200])
+    except Exception as exc:  # noqa: BLE001
+        summary["failed"] = True
+        summary["errors"].append(str(exc)[:200])
+    finally:
+        if iterator is not None:
+            try:
+                iterator.close()
+            except MilvusMaintenanceError as exc:
+                summary["failed"] = True
+                summary["errors"].append(str(exc)[:200])
+
+    summary["exhausted"] = bool(exhausted)
+    summary["scan_limit_reached"] = bool((not exhausted) and summary["scanned"] >= max_scan_i and len(delete_ids) < max_delete_i)
+    summary["eligible"] = len(delete_ids)
+    if (not dry_run) and delete_ids and (not summary["failed"]):
+        try:
+            adapter.delete(delete_ids)
+            summary["deleted"] = len(delete_ids)
+        except Exception as exc:  # noqa: BLE001
+            summary["failed"] = True
+            summary["errors"].append(str(exc)[:200])
+
+    return summary
+
+
 __all__ = [
     "build_semantic_cache_scope_hash",
     "get_cached_semantic_payload",
+    "run_semantic_cache_retention",
     "set_cached_semantic_payload",
 ]

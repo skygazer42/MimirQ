@@ -9,6 +9,7 @@ Currently implemented:
 - Audit log retention (bounded purge), per tenant.
 - Regression run retention (bounded purge), per tenant.
 - Dataset document retention sweep (bounded), per tenant.
+- Semantic cache retention (bounded Milvus/Redis sweep), per tenant.
 
 Examples:
   # Dry-run (plan only) for default tenant
@@ -48,6 +49,7 @@ from app.services.retention_jobs import (
     run_regression_run_retention,
 )
 from app.services.retention_policy import parse_retention_policy_from_metadata, run_dataset_retention_sweep
+from app.services.semantic_cache import run_semantic_cache_retention
 
 
 def _parse_uuid(value: str) -> UUID:
@@ -63,6 +65,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--regression-runs", action="store_true", help="Run regression run retention")
     p.add_argument("--knowledge-assets", action="store_true", help="Run archived/disabled knowledge asset retention")
     p.add_argument("--dataset-retention", action="store_true", help="Run dataset-level document retention sweeps (Gap9)")
+    p.add_argument("--semantic-cache", action="store_true", help="Run semantic cache retention")
 
     scope = p.add_mutually_exclusive_group()
     scope.add_argument("--tenant-id", type=_parse_uuid, default=None, help="Tenant UUID to operate on")
@@ -74,6 +77,7 @@ def main(argv: list[str] | None = None) -> int:
 
     p.add_argument("--retention-days", type=int, default=90, help="Retention window in days (default: 90)")
     p.add_argument("--max-delete", type=int, default=100_000, help="Max rows to delete per tenant (default: 100000)")
+    p.add_argument("--max-scan", type=int, default=1000, help="Max semantic-cache rows to scan per tenant (default: 1000)")
     p.add_argument("--dataset-id", type=_parse_uuid, default=None, help="Optional dataset UUID filter for dataset/knowledge assets")
     p.add_argument(
         "--lifecycle-state",
@@ -96,9 +100,10 @@ def main(argv: list[str] | None = None) -> int:
         and (not bool(args.regression_runs))
         and (not bool(args.knowledge_assets))
         and (not bool(args.dataset_retention))
+        and (not bool(args.semantic_cache))
     ):
         print(
-            "No job selected. Use --audit-logs, --regression-runs, --knowledge-assets, and/or --dataset-retention.",
+            "No job selected. Use --audit-logs, --regression-runs, --knowledge-assets, --dataset-retention, and/or --semantic-cache.",
             file=sys.stderr,
         )
         return 2
@@ -125,6 +130,19 @@ def main(argv: list[str] | None = None) -> int:
     results: list[dict] = []
 
     for tid in tenant_ids:
+        if bool(args.semantic_cache):
+            results.append(
+                run_semantic_cache_retention(
+                    tenant_id=tid,
+                    dry_run=bool(dry_run),
+                    max_delete=int(args.max_delete or 0),
+                    max_scan=int(args.max_scan or 0),
+                )
+            )
+
+        if not (bool(args.audit_logs) or bool(args.regression_runs) or bool(args.knowledge_assets) or bool(args.dataset_retention)):
+            continue
+
         db = SessionLocal()
         try:
             if bool(args.audit_logs):
@@ -192,8 +210,9 @@ def main(argv: list[str] | None = None) -> int:
         finally:
             db.close()
 
-    print(json.dumps({"ok": True, "ran_at": ran_at.isoformat(), "results": results}, ensure_ascii=False))
-    return 0
+    failed = any(bool(item.get("failed")) for item in results if isinstance(item, dict))
+    print(json.dumps({"ok": not failed, "ran_at": ran_at.isoformat(), "results": results}, ensure_ascii=False))
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

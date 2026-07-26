@@ -296,6 +296,23 @@ def _build_document_dedup_key(*, file_sha256: str | None, pipeline_hash: str | N
     return f"{sha}:{ph}"
 
 
+def _document_matches_dedup_identity(
+    document: Any,
+    *,
+    file_sha256: str,
+    pipeline_hash: str,
+) -> bool:
+    expected = _build_document_dedup_key(file_sha256=file_sha256, pipeline_hash=pipeline_hash)
+    if expected and str(getattr(document, "dedup_key", "") or "").strip() == expected:
+        return True
+    metadata = dict(getattr(document, "doc_metadata", None) or {})
+    return bool(
+        expected
+        and str(metadata.get("file_sha256") or "").strip().lower() == str(file_sha256 or "").strip().lower()
+        and str(metadata.get("pipeline_hash") or "").strip() == str(pipeline_hash or "").strip()
+    )
+
+
 def _is_document_dedup_integrity_error(exc: IntegrityError) -> bool:
     diag = getattr(getattr(exc, "orig", None), "diag", None)
     if str(getattr(diag, "constraint_name", "") or "").strip() == DOCUMENT_DEDUP_CONSTRAINT_NAME:
@@ -865,6 +882,14 @@ async def _upload_document_impl(
             if dup_any is not None:
                 status0 = str(getattr(dup_any, "status", "") or "").lower()
                 if status0 in {"pending", "processing"}:
+                    if _document_matches_dedup_identity(
+                        dup_any,
+                        file_sha256=file_sha256,
+                        pipeline_hash=pipeline_hash,
+                    ):
+                        with contextlib.suppress(Exception):
+                            _attach_doc_to_ingestion_run(dup_any, created=False)
+                        return dup_any
                     raise HTTPException(status_code=409, detail=documents_module.DUPLICATE_DOCUMENT_PROCESSING_DETAIL)
 
                 meta_any = dict(getattr(dup_any, "doc_metadata", None) or {})
@@ -1684,6 +1709,16 @@ async def upload_documents_batch(
                             status0 = str(getattr(dup_any, "status", "") or "").lower()
                             if status0 in {"pending", "processing"}:
                                 _unlink_upload(file_path)
+                                if _document_matches_dedup_identity(
+                                    dup_any,
+                                    file_sha256=file_sha256,
+                                    pipeline_hash=pipeline_hash,
+                                ):
+                                    return {
+                                        "success": True,
+                                        "filename": filename0,
+                                        **_document_result_snapshot(dup_any, source_path=source_path),
+                                    }
                                 raise HTTPException(status_code=409, detail=documents_module.DUPLICATE_DOCUMENT_PROCESSING_DETAIL)
 
                             with contextlib.suppress(OSError):
@@ -2100,6 +2135,16 @@ async def upload_documents_batch(
                         status0 = str(getattr(dup_any, "status", "") or "").lower()
                         if status0 in {"pending", "processing"}:
                             _unlink_upload(file_path)
+                            if _document_matches_dedup_identity(
+                                dup_any,
+                                file_sha256=file_sha256,
+                                pipeline_hash=pipeline_hash,
+                            ):
+                                return {
+                                    "success": True,
+                                    "filename": file.filename,
+                                    **_document_result_snapshot(dup_any, source_path=source_path),
+                                }
                             raise HTTPException(status_code=409, detail=documents_module.DUPLICATE_DOCUMENT_PROCESSING_DETAIL)
 
                         with contextlib.suppress(OSError):

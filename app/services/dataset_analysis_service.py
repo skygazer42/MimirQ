@@ -1,5 +1,6 @@
 
 import json
+import threading
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -7,6 +8,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
+from app.core.exceptions import MimirQError
 from app.models.chat import Conversation, Message
 from app.models.dataset import Dataset
 from app.models.feedback import MessageFeedback
@@ -16,11 +18,14 @@ from app.rag.evaluation.poc_runner.coverage_heatmap import build_document_heatma
 from app.rag.evaluation.poc_runner.latency_decomposer import decompose_latency_rows
 from app.rag.evaluation.poc_runner.metrics import compute_feedback_metrics
 from app.rag.evaluation.poc_runner.png_tasks import (
+    begin_png_export_task,
     complete_png_export_task,
     create_png_export_task,
     fail_png_export_task,
     get_png_export_task,
+    get_png_export_task_heartbeat_interval_sec,
     get_png_export_task_result,
+    heartbeat_png_export_task,
 )
 from app.rag.evaluation.poc_runner.query_pattern_miner import mine_query_patterns
 from app.rag.evaluation.poc_runner.reports.attribution_report import (
@@ -43,6 +48,25 @@ _EXAMPLES_SCHEMA = "mimirq.dataset_analysis.examples.v1"
 _EXPORT_SCHEMA = "mimirq.dataset_analysis.export.v1"
 _GLOSSARY_WRITEBACK_SCHEMA = "mimirq.dataset_analysis.glossary_writeback.v1"
 _DASHBOARD_SCHEMA = "mimirq.dataset_analysis.dashboard.v1"
+
+
+class DatasetAnalysisSourceIncompleteError(MimirQError):
+    def __init__(
+        self,
+        *,
+        dataset_id: str,
+        failed_conversation_ids: list[str] | None = None,
+    ) -> None:
+        detail = {
+            "dataset_id": str(dataset_id or ""),
+            "failed_conversation_ids": list(failed_conversation_ids or []),
+        }
+        super().__init__(
+            message="Dataset analysis sources are incomplete",
+            error_code="source_incomplete",
+            status_code=503,
+            detail=detail,
+        )
 
 
 def _iso_now() -> str:
@@ -170,6 +194,7 @@ def _load_dataset_scope_rows(
         window_minutes = max(60, int(delta.total_seconds() // 60) + 60)
 
     traces: list[dict[str, Any]] = []
+    trace_failures: list[str] = []
     for conv in conversations:
         try:
             response = list_rag_traces(
@@ -180,10 +205,22 @@ def _load_dataset_scope_rows(
                 max_bytes=10_000_000,
             )
         except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            trace_failures.append(str(conv.id))
+            get_logger(__name__).warning(
+                "Dataset analysis trace load failed for conversation_id=%s dataset_id=%s",
+                str(conv.id),
+                str(dataset_id),
+                exc_info=True,
+            )
             continue
         for item in getattr(response, "items", []) or []:
             traces.append(_coerce_mapping(item))
+
+    if trace_failures:
+        raise DatasetAnalysisSourceIncompleteError(
+            dataset_id=str(dataset_id),
+            failed_conversation_ids=trace_failures,
+        )
 
     built = build_dataset_analysis_sources(
         traces=traces,
@@ -597,6 +634,7 @@ def create_dataset_analysis_png_task(
     del db  # background task owns its own session
 
     task = create_png_export_task(
+        tenant_id=str(tenant_id),
         dataset_id=str(dataset_id),
         filters=_base_filters_dict(
             dataset_id=dataset_id,
@@ -609,7 +647,46 @@ def create_dataset_analysis_png_task(
 
     def _run() -> None:
         bg_db = SessionLocal()
+        owner_token: str | None = None
+        heartbeat_stop = threading.Event()
+        heartbeat_state: dict[str, Any] = {"reason": None, "error": None}
+        heartbeat_thread: threading.Thread | None = None
+
+        def _heartbeat_loop() -> None:
+            if not owner_token:
+                return
+            interval_sec = get_png_export_task_heartbeat_interval_sec()
+            while not heartbeat_stop.wait(interval_sec):
+                try:
+                    renewed = heartbeat_png_export_task(
+                        task["task_id"],
+                        tenant_id=str(tenant_id),
+                        dataset_id=str(dataset_id),
+                        owner_token=owner_token,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    heartbeat_state["reason"] = "shared_state_unavailable"
+                    heartbeat_state["error"] = str(exc)
+                    heartbeat_stop.set()
+                    return
+                if not renewed:
+                    heartbeat_state["reason"] = "ownership_lost"
+                    heartbeat_stop.set()
+                    return
+
         try:
+            started = begin_png_export_task(
+                task["task_id"],
+                tenant_id=str(tenant_id),
+                dataset_id=str(dataset_id),
+            )
+            owner_token = str(started.get("owner_token") or "")
+            heartbeat_thread = threading.Thread(
+                target=_heartbeat_loop,
+                name=f"dataset-analysis-png-heartbeat-{task['task_id'][:8]}",
+                daemon=True,
+            )
+            heartbeat_thread.start()
             bundle = _build_full_bundle(
                 db=bg_db,
                 tenant_id=tenant_id,
@@ -639,19 +716,76 @@ def create_dataset_analysis_png_task(
             ))
             report["meta"]["definitions"] = bundle["meta"]["definitions"]
             payload = render_dataset_analysis_png(report)
-            complete_png_export_task(task["task_id"], payload)
+            if heartbeat_state.get("reason") == "shared_state_unavailable":
+                fail_png_export_task(
+                    task["task_id"],
+                    tenant_id=str(tenant_id),
+                    dataset_id=str(dataset_id),
+                    owner_token=owner_token,
+                    error=str(heartbeat_state.get("error") or "PNG export shared state unavailable"),
+                    error_code="shared_state_unavailable",
+                )
+                return
+            if heartbeat_state.get("reason") == "ownership_lost":
+                return
+            complete_png_export_task(
+                task["task_id"],
+                tenant_id=str(tenant_id),
+                dataset_id=str(dataset_id),
+                owner_token=owner_token,
+                png_bytes=payload,
+            )
+        except DatasetAnalysisSourceIncompleteError as exc:
+            if owner_token:
+                fail_png_export_task(
+                    task["task_id"],
+                    tenant_id=str(tenant_id),
+                    dataset_id=str(dataset_id),
+                    owner_token=owner_token,
+                    error=str(exc.message),
+                    error_code="source_incomplete",
+                )
         except Exception as exc:  # noqa: BLE001
-            fail_png_export_task(task["task_id"], str(exc))
+            if owner_token:
+                if heartbeat_state.get("reason") == "shared_state_unavailable":
+                    fail_png_export_task(
+                        task["task_id"],
+                        tenant_id=str(tenant_id),
+                        dataset_id=str(dataset_id),
+                        owner_token=owner_token,
+                        error=str(heartbeat_state.get("error") or exc),
+                        error_code="shared_state_unavailable",
+                    )
+                else:
+                    fail_png_export_task(
+                        task["task_id"],
+                        tenant_id=str(tenant_id),
+                        dataset_id=str(dataset_id),
+                        owner_token=owner_token,
+                        error=str(exc),
+                        error_code="render_failed",
+                    )
         finally:
+            heartbeat_stop.set()
+            if heartbeat_thread is not None:
+                heartbeat_thread.join(timeout=max(1.0, get_png_export_task_heartbeat_interval_sec() * 2.0))
             bg_db.close()
 
     background_tasks.add_task(_run)
     return task
 
 
-def get_dataset_analysis_png_task_status(*, task_id: str) -> dict[str, Any]:
-    return get_png_export_task(task_id)
+def get_dataset_analysis_png_task_status(*, task_id: str, tenant_id: UUID, dataset_id: UUID) -> dict[str, Any]:
+    return get_png_export_task(
+        task_id,
+        tenant_id=str(tenant_id),
+        dataset_id=str(dataset_id),
+    )
 
 
-def get_dataset_analysis_png_result(*, task_id: str) -> bytes:
-    return get_png_export_task_result(task_id)
+def get_dataset_analysis_png_result(*, task_id: str, tenant_id: UUID, dataset_id: UUID) -> bytes:
+    return get_png_export_task_result(
+        task_id,
+        tenant_id=str(tenant_id),
+        dataset_id=str(dataset_id),
+    )

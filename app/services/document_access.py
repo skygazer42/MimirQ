@@ -57,7 +57,12 @@ def build_dataset_read_filter(*, tenant_id: UUID, account_id: str) -> ColumnElem
     )
 
 
-def build_document_read_filter(*, tenant_id: UUID, account_id: str) -> ColumnElement[bool]:
+def build_document_read_filter(
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    document_model: type[DBDocument] = DBDocument,
+) -> ColumnElement[bool]:
     """Build document security trimming, including direct and group allowlists."""
     member_group_ids = select(TenantGroupMember.group_id).where(
         TenantGroupMember.tenant_id == tenant_id,
@@ -65,12 +70,12 @@ def build_document_read_filter(*, tenant_id: UUID, account_id: str) -> ColumnEle
     )
     member_allowed = exists().where(
         DocumentPermission.tenant_id == tenant_id,
-        DocumentPermission.document_id == DBDocument.id,
+        DocumentPermission.document_id == document_model.id,
         DocumentPermission.account_id == account_id,
     )
     group_allowed = exists().where(
         DocumentGroupPermission.tenant_id == tenant_id,
-        DocumentGroupPermission.document_id == DBDocument.id,
+        DocumentGroupPermission.document_id == document_model.id,
         DocumentGroupPermission.group_id.in_(member_group_ids),
     )
     owner_dataset_ids = select(Dataset.id).where(
@@ -78,15 +83,15 @@ def build_document_read_filter(*, tenant_id: UUID, account_id: str) -> ColumnEle
         Dataset.owner_id == account_id,
     )
     return or_(
-        DBDocument.dataset_id.in_(owner_dataset_ids),
+        document_model.dataset_id.in_(owner_dataset_ids),
         and_(
-            DBDocument.dataset_id.isnot(None),
-            or_(DBDocument.access_mode.is_(None), DBDocument.access_mode == "inherit"),
+            document_model.dataset_id.isnot(None),
+            or_(document_model.access_mode.is_(None), document_model.access_mode == "inherit"),
         ),
-        DBDocument.access_mode == _DOC_ACCESS_ALL,
-        DBDocument.owner_id == account_id,
+        document_model.access_mode == _DOC_ACCESS_ALL,
+        document_model.owner_id == account_id,
         and_(
-            DBDocument.access_mode == _DOC_ACCESS_PARTIAL,
+            document_model.access_mode == _DOC_ACCESS_PARTIAL,
             or_(member_allowed, group_allowed),
         ),
     )

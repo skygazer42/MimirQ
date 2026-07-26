@@ -33,6 +33,7 @@ from app.rag.embedding.config import DEFAULT_EMBED_MODELS, EmbedModelInfo
 from app.rag.embedding.factory import select_embedding_model, test_embedding_model_status
 from app.rag.embedding.providers import (
     DashScopeEmbedding,
+    DeterministicTestEmbedding,
     OllamaEmbedding,
     OpenAICompatibleEmbedding,
     SentenceTransformerEmbedding,
@@ -46,6 +47,7 @@ __all__ = [
     "OllamaEmbedding",
     "SentenceTransformerEmbedding",
     "DashScopeEmbedding",
+    "DeterministicTestEmbedding",
     # LangChain adapter
     "LangChainEmbeddingsAdapter",
     "create_langchain_embeddings",

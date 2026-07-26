@@ -13,8 +13,8 @@ from app.core.database import get_db
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.services.audit_log_service import audit_log_event
-from app.services.dataset_service import EDIT_ROLES, DatasetService
-from app.services.document_access_service import assert_document_acl_readable
+from app.services.dataset_service import DatasetService
+from app.services.document_access_service import assert_document_access_manageable, assert_document_acl_readable
 from app.services.document_permission_service import DocumentGroupPermissionService, DocumentPermissionService
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -79,8 +79,8 @@ def put_document_access(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    """Update document-level ACL settings (requires dataset write or tenant edit role)."""
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    """Update document ACL settings using dataset or unassigned-document ownership policy."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
 
     document = (
         db.query(DBDocument)
@@ -90,13 +90,12 @@ def put_document_access(
     if not document:
         raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
-    if document.dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_writable(db, dataset, account_id)
-    else:
-        role = (getattr(member, "role", None) or "").lower()
-        if role not in EDIT_ROLES:
-            raise HTTPException(status_code=403, detail="No permission to manage document access")
+    assert_document_access_manageable(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        document=document,
+    )
 
     mode = str(payload.mode or "inherit").strip().lower()
     document.access_mode = None if mode == "inherit" else mode

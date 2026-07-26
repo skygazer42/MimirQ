@@ -38,8 +38,6 @@ data/
 docs/
 images/
 tests/
-app/deepdoc/resources/models/
-
 .git
 .gitignore
 

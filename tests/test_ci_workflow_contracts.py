@@ -57,6 +57,10 @@ def test_public_pr_live_core_gate_launcher_contract() -> None:
         'export RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED="${RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED:-true}"'
         in script
     )
+    assert (
+        'export DATASET_ANALYSIS_PNG_STALE_AFTER_SEC="${DATASET_ANALYSIS_PNG_STALE_AFTER_SEC:-2}"'
+        in script
+    )
     assert 'python -m uvicorn app.main:app --host 127.0.0.1 --port "$PRIMARY_PORT"' in script
     assert 'python -m uvicorn app.main:app --host 127.0.0.1 --port "$SECONDARY_PORT"' in script
     assert 'python scripts/api_ping.py --base-url "$base_url" >/dev/null' in script
@@ -348,7 +352,7 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     assert "up -d --no-build" in docker_job
     assert "Docker web-proxy and dual-api core smoke" in docker_job
     assert "python scripts/smoke_test.py" in docker_job
-    assert "--bootstrap-register" in docker_job
+    assert "JWT built-web browser smoke" in docker_job
     assert "--web-base-url http://mimirq-web-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}:3000" in docker_job
     assert "--secondary-base-url http://$api2_name:8000" in docker_job
     assert "artifacts/core-e2e.web-dual-api.json" in docker_job
@@ -361,12 +365,75 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     assert 'RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED_RETRIEVAL_DEV: "true"' in docker_job
     assert 'RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY_RETRIEVAL_DEV: "3"' in docker_job
     assert 'RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY_RETRIEVAL_DEV: "3"' in docker_job
+    assert 'DATASET_ANALYSIS_PNG_STALE_AFTER_SEC_RETRIEVAL_DEV: "2"' in docker_job
     assert "if: always()" in docker_job
     assert "image: ${MIMIRQ_BACKEND_IMAGE:-mimirq-backend}" in retrieval_compose
     assert "RETRIEVAL_CANDIDATE_CACHE_ENABLED_RETRIEVAL_DEV:-false" in retrieval_compose
     assert "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED_RETRIEVAL_DEV:-true" in retrieval_compose
     assert "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY_RETRIEVAL_DEV:-3" in retrieval_compose
     assert "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY_RETRIEVAL_DEV:-3" in retrieval_compose
+    assert "DATASET_ANALYSIS_PNG_STALE_AFTER_SEC_RETRIEVAL_DEV:-60" in retrieval_compose
+    assert "EMBEDDING_PROVIDER_RETRIEVAL_DEV:-deterministic_test" in retrieval_compose
+    assert "EMBEDDING_MODEL_RETRIEVAL_DEV:-mimirq-deterministic-test-v1" in retrieval_compose
+
+
+def test_live_core_gate_keeps_png_cross_instance_and_worker_lost_probes() -> None:
+    source = _read("scripts/live_core_release_gate.py")
+
+    assert "_probe_png_cross_instance(" in source
+    assert "_probe_png_worker_lost(" in source
+    assert 'report["png_cross_instance"]' in source
+    assert 'report["png_worker_lost"]' in source
+    assert "analysis/export.png" in source
+    assert "analysis/export-tasks" in source
+    assert "worker_lost" in source
+
+
+def test_built_web_jwt_browser_smoke_is_explicitly_wired() -> None:
+    workflow = _read(".github/workflows/ci.yml")
+    docker_job = workflow.split("\n  docker-build:", 1)[1].split(
+        "\n  retrieval-only-bounded-gate:", 1
+    )[0]
+    script = _read("scripts/run_ci_jwt_browser_smoke.sh")
+    playwright_config = _read("web/playwright.config.ts")
+
+    assert script.startswith("#!/usr/bin/env bash\nset -euo pipefail\n")
+    assert "set -x" not in script
+    assert 'docker port "$WEB_CONTAINER" 3000/tcp' in script
+    assert '"${web_base_url}/api/v1/auth/register"' in script
+    assert "@example.com`" in script
+    assert "@example.invalid" not in script
+    assert "PLAYWRIGHT_EXTERNAL_SERVER=1" in script
+    assert 'PLAYWRIGHT_PORT="$mapped_port"' in script
+    assert 'PLAYWRIGHT_LIVE_IDENTIFIER="$jwt_identifier"' in script
+    assert 'PLAYWRIGHT_LIVE_PASSWORD="$jwt_password"' in script
+    assert "pnpm --dir web exec playwright test e2e/live-stack.smoke.spec.ts" in script
+    assert '>>"$GITHUB_ENV"' in script
+    assert "::add-mask::%s" in script
+    assert "MIMIRQ_SMOKE_IDENTIFIER=%s" in script
+    assert "MIMIRQ_SMOKE_PASSWORD=%s" in script
+
+    assert "PLAYWRIGHT_EXTERNAL_SERVER" in playwright_config
+    assert "webServer: useExternalServer ? undefined" in playwright_config
+
+    assert "Install JWT browser smoke dependencies" in docker_job
+    assert "Prepare self-hosted Node" in docker_job
+    assert "node -v" in docker_job
+    assert "npm -v" in docker_job
+    assert "pnpm -v" in docker_job
+    assert "pnpm install --frozen-lockfile" in docker_job
+    assert "pnpm exec playwright install chromium" in docker_job
+    assert "-p 127.0.0.1::3000" in docker_job
+    assert "JWT built-web browser smoke" in docker_job
+    assert "bash scripts/run_ci_jwt_browser_smoke.sh" in docker_job
+    dual_api_step = docker_job.split("- name: Docker web-proxy and dual-api core smoke", 1)[1].split(
+        "\n      - name:", 1
+    )[0]
+    assert "--identifier" not in dual_api_step
+    assert "--password" not in dual_api_step
+    assert "--bootstrap-register" not in dual_api_step
+    assert "-e MIMIRQ_SMOKE_IDENTIFIER" in dual_api_step
+    assert "-e MIMIRQ_SMOKE_PASSWORD" in dual_api_step
 
 
 def test_main_ci_runs_core_e2e_against_the_existing_host_backend() -> None:

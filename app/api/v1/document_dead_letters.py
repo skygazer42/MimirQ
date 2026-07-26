@@ -3,7 +3,8 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy import and_, or_, select
+from sqlalchemy.orm import Session, aliased
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
@@ -13,7 +14,8 @@ from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.models.ingest_dead_letter import IngestDeadLetter
 from app.services.dataset_service import DatasetService
-from app.services.document_access_service import assert_document_acl_readable
+from app.services.document_access import build_dataset_read_filter, build_document_read_filter
+from app.services.document_access_service import assert_document_writable_for_lifecycle
 from app.services.ingest_dead_letter_service import mark_dead_letter_replayed
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -41,8 +43,38 @@ def list_ingest_dead_letters(
     limit: Annotated[int, Query(ge=1, le=200)] = 100,
 ) -> dict:
     DatasetService.ensure_member(db, tenant_id, account_id)
+    document = aliased(DBDocument)
+    readable_dataset_ids = select(Dataset.id).where(
+        Dataset.tenant_id == tenant_id,
+        build_dataset_read_filter(tenant_id=tenant_id, account_id=account_id),
+    )
 
-    query = db.query(IngestDeadLetter).filter(IngestDeadLetter.tenant_id == tenant_id)
+    query = (
+        db.query(IngestDeadLetter)
+        .outerjoin(
+            document,
+            and_(document.id == IngestDeadLetter.document_id, document.tenant_id == tenant_id),
+        )
+        .filter(IngestDeadLetter.tenant_id == tenant_id)
+        .filter(
+            or_(
+                and_(
+                    document.id.isnot(None),
+                    or_(document.dataset_id.is_(None), document.dataset_id.in_(readable_dataset_ids)),
+                    build_document_read_filter(
+                        tenant_id=tenant_id,
+                        account_id=account_id,
+                        document_model=document,
+                    ),
+                ),
+                and_(
+                    IngestDeadLetter.document_id.is_(None),
+                    IngestDeadLetter.dataset_id.isnot(None),
+                    IngestDeadLetter.dataset_id.in_(readable_dataset_ids),
+                ),
+            )
+        )
+    )
     if status and status != "all":
         query = query.filter(IngestDeadLetter.status == status.strip().lower())
     if dataset_id is not None:
@@ -93,11 +125,12 @@ async def replay_ingest_dead_letter(
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    dataset: Dataset | None = None
-    if document.dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_writable(db, dataset, account_id)
-    assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=dataset)
+    assert_document_writable_for_lifecycle(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        document=document,
+    )
 
     from app.api.v1.document_processing import retry_document_processing
 

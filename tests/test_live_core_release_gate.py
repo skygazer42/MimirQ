@@ -22,6 +22,7 @@ def _config() -> gate.LiveCoreReleaseGateConfig:
         poll_interval_sec=0.0,
         timeout_sec=1.0,
         cleanup_on_success=False,
+        png_probe_enabled=False,
     )
 
 
@@ -136,6 +137,7 @@ def test_live_core_release_gate_uses_secondary_api_for_duplicate_probe(monkeypat
         secondary_tenant_id="tenant-b",
         user_id="ci-user",
         cleanup_on_success=False,
+        png_probe_enabled=False,
     )
     upload_hosts: list[str] = []
 
@@ -321,6 +323,143 @@ def test_retrieve_load_pair_prewarms_every_candidate_instance(monkeypatch) -> No
         (6, 1, ("http://primary.test/api/v1",)),
         (6, 3, ("http://primary.test/api/v1", "http://secondary.test/api/v1")),
     ]
+
+
+def test_png_export_probe_creates_on_primary_and_reads_result_on_secondary() -> None:
+    calls: list[tuple[str, str]] = []
+    status_reads = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal status_reads
+        calls.append((request.method, request.url.host or ""))
+        path = request.url.path
+        if path == "/api/v1/datasets/dataset-png/analysis/export.png":
+            assert request.url.host == "primary.test"
+            return httpx.Response(202, json={"task_id": "task-png", "status": "pending"})
+        if path == "/api/v1/datasets/dataset-png/analysis/export-tasks/task-png":
+            assert request.url.host == "secondary.test"
+            status_reads += 1
+            status = "pending" if status_reads == 1 else "done"
+            return httpx.Response(200, json={"task_id": "task-png", "status": status})
+        if path == "/api/v1/datasets/dataset-png/analysis/export-tasks/task-png/result.png":
+            assert request.url.host == "secondary.test"
+            return httpx.Response(200, content=b"\x89PNG\r\n\x1a\nfixture", headers={"content-type": "image/png"})
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    config = gate.LiveCoreReleaseGateConfig(
+        api_base="http://primary.test/api/v1",
+        secondary_api_base="http://secondary.test/api/v1",
+        primary_tenant_id="tenant-a",
+        secondary_tenant_id="tenant-b",
+        user_id="ci-user",
+        poll_interval_sec=0.0,
+        png_timeout_sec=1.0,
+    )
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        result = gate._probe_png_cross_instance(
+            client,
+            config=config,
+            headers={"X-Tenant-ID": "tenant-a", "X-User-ID": "ci-user"},
+            dataset_id="dataset-png",
+        )
+
+    assert result["passed"] is True
+    assert result["task_id"] == "task-png"
+    assert result["result_size_bytes"] == len(b"\x89PNG\r\n\x1a\nfixture")
+    assert ("POST", "primary.test") in calls
+    assert ("GET", "secondary.test") in calls
+
+
+def test_png_worker_lost_probe_seeds_running_task_and_observes_terminal_state(monkeypatch) -> None:
+    monkeypatch.setattr(
+        gate,
+        "create_png_export_task",
+        lambda **_kwargs: {"task_id": "task-lost", "status": "pending"},
+        raising=True,
+    )
+    monkeypatch.setattr(
+        gate,
+        "begin_png_export_task",
+        lambda *_args, **_kwargs: {"task_id": "task-lost", "status": "running", "owner_token": "owner"},
+        raising=True,
+    )
+
+    seen_hosts: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_hosts.append(request.url.host or "")
+        assert request.url.path == "/api/v1/datasets/dataset-png/analysis/export-tasks/task-lost"
+        if request.url.host == "primary.test":
+            return httpx.Response(200, json={"task_id": "task-lost", "status": "running"})
+        assert request.url.host == "secondary.test"
+        return httpx.Response(
+            200,
+            json={"task_id": "task-lost", "status": "failed", "error_code": "worker_lost"},
+        )
+
+    config = gate.LiveCoreReleaseGateConfig(
+        api_base="http://primary.test/api/v1",
+        secondary_api_base="http://secondary.test/api/v1",
+        primary_tenant_id="tenant-a",
+        secondary_tenant_id="tenant-b",
+        user_id="ci-user",
+        png_worker_lost_wait_sec=0.0,
+    )
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        result = gate._probe_png_worker_lost(
+            client,
+            config=config,
+            headers={"X-Tenant-ID": "tenant-a", "X-User-ID": "ci-user"},
+            dataset_id="dataset-png",
+        )
+
+    assert result == {
+        "task_id": "task-lost",
+        "shared_state_status": "running",
+        "status": "failed",
+        "error_code": "worker_lost",
+        "passed": True,
+    }
+    assert seen_hosts == ["primary.test", "secondary.test"]
+
+
+def test_png_worker_lost_probe_fails_when_seed_is_not_visible_through_api(monkeypatch) -> None:
+    monkeypatch.setattr(
+        gate,
+        "create_png_export_task",
+        lambda **_kwargs: {"task_id": "task-isolated", "status": "pending"},
+        raising=True,
+    )
+    monkeypatch.setattr(
+        gate,
+        "begin_png_export_task",
+        lambda *_args, **_kwargs: {"task_id": "task-isolated", "status": "running"},
+        raising=True,
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.host == "primary.test"
+        return httpx.Response(200, json={"task_id": "task-isolated", "status": "pending"})
+
+    config = gate.LiveCoreReleaseGateConfig(
+        api_base="http://primary.test/api/v1",
+        secondary_api_base="http://secondary.test/api/v1",
+        primary_tenant_id="tenant-a",
+        secondary_tenant_id="tenant-b",
+        user_id="ci-user",
+        png_worker_lost_wait_sec=0.0,
+    )
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        result = gate._probe_png_worker_lost(
+            client,
+            config=config,
+            headers={"X-Tenant-ID": "tenant-a", "X-User-ID": "ci-user"},
+            dataset_id="dataset-png",
+        )
+
+    assert result["passed"] is False
+    assert result["shared_state_status"] == "pending"
+    assert "primary API" in result["reason"]
 
 
 def test_live_core_release_gate_cleans_up_created_datasets_after_failure(monkeypatch) -> None:

@@ -7,6 +7,7 @@ Models are identified by "provider/model_name" format.
 from pydantic import BaseModel, ConfigDict, Field
 
 DEFAULT_BGE_M3_NAME = "BAAI/bge-m3"
+DETERMINISTIC_TEST_MODEL_ID = "deterministic_test/mimirq-deterministic-test-v1"
 SILICONFLOW_EMBEDDINGS_URL = "https://api.siliconflow.cn/v1/embeddings"
 OLLAMA_EMBEDDINGS_URL = "http://localhost:11434/api/embed"
 
@@ -42,6 +43,13 @@ class EmbedModelInfo(BaseModel):
 # ============================================================
 
 DEFAULT_EMBED_MODELS: dict[str, EmbedModelInfo] = {
+    DETERMINISTIC_TEST_MODEL_ID: EmbedModelInfo(
+        model_id=DETERMINISTIC_TEST_MODEL_ID,
+        name="mimirq-deterministic-test-v1",
+        dimension=256,
+        base_url="offline://deterministic-test",
+        api_key="no_api_key",
+    ),
     # SiliconFlow - Chinese embedding provider
     "siliconflow/BAAI/bge-m3": EmbedModelInfo(
         model_id="siliconflow/BAAI/bge-m3",

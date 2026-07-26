@@ -64,6 +64,10 @@ def env_or(dotenv: dict[str, str], key: str, default: str) -> str:
     return os.getenv(key, dotenv.get(key, default)) or default
 
 
+def settings_write_expected_statuses(*, tenant_id: str, system_tenant_id: str) -> list[int]:
+    return [200] if str(tenant_id).strip() == str(system_tenant_id).strip() else [403]
+
+
 def build_headers(tenant_id: str, user_id: str | None, token: str | None) -> dict[str, str]:
     headers: dict[str, str] = {}
     if tenant_id:
@@ -465,6 +469,7 @@ def main(argv: list[str] | None = None) -> int:
 
     base_url = args.base_url or env_or(dotenv, "NEXT_PUBLIC_API_URL", "http://localhost:8000")
     tenant_id = args.tenant_id or env_or(dotenv, "NEXT_PUBLIC_TENANT_ID", "00000000-0000-0000-0000-000000000000")
+    system_tenant_id = env_or(dotenv, "DEFAULT_TENANT_ID", "00000000-0000-0000-0000-000000000000")
     auth_mode = (args.auth_mode or env_or(dotenv, "AUTH_MODE", "header")).lower()
 
     user_email = f"smoke_{uuid.uuid4().hex[:8]}@example.com"
@@ -544,7 +549,16 @@ def main(argv: list[str] | None = None) -> int:
         # Settings endpoints.
         runner.call("GET", API_SETTINGS, API_SETTINGS, expected=[200])
         runner.call("GET", "/api/v1/settings/status", "/api/v1/settings/status", expected=[200])
-        runner.call("PUT", API_SETTINGS, API_SETTINGS, expected=[200], json={})
+        runner.call(
+            "PUT",
+            API_SETTINGS,
+            API_SETTINGS,
+            expected=settings_write_expected_statuses(
+                tenant_id=tenant_id,
+                system_tenant_id=system_tenant_id,
+            ),
+            json={},
+        )
         if not args.skip_llm_test:
             runner.call(
                 "POST",

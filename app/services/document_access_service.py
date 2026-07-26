@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.constants import UserRoles
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentPermission
@@ -12,6 +13,7 @@ from app.services.document_permission_service import DocumentGroupPermissionServ
 from app.services.tenant_group_service import TenantGroupService
 
 NO_DOCUMENT_ACCESS_DETAIL = "No document access"
+NO_UNASSIGNED_DOCUMENT_WRITE_DETAIL = "No permission to manage unassigned documents"
 
 
 def assert_document_acl_readable(
@@ -89,6 +91,69 @@ def get_document_for_lifecycle(db: Session, tenant_id: UUID, document_id: UUID) 
     )
 
 
+def assert_document_readable_for_lifecycle(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    document: DBDocument,
+) -> None:
+    dataset: Dataset | None = None
+    if getattr(document, "dataset_id", None):
+        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_readable(db, dataset, account_id)
+
+    assert_document_acl_readable(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        document=document,
+        dataset=dataset,
+    )
+
+
+def assert_document_writable_for_unassigned_target(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    document: DBDocument,
+) -> None:
+    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    role = (getattr(member, "role", None) or "").lower()
+    if role in UserRoles.ADMIN_ROLES:
+        return
+    if role not in EDIT_ROLES:
+        raise HTTPException(status_code=403, detail=NO_UNASSIGNED_DOCUMENT_WRITE_DETAIL)
+
+    owner_id = (str(getattr(document, "owner_id", "") or "")).strip()
+    if owner_id and owner_id == account_id:
+        return
+
+    raise HTTPException(status_code=403, detail=NO_UNASSIGNED_DOCUMENT_WRITE_DETAIL)
+
+
+def assert_document_access_manageable(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    document: DBDocument,
+) -> None:
+    """Authorize ACL repair without requiring the current document ACL."""
+    if getattr(document, "dataset_id", None):
+        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_writable(db, dataset, account_id)
+        return
+
+    assert_document_writable_for_unassigned_target(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        document=document,
+    )
+
+
 def assert_document_writable_for_lifecycle(
     db: Session,
     *,
@@ -100,16 +165,18 @@ def assert_document_writable_for_lifecycle(
     if getattr(document, "dataset_id", None):
         dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
         DatasetService.assert_dataset_writable(db, dataset, account_id)
-    else:
-        member = DatasetService.ensure_member(db, tenant_id, account_id)
-        role = (getattr(member, "role", None) or "").lower()
-        if role not in EDIT_ROLES:
-            raise HTTPException(status_code=403, detail="No permission to manage unassigned documents")
+        assert_document_acl_readable(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            document=document,
+            dataset=dataset,
+        )
+        return
 
-    assert_document_acl_readable(
+    assert_document_writable_for_unassigned_target(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
         document=document,
-        dataset=dataset,
     )

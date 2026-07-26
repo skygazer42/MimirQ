@@ -10,11 +10,23 @@ from app.core.database import get_db
 
 
 class _DummyDB:
+    readable_dataset_ids: list[uuid.UUID] = []
+
+    class _ScalarResult:
+        def __init__(self, items: list[uuid.UUID]) -> None:
+            self._items = list(items)
+
+        def all(self) -> list[uuid.UUID]:
+            return list(self._items)
+
     def commit(self) -> None:
         return None
 
     def refresh(self, _obj) -> None:  # noqa: ANN001
         return None
+
+    def scalars(self, _statement):  # noqa: ANN001
+        return self._ScalarResult(self.readable_dataset_ids)
 
 
 def _override_get_db():  # noqa: ANN202
@@ -46,7 +58,43 @@ def test_chunk_presets_crud(monkeypatch):  # noqa: ANN001
         lambda *_a, **_k: _DummyMember(str(current_role.get("role") or "")),
         raising=True,
     )
-    monkeypatch.setattr(chunk_presets_module.DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
+    dataset_access = {
+        str(dataset_id): {"readable": True, "writable": True},
+        str(uuid.uuid4()): {"readable": False, "writable": False},
+    }
+
+    def _get_dataset(_db, _tenant_id, requested_dataset_id):  # noqa: ANN001
+        key = str(requested_dataset_id)
+        if key not in dataset_access:
+            raise AssertionError(f"unexpected dataset lookup: {key}")
+        return {"id": requested_dataset_id}
+
+    def _assert_dataset_readable(_db, dataset, _account_id):  # noqa: ANN001
+        if not dataset_access[str(dataset["id"])]["readable"]:
+            raise chunk_presets_module.HTTPException(status_code=403, detail="No dataset access")
+
+    def _assert_dataset_writable(_db, dataset, _account_id):  # noqa: ANN001
+        if not dataset_access[str(dataset["id"])]["writable"]:
+            raise chunk_presets_module.HTTPException(status_code=403, detail="No dataset write permission")
+
+    monkeypatch.setattr(chunk_presets_module.DatasetService, "get_dataset", _get_dataset, raising=True)
+    monkeypatch.setattr(
+        chunk_presets_module.DatasetService,
+        "assert_dataset_readable",
+        _assert_dataset_readable,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        chunk_presets_module.DatasetService,
+        "assert_dataset_writable",
+        _assert_dataset_writable,
+        raising=True,
+    )
+    _DummyDB.readable_dataset_ids = [
+        uuid.UUID(key)
+        for key, acl in dataset_access.items()
+        if acl["readable"]
+    ]
 
     store: dict[str, object] = {}
 
@@ -76,8 +124,11 @@ def test_chunk_presets_crud(monkeypatch):  # noqa: ANN001
         limit: int,
         dataset_id: uuid.UUID | None,
         include_global: bool,
+        readable_dataset_ids: set[uuid.UUID] | None,
     ):  # noqa: ANN001
         rows = list(store.values())
+        if dataset_id is None and readable_dataset_ids is not None:
+            rows = [r for r in rows if getattr(r, "dataset_id", None) in ({None} | set(readable_dataset_ids))]
         if dataset_id is None:
             return rows
         if include_global:
@@ -172,6 +223,31 @@ def test_chunk_presets_crud(monkeypatch):  # noqa: ANN001
     assert res.status_code == 201, res.text
     preset_id_scoped = res.json()["id"]
 
+    hidden_dataset_id = next(uuid.UUID(key) for key, acl in dataset_access.items() if not acl["readable"])
+    res = client.post(
+        "/api/v1/chunk-presets",
+        json={
+            "name": "Hidden Dataset Default",
+            "description": "Hidden",
+            "payload": {
+                "dataset_id": str(hidden_dataset_id),
+                "chunk_size": 900,
+                "chunk_overlap": 90,
+                "chunk_strategy": "langchain_recursive",
+            },
+        },
+    )
+    assert res.status_code == 403, res.text
+
+    hidden_preset = _create_row(
+        db=None,
+        tenant_id=tenant_id,
+        dataset_id=hidden_dataset_id,
+        name="Hidden preset",
+        description="Should be filtered",
+        payload={"dataset_id": str(hidden_dataset_id), "chunk_size": 800},
+    )
+
     # Governance: a non-editor should not be able to "unscope" a dataset preset by omitting payload.dataset_id.
     current_role["role"] = "viewer"
     res = client.put(
@@ -185,10 +261,18 @@ def test_chunk_presets_crud(monkeypatch):  # noqa: ANN001
     assert res.status_code == 403, res.text
 
     current_role["role"] = "owner"
+    res = client.get("/api/v1/chunk-presets")
+    assert res.status_code == 200, res.text
+    ids = {x["id"] for x in (res.json().get("items") or [])}
+    assert hidden_preset.id.hex not in {uuid.UUID(pid).hex for pid in ids}
+
     res = client.get(f"/api/v1/chunk-presets?dataset_id={dataset_id}&include_global=true")
     assert res.status_code == 200, res.text
     ids = {x["id"] for x in (res.json().get("items") or [])}
     assert ids == {preset_id, preset_id_scoped}
+
+    res = client.get(f"/api/v1/chunk-presets?dataset_id={hidden_dataset_id}&include_global=true")
+    assert res.status_code == 403, res.text
 
     res = client.get(f"/api/v1/chunk-presets?dataset_id={dataset_id}&include_global=false")
     assert res.status_code == 200, res.text
@@ -208,8 +292,28 @@ def test_chunk_presets_crud(monkeypatch):  # noqa: ANN001
     assert updated["name"] == "Default v2"
     assert updated["payload"]["chunk_size"] == 1200
 
+    res = client.put(
+        f"/api/v1/chunk-presets/{preset_id_scoped}",
+        json={
+            "name": "Hidden move",
+            "description": "Denied",
+            "payload": {
+                "dataset_id": str(hidden_dataset_id),
+                "chunk_size": 1200,
+                "chunk_overlap": 120,
+                "chunk_strategy": "langchain_recursive",
+            },
+        },
+    )
+    assert res.status_code == 403, res.text
+
     res = client.delete(f"/api/v1/chunk-presets/{preset_id}")
     assert res.status_code == 204, res.text
+
+    dataset_access[str(dataset_id)]["writable"] = False
+    res = client.delete(f"/api/v1/chunk-presets/{preset_id_scoped}")
+    assert res.status_code == 403, res.text
+    dataset_access[str(dataset_id)]["writable"] = True
 
     res = client.get("/api/v1/chunk-presets")
     assert res.status_code == 200, res.text

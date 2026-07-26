@@ -218,7 +218,13 @@ def test_document_qa_calls_the_qa_service(monkeypatch) -> None:
 
     document_id = uuid.uuid4()
     tenant_id = uuid.uuid4()
-    document = SimpleNamespace(id=document_id, tenant_id=tenant_id, dataset_id=None, status="completed")
+    document = SimpleNamespace(
+        id=document_id,
+        tenant_id=tenant_id,
+        dataset_id=None,
+        owner_id="test-account",
+        status="completed",
+    )
     client, _lifecycle_module = _build_client(monkeypatch, doc=document)
 
     called: dict[str, object] = {}
@@ -228,7 +234,7 @@ def test_document_qa_calls_the_qa_service(monkeypatch) -> None:
         return SimpleNamespace(mode="extract", deleted=0, created=1, chunk_ids=[], preview=[])
 
     monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args: None, raising=True)
-    monkeypatch.setattr(documents_module, "_assert_document_acl_readable", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module, "_assert_document_writable_for_lifecycle", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(mutations_module, "audit_log_event", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(mutations_module, "generate_and_index_document_qa", _generate, raising=True)
 

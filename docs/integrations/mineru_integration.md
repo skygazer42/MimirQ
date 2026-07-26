@@ -336,9 +336,9 @@ while True:
 相关代码文件：
 
 - **服务类**: `app/services/mineru_service.py`
-- **解析器**: `app/services/parsers/mineru_parser.py`
+- **解析器**: `app/parsing/parsers/mineru_parser.py`
 - **API 接口**: `app/api/v1/documents.py`
-- **配置**: `app/config.py`
+- **配置**: `app/core/config.py`
 - **Schema**: `app/api/schemas/document.py`
 
 ---

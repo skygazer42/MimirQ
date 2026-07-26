@@ -12,14 +12,14 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import DocumentDetail, DocumentVersionDiff, DocumentVersionList
 from app.core.database import get_db
-from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.rag.core.logging import get_logger
 from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import DatasetService
 from app.services.document_access_service import (
-    assert_document_acl_readable,
+    assert_document_readable_for_lifecycle,
+    assert_document_writable_for_lifecycle,
 )
 from app.services.indexer import Indexer
 
@@ -62,11 +62,12 @@ def list_document_versions(
     if not document:
         raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
-    dataset: Dataset | None = None
-    if document.dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
-    assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=dataset)
+    assert_document_readable_for_lifecycle(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        document=document,
+    )
 
     from app.core.pipeline_versions import get_active_pipeline_hash
 
@@ -196,11 +197,12 @@ def diff_document_versions(
     if not document:
         raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
-    dataset: Dataset | None = None
-    if document.dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
-    assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=dataset)
+    assert_document_readable_for_lifecycle(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        document=document,
+    )
 
     from_hash = str(from_pipeline_hash or "").strip()
     to_hash = str(to_pipeline_hash or "").strip()
@@ -333,9 +335,12 @@ def activate_document_version(
     if not document:
         raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
-    if document.dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_writable(db, dataset, account_id)
+    assert_document_writable_for_lifecycle(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        document=document,
+    )
 
     pipeline_hash_norm = str(pipeline_hash or "").strip()
     if not pipeline_hash_norm:
@@ -447,9 +452,12 @@ def delete_document_version(
     if not document:
         raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
-    if document.dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_writable(db, dataset, account_id)
+    assert_document_writable_for_lifecycle(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        document=document,
+    )
 
     pipeline_hash_norm = str(pipeline_hash or "").strip()
     if not pipeline_hash_norm:

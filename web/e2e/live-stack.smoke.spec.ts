@@ -152,7 +152,7 @@ async function authenticateThroughUi(page: Page): Promise<JwtAuthState> {
 
   await page.getByLabel('账号').fill(configuredIdentifier)
   await page.getByLabel('密码').fill(configuredPassword)
-  await page.getByRole('button', { name: '登录' }).click()
+  await page.locator('form').getByRole('button', { name: '登 录', exact: true }).click()
   await page.waitForURL(/\/$/, { timeout: 60_000 })
   return { mode: 'jwt', accessToken: await readAccessToken(page) }
 }
@@ -200,7 +200,9 @@ async function waitForDocumentCompletion(
     const status = String(payload.status || '')
     lastStatus = status
     if (status === 'completed') return
-    expect(['failed', 'quarantined', 'cancelled', 'deleting']).not.toContain(status)
+    if (['failed', 'quarantined', 'cancelled', 'deleting'].includes(status)) {
+      throw new Error(`document ${documentId} entered terminal status=${status}; body=${lastBody}`)
+    }
 
     await new Promise((resolve) => setTimeout(resolve, 2_000))
   }
@@ -232,6 +234,7 @@ test('browser reaches the live backend and completes upload-to-grounded-chat evi
   page,
   request,
 }) => {
+  test.setTimeout(600_000)
   let auth: AuthState | null = null
   let datasetId: string | null = null
 

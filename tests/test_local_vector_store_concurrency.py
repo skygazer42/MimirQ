@@ -1,6 +1,7 @@
 import threading
 import time
 from types import SimpleNamespace
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -265,3 +266,39 @@ def test_chroma_same_collection_serializes_initialization_and_adds(monkeypatch: 
     assert errors == []
     assert init_calls == 1
     assert add_calls == 2
+
+
+def test_chroma_add_documents_coerces_nested_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[dict[str, Any]] = []
+
+    class _FakeChroma:
+        def __init__(self, *, collection_name: str, embedding_function: object, persist_directory: str | None = None) -> None:
+            del collection_name, embedding_function, persist_directory
+
+        def add_texts(self, texts: list[str], metadatas: list[dict[str, Any]], ids: list[str]) -> None:
+            del texts, ids
+            captured.extend(metadatas)
+
+        def similarity_search_with_score(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
+            return []
+
+    nested = {
+        "chunk_id": uuid4(),
+        "element_bbox": {"x0": 1, "x1": 2},
+        "labels": [{"name": "header", "page": 1}],
+    }
+
+    monkeypatch.setattr(factory_module, "_get_chroma_cls", lambda: _FakeChroma, raising=True)
+    store = factory_module.ChromaVectorStore()
+
+    tenant_id = uuid4()
+    doc_id = uuid4()
+    store.add_documents([{"content": "payload", "metadata": nested}], doc_id, tenant_id)
+
+    assert len(captured) == 1
+    meta = captured[0]
+    assert isinstance(meta["element_bbox"], str)
+    assert isinstance(meta["labels"], str)
+    assert "x0" in meta["element_bbox"]
+    assert "header" in meta["labels"]
+    assert meta["chunk_id"] == str(nested["chunk_id"])

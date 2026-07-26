@@ -25,6 +25,8 @@ logger = get_logger("storage.vector.factory")
 
 _FAISS_CLS = None
 _CHROMA_CLS = None
+_CHROMA_JSON_PREFIX = "__mimirq_json_v1__:"
+_CHROMA_ESCAPED_STRING_PREFIX = "__mimirq_string_v1__:"
 
 
 def _get_faiss_cls():
@@ -96,6 +98,44 @@ def _match_metadata_filter(meta: dict[str, Any], filter_spec: dict[str, Any]) ->
 
 def _tenant_lock_key(tenant_id: UUID | None) -> str:
     return str(tenant_id or settings.DEFAULT_TENANT_ID)
+
+
+def _encode_chroma_metadata(metadata: dict[str, Any]) -> dict[str, str | int | float | bool | None]:
+    """Flatten complex metadata without losing it on Chroma round trips."""
+    encoded: dict[str, str | int | float | bool | None] = {}
+    for raw_key, value in metadata.items():
+        key = str(raw_key)
+        if isinstance(value, str):
+            if value.startswith((_CHROMA_JSON_PREFIX, _CHROMA_ESCAPED_STRING_PREFIX)):
+                encoded[key] = f"{_CHROMA_ESCAPED_STRING_PREFIX}{value}"
+            else:
+                encoded[key] = value
+            continue
+        if value is None or isinstance(value, (bool, int, float)):
+            encoded[key] = value
+            continue
+        try:
+            payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+        except (TypeError, ValueError):
+            payload = json.dumps(str(value), ensure_ascii=False, separators=(",", ":"))
+        encoded[key] = f"{_CHROMA_JSON_PREFIX}{payload}"
+    return encoded
+
+
+def _decode_chroma_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    decoded: dict[str, Any] = {}
+    for key, value in metadata.items():
+        if isinstance(value, str) and value.startswith(_CHROMA_ESCAPED_STRING_PREFIX):
+            decoded[key] = value.removeprefix(_CHROMA_ESCAPED_STRING_PREFIX)
+            continue
+        if isinstance(value, str) and value.startswith(_CHROMA_JSON_PREFIX):
+            try:
+                decoded[key] = json.loads(value.removeprefix(_CHROMA_JSON_PREFIX))
+                continue
+            except (TypeError, ValueError, json.JSONDecodeError):
+                pass
+        decoded[key] = value
+    return decoded
 
 
 class BaseVectorStore:
@@ -608,7 +648,7 @@ class ChromaVectorStore(BaseVectorStore):
                 if "img_id" in meta and "image_id" not in meta:
                     meta["image_id"] = meta.get("img_id")
                 meta.setdefault("image_url", meta.get("img_url"))
-                metadatas.append(meta)
+                metadatas.append(_encode_chroma_metadata(meta))
                 ids.append(str(meta.get("chunk_id")) if meta.get("chunk_id") else f"{document_id}_{idx}")
             _key, store = self._get_store(tenant_id)
             store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
@@ -630,7 +670,7 @@ class ChromaVectorStore(BaseVectorStore):
             results = store.similarity_search_with_score(query, k=top_k * 2)
             out: list[dict[str, Any]] = []
             for doc, score in results:
-                meta = doc.metadata or {}
+                meta = _decode_chroma_metadata(doc.metadata or {})
                 if allowed and meta.get("document_id") not in allowed:
                     continue
                 if metadata_filter and not _match_metadata_filter(meta, metadata_filter):
@@ -688,7 +728,7 @@ class ChromaVectorStore(BaseVectorStore):
                 for cid, meta in zip(ids, metas, strict=False):
                     if not isinstance(meta, dict):
                         continue
-                    if _match_metadata_filter(meta, metadata_filter):
+                    if _match_metadata_filter(_decode_chroma_metadata(meta), metadata_filter):
                         ids_to_delete.append(str(cid))
                 if not ids_to_delete:
                     return

@@ -50,7 +50,7 @@ python scripts/run_sample_retrieval_benchmark.py --out runs/sample_bench.json
 先构造一个最小请求（只看检索）：
 
 ```bash
-curl -sS -X POST "http://localhost:8000/api/v1/rag/evidence/retrieve" \
+curl -sS -X POST "http://localhost:8000/api/v1/rag/retrieve" \
   -H "Content-Type: application/json" \
   -d '{
     "question": "How does reciprocal rank fusion work?",
@@ -168,7 +168,7 @@ Claim verifier 模式选择建议：
 - 顶层 `hierarchy_recall`：快速确认是否启用以及关键 knobs 生效情况。
 - `query_debug.hierarchy_recall`：包含 `tree_dedup_meta` 与 `context_expansion_*` 的详细诊断信息。
 
-在 Evidence API（`/api/v1/rag/evidence/retrieve`）返回的引用里：
+在 Evidence API（`/api/v1/rag/retrieve`）返回的引用里：
 - `citations[*].retrieval_role`
   - `main`：主召回候选（应承担“主证据”职责）
   - `hierarchy_parent` / `hierarchy_sibling`：层级上下文扩展的“补充上下文”（用于补齐前后文，不应成为 must-recall 的唯一锚点）
@@ -374,7 +374,7 @@ python scripts/generate_adaptive_router_policy.py \
 
 ## 9) Evidence Capsule（有据可查）
 
-`/api/v1/rag/evidence/retrieve` 现在可返回 `evidence_capsule`（`mimirq.evidence_capsule.v1`），用于不可变回放与审计归档：
+`/api/v1/rag/retrieve` 现在可返回 `evidence_capsule`（`mimirq.evidence_capsule.v1`），用于不可变回放与审计归档：
 
 - capsule 包含 must-recall 合同状态、retrieval 合同策略、解析质量风险、citation hash 集合、retrieval trace。
 - 每个 citation 包含 `citation_hash` 和 `evidence_anchor_hash`，便于后续 diff / replay。

@@ -46,11 +46,58 @@ const CONTENT_STORE = 'doc_contents'
 const SOURCE_STORE = 'doc_sources'
 const MB = 1024 * 1024
 const DEFAULT_STALE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
-let authScopeGeneration = 0
-const docCacheScopeWriteGenerations = new Map<string, number>()
+
+type DocCacheScopeGuard = {
+  scope: string
+  authGeneration: number
+  scopeWriteGeneration: number
+}
+
+type DocCacheWriteState = {
+  authScopeGeneration: number
+  authScopeListenerInstalled: boolean
+  invalidationListeners: Set<() => void>
+  scopeWriteGenerations: Map<string, number>
+}
+
+const DOC_CACHE_WRITE_STATE_KEY = '__mimirqDocCacheWriteState__'
+
+function getDocCacheWriteState(): DocCacheWriteState {
+  const globalScope = globalThis as typeof globalThis & {
+    [DOC_CACHE_WRITE_STATE_KEY]?: DocCacheWriteState
+  }
+  if (!globalScope[DOC_CACHE_WRITE_STATE_KEY]) {
+    globalScope[DOC_CACHE_WRITE_STATE_KEY] = {
+      authScopeGeneration: 0,
+      authScopeListenerInstalled: false,
+      invalidationListeners: new Set<() => void>(),
+      scopeWriteGenerations: new Map<string, number>(),
+    }
+  }
+  return globalScope[DOC_CACHE_WRITE_STATE_KEY] as DocCacheWriteState
+}
+
+function getAuthScopeGeneration(): number {
+  return getDocCacheWriteState().authScopeGeneration
+}
 
 function getDocCacheScopeWriteGeneration(scope: string): number {
-  return docCacheScopeWriteGenerations.get(scope) || 0
+  return getDocCacheWriteState().scopeWriteGenerations.get(scope) || 0
+}
+
+function notifyDocCacheInvalidationListeners() {
+  const listeners = Array.from(getDocCacheWriteState().invalidationListeners)
+  for (const listener of listeners) {
+    listener()
+  }
+}
+
+function subscribeToDocCacheInvalidation(listener: () => void): () => void {
+  const writeState = getDocCacheWriteState()
+  writeState.invalidationListeners.add(listener)
+  return () => {
+    writeState.invalidationListeners.delete(listener)
+  }
 }
 
 function scopedRecordId(id: string, scope: string = getAuthCacheScope()): string {
@@ -84,7 +131,8 @@ function withStore<T>(
   storeName: string,
   mode: IDBTransactionMode,
   fn: (store: IDBObjectStore) => IDBRequest<T>,
-  shouldStart?: () => boolean
+  shouldStart?: () => boolean,
+  shouldCommit?: () => boolean
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     void openDb()
@@ -96,27 +144,69 @@ function withStore<T>(
         }
         const tx = db.transaction(storeName, mode)
         const store = tx.objectStore(storeName)
-        const req = fn(store)
         let settled = false
-
+        let requestCompleted = false
+        let requestResult: T
+        let abortedForGuard = false
         const closeDb = () => db.close()
+        let unsubscribeInvalidationListener: () => void = () => {}
+        const cleanup = () => {
+          unsubscribeInvalidationListener()
+          closeDb()
+        }
         const resolveOnce = (value: T) => {
           if (settled) return
           settled = true
+          cleanup()
           resolve(value)
         }
         const rejectOnce = (reason: unknown, fallbackMessage: string) => {
           if (settled) return
           settled = true
-          closeDb()
+          cleanup()
           reject(toError(reason, fallbackMessage))
         }
+        if (mode === 'readwrite' && shouldCommit) {
+          unsubscribeInvalidationListener = subscribeToDocCacheInvalidation(() => {
+            if (settled || abortedForGuard || shouldCommit()) return
+            abortedForGuard = true
+            try {
+              tx.abort()
+            } catch {
+              abortedForGuard = false
+            }
+          })
+        }
+        const req = fn(store)
 
-        req.onsuccess = () => resolveOnce(req.result)
+        req.onsuccess = () => {
+          if (mode === 'readwrite' && shouldCommit && !shouldCommit()) {
+            abortedForGuard = true
+            tx.abort()
+            return
+          }
+          requestCompleted = true
+          requestResult = req.result
+          if (mode !== 'readwrite') {
+            resolveOnce(requestResult)
+          }
+        }
         req.onerror = () => rejectOnce(req.error, `IndexedDB request failed for "${storeName}"`)
-        tx.onabort = () => rejectOnce(tx.error, `IndexedDB transaction aborted for "${storeName}"`)
+        tx.onabort = () => {
+          if (abortedForGuard) {
+            resolveOnce(undefined as T)
+            return
+          }
+          rejectOnce(tx.error, `IndexedDB transaction aborted for "${storeName}"`)
+        }
         tx.onerror = () => rejectOnce(tx.error, `IndexedDB transaction failed for "${storeName}"`)
-        tx.oncomplete = closeDb
+        tx.oncomplete = () => {
+          if (mode === 'readwrite') {
+            resolveOnce(requestCompleted ? requestResult : (undefined as T))
+            return
+          }
+          cleanup()
+        }
       })
       .catch((error) => {
         reject(toError(error, `Failed to access IndexedDB store "${storeName}"`))
@@ -145,8 +235,25 @@ export function isRecordStaleByUpdatedAt(updatedAt: number | null | undefined, s
 
 export function invalidateDocCacheScopeWrites(scope: string = getAuthCacheScope()): number {
   const nextGeneration = getDocCacheScopeWriteGeneration(scope) + 1
-  docCacheScopeWriteGenerations.set(scope, nextGeneration)
+  getDocCacheWriteState().scopeWriteGenerations.set(scope, nextGeneration)
+  notifyDocCacheInvalidationListeners()
   return nextGeneration
+}
+
+export function getDocCacheScopeGuard(scope: string = getAuthCacheScope()): DocCacheScopeGuard {
+  return {
+    scope,
+    authGeneration: getAuthScopeGeneration(),
+    scopeWriteGeneration: getDocCacheScopeWriteGeneration(scope),
+  }
+}
+
+export function isDocCacheScopeGuardCurrent(scopeGuard: DocCacheScopeGuard): boolean {
+  return (
+    getAuthScopeGeneration() === scopeGuard.authGeneration &&
+    getAuthCacheScope() === scopeGuard.scope &&
+    getDocCacheScopeWriteGeneration(scopeGuard.scope) === scopeGuard.scopeWriteGeneration
+  )
 }
 
 export function classifyStoragePressure(input: {
@@ -249,13 +356,12 @@ async function collectStoreRecords<T>(
 
 export async function saveDocContentToCache(
   record: Omit<DocContentCacheRecord, 'updatedAt'> & { updatedAt?: number },
-  scope: string = getAuthCacheScope()
+  scopeOrGuard: string | DocCacheScopeGuard = getAuthCacheScope()
 ) {
   if (globalThis.window === undefined) return
   if (!record?.id) return
-  const scopeWriteGeneration = getDocCacheScopeWriteGeneration(scope)
-  const scopedId = scopedRecordId(record.id, scope)
-  const writeGeneration = authScopeGeneration
+  const scopeGuard = typeof scopeOrGuard === 'string' ? getDocCacheScopeGuard(scopeOrGuard) : scopeOrGuard
+  const scopedId = scopedRecordId(record.id, scopeGuard.scope)
   await withStore(CONTENT_STORE, 'readwrite', (store) =>
     store.put({
       id: scopedId,
@@ -263,10 +369,8 @@ export async function saveDocContentToCache(
       originalMarkdownContent: record.originalMarkdownContent || '',
       updatedAt: record.updatedAt ?? Date.now(),
     }),
-    () =>
-      authScopeGeneration === writeGeneration &&
-      getAuthCacheScope() === scope &&
-      getDocCacheScopeWriteGeneration(scope) === scopeWriteGeneration
+    () => isDocCacheScopeGuardCurrent(scopeGuard),
+    () => isDocCacheScopeGuardCurrent(scopeGuard)
   )
 }
 
@@ -290,15 +394,14 @@ export async function deleteDocContentFromCache(id: string, scope: string = getA
 
 export async function saveDocSourceToCache(
   record: { id: string; file: File; updatedAt?: number },
-  scope: string = getAuthCacheScope()
+  scopeOrGuard: string | DocCacheScopeGuard = getAuthCacheScope()
 ) {
   if (globalThis.window === undefined) return
   if (!record?.id) return
   if (!record.file) return
 
-  const scopeWriteGeneration = getDocCacheScopeWriteGeneration(scope)
-  const scopedId = scopedRecordId(record.id, scope)
-  const writeGeneration = authScopeGeneration
+  const scopeGuard = typeof scopeOrGuard === 'string' ? getDocCacheScopeGuard(scopeOrGuard) : scopeOrGuard
+  const scopedId = scopedRecordId(record.id, scopeGuard.scope)
   await withStore(SOURCE_STORE, 'readwrite', (store) =>
     store.put({
       id: scopedId,
@@ -309,10 +412,8 @@ export async function saveDocSourceToCache(
       blob: record.file,
       updatedAt: record.updatedAt ?? Date.now(),
     } satisfies DocSourceCacheRecord),
-    () =>
-      authScopeGeneration === writeGeneration &&
-      getAuthCacheScope() === scope &&
-      getDocCacheScopeWriteGeneration(scope) === scopeWriteGeneration
+    () => isDocCacheScopeGuardCurrent(scopeGuard),
+    () => isDocCacheScopeGuardCurrent(scopeGuard)
   )
 }
 
@@ -445,9 +546,14 @@ export async function clearDocCachesForScope(scope: string = getAuthCacheScope()
 }
 
 if (globalThis.window !== undefined) {
-  globalThis.window.addEventListener(AUTH_SCOPE_CHANGED_EVENT, () => {
-    authScopeGeneration += 1
-  })
+  const writeState = getDocCacheWriteState()
+  if (!writeState.authScopeListenerInstalled) {
+    globalThis.window.addEventListener(AUTH_SCOPE_CHANGED_EVENT, () => {
+      getDocCacheWriteState().authScopeGeneration += 1
+      notifyDocCacheInvalidationListeners()
+    })
+    writeState.authScopeListenerInstalled = true
+  }
 }
 
 async function pruneStoreByUpdatedAt(

@@ -5,6 +5,8 @@ Live core release gate:
 2) duplicate upload idempotency (same bytes + pipeline => same document id)
 3) retrieval-only serial vs concurrent live comparison
 4) cross-tenant retrieval isolation
+5) dataset-analysis PNG export shared state across API instances
+6) abandoned PNG worker reaches failed/worker_lost
 """
 
 import argparse
@@ -22,6 +24,7 @@ import httpx
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app.rag.evaluation.poc_runner.png_tasks import begin_png_export_task, create_png_export_task
 from scripts.rag_e2e_load_test import E2ELoadTestConfig, evaluate_concurrency_gate, run_e2e_load_test
 from scripts.smoke_test import (
     _cleanup_created_dataset,
@@ -54,6 +57,9 @@ class LiveCoreReleaseGateConfig:
     poll_interval_sec: float = 2.0
     timeout_sec: float = 60.0
     cleanup_on_success: bool = True
+    png_probe_enabled: bool = True
+    png_timeout_sec: float = 120.0
+    png_worker_lost_wait_sec: float = 3.0
 
 
 def _failures_extend(report: dict[str, Any], *messages: str) -> None:
@@ -181,6 +187,130 @@ def _probe_cross_tenant_denial(
     }
 
 
+def _probe_png_cross_instance(
+    client: httpx.Client,
+    *,
+    config: LiveCoreReleaseGateConfig,
+    headers: dict[str, str],
+    dataset_id: str,
+) -> dict[str, Any]:
+    secondary_base = str(config.secondary_api_base or "").strip() or config.api_base
+    create_response = request_with_retries(
+        client,
+        "POST",
+        _join(config.api_base, f"datasets/{dataset_id}/analysis/export.png"),
+        expected={202},
+        headers=headers,
+    )
+    create_payload = _parse_json(create_response)
+    task_id = str(create_payload.get("task_id") if isinstance(create_payload, dict) else "").strip()
+    if not task_id:
+        return {"passed": False, "reason": "create returned no task_id"}
+
+    status_payload: dict[str, Any] = {}
+    deadline = time.monotonic() + max(0.1, float(config.png_timeout_sec))
+    while time.monotonic() < deadline:
+        status_response = request_with_retries(
+            client,
+            "GET",
+            _join(secondary_base, f"datasets/{dataset_id}/analysis/export-tasks/{task_id}"),
+            expected={200},
+            headers=headers,
+        )
+        parsed = _parse_json(status_response)
+        status_payload = dict(parsed) if isinstance(parsed, dict) else {}
+        status = str(status_payload.get("status") or "").strip().lower()
+        if status == "done":
+            break
+        if status == "failed":
+            return {
+                "task_id": task_id,
+                "status": status,
+                "error_code": status_payload.get("error_code"),
+                "passed": False,
+            }
+        time.sleep(max(0.0, float(config.poll_interval_sec)))
+    else:
+        return {"task_id": task_id, "status": status_payload.get("status"), "passed": False, "reason": "timeout"}
+
+    result_response = request_with_retries(
+        client,
+        "GET",
+        _join(secondary_base, f"datasets/{dataset_id}/analysis/export-tasks/{task_id}/result.png"),
+        expected={200},
+        headers=headers,
+    )
+    payload = bytes(result_response.content or b"")
+    content_type = str(result_response.headers.get("content-type") or "").lower()
+    passed = content_type.startswith("image/png") and payload.startswith(b"\x89PNG\r\n\x1a\n")
+    return {
+        "task_id": task_id,
+        "status": "done",
+        "content_type": content_type,
+        "result_size_bytes": len(payload),
+        "passed": passed,
+    }
+
+
+def _probe_png_worker_lost(
+    client: httpx.Client,
+    *,
+    config: LiveCoreReleaseGateConfig,
+    headers: dict[str, str],
+    dataset_id: str,
+) -> dict[str, Any]:
+    task = create_png_export_task(
+        tenant_id=config.primary_tenant_id,
+        dataset_id=dataset_id,
+        filters={"probe": "worker_lost"},
+    )
+    task_id = str(task.get("task_id") or "").strip()
+    begin_png_export_task(
+        task_id,
+        tenant_id=config.primary_tenant_id,
+        dataset_id=dataset_id,
+    )
+
+    shared_state_response = request_with_retries(
+        client,
+        "GET",
+        _join(config.api_base, f"datasets/{dataset_id}/analysis/export-tasks/{task_id}"),
+        expected={200},
+        headers=headers,
+    )
+    shared_state_payload = _parse_json(shared_state_response)
+    shared_state_status = str(
+        shared_state_payload.get("status") if isinstance(shared_state_payload, dict) else ""
+    ).strip().lower()
+    if shared_state_status != "running":
+        return {
+            "task_id": task_id,
+            "shared_state_status": shared_state_status,
+            "passed": False,
+            "reason": "seeded task is not visible as running through the primary API",
+        }
+    time.sleep(max(0.0, float(config.png_worker_lost_wait_sec)))
+
+    secondary_base = str(config.secondary_api_base or "").strip() or config.api_base
+    response = request_with_retries(
+        client,
+        "GET",
+        _join(secondary_base, f"datasets/{dataset_id}/analysis/export-tasks/{task_id}"),
+        expected={200},
+        headers=headers,
+    )
+    parsed = _parse_json(response)
+    status = str(parsed.get("status") if isinstance(parsed, dict) else "").strip().lower()
+    error_code = str(parsed.get("error_code") if isinstance(parsed, dict) else "").strip().lower()
+    return {
+        "task_id": task_id,
+        "shared_state_status": shared_state_status,
+        "status": status,
+        "error_code": error_code,
+        "passed": status == "failed" and error_code == "worker_lost",
+    }
+
+
 def _shared_async_transport(client: httpx.Client | None) -> Any | None:
     transport = getattr(client, "_transport", None) if client is not None else None
     return transport if isinstance(transport, httpx.MockTransport) else None
@@ -215,7 +345,11 @@ def _concurrent_duplicate_upload_ids(
                     files={"file": ("live-core-gate.txt", text.encode("utf-8"), "text/plain")},
                     data=_upload_form_data(dataset_id=dataset_id, parser_backend=config.parser_backend, core_only=True),
                 )
-                response.raise_for_status()
+                if not response.is_success:
+                    raise RuntimeError(
+                        f"duplicate upload failed: base_url={target_base} "
+                        f"status={response.status_code} body={response.text[:500]}"
+                    )
                 payload = _parse_json(response)
                 document_id = str(payload.get("id") if isinstance(payload, dict) else "").strip()
                 if not document_id:
@@ -417,6 +551,34 @@ def run_live_core_release_gate(
             token=None,
         )
 
+        if config.png_probe_enabled:
+            png_dataset_id = _create_dataset(
+                client,
+                api_base=config.api_base,
+                headers=primary_headers,
+                label="png",
+            )
+            created_datasets.append((png_dataset_id, primary_headers))
+            png_cross_instance = _probe_png_cross_instance(
+                client,
+                config=config,
+                headers=primary_headers,
+                dataset_id=png_dataset_id,
+            )
+            report["png_cross_instance"] = png_cross_instance
+            if not bool(png_cross_instance.get("passed")):
+                _failures_extend(report, "PNG export did not complete across API instances")
+
+            png_worker_lost = _probe_png_worker_lost(
+                client,
+                config=config,
+                headers=primary_headers,
+                dataset_id=png_dataset_id,
+            )
+            report["png_worker_lost"] = png_worker_lost
+            if not bool(png_worker_lost.get("passed")):
+                _failures_extend(report, "abandoned PNG task did not reach failed/worker_lost")
+
         primary_dataset_id = _create_dataset(client, api_base=config.api_base, headers=primary_headers, label="primary")
         created_datasets.append((primary_dataset_id, primary_headers))
         primary_marker = _make_marker("primary")
@@ -614,12 +776,18 @@ def _resolve_runtime_config(args: argparse.Namespace) -> LiveCoreReleaseGateConf
         poll_interval_sec=poll_interval,
         timeout_sec=timeout,
         cleanup_on_success=not bool(args.keep_datasets),
+        png_probe_enabled=not bool(args.skip_png_probe),
+        png_timeout_sec=max(1.0, float(args.png_timeout_sec or 120.0)),
+        png_worker_lost_wait_sec=max(0.0, float(args.png_worker_lost_wait_sec or 0.0)),
     )
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Header-auth live HTTP gate for core retrieval concurrency, upload idempotency, and tenant isolation."
+        description=(
+            "Header-auth live HTTP gate for core retrieval concurrency, upload idempotency, "
+            "tenant isolation, and shared PNG task state."
+        )
     )
     parser.add_argument("--base-url", default="", help="API host (http://host:8000) or API base (/api/v1).")
     parser.add_argument("--secondary-base-url", default="", help="Optional second API host/base for dual-instance checks.")
@@ -634,6 +802,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ingest-timeout-sec", type=float, default=600.0)
     parser.add_argument("--poll-interval-sec", type=float, default=2.0)
     parser.add_argument("--timeout-sec", type=float, default=60.0)
+    parser.add_argument("--png-timeout-sec", type=float, default=120.0)
+    parser.add_argument("--png-worker-lost-wait-sec", type=float, default=3.0)
+    parser.add_argument("--skip-png-probe", action="store_true")
     parser.add_argument("--keep-datasets", action="store_true", help="Keep created datasets after a successful run.")
     parser.add_argument("--out", default="", help="Write JSON report to a file path.")
     args = parser.parse_args(argv)

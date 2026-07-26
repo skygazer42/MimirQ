@@ -538,6 +538,88 @@ def _get_milvus_search_params() -> dict[str, Any]:
     return MilvusConfig.get_search_params()
 
 
+def _get_langchain_milvus_cls():  # noqa: ANN202
+    from langchain_community.vectorstores import Milvus as LCMilvus
+
+    return LCMilvus
+
+
+class MilvusMaintenanceError(RuntimeError):
+    """Raised when Milvus maintenance operations cannot be completed safely."""
+
+
+class MilvusSemanticCacheMaintenanceIterator:
+    """Small compatibility wrapper around Milvus query iterators."""
+
+    def __init__(
+        self,
+        *,
+        iterator: Any,
+        next_batch: Any,
+        close: Any,
+        tenant_id: str,
+        primary_field: str,
+        collection_name: str,
+    ) -> None:
+        self._iterator = iterator
+        self._next_batch = next_batch
+        self._close = close
+        self._tenant_id = tenant_id
+        self._primary_field = primary_field
+        self._collection_name = collection_name
+        self._closed = False
+
+    def next_batch(self) -> list[dict[str, Any]]:
+        try:
+            rows = self._next_batch()
+        except StopIteration:
+            return []
+        except Exception as exc:
+            raise MilvusMaintenanceError(
+                f"semantic cache maintenance iterator failed for collection={self._collection_name}: {type(exc).__name__}: {exc}"
+            ) from exc
+
+        if rows in (None, []):
+            return []
+        if not isinstance(rows, list):
+            raise MilvusMaintenanceError(
+                f"semantic cache maintenance iterator returned invalid rows for collection={self._collection_name}"
+            )
+
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            rid = row.get(self._primary_field)
+            if rid is None:
+                continue
+            row_tenant_id = row.get("tenant_id")
+            if str(row_tenant_id or "").strip() != self._tenant_id:
+                raise MilvusMaintenanceError(
+                    f"semantic cache maintenance row missing tenant scope for collection={self._collection_name}"
+                )
+            out.append(
+                {
+                    "id": str(rid),
+                    "tenant_id": row_tenant_id,
+                    "expires_at_epoch": row.get("expires_at_epoch"),
+                    "created_at_epoch": row.get("created_at_epoch"),
+                }
+            )
+        return out
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            self._close()
+        except Exception as exc:
+            raise MilvusMaintenanceError(
+                f"semantic cache maintenance iterator close failed for collection={self._collection_name}: {type(exc).__name__}: {exc}"
+            ) from exc
+
+
 # ========= Generic Milvus adapter ==========
 
 class MilvusAdapter:
@@ -566,9 +648,8 @@ class MilvusAdapter:
         if self._embedding_model is None:
             self._embedding_model = _init_embedding_model()
 
-        from langchain_community.vectorstores import Milvus as LCMilvus
-
-        self._store = LCMilvus(
+        lc_milvus = _get_langchain_milvus_cls()
+        self._store = lc_milvus(
             embedding_function=self._embedding_model,
             collection_name=self.collection_name,
             connection_args=_get_milvus_connection_args(),
@@ -832,6 +913,84 @@ class MilvusAdapter:
             )
         return out
 
+    def open_semantic_cache_maintenance_iterator(
+        self,
+        *,
+        tenant_id: str,
+        batch_size: int = 1000,
+        timeout: float | None = None,
+    ) -> MilvusSemanticCacheMaintenanceIterator:
+        self._require_store()
+
+        col = getattr(self._store, "col", None)
+        if col is None or not hasattr(col, "query_iterator"):
+            raise MilvusMaintenanceError(
+                f"semantic cache maintenance requires Milvus query iterator support for collection={self.collection_name}"
+            )
+
+        primary_field = str(getattr(self._store, "_primary_field", "id") or "id").strip() or "id"
+        batch_size_i = max(1, int(batch_size or 0))
+
+        field_names: set[str] = set()
+        schema = getattr(col, "schema", None)
+        fields = getattr(schema, "fields", None)
+        if isinstance(fields, (list, tuple)):
+            for field in fields:
+                field_name = str(getattr(field, "name", "") or "").strip()
+                if field_name:
+                    field_names.add(field_name)
+
+        if field_names and "tenant_id" not in field_names:
+            raise MilvusMaintenanceError(
+                f"semantic cache maintenance requires tenant_id metadata in collection={self.collection_name}"
+            )
+
+        output_fields = [primary_field]
+        for field_name in ("tenant_id", "expires_at_epoch", "created_at_epoch"):
+            if (not field_names) or field_name in field_names:
+                output_fields.append(field_name)
+
+        expr = f'tenant_id == "{_escape_milvus_string(str(tenant_id))}"'
+        if len(expr) > _MILVUS_EXPR_MAX_CHARS:
+            raise MilvusMaintenanceError("semantic cache tenant scope expression exceeds Milvus limits")
+
+        try:
+            iterator = col.query_iterator(  # type: ignore[call-arg]
+                batch_size=batch_size_i,
+                limit=-1,
+                expr=expr,
+                output_fields=output_fields,
+                timeout=timeout,
+            )
+        except Exception as exc:
+            raise MilvusMaintenanceError(
+                f"semantic cache maintenance query iterator failed for collection={self.collection_name}: {type(exc).__name__}: {exc}"
+            ) from exc
+
+        next_callable = getattr(iterator, "next", None)
+        if callable(next_callable):
+            next_batch = next_callable
+        elif hasattr(iterator, "__next__"):
+            iterator_obj = iter(iterator)
+            next_batch = iterator_obj.__next__
+        else:
+            raise MilvusMaintenanceError(
+                f"semantic cache maintenance iterator is unsupported for collection={self.collection_name}"
+            )
+        close_callable = getattr(iterator, "close", None)
+        if not callable(close_callable):
+            raise MilvusMaintenanceError(
+                f"semantic cache maintenance iterator close is unsupported for collection={self.collection_name}"
+            )
+        return MilvusSemanticCacheMaintenanceIterator(
+            iterator=iterator,
+            next_batch=next_batch,
+            close=close_callable,
+            tenant_id=str(tenant_id),
+            primary_field=primary_field,
+            collection_name=self.collection_name,
+        )
+
 
 _milvus_adapter_cache: dict[tuple[str, str, str], MilvusAdapter] = {}
 _milvus_adapter_cache_lock = threading.Lock()
@@ -931,9 +1090,8 @@ class MilvusVectorStore:
 
             embedding_model = self.get_embedding_model()
 
-            from langchain_community.vectorstores import Milvus as LCMilvus
-
-            self._store = LCMilvus(
+            lc_milvus = _get_langchain_milvus_cls()
+            self._store = lc_milvus(
                 embedding_function=embedding_model,
                 collection_name=settings.MILVUS_COLLECTION_NAME,
                 connection_args=_get_milvus_connection_args(),

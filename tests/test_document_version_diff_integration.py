@@ -1,6 +1,7 @@
 
 import hashlib
 import uuid
+from types import SimpleNamespace
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -132,3 +133,52 @@ def test_document_version_diff_counts(pg_session, monkeypatch):  # noqa: ANN001
     assert body.get("added_chunks") == 2
     assert body.get("removed_chunks") == 1
 
+
+def test_unassigned_document_version_diff_allows_readable_viewers(pg_session, monkeypatch):  # noqa: ANN001
+    monkeypatch.delenv("ENV", raising=False)
+
+    tenant_id = uuid.uuid4()
+    owner_id = "owner-account"
+    account_id = "viewer-account"
+    document_id = uuid.uuid4()
+
+    pg_session.add(
+        DBDocument(
+            id=document_id,
+            tenant_id=tenant_id,
+            dataset_id=None,
+            filename="doc.txt",
+            file_type="txt",
+            file_size=3,
+            file_path="uploads/doc.txt",
+            status="completed",
+            processing_progress=100,
+            chunk_count=0,
+            total_characters=0,
+            owner_id=owner_id,
+            access_mode="all_team_members",
+            doc_metadata={
+                "active_pipeline_hash": "v2",
+                "pipeline_hash": "v2",
+            },
+        )
+    )
+
+    _add_chunk(pg_session, tenant_id=tenant_id, document_id=document_id, pipeline_hash="v1", chunk_index=0, content="A")
+    _add_chunk(pg_session, tenant_id=tenant_id, document_id=document_id, pipeline_hash="v2", chunk_index=1, content="B")
+    pg_session.commit()
+
+    monkeypatch.setattr(
+        "app.api.v1.document_versions.DatasetService.ensure_member",
+        lambda *_args, **_kwargs: SimpleNamespace(role="viewer"),
+    )
+
+    app = _make_app(pg_session, tenant_id=tenant_id, account_id=account_id)
+    client = TestClient(app)
+
+    res = client.get(f"/api/v1/documents/{document_id}/versions/diff?from=v1&to=v2")
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body.get("document_id") == str(document_id)
+    assert body.get("from_chunk_count") == 1
+    assert body.get("to_chunk_count") == 1

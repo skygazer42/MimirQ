@@ -462,6 +462,94 @@ async def test_ingest_lock_contention_falls_through_to_database_dedup(
 
 
 @pytest.mark.asyncio
+async def test_single_upload_returns_pending_same_pipeline_follower(monkeypatch: pytest.MonkeyPatch) -> None:
+    dataset_id = uuid.uuid4()
+    tenant_id = uuid.uuid4()
+    duplicate = SimpleNamespace(
+        id=uuid.uuid4(),
+        filename="dup.txt",
+        status="processing",
+        doc_metadata={"file_sha256": "sha-dup.txt", "pipeline_hash": "pipeline-hash"},
+        dedup_key="sha-dup.txt:pipeline-hash",
+    )
+
+    _patch_quota(monkeypatch)
+    _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
+    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", False, raising=False)
+    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(
+        documents_module,
+        "_find_duplicate_document_by_sha",
+        lambda *args, **kwargs: duplicate,
+        raising=True,
+    )
+
+    result = await document_upload.upload_document(
+        background_tasks=BackgroundTasks(),
+        file=_make_upload("dup.txt"),
+        form=document_upload.UploadDocumentFormFields(
+            parser_backend="auto",
+            chunk_strategy="langchain_recursive",
+            pipeline=None,
+            dataset_id=dataset_id,
+            user_metadata=None,
+        ),
+        overrides_form=_build_overrides_form(),
+        tenant_id=tenant_id,
+        account_id="acct-1",
+        db=SimpleNamespace(),
+    )
+
+    assert result is duplicate
+
+
+@pytest.mark.asyncio
+async def test_single_upload_keeps_pending_different_pipeline_conflict(monkeypatch: pytest.MonkeyPatch) -> None:
+    dataset_id = uuid.uuid4()
+    tenant_id = uuid.uuid4()
+    duplicate = SimpleNamespace(
+        id=uuid.uuid4(),
+        filename="dup.txt",
+        status="pending",
+        doc_metadata={"file_sha256": "sha-dup.txt", "pipeline_hash": "different-pipeline"},
+        dedup_key="sha-dup.txt:different-pipeline",
+    )
+
+    _patch_quota(monkeypatch)
+    _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
+    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", False, raising=False)
+    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(
+        documents_module,
+        "_find_duplicate_document_by_sha",
+        lambda *args, **kwargs: duplicate,
+        raising=True,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await document_upload.upload_document(
+            background_tasks=BackgroundTasks(),
+            file=_make_upload("dup.txt"),
+            form=document_upload.UploadDocumentFormFields(
+                parser_backend="auto",
+                chunk_strategy="langchain_recursive",
+                pipeline=None,
+                dataset_id=dataset_id,
+                user_metadata=None,
+            ),
+            overrides_form=_build_overrides_form(),
+            tenant_id=tenant_id,
+            account_id="acct-1",
+            db=SimpleNamespace(),
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail == documents_module.DUPLICATE_DOCUMENT_PROCESSING_DETAIL
+
+
+@pytest.mark.asyncio
 async def test_ingest_lock_is_skipped_when_upload_dedup_is_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -735,6 +823,55 @@ async def test_single_upload_hands_retry_ingest_lock_to_worker(monkeypatch: pyte
     assert released == []
     assert duplicate.doc_metadata["ingest_lock_key"].startswith("lock:ingest:")
     assert duplicate.doc_metadata["ingest_lock_value"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["pending", "processing"])
+async def test_single_upload_reuses_matching_sha_only_duplicate_while_pending_or_processing(
+    monkeypatch: pytest.MonkeyPatch,
+    status: str,
+) -> None:
+    dataset_id = uuid.uuid4()
+    tenant_id = uuid.uuid4()
+    duplicate_document = SimpleNamespace(
+        id=uuid.uuid4(),
+        filename="dup.txt",
+        status=status,
+        doc_metadata={"file_sha256": "sha-dup.txt", "pipeline_hash": "pipeline-hash"},
+        dedup_key="sha-dup.txt:pipeline-hash",
+    )
+
+    _patch_quota(monkeypatch)
+    _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
+    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", False, raising=False)
+    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(documents_module.IngestionRunService, "create_run", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module, "_find_duplicate_document", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(
+        documents_module,
+        "_find_duplicate_document_by_sha",
+        lambda *args, **kwargs: duplicate_document,
+        raising=True,
+    )
+
+    result = await document_upload.upload_document(
+        background_tasks=BackgroundTasks(),
+        file=_make_upload("dup.txt"),
+        form=document_upload.UploadDocumentFormFields(
+            parser_backend="auto",
+            chunk_strategy="langchain_recursive",
+            pipeline=None,
+            dataset_id=dataset_id,
+            user_metadata=None,
+        ),
+        overrides_form=_build_overrides_form(),
+        tenant_id=tenant_id,
+        account_id="acct-1",
+        db=SimpleNamespace(commit=lambda: None, refresh=lambda *_args: None),
+    )
+
+    assert result.id == duplicate_document.id
 
 
 @pytest.mark.asyncio
@@ -1051,6 +1188,91 @@ async def test_batch_upload_hands_retry_ingest_lock_to_worker(monkeypatch: pytes
     assert duplicate.doc_metadata["task_id"] == "task-1"
     assert duplicate.doc_metadata["ingest_lock_key"].startswith("lock:ingest:")
     assert duplicate.doc_metadata["ingest_lock_value"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("precheck_first", [False, True])
+@pytest.mark.parametrize("same_pipeline", [False, True])
+async def test_batch_pending_duplicate_respects_pipeline_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    precheck_first: bool,
+    same_pipeline: bool,
+) -> None:
+    dataset_id = uuid.uuid4()
+    tenant_id = uuid.uuid4()
+    existing_pipeline = "pipeline-hash" if same_pipeline else "different-pipeline"
+    duplicate = SimpleNamespace(
+        id=uuid.uuid4(),
+        filename="batch.txt",
+        status="processing",
+        doc_metadata={"file_sha256": "sha-batch.txt", "pipeline_hash": existing_pipeline},
+        dedup_key=f"sha-batch.txt:{existing_pipeline}",
+    )
+
+    class _OuterDB:
+        def add(self, _obj) -> None:  # noqa: ANN001
+            return None
+
+        def commit(self) -> None:
+            return None
+
+        def refresh(self, _obj) -> None:  # noqa: ANN001
+            return None
+
+    _patch_quota(monkeypatch)
+    _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
+    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", False, raising=False)
+    monkeypatch.setattr(document_upload.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(document_upload.settings, "MINIO_ENABLED", False, raising=False)
+    monkeypatch.setattr(document_upload.settings, "MINIO_DOCUMENTS_ENABLED", False, raising=False)
+    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(
+        documents_module,
+        "_find_duplicate_document_by_sha",
+        lambda *args, **kwargs: duplicate,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        documents_module,
+        "SessionLocal",
+        lambda: SimpleNamespace(commit=lambda: None, refresh=lambda *_args: None, close=lambda: None),
+        raising=True,
+    )
+    monkeypatch.setattr(documents_module, "run_dataset_precheck_scan", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module, "apply_ingestion_policy_suggestion", lambda *_args, **_kwargs: None, raising=True)
+
+    result = await document_upload.upload_documents_batch(
+        background_tasks=BackgroundTasks(),
+        files=[_make_upload("batch.txt")],
+        form=document_upload.UploadDocumentsBatchFormFields(
+            parser_backend="auto",
+            chunk_strategy="langchain_recursive",
+            pipeline=None,
+            dataset_id=dataset_id,
+            precheck_first=precheck_first,
+            precheck_only=False,
+            upload_only=False,
+            user_metadata_map=None,
+            max_concurrent=1,
+        ),
+        overrides_form=_build_overrides_form(),
+        tenant_id=tenant_id,
+        account_id="acct-1",
+        db=_OuterDB(),
+    )
+
+    if same_pipeline:
+        assert result["successful_count"] == 1
+        assert result["failed_count"] == 0
+        assert result["successful"][0]["document_id"] == str(duplicate.id)
+    else:
+        assert result["successful_count"] == 0
+        assert result["failed_count"] == 1
+        error = result["failed"][0]["error"]
+        assert error.startswith("409:")
+        assert error.endswith(documents_module.DUPLICATE_DOCUMENT_PROCESSING_DETAIL)
 
 
 @pytest.mark.asyncio

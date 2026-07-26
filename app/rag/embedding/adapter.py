@@ -306,6 +306,7 @@ def create_langchain_embeddings_from_config(
     """
     from app.rag.embedding.providers import (
         DashScopeEmbedding,
+        DeterministicTestEmbedding,
         OllamaEmbedding,
         OpenAICompatibleEmbedding,
         SentenceTransformerEmbedding,
@@ -318,7 +319,9 @@ def create_langchain_embeddings_from_config(
         if stripped.endswith("/v1"):
             base_url = stripped + "/embeddings"
 
-    if provider == "local":
+    if provider == "deterministic_test":
+        embedding_model = DeterministicTestEmbedding(model=model, dimension=dimension)
+    elif provider == "local":
         embedding_model = SentenceTransformerEmbedding(
             model=model, dimension=dimension, base_url=base_url, api_key=api_key
         )

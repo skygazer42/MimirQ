@@ -222,7 +222,9 @@ logger = get_logger("api.documents")
 
 NO_DOCUMENT_ACCESS_DETAIL = document_access_service.NO_DOCUMENT_ACCESS_DETAIL
 _assert_document_acl_readable = document_access_service.assert_document_acl_readable
+_assert_document_readable_for_lifecycle = document_access_service.assert_document_readable_for_lifecycle
 _assert_document_writable_for_lifecycle = document_access_service.assert_document_writable_for_lifecycle
+_assert_document_writable_for_unassigned_target = document_access_service.assert_document_writable_for_unassigned_target
 _get_document_for_lifecycle = document_access_service.get_document_for_lifecycle
 
 _background_processing_semaphores: dict[int, tuple[int, asyncio.Semaphore]] = {}
@@ -1145,17 +1147,12 @@ def _assert_document_writable_for_chunk_ops(
     account_id: str,
     document: DBDocument,
 ) -> None:
-    ds: Dataset | None = None
-    if getattr(document, "dataset_id", None):
-        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_writable(db, ds, account_id)
-    else:
-        member = DatasetService.ensure_member(db, tenant_id, account_id)
-        role = (getattr(member, "role", None) or "").lower()
-        if role not in EDIT_ROLES:
-            raise HTTPException(status_code=403, detail="No permission to manage unassigned documents")
-
-    _assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=ds)
+    _assert_document_writable_for_lifecycle(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        document=document,
+    )
 
 
 class UrlUploadRequest(BaseModel):

@@ -67,7 +67,12 @@ def test_dead_letter_replay_only_forces_completed_documents(
         return {"status": "queued"}
 
     monkeypatch.setattr(document_dead_letters.DatasetService, "ensure_member", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(document_dead_letters, "assert_document_acl_readable", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        document_dead_letters,
+        "assert_document_writable_for_lifecycle",
+        lambda *_args, **_kwargs: None,
+        raising=True,
+    )
     monkeypatch.setattr(document_dead_letters, "mark_dead_letter_replayed", lambda _db, *, dead_letter: dead_letter)
     monkeypatch.setattr(document_processing, "retry_document_processing", retry)
 

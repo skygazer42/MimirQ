@@ -2,7 +2,7 @@ import type { Document, DocumentChunk } from '@/types'
 
 import { documentApi } from './api'
 import { AUTH_SCOPE_CHANGED_EVENT, getAuthCacheScope } from './auth-storage'
-import { saveDocContentToCache } from './doc-content-cache'
+import { getDocCacheScopeGuard, isDocCacheScopeGuardCurrent, saveDocContentToCache } from './doc-content-cache'
 import { fetchAuthAssetUrl } from './image-auth-proxy'
 
 type PrefetchDocumentViewOptions = Readonly<{
@@ -56,12 +56,13 @@ export function prefetchDocumentView({ documentId, chunkId, rawFileUrl }: Prefet
   if (!docId) return
 
   const documentKey = documentCacheKey(docId)
+  const scopeGuard = getDocCacheScopeGuard()
 
   if (!prefetchedDocuments.has(documentKey) && !documentInflight.has(documentKey)) {
     const request = documentApi
       .get(docId, { includeChunks: false })
       .then((doc) => {
-        if (documentKey !== documentCacheKey(docId)) return
+        if (!isDocCacheScopeGuardCurrent(scopeGuard) || documentKey !== documentCacheKey(docId)) return
         prefetchedDocuments.set(documentKey, doc)
       })
       .catch(() => undefined)
@@ -79,7 +80,7 @@ export function prefetchDocumentView({ documentId, chunkId, rawFileUrl }: Prefet
       const request = documentApi
         .getChunk(docId, cid)
         .then((chunk) => {
-          if (key !== chunkCacheKey(docId, cid)) return
+          if (!isDocCacheScopeGuardCurrent(scopeGuard) || key !== chunkCacheKey(docId, cid)) return
           prefetchedChunks.set(key, chunk)
         })
         .catch(() => undefined)
@@ -96,12 +97,12 @@ export function prefetchDocumentView({ documentId, chunkId, rawFileUrl }: Prefet
     const request = documentApi
       .getParsedContent(docId, { max_chars: 200_000 })
       .then(async (data) => {
-        if (!data?.available || documentKey !== documentCacheKey(docId)) return
+        if (!data?.available || !isDocCacheScopeGuardCurrent(scopeGuard) || documentKey !== documentCacheKey(docId)) return
         await saveDocContentToCache({
           id: docId,
           markdownContent: data.markdown_content || '',
           originalMarkdownContent: data.original_markdown_content || '',
-        })
+        }, scopeGuard)
       })
       .catch(() => undefined)
     parsedInflight.set(documentKey, request)
@@ -114,6 +115,7 @@ export function prefetchDocumentView({ documentId, chunkId, rawFileUrl }: Prefet
 
   if (fileUrl && !fileInflight.has(documentKey)) {
     const request = fetchAuthAssetUrl(fileUrl)
+      .then((result) => (isDocCacheScopeGuardCurrent(scopeGuard) ? result : null))
       .catch(() => null)
     fileInflight.set(documentKey, request)
     void request.finally(() => {

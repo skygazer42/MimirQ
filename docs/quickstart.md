@@ -463,7 +463,7 @@ pnpm start
 
 **使用 HNSW 索引（更高精度）**:
 
-编辑 `app/services/milvus_store.py`:
+编辑 `app/core/constants.py`（Milvus 索引/搜索参数集中于此）:
 
 ```python
 index_params = {

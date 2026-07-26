@@ -23,7 +23,6 @@ from app.api.schemas.qa import (
     QAPairPreview,
 )
 from app.core.database import get_db
-from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.services.audit_log_service import audit_log_event
 from app.services.document_qa_service import generate_and_index_document_qa
@@ -73,16 +72,11 @@ def generate_document_qa(
     if not document:
         raise HTTPException(status_code=404, detail=documents_module.DOC_NOT_FOUND_DETAIL)
 
-    dataset: Dataset | None = None
-    if document.dataset_id:
-        dataset = documents_module.DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        documents_module.DatasetService.assert_dataset_writable(db, dataset, account_id)
-    documents_module._assert_document_acl_readable(
+    documents_module._assert_document_writable_for_lifecycle(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
         document=document,
-        dataset=dataset,
     )
 
     current_status = str(document.status or "").lower()
@@ -149,9 +143,12 @@ def patch_document_pipeline(
     if not document:
         raise HTTPException(status_code=404, detail=documents_module.DOC_NOT_FOUND_DETAIL)
 
-    if document.dataset_id:
-        dataset = documents_module.DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        documents_module.DatasetService.assert_dataset_writable(db, dataset, account_id)
+    documents_module._assert_document_writable_for_lifecycle(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        document=document,
+    )
 
     current_status = str(document.status or "").lower()
     if current_status == "processing" or (
@@ -219,9 +216,12 @@ def patch_document_user_metadata(
     if not document:
         raise HTTPException(status_code=404, detail=documents_module.DOC_NOT_FOUND_DETAIL)
 
-    if document.dataset_id:
-        dataset = documents_module.DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        documents_module.DatasetService.assert_dataset_writable(db, dataset, account_id)
+    documents_module._assert_document_writable_for_lifecycle(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        document=document,
+    )
 
     meta = dict(document.doc_metadata or {})
     current_user = meta.get("user") if isinstance(meta.get("user"), dict) else {}

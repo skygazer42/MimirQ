@@ -1,7 +1,8 @@
 
 import asyncio
 import contextlib
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,8 @@ _MISSING_OBJECT_DELETE_MARKERS = (
     "object does not exist",
     "key does not exist",
 )
+_CHUNK_METADATA_SCAN_BATCH_SIZE = 256
+_DELETE_IO_BATCH_SIZE = 16
 Indexer: Any | None = None
 
 
@@ -134,16 +137,70 @@ def _add_document_metadata_img_ids(img_ids: set[str], document: DBDocument) -> N
             img_ids.add(value)
 
 
+def _iter_query_rows(query: Any, *, batch_size: int) -> Iterable[Any]:
+    if hasattr(query, "yield_per"):
+        query = query.yield_per(batch_size)
+    if hasattr(query, "__iter__"):
+        return query
+    if hasattr(query, "all"):
+        return query.all()
+    return ()
+
+
+def _row_named_value(row: Any, key: str) -> Any:
+    mapping = getattr(row, "_mapping", None)
+    if mapping is not None and key in mapping:
+        return mapping[key]
+    if isinstance(row, dict):
+        return row.get(key)
+    if hasattr(row, key):
+        return getattr(row, key)
+    if isinstance(row, (tuple, list)):
+        return row[0] if row else None
+    try:
+        return row[0]
+    except (IndexError, KeyError, TypeError):
+        return row
+
+
 def _add_chunk_metadata_img_ids(db: Session, *, tenant_id: UUID, document_id: UUID, img_ids: set[str]) -> None:
+    img_id_column = DocumentChunk.doc_metadata["img_id"].astext.label("img_id")
     chunks = (
-        db.query(DocumentChunk)
+        db.query(img_id_column)
         .filter(DocumentChunk.document_id == document_id, DocumentChunk.tenant_id == tenant_id)
-        .all()
     )
-    for chunk in chunks:
-        img_id = chunk.doc_metadata.get("img_id") if chunk.doc_metadata else None
+    for chunk in _iter_query_rows(chunks, batch_size=_CHUNK_METADATA_SCAN_BATCH_SIZE):
+        img_id = _row_named_value(chunk, "img_id")
         if isinstance(img_id, str) and img_id.strip():
             img_ids.add(img_id)
+
+
+def _run_bounded_cleanup_batch(
+    values: Iterable[str],
+    delete_fn: Callable[[str], None],
+    *,
+    max_workers: int,
+) -> None:
+    items = list(values)
+    if not items:
+        return
+    workers = max(1, min(int(max_workers or 1), len(items)))
+    if workers == 1:
+        for value in items:
+            delete_fn(value)
+        return
+    for start in range(0, len(items), workers):
+        batch = items[start : start + workers]
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = [executor.submit(delete_fn, value) for value in batch]
+            failures: list[BaseException] = []
+            for future in futures:
+                try:
+                    future.result()
+                except BaseException as exc:  # noqa: BLE001
+                    failures.append(exc)
+            if failures:
+                raise RuntimeError(f"Cleanup batch failed for {len(failures)} item(s)") from failures[0]
 
 
 def _delete_document_minio_images(db: Session, *, tenant_id: UUID, document_id: UUID, document: DBDocument) -> None:
@@ -152,8 +209,11 @@ def _delete_document_minio_images(db: Session, *, tenant_id: UUID, document_id: 
     img_ids: set[str] = set()
     _add_document_metadata_img_ids(img_ids, document)
     _add_chunk_metadata_img_ids(db, tenant_id=tenant_id, document_id=document_id, img_ids=img_ids)
-    for img_id in sorted(img_ids):
-        minio_service.delete_image(img_id, extension="jpg")
+    _run_bounded_cleanup_batch(
+        sorted(img_ids),
+        lambda img_id: minio_service.delete_image(img_id, extension="jpg"),
+        max_workers=_DELETE_IO_BATCH_SIZE,
+    )
 
 
 def _delete_document_table_store(*, tenant_id: UUID, document_id: UUID, document: DBDocument) -> None:

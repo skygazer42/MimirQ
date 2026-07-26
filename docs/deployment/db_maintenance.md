@@ -4,7 +4,8 @@
 
 说明：
 - 知识资产 retention（documents/chunks/KG/vector/object assets）使用单独的 `scripts/run_retention_jobs.py --knowledge-assets ...`
-- 原因：它会委托 document delete lifecycle，除了 DB 行以外还会触发对象存储 / 向量 / KG 清理，不适合混进纯 DB maintenance runner
+- 语义缓存 retention（Milvus 索引 + Redis payload）使用同一 runner 的 `--semantic-cache`；它不属于纯 DB maintenance
+- 原因：这些任务会操作数据库以外的存储，不适合混进纯 DB maintenance runner
 
 目标：
 
@@ -29,6 +30,15 @@
 python scripts/run_retention_jobs.py --knowledge-assets --tenant-id <uuid> --dry-run --retention-days 90 --max-delete 100
 python scripts/run_retention_jobs.py --knowledge-assets --tenant-id <uuid> --execute --retention-days 90 --max-delete 100
 ```
+
+语义缓存 retention 示例（先 dry-run，再执行；扫描和删除均有界）：
+
+```bash
+python scripts/run_retention_jobs.py --semantic-cache --tenant-id <uuid> --dry-run --max-scan 1000 --max-delete 100
+python scripts/run_retention_jobs.py --semantic-cache --tenant-id <uuid> --execute --max-scan 1000 --max-delete 100
+```
+
+语义缓存任务会删除已过期或 Redis payload 已不存在的 Milvus 行；维护查询失败时返回非零退出码，不会把失败误报为成功。
 
 ### 1.1) Dry-run（推荐先跑）
 

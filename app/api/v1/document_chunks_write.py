@@ -54,16 +54,11 @@ def create_document_chunk(
     if not document:
         raise HTTPException(status_code=404, detail=documents_module.DOC_NOT_FOUND_DETAIL)
 
-    dataset = None
-    if document.dataset_id:
-        dataset = documents_module.DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        documents_module.DatasetService.assert_dataset_writable(db, dataset, account_id)
-    documents_module._assert_document_acl_readable(
+    documents_module._assert_document_writable_for_chunk_ops(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
         document=document,
-        dataset=dataset,
     )
 
     current_status = str(document.status or "").lower()
@@ -201,16 +196,11 @@ def patch_document_chunk(
     if not document:
         raise HTTPException(status_code=404, detail=documents_module.DOC_NOT_FOUND_DETAIL)
 
-    dataset = None
-    if document.dataset_id:
-        dataset = documents_module.DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        documents_module.DatasetService.assert_dataset_writable(db, dataset, account_id)
-    documents_module._assert_document_acl_readable(
+    documents_module._assert_document_writable_for_chunk_ops(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
         document=document,
-        dataset=dataset,
     )
 
     current_status = str(document.status or "").lower()
@@ -409,16 +399,11 @@ async def delete_document_chunk(
     if not document:
         raise HTTPException(status_code=404, detail=documents_module.DOC_NOT_FOUND_DETAIL)
 
-    dataset = None
-    if document.dataset_id:
-        dataset = documents_module.DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        documents_module.DatasetService.assert_dataset_writable(db, dataset, account_id)
-    documents_module._assert_document_acl_readable(
+    documents_module._assert_document_writable_for_chunk_ops(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
         document=document,
-        dataset=dataset,
     )
 
     current_status = str(document.status or "").lower()

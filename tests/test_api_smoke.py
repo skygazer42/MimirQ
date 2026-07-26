@@ -19,6 +19,20 @@ class _ClientStub:
         return None
 
 
+@pytest.mark.parametrize(
+    ("tenant_id", "system_tenant_id", "expected"),
+    [
+        ("tenant-1", "tenant-1", [200]),
+        ("tenant-1", "system-tenant", [403]),
+    ],
+)
+def test_settings_write_expectation_tracks_system_tenant(tenant_id: str, system_tenant_id: str, expected: list[int]) -> None:
+    assert api_smoke.settings_write_expected_statuses(
+        tenant_id=tenant_id,
+        system_tenant_id=system_tenant_id,
+    ) == expected
+
+
 def test_header_auth_bootstraps_dataset_membership_before_settings_put(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[str, str]] = []
 

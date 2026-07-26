@@ -55,6 +55,7 @@ from app.types.indexing import (
 
 logger = logging.getLogger("indexer")
 _INDEXER_FALLBACK_LOG_MESSAGE = "Ignoring non-critical indexer fallback failure: %s"
+_CHUNK_METADATA_SCAN_BATCH_SIZE = 256
 
 _shadow_vector_writer_sig: str | None = None
 _shadow_vector_writer: tuple[Any, Any, str] | None = None  # (embeddings, adapter, embedding_space_hash)
@@ -304,6 +305,48 @@ def _first_column_value(row: Any) -> Any:
         return row[0]
     except (IndexError, KeyError, TypeError):
         return row
+
+
+def _row_named_value(row: Any, key: str) -> Any:
+    if row is None:
+        return None
+    mapping = getattr(row, "_mapping", None)
+    if mapping is not None:
+        if key in mapping:
+            return mapping[key]
+        metadata = mapping.get("metadata")
+        if isinstance(metadata, dict) and key in metadata:
+            return metadata.get(key)
+    if isinstance(row, dict):
+        if key in row:
+            return row.get(key)
+        metadata = row.get("metadata")
+        if isinstance(metadata, dict) and key in metadata:
+            return metadata.get(key)
+    if hasattr(row, key):
+        return getattr(row, key)
+    if isinstance(row, (tuple, list)):
+        value = row[0] if row else None
+        if isinstance(value, dict):
+            return value.get(key)
+        return value
+    try:
+        value = row[key]
+        if isinstance(value, dict):
+            return value.get(key)
+        return value
+    except (IndexError, KeyError, TypeError):
+        return row
+
+
+def _iter_query_rows(query: Any, *, batch_size: int) -> Iterable[Any]:
+    if hasattr(query, "yield_per"):
+        query = query.yield_per(batch_size)
+    if hasattr(query, "__iter__"):
+        return query
+    if hasattr(query, "all"):
+        return query.all()
+    return ()
 
 
 def _safe_uuid(value: Any) -> UUID | None:
@@ -983,31 +1026,38 @@ class Indexer:
     ) -> list[str]:
         default_runtime = resolve_dataset_embedding_runtime(None)
         try:
+            collection_name_column = DocumentChunk.doc_metadata["vector_collection_name"].astext.label(
+                "vector_collection_name"
+            )
+            embedding_space_column = DocumentChunk.doc_metadata["embedding_space_hash"].astext.label(
+                "embedding_space_hash"
+            )
+            dataset_scoped_column = DocumentChunk.doc_metadata["dataset_scoped"].astext.label("dataset_scoped")
             rows = (
-                self._db.query(DocumentChunk.doc_metadata)
+                self._db.query(
+                    collection_name_column,
+                    embedding_space_column,
+                    dataset_scoped_column,
+                )
                 .filter(
                     DocumentChunk.tenant_id == tenant_id,
                     DocumentChunk.document_id == document_id,
                 )
-                .all()
             )
         except Exception:
             return []
 
         collections: set[str] = set()
         derived_spaces: set[str] = set()
-        for row in rows:
-            meta = _first_column_value(row)
-            if not isinstance(meta, dict):
-                continue
-            collection_name = str(meta.get("vector_collection_name") or "").strip()
+        for row in _iter_query_rows(rows, batch_size=_CHUNK_METADATA_SCAN_BATCH_SIZE):
+            collection_name = str(_row_named_value(row, "vector_collection_name") or "").strip()
             if collection_name:
                 collections.add(collection_name)
                 continue
-            space_hash = str(meta.get("embedding_space_hash") or "").strip()
+            space_hash = str(_row_named_value(row, "embedding_space_hash") or "").strip()
             if not space_hash:
                 continue
-            if assume_dataset_scoped or _metadata_flag_enabled(meta.get("dataset_scoped")):
+            if assume_dataset_scoped or _metadata_flag_enabled(_row_named_value(row, "dataset_scoped")):
                 derived_spaces.add(space_hash)
                 continue
             if space_hash != default_runtime.embedding_space_hash:

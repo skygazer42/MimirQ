@@ -17,6 +17,7 @@ from app.rag.embedding.config import (
 )
 from app.rag.embedding.providers import (
     DashScopeEmbedding,
+    DeterministicTestEmbedding,
     OllamaEmbedding,
     OpenAICompatibleEmbedding,
     SentenceTransformerEmbedding,
@@ -67,6 +68,8 @@ def select_embedding_model(model_id: str) -> BaseEmbeddingModel:
 
     if provider == "ollama":
         return OllamaEmbedding(**config_dict)
+    elif provider == "deterministic_test":
+        return DeterministicTestEmbedding(**config_dict)
     elif provider == "local":
         return SentenceTransformerEmbedding(**config_dict)
     elif provider == "dashscope":

@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,3 +28,19 @@ def test_audit_remediation_pins_known_fixed_versions() -> None:
 def test_unused_direct_dependencies_stay_removed() -> None:
     versions = _requirement_versions()
     assert {"grpcio-tools", "roman-numbers", "backports.tarfile"}.isdisjoint(versions)
+
+
+def test_langchain_milvus_imports_stay_isolated_to_adapter_boundaries() -> None:
+    matches: list[str] = []
+    for path in ROOT.joinpath("app").rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            if node.module != "langchain_community.vectorstores":
+                continue
+            if any(alias.name == "Milvus" for alias in node.names):
+                matches.append(str(path.relative_to(ROOT)))
+                break
+
+    assert matches == ["app/storage/vector/milvus.py"]

@@ -1,3 +1,4 @@
+import inspect
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -94,3 +95,135 @@ def test_singleton_delete_loads_collection_before_deleting(monkeypatch: pytest.M
     assert fake_store.init_calls == 1
     assert len(fake_store.delete_calls) == 1
     assert fake_store.col.flush_calls == 0
+
+
+def test_adapter_lists_semantic_cache_rows_without_requiring_expiry_field() -> None:
+    class _Field:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+    rows = [{"id": "vec-1", "tenant_id": "tenant-1"}]
+    iterator_calls: list[dict[str, object]] = []
+
+    class _Iterator:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.closed = False
+
+        def next(self):  # noqa: ANN202
+            self.calls += 1
+            if self.calls == 1:
+                return list(rows)
+            return []
+
+        def close(self) -> None:
+            self.closed = True
+
+    class _CollectionWithQuery:
+        schema = SimpleNamespace(fields=[_Field("id"), _Field("tenant_id")])
+
+        def query_iterator(self, **kwargs):  # noqa: ANN003,ANN202
+            iterator_calls.append(dict(kwargs))
+            return _Iterator()
+
+    adapter = MilvusAdapter(collection_name="semantic_cache")
+    adapter._store = SimpleNamespace(  # noqa: SLF001
+        col=_CollectionWithQuery(),
+        _primary_field="id",
+    )
+
+    iterator = adapter.open_semantic_cache_maintenance_iterator(tenant_id="tenant-1", batch_size=5)
+    listed = iterator.next_batch()
+    exhausted = iterator.next_batch() == []
+    iterator.close()
+
+    assert listed == [{"id": "vec-1", "tenant_id": "tenant-1", "expires_at_epoch": None, "created_at_epoch": None}]
+    assert exhausted is True
+    assert iterator_calls == [
+        {
+            "expr": 'tenant_id == "tenant-1"',
+            "batch_size": 5,
+            "limit": -1,
+            "output_fields": ["id", "tenant_id"],
+            "timeout": None,
+        }
+    ]
+
+
+def test_adapter_open_semantic_cache_maintenance_iterator_raises_when_tenant_field_missing() -> None:
+    class _Field:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+    adapter = MilvusAdapter(collection_name="semantic_cache")
+    adapter._store = SimpleNamespace(  # noqa: SLF001
+        col=SimpleNamespace(schema=SimpleNamespace(fields=[_Field("id")]), query_iterator=lambda **_kwargs: object()),
+        _primary_field="id",
+    )
+
+    with pytest.raises(RuntimeError, match="tenant_id metadata"):
+        adapter.open_semantic_cache_maintenance_iterator(tenant_id="tenant-1", batch_size=5)
+
+
+def test_adapter_open_semantic_cache_maintenance_iterator_raises_on_query_iterator_failure() -> None:
+    class _Field:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+    class _CollectionWithQueryFailure:
+        schema = SimpleNamespace(fields=[_Field("id"), _Field("tenant_id")])
+
+        def query_iterator(self, **_kwargs):  # noqa: ANN003,ANN202
+            raise RuntimeError("boom")
+
+    adapter = MilvusAdapter(collection_name="semantic_cache")
+    adapter._store = SimpleNamespace(  # noqa: SLF001
+        col=_CollectionWithQueryFailure(),
+        _primary_field="id",
+    )
+
+    with pytest.raises(RuntimeError, match="query iterator failed"):
+        adapter.open_semantic_cache_maintenance_iterator(tenant_id="tenant-1", batch_size=5)
+
+
+def test_adapter_open_semantic_cache_maintenance_iterator_raises_when_query_iterator_unsupported() -> None:
+    class _Field:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+    adapter = MilvusAdapter(collection_name="semantic_cache")
+    adapter._store = SimpleNamespace(  # noqa: SLF001
+        col=SimpleNamespace(schema=SimpleNamespace(fields=[_Field("id"), _Field("tenant_id")])),
+        _primary_field="id",
+    )
+
+    with pytest.raises(RuntimeError, match="query iterator support"):
+        adapter.open_semantic_cache_maintenance_iterator(tenant_id="tenant-1", batch_size=5)
+
+
+def test_adapter_open_semantic_cache_maintenance_iterator_raises_when_iterator_shape_unsupported() -> None:
+    class _Field:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+    class _CollectionWithIteratorShapeMismatch:
+        schema = SimpleNamespace(fields=[_Field("id"), _Field("tenant_id")])
+
+        def query_iterator(self, **_kwargs):  # noqa: ANN003,ANN202
+            return object()
+
+    adapter = MilvusAdapter(collection_name="semantic_cache")
+    adapter._store = SimpleNamespace(  # noqa: SLF001
+        col=_CollectionWithIteratorShapeMismatch(),
+        _primary_field="id",
+    )
+
+    with pytest.raises(RuntimeError, match="iterator is unsupported"):
+        adapter.open_semantic_cache_maintenance_iterator(tenant_id="tenant-1", batch_size=5)
+
+
+def test_adapter_semantic_cache_maintenance_uses_query_iterator_not_offset_paging() -> None:
+    source = inspect.getsource(MilvusAdapter.open_semantic_cache_maintenance_iterator)
+
+    assert "query_iterator" in source
+    assert "offset=" not in source
