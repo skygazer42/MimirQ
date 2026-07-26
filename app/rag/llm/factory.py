@@ -19,7 +19,7 @@ from app.rag.llm.base import BaseLLMClient
 from app.rag.llm.fallback import FallbackLLMClient
 from app.rag.llm.models import LLMMessage, LLMResponse, LLMRole
 from app.rag.llm.prompt_cache import annotate_prompt_cache_content, detect_anthropic_compatible
-from app.storage.vector.milvus import milvus_store
+from app.storage.vector.factory import get_embedding_client as get_active_embedding_client
 
 logger = get_logger("rag.llm.factory")
 
@@ -182,7 +182,7 @@ class EmbeddingClient:
     """Adapter to reuse the project's embedding provider."""
 
     def __init__(self):
-        self._provider = milvus_store._init_embedding_model()  # noqa: SLF001
+        self._provider = get_active_embedding_client()
 
     async def generate(self, text: str) -> list[float]:
         provider = self._provider

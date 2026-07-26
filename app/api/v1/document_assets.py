@@ -17,7 +17,7 @@ from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.rag.core.logging import get_logger
 from app.services.dataset_service import DatasetService
-from app.storage.object.minio import is_minio_uri, parse_minio_uri
+from app.storage.object.runtime import is_object_storage_uri, resolve_document_object_reference
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -30,9 +30,44 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 logger = get_logger(__name__)
 
+_ACTIVE_CONTENT_MEDIA_TYPES = {
+    "application/ecmascript",
+    "application/javascript",
+    "application/x-javascript",
+    "application/xhtml+xml",
+    "application/xml",
+    "image/svg+xml",
+    "text/css",
+    "text/html",
+    "text/javascript",
+    "text/xml",
+}
+_ACTIVE_CONTENT_SUFFIXES = {
+    ".css",
+    ".htm",
+    ".html",
+    ".js",
+    ".mjs",
+    ".svg",
+    ".svgz",
+    ".xhtml",
+    ".xml",
+}
+
 
 def _documents_module() -> Any:
     return importlib.import_module("app.api.v1.documents")
+
+
+def _asset_disposition_type(*, inline: bool, filename: str | None, media_type: str | None) -> str:
+    if not inline:
+        return "attachment"
+
+    normalized_media_type = str(media_type or "").split(";", 1)[0].strip().lower()
+    normalized_suffix = Path(str(filename or "")).suffix.strip().lower()
+    if normalized_media_type in _ACTIVE_CONTENT_MEDIA_TYPES or normalized_suffix in _ACTIVE_CONTENT_SUFFIXES:
+        return "attachment"
+    return "inline"
 
 
 @router.get("/{document_id}/download", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -82,30 +117,25 @@ async def download_document(
     if not raw_path or raw_path.startswith(docs_mod.MANUAL_FILE_PATH_PREFIX):
         raise HTTPException(status_code=404, detail="Document file not available")
 
-    if is_minio_uri(raw_path):
-        if not bool(getattr(settings, "MINIO_ENABLED", False)):
-            raise HTTPException(status_code=503, detail="Object storage is disabled")
-
+    if is_object_storage_uri(raw_path):
         try:
-            ref = parse_minio_uri(raw_path)
+            store, ref = resolve_document_object_reference(
+                raw_path,
+                tenant_id=tenant_id,
+                dataset_id=document.dataset_id,
+                document_id=document.id,
+                file_type=document.file_type,
+                document_metadata=dict(getattr(document, "doc_metadata", None) or {}),
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail="Object storage is disabled") from exc
         except ValueError as exc:
+            if str(exc) in {"object_bucket_denied", "object_key_denied"}:
+                raise HTTPException(status_code=403, detail=docs_mod.DOCUMENT_FILE_ACCESS_DENIED_DETAIL) from exc
             raise HTTPException(status_code=404, detail="Document file not available") from exc
 
-        if ref.bucket != str(getattr(settings, "MINIO_BUCKET_NAME", "")):
-            raise HTTPException(status_code=403, detail=docs_mod.DOCUMENT_FILE_ACCESS_DENIED_DETAIL)
-
-        dataset_id = str(document.dataset_id) if document.dataset_id else str(tenant_id)
-        expected_object = docs_mod.minio_service.build_document_object_name(
-            tenant_id=str(tenant_id),
-            dataset_id=dataset_id,
-            document_id=str(document.id),
-            extension=f".{(document.file_type or '').lower()}",
-        )
-        if ref.object_name != expected_object:
-            raise HTTPException(status_code=403, detail=docs_mod.DOCUMENT_FILE_ACCESS_DENIED_DETAIL)
-
         try:
-            stat = docs_mod.minio_service.stat_object(object_name=ref.object_name)
+            stat = store.stat_object(object_name=ref.object_name)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Document asset stat failed for %r: %r", ref.object_name[:200], str(exc)[:200])
             raise HTTPException(status_code=404, detail=docs_mod.DOCUMENT_FILE_NOT_FOUND_DETAIL) from exc
@@ -182,11 +212,15 @@ async def download_document(
         if not media_type:
             media_type = "application/octet-stream"
 
-        disposition = "inline" if inline else "attachment"
+        disposition = _asset_disposition_type(
+            inline=inline,
+            filename=document.filename,
+            media_type=media_type,
+        )
         set_content_disposition(headers, document.filename or "document", disposition=disposition)
 
         return StreamingResponse(
-            docs_mod.minio_service.iter_object_bytes(object_name=ref.object_name, offset=offset, length=length),
+            store.iter_object_bytes(object_name=ref.object_name, offset=offset, length=length),
             status_code=status_code,
             media_type=media_type,
             headers=headers,
@@ -220,7 +254,11 @@ async def download_document(
         path,
         media_type=media_type,
         filename=document.filename,
-        content_disposition_type="inline" if inline else "attachment",
+        content_disposition_type=_asset_disposition_type(
+            inline=inline,
+            filename=document.filename,
+            media_type=media_type,
+        ),
         headers=headers,
     )
 

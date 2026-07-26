@@ -102,6 +102,10 @@
 
 1. `POST /api/v1/integrations/dify/retrieval` — Dify External Knowledge 查询入口；`knowledge_id` 由服务端映射到一个或多个 dataset。
 2. `POST /api/v1/integrations/dify/conversation-turns` — 回填 Dify 的最终答案、引用和会话标识，便于后续 trace 对齐。
+
+升级说明：新版本默认要求 `knowledge_id` 显式存在于
+`DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON`。旧版本若直接传 dataset UUID，升级前必须补齐映射；
+`allow_dataset_uuid` 仅用于非生产兼容验证，生产环境会拒绝该模式。
 3. `POST /api/v1/integrations/conversations/ingest` — 导入外部会话（source-agnostic），用于把第三方对话同步进 MimirQ。
 
 实现与验证入口：

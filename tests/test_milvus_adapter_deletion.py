@@ -8,7 +8,11 @@ from app.storage.vector.milvus import MilvusAdapter, MilvusVectorStore
 
 
 class _FakeCollection:
-    pass
+    def __init__(self) -> None:
+        self.flush_calls = 0
+
+    def flush(self) -> None:
+        self.flush_calls += 1
 
 
 class _LoadedStore:
@@ -76,6 +80,7 @@ def test_adapter_delete_loads_collection_before_deleting(monkeypatch: pytest.Mon
 
     assert store.init_calls == 1
     assert len(store.delete_calls) == 1
+    assert store.col.flush_calls == 0
 
 
 def test_singleton_delete_loads_collection_before_deleting(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -88,3 +93,4 @@ def test_singleton_delete_loads_collection_before_deleting(monkeypatch: pytest.M
 
     assert fake_store.init_calls == 1
     assert len(fake_store.delete_calls) == 1
+    assert fake_store.col.flush_calls == 0

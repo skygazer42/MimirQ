@@ -120,3 +120,6 @@ class QdrantVectorStore:
                 and match_metadata_filter(meta, metadata_filter)
             )
         ]
+
+    def get_embedding_client(self):  # noqa: ANN201
+        return self.emb

@@ -35,6 +35,10 @@ x-backend-env: &backend_env
   REDIS_URL: ${REDIS_URL_DOCKER:-redis://mimirq-redis:6379/0}
   TASK_QUEUE_NAME: ${TASK_QUEUE_NAME_DOCKER:-mimirq}
   TASK_WORKER_MAX_JOBS: ${TASK_WORKER_MAX_JOBS_DOCKER:-4}
+  # Production Docker baseline: enable upload idempotency and Redis-backed retrieval admission.
+  UPLOAD_DEDUP_ENABLED: ${UPLOAD_DEDUP_ENABLED_DOCKER:-true}
+  RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED: ${RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED_DOCKER:-true}
+  RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY: ${RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY_DOCKER:-3}
 
 x-docker-logging: &docker_logging
   driver: "json-file"

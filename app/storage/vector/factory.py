@@ -94,6 +94,10 @@ def _match_metadata_filter(meta: dict[str, Any], filter_spec: dict[str, Any]) ->
     return match_metadata_filter(meta, filter_spec)
 
 
+def _tenant_lock_key(tenant_id: UUID | None) -> str:
+    return str(tenant_id or settings.DEFAULT_TENANT_ID)
+
+
 class BaseVectorStore:
     """Unified interface for future FAISS/Chroma/Memory extensions."""
 
@@ -127,6 +131,9 @@ class BaseVectorStore:
         Used for versioned re-indexing/rollback (e.g. delete only the target pipeline version).
         Backends that cannot support this should raise NotImplementedError.
         """
+        raise NotImplementedError
+
+    def get_embedding_client(self):  # noqa: ANN201
         raise NotImplementedError
 
 
@@ -166,6 +173,9 @@ class MilvusVectorStore(BaseVectorStore):
     ) -> None:
         milvus_store.delete_by_document_id_and_filter(document_id=document_id, tenant_id=tenant_id, metadata_filter=metadata_filter)
 
+    def get_embedding_client(self):  # noqa: ANN201
+        return milvus_store.get_embedding_model()
+
 
 class StubVectorStore(BaseVectorStore):
     """Placeholder implementation for future backends."""
@@ -196,6 +206,9 @@ class StubVectorStore(BaseVectorStore):
     ) -> None:
         raise NotImplementedError("Vector backend not implemented")
 
+    def get_embedding_client(self):  # noqa: ANN201
+        raise RuntimeError("Vector backend does not expose an embedding client")
+
 
 class MemoryVectorStore(BaseVectorStore):
     """
@@ -218,25 +231,27 @@ class MemoryVectorStore(BaseVectorStore):
             dimension=None,
         )
         self.storage: list[tuple[list[float], dict[str, Any]]] = []
+        self._lock = threading.RLock()
 
     def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID):
-        texts = [d.get("content", "") for d in docs]
-        vectors = self.emb.embed_documents(texts)
-        for vec, doc in zip(vectors, docs, strict=False):
-            meta = dict(doc.get("metadata") or {})
-            meta.setdefault("document_id", str(document_id))
-            meta.setdefault("tenant_id", str(tenant_id))
-            if meta.get("chunk_id"):
-                meta["chunk_id"] = str(meta.get("chunk_id"))
-            meta.setdefault("content", doc.get("content", ""))
-            self.storage.append((vec, meta))
-        # In-memory mode uses placeholder IDs instead of real vector IDs.
-        ids: list[str] = []
-        for i, d in enumerate(docs):
-            meta = dict(d.get("metadata") or {})
-            cid = meta.get("chunk_id")
-            ids.append(str(cid) if cid else f"{document_id}_mem_{i}")
-        return ids
+        with self._lock:
+            texts = [d.get("content", "") for d in docs]
+            vectors = self.emb.embed_documents(texts)
+            for vec, doc in zip(vectors, docs, strict=False):
+                meta = dict(doc.get("metadata") or {})
+                meta.setdefault("document_id", str(document_id))
+                meta.setdefault("tenant_id", str(tenant_id))
+                if meta.get("chunk_id"):
+                    meta["chunk_id"] = str(meta.get("chunk_id"))
+                meta.setdefault("content", doc.get("content", ""))
+                self.storage.append((vec, meta))
+            # In-memory mode uses placeholder IDs instead of real vector IDs.
+            ids: list[str] = []
+            for i, d in enumerate(docs):
+                meta = dict(d.get("metadata") or {})
+                cid = meta.get("chunk_id")
+                ids.append(str(cid) if cid else f"{document_id}_mem_{i}")
+            return ids
 
     def search(
         self,
@@ -247,48 +262,50 @@ class MemoryVectorStore(BaseVectorStore):
         tenant_id: UUID | None,
         metadata_filter: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        if not self.storage:
-            return []
-        qvec = self.emb.embed_query(query)
-        allowed_ids = {str(did) for did in document_ids} if document_ids else None
-        allowed_tenant = str(tenant_id) if tenant_id else None
+        with self._lock:
+            if not self.storage:
+                return []
+            qvec = self.emb.embed_query(query)
+            allowed_ids = {str(did) for did in document_ids} if document_ids else None
+            allowed_tenant = str(tenant_id) if tenant_id else None
 
-        def cosine(a: list[float], b: list[float]) -> float:
-            num = sum(x * y for x, y in zip(a, b, strict=False))
-            denom = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
-            return num / denom if denom else 0.0
+            def cosine(a: list[float], b: list[float]) -> float:
+                num = sum(x * y for x, y in zip(a, b, strict=False))
+                denom = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
+                return num / denom if denom else 0.0
 
-        results: list[dict[str, Any]] = []
-        for vec, meta in self.storage:
-            if allowed_tenant and meta.get("tenant_id") != allowed_tenant:
-                continue
-            if allowed_ids and meta.get("document_id") not in allowed_ids:
-                continue
-            if metadata_filter and not _match_metadata_filter(meta, metadata_filter):
-                continue
-            score = cosine(qvec, vec)
-            if score < score_threshold:
-                continue
-            results.append(
-                {
-                    "chunk_id": meta.get("chunk_id"),
-                    "content": meta.get("content") or meta.get("text") or "",
-                    "metadata": meta,
-                    "score": score,
-                    "vector_score": score,
-                }
-            )
-        results.sort(key=lambda x: x["score"], reverse=True)
-        return results[:top_k]
+            results: list[dict[str, Any]] = []
+            for vec, meta in self.storage:
+                if allowed_tenant and meta.get("tenant_id") != allowed_tenant:
+                    continue
+                if allowed_ids and meta.get("document_id") not in allowed_ids:
+                    continue
+                if metadata_filter and not _match_metadata_filter(meta, metadata_filter):
+                    continue
+                score = cosine(qvec, vec)
+                if score < score_threshold:
+                    continue
+                results.append(
+                    {
+                        "chunk_id": meta.get("chunk_id"),
+                        "content": meta.get("content") or meta.get("text") or "",
+                        "metadata": meta,
+                        "score": score,
+                        "vector_score": score,
+                    }
+                )
+            results.sort(key=lambda x: x["score"], reverse=True)
+            return results[:top_k]
 
     def delete_by_document_id(self, document_id: UUID, tenant_id: UUID | None = None) -> None:
-        doc_id = str(document_id)
-        tenant = str(tenant_id) if tenant_id else None
-        self.storage = [
-            (vec, meta)
-            for (vec, meta) in self.storage
-            if not (meta.get("document_id") == doc_id and (tenant is None or meta.get("tenant_id") == tenant))
-        ]
+        with self._lock:
+            doc_id = str(document_id)
+            tenant = str(tenant_id) if tenant_id else None
+            self.storage = [
+                (vec, meta)
+                for (vec, meta) in self.storage
+                if not (meta.get("document_id") == doc_id and (tenant is None or meta.get("tenant_id") == tenant))
+            ]
 
     def delete_by_document_id_and_filter(
         self,
@@ -297,19 +314,23 @@ class MemoryVectorStore(BaseVectorStore):
         tenant_id: UUID | None,
         metadata_filter: dict[str, Any],
     ) -> None:
-        doc_id = str(document_id)
-        tenant = str(tenant_id) if tenant_id else None
-        if not metadata_filter or not isinstance(metadata_filter, dict):
-            return self.delete_by_document_id(document_id, tenant_id=tenant_id)
-        self.storage = [
-            (vec, meta)
-            for (vec, meta) in self.storage
-            if not (
-                meta.get("document_id") == doc_id
-                and (tenant is None or meta.get("tenant_id") == tenant)
-                and _match_metadata_filter(meta, metadata_filter)
-            )
-        ]
+        with self._lock:
+            doc_id = str(document_id)
+            tenant = str(tenant_id) if tenant_id else None
+            if not metadata_filter or not isinstance(metadata_filter, dict):
+                return self.delete_by_document_id(document_id, tenant_id=tenant_id)
+            self.storage = [
+                (vec, meta)
+                for (vec, meta) in self.storage
+                if not (
+                    meta.get("document_id") == doc_id
+                    and (tenant is None or meta.get("tenant_id") == tenant)
+                    and _match_metadata_filter(meta, metadata_filter)
+                )
+            ]
+
+    def get_embedding_client(self):  # noqa: ANN201
+        return self.emb
 
 
 class FAISSVectorStore(BaseVectorStore):
@@ -337,65 +358,78 @@ class FAISSVectorStore(BaseVectorStore):
             getattr(settings, "FAISS_ALLOW_DANGEROUS_DESERIALIZATION", False)
         )
         self._warned_dangerous_deserialization = False
+        self._tenant_locks_guard = threading.Lock()
+        self._tenant_locks: dict[str, threading.RLock] = {}
+
+    def _get_tenant_lock(self, tenant_id: UUID | None) -> threading.RLock:
+        key = _tenant_lock_key(tenant_id)
+        with self._tenant_locks_guard:
+            lock = self._tenant_locks.get(key)
+            if lock is None:
+                lock = threading.RLock()
+                self._tenant_locks[key] = lock
+            return lock
 
     def _get_store(self, tenant_id: UUID | None) -> tuple[str, Any | None]:
-        key = str(tenant_id or settings.DEFAULT_TENANT_ID)
-        store = self.store_by_tenant.get(key)
-        # If a persistence path exists and memory isn't loaded, try loading it.
-        if store is None and self.persist_path and os.path.isdir(self.persist_path):
-            if not self.allow_dangerous_deserialization:
-                if not self._warned_dangerous_deserialization:
-                    logger.warning(
-                        "FAISS persistence found at %s but loading is disabled. "
-                        "Set FAISS_ALLOW_DANGEROUS_DESERIALIZATION=true only if the directory is trusted.",
-                        self.persist_path,
+        key = _tenant_lock_key(tenant_id)
+        with self._get_tenant_lock(tenant_id):
+            store = self.store_by_tenant.get(key)
+            # If a persistence path exists and memory isn't loaded, try loading it.
+            if store is None and self.persist_path and os.path.isdir(self.persist_path):
+                if not self.allow_dangerous_deserialization:
+                    if not self._warned_dangerous_deserialization:
+                        logger.warning(
+                            "FAISS persistence found at %s but loading is disabled. "
+                            "Set FAISS_ALLOW_DANGEROUS_DESERIALIZATION=true only if the directory is trusted.",
+                            self.persist_path,
+                        )
+                        self._warned_dangerous_deserialization = True
+                    return key, None
+                try:
+                    faiss_cls = _get_faiss_cls()
+                    store = faiss_cls.load_local(
+                        folder_path=self.persist_path,
+                        embeddings=self.emb,
+                        index_name=key,
+                        allow_dangerous_deserialization=True,
                     )
-                    self._warned_dangerous_deserialization = True
-                return key, None
-            try:
-                faiss_cls = _get_faiss_cls()
-                store = faiss_cls.load_local(
-                    folder_path=self.persist_path,
-                    embeddings=self.emb,
-                    index_name=key,
-                    allow_dangerous_deserialization=True,
-                )
-                self.store_by_tenant[key] = store
-            except Exception:
-                store = None
-        return key, store
+                    self.store_by_tenant[key] = store
+                except Exception:
+                    store = None
+            return key, store
 
     def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID):
-        texts = [d.get("content", "") for d in docs]
-        metadatas = []
-        ids = []
-        for idx, doc in enumerate(docs):
-            meta = dict(doc.get("metadata") or {})
-            meta.setdefault("document_id", str(document_id))
-            meta.setdefault("tenant_id", str(tenant_id))
-            meta.setdefault("chunk_index", idx)
-            if meta.get("chunk_id"):
-                meta["chunk_id"] = str(meta.get("chunk_id"))
-            if "img_id" in meta and "image_id" not in meta:
-                meta["image_id"] = meta.get("img_id")
-            if "image_url" not in meta:
-                meta.setdefault("image_url", meta.get("img_url"))
-            metadatas.append(meta)
-            ids.append(str(meta.get("chunk_id")) if meta.get("chunk_id") else f"{document_id}_{idx}")
+        with self._get_tenant_lock(tenant_id):
+            texts = [d.get("content", "") for d in docs]
+            metadatas = []
+            ids = []
+            for idx, doc in enumerate(docs):
+                meta = dict(doc.get("metadata") or {})
+                meta.setdefault("document_id", str(document_id))
+                meta.setdefault("tenant_id", str(tenant_id))
+                meta.setdefault("chunk_index", idx)
+                if meta.get("chunk_id"):
+                    meta["chunk_id"] = str(meta.get("chunk_id"))
+                if "img_id" in meta and "image_id" not in meta:
+                    meta["image_id"] = meta.get("img_id")
+                if "image_url" not in meta:
+                    meta.setdefault("image_url", meta.get("img_url"))
+                metadatas.append(meta)
+                ids.append(str(meta.get("chunk_id")) if meta.get("chunk_id") else f"{document_id}_{idx}")
 
-        key, store = self._get_store(tenant_id)
-        if store is None:
-            faiss_cls = _get_faiss_cls()
-            store = faiss_cls.from_texts(texts=texts, embedding=self.emb, metadatas=metadatas, ids=ids)
-        else:
-            store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
+            key, store = self._get_store(tenant_id)
+            if store is None:
+                faiss_cls = _get_faiss_cls()
+                store = faiss_cls.from_texts(texts=texts, embedding=self.emb, metadatas=metadatas, ids=ids)
+            else:
+                store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
 
-        self.store_by_tenant[key] = store
-        # Persist (full save each time).
-        if self.persist_path:
-            os.makedirs(self.persist_path, exist_ok=True)
-            store.save_local(self.persist_path, index_name=key)
-        return ids
+            self.store_by_tenant[key] = store
+            # Persist (full save each time).
+            if self.persist_path:
+                os.makedirs(self.persist_path, exist_ok=True)
+                store.save_local(self.persist_path, index_name=key)
+            return ids
 
     def search(
         self,
@@ -406,56 +440,58 @@ class FAISSVectorStore(BaseVectorStore):
         tenant_id: UUID | None,
         metadata_filter: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        _key, store = self._get_store(tenant_id)
-        if store is None:
-            return []
-        allowed = {str(did) for did in document_ids} if document_ids else None
-        results = store.similarity_search_with_score(query, k=top_k * 2)
-        out: list[dict[str, Any]] = []
-        for doc, score in results:
-            meta = doc.metadata or {}
-            if allowed and meta.get("document_id") not in allowed:
-                continue
-            if metadata_filter and not _match_metadata_filter(meta, metadata_filter):
-                continue
-            similarity = 1.0 / (1.0 + float(score))
-            if similarity < score_threshold:
-                continue
-            out.append(
-                {
-                    "chunk_id": doc.id,
-                    "content": doc.page_content,
-                    "metadata": meta,
-                    "score": similarity,
-                    "vector_score": similarity,
-                }
-            )
-        out.sort(key=lambda x: x["score"], reverse=True)
-        return out[:top_k]
+        with self._get_tenant_lock(tenant_id):
+            _key, store = self._get_store(tenant_id)
+            if store is None:
+                return []
+            allowed = {str(did) for did in document_ids} if document_ids else None
+            results = store.similarity_search_with_score(query, k=top_k * 2)
+            out: list[dict[str, Any]] = []
+            for doc, score in results:
+                meta = doc.metadata or {}
+                if allowed and meta.get("document_id") not in allowed:
+                    continue
+                if metadata_filter and not _match_metadata_filter(meta, metadata_filter):
+                    continue
+                similarity = 1.0 / (1.0 + float(score))
+                if similarity < score_threshold:
+                    continue
+                out.append(
+                    {
+                        "chunk_id": doc.id,
+                        "content": doc.page_content,
+                        "metadata": meta,
+                        "score": similarity,
+                        "vector_score": similarity,
+                    }
+                )
+            out.sort(key=lambda x: x["score"], reverse=True)
+            return out[:top_k]
 
     def delete_by_document_id(self, document_id: UUID, tenant_id: UUID | None = None) -> None:
-        key, store = self._get_store(tenant_id)
-        if store is None:
-            return
-        target = str(document_id)
-        ids_to_delete = []
-        try:
-            for doc_id, doc in getattr(store.docstore, "_dict", {}).items():
-                if str((doc.metadata or {}).get("document_id")) == target:
-                    ids_to_delete.append(str(doc_id))
-        except Exception:
+        with self._get_tenant_lock(tenant_id):
+            key, store = self._get_store(tenant_id)
+            if store is None:
+                return
+            target = str(document_id)
             ids_to_delete = []
-
-        if ids_to_delete and hasattr(store, "delete"):
             try:
-                store.delete(ids_to_delete)
-            except Exception as exc:
-                logger.debug("Ignoring FAISS delete-by-document-id failure: %s", exc)
+                for doc_id, doc in getattr(store.docstore, "_dict", {}).items():
+                    if str((doc.metadata or {}).get("document_id")) == target:
+                        ids_to_delete.append(str(doc_id))
+            except Exception:
+                ids_to_delete = []
 
-        # Persist (overwrite save).
-        if self.persist_path:
-            os.makedirs(self.persist_path, exist_ok=True)
-            store.save_local(self.persist_path, index_name=key)
+            if ids_to_delete and hasattr(store, "delete"):
+                try:
+                    store.delete(ids_to_delete)
+                except Exception as exc:
+                    logger.debug("Ignoring FAISS delete-by-document-id failure: %s", exc)
+
+            # Persist (overwrite save).
+            if self.persist_path:
+                os.makedirs(self.persist_path, exist_ok=True)
+                store.save_local(self.persist_path, index_name=key)
 
     def delete_by_document_id_and_filter(
         self,
@@ -471,39 +507,43 @@ class FAISSVectorStore(BaseVectorStore):
         a stable "where" API. We implement selective delete by scanning the in-memory docstore
         metadata for matches and deleting those doc IDs.
         """
-        if not metadata_filter or not isinstance(metadata_filter, dict):
-            return self.delete_by_document_id(document_id, tenant_id=tenant_id)
+        with self._get_tenant_lock(tenant_id):
+            if not metadata_filter or not isinstance(metadata_filter, dict):
+                return self.delete_by_document_id(document_id, tenant_id=tenant_id)
 
-        key, store = self._get_store(tenant_id)
-        if store is None:
-            return
+            key, store = self._get_store(tenant_id)
+            if store is None:
+                return
 
-        target = str(document_id)
-        ids_to_delete: list[str] = []
-        try:
-            for doc_id, doc in getattr(store.docstore, "_dict", {}).items():
-                meta = getattr(doc, "metadata", None) or {}
-                if str(meta.get("document_id") or "") != target:
-                    continue
-                if _match_metadata_filter(meta, metadata_filter):
-                    ids_to_delete.append(str(doc_id))
-        except Exception:
-            ids_to_delete = []
+            target = str(document_id)
+            ids_to_delete: list[str] = []
+            try:
+                for doc_id, doc in getattr(store.docstore, "_dict", {}).items():
+                    meta = getattr(doc, "metadata", None) or {}
+                    if str(meta.get("document_id") or "") != target:
+                        continue
+                    if _match_metadata_filter(meta, metadata_filter):
+                        ids_to_delete.append(str(doc_id))
+            except Exception:
+                ids_to_delete = []
 
-        if not ids_to_delete:
-            return
+            if not ids_to_delete:
+                return
 
-        if not hasattr(store, "delete"):
-            raise NotImplementedError("Selective delete is not supported for FAISS backend")
-        try:
-            store.delete(ids_to_delete)
-        except Exception as exc:
-            raise NotImplementedError("Selective delete is not supported for FAISS backend") from exc
+            if not hasattr(store, "delete"):
+                raise NotImplementedError("Selective delete is not supported for FAISS backend")
+            try:
+                store.delete(ids_to_delete)
+            except Exception as exc:
+                raise NotImplementedError("Selective delete is not supported for FAISS backend") from exc
 
-        # Persist (overwrite save) if enabled.
-        if self.persist_path:
-            os.makedirs(self.persist_path, exist_ok=True)
-            store.save_local(self.persist_path, index_name=key)
+            # Persist (overwrite save) if enabled.
+            if self.persist_path:
+                os.makedirs(self.persist_path, exist_ok=True)
+                store.save_local(self.persist_path, index_name=key)
+
+    def get_embedding_client(self):  # noqa: ANN201
+        return self.emb
 
 
 class ChromaVectorStore(BaseVectorStore):
@@ -528,39 +568,52 @@ class ChromaVectorStore(BaseVectorStore):
         if self.persist_path:
             os.makedirs(self.persist_path, exist_ok=True)
         self.store_by_tenant: dict[str, Any] = {}
+        self._tenant_locks_guard = threading.Lock()
+        self._tenant_locks: dict[str, threading.RLock] = {}
+
+    def _get_tenant_lock(self, tenant_id: UUID | None) -> threading.RLock:
+        key = _tenant_lock_key(tenant_id)
+        with self._tenant_locks_guard:
+            lock = self._tenant_locks.get(key)
+            if lock is None:
+                lock = threading.RLock()
+                self._tenant_locks[key] = lock
+            return lock
 
     def _get_store(self, tenant_id: UUID | None) -> tuple[str, Any]:
-        key = str(tenant_id or settings.DEFAULT_TENANT_ID)
-        store = self.store_by_tenant.get(key)
-        if store is None:
-            chroma_cls = _get_chroma_cls()
-            kwargs: dict[str, Any] = {"collection_name": key, "embedding_function": self.emb}
-            if self.persist_path:
-                kwargs["persist_directory"] = self.persist_path
-            store = chroma_cls(**kwargs)
-            self.store_by_tenant[key] = store
-        return key, store
+        key = _tenant_lock_key(tenant_id)
+        with self._get_tenant_lock(tenant_id):
+            store = self.store_by_tenant.get(key)
+            if store is None:
+                chroma_cls = _get_chroma_cls()
+                kwargs: dict[str, Any] = {"collection_name": key, "embedding_function": self.emb}
+                if self.persist_path:
+                    kwargs["persist_directory"] = self.persist_path
+                store = chroma_cls(**kwargs)
+                self.store_by_tenant[key] = store
+            return key, store
 
     def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID):
-        texts = [d.get("content", "") for d in docs]
-        metadatas = []
-        ids = []
-        for idx, doc in enumerate(docs):
-            meta = dict(doc.get("metadata") or {})
-            meta.setdefault("document_id", str(document_id))
-            meta.setdefault("tenant_id", str(tenant_id))
-            meta.setdefault("chunk_index", idx)
-            if meta.get("chunk_id"):
-                meta["chunk_id"] = str(meta.get("chunk_id"))
-            if "img_id" in meta and "image_id" not in meta:
-                meta["image_id"] = meta.get("img_id")
-            meta.setdefault("image_url", meta.get("img_url"))
-            metadatas.append(meta)
-            ids.append(str(meta.get("chunk_id")) if meta.get("chunk_id") else f"{document_id}_{idx}")
-        _key, store = self._get_store(tenant_id)
-        store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
-        # Chroma (0.4+) persists automatically; manual persist is deprecated/no-op.
-        return ids
+        with self._get_tenant_lock(tenant_id):
+            texts = [d.get("content", "") for d in docs]
+            metadatas = []
+            ids = []
+            for idx, doc in enumerate(docs):
+                meta = dict(doc.get("metadata") or {})
+                meta.setdefault("document_id", str(document_id))
+                meta.setdefault("tenant_id", str(tenant_id))
+                meta.setdefault("chunk_index", idx)
+                if meta.get("chunk_id"):
+                    meta["chunk_id"] = str(meta.get("chunk_id"))
+                if "img_id" in meta and "image_id" not in meta:
+                    meta["image_id"] = meta.get("img_id")
+                meta.setdefault("image_url", meta.get("img_url"))
+                metadatas.append(meta)
+                ids.append(str(meta.get("chunk_id")) if meta.get("chunk_id") else f"{document_id}_{idx}")
+            _key, store = self._get_store(tenant_id)
+            store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
+            # Chroma (0.4+) persists automatically; manual persist is deprecated/no-op.
+            return ids
 
     def search(
         self,
@@ -571,40 +624,42 @@ class ChromaVectorStore(BaseVectorStore):
         tenant_id: UUID | None,
         metadata_filter: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        _, store = self._get_store(tenant_id)
-        allowed = {str(did) for did in document_ids} if document_ids else None
-        results = store.similarity_search_with_score(query, k=top_k * 2)
-        out: list[dict[str, Any]] = []
-        for doc, score in results:
-            meta = doc.metadata or {}
-            if allowed and meta.get("document_id") not in allowed:
-                continue
-            if metadata_filter and not _match_metadata_filter(meta, metadata_filter):
-                continue
-            similarity = 1.0 / (1.0 + float(score))
-            if similarity < score_threshold:
-                continue
-            out.append(
-                {
-                    "chunk_id": doc.id,
-                    "content": doc.page_content,
-                    "metadata": meta,
-                    "score": similarity,
-                    "vector_score": similarity,
-                }
-            )
-        out.sort(key=lambda x: x["score"], reverse=True)
-        return out[:top_k]
+        with self._get_tenant_lock(tenant_id):
+            _, store = self._get_store(tenant_id)
+            allowed = {str(did) for did in document_ids} if document_ids else None
+            results = store.similarity_search_with_score(query, k=top_k * 2)
+            out: list[dict[str, Any]] = []
+            for doc, score in results:
+                meta = doc.metadata or {}
+                if allowed and meta.get("document_id") not in allowed:
+                    continue
+                if metadata_filter and not _match_metadata_filter(meta, metadata_filter):
+                    continue
+                similarity = 1.0 / (1.0 + float(score))
+                if similarity < score_threshold:
+                    continue
+                out.append(
+                    {
+                        "chunk_id": doc.id,
+                        "content": doc.page_content,
+                        "metadata": meta,
+                        "score": similarity,
+                        "vector_score": similarity,
+                    }
+                )
+            out.sort(key=lambda x: x["score"], reverse=True)
+            return out[:top_k]
 
     def delete_by_document_id(self, document_id: UUID, tenant_id: UUID | None = None) -> None:
-        _, store = self._get_store(tenant_id)
-        target = str(document_id)
-        try:
-            # LangChain Chroma lacks a stable where delete API; use the underlying collection.
-            store._collection.delete(where={"document_id": target})  # type: ignore[attr-defined]
-            # Chroma (0.4+) persists automatically; manual persist is deprecated/no-op.
-        except Exception:
-            return
+        with self._get_tenant_lock(tenant_id):
+            _, store = self._get_store(tenant_id)
+            target = str(document_id)
+            try:
+                # LangChain Chroma lacks a stable where delete API; use the underlying collection.
+                store._collection.delete(where={"document_id": target})  # type: ignore[attr-defined]
+                # Chroma (0.4+) persists automatically; manual persist is deprecated/no-op.
+            except Exception:
+                return
 
     def delete_by_document_id_and_filter(
         self,
@@ -613,32 +668,36 @@ class ChromaVectorStore(BaseVectorStore):
         tenant_id: UUID | None,
         metadata_filter: dict[str, Any],
     ) -> None:
-        if not metadata_filter or not isinstance(metadata_filter, dict):
-            return self.delete_by_document_id(document_id, tenant_id=tenant_id)
+        with self._get_tenant_lock(tenant_id):
+            if not metadata_filter or not isinstance(metadata_filter, dict):
+                return self.delete_by_document_id(document_id, tenant_id=tenant_id)
 
-        _, store = self._get_store(tenant_id)
-        target = str(document_id)
+            _, store = self._get_store(tenant_id)
+            target = str(document_id)
 
-        # Chroma's where spec isn't compatible with our generic filter syntax.
-        # Instead: fetch all rows for this document_id (which is cheap for typical local-dev usage),
-        # then filter in Python with our matcher and delete by explicit IDs.
-        try:
-            collection = store._collection  # type: ignore[attr-defined]
-            # Note: Chroma's `include` does not accept "ids" (they are always returned).
-            got = collection.get(where={"document_id": target}, include=["metadatas"])
-            ids = got.get("ids") or []
-            metas = got.get("metadatas") or []
-            ids_to_delete: list[str] = []
-            for cid, meta in zip(ids, metas, strict=False):
-                if not isinstance(meta, dict):
-                    continue
-                if _match_metadata_filter(meta, metadata_filter):
-                    ids_to_delete.append(str(cid))
-            if not ids_to_delete:
-                return
-            collection.delete(ids=ids_to_delete)
-        except Exception as exc:
-            raise NotImplementedError("Selective delete is not supported for Chroma backend") from exc
+            # Chroma's where spec isn't compatible with our generic filter syntax.
+            # Instead: fetch all rows for this document_id (which is cheap for typical local-dev usage),
+            # then filter in Python with our matcher and delete by explicit IDs.
+            try:
+                collection = store._collection  # type: ignore[attr-defined]
+                # Note: Chroma's `include` does not accept "ids" (they are always returned).
+                got = collection.get(where={"document_id": target}, include=["metadatas"])
+                ids = got.get("ids") or []
+                metas = got.get("metadatas") or []
+                ids_to_delete: list[str] = []
+                for cid, meta in zip(ids, metas, strict=False):
+                    if not isinstance(meta, dict):
+                        continue
+                    if _match_metadata_filter(meta, metadata_filter):
+                        ids_to_delete.append(str(cid))
+                if not ids_to_delete:
+                    return
+                collection.delete(ids=ids_to_delete)
+            except Exception as exc:
+                raise NotImplementedError("Selective delete is not supported for Chroma backend") from exc
+
+    def get_embedding_client(self):  # noqa: ANN201
+        return self.emb
 
 
 _VECTOR_STORE_SINGLETONS: dict[str, BaseVectorStore] = {}
@@ -736,3 +795,8 @@ def get_vector_store(*, backend: str | None = None, region: str | None = None) -
 
         _VECTOR_STORE_SINGLETONS[cache_key] = store
         return store
+
+
+def get_embedding_client(*, backend: str | None = None, region: str | None = None):  # noqa: ANN201
+    store = get_vector_store(backend=backend, region=region)
+    return store.get_embedding_client()

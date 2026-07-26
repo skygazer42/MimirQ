@@ -28,6 +28,11 @@ x-backend-env: &backend_env
   REDIS_URL: ${REDIS_URL_DOCKER:-redis://mimirq-redis:6379/0}
   TASK_QUEUE_NAME: ${TASK_QUEUE_NAME_DOCKER:-mimirq}
   TASK_WORKER_MAX_JOBS: ${TASK_WORKER_MAX_JOBS_DOCKER:-4}
+  # Lite keeps the same Redis-backed idempotency/admission defaults, but remains a
+  # single-host profile because local Chroma/FAISS backends are not a multi-node baseline.
+  UPLOAD_DEDUP_ENABLED: ${UPLOAD_DEDUP_ENABLED_DOCKER:-true}
+  RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED: ${RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED_DOCKER:-true}
+  RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY: ${RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY_DOCKER:-3}
   # Persisted data dirs (mounted as volumes; avoid coupling to /app code mounts).
   UPLOAD_DIR: ${UPLOAD_DIR_DOCKER:-/data/uploads}
 

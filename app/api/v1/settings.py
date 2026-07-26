@@ -28,7 +28,11 @@ from app.api.utils.url_ingest import (
     _validated_fetch_target,
     _ValidatedFetchTarget,
 )
-from app.core.config import settings
+from app.core.config import (
+    normalize_object_storage_provider_name,
+    parse_object_storage_region_profiles,
+    settings,
+)
 from app.core.database import get_db
 from app.core.jwt_inspect import format_unix_ts_utc, try_get_jwt_exp
 from app.services.navigation_visibility import normalize_navigation_modules, serialize_navigation_modules
@@ -61,6 +65,33 @@ _VECTOR_STORE_EMBEDDING_RESET_KEYS = frozenset(
         "EMBEDDING_DIMENSION",
         "LLM_API_KEY",
         "LLM_API_BASE",
+    }
+)
+_LEGACY_MINIO_RUNTIME_KEYS = frozenset(
+    {
+        "MINIO_ENABLED",
+        "MINIO_ENDPOINT",
+        "MINIO_ACCESS_KEY",
+        "MINIO_SECRET_KEY",
+        "MINIO_BUCKET_NAME",
+        "MINIO_USE_SSL",
+        "MINIO_DOCUMENTS_ENABLED",
+        "MINIO_METRICS_LOG_PATH",
+    }
+)
+_OBJECT_STORAGE_RUNTIME_KEYS = frozenset(
+    {
+        "OBJECT_STORAGE_PROVIDER",
+        "OBJECT_STORAGE_ENABLED",
+        "OBJECT_STORAGE_ENDPOINT",
+        "OBJECT_STORAGE_ACCESS_KEY",
+        "OBJECT_STORAGE_SECRET_KEY",
+        "OBJECT_STORAGE_BUCKET_NAME",
+        "OBJECT_STORAGE_USE_SSL",
+        "OBJECT_STORAGE_METRICS_LOG_PATH",
+        "OBJECT_STORAGE_DOCUMENTS_ENABLED",
+        "DATA_REGION",
+        "OBJECT_STORAGE_REGION_PROFILES",
     }
 )
 
@@ -680,6 +711,41 @@ def _apply_runtime_settings(env_vars: dict[str, str], updated_keys: list[str]) -
             env_vars["MINIO_IMAGE_MAX_BYTES"],
             default=int(getattr(settings, "MINIO_IMAGE_MAX_BYTES", 0) or 0),
         )
+    if "MINIO_METRICS_LOG_PATH" in updated_keys and "MINIO_METRICS_LOG_PATH" in env_vars:
+        settings.MINIO_METRICS_LOG_PATH = env_vars["MINIO_METRICS_LOG_PATH"]
+
+    if "OBJECT_STORAGE_PROVIDER" in updated_keys and "OBJECT_STORAGE_PROVIDER" in env_vars:
+        settings.OBJECT_STORAGE_PROVIDER = normalize_object_storage_provider_name(env_vars["OBJECT_STORAGE_PROVIDER"])
+    for key in ("OBJECT_STORAGE_ENABLED", "OBJECT_STORAGE_USE_SSL", "OBJECT_STORAGE_DOCUMENTS_ENABLED"):
+        if key in updated_keys and key in env_vars:
+            setattr(settings, key, _parse_bool(env_vars[key]))
+    for key in (
+        "OBJECT_STORAGE_ENDPOINT",
+        "OBJECT_STORAGE_ACCESS_KEY",
+        "OBJECT_STORAGE_SECRET_KEY",
+        "OBJECT_STORAGE_BUCKET_NAME",
+        "OBJECT_STORAGE_METRICS_LOG_PATH",
+    ):
+        if key in updated_keys and key in env_vars:
+            setattr(settings, key, env_vars[key])
+    if "DATA_REGION" in updated_keys and "DATA_REGION" in env_vars:
+        settings.DATA_REGION = str(env_vars["DATA_REGION"] or "").strip().lower()
+    if "OBJECT_STORAGE_REGION_PROFILES" in updated_keys and "OBJECT_STORAGE_REGION_PROFILES" in env_vars:
+        parse_object_storage_region_profiles(env_vars["OBJECT_STORAGE_REGION_PROFILES"])
+        settings.OBJECT_STORAGE_REGION_PROFILES = env_vars["OBJECT_STORAGE_REGION_PROFILES"]
+
+    storage_runtime_keys = _LEGACY_MINIO_RUNTIME_KEYS.union(_OBJECT_STORAGE_RUNTIME_KEYS)
+    if storage_runtime_keys.intersection(updated_keys):
+        from app.storage.object.factory import reset_object_store_cache
+
+        reset_object_store_cache()
+        if _LEGACY_MINIO_RUNTIME_KEYS.intersection(updated_keys):
+            from app.storage.object.minio import minio_service
+
+            minio_service.reset_runtime_state()
+        from app.api.v1.health import invalidate_ready_cache
+
+        invalidate_ready_cache()
 
     # RAG knobs
     if "CHUNK_SIZE" in updated_keys and "CHUNK_SIZE" in env_vars:

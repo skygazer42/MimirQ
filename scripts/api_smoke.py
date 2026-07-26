@@ -537,6 +537,9 @@ def main(argv: list[str] | None = None) -> int:
                 env_or(dotenv, "NEXT_PUBLIC_USER_ID", "demo"),
                 None,
             )
+            # Header auth does not create a local user record. In clean CI databases,
+            # listing datasets bootstraps the owner membership before settings writes.
+            runner.call("GET", API_DATASETS, API_DATASETS, expected=[200])
 
         # Settings endpoints.
         runner.call("GET", API_SETTINGS, API_SETTINGS, expected=[200])
@@ -629,7 +632,9 @@ def main(argv: list[str] | None = None) -> int:
         # Documents endpoints: upload a small text file.
         sample_text = "Smoke test document.\nSecond line."
         files = {"file": ("smoke.txt", sample_text.encode("utf-8"), MEDIA_TYPE_TEXT_PLAIN)}
-        data = {"dataset_id": ds_id} if ds_id else {}
+        data = {"chunk_vector_enabled": "false"}
+        if ds_id:
+            data["dataset_id"] = ds_id
         doc_resp = runner.call(
             "POST",
             "/api/v1/documents/upload",
@@ -647,7 +652,9 @@ def main(argv: list[str] | None = None) -> int:
             ("files", ("batch1.txt", b"batch-one", MEDIA_TYPE_TEXT_PLAIN)),
             ("files", ("batch2.txt", b"batch-two", MEDIA_TYPE_TEXT_PLAIN)),
         ]
-        data_batch = {"dataset_id": ds_id} if ds_id else {}
+        data_batch = {"chunk_vector_enabled": "false"}
+        if ds_id:
+            data_batch["dataset_id"] = ds_id
         batch_resp = runner.call(
             "POST",
             "/api/v1/documents/upload-batch",

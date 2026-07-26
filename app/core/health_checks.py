@@ -174,6 +174,7 @@ def check_minio(
     *,
     mode: HealthMode,
     minio_health_check: Callable[[], dict[str, Any]] | None = None,
+    enabled_override: bool | None = None,
 ) -> tuple[dict[str, Any], bool]:
     """
     Return (minio_status, ok).
@@ -181,7 +182,12 @@ def check_minio(
     - mode="ready" returns the MinIOService.health_check() shape (includes `enabled`).
     - mode="health" keeps the historical `/health` response shape (no `enabled` key).
     """
-    enabled = bool(getattr(settings, "MINIO_ENABLED", False))
+    enabled = enabled_override
+    if enabled is None:
+        enabled = bool(getattr(settings, "MINIO_ENABLED", False)) or (
+            bool(getattr(settings, "OBJECT_STORAGE_ENABLED", False))
+            and bool(getattr(settings, "OBJECT_STORAGE_DOCUMENTS_ENABLED", False))
+        )
     if not enabled:
         if mode == "ready":
             return {"status": "disabled", "enabled": False}, True

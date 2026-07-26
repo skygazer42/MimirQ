@@ -19,7 +19,16 @@ from app.api.v1.documents import UrlUploadRequest
 from app.core.config import settings
 from app.core.database import get_db
 from app.rag.core.logging import get_logger
-from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri
+from app.storage.object.minio import minio_service  # noqa: F401
+from app.storage.object.runtime import (
+    document_object_storage_enabled,
+    document_object_store_metadata,
+    get_document_object_store,
+    get_object_store_for_uri,
+    is_object_storage_uri,
+    object_store_backend_config,
+    parse_object_storage_uri,
+)
 from app.tasks.locks import task_job_lock_ttl_sec
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -94,7 +103,7 @@ def _document_result_snapshot(document: Any, *, source_path: str | None) -> dict
 
 
 def _document_object_storage_enabled() -> bool:
-    return bool(getattr(settings, "MINIO_ENABLED", False)) and bool(getattr(settings, "MINIO_DOCUMENTS_ENABLED", False))
+    return document_object_storage_enabled()
 
 
 def _document_upload_path(tenant_id: UUID, document_id: UUID, extension: str) -> Path:
@@ -119,11 +128,12 @@ async def _store_document_source(
     extension: str,
     content_type: str | None,
 ) -> str:
-    if not _document_object_storage_enabled():
+    store = get_document_object_store()
+    if store is None:
         return str(file_path)
     try:
         return await asyncio.to_thread(
-            minio_service.upload_document_file,
+            store.upload_document_file,
             file_path=file_path,
             tenant_id=str(tenant_id),
             dataset_id=str(dataset_id),
@@ -136,12 +146,16 @@ async def _store_document_source(
         raise
 
 
-async def _cleanup_unpersisted_source(stored_path: str) -> None:
-    if not is_minio_uri(stored_path):
+async def _cleanup_unpersisted_source(stored_path: str, *, document_metadata: dict[str, Any] | None = None) -> None:
+    if not is_object_storage_uri(stored_path):
         return
     try:
-        ref = parse_minio_uri(stored_path)
-        await asyncio.to_thread(minio_service.delete_object, object_name=ref.object_name)
+        ref = parse_object_storage_uri(stored_path)
+        store = get_object_store_for_uri(stored_path, document_metadata=document_metadata)
+        backend = object_store_backend_config(store)
+        if ref.bucket != str(backend.get("bucket", "") or "").strip():
+            return
+        await asyncio.to_thread(store.delete_object, object_name=ref.object_name)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to delete unpersisted document object: %s", str(exc)[:200])
 
@@ -173,11 +187,18 @@ def _fresh_session_document_exists(*, session_factory: Any, document_id: UUID) -
     return None
 
 
-async def _cleanup_commit_ambiguous_source(*, session_factory: Any, document_id: UUID, stored_path: str, file_path: Path) -> None:
+async def _cleanup_commit_ambiguous_source(
+    *,
+    session_factory: Any,
+    document_id: UUID,
+    stored_path: str,
+    file_path: Path,
+    document_metadata: dict[str, Any] | None = None,
+) -> None:
     document_exists = _fresh_session_document_exists(session_factory=session_factory, document_id=document_id)
-    object_backed = is_minio_uri(stored_path)
+    object_backed = is_object_storage_uri(stored_path)
     if document_exists is False:
-        await _cleanup_unpersisted_source(stored_path)
+        await _cleanup_unpersisted_source(stored_path, document_metadata=document_metadata)
         _unlink_upload(file_path)
         return
     if object_backed:
@@ -327,7 +348,10 @@ async def _persist_uploaded_document(db: Session, db_document: Any, *, file_path
     except Exception:
         with contextlib.suppress(Exception):
             db.rollback()
-        await _cleanup_unpersisted_source(str(getattr(db_document, "file_path", "") or ""))
+        await _cleanup_unpersisted_source(
+            str(getattr(db_document, "file_path", "") or ""),
+            document_metadata=dict(getattr(db_document, "doc_metadata", None) or {}),
+        )
         _unlink_upload(file_path)
         raise
 
@@ -341,7 +365,10 @@ async def _persist_uploaded_document(db: Session, db_document: Any, *, file_path
             if _is_document_dedup_integrity_error(exc)
             else None
         )
-        await _cleanup_unpersisted_source(str(getattr(db_document, "file_path", "") or ""))
+        await _cleanup_unpersisted_source(
+            str(getattr(db_document, "file_path", "") or ""),
+            document_metadata=dict(getattr(db_document, "doc_metadata", None) or {}),
+        )
         _unlink_upload(file_path)
         if duplicate is not None:
             raise _DuplicatePersistedDocumentError(duplicate) from exc
@@ -359,6 +386,7 @@ async def _persist_uploaded_document(db: Session, db_document: Any, *, file_path
                 document_id=document_id,
                 stored_path=str(getattr(db_document, "file_path", "") or ""),
                 file_path=file_path,
+                document_metadata=dict(getattr(db_document, "doc_metadata", None) or {}),
             )
         else:
             _unlink_upload(file_path)
@@ -406,7 +434,7 @@ async def _schedule_document_processing(
 ) -> bool:
     from app.api.v1 import documents as documents_module
 
-    object_backed = is_minio_uri(str(getattr(db_document, "file_path", "") or ""))
+    object_backed = is_object_storage_uri(str(getattr(db_document, "file_path", "") or ""))
     job_id = f"doc:{tenant_id}:{document_id}:{pipeline_hash}"
     queue_required = documents_module._task_queue_required()
     task_id = None
@@ -909,6 +937,10 @@ async def _upload_document_impl(
             extension=file_ext,
             content_type=(file.content_type or "application/octet-stream"),
         )
+        if is_object_storage_uri(stored_path):
+            store = get_document_object_store()
+            if store is not None:
+                doc_metadata.update(document_object_store_metadata(store))
         persistence_started = False
         try:
             db_document = documents_module.DBDocument(
@@ -943,11 +975,11 @@ async def _upload_document_impl(
             return exc.document
         except Exception:
             if not persistence_started:
-                await _cleanup_unpersisted_source(stored_path)
+                await _cleanup_unpersisted_source(stored_path, document_metadata=doc_metadata)
             raise
         with contextlib.suppress(Exception):
             _attach_doc_to_ingestion_run(db_document, created=True)
-        if not is_minio_uri(str(stored_path)):
+        if not is_object_storage_uri(str(stored_path)):
             file_lease.transfer()
 
         keep_local_file = await _schedule_document_processing(
@@ -1090,6 +1122,59 @@ async def upload_documents_batch(
             )
         except Exception:
             ingestion_run = None
+
+    def _finalize_batch_ingestion_run(*, successful: list[dict[str, Any]], failed: list[dict[str, Any]]) -> None:
+        if ingestion_run is None:
+            return
+
+        for result in successful:
+            doc_id_raw = str(result.get("document_id") or "").strip()
+            if not doc_id_raw:
+                continue
+            try:
+                doc_id = UUID(doc_id_raw)
+            except ValueError:
+                continue
+            doc = (
+                db.query(documents_module.DBDocument)
+                .filter(
+                    documents_module.DBDocument.id == doc_id,
+                    documents_module.DBDocument.tenant_id == tenant_id,
+                )
+                .first()
+            )
+            if doc is None:
+                continue
+            try:
+                meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+                meta0["last_ingestion_run_id"] = str(ingestion_run.id)
+                meta0["last_ingestion_kind"] = "upload_batch"
+                doc.doc_metadata = meta0
+                db.commit()
+                db.refresh(doc)
+            except Exception:
+                meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+
+            with contextlib.suppress(Exception):
+                documents_module.IngestionRunService.add_document(
+                    db,
+                    tenant_id=tenant_id,
+                    run_id=ingestion_run.id,
+                    document_id=doc.id,
+                    source_ref=(result.get("source_path") or getattr(doc, "filename", None)),
+                    initial_status=str(result.get("status") or getattr(doc, "status", "") or "created"),
+                    doc_meta=meta0 if isinstance(meta0, dict) else None,
+                )
+
+        with contextlib.suppress(Exception):
+            documents_module.IngestionRunService.close_intake(
+                db,
+                tenant_id=tenant_id,
+                run_id=ingestion_run.id,
+                attempted_inputs=int(len(files or [])),
+                rejected_inputs=int(len(failed)),
+                rejection_reasons=[result.get("error") for result in failed],
+            )
 
     dataset_default_pb = None
     dataset_default_cs = None
@@ -1675,6 +1760,10 @@ async def upload_documents_batch(
                         extension=file_ext,
                         content_type=str(staged.get("content_type") or "application/octet-stream"),
                     )
+                    if is_object_storage_uri(stored_path):
+                        store = get_document_object_store()
+                        if store is not None:
+                            doc_metadata.update(document_object_store_metadata(store))
                     db_document = documents_module.DBDocument(
                         id=file_id,
                         tenant_id=tenant_id,
@@ -1712,7 +1801,7 @@ async def upload_documents_batch(
 
                     if upload_only:
                         # Upload-only stores the source document but intentionally does not enqueue parsing.
-                        if is_minio_uri(stored_path):
+                        if is_object_storage_uri(stored_path):
                             _unlink_upload(file_path)
                         return {
                             "success": True,
@@ -1742,10 +1831,10 @@ async def upload_documents_batch(
                         **_document_result_snapshot(db_document, source_path=source_path),
                     }
                 except Exception as exc:  # noqa: BLE001
-                    if file_path is not None and (not persistence_started or is_minio_uri(stored_path or "")):
+                    if file_path is not None and (not persistence_started or is_object_storage_uri(stored_path or "")):
                         _unlink_upload(file_path)
                     if stored_path is not None and not persistence_started:
-                        await _cleanup_unpersisted_source(stored_path)
+                        await _cleanup_unpersisted_source(stored_path, document_metadata=doc_metadata)
                     documents_module.logger.error("Error processing staged file %s: %s", filename0, str(exc)[:200])
                     return {
                         "success": False,
@@ -1772,45 +1861,7 @@ async def upload_documents_batch(
         successful = [result for result in processed if result.get("success")]
         failed = staged_failed + [result for result in processed if not result.get("success")]
 
-        if ingestion_run is not None:
-            for result in successful:
-                doc_id_raw = str(result.get("document_id") or "").strip()
-                if not doc_id_raw:
-                    continue
-                try:
-                    doc_id = UUID(doc_id_raw)
-                except ValueError:
-                    continue
-                doc = (
-                    db.query(documents_module.DBDocument)
-                    .filter(
-                        documents_module.DBDocument.id == doc_id,
-                        documents_module.DBDocument.tenant_id == tenant_id,
-                    )
-                    .first()
-                )
-                if doc is None:
-                    continue
-                try:
-                    meta0 = dict(getattr(doc, "doc_metadata", None) or {})
-                    meta0["last_ingestion_run_id"] = str(ingestion_run.id)
-                    meta0["last_ingestion_kind"] = "upload_batch"
-                    doc.doc_metadata = meta0
-                    db.commit()
-                    db.refresh(doc)
-                except Exception:
-                    meta0 = dict(getattr(doc, "doc_metadata", None) or {})
-
-                with contextlib.suppress(Exception):
-                    documents_module.IngestionRunService.add_document(
-                        db,
-                        tenant_id=tenant_id,
-                        run_id=ingestion_run.id,
-                        document_id=doc.id,
-                        source_ref=(result.get("source_path") or getattr(doc, "filename", None)),
-                        initial_status=str(result.get("status") or getattr(doc, "status", "") or "created"),
-                        doc_meta=meta0 if isinstance(meta0, dict) else None,
-                    )
+        _finalize_batch_ingestion_run(successful=successful, failed=failed)
 
         return {
             "total": len(files),
@@ -2162,7 +2213,7 @@ async def upload_documents_batch(
 
                 if upload_only:
                     # Upload-only stores the source document but intentionally does not enqueue parsing.
-                    if is_minio_uri(stored_path):
+                    if is_object_storage_uri(stored_path):
                         _unlink_upload(file_path)
                     return {
                         "success": True,
@@ -2192,10 +2243,10 @@ async def upload_documents_batch(
                     **_document_result_snapshot(db_document, source_path=source_path),
                 }
             except Exception as exc:  # noqa: BLE001
-                if file_path is not None and (not persistence_started or is_minio_uri(stored_path or "")):
+                if file_path is not None and (not persistence_started or is_object_storage_uri(stored_path or "")):
                     _unlink_upload(file_path)
                 if stored_path is not None and not persistence_started:
-                    await _cleanup_unpersisted_source(stored_path)
+                    await _cleanup_unpersisted_source(stored_path, document_metadata=doc_metadata)
                 documents_module.logger.error("Error processing file %s: %s", file.filename, str(exc))
                 return {
                     "success": False,
@@ -2227,45 +2278,7 @@ async def upload_documents_batch(
     successful = [result for result in processed_results if result.get("success")]
     failed = [result for result in processed_results if not result.get("success")]
 
-    if ingestion_run is not None:
-        for result in successful:
-            doc_id_raw = str(result.get("document_id") or "").strip()
-            if not doc_id_raw:
-                continue
-            try:
-                doc_id = UUID(doc_id_raw)
-            except ValueError:
-                continue
-            doc = (
-                db.query(documents_module.DBDocument)
-                .filter(
-                    documents_module.DBDocument.id == doc_id,
-                    documents_module.DBDocument.tenant_id == tenant_id,
-                )
-                .first()
-            )
-            if doc is None:
-                continue
-            try:
-                meta0 = dict(getattr(doc, "doc_metadata", None) or {})
-                meta0["last_ingestion_run_id"] = str(ingestion_run.id)
-                meta0["last_ingestion_kind"] = "upload_batch"
-                doc.doc_metadata = meta0
-                db.commit()
-                db.refresh(doc)
-            except Exception:
-                meta0 = dict(getattr(doc, "doc_metadata", None) or {})
-
-            with contextlib.suppress(Exception):
-                documents_module.IngestionRunService.add_document(
-                    db,
-                    tenant_id=tenant_id,
-                    run_id=ingestion_run.id,
-                    document_id=doc.id,
-                    source_ref=(result.get("source_path") or getattr(doc, "filename", None)),
-                    initial_status=str(result.get("status") or getattr(doc, "status", "") or "created"),
-                    doc_meta=meta0 if isinstance(meta0, dict) else None,
-                )
+    _finalize_batch_ingestion_run(successful=successful, failed=failed)
 
     return {
         "total": len(files),

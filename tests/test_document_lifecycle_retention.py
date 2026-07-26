@@ -77,6 +77,9 @@ class _LifecycleDB:
         self.delete_calls += 1
         self.deleted = True
 
+    def close(self) -> None:
+        return None
+
 
 @pytest.mark.asyncio
 async def test_delete_document_lifecycle_defaults_to_membership_enforcement(
@@ -130,6 +133,7 @@ async def test_delete_document_lifecycle_defaults_to_membership_enforcement(
         tenant_id=tenant_id,
         account_id="api-user",
         db=db,
+        session_factory=lambda: db,
     )
 
     assert membership_calls == [(tenant_id, "api-user")]
@@ -194,6 +198,7 @@ async def test_delete_document_lifecycle_persists_deleting_state_before_external
             db=db,
             enforce_permissions=False,
             enforce_membership=False,
+            session_factory=lambda: db,
         )
 
     assert cleanup_steps == ["images", "vectors", "table_store", "file", "kg", "touch_dataset"]
@@ -248,6 +253,77 @@ async def test_delete_document_lifecycle_keeps_tombstone_when_minio_cleanup_fail
             db=db,
             enforce_permissions=False,
             enforce_membership=False,
+            session_factory=lambda: db,
+        )
+
+    assert db.delete_calls == 0
+    assert db.rollback_calls == 1
+    assert document.status == "deleting"
+    assert document.doc_metadata["deletion"]["state"] == "deleting"
+
+
+@pytest.mark.asyncio
+async def test_delete_document_lifecycle_keeps_tombstone_when_object_reference_resolution_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import document_lifecycle_service as dls
+
+    tenant_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    document = SimpleNamespace(
+        id=document_id,
+        tenant_id=tenant_id,
+        dataset_id=uuid.uuid4(),
+        status="completed",
+        current_stage=None,
+        error_message=None,
+        processing_progress=100,
+        file_type="pdf",
+        file_size=12,
+        file_path="s3://bucket/documents/t/d/doc.pdf",
+        doc_metadata={"source_storage_backend": "object_storage", "source_storage_provider": "s3"},
+    )
+    db = _LifecycleDB(document)
+
+    async def _noop_async(**_kwargs) -> None:  # noqa: ANN003
+        return None
+
+    monkeypatch.setattr(dls, "_get_document_for_delete", lambda *_a, **_k: document, raising=True)
+    monkeypatch.setattr(dls, "_assert_document_delete_permission", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(dls, "_abort_document_tasks_before_delete", _noop_async, raising=True)
+    monkeypatch.setattr(dls, "_delete_document_minio_images", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(dls, "_delete_document_table_store", lambda **_k: None, raising=True)
+    monkeypatch.setattr(dls, "_cleanup_document_kg_artifacts", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(dls, "_touch_dataset_updated_after_delete", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(dls, "audit_log_event", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(
+        dls,
+        "resolve_document_object_reference",
+        lambda *_a, **_k: (_ for _ in ()).throw(ValueError("object_region_ambiguous")),
+        raising=True,
+    )
+
+    class _Indexer:
+        def __init__(self, _db) -> None:  # noqa: ANN001
+            return None
+
+        def delete_chunk_indexes(self, **_kwargs) -> None:
+            return None
+
+        def delete_event_indexes(self, **_kwargs) -> None:
+            return None
+
+    monkeypatch.setattr(dls, "_get_indexer_class", lambda: _Indexer, raising=True)
+
+    with pytest.raises(ValueError, match="object_region_ambiguous"):
+        await dls._delete_document_lifecycle(
+            document_id=document_id,
+            tenant_id=tenant_id,
+            account_id="system:retention",
+            db=db,
+            enforce_permissions=False,
+            enforce_membership=False,
+            session_factory=lambda: db,
         )
 
     assert db.delete_calls == 0
@@ -322,8 +398,8 @@ def test_delete_document_file_skips_malformed_minio_uri(monkeypatch: pytest.Monk
     monkeypatch.setattr(dls.settings, "MINIO_ENABLED", True, raising=False)
     monkeypatch.setattr(
         dls,
-        "parse_minio_uri",
-        lambda *_a, **_k: (_ for _ in ()).throw(ValueError("bad uri")),
+        "resolve_document_object_reference",
+        lambda *_a, **_k: (_ for _ in ()).throw(ValueError("invalid_object_storage_uri")),
         raising=True,
     )
     monkeypatch.setattr(
@@ -337,6 +413,31 @@ def test_delete_document_file_skips_malformed_minio_uri(monkeypatch: pytest.Monk
         dataset_id=uuid.uuid4(),
         file_type="pdf",
         file_path="minio://missing-object",
+    )
+
+    dls._delete_document_file(tenant_id=uuid.uuid4(), document=document)
+
+
+def test_delete_document_file_skips_missing_object_delete_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services import document_lifecycle_service as dls
+
+    class _Store:
+        def delete_object(self, *, object_name: str) -> None:
+            raise RuntimeError(f"MinIO delete object failed: NoSuchKey: {object_name}")
+
+    monkeypatch.setattr(
+        dls,
+        "resolve_document_object_reference",
+        lambda *_args, **_kwargs: (_Store(), SimpleNamespace(bucket="bucket", object_name="documents/t/d/doc.pdf")),
+        raising=True,
+    )
+
+    document = SimpleNamespace(
+        id=uuid.uuid4(),
+        dataset_id=uuid.uuid4(),
+        file_type="pdf",
+        file_path="s3://bucket/documents/t/d/doc.pdf",
+        doc_metadata={"source_storage_backend": "object_storage", "source_storage_provider": "s3"},
     )
 
     dls._delete_document_file(tenant_id=uuid.uuid4(), document=document)
@@ -450,3 +551,32 @@ async def test_knowledge_asset_retention_uses_system_membership_bypass(
             "enforce_membership": False,
         }
     ]
+
+
+def test_delete_document_file_deletes_generic_object_storage_uri(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services import document_lifecycle_service as dls
+
+    deleted: list[str] = []
+
+    class _Store:
+        def delete_object(self, *, object_name: str) -> None:
+            deleted.append(object_name)
+
+    monkeypatch.setattr(
+        dls,
+        "resolve_document_object_reference",
+        lambda *_args, **_kwargs: (_Store(), SimpleNamespace(bucket="bucket", object_name="documents/t/d/doc.pdf")),
+        raising=True,
+    )
+
+    document = SimpleNamespace(
+        id=uuid.uuid4(),
+        dataset_id=uuid.uuid4(),
+        file_type="pdf",
+        file_path="s3://bucket/documents/t/d/doc.pdf",
+        doc_metadata={"source_storage_backend": "object_storage", "source_storage_provider": "s3"},
+    )
+
+    dls._delete_document_file(tenant_id=uuid.uuid4(), document=document)
+
+    assert deleted == ["documents/t/d/doc.pdf"]

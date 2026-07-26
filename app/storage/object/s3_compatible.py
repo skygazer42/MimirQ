@@ -30,6 +30,7 @@ class S3CompatibleObjectStore(MinIOService):
         use_ssl: bool,
         metrics_log_path: str,
         documents_enabled: bool,
+        region: str | None = None,
     ) -> None:
         super().__init__()
         self._provider_name = str(provider_name or "s3_compatible").strip().lower() or "s3_compatible"
@@ -40,6 +41,7 @@ class S3CompatibleObjectStore(MinIOService):
         self._bucket_name = str(bucket_name or "").strip()
         self._use_ssl = bool(use_ssl)
         self._documents_enabled = bool(documents_enabled)
+        self._region = str(region or "").strip().lower() or None
         self._metrics_path = Path(metrics_log_path or "./logs/object_store_metrics.jsonl")
 
     def describe_backend(self) -> dict[str, Any]:
@@ -50,6 +52,7 @@ class S3CompatibleObjectStore(MinIOService):
             "bucket": self._bucket_name,
             "secure": self._use_ssl,
             "documents_enabled": self._documents_enabled,
+            "region": self._region,
         }
 
     def build_object_uri(self, bucket: str, object_name: str) -> str:
@@ -57,7 +60,8 @@ class S3CompatibleObjectStore(MinIOService):
         o = str(object_name or "").lstrip("/").strip()
         if not b or not o:
             raise ValueError("invalid_object_uri_components")
-        return f"{self._provider_name}://{b}/{o}"
+        uri_scheme = "s3compat" if self._provider_name == "s3_compatible" else self._provider_name
+        return f"{uri_scheme}://{b}/{o}"
 
     def _get_client(self):
         if not self._enabled:
@@ -79,13 +83,30 @@ class S3CompatibleObjectStore(MinIOService):
         return self._client
 
     def health_check(self) -> dict[str, Any]:
-        enabled = bool(self._enabled)
-        if not enabled:
+        if not self._enabled:
             return {"enabled": False, "status": "disabled", "provider": self._provider_name}
 
-        base = super().health_check()
-        base["provider"] = self._provider_name
-        return base
+        started = time.perf_counter()
+        try:
+            client = self._get_client()
+            if not client.bucket_exists(self._bucket_name):
+                raise RuntimeError("configured object-storage bucket is unavailable")
+            return {
+                "enabled": True,
+                "status": "connected",
+                "provider": self._provider_name,
+                "bucket": self._bucket_name,
+                "elapsed_ms": round((time.perf_counter() - started) * 1000.0, 2),
+            }
+        except Exception as exc:  # noqa: BLE001
+            return {
+                "enabled": True,
+                "status": "disconnected",
+                "provider": self._provider_name,
+                "bucket": self._bucket_name,
+                "error": str(exc)[:200],
+                "elapsed_ms": round((time.perf_counter() - started) * 1000.0, 2),
+            }
 
     def upload_document_file(
         self,

@@ -12,6 +12,7 @@ from uuid import UUID
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.database import SessionLocal
 from app.rag.core.logging import get_logger
 from app.rag.kg.models import (
@@ -591,6 +592,17 @@ class AliasRepository:
     def __init__(self, session: Session):
         self.session = session
 
+    def _redirect_rows(self, *, tenant_id: UUID, from_entity_ids: Iterable[UUID]) -> list[KgEntityRedirect]:
+        frontier = _as_uuid_list(from_entity_ids)
+        if not frontier:
+            return []
+        return (
+            self.session.query(KgEntityRedirect)
+            .filter(KgEntityRedirect.tenant_id == tenant_id)
+            .filter(KgEntityRedirect.from_entity_id.in_(frontier))
+            .all()
+        )
+
     def _resolve_redirects(self, entity_ids: Iterable[UUID], *, tenant_id: UUID, max_hops: int = 6) -> dict[UUID, UUID]:
         """
         Resolve entity ids via KgEntityRedirect (best-effort, bounded).
@@ -601,29 +613,64 @@ class AliasRepository:
         if not ids:
             return {}
 
-        resolved: dict[UUID, UUID] = {eid: eid for eid in ids}
-        cur = set(ids)
+        max_depth = max(1, int(max_hops or 0))
+        redirect_map: dict[UUID, UUID] = {}
+        frontier = set(ids)
         hops = 0
-        while cur and hops < max(1, int(max_hops or 0)):
+        while frontier and hops < max_depth:
             hops += 1
-            rows = (
-                self.session.query(KgEntityRedirect)
-                .filter(KgEntityRedirect.tenant_id == tenant_id)
-                .filter(KgEntityRedirect.from_entity_id.in_(list(cur)))
-                .all()
-            )
-            nxt: set[UUID] = set()
-            for r in rows:
-                frm = getattr(r, "from_entity_id", None)
-                to = getattr(r, "to_entity_id", None)
-                if frm is None or to is None:
+            rows = self._redirect_rows(tenant_id=tenant_id, from_entity_ids=frontier)
+            next_frontier: set[UUID] = set()
+            for row in rows:
+                frm = getattr(row, "from_entity_id", None)
+                to = getattr(row, "to_entity_id", None)
+                if frm is None or to is None or frm == to:
                     continue
-                if resolved.get(frm) == to:
+                if redirect_map.get(frm) == to:
                     continue
-                resolved[frm] = to
-                nxt.add(to)
-            cur = nxt
-        return resolved
+                redirect_map[frm] = to
+                if to not in redirect_map:
+                    next_frontier.add(to)
+            frontier = {candidate for candidate in next_frontier if candidate not in redirect_map}
+
+        resolved: dict[UUID, UUID] = {}
+        for origin in ids:
+            if origin in resolved:
+                continue
+            cur = origin
+            path: list[UUID] = []
+            path_index: dict[UUID, int] = {}
+            steps = 0
+            while steps < max_depth:
+                if cur in resolved:
+                    canonical = resolved[cur]
+                    for node in path:
+                        resolved[node] = canonical
+                    break
+                if cur in path_index:
+                    cycle_start = path_index[cur]
+                    cycle_nodes = path[cycle_start:]
+                    for node in cycle_nodes:
+                        resolved[node] = node
+                    if cycle_start > 0:
+                        cycle_entry = path[cycle_start]
+                        for node in path[:cycle_start]:
+                            resolved[node] = cycle_entry
+                    break
+                path_index[cur] = len(path)
+                path.append(cur)
+                nxt = redirect_map.get(cur)
+                if nxt is None or nxt == cur:
+                    for node in path:
+                        resolved[node] = cur
+                    break
+                cur = nxt
+                steps += 1
+            else:
+                canonical = resolved.get(cur, cur)
+                for node in path:
+                    resolved[node] = canonical
+        return {eid: resolved.get(eid, eid) for eid in ids}
 
     def match_aliases(
         self,
@@ -698,6 +745,60 @@ class EventRepository:
             account_id=str(account_id or "").strip(),
             dataset_id=dataset_id,
         )
+
+    def _allowed_document_ids_for_dataset(self, *, tenant_id: UUID, dataset_id: UUID, account_id: str) -> list[UUID]:
+        allowed_docs = self._allowed_document_ids_subquery_for_dataset(
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            account_id=account_id,
+        )
+        return _as_uuid_list(self.session.execute(select(allowed_docs.c.id)).scalars().all())
+
+    def _allowed_document_ids_for_dataset_limited(
+        self,
+        *,
+        tenant_id: UUID,
+        dataset_id: UUID,
+        account_id: str,
+        limit: int,
+    ) -> tuple[list[UUID], bool]:
+        """
+        Enumerate at most ``limit + 1`` readable dataset documents to detect overflow.
+
+        Returns ``(document_ids, overflowed)`` where ``document_ids`` is truncated to
+        at most ``limit`` items.
+        """
+        bounded_limit = max(1, int(limit or 0))
+        allowed_docs = self._allowed_document_ids_subquery_for_dataset(
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            account_id=account_id,
+        )
+        limited_doc_ids = _as_uuid_list(
+            self.session.execute(select(allowed_docs.c.id).limit(bounded_limit + 1)).scalars().all()
+        )
+        overflowed = len(limited_doc_ids) > bounded_limit
+        return limited_doc_ids[:bounded_limit], overflowed
+
+    def _search_formatted_events_by_documents(
+        self,
+        *,
+        query_vector: list[float],
+        tenant_id: UUID,
+        fetch_k: int,
+        document_ids: list[UUID],
+    ) -> list[dict]:
+        expr_parts = [f"tenant_id == {_quote_milvus_str(str(tenant_id))}"]
+        formatted_batches: list[list[dict]] = []
+        for start in range(0, len(document_ids), 500):
+            batch = document_ids[start:start + 500]
+            if not batch:
+                continue
+            doc_id_strs = [_quote_milvus_str(str(doc_id)) for doc_id in batch]
+            expr = " and ".join([*expr_parts, f"document_id in [{', '.join(doc_id_strs)}]"])
+            results = self._milvus.search(query_vector=query_vector, top_k=fetch_k, expr=expr)
+            formatted_batches.append([_format_event_vector_hit(result) for result in results])
+        return _merge_formatted_events(formatted_batches)
 
     def filter_event_ids_in_dataset(
         self,
@@ -903,18 +1004,66 @@ class EventRepository:
         want_k = max(1, int(k))
         fetch_k = _event_fetch_k(want_k, scoped=document_ids is not None or dataset_id is not None)
 
-        expr_parts = [f"tenant_id == {_quote_milvus_str(str(tenant_id))}"]
         if document_ids is not None:
-            formatted_batches: list[list[dict]] = []
-            for start in range(0, len(document_ids), 500):
-                batch = document_ids[start:start + 500]
-                doc_id_strs = [_quote_milvus_str(str(doc_id)) for doc_id in batch]
-                expr = " and ".join([*expr_parts, f"document_id in [{', '.join(doc_id_strs)}]"])
-                results = self._milvus.search(query_vector=query_vector, top_k=fetch_k, expr=expr)
-                formatted_batches.append([_format_event_vector_hit(result) for result in results])
-            formatted = _merge_formatted_events(formatted_batches)
+            formatted = self._search_formatted_events_by_documents(
+                query_vector=query_vector,
+                tenant_id=UUID(str(tenant_id)),
+                fetch_k=fetch_k,
+                document_ids=document_ids,
+            )
+        elif dataset_id is not None:
+            if not account_id:
+                raise ValueError(ACCOUNT_ID_REQUIRED_WHEN_DATASET_ID_PROVIDED_ERROR)
+            try:
+                tenant_uuid = UUID(str(tenant_id))
+                max_enum_docs = max(1, int(settings.KG_SEARCH_DATASET_SCOPE_MAX_ENUM_DOCS or 1))
+                allowed_doc_ids, overflowed = self._allowed_document_ids_for_dataset_limited(
+                    tenant_id=tenant_uuid,
+                    dataset_id=dataset_id,
+                    account_id=account_id,
+                    limit=max_enum_docs,
+                )
+                if not allowed_doc_ids and not overflowed:
+                    return []
+                if overflowed:
+                    get_logger(__name__).warning(
+                        "Dataset scope exceeds KG document enumeration cap; using bounded tenant ANN fallback",
+                        extra={
+                            "scope_type": "dataset_id",
+                            "kg_dataset_doc_enum_cap": max_enum_docs,
+                        },
+                    )
+                    expr = f"tenant_id == {_quote_milvus_str(str(tenant_uuid))}"
+                    results = self._milvus.search(query_vector=query_vector, top_k=fetch_k, expr=expr)
+                    formatted = [_format_event_vector_hit(result) for result in results]
+                    allowed_event_ids = self.filter_event_ids_in_dataset(
+                        _candidate_event_ids(formatted),
+                        tenant_id=tenant_uuid,
+                        dataset_id=dataset_id,
+                        account_id=account_id,
+                    )
+                    return _filter_formatted_events(formatted, allowed_event_ids, limit=want_k)
+                formatted = self._search_formatted_events_by_documents(
+                    query_vector=query_vector,
+                    tenant_id=tenant_uuid,
+                    fetch_k=fetch_k,
+                    document_ids=allowed_doc_ids,
+                )
+                allowed_event_ids = self.filter_event_ids_in_documents(
+                    _candidate_event_ids(formatted),
+                    tenant_id=UUID(str(tenant_id)),
+                    document_ids=allowed_doc_ids,
+                )
+                return _filter_formatted_events(formatted, allowed_event_ids, limit=want_k)
+            except Exception:
+                get_logger(__name__).warning(
+                    "Fail-closed KG content search after dataset scope filter exception",
+                    extra={"scope_type": "dataset_id"},
+                    exc_info=True,
+                )
+                return []
         else:
-            expr = " and ".join(expr_parts)
+            expr = f"tenant_id == {_quote_milvus_str(str(tenant_id))}"
             results = self._milvus.search(query_vector=query_vector, top_k=fetch_k, expr=expr)
             formatted = [_format_event_vector_hit(result) for result in results]
 
@@ -935,27 +1084,7 @@ class EventRepository:
                 )
                 return []
 
-        if dataset_id is None:
-            return formatted[:want_k]
-
-        # Dataset-scoped search: post-filter vector hits via SQL to enforce ACL without enumerating doc ids.
-        if not account_id:
-            raise ValueError(ACCOUNT_ID_REQUIRED_WHEN_DATASET_ID_PROVIDED_ERROR)
-        try:
-            allowed_event_ids = self.filter_event_ids_in_dataset(
-                _candidate_event_ids(formatted),
-                tenant_id=UUID(str(tenant_id)),
-                dataset_id=dataset_id,
-                account_id=account_id,
-            )
-            return _filter_formatted_events(formatted, allowed_event_ids, limit=want_k)
-        except Exception:
-            get_logger(__name__).warning(
-                "Fail-closed KG content search after dataset scope filter exception",
-                extra={"scope_type": "dataset_id"},
-                exc_info=True,
-            )
-            return []
+        return formatted[:want_k]
 
     def search_events_lexical(
         self,

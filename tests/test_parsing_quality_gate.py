@@ -42,7 +42,7 @@ def test_parsing_workspace_returns_quality_gate_and_fallback(monkeypatch, tmp_pa
     monkeypatch.setattr(DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
     monkeypatch.setattr(DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(parsing_module, "_assert_path_under_tenant_root", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(parsing_module, "is_minio_uri", lambda *_a, **_k: False, raising=True)
+    monkeypatch.setattr(parsing_module, "is_object_storage_uri", lambda *_a, **_k: False, raising=True)
 
     # Relax backend validation for unit test.
     monkeypatch.setattr(parsing_module.parser_factory, "resolve_backend", lambda *_a, **_k: "basic", raising=True)

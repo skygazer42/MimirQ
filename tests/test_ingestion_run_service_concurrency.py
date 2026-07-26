@@ -242,6 +242,205 @@ def test_add_document_rolls_back_duplicate_attachment_conflicts() -> None:
     assert db.rollback_calls == 1
 
 
+def test_add_document_waits_for_expected_documents_before_finalizing() -> None:
+    tenant_id = uuid4()
+    run = SimpleNamespace(
+        id=uuid4(),
+        tenant_id=tenant_id,
+        kind="upload",
+        status="running",
+        config={"expected_documents": 2},
+        stats={},
+        started_at=datetime.now(timezone.utc),
+        finished_at=None,
+    )
+    db = _ServiceDB(run=run, document_query_results=[None, None])
+
+    IngestionRunService.add_document(
+        db,
+        tenant_id=tenant_id,
+        run_id=run.id,
+        document_id=uuid4(),
+        source_ref="first.txt",
+        initial_status="completed",
+    )
+
+    assert run.status == "running"
+    assert run.finished_at is None
+    assert run.stats["progress"] == 50
+    assert run.stats["status_counts"]["completed"] == 1
+
+    IngestionRunService.add_document(
+        db,
+        tenant_id=tenant_id,
+        run_id=run.id,
+        document_id=uuid4(),
+        source_ref="second.txt",
+        initial_status="completed",
+    )
+
+    assert run.status == "completed"
+    assert run.finished_at is not None
+    assert run.stats["progress"] == 100
+    assert run.stats["total_documents"] == 2
+
+
+def test_status_update_waits_for_expected_documents_and_keeps_failure_reasons() -> None:
+    tenant_id = uuid4()
+    first_doc_id = uuid4()
+    second_doc_id = uuid4()
+    run = SimpleNamespace(
+        id=uuid4(),
+        tenant_id=tenant_id,
+        dataset_id=None,
+        kind="upload",
+        status="running",
+        config={"expected_documents": 2},
+        stats={"total_documents": 2, "status_counts": {"created": 2}},
+        started_at=datetime.now(timezone.utc),
+        finished_at=None,
+    )
+    failed_row = SimpleNamespace(run_id=run.id, id=1, status="created")
+    completed_row = SimpleNamespace(run_id=run.id, id=2, status="created")
+
+    db_failed = _ServiceDB(run=run, document_query_results=[[failed_row], [failed_row]])
+    IngestionRunService.on_document_status_update(
+        db_failed,
+        tenant_id=tenant_id,
+        document_id=first_doc_id,
+        new_status="failed",
+        error_message="parse_failed: invalid markup",
+        doc_meta=None,
+    )
+
+    assert run.status == "running"
+    assert run.finished_at is None
+    assert run.stats["progress"] == 50
+    assert run.stats["failure_reasons_top"] == {"parse_failed": 1}
+    assert failed_row.status == "failed"
+
+    db_completed = _ServiceDB(run=run, document_query_results=[[completed_row], [completed_row]])
+    IngestionRunService.on_document_status_update(
+        db_completed,
+        tenant_id=tenant_id,
+        document_id=second_doc_id,
+        new_status="completed",
+        error_message=None,
+        doc_meta=None,
+    )
+
+    assert run.status == "completed"
+    assert run.finished_at is not None
+    assert run.stats["progress"] == 100
+    assert run.stats["status_counts"]["failed"] == 1
+    assert run.stats["status_counts"]["completed"] == 1
+
+
+def test_status_update_keeps_legacy_finalize_when_expected_documents_is_missing() -> None:
+    tenant_id = uuid4()
+    run = SimpleNamespace(
+        id=uuid4(),
+        tenant_id=tenant_id,
+        dataset_id=None,
+        kind="upload",
+        status="running",
+        config={},
+        stats={"total_documents": 1, "status_counts": {"created": 1}},
+        started_at=datetime.now(timezone.utc),
+        finished_at=None,
+    )
+    row = SimpleNamespace(run_id=run.id, id=1, status="created")
+    db = _ServiceDB(run=run, document_query_results=[[row], [row]])
+
+    IngestionRunService.on_document_status_update(
+        db,
+        tenant_id=tenant_id,
+        document_id=uuid4(),
+        new_status="completed",
+        error_message=None,
+        doc_meta=None,
+    )
+
+    assert run.status == "completed"
+    assert run.finished_at is not None
+    assert run.stats["progress"] == 100
+
+
+def test_close_intake_reconciles_expected_documents_to_unique_attachments_and_finalizes() -> None:
+    tenant_id = uuid4()
+    shared_doc_id = uuid4()
+    run = SimpleNamespace(
+        id=uuid4(),
+        tenant_id=tenant_id,
+        dataset_id=None,
+        kind="upload_batch",
+        status="running",
+        config={"expected_documents": 2},
+        stats={"total_documents": 1, "status_counts": {"completed": 1}},
+        started_at=datetime.now(timezone.utc),
+        finished_at=None,
+    )
+    attached = [SimpleNamespace(id=1, run_id=run.id, document_id=shared_doc_id, status="completed")]
+    db = _ServiceDB(run=run, document_query_results=[attached])
+
+    IngestionRunService.close_intake(
+        db,
+        tenant_id=tenant_id,
+        run_id=run.id,
+        attempted_inputs=2,
+        rejected_inputs=0,
+        rejection_reasons=[],
+    )
+
+    assert db.run_queries
+    assert db.run_queries[0].locked is True
+    assert run.status == "completed"
+    assert run.finished_at is not None
+    assert run.config["expected_documents"] == 1
+    assert run.stats["total_documents"] == 1
+    assert run.stats["status_counts"] == {"completed": 1}
+    assert run.stats["attempted_inputs"] == 2
+    assert run.stats["rejected_inputs"] == 0
+    assert run.stats["progress"] == 100
+
+
+def test_close_intake_fails_all_rejected_batch_with_zero_attached_documents() -> None:
+    tenant_id = uuid4()
+    run = SimpleNamespace(
+        id=uuid4(),
+        tenant_id=tenant_id,
+        dataset_id=None,
+        kind="upload_batch",
+        status="running",
+        config={"expected_documents": 2},
+        stats={},
+        started_at=datetime.now(timezone.utc),
+        finished_at=None,
+    )
+    db = _ServiceDB(run=run, document_query_results=[[]])
+
+    IngestionRunService.close_intake(
+        db,
+        tenant_id=tenant_id,
+        run_id=run.id,
+        attempted_inputs=2,
+        rejected_inputs=2,
+        rejection_reasons=[
+            "validation_failed: unsupported extension",
+            "validation_failed: empty file",
+        ],
+    )
+
+    assert run.status == "failed"
+    assert run.finished_at is not None
+    assert run.config["expected_documents"] == 0
+    assert run.stats["total_documents"] == 0
+    assert run.stats["attempted_inputs"] == 2
+    assert run.stats["rejected_inputs"] == 2
+    assert run.stats["rejected_reasons_top"] == {"validation_failed": 2}
+    assert run.stats["progress"] == 100
+
+
 def test_status_update_locks_runs_before_attachment_rows() -> None:
     tenant_id = uuid4()
     run_a_id = uuid4()

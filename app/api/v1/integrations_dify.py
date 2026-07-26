@@ -398,6 +398,7 @@ _DIFY_RESPONSE_SINGLEFLIGHT_LEASE_POLL_INITIAL_SEC = 0.05
 _DIFY_RESPONSE_SINGLEFLIGHT_LEASE_POLL_MAX_SEC = 0.25
 _DIFY_WARMUP_LEASE_KEY = "dify:warmup:lease"
 _dify_external_warmup_state_lock = threading.Lock()
+_dify_external_warmup_tasks: set[asyncio.Task[Any]] = set()
 _dify_external_warmup_state: dict[str, Any] = {
     "enabled": False,
     "status": "idle",
@@ -2079,6 +2080,11 @@ def _resolve_knowledge_dataset_ids(knowledge_id: str, *, query: str = "") -> lis
     return list(_resolve_knowledge_dataset_scope(knowledge_id, query=query).dataset_ids)
 
 
+def _dify_knowledge_resolution_mode() -> str:
+    mode = str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RESOLUTION_MODE", "mapped_only") or "mapped_only")
+    return mode.strip().lower() or "mapped_only"
+
+
 def _resolve_knowledge_dataset_scope(knowledge_id: str, *, query: str = "") -> DatasetScopePlan:
     key = str(knowledge_id or "").strip()
     knowledge_map = _load_knowledge_map()
@@ -2102,6 +2108,10 @@ def _resolve_knowledge_dataset_scope(knowledge_id: str, *, query: str = "") -> D
         if not plan.dataset_ids:
             raise HTTPException(status_code=404, detail="Dify knowledge mapping is empty")
         return plan
+
+    allow_direct_dataset_uuid = _dify_knowledge_resolution_mode() == "allow_dataset_uuid"
+    if not allow_direct_dataset_uuid or is_production_env():
+        raise HTTPException(status_code=404, detail="Dify knowledge mapping not found")
 
     try:
         return plan_dataset_scope(base_dataset_ids=[UUID(key)], query=query)
@@ -7457,6 +7467,8 @@ async def _delayed_warmup_dify_external_knowledge() -> dict[str, Any]:
 
 
 def _log_dify_warmup_task_result(task: Any) -> None:
+    if isinstance(task, asyncio.Task):
+        _dify_external_warmup_tasks.discard(task)
     try:
         task.result()
     except asyncio.CancelledError:
@@ -7490,6 +7502,8 @@ def start_dify_external_knowledge_warmup(
         logger.warning("Dify external warmup was not scheduled", exc_info=True)
         return None
 
+    if isinstance(task, asyncio.Task):
+        _dify_external_warmup_tasks.add(task)
     add_done_callback = getattr(task, "add_done_callback", None)
     if callable(add_done_callback):
         add_done_callback(_log_dify_warmup_task_result)

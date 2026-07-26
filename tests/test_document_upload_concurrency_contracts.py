@@ -126,6 +126,35 @@ class _FakeItemSession:
         self.closed = True
 
 
+class _OuterQuery:
+    def __init__(self, document) -> None:  # noqa: ANN001
+        self.document = document
+
+    def filter(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        return self
+
+    def first(self):  # noqa: ANN201
+        return self.document
+
+
+class _OuterDB:
+    def __init__(self, document) -> None:  # noqa: ANN001
+        self.document = document
+        self.added: list[object] = []
+
+    def add(self, obj) -> None:  # noqa: ANN001
+        self.added.append(obj)
+
+    def commit(self) -> None:
+        return None
+
+    def refresh(self, _obj) -> None:  # noqa: ANN001
+        return None
+
+    def query(self, _model):  # noqa: ANN001, ANN201
+        return _OuterQuery(self.document)
+
+
 @pytest.mark.asyncio
 async def test_upload_batch_rejects_nonpositive_max_concurrent() -> None:
     with pytest.raises(HTTPException) as exc_info:
@@ -211,6 +240,87 @@ async def test_upload_batch_uses_isolated_item_sessions_and_response_survives_cl
     assert {id(session) for session in persisted_sessions} == {id(session) for session in item_sessions}
     assert all(session.closed for session in item_sessions)
     assert all(session is not outer_db for session in persisted_sessions)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("precheck_first", [False, True])
+async def test_upload_batch_closes_intake_after_attaching_successes_in_both_branches(
+    monkeypatch: pytest.MonkeyPatch,
+    precheck_first: bool,
+) -> None:
+    dataset_id = uuid.uuid4()
+    tenant_id = uuid.uuid4()
+    duplicate = SimpleNamespace(id=uuid.uuid4(), filename="dup.txt", status="completed", doc_metadata={})
+    ingestion_run = SimpleNamespace(id=uuid.uuid4())
+    outer_db = _OuterDB(duplicate)
+    item_sessions: list[_FakeItemSession] = []
+    events: list[str] = []
+    close_calls: list[dict[str, object]] = []
+
+    _patch_quota(monkeypatch)
+    _patch_minimal_document_resolution(monkeypatch, dataset_id=dataset_id)
+    monkeypatch.setattr(document_upload.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(document_upload.settings, "TASK_QUEUE_ENABLED", False, raising=False)
+    monkeypatch.setattr(documents_module, "save_upload_file_with_hash", _fake_save_upload_file_with_hash, raising=True)
+    monkeypatch.setattr(
+        documents_module,
+        "_find_duplicate_document",
+        lambda *_args, file_sha256=None, **_kwargs: duplicate if file_sha256 == "sha-dup.txt" else None,
+        raising=True,
+    )
+    monkeypatch.setattr(documents_module.IngestionRunService, "create_run", lambda *args, **kwargs: ingestion_run, raising=True)
+
+    def _add_document(*_args, **kwargs) -> None:  # noqa: ANN003
+        events.append(f"add:{kwargs['document_id']}")
+
+    def _close_intake(*_args, **kwargs) -> None:  # noqa: ANN003
+        events.append("close")
+        close_calls.append(kwargs)
+
+    monkeypatch.setattr(documents_module.IngestionRunService, "add_document", _add_document, raising=True)
+    monkeypatch.setattr(documents_module.IngestionRunService, "close_intake", _close_intake, raising=True)
+    monkeypatch.setattr(documents_module, "run_dataset_precheck_scan", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module, "apply_ingestion_policy_suggestion", lambda *_args, **_kwargs: None, raising=True)
+
+    def _new_item_session() -> _FakeItemSession:
+        session = _FakeItemSession(name=f"item-{len(item_sessions) + 1}")
+        item_sessions.append(session)
+        return session
+
+    monkeypatch.setattr(documents_module, "SessionLocal", _new_item_session, raising=True)
+
+    result = await document_upload.upload_documents_batch(
+        background_tasks=BackgroundTasks(),
+        files=[_make_upload("dup.txt"), _make_upload("bad.exe")],
+        form=document_upload.UploadDocumentsBatchFormFields(
+            parser_backend="auto",
+            chunk_strategy="langchain_recursive",
+            pipeline=None,
+            dataset_id=dataset_id,
+            precheck_first=precheck_first,
+            precheck_only=False,
+            upload_only=False,
+            user_metadata_map=None,
+            max_concurrent=2,
+        ),
+        overrides_form=_build_overrides_form(),
+        tenant_id=tenant_id,
+        account_id="acct-1",
+        db=outer_db,
+    )
+
+    assert result["successful_count"] == 1
+    assert result["failed_count"] == 1
+    assert result["successful"][0]["document_id"] == str(duplicate.id)
+    assert result["failed"][0]["filename"] == "bad.exe"
+    assert events == [f"add:{duplicate.id}", "close"]
+    assert len(close_calls) == 1
+    assert close_calls[0]["tenant_id"] == tenant_id
+    assert close_calls[0]["run_id"] == ingestion_run.id
+    assert close_calls[0]["attempted_inputs"] == 2
+    assert close_calls[0]["rejected_inputs"] == 1
+    assert close_calls[0]["rejection_reasons"] == [result["failed"][0]["error"]]
+    assert all(session.closed for session in item_sessions)
 
 
 @pytest.mark.asyncio
@@ -735,7 +845,7 @@ async def test_persist_uploaded_document_cleans_source_for_unrelated_integrity_e
     file_path.write_text("payload", encoding="utf-8")
     cleaned: list[str] = []
 
-    async def _cleanup(stored_path: str) -> None:
+    async def _cleanup(stored_path: str, **_kwargs) -> None:  # noqa: ANN003
         cleaned.append(stored_path)
 
     class _FakeDB:

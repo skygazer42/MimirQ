@@ -247,7 +247,7 @@ MimirQ 可作为 Dify 的可治理 RAG 层接入现有应用，不重复实现�
 
 > 图中的地区路由来自可选示例插件；MimirQ 核心不内置地区、事项或行业规则。
 
-Dify 标准外部知识库端点为 `POST /api/v1/integrations/dify/retrieval`；可选用 `POST /api/v1/integrations/dify/conversation-turns` 回传答案、引用与会话标识。配置见 [`.env.example`](./.env.example)，部署前校验见 [readiness gate](./scripts/README.md)，实测结果见[真实场景验证](#-已在真实场景验证)。
+Dify 标准外部知识库端点为 `POST /api/v1/integrations/dify/retrieval`；可选用 `POST /api/v1/integrations/dify/conversation-turns` 回传答案、引用与会话标识。`knowledge_id` 默认必须显式配置在 `DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON` 中。配置见 [`.env.example`](./.env.example)，部署前校验见 [readiness gate](./scripts/README.md)，实测结果见[真实场景验证](#-已在真实场景验证)。
 
 ---
 
@@ -355,6 +355,9 @@ MimirQ 两条 Dify 链路的检索证据覆盖为 99.7% / 96.8%，但生成答�
 # POSTGRES_PASSWORD=<强密码>
 # MINIO_ACCESS_KEY_DOCKER=<强访问密钥>
 # MINIO_SECRET_KEY_DOCKER=<强私密密钥>
+# UPLOAD_DEDUP_ENABLED_DOCKER=true
+# RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED_DOCKER=true
+# RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY_DOCKER=3
 # JWT_TENANT_CLAIM=tenant_id
 # MIMIRQ_DB_CREATE_ALL_ON_STARTUP=false
 # MIMIRQ_DB_RUNTIME_MIGRATIONS_ENABLED=false

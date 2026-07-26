@@ -1,24 +1,18 @@
 
-import json
+import threading
 from collections.abc import Mapping
 
-from app.core.config import settings
+from app.core.config import (
+    normalize_object_storage_provider_name,
+    parse_object_storage_region_profiles,
+    settings,
+)
 from app.storage.object.minio import minio_service
 from app.storage.object.s3_compatible import S3CompatibleObjectStore
 
-_PROVIDER_ALIASES = {
-    "": "minio",
-    "minio": "minio",
-    "s3": "s3",
-    "aws_s3": "s3",
-    "s3_compatible": "s3_compatible",
-    "oss": "oss",
-    "aliyun_oss": "oss",
-    "cos": "cos",
-    "tencent_cos": "cos",
-}
-_S3_COMPATIBLE_PROVIDERS = {"minio", "s3", "s3_compatible", "oss", "cos"}
 _DEFAULT_OBJECT_STORE_METRICS_LOG_PATH = "./logs/object_store_metrics.jsonl"
+_OBJECT_STORE_CACHE: dict[tuple[object, ...], S3CompatibleObjectStore] = {}
+_OBJECT_STORE_CACHE_LOCK = threading.RLock()
 
 
 def _normalize_region(region: str | None = None) -> str:
@@ -26,34 +20,13 @@ def _normalize_region(region: str | None = None) -> str:
 
 
 def _load_region_profiles() -> dict[str, dict[str, object]]:
-    raw = getattr(settings, "OBJECT_STORAGE_REGION_PROFILES", "") or ""
-    if isinstance(raw, Mapping):
-        source = dict(raw)
-    else:
-        text = str(raw).strip()
-        if not text:
-            return {}
-        try:
-            parsed = json.loads(text)
-        except Exception:
-            return {}
-        source = dict(parsed) if isinstance(parsed, dict) else {}
-
-    out: dict[str, dict[str, object]] = {}
-    for key, value in source.items():
-        region = str(key or "").strip().lower()
-        if not region or not isinstance(value, Mapping):
-            continue
-        out[region] = dict(value)
-    return out
+    return parse_object_storage_region_profiles(getattr(settings, "OBJECT_STORAGE_REGION_PROFILES", "") or "")
 
 
 def normalize_object_store_provider(provider: str | None = None) -> str:
-    requested = str(provider or getattr(settings, "OBJECT_STORAGE_PROVIDER", "") or "minio").strip().lower()
-    normalized = _PROVIDER_ALIASES.get(requested, requested)
-    if normalized not in _S3_COMPATIBLE_PROVIDERS:
-        raise ValueError(f"unsupported object storage provider: {requested or normalized}")
-    return normalized
+    return normalize_object_storage_provider_name(
+        provider or getattr(settings, "OBJECT_STORAGE_PROVIDER", "") or "minio"
+    )
 
 
 def _resolve_object_store_config(provider: str | None = None, *, region: str | None = None) -> dict[str, object]:
@@ -94,15 +67,51 @@ def _build_s3_compatible_store(provider: str, *, config: Mapping[str, object] | 
         use_ssl=bool(cfg.get("use_ssl", True)),
         metrics_log_path=str(cfg.get("metrics_log_path") or _DEFAULT_OBJECT_STORE_METRICS_LOG_PATH),
         documents_enabled=bool(cfg.get("documents_enabled", False)),
+        region=str(cfg.get("region") or "").strip() or None,
     )
 
 
-def get_object_store(provider: str | None = None, *, region: str | None = None):
+def _object_store_cache_key(config: Mapping[str, object]) -> tuple[object, ...]:
+    return tuple(
+        config.get(key)
+        for key in (
+            "provider",
+            "region",
+            "enabled",
+            "endpoint",
+            "access_key",
+            "secret_key",
+            "bucket_name",
+            "use_ssl",
+            "metrics_log_path",
+            "documents_enabled",
+        )
+    )
+
+
+def reset_object_store_cache() -> None:
+    with _OBJECT_STORE_CACHE_LOCK:
+        _OBJECT_STORE_CACHE.clear()
+
+
+def get_object_store(
+    provider: str | None = None,
+    *,
+    region: str | None = None,
+    prefer_legacy_minio: bool = True,
+):
     cfg = _resolve_object_store_config(provider, region=region)
     normalized = str(cfg.get("provider") or "minio")
-    if normalized == "minio" and not cfg.get("region"):
+    if prefer_legacy_minio and normalized == "minio" and not cfg.get("region"):
         return minio_service
-    return _build_s3_compatible_store(normalized, config=cfg)
+    cache_key = _object_store_cache_key(cfg)
+    with _OBJECT_STORE_CACHE_LOCK:
+        cached = _OBJECT_STORE_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+        store = _build_s3_compatible_store(normalized, config=cfg)
+        _OBJECT_STORE_CACHE[cache_key] = store
+        return store
 
 
-__all__ = ["get_object_store", "normalize_object_store_provider"]
+__all__ = ["get_object_store", "normalize_object_store_provider", "reset_object_store_cache"]

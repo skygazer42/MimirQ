@@ -70,6 +70,15 @@ def _init_run_stats(stats: dict[str, Any] | None) -> dict[str, Any]:
     return base
 
 
+def _completion_target_for_run(run: IngestionRun | Any, *, stats: dict[str, Any]) -> int:
+    total_docs = _safe_int(stats.get("total_documents"), default=0)
+    config = getattr(run, "config", None)
+    expected_docs = _safe_int(config.get("expected_documents"), default=0) if isinstance(config, dict) else 0
+    if expected_docs <= 0:
+        return total_docs
+    return max(total_docs, expected_docs)
+
+
 def _bump_counter(mapping: dict[str, Any], key: str, delta: int) -> None:
     if not key:
         return
@@ -106,6 +115,62 @@ def _complete_transaction_quietly(db: Session) -> None:
             db.rollback()
         except Exception as rollback_exc:
             logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, rollback_exc)
+
+
+def _update_progress_and_finalize_run(
+    run: IngestionRun | Any,
+    *,
+    stats: dict[str, Any],
+    finished_at: datetime,
+) -> tuple[str | None, str | None, float | None] | None:
+    sc = stats.get("status_counts")
+    sc = sc if isinstance(sc, dict) else {}
+    total_docs = _safe_int(stats.get("total_documents"), default=0)
+    terminal = sum(_safe_int(sc.get(k), default=0) for k in _TERMINAL_DOCUMENT_STATUSES)
+    completion_target = _completion_target_for_run(run, stats=stats)
+    progress = int((terminal / max(1, completion_target)) * 100) if completion_target > 0 else 0
+    stats["progress"] = max(0, min(100, progress))
+    if completion_target <= 0 or total_docs < completion_target or terminal < completion_target:
+        return None
+
+    completed = _safe_int(sc.get("completed"), default=0)
+    failed = _safe_int(sc.get("failed"), default=0)
+    cancelled = _safe_int(sc.get("cancelled"), default=0)
+    quarantined = _safe_int(sc.get("quarantined"), default=0)
+    if cancelled >= total_docs and completed == 0 and failed == 0 and quarantined == 0:
+        run.status = "cancelled"
+    elif completed == 0 and (failed + quarantined) >= total_docs:
+        run.status = "failed"
+    else:
+        run.status = "completed"
+    if run.finished_at is not None:
+        return None
+    run.finished_at = finished_at
+    try:
+        dur = None
+        if run.started_at is not None and run.finished_at is not None:
+            dur = float((run.finished_at - run.started_at).total_seconds())
+        return getattr(run, "kind", None), getattr(run, "status", None), dur
+    except Exception:
+        return getattr(run, "kind", None), getattr(run, "status", None), None
+
+
+def _bounded_reason_counts(reasons: list[object] | tuple[object, ...] | None) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for reason in reasons or []:
+        key = _failure_reason(reason)
+        _bump_counter(counts, key, +1)
+    if len(counts) > 25:
+        ranked = sorted(((k, _safe_int(v)) for k, v in counts.items()), key=lambda kv: (-kv[1], kv[0]))
+        counts = {k: int(v) for k, v in ranked[:20] if v > 0}
+    return counts
+
+
+def _counts_by_normalized_status(statuses: list[object] | tuple[object, ...] | None) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for status in statuses or []:
+        _bump_counter(counts, _normalize_status(status), +1)
+    return counts
 
 
 class IngestionRunService:
@@ -223,31 +288,7 @@ class IngestionRunService:
             _bump_counter(sc, _normalize_status(initial_status), +1)
             stats["status_counts"] = sc
 
-            # Update progress/finalize when all current docs are terminal.
-            total_docs = _safe_int(stats.get("total_documents"), default=0)
-            terminal = sum(_safe_int(sc.get(k), default=0) for k in _TERMINAL_DOCUMENT_STATUSES)
-            progress = int((terminal / max(1, total_docs)) * 100) if total_docs > 0 else 0
-            stats["progress"] = max(0, min(100, progress))
-            if total_docs > 0 and terminal >= total_docs:
-                completed = _safe_int(sc.get("completed"), default=0)
-                failed = _safe_int(sc.get("failed"), default=0)
-                cancelled = _safe_int(sc.get("cancelled"), default=0)
-                quarantined = _safe_int(sc.get("quarantined"), default=0)
-                if cancelled >= total_docs and completed == 0 and failed == 0 and quarantined == 0:
-                    run.status = "cancelled"
-                elif completed == 0 and (failed + quarantined) >= total_docs:
-                    run.status = "failed"
-                else:
-                    run.status = "completed"
-                if run.finished_at is None:
-                    run.finished_at = _now_utc()
-                    try:
-                        dur = None
-                        if run.started_at is not None and run.finished_at is not None:
-                            dur = float((run.finished_at - run.started_at).total_seconds())
-                        finished_meta = (getattr(run, "kind", None), getattr(run, "status", None), dur)
-                    except Exception:
-                        finished_meta = (getattr(run, "kind", None), getattr(run, "status", None), None)
+            finished_meta = _update_progress_and_finalize_run(run, stats=stats, finished_at=_now_utc())
 
             # Track pipeline version distribution (best-effort) to support run compare/audit.
             meta = doc_meta if isinstance(doc_meta, dict) else {}
@@ -415,34 +456,10 @@ class IngestionRunService:
                 stats["stage_durations_ms_sum"] = sums
                 stats["stage_durations_docs"] = _safe_int(stats.get("stage_durations_docs"), default=0) + 1
 
-            # Update progress and finalize status when all documents are terminal.
-            total_docs = _safe_int(stats.get("total_documents"), default=0)
-            terminal = sum(_safe_int(sc.get(k), default=0) for k in _TERMINAL_DOCUMENT_STATUSES)
-            progress = int((terminal / max(1, total_docs)) * 100) if total_docs > 0 else 0
-            stats["progress"] = max(0, min(100, progress))
-
-            if total_docs > 0 and terminal >= total_docs:
-                # Finalize run status.
-                completed = _safe_int(sc.get("completed"), default=0)
-                failed = _safe_int(sc.get("failed"), default=0)
-                cancelled = _safe_int(sc.get("cancelled"), default=0)
-                quarantined = _safe_int(sc.get("quarantined"), default=0)
-
-                if cancelled >= total_docs and completed == 0 and failed == 0 and quarantined == 0:
-                    run.status = "cancelled"
-                elif completed == 0 and (failed + quarantined) >= total_docs:
-                    run.status = "failed"
-                else:
-                    run.status = "completed"
-                if run.finished_at is None:
-                    run.finished_at = now
-                    try:
-                        dur = None
-                        if run.started_at is not None and run.finished_at is not None:
-                            dur = float((run.finished_at - run.started_at).total_seconds())
-                        finished_runs.append((getattr(run, "kind", None), getattr(run, "status", None), dur))
-                    except Exception:
-                        finished_runs.append((getattr(run, "kind", None), getattr(run, "status", None), None))
+            finished_meta = _update_progress_and_finalize_run(run, stats=stats, finished_at=now)
+            if finished_meta is not None:
+                finished_runs.append(finished_meta)
+                if run.finished_at is not None:
                     # Touch dataset.updated_at so API instances can invalidate dataset-scoped caches
                     # (e.g., in-memory BM25 indices) after ingestion completes.
                     try:
@@ -475,6 +492,112 @@ class IngestionRunService:
 
                 for kind, status, dur in finished_runs:
                     observe_ingestion_run_finished(kind=kind, status=status, duration_sec=dur)
+            except Exception as exc:
+                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, exc)
+
+    @staticmethod
+    def close_intake(
+        db: Session,
+        *,
+        tenant_id: UUID,
+        run_id: UUID,
+        attempted_inputs: int | None = None,
+        rejected_inputs: int = 0,
+        rejection_reasons: list[object] | tuple[object, ...] | None = None,
+    ) -> None:
+        """
+        Reconcile the batch intake target with actual attached documents and finalize if possible.
+        """
+        try:
+            run = _lock_run_for_update(db, tenant_id=tenant_id, run_id=run_id)
+        except Exception:
+            try:
+                db.rollback()
+            except Exception as rollback_exc:
+                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, rollback_exc)
+            return
+        if run is None:
+            return
+
+        try:
+            rows = (
+                db.query(IngestionRunDocument)
+                .filter(
+                    IngestionRunDocument.tenant_id == tenant_id,
+                    IngestionRunDocument.run_id == run_id,
+                )
+                .order_by(IngestionRunDocument.id)
+                .all()
+            )
+        except Exception:
+            try:
+                db.rollback()
+            except Exception as rollback_exc:
+                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, rollback_exc)
+            return
+
+        finished_meta: tuple[str | None, str | None, float | None] | None = None
+        try:
+            stats = _init_run_stats(dict(getattr(run, "stats", None) or {}))
+            config = dict(getattr(run, "config", None) or {})
+
+            statuses: dict[str, str] = {}
+            for row in rows:
+                document_id = getattr(row, "document_id", None)
+                if document_id is None:
+                    continue
+                statuses[str(document_id)] = _normalize_status(getattr(row, "status", None))
+
+            actual_total = len(statuses)
+            stats["total_documents"] = actual_total
+            stats["status_counts"] = _counts_by_normalized_status(list(statuses.values()))
+            if attempted_inputs is not None:
+                stats["attempted_inputs"] = max(0, int(attempted_inputs))
+            stats["rejected_inputs"] = max(0, int(rejected_inputs))
+            stats["rejected_reasons_top"] = _bounded_reason_counts(rejection_reasons)
+            config["expected_documents"] = actual_total
+            run.config = config
+
+            now = _now_utc()
+            finished_meta = _update_progress_and_finalize_run(run, stats=stats, finished_at=now)
+            attempted_total = _safe_int(stats.get("attempted_inputs"), default=0)
+            rejected_total = _safe_int(stats.get("rejected_inputs"), default=0)
+            if (
+                finished_meta is None
+                and actual_total == 0
+                and attempted_total > 0
+                and rejected_total >= attempted_total
+            ):
+                run.status = "failed"
+                stats["progress"] = 100
+                if run.finished_at is None:
+                    run.finished_at = now
+                    try:
+                        dur = None
+                        if run.started_at is not None and run.finished_at is not None:
+                            dur = float((run.finished_at - run.started_at).total_seconds())
+                        finished_meta = (getattr(run, "kind", None), getattr(run, "status", None), dur)
+                    except Exception:
+                        finished_meta = (getattr(run, "kind", None), getattr(run, "status", None), None)
+
+            run.stats = stats
+        except Exception as exc:
+            logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, exc)
+
+        try:
+            db.commit()
+        except Exception:
+            try:
+                db.rollback()
+            except Exception as rollback_exc:
+                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, rollback_exc)
+            return
+        if finished_meta is not None:
+            try:
+                from app.services.ingestion_prometheus_metrics import observe_ingestion_run_finished
+
+                kind, status, dur = finished_meta
+                observe_ingestion_run_finished(kind=kind, status=status, duration_sec=dur)
             except Exception as exc:
                 logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, exc)
 

@@ -6,6 +6,12 @@ const authMock = vi.hoisted(() => ({
   scope: 'default:anonymous',
 }))
 const cacheMock = vi.hoisted(() => ({
+  clearDocCachesForScope: vi.fn().mockResolvedValue({
+    contentDeleted: 0,
+    sourceDeleted: 0,
+    totalDeleted: 0,
+  }),
+  invalidateDocCacheScopeWrites: vi.fn(),
   saveDocContentToCache: vi.fn().mockResolvedValue(undefined),
 }))
 
@@ -15,8 +21,10 @@ vi.mock('@/lib/auth-storage', () => ({
 }))
 
 vi.mock('@/lib/doc-content-cache', () => ({
+  clearDocCachesForScope: cacheMock.clearDocCachesForScope,
   deleteDocContentFromCache: vi.fn(),
   deleteDocSourceFromCache: vi.fn(),
+  invalidateDocCacheScopeWrites: cacheMock.invalidateDocCacheScopeWrites,
   saveDocContentToCache: cacheMock.saveDocContentToCache,
 }))
 
@@ -25,7 +33,13 @@ vi.mock('@/lib/request-id', () => ({
 }))
 
 import { ROOT_FOLDER_ID, useParsedFiles } from './use-parsed-files-store'
-import { deleteDocContentFromCache, deleteDocSourceFromCache, saveDocContentToCache } from '@/lib/doc-content-cache'
+import {
+  clearDocCachesForScope,
+  deleteDocContentFromCache,
+  deleteDocSourceFromCache,
+  invalidateDocCacheScopeWrites,
+  saveDocContentToCache,
+} from '@/lib/doc-content-cache'
 
 function makePersistedState(filename: string, id = `${filename}-id`) {
   return JSON.stringify({
@@ -63,6 +77,12 @@ function resetParsedFilesStore() {
 
 describe('useParsedFiles auth scope persistence', () => {
   beforeEach(() => {
+    cacheMock.clearDocCachesForScope.mockReset().mockResolvedValue({
+      contentDeleted: 0,
+      sourceDeleted: 0,
+      totalDeleted: 0,
+    })
+    cacheMock.invalidateDocCacheScopeWrites.mockReset()
     cacheMock.saveDocContentToCache.mockReset().mockResolvedValue(undefined)
     localStorage.clear()
     sessionStorage.clear()
@@ -268,5 +288,162 @@ describe('useParsedFiles auth scope persistence', () => {
       for (const resolve of pendingRehydrates) resolve()
       rehydrateSpy.mockRestore()
     }
+  })
+
+  it('clears only the current auth scope cache and drops pending parsed updates on clearAll', async () => {
+    authMock.scope = 'tenant-a:user-a'
+    useParsedFiles.setState({
+      files: [
+        {
+          id: 'shared-document-id',
+          filename: 'tenant-a.md',
+          fileType: 'md',
+          fileSize: 1,
+          markdownContent: '',
+          originalMarkdownContent: '',
+          parsedAt: '2026-07-25T00:00:00.000Z',
+          parser: 'test',
+          folderId: ROOT_FOLDER_ID,
+          status: 'pending',
+        },
+      ],
+    })
+
+    let resolveSave: (() => void) | null = null
+    vi.mocked(saveDocContentToCache).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSave = resolve
+        })
+    )
+
+    const updatePromise = useParsedFiles.getState().updateParsedFile('shared-document-id', {
+      markdownContent: 'tenant-a-secret',
+      originalMarkdownContent: 'tenant-a-secret',
+      status: 'parsed',
+    })
+
+    useParsedFiles.getState().clearAll()
+
+    expect(useParsedFiles.getState().files).toEqual([])
+    expect(invalidateDocCacheScopeWrites).toHaveBeenCalledWith('tenant-a:user-a')
+    expect(clearDocCachesForScope).toHaveBeenCalledWith('tenant-a:user-a')
+    expect(
+      vi.mocked(invalidateDocCacheScopeWrites).mock.invocationCallOrder[0]
+    ).toBeLessThan(vi.mocked(clearDocCachesForScope).mock.invocationCallOrder[0])
+
+    ;(resolveSave as unknown as () => void)()
+    await updatePromise
+
+    expect(useParsedFiles.getState().files).toEqual([])
+  })
+
+  it('keeps the UI cleared when scoped cache cleanup fails', async () => {
+    useParsedFiles.getState().addParsedFile({
+      filename: 'tenant-a.md',
+      fileType: 'md',
+      fileSize: 1,
+      markdownContent: '# doc',
+      parser: 'unit-test',
+    })
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    vi.mocked(clearDocCachesForScope).mockRejectedValueOnce(new Error('cache cleanup failed'))
+
+    useParsedFiles.getState().clearAll()
+
+    expect(useParsedFiles.getState().files).toEqual([])
+    await vi.waitFor(() => {
+      expect(warnSpy).toHaveBeenCalledWith(
+        'Failed to clear parsed file browser cache for auth scope',
+        expect.any(Error)
+      )
+    })
+
+    warnSpy.mockRestore()
+  })
+
+  it('does not let an old pending update overwrite a same-scope same-id update after clearAll', async () => {
+    authMock.scope = 'tenant-a:user-a'
+    useParsedFiles.setState({
+      files: [
+        {
+          id: 'shared-document-id',
+          filename: 'tenant-a.md',
+          fileType: 'md',
+          fileSize: 1,
+          markdownContent: '',
+          originalMarkdownContent: '',
+          parsedAt: '2026-07-25T00:00:00.000Z',
+          parser: 'test',
+          folderId: ROOT_FOLDER_ID,
+          status: 'pending',
+        },
+      ],
+    })
+
+    let resolveOldSave: (() => void) | null = null
+    let resolveNewSave: (() => void) | null = null
+    vi.mocked(saveDocContentToCache)
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveOldSave = resolve
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveNewSave = resolve
+          })
+      )
+
+    const oldUpdatePromise = useParsedFiles.getState().updateParsedFile('shared-document-id', {
+      markdownContent: 'tenant-a-secret',
+      originalMarkdownContent: 'tenant-a-secret',
+      status: 'parsed',
+    })
+
+    useParsedFiles.getState().clearAll()
+    useParsedFiles.setState({
+      files: [
+        {
+          id: 'shared-document-id',
+          filename: 'tenant-a-new.md',
+          fileType: 'md',
+          fileSize: 1,
+          markdownContent: '',
+          originalMarkdownContent: '',
+          parsedAt: '2026-07-25T00:00:00.000Z',
+          parser: 'test',
+          folderId: ROOT_FOLDER_ID,
+          status: 'pending',
+        },
+      ],
+    })
+
+    const newUpdatePromise = useParsedFiles.getState().updateParsedFile('shared-document-id', {
+      markdownContent: 'tenant-a-safe',
+      originalMarkdownContent: 'tenant-a-safe',
+      status: 'parsed',
+    })
+
+    ;(resolveOldSave as unknown as () => void)()
+    await oldUpdatePromise
+
+    expect(useParsedFiles.getState().files[0]).toMatchObject({
+      filename: 'tenant-a-new.md',
+      markdownContent: '',
+      status: 'pending',
+    })
+
+    ;(resolveNewSave as unknown as () => void)()
+    await newUpdatePromise
+
+    expect(useParsedFiles.getState().files[0]).toMatchObject({
+      filename: 'tenant-a-new.md',
+      markdownContent: 'tenant-a-safe',
+      originalMarkdownContent: 'tenant-a-safe',
+      status: 'parsed',
+    })
   })
 })

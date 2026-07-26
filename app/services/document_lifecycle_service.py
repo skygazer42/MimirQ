@@ -1,6 +1,7 @@
 
 import asyncio
 import contextlib
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -9,13 +10,16 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.async_bridge import run_blocking_in_thread
 from app.core.config import settings
+from app.core.database import SessionLocal
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.rag.core.logging import get_logger
 from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import DatasetService
-from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri
+from app.storage.object.minio import minio_service
+from app.storage.object.runtime import is_object_storage_uri, resolve_document_object_reference
 
 logger = get_logger("services.document_lifecycle")
 
@@ -23,6 +27,15 @@ DOC_NOT_FOUND_DETAIL = "Document not found"
 MANUAL_FILE_PATH_PREFIX = "manual://"
 DELETION_STATE_KEY = "deletion"
 DELETION_STATE_DELETING = "deleting"
+_SAFE_OBJECT_REFERENCE_ERRORS = frozenset({"invalid_object_storage_uri", "invalid_object_storage_uri_scheme"})
+_MISSING_OBJECT_DELETE_MARKERS = (
+    "nosuchkey",
+    "no such key",
+    "nosuchobject",
+    "no such object",
+    "object does not exist",
+    "key does not exist",
+)
 Indexer: Any | None = None
 
 
@@ -158,24 +171,28 @@ def _delete_document_table_store(*, tenant_id: UUID, document_id: UUID, document
 
 
 def _delete_minio_document_object(*, raw_path: str, tenant_id: UUID, document: DBDocument) -> None:
-    if not bool(getattr(settings, "MINIO_ENABLED", False)):
+    try:
+        store, ref = resolve_document_object_reference(
+            raw_path,
+            tenant_id=tenant_id,
+            dataset_id=document.dataset_id,
+            document_id=document.id,
+            file_type=document.file_type,
+            document_metadata=dict(getattr(document, "doc_metadata", None) or {}),
+        )
+    except ValueError as exc:
+        if str(exc).strip().lower() not in _SAFE_OBJECT_REFERENCE_ERRORS:
+            raise
+        logger.warning("Skipping malformed object storage document URI: %r", raw_path[:200])
         return
     try:
-        ref = parse_minio_uri(raw_path)
-    except ValueError:
-        logger.warning("Skipping malformed MinIO document URI: %r", raw_path[:200])
-        return
-    if ref.bucket != str(getattr(settings, "MINIO_BUCKET_NAME", "")):
-        return
-    dataset_id = str(document.dataset_id) if document.dataset_id else str(tenant_id)
-    expected_object = minio_service.build_document_object_name(
-        tenant_id=str(tenant_id),
-        dataset_id=dataset_id,
-        document_id=str(document.id),
-        extension=f".{(document.file_type or '').lower()}",
-    )
-    if ref.object_name == expected_object:
-        minio_service.delete_object(object_name=ref.object_name)
+        store.delete_object(object_name=ref.object_name)
+    except RuntimeError as exc:
+        message = str(exc).strip().lower()
+        if any(marker in message for marker in _MISSING_OBJECT_DELETE_MARKERS) and "bucket" not in message:
+            logger.info("Object already absent during document delete: %s", ref.object_name)
+            return
+        raise
 
 
 def _delete_local_document_file(*, raw_path: str, tenant_id: UUID) -> None:
@@ -197,7 +214,7 @@ def _delete_document_file(*, tenant_id: UUID, document: DBDocument) -> None:
     raw_path = str(document.file_path or "").strip()
     if not raw_path or raw_path.startswith(MANUAL_FILE_PATH_PREFIX):
         return
-    if is_minio_uri(raw_path):
+    if is_object_storage_uri(raw_path):
         _delete_minio_document_object(raw_path=raw_path, tenant_id=tenant_id, document=document)
         return
     _delete_local_document_file(raw_path=raw_path, tenant_id=tenant_id)
@@ -286,22 +303,45 @@ def _cleanup_document_kg_artifacts(db: Session, *, tenant_id: UUID, document_id:
     )
 
 
-async def _delete_document_lifecycle(
+def _log_cancelled_document_delete_error(exc: BaseException) -> None:
+    logger.warning(
+        "Document delete step failed while its caller was being cancelled",
+        exc_info=(type(exc), exc, exc.__traceback__),
+    )
+
+
+async def _run_delete_step_without_blocking_event_loop(func: Any, *args: Any, **kwargs: Any) -> Any:
+    return await run_blocking_in_thread(
+        func,
+        *args,
+        on_cancelled_worker_error=_log_cancelled_document_delete_error,
+        **kwargs,
+    )
+
+
+def _run_document_delete_session_step(
+    session_factory: Callable[[], Session],
+    step: Any,
+    kwargs: dict[str, Any],
+) -> Any:
+    worker_db = session_factory()
+    try:
+        return step(db=worker_db, **kwargs)
+    finally:
+        with contextlib.suppress(Exception):
+            worker_db.close()
+
+
+def _prepare_document_delete(
     *,
     document_id: UUID,
     tenant_id: UUID,
     account_id: str,
     db: Session,
-    enforce_permissions: bool = True,
-    enforce_membership: bool = True,
-) -> None:
-    """
-    Internal document delete lifecycle shared by API and background jobs.
-
-    - `enforce_permissions=True` matches the public endpoint behavior.
-    - `enforce_permissions=False` is intended for admin-only lifecycle operations.
-    """
-    if bool(enforce_membership):
+    enforce_permissions: bool,
+    enforce_membership: bool,
+) -> list[str]:
+    if enforce_membership:
         DatasetService.ensure_member(db, tenant_id, account_id)
     document = _get_document_for_delete(db, tenant_id=tenant_id, document_id=document_id)
     _assert_document_delete_permission(
@@ -313,7 +353,17 @@ async def _delete_document_lifecycle(
     )
     _cancel_processing_document(db, document)
     _persist_document_deleting_state(db, document=document, account_id=account_id)
-    await _abort_document_tasks_before_delete(document_id=document_id, task_ids=_document_task_ids(document))
+    return _document_task_ids(document)
+
+
+def _cleanup_document_after_tombstone(
+    *,
+    document_id: UUID,
+    tenant_id: UUID,
+    account_id: str,
+    db: Session,
+) -> None:
+    document = _get_document_for_delete(db, tenant_id=tenant_id, document_id=document_id)
     try:
         # The committed `deleting` row is the retryable tombstone. External deletes
         # are idempotent; only remove the row after every cleanup step succeeds.
@@ -338,3 +388,51 @@ async def _delete_document_lifecycle(
         with contextlib.suppress(Exception):
             db.rollback()
         raise
+
+
+async def _delete_document_lifecycle(
+    *,
+    document_id: UUID,
+    tenant_id: UUID,
+    account_id: str,
+    db: Session,
+    enforce_permissions: bool = True,
+    enforce_membership: bool = True,
+    session_factory: Callable[[], Session] | None = None,
+) -> None:
+    """
+    Internal document delete lifecycle shared by API and background jobs.
+
+    - `enforce_permissions=True` matches the public endpoint behavior.
+    - `enforce_permissions=False` is intended for admin-only lifecycle operations.
+    """
+    factory = session_factory or SessionLocal
+    task_ids = await _run_delete_step_without_blocking_event_loop(
+        _run_document_delete_session_step,
+        factory,
+        _prepare_document_delete,
+        {
+            "document_id": document_id,
+            "tenant_id": tenant_id,
+            "account_id": account_id,
+            "enforce_permissions": bool(enforce_permissions),
+            "enforce_membership": bool(enforce_membership),
+        },
+    )
+    await _abort_document_tasks_before_delete(document_id=document_id, task_ids=task_ids)
+    try:
+        await _run_delete_step_without_blocking_event_loop(
+            _run_document_delete_session_step,
+            factory,
+            _cleanup_document_after_tombstone,
+            {
+                "document_id": document_id,
+                "tenant_id": tenant_id,
+                "account_id": account_id,
+            },
+        )
+    finally:
+        # Callers may keep their request/job session for subsequent work. Ensure
+        # it does not retain stale ORM state written by the isolated sessions.
+        with contextlib.suppress(Exception):
+            db.expire_all()

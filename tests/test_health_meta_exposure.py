@@ -77,6 +77,13 @@ def test_public_health_endpoints_expose_only_minimal_status_fields(monkeypatch):
         lambda *_args, **_kwargs: ({"status": "ok", "enabled": False}, True),
         raising=True,
     )
+    monkeypatch.setattr(
+        health_module,
+        "get_rag_runtime_warmup_status",
+        lambda: {"enabled": False, "status": "disabled", "ready": True},
+        raising=True,
+    )
+    monkeypatch.setattr(health_module, "rag_runtime_warmup_ready", lambda: True, raising=True)
 
     client = TestClient(app)
 
@@ -114,6 +121,13 @@ def test_public_ready_endpoint_preserves_probe_status_without_detail_leak(monkey
         lambda *_args, **_kwargs: ({"status": "ok", "enabled": False}, True),
         raising=True,
     )
+    monkeypatch.setattr(
+        health_module,
+        "get_rag_runtime_warmup_status",
+        lambda: {"enabled": True, "status": "running", "ready": False},
+        raising=True,
+    )
+    monkeypatch.setattr(health_module, "rag_runtime_warmup_ready", lambda: True, raising=True)
 
     client = TestClient(app)
     response = client.get("/api/v1/health/ready")
@@ -153,6 +167,13 @@ def test_health_details_are_admin_gated_and_expose_dependency_details(monkeypatc
         lambda *_args, **_kwargs: ({"status": "ok", "enabled": False}, True),
         raising=True,
     )
+    monkeypatch.setattr(
+        health_module,
+        "get_rag_runtime_warmup_status",
+        lambda: {"enabled": True, "status": "completed", "ready": True, "embedding": {"status": "completed"}},
+        raising=True,
+    )
+    monkeypatch.setattr(health_module, "rag_runtime_warmup_ready", lambda: True, raising=True)
     monkeypatch.setattr(health_module, "_get_redis_client", lambda: object(), raising=True)
     monkeypatch.setattr(health_module, "_ready_cache_key", lambda: ("test",), raising=True)
     monkeypatch.setattr(health_module, "_READY_CACHE_TTL_SEC", 0.0, raising=False)
@@ -167,6 +188,49 @@ def test_health_details_are_admin_gated_and_expose_dependency_details(monkeypatc
     assert response.json()["database"] == {"status": "ok"}
     assert response.json()["vector"] == {"backend": "milvus", "status": "ok"}
     assert "uploads" in response.json()
+    assert response.json()["rag_runtime_warmup"]["status"] == "completed"
+
+
+def test_public_ready_endpoint_honors_runtime_warmup_requirement_without_detail_leak(monkeypatch):  # noqa: ANN001
+    app, _main_module, health_module, _meta_module = _build_app()
+    _reset_caches(health_module)
+
+    monkeypatch.setattr(health_module, "check_database", lambda *_args, **_kwargs: ({"status": "ok"}, True), raising=True)
+    monkeypatch.setattr(
+        health_module,
+        "check_vector",
+        lambda *_args, **_kwargs: ({"backend": "milvus", "status": "ok"}, {"status": "ok"}, True),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        health_module,
+        "check_redis",
+        lambda *_args, **_kwargs: (
+            {"status": "ok", "enabled": False, "required": False, "embedding_cache_enabled": False},
+            True,
+            False,
+        ),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        health_module,
+        "check_minio",
+        lambda *_args, **_kwargs: ({"status": "ok", "enabled": False}, True),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        health_module,
+        "get_rag_runtime_warmup_status",
+        lambda: {"enabled": True, "status": "failed", "ready": False, "error": "redacted"},
+        raising=True,
+    )
+    monkeypatch.setattr(health_module, "rag_runtime_warmup_ready", lambda: False, raising=True)
+    monkeypatch.setattr(health_module.settings, "RAG_RUNTIME_WARMUP_REQUIRED_FOR_READY", True, raising=False)
+
+    response = TestClient(app).get("/api/v1/health/ready")
+
+    assert response.status_code == 503
+    assert response.json() == {"ok": False, "status": "unready"}
 
 
 def test_public_meta_is_trimmed_and_details_are_admin_gated(monkeypatch):  # noqa: ANN001
@@ -206,3 +270,86 @@ def test_health_and_meta_openapi_contracts_are_explicitly_typed() -> None:
     for path, model in expected_models.items():
         schema = paths[path]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
         assert schema["$ref"].endswith(f"/{model}")
+
+
+def test_ready_object_storage_probe_prefers_current_document_store(monkeypatch):  # noqa: ANN001
+    from app.api.v1 import health as health_module
+    from app.storage.object import runtime as object_runtime
+
+    calls: list[str] = []
+
+    class _Store:
+        def health_check(self):  # noqa: ANN202
+            calls.append("generic")
+            return {"enabled": True, "status": "connected", "provider": "s3", "bucket": "documents"}
+
+    monkeypatch.setattr(health_module.settings, "MINIO_ENABLED", False, raising=False)
+    monkeypatch.setattr(health_module.settings, "OBJECT_STORAGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(health_module.settings, "OBJECT_STORAGE_DOCUMENTS_ENABLED", True, raising=False)
+    monkeypatch.setattr(object_runtime, "get_document_object_store", lambda: _Store(), raising=True)
+
+    payload = health_module.minio_service.health_check()
+
+    assert calls == ["generic"]
+    assert payload["status"] == "connected"
+    assert payload["provider"] == "s3"
+
+
+def test_ready_probe_uses_minio_when_assets_need_it_even_without_document_store(monkeypatch):  # noqa: ANN001
+    from app.api.v1 import health as health_module
+
+    calls: list[tuple[object | None, object | None]] = []
+
+    monkeypatch.setattr(health_module.settings, "MINIO_ENABLED", True, raising=False)
+    monkeypatch.setattr(health_module.settings, "MINIO_DOCUMENTS_ENABLED", False, raising=False)
+    monkeypatch.setattr(health_module.settings, "OBJECT_STORAGE_ENABLED", False, raising=False)
+    monkeypatch.setattr(health_module.settings, "OBJECT_STORAGE_DOCUMENTS_ENABLED", False, raising=False)
+
+    class _Probe:
+        def is_enabled(self) -> bool:
+            return True
+
+        def health_check(self):  # noqa: ANN202
+            return {"enabled": True, "status": "connected", "provider": "minio"}
+
+    monkeypatch.setattr(health_module, "minio_service", _Probe(), raising=True)
+    monkeypatch.setattr(health_module, "check_database", lambda *_args, **_kwargs: ({"status": "ok"}, True), raising=True)
+    monkeypatch.setattr(
+        health_module,
+        "check_vector",
+        lambda *_args, **_kwargs: ({"backend": "milvus", "status": "ok"}, {"status": "ok"}, True),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        health_module,
+        "check_redis",
+        lambda *_args, **_kwargs: (
+            {"status": "ok", "enabled": False, "required": False, "embedding_cache_enabled": False},
+            True,
+            False,
+        ),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        health_module,
+        "get_rag_runtime_warmup_status",
+        lambda: {"enabled": False, "status": "disabled", "ready": True},
+        raising=True,
+    )
+    monkeypatch.setattr(health_module, "rag_runtime_warmup_ready", lambda: True, raising=True)
+
+    def _check_minio(_settings, *, minio_health_check=None, enabled_override=None, **_kwargs):  # noqa: ANN001
+        calls.append((minio_health_check, enabled_override))
+        payload = minio_health_check() if callable(minio_health_check) else {"enabled": False, "status": "disabled"}
+        return payload, True
+
+    monkeypatch.setattr(health_module, "check_minio", _check_minio, raising=True)
+    health_module.invalidate_ready_cache()
+
+    response = TestClient(_build_app()[0]).get("/api/v1/health/ready")
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "status": "ready"}
+    assert len(calls) == 1
+    assert callable(calls[0][0])
+    assert calls[0][1] is True

@@ -105,6 +105,133 @@ def test_asset_request_rejects_query_bearer_promotion(monkeypatch, query_key):  
     assert auth_calls == []
 
 
+def test_asset_request_header_auth_requires_user_id_by_default(monkeypatch):  # noqa: ANN001
+    import app.api.v1.documents as documents_module
+    from app.core.config import settings
+
+    tenant_id = uuid.uuid4()
+    request = _build_request(query=f"tenant_id={tenant_id}")
+
+    monkeypatch.setattr(settings, "AUTH_MODE", "header", raising=False)
+    monkeypatch.setattr(settings, "ASSET_HEADER_AUTH_ALLOW_ANONYMOUS", False, raising=False)
+
+    with pytest.raises(documents_module.HTTPException) as excinfo:
+        asyncio.run(documents_module._resolve_account_id_for_asset_request(request, tenant_id=tenant_id))
+
+    assert excinfo.value.status_code == 401
+    assert excinfo.value.detail == "X-User-ID header required"
+
+
+def test_asset_request_header_auth_allows_explicit_anonymous_opt_in(monkeypatch):  # noqa: ANN001
+    import app.api.v1.documents as documents_module
+    from app.core.config import settings
+
+    tenant_id = uuid.uuid4()
+    request = _build_request(query=f"tenant_id={tenant_id}")
+
+    monkeypatch.setattr(settings, "AUTH_MODE", "header", raising=False)
+    monkeypatch.setattr(settings, "ASSET_HEADER_AUTH_ALLOW_ANONYMOUS", True, raising=False)
+
+    assert asyncio.run(documents_module._resolve_account_id_for_asset_request(request, tenant_id=tenant_id)) is None
+
+
+@pytest.mark.parametrize(
+    ("filename", "payload"),
+    [
+        ("asset.html", b"<html><script>alert(1)</script></html>"),
+        ("asset.css", b"body{background:red}"),
+        ("asset.js", b"alert(1)"),
+        ("asset.svg", b"<svg xmlns='http://www.w3.org/2000/svg'></svg>"),
+        ("asset.xml", b"<root/>"),
+    ],
+)
+def test_download_document_forces_attachment_for_active_content(monkeypatch, tmp_path, filename, payload):  # noqa: ANN001
+    import app.api.v1.documents as documents_module
+    from app.core.config import settings
+    from app.services.dataset_service import DatasetService
+
+    tenant_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    upload_root = tmp_path / str(tenant_id)
+    upload_root.mkdir(parents=True)
+    file_path = upload_root / filename
+    file_path.write_bytes(payload)
+
+    async def _fake_auth(**_kwargs):  # noqa: ANN202
+        return "acct-123"
+
+    monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 600, raising=False)
+    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module, "_assert_document_acl_readable", lambda *_args, **_kwargs: None, raising=True)
+
+    client = _build_download_client(
+        SimpleNamespace(
+            id=document_id,
+            tenant_id=tenant_id,
+            dataset_id=None,
+            file_path=str(file_path),
+            filename=filename,
+            file_type=filename.rsplit(".", 1)[-1],
+        )
+    )
+
+    response = client.get(
+        f"/api/v1/documents/{document_id}/download?tenant_id={tenant_id}",
+        headers={"Authorization": "Bearer header.jwt"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.content == payload
+    assert response.headers["content-disposition"].startswith("attachment;")
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
+def test_download_document_keeps_inline_for_safe_image_preview(monkeypatch, tmp_path):  # noqa: ANN001
+    import app.api.v1.documents as documents_module
+    from app.core.config import settings
+    from app.services.dataset_service import DatasetService
+
+    tenant_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    upload_root = tmp_path / str(tenant_id)
+    upload_root.mkdir(parents=True)
+    file_path = upload_root / "preview.png"
+    file_path.write_bytes(b"\x89PNG\r\n\x1a\npng-data")
+
+    async def _fake_auth(**_kwargs):  # noqa: ANN202
+        return "acct-123"
+
+    monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 600, raising=False)
+    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module, "_assert_document_acl_readable", lambda *_args, **_kwargs: None, raising=True)
+
+    client = _build_download_client(
+        SimpleNamespace(
+            id=document_id,
+            tenant_id=tenant_id,
+            dataset_id=None,
+            file_path=str(file_path),
+            filename="preview.png",
+            file_type="png",
+        )
+    )
+
+    response = client.get(
+        f"/api/v1/documents/{document_id}/download?tenant_id={tenant_id}",
+        headers={"Authorization": "Bearer header.jwt"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.content.startswith(b"\x89PNG\r\n\x1a\n")
+    assert response.headers["content-disposition"].startswith("inline;")
+
+
 def test_download_document_uses_header_auth_and_no_store_cache(monkeypatch, tmp_path):  # noqa: ANN001
     import app.api.v1.documents as documents_module
     from app.core.config import settings
@@ -447,3 +574,64 @@ def test_download_document_hides_object_storage_errors(monkeypatch):  # noqa: AN
     assert logged[0][0] == "Document asset stat failed for %r: %r"
     assert logged[0][1] == expected_object[:200]
     assert logged[0][2] == "backend exploded"
+
+
+def test_download_document_supports_generic_object_storage_uri(monkeypatch):  # noqa: ANN001
+    import app.api.v1.document_assets as document_assets
+    import app.api.v1.documents as documents_module
+    from app.core.config import settings
+    from app.services.dataset_service import DatasetService
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+
+    async def _fake_auth(**_kwargs):  # noqa: ANN202
+        return "acct-123"
+
+    class _Store:
+        def stat_object(self, **_kwargs):  # noqa: ANN003, ANN202
+            return SimpleNamespace(size=5, etag="etag-1")
+
+        def iter_object_bytes(self, **_kwargs):  # noqa: ANN003, ANN202
+            yield b"hello"
+
+    monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
+    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(
+        DatasetService,
+        "get_dataset",
+        lambda *_args, **_kwargs: SimpleNamespace(id=dataset_id, tenant_id=tenant_id),
+        raising=True,
+    )
+    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module, "_assert_document_acl_readable", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(
+        document_assets,
+        "resolve_document_object_reference",
+        lambda *_args, **_kwargs: (_Store(), SimpleNamespace(bucket="bucket", object_name="documents/t/d/source.pdf")),
+        raising=True,
+    )
+
+    client = _build_download_client(
+        SimpleNamespace(
+            id=document_id,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            access_mode="all_team_members",
+            file_path="s3://bucket/documents/t/d/source.pdf",
+            filename="asset.pdf",
+            file_type="pdf",
+            doc_metadata={"source_storage_backend": "object_storage", "source_storage_provider": "s3"},
+        )
+    )
+
+    response = client.get(
+        f"/api/v1/documents/{document_id}/download?tenant_id={tenant_id}",
+        headers={"Authorization": "Bearer header.jwt"},
+    )
+
+    assert response.status_code == 200
+    assert response.content == b"hello"
+    assert response.headers["content-disposition"].startswith("inline;")

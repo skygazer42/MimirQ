@@ -52,6 +52,48 @@ async def test_store_document_source_uses_minio_when_document_storage_enabled(mo
 
 
 @pytest.mark.asyncio
+async def test_store_document_source_uses_generic_object_store_when_enabled(monkeypatch, tmp_path: Path) -> None:
+    source = tmp_path / "source.txt"
+    source.write_text("hello", encoding="utf-8")
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    calls: list[dict] = []
+
+    class _Store:
+        def upload_document_file(self, **kwargs):  # noqa: ANN003, ANN202
+            calls.append(kwargs)
+            return "s3://documents/documents/t/d/source.txt"
+
+    monkeypatch.setattr(document_upload.settings, "OBJECT_STORAGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(document_upload.settings, "OBJECT_STORAGE_DOCUMENTS_ENABLED", True, raising=False)
+    monkeypatch.setattr(document_upload.settings, "OBJECT_STORAGE_PROVIDER", "s3", raising=False)
+    monkeypatch.setattr(document_upload, "get_document_object_store", lambda: _Store(), raising=True)
+
+    stored_path = await document_upload._store_document_source(
+        file_path=source,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        document_id=document_id,
+        extension=".txt",
+        content_type="text/plain",
+    )
+
+    assert stored_path == "s3://documents/documents/t/d/source.txt"
+    assert calls == [
+        {
+            "file_path": source,
+            "tenant_id": str(tenant_id),
+            "dataset_id": str(dataset_id),
+            "document_id": str(document_id),
+            "extension": ".txt",
+            "content_type": "text/plain",
+        }
+    ]
+    assert source.exists()
+
+
+@pytest.mark.asyncio
 async def test_store_document_source_removes_temp_when_minio_upload_fails(monkeypatch, tmp_path: Path) -> None:
     source = tmp_path / "source.txt"
     source.write_text("hello", encoding="utf-8")
@@ -289,6 +331,7 @@ async def test_schedule_document_processing_ignores_task_metadata_commit_failure
 @pytest.mark.asyncio
 async def test_cleanup_unpersisted_object_deletes_minio_object(monkeypatch) -> None:
     deleted: list[str] = []
+    monkeypatch.setattr(document_upload.settings, "MINIO_BUCKET_NAME", "documents", raising=False)
     monkeypatch.setattr(
         document_upload.minio_service,
         "delete_object",
@@ -302,12 +345,34 @@ async def test_cleanup_unpersisted_object_deletes_minio_object(monkeypatch) -> N
 
 
 @pytest.mark.asyncio
+async def test_cleanup_unpersisted_object_skips_bucket_mismatch(monkeypatch) -> None:
+    deleted: list[str] = []
+
+    class _Store:
+        def describe_backend(self) -> dict[str, object]:
+            return {"bucket": "expected-bucket"}
+
+        def delete_object(self, *, object_name):  # noqa: ANN001
+            deleted.append(object_name)
+
+    monkeypatch.setattr(document_upload, "get_object_store_for_uri", lambda *_args, **_kwargs: _Store(), raising=True)
+
+    await document_upload._cleanup_unpersisted_source(
+        "s3://other-bucket/documents/t/d/source.txt",
+        document_metadata={"source_storage_backend": "object_storage", "source_storage_provider": "s3"},
+    )
+
+    assert deleted == []
+
+
+@pytest.mark.asyncio
 async def test_persist_commit_failure_keeps_uploaded_object(monkeypatch, tmp_path: Path) -> None:
     source = tmp_path / "source.txt"
     source.write_text("hello", encoding="utf-8")
     deleted: list[str] = []
     rollbacks: list[bool] = []
     db_document = SimpleNamespace(id=uuid.uuid4(), file_path="minio://documents/documents/t/d/source.txt")
+    monkeypatch.setattr(document_upload.settings, "MINIO_BUCKET_NAME", "documents", raising=False)
 
     class _FailingDB:
         def add(self, _document) -> None:  # noqa: ANN001
@@ -346,6 +411,7 @@ async def test_persist_commit_failure_deletes_uploaded_object_when_row_missing(m
     source.write_text("hello", encoding="utf-8")
     deleted: list[str] = []
     db_document = SimpleNamespace(id=uuid.uuid4(), file_path="minio://documents/documents/t/d/source.txt")
+    monkeypatch.setattr(document_upload.settings, "MINIO_BUCKET_NAME", "documents", raising=False)
 
     class _FailingDB:
         def add(self, _document) -> None:  # noqa: ANN001
@@ -441,6 +507,7 @@ async def test_persist_add_failure_deletes_definitely_unpersisted_object(monkeyp
     source.write_text("hello", encoding="utf-8")
     deleted: list[str] = []
     db_document = SimpleNamespace(file_path="minio://documents/documents/t/d/source.txt")
+    monkeypatch.setattr(document_upload.settings, "MINIO_BUCKET_NAME", "documents", raising=False)
 
     class _DB:
         def add(self, _document) -> None:  # noqa: ANN001
@@ -469,6 +536,7 @@ async def test_persist_refresh_failure_does_not_fail_committed_upload(monkeypatc
     source.write_text("hello", encoding="utf-8")
     deleted: list[str] = []
     db_document = SimpleNamespace(file_path="minio://documents/documents/t/d/source.txt")
+    monkeypatch.setattr(document_upload.settings, "MINIO_BUCKET_NAME", "documents", raising=False)
 
     class _DB:
         def add(self, _document) -> None:  # noqa: ANN001

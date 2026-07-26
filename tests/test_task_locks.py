@@ -1,3 +1,5 @@
+import asyncio
+import time
 from uuid import uuid4
 
 import pytest
@@ -17,30 +19,48 @@ class FakeRedis:
         self.store: dict[str, object] = {}
         self.ttl: dict[str, int] = {}
         self.eval_calls: list[tuple[tuple[str, ...], tuple[object, ...]]] = []
+        self.extend_calls: list[tuple[str, object, int]] = []
         self.forbid_split_lock_ops = False
+        self._expires_at: dict[str, float] = {}
+
+    def _purge_expired(self, key: str | None = None) -> None:
+        now = time.monotonic()
+        keys = (key,) if key is not None else tuple(self._expires_at)
+        for item in keys:
+            expires_at = self._expires_at.get(item)
+            if expires_at is None or expires_at > now:
+                continue
+            self.store.pop(item, None)
+            self.ttl.pop(item, None)
+            self._expires_at.pop(item, None)
 
     def _guard(self, key: str, op: str) -> None:
         if self.forbid_split_lock_ops and key.startswith("lock:"):
             raise AssertionError(f"lock op should be atomic via Lua, got {op}")
 
     async def set(self, key: str, value: object, *, ex: int | None = None, nx: bool = False) -> bool:
+        self._purge_expired(key)
         self._guard(key, "set")
         if nx and key in self.store:
             return False
         self.store[key] = value
         if ex is not None:
             self.ttl[key] = int(ex)
+            self._expires_at[key] = time.monotonic() + int(ex)
         return True
 
     async def get(self, key: str) -> object | None:
+        self._purge_expired(key)
         self._guard(key, "get")
         return self.store.get(key)
 
     async def delete(self, key: str) -> int:
+        self._purge_expired(key)
         self._guard(key, "delete")
         existed = int(key in self.store)
         self.store.pop(key, None)
         self.ttl.pop(key, None)
+        self._expires_at.pop(key, None)
         return existed
 
     async def eval(self, _script: str, numkeys: int, *values: object) -> int:
@@ -48,12 +68,23 @@ class FakeRedis:
         args = tuple(values[numkeys:])
         self.eval_calls.append((keys, args))
         key = keys[0]
+        self._purge_expired(key)
 
         if len(args) == 1:
             expected = args[0]
             if self.store.get(key) == expected:
                 self.store.pop(key, None)
                 self.ttl.pop(key, None)
+                self._expires_at.pop(key, None)
+                return 1
+            return 0
+        if len(args) == 2:
+            expected, ttl_sec = args
+            if self.store.get(key) == expected:
+                ttl = max(1, int(ttl_sec))
+                self.ttl[key] = ttl
+                self._expires_at[key] = time.monotonic() + ttl
+                self.extend_calls.append((key, expected, ttl))
                 return 1
             return 0
         raise AssertionError(f"unexpected Lua arguments: {args!r}")
@@ -66,6 +97,18 @@ class FakeRedis:
 class FailingRedis(FakeRedis):
     async def set(self, key: str, value: object, *, ex: int | None = None, nx: bool = False) -> bool:
         raise RuntimeError("redis unavailable")
+
+
+class FlakyRefreshRedis(FakeRedis):
+    def __init__(self) -> None:
+        super().__init__()
+        self.refresh_failures_remaining = 1
+
+    async def eval(self, script: str, numkeys: int, *values: object) -> int:
+        if len(values[numkeys:]) == 2 and self.refresh_failures_remaining:
+            self.refresh_failures_remaining -= 1
+            raise RuntimeError("transient redis failure")
+        return await super().eval(script, numkeys, *values)
 
 
 class _QueryStub:
@@ -168,12 +211,11 @@ def test_task_job_lock_ttl_tracks_timeout_setting(monkeypatch: pytest.MonkeyPatc
     assert jobs._task_job_lock_ttl_sec(minimum_sec=60 * 60) == 60 * 60
 
 
-def test_task_semaphore_ttl_keeps_hour_floor(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.tasks import jobs
+def test_task_semaphore_ttl_uses_short_lease_setting(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(locks.settings, "TASK_SEMAPHORE_LEASE_TTL_SEC", 17, raising=False)
 
-    monkeypatch.setattr(jobs.settings, "TASK_JOB_TIMEOUT_SEC", 123, raising=False)
-
-    assert jobs._TASK_SEMAPHORE_TTL_SEC == 60 * 60
+    assert locks.task_semaphore_lease_ttl_sec() == 17
+    assert locks.task_semaphore_lease_ttl_sec(minimum_sec=20) == 20
 
 
 @pytest.mark.asyncio
@@ -315,6 +357,167 @@ async def test_dataset_acquire_and_release_use_owned_slots() -> None:
 
     assert key not in redis.store
     assert redis.eval_calls == [((key,), (token,))]
+
+
+@pytest.mark.asyncio
+async def test_tenant_acquire_renews_active_lease_past_initial_ttl(monkeypatch: pytest.MonkeyPatch) -> None:
+    redis = FakeRedis()
+    monkeypatch.setattr(locks, "get_retry_exc", lambda: FakeRetryError)
+    monkeypatch.setattr(locks, "_semaphore_heartbeat_interval_sec", lambda _ttl_sec: 0.01, raising=False)
+
+    first = await locks.tenant_acquire(redis, tenant_id="t1", kind="doc", limit=1, ttl_sec=1, retry_defer_sec=7)
+    assert first is not None
+
+    try:
+        await asyncio.sleep(1.2)
+        with pytest.raises(FakeRetryError) as exc_info:
+            await locks.tenant_acquire(redis, tenant_id="t1", kind="doc", limit=1, ttl_sec=1, retry_defer_sec=7)
+        assert redis.extend_calls
+        slot, token = first.rsplit("|", 1)
+        assert redis.store[slot] == token
+    finally:
+        await locks.tenant_release(redis, first)
+
+    assert exc_info.value.defer == 7
+    assert slot not in redis.store
+
+
+@pytest.mark.asyncio
+async def test_tenant_acquire_waits_for_slot_within_bounded_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    redis = FakeRedis()
+    monkeypatch.setattr(locks, "get_retry_exc", lambda: FakeRetryError)
+
+    first = await locks.tenant_acquire(redis, tenant_id="t1", kind="doc", limit=1, ttl_sec=2, retry_defer_sec=7)
+    assert first is not None
+
+    second: str | None = None
+
+    async def _delayed_release() -> None:
+        await asyncio.sleep(0.05)
+        await locks.tenant_release(redis, first)
+
+    release_task = asyncio.create_task(_delayed_release())
+    started_at = time.monotonic()
+    try:
+        second = await locks.tenant_acquire(
+            redis,
+            tenant_id="t1",
+            kind="doc",
+            limit=1,
+            ttl_sec=2,
+            retry_defer_sec=7,
+            wait_timeout_sec=0.2,
+        )
+    finally:
+        await release_task
+
+    elapsed = time.monotonic() - started_at
+
+    try:
+        assert second is not None
+        assert second.rsplit("|", 1)[0] == first.rsplit("|", 1)[0]
+        assert 0.03 <= elapsed < 0.2
+    finally:
+        if second is not None:
+            await locks.tenant_release(redis, second)
+
+
+@pytest.mark.asyncio
+async def test_dataset_acquire_raises_busy_retry_after_wait_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    redis = FakeRedis()
+    monkeypatch.setattr(locks, "get_retry_exc", lambda: FakeRetryError)
+
+    first = await locks.dataset_acquire(
+        redis,
+        tenant_id="t1",
+        dataset_id="ds1",
+        kind="kg",
+        limit=1,
+        ttl_sec=2,
+        retry_defer_sec=5,
+    )
+    assert first is not None
+
+    started_at = time.monotonic()
+    try:
+        with pytest.raises(FakeRetryError) as exc_info:
+            await locks.dataset_acquire(
+                redis,
+                tenant_id="t1",
+                dataset_id="ds1",
+                kind="kg",
+                limit=1,
+                ttl_sec=2,
+                retry_defer_sec=5,
+                wait_timeout_sec=0.12,
+            )
+    finally:
+        await locks.dataset_release(redis, first)
+
+    elapsed = time.monotonic() - started_at
+
+    assert exc_info.value.defer == 5
+    assert locks.is_semaphore_busy_retry(exc_info.value) is True
+    assert 0.1 <= elapsed < 0.5
+
+
+@pytest.mark.asyncio
+async def test_tenant_release_deletes_owned_slot_and_stops_heartbeat(monkeypatch: pytest.MonkeyPatch) -> None:
+    redis = FakeRedis()
+    monkeypatch.setattr(locks, "_semaphore_heartbeat_interval_sec", lambda _ttl_sec: 0.01, raising=False)
+
+    lease = await locks.tenant_acquire(redis, tenant_id="t1", kind="doc", limit=1, ttl_sec=1)
+    assert lease is not None
+
+    await asyncio.sleep(0.05)
+    renewals_before_release = len(redis.extend_calls)
+
+    await locks.tenant_release(redis, lease)
+
+    slot = lease.rsplit("|", 1)[0]
+    assert slot not in redis.store
+    await asyncio.sleep(0.05)
+
+    assert renewals_before_release >= 1
+    assert len(redis.extend_calls) == renewals_before_release
+
+
+@pytest.mark.asyncio
+async def test_tenant_heartbeat_retries_after_transient_redis_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    redis = FlakyRefreshRedis()
+    monkeypatch.setattr(locks, "_semaphore_heartbeat_interval_sec", lambda _ttl_sec: 0.01, raising=False)
+
+    lease = await locks.tenant_acquire(redis, tenant_id="t1", kind="doc", limit=1, ttl_sec=1)
+    assert lease is not None
+    try:
+        await asyncio.sleep(0.08)
+        assert redis.refresh_failures_remaining == 0
+        assert redis.extend_calls
+    finally:
+        await locks.tenant_release(redis, lease)
+
+
+@pytest.mark.asyncio
+async def test_tenant_lease_can_expire_after_heartbeat_stops(monkeypatch: pytest.MonkeyPatch) -> None:
+    redis = FakeRedis()
+    monkeypatch.setattr(locks, "_semaphore_heartbeat_interval_sec", lambda _ttl_sec: 0.01, raising=False)
+
+    first = await locks.tenant_acquire(redis, tenant_id="t1", kind="doc", limit=1, ttl_sec=1)
+    assert first is not None
+    await asyncio.sleep(0.05)
+    assert redis.extend_calls
+
+    with locks._SEMAPHORE_HEARTBEATS_LOCK:
+        controller = locks._SEMAPHORE_HEARTBEATS.pop(first)
+    controller.stop_event.set()
+    await controller.task
+    await asyncio.sleep(1.1)
+
+    second = await locks.tenant_acquire(redis, tenant_id="t1", kind="doc", limit=1, ttl_sec=1)
+    assert second is not None
+    assert second.rsplit("|", 1)[0] == first.rsplit("|", 1)[0]
+
+    await locks.tenant_release(redis, second)
 
 
 @pytest.mark.asyncio
@@ -503,10 +706,14 @@ async def test_document_job_propagates_failed_processor_result(
     async def _release(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
         return None
 
+    observed_processor_db: list[object] = []
+
     async def _process(**_kwargs):  # noqa: ANN003, ANN202
+        observed_processor_db.append(_kwargs.get("db"))
         return {"status": "failed", "reason": "retry_cleanup_deferred"}
 
     monkeypatch.setattr(jobs, "SessionLocal", lambda: db, raising=True)
+    monkeypatch.setattr(jobs.settings, "OBJECT_STORAGE_ENABLED", True, raising=False)
     monkeypatch.setattr(jobs, "_task_queue_redis_or_retry", lambda *_args, **_kwargs: object(), raising=True)
     monkeypatch.setattr(jobs, "tenant_acquire", _acquire, raising=True)
     monkeypatch.setattr(jobs, "dataset_acquire", _acquire, raising=True)
@@ -526,6 +733,81 @@ async def test_document_job_propagates_failed_processor_result(
     assert result["ok"] is False
     assert result["reason"] == "retry_cleanup_deferred"
     assert result["progress"] == {"stage": "failed", "done": 0, "total": 1}
+    assert observed_processor_db == [None]
+
+
+@pytest.mark.asyncio
+async def test_document_job_downloads_generic_object_storage_source(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:  # noqa: ANN001
+    from types import SimpleNamespace
+
+    from app.tasks import jobs
+
+    tenant_id = uuid4()
+    document_id = uuid4()
+    dataset_id = uuid4()
+    document = SimpleNamespace(
+        id=document_id,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        doc_metadata={"source_storage_backend": "object_storage", "source_storage_provider": "s3"},
+        file_type="pdf",
+        file_path="s3://bucket/documents/t/d/source.pdf",
+    )
+    db = _ValueDB(document)
+    downloaded: list[str] = []
+    processed: list[object] = []
+
+    class _Store:
+        def download_object_to_path(self, *, object_name, destination, max_bytes):  # noqa: ANN001
+            downloaded.append(object_name)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(b"pdf-data")
+            return destination
+
+    async def _acquire(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        return None
+
+    async def _lock(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        return True
+
+    async def _release(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        return None
+
+    async def _process(**kwargs):  # noqa: ANN003, ANN202
+        processed.append(kwargs["file_path"])
+        return {"status": "success"}
+
+    monkeypatch.setattr(jobs, "SessionLocal", lambda: db, raising=True)
+    monkeypatch.setattr(jobs.settings, "OBJECT_STORAGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(jobs, "_task_queue_redis_or_retry", lambda *_args, **_kwargs: object(), raising=True)
+    monkeypatch.setattr(jobs, "tenant_acquire", _acquire, raising=True)
+    monkeypatch.setattr(jobs, "dataset_acquire", _acquire, raising=True)
+    monkeypatch.setattr(jobs, "_acquire_task_lock_or_retry", _lock, raising=True)
+    monkeypatch.setattr(jobs, "release_lock", _release, raising=True)
+    monkeypatch.setattr(jobs, "dataset_release", _release, raising=True)
+    monkeypatch.setattr(jobs, "tenant_release", _release, raising=True)
+    monkeypatch.setattr(
+        jobs,
+        "resolve_document_object_reference",
+        lambda *_args, **_kwargs: (_Store(), SimpleNamespace(bucket="bucket", object_name="documents/t/d/source.pdf")),
+        raising=True,
+    )
+    monkeypatch.setattr(jobs.document_processor, "process_document", _process, raising=True)
+
+    result = await jobs.process_document_job(
+        {"job_try": 1, "redis": object()},
+        str(tenant_id),
+        str(document_id),
+        "member-1",
+    )
+
+    assert downloaded == ["documents/t/d/source.pdf"]
+    assert len(processed) == 1
+    assert processed[0].exists() is False
+    assert result["ok"] is True
 
 
 @pytest.mark.asyncio

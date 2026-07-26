@@ -23,6 +23,7 @@ class HealthDetailsResponse(ReadyResponse):
     milvus: dict[str, Any] | None = None
     redis: dict[str, Any]
     minio: dict[str, Any]
+    rag_runtime_warmup: dict[str, object] | None = None
     dify_external_knowledge: dict[str, object] | None = None
     time: str
     vector_backend: str

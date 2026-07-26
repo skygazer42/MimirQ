@@ -287,26 +287,24 @@ async def retry_document_processing(
 
     object_name: str | None = None
     file_path: Path | None = None
-    if documents_module.is_minio_uri(raw_path):
-        if not bool(getattr(documents_module.settings, "MINIO_ENABLED", False)):
-            raise HTTPException(status_code=503, detail="Object storage is disabled")
+    if documents_module.is_object_storage_uri(raw_path):
         try:
-            ref = documents_module.parse_minio_uri(raw_path)
+            store, ref = documents_module.resolve_document_object_reference(
+                raw_path,
+                tenant_id=tenant_id,
+                dataset_id=document.dataset_id,
+                document_id=document.id,
+                file_type=document.file_type,
+                document_metadata=dict(getattr(document, "doc_metadata", None) or {}),
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail="Object storage is disabled") from exc
         except ValueError as exc:
+            if str(exc) in {"object_bucket_denied", "object_key_denied"}:
+                raise HTTPException(status_code=403, detail=documents_module.DOCUMENT_FILE_ACCESS_DENIED_DETAIL) from exc
             raise HTTPException(status_code=404, detail=documents_module.DOCUMENT_FILE_NOT_FOUND_DETAIL) from exc
-        if ref.bucket != str(getattr(documents_module.settings, "MINIO_BUCKET_NAME", "")):
-            raise HTTPException(status_code=403, detail=documents_module.DOCUMENT_FILE_ACCESS_DENIED_DETAIL)
-        dataset_id = str(document.dataset_id) if document.dataset_id else str(tenant_id)
-        expected_object = documents_module.minio_service.build_document_object_name(
-            tenant_id=str(tenant_id),
-            dataset_id=dataset_id,
-            document_id=str(document.id),
-            extension=f".{(document.file_type or '').lower()}",
-        )
-        if ref.object_name != expected_object:
-            raise HTTPException(status_code=403, detail=documents_module.DOCUMENT_FILE_ACCESS_DENIED_DETAIL)
         try:
-            documents_module.minio_service.stat_object(object_name=ref.object_name)
+            store.stat_object(object_name=ref.object_name)
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=404, detail=documents_module.DOCUMENT_FILE_NOT_FOUND_DETAIL) from exc
         object_name = ref.object_name
@@ -399,7 +397,7 @@ async def retry_document_processing(
             async def _process_from_object_store() -> None:
                 try:
                     await asyncio.to_thread(
-                        documents_module.minio_service.download_object_to_path,
+                        store.download_object_to_path,
                         object_name=str(object_name),
                         destination=temp_path,
                         max_bytes=int(getattr(documents_module.settings, "MAX_FILE_SIZE", 0) or 0),

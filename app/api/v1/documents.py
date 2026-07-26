@@ -165,6 +165,7 @@ from app.api.v1.document_versions import (
 from app.api.v1.document_versions import (
     list_document_versions as list_document_versions,
 )
+from app.core.async_bridge import run_coroutine_in_thread
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.env import is_production_env
@@ -203,7 +204,17 @@ from app.services.pipeline_config import (
     resolve_pipeline_effective,
     upsert_pipeline_metadata,
 )
-from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri
+from app.storage.object.minio import minio_service
+from app.storage.object.runtime import (
+    document_object_storage_enabled,
+    document_object_store_metadata,
+    get_document_object_store,
+    get_object_store_for_uri,
+    is_object_storage_uri,
+    object_store_backend_config,
+    parse_object_storage_uri,
+    resolve_document_object_reference,  # noqa: F401
+)
 from app.tasks.queue import enqueue_document_processing
 from app.types.pipeline import PipelineOptions
 
@@ -228,10 +239,20 @@ def _get_background_processing_semaphore() -> asyncio.Semaphore:
     return cached[1]
 
 
+def _log_cancelled_background_processing_error(exc: BaseException) -> None:
+    logger.warning(
+        "Background document processing failed after request cancellation",
+        exc_info=(type(exc), exc, exc.__traceback__),
+    )
+
+
 async def run_document_processing_limited(*args: Any, **kwargs: Any) -> Any:
     sem = _get_background_processing_semaphore()
     async with sem:
-        return await document_processor.process_document(*args, **kwargs)
+        return await run_coroutine_in_thread(
+            lambda: document_processor.process_document(*args, **kwargs),
+            on_cancelled_worker_error=_log_cancelled_background_processing_error,
+        )
 
 __all__ = [
     "DBDatasetPrecheckScanRun",
@@ -566,7 +587,8 @@ def _parse_uuid(value: str) -> UUID:
 
 def _asset_request_header_account(request, *, is_production: bool) -> str | None:
     account_id = (request.headers.get("x-user-id") or "").strip() or None
-    if is_production and not account_id:
+    allow_anonymous = bool(getattr(settings, "ASSET_HEADER_AUTH_ALLOW_ANONYMOUS", False))
+    if not account_id and (is_production or not allow_anonymous):
         raise HTTPException(status_code=401, detail="X-User-ID header required")
     return account_id
 
@@ -582,7 +604,8 @@ async def _resolve_account_id_for_asset_request(request, *, tenant_id: UUID | No
     """
     Resolve account id for asset endpoints that may be requested by <img src>.
 
-    - AUTH_MODE=header: allow anonymous in local/dev (headers can't be set by <img>).
+    - AUTH_MODE=header: require X-User-ID unless local/dev explicitly opts into
+      anonymous asset fetches via ASSET_HEADER_AUTH_ALLOW_ANONYMOUS=true.
     - AUTH_MODE=jwt: require an Authorization header; query-string bearer tokens are unsupported.
     """
     is_production = is_production_env()
@@ -1578,7 +1601,7 @@ def _enforce_url_upload_quota(db: Session, *, tenant_id: UUID, additional_bytes:
 
 
 def _document_object_storage_enabled() -> bool:
-    return bool(getattr(settings, "MINIO_ENABLED", False)) and bool(getattr(settings, "MINIO_DOCUMENTS_ENABLED", False))
+    return document_object_storage_enabled()
 
 
 def _unlink_ingest_temp(path: Path) -> None:
@@ -1630,11 +1653,12 @@ async def _store_ingested_source(
     extension: str,
     content_type: str | None,
 ) -> str:
-    if not _document_object_storage_enabled():
+    store = get_document_object_store()
+    if store is None:
         return str(file_path)
     try:
         return await asyncio.to_thread(
-            minio_service.upload_document_file,
+            store.upload_document_file,
             file_path=file_path,
             tenant_id=str(tenant_id),
             dataset_id=str(dataset_id),
@@ -1647,12 +1671,20 @@ async def _store_ingested_source(
         raise
 
 
-async def _cleanup_unpersisted_ingested_source(stored_path: str) -> None:
-    if not is_minio_uri(stored_path):
+async def _cleanup_unpersisted_ingested_source(
+    stored_path: str,
+    *,
+    document_metadata: dict[str, Any] | None = None,
+) -> None:
+    if not is_object_storage_uri(stored_path):
         return
     try:
-        ref = parse_minio_uri(stored_path)
-        await asyncio.to_thread(minio_service.delete_object, object_name=ref.object_name)
+        ref = parse_object_storage_uri(stored_path)
+        store = get_object_store_for_uri(stored_path, document_metadata=document_metadata)
+        backend = object_store_backend_config(store)
+        if ref.bucket != str(backend.get("bucket", "") or "").strip():
+            return
+        await asyncio.to_thread(store.delete_object, object_name=ref.object_name)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to delete unpersisted ingest object: %s", str(exc)[:200])
 
@@ -1682,11 +1714,17 @@ def _fresh_session_document_exists(*, document_id: UUID) -> bool | None:
     return None
 
 
-async def _cleanup_commit_ambiguous_ingested_source(*, document_id: UUID, stored_path: str, file_path: Path) -> None:
+async def _cleanup_commit_ambiguous_ingested_source(
+    *,
+    document_id: UUID,
+    stored_path: str,
+    file_path: Path,
+    document_metadata: dict[str, Any] | None = None,
+) -> None:
     document_exists = _fresh_session_document_exists(document_id=document_id)
-    object_backed = is_minio_uri(stored_path)
+    object_backed = is_object_storage_uri(stored_path)
     if document_exists is False:
-        await _cleanup_unpersisted_ingested_source(stored_path)
+        await _cleanup_unpersisted_ingested_source(stored_path, document_metadata=document_metadata)
         _unlink_ingest_temp(file_path)
         return
     if object_backed:
@@ -1778,7 +1816,7 @@ async def _schedule_document_processing(
     db_document: DBDocument,
 ) -> bool:
     job_id = f"doc:{tenant_id}:{document_id}:{pipeline_hash}"
-    object_backed = is_minio_uri(str(getattr(db_document, "file_path", "") or ""))
+    object_backed = is_object_storage_uri(str(getattr(db_document, "file_path", "") or ""))
     queue_required = _task_queue_required()
     task_id = None
     try:
@@ -1836,13 +1874,12 @@ async def _schedule_document_processing(
             raise
         return True
 
-    await document_processor.process_document(
-        file_path=file_path,
-        document_id=document_id,
-        tenant_id=tenant_id,
-        parser_backend=parser_backend,
-        chunk_strategy=chunk_strategy,
-        db=db,
+    await run_document_processing_limited(
+        file_path,
+        document_id,
+        tenant_id,
+        parser_backend,
+        chunk_strategy,
     )
     return not object_backed
 
@@ -2132,7 +2169,10 @@ async def _persist_and_process_ingested_document(
     except Exception:
         with contextlib.suppress(Exception):
             db.rollback()
-        await _cleanup_unpersisted_ingested_source(str(file_path))
+        await _cleanup_unpersisted_ingested_source(
+            str(file_path),
+            document_metadata=dict(getattr(db_document, "doc_metadata", None) or {}),
+        )
         _unlink_ingest_temp(processing_file_path)
         raise
 
@@ -2145,6 +2185,7 @@ async def _persist_and_process_ingested_document(
             document_id=file_id,
             stored_path=str(file_path),
             file_path=processing_file_path,
+            document_metadata=dict(getattr(db_document, "doc_metadata", None) or {}),
         )
         raise
 
@@ -2175,7 +2216,7 @@ async def _persist_and_process_ingested_document(
             db_document=db_document,
         )
     finally:
-        if is_minio_uri(str(file_path)) and not keep_local_processing_file:
+        if is_object_storage_uri(str(file_path)) and not keep_local_processing_file:
             _unlink_ingest_temp(processing_file_path)
     return db_document
 
@@ -2255,6 +2296,10 @@ async def _ingest_url_upload_request(
         extension=ingest_file.file_ext,
         content_type=ingest_file.content_type or None,
     )
+    if is_object_storage_uri(stored_path):
+        store = get_document_object_store()
+        if store is not None:
+            doc_metadata.update(document_object_store_metadata(store))
 
     return await _persist_and_process_ingested_document(
         db=db,
@@ -2488,6 +2533,10 @@ async def _ingest_local_html_request(
         extension=ingest_file.file_ext,
         content_type=content_type,
     )
+    if is_object_storage_uri(stored_path):
+        store = get_document_object_store()
+        if store is not None:
+            doc_metadata.update(document_object_store_metadata(store))
 
     return await _persist_and_process_ingested_document(
         db=db,

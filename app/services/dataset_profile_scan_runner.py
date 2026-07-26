@@ -29,7 +29,7 @@ from app.parsing.quality.scorer import score_pdf_quality
 from app.parsing.quality.text_quality import score_parsed_text_quality
 from app.rag.core.logging import get_logger
 from app.services.dataset_profile_service import build_dataset_documents_query, compute_dataset_profile_summary
-from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri
+from app.storage.object.runtime import is_object_storage_uri, resolve_document_object_reference
 
 logger = get_logger("services.dataset_profile_scan")
 
@@ -49,7 +49,7 @@ def _safe_hash_file(path: Path, *, algo: str = "sha256", chunk_size: int = 1024 
     return h.hexdigest()
 
 
-def _download_minio_document_to_temp(
+def _download_object_storage_document_to_temp(
     *,
     tenant_id: UUID,
     dataset_id: UUID,
@@ -57,30 +57,22 @@ def _download_minio_document_to_temp(
     temp_dir: Path,
 ) -> Path:
     """
-    Download a document stored in MinIO to a local temp path.
-
-    Security:
-    - verify bucket matches settings
-    - verify object key matches expected naming scheme for the tenant/dataset/doc
+    Download a document stored in object storage to a local temp path.
     """
     raw_path = str(getattr(document, "file_path", "") or "").strip()
-    ref = parse_minio_uri(raw_path)
-    if ref.bucket != str(getattr(settings, "MINIO_BUCKET_NAME", "")):
-        raise ValueError("object_bucket_denied")
-
-    expected = minio_service.build_document_object_name(
-        tenant_id=str(tenant_id),
-        dataset_id=str(dataset_id),
-        document_id=str(document.id),
-        extension=f".{(document.file_type or '').lower()}",
+    store, ref = resolve_document_object_reference(
+        raw_path,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        document_id=document.id,
+        file_type=document.file_type,
+        document_metadata=dict(getattr(document, "doc_metadata", None) or {}),
     )
-    if ref.object_name != expected:
-        raise ValueError("object_key_denied")
 
     suffix = f".{(document.file_type or '').lower()}" if str(getattr(document, "file_type", "") or "").strip() else ""
     temp_dir.mkdir(parents=True, exist_ok=True)
     out = temp_dir / f"{str(document.id)}{suffix}"
-    minio_service.download_object_to_path(
+    store.download_object_to_path(
         object_name=ref.object_name,
         destination=out,
         max_bytes=int(getattr(settings, "MAX_FILE_SIZE", 0) or 0),
@@ -102,11 +94,13 @@ def _ensure_local_path(
     if not raw or raw.startswith("manual://"):
         raise ValueError("document_file_not_available")
 
-    if is_minio_uri(raw):
-        if not bool(getattr(settings, "MINIO_ENABLED", False)):
+    if is_object_storage_uri(raw):
+        if not bool(getattr(settings, "MINIO_ENABLED", False)) and not bool(
+            getattr(settings, "OBJECT_STORAGE_ENABLED", False)
+        ):
             raise ValueError("object_storage_disabled")
         temp_dir = (temp_root / str(tenant_id) / ".tmp").resolve(strict=False)
-        temp_path = _download_minio_document_to_temp(
+        temp_path = _download_object_storage_document_to_temp(
             tenant_id=tenant_id,
             dataset_id=dataset_id,
             document=document,

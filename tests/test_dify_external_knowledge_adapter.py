@@ -4736,6 +4736,61 @@ def test_dify_mapping_applies_strict_scope_to_inherited_routes(monkeypatch: pyte
     assert list(scope.primary_dataset_ids) == [route_dataset]
 
 
+def test_dify_mapping_requires_explicit_mapping_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    dataset_id = uuid.uuid4()
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", "{}", raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_RESOLUTION_MODE",
+        "mapped_only",
+        raising=False,
+    )
+
+    with pytest.raises(HTTPException, match="Dify knowledge mapping not found"):
+        dify_api._resolve_knowledge_dataset_scope(str(dataset_id), query="test")
+
+
+def test_dify_mapping_can_allow_direct_dataset_uuid_when_opted_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    dataset_id = uuid.uuid4()
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", "{}", raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_RESOLUTION_MODE",
+        "allow_dataset_uuid",
+        raising=False,
+    )
+
+    scope = dify_api._resolve_knowledge_dataset_scope(str(dataset_id), query="test")
+
+    assert list(scope.dataset_ids) == [dataset_id]
+    assert list(scope.primary_dataset_ids) == [dataset_id]
+
+
+def test_dify_mapping_rejects_direct_dataset_uuid_opt_in_in_production(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    dataset_id = uuid.uuid4()
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", "{}", raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_RESOLUTION_MODE",
+        "allow_dataset_uuid",
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api, "is_production_env", lambda: True, raising=True)
+
+    with pytest.raises(HTTPException, match="Dify knowledge mapping not found"):
+        dify_api._resolve_knowledge_dataset_scope(str(dataset_id), query="test")
+
+
 def test_dify_inherited_query_routes_follow_declared_source_order(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -11437,6 +11492,43 @@ def test_dify_retrieval_rejects_missing_or_wrong_bearer_token(monkeypatch: pytes
     assert missing.json() == {"error_code": 1001, "error_msg": "Invalid Dify Authorization header"}
     assert wrong.status_code == 401
     assert wrong.json() == {"error_code": 1002, "error_msg": "Invalid Dify API key"}
+
+
+def test_dify_retrieval_rejects_unmapped_dataset_uuid_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "expected-token"
+    dataset_id = uuid.uuid4()
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", "{}", raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_RESOLUTION_MODE",
+        "mapped_only",
+        raising=False,
+    )
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": str(dataset_id),
+            "query": "test",
+            "retrieval_setting": {"top_k": 1, "score_threshold": 0.0},
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"error_code": 2001, "error_msg": "Dify knowledge mapping not found"}
 
 
 def test_dify_retrieval_uses_server_tenant_when_header_attempts_override(

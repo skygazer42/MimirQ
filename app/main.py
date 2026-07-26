@@ -181,6 +181,18 @@ def _warmup_retrieval_tokenizer() -> None:
     logger.info("BM25 tokenizer initialized in %.3fs", time.perf_counter() - started_at)
 
 
+def start_rag_runtime_warmup():
+    from app.services.rag_runtime_warmup import start_rag_runtime_warmup as _impl
+
+    return _impl()
+
+
+def _start_runtime_warmup():
+    if not bool(getattr(settings, "RAG_RUNTIME_WARMUP_ENABLED", False)):
+        return None
+    return start_rag_runtime_warmup()
+
+
 # Lifespan management
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -263,6 +275,7 @@ async def lifespan(app: FastAPI):
     # Tokenizer initialization is process-local. Complete it before readiness so a
     # newly added API replica does not serialize its first concurrent requests.
     _warmup_retrieval_tokenizer()
+    _start_runtime_warmup()
 
     # Initialize BM25 index (optional; large deployments can rely on lazy-build).
     if not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):

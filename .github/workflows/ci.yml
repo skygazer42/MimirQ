@@ -47,6 +47,15 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379/tcp
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -139,6 +148,25 @@ jobs:
             tests/test_core_schema_integration.py \
             tests/test_document_version_diff_integration.py \
             tests/test_document_versions_integration.py
+
+      - name: PR hosted live core gate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/mimirq_ci
+          REDIS_URL: redis://127.0.0.1:${{ job.services.redis.ports['6379'] }}/0
+          MIMIRQ_DB_CREATE_ALL_ON_STARTUP: "false"
+          MIMIRQ_DB_RUNTIME_MIGRATIONS_ENABLED: "false"
+        run: bash scripts/run_ci_live_core_gate.sh artifacts/live-core-release-gate.pr.json
+
+      - name: Upload PR live core gate artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: public-pr-live-core-gate
+          path: |
+            artifacts/live-core-release-gate.pr.json
+            artifacts/live-core-primary.log
+            artifacts/live-core-secondary.log
+          if-no-files-found: error
 
       - name: Frontend verify
         run: make verify

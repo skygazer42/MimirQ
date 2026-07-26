@@ -742,11 +742,10 @@ class MilvusAdapter:
             parts.append(f'tenant_id == "{_escape_milvus_string(str(tenant_id))}"')
         parts.append(f'document_id == "{_escape_milvus_string(str(document_id))}"')
         expr = _MILVUS_EXPR_AND.join(parts)
+        # Delete is already expressed at the collection layer; flushing here turns
+        # document teardown into a blocking durability wait and does not improve
+        # request correctness for our lifecycle flow.
         store.delete(expr=expr)
-        try:
-            store.col.flush()
-        except Exception as exc:
-            logger.debug(_MILVUS_FALLBACK_LOG_MESSAGE, exc)
 
     def delete_by_document_id_and_filter(
         self,
@@ -768,11 +767,8 @@ class MilvusAdapter:
         parts.append(f'document_id == "{_escape_milvus_string(str(document_id))}"')
         base_expr = _MILVUS_EXPR_AND.join(parts)
         expr = f"({base_expr}) and ({metadata_expr})"
+        # Same rationale as delete_by_document_id(): avoid synchronous flush on teardown.
         store.delete(expr=expr)
-        try:
-            store.col.flush()
-        except Exception as exc:
-            logger.debug(_MILVUS_FALLBACK_LOG_MESSAGE, exc)
 
     def search(
         self,
@@ -887,6 +883,7 @@ class MilvusVectorStore:
         self._embedding_model = None
         self._store = None
         self._embedding_space_hash = ""
+        self._store_lock = threading.RLock()
 
     @staticmethod
     def _current_embedding_space_hash() -> str:
@@ -901,37 +898,53 @@ class MilvusVectorStore:
         """Initialize embedding model."""
         return _init_embedding_model()
 
+    def get_embedding_model(self):  # noqa: ANN201
+        with self._store_lock:
+            current_space = self._current_embedding_space_hash()
+            if self._embedding_model is not None and self._embedding_space_hash and current_space != self._embedding_space_hash:
+                logger.info(
+                    "Embedding space changed; rebuilding Milvus embedding client (%s -> %s)",
+                    self._embedding_space_hash,
+                    current_space,
+                )
+                self._embedding_model = None
+                self._store = None
+            if self._embedding_model is None:
+                self._embedding_model = _init_embedding_model()
+                self._embedding_space_hash = current_space
+            return self._embedding_model
+
     def _ensure_store(self):
-        current_space = self._current_embedding_space_hash()
-        if self._store is not None and self._embedding_space_hash and current_space != self._embedding_space_hash:
-            logger.info(
-                "Embedding space changed; rebuilding Milvus vector store adapter (%s -> %s)",
-                self._embedding_space_hash,
-                current_space,
+        with self._store_lock:
+            current_space = self._current_embedding_space_hash()
+            if self._store is not None and self._embedding_space_hash and current_space != self._embedding_space_hash:
+                logger.info(
+                    "Embedding space changed; rebuilding Milvus vector store adapter (%s -> %s)",
+                    self._embedding_space_hash,
+                    current_space,
+                )
+                self._store = None
+                self._embedding_model = None
+
+            if self._store is not None:
+                return
+
+            embedding_model = self.get_embedding_model()
+
+            from langchain_community.vectorstores import Milvus as LCMilvus
+
+            self._store = LCMilvus(
+                embedding_function=embedding_model,
+                collection_name=settings.MILVUS_COLLECTION_NAME,
+                connection_args=_get_milvus_connection_args(),
+                index_params=_get_milvus_index_params(),
+                search_params=_get_milvus_search_params(),
+                auto_id=False,
+                primary_field="id",
+                text_field="content",
+                vector_field="embedding",
             )
-            self._store = None
-            self._embedding_model = None
-
-        if self._store is not None:
-            return
-
-        if self._embedding_model is None:
-            self._embedding_model = _init_embedding_model()
-
-        from langchain_community.vectorstores import Milvus as LCMilvus
-
-        self._store = LCMilvus(
-            embedding_function=self._embedding_model,
-            collection_name=settings.MILVUS_COLLECTION_NAME,
-            connection_args=_get_milvus_connection_args(),
-            index_params=_get_milvus_index_params(),
-            search_params=_get_milvus_search_params(),
-            auto_id=False,
-            primary_field="id",
-            text_field="content",
-            vector_field="embedding",
-        )
-        self._embedding_space_hash = current_space
+            self._embedding_space_hash = current_space
 
     def _require_store(self):
         self._ensure_store()
@@ -1173,11 +1186,8 @@ class MilvusVectorStore:
 
         expr = self._build_expr(document_ids=[document_id], tenant_id=tenant_id)
         if expr:
+            # Keep delete non-blocking; the collection delete itself is sufficient here.
             store.delete(expr=expr)
-            try:
-                store.col.flush()
-            except Exception as exc:
-                logger.debug(_MILVUS_FALLBACK_LOG_MESSAGE, exc)
 
     def delete_by_document_id_and_filter(
         self,
@@ -1203,11 +1213,8 @@ class MilvusVectorStore:
             return
 
         expr = f"({base_expr}) and ({metadata_expr})" if base_expr else metadata_expr
+        # Avoid an explicit flush here to prevent teardown from waiting on Milvus compaction.
         store.delete(expr=expr)
-        try:
-            store.col.flush()
-        except Exception as exc:
-            logger.debug(_MILVUS_FALLBACK_LOG_MESSAGE, exc)
 
     def get_collection_count(self) -> int:
         """Return document count in the vector collection."""

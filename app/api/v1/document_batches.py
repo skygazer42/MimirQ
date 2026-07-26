@@ -343,7 +343,7 @@ def batch_move_documents(
             continue
 
         raw_path = str(getattr(doc, "file_path", "") or "").strip()
-        if raw_path and documents_module.is_minio_uri(raw_path):
+        if raw_path and documents_module.is_object_storage_uri(raw_path):
             conflicts.append(document_id)
             continue
 

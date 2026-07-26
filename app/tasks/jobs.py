@@ -17,6 +17,7 @@ from uuid import UUID
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core.async_bridge import run_coroutine_in_thread
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.connector import ConnectorRun as DBConnectorRun
@@ -33,7 +34,7 @@ from app.services.evidence_reference_repair_service import (
     EvidenceSuiteNotFoundError,
     repair_evidence_suite_reference_sources,
 )
-from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri
+from app.storage.object.runtime import is_object_storage_uri, resolve_document_object_reference
 from app.tasks.locks import (
     acquire_lock,
     dataset_acquire,
@@ -43,17 +44,32 @@ from app.tasks.locks import (
     make_lock_value,
     release_lock,
     task_job_lock_ttl_sec,
-    task_job_timeout_sec,
+    task_semaphore_lease_ttl_sec,
     tenant_acquire,
     tenant_release,
 )
 
 logger = get_logger("tasks.jobs")
 
-_TASK_SEMAPHORE_TTL_SEC = max(60 * 60, task_job_timeout_sec() + 60)
+_TASK_SEMAPHORE_LEASE_TTL_SEC = task_semaphore_lease_ttl_sec()
+_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC = max(0.0, float(getattr(settings, "TASK_SEMAPHORE_ACQUIRE_WAIT_SEC", 5.0) or 0.0))
 _TASK_LOCK_RETRY_DEFER_SEC = 30
 _TASK_COORDINATION_UNAVAILABLE = "task_coordination_unavailable"
 _TASK_CONCURRENCY_BUSY = "task_concurrency_busy"
+
+
+def _log_cancelled_document_processing_error(exc: BaseException) -> None:
+    logger.warning(
+        "Document processor failed while its queue job was being cancelled",
+        exc_info=(type(exc), exc, exc.__traceback__),
+    )
+
+
+async def _run_document_processing_without_blocking_event_loop(*args: Any, **kwargs: Any) -> Any:
+    return await run_coroutine_in_thread(
+        lambda: document_processor.process_document(*args, **kwargs),
+        on_cancelled_worker_error=_log_cancelled_document_processing_error,
+    )
 
 
 def _task_job_lock_ttl_sec(*, minimum_sec: int = 40 * 60) -> int:
@@ -273,8 +289,9 @@ async def evidence_reference_sources_repair_job(  # noqa: ANN001
                 tenant_id=tenant_id,
                 kind="evidence_repair",
                 limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_EVIDENCE_REPAIR", 0) or 0),
-                ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
+                ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
                 retry_defer_sec=retry_defer_sec,
+                wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
             )
             lock_key = f"lock:evidence_repair:{tenant_id}:{suite_id}"
             lock_val = make_lock_value(requested_by)
@@ -431,8 +448,9 @@ async def connector_run_job(ctx, tenant_id: str, run_id: str, requested_by: str)
                 tenant_id=tenant_id,
                 kind="connector",
                 limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_CONNECTOR", 0) or 0),
-                ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
+                ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
                 retry_defer_sec=retry_defer_sec,
+                wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
             )
 
             lock_key = f"lock:connector:{tenant_id}:{run_id}"
@@ -575,8 +593,9 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
                 tenant_id=tenant_id,
                 kind="doc",
                 limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_DOC", 0) or 0),
-                ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
+                ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
                 retry_defer_sec=retry_defer_sec,
+                wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
             )
             dataset_sem_key = await dataset_acquire(
                 redis,
@@ -584,8 +603,9 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
                 dataset_id=str(doc.dataset_id) if doc.dataset_id else "",
                 kind="doc",
                 limit=int(getattr(settings, "TASK_DATASET_MAX_CONCURRENCY_DOC", 0) or 0),
-                ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
+                ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
                 retry_defer_sec=retry_defer_sec,
+                wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
             )
             acquired = await _acquire_task_lock_or_retry(
                 redis,
@@ -680,8 +700,10 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
                 document_id=document_id,
             )
 
-        if is_minio_uri(raw_path):
-            if not bool(getattr(settings, "MINIO_ENABLED", False)):
+        if is_object_storage_uri(raw_path):
+            if not bool(getattr(settings, "MINIO_ENABLED", False)) and not bool(
+                getattr(settings, "OBJECT_STORAGE_ENABLED", False)
+            ):
                 await document_processor._update_status(
                     db,
                     tid,
@@ -702,8 +724,15 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
                     document_id=document_id,
                 )
             try:
-                ref = parse_minio_uri(raw_path)
-            except ValueError:
+                store, ref = resolve_document_object_reference(
+                    raw_path,
+                    tenant_id=tid,
+                    dataset_id=doc.dataset_id,
+                    document_id=did,
+                    file_type=doc.file_type,
+                    document_metadata=dict(getattr(doc, "doc_metadata", None) or {}),
+                )
+            except RuntimeError:
                 await document_processor._update_status(
                     db,
                     tid,
@@ -711,20 +740,20 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
                     "failed",
                     0,
                     "failed",
-                    error_message="invalid_object_path",
+                    error_message="object_storage_disabled",
                 )
                 return await _job_result(
                     ctx,
                     job_name="process_document_job",
                     ok=False,
                     started_at=t0,
-                    reason="invalid_object_path",
+                    reason="object_storage_disabled",
                     progress=_job_progress(stage="failed", done=0, total=1),
                     tenant_id=tenant_id,
                     document_id=document_id,
                 )
-
-            if ref.bucket != str(getattr(settings, "MINIO_BUCKET_NAME", "")):
+            except ValueError as exc:
+                reason = str(exc) if str(exc) in {"object_bucket_denied", "object_key_denied"} else "invalid_object_path"
                 await document_processor._update_status(
                     db,
                     tid,
@@ -732,42 +761,14 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
                     "failed",
                     0,
                     "failed",
-                    error_message="object_bucket_denied",
+                    error_message=reason,
                 )
                 return await _job_result(
                     ctx,
                     job_name="process_document_job",
                     ok=False,
                     started_at=t0,
-                    reason="object_bucket_denied",
-                    progress=_job_progress(stage="failed", done=0, total=1),
-                    tenant_id=tenant_id,
-                    document_id=document_id,
-                )
-
-            dataset_id = str(doc.dataset_id) if doc.dataset_id else str(tid)
-            expected_object = minio_service.build_document_object_name(
-                tenant_id=str(tid),
-                dataset_id=dataset_id,
-                document_id=str(did),
-                extension=f".{(doc.file_type or '').lower()}",
-            )
-            if ref.object_name != expected_object:
-                await document_processor._update_status(
-                    db,
-                    tid,
-                    did,
-                    "failed",
-                    0,
-                    "failed",
-                    error_message="object_key_denied",
-                )
-                return await _job_result(
-                    ctx,
-                    job_name="process_document_job",
-                    ok=False,
-                    started_at=t0,
-                    reason="object_key_denied",
+                    reason=reason,
                     progress=_job_progress(stage="failed", done=0, total=1),
                     tenant_id=tenant_id,
                     document_id=document_id,
@@ -778,7 +779,7 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
             temp_path = temp_dir / f"{did}.{uuid.uuid4().hex}{suffix}"
             try:
                 await asyncio.to_thread(
-                    minio_service.download_object_to_path,
+                    store.download_object_to_path,
                     object_name=ref.object_name,
                     destination=temp_path,
                     max_bytes=int(getattr(settings, "MAX_FILE_SIZE", 0) or 0),
@@ -836,14 +837,17 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
             requested_by,
         )
 
+        # The processor owns its session on the worker thread. Keeping the
+        # preflight session here would cross SQLAlchemy's thread-safety boundary.
+        db.close()
         try:
-            result = await document_processor.process_document(
+            result = await _run_document_processing_without_blocking_event_loop(
                 file_path=file_path,
                 document_id=did,
                 tenant_id=tid,
                 parser_backend=parser_backend,
                 chunk_strategy=chunk_strategy,
-                db=db,
+                db=None,
             )
         finally:
             if temp_path is not None:
@@ -934,8 +938,9 @@ async def dataset_profile_scan_job(ctx, tenant_id: str, dataset_id: str, scan_ru
                 tenant_id=tenant_id,
                 kind="scan",
                 limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_DOC", 0) or 0),
-                ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
+                ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
                 retry_defer_sec=retry_defer_sec,
+                wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
             )
             acquired = await _acquire_task_lock_or_retry(
                 redis,
@@ -1077,8 +1082,9 @@ async def dataset_precheck_scan_job(ctx, tenant_id: str, dataset_id: str, scan_r
                 tenant_id=tenant_id,
                 kind="scan",
                 limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_DOC", 0) or 0),
-                ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
+                ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
                 retry_defer_sec=retry_defer_sec,
+                wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
             )
             acquired = await _acquire_task_lock_or_retry(
                 redis,
@@ -1227,8 +1233,9 @@ async def extract_kg_job(
                 tenant_id=tenant_id,
                 kind="kg",
                 limit=kg_limit,
-                ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
+                ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
                 retry_defer_sec=kg_retry_defer_sec,
+                wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
             )
         except Exception as exc:
             if not _is_retry_error(exc) or _current_job_try(ctx) < _kg_job_max_tries():
@@ -1311,8 +1318,9 @@ async def extract_kg_job(
                 dataset_id=str(doc.dataset_id) if doc.dataset_id else "",
                 kind="kg",
                 limit=int(getattr(settings, "TASK_DATASET_MAX_CONCURRENCY_KG", 0) or 0),
-                ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
+                ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
                 retry_defer_sec=kg_retry_defer_sec,
+                wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
             )
             acquired = await _acquire_task_lock_or_retry(
                 redis,
@@ -1514,8 +1522,9 @@ async def rebuild_indexes_job(
                 tenant_id=tenant_id,
                 kind="rebuild",
                 limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_DOC", 0) or 0),
-                ttl_sec=_TASK_SEMAPHORE_TTL_SEC,
+                ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
                 retry_defer_sec=retry_defer_sec,
+                wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
             )
 
             lock_scope = str(document_id).strip() if document_id is not None else "tenant"

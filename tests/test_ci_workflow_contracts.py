@@ -34,6 +34,38 @@ def test_self_hosted_ci_bootstrap_script_contract() -> None:
     assert "127.0.0.1:35983" not in script
 
 
+def test_public_pr_live_core_gate_launcher_contract() -> None:
+    script = _read("scripts/run_ci_live_core_gate.sh")
+
+    assert script.startswith("#!/usr/bin/env bash\nset -euo pipefail\n")
+    assert ': "${DATABASE_URL:?DATABASE_URL is required}"' in script
+    assert ': "${REDIS_URL:?REDIS_URL is required}"' in script
+    assert 'PRIMARY_PORT="${CI_LIVE_CORE_PRIMARY_PORT:-8000}"' in script
+    assert 'SECONDARY_PORT="${CI_LIVE_CORE_SECONDARY_PORT:-8001}"' in script
+    assert 'PRIMARY_LOG="artifacts/live-core-primary.log"' in script
+    assert 'SECONDARY_LOG="artifacts/live-core-secondary.log"' in script
+    assert 'export AUTH_MODE="${AUTH_MODE:-header}"' in script
+    assert 'export VECTOR_BACKEND="${VECTOR_BACKEND:-faiss}"' in script
+    assert 'export MINIO_ENABLED="${MINIO_ENABLED:-false}"' in script
+    assert 'export UPLOAD_DEDUP_ENABLED="${UPLOAD_DEDUP_ENABLED:-true}"' in script
+    assert 'export DIFY_EXTERNAL_KNOWLEDGE_ENABLED="false"' in script
+    assert 'export DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED="false"' in script
+    assert 'export DIFY_EXTERNAL_KNOWLEDGE_WARMUP_REQUIRED_FOR_READY="false"' in script
+    assert 'export RAG_RUNTIME_WARMUP_ENABLED="false"' in script
+    assert 'export RAG_RUNTIME_WARMUP_REQUIRED_FOR_READY="false"' in script
+    assert (
+        'export RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED="${RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED:-true}"'
+        in script
+    )
+    assert 'python -m uvicorn app.main:app --host 127.0.0.1 --port "$PRIMARY_PORT"' in script
+    assert 'python -m uvicorn app.main:app --host 127.0.0.1 --port "$SECONDARY_PORT"' in script
+    assert 'python scripts/api_ping.py --base-url "$base_url" >/dev/null' in script
+    assert "python scripts/live_core_release_gate.py \\" in script
+    assert '--base-url "http://127.0.0.1:${PRIMARY_PORT}" \\' in script
+    assert '--secondary-base-url "http://127.0.0.1:${SECONDARY_PORT}" \\' in script
+    assert '--out "$OUT_PATH"' in script
+
+
 def test_main_ci_runs_database_migrations_and_integrations() -> None:
     workflow = _read(".github/workflows/ci.yml")
     conftest = _read("tests/conftest.py")
@@ -122,6 +154,7 @@ def test_main_ci_uploads_the_generated_test_inventory() -> None:
 
 def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     workflow = _read(".github/workflows/ci.yml")
+    public_pr_job = workflow.split("\n  test-and-verify:\n", 1)[0]
 
     assert "permissions:\n  contents: read" in workflow
     assert "SELF_HOSTED_PYTHON_BIN: ${{ vars.CI_SELF_HOSTED_PYTHON_BIN || '' }}" in workflow
@@ -144,6 +177,7 @@ def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     assert "public-pr-verify:" in workflow
     assert "if: github.event_name == 'pull_request'" in workflow
     assert "runs-on: ubuntu-latest" in workflow
+    assert "redis:\n        image: redis:7-alpine" in public_pr_job
     assert "python ci/download_verified_wheels.py --cache-dir \"$TORCH_WHEEL_DIR\"" in workflow
     assert "command -v rg" in workflow
     assert "rg --version | head -n 1" in workflow
@@ -160,6 +194,14 @@ def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     assert "data/sample/retrieval_fixture_hybrid_v1.json" in workflow
     assert "--retrieval-mode hybrid" in workflow
     assert "tests/rag/evaluation/test_rag_quality_gate.py" in workflow
+    assert "PR hosted live core gate" in workflow
+    assert "bash scripts/run_ci_live_core_gate.sh artifacts/live-core-release-gate.pr.json" in workflow
+    assert "REDIS_URL: redis://127.0.0.1:${{ job.services.redis.ports['6379'] }}/0" in workflow
+    assert "Upload PR live core gate artifacts" in workflow
+    assert "name: public-pr-live-core-gate" in workflow
+    assert "artifacts/live-core-release-gate.pr.json" in workflow
+    assert "artifacts/live-core-primary.log" in workflow
+    assert "artifacts/live-core-secondary.log" in workflow
     assert "make verify" in workflow
     assert "make test-web" in workflow
     assert "pnpm run build" in workflow

@@ -216,6 +216,48 @@ async def test_store_ingested_source_uses_minio_when_enabled(monkeypatch, tmp_pa
 
 
 @pytest.mark.asyncio
+async def test_store_ingested_source_uses_generic_object_store_when_enabled(monkeypatch, tmp_path: Path) -> None:
+    source = tmp_path / "source.html"
+    source.write_text("<html>ok</html>", encoding="utf-8")
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    calls: list[dict] = []
+
+    class _Store:
+        def upload_document_file(self, **kwargs):  # noqa: ANN003, ANN202
+            calls.append(kwargs)
+            return "s3://documents/documents/t/d/source.html"
+
+    monkeypatch.setattr(documents_module.settings, "OBJECT_STORAGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(documents_module.settings, "OBJECT_STORAGE_DOCUMENTS_ENABLED", True, raising=False)
+    monkeypatch.setattr(documents_module.settings, "OBJECT_STORAGE_PROVIDER", "s3", raising=False)
+    monkeypatch.setattr(documents_module, "get_document_object_store", lambda: _Store(), raising=True)
+
+    stored_path = await documents_module._store_ingested_source(
+        file_path=source,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        document_id=document_id,
+        extension=".html",
+        content_type="text/html",
+    )
+
+    assert stored_path == "s3://documents/documents/t/d/source.html"
+    assert calls == [
+        {
+            "file_path": source,
+            "tenant_id": str(tenant_id),
+            "dataset_id": str(dataset_id),
+            "document_id": str(document_id),
+            "extension": ".html",
+            "content_type": "text/html",
+        }
+    ]
+    assert source.exists()
+
+
+@pytest.mark.asyncio
 async def test_store_ingested_source_removes_temp_when_minio_upload_fails(monkeypatch, tmp_path: Path) -> None:
     source = tmp_path / "source.html"
     source.write_text("<html>ok</html>", encoding="utf-8")
@@ -352,6 +394,7 @@ async def test_persist_and_process_ingested_document_add_failure_deletes_unpersi
     dataset_id = uuid.uuid4()
     document_id = uuid.uuid4()
     deleted: list[str] = []
+    monkeypatch.setattr(documents_module.settings, "MINIO_BUCKET_NAME", "documents", raising=False)
 
     class _FailingDB:
         def add(self, _obj) -> None:  # noqa: ANN001
@@ -404,6 +447,7 @@ async def test_persist_and_process_ingested_document_commit_failure_keeps_object
     dataset_id = uuid.uuid4()
     document_id = uuid.uuid4()
     deleted: list[str] = []
+    monkeypatch.setattr(documents_module.settings, "MINIO_BUCKET_NAME", "documents", raising=False)
 
     class _FailingDB:
         def add(self, _obj) -> None:  # noqa: ANN001
@@ -465,6 +509,7 @@ async def test_persist_and_process_ingested_document_commit_failure_deletes_obje
     dataset_id = uuid.uuid4()
     document_id = uuid.uuid4()
     deleted: list[str] = []
+    monkeypatch.setattr(documents_module.settings, "MINIO_BUCKET_NAME", "documents", raising=False)
 
     class _FailingDB:
         def add(self, _obj) -> None:  # noqa: ANN001

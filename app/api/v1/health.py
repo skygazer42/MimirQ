@@ -21,6 +21,10 @@ from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.core.health_checks import check_database, check_minio, check_redis, check_vector
 from app.core.redis_client import LazyRedisClient
+from app.services.rag_runtime_warmup import (
+    get_rag_runtime_warmup_status,
+    rag_runtime_warmup_ready,
+)
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 from app.tasks.queue import is_queue_initialized
 
@@ -47,6 +51,10 @@ _redis_client_slot = LazyRedisClient(
 _get_redis_client = _redis_client_slot.get
 
 
+def invalidate_ready_cache() -> None:
+    _ready_cache.update({"ts": 0.0, "payload": None, "status": 200, "key": None})
+
+
 class _MilvusStoreProxy:
     # Keep /health import-time lightweight; import the real client only when called.
     def get_collection_count(self) -> int:
@@ -57,7 +65,17 @@ class _MilvusStoreProxy:
 
 class _MinioServiceProxy:
     # Keep /health import-time lightweight; import the real client only when called.
+    def is_enabled(self) -> bool:
+        from app.storage.object.runtime import document_object_storage_enabled
+
+        return bool(getattr(settings, "MINIO_ENABLED", False)) or document_object_storage_enabled()
+
     def health_check(self) -> dict[str, Any]:
+        from app.storage.object.runtime import get_document_object_store
+
+        store = get_document_object_store()
+        if store is not None:
+            return store.health_check()
         from app.storage.object.minio import minio_service
 
         return minio_service.health_check()
@@ -84,12 +102,21 @@ def _ready_cache_key() -> tuple[object, ...]:
         bool(getattr(settings, "TASK_QUEUE_ENABLED", False)),
         bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", False)),
         bool(getattr(settings, "MINIO_ENABLED", False)),
+        bool(getattr(settings, "OBJECT_STORAGE_ENABLED", False)),
+        bool(getattr(settings, "OBJECT_STORAGE_DOCUMENTS_ENABLED", False)),
         bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_REQUIRED_FOR_READY", False)),
+        bool(getattr(settings, "RAG_RUNTIME_WARMUP_ENABLED", False)),
+        bool(getattr(settings, "RAG_RUNTIME_WARMUP_REQUIRED_FOR_READY", False)),
         # Include endpoints so the cache doesn't hide hot-reloaded settings changes.
         str(getattr(settings, "REDIS_URL", "") or ""),
         str(getattr(settings, "MILVUS_HOST", "") or ""),
         int(getattr(settings, "MILVUS_PORT", 0) or 0),
         str(getattr(settings, "MINIO_ENDPOINT", "") or ""),
+        str(getattr(settings, "OBJECT_STORAGE_PROVIDER", "") or ""),
+        str(getattr(settings, "OBJECT_STORAGE_ENDPOINT", "") or ""),
+        str(getattr(settings, "OBJECT_STORAGE_BUCKET_NAME", "") or ""),
+        str(getattr(settings, "DATA_REGION", "") or ""),
+        str(getattr(settings, "OBJECT_STORAGE_REGION_PROFILES", "") or ""),
     )
 
 
@@ -130,9 +157,22 @@ def _collect_ready_details() -> tuple[dict[str, Any], int, dict[str, Any] | None
     if reset_client:
         _redis_client_slot.invalidate()
 
-    minio_health_check = minio_service.health_check if bool(getattr(settings, "MINIO_ENABLED", False)) else None
-    minio_status, minio_ok = check_minio(settings, mode="ready", minio_health_check=minio_health_check)
+    object_storage_ready_probe_enabled = minio_service.is_enabled()
+    minio_health_check = minio_service.health_check if object_storage_ready_probe_enabled else None
+    minio_status, minio_ok = check_minio(
+        settings,
+        mode="ready",
+        minio_health_check=minio_health_check,
+        enabled_override=object_storage_ready_probe_enabled,
+    )
     ok &= minio_ok
+
+    rag_runtime_warmup_status = get_rag_runtime_warmup_status()
+    rag_runtime_warmup_status["required_for_ready"] = bool(
+        getattr(settings, "RAG_RUNTIME_WARMUP_REQUIRED_FOR_READY", False)
+    )
+    if bool(getattr(settings, "RAG_RUNTIME_WARMUP_REQUIRED_FOR_READY", False)):
+        ok &= rag_runtime_warmup_ready()
 
     dify_external_status = None
     if bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", False)):
@@ -168,6 +208,7 @@ def _collect_ready_details() -> tuple[dict[str, Any], int, dict[str, Any] | None
         "milvus": milvus_status,
         "redis": redis_status,
         "minio": minio_status,
+        "rag_runtime_warmup": rag_runtime_warmup_status,
         "dify_external_knowledge": dify_external_status,
     }
     status_code = 200 if ok else 503

@@ -14514,7 +14514,7 @@ export interface components {
          * @description Document processing status enum for API contract stability.
          * @enum {string}
          */
-        DocumentStatusEnum: "pending" | "processing" | "completed" | "failed" | "quarantined" | "cancelled";
+        DocumentStatusEnum: "pending" | "processing" | "completed" | "failed" | "quarantined" | "cancelled" | "deleting";
         /** DocumentStructureRequest */
         DocumentStructureRequest: {
             /**
@@ -16530,6 +16530,10 @@ export interface components {
             minio: {
                 [key: string]: unknown;
             };
+            /** Rag Runtime Warmup */
+            rag_runtime_warmup?: {
+                [key: string]: unknown;
+            } | null;
             /** Dify External Knowledge */
             dify_external_knowledge?: {
                 [key: string]: unknown;
@@ -23255,15 +23259,13 @@ export interface components {
             /**
              * X Max Items
              * @description X axis max items
-             * @default 100
              */
-            x_max_items: number | null;
+            x_max_items?: number | null;
             /**
              * Y Max Items
              * @description Y axis max items
-             * @default 100
              */
-            y_max_items: number | null;
+            y_max_items?: number | null;
             /**
              * Max Items
              * @description Back-compat max items
@@ -49677,14 +49679,12 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
+                content?: never;
             };
         };
     };
@@ -49749,14 +49749,12 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
+                content?: never;
             };
         };
     };

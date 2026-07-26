@@ -37,3 +37,33 @@ def test_startup_skips_tokenizer_warmup_when_bm25_is_disabled(monkeypatch) -> No
     main._warmup_retrieval_tokenizer()
 
     assert calls == []
+
+
+def test_startup_schedules_runtime_warmup_when_enabled(monkeypatch) -> None:
+    scheduled: list[bool] = []
+    monkeypatch.setattr(main.settings, "RAG_RUNTIME_WARMUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        main,
+        "start_rag_runtime_warmup",
+        lambda: scheduled.append(True),
+        raising=False,
+    )
+
+    main._start_runtime_warmup()
+
+    assert scheduled == [True]
+
+
+def test_startup_skips_runtime_warmup_when_disabled(monkeypatch) -> None:
+    scheduled: list[bool] = []
+    monkeypatch.setattr(main.settings, "RAG_RUNTIME_WARMUP_ENABLED", False, raising=False)
+    monkeypatch.setattr(
+        main,
+        "start_rag_runtime_warmup",
+        lambda: scheduled.append(True),
+        raising=False,
+    )
+
+    main._start_runtime_warmup()
+
+    assert scheduled == []

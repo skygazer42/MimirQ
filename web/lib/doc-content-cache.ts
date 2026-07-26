@@ -47,6 +47,11 @@ const SOURCE_STORE = 'doc_sources'
 const MB = 1024 * 1024
 const DEFAULT_STALE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 let authScopeGeneration = 0
+const docCacheScopeWriteGenerations = new Map<string, number>()
+
+function getDocCacheScopeWriteGeneration(scope: string): number {
+  return docCacheScopeWriteGenerations.get(scope) || 0
+}
 
 function scopedRecordId(id: string, scope: string = getAuthCacheScope()): string {
   return `${scope}:${id}`
@@ -136,6 +141,12 @@ function normalizeFiniteNumber(input: unknown): number | null {
 
 export function isRecordStaleByUpdatedAt(updatedAt: number | null | undefined, staleBefore: number): boolean {
   return Number.isFinite(updatedAt) && Number(updatedAt) < staleBefore
+}
+
+export function invalidateDocCacheScopeWrites(scope: string = getAuthCacheScope()): number {
+  const nextGeneration = getDocCacheScopeWriteGeneration(scope) + 1
+  docCacheScopeWriteGenerations.set(scope, nextGeneration)
+  return nextGeneration
 }
 
 export function classifyStoragePressure(input: {
@@ -242,6 +253,7 @@ export async function saveDocContentToCache(
 ) {
   if (globalThis.window === undefined) return
   if (!record?.id) return
+  const scopeWriteGeneration = getDocCacheScopeWriteGeneration(scope)
   const scopedId = scopedRecordId(record.id, scope)
   const writeGeneration = authScopeGeneration
   await withStore(CONTENT_STORE, 'readwrite', (store) =>
@@ -251,7 +263,10 @@ export async function saveDocContentToCache(
       originalMarkdownContent: record.originalMarkdownContent || '',
       updatedAt: record.updatedAt ?? Date.now(),
     }),
-    () => authScopeGeneration === writeGeneration && getAuthCacheScope() === scope
+    () =>
+      authScopeGeneration === writeGeneration &&
+      getAuthCacheScope() === scope &&
+      getDocCacheScopeWriteGeneration(scope) === scopeWriteGeneration
   )
 }
 
@@ -281,6 +296,7 @@ export async function saveDocSourceToCache(
   if (!record?.id) return
   if (!record.file) return
 
+  const scopeWriteGeneration = getDocCacheScopeWriteGeneration(scope)
   const scopedId = scopedRecordId(record.id, scope)
   const writeGeneration = authScopeGeneration
   await withStore(SOURCE_STORE, 'readwrite', (store) =>
@@ -293,7 +309,10 @@ export async function saveDocSourceToCache(
       blob: record.file,
       updatedAt: record.updatedAt ?? Date.now(),
     } satisfies DocSourceCacheRecord),
-    () => authScopeGeneration === writeGeneration && getAuthCacheScope() === scope
+    () =>
+      authScopeGeneration === writeGeneration &&
+      getAuthCacheScope() === scope &&
+      getDocCacheScopeWriteGeneration(scope) === scopeWriteGeneration
   )
 }
 
@@ -358,10 +377,76 @@ export async function clearDocSourceCache() {
   await withStore(SOURCE_STORE, 'readwrite', (store) => store.clear())
 }
 
+async function clearStoreForScope(storeName: string, scope: string): Promise<number> {
+  if (globalThis.window === undefined) return 0
+  if (!scope) return 0
+  const scopedPrefix = `${scope}:`
+  const db = await openDb()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite')
+    const store = tx.objectStore(storeName)
+    const request = store.openCursor()
+    let deletedCount = 0
+    let settled = false
+
+    const close = () => {
+      db.close()
+    }
+
+    const resolveOnce = (value: number) => {
+      if (settled) return
+      settled = true
+      close()
+      resolve(value)
+    }
+
+    const rejectOnce = (reason: unknown, message: string) => {
+      if (settled) return
+      settled = true
+      close()
+      reject(toError(reason, message))
+    }
+
+    request.onsuccess = (event) => {
+      const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result
+      if (!cursor) return
+      const recordId = typeof cursor.value?.id === 'string' ? cursor.value.id : ''
+      if (recordId.startsWith(scopedPrefix)) {
+        cursor.delete()
+        deletedCount += 1
+      }
+      cursor.continue()
+    }
+    request.onerror = () => rejectOnce(request.error, `IndexedDB cursor failed for "${storeName}"`)
+    tx.oncomplete = () => resolveOnce(deletedCount)
+    tx.onabort = () => rejectOnce(tx.error, `IndexedDB transaction aborted for "${storeName}"`)
+    tx.onerror = () => rejectOnce(tx.error, `IndexedDB transaction failed for "${storeName}"`)
+  })
+}
+
+export async function clearDocContentCacheForScope(scope: string = getAuthCacheScope()) {
+  return clearStoreForScope(CONTENT_STORE, scope)
+}
+
+export async function clearDocSourceCacheForScope(scope: string = getAuthCacheScope()) {
+  return clearStoreForScope(SOURCE_STORE, scope)
+}
+
+export async function clearDocCachesForScope(scope: string = getAuthCacheScope()) {
+  const [contentDeleted, sourceDeleted] = await Promise.all([
+    clearDocContentCacheForScope(scope),
+    clearDocSourceCacheForScope(scope),
+  ])
+  return {
+    contentDeleted,
+    sourceDeleted,
+    totalDeleted: contentDeleted + sourceDeleted,
+  }
+}
+
 if (globalThis.window !== undefined) {
   globalThis.window.addEventListener(AUTH_SCOPE_CHANGED_EVENT, () => {
     authScopeGeneration += 1
-    void Promise.all([clearDocContentCache(), clearDocSourceCache()]).catch(() => undefined)
   })
 }
 

@@ -1,7 +1,13 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage, type StateStorage } from 'zustand/middleware'
 import { AUTH_SCOPE_CHANGED_EVENT, getAuthCacheScope } from '@/lib/auth-storage'
-import { deleteDocContentFromCache, deleteDocSourceFromCache, saveDocContentToCache } from '@/lib/doc-content-cache'
+import {
+  clearDocCachesForScope,
+  deleteDocContentFromCache,
+  deleteDocSourceFromCache,
+  invalidateDocCacheScopeWrites,
+  saveDocContentToCache,
+} from '@/lib/doc-content-cache'
 import { getClientStorage } from '@/lib/client-storage'
 import { collectFolderDescendantIds } from '@/lib/folder-tree-index'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
@@ -48,11 +54,14 @@ export interface ParsedFileData {
 }
 
 type ParsedFileUpdates = Partial<Omit<ParsedFileData, 'id'>>
+type ParsedFileUpdateToken = `${number}:${number}`
 
 const RELIABLE_SYNC_MAX_ATTEMPTS = 3
 const parsedFileUpdateVersions = new Map<string, number>()
+const parsedFileUpdateScopeEpochs = new Map<string, number>()
 let isSwitchingParsedFilesScope = false
 let parsedFilesScopeSwitchGeneration = 0
+let lastKnownParsedFilesScope = getAuthCacheScope()
 
 function getParsedFileUpdateKey(scope: string, id: string): string {
   return `${scope}:${id}`
@@ -60,6 +69,25 @@ function getParsedFileUpdateKey(scope: string, id: string): string {
 
 function clearParsedFileUpdateVersions() {
   parsedFileUpdateVersions.clear()
+}
+
+function getParsedFileUpdateScopeEpoch(scope: string): number {
+  return parsedFileUpdateScopeEpochs.get(scope) || 0
+}
+
+function bumpParsedFileUpdateScopeEpoch(scope: string): number {
+  const nextEpoch = getParsedFileUpdateScopeEpoch(scope) + 1
+  parsedFileUpdateScopeEpochs.set(scope, nextEpoch)
+  return nextEpoch
+}
+
+function clearParsedFileUpdateVersionsForScope(scope: string) {
+  const scopedPrefix = `${scope}:`
+  for (const key of parsedFileUpdateVersions.keys()) {
+    if (key.startsWith(scopedPrefix)) {
+      parsedFileUpdateVersions.delete(key)
+    }
+  }
 }
 
 interface ParsedFilesState {
@@ -133,15 +161,17 @@ async function persistParsedMarkdownReliably(
   throw lastError
 }
 
-function registerParsedFileUpdate(scope: string, id: string): number {
+function registerParsedFileUpdate(scope: string, id: string): ParsedFileUpdateToken {
   const key = getParsedFileUpdateKey(scope, id)
   const nextVersion = (parsedFileUpdateVersions.get(key) || 0) + 1
   parsedFileUpdateVersions.set(key, nextVersion)
-  return nextVersion
+  return `${getParsedFileUpdateScopeEpoch(scope)}:${nextVersion}`
 }
 
-function isCurrentParsedFileUpdate(scope: string, id: string, version: number): boolean {
-  return parsedFileUpdateVersions.get(getParsedFileUpdateKey(scope, id)) === version
+function isCurrentParsedFileUpdate(scope: string, id: string, token: ParsedFileUpdateToken): boolean {
+  const currentVersion = parsedFileUpdateVersions.get(getParsedFileUpdateKey(scope, id))
+  if (currentVersion == null) return false
+  return token === `${getParsedFileUpdateScopeEpoch(scope)}:${currentVersion}`
 }
 
 function getParsedFilesStorageKey(scope = getAuthCacheScope()): string {
@@ -327,10 +357,17 @@ export const useParsedFiles = create<ParsedFilesState>()(
       },
 
       clearAll: () => {
+        const scope = getAuthCacheScope()
+        bumpParsedFileUpdateScopeEpoch(scope)
+        clearParsedFileUpdateVersionsForScope(scope)
+        invalidateDocCacheScopeWrites(scope)
         set({ files: [], folders: [], activeFolderId: ROOT_FOLDER_ID })
         if (globalThis.window !== undefined) {
-          // We don't enumerate all ids here; best-effort keeps browser storage clean, but cache may remain.
-          // Users can clear site data if needed.
+          detachPromise(
+            clearDocCachesForScope(scope).catch((error) => {
+              console.warn('Failed to clear parsed file browser cache for auth scope', error)
+            })
+          )
         }
       },
 
@@ -464,6 +501,11 @@ export const useParsedFiles = create<ParsedFilesState>()(
 )
 
 globalThis.window?.addEventListener(AUTH_SCOPE_CHANGED_EVENT, () => {
+  const previousScope = lastKnownParsedFilesScope
+  if (previousScope) {
+    bumpParsedFileUpdateScopeEpoch(previousScope)
+  }
+  lastKnownParsedFilesScope = getAuthCacheScope()
   const switchGeneration = ++parsedFilesScopeSwitchGeneration
   isSwitchingParsedFilesScope = true
   clearParsedFileUpdateVersions()

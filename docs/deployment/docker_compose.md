@@ -128,6 +128,9 @@ make up-web
 - `SECRET_KEY`（长度 >= 32）
 - `MIMIRQ_DB_CREATE_ALL_ON_STARTUP=false`
 - `MIMIRQ_DB_RUNTIME_MIGRATIONS_ENABLED=false`
+- `UPLOAD_DEDUP_ENABLED_DOCKER=true`（默认已开启；仅在排查兼容性时临时关闭）
+- `RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED_DOCKER=true`（默认已开启）
+- `RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY_DOCKER=3`（保守默认；按实例 CPU / 上游模型吞吐再调）
 - 首次初始化前临时设置 `INITIAL_REGISTRATION_TOKEN`（首个本地 owner 注册一次性 token，请通过 `X-Bootstrap-Token` 发送；支持 `sha256:<hex>`，初始化完成后可移除）
 - `POSTGRES_PASSWORD`（强密码）
 - `MINIO_ACCESS_KEY_DOCKER` / `MINIO_SECRET_KEY_DOCKER`（强凭据；不要保留 `minioadmin`）
@@ -155,6 +158,7 @@ curl -X POST http://127.0.0.1:8000/api/v1/auth/register \
 生产前再核对一次：
 
 - 不要使用 Compose 默认的 `postgres` / `minioadmin` 凭据
+- 若确需回退旧行为，可在 `.env` 覆盖 `UPLOAD_DEDUP_ENABLED_DOCKER=false` 或 `RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED_DOCKER=false`
 - 如果暴露前端，浏览器入口应走 HTTPS 终止的反向代理；只把受信任代理地址写入 `FORWARDED_ALLOW_IPS`
 - `NEXT_PUBLIC_API_URL_DOCKER` 保持浏览器可达地址；SSR 走 `API_INTERNAL_URL_DOCKER`
 

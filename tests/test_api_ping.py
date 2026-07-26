@@ -1,4 +1,5 @@
 import json
+from http.client import RemoteDisconnected
 
 from scripts import api_ping, compose_diagnostics
 
@@ -35,6 +36,32 @@ def test_read_json_bypasses_proxy_for_loopback(monkeypatch) -> None:
 
     assert result.status_code == 200
     assert result.data == {"ok": True}
+
+
+def test_read_json_returns_structured_error_for_connection_reset(monkeypatch) -> None:
+    def raise_connection_reset(*_args, **_kwargs):
+        raise ConnectionResetError("peer reset")
+
+    monkeypatch.setattr(api_ping, "urlopen", raise_connection_reset)
+
+    result = api_ping._read_json("http://example.com/api/v1/health", timeout_sec=1.0)
+
+    assert result.status_code is None
+    assert result.data is None
+    assert result.error == "ConnectionResetError: peer reset"
+
+
+def test_read_json_returns_structured_error_for_remote_disconnect(monkeypatch) -> None:
+    def raise_remote_disconnect(*_args, **_kwargs):
+        raise RemoteDisconnected("remote closed connection without response")
+
+    monkeypatch.setattr(api_ping, "urlopen", raise_remote_disconnect)
+
+    result = api_ping._read_json("http://example.com/api/v1/health", timeout_sec=1.0)
+
+    assert result.status_code is None
+    assert result.data is None
+    assert result.error == "RemoteDisconnected: remote closed connection without response"
 
 
 def test_compose_diagnostics_bypasses_proxy_for_loopback(monkeypatch) -> None:

@@ -9,6 +9,7 @@ import asyncio
 import contextlib
 import io
 import json
+import threading
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -57,10 +58,18 @@ class MinIOService:
     """MinIO object storage service."""
 
     def __init__(self):
+        self._state_lock = threading.RLock()
         self._client: Any | None = None
         self._bucket_name = settings.MINIO_BUCKET_NAME
         self._bucket_ready = False
         self._metrics_path = Path(settings.MINIO_METRICS_LOG_PATH)
+
+    def reset_runtime_state(self) -> None:
+        with self._state_lock:
+            self._client = None
+            self._bucket_name = settings.MINIO_BUCKET_NAME
+            self._bucket_ready = False
+            self._metrics_path = Path(settings.MINIO_METRICS_LOG_PATH)
 
     def describe_backend(self) -> dict[str, Any]:
         return {
@@ -77,19 +86,20 @@ class MinIOService:
 
     def _get_client(self):
         """Lazily initialize the MinIO client."""
-        if not bool(getattr(settings, "MINIO_ENABLED", False)):
-            raise RuntimeError("MinIO is disabled (MINIO_ENABLED=false)")
+        with self._state_lock:
+            if not bool(getattr(settings, "MINIO_ENABLED", False)):
+                raise RuntimeError("MinIO is disabled (MINIO_ENABLED=false)")
 
-        if self._client is None:
-            self._client = Minio(
-                endpoint=settings.MINIO_ENDPOINT,
-                access_key=settings.MINIO_ACCESS_KEY,
-                secret_key=settings.MINIO_SECRET_KEY,
-                secure=settings.MINIO_USE_SSL,
-            )
-        if not self._bucket_ready:
-            self._ensure_bucket()
-        return self._client
+            if self._client is None:
+                self._client = Minio(
+                    endpoint=settings.MINIO_ENDPOINT,
+                    access_key=settings.MINIO_ACCESS_KEY,
+                    secret_key=settings.MINIO_SECRET_KEY,
+                    secure=settings.MINIO_USE_SSL,
+                )
+            if not self._bucket_ready:
+                self._ensure_bucket()
+            return self._client
 
     def health_check(self) -> dict[str, Any]:
         """
@@ -106,7 +116,8 @@ class MinIOService:
         t0 = time.perf_counter()
         try:
             client = self._get_client()
-            client.bucket_exists(self._bucket_name)
+            if not client.bucket_exists(self._bucket_name):
+                raise RuntimeError("configured object-storage bucket is unavailable")
             return {
                 "enabled": True,
                 "status": "connected",

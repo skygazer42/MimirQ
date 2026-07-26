@@ -64,6 +64,9 @@ kubectl -n mimirq create secret generic mimirq-env \
   --from-literal=VECTOR_BACKEND="milvus" \
   --from-literal=MILVUS_HOST="milvus" \
   --from-literal=MILVUS_PORT="19530" \
+  --from-literal=UPLOAD_DEDUP_ENABLED=true \
+  --from-literal=RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED=true \
+  --from-literal=RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY=3 \
   --from-literal=MINIO_ENABLED=true \
   --from-literal=MINIO_DOCUMENTS_ENABLED=true \
   --from-literal=MINIO_ACCESS_KEY="<strong-minio-access-key>" \
@@ -152,6 +155,16 @@ api:
       value: "false"
     - name: DB_RUNTIME_MIGRATIONS_ENABLED
       value: "false"
+    - name: RATE_LIMIT_REDIS_ENABLED
+      value: "true"
+    - name: BM25_INDEX_ENABLED
+      value: "false"
+    - name: UPLOAD_DEDUP_ENABLED
+      value: "true"
+    - name: RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED
+      value: "true"
+    - name: RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY
+      value: "3"
 
 worker:
   replicas: 2
@@ -162,6 +175,12 @@ worker:
       value: "false"
     - name: DB_RUNTIME_MIGRATIONS_ENABLED
       value: "false"
+    - name: UPLOAD_DEDUP_ENABLED
+      value: "true"
+    - name: RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED
+      value: "true"
+    - name: RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY
+      value: "3"
 
 persistence:
   uploads:
@@ -175,6 +194,7 @@ migrations:
 说明：
 
 - `runtimeGuards.*` 只用于 Helm 渲染期校验。使用 `existingSecretName` 时，Chart 读不到外部 Secret，必须靠这些提示值判断多副本部署边界。
+- 生产基线默认显式开启 `UPLOAD_DEDUP_ENABLED=true` 与 `RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED=true`，并把 `RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY` 设为保守的 `3`；如需更高吞吐，再按实例 CPU、上游模型延迟与 Redis 观测结果上调。
 - 多副本 API / worker 会 fail-fast 要求：
   - `ENV=production`
   - `DB_CREATE_ALL_ON_STARTUP=false`
@@ -197,6 +217,7 @@ migrations:
 生产环境至少还要确认：
 
 - 外部 Secret 中已提供强 `SECRET_KEY`、Postgres 凭据、MinIO 凭据、`JWT_TENANT_CLAIM`、`CORS_ORIGINS`
+- 若要临时回退旧行为，可把 `UPLOAD_DEDUP_ENABLED=false` 或 `RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED=false` 放进 Secret / `extraEnv`
 - `ingress.tls` 已配置真实证书
 - `networkPolicy.egress.rules` 已替换为你集群里的真实依赖 allowlist
 

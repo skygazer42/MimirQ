@@ -263,6 +263,9 @@ def test_production_helm_example_uses_distributed_runtime_settings() -> None:
     extra_env = {str(item["name"]): str(item["value"]).lower() for item in values["api"]["extraEnv"]}
     assert extra_env["RATE_LIMIT_REDIS_ENABLED"] == "true"
     assert extra_env["BM25_INDEX_ENABLED"] == "false"
+    assert extra_env["UPLOAD_DEDUP_ENABLED"] == "true"
+    assert extra_env["RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED"] == "true"
+    assert extra_env["RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY"] == "3"
     assert extra_env["ENV"] == "production"
     assert extra_env["DB_CREATE_ALL_ON_STARTUP"] == "false"
     assert extra_env["DB_RUNTIME_MIGRATIONS_ENABLED"] == "false"
@@ -270,6 +273,9 @@ def test_production_helm_example_uses_distributed_runtime_settings() -> None:
     assert worker_extra_env["ENV"] == "production"
     assert worker_extra_env["DB_CREATE_ALL_ON_STARTUP"] == "false"
     assert worker_extra_env["DB_RUNTIME_MIGRATIONS_ENABLED"] == "false"
+    assert worker_extra_env["UPLOAD_DEDUP_ENABLED"] == "true"
+    assert worker_extra_env["RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED"] == "true"
+    assert worker_extra_env["RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY"] == "3"
     assert values["migrations"]["enabled"] is True
     assert str(values["runtimeGuards"]["environment"]).lower() == "production"
     assert str(values["runtimeGuards"]["vectorBackend"]).lower() == "milvus"
@@ -317,12 +323,18 @@ def test_production_docs_call_out_strong_compose_credentials_and_proxy_boundary(
     docker_doc = _read("docs/deployment/docker_compose.md")
     assert "MINIO_ACCESS_KEY_DOCKER" in docker_doc
     assert "MINIO_SECRET_KEY_DOCKER" in docker_doc
+    assert "UPLOAD_DEDUP_ENABLED_DOCKER=true" in docker_doc
+    assert "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED_DOCKER=true" in docker_doc
+    assert "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY_DOCKER=3" in docker_doc
     assert "FORWARDED_ALLOW_IPS_DOCKER" in docker_doc
     assert "禁止 `*`" in docker_doc
 
     readme = _read("README.md")
     assert "MINIO_ACCESS_KEY_DOCKER=<强访问密钥>" in readme
     assert "MINIO_SECRET_KEY_DOCKER=<强私密密钥>" in readme
+    assert "UPLOAD_DEDUP_ENABLED_DOCKER=true" in readme
+    assert "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED_DOCKER=true" in readme
+    assert "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY_DOCKER=3" in readme
     assert "MARKDOWN_IMAGE_PROXY_SECRET" in readme
 
     env_example = _read(".env.example")
@@ -333,6 +345,25 @@ def test_production_docs_call_out_strong_compose_credentials_and_proxy_boundary(
 def test_production_make_targets_validate_and_propagate_environment() -> None:
     compose = yaml.safe_load(_read("docker/docker-compose.yml"))
     assert compose["x-backend-env"]["ENV"] == "${ENV:-development}"
+    assert compose["x-backend-env"]["UPLOAD_DEDUP_ENABLED"] == "${UPLOAD_DEDUP_ENABLED_DOCKER:-true}"
+    assert (
+        compose["x-backend-env"]["RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED"]
+        == "${RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED_DOCKER:-true}"
+    )
+    assert (
+        compose["x-backend-env"]["RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY"]
+        == "${RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY_DOCKER:-3}"
+    )
+    lite_compose = yaml.safe_load(_read("docker/docker-compose.lite.yml"))
+    assert lite_compose["x-backend-env"]["UPLOAD_DEDUP_ENABLED"] == "${UPLOAD_DEDUP_ENABLED_DOCKER:-true}"
+    assert (
+        lite_compose["x-backend-env"]["RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED"]
+        == "${RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED_DOCKER:-true}"
+    )
+    assert (
+        lite_compose["x-backend-env"]["RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY"]
+        == "${RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY_DOCKER:-3}"
+    )
 
     makefile = _read("Makefile")
     assert "prod-preflight: init" in makefile
@@ -358,6 +389,9 @@ def test_helm_docs_call_out_tls_and_network_policy_for_production() -> None:
     assert "ingress.tls" in helm_doc
     assert "networkPolicy.egress.rules" in helm_doc
     assert "不要直接把 chart 默认值当成生产 values" in helm_doc
+    assert "UPLOAD_DEDUP_ENABLED=true" in helm_doc
+    assert "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED=true" in helm_doc
+    assert "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY" in helm_doc
 
 
 def test_helm_runtime_validation_has_fail_fast_guards_for_multi_instance_risks() -> None:

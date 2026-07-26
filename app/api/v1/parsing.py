@@ -60,7 +60,13 @@ from app.parsing.utils.document_elements import normalize_document_elements
 from app.rag.core.logging import get_logger
 from app.services.dataset_service import DatasetService
 from app.services.parsing_extract_service import extract_parsing_fields
-from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri
+from app.storage.object.runtime import (
+    document_object_storage_enabled,
+    document_object_store_metadata,
+    get_document_object_store,
+    is_object_storage_uri,
+    resolve_document_object_reference,
+)
 
 logger = get_logger("api.parsing")
 _PARSING_ROUTER_FALLBACK_LOG_MESSAGE = "Ignoring non-critical parsing router fallback failure: %s"
@@ -734,9 +740,7 @@ async def upload_parsing_document(
 
     document_id = uuid.uuid4()
 
-    use_object_storage = bool(getattr(settings, "MINIO_ENABLED", False)) and bool(
-        getattr(settings, "MINIO_DOCUMENTS_ENABLED", False)
-    )
+    use_object_storage = document_object_storage_enabled()
 
     if use_object_storage:
         upload_dir = (Path(settings.UPLOAD_DIR) / str(tenant_id) / ".tmp").resolve(strict=False)
@@ -760,8 +764,11 @@ async def upload_parsing_document(
 
     stored_path = str(source_path)
     if use_object_storage:
+        store = get_document_object_store()
+        if store is None:
+            raise HTTPException(status_code=503, detail="Object storage is disabled")
         try:
-            stored_path = minio_service.upload_document_file(
+            stored_path = store.upload_document_file(
                 file_path=source_path,
                 tenant_id=str(tenant_id),
                 dataset_id=str(dataset.id),
@@ -772,6 +779,8 @@ async def upload_parsing_document(
         finally:
             with contextlib.suppress(Exception):
                 source_path.unlink(missing_ok=True)
+        if is_object_storage_uri(stored_path):
+            meta.update(document_object_store_metadata(store))
 
     doc = DBDocument(
         id=document_id,
@@ -817,28 +826,25 @@ async def parse_workspace_document(
         raise HTTPException(status_code=404, detail="Source file not available")
 
     temp_path: Path | None = None
-    if is_minio_uri(raw_path):
-        if not bool(getattr(settings, "MINIO_ENABLED", False)):
-            raise HTTPException(status_code=503, detail="Object storage is disabled")
+    if is_object_storage_uri(raw_path):
         try:
-            ref = parse_minio_uri(raw_path)
+            store, ref = resolve_document_object_reference(
+                raw_path,
+                tenant_id=tenant_id,
+                dataset_id=doc.dataset_id,
+                document_id=doc.id,
+                file_type=doc.file_type,
+                document_metadata=dict(getattr(doc, "doc_metadata", None) or {}),
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail="Object storage is disabled") from exc
         except ValueError as exc:
+            if str(exc) in {"object_bucket_denied", "object_key_denied"}:
+                raise HTTPException(status_code=403, detail="Source file access denied") from exc
             raise HTTPException(status_code=404, detail=_DETAIL_SOURCE_FILE_NOT_FOUND) from exc
-        if ref.bucket != str(getattr(settings, "MINIO_BUCKET_NAME", "")):
-            raise HTTPException(status_code=403, detail="Source file access denied")
-
-        dataset_id = str(doc.dataset_id) if doc.dataset_id else str(tenant_id)
-        expected_object = minio_service.build_document_object_name(
-            tenant_id=str(tenant_id),
-            dataset_id=dataset_id,
-            document_id=str(doc.id),
-            extension=f".{(doc.file_type or '').lower()}",
-        )
-        if ref.object_name != expected_object:
-            raise HTTPException(status_code=403, detail="Source file access denied")
 
         try:
-            minio_service.stat_object(object_name=ref.object_name)
+            store.stat_object(object_name=ref.object_name)
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=404, detail=_DETAIL_SOURCE_FILE_NOT_FOUND) from exc
 
@@ -846,7 +852,7 @@ async def parse_workspace_document(
         suffix = f".{(doc.file_type or '').lower()}"
         temp_path = temp_dir / f"{doc.id}.{uuid.uuid4().hex}{suffix}"
         await asyncio.to_thread(
-            minio_service.download_object_to_path,
+            store.download_object_to_path,
             object_name=ref.object_name,
             destination=temp_path,
             max_bytes=int(getattr(settings, "MAX_FILE_SIZE", 0) or 0),
@@ -1643,19 +1649,16 @@ def delete_parsing_document(
     with contextlib.suppress(Exception):
         raw_path = str(doc.file_path or "").strip()
         if raw_path and not raw_path.startswith("manual://"):
-            if is_minio_uri(raw_path):
-                if bool(getattr(settings, "MINIO_ENABLED", False)):
-                    ref = parse_minio_uri(raw_path)
-                    if ref.bucket == str(getattr(settings, "MINIO_BUCKET_NAME", "")):
-                        dataset_id = str(doc.dataset_id) if doc.dataset_id else str(tenant_id)
-                        expected_object = minio_service.build_document_object_name(
-                            tenant_id=str(tenant_id),
-                            dataset_id=dataset_id,
-                            document_id=str(doc.id),
-                            extension=f".{(doc.file_type or '').lower()}",
-                        )
-                        if ref.object_name == expected_object:
-                            minio_service.delete_object(object_name=ref.object_name)
+            if is_object_storage_uri(raw_path):
+                store, ref = resolve_document_object_reference(
+                    raw_path,
+                    tenant_id=tenant_id,
+                    dataset_id=doc.dataset_id,
+                    document_id=doc.id,
+                    file_type=doc.file_type,
+                    document_metadata=dict(getattr(doc, "doc_metadata", None) or {}),
+                )
+                store.delete_object(object_name=ref.object_name)
             else:
                 file_path = Path(raw_path).resolve(strict=False)
                 _assert_path_under_tenant_root(tenant_id=tenant_id, path=file_path)

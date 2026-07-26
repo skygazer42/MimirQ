@@ -5,6 +5,7 @@ import json
 import os
 import time
 from dataclasses import dataclass
+from http.client import RemoteDisconnected
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
@@ -76,6 +77,15 @@ def _read_json(url: str, *, timeout_sec: float) -> PingResult:
     except URLError as exc:
         elapsed_ms = int((time.perf_counter() - start) * 1000)
         return PingResult(url=url, status_code=None, elapsed_ms=elapsed_ms, data=None, error=f"URLError: {exc}")
+    except (ConnectionError, RemoteDisconnected) as exc:
+        elapsed_ms = int((time.perf_counter() - start) * 1000)
+        return PingResult(
+            url=url,
+            status_code=None,
+            elapsed_ms=elapsed_ms,
+            data=None,
+            error=f"{exc.__class__.__name__}: {exc}",
+        )
 
 
 def _summarize_data(value: Any | None) -> str:

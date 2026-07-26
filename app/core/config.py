@@ -8,10 +8,12 @@ Centralized settings management including:
 - Storage backend config
 """
 import ipaddress
+import json
 import os
 import re
 import sys
 import warnings
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
@@ -37,8 +39,51 @@ _LEGACY_DEV_SECRET_KEY = "".join(("your-secret-key", "-change-in-production"))
 _LOCAL_MINIO_DEFAULT_CREDENTIAL = "".join(("minio", "admin"))
 _ALL_INTERFACES_HOST = str(ipaddress.IPv4Address(0))
 _JWT_LOCAL_HOSTS = frozenset({"localhost", "localhost.localdomain", "127.0.0.1", "::1"})
+_OBJECT_STORAGE_PROVIDER_ALIASES = {
+    "": "minio",
+    "minio": "minio",
+    "s3": "s3",
+    "aws_s3": "s3",
+    "s3_compatible": "s3_compatible",
+    "s3compat": "s3_compatible",
+    "oss": "oss",
+    "aliyun_oss": "oss",
+    "cos": "cos",
+    "tencent_cos": "cos",
+}
 
 DEFAULT_RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS = "high,medium"
+
+
+def normalize_object_storage_provider_name(raw: object) -> str:
+    requested = str(raw or "minio").strip().lower()
+    try:
+        return _OBJECT_STORAGE_PROVIDER_ALIASES[requested]
+    except KeyError as exc:
+        raise ValueError(f"unsupported object storage provider: {requested}") from exc
+
+
+def parse_object_storage_region_profiles(raw: object) -> dict[str, dict[str, object]]:
+    if isinstance(raw, Mapping):
+        source = dict(raw)
+    else:
+        text = str(raw or "").strip()
+        if not text:
+            return {}
+        try:
+            source = json.loads(text)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("OBJECT_STORAGE_REGION_PROFILES must be a valid JSON object") from exc
+        if not isinstance(source, dict):
+            raise ValueError("OBJECT_STORAGE_REGION_PROFILES must be a valid JSON object")
+
+    profiles: dict[str, dict[str, object]] = {}
+    for raw_region, raw_profile in source.items():
+        region = str(raw_region or "").strip().lower()
+        if not region or not isinstance(raw_profile, Mapping):
+            raise ValueError("OBJECT_STORAGE_REGION_PROFILES entries must map a non-empty region to an object")
+        profiles[region] = dict(raw_profile)
+    return profiles
 
 
 def _should_disable_repo_env_file() -> bool:
@@ -187,6 +232,13 @@ class Settings(BaseSettings):
     TASK_WORKER_HEARTBEAT_TTL_SEC: int = 30
     # Task execution timeout (seconds).
     TASK_JOB_TIMEOUT_SEC: int = 60 * 30
+    # Redis semaphore lease TTL for tenant/dataset concurrency slots.
+    # A short lease prevents dead workers from blocking capacity for too long;
+    # active jobs keep ownership alive via owner-checked heartbeats.
+    TASK_SEMAPHORE_LEASE_TTL_SEC: int = 60
+    # Bound how long a worker waits in-process for a semaphore slot before
+    # falling back to the existing queue retry path.
+    TASK_SEMAPHORE_ACQUIRE_WAIT_SEC: float = 5.0
     # Generic jobs can wait behind long-running tenant work without bypassing limits.
     TASK_JOB_MAX_TRIES: int = 80
     # Document jobs can wait behind large PDF/OCR work; keep them queued instead of
@@ -414,6 +466,11 @@ class Settings(BaseSettings):
     EMBEDDING_API_MAX_RETRIES: int = 3
     EMBEDDING_API_RETRY_BACKOFF_SEC: float = 0.5
     EMBEDDING_API_RETRY_JITTER_SEC: float = 0.2
+    # Optional per-process startup warmup for the active embedding + reranker providers.
+    # This performs bounded synthetic probes only and does not touch business datasets.
+    RAG_RUNTIME_WARMUP_ENABLED: bool = False
+    RAG_RUNTIME_WARMUP_TIMEOUT_SEC: float = 15.0
+    RAG_RUNTIME_WARMUP_REQUIRED_FOR_READY: bool = False
 
     # Embedding blue-green migration (Gap5) — shadow embedding config (optional).
     # When enabled, indexing dual-writes vectors into MILVUS_SHADOW_COLLECTION_NAME using
@@ -747,6 +804,10 @@ class Settings(BaseSettings):
     # - jwt: require Authorization: Bearer <JWT> (validated with SECRET_KEY)
     # - header: require X-User-ID header (unsafe; intended for local/dev only)
     AUTH_MODE: Literal["jwt", "header"] = "jwt"
+    # Non-production escape hatch for browser-driven asset fetches in AUTH_MODE=header.
+    # Disabled by default so asset endpoints do not become anonymously readable unless
+    # the operator explicitly opts in for local compatibility.
+    ASSET_HEADER_AUTH_ALLOW_ANONYMOUS: bool = False
 
     SECRET_KEY: str = ""
     # One-time bootstrap gate for the very first local owner registration in production.
@@ -854,13 +915,15 @@ class Settings(BaseSettings):
 
     # Dify External Knowledge API adapter (enterprise; opt-in).
     #
-    # Dify calls MimirQ for retrieval only. `knowledge_id` can be a dataset UUID,
-    # or it can be mapped to one/more dataset UUIDs through the JSON map.
+    # Dify calls MimirQ for retrieval only. By default `knowledge_id` must be
+    # declared in the JSON map. Local/dev compatibility can explicitly opt into
+    # direct dataset UUID pass-through.
     DIFY_EXTERNAL_KNOWLEDGE_ENABLED: bool = False
     DIFY_EXTERNAL_KNOWLEDGE_API_KEYS: str = ""
     DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID: str = ""
     DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID: str = "system:dify"
     DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON: str = ""
+    DIFY_EXTERNAL_KNOWLEDGE_RESOLUTION_MODE: str = "mapped_only"
     DIFY_EXTERNAL_KNOWLEDGE_TRACE_AUTO_CREATE_CONVERSATION_ENABLED: bool = True
     # Background cold-start warmup for Dify external knowledge retrieval. This
     # keeps the first real Dify request from paying tokenizer/BM25/vector setup.
@@ -2112,6 +2175,10 @@ class Settings(BaseSettings):
     KG_API_MAX_DOCUMENT_IDS: int = 500
     KG_API_METRICS_ENABLED: bool = False
     # KG search guardrails/observability.
+    # Dataset-scoped KG vector recall enumerates up to this many ACL-readable
+    # documents for exact Milvus pushdown; larger datasets fall back to one
+    # tenant-scoped ANN query plus SQL ACL filtering.
+    KG_SEARCH_DATASET_SCOPE_MAX_ENUM_DOCS: int = 2000
     # - Max clue items returned by KG search (0 disables).
     KG_SEARCH_MAX_CLUES: int = 2000
     # - Upper bound for event candidates passed into rerank (0 disables).
@@ -2531,6 +2598,29 @@ class Settings(BaseSettings):
                     except ValueError as exc:
                         raise ValueError(f"Invalid SCIM_IP_ALLOWLIST_CIDRS entry: {cidr}") from exc
 
+        dify_resolution_mode = str(
+            getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_RESOLUTION_MODE", "mapped_only") or "mapped_only"
+        ).strip().lower()
+        valid_dify_resolution_modes = {"mapped_only", "allow_dataset_uuid"}
+        if dify_resolution_mode not in valid_dify_resolution_modes:
+            raise ValueError(
+                "DIFY_EXTERNAL_KNOWLEDGE_RESOLUTION_MODE must be one of: "
+                + ", ".join(sorted(valid_dify_resolution_modes))
+            )
+        if is_production and dify_resolution_mode == "allow_dataset_uuid":
+            raise ValueError(
+                "DIFY_EXTERNAL_KNOWLEDGE_RESOLUTION_MODE=allow_dataset_uuid is not allowed in production"
+            )
+        if self.DIFY_EXTERNAL_KNOWLEDGE_RESOLUTION_MODE != dify_resolution_mode:
+            self.DIFY_EXTERNAL_KNOWLEDGE_RESOLUTION_MODE = dify_resolution_mode
+
+        if bool(getattr(self, "RAG_RUNTIME_WARMUP_REQUIRED_FOR_READY", False)) and not bool(
+            getattr(self, "RAG_RUNTIME_WARMUP_ENABLED", False)
+        ):
+            raise ValueError(
+                "RAG_RUNTIME_WARMUP_ENABLED must be true when RAG_RUNTIME_WARMUP_REQUIRED_FOR_READY=true"
+            )
+
         # Security: Dify external knowledge adapter auth guard.
         if bool(getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", False)):
             token_raw = str(getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", "") or "").strip()
@@ -2756,6 +2846,63 @@ class Settings(BaseSettings):
                         UserWarning,
                         stacklevel=2,
                     )
+
+        object_storage_provider = normalize_object_storage_provider_name(self.OBJECT_STORAGE_PROVIDER)
+        self.OBJECT_STORAGE_PROVIDER = object_storage_provider
+        object_storage_profiles = parse_object_storage_region_profiles(self.OBJECT_STORAGE_REGION_PROFILES)
+        data_region = str(self.DATA_REGION or "").strip().lower()
+        self.DATA_REGION = data_region
+
+        base_object_storage: dict[str, object] = {
+            "provider": object_storage_provider,
+            "enabled": bool(self.OBJECT_STORAGE_ENABLED),
+            "endpoint": str(self.OBJECT_STORAGE_ENDPOINT or "").strip(),
+            "access_key": str(self.OBJECT_STORAGE_ACCESS_KEY or "").strip(),
+            "secret_key": str(self.OBJECT_STORAGE_SECRET_KEY or "").strip(),
+            "bucket_name": str(self.OBJECT_STORAGE_BUCKET_NAME or "").strip(),
+            "documents_enabled": bool(self.OBJECT_STORAGE_DOCUMENTS_ENABLED),
+        }
+
+        def validate_object_storage_profile(label: str, profile: Mapping[str, object]) -> None:
+            enabled = bool(profile.get("enabled", False))
+            documents_enabled = bool(profile.get("documents_enabled", False))
+            if documents_enabled and not enabled:
+                raise ValueError(f"{label}.documents_enabled requires {label}.enabled=true")
+            if not enabled:
+                return
+            for field_name in ("endpoint", "access_key", "secret_key", "bucket_name"):
+                if not str(profile.get(field_name) or "").strip():
+                    raise ValueError(f"{label}.{field_name} is required when {label}.enabled=true")
+
+        validate_object_storage_profile("OBJECT_STORAGE", base_object_storage)
+        if (
+            data_region
+            and bool(base_object_storage["enabled"])
+            and bool(base_object_storage["documents_enabled"])
+            and data_region not in object_storage_profiles
+        ):
+            raise ValueError(
+                "DATA_REGION must have a matching OBJECT_STORAGE_REGION_PROFILES entry "
+                "when generic document object storage is enabled"
+            )
+        for region, raw_profile in object_storage_profiles.items():
+            for boolean_field in ("enabled", "use_ssl", "documents_enabled"):
+                if boolean_field in raw_profile and not isinstance(raw_profile[boolean_field], bool):
+                    raise ValueError(
+                        f"OBJECT_STORAGE_REGION_PROFILES[{region!r}].{boolean_field} must be a JSON boolean"
+                    )
+            merged_profile = dict(base_object_storage)
+            merged_profile.update(
+                {
+                    key: value
+                    for key, value in raw_profile.items()
+                    if key in merged_profile and value not in (None, "")
+                }
+            )
+            merged_profile["provider"] = normalize_object_storage_provider_name(
+                raw_profile.get("provider") or object_storage_provider
+            )
+            validate_object_storage_profile(f"OBJECT_STORAGE_REGION_PROFILES[{region!r}]", merged_profile)
 
         if is_production and bool(getattr(self, "FAISS_ALLOW_DANGEROUS_DESERIALIZATION", False)):
             raise ValueError("FAISS_ALLOW_DANGEROUS_DESERIALIZATION is not allowed in production")
@@ -3059,6 +3206,9 @@ class Settings(BaseSettings):
             raise ValueError("KG_SEARCH_CACHE_TTL_SEC must be >= 0")
         if int(getattr(self, "KG_SEARCH_CACHE_MAX_ENTRIES", 0) or 0) < 0:
             raise ValueError("KG_SEARCH_CACHE_MAX_ENTRIES must be >= 0")
+        kg_dataset_scope_max_enum_docs = int(getattr(self, "KG_SEARCH_DATASET_SCOPE_MAX_ENUM_DOCS", 0) or 0)
+        if kg_dataset_scope_max_enum_docs < 1 or kg_dataset_scope_max_enum_docs > 10_000:
+            raise ValueError("KG_SEARCH_DATASET_SCOPE_MAX_ENUM_DOCS must be between 1 and 10000")
         kg_expand_budget_sec = float(getattr(self, "KG_SEARCH_EXPAND_BUDGET_SEC", 0.0) or 0.0)
         if kg_expand_budget_sec < 0.0:
             raise ValueError("KG_SEARCH_EXPAND_BUDGET_SEC must be >= 0")

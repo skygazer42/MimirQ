@@ -7,6 +7,8 @@
 # - This is the production starting point, not a dev convenience profile.
 # - Pair it with an externally managed Secret that provides strong Postgres/MinIO
 #   credentials plus `SECRET_KEY`, `JWT_TENANT_CLAIM`, and `CORS_ORIGINS`.
+# - Upload dedup + distributed admission are intentionally enabled here so the
+#   production baseline reuses the Redis-backed concurrency/idempotency guards.
 # - Ingress/TLS and NetworkPolicy egress allowlists are explicit here so production
 #   installs do not silently inherit the chart's permissive defaults.
 
@@ -45,6 +47,12 @@ api:
       value: "true"
     - name: BM25_INDEX_ENABLED
       value: "false"
+    - name: UPLOAD_DEDUP_ENABLED
+      value: "true"
+    - name: RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED
+      value: "true"
+    - name: RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY
+      value: "3"
 
 worker:
   replicas: 2
@@ -55,6 +63,12 @@ worker:
       value: "false"
     - name: DB_RUNTIME_MIGRATIONS_ENABLED
       value: "false"
+    - name: UPLOAD_DEDUP_ENABLED
+      value: "true"
+    - name: RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED
+      value: "true"
+    - name: RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY
+      value: "3"
 
 # Validation hints for the chart. Keep these aligned with the external Secret.
 runtimeGuards:

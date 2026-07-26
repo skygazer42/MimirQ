@@ -3303,7 +3303,7 @@ async def ingestion_preview(
 
         # Governance clean preview (issues + diff).
         clean_body = _build_ingestion_clean_preview_request(parsed=parsed, effective=effective, diff_max_lines=diff_max_lines)
-        cleaned = await clean_preview(body=clean_body, tenant_id=tenant_id, account_id=account_id, db=db)
+        cleaned = clean_preview(body=clean_body, tenant_id=tenant_id, account_id=account_id, db=db)
         rule_out = _ingestion_preview_rule_output(matched_rule, config)
         explain = _ingestion_preview_explain(
             dataset_id=dataset_id,
