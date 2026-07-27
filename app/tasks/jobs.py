@@ -925,6 +925,19 @@ async def dataset_profile_scan_job(ctx, tenant_id: str, dataset_id: str, scan_ru
                 dataset_id=dataset_id,
                 scan_run_id=scan_run_id,
             )
+        if str(getattr(run, "status", "") or "") != "pending":
+            return await _job_result(
+                ctx,
+                job_name="dataset_profile_scan_job",
+                ok=True,
+                started_at=t0,
+                reason="scan_run_not_pending",
+                progress=_job_progress(stage="skipped", done=1, total=1),
+                skipped="scan_run_not_pending",
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                scan_run_id=scan_run_id,
+            )
 
         # Idempotent lock: avoid concurrent scans per dataset.
         lock_key = f"lock:dataset_profile_scan:{tenant_id}:{dataset_id}"
@@ -1066,6 +1079,19 @@ async def dataset_precheck_scan_job(ctx, tenant_id: str, dataset_id: str, scan_r
                 started_at=t0,
                 reason="scan_run_not_found",
                 progress=_job_progress(stage="missing", done=0, total=1),
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                scan_run_id=scan_run_id,
+            )
+        if str(getattr(run, "status", "") or "") != "pending":
+            return await _job_result(
+                ctx,
+                job_name="dataset_precheck_scan_job",
+                ok=True,
+                started_at=t0,
+                reason="scan_run_not_pending",
+                progress=_job_progress(stage="skipped", done=1, total=1),
+                skipped="scan_run_not_pending",
                 tenant_id=tenant_id,
                 dataset_id=dataset_id,
                 scan_run_id=scan_run_id,

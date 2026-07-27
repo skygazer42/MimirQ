@@ -477,6 +477,8 @@ def test_built_web_jwt_browser_smoke_is_explicitly_wired() -> None:
     assert "set -x" not in script
     assert 'docker port "$WEB_CONTAINER" 3000/tcp' in script
     assert '"${web_base_url}/api/v1/auth/register"' in script
+    assert 'MIMIRQ_SMOKE_IDENTIFIER and MIMIRQ_SMOKE_PASSWORD must be set together' in script
+    assert 'reuse_account=1' in script
     assert "@example.com`" in script
     assert "@example.invalid" not in script
     assert "PLAYWRIGHT_EXTERNAL_SERVER=1" in script

@@ -122,7 +122,6 @@ const DEFAULT_COMMON_LINES_PROFILE: GovernanceProfileCreate = {
 
 const SCRIPT_UPLOAD_ACCEPT = '.js,.ts,.py,.rs'
 const MAX_PROCESSING_SCRIPT_CHARS = 200_000
-const COMMON_LINES_DATASET_PARAMS = { skip: 0, limit: 200 } as const
 const COMMON_LINES_PROFILE_PARAMS = {
   include_builtin: false,
   limit: 200,
@@ -193,8 +192,8 @@ export function GovernanceCommonLinesPage() {
   const [templateSearch, setTemplateSearch] = useState('')
 
   const datasetsQuery = useQuery({
-    queryKey: queryKeys.datasets.list(COMMON_LINES_DATASET_PARAMS),
-    queryFn: () => datasetApi.list(COMMON_LINES_DATASET_PARAMS),
+    queryKey: queryKeys.datasets.exhaustive({ purpose: 'governance-common-lines' }),
+    queryFn: () => datasetApi.listAll(),
   })
   const profilesQuery = useQuery({
     queryKey: queryKeys.governance.profiles(COMMON_LINES_PROFILE_PARAMS),
@@ -207,8 +206,8 @@ export function GovernanceCommonLinesPage() {
   })
 
   const datasets = useMemo(
-    () => datasetsQuery.data?.items || [],
-    [datasetsQuery.data?.items]
+    () => datasetsQuery.data || [],
+    [datasetsQuery.data]
   )
   const profiles = useMemo(
     () => profilesQuery.data || [],
@@ -219,7 +218,7 @@ export function GovernanceCommonLinesPage() {
 
   const refreshMeta = useCallback(() => {
     queryClient.invalidateQueries({
-      queryKey: queryKeys.datasets.list(COMMON_LINES_DATASET_PARAMS),
+      queryKey: queryKeys.datasets.exhaustive({ purpose: 'governance-common-lines' }),
     })
     queryClient.invalidateQueries({
       queryKey: queryKeys.governance.profiles(COMMON_LINES_PROFILE_PARAMS),

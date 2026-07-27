@@ -54,12 +54,13 @@ def test_delete_document_minio_images_streams_chunk_img_ids_and_batches_cleanup(
 
     monkeypatch.setattr(dls.settings, "MINIO_ENABLED", True, raising=False)
     monkeypatch.setattr(
-        dls,
-        "_run_bounded_cleanup_batch",
-        lambda values, delete_fn, *, max_workers: captured.update(  # noqa: ARG005
+        dls.minio_service,
+        "delete_images",
+        lambda values, extension="jpg", *, batch_size: captured.update(
             {
                 "values": list(values),
-                "max_workers": max_workers,
+                "extension": extension,
+                "batch_size": batch_size,
             }
         ),
         raising=True,
@@ -77,8 +78,58 @@ def test_delete_document_minio_images_streams_chunk_img_ids_and_batches_cleanup(
     assert query.batch_size == dls._CHUNK_METADATA_SCAN_BATCH_SIZE
     assert captured == {
         "values": ["doc-1", "doc-2", "img-1", "img-2"],
-        "max_workers": dls._DELETE_IO_BATCH_SIZE,
+        "extension": "jpg",
+        "batch_size": dls._MINIO_DELETE_OBJECT_BATCH_SIZE,
     }
+
+
+def test_minio_delete_images_uses_batch_remove_objects_and_surfaces_aggregated_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from minio.deleteobjects import DeleteError
+
+    from app.storage.object.minio import MinIOService
+
+    remove_calls: list[list[str]] = []
+    metric_calls: list[tuple[str, bool, str, str | None]] = []
+
+    class _Client:
+        def remove_objects(self, *, bucket_name: str, delete_object_list):  # noqa: ANN003
+            names = [item.name for item in delete_object_list]
+            assert bucket_name == "bucket-a"
+            remove_calls.append(names)
+            if len(remove_calls) == 2:
+                return iter([DeleteError("InternalError", "boom", names[0], None)])
+            return iter(())
+
+    service = MinIOService()
+    service._bucket_name = "bucket-a"
+    monkeypatch.setattr(service, "_get_client", lambda: _Client(), raising=True)
+    monkeypatch.setattr(
+        service,
+        "_log_metric",
+        lambda op, ok, elapsed, object_name, error=None: metric_calls.append((op, ok, object_name, error)),
+        raising=True,
+    )
+
+    with pytest.raises(RuntimeError, match=r"MinIO delete images failed for 1 object\(s\)"):
+        service.delete_images(
+            ["tenant:dataset:doc:img-1", "tenant:dataset:doc:img-2", "tenant:dataset:doc:img-3"],
+            batch_size=2,
+        )
+
+    assert remove_calls == [
+        [
+            "images/tenant/dataset/doc/img-1.jpg",
+            "images/tenant/dataset/doc/img-2.jpg",
+        ],
+        [
+            "images/tenant/dataset/doc/img-3.jpg",
+        ],
+    ]
+    assert metric_calls[0][:3] == ("delete", True, "images/tenant/dataset/doc/img-1.jpg")
+    assert metric_calls[1][:3] == ("delete", True, "images/tenant/dataset/doc/img-2.jpg")
+    assert metric_calls[2] == ("delete", False, "images/tenant/dataset/doc/img-3.jpg", "DeleteError(code='InternalError', message='boom', name='images/tenant/dataset/doc/img-3.jpg', version_id=None)")
 
 
 def test_dataset_scoped_vector_collections_stream_chunk_metadata_fields(

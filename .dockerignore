@@ -35,6 +35,8 @@ logs/
 runs/
 chroma_db/
 data/
+# Runtime images download and verify this pinned bundle during the build.
+app/deepdoc/resources/models/
 docs/
 images/
 tests/

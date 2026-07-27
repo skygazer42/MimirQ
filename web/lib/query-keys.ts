@@ -16,6 +16,7 @@ export const queryKeys = {
   datasets: {
     all: ['datasets'] as const,
     list: (params?: QueryParams) => ['datasets', 'list', params] as const,
+    exhaustive: (params?: QueryParams) => ['datasets', 'exhaustive', params] as const,
     detail: (id: string) => ['datasets', 'detail', id] as const,
     profileSummary: (id: string) => ['datasets', 'profile-summary', id] as const,
     profileScanRuns: (id: string, params?: QueryParams) =>

@@ -291,6 +291,7 @@ def create_dataset_analysis_png_task_endpoint(
             tenant_id=tenant_id,
             dataset_id=dataset_id,
             dataset_name=str(getattr(dataset, "name", "") or ""),
+            account_id=account_id,
             background_tasks=background_tasks,
             from_ts=from_ts,
             to_ts=to_ts,
@@ -318,6 +319,7 @@ def get_dataset_analysis_png_task_endpoint(
             task_id=task_id,
             tenant_id=tenant_id,
             dataset_id=dataset_id,
+            account_id=account_id,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="PNG export task not found") from exc
@@ -342,6 +344,7 @@ def get_dataset_analysis_png_task_result_endpoint(
             task_id=task_id,
             tenant_id=tenant_id,
             dataset_id=dataset_id,
+            account_id=account_id,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="PNG export task not found") from exc
@@ -354,6 +357,7 @@ def get_dataset_analysis_png_task_result_endpoint(
             task_id=task_id,
             tenant_id=tenant_id,
             dataset_id=dataset_id,
+            account_id=account_id,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="PNG export task result not found") from exc

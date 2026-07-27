@@ -51,6 +51,8 @@ def extract_ts_paths() -> dict[str, list[str]]:
     if not WEB_LIB_API.exists():
         return out
     for fp in sorted(WEB_LIB_API.glob("*.ts")):
+        if fp.name.endswith((".test.ts", ".spec.ts")):
+            continue
         text = fp.read_text(encoding="utf-8", errors="replace")
         found = set()
         for rx in (PATH_RE, PATH_TEMPLATE_RE):

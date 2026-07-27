@@ -302,11 +302,11 @@ function UsagePageContent() {
   })
 
   const datasetLabelsQuery = useQuery<Record<string, string>>({
-    queryKey: queryKeys.datasets.list({ limit: 200, purpose: 'usage-labels' }),
+    queryKey: queryKeys.datasets.exhaustive({ purpose: 'usage-labels' }),
     queryFn: async () => {
-      const datasets = await datasetApi.list({ limit: 200 })
+      const datasets = await datasetApi.listAll()
       const nameMap: Record<string, string> = {}
-      for (const ds of datasets.items || []) {
+      for (const ds of datasets) {
         if (ds?.id)
           nameMap[String(ds.id)] =
             String(ds.name || '').trim() || shortId(String(ds.id))

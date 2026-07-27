@@ -579,11 +579,11 @@ export default function KnowledgeIngestionOperationPage() {
 
   const datasetsQuery = useQuery({
     queryKey: ['knowledge-ingestion-operation-datasets'],
-    queryFn: () => datasetApi.list({ limit: 200 }),
+    queryFn: () => datasetApi.listAll(),
     staleTime: 30_000,
   })
 
-  const datasets = useMemo(() => datasetsQuery.data?.items ?? [], [datasetsQuery.data?.items])
+  const datasets = useMemo(() => datasetsQuery.data ?? [], [datasetsQuery.data])
 
   useEffect(() => {
     const routeDatasetExists = routeDatasetId && datasets.some((dataset) => dataset.id === routeDatasetId)

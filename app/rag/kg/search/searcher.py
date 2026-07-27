@@ -92,6 +92,7 @@ class KGSearcher:
     async def _apply_lazy_community_summaries(
         self,
         *,
+        config: SearchConfig,
         reports: list[dict[str, Any]],
         query: str,
     ) -> dict[str, Any]:
@@ -123,7 +124,14 @@ class KGSearcher:
             if not community_id:
                 continue
 
-            cache_key = build_kg_community_summary_cache_key(community_id=community_id, query=query)
+            cache_key = build_kg_community_summary_cache_key(
+                tenant_id=str(config.tenant_id) if config.tenant_id else None,
+                dataset_id=str(config.dataset_id) if config.dataset_id else None,
+                document_ids=[str(doc_id) for doc_id in (config.document_ids or [])],
+                community_id=community_id,
+                query=query,
+                report_payload=report,
+            )
             if cache_enabled:
                 cached_summary, _age_ms = kg_community_summary_cache.get(cache_key, ttl_sec=ttl_sec)
                 if cached_summary:
@@ -404,6 +412,7 @@ class KGSearcher:
                     ),
                 )
                 lazy_summary_meta = await self._apply_lazy_community_summaries(
+                    config=config,
                     reports=community_reports,
                     query=str(config.query or ""),
                 )

@@ -92,10 +92,12 @@ python scripts/run_db_maintenance_jobs.py --audit-logs --all-tenants --dry-run
 Chart 提供可选 CronJob 模板：
 
 - `deploy/helm/mimirq/templates/cronjob-db-maintenance.yaml`
+- `deploy/helm/mimirq/templates/cronjob-semantic-cache-retention.yaml`
 
 values 配置入口：
 
 - `deploy/helm/mimirq/values.yaml` → `cronjobs.dbMaintenance`
+- `deploy/helm/mimirq/values.yaml` → `cronjobs.semanticCacheRetention`
 
 最小示例（建议先 dry-run）：
 
@@ -122,6 +124,24 @@ cronjobs:
     retentionDays: 90
     maxDelete: 100000
 ```
+
+语义缓存 retention CronJob（独立 runner，建议只在 `SEMANTIC_CACHE_ENABLED=true` 的环境启用）：
+
+```yaml
+cronjobs:
+  semanticCacheRetention:
+    enabled: true
+    schedule: "17 * * * *"
+    allTenants: true
+    execute: true
+    maxScan: 1000
+    maxDelete: 100
+```
+
+说明：
+
+- Chart 默认 `enabled=false`，避免在未启用 semantic cache 的部署里创建无意义的运维任务。
+- 该 CronJob 走 `python scripts/run_retention_jobs.py --semantic-cache`，会实际删除过期或 Redis payload 已丢失的 Milvus 行；如需预演，可改 `execute=false`。
 
 ---
 

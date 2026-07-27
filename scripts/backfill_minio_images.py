@@ -125,6 +125,21 @@ def _build_auth_headers(*, auth_mode: str, tenant_id: str, user_id: str | None, 
     raise ValueError("invalid_auth_mode")
 
 
+def _read_storage_readiness(*, base_url: str, headers: dict[str, str], timeout_sec: float) -> dict[str, Any]:
+    """Read the current admin contract, falling back to the legacy detailed readiness shape."""
+    for path in ("/api/v1/health/details", "/api/v1/health/ready"):
+        result = _request_json(
+            _join_url(base_url, path),
+            method="GET",
+            headers=headers,
+            timeout_sec=timeout_sec,
+        )
+        payload = result.data if isinstance(result.data, dict) else {}
+        if isinstance(payload.get("minio"), dict):
+            return payload
+    return {}
+
+
 def _iter_dataset_document_ids(
     *,
     base_url: str,
@@ -260,16 +275,15 @@ def main() -> int:
     batch_size = max(1, min(200, batch_size))
 
     # Best-effort warning (does not block execution).
-    ready = _request_json(_join_url(base_url, "/api/v1/health/ready"), method="GET", headers={"Accept": "application/json"}, timeout_sec=timeout_sec)
-    if isinstance(ready.data, dict):
-        minio_status = ready.data.get("minio")
-        if isinstance(minio_status, dict):
-            enabled = bool(minio_status.get("enabled"))
-            status = str(minio_status.get("status") or "")
-            if not enabled:
-                print("[backfill] WARN: /health/ready reports MINIO disabled; backfill will not upload images")
-            elif status and status != "connected":
-                print(f"[backfill] WARN: /health/ready reports MINIO status={status}")
+    readiness = _read_storage_readiness(base_url=base_url, headers=headers, timeout_sec=timeout_sec)
+    minio_status = readiness.get("minio")
+    if isinstance(minio_status, dict):
+        enabled = bool(minio_status.get("enabled"))
+        status = str(minio_status.get("status") or "")
+        if not enabled:
+            print("[backfill] WARN: object storage is disabled; backfill will not upload images")
+        elif status and status != "connected":
+            print(f"[backfill] WARN: object storage status={status}")
 
     print("[backfill] Listing documents...")
     doc_ids = _iter_dataset_document_ids(

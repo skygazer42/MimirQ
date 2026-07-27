@@ -1,10 +1,10 @@
 from collections.abc import Iterator
 from types import SimpleNamespace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
@@ -310,6 +310,7 @@ def test_single_document_acl_fails_closed_without_dataset(group_acl_db) -> None:
 
 def test_list_datasets_q_filters_name_and_description(group_acl_db) -> None:  # noqa: ANN001
     db, ctx = group_acl_db
+    id_search_dataset_id = UUID("12345678-1234-5678-9abc-def012345678")
     db.add_all(
         [
             Dataset(
@@ -347,6 +348,14 @@ def test_list_datasets_q_filters_name_and_description(group_acl_db) -> None:  # 
             Dataset(
                 tenant_id=ctx.tenant_id,
                 name="OpsXA",
+                permission=DatasetPermissionEnum.ALL_TEAM_MEMBERS,
+                owner_id="other-owner",
+            ),
+            Dataset(
+                id=id_search_dataset_id,
+                tenant_id=ctx.tenant_id,
+                name="Identifier Search",
+                description="uuid lookup candidate",
                 permission=DatasetPermissionEnum.ALL_TEAM_MEMBERS,
                 owner_id="other-owner",
             ),
@@ -394,6 +403,26 @@ def test_list_datasets_q_filters_name_and_description(group_acl_db) -> None:  # 
         account_id=ctx.account_id,
         db=db,
     )
+    partial_hyphenated_id = list_datasets(
+        skip=0,
+        limit=20,
+        category_id=None,
+        include_descendants=True,
+        q="1234-5678-9abc",
+        tenant_id=ctx.tenant_id,
+        account_id=ctx.account_id,
+        db=db,
+    )
+    partial_compact_id = list_datasets(
+        skip=0,
+        limit=20,
+        category_id=None,
+        include_descendants=True,
+        q="123456781234",
+        tenant_id=ctx.tenant_id,
+        account_id=ctx.account_id,
+        db=db,
+    )
 
     assert by_name["total"] == 1
     assert [item.name for item in by_name["items"]] == ["Needle Handbook"]
@@ -403,3 +432,259 @@ def test_list_datasets_q_filters_name_and_description(group_acl_db) -> None:  # 
     assert [item.name for item in literal_percent["items"]] == ["100% Knowledge"]
     assert literal_underscore["total"] == 1
     assert [item.name for item in literal_underscore["items"]] == ["Ops_A"]
+    assert partial_hyphenated_id["total"] == 1
+    assert [item.id for item in partial_hyphenated_id["items"]] == [id_search_dataset_id]
+    assert partial_compact_id["total"] == 1
+    assert [item.id for item in partial_compact_id["items"]] == [id_search_dataset_id]
+
+
+def test_list_datasets_operational_status_facets_and_sort(group_acl_db) -> None:  # noqa: ANN001
+    db, ctx = group_acl_db
+
+    active_dataset_id = uuid4()
+    anomaly_dataset_id = uuid4()
+    pending_dataset_id = uuid4()
+    testing_dataset_id = uuid4()
+    contest_dataset_id = uuid4()
+
+    db.add_all(
+        [
+            Dataset(
+                id=active_dataset_id,
+                tenant_id=ctx.tenant_id,
+                name="Alpha Active",
+                permission=DatasetPermissionEnum.ALL_TEAM_MEMBERS,
+                owner_id="other-owner",
+            ),
+            Dataset(
+                id=anomaly_dataset_id,
+                tenant_id=ctx.tenant_id,
+                name="Bravo Issue",
+                permission=DatasetPermissionEnum.ALL_TEAM_MEMBERS,
+                owner_id="other-owner",
+            ),
+            Dataset(
+                id=pending_dataset_id,
+                tenant_id=ctx.tenant_id,
+                name="Charlie Pending",
+                permission=DatasetPermissionEnum.ALL_TEAM_MEMBERS,
+                owner_id="other-owner",
+            ),
+            Dataset(
+                id=testing_dataset_id,
+                tenant_id=ctx.tenant_id,
+                name="Demo Broken",
+                dataset_metadata={"operational_status": "testing"},
+                permission=DatasetPermissionEnum.ALL_TEAM_MEMBERS,
+                owner_id="other-owner",
+            ),
+            Dataset(
+                id=contest_dataset_id,
+                tenant_id=ctx.tenant_id,
+                name="Contest Knowledge",
+                permission=DatasetPermissionEnum.ALL_TEAM_MEMBERS,
+                owner_id="other-owner",
+            ),
+        ]
+    )
+    db.add_all(
+        [
+            Document(
+                id=uuid4(),
+                tenant_id=ctx.tenant_id,
+                dataset_id=active_dataset_id,
+                filename="alpha.pdf",
+                file_type="pdf",
+                file_size=10,
+                file_path="/tmp/alpha.pdf",
+                owner_id="other-owner",
+                access_mode="inherit",
+                status="completed",
+                chunk_count=3,
+                total_characters=30,
+                doc_metadata={},
+            ),
+            Document(
+                id=uuid4(),
+                tenant_id=ctx.tenant_id,
+                dataset_id=anomaly_dataset_id,
+                filename="bravo.pdf",
+                file_type="pdf",
+                file_size=10,
+                file_path="/tmp/bravo.pdf",
+                owner_id="other-owner",
+                access_mode="inherit",
+                status="failed",
+                chunk_count=1,
+                total_characters=10,
+                doc_metadata={},
+            ),
+            Document(
+                id=uuid4(),
+                tenant_id=ctx.tenant_id,
+                dataset_id=pending_dataset_id,
+                filename="charlie.pdf",
+                file_type="pdf",
+                file_size=10,
+                file_path="/tmp/charlie.pdf",
+                owner_id="other-owner",
+                access_mode="inherit",
+                status="processing",
+                chunk_count=2,
+                total_characters=20,
+                doc_metadata={},
+            ),
+            Document(
+                id=uuid4(),
+                tenant_id=ctx.tenant_id,
+                dataset_id=testing_dataset_id,
+                filename="demo.pdf",
+                file_type="pdf",
+                file_size=10,
+                file_path="/tmp/demo.pdf",
+                owner_id="other-owner",
+                access_mode="inherit",
+                status="failed",
+                chunk_count=4,
+                total_characters=40,
+                doc_metadata={},
+            ),
+        ]
+    )
+    db.commit()
+
+    page = list_datasets(
+        skip=0,
+        limit=2,
+        category_id=None,
+        include_descendants=True,
+        q=None,
+        order_by="name",
+        order_dir="asc",
+        operational_status="all",
+        tenant_id=ctx.tenant_id,
+        account_id=ctx.account_id,
+        db=db,
+    )
+    pending_only = list_datasets(
+        skip=0,
+        limit=20,
+        category_id=None,
+        include_descendants=True,
+        q=None,
+        order_by="name",
+        order_dir="asc",
+        operational_status="pending",
+        tenant_id=ctx.tenant_id,
+        account_id=ctx.account_id,
+        db=db,
+    )
+    testing_only = list_datasets(
+        skip=0,
+        limit=20,
+        category_id=None,
+        include_descendants=True,
+        q=None,
+        order_by="name",
+        order_dir="asc",
+        operational_status="testing",
+        tenant_id=ctx.tenant_id,
+        account_id=ctx.account_id,
+        db=db,
+    )
+
+    assert page["total"] == 6
+    assert [item.name for item in page["items"]] == ["Alpha Active", "Bravo Issue"]
+    assert page["facets"].scope_total == 6
+    assert page["facets"].filtered_total == 6
+    assert page["facets"].status_counts == {
+        "active": 3,
+        "anomaly": 1,
+        "pending": 1,
+        "testing": 1,
+    }
+
+    alpha = next(item for item in page["items"] if item.name == "Alpha Active")
+    bravo = next(item for item in page["items"] if item.name == "Bravo Issue")
+    assert alpha.operational_status == "active"
+    assert alpha.ingestion_summary.total_documents == 1
+    assert alpha.ingestion_summary.total_chunks == 3
+    assert bravo.operational_status == "anomaly"
+    assert bravo.ingestion_summary.by_status == {"failed": 1}
+
+    assert pending_only["total"] == 1
+    assert [item.name for item in pending_only["items"]] == ["Charlie Pending"]
+    assert pending_only["items"][0].operational_status == "pending"
+    assert pending_only["facets"].status_counts["pending"] == 1
+
+    assert testing_only["total"] == 1
+    assert [item.name for item in testing_only["items"]] == ["Demo Broken"]
+    assert testing_only["items"][0].operational_status == "testing"
+
+
+def test_list_datasets_filtered_total_count_avoids_document_stats_join(group_acl_db) -> None:  # noqa: ANN001
+    db, ctx = group_acl_db
+    dataset_id = uuid4()
+    db.add(
+        Dataset(
+            id=dataset_id,
+            tenant_id=ctx.tenant_id,
+            name="Contest Knowledge",
+            permission=DatasetPermissionEnum.ALL_TEAM_MEMBERS,
+            owner_id="other-owner",
+        )
+    )
+    db.add(
+        Document(
+            id=uuid4(),
+            tenant_id=ctx.tenant_id,
+            dataset_id=dataset_id,
+            filename="contest.pdf",
+            file_type="pdf",
+            file_size=10,
+            file_path="/tmp/contest.pdf",
+            owner_id="other-owner",
+            access_mode="inherit",
+            status="completed",
+            chunk_count=3,
+            total_characters=30,
+            doc_metadata={},
+        )
+    )
+    db.commit()
+
+    statements: list[str] = []
+
+    def _capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany) -> None:  # noqa: ANN001
+        statements.append(statement)
+
+    event.listen(db.bind, "before_cursor_execute", _capture_sql)
+    try:
+        result = list_datasets(
+            skip=0,
+            limit=1,
+            category_id=None,
+            include_descendants=True,
+            q="Contest",
+            order_by="name",
+            order_dir="asc",
+            operational_status="all",
+            tenant_id=ctx.tenant_id,
+            account_id=ctx.account_id,
+            db=db,
+        )
+    finally:
+        event.remove(db.bind, "before_cursor_execute", _capture_sql)
+
+    dataset_count_sql = [
+        statement.lower()
+        for statement in statements
+        if "count(" in statement.lower() and "datasets" in statement.lower() and "group by" not in statement.lower()
+    ]
+
+    assert result["total"] == 1
+    assert [item.name for item in result["items"]] == ["Contest Knowledge"]
+    assert result["facets"].filtered_total == 1
+    assert len(dataset_count_sql) == 2
+    assert all("documents" not in statement for statement in dataset_count_sql)
+    assert all("join" not in statement for statement in dataset_count_sql)

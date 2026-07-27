@@ -47,6 +47,8 @@ api:
       value: "true"
     - name: BM25_INDEX_ENABLED
       value: "false"
+    - name: SEMANTIC_CACHE_ENABLED
+      value: "true"
     - name: UPLOAD_DEDUP_ENABLED
       value: "true"
     - name: RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED
@@ -63,6 +65,8 @@ worker:
       value: "false"
     - name: DB_RUNTIME_MIGRATIONS_ENABLED
       value: "false"
+    - name: SEMANTIC_CACHE_ENABLED
+      value: "true"
     - name: UPLOAD_DEDUP_ENABLED
       value: "true"
     - name: RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED
@@ -153,6 +157,15 @@ persistence:
 
 migrations:
   enabled: true
+
+cronjobs:
+  semanticCacheRetention:
+    enabled: true
+    schedule: "17 * * * *"
+    allTenants: true
+    execute: true
+    maxScan: 1000
+    maxDelete: 100
 
 prometheus:
   serviceMonitor:

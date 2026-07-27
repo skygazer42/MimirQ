@@ -16,6 +16,7 @@ import sys
 import time
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -59,7 +60,7 @@ class LiveCoreReleaseGateConfig:
     cleanup_on_success: bool = True
     png_probe_enabled: bool = True
     png_timeout_sec: float = 120.0
-    png_worker_lost_wait_sec: float = 3.0
+    png_worker_lost_wait_sec: float | None = None
 
 
 def _failures_extend(report: dict[str, Any], *messages: str) -> None:
@@ -263,9 +264,11 @@ def _probe_png_worker_lost(
         tenant_id=config.primary_tenant_id,
         dataset_id=dataset_id,
         filters={"probe": "worker_lost"},
+        requested_by=config.user_id,
+        account_id=config.user_id,
     )
     task_id = str(task.get("task_id") or "").strip()
-    begin_png_export_task(
+    started_task = begin_png_export_task(
         task_id,
         tenant_id=config.primary_tenant_id,
         dataset_id=dataset_id,
@@ -289,7 +292,12 @@ def _probe_png_worker_lost(
             "passed": False,
             "reason": "seeded task is not visible as running through the primary API",
         }
-    time.sleep(max(0.0, float(config.png_worker_lost_wait_sec)))
+    time.sleep(
+        _resolve_png_worker_lost_wait_sec(
+            started_task,
+            configured_wait_sec=config.png_worker_lost_wait_sec,
+        )
+    )
 
     secondary_base = str(config.secondary_api_base or "").strip() or config.api_base
     response = request_with_retries(
@@ -309,6 +317,30 @@ def _probe_png_worker_lost(
         "error_code": error_code,
         "passed": status == "failed" and error_code == "worker_lost",
     }
+
+
+def _resolve_png_worker_lost_wait_sec(
+    started_task: dict[str, Any],
+    *,
+    configured_wait_sec: float | None,
+) -> float:
+    if configured_wait_sec is not None:
+        return max(0.0, float(configured_wait_sec))
+
+    raw_expiry = str(started_task.get("lease_expires_at") or "").strip()
+    if not raw_expiry:
+        raise RuntimeError("Seeded PNG task did not expose lease_expires_at")
+    if raw_expiry.endswith("Z"):
+        raw_expiry = f"{raw_expiry[:-1]}+00:00"
+    try:
+        lease_expires_at = datetime.fromisoformat(raw_expiry)
+    except ValueError as exc:
+        raise RuntimeError("Seeded PNG task returned invalid lease_expires_at") from exc
+    if lease_expires_at.tzinfo is None:
+        lease_expires_at = lease_expires_at.replace(tzinfo=UTC)
+
+    remaining_sec = (lease_expires_at - datetime.now(UTC)).total_seconds()
+    return max(0.0, remaining_sec) + 0.5
 
 
 def _shared_async_transport(client: httpx.Client | None) -> Any | None:
@@ -373,7 +405,7 @@ def _same_key_dual_instance_probe(
     if not secondary_base:
         return {"skipped": True, "reason": "secondary_api_base_missing"}
 
-    async def _run() -> list[dict[str, Any]]:
+    async def _run() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         limits = httpx.Limits(max_connections=4, max_keepalive_connections=4)
         payload = _core_retrieve_payload(query=query, dataset_id=dataset_id)
         start_gate = asyncio.Event()
@@ -386,6 +418,62 @@ def _same_key_dual_instance_probe(
             trust_env=False,
             transport=_shared_async_transport(client),
         ) as async_client:
+            async def _post_retrieve(
+                target_base: str,
+                *,
+                request_id: str,
+                request_payload: dict[str, Any],
+            ) -> dict[str, Any]:
+                started_at = time.perf_counter()
+                response = await async_client.post(
+                    _join(target_base, "rag/retrieve"),
+                    headers={**headers, "X-Request-ID": request_id},
+                    json=request_payload,
+                )
+                finished_at = time.perf_counter()
+                body = _parse_json(response)
+                query_debug = body.get("query_debug") if isinstance(body, dict) else None
+                channels = query_debug.get("channels") if isinstance(query_debug, dict) else None
+                cache = channels.get("cache") if isinstance(channels, dict) else None
+                metrics = body.get("metrics") if isinstance(body, dict) else None
+                if not isinstance(cache, dict):
+                    cache = metrics.get("cache") if isinstance(metrics, dict) else None
+                runtime_metrics = {
+                    key: metrics[key]
+                    for key in (
+                        "rag_offload_queue_ms",
+                        "rag_offload_exec_ms",
+                        "rag_distributed_admission_state",
+                    )
+                    if isinstance(metrics, dict) and key in metrics
+                }
+                return {
+                    "base_url": target_base,
+                    "status_code": int(response.status_code),
+                    "cache": cache if isinstance(cache, dict) else {},
+                    "runtime_metrics": runtime_metrics,
+                    "duration_ms": round(max(0.0, (finished_at - started_at) * 1000.0), 1),
+                    "started_at": started_at,
+                    "finished_at": finished_at,
+                }
+
+            # Readiness proves that the process is alive, not that every process-local
+            # DB/vector/provider path has handled a request. Warm each target with a
+            # distinct key so cold-start work cannot be mistaken for follower wait.
+            targets = (config.api_base, secondary_base)
+            prewarm_requests: list[dict[str, Any]] = []
+            for index, target_base in enumerate(targets):
+                prewarm_requests.append(
+                    await _post_retrieve(
+                        target_base,
+                        request_id=f"same-key-prewarm-{index}",
+                        request_payload=_core_retrieve_payload(
+                            query=f"{query} prewarm-{index}",
+                            dataset_id=dataset_id,
+                        ),
+                    )
+                )
+
             async def _request(target_base: str, request_id: str) -> dict[str, Any]:
                 nonlocal ready
                 async with ready_lock:
@@ -393,37 +481,23 @@ def _same_key_dual_instance_probe(
                     if ready == 2:
                         start_gate.set()
                 await start_gate.wait()
-                started_at = time.perf_counter()
-                response = await async_client.post(
-                    _join(target_base, "rag/retrieve"),
-                    headers={**headers, "X-Request-ID": request_id},
-                    json=payload,
+                return await _post_retrieve(
+                    target_base,
+                    request_id=request_id,
+                    request_payload=payload,
                 )
-                finished_at = time.perf_counter()
-                body = _parse_json(response)
-                query_debug = body.get("query_debug") if isinstance(body, dict) else None
-                channels = query_debug.get("channels") if isinstance(query_debug, dict) else None
-                cache = channels.get("cache") if isinstance(channels, dict) else None
-                if not isinstance(cache, dict):
-                    metrics = body.get("metrics") if isinstance(body, dict) else None
-                    cache = metrics.get("cache") if isinstance(metrics, dict) else None
-                return {
-                    "base_url": target_base,
-                    "status_code": int(response.status_code),
-                    "cache": cache if isinstance(cache, dict) else {},
-                    "started_at": started_at,
-                    "finished_at": finished_at,
-                }
 
-            return list(
+            requests = list(
                 await asyncio.gather(
                     _request(config.api_base, "same-key-primary"),
                     _request(secondary_base, "same-key-secondary"),
                 )
             )
+            return requests, prewarm_requests
 
-    requests = asyncio.run(_run())
+    requests, prewarm_requests = asyncio.run(_run())
     ok = all(int(item.get("status_code") or 0) == 200 for item in requests)
+    prewarm_ok = all(int(item.get("status_code") or 0) == 200 for item in prewarm_requests)
     leader_seen = any(str((item.get("cache") or {}).get("singleflight_role") or "") == "leader" for item in requests)
     follower_seen = any(bool((item.get("cache") or {}).get("distributed_singleflight_hit")) for item in requests)
     overlap_observed = bool(
@@ -433,8 +507,10 @@ def _same_key_dual_instance_probe(
     )
     return {
         "requests": requests,
+        "prewarm_requests": prewarm_requests,
+        "prewarm_ok": prewarm_ok,
         "overlap_observed": overlap_observed,
-        "passed": bool(ok and overlap_observed and leader_seen and follower_seen),
+        "passed": bool(prewarm_ok and ok and overlap_observed and leader_seen and follower_seen),
     }
 
 
@@ -778,7 +854,11 @@ def _resolve_runtime_config(args: argparse.Namespace) -> LiveCoreReleaseGateConf
         cleanup_on_success=not bool(args.keep_datasets),
         png_probe_enabled=not bool(args.skip_png_probe),
         png_timeout_sec=max(1.0, float(args.png_timeout_sec or 120.0)),
-        png_worker_lost_wait_sec=max(0.0, float(args.png_worker_lost_wait_sec or 0.0)),
+        png_worker_lost_wait_sec=(
+            None
+            if args.png_worker_lost_wait_sec is None
+            else max(0.0, float(args.png_worker_lost_wait_sec))
+        ),
     )
 
 
@@ -803,7 +883,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--poll-interval-sec", type=float, default=2.0)
     parser.add_argument("--timeout-sec", type=float, default=60.0)
     parser.add_argument("--png-timeout-sec", type=float, default=120.0)
-    parser.add_argument("--png-worker-lost-wait-sec", type=float, default=3.0)
+    parser.add_argument(
+        "--png-worker-lost-wait-sec",
+        type=float,
+        default=None,
+        help="Override the worker-lost wait; default follows the seeded task lease.",
+    )
     parser.add_argument("--skip-png-probe", action="store_true")
     parser.add_argument("--keep-datasets", action="store_true", help="Keep created datasets after a successful run.")
     parser.add_argument("--out", default="", help="Write JSON report to a file path.")

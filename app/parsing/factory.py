@@ -600,6 +600,7 @@ class ParserFactory:
         dataset_id: str | None,
         document_id: str | None,
         tenant_id: str | None,
+        account_id: str | None,
         pdf_quality: dict[str, Any] | None,
         html_xpath: str | None,
     ) -> list[Document]:
@@ -621,6 +622,7 @@ class ParserFactory:
                 dataset_id=dataset_id,
                 document_id=document_id,
                 tenant_id=tenant_id,
+                account_id=account_id,
                 pdf_quality=pdf_quality,
             )
         if backend == "html":
@@ -636,6 +638,7 @@ class ParserFactory:
         dataset_id: str | None,
         document_id: str | None,
         tenant_id: str | None,
+        account_id: str | None,
         pdf_quality: dict[str, Any] | None,
         html_xpath: str | None,
     ) -> list[Document]:
@@ -647,6 +650,7 @@ class ParserFactory:
             dataset_id=dataset_id,
             document_id=document_id,
             tenant_id=tenant_id,
+            account_id=account_id,
             pdf_quality=pdf_quality,
             html_xpath=html_xpath,
         )
@@ -714,6 +718,7 @@ class ParserFactory:
         dataset_id: str | None = None,
         document_id: str | None = None,
         tenant_id: str | None = None,
+        account_id: str | None = None,
         pdf_quality: dict[str, Any] | None = None,
         html_xpath: str | None = None,
         allow_fallback: bool = True,
@@ -732,6 +737,7 @@ class ParserFactory:
                 dataset_id=dataset_id,
                 document_id=document_id,
                 tenant_id=tenant_id,
+                account_id=account_id,
                 pdf_quality=pdf_quality,
                 html_xpath=html_xpath,
             )
@@ -761,6 +767,7 @@ class ParserFactory:
         dataset_id: str | None = None,
         document_id: str | None = None,
         tenant_id: str | None = None,
+        account_id: str | None = None,
         pdf_quality: dict[str, Any] | None = None,
         html_xpath: str | None = None,
     ) -> tuple[list[Document], str, dict[str, Any]]:
@@ -787,6 +794,7 @@ class ParserFactory:
                 dataset_id=dataset_id,
                 document_id=document_id,
                 tenant_id=tenant_id,
+                account_id=account_id,
                 pdf_quality=pdf_quality,
                 html_xpath=html_xpath,
             )

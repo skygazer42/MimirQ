@@ -90,9 +90,9 @@ export default function ReportsCenterPage() {
     [connectorRunsLimit, pipelineHash]
   )
 
-  const datasetsQuery = useQuery<Awaited<ReturnType<typeof datasetApi.list>>>({
-    queryKey: queryKeys.datasets.list({ skip: 0, limit: 200, purpose: 'reports' }),
-    queryFn: () => datasetApi.list({ skip: 0, limit: 200 }),
+  const datasetsQuery = useQuery({
+    queryKey: queryKeys.datasets.exhaustive({ purpose: 'reports' }),
+    queryFn: () => datasetApi.listAll(),
   })
   const categoriesQuery = useQuery<
     Awaited<ReturnType<typeof datasetCategoryApi.listTree>>
@@ -103,8 +103,8 @@ export default function ReportsCenterPage() {
   const reportQuery = useDatasetReportQuery(datasetId, reportParams)
 
   const datasets = useMemo(
-    () => datasetsQuery.data?.items || [],
-    [datasetsQuery.data?.items]
+    () => datasetsQuery.data || [],
+    [datasetsQuery.data]
   )
   const categoryTree = useMemo(
     () => categoriesQuery.data?.items || [],

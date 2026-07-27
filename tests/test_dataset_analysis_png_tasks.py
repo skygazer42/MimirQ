@@ -128,14 +128,26 @@ def test_create_task_fails_closed_without_redis(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(png_tasks, "_invalidate_redis_client", lambda: None, raising=True)
 
     with pytest.raises(RuntimeError, match="Redis"):
-        png_tasks.create_png_export_task(tenant_id="tenant-1", dataset_id="dataset-1", filters={})
+        png_tasks.create_png_export_task(
+            tenant_id="tenant-1",
+            dataset_id="dataset-1",
+            filters={},
+            requested_by="reader-1",
+            account_id="reader-1",
+        )
 
 
 def test_task_scope_binding_and_result_storage(monkeypatch: pytest.MonkeyPatch) -> None:
     redis = _FakeRedis()
     _install_fake_redis(monkeypatch, redis)
 
-    task = png_tasks.create_png_export_task(tenant_id="tenant-1", dataset_id="dataset-1", filters={"k": "v"})
+    task = png_tasks.create_png_export_task(
+        tenant_id="tenant-1",
+        dataset_id="dataset-1",
+        filters={"k": "v"},
+        requested_by="reader-1",
+        account_id="reader-1",
+    )
     started = png_tasks.begin_png_export_task(task["task_id"], tenant_id="tenant-1", dataset_id="dataset-1")
     png_tasks.complete_png_export_task(
         task["task_id"],
@@ -145,14 +157,95 @@ def test_task_scope_binding_and_result_storage(monkeypatch: pytest.MonkeyPatch) 
         png_bytes=b"png-bytes",
     )
 
-    status = png_tasks.get_png_export_task(task["task_id"], tenant_id="tenant-1", dataset_id="dataset-1")
+    status = png_tasks.get_png_export_task(
+        task["task_id"],
+        tenant_id="tenant-1",
+        dataset_id="dataset-1",
+        account_id="reader-1",
+    )
 
     assert status["status"] == "done"
-    assert png_tasks.get_png_export_task_result(task["task_id"], tenant_id="tenant-1", dataset_id="dataset-1") == b"png-bytes"
+    assert _read_task_record(redis, task["task_id"])["requested_by"] == "reader-1"
+    assert _read_task_record(redis, task["task_id"])["account_id"] == "reader-1"
+    assert (
+        png_tasks.get_png_export_task_result(
+            task["task_id"],
+            tenant_id="tenant-1",
+            dataset_id="dataset-1",
+            account_id="reader-1",
+        )
+        == b"png-bytes"
+    )
     with pytest.raises(KeyError):
-        png_tasks.get_png_export_task(task["task_id"], tenant_id="tenant-2", dataset_id="dataset-1")
+        png_tasks.get_png_export_task(
+            task["task_id"],
+            tenant_id="tenant-2",
+            dataset_id="dataset-1",
+            account_id="reader-1",
+        )
     with pytest.raises(KeyError):
-        png_tasks.get_png_export_task_result(task["task_id"], tenant_id="tenant-1", dataset_id="dataset-2")
+        png_tasks.get_png_export_task_result(
+            task["task_id"],
+            tenant_id="tenant-1",
+            dataset_id="dataset-2",
+            account_id="reader-1",
+        )
+    with pytest.raises(KeyError):
+        png_tasks.get_png_export_task(
+            task["task_id"],
+            tenant_id="tenant-1",
+            dataset_id="dataset-1",
+            account_id="reader-2",
+        )
+    with pytest.raises(KeyError):
+        png_tasks.get_png_export_task_result(
+            task["task_id"],
+            tenant_id="tenant-1",
+            dataset_id="dataset-1",
+            account_id="reader-2",
+        )
+
+
+def test_legacy_task_payload_without_owner_binding_fails_closed_for_reads(monkeypatch: pytest.MonkeyPatch) -> None:
+    redis = _FakeRedis()
+    _install_fake_redis(monkeypatch, redis)
+
+    task = png_tasks.create_png_export_task(
+        tenant_id="tenant-1",
+        dataset_id="dataset-1",
+        filters={},
+        requested_by="reader-1",
+        account_id="reader-1",
+    )
+    task_key = png_tasks._task_key(task["task_id"])
+    stored = json.loads(redis.get(task_key))
+    stored.pop("account_id", None)
+    stored.pop("requested_by", None)
+    redis.set(task_key, json.dumps(stored).encode("utf-8"), ex=600)
+
+    started = png_tasks.begin_png_export_task(task["task_id"], tenant_id="tenant-1", dataset_id="dataset-1")
+    png_tasks.complete_png_export_task(
+        task["task_id"],
+        tenant_id="tenant-1",
+        dataset_id="dataset-1",
+        owner_token=str(started["owner_token"]),
+        png_bytes=b"png-bytes",
+    )
+
+    with pytest.raises(KeyError):
+        png_tasks.get_png_export_task(
+            task["task_id"],
+            tenant_id="tenant-1",
+            dataset_id="dataset-1",
+            account_id="reader-1",
+        )
+    with pytest.raises(KeyError):
+        png_tasks.get_png_export_task_result(
+            task["task_id"],
+            tenant_id="tenant-1",
+            dataset_id="dataset-1",
+            account_id="reader-1",
+        )
 
 
 def test_oversized_result_marks_task_failed(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -160,7 +253,13 @@ def test_oversized_result_marks_task_failed(monkeypatch: pytest.MonkeyPatch) -> 
     _install_fake_redis(monkeypatch, redis)
     monkeypatch.setattr(png_tasks.settings, "DATASET_ANALYSIS_PNG_RESULT_MAX_BYTES", 4, raising=False)
 
-    task = png_tasks.create_png_export_task(tenant_id="tenant-1", dataset_id="dataset-1", filters={})
+    task = png_tasks.create_png_export_task(
+        tenant_id="tenant-1",
+        dataset_id="dataset-1",
+        filters={},
+        requested_by="reader-1",
+        account_id="reader-1",
+    )
     started = png_tasks.begin_png_export_task(task["task_id"], tenant_id="tenant-1", dataset_id="dataset-1")
     png_tasks.complete_png_export_task(
         task["task_id"],
@@ -170,12 +269,22 @@ def test_oversized_result_marks_task_failed(monkeypatch: pytest.MonkeyPatch) -> 
         png_bytes=b"too-large",
     )
 
-    status = png_tasks.get_png_export_task(task["task_id"], tenant_id="tenant-1", dataset_id="dataset-1")
+    status = png_tasks.get_png_export_task(
+        task["task_id"],
+        tenant_id="tenant-1",
+        dataset_id="dataset-1",
+        account_id="reader-1",
+    )
 
     assert status["status"] == "failed"
     assert status["error_code"] == "result_too_large"
     with pytest.raises(KeyError):
-        png_tasks.get_png_export_task_result(task["task_id"], tenant_id="tenant-1", dataset_id="dataset-1")
+        png_tasks.get_png_export_task_result(
+            task["task_id"],
+            tenant_id="tenant-1",
+            dataset_id="dataset-1",
+            account_id="reader-1",
+        )
 
 
 def test_stale_running_becomes_worker_lost_and_late_completion_cannot_revive(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -183,11 +292,22 @@ def test_stale_running_becomes_worker_lost_and_late_completion_cannot_revive(mon
     _install_fake_redis(monkeypatch, redis)
     monkeypatch.setattr(png_tasks.settings, "DATASET_ANALYSIS_PNG_STALE_AFTER_SEC", 5, raising=False)
 
-    task = png_tasks.create_png_export_task(tenant_id="tenant-1", dataset_id="dataset-1", filters={})
+    task = png_tasks.create_png_export_task(
+        tenant_id="tenant-1",
+        dataset_id="dataset-1",
+        filters={},
+        requested_by="reader-1",
+        account_id="reader-1",
+    )
     started = png_tasks.begin_png_export_task(task["task_id"], tenant_id="tenant-1", dataset_id="dataset-1")
     redis.advance(seconds=10)
 
-    failed = png_tasks.get_png_export_task(task["task_id"], tenant_id="tenant-1", dataset_id="dataset-1")
+    failed = png_tasks.get_png_export_task(
+        task["task_id"],
+        tenant_id="tenant-1",
+        dataset_id="dataset-1",
+        account_id="reader-1",
+    )
     png_tasks.complete_png_export_task(
         task["task_id"],
         tenant_id="tenant-1",
@@ -198,9 +318,22 @@ def test_stale_running_becomes_worker_lost_and_late_completion_cannot_revive(mon
 
     assert failed["status"] == "failed"
     assert failed["error_code"] == "worker_lost"
-    assert png_tasks.get_png_export_task(task["task_id"], tenant_id="tenant-1", dataset_id="dataset-1")["status"] == "failed"
+    assert (
+        png_tasks.get_png_export_task(
+            task["task_id"],
+            tenant_id="tenant-1",
+            dataset_id="dataset-1",
+            account_id="reader-1",
+        )["status"]
+        == "failed"
+    )
     with pytest.raises(KeyError):
-        png_tasks.get_png_export_task_result(task["task_id"], tenant_id="tenant-1", dataset_id="dataset-1")
+        png_tasks.get_png_export_task_result(
+            task["task_id"],
+            tenant_id="tenant-1",
+            dataset_id="dataset-1",
+            account_id="reader-1",
+        )
 
 
 def test_heartbeat_owner_mismatch_does_not_update(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -208,7 +341,13 @@ def test_heartbeat_owner_mismatch_does_not_update(monkeypatch: pytest.MonkeyPatc
     _install_fake_redis(monkeypatch, redis)
     monkeypatch.setattr(png_tasks.settings, "DATASET_ANALYSIS_PNG_STALE_AFTER_SEC", 6, raising=False)
 
-    task = png_tasks.create_png_export_task(tenant_id="tenant-1", dataset_id="dataset-1", filters={})
+    task = png_tasks.create_png_export_task(
+        tenant_id="tenant-1",
+        dataset_id="dataset-1",
+        filters={},
+        requested_by="reader-1",
+        account_id="reader-1",
+    )
     started = png_tasks.begin_png_export_task(task["task_id"], tenant_id="tenant-1", dataset_id="dataset-1")
     before = _read_task_record(redis, task["task_id"])
     redis.advance(seconds=1)
@@ -231,7 +370,13 @@ def test_running_task_only_becomes_worker_lost_after_heartbeat_stops(monkeypatch
     _install_fake_redis(monkeypatch, redis)
     monkeypatch.setattr(png_tasks.settings, "DATASET_ANALYSIS_PNG_STALE_AFTER_SEC", 6, raising=False)
 
-    task = png_tasks.create_png_export_task(tenant_id="tenant-1", dataset_id="dataset-1", filters={})
+    task = png_tasks.create_png_export_task(
+        tenant_id="tenant-1",
+        dataset_id="dataset-1",
+        filters={},
+        requested_by="reader-1",
+        account_id="reader-1",
+    )
     started = png_tasks.begin_png_export_task(task["task_id"], tenant_id="tenant-1", dataset_id="dataset-1")
 
     for _ in range(3):
@@ -242,10 +387,23 @@ def test_running_task_only_becomes_worker_lost_after_heartbeat_stops(monkeypatch
             dataset_id="dataset-1",
             owner_token=str(started["owner_token"]),
         ) is True
-        assert png_tasks.get_png_export_task(task["task_id"], tenant_id="tenant-1", dataset_id="dataset-1")["status"] == "running"
+        assert (
+            png_tasks.get_png_export_task(
+                task["task_id"],
+                tenant_id="tenant-1",
+                dataset_id="dataset-1",
+                account_id="reader-1",
+            )["status"]
+            == "running"
+        )
 
     redis.advance(seconds=7)
-    failed = png_tasks.get_png_export_task(task["task_id"], tenant_id="tenant-1", dataset_id="dataset-1")
+    failed = png_tasks.get_png_export_task(
+        task["task_id"],
+        tenant_id="tenant-1",
+        dataset_id="dataset-1",
+        account_id="reader-1",
+    )
 
     assert failed["status"] == "failed"
     assert failed["error_code"] == "worker_lost"
@@ -256,7 +414,13 @@ def test_terminal_retention_expires_status_and_result(monkeypatch: pytest.Monkey
     _install_fake_redis(monkeypatch, redis)
     monkeypatch.setattr(png_tasks.settings, "DATASET_ANALYSIS_PNG_TERMINAL_TTL_SEC", 2, raising=False)
 
-    task = png_tasks.create_png_export_task(tenant_id="tenant-1", dataset_id="dataset-1", filters={})
+    task = png_tasks.create_png_export_task(
+        tenant_id="tenant-1",
+        dataset_id="dataset-1",
+        filters={},
+        requested_by="reader-1",
+        account_id="reader-1",
+    )
     started = png_tasks.begin_png_export_task(task["task_id"], tenant_id="tenant-1", dataset_id="dataset-1")
     png_tasks.complete_png_export_task(
         task["task_id"],
@@ -268,9 +432,19 @@ def test_terminal_retention_expires_status_and_result(monkeypatch: pytest.Monkey
     redis.advance(seconds=3)
 
     with pytest.raises(KeyError):
-        png_tasks.get_png_export_task(task["task_id"], tenant_id="tenant-1", dataset_id="dataset-1")
+        png_tasks.get_png_export_task(
+            task["task_id"],
+            tenant_id="tenant-1",
+            dataset_id="dataset-1",
+            account_id="reader-1",
+        )
     with pytest.raises(KeyError):
-        png_tasks.get_png_export_task_result(task["task_id"], tenant_id="tenant-1", dataset_id="dataset-1")
+        png_tasks.get_png_export_task_result(
+            task["task_id"],
+            tenant_id="tenant-1",
+            dataset_id="dataset-1",
+            account_id="reader-1",
+        )
 
 
 def test_png_background_task_marks_source_incomplete(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -293,6 +467,7 @@ def test_png_background_task_marks_source_incomplete(monkeypatch: pytest.MonkeyP
         tenant_id=uuid4(),
         dataset_id=uuid4(),
         dataset_name="Dataset A",
+        account_id="reader-1",
         background_tasks=background_tasks,
     )
 
@@ -302,6 +477,7 @@ def test_png_background_task_marks_source_incomplete(monkeypatch: pytest.MonkeyP
         task["task_id"],
         tenant_id=task["tenant_id"],
         dataset_id=task["dataset_id"],
+        account_id="reader-1",
     )
 
     assert status["status"] == "failed"
@@ -358,6 +534,7 @@ def test_png_background_task_heartbeats_across_multiple_stale_windows(monkeypatc
         tenant_id=uuid4(),
         dataset_id=uuid4(),
         dataset_name="Dataset A",
+        account_id="reader-1",
         background_tasks=background_tasks,
     )
 
@@ -369,6 +546,7 @@ def test_png_background_task_heartbeats_across_multiple_stale_windows(monkeypatc
         task["task_id"],
         tenant_id=task["tenant_id"],
         dataset_id=task["dataset_id"],
+        account_id="reader-1",
     )
     allow_finish.set()
     worker.join(timeout=1.0)
@@ -378,6 +556,7 @@ def test_png_background_task_heartbeats_across_multiple_stale_windows(monkeypatc
         task["task_id"],
         tenant_id=task["tenant_id"],
         dataset_id=task["dataset_id"],
+        account_id="reader-1",
     )
     assert final["status"] == "done"
 

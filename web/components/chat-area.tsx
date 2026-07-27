@@ -55,7 +55,6 @@ const SELECT_DEFAULT_VALUE = '__mimirq_default__'
 const DEFAULT_VISIBLE_MESSAGES = 80
 const LOAD_MORE_STEP = 40
 const METADATA_FILTER_MODE_VALUES = ['all', 'exclude_qa', 'qa_only', 'custom'] as const
-const CHAT_DATASET_LIST_PARAMS = { limit: 200 }
 const CHAT_PROMPT_TEMPLATE_PARAMS = { is_active: true, limit: 50 }
 const RAG_SETTINGS_VIEWPORT_MARGIN = 12
 const RAG_SETTINGS_KEYBOARD_MOVE_STEP = 12
@@ -169,8 +168,8 @@ export function ChatArea({
   })
 
   const datasetsQuery = useQuery({
-    queryKey: queryKeys.datasets.list(CHAT_DATASET_LIST_PARAMS),
-    queryFn: () => datasetApi.list(CHAT_DATASET_LIST_PARAMS),
+    queryKey: queryKeys.datasets.exhaustive({ purpose: 'chat-rag-settings' }),
+    queryFn: () => datasetApi.listAll(),
     staleTime: 60_000,
   })
 
@@ -184,7 +183,7 @@ export function ChatArea({
   })
 
   const datasets = useMemo(
-    () => (Array.isArray(datasetsQuery.data?.items) ? datasetsQuery.data.items : []),
+    () => datasetsQuery.data ?? [],
     [datasetsQuery.data]
   )
   const promptTemplates = useMemo(() => promptTemplatesQuery.data || [], [promptTemplatesQuery.data])

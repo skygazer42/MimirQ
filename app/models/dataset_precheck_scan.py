@@ -13,7 +13,7 @@ and queried on demand (drill-down).
 
 import uuid
 
-from sqlalchemy import Column, DateTime, ForeignKeyConstraint, Index, Integer, String, Text
+from sqlalchemy import Column, DateTime, ForeignKeyConstraint, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.sql import func
 
@@ -59,6 +59,14 @@ class DatasetPrecheckScanRun(Base):
             ["datasets.tenant_id", "datasets.id"],
             name="fk_dataset_precheck_scan_runs_tenant_dataset",
             ondelete="CASCADE",
+        ),
+        Index(
+            "uq_dataset_precheck_scan_runs_active_dataset",
+            "tenant_id",
+            "dataset_id",
+            unique=True,
+            postgresql_where=text("status IN ('pending', 'running')"),
+            sqlite_where=text("status IN ('pending', 'running')"),
         ),
         Index("ix_dataset_precheck_scan_runs_tenant_dataset_created_at", "tenant_id", "dataset_id", "created_at"),
         Index("ix_dataset_precheck_scan_runs_tenant_status_created_at", "tenant_id", "status", "created_at"),

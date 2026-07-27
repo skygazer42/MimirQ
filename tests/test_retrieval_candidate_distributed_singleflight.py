@@ -425,6 +425,120 @@ def test_hybrid_search_releases_distributed_lease_after_candidate_cache_write(
     assert order == ["write", "release"]
 
 
+def test_hybrid_search_publishes_distributed_result_before_semantic_cache_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.retriever as retriever_module
+    import app.services.semantic_cache as semantic_cache_module
+    from app.rag.retriever import HybridRetriever
+    from app.services.dataset_embedding_config import DatasetEmbeddingRuntimeConfig
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    order: list[str] = []
+
+    runtime = DatasetEmbeddingRuntimeConfig(
+        provider="local",
+        model="test-model",
+        api_base="",
+        api_key="",
+        embedding_space_hash="test-space",
+        collection_name="documents_test_space",
+        dataset_scoped=False,
+    )
+
+    for name, value in {
+        "RETRIEVAL_CANDIDATE_CACHE_ENABLED": False,
+        "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED": True,
+        "SEMANTIC_CACHE_ENABLED": True,
+        "SEMANTIC_CACHE_TTL_SEC": 30,
+    }.items():
+        monkeypatch.setattr(retriever_module.settings, name, value, raising=False)
+
+    monkeypatch.setattr(HybridRetriever, "_explicit_dataset_scope_ids", lambda self: (), raising=True)  # noqa: ANN001
+    monkeypatch.setattr(HybridRetriever, "_resolve_document_dataset_scope", lambda self, *, tenant_id, document_ids: ((), False), raising=True)  # noqa: ANN001,ARG005,E501
+    monkeypatch.setattr(HybridRetriever, "_resolve_dataset_runtime_shards", lambda self, *, tenant_id, dataset_ids=None: [], raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(HybridRetriever, "_resolve_embedding_runtime", lambda self, *, tenant_id: runtime, raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(HybridRetriever, "_resolve_candidate_cache_corpus_token", lambda self, **kwargs: "corpus-token", raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(HybridRetriever, "_enrich_results_with_db_metadata", lambda self, items, **kwargs: list(items), raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(HybridRetriever, "_expand_results_with_neighbors", lambda self, items: list(items), raising=True)  # noqa: ANN001
+    monkeypatch.setattr(HybridRetriever, "_auto_merge_parent_child", lambda self, items: list(items), raising=True)  # noqa: ANN001
+    monkeypatch.setattr(HybridRetriever, "_deduplicate_results", lambda self, items: list(items), raising=True)  # noqa: ANN001
+    monkeypatch.setattr(HybridRetriever, "_apply_document_diversity", lambda self, items, **kwargs: list(items), raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(HybridRetriever, "_apply_metadata_exact_anchor_post_ordering", lambda self, query, items, **kwargs: list(items), raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(HybridRetriever, "_merge_results", lambda self, vector_results, *args, **kwargs: list(vector_results), raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(HybridRetriever, "_search_bm25", lambda self, **kwargs: [], raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(HybridRetriever, "_search_lexical_db", lambda self, **kwargs: [], raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(HybridRetriever, "_search_sparse", lambda self, **kwargs: [], raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(retriever_module, "emit_stream_event", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(
+        retriever_module,
+        "get_vector_store",
+        lambda: SimpleNamespace(
+            search=lambda **kwargs: [
+                {
+                    "chunk_id": "chunk-1",
+                    "content": "semantic cache result",
+                    "score": 0.9,
+                    "metadata": {
+                        "chunk_id": "chunk-1",
+                        "document_id": str(document_id),
+                        "dataset_id": str(dataset_id),
+                        "embedding_space_hash": runtime.embedding_space_hash,
+                    },
+                }
+            ]
+        ),
+        raising=True,
+    )
+    monkeypatch.setattr(retriever_module, "acquire_or_wait_for_distributed_inflight_retrieval_candidates", lambda key: (True, None, SimpleNamespace(lease_key=f"{key}:lease", owner="owner-1")), raising=True)  # noqa: ANN001,E501
+    monkeypatch.setattr(retriever_module, "publish_distributed_inflight_retrieval_candidates", lambda key, payload: order.append("publish") or True, raising=True)  # noqa: ANN001
+    monkeypatch.setattr(retriever_module, "resolve_inflight_retrieval_candidates", lambda key, payload: order.append("resolve"), raising=True)  # noqa: ANN001
+    monkeypatch.setattr(retriever_module, "release_distributed_inflight_retrieval_candidates", lambda lease: order.append("release"), raising=True)  # noqa: ANN001
+    monkeypatch.setattr(
+        semantic_cache_module,
+        "get_cached_semantic_payload",
+        lambda **kwargs: (None, {"enabled": True, "hit": False}),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        semantic_cache_module,
+        "set_cached_semantic_payload",
+        lambda **kwargs: order.append("semantic-write") or True,
+        raising=True,
+    )
+
+    retriever = HybridRetriever(
+        tenant_id=tenant_id,
+        account_id="member-1",
+        dataset_id=None,
+        document_ids=[document_id],
+        retrieval_mode="vector",
+        enable_reranker=False,
+        sparse_enabled=False,
+        dedup_enabled=False,
+    )
+
+    from app.rag.retrieval_candidate_cache import clear_inflight_retrieval_candidates
+
+    clear_inflight_retrieval_candidates()
+    try:
+        out = retriever._hybrid_search(
+            "semantic singleflight",
+            top_k=1,
+            score_threshold=0.0,
+            tenant_id=tenant_id,
+            document_ids=[document_id],
+            retrieval_mode="vector",
+        )
+    finally:
+        clear_inflight_retrieval_candidates()
+
+    assert [item["content"] for item in out] == ["semantic cache result"]
+    assert order[:4] == ["publish", "resolve", "release", "semantic-write"]
+
+
 def test_hybrid_search_singleflight_only_uses_behavior_hash_in_cache_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -654,6 +768,7 @@ def test_hybrid_search_uses_distributed_singleflight_when_exact_cache_disabled(
 
     assert [item["content"] for item in out] == ["distributed result"]
     assert len(leader_calls) == 1
+    assert float(retriever._last_channel_metrics["cache"]["distributed_singleflight_wait_ms"]) >= 0.0
 
 
 def test_hybrid_search_keeps_local_followers_when_distributed_singleflight_errors(

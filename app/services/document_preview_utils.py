@@ -1,6 +1,7 @@
 
 import contextlib
 import hashlib
+import json
 import math
 import re
 import uuid
@@ -27,7 +28,9 @@ from app.rag.core.logging import get_logger
 logger = get_logger("documents.preview_utils")
 
 UUID_PATTERN = r"(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
-PREVIEW_IMAGE_REF_RE = re.compile(rf"(?:https?://[^\s)\"']+)?/api/v1/documents/image/({UUID_PATTERN})")
+PREVIEW_IMAGE_REF_RE = re.compile(
+    rf"(?:https?://[^\s)\"']+)?/api/v1/documents/image/({UUID_PATTERN})(?![0-9A-Za-z_-])"
+)
 MINIO_IMAGE_REF_RE = re.compile(r"(?:https?://[^\s)\"']+)?/api/v1/documents/image-url/([^\s)\"']+)")
 PREVIEW_MD_IMAGE_REF_RE = re.compile(
     r"!\[[^\]]*\]\(\s*(?:<)?([^)\s>]+)(?:>)?(?:\s+['\"][^'\"]*['\"])?\s*\)",
@@ -225,6 +228,103 @@ def _preview_images_dir(tenant_id: UUID) -> Path:
     return images_dir
 
 
+def _coerce_preview_owner_uuid(value: object) -> str | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return str(UUID(raw))
+    except ValueError:
+        return None
+
+
+def _preview_owner_binding(
+    *, tenant_id: UUID, meta: dict[str, Any], account_id: str | None = None
+) -> dict[str, str] | None:
+    document_id = _coerce_preview_owner_uuid(meta.get("document_id"))
+    dataset_id = _coerce_preview_owner_uuid(meta.get("dataset_id"))
+    if document_id and dataset_id:
+        return {
+            "tenant_id": str(tenant_id),
+            "dataset_id": dataset_id,
+            "document_id": document_id,
+        }
+    owner_account_id = str(account_id or "").strip()
+    if owner_account_id:
+        return {"tenant_id": str(tenant_id), "account_id": owner_account_id}
+    return None
+
+
+def _write_preview_owner_binding(*, images_dir: Path, preview_id: str, binding: dict[str, str] | None) -> bool:
+    if not binding:
+        return False
+    sidecar_path = images_dir / f"{preview_id}.json"
+    try:
+        sidecar_path.write_text(
+            json.dumps(binding, ensure_ascii=True, sort_keys=True, separators=(",", ":")),
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        logger.warning("Failed to persist preview image binding: %s", str(exc)[:200])
+        return False
+    return True
+
+
+def _load_preview_owner_binding(*, images_dir: Path, preview_id: str) -> dict[str, str] | None:
+    sidecar_path = images_dir / f"{preview_id}.json"
+    try:
+        raw = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(raw, dict):
+        return None
+    tenant_id = _coerce_preview_owner_uuid(raw.get("tenant_id"))
+    dataset_id = _coerce_preview_owner_uuid(raw.get("dataset_id"))
+    document_id = _coerce_preview_owner_uuid(raw.get("document_id"))
+    account_id = str(raw.get("account_id") or "").strip()
+    document_bound = bool(dataset_id and document_id and not account_id)
+    account_bound = bool(account_id and not dataset_id and not document_id)
+    if not tenant_id or not (document_bound or account_bound):
+        return None
+    return {
+        "tenant_id": tenant_id,
+        "dataset_id": dataset_id,
+        "document_id": document_id,
+        "account_id": account_id,
+    }
+
+
+def _promote_preview_owner_binding(
+    *,
+    images_dir: Path,
+    preview_id: str,
+    tenant_id: str,
+    dataset_id: str,
+    document_id: str,
+    account_id: str,
+) -> bool:
+    binding = _load_preview_owner_binding(images_dir=images_dir, preview_id=preview_id)
+    if not binding:
+        return False
+    if str(binding.get("tenant_id") or "").strip() != str(tenant_id or "").strip():
+        return False
+    bound_dataset_id = str(binding.get("dataset_id") or "").strip()
+    bound_document_id = str(binding.get("document_id") or "").strip()
+    if bound_dataset_id and bound_document_id:
+        return bound_dataset_id == str(dataset_id or "").strip() and bound_document_id == str(document_id or "").strip()
+    if str(binding.get("account_id") or "").strip() != str(account_id or "").strip():
+        return False
+    return _write_preview_owner_binding(
+        images_dir=images_dir,
+        preview_id=preview_id,
+        binding={
+            "tenant_id": str(tenant_id),
+            "dataset_id": str(dataset_id),
+            "document_id": str(document_id),
+        },
+    )
+
+
 def _load_preview_pillow_image_class() -> tuple[Any | None, bool]:
     return Image, True
 
@@ -253,7 +353,14 @@ def _close_preview_image_object(image_obj: object) -> None:
         image_obj.close()
 
 
-def _materialize_extracted_preview_image_doc(doc: Any, *, images_dir: Path, pil_image: Any) -> None:
+def _materialize_extracted_preview_image_doc(
+    doc: Any,
+    *,
+    tenant_id: UUID,
+    account_id: str | None,
+    images_dir: Path,
+    pil_image: Any,
+) -> None:
     meta = getattr(doc, "metadata", None) or {}
     if not isinstance(meta, dict):
         return
@@ -271,14 +378,26 @@ def _materialize_extracted_preview_image_doc(doc: Any, *, images_dir: Path, pil_
     preview_id = uuid.uuid4().hex
     out_path = images_dir / f"{preview_id}.jpg"
     url = f"/api/v1/documents/image/{preview_id}"
+    owner_binding = _preview_owner_binding(tenant_id=tenant_id, meta=meta, account_id=account_id)
+    persisted = False
     try:
         _save_extracted_preview_image(image_obj, out_path, pil_image)
+        persisted = _write_preview_owner_binding(
+            images_dir=images_dir,
+            preview_id=preview_id,
+            binding=owner_binding,
+        )
+        if not persisted:
+            out_path.unlink(missing_ok=True)
     except Exception as exc:
         logger.warning("Failed to persist preview image: %s", str(exc)[:200])
     finally:
         meta.pop("image", None)
         doc.metadata = meta
         _close_preview_image_object(image_obj)
+
+    if not persisted:
+        return
 
     caption = (getattr(doc, "page_content", "") or "").strip()
     img_md = f"![image]({url})"
@@ -288,7 +407,9 @@ def _materialize_extracted_preview_image_doc(doc: Any, *, images_dir: Path, pil_
     doc.metadata = meta
 
 
-def _materialize_extracted_images_for_preview(documents: list, *, tenant_id: UUID) -> list:
+def _materialize_extracted_images_for_preview(
+    documents: list, *, tenant_id: UUID, account_id: str | None = None
+) -> list:
     """
     Convert in-memory image objects (e.g., DeepDoc PIL.Image in metadata["image"])
     into preview-time Markdown refs that the frontend can render.
@@ -316,7 +437,13 @@ def _materialize_extracted_images_for_preview(documents: list, *, tenant_id: UUI
         return _drop_preview_image_objects(documents)
 
     for doc in documents:
-        _materialize_extracted_preview_image_doc(doc, images_dir=images_dir, pil_image=pil_image)
+        _materialize_extracted_preview_image_doc(
+            doc,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            images_dir=images_dir,
+            pil_image=pil_image,
+        )
 
     return documents
 
@@ -428,9 +555,16 @@ def _preview_cached_or_persisted_image_url(
     out_ext: str,
     digest_cache: dict[str, tuple[str, str]],
     images_dir: Path,
+    owner_binding: dict[str, str] | None,
 ) -> str | None:
+    if not owner_binding:
+        return None
     digest = hashlib.sha256(image_bytes).hexdigest()
-    cached = digest_cache.get(digest)
+    binding_digest = hashlib.sha256(
+        json.dumps(owner_binding, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    cache_key = f"{digest}:{binding_digest}"
+    cached = digest_cache.get(cache_key)
     if cached:
         preview_id, cached_ext = cached
         out_ext = cached_ext
@@ -439,16 +573,24 @@ def _preview_cached_or_persisted_image_url(
         out_path = images_dir / f"{preview_id}{out_ext}"
         try:
             out_path.write_bytes(image_bytes)
+            if not _write_preview_owner_binding(
+                images_dir=images_dir,
+                preview_id=preview_id,
+                binding=owner_binding,
+            ):
+                out_path.unlink(missing_ok=True)
+                return None
         except Exception as exc:
             logger.warning("Failed to persist preview local image: %s", str(exc)[:200])
             return None
-        digest_cache[digest] = (preview_id, out_ext)
+        digest_cache[cache_key] = (preview_id, out_ext)
     return f"/api/v1/documents/image/{preview_id}"
 
 
 def _preview_local_image_replacements(
     refs: list[str],
     *,
+    owner_binding: dict[str, str] | None,
     base_dir_resolved: Path,
     max_image_bytes: int,
     pil_image: Any | None,
@@ -467,7 +609,13 @@ def _preview_local_image_replacements(
         converted = _convert_preview_local_image_bytes(image[0], ext=image[1], pil_image=pil_image, pillow_ok=pillow_ok)
         if converted is None:
             continue
-        url = _preview_cached_or_persisted_image_url(converted[0], out_ext=converted[1], digest_cache=digest_cache, images_dir=images_dir)
+        url = _preview_cached_or_persisted_image_url(
+            converted[0],
+            out_ext=converted[1],
+            digest_cache=digest_cache,
+            images_dir=images_dir,
+            owner_binding=owner_binding,
+        )
         if url:
             replacements[ref] = url
     return replacements
@@ -484,7 +632,9 @@ def _rewrite_preview_local_image_refs(content: str, replacements: dict[str, str]
     return PREVIEW_HTML_IMAGE_REF_RE.sub(lambda m: _replace_preview_image_ref(m, replacements), content)
 
 
-def _materialize_local_images_for_preview(documents: list, *, tenant_id: UUID) -> list:
+def _materialize_local_images_for_preview(
+    documents: list, *, tenant_id: UUID, account_id: str | None = None
+) -> list:
     """
     Rewrite local/relative image references in Markdown/HTML into preview-time
     `/api/v1/documents/image/{uuid}` URLs.
@@ -518,6 +668,11 @@ def _materialize_local_images_for_preview(documents: list, *, tenant_id: UUID) -
         base_dir_resolved = _preview_doc_asset_base_dir(doc)
         if base_dir_resolved is None:
             continue
+        owner_binding = _preview_owner_binding(
+            tenant_id=tenant_id,
+            meta=doc.metadata if isinstance(getattr(doc, "metadata", None), dict) else {},
+            account_id=account_id,
+        )
 
         found = _preview_content_image_refs(content)
         if max_inline_images:
@@ -527,6 +682,7 @@ def _materialize_local_images_for_preview(documents: list, *, tenant_id: UUID) -
 
         replacements = _preview_local_image_replacements(
             found,
+            owner_binding=owner_binding,
             base_dir_resolved=base_dir_resolved,
             max_image_bytes=max_image_bytes,
             pil_image=pil_image,

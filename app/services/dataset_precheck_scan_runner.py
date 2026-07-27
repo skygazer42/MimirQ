@@ -880,6 +880,7 @@ def run_dataset_precheck_scan(
     run.status = "running"
     run.progress = 0
     run.started_at = _now_utc()
+    run.updated_at = run.started_at
     run.error_message = None
     db.commit()
 
@@ -1095,6 +1096,7 @@ def run_dataset_precheck_scan(
         last_progress_write = now
         pct = int((processed / max(1, total)) * 100)
         run.progress = max(0, min(100, pct))
+        run.updated_at = _now_utc()
         db.commit()
         # Allow cooperative cancellation from another session (API).
         try:
@@ -2008,6 +2010,7 @@ def run_dataset_precheck_scan(
         run.status = "completed"
         run.progress = 100
     run.finished_at = _now_utc()
+    run.updated_at = run.finished_at
     run.summary = summary
     run.artifacts = {
         "files_jsonl": str(jsonl_path),

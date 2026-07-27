@@ -40,8 +40,18 @@ def _build_client(monkeypatch, tmp_path: Path) -> tuple[TestClient, uuid.UUID, s
     monkeypatch.setattr(chunk_preview_module.settings, "PREVIEW_PARSE_CACHE_TTL_SEC", 60, raising=False)
     monkeypatch.setattr(chunk_preview_module.settings, "PREVIEW_PARSE_CACHE_MAX_ENTRIES", 8, raising=False)
     monkeypatch.setattr(chunk_preview_module.settings, "PREVIEW_PARSE_CACHE_VERSION", "test-v1", raising=False)
-    monkeypatch.setattr(chunk_preview_module, "_materialize_extracted_images_for_preview", lambda docs, tenant_id: docs, raising=True)
-    monkeypatch.setattr(chunk_preview_module, "_materialize_local_images_for_preview", lambda docs, tenant_id: docs, raising=True)
+    monkeypatch.setattr(
+        chunk_preview_module,
+        "_materialize_extracted_images_for_preview",
+        lambda docs, tenant_id, account_id=None: docs,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        chunk_preview_module,
+        "_materialize_local_images_for_preview",
+        lambda docs, tenant_id, account_id=None: docs,
+        raising=True,
+    )
 
     def _parse_with_provenance(*_args, **_kwargs):  # noqa: ANN202
         return [Document(page_content="alpha beta", metadata={"page": 1, "page_index": 0})], "stub-parser", None

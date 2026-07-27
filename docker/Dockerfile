@@ -56,20 +56,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     done \
     && /opt/venv/bin/pip install --retries 5 --timeout 120 --no-deps \
         xgboost==3.2.0 \
-    # MagicPDF is used only through its CLI subprocess. Install the CLI without
-    # letting upstream pins downgrade the main FastAPI runtime's pydantic /
-    # PyMuPDF / transformers versions; add the runtime extras that the CLI
-    # imports for local CPU parsing and reuse the existing CPU torch wheels.
-    && /opt/venv/bin/pip install --retries 5 --timeout 120 --no-deps \
-        magic-pdf==1.3.12 \
-    && /opt/venv/bin/pip install --retries 5 --timeout 120 \
-        Brotli==1.2.0 \
-        boto3==1.43.10 \
-        fast-langdetect==0.2.5 \
-        loguru==0.7.3 \
-        ultralytics==8.4.51 \
-        doclayout-yolo==0.0.4 \
-        rapid-table==3.0.2 \
+    # Keep MagicPDF in its dedicated image. Its dependency pins conflict with
+    # the FastAPI runtime; the default backend uses the service integration.
     && apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/*
 
@@ -146,6 +134,7 @@ COPY alembic ./alembic
 COPY config ./config
 COPY ci/perf_suite_baseline.v1.json ci/perf_regression_policy.v1.json ./ci/
 COPY alembic.ini main.py ./
+COPY scripts/alembic_cli.py scripts/run_db_maintenance_jobs.py scripts/run_nightly_ablations.py scripts/run_periodic_audit_jobs.py scripts/run_retention_jobs.py ./scripts/
 COPY docker/start_backend.sh ./docker/start_backend.sh
 
 USER appuser

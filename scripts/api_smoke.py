@@ -436,6 +436,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--base-url", default=None)
     parser.add_argument("--tenant-id", default=None)
     parser.add_argument("--auth-mode", default=None)
+    parser.add_argument(
+        "--jwt-identifier",
+        "--jwt-email",
+        dest="jwt_identifier",
+        default=os.getenv("MIMIRQ_SMOKE_IDENTIFIER") or os.getenv("MIMIRQ_SMOKE_JWT_EMAIL") or "",
+    )
+    parser.add_argument(
+        "--jwt-password",
+        default=os.getenv("MIMIRQ_SMOKE_PASSWORD") or os.getenv("MIMIRQ_SMOKE_JWT_PASSWORD") or "",
+    )
     parser.add_argument("--openapi", default=None, help="Optional OpenAPI JSON file path.")
     parser.add_argument("--timeout", type=float, default=60.0)
     parser.add_argument(
@@ -457,6 +467,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--skip-llm-test", action="store_true")
     parser.add_argument("--skip-mineru", action="store_true")
     args = parser.parse_args(argv)
+    if bool(args.jwt_identifier) != bool(args.jwt_password):
+        parser.error("--jwt-identifier and --jwt-password must be provided together")
 
     repo_root = Path(__file__).resolve().parents[1]
     dotenv = load_dotenv(repo_root / ".env")
@@ -472,9 +484,11 @@ def main(argv: list[str] | None = None) -> int:
     system_tenant_id = env_or(dotenv, "DEFAULT_TENANT_ID", "00000000-0000-0000-0000-000000000000")
     auth_mode = (args.auth_mode or env_or(dotenv, "AUTH_MODE", "header")).lower()
 
+    reuse_jwt_account = bool(args.jwt_identifier)
     user_email = f"smoke_{uuid.uuid4().hex[:8]}@example.com"
+    login_identifier = args.jwt_identifier or user_email
     user_name = f"smoke_{uuid.uuid4().hex[:8]}"
-    user_password = "smoke-pass-123"
+    user_password = args.jwt_password or "smoke-pass-123"
 
     llm_api_key = env_or(dotenv, "LLM_API_KEY", "")
     llm_api_base = env_or(dotenv, "LLM_API_BASE", "https://api.openai.com/v1")
@@ -515,13 +529,13 @@ def main(argv: list[str] | None = None) -> int:
                 "POST",
                 "/api/v1/auth/register",
                 "/api/v1/auth/register",
-                expected=[201, 400],
+                expected=[201, 400, 409] if reuse_jwt_account else [201, 400],
                 json=register_payload,
             )
             reg_data = parse_json(reg_resp)
             token = (reg_data.get("token") or {}).get("access_token")
 
-            login_payload = {"identifier": user_email, "password": user_password}
+            login_payload = {"identifier": login_identifier, "password": user_password}
             login_resp = runner.call(
                 "POST",
                 "/api/v1/auth/login",

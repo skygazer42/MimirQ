@@ -286,6 +286,112 @@ def test_faiss_search_expands_candidate_window_until_filtered_hits_found(monkeyp
     assert [item["chunk_id"] for item in results] == ["chunk-allowed-1", "chunk-allowed-2"]
 
 
+def test_faiss_search_releases_tenant_lock_between_refill_rounds(monkeypatch: pytest.MonkeyPatch) -> None:
+    tenant_id = uuid4()
+    allowed_document_id = uuid4()
+    skipped_document_id = uuid4()
+    first_round_started = threading.Event()
+    writer_finished = threading.Event()
+    second_round_writer_observed: list[bool] = []
+    errors: list[BaseException] = []
+    ranked_results = [
+        (
+            SimpleNamespace(
+                id=f"chunk-{index}",
+                page_content=f"content-{index}",
+                metadata={"document_id": str(skipped_document_id)},
+            ),
+            float(index),
+        )
+        for index in range(4)
+    ] + [
+        (
+            SimpleNamespace(
+                id="chunk-allowed-1",
+                page_content="allowed-1",
+                metadata={"document_id": str(allowed_document_id)},
+            ),
+            0.25,
+        ),
+        (
+            SimpleNamespace(
+                id="chunk-allowed-2",
+                page_content="allowed-2",
+                metadata={"document_id": str(allowed_document_id)},
+            ),
+            0.5,
+        ),
+    ]
+
+    class _FakeStore:
+        def __init__(self) -> None:
+            self.docstore = SimpleNamespace(
+                _dict={f"doc-{index}": result[0] for index, result in enumerate(ranked_results)}
+            )
+
+        def add_texts(self, **_kwargs) -> None:
+            writer_finished.set()
+
+        def similarity_search_with_score(self, _query: str, k: int):  # noqa: ANN001
+            if k == 4:
+                first_round_started.set()
+            elif k == 6:
+                second_round_writer_observed.append(writer_finished.wait(timeout=1.0))
+            return ranked_results[:k]
+
+        def save_local(self, *_args, **_kwargs) -> None:  # noqa: ANN002, ANN003
+            return None
+
+    class _FakeFAISS:
+        @classmethod
+        def from_texts(
+            cls,
+            *,
+            texts: list[str],
+            embedding: object,
+            metadatas: list[dict[str, object]],
+            ids: list[str],
+        ) -> _FakeStore:
+            del texts, embedding, metadatas, ids
+            return _FakeStore()
+
+    def _await_writer_handoff() -> None:
+        assert writer_finished.wait(timeout=3.0)
+
+    monkeypatch.setattr(factory_module, "_get_faiss_cls", lambda: _FakeFAISS, raising=True)
+    monkeypatch.setattr(factory_module.settings, "FAISS_STORE_PATH", "", raising=False)
+    monkeypatch.setattr(
+        factory_module,
+        "_yield_refill_lock_handoff",
+        _await_writer_handoff,
+        raising=True,
+    )
+
+    store = factory_module.FAISSVectorStore()
+    store.add_documents([_doc("seed")], uuid4(), tenant_id)
+
+    def _writer() -> None:
+        assert first_round_started.wait(timeout=3.0)
+        store.add_documents([_doc("writer")], uuid4(), tenant_id)
+
+    writer = _run_in_thread(errors, _writer)
+    writer.start()
+    results = store.search(
+        "needle",
+        top_k=2,
+        score_threshold=0.0,
+        document_ids=[allowed_document_id],
+        tenant_id=tenant_id,
+    )
+    writer.join(timeout=3.0)
+
+    assert not writer.is_alive()
+    assert errors == []
+    assert second_round_writer_observed == [True]
+    assert writer_finished.is_set()
+    assert [item["chunk_id"] for item in results] == ["chunk-allowed-1", "chunk-allowed-2"]
+
+
 def test_chroma_same_collection_serializes_initialization_and_adds(monkeypatch: pytest.MonkeyPatch) -> None:
     init_started = threading.Event()
     release_first = threading.Event()
@@ -450,4 +556,100 @@ def test_chroma_search_expands_candidate_window_until_filtered_hits_found(monkey
     )
 
     assert requested_ks == [4, 6]
+    assert [item["chunk_id"] for item in results] == ["chunk-allowed-1", "chunk-allowed-2"]
+
+
+def test_chroma_search_releases_tenant_lock_between_refill_rounds(monkeypatch: pytest.MonkeyPatch) -> None:
+    tenant_id = uuid4()
+    allowed_document_id = uuid4()
+    skipped_document_id = uuid4()
+    first_round_started = threading.Event()
+    writer_finished = threading.Event()
+    second_round_writer_observed: list[bool] = []
+    errors: list[BaseException] = []
+    ranked_results = [
+        (
+            SimpleNamespace(
+                id=f"chunk-{index}",
+                page_content=f"content-{index}",
+                metadata={"document_id": str(skipped_document_id)},
+            ),
+            float(index),
+        )
+        for index in range(4)
+    ] + [
+        (
+            SimpleNamespace(
+                id="chunk-allowed-1",
+                page_content="allowed-1",
+                metadata={"document_id": str(allowed_document_id)},
+            ),
+            0.25,
+        ),
+        (
+            SimpleNamespace(
+                id="chunk-allowed-2",
+                page_content="allowed-2",
+                metadata={"document_id": str(allowed_document_id)},
+            ),
+            0.5,
+        ),
+    ]
+
+    class _FakeCollection:
+        def delete(self, **_kwargs) -> None:
+            return None
+
+        def count(self) -> int:
+            return len(ranked_results)
+
+    class _FakeChroma:
+        def __init__(self, *, collection_name: str, embedding_function: object, persist_directory: str | None = None) -> None:
+            del collection_name, embedding_function, persist_directory
+            self._collection = _FakeCollection()
+
+        def add_texts(self, **_kwargs) -> None:
+            writer_finished.set()
+
+        def similarity_search_with_score(self, _query: str, k: int):  # noqa: ANN001
+            if k == 4:
+                first_round_started.set()
+            elif k == 6:
+                second_round_writer_observed.append(writer_finished.wait(timeout=1.0))
+            return ranked_results[:k]
+
+    def _await_writer_handoff() -> None:
+        assert writer_finished.wait(timeout=3.0)
+
+    monkeypatch.setattr(factory_module, "_get_chroma_cls", lambda: _FakeChroma, raising=True)
+    monkeypatch.setattr(factory_module.settings, "CHROMA_PERSIST_PATH", "", raising=False)
+    monkeypatch.setattr(
+        factory_module,
+        "_yield_refill_lock_handoff",
+        _await_writer_handoff,
+        raising=True,
+    )
+
+    store = factory_module.ChromaVectorStore()
+    store.add_documents([_doc("seed")], uuid4(), tenant_id)
+
+    def _writer() -> None:
+        assert first_round_started.wait(timeout=3.0)
+        store.add_documents([_doc("writer")], uuid4(), tenant_id)
+
+    writer = _run_in_thread(errors, _writer)
+    writer.start()
+    results = store.search(
+        "needle",
+        top_k=2,
+        score_threshold=0.0,
+        document_ids=[allowed_document_id],
+        tenant_id=tenant_id,
+    )
+    writer.join(timeout=3.0)
+
+    assert not writer.is_alive()
+    assert errors == []
+    assert second_round_writer_observed == [True]
+    assert writer_finished.is_set()
     assert [item["chunk_id"] for item in results] == ["chunk-allowed-1", "chunk-allowed-2"]

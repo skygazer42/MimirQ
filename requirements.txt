@@ -93,7 +93,7 @@ word2number==1.1
 cn2an==0.5.23
 
 # Authentication
-PyJWT[crypto]==2.12.1
+PyJWT[crypto]==2.13.0
 signxml==4.4.0
 
 # Utilities

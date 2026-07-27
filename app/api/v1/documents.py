@@ -186,10 +186,14 @@ from app.services import document_access_service
 from app.services.dataset_precheck_ingestion_suggestion import apply_ingestion_policy_suggestion
 from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
 from app.services.dataset_service import EDIT_ROLES, DatasetService
+from app.services.document_preview_legacy import legacy_preview_ref_belongs_to_document
 from app.services.document_preview_utils import (
     _compute_chunk_preview_quality,
+    _load_preview_owner_binding,
     _materialize_extracted_images_for_preview,
     _materialize_local_images_for_preview,
+    _promote_preview_owner_binding,
+    _write_preview_owner_binding,
 )
 from app.services.index_audit_service import build_index_drift_marker
 from app.services.ingestion_policy import (
@@ -313,7 +317,9 @@ preview_document = document_preview.preview_document
 # - We store uploads by UUID on disk/MinIO, so we don't need a strict character allowlist.
 # - Still reject path separators / control characters to prevent path traversal and header issues.
 UUID_PATTERN = r"(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
-PREVIEW_IMAGE_REF_RE = re.compile(rf"(?:https?://[^\s)\"']+)?/api/v1/documents/image/({UUID_PATTERN})")
+PREVIEW_IMAGE_REF_RE = re.compile(
+    rf"(?:https?://[^\s)\"']+)?/api/v1/documents/image/({UUID_PATTERN})(?![0-9A-Za-z_-])"
+)
 MINIO_IMAGE_REF_RE = re.compile(r"(?:https?://[^\s)\"']+)?/api/v1/documents/image-url/([^\s)\"']+)")
 # Position tags emitted by some PDF parsers (used for PDF overlay highlighting).
 POSITION_TAG_RE = re.compile(r"@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)##")
@@ -467,6 +473,53 @@ def _replace_preview_ref(match: re.Match[str], local_id_to_img_id: dict[str, str
     return f"/api/v1/documents/image-url/{img_id}"
 
 
+def _claim_preview_image_for_document(
+    *,
+    db: Session | None,
+    images_dir: Path,
+    local_id: str,
+    tenant_id: str,
+    dataset_id: str,
+    document_id: str,
+    account_id: str,
+) -> bool:
+    binding_path = images_dir / f"{local_id}.json"
+    binding = _load_preview_owner_binding(images_dir=images_dir, preview_id=local_id)
+    if binding is not None:
+        return _promote_preview_owner_binding(
+            images_dir=images_dir,
+            preview_id=local_id,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            document_id=document_id,
+            account_id=account_id,
+        )
+    if binding_path.exists() or db is None:
+        return False
+    try:
+        tenant_uuid = UUID(str(tenant_id))
+        dataset_uuid = UUID(str(dataset_id))
+        document_uuid = UUID(str(document_id))
+    except ValueError:
+        return False
+    if not legacy_preview_ref_belongs_to_document(
+        db,
+        tenant_id=tenant_uuid,
+        document_id=document_uuid,
+        preview_id=local_id,
+    ):
+        return False
+    return _write_preview_owner_binding(
+        images_dir=images_dir,
+        preview_id=local_id,
+        binding={
+            "tenant_id": str(tenant_uuid),
+            "dataset_id": str(dataset_uuid),
+            "document_id": str(document_uuid),
+        },
+    )
+
+
 def _resolve_preview_image_ref(
     *,
     local_id: str,
@@ -477,6 +530,8 @@ def _resolve_preview_image_ref(
     tenant_id: str,
     dataset_id: str,
     document_id: str,
+    account_id: str,
+    db: Session | None,
     start_index: int,
 ) -> tuple[str | None, int]:
     img_id = local_id_to_img_id.get(local_id)
@@ -486,6 +541,17 @@ def _resolve_preview_image_ref(
     img_path = _find_preview_image_path(images_dir, local_id)
     if img_path is None:
         return None, start_index
+
+    if not _claim_preview_image_for_document(
+        db=db,
+        images_dir=images_dir,
+        local_id=local_id,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        document_id=document_id,
+        account_id=account_id,
+    ):
+        raise HTTPException(status_code=403, detail="Preview image cannot be reused for this document")
 
     raw = _read_preview_image_bytes(img_path, max_bytes)
     if raw is None:
@@ -514,9 +580,11 @@ def _rewrite_preview_images_to_minio(
     tenant_id: str,
     dataset_id: str,
     document_id: str,
+    account_id: str,
     images_dir: Path,
     local_id_to_img_id: dict[str, str],
     digest_to_img_id: dict[str, str],
+    db: Session | None = None,
     start_index: int = 0,
 ) -> tuple[str, list[str], int]:
     """
@@ -526,21 +594,38 @@ def _rewrite_preview_images_to_minio(
     endpoint. When MinIO is enabled, persisted chunks must not retain local
     `/documents/image/{uuid}` refs because those files are temporary.
     """
-    if not settings.MINIO_ENABLED:
-        return text, [], start_index
     if not isinstance(text, str) or not text:
         return text, [], start_index
 
     existing = _existing_minio_image_refs(text)
-    if existing:
-        return text, existing, start_index
-
     matches = _preview_image_matches(text)
     if not matches:
-        return text, [], start_index
+        return text, existing, start_index
+
+    if not settings.MINIO_ENABLED:
+        seen_local_ids: set[str] = set()
+        for match in matches:
+            local_id = _preview_local_image_id(match.group(1))
+            if not local_id or local_id in seen_local_ids:
+                continue
+            seen_local_ids.add(local_id)
+            if _find_preview_image_path(images_dir, local_id) is None:
+                raise HTTPException(status_code=422, detail="Preview image could not be persisted")
+            promoted = _claim_preview_image_for_document(
+                db=db,
+                images_dir=images_dir,
+                local_id=local_id,
+                tenant_id=str(tenant_id),
+                dataset_id=str(dataset_id),
+                document_id=str(document_id),
+                account_id=str(account_id),
+            )
+            if not promoted:
+                raise HTTPException(status_code=403, detail="Preview image cannot be reused for this document")
+        return text, existing, start_index
 
     max_bytes = _preview_image_max_bytes()
-    referenced_img_ids: list[str] = []
+    referenced_img_ids: list[str] = list(existing)
     seen_local_ids: set[str] = set()
 
     for match in matches:
@@ -561,16 +646,15 @@ def _rewrite_preview_images_to_minio(
             tenant_id=tenant_id,
             dataset_id=dataset_id,
             document_id=document_id,
+            account_id=account_id,
+            db=db,
             start_index=start_index,
         )
         if not img_id:
-            continue
+            raise HTTPException(status_code=422, detail="Preview image could not be persisted")
 
         if img_id and img_id not in referenced_img_ids:
             referenced_img_ids.append(img_id)
-
-    if not referenced_img_ids:
-        return text, [], start_index
 
     return PREVIEW_IMAGE_REF_RE.sub(lambda match: _replace_preview_ref(match, local_id_to_img_id), text), referenced_img_ids, start_index
 

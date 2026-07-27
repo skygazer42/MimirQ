@@ -480,6 +480,7 @@ from app.services.chat_response_cache import (
 from app.services.external_conversation_ingest import _mimirq_citations_for_storage
 from app.services.metrics_logger import log_metrics
 from app.services.rag_runtime_limiter import (
+    RetrievalAdmissionTimeoutError,
     run_blocking_call_with_managed_session,
     run_blocking_retrieval_call,
 )
@@ -701,6 +702,8 @@ class _DifyResponseCache:
 _dify_response_cache = _DifyResponseCache()
 _DIFY_RESPONSE_CACHE_REDIS_SCHEMA = "mimirq.dify_external_response_cache.redis.v1"
 _DIFY_RESPONSE_SINGLEFLIGHT_LEASE_SUFFIX = ":lease"
+_DIFY_RESPONSE_SINGLEFLIGHT_RESULT_SUFFIX = ":transient_result"
+_DIFY_RESPONSE_SINGLEFLIGHT_RESULT_TTL_SEC = 10
 _DIFY_RESPONSE_SINGLEFLIGHT_LEASE_POLL_INITIAL_SEC = 0.05
 _DIFY_RESPONSE_SINGLEFLIGHT_LEASE_POLL_MAX_SEC = 0.25
 _DIFY_WARMUP_LEASE_KEY = "dify:warmup:lease"
@@ -717,6 +720,13 @@ _dify_external_warmup_state: dict[str, Any] = {
 }
 
 
+def _dify_singleflight_wait_timeout_sec() -> float:
+    return max(
+        1e-3,
+        float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC", 60.0) or 0.0),
+    )
+
+
 def _clear_dify_response_cache() -> None:
     _dify_response_cache.clear()
 
@@ -724,12 +734,25 @@ def _clear_dify_response_cache() -> None:
 async def _acquire_or_wait_for_inflight_response(
     key: str,
 ) -> tuple[bool, dict[str, Any] | None]:
+    loop = asyncio.get_running_loop()
+    wait_timeout_sec = _dify_singleflight_wait_timeout_sec()
+    deadline = loop.time() + wait_timeout_sec
     while True:
         leader, future = await acquire_inflight_response(key)
         if leader:
             return True, None
         try:
-            return False, await asyncio.shield(future)
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                raise RetrievalAdmissionTimeoutError(wait_timeout_sec)
+            done, _pending = await asyncio.wait(
+                {future},
+                timeout=max(1e-3, remaining),
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if not done:
+                raise RetrievalAdmissionTimeoutError(wait_timeout_sec)
+            return False, future.result()
         except InflightResponseLeaderCancelledError:
             continue
 
@@ -766,6 +789,22 @@ async def _set_dify_response_cache_redis_payload(
     )
 
 
+def _dify_singleflight_result_key(key: str) -> str:
+    return f"{key}{_DIFY_RESPONSE_SINGLEFLIGHT_RESULT_SUFFIX}"
+
+
+async def _dify_distributed_singleflight_payload(
+    key: str,
+    *,
+    response_cache_enabled: bool,
+) -> list[dict[str, Any]] | None:
+    if response_cache_enabled:
+        cached = await _dify_response_cache_redis_payload(key)
+        if cached is not None:
+            return cached
+    return await _dify_response_cache_redis_payload(_dify_singleflight_result_key(key))
+
+
 def _dify_singleflight_lease_ttl_sec(response_cache_ttl_sec: int) -> int:
     warmup_timeout_sec = 60
     with contextlib.suppress(Exception):
@@ -780,18 +819,24 @@ def _dify_singleflight_lease_ttl_sec(response_cache_ttl_sec: int) -> int:
 async def _acquire_or_wait_for_distributed_dify_response(
     key: str,
     *,
+    response_cache_enabled: bool,
     response_cache_ttl_sec: int,
 ) -> tuple[bool, list[dict[str, Any]] | None, _DifyDistributedLease | None]:
-    if not key or response_cache_ttl_sec <= 0:
+    if not key:
         return True, None, None
 
     lease_key = f"{key}{_DIFY_RESPONSE_SINGLEFLIGHT_LEASE_SUFFIX}"
     owner = uuid.uuid4().hex
     lease_ttl_sec = _dify_singleflight_lease_ttl_sec(response_cache_ttl_sec)
     poll_delay = _DIFY_RESPONSE_SINGLEFLIGHT_LEASE_POLL_INITIAL_SEC
+    wait_timeout_sec = _dify_singleflight_wait_timeout_sec()
+    deadline = time.monotonic() + wait_timeout_sec
 
     while True:
-        cached = await _dify_response_cache_redis_payload(key)
+        cached = await _dify_distributed_singleflight_payload(
+            key,
+            response_cache_enabled=response_cache_enabled,
+        )
         if cached is not None:
             return False, cached, None
 
@@ -805,6 +850,14 @@ async def _acquire_or_wait_for_distributed_dify_response(
         if acquired:
             return True, None, _DifyDistributedLease(lease_key=lease_key, owner=owner)
 
+        if time.monotonic() >= deadline:
+            logger.warning(
+                "Dify distributed singleflight timed out waiting for lease payload: %s (timeout=%.2fs)",
+                key,
+                wait_timeout_sec,
+            )
+            raise RetrievalAdmissionTimeoutError(wait_timeout_sec)
+
         await asyncio.sleep(poll_delay)
         poll_delay = min(_DIFY_RESPONSE_SINGLEFLIGHT_LEASE_POLL_MAX_SEC, poll_delay * 1.5)
 
@@ -813,6 +866,17 @@ async def _release_distributed_dify_response_lease(lease: _DifyDistributedLease 
     if lease is None:
         return
     await release_best_effort_redis_lease(lease.lease_key, value=lease.owner)
+
+
+async def _cleanup_distributed_dify_response_lease(
+    lease_task: asyncio.Task[Any] | None,
+    lease: _DifyDistributedLease | None,
+) -> None:
+    if lease_task is not None:
+        lease_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await lease_task
+    await _release_distributed_dify_response_lease(lease)
 
 
 async def _maintain_best_effort_dify_lease(
@@ -1338,6 +1402,7 @@ def _ensure_dify_trace_conversation_accessible(
     tenant_id: UUID,
     conversation_id: UUID,
     account_id: str,
+    source_conversation_id: str | None = None,
 ) -> Conversation:
     conversation = _load_dify_trace_conversation(
         db=db,
@@ -1348,6 +1413,16 @@ def _ensure_dify_trace_conversation_accessible(
         raise HTTPException(status_code=404, detail="Conversation not found")
     if not _conversation_owner_matches_account(conversation, account_id=account_id):
         raise HTTPException(status_code=403, detail="Conversation is not accessible")
+    expected_source_id = str(source_conversation_id or "").strip()
+    if expected_source_id:
+        bound_conversation_id = _find_dify_trace_conversation(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            source_conversation_id=expected_source_id,
+        )
+        if bound_conversation_id != conversation_id:
+            raise HTTPException(status_code=403, detail="Conversation source does not match")
     return conversation
 
 
@@ -1609,9 +1684,13 @@ def _persist_dify_conversation_turn(
             tenant_id=tenant_id,
             conversation_scope=conversation_scope,
         )
-        conversation = _load_dify_trace_conversation(db, tenant_id=tenant_id, conversation_id=conversation_id)
-        if conversation is None:
-            raise HTTPException(status_code=404, detail="Conversation not found")
+        conversation = _ensure_dify_trace_conversation_accessible(
+            db,
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            account_id=account_id,
+            source_conversation_id=source_conversation_id,
+        )
     else:
         if not source_conversation_id:
             raise HTTPException(status_code=400, detail="dify_conversation_id is required")
@@ -1759,6 +1838,7 @@ def _dify_trace_conversation_id(
     tenant_id: UUID | None = None,
     account_id: str | None = None,
 ) -> UUID | None:
+    source_conversation_id = _dify_trace_source_conversation_id(request, body)
     body_conversation_id = _uuid_or_none(body.conversation_id)
     if body_conversation_id is not None:
         if db is not None and tenant_id is not None and account_id is not None:
@@ -1767,6 +1847,7 @@ def _dify_trace_conversation_id(
                 tenant_id=tenant_id,
                 conversation_id=body_conversation_id,
                 account_id=account_id,
+                source_conversation_id=source_conversation_id,
             )
         return body_conversation_id
     for header_name in ("x-mimirq-conversation-id", "x-conversation-id"):
@@ -1781,6 +1862,7 @@ def _dify_trace_conversation_id(
                     tenant_id=tenant_id,
                     conversation_id=header_conversation_id,
                     account_id=account_id,
+                    source_conversation_id=source_conversation_id,
                 )
             return header_conversation_id
         else:
@@ -1788,7 +1870,6 @@ def _dify_trace_conversation_id(
     if db is None or tenant_id is None or account_id is None:
         return None
 
-    source_conversation_id = _dify_trace_source_conversation_id(request, body)
     if not source_conversation_id:
         return None
     return _ensure_dify_trace_conversation(
@@ -7132,56 +7213,57 @@ async def _retrieve_external_knowledge(
                 elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
                 response_records = [DifyExternalKnowledgeRecord(**record) for record in serialized_records]
                 return DifyExternalKnowledgeResponse(records=response_records)
-        if response_cache_enabled:
-            distributed_wait_started = time.perf_counter()
-            (
-                distributed_leader,
-                distributed_records,
-                distributed_singleflight_lease,
-            ) = await _acquire_or_wait_for_distributed_dify_response(
-                singleflight_key,
-                response_cache_ttl_sec=response_cache_ttl_sec,
-            )
-            stage_timings_ms["distributed_singleflight_wait_ms"] = round(
-                (time.perf_counter() - distributed_wait_started) * 1000,
-                2,
-            )
-            if distributed_leader and distributed_singleflight_lease is not None:
-                distributed_singleflight_lease_task = asyncio.create_task(
-                    _maintain_best_effort_dify_lease(
-                        distributed_singleflight_lease,
-                        ttl_sec=_dify_singleflight_lease_ttl_sec(response_cache_ttl_sec),
-                    )
+        distributed_wait_started = time.perf_counter()
+        (
+            distributed_leader,
+            distributed_records,
+            distributed_singleflight_lease,
+        ) = await _acquire_or_wait_for_distributed_dify_response(
+            singleflight_key,
+            response_cache_enabled=response_cache_enabled,
+            response_cache_ttl_sec=response_cache_ttl_sec,
+        )
+        stage_timings_ms["distributed_singleflight_wait_ms"] = round(
+            (time.perf_counter() - distributed_wait_started) * 1000,
+            2,
+        )
+        if distributed_leader and distributed_singleflight_lease is not None:
+            distributed_singleflight_lease_task = asyncio.create_task(
+                _maintain_best_effort_dify_lease(
+                    distributed_singleflight_lease,
+                    ttl_sec=_dify_singleflight_lease_ttl_sec(response_cache_ttl_sec),
                 )
-            if not distributed_leader:
-                serialized_records = [dict(record) for record in (distributed_records or [])]
+            )
+        if not distributed_leader:
+            serialized_records = [dict(record) for record in (distributed_records or [])]
+            if response_cache_enabled:
                 _dify_response_cache.set(
                     singleflight_key,
                     serialized_records,
                     ttl_sec=response_cache_ttl_sec,
                     max_entries=response_cache_max_entries,
                 )
-                resolve_inflight_response(singleflight_key, {"records": serialized_records})
-                elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
-                response_records = [DifyExternalKnowledgeRecord(**record) for record in serialized_records]
-                logger.info(
-                    "Dify external retrieval distributed cache hit client_ip_hash=%s knowledge_id_hash=%s "
-                    "query_hash=%s records=%s elapsed_ms=%s",
-                    log_extra_base["client_ip_hash"],
-                    log_extra_base["knowledge_id_hash"],
-                    log_extra_base["query_hash"],
-                    len(response_records),
-                    elapsed_ms,
-                    extra={
-                        **log_extra_base,
-                        "phase": "distributed_cache_hit",
-                        "record_count": len(response_records),
-                        "elapsed_ms": elapsed_ms,
-                        "distributed_singleflight_hit": True,
-                        "stage_timings_ms": stage_timings_ms,
-                    },
-                )
-                return DifyExternalKnowledgeResponse(records=response_records)
+            resolve_inflight_response(singleflight_key, {"records": serialized_records})
+            elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+            response_records = [DifyExternalKnowledgeRecord(**record) for record in serialized_records]
+            logger.info(
+                "Dify external retrieval distributed cache hit client_ip_hash=%s knowledge_id_hash=%s "
+                "query_hash=%s records=%s elapsed_ms=%s",
+                log_extra_base["client_ip_hash"],
+                log_extra_base["knowledge_id_hash"],
+                log_extra_base["query_hash"],
+                len(response_records),
+                elapsed_ms,
+                extra={
+                    **log_extra_base,
+                    "phase": "distributed_cache_hit",
+                    "record_count": len(response_records),
+                    "elapsed_ms": elapsed_ms,
+                    "distributed_singleflight_hit": True,
+                    "stage_timings_ms": stage_timings_ms,
+                },
+            )
+            return DifyExternalKnowledgeResponse(records=response_records)
 
     records: list[dict[str, Any]] = []
     citation_count = 0
@@ -7703,6 +7785,11 @@ async def _retrieve_external_knowledge(
         response_records = [DifyExternalKnowledgeRecord(**record) for record in compacted_records]
         stage_timings_ms["postprocess_ms"] = round((time.perf_counter() - postprocess_started) * 1000, 2)
         serialized_response_records = [record.model_dump(mode="json") for record in response_records]
+        if singleflight_key and singleflight_leader:
+            resolve_inflight_response(
+                singleflight_key,
+                {"records": serialized_response_records},
+            )
         if response_cache_enabled and response_cache_key is not None:
             _dify_response_cache.set(
                 response_cache_key,
@@ -7714,6 +7801,16 @@ async def _retrieve_external_knowledge(
                 response_cache_key,
                 serialized_response_records,
                 ttl_sec=response_cache_ttl_sec,
+            )
+        if (
+            singleflight_key
+            and distributed_singleflight_lease is not None
+            and not response_cache_enabled
+        ):
+            await _set_dify_response_cache_redis_payload(
+                _dify_singleflight_result_key(singleflight_key),
+                serialized_response_records,
+                ttl_sec=_DIFY_RESPONSE_SINGLEFLIGHT_RESULT_TTL_SEC,
             )
         elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
         record_count = len(response_records)
@@ -7785,35 +7882,35 @@ async def _retrieve_external_knowledge(
             dify_message_id=body.dify_message_id,
             dify_workflow_run_id=body.dify_workflow_run_id,
         )
-        if singleflight_key and singleflight_leader:
-            resolve_inflight_response(
-                singleflight_key,
-                {"records": serialized_response_records},
-            )
-        if distributed_singleflight_lease_task is not None:
-            distributed_singleflight_lease_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await distributed_singleflight_lease_task
-        await _release_distributed_dify_response_lease(distributed_singleflight_lease)
+        await _cleanup_distributed_dify_response_lease(
+            distributed_singleflight_lease_task,
+            distributed_singleflight_lease,
+        )
         return DifyExternalKnowledgeResponse(records=response_records)
     except asyncio.CancelledError:
-        if distributed_singleflight_lease_task is not None:
-            distributed_singleflight_lease_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await distributed_singleflight_lease_task
-        await _release_distributed_dify_response_lease(distributed_singleflight_lease)
+        await _cleanup_distributed_dify_response_lease(
+            distributed_singleflight_lease_task,
+            distributed_singleflight_lease,
+        )
         if singleflight_key and singleflight_leader:
             reject_inflight_response(
                 singleflight_key,
                 InflightResponseLeaderCancelledError("singleflight leader request cancelled"),
             )
         raise
+    except HTTPException as exc:
+        await _cleanup_distributed_dify_response_lease(
+            distributed_singleflight_lease_task,
+            distributed_singleflight_lease,
+        )
+        if singleflight_key and singleflight_leader:
+            reject_inflight_response(singleflight_key, exc)
+        raise
     except Exception as exc:
-        if distributed_singleflight_lease_task is not None:
-            distributed_singleflight_lease_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await distributed_singleflight_lease_task
-        await _release_distributed_dify_response_lease(distributed_singleflight_lease)
+        await _cleanup_distributed_dify_response_lease(
+            distributed_singleflight_lease_task,
+            distributed_singleflight_lease,
+        )
         if singleflight_key and singleflight_leader:
             reject_inflight_response(singleflight_key, exc)
         elapsed_ms = round((time.perf_counter() - started) * 1000, 2)

@@ -30,6 +30,37 @@ class _DB:
         return _Query(self._document)
 
 
+class _ModelQuery:
+    def __init__(self, results_by_model: dict[str, Any], model: Any):
+        self._results_by_model = results_by_model
+        self._model = model
+
+    def filter(self, *args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+        return self
+
+    def first(self):  # noqa: ANN202
+        value = self._results_by_model.get(getattr(self._model, "__name__", ""))
+        if isinstance(value, list):
+            return value[0] if value else None
+        return value
+
+    def all(self):  # noqa: ANN202
+        value = self._results_by_model.get(getattr(self._model, "__name__", ""))
+        if isinstance(value, list):
+            return list(value)
+        if value is None:
+            return []
+        return [value]
+
+
+class _DBByModel:
+    def __init__(self, results_by_model: dict[str, Any]):
+        self._results_by_model = dict(results_by_model)
+
+    def query(self, model):  # noqa: ANN001, ANN202
+        return _ModelQuery(self._results_by_model, model)
+
+
 def _build_request(*, query: str = "", headers: dict[str, str] | None = None) -> Request:
     raw_headers = [
         (name.lower().encode("latin-1"), value.encode("latin-1"))
@@ -62,6 +93,18 @@ def _build_image_client() -> TestClient:
 
     def _override_get_db():  # noqa: ANN202
         yield _DB(None)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.get("/api/v1/documents/image/{image_id}")(get_image)
+    return TestClient(app)
+
+
+def _build_image_client_with_db(db_obj: Any) -> TestClient:
+    from app.api.v1.document_assets import get_image
+
+    def _override_get_db():  # noqa: ANN202
+        yield db_obj
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db
@@ -293,25 +336,48 @@ def test_get_image_uses_header_auth_and_no_store_cache(monkeypatch, tmp_path):  
     from app.services.dataset_service import DatasetService
 
     tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    document_id = uuid.uuid4()
     image_id = uuid.uuid4()
     image_dir = tmp_path / str(tenant_id) / "images"
     image_dir.mkdir(parents=True)
     image_path = image_dir / f"{image_id.hex}.png"
     image_path.write_bytes(b"\x89PNG\r\n\x1a\npng-data")
+    (image_dir / f"{image_id.hex}.json").write_text(
+        (
+            '{"dataset_id":"%s","document_id":"%s","tenant_id":"%s"}'
+            % (dataset_id, document_id, tenant_id)
+        ),
+        encoding="utf-8",
+    )
 
     auth_calls: list[dict[str, Any]] = []
+    acl_calls: list[dict[str, Any]] = []
 
     async def _fake_auth(**kwargs):  # noqa: ANN003, ANN202
         auth_calls.append(kwargs)
         return "acct-123"
+
+    def _fake_assert_document_acl_readable(_db, **kwargs):  # noqa: ANN001
+        acl_calls.append(kwargs)
 
     monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
     monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
     monkeypatch.setattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 600, raising=False)
     monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
     monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    dataset = SimpleNamespace(id=dataset_id, tenant_id=tenant_id, owner_id="owner-1")
+    document = SimpleNamespace(
+        id=document_id,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        access_mode="inherit",
+        owner_id="owner-1",
+    )
+    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module, "_assert_document_acl_readable", _fake_assert_document_acl_readable, raising=True)
 
-    client = _build_image_client()
+    client = _build_image_client_with_db(_DBByModel({"Document": [document], "Dataset": [dataset]}))
 
     response = client.get(
         f"/api/v1/documents/image/{image_id}?tenant_id={tenant_id}",
@@ -330,6 +396,7 @@ def test_get_image_uses_header_auth_and_no_store_cache(monkeypatch, tmp_path):  
             "x_tenant_id": str(tenant_id),
         }
     ]
+    assert len(acl_calls) == 1
 
 
 def test_download_document_rejects_spoofed_request_tenant_when_verified_jwt_tenant_exists(monkeypatch, tmp_path):  # noqa: ANN001
@@ -428,6 +495,387 @@ def test_get_image_rejects_spoofed_request_tenant_when_verified_jwt_tenant_exist
     assert response.status_code == 403, response.text
     assert response.json() == {"detail": "Asset access denied for this tenant"}
     assert auth_calls == []
+
+
+def test_get_image_fails_closed_without_preview_ownership_metadata(monkeypatch, tmp_path):  # noqa: ANN001
+    import app.api.v1.documents as documents_module
+    from app.core.config import settings
+    from app.services.dataset_service import DatasetService
+
+    tenant_id = uuid.uuid4()
+    image_id = uuid.uuid4()
+    image_dir = tmp_path / str(tenant_id) / "images"
+    image_dir.mkdir(parents=True)
+    (image_dir / f"{image_id.hex}.png").write_bytes(b"\x89PNG\r\n\x1a\npng-data")
+
+    async def _fake_auth(**_kwargs):  # noqa: ANN202
+        return "acct-123"
+
+    monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+
+    client = _build_image_client()
+    response = client.get(
+        f"/api/v1/documents/image/{image_id}?tenant_id={tenant_id}",
+        headers={"Authorization": "Bearer header.jwt"},
+    )
+
+    assert response.status_code == 404, response.text
+
+
+def test_get_image_skips_legacy_lookup_when_preview_file_is_missing(monkeypatch, tmp_path):  # noqa: ANN001
+    import app.api.v1.document_assets as document_assets
+    import app.api.v1.documents as documents_module
+    from app.core.config import settings
+    from app.services.dataset_service import DatasetService
+
+    tenant_id = uuid.uuid4()
+    image_id = uuid.uuid4()
+
+    async def _fake_auth(**_kwargs):  # noqa: ANN202
+        return "acct-123"
+
+    monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(
+        document_assets,
+        "find_legacy_preview_document_ids",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("legacy lookup should not run")),
+        raising=True,
+    )
+
+    client = _build_image_client()
+    response = client.get(
+        f"/api/v1/documents/image/{image_id}?tenant_id={tenant_id}",
+        headers={"Authorization": "Bearer header.jwt"},
+    )
+
+    assert response.status_code == 404, response.text
+
+
+def test_get_image_recovers_legacy_binding_through_document_acl(monkeypatch, tmp_path):  # noqa: ANN001
+    import json
+
+    import app.api.v1.document_assets as document_assets
+    import app.api.v1.documents as documents_module
+    from app.core.config import settings
+    from app.services.dataset_service import DatasetService
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    image_id = uuid.uuid4()
+    image_dir = tmp_path / str(tenant_id) / "images"
+    image_dir.mkdir(parents=True)
+    (image_dir / f"{image_id.hex}.png").write_bytes(b"\x89PNG\r\n\x1a\npng-data")
+
+    async def _fake_auth(**_kwargs):  # noqa: ANN202
+        return "legacy-reader"
+
+    document = SimpleNamespace(
+        id=document_id,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        access_mode="inherit",
+        owner_id="owner-1",
+    )
+    dataset = SimpleNamespace(id=dataset_id, tenant_id=tenant_id, owner_id="owner-1")
+    acl_calls: list[str] = []
+
+    monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(
+        documents_module,
+        "_assert_document_acl_readable",
+        lambda *_args, **_kwargs: acl_calls.append("checked"),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        document_assets,
+        "find_legacy_preview_document_ids",
+        lambda *_args, **_kwargs: {document_id},
+        raising=True,
+    )
+
+    client = _build_image_client_with_db(_DBByModel({"Document": [document], "Dataset": [dataset]}))
+    response = client.get(
+        f"/api/v1/documents/image/{image_id}?tenant_id={tenant_id}",
+        headers={"Authorization": "Bearer header.jwt"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert acl_calls == ["checked"]
+    assert json.loads((image_dir / f"{image_id.hex}.json").read_text(encoding="utf-8")) == {
+        "tenant_id": str(tenant_id),
+        "dataset_id": str(dataset_id),
+        "document_id": str(document_id),
+    }
+
+
+def test_get_image_recovers_from_malformed_sidecar_via_exact_legacy_acl(monkeypatch, tmp_path):  # noqa: ANN001
+    import json
+
+    import app.api.v1.document_assets as document_assets
+    import app.api.v1.documents as documents_module
+    from app.core.config import settings
+    from app.services.dataset_service import DatasetService
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    image_id = uuid.uuid4()
+    image_dir = tmp_path / str(tenant_id) / "images"
+    image_dir.mkdir(parents=True)
+    (image_dir / f"{image_id.hex}.png").write_bytes(b"\x89PNG\r\n\x1a\npng-data")
+    (image_dir / f"{image_id.hex}.json").write_text(
+        json.dumps({"tenant_id": str(tenant_id), "dataset_id": str(dataset_id)}),
+        encoding="utf-8",
+    )
+
+    async def _fake_auth(**_kwargs):  # noqa: ANN202
+        return "legacy-reader"
+
+    document = SimpleNamespace(
+        id=document_id,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        access_mode="inherit",
+        owner_id="owner-1",
+    )
+    dataset = SimpleNamespace(id=dataset_id, tenant_id=tenant_id, owner_id="owner-1")
+    acl_calls: list[str] = []
+
+    monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(
+        documents_module,
+        "_assert_document_acl_readable",
+        lambda *_args, **_kwargs: acl_calls.append("checked"),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        document_assets,
+        "find_legacy_preview_document_ids",
+        lambda *_args, **_kwargs: {document_id},
+        raising=True,
+    )
+
+    client = _build_image_client_with_db(_DBByModel({"Document": [document], "Dataset": [dataset]}))
+    response = client.get(
+        f"/api/v1/documents/image/{image_id}?tenant_id={tenant_id}",
+        headers={"Authorization": "Bearer header.jwt"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert acl_calls == ["checked"]
+    assert json.loads((image_dir / f"{image_id.hex}.json").read_text(encoding="utf-8")) == {
+        "tenant_id": str(tenant_id),
+        "dataset_id": str(dataset_id),
+        "document_id": str(document_id),
+    }
+
+
+def test_get_image_selects_safe_multi_candidate_without_persisting_binding(monkeypatch, tmp_path):  # noqa: ANN001
+    import json
+
+    from fastapi import HTTPException
+
+    import app.api.v1.document_assets as document_assets
+    import app.api.v1.documents as documents_module
+    from app.core.config import settings
+    from app.services.dataset_service import DatasetService
+
+    tenant_id = uuid.uuid4()
+    denied_dataset_id = uuid.uuid4()
+    allowed_dataset_id = uuid.uuid4()
+    denied_document_id = uuid.uuid4()
+    allowed_document_id = uuid.uuid4()
+    image_id = uuid.uuid4()
+    image_dir = tmp_path / str(tenant_id) / "images"
+    image_dir.mkdir(parents=True)
+    (image_dir / f"{image_id.hex}.png").write_bytes(b"\x89PNG\r\n\x1a\npng-data")
+    malformed_sidecar = {"tenant_id": str(tenant_id), "dataset_id": str(allowed_dataset_id)}
+    (image_dir / f"{image_id.hex}.json").write_text(json.dumps(malformed_sidecar), encoding="utf-8")
+
+    async def _fake_auth(**_kwargs):  # noqa: ANN202
+        return "legacy-reader"
+
+    denied_document = SimpleNamespace(
+        id=denied_document_id,
+        tenant_id=tenant_id,
+        dataset_id=denied_dataset_id,
+        access_mode="inherit",
+        owner_id="owner-1",
+    )
+    allowed_document = SimpleNamespace(
+        id=allowed_document_id,
+        tenant_id=tenant_id,
+        dataset_id=allowed_dataset_id,
+        access_mode="inherit",
+        owner_id="owner-2",
+    )
+    denied_dataset = SimpleNamespace(id=denied_dataset_id, tenant_id=tenant_id, owner_id="owner-1")
+    allowed_dataset = SimpleNamespace(id=allowed_dataset_id, tenant_id=tenant_id, owner_id="owner-2")
+    acl_calls: list[uuid.UUID] = []
+
+    def _fake_assert_dataset_readable(_db, dataset, account_id):  # noqa: ANN001
+        if dataset.id == denied_dataset_id:
+            raise HTTPException(status_code=404, detail=f"dataset denied for {account_id}")
+
+    monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(DatasetService, "assert_dataset_readable", _fake_assert_dataset_readable, raising=True)
+    monkeypatch.setattr(
+        documents_module,
+        "_assert_document_acl_readable",
+        lambda *_args, **kwargs: acl_calls.append(kwargs["document"].id),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        document_assets,
+        "find_legacy_preview_document_ids",
+        lambda *_args, **_kwargs: {denied_document_id, allowed_document_id},
+        raising=True,
+    )
+
+    client = _build_image_client_with_db(
+        _DBByModel(
+            {
+                "Document": [denied_document, allowed_document],
+                "Dataset": [denied_dataset, allowed_dataset],
+            }
+        )
+    )
+    response = client.get(
+        f"/api/v1/documents/image/{image_id}?tenant_id={tenant_id}",
+        headers={"Authorization": "Bearer header.jwt"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert acl_calls == [allowed_document_id]
+    assert json.loads((image_dir / f"{image_id.hex}.json").read_text(encoding="utf-8")) == malformed_sidecar
+
+
+def test_get_image_enforces_parent_document_acl_from_preview_ownership_metadata(monkeypatch, tmp_path):  # noqa: ANN001
+    import json
+
+    import app.api.v1.documents as documents_module
+    from app.core.config import settings
+    from app.services.dataset_service import DatasetService
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    image_id = uuid.uuid4()
+    image_dir = tmp_path / str(tenant_id) / "images"
+    image_dir.mkdir(parents=True)
+    (image_dir / f"{image_id.hex}.png").write_bytes(b"\x89PNG\r\n\x1a\npng-data")
+    (image_dir / f"{image_id.hex}.json").write_text(
+        json.dumps(
+            {
+                "tenant_id": str(tenant_id),
+                "dataset_id": str(dataset_id),
+                "document_id": str(document_id),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    auth_calls: list[dict[str, Any]] = []
+    acl_calls: list[dict[str, Any]] = []
+
+    async def _fake_auth(**kwargs):  # noqa: ANN003, ANN202
+        auth_calls.append(kwargs)
+        return "acct-123"
+
+    def _fake_assert_document_acl_readable(_db, **kwargs):  # noqa: ANN001
+        acl_calls.append(kwargs)
+
+    document = SimpleNamespace(
+        id=document_id,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        access_mode="inherit",
+        owner_id="owner-1",
+    )
+    dataset = SimpleNamespace(id=dataset_id, tenant_id=tenant_id, owner_id="owner-1")
+
+    monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(DatasetService, "get_dataset", lambda *_args, **_kwargs: dataset, raising=True)
+    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module, "_assert_document_acl_readable", _fake_assert_document_acl_readable, raising=True)
+
+    client = _build_image_client_with_db(_DBByModel({"Document": document}))
+    response = client.get(
+        f"/api/v1/documents/image/{image_id}?tenant_id={tenant_id}",
+        headers={"Authorization": "Bearer header.jwt"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.content.startswith(b"\x89PNG\r\n\x1a\n")
+    assert auth_calls == [
+        {
+            "authorization": "Bearer header.jwt",
+            "x_user_id": None,
+            "x_tenant_id": str(tenant_id),
+        }
+    ]
+    assert len(acl_calls) == 1
+    assert acl_calls[0]["tenant_id"] == tenant_id
+    assert acl_calls[0]["account_id"] == "acct-123"
+    assert acl_calls[0]["document"] is document
+    assert acl_calls[0]["dataset"] is dataset
+
+
+def test_get_image_allows_only_the_account_that_created_an_ephemeral_preview(monkeypatch, tmp_path):  # noqa: ANN001
+    import json
+
+    import app.api.v1.documents as documents_module
+    from app.core.config import settings
+    from app.services.dataset_service import DatasetService
+
+    tenant_id = uuid.uuid4()
+    image_id = uuid.uuid4()
+    image_dir = tmp_path / str(tenant_id) / "images"
+    image_dir.mkdir(parents=True)
+    (image_dir / f"{image_id.hex}.png").write_bytes(b"\x89PNG\r\n\x1a\npng-data")
+    (image_dir / f"{image_id.hex}.json").write_text(
+        json.dumps({"tenant_id": str(tenant_id), "account_id": "preview-owner"}),
+        encoding="utf-8",
+    )
+
+    current_account = {"value": "preview-owner"}
+
+    async def _fake_auth(**_kwargs):  # noqa: ANN202
+        return current_account["value"]
+
+    monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(documents_module, "get_current_account_id_from_headers", _fake_auth, raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+
+    client = _build_image_client()
+    url = f"/api/v1/documents/image/{image_id}?tenant_id={tenant_id}"
+
+    assert client.get(url, headers={"Authorization": "Bearer owner.jwt"}).status_code == 200
+
+    current_account["value"] = "other-account"
+    assert client.get(url, headers={"Authorization": "Bearer other.jwt"}).status_code == 404
 
 
 def test_get_image_url_hides_object_storage_errors(monkeypatch):  # noqa: ANN001

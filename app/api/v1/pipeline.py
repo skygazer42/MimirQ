@@ -981,6 +981,7 @@ async def parse_preview(
             payload={
                 "action": "pipeline_parse_preview",
                 "tenant_id": str(tenant_id),
+                "account_id": str(account_id),
                 "file_path": str(temp_path),
                 "parser_backend": parser_backend,
             },
@@ -1252,6 +1253,7 @@ async def ingestion_preview(
             payload={
                 "action": "pipeline_parse_preview",
                 "tenant_id": str(tenant_id),
+                "account_id": str(account_id),
                 "file_path": str(parse_path),
                 "parser_backend": config.parser_backend_choice,
             },

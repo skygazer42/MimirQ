@@ -97,6 +97,88 @@ def test_upgrade_from_previous_revision_backfills_conversation_owner_account_id(
 
 
 @pytest.mark.skipif(not _integration_enabled(), reason="Integration tests disabled (set MIMIRQ_INTEGRATION_TESTS=1)")
+def test_upgrade_to_0026_creates_index_drift_items(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _postgres_alembic_test_database(monkeypatch) as (alembic_cfg, engine):
+        command.upgrade(alembic_cfg, "0025_scan_run_active_uniqueness")
+        assert "index_drift_items" not in inspect(engine).get_table_names()
+
+        command.upgrade(alembic_cfg, "head")
+
+        tenant_id = uuid.uuid4()
+        item_id = uuid.uuid4()
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO index_drift_items (
+                        id, tenant_id, operation, channel, strictness, status,
+                        reason, details, marker, replay_count
+                    )
+                    VALUES (
+                        :item_id, :tenant_id, 'delete', 'vector', 'warn', 'open',
+                        'integration-test', CAST(:details AS json), CAST(:marker AS json), 0
+                    )
+                    """
+                ),
+                {
+                    "item_id": item_id,
+                    "tenant_id": tenant_id,
+                    "details": json.dumps({"source": "alembic"}),
+                    "marker": json.dumps({"sequence": 1}),
+                },
+            )
+
+        inspector = inspect(engine)
+        columns = {column["name"] for column in inspector.get_columns("index_drift_items")}
+        indexes = {index["name"] for index in inspector.get_indexes("index_drift_items")}
+        with engine.connect() as conn:
+            stored = conn.execute(
+                text(
+                    "SELECT tenant_id::text, details, marker, created_at, updated_at "
+                    "FROM index_drift_items WHERE id = :item_id"
+                ),
+                {"item_id": item_id},
+            ).one()
+
+        assert {
+            "id",
+            "tenant_id",
+            "dataset_id",
+            "document_id",
+            "chunk_id",
+            "operation",
+            "channel",
+            "strictness",
+            "status",
+            "reason",
+            "details",
+            "marker",
+            "reconcile_task_id",
+            "replay_count",
+            "created_at",
+            "updated_at",
+            "last_replayed_at",
+            "resolved_at",
+            "resolved_by",
+            "resolution_note",
+        } <= columns
+        assert {
+            "ix_index_drift_items_tenant_id",
+            "ix_index_drift_items_dataset_id",
+            "ix_index_drift_items_document_id",
+            "ix_index_drift_items_chunk_id",
+            "ix_index_drift_items_operation",
+            "ix_index_drift_items_channel",
+            "ix_index_drift_items_status",
+        } <= indexes
+        assert stored.tenant_id == str(tenant_id)
+        assert stored.details == {"source": "alembic"}
+        assert stored.marker == {"sequence": 1}
+        assert stored.created_at is not None
+        assert stored.updated_at is not None
+
+
+@pytest.mark.skipif(not _integration_enabled(), reason="Integration tests disabled (set MIMIRQ_INTEGRATION_TESTS=1)")
 def test_upgrade_to_0024_dedupes_ingestion_run_documents_and_repairs_stats(monkeypatch: pytest.MonkeyPatch) -> None:
     with _postgres_alembic_test_database(monkeypatch) as (alembic_cfg, engine):
         command.upgrade(alembic_cfg, "0023_document_dedup_key")

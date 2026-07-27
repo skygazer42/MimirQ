@@ -122,6 +122,18 @@ def _read(rel_path: str) -> str:
     return (ROOT / rel_path).read_text(encoding="utf-8")
 
 
+def _helm_runtime_script_paths() -> list[str]:
+    chart_dir = ROOT / "deploy/helm/mimirq"
+    sources = [chart_dir / "values.yaml", *sorted((chart_dir / "templates").glob("*.yaml"))]
+    return sorted(
+        {
+            match
+            for source in sources
+            for match in re.findall(r"scripts/[A-Za-z0-9_./-]+\.py", source.read_text(encoding="utf-8"))
+        }
+    )
+
+
 def _decorator_target(decorator: ast.expr) -> ast.expr:
     return decorator.func if isinstance(decorator, ast.Call) else decorator
 
@@ -427,6 +439,33 @@ def test_production_make_targets_validate_and_propagate_environment() -> None:
     assert "ENV=production $(COMPOSE_WEB) up -d --build" in makefile
 
 
+def test_host_quickstart_make_targets_cover_backend_worker_and_web() -> None:
+    makefile = _read("Makefile")
+    readme = _read("README.md")
+    quickstart = _read("docs/quickstart.md")
+
+    assert "make worker   - run background worker locally from the project venv (arq)" in makefile
+    assert "make worker-check - verify the local worker can reach Redis with the configured queue settings" in makefile
+    assert "\nworker:\n" in makefile
+    assert "\t$(PY) -m arq app.tasks.worker.WorkerSettings\n" in makefile
+    assert "\nworker-check:\n" in makefile
+    assert "\t$(PY) -m arq --check app.tasks.queue.WorkerHealthSettings\n" in makefile
+
+    assert "make backend" in readme
+    assert "make worker" in readme
+    assert "make web" in readme
+    assert ".venv/bin/arq app.tasks.worker.WorkerSettings" not in readme
+    assert "主机源码启动 API + Worker + Web" in readme
+
+    assert "make infra-up" in quickstart
+    assert "make backend" in quickstart
+    assert "make worker" in quickstart
+    assert "make web" in quickstart
+    assert "make worker-check" in quickstart
+    assert "分别打开三个终端" in quickstart
+    assert "终端 2：文档解析与索引 Worker" in quickstart
+
+
 def test_docker_verification_keeps_dev_lint_tools_out_of_the_runtime_image() -> None:
     makefile = _read("Makefile")
     lint_target = makefile.split("\nlint-py-docker:", 1)[1].split("\ncompileall-docker:", 1)[0]
@@ -486,6 +525,39 @@ def test_helm_migration_job_is_a_pre_install_upgrade_hook_backed_by_existing_sec
     assert 'name: {{ include "mimirq.secretName" . }}' in template
     assert "{{- toYaml .Values.migrations.command | nindent 12 }}" in template
     assert values["migrations"]["command"][:2] == ["python", "scripts/alembic_cli.py"]
+
+
+def test_production_image_bundles_only_runtime_scripts_needed_by_helm_jobs() -> None:
+    dockerfile = _read("docker/Dockerfile")
+
+    expected_runtime_scripts = _helm_runtime_script_paths()
+
+    for script_path in expected_runtime_scripts:
+        assert Path(script_path).exists(), script_path
+        assert script_path in dockerfile
+
+    assert "COPY scripts/bootstrap_mimirq_models.py ./scripts/bootstrap_mimirq_models.py" in dockerfile
+    assert "COPY scripts ./scripts" not in dockerfile
+
+
+def test_runtime_scripts_bundled_for_helm_jobs_do_not_depend_on_other_local_scripts() -> None:
+    expected_runtime_scripts = _helm_runtime_script_paths()
+
+    for script_path in expected_runtime_scripts:
+        tree = ast.parse(_read(script_path), filename=script_path)
+        imported_modules: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported_modules.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                imported_modules.add(str(node.module or ""))
+
+        script_deps = sorted(
+            module
+            for module in imported_modules
+            if module == "scripts" or module.startswith("scripts.")
+        )
+        assert script_deps == [], f"{script_path} unexpectedly depends on local scripts modules: {script_deps}"
 
 
 def test_web_production_healthcheck_uses_ipv4_loopback() -> None:

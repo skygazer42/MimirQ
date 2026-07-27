@@ -29,8 +29,6 @@ type GraphScopePickerDialogProps = Readonly<{
   onTriggerManualKgUpload: () => void
 }>
 
-const GRAPH_SCOPE_DATASET_PARAMS = { limit: 200 } as const
-
 export function GraphScopePickerDialog({
   open,
   onOpenChange,
@@ -44,14 +42,11 @@ export function GraphScopePickerDialog({
   const [selectedDatasetId, setSelectedDatasetId] = useState<string>(currentDatasetId ?? '')
 
   const datasetsQuery = useQuery({
-    queryKey: queryKeys.datasets.list(GRAPH_SCOPE_DATASET_PARAMS),
-    queryFn: () => datasetApi.list(GRAPH_SCOPE_DATASET_PARAMS),
+    queryKey: queryKeys.datasets.exhaustive({ purpose: 'graph-scope-picker' }),
+    queryFn: () => datasetApi.listAll(),
     enabled: open,
   })
-  const datasets = useMemo(
-    () => (Array.isArray(datasetsQuery.data?.items) ? datasetsQuery.data.items : []),
-    [datasetsQuery.data?.items]
-  )
+  const datasets = useMemo(() => datasetsQuery.data ?? [], [datasetsQuery.data])
   const loading = datasetsQuery.isFetching
   const error = datasetsQuery.error ? '加载知识库列表失败，请稍后重试。' : null
   const { refetch: refetchDatasets } = datasetsQuery

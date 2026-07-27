@@ -2,7 +2,7 @@
 
 MimirQ 支持将 **MagicPDF（PyPI: `magic-pdf`）** 作为可选 PDF 高级解析后端，输出 Markdown，适用于扫描件、复杂排版等场景。
 
-> 生产部署推荐使用独立 `mimirq-magicpdf` 服务。旧的 API/worker 容器内本地 CLI 模式仍保留为开发/调试兜底，但不再是 Docker 推荐路径。
+> 生产部署使用独立 `mimirq-magicpdf` 服务。默认 API/worker 镜像不安装依赖版本与主运行时冲突的本地 CLI；本地 CLI 仅保留为宿主机或自定义镜像的开发调试路径。
 
 ## 启用方式
 
@@ -47,7 +47,8 @@ docker compose -f docker/docker-compose.yml up -d --build mimirq-api mimirq-work
 
 ### 兜底：本地 CLI 模式
 
-如果不配置 `MAGIC_PDF_API_URL`，后端会回退到 API/worker 本地 CLI 模式。此模式需要：
+如果不配置 `MAGIC_PDF_API_URL`，后端会尝试本地 CLI。默认 Docker 镜像不包含该
+CLI；此模式只适用于已独立安装兼容 `magic-pdf` 环境的宿主机或自定义镜像，并需要：
 
 ```bash
 MAGIC_PDF_ENABLED=true

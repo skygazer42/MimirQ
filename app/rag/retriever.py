@@ -82,7 +82,11 @@ from app.services.dataset_embedding_config import (
     create_embeddings_for_runtime,
     resolve_dataset_embedding_runtime,
 )
-from app.services.rag_runtime_limiter import run_blocking_retrieval_call
+from app.services.rag_runtime_limiter import (
+    RetrievalAdmissionTimeoutError,
+    run_blocking_retrieval_call,
+    run_with_retrieval_backend_budget_sync,
+)
 from app.storage.vector.factory import get_vector_store
 from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
 
@@ -455,7 +459,7 @@ class HybridRetriever(
         runtime_shards: list[tuple[DatasetEmbeddingRuntimeConfig, tuple[UUID, ...]]],
         vector_store: Any,
     ) -> tuple[list[dict[str, Any]], list[Exception]]:
-        def search_shard(
+        def _search_shard_impl(
             shard: tuple[DatasetEmbeddingRuntimeConfig, tuple[UUID, ...]],
         ) -> tuple[list[dict[str, Any]], Exception | None]:
             shard_runtime, shard_dataset_ids = shard
@@ -493,6 +497,20 @@ class HybridRetriever(
             except Exception as exc:
                 logger.warning(
                     "Vector search shard failed for collection %s: %s",
+                    shard_runtime.collection_name,
+                    exc,
+                )
+                return [], exc
+
+        def search_shard(
+            shard: tuple[DatasetEmbeddingRuntimeConfig, tuple[UUID, ...]],
+        ) -> tuple[list[dict[str, Any]], Exception | None]:
+            try:
+                return run_with_retrieval_backend_budget_sync(_search_shard_impl, shard)
+            except Exception as exc:
+                shard_runtime, _shard_dataset_ids = shard
+                logger.warning(
+                    "Vector search shard admission failed for collection %s: %s",
                     shard_runtime.collection_name,
                     exc,
                 )
@@ -1550,29 +1568,43 @@ class HybridRetriever(
                 singleflight_leader, inflight_future = acquire_inflight_retrieval_candidates(cache_key)
                 local_singleflight_leader = bool(singleflight_leader)
                 if not singleflight_leader:
-                    shared_payload = wait_for_inflight_retrieval_candidates(
-                        cache_key,
-                        inflight_future,
-                        timeout_sec=max(
-                            1.0,
-                            float(
-                                getattr(
-                                    settings,
-                                    "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC",
-                                    60.0,
-                                )
-                                or 60.0
+                    wait_started_at = time.perf_counter()
+                    try:
+                        shared_payload = wait_for_inflight_retrieval_candidates(
+                            cache_key,
+                            inflight_future,
+                            timeout_sec=max(
+                                1.0,
+                                float(
+                                    getattr(
+                                        settings,
+                                        "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC",
+                                        60.0,
+                                    )
+                                    or 60.0
+                                ),
                             ),
-                        ),
-                    )
+                        )
+                    finally:
+                        cache_meta["local_singleflight_wait_ms"] = round(
+                            max(0.0, (time.perf_counter() - wait_started_at) * 1000.0),
+                            1,
+                        )
                     if isinstance(shared_payload, list):
                         cache_meta["singleflight_hit"] = True
                         cache_meta["singleflight_role"] = "follower"
                         return shared_payload[:top_k]
                 cache_meta["singleflight_role"] = "leader"
-                distributed_leader, distributed_payload, distributed_singleflight_lease = (
-                    acquire_or_wait_for_distributed_inflight_retrieval_candidates(cache_key)
-                )
+                distributed_wait_started_at = time.perf_counter()
+                try:
+                    distributed_leader, distributed_payload, distributed_singleflight_lease = (
+                        acquire_or_wait_for_distributed_inflight_retrieval_candidates(cache_key)
+                    )
+                finally:
+                    cache_meta["distributed_singleflight_wait_ms"] = round(
+                        max(0.0, (time.perf_counter() - distributed_wait_started_at) * 1000.0),
+                        1,
+                    )
                 if not distributed_leader:
                     if isinstance(distributed_payload, list):
                         cache_meta["singleflight_hit"] = True
@@ -1598,6 +1630,7 @@ class HybridRetriever(
         # 1) Vector retrieval
         vector_results: list[dict[str, Any]] = []
         vector_shard_failed = False
+        vector_shard_admission_timeout: RetrievalAdmissionTimeoutError | None = None
         if want_vector:
             vector_store = get_vector_store()
             _channel_started("vector")
@@ -1620,6 +1653,8 @@ class HybridRetriever(
                         )
                         for exc in shard_failures:
                             _channel_failed("vector", exc)
+                            if vector_shard_admission_timeout is None and isinstance(exc, RetrievalAdmissionTimeoutError):
+                                vector_shard_admission_timeout = exc
                         vector_shard_failed = bool(shard_failures)
                         if runtime_scope_missing_dataset_ids:
                             _channel_failed("vector", LookupError("MissingDatasetRuntime"))
@@ -1994,6 +2029,8 @@ class HybridRetriever(
                         )
                         for exc in shard_failures:
                             _channel_failed("vector", exc)
+                            if vector_shard_admission_timeout is None and isinstance(exc, RetrievalAdmissionTimeoutError):
+                                vector_shard_admission_timeout = exc
                         if runtime_scope_missing_dataset_ids:
                             _channel_failed("vector", LookupError("MissingDatasetRuntime"))
                         if len(shard_failures) < len(runtime_shards):
@@ -2033,6 +2070,19 @@ class HybridRetriever(
                 vector_results = []
 
         _publish_channel_health()
+
+        if (
+            vector_shard_admission_timeout is not None
+            and not vector_results
+            and not bm25_results
+            and not lexical_results
+            and not sparse_results
+            and not colpali_results
+        ):
+            if singleflight_leader and cache_key:
+                reject_current_inflight_retrieval_candidates(vector_shard_admission_timeout)
+            release_distributed_inflight_retrieval_candidates(distributed_singleflight_lease)
+            raise vector_shard_admission_timeout
 
         # Defense-in-depth: if Milvus/Vector backend cannot push down a huge document_ids filter,
         # enforce the scope client-side to preserve semantics.
@@ -2586,6 +2636,13 @@ class HybridRetriever(
                     self._last_channel_metrics["cache"]["store_ok"] = stored
             except Exception as exc:
                 logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+        if singleflight_leader and cache_key:
+            if cache_store_allowed:
+                publish_distributed_inflight_retrieval_candidates(cache_key, out)
+                resolve_inflight_retrieval_candidates(cache_key, out)
+            else:
+                reject_current_inflight_retrieval_candidates(RuntimeError("retrieval degraded"))
+            release_distributed_inflight_retrieval_candidates(distributed_singleflight_lease)
         if cache_store_allowed and semantic_cache_eligible and (not semantic_cache_hit) and corpus_cache_token and out:
             try:
                 from app.services.semantic_cache import set_cached_semantic_payload
@@ -2612,14 +2669,6 @@ class HybridRetriever(
                     self._last_channel_metrics["cache"]["semantic"]["store_ok"] = stored
             except Exception as exc:
                 logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-
-        if singleflight_leader and cache_key:
-            if cache_store_allowed:
-                publish_distributed_inflight_retrieval_candidates(cache_key, out)
-                resolve_inflight_retrieval_candidates(cache_key, out)
-            else:
-                reject_current_inflight_retrieval_candidates(RuntimeError("retrieval degraded"))
-        release_distributed_inflight_retrieval_candidates(distributed_singleflight_lease)
         return out
 
     # ---- LangChain Retriever API ----

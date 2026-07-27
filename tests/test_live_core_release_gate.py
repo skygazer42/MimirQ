@@ -1,9 +1,26 @@
 import asyncio
+import json
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
 
 from scripts import live_core_release_gate as gate
+
+
+def test_png_worker_lost_default_wait_tracks_seeded_lease() -> None:
+    lease_expires_at = (datetime.now(UTC) + timedelta(seconds=5)).isoformat()
+
+    wait_sec = gate._resolve_png_worker_lost_wait_sec(
+        {"lease_expires_at": lease_expires_at},
+        configured_wait_sec=None,
+    )
+
+    assert 4.0 <= wait_sec <= 6.5
+    assert gate._resolve_png_worker_lost_wait_sec(
+        {"lease_expires_at": lease_expires_at},
+        configured_wait_sec=0.0,
+    ) == 0.0
 
 
 def _config() -> gate.LiveCoreReleaseGateConfig:
@@ -269,12 +286,26 @@ def test_same_key_dual_instance_probe_requires_follower_hit(monkeypatch) -> None
         user_id="ci-user",
     )
 
+    seen_requests: list[tuple[str, str]] = []
+
     async def handler(request: httpx.Request) -> httpx.Response:
         await asyncio.sleep(0.01)
+        request_body = json.loads(request.content)
+        seen_requests.append((request.url.host or "", str(request_body.get("query") or "")))
         cache = {"singleflight_role": "leader"}
         if request.url.host == "secondary.test":
             cache = {"singleflight_role": "follower", "distributed_singleflight_hit": True}
-        return httpx.Response(200, json={"query_debug": {"channels": {"cache": cache}}})
+        return httpx.Response(
+            200,
+            json={
+                "query_debug": {"channels": {"cache": cache}},
+                "metrics": {
+                    "rag_offload_queue_ms": 1.0,
+                    "rag_offload_exec_ms": 2.0,
+                    "rag_distributed_admission_state": "acquired",
+                },
+            },
+        )
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
         probe = gate._same_key_dual_instance_probe(
@@ -286,8 +317,24 @@ def test_same_key_dual_instance_probe_requires_follower_hit(monkeypatch) -> None
         )
 
     assert probe["passed"] is True
+    assert probe["prewarm_ok"] is True
     assert probe["overlap_observed"] is True
     assert len(probe["requests"]) == 2
+    assert len(probe["prewarm_requests"]) == 2
+    assert seen_requests[:2] == [
+        ("primary.test", "same-key-query prewarm-0"),
+        ("secondary.test", "same-key-query prewarm-1"),
+    ]
+    assert sorted(seen_requests[2:]) == [
+        ("primary.test", "same-key-query"),
+        ("secondary.test", "same-key-query"),
+    ]
+    assert all(float(item["duration_ms"]) >= 0.0 for item in probe["requests"])
+    assert probe["requests"][0]["runtime_metrics"] == {
+        "rag_offload_queue_ms": 1.0,
+        "rag_offload_exec_ms": 2.0,
+        "rag_distributed_admission_state": "acquired",
+    }
 
 
 def test_retrieve_load_pair_prewarms_every_candidate_instance(monkeypatch) -> None:
@@ -371,10 +418,16 @@ def test_png_export_probe_creates_on_primary_and_reads_result_on_secondary() -> 
 
 
 def test_png_worker_lost_probe_seeds_running_task_and_observes_terminal_state(monkeypatch) -> None:
+    created_with: dict[str, object] = {}
+
+    def _create_task(**kwargs) -> dict[str, str]:
+        created_with.update(kwargs)
+        return {"task_id": "task-lost", "status": "pending"}
+
     monkeypatch.setattr(
         gate,
         "create_png_export_task",
-        lambda **_kwargs: {"task_id": "task-lost", "status": "pending"},
+        _create_task,
         raising=True,
     )
     monkeypatch.setattr(
@@ -420,6 +473,8 @@ def test_png_worker_lost_probe_seeds_running_task_and_observes_terminal_state(mo
         "error_code": "worker_lost",
         "passed": True,
     }
+    assert created_with["requested_by"] == "ci-user"
+    assert created_with["account_id"] == "ci-user"
     assert seen_hosts == ["primary.test", "secondary.test"]
 
 

@@ -6,6 +6,9 @@ const auth = vi.hoisted(() => ({
   tenantId: 'tenant-123',
   userId: 'user-1',
 }))
+const requests = vi.hoisted(() => ({
+  authenticatedFetch: vi.fn(),
+}))
 
 vi.mock('@/lib/auth-storage', () => ({
   AUTH_SCOPE_CHANGED_EVENT: 'mimirq:auth-scope-changed',
@@ -14,11 +17,13 @@ vi.mock('@/lib/auth-storage', () => ({
   getStoredUserId: () => auth.userId,
   getTenantId: () => auth.tenantId,
 }))
+vi.mock('@/lib/authenticated-fetch', () => ({
+  authenticatedFetch: requests.authenticatedFetch,
+}))
 
 import { fetchAuthAssetUrl } from './image-auth-proxy'
 
 describe('fetchAuthAssetUrl', () => {
-  const originalFetch = global.fetch
   const originalCreateObjectUrl = (URL as typeof URL & { createObjectURL?: typeof URL.createObjectURL }).createObjectURL
 
   beforeEach(() => {
@@ -27,11 +32,11 @@ describe('fetchAuthAssetUrl', () => {
     auth.token = 'jwt-token'
     auth.tenantId = 'tenant-123'
     auth.userId = 'user-1'
+    requests.authenticatedFetch.mockReset()
   })
 
   afterEach(() => {
     vi.unstubAllEnvs()
-    global.fetch = originalFetch
     if (originalCreateObjectUrl) {
       ;(URL as typeof URL & { createObjectURL?: typeof URL.createObjectURL }).createObjectURL = originalCreateObjectUrl
     } else {
@@ -44,19 +49,17 @@ describe('fetchAuthAssetUrl', () => {
   })
 
   it('fetches protected backend asset URLs with Authorization headers and returns a blob URL', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      blob: vi.fn().mockResolvedValue(new Blob(['asset-bytes'])),
-    })
+    requests.authenticatedFetch.mockResolvedValue(
+      new Response(new Blob(['asset-bytes']), { status: 200 })
+    )
     const createObjectUrl = vi.fn(() => 'blob:asset-url')
 
-    global.fetch = fetchMock as typeof fetch
     ;(URL as typeof URL & { createObjectURL?: typeof URL.createObjectURL }).createObjectURL = createObjectUrl
 
     const result = await fetchAuthAssetUrl('/api/v1/documents/123/download')
 
     expect(result).toBe('blob:asset-url')
-    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8000/api/v1/documents/123/download', {
+    expect(requests.authenticatedFetch).toHaveBeenCalledWith('http://localhost:8000/api/v1/documents/123/download', {
       headers: {
         Authorization: 'Bearer jwt-token',
         'X-Tenant-ID': 'tenant-123',
@@ -67,19 +70,17 @@ describe('fetchAuthAssetUrl', () => {
 
   it('falls back to X-User-ID headers for protected backend assets when no bearer token exists', async () => {
     auth.token = ''
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      blob: vi.fn().mockResolvedValue(new Blob(['asset-bytes'])),
-    })
+    requests.authenticatedFetch.mockResolvedValue(
+      new Response(new Blob(['asset-bytes']), { status: 200 })
+    )
     const createObjectUrl = vi.fn(() => 'blob:asset-url')
 
-    global.fetch = fetchMock as typeof fetch
     ;(URL as typeof URL & { createObjectURL?: typeof URL.createObjectURL }).createObjectURL = createObjectUrl
 
     const result = await fetchAuthAssetUrl('/api/v1/documents/321/download')
 
     expect(result).toBe('blob:asset-url')
-    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8000/api/v1/documents/321/download', {
+    expect(requests.authenticatedFetch).toHaveBeenCalledWith('http://localhost:8000/api/v1/documents/321/download', {
       headers: {
         'X-Tenant-ID': 'tenant-123',
         'X-User-ID': 'user-1',
@@ -88,21 +89,19 @@ describe('fetchAuthAssetUrl', () => {
   })
 
   it('does not reuse protected blobs across auth scopes', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      blob: vi.fn().mockResolvedValue(new Blob(['asset-bytes'])),
-    })
+    requests.authenticatedFetch.mockImplementation(
+      async () => new Response(new Blob(['asset-bytes']), { status: 200 })
+    )
     const createObjectUrl = vi.fn()
       .mockReturnValueOnce('blob:user-1')
       .mockReturnValueOnce('blob:user-2')
 
-    global.fetch = fetchMock as typeof fetch
     ;(URL as typeof URL & { createObjectURL?: typeof URL.createObjectURL }).createObjectURL = createObjectUrl
 
     expect(await fetchAuthAssetUrl('/api/v1/documents/456/download')).toBe('blob:user-1')
     auth.scope = 'tenant-123:user-2'
     expect(await fetchAuthAssetUrl('/api/v1/documents/456/download')).toBe('blob:user-2')
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(requests.authenticatedFetch).toHaveBeenCalledTimes(2)
   })
 
   it('deduplicates concurrent protected backend asset fetches within the same auth scope', async () => {
@@ -110,10 +109,11 @@ describe('fetchAuthAssetUrl', () => {
     const blob = new Promise<Blob>((resolve) => {
       resolveBlob = resolve
     })
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, blob: () => blob })
+    requests.authenticatedFetch.mockResolvedValue(
+      new Response(blob as unknown as BodyInit, { status: 200 })
+    )
     const createObjectUrl = vi.fn(() => 'blob:shared')
 
-    global.fetch = fetchMock as typeof fetch
     ;(URL as typeof URL & { createObjectURL?: typeof URL.createObjectURL }).createObjectURL = createObjectUrl
 
     const first = fetchAuthAssetUrl('/api/v1/documents/654/download')
@@ -121,7 +121,7 @@ describe('fetchAuthAssetUrl', () => {
     resolveBlob(new Blob(['asset-bytes']))
 
     await expect(Promise.all([first, second])).resolves.toEqual(['blob:shared', 'blob:shared'])
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(requests.authenticatedFetch).toHaveBeenCalledTimes(1)
     expect(createObjectUrl).toHaveBeenCalledTimes(1)
   })
 
@@ -130,7 +130,9 @@ describe('fetchAuthAssetUrl', () => {
     const blob = new Promise<Blob>((resolve) => {
       resolveBlob = resolve
     })
-    global.fetch = vi.fn().mockResolvedValue({ ok: true, blob: () => blob }) as typeof fetch
+    requests.authenticatedFetch.mockResolvedValue(
+      new Response(blob as unknown as BodyInit, { status: 200 })
+    )
     ;(URL as typeof URL & { createObjectURL?: typeof URL.createObjectURL }).createObjectURL = vi.fn(() => 'blob:stale')
     const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL')
 
@@ -143,38 +145,32 @@ describe('fetchAuthAssetUrl', () => {
   })
 
   it('does not cache a remote proxy response after the auth scope changes', async () => {
-    let resolveResponse!: (response: { ok: boolean; json: () => Promise<{ src: string }> }) => void
-    const response = new Promise<{ ok: boolean; json: () => Promise<{ src: string }> }>((resolve) => {
+    let resolveResponse!: (response: Response) => void
+    const response = new Promise<Response>((resolve) => {
       resolveResponse = resolve
     })
-    const fetchMock = vi.fn()
+    requests.authenticatedFetch
       .mockReturnValueOnce(response)
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ src: '/api/markdown-image?token=fresh' }),
       })
-    global.fetch = fetchMock as typeof fetch
 
     const pending = fetchAuthAssetUrl('https://example.com/private.png')
     auth.scope = 'tenant-123:user-2'
-    resolveResponse({
-      ok: true,
-      json: async () => ({ src: '/api/markdown-image?token=stale' }),
-    })
+    resolveResponse(new Response(JSON.stringify({ src: '/api/markdown-image?token=stale' }), { status: 200 }))
     await pending
 
     auth.scope = 'tenant-123:user-1'
     await expect(fetchAuthAssetUrl('https://example.com/private.png'))
       .resolves.toBe('/api/markdown-image?token=fresh')
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(requests.authenticatedFetch).toHaveBeenCalledTimes(2)
   })
 
   it('deduplicates concurrent remote proxy token minting within the same auth scope', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ src: '/api/markdown-image?token=shared' }),
-    })
-    global.fetch = fetchMock as typeof fetch
+    requests.authenticatedFetch.mockResolvedValue(
+      new Response(JSON.stringify({ src: '/api/markdown-image?token=shared' }), { status: 200 })
+    )
 
     await expect(Promise.all([
       fetchAuthAssetUrl('https://example.com/private-concurrent.png'),
@@ -184,7 +180,7 @@ describe('fetchAuthAssetUrl', () => {
       '/api/markdown-image?token=shared',
     ])
 
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(requests.authenticatedFetch).toHaveBeenCalledTimes(1)
   })
 
   it('discards a remote proxy token that finishes after the auth scope changes', async () => {
@@ -192,10 +188,10 @@ describe('fetchAuthAssetUrl', () => {
     const payload = new Promise<{ src: string }>((resolve) => {
       resolvePayload = resolve
     })
-    global.fetch = vi.fn().mockResolvedValue({
+    requests.authenticatedFetch.mockResolvedValue({
       ok: true,
       json: () => payload,
-    }) as typeof fetch
+    })
 
     const pending = fetchAuthAssetUrl('https://example.com/private-scope-change.png')
     auth.scope = 'tenant-456:user-2'
@@ -206,16 +202,14 @@ describe('fetchAuthAssetUrl', () => {
 
   it('uses X-User-ID headers when minting remote proxy tokens without a bearer token', async () => {
     auth.token = ''
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ src: '/api/markdown-image?token=header-mode' }),
-    })
-    global.fetch = fetchMock as typeof fetch
+    requests.authenticatedFetch.mockResolvedValue(
+      new Response(JSON.stringify({ src: '/api/markdown-image?token=header-mode' }), { status: 200 })
+    )
 
     await expect(fetchAuthAssetUrl('https://example.com/private-header-mode.png'))
       .resolves.toBe('/api/markdown-image?token=header-mode')
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/markdown-image', {
+    expect(requests.authenticatedFetch).toHaveBeenCalledWith('/api/markdown-image', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -228,7 +222,7 @@ describe('fetchAuthAssetUrl', () => {
 
   it('does not expose a remote source URL when opaque token minting fails in production', async () => {
     vi.stubEnv('NODE_ENV', 'production')
-    global.fetch = vi.fn().mockResolvedValue({ ok: false }) as typeof fetch
+    requests.authenticatedFetch.mockResolvedValue(new Response('', { status: 500 }))
 
     await expect(fetchAuthAssetUrl('https://example.com/signed.png?token=secret'))
       .resolves.toBeNull()

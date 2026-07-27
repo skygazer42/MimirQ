@@ -27,7 +27,7 @@ Chart 目录：`deploy/helm/mimirq`
 
 后端就绪探针（readiness）使用：
 
-- `GET /api/v1/health/ready`（依赖可用时返回 200，否则 503）
+- `GET /api/v1/health/ready`（依赖可用且外部管理的数据库位于当前镜像 Alembic head 时返回 200，否则 503）
 
 ---
 
@@ -202,6 +202,7 @@ migrations:
   - 不使用 `VECTOR_BACKEND=faiss/chroma`
   - 若未启用 `MINIO_ENABLED=true` 且 `MINIO_DOCUMENTS_ENABLED=true`，则 `persistence.uploads.accessModes` 必须包含 `ReadWriteMany`
 - `migrations.enabled=true` 只支持配合 `existingSecretName` 使用；pre-install hook 早于 chart 管理的 Secret 创建，不能安全依赖内置 Secret。
+- API 在 `DB_CREATE_ALL_ON_STARTUP=false` 且 `DB_RUNTIME_MIGRATIONS_ENABLED=false` 时会校验 `alembic_version`；迁移 Job 未执行或版本落后时 readiness 会保持 503，不会让 schema 不兼容的 Pod 接流量。
 
 你也可以直接从内置示例开始（推荐先复制一份再改）：
 

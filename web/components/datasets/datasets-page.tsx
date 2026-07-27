@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -33,11 +33,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { datasetApi } from '@/lib/api'
+import type { DatasetListParams } from '@/lib/api/datasets'
 import { formatApiError } from '@/lib/api-errors'
 import { reportClientError } from '@/lib/client-logging'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
-import type { Dataset, DatasetListResponse, PermissionEnum, DocumentPipelineOptions, DatasetIngestionStats } from '@/types'
+import type {
+  Dataset,
+  DatasetIngestionSummary,
+  DatasetListResponse,
+  PermissionEnum,
+  DocumentPipelineOptions,
+} from '@/types'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { GovernanceProfileSelector } from '@/components/governance-profile-selector'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
@@ -46,8 +53,9 @@ import { DatasetCategoryMultiSelect } from '@/components/dataset-categories/cate
 import { CreateDatasetButton } from '@/components/datasets/create-dataset-button'
 import { GroupChipsInput } from '@/components/groups/group-chips-input'
 
-const DATASET_STATS_REQUEST_SPACING_MS = 90
 type DatasetOperationalStatus = 'active' | 'anomaly' | 'pending' | 'testing'
+const DATASET_SEARCH_DEBOUNCE_MS = 220
+const DATASET_SEARCH_MAX_LENGTH = 200
 
 type DatasetFormState = {
   name: string
@@ -114,22 +122,44 @@ function applyPipelinePatch(
   return { ...current, ...patch }
 }
 
-function getDatasetAnomalyCount(stats?: DatasetIngestionStats | null): number {
+function getDatasetAnomalyCount(stats?: DatasetIngestionSummary | null): number {
   const byStatus = stats?.by_status || {}
   return Number(byStatus.failed || 0) + Number(byStatus.quarantined || 0)
 }
 
-function getDatasetPendingCount(stats?: DatasetIngestionStats | null): number {
+function getDatasetPendingCount(stats?: DatasetIngestionSummary | null): number {
   const byStatus = stats?.by_status || {}
   return Number(byStatus.pending || 0) + Number(byStatus.processing || 0)
 }
 
-function getDatasetOperationalStatus(dataset: Dataset, stats?: DatasetIngestionStats | null): DatasetOperationalStatus {
+function getDatasetOperationalStatus(dataset: Dataset, stats?: DatasetIngestionSummary | null): DatasetOperationalStatus {
+  if (dataset.operational_status) return dataset.operational_status
   const name = String(dataset.name || '').toLowerCase()
   if (name.includes('test') || name.includes('demo') || name.includes('测试')) return 'testing'
   if (getDatasetAnomalyCount(stats) > 0) return 'anomaly'
   if (getDatasetPendingCount(stats) > 0) return 'pending'
   return 'active'
+}
+
+function buildDatasetListParams(input: Readonly<{
+  selectedCategoryId: string | null
+  searchQuery: string
+  collectionFilter: 'all' | 'active' | 'anomaly' | 'pending' | 'testing'
+  sortBy: 'default' | 'name_asc'
+  currentPage: number
+  pageSize: number
+}>): DatasetListParams {
+  const searchQuery = input.searchQuery.trim()
+  return {
+    skip: Math.max(0, (input.currentPage - 1) * input.pageSize),
+    limit: input.pageSize,
+    category_id: input.selectedCategoryId || undefined,
+    include_descendants: true,
+    q: searchQuery || undefined,
+    operational_status: input.collectionFilter,
+    order_by: input.sortBy === 'name_asc' ? 'name' : 'created_at',
+    order_dir: input.sortBy === 'name_asc' ? 'asc' : 'desc',
+  }
 }
 
 function formatRelativeTime(value?: string | null): string {
@@ -278,6 +308,7 @@ export default function DatasetsPage() {
   const [permissionUpdatePendingId, setPermissionUpdatePendingId] = useState<string | null>(null)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
   const [collectionFilter, setCollectionFilter] = useState<'all' | 'active' | 'anomaly' | 'pending' | 'testing'>('all')
   const [sortBy, setSortBy] = useState<'default' | 'name_asc'>('default')
   const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null)
@@ -287,8 +318,6 @@ export default function DatasetsPage() {
   const [deleteIncludingDocuments, setDeleteIncludingDocuments] = useState(false)
   const [deleteDocumentCountHint, setDeleteDocumentCountHint] = useState<number | null>(null)
   const [deletePending, setDeletePending] = useState(false)
-  const [statsByDatasetId, setStatsByDatasetId] = useState<Record<string, DatasetIngestionStats>>({})
-  const requestedStatsIdsRef = useRef<Set<string>>(new Set())
 
   const [createOpen, setCreateOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
@@ -308,25 +337,55 @@ export default function DatasetsPage() {
     })
   }
 
-  const datasetListParams = useMemo(() => ({
-    skip: 0,
-    limit: 200,
-    category_id: selectedCategoryId || undefined,
-    include_descendants: true,
-  }), [selectedCategoryId])
-
-  const datasetsQueryKey = useMemo(
-    () => queryKeys.datasets.list(datasetListParams),
-    [datasetListParams]
+  const trimmedSearchQuery = useMemo(
+    () => searchQuery.trim().slice(0, DATASET_SEARCH_MAX_LENGTH),
+    [searchQuery]
   )
+
+  useEffect(() => {
+    const timer = globalThis.window?.setTimeout(() => {
+      setDebouncedSearchQuery(trimmedSearchQuery)
+    }, DATASET_SEARCH_DEBOUNCE_MS)
+
+    return () => {
+      if (timer !== undefined) globalThis.window.clearTimeout(timer)
+    }
+  }, [trimmedSearchQuery])
+
+  const datasetListParams = useMemo(
+    () =>
+      buildDatasetListParams({
+        selectedCategoryId,
+        searchQuery: debouncedSearchQuery,
+        collectionFilter,
+        sortBy,
+        currentPage,
+        pageSize,
+      }),
+    [collectionFilter, currentPage, debouncedSearchQuery, pageSize, selectedCategoryId, sortBy]
+  )
+
+  const datasetsQueryKey = useMemo(() => queryKeys.datasets.list(datasetListParams), [datasetListParams])
 
   const datasetsQuery = useQuery({
     queryKey: datasetsQueryKey,
     queryFn: () => datasetApi.list(datasetListParams),
   })
 
-  const items = useMemo(() => datasetsQuery.data?.items || [], [datasetsQuery.data?.items])
-  const total = Number(datasetsQuery.data?.total || 0)
+  const response = datasetsQuery.data ?? null
+  const items = useMemo(() => response?.items || [], [response?.items])
+  const scopeTotal = Number(response?.facets?.scope_total || 0)
+  const filteredTotal = Number(response?.facets?.filtered_total || 0)
+  const displayedTotal = Number(response?.total || 0)
+  const statusCounts = useMemo(
+    () => ({
+      active: Number(response?.facets?.status_counts?.active || 0),
+      anomaly: Number(response?.facets?.status_counts?.anomaly || 0),
+      pending: Number(response?.facets?.status_counts?.pending || 0),
+      testing: Number(response?.facets?.status_counts?.testing || 0),
+    }),
+    [response?.facets?.status_counts]
+  )
   const isLoading = datasetsQuery.isPending
   const isRefreshing = datasetsQuery.isFetching
 
@@ -337,8 +396,6 @@ export default function DatasetsPage() {
   }, [datasetsQuery.error, datasetsQuery.errorUpdatedAt])
 
   const refreshDatasets = useCallback(async () => {
-    requestedStatsIdsRef.current.clear()
-    setStatsByDatasetId({})
     await datasetsQuery.refetch()
   }, [datasetsQuery])
 
@@ -348,120 +405,40 @@ export default function DatasetsPage() {
       return updater(current)
     })
   }, [datasetsQueryKey, queryClient])
-
-  const filteredItems = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase()
-    if (!q) return items
-    return items.filter((ds) =>
-      (ds.name || '').toLowerCase().includes(q) ||
-      (ds.description || '').toLowerCase().includes(q) ||
-      (ds.id || '').toLowerCase().includes(q)
-    )
-  }, [items, searchQuery])
-
-  const statusCounts = useMemo(() => {
-    return filteredItems.reduce(
-      (acc, dataset) => {
-        const status = getDatasetOperationalStatus(dataset, statsByDatasetId[dataset.id])
-        acc[status] += 1
-        return acc
-      },
-      { active: 0, anomaly: 0, pending: 0, testing: 0 }
-    )
-  }, [filteredItems, statsByDatasetId])
-
-  const displayedItems = useMemo(() => {
-    const base = collectionFilter === 'all'
-      ? filteredItems
-      : filteredItems.filter((dataset) => getDatasetOperationalStatus(dataset, statsByDatasetId[dataset.id]) === collectionFilter)
-    if (sortBy === 'name_asc') {
-      return [...base].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'zh-CN'))
-    }
-    return base
-  }, [collectionFilter, filteredItems, sortBy, statsByDatasetId])
-
-  const totalPages = displayedItems.length === 0 ? 0 : Math.ceil(displayedItems.length / pageSize)
-
-  const pagedItems = useMemo(() => {
-    const start = (currentPage - 1) * pageSize
-    return displayedItems.slice(start, start + pageSize)
-  }, [currentPage, displayedItems, pageSize])
-
-  useEffect(() => {
-    const missingIds = pagedItems
-      .map((dataset) => dataset.id)
-      .filter((id) => !statsByDatasetId[id] && !requestedStatsIdsRef.current.has(id))
-
-    if (missingIds.length === 0) return
-
-    let cancelled = false
-    detachPromise((async () => {
-      const statsEntries: Array<readonly [string, DatasetIngestionStats]> = []
-
-      for (const datasetId of missingIds) {
-        if (cancelled) return
-        requestedStatsIdsRef.current.add(datasetId)
-
-        try {
-          const stats = await datasetApi.getIngestionStats(datasetId)
-          statsEntries.push([datasetId, stats] as const)
-        } catch {
-          // Stats are decorative for the catalog; keep the page usable on partial backend failures.
-        }
-
-        if (!cancelled && DATASET_STATS_REQUEST_SPACING_MS > 0) {
-          await new Promise((resolve) => setTimeout(resolve, DATASET_STATS_REQUEST_SPACING_MS))
-        }
-      }
-
-      if (cancelled || statsEntries.length === 0) return
-
-      setStatsByDatasetId((prev) => {
-        const next = { ...prev }
-        for (const [datasetId, stats] of statsEntries) {
-          next[datasetId] = stats
-        }
-        return next
-      })
-    })())
-
-    return () => {
-      cancelled = true
-    }
-  }, [pagedItems, statsByDatasetId])
+  const totalPages = displayedTotal === 0 ? 0 : Math.ceil(displayedTotal / pageSize)
 
   useEffect(() => {
     setCurrentPage(1)
   }, [searchQuery, collectionFilter, selectedCategoryId, sortBy])
 
   useEffect(() => {
-    const nextTotalPages = displayedItems.length === 0 ? 1 : Math.ceil(displayedItems.length / pageSize)
+    const nextTotalPages = displayedTotal === 0 ? 1 : Math.ceil(displayedTotal / pageSize)
     if (currentPage > nextTotalPages) {
       setCurrentPage(nextTotalPages)
     }
-  }, [currentPage, displayedItems.length, pageSize])
+  }, [currentPage, displayedTotal, pageSize])
 
   useEffect(() => {
-    if (pagedItems.length === 0) {
+    if (items.length === 0) {
       if (selectedDatasetId !== null) setSelectedDatasetId(null)
       return
     }
 
-    if (!selectedDatasetId || !pagedItems.some((item) => item.id === selectedDatasetId)) {
-      setSelectedDatasetId(pagedItems[0]?.id ?? null)
+    if (!selectedDatasetId || !items.some((item) => item.id === selectedDatasetId)) {
+      setSelectedDatasetId(items[0]?.id ?? null)
     }
-  }, [pagedItems, selectedDatasetId])
+  }, [items, selectedDatasetId])
 
   const canSubmit = useMemo(() => form.name.trim().length > 0, [form.name])
   const selectedDataset = useMemo(
-    () => pagedItems.find((item) => item.id === selectedDatasetId) ?? pagedItems[0] ?? null,
-    [pagedItems, selectedDatasetId]
+    () => items.find((item) => item.id === selectedDatasetId) ?? items[0] ?? null,
+    [items, selectedDatasetId]
   )
-  const selectedDatasetStats = selectedDataset ? statsByDatasetId[selectedDataset.id] : undefined
+  const selectedDatasetStats = selectedDataset?.ingestion_summary ?? undefined
   const selectedDatasetStatus = selectedDataset ? getDatasetOperationalStatus(selectedDataset, selectedDatasetStats) : 'active'
   const selectedStatusBadge = getDatasetStatusBadgeConfig(selectedDatasetStatus)
   const selectedStatusIcon = getDatasetStatusIconConfig(selectedDatasetStatus)
-  const deleteTargetStats = deleteTarget ? statsByDatasetId[deleteTarget.id] : undefined
+  const deleteTargetStats = deleteTarget?.ingestion_summary ?? undefined
   const deleteTargetDocumentCount = Math.max(0, Number(deleteDocumentCountHint ?? deleteTargetStats?.total_documents ?? 0))
   const deleteRequiresDocumentPurge = deleteTargetDocumentCount > 0
   const collectionFilterLabel = {
@@ -473,10 +450,21 @@ export default function DatasetsPage() {
   }[collectionFilter]
 
   const replaceDataset = useCallback((next: Dataset) => {
-    updateDatasetListCache((current) => ({
-      ...current,
-      items: (current.items || []).map((item) => (item.id === next.id ? next : item)),
-    }))
+    updateDatasetListCache((current) =>
+      ({
+        ...current,
+        items: (current.items || []).map((item) =>
+          item.id === next.id
+            ? {
+                ...item,
+                ...next,
+                ingestion_summary: next.ingestion_summary ?? item.ingestion_summary,
+                operational_status: next.operational_status ?? item.operational_status,
+              }
+            : item
+        ),
+      })
+    )
   }, [updateDatasetListCache])
 
   const buildPayload = (mode: 'create' | 'update') => {
@@ -563,11 +551,6 @@ export default function DatasetsPage() {
 
       await datasetApi.delete(datasetId)
       toast.success(shouldPurgeDocuments ? '已删除数据集及关联文档' : '已删除数据集')
-      updateDatasetListCache((current) => ({
-        ...current,
-        items: (current.items || []).filter((x) => x.id !== datasetId),
-        total: Math.max(0, Number(current.total || 0) - 1),
-      }))
       await refreshDatasets()
     } catch (e: unknown) {
       const message = formatApiError(e, '删除失败')
@@ -738,7 +721,7 @@ export default function DatasetsPage() {
           <div className="border-b border-border/60 bg-background/80 px-3 py-2.5 backdrop-blur">
             <div className="grid gap-1.5 xl:grid-cols-[minmax(0,1fr)_276px] xl:items-start">
               <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-4">
-                <DatasetSummaryCard title="全部数据集" value={String(total)} icon={Layers} tone="neutral" />
+                <DatasetSummaryCard title="全部数据集" value={String(scopeTotal)} icon={Layers} tone="neutral" />
                 <DatasetSummaryCard title="活跃" value={String(statusCounts.active)} icon={CheckCircle2} tone="green" />
                 <DatasetSummaryCard title="异常" value={String(statusCounts.anomaly)} icon={AlertCircle} tone="red" />
                 <DatasetSummaryCard title="待处理" value={String(statusCounts.pending)} icon={Clock3} tone="amber" />
@@ -754,7 +737,7 @@ export default function DatasetsPage() {
                     {selectedCategoryId ? '分类已筛选' : '全部分类'}
                   </span>
                   <span className="inline-flex items-center rounded-full border border-border/60 bg-background px-2 py-0.5">
-                    当前显示 {displayedItems.length} / {filteredItems.length}
+                    当前显示 {displayedTotal} / {filteredTotal}
                   </span>
                   {isLoading ? <Loader2 className="size-3.5 animate-spin text-primary motion-reduce:animate-none" /> : null}
                 </div>
@@ -765,6 +748,7 @@ export default function DatasetsPage() {
                     <Input
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
+                      maxLength={DATASET_SEARCH_MAX_LENGTH}
                       placeholder="搜索数据集、描述或 ID..."
                       className="h-8 rounded-2xl border-border/60 bg-background pl-8.5 text-[11px] shadow-none"
                     />
@@ -798,7 +782,7 @@ export default function DatasetsPage() {
                 <div className="space-y-1">
                 <DatasetFilterButton
                   label="全部数据集"
-                  count={total}
+                  count={scopeTotal}
                   active={collectionFilter === 'all'}
                   onClick={() => setCollectionFilter('all')}
                   icon={Layers}
@@ -852,7 +836,7 @@ export default function DatasetsPage() {
                     <div className="mt-1 flex items-center gap-2 text-[13px] font-semibold text-foreground">
                       <span className="truncate">{selectedCategoryId ? '当前分类数据集' : '全部数据集'}</span>
                       <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
-                        {displayedItems.length}
+                        {displayedTotal}
                       </span>
                     </div>
                   </div>
@@ -873,7 +857,7 @@ export default function DatasetsPage() {
                   data-dataset-catalog-scroll="true"
                   className="min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar px-3.5 py-3"
                 >
-                  {displayedItems.length === 0 && !isLoading ? (
+                  {items.length === 0 && !isLoading ? (
                     <EmptyState
                       icon={Layers}
                       title={searchQuery ? '未找到匹配的数据集' : '暂无数据集'}
@@ -887,8 +871,8 @@ export default function DatasetsPage() {
                       variants={{ hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.04 } } }}
                       className="space-y-3"
                     >
-                      {pagedItems.map((dataset) => {
-                        const stats = statsByDatasetId[dataset.id]
+                      {items.map((dataset) => {
+                        const stats = dataset.ingestion_summary
                         const isActive = selectedDataset?.id === dataset.id
                         const memberCount = dataset.partial_member_list?.length ?? 0
                         const status = getDatasetOperationalStatus(dataset, stats)
@@ -1013,7 +997,7 @@ export default function DatasetsPage() {
                 </div>
 
                 <div className="flex items-center justify-between border-t border-border/60 px-4 py-3 text-[11px] text-muted-foreground/72">
-                  <span>共 {displayedItems.length} 条 · 共 {totalPages} 页</span>
+                  <span>共 {displayedTotal} 条 · 共 {totalPages} 页</span>
                   <div className="flex items-center gap-2">
                     <Select
                       value={String(pageSize)}

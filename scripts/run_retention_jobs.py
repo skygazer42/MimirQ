@@ -37,7 +37,11 @@ import asyncio
 import json
 import sys
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import UUID
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import settings
 from app.core.database import SessionLocal
@@ -118,7 +122,15 @@ def main(argv: list[str] | None = None) -> int:
         db = SessionLocal()
         try:
             rows = db.query(Tenant.id).all()
-            tenant_ids = [r[0] for r in rows if isinstance(r, tuple) and r and isinstance(r[0], UUID)]
+            for row in rows:
+                candidate = getattr(row, "id", None)
+                if candidate is None:
+                    try:
+                        candidate = row[0]
+                    except (IndexError, KeyError, TypeError):
+                        continue
+                if isinstance(candidate, UUID):
+                    tenant_ids.append(candidate)
         finally:
             db.close()
     elif args.tenant_id is not None:

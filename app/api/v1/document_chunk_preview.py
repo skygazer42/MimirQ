@@ -433,6 +433,7 @@ async def preview_chunking(
                 payload={
                     "action": "integrated_chunk",
                     "tenant_id": str(tenant_id),
+                    "account_id": str(account_id),
                     "file_path": str(temp_path),
                     "strategy": resolved_chunk_strategy,
                     "mode": "preview",
@@ -475,8 +476,12 @@ async def preview_chunking(
                         parser_backend=parser_backend,
                         tenant_id=str(tenant_id),
                     )
-                    parsed_documents = _materialize_extracted_images_for_preview(parsed_documents, tenant_id=tenant_id)
-                    parsed_documents = _materialize_local_images_for_preview(parsed_documents, tenant_id=tenant_id)
+                    parsed_documents = _materialize_extracted_images_for_preview(
+                        parsed_documents, tenant_id=tenant_id, account_id=account_id
+                    )
+                    parsed_documents = _materialize_local_images_for_preview(
+                        parsed_documents, tenant_id=tenant_id, account_id=account_id
+                    )
                     parse_duration_ms = int(max(0.0, (time.perf_counter() - _parse_started) * 1000.0))
                     return _serialize_preview_parse_documents(parsed_documents), str(backend or parser_backend)
 
@@ -485,6 +490,7 @@ async def preview_chunking(
                     payload={
                         "action": "parse_documents",
                         "tenant_id": str(tenant_id),
+                        "account_id": str(account_id),
                         "file_path": str(temp_path),
                         "parser_backend": parser_backend,
                         "mode": "preview",

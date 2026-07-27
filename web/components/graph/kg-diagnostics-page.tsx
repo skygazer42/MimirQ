@@ -113,7 +113,6 @@ const DIAGNOSTICS_METRIC_LABELS: Record<string, string> = {
   documents_sampled: '抽样文档数',
   documents_allowed: '有权限文档数',
 }
-const KG_DIAGNOSTICS_DATASET_LIST_PARAMS = { limit: 200 } as const
 
 type DiagnosticsView = 'run' | 'quality' | 'compare'
 type DiagnosticsDatasetOption = {
@@ -1214,13 +1213,12 @@ export function KGDiagnosticsPage() {
   const [datasetId, setDatasetId] = useState('')
   const [activeView, setActiveView] = useState<DiagnosticsView>('run')
   const datasetsQuery = useQuery({
-    queryKey: queryKeys.datasets.list(KG_DIAGNOSTICS_DATASET_LIST_PARAMS),
-    queryFn: () => datasetApi.list(KG_DIAGNOSTICS_DATASET_LIST_PARAMS),
+    queryKey: queryKeys.datasets.exhaustive({ purpose: 'kg-diagnostics' }),
+    queryFn: () => datasetApi.listAll(),
     staleTime: 30_000,
   })
   const datasets = useMemo<DiagnosticsDatasetOption[]>(() => {
-    const items = datasetsQuery.data?.items
-    return Array.isArray(items) ? items : []
+    return datasetsQuery.data ?? []
   }, [datasetsQuery.data])
   const datasetsLoading = datasetsQuery.isLoading || datasetsQuery.isFetching
 

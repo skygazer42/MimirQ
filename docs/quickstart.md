@@ -63,14 +63,28 @@ docker compose --env-file .env -f docker/docker-compose.yml ps
 
 > 本地源码运行后端需要 Python 3.11+（项目包含 `match/case` 等语法与依赖约束）。如果你只想快速跑起来，优先使用 Docker。
 >
-> 如果你要本地源码调后端，请直接使用项目虚拟环境入口，不要调用系统全局 `uvicorn`：
+> 如果你要本地源码调试完整 Web 栈，请先启动依赖服务，再分别启动 API、Worker 和前端，不要手写全局 `uvicorn` / `arq` 命令：
 >
 > ```bash
+> make infra-up
 > make models
-> make backend
+> make worker-check
 > ```
 >
-> 若宿主机文件监听额度较低、`uploads/` 又比较大，优先改用：
+> 然后分别打开三个终端运行：
+>
+> ```bash
+> # 终端 1：FastAPI（热更新）
+> make backend
+>
+> # 终端 2：文档解析与索引 Worker
+> make worker
+>
+> # 终端 3：Next.js（热更新）
+> make web
+> ```
+>
+> 若宿主机文件监听额度较低、`uploads/` 又比较大，API 进程优先改用：
 >
 > ```bash
 > make backend-no-reload
@@ -222,8 +236,9 @@ docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml
 docker compose -f docker/docker-compose.yml exec -T -w /app mimirq-api python scripts/check_parsers.py
 ```
 
-MagicPDF 在状态为 `configured (service)` 时会通过独立服务解析；如果不配置
-`MAGIC_PDF_API_URL`，才会回退到本地 CLI 模式并要求 `configured (models: ...)`。
+MagicPDF 在状态为 `configured (service)` 时会通过独立服务解析。默认 API / worker
+镜像不会安装依赖版本冲突的 `magic-pdf` CLI；不配置 `MAGIC_PDF_API_URL` 时会显示
+`missing cli`。仅自定义镜像或宿主机显式安装了兼容 CLI 与模型时，才使用本地调试兜底。
 
 ### (可选) 启用 Pandoc/LibreOffice（Office/HTML 高质量转 Markdown）
 

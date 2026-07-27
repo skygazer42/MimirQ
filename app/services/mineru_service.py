@@ -31,6 +31,7 @@ from app.parsing.utils.mineru_layout import (
 )
 from app.parsing.utils.zip_processor import zip_image_processor
 from app.rag.core.logging import get_logger
+from app.services.document_preview_utils import _write_preview_owner_binding
 
 logger = get_logger("services.mineru")
 
@@ -605,6 +606,7 @@ class MinerUService:
         zip_bytes: bytes,
         markdown: str,
         tenant_id: str,
+        account_id: str | None = None,
     ) -> tuple[str, list[dict[str, str]]]:
         """
         MinerU online API returns images inside the result ZIP (e.g. "images/xxx.jpg")
@@ -720,6 +722,18 @@ class MinerUService:
                     out_path = images_dir / f"{img_id}{ext}"
                     try:
                         out_path.write_bytes(binary)
+                        _write_preview_owner_binding(
+                            images_dir=images_dir,
+                            preview_id=img_id,
+                            binding=(
+                                {
+                                    "tenant_id": str(tenant_id),
+                                    "account_id": str(account_id or "").strip(),
+                                }
+                                if str(account_id or "").strip()
+                                else None
+                            ),
+                        )
                     except Exception:
                         get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                         continue
@@ -749,6 +763,7 @@ class MinerUService:
         zip_bytes: bytes,
         file_path: Path,
         tenant_id: str | None = None,
+        account_id: str | None = None,
         dataset_id: str | None = None,
         document_id: str | None = None,
         parser_name: str = "mineru_local",
@@ -776,6 +791,7 @@ class MinerUService:
                     zip_bytes=zip_bytes,
                     markdown=markdown_content,
                     tenant_id=str(tenant_id),
+                    account_id=str(account_id) if account_id else None,
                 )
             position_tagged_markdown = extract_position_tagged_markdown_from_zip_bytes(zip_bytes)
 
@@ -801,6 +817,7 @@ class MinerUService:
         data_id: str | None = None,
         *,
         tenant_id: str | None = None,
+        account_id: str | None = None,
         dataset_id: str | None = None,
         document_id: str | None = None,
     ) -> list[Document]:
@@ -860,6 +877,7 @@ class MinerUService:
                     zip_bytes=zip_bytes,
                     markdown=markdown_content,
                     tenant_id=str(tenant_id),
+                    account_id=str(account_id) if account_id else None,
                 )
         position_tagged_markdown = extract_position_tagged_markdown_from_zip_bytes(zip_bytes)
 
@@ -886,6 +904,7 @@ class MinerUService:
         dataset_id: str | None = None,
         document_id: str | None = None,
         tenant_id: str | None = None,
+        account_id: str | None = None,
         params: dict[str, Any] | None = None,
     ) -> list[Document]:
         """
@@ -953,6 +972,7 @@ class MinerUService:
                 zip_bytes=body,
                 file_path=file_path,
                 tenant_id=str(tenant_id) if tenant_id else None,
+                account_id=str(account_id) if account_id else None,
                 dataset_id=str(dataset_id) if dataset_id else None,
                 document_id=str(document_id) if document_id else None,
                 parser_name="mineru_local",
@@ -967,6 +987,7 @@ class MinerUService:
         data_id: str | None = None,
         *,
         tenant_id: str | None = None,
+        account_id: str | None = None,
         dataset_id: str | None = None,
         document_id: str | None = None,
     ) -> list[Document]:
@@ -985,6 +1006,7 @@ class MinerUService:
                 file_path=file_path,
                 data_id=data_id,
                 tenant_id=tenant_id,
+                account_id=account_id,
                 dataset_id=dataset_id,
                 document_id=document_id,
             )
@@ -996,6 +1018,7 @@ class MinerUService:
         dataset_id: str | None = None,
         document_id: str | None = None,
         tenant_id: str | None = None,
+        account_id: str | None = None,
         params: dict[str, Any] | None = None
     ) -> list[Document]:
         """
@@ -1016,6 +1039,7 @@ class MinerUService:
                 dataset_id=dataset_id,
                 document_id=document_id,
                 tenant_id=tenant_id,
+                account_id=account_id,
                 params=params,
             )
         )

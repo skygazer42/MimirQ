@@ -61,4 +61,67 @@ describe('authenticatedFetch', () => {
     expect(oidc.refresh).toHaveBeenCalledOnce()
     expect(auth.clear).toHaveBeenCalledOnce()
   })
+
+  it('shares one refresh attempt across concurrent session-token 401 responses', async () => {
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce(new Response('denied', { status: 401 }))
+      .mockResolvedValueOnce(new Response('denied', { status: 401 }))
+      .mockResolvedValue(new Response('ok', { status: 200 })) as typeof fetch
+
+    let resolveRefresh!: (value: { access_token: string; expires_in: number; token_type: string }) => void
+    oidc.refresh.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveRefresh = resolve
+      })
+    )
+
+    const first = authenticatedFetch('/api/v1/documents/1/download', {
+      headers: { Authorization: 'Bearer session-token' },
+    })
+    const second = authenticatedFetch('/api/v1/documents/2/download', {
+      headers: { Authorization: 'Bearer session-token' },
+    })
+
+    resolveRefresh({
+      access_token: 'fresh-token',
+      expires_in: 3600,
+      token_type: 'bearer',
+    })
+
+    const [firstResponse, secondResponse] = await Promise.all([first, second])
+
+    expect(firstResponse.status).toBe(200)
+    expect(secondResponse.status).toBe(200)
+    expect(oidc.refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not apply a stale refresh result after the session token changes', async () => {
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce(new Response('denied', { status: 401 }))
+      .mockResolvedValue(new Response('ok', { status: 200 })) as typeof fetch
+
+    let resolveRefresh!: (value: { access_token: string; expires_in: number; token_type: string }) => void
+    oidc.refresh.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveRefresh = resolve
+      })
+    )
+
+    const pending = authenticatedFetch('/api/v1/documents/1/download', {
+      headers: { Authorization: 'Bearer session-token' },
+    })
+
+    auth.token = 'new-session-token'
+    resolveRefresh({
+      access_token: 'stale-refresh-token',
+      expires_in: 3600,
+      token_type: 'bearer',
+    })
+
+    const response = await pending
+
+    expect(response.status).toBe(401)
+    expect(auth.token).toBe('new-session-token')
+    expect(auth.clear).not.toHaveBeenCalled()
+  })
 })

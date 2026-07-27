@@ -11,14 +11,15 @@ import shutil
 import uuid
 import zipfile
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.responses import StreamingResponse
-from sqlalchemy import and_, func, or_
+from sqlalchemy import String, and_, case, cast, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
@@ -32,6 +33,8 @@ from app.api.schemas.dataset import (
     DatasetCreate,
     DatasetEmbeddingDefaults,
     DatasetIngestionStats,
+    DatasetListFacets,
+    DatasetListIngestionSummary,
     DatasetListResponse,
     DatasetOut,
     DatasetPurgeResponse,
@@ -62,6 +65,7 @@ from app.api.schemas.ingestion_policy import (
 )
 from app.api.schemas.report import DatasetRetrievalAuditOut
 from app.api.utils.response_headers import download_response_headers, set_download_content_disposition
+from app.core.async_bridge import run_coroutine_sync
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.core.pipeline_versions import build_doc_pipeline_key, get_active_pipeline_hash
@@ -98,7 +102,7 @@ from app.services.rbac_service import TenantPermissions, ensure_tenant_permissio
 from app.services.report_html import render_dataset_profile_html
 from app.services.report_service import sanitize_retrieval_audit_snapshot
 from app.services.retention_policy import parse_retention_policy_from_metadata, upsert_retention_policy_metadata
-from app.tasks.queue import enqueue_dataset_profile_scan
+from app.tasks.queue import TaskEnqueueRejectedError, enqueue_dataset_profile_scan, get_task_job_status
 from app.types.pipeline import PipelineOptions
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -115,6 +119,112 @@ _DATASET_SAFE_NAME_RE = re.compile(r"[^a-zA-Z0-9_.-]+")
 _APPLICATION_JSON_MEDIA_TYPE = "application/json"
 logger = get_logger(__name__)
 _DATASET_ROUTER_FALLBACK_LOG_MESSAGE = "Ignoring non-critical dataset router fallback failure: %s"
+_DATASET_SCAN_PENDING_STALE_AFTER = timedelta(minutes=15)
+_DATASET_SCAN_RUNNING_STALE_AFTER = timedelta(hours=2)
+_DATASET_SCAN_PENDING_HARD_STALE_AFTER = timedelta(hours=2)
+_DATASET_SCAN_RUNNING_HARD_STALE_AFTER = timedelta(hours=24)
+
+
+def _dataset_scan_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _scan_run_reference_time(row: object) -> datetime | None:
+    ts = getattr(row, "updated_at", None) or getattr(row, "created_at", None)
+    if ts is None:
+        return None
+    if getattr(ts, "tzinfo", None) is None:
+        return ts.replace(tzinfo=timezone.utc)
+    return ts
+
+
+def _is_stale_scan_run(row: object, *, now: datetime) -> bool:
+    status = str(getattr(row, "status", "") or "").strip().lower()
+    if status not in {"pending", "running"}:
+        return False
+    ts = _scan_run_reference_time(row)
+    if ts is None:
+        return False
+    if status == "pending":
+        return ts + _DATASET_SCAN_PENDING_STALE_AFTER <= now
+    return ts + _DATASET_SCAN_RUNNING_STALE_AFTER <= now
+
+
+def _is_hard_stale_scan_run(row: object, *, now: datetime) -> bool:
+    status = str(getattr(row, "status", "") or "").strip().lower()
+    ts = _scan_run_reference_time(row)
+    if ts is None:
+        return False
+    if status == "pending":
+        return ts + _DATASET_SCAN_PENDING_HARD_STALE_AFTER <= now
+    if status == "running":
+        return ts + _DATASET_SCAN_RUNNING_HARD_STALE_AFTER <= now
+    return False
+
+
+async def _expire_stale_dataset_profile_scan_runs(db: Session, *, tenant_id: UUID, dataset_id: UUID) -> int:
+    now = _dataset_scan_now()
+    rows = (
+        db.query(DBDatasetProfileScanRun)
+        .filter(
+            DBDatasetProfileScanRun.tenant_id == tenant_id,
+            DBDatasetProfileScanRun.dataset_id == dataset_id,
+            DBDatasetProfileScanRun.status.in_(["pending", "running"]),
+        )
+        .all()
+    )
+    expired = 0
+    for row in rows:
+        status = str(getattr(row, "status", "") or "").strip().lower()
+        if not _is_stale_scan_run(row, now=now):
+            continue
+        if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+            job_id = f"dataset_profile_scan:{tenant_id}:{dataset_id}:{row.id}"
+            job_status: str | None = None
+            try:
+                job_status = await get_task_job_status(job_id)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Could not verify stale dataset profile scan job %s: %s", job_id, str(exc)[:160])
+                if not _is_hard_stale_scan_run(row, now=now):
+                    continue
+            if job_status in {"deferred", "queued", "in_progress"}:
+                continue
+        elif status == "running":
+            from app.tasks.queue import is_local_scan_run_active
+
+            if is_local_scan_run_active(
+                kind="profile",
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                scan_run_id=row.id,
+            ):
+                continue
+        row.status = "failed"
+        row.error_message = "stale_running_scan_replaced" if status == "running" else "stale_pending_scan_replaced"
+        row.finished_at = now
+        row.updated_at = now
+        expired += 1
+    if expired:
+        db.flush()
+    return expired
+
+
+def _mark_dataset_profile_scan_run_failed(
+    db: Session,
+    *,
+    row: DBDatasetProfileScanRun,
+    error_message: str,
+) -> None:
+    failed_at = _dataset_scan_now()
+    row.status = "failed"
+    row.error_message = str(error_message or "")[:200]
+    row.finished_at = failed_at
+    row.updated_at = failed_at
+    try:
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        logger.debug("Ignoring dataset profile enqueue failure status update failure: %s", exc)
 
 def _dataset_pipeline_out(ds: Dataset) -> DocumentPipelineOptions | None:
     meta = getattr(ds, "dataset_metadata", None)
@@ -508,6 +618,126 @@ def get_dataset_ingestion_stats(
     )
 
 
+def _apply_dataset_category_filter(query, *, db: Session, tenant_id: UUID, category_id: UUID | None, include_descendants: bool):  # noqa: ANN201
+    if category_id is None:
+        return query
+    try:
+        rows = (
+            db.query(DatasetCategory.id, DatasetCategory.parent_id)
+            .filter(DatasetCategory.tenant_id == tenant_id)
+            .all()
+        )
+        parent_by_id = {cid: pid for cid, pid in rows if cid is not None}
+        category_ids = (
+            collect_descendant_ids(root_id=category_id, parent_by_id=parent_by_id)
+            if bool(include_descendants)
+            else {category_id}
+        )
+        ds_ids_subq = (
+            db.query(DatasetCategoryMembership.dataset_id)
+            .filter(
+                DatasetCategoryMembership.tenant_id == tenant_id,
+                DatasetCategoryMembership.category_id.in_(list(category_ids)),
+            )
+            .subquery()
+        )
+        return query.filter(Dataset.id.in_(ds_ids_subq))
+    except Exception as exc:
+        logger.debug("Dataset category filter failed; listing without category filter: %s", exc)
+        return query
+
+
+def _dataset_doc_stats_subquery(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_ids: list[UUID] | None = None,
+    dataset_ids_subquery=None,  # noqa: ANN001
+):
+    query = (
+        db.query(
+            DBDocument.dataset_id.label("dataset_id"),
+            func.count(DBDocument.id).label("total_documents"),
+            func.coalesce(func.sum(case((DBDocument.status == "pending", 1), else_=0)), 0).label("pending_documents"),
+            func.coalesce(func.sum(case((DBDocument.status == "processing", 1), else_=0)), 0).label("processing_documents"),
+            func.coalesce(func.sum(case((DBDocument.status == "failed", 1), else_=0)), 0).label("failed_documents"),
+            func.coalesce(func.sum(case((DBDocument.status == "quarantined", 1), else_=0)), 0).label("quarantined_documents"),
+            func.coalesce(func.sum(case((DBDocument.status == "completed", 1), else_=0)), 0).label("completed_documents"),
+            func.coalesce(func.sum(case((DBDocument.status == "cancelled", 1), else_=0)), 0).label("cancelled_documents"),
+            func.coalesce(func.sum(DBDocument.chunk_count), 0).label("total_chunks"),
+            func.coalesce(func.sum(DBDocument.file_size), 0).label("total_size"),
+            func.coalesce(func.sum(DBDocument.total_characters), 0).label("total_characters"),
+            func.max(DBDocument.processed_at).label("last_processed_at"),
+        )
+        .filter(
+            DBDocument.tenant_id == tenant_id,
+            DBDocument.dataset_id.isnot(None),
+        )
+        .filter(build_document_read_filter(tenant_id=tenant_id, account_id=account_id))
+    )
+    if dataset_ids_subquery is not None:
+        query = query.filter(DBDocument.dataset_id.in_(select(dataset_ids_subquery.c.dataset_id)))
+    elif dataset_ids is not None:
+        if dataset_ids:
+            query = query.filter(DBDocument.dataset_id.in_(dataset_ids))
+        else:
+            query = query.filter(DBDocument.dataset_id.is_(None))
+    return query.group_by(DBDocument.dataset_id).subquery()
+
+
+def _dataset_testing_expr():
+    return func.lower(func.coalesce(Dataset.dataset_metadata["operational_status"].as_string(), "")) == "testing"
+
+
+def _dataset_operational_status_expr(stats_subq):
+    anomaly_count = (
+        func.coalesce(stats_subq.c.failed_documents, 0)
+        + func.coalesce(stats_subq.c.quarantined_documents, 0)
+    )
+    pending_count = (
+        func.coalesce(stats_subq.c.pending_documents, 0)
+        + func.coalesce(stats_subq.c.processing_documents, 0)
+    )
+    return case(
+        (_dataset_testing_expr(), "testing"),
+        (anomaly_count > 0, "anomaly"),
+        (pending_count > 0, "pending"),
+        else_="active",
+    )
+
+
+def _dataset_list_summary_from_row(row: Any) -> DatasetListIngestionSummary:
+    by_status = {
+        status: int(count or 0)
+        for status, count in {
+            "pending": getattr(row, "pending_documents", 0),
+            "processing": getattr(row, "processing_documents", 0),
+            "failed": getattr(row, "failed_documents", 0),
+            "quarantined": getattr(row, "quarantined_documents", 0),
+            "completed": getattr(row, "completed_documents", 0),
+            "cancelled": getattr(row, "cancelled_documents", 0),
+        }.items()
+        if int(count or 0) > 0
+    }
+    return DatasetListIngestionSummary(
+        total_documents=int(getattr(row, "total_documents", 0) or 0),
+        by_status=by_status,
+        total_chunks=int(getattr(row, "total_chunks", 0) or 0),
+        total_size=int(getattr(row, "total_size", 0) or 0),
+        total_characters=int(getattr(row, "total_characters", 0) or 0),
+        last_processed_at=getattr(row, "last_processed_at", None),
+    )
+
+
+def _dataset_id_search_expr(term: str):
+    normalized_term = str(term or "").strip().lower().replace("-", "")
+    if not normalized_term:
+        return None
+    normalized_id = func.lower(func.replace(cast(Dataset.id, String), "-", ""))
+    return normalized_id.contains(normalized_term, autoescape=True)
+
+
 _ALLOWED_PARSER_DEFAULTS = set(ParserFactory.SUPPORTED_PDF_BACKENDS) | set(ParserFactory.SUPPORTED_NON_PDF_BACKENDS)
 
 
@@ -861,7 +1091,10 @@ def list_datasets(
     include_descendants: Annotated[
         bool, Query(description='When filtering by category_id, include subtree')
     ] = True,
-    q: Annotated[str | None, Query(max_length=200, description="Search dataset name or description")] = None,
+    q: Annotated[str | None, Query(max_length=200, description="Search dataset name, description, or ID")] = None,
+    order_by: Annotated[Literal["created_at", "name"], Query()] = "created_at",
+    order_dir: Annotated[Literal["asc", "desc"], Query()] = "desc",
+    operational_status: Annotated[Literal["all", "active", "anomaly", "pending", "testing"], Query()] = "all",
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -869,45 +1102,116 @@ def list_datasets(
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    # List only datasets readable by the current account.
-    query = db.query(Dataset).filter(Dataset.tenant_id == tenant_id)
-    query = query.filter(build_dataset_read_filter(tenant_id=tenant_id, account_id=account_id))
+    scope_query = db.query(Dataset).filter(Dataset.tenant_id == tenant_id)
+    scope_query = scope_query.filter(build_dataset_read_filter(tenant_id=tenant_id, account_id=account_id))
+    scope_query = _apply_dataset_category_filter(
+        scope_query,
+        db=db,
+        tenant_id=tenant_id,
+        category_id=category_id,
+        include_descendants=include_descendants,
+    )
+
+    filtered_query = scope_query
     term = str(q or "").strip()
     if term:
-        query = query.filter(
+        id_search_expr = _dataset_id_search_expr(term)
+        filtered_query = filtered_query.filter(
             or_(
                 Dataset.name.icontains(term, autoescape=True),
                 Dataset.description.icontains(term, autoescape=True),
+                id_search_expr if id_search_expr is not None else False,
             )
         )
-    # Optional category filter (best-effort; default includes subtree).
-    if category_id is not None:
-        try:
-            rows = (
-                db.query(DatasetCategory.id, DatasetCategory.parent_id)
-                .filter(DatasetCategory.tenant_id == tenant_id)
-                .all()
+
+    scope_total = int(scope_query.count())
+    filtered_total = int(filtered_query.count())
+
+    filtered_dataset_ids_subq = filtered_query.with_entities(Dataset.id.label("dataset_id")).subquery()
+    filtered_stats_subq = _dataset_doc_stats_subquery(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_ids_subquery=filtered_dataset_ids_subq,
+    )
+    operational_status_expr = _dataset_operational_status_expr(filtered_stats_subq)
+    joined_filtered_query = filtered_query.outerjoin(filtered_stats_subq, filtered_stats_subq.c.dataset_id == Dataset.id)
+
+    status_rows = (
+        joined_filtered_query
+        .with_entities(operational_status_expr.label("operational_status"), func.count(Dataset.id))
+        .group_by(operational_status_expr)
+        .all()
+    )
+    status_counts: dict[str, int] = {
+        "active": 0,
+        "anomaly": 0,
+        "pending": 0,
+        "testing": 0,
+    }
+    for status_value, count in status_rows:
+        key = str(status_value or "").strip().lower()
+        if key in status_counts:
+            status_counts[key] = int(count or 0)
+
+    page_query = joined_filtered_query
+    if operational_status == "all":
+        total = filtered_total
+    else:
+        page_query = page_query.filter(operational_status_expr == operational_status)
+        total = int(status_counts.get(operational_status, 0))
+
+    if order_by == "name":
+        order_col = func.lower(Dataset.name)
+    else:
+        order_col = Dataset.created_at
+
+    ordered_page_query = page_query.order_by(
+        order_col.asc() if order_dir == "asc" else order_col.desc(),
+        Dataset.id.asc(),
+    )
+    page_dataset_rows = (
+        ordered_page_query
+        .with_entities(
+            Dataset.id,
+            operational_status_expr.label("operational_status"),
+        )
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    page_dataset_ids = [row[0] for row in page_dataset_rows]
+    page_operational_status_by_id = {row[0]: row[1] for row in page_dataset_rows}
+    page_rows: list[tuple[Any, ...]] = []
+    if page_dataset_ids:
+        page_stats_subq = _dataset_doc_stats_subquery(
+            db=db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_ids=page_dataset_ids,
+        )
+        page_rows = (
+            db.query(
+                Dataset,
+                page_stats_subq.c.total_documents,
+                page_stats_subq.c.pending_documents,
+                page_stats_subq.c.processing_documents,
+                page_stats_subq.c.failed_documents,
+                page_stats_subq.c.quarantined_documents,
+                page_stats_subq.c.completed_documents,
+                page_stats_subq.c.cancelled_documents,
+                page_stats_subq.c.total_chunks,
+                page_stats_subq.c.total_size,
+                page_stats_subq.c.total_characters,
+                page_stats_subq.c.last_processed_at,
             )
-            parent_by_id = {cid: pid for cid, pid in rows if cid is not None}
-            category_ids = (
-                collect_descendant_ids(root_id=category_id, parent_by_id=parent_by_id)
-                if bool(include_descendants)
-                else {category_id}
-            )
-            ds_ids_subq = (
-                db.query(DatasetCategoryMembership.dataset_id)
-                .filter(
-                    DatasetCategoryMembership.tenant_id == tenant_id,
-                    DatasetCategoryMembership.category_id.in_(list(category_ids)),
-                )
-                .subquery()
-            )
-            query = query.filter(Dataset.id.in_(ds_ids_subq))
-        except Exception as exc:
-            # Keep list endpoint resilient; treat as "no category filter".
-            logger.debug("Dataset category filter failed; listing without category filter: %s", exc)
-    total = query.count()
-    datasets = query.order_by(Dataset.created_at.desc()).offset(skip).limit(limit).all()
+            .outerjoin(page_stats_subq, page_stats_subq.c.dataset_id == Dataset.id)
+            .filter(Dataset.id.in_(page_dataset_ids))
+            .all()
+        )
+
+    dataset_by_id = {row[0].id: row[0] for row in page_rows}
+    datasets = [dataset_by_id[dataset_id] for dataset_id in page_dataset_ids if dataset_id in dataset_by_id]
 
     # Avoid N+1 queries for PARTIAL_MEMBERS datasets
     partial_ids = [ds.id for ds in datasets if ds.permission == DatasetPermissionEnum.PARTIAL_MEMBERS]
@@ -942,6 +1246,7 @@ def list_datasets(
             tmp_g[row.dataset_id].append(row.group_id)
         partial_group_map = dict(tmp_g)
 
+    row_by_dataset_id = {row[0].id: row for row in page_rows}
     results = []
     for ds in datasets:
         partial_list = None
@@ -949,6 +1254,7 @@ def list_datasets(
         if ds.permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
             partial_list = partial_member_map.get(ds.id, [])
             partial_groups = partial_group_map.get(ds.id, [])
+        row = row_by_dataset_id.get(ds.id)
         default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(ds)
         (
             rag_config_template_id,
@@ -980,8 +1286,23 @@ def list_datasets(
             chunk_targets_v2=chunk_targets_v2,
             pipeline=_dataset_pipeline_out(ds),
             retention_policy=retention_policy,
+            ingestion_summary=_dataset_list_summary_from_row(row) if row is not None else None,
+            operational_status=str(page_operational_status_by_id.get(ds.id) or "") if ds.id in page_operational_status_by_id else None,
         ))
-    return {"total": total, "items": results}
+    return {
+        "total": total,
+        "items": results,
+        "facets": DatasetListFacets(
+            scope_total=scope_total,
+            filtered_total=filtered_total,
+            status_counts={
+                "active": int(status_counts["active"]),
+                "anomaly": int(status_counts["anomaly"]),
+                "pending": int(status_counts["pending"]),
+                "testing": int(status_counts["testing"]),
+            },
+        ),
+    }
 
 
 @router.get("/{dataset_id}", response_model=DatasetOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -1171,7 +1492,7 @@ def export_dataset_config(
         version="1",
         dataset_id=ds.id,
         name=str(ds.name or ""),
-        exported_at=datetime.now(UTC),
+        exported_at=datetime.now(timezone.utc),
         config=_build_dataset_config_bundle(ds),
     )
 
@@ -1358,6 +1679,24 @@ def _assert_no_active_dataset_scans(db: Session, tenant_id: UUID, dataset_id: UU
         )
 
 
+async def _reconcile_stale_dataset_scan_runs(db: Session, *, tenant_id: UUID, dataset_id: UUID) -> tuple[int, int]:
+    from app.api.v1.dataset_precheck import _expire_stale_precheck_scan_runs
+
+    expired_profile = await _expire_stale_dataset_profile_scan_runs(db, tenant_id=tenant_id, dataset_id=dataset_id)
+    expired_precheck = await _expire_stale_precheck_scan_runs(db, tenant_id=tenant_id, dataset_id=dataset_id)
+    return expired_profile, expired_precheck
+
+
+def _reconcile_stale_dataset_scan_runs_sync(db: Session, *, tenant_id: UUID, dataset_id: UUID) -> tuple[int, int]:
+    return run_coroutine_sync(
+        lambda: _reconcile_stale_dataset_scan_runs(
+            db,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+        )
+    )
+
+
 def _precheck_run_ids_for_dataset(db: Session, tenant_id: UUID, dataset_id: UUID) -> list[UUID]:
     rows = (
         db.query(DBDatasetPrecheckScanRun.id)
@@ -1514,6 +1853,10 @@ def delete_dataset(
             detail=f"数据集内仍有 {doc_count} 个文档，请先清空文档后再删除数据集。",
         )
 
+    # Reconcile stale profile/precheck runs before the active-run guard so
+    # worker crashes do not strand dataset lifecycle operations behind 409s.
+    _reconcile_stale_dataset_scan_runs_sync(db, tenant_id=tenant_id, dataset_id=dataset_id)
+
     # Prevent deleting while long-running dataset scans are still active.
     _assert_no_active_dataset_scans(db, tenant_id, dataset_id)
 
@@ -1561,6 +1904,10 @@ async def purge_dataset_documents(
     )
 
     DatasetService.get_dataset(db, tenant_id, dataset_id)
+
+    # Reconcile stale profile/precheck runs before the active-run guard so
+    # worker crashes do not strand purge requests behind 409s.
+    await _reconcile_stale_dataset_scan_runs(db, tenant_id=tenant_id, dataset_id=dataset_id)
 
     # Avoid purging while long-running dataset scans are still active.
     _assert_no_active_dataset_scans(db, tenant_id, dataset_id)
@@ -1613,7 +1960,7 @@ def _append_ingestion_policy_version(
     version_id = uuid.uuid4().hex
     item: dict[str, object] = {
         "id": version_id,
-        "created_at": datetime.now(UTC).isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "created_by": str(account_id or "").strip() or None,
         "source": str(source or "put"),
         "policy": policy.model_dump(),
@@ -1875,6 +2222,14 @@ def _run_deep_scan_background(
     Uses a dedicated DB session and marks the run as failed on exception.
     """
     db = SessionLocal()
+    from app.tasks.queue import register_local_scan_run_active, unregister_local_scan_run_active
+
+    register_local_scan_run_active(
+        kind="profile",
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        scan_run_id=scan_run_id,
+    )
     try:
         run_dataset_profile_deep_scan(
             db,
@@ -1901,6 +2256,12 @@ def _run_deep_scan_background(
         except Exception as exc:
             logger.debug(_DATASET_ROUTER_FALLBACK_LOG_MESSAGE, exc)
     finally:
+        unregister_local_scan_run_active(
+            kind="profile",
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            scan_run_id=scan_run_id,
+        )
         db.close()
 
 
@@ -1956,7 +2317,7 @@ def get_dataset_health(
 
     return DatasetHealthResponse(
         dataset_id=dataset_id,
-        generated_at=datetime.now(UTC),
+        generated_at=datetime.now(timezone.utc),
         profile=profile,
         ingestion=ingestion,
     )
@@ -2031,17 +2392,25 @@ async def create_dataset_profile_scan_run(
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_writable(db, dataset, account_id)
 
-    # Prevent accidental duplicate long-running scans.
-    existing = (
-        db.query(DBDatasetProfileScanRun)
-        .filter(
-            DBDatasetProfileScanRun.tenant_id == tenant_id,
-            DBDatasetProfileScanRun.dataset_id == dataset_id,
-            DBDatasetProfileScanRun.status.in_(["pending", "running"]),
+    # Clear stale pending rows before the active-run check so queue failures or
+    # crashed requests do not leave the dataset permanently blocked.
+    expired = await _expire_stale_dataset_profile_scan_runs(db, tenant_id=tenant_id, dataset_id=dataset_id)
+    if expired:
+        db.commit()
+
+    def _active_profile_scan():  # noqa: ANN202
+        return (
+            db.query(DBDatasetProfileScanRun)
+            .filter(
+                DBDatasetProfileScanRun.tenant_id == tenant_id,
+                DBDatasetProfileScanRun.dataset_id == dataset_id,
+                DBDatasetProfileScanRun.status.in_(["pending", "running"]),
+            )
+            .order_by(DBDatasetProfileScanRun.created_at.desc())
+            .first()
         )
-        .order_by(DBDatasetProfileScanRun.created_at.desc())
-        .first()
-    )
+
+    existing = _active_profile_scan()
     if existing is not None:
         raise HTTPException(status_code=409, detail="A scan run is already pending/running for this dataset")
 
@@ -2057,17 +2426,35 @@ async def create_dataset_profile_scan_run(
         summary={},
     )
     db.add(row)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        expired_after_conflict = await _expire_stale_dataset_profile_scan_runs(
+            db, tenant_id=tenant_id, dataset_id=dataset_id
+        )
+        if expired_after_conflict:
+            db.commit()
+        if _active_profile_scan() is not None:
+            raise HTTPException(status_code=409, detail="A scan run is already pending/running for this dataset") from exc
+        raise
     db.refresh(row)
 
     job_id = f"dataset_profile_scan:{tenant_id}:{dataset_id}:{row.id}"
-    task_id = await enqueue_dataset_profile_scan(
-        tenant_id=tenant_id,
-        dataset_id=dataset_id,
-        scan_run_id=row.id,
-        requested_by=account_id,
-        job_id=job_id,
-    )
+    try:
+        task_id = await enqueue_dataset_profile_scan(
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            scan_run_id=row.id,
+            requested_by=account_id,
+            job_id=job_id,
+        )
+    except TaskEnqueueRejectedError as exc:
+        _mark_dataset_profile_scan_run_failed(db, row=row, error_message=f"task_enqueue_failed: {exc}")
+        raise HTTPException(status_code=503, detail="Failed to enqueue dataset profile scan job") from exc
+    except Exception as exc:  # noqa: BLE001
+        _mark_dataset_profile_scan_run_failed(db, row=row, error_message=f"task_enqueue_failed: {str(exc)[:160]}")
+        raise HTTPException(status_code=503, detail="Failed to enqueue dataset profile scan job") from exc
     if not task_id:
         # Queue disabled; run in-process after response.
         background_tasks.add_task(
@@ -2802,7 +3189,7 @@ def export_dataset_bundle_zip(
 
     ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
     docs = _dataset_documents_page(db, tenant_id, dataset_id, limit=int(limit or 0))
-    exported_at = datetime.now(UTC)
+    exported_at = datetime.now(timezone.utc)
 
     # Best-effort audit log (PII-safe).
     _record_dataset_bundle_export_audit(

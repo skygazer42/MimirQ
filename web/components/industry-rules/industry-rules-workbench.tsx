@@ -204,7 +204,6 @@ function selectedMapValues(selected: Record<string, boolean>): string[] {
     .map(([key]) => key)
 }
 
-const INDUSTRY_RULES_DATASET_PARAMS = { limit: 200 } as const
 const WORKBENCH_PANEL =
   'rounded-[14px] border border-border/60 bg-card/90 shadow-[0_10px_28px_rgba(15,23,42,0.045)]'
 const DENSE_FIELD =
@@ -243,8 +242,8 @@ export function IndustryRulesWorkbench() {
     queryFn: industryRulesApi.listRulesets,
   })
   const datasetsQuery = useQuery({
-    queryKey: queryKeys.datasets.list(INDUSTRY_RULES_DATASET_PARAMS),
-    queryFn: () => datasetApi.list(INDUSTRY_RULES_DATASET_PARAMS),
+    queryKey: queryKeys.datasets.exhaustive({ purpose: 'industry-rules' }),
+    queryFn: () => datasetApi.listAll(),
   })
   const rulesetDetailQuery = useQuery({
     queryKey: queryKeys.industryRules.ruleset(selectedRuleset),
@@ -270,8 +269,8 @@ export function IndustryRulesWorkbench() {
     [rulesetsQuery.data?.rulesets]
   )
   const datasets = useMemo(
-    () => datasetsQuery.data?.items || [],
-    [datasetsQuery.data?.items]
+    () => datasetsQuery.data || [],
+    [datasetsQuery.data]
   )
   const loadingMeta = rulesetsQuery.isFetching || datasetsQuery.isFetching
   const metaError = rulesetsQuery.error || datasetsQuery.error

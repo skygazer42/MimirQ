@@ -466,8 +466,8 @@ export function DataGovernancePanel() {
     queryKey: ['data-governance', 'datasets'],
     enabled: isLoaded,
     queryFn: async (): Promise<DatasetOption[]> => {
-      const response = await datasetApi.list({ skip: 0, limit: 200 })
-      return (response.items || []).map((dataset) => ({
+      const datasets = await datasetApi.listAll()
+      return datasets.map((dataset) => ({
         id: String(dataset.id),
         name: dataset.name || String(dataset.id),
       }))

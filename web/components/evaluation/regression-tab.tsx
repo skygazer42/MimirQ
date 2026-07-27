@@ -60,8 +60,6 @@ import {
 } from '@/components/evaluation/ragas-metric-selector'
 import { queryKeys } from '@/lib/query-keys'
 
-const REGRESSION_DATASET_LIST_PARAMS = { limit: 200 } as const
-
 function RegressionInlineStat({
   label,
   value,
@@ -580,13 +578,12 @@ export function RegressionTestTab({
   // Dataset scope (required by backend for cases and runs)
   const [selectedDatasetId, setSelectedDatasetId] = useState<string>('')
   const datasetsQuery = useQuery({
-    queryKey: queryKeys.datasets.list(REGRESSION_DATASET_LIST_PARAMS),
-    queryFn: () => datasetApi.list(REGRESSION_DATASET_LIST_PARAMS),
+    queryKey: queryKeys.datasets.exhaustive({ purpose: 'regression-tests' }),
+    queryFn: () => datasetApi.listAll(),
     staleTime: 30_000,
   })
   const datasets = useMemo<Dataset[]>(() => {
-    const items = datasetsQuery.data?.items
-    return Array.isArray(items) ? items : []
+    return datasetsQuery.data ?? []
   }, [datasetsQuery.data])
   const isLoadingDatasets = datasetsQuery.isLoading || datasetsQuery.isFetching
   const latestRegressionCaseQuery = useQuery({

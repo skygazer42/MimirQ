@@ -64,13 +64,36 @@ _ESLINT_EDGES = {
 }
 
 
+def _without_version(package: str) -> str:
+    return package.rsplit("@", maxsplit=1)[0]
+
+
+_COMPACT_ALLOWED_ROOTS = {_without_version(root): policy for root, policy in _ALLOWED_ROOTS.items()}
+_COMPACT_ESLINT_ROOTS = {_without_version(root) for root in _ESLINT_ROOTS}
+_COMPACT_ESLINT_TERMINAL = tuple(_without_version(package) for package in _ESLINT_TERMINAL)
+_COMPACT_OPENAPI_PATH = tuple(_without_version(package) for package in _OPENAPI_PATH)
+_COMPACT_ESLINT_EDGES = {
+    (_without_version(parent), _without_version(child)) for parent, child in _ESLINT_EDGES
+}
+
+
 def _path_errors(path: Any, version: Any, package_json: dict[str, Any]) -> set[str]:
-    if not isinstance(path, str) or not path.startswith(". > "):
+    if not isinstance(path, str):
         return {f"invalid {_ALLOWED_GHSA} path: {path!r}"}
 
-    chain = tuple(path.split(" > ")[1:])
+    if path.startswith(". > "):
+        chain = tuple(path.split(" > ")[1:])
+        compact = False
+    elif path.startswith(".>") and " > " not in path:
+        chain = tuple(path.split(">")[1:])
+        compact = True
+    else:
+        return {f"invalid {_ALLOWED_GHSA} path: {path!r}"}
+    if not chain or any(not package for package in chain):
+        return {f"invalid {_ALLOWED_GHSA} path: {path!r}"}
+
     root = chain[0]
-    root_policy = _ALLOWED_ROOTS.get(root)
+    root_policy = (_COMPACT_ALLOWED_ROOTS if compact else _ALLOWED_ROOTS).get(root)
     if root_policy is None:
         return {f"unexpected {_ALLOWED_GHSA} root: {root}"}
 
@@ -89,14 +112,18 @@ def _path_errors(path: Any, version: Any, package_json: dict[str, Any]) -> set[s
         errors.add(f"allowed audit root is not dev-only: {package_name}@{package_spec}")
 
     if version == "2.1.2":
-        if chain != _OPENAPI_PATH:
+        expected_path = _COMPACT_OPENAPI_PATH if compact else _OPENAPI_PATH
+        if chain != expected_path:
             errors.add(f"unexpected {_ALLOWED_GHSA} OpenAPI path: {path}")
         return errors
-    if version != "1.1.16" or root not in _ESLINT_ROOTS or chain[-2:] != _ESLINT_TERMINAL:
+    eslint_roots = _COMPACT_ESLINT_ROOTS if compact else _ESLINT_ROOTS
+    eslint_terminal = _COMPACT_ESLINT_TERMINAL if compact else _ESLINT_TERMINAL
+    if version != "1.1.16" or root not in eslint_roots or chain[-2:] != eslint_terminal:
         errors.add(f"unexpected {_ALLOWED_GHSA} version/path: {version} {path}")
         return errors
+    allowed_edges = _COMPACT_ESLINT_EDGES if compact else _ESLINT_EDGES
     for edge in pairwise(chain):
-        if edge not in _ESLINT_EDGES:
+        if edge not in allowed_edges:
             errors.add(f"unexpected {_ALLOWED_GHSA} dependency edge: {' > '.join(edge)}")
     return errors
 

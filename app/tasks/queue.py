@@ -7,6 +7,7 @@ API compatibility:
 
 
 import asyncio
+import threading
 from typing import Any
 from uuid import UUID
 
@@ -18,6 +19,15 @@ logger = get_logger("tasks.queue")
 # arq is optional: when TASK_QUEUE_ENABLED=false, do not require arq.
 _queue: Any | None = None
 _queue_lock = asyncio.Lock()
+
+
+class TaskEnqueueRejectedError(RuntimeError):
+    """Raised when the queue is enabled but the broker does not accept the job."""
+
+
+_LIVE_ARQ_JOB_STATUSES = frozenset({"deferred", "queued", "in_progress"})
+_LOCAL_ACTIVE_SCAN_RUNS: set[str] = set()
+_LOCAL_ACTIVE_SCAN_RUNS_LOCK = threading.Lock()
 
 
 def is_queue_initialized() -> bool:
@@ -75,6 +85,91 @@ async def get_queue() -> Any | None:
     if _queue is None:
         await init_queue()
     return _queue
+
+
+async def get_task_job_status(job_id: str) -> str | None:
+    """Return an ARQ job status, or ``None`` when the queue is disabled."""
+    q = await get_queue()
+    if q is None:
+        return None
+    from arq.jobs import Job
+
+    queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
+    status = await Job(str(job_id), q, _queue_name=queue_name).status()
+    return str(getattr(status, "value", status) or "").strip().lower() or None
+
+
+async def _resolve_scan_job_handoff(job: Any, *, job_id: str | None) -> str | None:
+    if job is not None:
+        return getattr(job, "job_id", None) or job_id
+    if not job_id:
+        raise TaskEnqueueRejectedError("scan job was not accepted by arq")
+    status = await get_task_job_status(job_id)
+    if status in _LIVE_ARQ_JOB_STATUSES:
+        return job_id
+    raise TaskEnqueueRejectedError(f"scan job was not accepted by arq (status={status or 'missing'})")
+
+
+def _local_scan_run_key(
+    *,
+    kind: str,
+    tenant_id: UUID | str,
+    dataset_id: UUID | str,
+    scan_run_id: UUID | str,
+) -> str:
+    return f"{str(kind or '').strip().lower()}:{tenant_id}:{dataset_id}:{scan_run_id}"
+
+
+def register_local_scan_run_active(
+    *,
+    kind: str,
+    tenant_id: UUID | str,
+    dataset_id: UUID | str,
+    scan_run_id: UUID | str,
+) -> str:
+    key = _local_scan_run_key(
+        kind=kind,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        scan_run_id=scan_run_id,
+    )
+    with _LOCAL_ACTIVE_SCAN_RUNS_LOCK:
+        _LOCAL_ACTIVE_SCAN_RUNS.add(key)
+    return key
+
+
+def unregister_local_scan_run_active(
+    *,
+    kind: str,
+    tenant_id: UUID | str,
+    dataset_id: UUID | str,
+    scan_run_id: UUID | str,
+) -> None:
+    key = _local_scan_run_key(
+        kind=kind,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        scan_run_id=scan_run_id,
+    )
+    with _LOCAL_ACTIVE_SCAN_RUNS_LOCK:
+        _LOCAL_ACTIVE_SCAN_RUNS.discard(key)
+
+
+def is_local_scan_run_active(
+    *,
+    kind: str,
+    tenant_id: UUID | str,
+    dataset_id: UUID | str,
+    scan_run_id: UUID | str,
+) -> bool:
+    key = _local_scan_run_key(
+        kind=kind,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        scan_run_id=scan_run_id,
+    )
+    with _LOCAL_ACTIVE_SCAN_RUNS_LOCK:
+        return key in _LOCAL_ACTIVE_SCAN_RUNS
 
 
 async def enqueue_document_processing(
@@ -193,7 +288,7 @@ async def enqueue_dataset_profile_scan(
         _job_id=job_id,
         _job_try=1,
     )
-    return getattr(job, "job_id", None) or job_id
+    return await _resolve_scan_job_handoff(job, job_id=job_id)
 
 
 async def enqueue_dataset_precheck_scan(
@@ -219,7 +314,7 @@ async def enqueue_dataset_precheck_scan(
         _job_id=job_id,
         _job_try=1,
     )
-    return getattr(job, "job_id", None) or job_id
+    return await _resolve_scan_job_handoff(job, job_id=job_id)
 
 
 async def enqueue_connector_run(

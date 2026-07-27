@@ -3291,6 +3291,8 @@ async def test_dify_retrieval_singleflight_then_cache_reuses_identical_request(
     request_sessions = []
     retrieval_started = asyncio.Event()
     release_retrieval = asyncio.Event()
+    cache_write_started = asyncio.Event()
+    release_cache_write = asyncio.Event()
 
     class _TrackingDB:
         def __init__(self) -> None:
@@ -3349,6 +3351,18 @@ async def test_dify_retrieval_singleflight_then_cache_reuses_identical_request(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
 
+    async def _blocking_cache_write(*_args, **_kwargs) -> bool:  # noqa: ANN002, ANN003
+        cache_write_started.set()
+        await release_cache_write.wait()
+        return True
+
+    monkeypatch.setattr(
+        dify_api,
+        "_set_dify_response_cache_redis_payload",
+        _blocking_cache_write,
+        raising=True,
+    )
+
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_tracking_db
     app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
@@ -3369,7 +3383,11 @@ async def test_dify_retrieval_singleflight_then_cache_reuses_identical_request(
         await asyncio.sleep(0.05)
         release_retrieval.set()
         try:
-            first, second = await asyncio.gather(first_task, second_task)
+            await asyncio.wait_for(cache_write_started.wait(), timeout=1.0)
+            second = await asyncio.wait_for(second_task, timeout=0.5)
+            assert first_task.done() is False
+            release_cache_write.set()
+            first = await asyncio.wait_for(first_task, timeout=1.0)
             cached = await client.post(
                 "/api/v1/integrations/dify/retrieval",
                 headers=_auth(token),
@@ -3476,6 +3494,118 @@ async def test_dify_distributed_singleflight_and_redis_cache_reuse_across_instan
         release_retrieval.set()
         first, second = await asyncio.gather(leader, follower)
         dify_api._clear_dify_response_cache()
+        cached = await client.post(
+            "/api/v1/integrations/dify/retrieval",
+            headers=_auth(token),
+            json=payload,
+        )
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    assert cached.status_code == 200, cached.text
+    assert calls["rag"] == 1
+    assert second.json() == first.json()
+    assert cached.json() == first.json()
+
+
+@pytest.mark.asyncio
+async def test_dify_distributed_singleflight_reuses_transient_result_when_response_cache_ttl_is_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+    calls = {"rag": 0}
+    retrieval_started = asyncio.Event()
+    release_retrieval = asyncio.Event()
+    fake_redis = _FakeRedis()
+
+    _patch_fake_dify_redis(monkeypatch, dify_api, fake_redis)
+    dify_api._clear_dify_response_cache()
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{dataset_id}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_TTL_SEC", 0, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_MAX_ENTRIES", 32, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC", 75.0, raising=False)
+    monkeypatch.setattr(
+        dify_api,
+        "_resolve_dify_response_cache_corpus_token",
+        lambda **_kwargs: "corpus-v1",
+        raising=True,
+    )
+    monkeypatch.setattr(
+        dify_api,
+        "_acquire_or_wait_for_inflight_response",
+        lambda _key: asyncio.sleep(0, result=(True, None)),
+        raising=True,
+    )
+    monkeypatch.setattr(dify_api, "resolve_inflight_response", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(dify_api, "reject_inflight_response", lambda *_args, **_kwargs: None, raising=True)
+    _patch_demo_policy(monkeypatch, dify_api)
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        calls["rag"] += 1
+        retrieval_started.set()
+        await release_retrieval.wait()
+        return [
+            {
+                "chunk_content": "事项名称：学区划分查询\n咨询方式：0519-69660631",
+                "relevance_score": 0.91,
+                "document_name": "service-rag.txt",
+                "chunk_id": str(uuid.uuid4()),
+                "dataset_id": str(dataset_id),
+                "metadata": {"dataset_id": str(dataset_id), "service_name": "学区划分查询"},
+            }
+        ]
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    payload = {
+        "knowledge_id": "city",
+        "query": "天宁区学区查询咨询电话是多少",
+        "retrieval_setting": {"top_k": 5, "score_threshold": 0.0},
+    }
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        leader = asyncio.create_task(
+            client.post("/api/v1/integrations/dify/retrieval", headers=_auth(token), json=payload)
+        )
+        await retrieval_started.wait()
+        lease_keys = [key for key in fake_redis._values if key.endswith(":lease")]
+        assert len(lease_keys) == 1
+        assert (fake_redis.ttl_remaining(lease_keys[0]) or 0) >= 60
+        follower = asyncio.create_task(
+            client.post("/api/v1/integrations/dify/retrieval", headers=_auth(token), json=payload)
+        )
+        await asyncio.sleep(0.05)
+        release_retrieval.set()
+        first, second = await asyncio.gather(leader, follower)
+        dify_api._clear_dify_response_cache()
+        transient_keys = [
+            key for key in fake_redis._values if key.endswith(dify_api._DIFY_RESPONSE_SINGLEFLIGHT_RESULT_SUFFIX)
+        ]
+        assert len(transient_keys) == 1
+        transient_ttl = fake_redis.ttl_remaining(transient_keys[0]) or 0
+        assert 0 < transient_ttl <= dify_api._DIFY_RESPONSE_SINGLEFLIGHT_RESULT_TTL_SEC
+        assert not any(
+            key not in transient_keys and not key.endswith(":lease")
+            for key in fake_redis._values
+        )
         cached = await client.post(
             "/api/v1/integrations/dify/retrieval",
             headers=_auth(token),
@@ -3692,6 +3822,132 @@ async def test_dify_distributed_singleflight_releases_lease_after_leader_cancell
 
     assert response.status_code == 200, response.text
     assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_dify_local_singleflight_wait_timeout_preserves_leader_future(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+    import app.services.chat_response_cache as cache_mod
+    from app.services.rag_runtime_limiter import RetrievalAdmissionTimeoutError
+
+    key = "dify-local-timeout"
+    cache_mod.clear_inflight_chat_responses()
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC",
+        0.05,
+        raising=False,
+    )
+
+    try:
+        leader, shared_future = await dify_api.acquire_inflight_response(key)
+        assert leader is True
+
+        with pytest.raises(RetrievalAdmissionTimeoutError, match="Retry later"):
+            await dify_api._acquire_or_wait_for_inflight_response(key)
+
+        follower_is_leader, follower_future = await dify_api.acquire_inflight_response(key)
+        assert follower_is_leader is False
+        assert follower_future is shared_future
+
+        dify_api.resolve_inflight_response(key, {"records": [{"content": "shared"}]})
+        assert await asyncio.wait_for(asyncio.shield(follower_future), timeout=1.0) == {
+            "records": [{"content": "shared"}]
+        }
+    finally:
+        cache_mod.clear_inflight_chat_responses()
+
+
+@pytest.mark.asyncio
+async def test_dify_distributed_singleflight_wait_timeout_returns_retryable_503(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+    from app.services.rag_runtime_limiter import RetrievalAdmissionTimeoutError
+
+    fake_redis = _FakeRedis()
+    _patch_fake_dify_redis(monkeypatch, dify_api, fake_redis)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC",
+        2.0,
+        raising=False,
+    )
+    clock = [0.0]
+    monkeypatch.setattr(dify_api.time, "monotonic", lambda: clock[0], raising=True)
+
+    async def _sleep(delay: float) -> None:
+        clock[0] += delay
+
+    async def _get_cached(_key: str):  # noqa: ANN202
+        return None
+
+    async def _acquire_lease(_key: str, *, value: str, ttl_sec: int):  # noqa: ANN202,ARG001
+        assert ttl_sec >= 60
+        return False
+
+    monkeypatch.setattr(dify_api.asyncio, "sleep", _sleep, raising=True)
+    monkeypatch.setattr(dify_api, "_dify_response_cache_redis_payload", _get_cached, raising=True)
+    monkeypatch.setattr(dify_api, "try_acquire_best_effort_redis_lease", _acquire_lease, raising=True)
+
+    with pytest.raises(RetrievalAdmissionTimeoutError) as exc_info:
+        await dify_api._acquire_or_wait_for_distributed_dify_response(
+            "dify-distributed-timeout",
+            response_cache_enabled=True,
+            response_cache_ttl_sec=30,
+        )
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.headers == {"Retry-After": "2"}
+    assert 2.0 <= clock[0] < 2.25
+
+
+def test_dify_retrieval_timeout_stays_http_503_in_route(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+    from app.services.rag_runtime_limiter import RetrievalAdmissionTimeoutError
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{dataset_id}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_ENABLED", False, raising=False)
+    _patch_demo_policy(monkeypatch, dify_api)
+
+    async def _fail_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        raise RetrievalAdmissionTimeoutError(0.2)
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fail_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": "学区划分查询咨询电话是多少",
+            "retrieval_setting": {"top_k": 5, "score_threshold": 0.0},
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "1"
 
 
 @pytest.mark.asyncio
@@ -11670,6 +11926,44 @@ def test_dify_trace_conversation_id_accepts_conversation_id_for_same_account(
     assert resolved == conversation_id
 
 
+def test_dify_trace_conversation_id_rejects_mismatched_upstream_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    tenant_id = uuid.uuid4()
+    conversation_id = uuid.uuid4()
+    body = dify_api.DifyExternalKnowledgeRequest(
+        knowledge_id="external-kb",
+        query="query",
+        conversation_id=conversation_id,
+        source_conversation_id="upstream-conversation-b",
+    )
+    monkeypatch.setattr(
+        dify_api,
+        "_load_dify_trace_conversation",
+        lambda *_args, **_kwargs: SimpleNamespace(id=conversation_id, owner_account_id="system:dify"),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        dify_api,
+        "_find_dify_trace_conversation",
+        lambda *_args, **_kwargs: uuid.uuid4(),
+        raising=True,
+    )
+
+    with pytest.raises(HTTPException, match="Conversation source does not match") as exc_info:
+        dify_api._dify_trace_conversation_id(
+            request=SimpleNamespace(headers={}),
+            body=body,
+            db=object(),
+            tenant_id=tenant_id,
+            account_id="system:dify",
+        )
+
+    assert exc_info.value.status_code == 403
+
+
 def test_dify_metadata_anchor_db_fallback_enforces_normal_document_eligibility(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -12121,7 +12415,6 @@ def test_dify_trace_conversation_resolution_locks_source_scope_before_lookup(
         lambda *_args, **_kwargs: SimpleNamespace(id=conversation_id, owner_account_id="system:dify"),
         raising=True,
     )
-
     resolved = dify_api._ensure_dify_trace_conversation(
         db=db,
         tenant_id=tenant_id,
@@ -12472,6 +12765,12 @@ def test_dify_conversation_turn_retry_returns_existing_messages_without_writes(
         lambda *_args, **_kwargs: SimpleNamespace(id=conversation_id, owner_account_id="system:dify"),
         raising=True,
     )
+    monkeypatch.setattr(
+        dify_api,
+        "_find_dify_trace_conversation",
+        lambda *_args, **_kwargs: conversation_id,
+        raising=True,
+    )
 
     def _fake_find_existing(_db, **kwargs):  # noqa: ANN001, ANN003, ANN202
         lookup_calls.append(dict(kwargs))
@@ -12544,6 +12843,43 @@ def test_dify_conversation_turn_rejects_explicit_conversation_owned_by_another_a
             answer="请携带有效身份证件。",
             trace_request_id=None,
             source_conversation_id="dify-conv-001",
+            source_message_id="dify-msg-001",
+            source_run_id=None,
+            citations=[],
+            conversation_id=conversation_id,
+        )
+
+    assert exc_info.value.status_code == 403
+
+
+def test_dify_conversation_turn_rejects_mismatched_upstream_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api.v1 import integrations_dify as dify_api
+
+    conversation_id = uuid.uuid4()
+    monkeypatch.setattr(dify_api, "_lock_dify_conversation_turn_scope", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        dify_api,
+        "_load_dify_trace_conversation",
+        lambda *_args, **_kwargs: SimpleNamespace(id=conversation_id, owner_account_id="system:dify"),
+    )
+    monkeypatch.setattr(
+        dify_api,
+        "_find_dify_trace_conversation",
+        lambda *_args, **_kwargs: None,
+        raising=True,
+    )
+
+    with pytest.raises(HTTPException, match="Conversation source does not match") as exc_info:
+        dify_api._persist_dify_conversation_turn(
+            db=_DummyDB(),
+            tenant_id=uuid.uuid4(),
+            account_id="system:dify",
+            query="普通话考试要带什么？",
+            answer="请携带有效身份证件。",
+            trace_request_id=None,
+            source_conversation_id="upstream-conversation-b",
             source_message_id="dify-msg-001",
             source_run_id=None,
             citations=[],

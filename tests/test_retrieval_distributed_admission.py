@@ -1,4 +1,5 @@
 import asyncio
+import multiprocessing
 import threading
 import time
 
@@ -45,6 +46,44 @@ class _FakeRedis:
 class _BrokenRedis(_FakeRedis):
     def set(self, key: str, value: str, *, ex: int | None = None, nx: bool = False) -> bool:  # noqa: ARG002
         raise RuntimeError("redis unavailable")
+
+
+class _SharedRedis:
+    def __init__(self, slots, lock) -> None:  # noqa: ANN001
+        self.slots = slots
+        self.lock = lock
+
+    @staticmethod
+    def _slot_index(key: str) -> int:
+        return int(key.rsplit(":", 1)[-1]) - 1
+
+    @staticmethod
+    def _owner_token(owner: str) -> int:
+        return int(owner[:16], 16) or 1
+
+    def set(self, key: str, value: str, *, ex: int | None = None, nx: bool = False) -> bool:  # noqa: ARG002
+        with self.lock:
+            index = self._slot_index(key)
+            if nx and self.slots[index] != 0:
+                return False
+            self.slots[index] = self._owner_token(value)
+            return True
+
+    def get(self, key: str) -> str | None:
+        with self.lock:
+            token = self.slots[self._slot_index(key)]
+            return str(token) if token else None
+
+    def eval(self, script: str, numkeys: int, *values: str) -> int:
+        assert numkeys == 1
+        key, owner = values[:2]
+        with self.lock:
+            index = self._slot_index(key)
+            if self.slots[index] != self._owner_token(owner):
+                return 0
+            if "EXPIRE" not in script:
+                self.slots[index] = 0
+            return 1
 
 
 def _enable_distributed(  # noqa: ANN001
@@ -275,6 +314,71 @@ def test_distributed_retrieval_admission_zero_global_limit_inherits_local_limit(
             limiter._release_distributed_admission_slot(lease)
 
 
+def test_distributed_backend_budget_uses_separate_global_slots(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.services.rag_runtime_limiter as limiter
+
+    redis = _FakeRedis()
+    _enable_distributed(monkeypatch, limiter, redis, local_limit=2, distributed_limit=2)
+    monkeypatch.setattr(limiter.settings, "RAG_VECTOR_SHARD_GLOBAL_MAX_CONCURRENCY", 1, raising=False)
+    monkeypatch.setattr(limiter, "_backend_gate", None, raising=False)
+    monkeypatch.setattr(limiter, "_backend_gate_limit", 0, raising=False)
+
+    assert limiter.run_with_retrieval_backend_budget_sync(lambda: "ok") == "ok"
+
+    assert redis.set_calls[0][0] == "ragadm:backend:1"
+    assert redis.store == {}
+
+
+@pytest.mark.skipif("fork" not in multiprocessing.get_all_start_methods(), reason="requires fork semantics")
+def test_distributed_backend_budget_is_shared_across_processes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.services.rag_runtime_limiter as limiter
+
+    context = multiprocessing.get_context("fork")
+    slots = context.Array("Q", 2, lock=False)
+    redis = _SharedRedis(slots, context.Lock())
+    active = context.Value("i", 0)
+    max_active = context.Value("i", 0)
+    start = context.Event()
+
+    monkeypatch.setattr(limiter.settings, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED", True, raising=False)
+    monkeypatch.setattr(limiter.settings, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX", "ragadm-multiprocess", raising=False)
+    monkeypatch.setattr(limiter.settings, "RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC", 2.0, raising=False)
+    monkeypatch.setattr(limiter.settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 2, raising=False)
+    monkeypatch.setattr(limiter.settings, "RAG_VECTOR_SHARD_GLOBAL_MAX_CONCURRENCY", 2, raising=False)
+    monkeypatch.setattr(limiter, "_get_redis_client", lambda: redis, raising=True)
+    monkeypatch.setattr(limiter, "_invalidate_redis_client", lambda: None, raising=True)
+    monkeypatch.setattr(limiter, "_backend_gate", None, raising=False)
+    monkeypatch.setattr(limiter, "_backend_gate_limit", 0, raising=False)
+
+    def _worker() -> None:
+        start.wait(timeout=2)
+
+        def _backend_call() -> None:
+            with active.get_lock():
+                active.value += 1
+                max_active.value = max(max_active.value, active.value)
+            time.sleep(0.15)
+            with active.get_lock():
+                active.value -= 1
+
+        limiter.run_with_retrieval_backend_budget_sync(_backend_call, timeout_sec=2.0)
+
+    processes = [context.Process(target=_worker) for _ in range(4)]
+    for process in processes:
+        process.start()
+    start.set()
+    for process in processes:
+        process.join(timeout=5)
+        assert process.exitcode == 0
+
+    assert max_active.value <= 2
+    assert list(slots) == [0, 0]
+
+
 def test_sync_distributed_wait_releases_local_gate_between_attempts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -447,3 +551,72 @@ def test_distributed_retrieval_admission_releases_slot_after_sync_failure(
 
     assert redis.store == {}
     assert limiter.run_blocking_retrieval_call_sync(lambda: "ok") == "ok"
+
+
+def test_retrieval_backend_budget_is_globally_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.services.rag_runtime_limiter as limiter
+
+    first_started = threading.Event()
+    release_first = threading.Event()
+    second_started = threading.Event()
+    monkeypatch.setattr(limiter.settings, "RAG_VECTOR_SHARD_GLOBAL_MAX_CONCURRENCY", 1, raising=False)
+    monkeypatch.setattr(limiter.settings, "RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC", 0.5, raising=False)
+    monkeypatch.setattr(limiter, "_backend_gate", None, raising=False)
+    monkeypatch.setattr(limiter, "_backend_gate_limit", 0, raising=False)
+
+    def first_work() -> str:
+        first_started.set()
+        assert release_first.wait(timeout=2)
+        return "first"
+
+    first_result: list[str] = []
+    second_result: list[str] = []
+
+    first_thread = threading.Thread(
+        target=lambda: first_result.append(limiter.run_with_retrieval_backend_budget_sync(first_work)),
+        name="backend-budget-first",
+    )
+    second_thread = threading.Thread(
+        target=lambda: second_result.append(
+            limiter.run_with_retrieval_backend_budget_sync(lambda: second_started.set() or "second")
+        ),
+        name="backend-budget-second",
+    )
+    first_thread.start()
+    assert first_started.wait(timeout=1) is True
+
+    second_thread.start()
+    time.sleep(0.05)
+    assert second_started.is_set() is False
+
+    release_first.set()
+    first_thread.join(timeout=1)
+    second_thread.join(timeout=1)
+
+    assert first_result == ["first"]
+    assert second_result == ["second"]
+    assert second_started.is_set() is True
+
+
+def test_retrieval_backend_budget_is_reentrant(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.services.rag_runtime_limiter as limiter
+
+    monkeypatch.setattr(limiter.settings, "RAG_VECTOR_SHARD_GLOBAL_MAX_CONCURRENCY", 1, raising=False)
+    monkeypatch.setattr(limiter, "_backend_gate", None, raising=False)
+    monkeypatch.setattr(limiter, "_backend_gate_limit", 0, raising=False)
+    calls: list[str] = []
+
+    def inner() -> str:
+        calls.append("inner")
+        return "inner"
+
+    def outer() -> str:
+        calls.append("outer")
+        return limiter.run_with_retrieval_backend_budget_sync(inner)
+
+    assert limiter.run_with_retrieval_backend_budget_sync(outer) == "inner"
+    assert calls == ["outer", "inner"]

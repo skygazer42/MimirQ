@@ -442,6 +442,40 @@ cronjobs:
     affinity: {}
     extraEnv: []
 
+  semanticCacheRetention:
+    enabled: false
+    schedule: "17 * * * *"
+    suspend: false
+    concurrencyPolicy: Forbid
+    successfulJobsHistoryLimit: 1
+    failedJobsHistoryLimit: 3
+
+    # Tenant scope (mutually exclusive):
+    # - allTenants=true   -> pass --all-tenants
+    # - tenantId="<uuid>" -> pass --tenant-id
+    # - neither           -> default tenant (DEFAULT_TENANT_ID)
+    allTenants: false
+    tenantId: ""
+
+    # Script mode: when true, deletes expired/orphan Milvus rows instead of dry-run only.
+    execute: true
+
+    # Bounds
+    maxScan: 1000
+    maxDelete: 100
+
+    terminationGracePeriodSeconds: null
+    priorityClassName: ""
+    resources: {}
+    podSecurityContext: {}
+    securityContext: {}
+    automountServiceAccountToken: null
+    podAnnotations: {}
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+    extraEnv: []
+
   dbMaintenance:
     enabled: false
     schedule: "0 3 * * 0"

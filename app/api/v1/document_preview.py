@@ -187,6 +187,7 @@ async def preview_document(
                 payload={
                     "action": "parse_documents",
                     "tenant_id": str(tenant_id),
+                    "account_id": str(account_id),
                     "file_path": str(temp_path),
                     "parser_backend": parser_backend,
                     "mode": "preview",

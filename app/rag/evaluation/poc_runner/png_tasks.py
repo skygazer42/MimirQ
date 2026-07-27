@@ -101,6 +101,7 @@ def _public_task(task: dict[str, Any]) -> dict[str, Any]:
         for key, value in task.items()
         if key
         not in {
+            "account_id",
             "owner_token",
             "lease_expires_at",
         }
@@ -150,6 +151,17 @@ def _scope_matches(task: dict[str, Any], *, tenant_id: str, dataset_id: str) -> 
     )
 
 
+def _task_account_id(task: dict[str, Any]) -> str:
+    account_id = str(task.get("account_id") or "").strip()
+    if account_id:
+        return account_id
+    return str(task.get("requested_by") or "").strip()
+
+
+def _read_scope_matches(task: dict[str, Any], *, tenant_id: str, dataset_id: str, account_id: str) -> bool:
+    return _scope_matches(task, tenant_id=tenant_id, dataset_id=dataset_id) and _task_account_id(task) == str(account_id or "").strip()
+
+
 def _parse_iso_datetime(value: Any) -> datetime | None:
     text = str(value or "").strip()
     if not text:
@@ -197,14 +209,24 @@ def _transition_to_worker_lost(client: Any, task_id: str, *, tenant_id: str, dat
     return _public_task(_read_task(client, task_id)[1])
 
 
-def create_png_export_task(*, tenant_id: str, dataset_id: str, filters: dict[str, Any]) -> dict[str, Any]:
+def create_png_export_task(
+    *,
+    tenant_id: str,
+    dataset_id: str,
+    filters: dict[str, Any],
+    requested_by: str | None,
+    account_id: str | None = None,
+) -> dict[str, Any]:
     client = _get_client()
     task_id = uuid4().hex
+    owner_account_id = str(account_id or requested_by or "").strip()
     payload = {
         "task_id": task_id,
         "tenant_id": str(tenant_id or ""),
         "dataset_id": str(dataset_id or ""),
         "filters": dict(filters or {}),
+        "requested_by": str(requested_by or "").strip() or None,
+        "account_id": owner_account_id or None,
         "status": "pending",
         "created_at": _iso_now(),
         "updated_at": _iso_now(),
@@ -342,18 +364,18 @@ def fail_png_export_task(
     raise RuntimeError("Failed to fail dataset-analysis PNG task")
 
 
-def get_png_export_task(task_id: str, *, tenant_id: str, dataset_id: str) -> dict[str, Any]:
+def get_png_export_task(task_id: str, *, tenant_id: str, dataset_id: str, account_id: str) -> dict[str, Any]:
     client = _get_client()
     current = _read_task(client, task_id)[1]
-    if not _scope_matches(current, tenant_id=tenant_id, dataset_id=dataset_id):
+    if not _read_scope_matches(current, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id):
         raise KeyError(task_id)
     if str(current.get("status") or "") in {"pending", "running"} and _is_stale(current):
         return _transition_to_worker_lost(client, task_id, tenant_id=tenant_id, dataset_id=dataset_id)
     return _public_task(current)
 
 
-def get_png_export_task_result(task_id: str, *, tenant_id: str, dataset_id: str) -> bytes:
-    task = get_png_export_task(task_id, tenant_id=tenant_id, dataset_id=dataset_id)
+def get_png_export_task_result(task_id: str, *, tenant_id: str, dataset_id: str, account_id: str) -> bytes:
+    task = get_png_export_task(task_id, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id)
     if str(task.get("status") or "") != "done":
         raise KeyError(task_id)
     client = _get_client()

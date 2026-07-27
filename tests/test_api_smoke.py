@@ -63,6 +63,45 @@ def test_header_auth_bootstraps_dataset_membership_before_settings_put(monkeypat
     assert calls.index(("GET", api_smoke.API_DATASETS)) < calls.index(("PUT", api_smoke.API_SETTINGS))
 
 
+def test_jwt_auth_can_reuse_an_existing_smoke_account(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, str, list[int], dict]] = []
+
+    def fake_call(self, method: str, path_template: str, path: str, expected, **kwargs):
+        calls.append((method.upper(), path_template, list(expected), dict(kwargs.get("json") or {})))
+        if path_template == "/api/v1/auth/register":
+            return {"status": 409}
+        if path_template == "/api/v1/auth/login":
+            return {"token": {"access_token": "existing-token"}}
+        if method.upper() == "GET" and path_template == api_smoke.API_SETTINGS:
+            raise _StopSmokeError()
+        return {}
+
+    monkeypatch.setattr(api_smoke, "load_openapi_paths", lambda *_args, **_kwargs: set())
+    monkeypatch.setattr(api_smoke.httpx, "Client", _ClientStub)
+    monkeypatch.setattr(api_smoke, "parse_json", lambda response: response or {})
+    monkeypatch.setattr(api_smoke.SmokeRunner, "call", fake_call)
+
+    with pytest.raises(_StopSmokeError):
+        api_smoke.main(
+            [
+                "--base-url",
+                "http://mimirq.test",
+                "--auth-mode",
+                "jwt",
+                "--jwt-identifier",
+                "existing@example.com",
+                "--jwt-password",
+                "existing-password",
+                "--skip-llm-test",
+            ]
+        )
+
+    register = next(call for call in calls if call[1] == "/api/v1/auth/register")
+    login = next(call for call in calls if call[1] == "/api/v1/auth/login")
+    assert register[2] == [201, 400, 409]
+    assert login[3] == {"identifier": "existing@example.com", "password": "existing-password"}
+
+
 def test_upload_forms_disable_chunk_vectors_for_offline_smoke(monkeypatch: pytest.MonkeyPatch) -> None:
     upload_data: dict[str, dict[str, str]] = {}
 

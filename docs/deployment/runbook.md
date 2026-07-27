@@ -87,7 +87,7 @@ K8s readiness 建议用 `/api/v1/health/ready`。
    - 其次再做“索引修复/补偿 ingestion”（需要时间）
 
 <a id="rb-readiness-503"></a>
-### A. Readiness 503（依赖不可用）
+### A. Readiness 503（依赖或数据库 schema 不可用）
 
 优先检查：
 
@@ -95,6 +95,11 @@ K8s readiness 建议用 `/api/v1/health/ready`。
 2. Redis：`REDIS_URL`（若启用了 `TASK_QUEUE_ENABLED=true`）
 3. 向量库：`VECTOR_BACKEND` + Milvus/Chroma 连接信息
 4. MinIO：`MINIO_ENABLED=true` 时检查 `MINIO_ENDPOINT` 等
+5. 数据库 schema：用管理员身份读取 `GET /api/v1/health/details`；若 `database.status=schema_outdated`，先执行 `python scripts/alembic_cli.py upgrade head`，确认迁移成功后再放量
+
+生产模式关闭应用内 `create_all` 与运行期迁移时，readiness 会把 `alembic_version` 与当前镜像的 Alembic head 比较。Postgres 仅能执行 `SELECT 1` 不代表应用 schema 兼容。
+
+多实例检索建议同时启用 `RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED=true`，并显式设置 `RAG_VECTOR_SHARD_GLOBAL_MAX_CONCURRENCY`。该值会作为跨实例共享的向量分片后端预算；Redis 暂时不可用时系统会降级为每进程本地预算，因此容量规划仍需为降级窗口预留余量。
 
 ---
 

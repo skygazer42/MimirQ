@@ -7,6 +7,7 @@ import json
 import math
 import os
 import threading
+import time
 from collections.abc import Mapping
 from typing import Any
 from uuid import UUID
@@ -167,6 +168,19 @@ def _next_candidate_limit(requested_k: int, total_candidates: int | None) -> int
     if total_candidates is None:
         return next_limit
     return min(next_limit, total_candidates)
+
+
+def _yield_refill_lock_handoff() -> None:
+    """
+    Yield once between refill rounds so waiting writers can acquire the tenant lock.
+
+    The refill loop may need multiple similarity-search calls when post-filtering removes
+    early hits. Holding the tenant lock across the entire loop creates a long critical
+    section and starves same-tenant writes. A tiny positive sleep keeps each underlying
+    search thread-safe while giving blocked writers a realistic chance before the next
+    refill round re-acquires the lock.
+    """
+    time.sleep(0.001)
 
 
 class BaseVectorStore:
@@ -511,50 +525,57 @@ class FAISSVectorStore(BaseVectorStore):
         tenant_id: UUID | None,
         metadata_filter: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        with self._get_tenant_lock(tenant_id):
-            _key, store = self._get_store(tenant_id)
-            if store is None:
-                return []
-            allowed = {str(did) for did in document_ids} if document_ids else None
-            docstore = getattr(getattr(store, "docstore", None), "_dict", None)
-            total_candidates = len(docstore) if isinstance(docstore, Mapping) else None
-            requested_k = _search_candidate_limit(top_k, total_candidates)
-            out: list[dict[str, Any]] = []
-            while requested_k > 0:
+        allowed = {str(did) for did in document_ids} if document_ids else None
+        requested_k: int | None = None
+        out: list[dict[str, Any]] = []
+        while True:
+            with self._get_tenant_lock(tenant_id):
+                _key, store = self._get_store(tenant_id)
+                if store is None:
+                    return []
+                docstore = getattr(getattr(store, "docstore", None), "_dict", None)
+                total_candidates = len(docstore) if isinstance(docstore, Mapping) else None
+                if requested_k is None:
+                    requested_k = _search_candidate_limit(top_k, total_candidates)
+                elif total_candidates is not None:
+                    requested_k = min(requested_k, total_candidates)
+                if requested_k <= 0:
+                    return []
                 results = store.similarity_search_with_score(query, k=requested_k)
-                out = []
-                for doc, score in results:
-                    meta = doc.metadata or {}
-                    if allowed and meta.get("document_id") not in allowed:
-                        continue
-                    if metadata_filter and not _match_metadata_filter(meta, metadata_filter):
-                        continue
-                    similarity = 1.0 / (1.0 + float(score))
-                    if similarity < score_threshold:
-                        continue
-                    out.append(
-                        {
-                            "chunk_id": doc.id,
-                            "content": doc.page_content,
-                            "metadata": meta,
-                            "score": similarity,
-                            "vector_score": similarity,
-                        }
-                    )
-                if not _should_expand_candidate_window(
-                    accepted_hits=len(out),
-                    top_k=top_k,
-                    requested_k=requested_k,
-                    returned_hits=len(results),
-                    total_candidates=total_candidates,
-                ):
-                    break
-                next_k = _next_candidate_limit(requested_k, total_candidates)
-                if next_k <= requested_k:
-                    break
-                requested_k = next_k
-            out.sort(key=lambda x: x["score"], reverse=True)
-            return out[:top_k]
+            out = []
+            for doc, score in results:
+                meta = doc.metadata or {}
+                if allowed and meta.get("document_id") not in allowed:
+                    continue
+                if metadata_filter and not _match_metadata_filter(meta, metadata_filter):
+                    continue
+                similarity = 1.0 / (1.0 + float(score))
+                if similarity < score_threshold:
+                    continue
+                out.append(
+                    {
+                        "chunk_id": doc.id,
+                        "content": doc.page_content,
+                        "metadata": meta,
+                        "score": similarity,
+                        "vector_score": similarity,
+                    }
+                )
+            if not _should_expand_candidate_window(
+                accepted_hits=len(out),
+                top_k=top_k,
+                requested_k=requested_k,
+                returned_hits=len(results),
+                total_candidates=total_candidates,
+            ):
+                break
+            next_k = _next_candidate_limit(requested_k, total_candidates)
+            if next_k <= requested_k:
+                break
+            requested_k = next_k
+            _yield_refill_lock_handoff()
+        out.sort(key=lambda x: x["score"], reverse=True)
+        return out[:top_k]
 
     def delete_by_document_id(self, document_id: UUID, tenant_id: UUID | None = None) -> None:
         with self._get_tenant_lock(tenant_id):
@@ -712,54 +733,61 @@ class ChromaVectorStore(BaseVectorStore):
         tenant_id: UUID | None,
         metadata_filter: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        with self._get_tenant_lock(tenant_id):
-            _, store = self._get_store(tenant_id)
-            allowed = {str(did) for did in document_ids} if document_ids else None
-            total_candidates = None
-            collection = getattr(store, "_collection", None)
-            count_fn = getattr(collection, "count", None)
-            if callable(count_fn):
-                try:
-                    total_candidates = int(count_fn())
-                except Exception:
-                    total_candidates = None
-            requested_k = _search_candidate_limit(top_k, total_candidates)
-            out: list[dict[str, Any]] = []
-            while requested_k > 0:
+        allowed = {str(did) for did in document_ids} if document_ids else None
+        requested_k: int | None = None
+        out: list[dict[str, Any]] = []
+        while True:
+            with self._get_tenant_lock(tenant_id):
+                _, store = self._get_store(tenant_id)
+                total_candidates = None
+                collection = getattr(store, "_collection", None)
+                count_fn = getattr(collection, "count", None)
+                if callable(count_fn):
+                    try:
+                        total_candidates = int(count_fn())
+                    except Exception:
+                        total_candidates = None
+                if requested_k is None:
+                    requested_k = _search_candidate_limit(top_k, total_candidates)
+                elif total_candidates is not None:
+                    requested_k = min(requested_k, total_candidates)
+                if requested_k <= 0:
+                    return []
                 results = store.similarity_search_with_score(query, k=requested_k)
-                out = []
-                for doc, score in results:
-                    meta = _decode_chroma_metadata(doc.metadata or {})
-                    if allowed and meta.get("document_id") not in allowed:
-                        continue
-                    if metadata_filter and not _match_metadata_filter(meta, metadata_filter):
-                        continue
-                    similarity = 1.0 / (1.0 + float(score))
-                    if similarity < score_threshold:
-                        continue
-                    out.append(
-                        {
-                            "chunk_id": doc.id,
-                            "content": doc.page_content,
-                            "metadata": meta,
-                            "score": similarity,
-                            "vector_score": similarity,
-                        }
-                    )
-                if not _should_expand_candidate_window(
-                    accepted_hits=len(out),
-                    top_k=top_k,
-                    requested_k=requested_k,
-                    returned_hits=len(results),
-                    total_candidates=total_candidates,
-                ):
-                    break
-                next_k = _next_candidate_limit(requested_k, total_candidates)
-                if next_k <= requested_k:
-                    break
-                requested_k = next_k
-            out.sort(key=lambda x: x["score"], reverse=True)
-            return out[:top_k]
+            out = []
+            for doc, score in results:
+                meta = _decode_chroma_metadata(doc.metadata or {})
+                if allowed and meta.get("document_id") not in allowed:
+                    continue
+                if metadata_filter and not _match_metadata_filter(meta, metadata_filter):
+                    continue
+                similarity = 1.0 / (1.0 + float(score))
+                if similarity < score_threshold:
+                    continue
+                out.append(
+                    {
+                        "chunk_id": doc.id,
+                        "content": doc.page_content,
+                        "metadata": meta,
+                        "score": similarity,
+                        "vector_score": similarity,
+                    }
+                )
+            if not _should_expand_candidate_window(
+                accepted_hits=len(out),
+                top_k=top_k,
+                requested_k=requested_k,
+                returned_hits=len(results),
+                total_candidates=total_candidates,
+            ):
+                break
+            next_k = _next_candidate_limit(requested_k, total_candidates)
+            if next_k <= requested_k:
+                break
+            requested_k = next_k
+            _yield_refill_lock_handoff()
+        out.sort(key=lambda x: x["score"], reverse=True)
+        return out[:top_k]
 
     def delete_by_document_id(self, document_id: UUID, tenant_id: UUID | None = None) -> None:
         with self._get_tenant_lock(tenant_id):

@@ -1,4 +1,4 @@
-.PHONY: help init models up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-serial test-full test-web test-web-full test-web-e2e test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit-docs audit openapi-export openapi-types openapi-validate openapi-check api-docs-build api-docs-build-static diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure plugin-release-gate mixed-rag-quality live-core-release-gate check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init models up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload worker worker-check web test test-serial test-full test-web test-web-full test-web-e2e test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit-docs audit openapi-export openapi-types openapi-validate openapi-check api-docs-build api-docs-build-static diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure plugin-release-gate mixed-rag-quality live-core-release-gate check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -111,6 +111,8 @@ help:
 	@echo "  make restart   - docker compose restart mimirq-api"
 	@echo "  make backend   - run backend locally from the project venv (uvicorn --reload)"
 	@echo "  make backend-no-reload - run backend locally from the project venv without file watching"
+	@echo "  make worker   - run background worker locally from the project venv (arq)"
+	@echo "  make worker-check - verify the local worker can reach Redis with the configured queue settings"
 	@echo "  make web       - run web locally (pnpm dev)"
 	@echo "  make test      - run all backend tests (parallel via pytest-xdist)"
 	@echo "  make test-serial - run all backend tests serially (escape hatch / debugging)"
@@ -283,6 +285,12 @@ backend:
 
 backend-no-reload:
 	$(PY) -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+worker:
+	$(PY) -m arq app.tasks.worker.WorkerSettings
+
+worker-check:
+	$(PY) -m arq --check app.tasks.queue.WorkerHealthSettings
 
 web:
 	cd web && pnpm dev

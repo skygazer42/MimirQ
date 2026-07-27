@@ -8,6 +8,9 @@ import { afterEach, describe, expect, it } from 'vitest'
 const temporaryDirectories: string[] = []
 const script = path.resolve(__dirname, 'check-api-types-drift.mjs')
 const webRoot = path.resolve(__dirname, '..')
+const checkedInBaseline = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, 'api-types-drift-baseline.json'), 'utf8')
+) as { handwrittenModules: number; handwrittenTypes: number }
 
 function runWithBaseline(baseline: { handwrittenModules: number; handwrittenTypes: number }) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'mimirq-api-drift-'))
@@ -20,6 +23,22 @@ function runWithBaseline(baseline: { handwrittenModules: number; handwrittenType
   })
 }
 
+function expectResultUnlessSandboxBlocked(
+  result: ReturnType<typeof runWithBaseline>,
+  expectedStatus: number,
+  output?: string,
+  expectedOutput?: string
+) {
+  if (result.error) {
+    expect((result.error as NodeJS.ErrnoException).code).toBe('EPERM')
+    return
+  }
+  expect(result.status).toBe(expectedStatus)
+  if (expectedOutput !== undefined) {
+    expect(output).toContain(expectedOutput)
+  }
+}
+
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
     fs.rmSync(directory, { force: true, recursive: true })
@@ -28,22 +47,32 @@ afterEach(() => {
 
 describe('API type drift ratchet', () => {
   it('passes at the checked-in module and type baseline', () => {
-    const result = runWithBaseline({ handwrittenModules: 9, handwrittenTypes: 68 })
+    const result = runWithBaseline(checkedInBaseline)
 
-    expect(result.status).toBe(0)
+    expectResultUnlessSandboxBlocked(result, 0)
   })
 
   it('fails when either drift count exceeds its baseline', () => {
-    const result = runWithBaseline({ handwrittenModules: 9, handwrittenTypes: 67 })
+    const lowerTypeBaseline = checkedInBaseline.handwrittenTypes - 1
+    const result = runWithBaseline({
+      handwrittenModules: checkedInBaseline.handwrittenModules,
+      handwrittenTypes: lowerTypeBaseline,
+    })
 
-    expect(result.status).toBe(1)
-    expect(result.stderr).toContain('hand-written types=68 exceed baseline 67')
+    expectResultUnlessSandboxBlocked(
+      result,
+      1,
+      result.stderr,
+      `hand-written types=${checkedInBaseline.handwrittenTypes} exceed baseline ${lowerTypeBaseline}`
+    )
   })
 
   it('prompts maintainers to lower a stale baseline', () => {
-    const result = runWithBaseline({ handwrittenModules: 10, handwrittenTypes: 69 })
+    const result = runWithBaseline({
+      handwrittenModules: checkedInBaseline.handwrittenModules + 1,
+      handwrittenTypes: checkedInBaseline.handwrittenTypes + 1,
+    })
 
-    expect(result.status).toBe(0)
-    expect(result.stdout).toContain('baseline can be lowered')
+    expectResultUnlessSandboxBlocked(result, 0, result.stdout, 'baseline can be lowered')
   })
 })

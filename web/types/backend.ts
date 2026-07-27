@@ -168,6 +168,12 @@ export type IngestionRunCompareResponse = OpenApiSchema<'IngestionRunCompareResp
 export type IngestionRunListResponse = OpenApiSchema<'IngestionRunListResponse'>
 export type IngestionRunOut = OpenApiSchema<'IngestionRunOut'>
 
+// ==================== External Integrations ====================
+
+export type ExternalConversationMessageInput = OpenApiSchema<'ExternalConversationMessageIn'>
+export type ExternalConversationIngestRequest = OpenApiSchema<'ExternalConversationIngestRequest'>
+export type ExternalConversationIngestResponse = OpenApiSchema<'ExternalConversationIngestResponse'>
+
 // ==================== RAG / Evidence ====================
 
 export type RetrievePreviewRequest = OpenApiSchema<'RetrievePreviewRequest'>

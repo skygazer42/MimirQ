@@ -56,7 +56,6 @@ import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
 import type {
   Dataset,
-  DatasetListResponse,
   DepsDiagnosticsResponse,
   Document as KnowledgeDocument,
   DocumentList,
@@ -931,11 +930,11 @@ export default function DiagnosticsPage() {
   const [perfSuiteRunning, setPerfSuiteRunning] = useState(false)
 
   const datasetsQuery = useQuery({
-    queryKey: queryKeys.datasets.list({ limit: 200 }),
-    queryFn: (): Promise<DatasetListResponse> => datasetApi.list({ limit: 200 }),
+    queryKey: queryKeys.datasets.exhaustive({ purpose: 'diagnostics' }),
+    queryFn: () => datasetApi.listAll(),
     staleTime: 30_000,
   })
-  const datasets = getListItems<Dataset>(datasetsQuery.data, EMPTY_DATASETS)
+  const datasets = datasetsQuery.data ?? EMPTY_DATASETS
   const datasetsLoading = datasetsQuery.isPending
   const activeDatasetId = probeDatasetId || datasets[0]?.id || ''
 

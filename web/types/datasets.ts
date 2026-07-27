@@ -25,6 +25,8 @@ export interface Dataset {
   partial_group_list?: string[] | null
   embedding_defaults?: DatasetEmbeddingDefaults | null
   pipeline?: DocumentPipelineOptions | null
+  ingestion_summary?: DatasetIngestionSummary | null
+  operational_status?: DatasetOperationalStatus | null
 }
 
 export interface DatasetCreate {
@@ -47,9 +49,27 @@ export interface DatasetUpdate {
   pipeline?: DocumentPipelineOptions | null
 }
 
+export type DatasetOperationalStatus = 'active' | 'anomaly' | 'pending' | 'testing'
+
+export interface DatasetIngestionSummary {
+  total_documents: number
+  by_status?: Record<string, number>
+  total_chunks: number
+  total_size: number
+  total_characters: number
+  last_processed_at?: string | null
+}
+
+export interface DatasetListFacets {
+  scope_total: number
+  filtered_total: number
+  status_counts?: Record<string, number>
+}
+
 export interface DatasetListResponse {
   total: number
   items: Dataset[]
+  facets?: DatasetListFacets | null
 }
 
 export interface DatasetCategoryNode {

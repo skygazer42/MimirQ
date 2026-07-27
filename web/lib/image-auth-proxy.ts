@@ -6,6 +6,7 @@ import {
   getAuthCacheScope,
 } from '@/lib/auth-storage'
 import { getAuthHeaders } from '@/lib/auth-headers'
+import { authenticatedFetch } from '@/lib/authenticated-fetch'
 import { buildMarkdownImageProxyUrl } from '@/lib/markdown-image-proxy'
 
 const DOCUMENT_DOWNLOAD_PATH_RE = /^\/api\/v1\/documents\/[^/]+\/download\/?$/
@@ -75,7 +76,7 @@ async function mintOpaqueRemoteImageUrl(rawUrl: string): Promise<string | null> 
         'Content-Type': 'application/json',
       }
       Object.assign(headers, getAuthHeaders())
-      const response = await fetch('/api/markdown-image', {
+      const response = await authenticatedFetch('/api/markdown-image', {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -135,7 +136,7 @@ export async function fetchAuthAssetUrl(rawUrl: string | null | undefined): Prom
   if (inflight) return inflight
 
   const pending = (async () => {
-    const response = await fetch(resolved, { headers: getAuthHeaders() })
+    const response = await authenticatedFetch(resolved, { headers: getAuthHeaders() })
     if (!response.ok) return null
 
     const blobUrl = URL.createObjectURL(await response.blob())

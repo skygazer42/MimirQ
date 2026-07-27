@@ -11,13 +11,14 @@ import io
 import json
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, BinaryIO
 from urllib.parse import urlparse
 
 from minio import Minio
+from minio.deleteobjects import DeleteObject
 
 from app.core.config import settings
 from app.rag.core.logging import get_logger
@@ -371,6 +372,13 @@ class MinIOService:
             self._log_metric("presign", False, time.perf_counter() - t0, locals().get("object_name", ""), error=str(e))
             raise RuntimeError(f"MinIO get image URL failed: {e}") from e
 
+    def _image_object_name(self, img_id: str, extension: str = "jpg") -> str:
+        if ":" in img_id:
+            tenant_id, dataset_id, document_id, chunk_key = img_id.split(":", 3)
+            return f"images/{tenant_id}/{dataset_id}/{document_id}/{chunk_key}.{extension}"
+        dataset_id, chunk_id = img_id.split("-", 1)
+        return f"images/{dataset_id}/{chunk_id}.{extension}"
+
     def delete_image(self, img_id: str, extension: str = "jpg"):
         """
         Delete an image.
@@ -381,13 +389,7 @@ class MinIOService:
         """
         t0 = time.perf_counter()
         try:
-            if ":" in img_id:
-                tenant_id, dataset_id, document_id, chunk_key = img_id.split(":", 3)
-                object_name = f"images/{tenant_id}/{dataset_id}/{document_id}/{chunk_key}.{extension}"
-            else:
-                dataset_id, chunk_id = img_id.split("-", 1)
-                object_name = f"images/{dataset_id}/{chunk_id}.{extension}"
-
+            object_name = self._image_object_name(img_id, extension=extension)
             client = self._get_client()
             client.remove_object(
                 bucket_name=self._bucket_name,
@@ -406,6 +408,51 @@ class MinIOService:
                 error=str(exc),
             )
             raise RuntimeError(f"MinIO delete image failed: {exc}") from exc
+
+    def delete_images(self, img_ids: Iterable[str], extension: str = "jpg", *, batch_size: int = 1000) -> None:
+        """
+        Delete multiple images via MinIO's batch delete API.
+
+        Args:
+            img_ids: iterable of image ids in either supported storage format
+            extension: file extension
+            batch_size: number of objects to send per MinIO delete batch
+        """
+        items = [str(img_id).strip() for img_id in img_ids if str(img_id).strip()]
+        if not items:
+            return
+
+        client = self._get_client()
+        effective_batch_size = max(1, int(batch_size or 1))
+        for start in range(0, len(items), effective_batch_size):
+            batch_ids = items[start : start + effective_batch_size]
+            batch_object_names: list[str] = []
+            batch_started_at = time.perf_counter()
+            try:
+                batch_object_names = [self._image_object_name(img_id, extension=extension) for img_id in batch_ids]
+                errors = list(
+                    client.remove_objects(
+                        bucket_name=self._bucket_name,
+                        delete_object_list=(DeleteObject(object_name) for object_name in batch_object_names),
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("MinIO batch delete images failed: %s", exc)
+                elapsed = time.perf_counter() - batch_started_at
+                for object_name in batch_object_names:
+                    self._log_metric("delete", False, elapsed, object_name, error=str(exc))
+                raise RuntimeError(f"MinIO delete images failed: {exc}") from exc
+
+            elapsed = time.perf_counter() - batch_started_at
+            if errors:
+                for error in errors:
+                    object_name = str(getattr(error, "name", "") or "")
+                    self._log_metric("delete", False, elapsed, object_name, error=str(error))
+                raise RuntimeError(f"MinIO delete images failed for {len(errors)} object(s)")
+
+            for object_name in batch_object_names:
+                logger.info("Image deleted: %s", object_name)
+                self._log_metric("delete", True, elapsed, object_name)
 
     def build_document_object_name(
         self,

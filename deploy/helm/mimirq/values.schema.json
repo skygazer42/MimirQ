@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "cronjobs": {
+      "type": "object",
+      "properties": {
+        "semanticCacheRetention": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "schedule": { "type": "string", "minLength": 1 },
+            "suspend": { "type": "boolean" },
+            "concurrencyPolicy": {
+              "type": "string",
+              "enum": ["Allow", "Forbid", "Replace"]
+            },
+            "successfulJobsHistoryLimit": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "failedJobsHistoryLimit": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "allTenants": { "type": "boolean" },
+            "tenantId": { "type": "string" },
+            "execute": { "type": "boolean" },
+            "maxScan": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "maxDelete": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "terminationGracePeriodSeconds": {
+              "type": ["integer", "null"],
+              "minimum": 1
+            },
+            "priorityClassName": { "type": "string" },
+            "resources": { "type": "object" },
+            "podSecurityContext": { "type": "object" },
+            "securityContext": { "type": "object" },
+            "automountServiceAccountToken": { "type": ["boolean", "null"] },
+            "podAnnotations": { "type": "object" },
+            "nodeSelector": { "type": "object" },
+            "tolerations": { "type": "array" },
+            "affinity": { "type": "object" },
+            "extraEnv": { "type": "array" }
+          },
+          "allOf": [
+            {
+              "not": {
+                "properties": {
+                  "allTenants": { "const": true },
+                  "tenantId": { "minLength": 1 }
+                },
+                "required": ["allTenants", "tenantId"]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,102 @@
+{{- if .Values.cronjobs.semanticCacheRetention.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "mimirq.fullname" . }}-semantic-cache-retention
+  labels:
+    {{- include "mimirq.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.cronjobs.semanticCacheRetention.schedule | quote }}
+  suspend: {{ .Values.cronjobs.semanticCacheRetention.suspend }}
+  concurrencyPolicy: {{ .Values.cronjobs.semanticCacheRetention.concurrencyPolicy }}
+  successfulJobsHistoryLimit: {{ .Values.cronjobs.semanticCacheRetention.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.cronjobs.semanticCacheRetention.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "mimirq.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: cronjob-semantic-cache-retention
+          annotations:
+            {{- if not .Values.existingSecretName }}
+            checksum/env: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+            {{- end }}
+            {{- with .Values.cronjobs.semanticCacheRetention.podAnnotations }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+        spec:
+          restartPolicy: Never
+          {{- include "mimirq.podSecurityContext" (dict "root" . "extra" .Values.cronjobs.semanticCacheRetention.podSecurityContext) | nindent 10 }}
+          {{- include "mimirq.automountServiceAccountToken" (dict "root" . "override" .Values.cronjobs.semanticCacheRetention.automountServiceAccountToken) | nindent 10 }}
+          {{- include "mimirq.serviceAccountNameBlock" . | nindent 10 }}
+          {{- include "mimirq.imagePullSecretsBlock" . | nindent 10 }}
+          {{- if .Values.cronjobs.semanticCacheRetention.priorityClassName }}
+          priorityClassName: {{ .Values.cronjobs.semanticCacheRetention.priorityClassName | quote }}
+          {{- end }}
+          {{- if .Values.cronjobs.semanticCacheRetention.terminationGracePeriodSeconds }}
+          terminationGracePeriodSeconds: {{ .Values.cronjobs.semanticCacheRetention.terminationGracePeriodSeconds }}
+          {{- end }}
+          containers:
+            - name: semantic-cache-retention
+              image: "{{ .Values.image.repository }}:{{ default .Chart.AppVersion .Values.image.tag }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command:
+                - python
+                - scripts/run_retention_jobs.py
+                - --semantic-cache
+                {{- if .Values.cronjobs.semanticCacheRetention.allTenants }}
+                - --all-tenants
+                {{- else if .Values.cronjobs.semanticCacheRetention.tenantId }}
+                - --tenant-id
+                - {{ .Values.cronjobs.semanticCacheRetention.tenantId | quote }}
+                {{- end }}
+                {{- if .Values.cronjobs.semanticCacheRetention.execute }}
+                - --execute
+                {{- else }}
+                - --dry-run
+                {{- end }}
+                - --max-scan
+                - {{ .Values.cronjobs.semanticCacheRetention.maxScan | quote }}
+                - --max-delete
+                - {{ .Values.cronjobs.semanticCacheRetention.maxDelete | quote }}
+              envFrom:
+                - secretRef:
+                    name: {{ include "mimirq.secretName" . }}
+              {{- with .Values.cronjobs.semanticCacheRetention.extraEnv }}
+              env:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              {{- include "mimirq.containerSecurityContext" (dict "root" . "extra" .Values.cronjobs.semanticCacheRetention.securityContext) | nindent 14 }}
+              {{- if .Values.security.tmpEmptyDir.enabled }}
+              volumeMounts:
+                - name: tmp
+                  mountPath: {{ default "/tmp" .Values.security.tmpEmptyDir.mountPath | quote }}
+              {{- end }}
+              {{- with .Values.cronjobs.semanticCacheRetention.resources }}
+              resources:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+          {{- if .Values.security.tmpEmptyDir.enabled }}
+          volumes:
+            - name: tmp
+              {{- if .Values.security.tmpEmptyDir.sizeLimit }}
+              emptyDir:
+                sizeLimit: {{ .Values.security.tmpEmptyDir.sizeLimit | quote }}
+              {{- else }}
+              emptyDir: {}
+              {{- end }}
+          {{- end }}
+          {{- with .Values.cronjobs.semanticCacheRetention.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.cronjobs.semanticCacheRetention.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.cronjobs.semanticCacheRetention.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

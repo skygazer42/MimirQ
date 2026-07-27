@@ -752,6 +752,8 @@ def validate_chat_and_retrieval_caches(settings):
         raise ValueError("CHAT_RESPONSE_CACHE_TTL_SEC must be >= 0")
     if int(getattr(settings, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 0) or 0) < 0:
         raise ValueError("CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES must be >= 0")
+    if float(getattr(settings, "CHAT_RESPONSE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC", 0.0) or 0.0) <= 0.0:
+        raise ValueError("CHAT_RESPONSE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC must be > 0")
 
     if int(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_TTL_SEC", 0) or 0) < 0:
         raise ValueError("RETRIEVAL_CANDIDATE_CACHE_TTL_SEC must be >= 0")
@@ -775,6 +777,10 @@ def validate_chat_and_retrieval_caches(settings):
     sem_threshold = float(getattr(settings, "SEMANTIC_CACHE_SCORE_THRESHOLD", 0.0) or 0.0)
     if sem_threshold < 0.0 or sem_threshold > 1.0:
         raise ValueError("SEMANTIC_CACHE_SCORE_THRESHOLD must be between 0 and 1")
+    if float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC", 0.0) or 0.0) <= 0.0:
+        raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC must be > 0")
+    if int(getattr(settings, "RAG_VECTOR_SHARD_GLOBAL_MAX_CONCURRENCY", 0) or 0) < 0:
+        raise ValueError("RAG_VECTOR_SHARD_GLOBAL_MAX_CONCURRENCY must be >= 0")
     if settings.SEMANTIC_CACHE_SCORE_THRESHOLD != sem_threshold:
         settings.SEMANTIC_CACHE_SCORE_THRESHOLD = sem_threshold
     if int(getattr(settings, "SEMANTIC_CACHE_SEARCH_TOP_K", 0) or 0) < 1:

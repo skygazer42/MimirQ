@@ -80,8 +80,6 @@ import type {
   RegressionRunCreate,
 } from '@/types'
 import { cn, detachPromise } from '@/lib/utils'
-
-const RETRIEVAL_ABLATION_DATASET_PARAMS = { limit: 200 } as const
 const EMPTY_DATASETS: Dataset[] = []
 const EMPTY_RUNS: RegressionRun[] = []
 
@@ -1667,8 +1665,8 @@ export function RetrievalAblationsPage() {
   const [autoBootstrapPending, setAutoBootstrapPending] = useState(false)
 
   const datasetsQuery = useQuery({
-    queryKey: queryKeys.datasets.list(RETRIEVAL_ABLATION_DATASET_PARAMS),
-    queryFn: () => datasetApi.list(RETRIEVAL_ABLATION_DATASET_PARAMS),
+    queryKey: queryKeys.datasets.exhaustive({ purpose: 'retrieval-ablations' }),
+    queryFn: () => datasetApi.listAll(),
   })
   const settingsSnapshotQuery = useQuery({
     queryKey: queryKeys.settings.snapshot,
@@ -1760,8 +1758,8 @@ export function RetrievalAblationsPage() {
   }, [diffScore])
 
   const datasets = useMemo(
-    () => (Array.isArray(datasetsQuery.data?.items) ? datasetsQuery.data?.items : EMPTY_DATASETS),
-    [datasetsQuery.data?.items]
+    () => datasetsQuery.data ?? EMPTY_DATASETS,
+    [datasetsQuery.data]
   )
   const runs = useMemo(
     () => (Array.isArray(runsQuery.data?.items) ? runsQuery.data?.items : EMPTY_RUNS),

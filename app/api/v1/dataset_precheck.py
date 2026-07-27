@@ -10,11 +10,13 @@ import asyncio
 import json
 import re
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
@@ -34,6 +36,7 @@ from app.api.schemas.dataset_precheck import (
 )
 from app.api.schemas.ingestion_policy import IngestionPolicyImportResponse
 from app.api.utils.response_headers import download_response_headers
+from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.rag.core.logging import get_logger
@@ -57,7 +60,7 @@ from app.services.dataset_precheck_service import (
 )
 from app.services.ingestion_policy import parse_ingestion_policy_from_metadata
 from app.services.report_html import render_precheck_html
-from app.tasks.queue import enqueue_dataset_precheck_scan
+from app.tasks.queue import TaskEnqueueRejectedError, enqueue_dataset_precheck_scan, get_task_job_status
 
 logger = get_logger(__name__)
 
@@ -72,6 +75,112 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 _SCAN_RUN_NOT_FOUND_DETAIL = "Scan run not found"
+_PRECHECK_SCAN_PENDING_STALE_AFTER = timedelta(minutes=15)
+_PRECHECK_SCAN_RUNNING_STALE_AFTER = timedelta(hours=2)
+_PRECHECK_SCAN_PENDING_HARD_STALE_AFTER = timedelta(hours=2)
+_PRECHECK_SCAN_RUNNING_HARD_STALE_AFTER = timedelta(hours=24)
+
+
+def _precheck_scan_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _precheck_scan_reference_time(row: object) -> datetime | None:
+    ts = getattr(row, "updated_at", None) or getattr(row, "created_at", None)
+    if ts is None:
+        return None
+    if getattr(ts, "tzinfo", None) is None:
+        return ts.replace(tzinfo=timezone.utc)
+    return ts
+
+
+def _is_stale_precheck_scan_run(row: object, *, now: datetime) -> bool:
+    status = str(getattr(row, "status", "") or "").strip().lower()
+    if status not in {"pending", "running"}:
+        return False
+    ts = _precheck_scan_reference_time(row)
+    if ts is None:
+        return False
+    if status == "pending":
+        return ts + _PRECHECK_SCAN_PENDING_STALE_AFTER <= now
+    return ts + _PRECHECK_SCAN_RUNNING_STALE_AFTER <= now
+
+
+def _is_hard_stale_precheck_scan_run(row: object, *, now: datetime) -> bool:
+    status = str(getattr(row, "status", "") or "").strip().lower()
+    ts = _precheck_scan_reference_time(row)
+    if ts is None:
+        return False
+    if status == "pending":
+        return ts + _PRECHECK_SCAN_PENDING_HARD_STALE_AFTER <= now
+    if status == "running":
+        return ts + _PRECHECK_SCAN_RUNNING_HARD_STALE_AFTER <= now
+    return False
+
+
+async def _expire_stale_precheck_scan_runs(db: Session, *, tenant_id: UUID, dataset_id: UUID) -> int:
+    now = _precheck_scan_now()
+    rows = (
+        db.query(DBDatasetPrecheckScanRun)
+        .filter(
+            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
+            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
+            DBDatasetPrecheckScanRun.status.in_(["pending", "running"]),
+        )
+        .all()
+    )
+    expired = 0
+    for row in rows:
+        status = str(getattr(row, "status", "") or "").strip().lower()
+        if not _is_stale_precheck_scan_run(row, now=now):
+            continue
+        if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+            job_id = f"dataset_precheck_scan:{tenant_id}:{dataset_id}:{row.id}"
+            job_status: str | None = None
+            try:
+                job_status = await get_task_job_status(job_id)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Could not verify stale dataset precheck job %s: %s", job_id, str(exc)[:160])
+                if not _is_hard_stale_precheck_scan_run(row, now=now):
+                    continue
+            if job_status in {"deferred", "queued", "in_progress"}:
+                continue
+        elif status == "running":
+            from app.tasks.queue import is_local_scan_run_active
+
+            if is_local_scan_run_active(
+                kind="precheck",
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                scan_run_id=row.id,
+            ):
+                continue
+        row.status = "failed"
+        row.error_message = "stale_running_scan_replaced" if status == "running" else "stale_pending_scan_replaced"
+        row.finished_at = now
+        row.updated_at = now
+        expired += 1
+    if expired:
+        db.flush()
+    return expired
+
+
+def _mark_precheck_scan_run_failed(
+    db: Session,
+    *,
+    row: DBDatasetPrecheckScanRun,
+    error_message: str,
+) -> None:
+    failed_at = _precheck_scan_now()
+    row.status = "failed"
+    row.error_message = str(error_message or "")[:200]
+    row.finished_at = failed_at
+    row.updated_at = failed_at
+    try:
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        logger.debug("Ignoring precheck enqueue failure status update failure: %s", exc)
 
 
 def _collect_precheck_sample_names(raw: dict[str, object]) -> set[str]:
@@ -109,6 +218,14 @@ def _run_precheck_scan_background(
     Uses a dedicated DB session and marks the run as failed on exception.
     """
     db = SessionLocal()
+    from app.tasks.queue import register_local_scan_run_active, unregister_local_scan_run_active
+
+    register_local_scan_run_active(
+        kind="precheck",
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        scan_run_id=scan_run_id,
+    )
     try:
         run_dataset_precheck_scan(db, tenant_id=tenant_id, dataset_id=dataset_id, scan_run_id=scan_run_id)
     except Exception as exc:  # noqa: BLE001
@@ -129,6 +246,12 @@ def _run_precheck_scan_background(
         except Exception as update_exc:
             logger.debug("Ignoring precheck background failure status update failure: %s", update_exc)
     finally:
+        unregister_local_scan_run_active(
+            kind="precheck",
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            scan_run_id=scan_run_id,
+        )
         db.close()
 
 
@@ -145,16 +268,23 @@ async def create_dataset_precheck_scan_run(
     # Starting a local scan is privileged (reads filesystem) -> require dataset write permission.
     get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=True)
 
-    existing = (
-        db.query(DBDatasetPrecheckScanRun)
-        .filter(
-            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
-            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
-            DBDatasetPrecheckScanRun.status.in_(["pending", "running"]),
+    expired = await _expire_stale_precheck_scan_runs(db, tenant_id=tenant_id, dataset_id=dataset_id)
+    if expired:
+        db.commit()
+
+    def _active_precheck_scan():  # noqa: ANN202
+        return (
+            db.query(DBDatasetPrecheckScanRun)
+            .filter(
+                DBDatasetPrecheckScanRun.tenant_id == tenant_id,
+                DBDatasetPrecheckScanRun.dataset_id == dataset_id,
+                DBDatasetPrecheckScanRun.status.in_(["pending", "running"]),
+            )
+            .order_by(DBDatasetPrecheckScanRun.created_at.desc())
+            .first()
         )
-        .order_by(DBDatasetPrecheckScanRun.created_at.desc())
-        .first()
-    )
+
+    existing = _active_precheck_scan()
     if existing is not None:
         raise HTTPException(status_code=409, detail="A precheck scan run is already pending/running for this dataset")
 
@@ -171,17 +301,38 @@ async def create_dataset_precheck_scan_run(
         artifacts={},
     )
     db.add(row)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        expired_after_conflict = await _expire_stale_precheck_scan_runs(
+            db, tenant_id=tenant_id, dataset_id=dataset_id
+        )
+        if expired_after_conflict:
+            db.commit()
+        if _active_precheck_scan() is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="A precheck scan run is already pending/running for this dataset",
+            ) from exc
+        raise
     db.refresh(row)
 
     job_id = f"dataset_precheck_scan:{tenant_id}:{dataset_id}:{row.id}"
-    task_id = await enqueue_dataset_precheck_scan(
-        tenant_id=tenant_id,
-        dataset_id=dataset_id,
-        scan_run_id=row.id,
-        requested_by=account_id,
-        job_id=job_id,
-    )
+    try:
+        task_id = await enqueue_dataset_precheck_scan(
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            scan_run_id=row.id,
+            requested_by=account_id,
+            job_id=job_id,
+        )
+    except TaskEnqueueRejectedError as exc:
+        _mark_precheck_scan_run_failed(db, row=row, error_message=f"task_enqueue_failed: {exc}")
+        raise HTTPException(status_code=503, detail="Failed to enqueue dataset precheck scan job") from exc
+    except Exception as exc:  # noqa: BLE001
+        _mark_precheck_scan_run_failed(db, row=row, error_message=f"task_enqueue_failed: {str(exc)[:160]}")
+        raise HTTPException(status_code=503, detail="Failed to enqueue dataset precheck scan job") from exc
     if not task_id:
         background_tasks.add_task(
             _run_precheck_scan_background,

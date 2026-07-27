@@ -7,12 +7,11 @@ import { queryKeys } from '@/lib/query-keys'
 import type { Dataset } from '@/types'
 
 export function useDatasets() {
-  const listParams = { skip: 0, limit: 200 }
+  const listParams = { exhaustive: true }
   const datasetsQuery = useQuery<Dataset[]>({
-    queryKey: queryKeys.datasets.list(listParams),
+    queryKey: queryKeys.datasets.exhaustive(listParams),
     queryFn: async () => {
-      const res = await datasetApi.list(listParams)
-      return res.items || []
+      return datasetApi.listAll()
     },
   })
 

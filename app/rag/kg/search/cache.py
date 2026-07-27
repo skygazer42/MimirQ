@@ -20,7 +20,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any
 
-from app.rag.core.hashing import stable_hash
+from app.rag.core.hashing import stable_hash, stable_json_dumps
 
 
 def _hash_doc_scope(document_ids: list[str]) -> str:
@@ -136,14 +136,43 @@ class KGSearchCache:
 kg_search_cache = KGSearchCache()
 
 
-def build_kg_community_summary_cache_key(*, community_id: str, query: str) -> str:
+def _normalize_report_payload(report_payload: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(report_payload, dict):
+        return {}
+    normalized = dict(report_payload)
+    normalized.pop("llm_summary", None)
+    return normalized
+
+
+def _community_report_fingerprint(report_payload: dict[str, Any] | None) -> str:
+    normalized = _normalize_report_payload(report_payload)
+    if not normalized:
+        return ""
+    return stable_hash(stable_json_dumps(normalized), length=32)
+
+
+def build_kg_community_summary_cache_key(
+    *,
+    tenant_id: str | None,
+    dataset_id: str | None,
+    document_ids: list[str] | None,
+    community_id: str,
+    query: str,
+    report_payload: dict[str, Any] | None = None,
+) -> str:
     """
     Build a stable key for query-aware community summaries.
     """
+    doc_ids = [str(d) for d in (document_ids or []) if str(d or "").strip()]
     signature = {
-        "v": 1,
+        "v": 2,
+        "tenant_id": str(tenant_id or "").strip(),
+        "dataset_id": str(dataset_id or "").strip() or None,
+        "doc_scope": _hash_doc_scope(doc_ids),
+        "doc_count": int(len(doc_ids)),
         "community_id": str(community_id or "").strip(),
         "query": str(query or "").strip(),
+        "report_fp": _community_report_fingerprint(report_payload),
     }
     raw = json.dumps(signature, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
     return f"kgcomm:{stable_hash(raw, length=32)}"

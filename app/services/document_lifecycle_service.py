@@ -39,6 +39,7 @@ _MISSING_OBJECT_DELETE_MARKERS = (
 )
 _CHUNK_METADATA_SCAN_BATCH_SIZE = 256
 _DELETE_IO_BATCH_SIZE = 16
+_MINIO_DELETE_OBJECT_BATCH_SIZE = 1000
 Indexer: Any | None = None
 
 
@@ -209,11 +210,7 @@ def _delete_document_minio_images(db: Session, *, tenant_id: UUID, document_id: 
     img_ids: set[str] = set()
     _add_document_metadata_img_ids(img_ids, document)
     _add_chunk_metadata_img_ids(db, tenant_id=tenant_id, document_id=document_id, img_ids=img_ids)
-    _run_bounded_cleanup_batch(
-        sorted(img_ids),
-        lambda img_id: minio_service.delete_image(img_id, extension="jpg"),
-        max_workers=_DELETE_IO_BATCH_SIZE,
-    )
+    minio_service.delete_images(sorted(img_ids), extension="jpg", batch_size=_MINIO_DELETE_OBJECT_BATCH_SIZE)
 
 
 def _delete_document_table_store(*, tenant_id: UUID, document_id: UUID, document: DBDocument) -> None:

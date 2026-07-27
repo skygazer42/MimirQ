@@ -172,3 +172,38 @@ def test_glossary_writeback_requires_dataset_writable(monkeypatch: pytest.Monkey
     assert response.status_code == 200
     assert readable_calls == []
     assert writable_calls == [(dataset_id, "reader-1")]
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "service_name"),
+    [
+        ("POST", "/api/v1/datasets/{dataset_id}/analysis/export.png", "create_dataset_analysis_png_task"),
+        ("GET", "/api/v1/datasets/{dataset_id}/analysis/export-tasks/task-1", "get_dataset_analysis_png_task_status"),
+        ("GET", "/api/v1/datasets/{dataset_id}/analysis/export-tasks/task-1/result.png", "get_dataset_analysis_png_result"),
+    ],
+)
+def test_png_task_endpoints_forward_current_account(
+    monkeypatch: pytest.MonkeyPatch,
+    method: str,
+    path: str,
+    service_name: str,
+) -> None:
+    client, _tenant_id, dataset_id = _build_client(monkeypatch)
+    seen: list[str] = []
+
+    monkeypatch.setattr(dataset_analysis_api.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
+
+    def _capture(**kwargs):
+        seen.append(str(kwargs["account_id"]))
+        if service_name == "create_dataset_analysis_png_task":
+            return {"task_id": "task-1", "status": "pending"}
+        if service_name == "get_dataset_analysis_png_task_status":
+            return {"task_id": "task-1", "status": "done"}
+        return b"\x89PNG\r\n\x1a\n"
+
+    monkeypatch.setattr(dataset_analysis_api, service_name, _capture, raising=True)
+
+    response = client.request(method, path.format(dataset_id=dataset_id))
+
+    assert response.status_code in (200, 202)
+    assert seen == ["reader-1"]

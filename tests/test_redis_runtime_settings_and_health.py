@@ -91,14 +91,27 @@ def test_probe_redis_reports_usage_flags(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_retrieval_candidate_cache_defaults_safe() -> None:
     configured = Settings()
 
+    assert configured.CHAT_RESPONSE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC == 60.0
     assert configured.RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED is True
     assert configured.RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC == 60.0
+    assert configured.DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC == 60.0
+    assert configured.RAG_VECTOR_SHARD_GLOBAL_MAX_CONCURRENCY == 0
     assert configured.RETRIEVAL_CANDIDATE_CACHE_ENABLED is False
 
 
 def test_retrieval_candidate_singleflight_rejects_non_positive_wait_timeout() -> None:
     with pytest.raises(ValueError, match="RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC must be > 0"):
         Settings(RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC=0)
+
+
+def test_chat_singleflight_rejects_non_positive_wait_timeout() -> None:
+    with pytest.raises(ValueError, match="CHAT_RESPONSE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC must be > 0"):
+        Settings(CHAT_RESPONSE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC=0)
+
+
+def test_dify_singleflight_rejects_non_positive_wait_timeout() -> None:
+    with pytest.raises(ValueError, match="DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC must be > 0"):
+        Settings(DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC=0)
 
 
 def test_check_redis_respects_singleflight_config_off() -> None:
@@ -156,6 +169,11 @@ def test_retrieval_distributed_admission_settings_default_disabled() -> None:
 def test_retrieval_distributed_admission_rejects_negative_concurrency() -> None:
     with pytest.raises(ValueError, match="RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY must be >= 0"):
         Settings(RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY=-1)
+
+
+def test_vector_shard_global_budget_rejects_negative_concurrency() -> None:
+    with pytest.raises(ValueError, match="RAG_VECTOR_SHARD_GLOBAL_MAX_CONCURRENCY must be >= 0"):
+        Settings(RAG_VECTOR_SHARD_GLOBAL_MAX_CONCURRENCY=-1)
 
 
 def test_production_requires_positive_retrieval_rebuild_limit(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -57,12 +57,12 @@ export const DropZone = React.forwardRef<DropZoneHandle, {
 
   const { data: datasetsResponse } = useQuery({
     queryKey: ['drop-zone-datasets'],
-    queryFn: () => datasetApi.list({ limit: 200 }),
+    queryFn: () => datasetApi.listAll(),
     enabled: dropConfirmOpen && !datasetId,
     staleTime: 60_000,
   })
 
-  const datasets = useMemo(() => datasetsResponse?.items ?? [], [datasetsResponse?.items])
+  const datasets = useMemo(() => datasetsResponse ?? [], [datasetsResponse])
 
   React.useEffect(() => {
     uploadModeRef.current = defaultPrecheckOnly

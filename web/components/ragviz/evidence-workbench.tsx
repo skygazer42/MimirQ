@@ -22,7 +22,6 @@ import { Textarea } from '@/components/ui/textarea'
 type RetrievalProfile = 'recall50' | 'coverage80' | 'recall20'
 
 type JsonRecord = Record<string, unknown>
-const EVIDENCE_DATASET_PARAMS = { limit: 200 } as const
 
 function downloadJson(filename: string, data: unknown) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' })
@@ -111,10 +110,10 @@ export function EvidenceWorkbench() {
   const [result, setResult] = useState<EvidenceRetrieveResponse | null>(null)
 
   const datasetsQuery = useQuery({
-    queryKey: queryKeys.datasets.list(EVIDENCE_DATASET_PARAMS),
-    queryFn: () => datasetApi.list(EVIDENCE_DATASET_PARAMS),
+    queryKey: queryKeys.datasets.exhaustive({ purpose: 'evidence-workbench' }),
+    queryFn: () => datasetApi.listAll(),
   })
-  const datasets = useMemo(() => datasetsQuery.data?.items || [], [datasetsQuery.data?.items])
+  const datasets = useMemo(() => datasetsQuery.data || [], [datasetsQuery.data])
   const datasetsLoading = datasetsQuery.isFetching
   const datasetsError = datasetsQuery.error
     ? formatApiError(datasetsQuery.error, t("errors.loadDatasetsFailed"))

@@ -907,6 +907,56 @@ async def test_dataset_precheck_scan_marks_failed_on_final_coordination_retry(mo
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("job_name", "runner_name"),
+    [
+        ("dataset_profile_scan_job", "run_dataset_profile_deep_scan"),
+        ("dataset_precheck_scan_job", "run_dataset_precheck_scan"),
+    ],
+)
+async def test_stale_scan_job_cannot_revive_a_terminal_run(
+    monkeypatch: pytest.MonkeyPatch,
+    job_name: str,
+    runner_name: str,
+) -> None:
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from app.tasks import jobs
+
+    tenant_id = uuid4()
+    dataset_id = uuid4()
+    run_id = uuid4()
+    run = SimpleNamespace(
+        id=run_id,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        status="failed",
+    )
+    db = _RunDB(run)
+
+    def _unexpected_scan(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        raise AssertionError("terminal scan run was revived")
+
+    monkeypatch.setattr(jobs, "SessionLocal", lambda: db, raising=True)
+    monkeypatch.setattr(jobs, runner_name, _unexpected_scan, raising=True)
+
+    result = await getattr(jobs, job_name)(
+        {},
+        str(tenant_id),
+        str(dataset_id),
+        str(run_id),
+        "member-1",
+    )
+
+    assert result["ok"] is True
+    assert result["reason"] == "scan_run_not_pending"
+    assert result["skipped"] == "scan_run_not_pending"
+    assert run.status == "failed"
+    assert db.commits == 0
+
+
+@pytest.mark.asyncio
 async def test_evidence_repair_job_marks_failed_on_final_coordination_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.tasks import jobs
 

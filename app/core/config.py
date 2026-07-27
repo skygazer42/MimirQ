@@ -311,6 +311,7 @@ class Settings(BaseSettings):
     # requests. Followers wait for the leader result instead of starting a second
     # identical LLM call.
     CHAT_RESPONSE_SINGLEFLIGHT_ENABLED: bool = True
+    CHAT_RESPONSE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC: float = 60.0
 
     # Retrieval candidate singleflight (Redis lease + in-process future; safe by default).
     # Deduplicates concurrent identical retrieval work across threads/instances without
@@ -984,6 +985,7 @@ class Settings(BaseSettings):
     DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_MAX_ENTRIES: int = 512
     # Coalesce identical in-flight retries before they consume another RAG slot.
     DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_ENABLED: bool = True
+    DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC: float = 60.0
     DIFY_EXTERNAL_KNOWLEDGE_COMPACT_HIGH_CONFIDENCE_ENABLED: bool = True
     DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE: float = 0.7
     DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR: float = 0.65
@@ -1361,6 +1363,9 @@ class Settings(BaseSettings):
     RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX: str = "ragadm"
     # Bound retrieval input before embedding/query-rewrite work starts.
     RETRIEVAL_QUERY_MAX_CHARS: int = Field(default=8_000, ge=1, le=100_000)
+    # Multi-embedding shard backend budget. Zero inherits the normal retrieval
+    # offload budget; distributed admission makes the same budget cross-instance.
+    RAG_VECTOR_SHARD_GLOBAL_MAX_CONCURRENCY: int = 0
     # Parallel searches across distinct embedding runtimes within one request.
     RAG_VECTOR_SHARD_MAX_CONCURRENCY: int = Field(default=4, ge=1, le=32)
 

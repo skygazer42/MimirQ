@@ -15,8 +15,18 @@ if [[ ! "$mapped_port" =~ ^[0-9]+$ ]]; then
 fi
 web_base_url="http://127.0.0.1:${mapped_port}"
 
-read -r jwt_identifier jwt_email jwt_password < <(
-  node - <<'JS'
+if [[ -n "${MIMIRQ_SMOKE_IDENTIFIER:-}" || -n "${MIMIRQ_SMOKE_PASSWORD:-}" ]]; then
+  if [[ -z "${MIMIRQ_SMOKE_IDENTIFIER:-}" || -z "${MIMIRQ_SMOKE_PASSWORD:-}" ]]; then
+    echo "[jwt-browser-smoke] MIMIRQ_SMOKE_IDENTIFIER and MIMIRQ_SMOKE_PASSWORD must be set together" >&2
+    exit 1
+  fi
+  jwt_identifier="$MIMIRQ_SMOKE_IDENTIFIER"
+  jwt_email=""
+  jwt_password="$MIMIRQ_SMOKE_PASSWORD"
+  reuse_account=1
+else
+  read -r jwt_identifier jwt_email jwt_password < <(
+    node - <<'JS'
 const crypto = require('node:crypto')
 
 const clean = (value, fallback) => String(value || fallback).replace(/[^a-zA-Z0-9-]/g, '-')
@@ -28,7 +38,9 @@ const email = `${identifier}@example.com`
 const password = `MimirQ-${crypto.randomBytes(24).toString('base64url')}`
 process.stdout.write([identifier, email, password].join('\t') + '\n')
 JS
-)
+  )
+  reuse_account=0
+fi
 
 register_response="$(mktemp)"
 register_payload="$(mktemp)"
@@ -38,8 +50,9 @@ cleanup() {
 trap cleanup EXIT
 chmod 600 "$register_response" "$register_payload"
 
-JWT_EMAIL="$jwt_email" JWT_IDENTIFIER="$jwt_identifier" JWT_PASSWORD="$jwt_password" \
-  node - <<'JS' >"$register_payload"
+if [[ "$reuse_account" == "0" ]]; then
+  JWT_EMAIL="$jwt_email" JWT_IDENTIFIER="$jwt_identifier" JWT_PASSWORD="$jwt_password" \
+    node - <<'JS' >"$register_payload"
 process.stdout.write(
   JSON.stringify({
     email: process.env.JWT_EMAIL,
@@ -49,20 +62,21 @@ process.stdout.write(
 )
 JS
 
-register_status="$(
-  curl --noproxy '*' --silent --show-error \
-    --output "$register_response" \
-    --write-out '%{http_code}' \
-    --header 'Content-Type: application/json' \
-    --data-binary @"$register_payload" \
-    "${web_base_url}/api/v1/auth/register"
-)"
-if [[ "$register_status" != "201" ]]; then
-  echo "[jwt-browser-smoke] temporary account registration failed: http_status=$register_status" >&2
-  exit 1
+  register_status="$(
+    curl --noproxy '*' --silent --show-error \
+      --output "$register_response" \
+      --write-out '%{http_code}' \
+      --header 'Content-Type: application/json' \
+      --data-binary @"$register_payload" \
+      "${web_base_url}/api/v1/auth/register"
+  )"
+  if [[ "$register_status" != "201" ]]; then
+    echo "[jwt-browser-smoke] temporary account registration failed: http_status=$register_status" >&2
+    exit 1
+  fi
 fi
 
-if [[ -n "${GITHUB_ENV:-}" ]]; then
+if [[ -n "${GITHUB_ENV:-}" && "$reuse_account" == "0" ]]; then
   if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
     printf '::add-mask::%s\n' "$jwt_password"
   fi

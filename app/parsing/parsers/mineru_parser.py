@@ -85,6 +85,7 @@ class MinerUParser(BaseAdvancedParser):
         dataset_id = kwargs.get("dataset_id")
         document_id = kwargs.get("document_id")
         tenant_id = kwargs.get("tenant_id")
+        account_id = kwargs.get("account_id")
 
         # 1) Prefer local ZIP mode whenever a local MinerU service is configured.
         # When dataset/document ids are unavailable (preview flows), the service
@@ -96,6 +97,7 @@ class MinerUParser(BaseAdvancedParser):
                     dataset_id=str(dataset_id) if dataset_id else None,
                     document_id=str(document_id) if document_id else None,
                     tenant_id=str(tenant_id) if tenant_id else None,
+                    account_id=str(account_id) if account_id else None,
                 )
             except Exception as exc:
                 # Best-effort: fall back to DeepDoc adapter below.
@@ -110,6 +112,7 @@ class MinerUParser(BaseAdvancedParser):
                 tenant_id=str(tenant_id) if tenant_id else None,
                 dataset_id=str(dataset_id) if dataset_id else None,
                 document_id=str(document_id) if document_id else None,
+                account_id=str(account_id) if account_id else None,
             )
 
         # 3) Default: DeepDoc adapter (local MinerU API server).

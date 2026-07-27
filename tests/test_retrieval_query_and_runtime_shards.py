@@ -198,6 +198,12 @@ def test_multi_runtime_vector_search_uses_bounded_parallelism(monkeypatch: pytes
     from app.rag.retriever import HybridRetriever
 
     monkeypatch.setattr(retriever_module.settings, "RAG_VECTOR_SHARD_MAX_CONCURRENCY", 2, raising=False)
+    monkeypatch.setattr(
+        retriever_module.settings,
+        "RAG_VECTOR_SHARD_GLOBAL_MAX_CONCURRENCY",
+        2,
+        raising=False,
+    )
     runtimes = [_runtime(f"space-{index}") for index in range(4)]
     shards = [(runtime, (uuid.uuid4(),)) for runtime in runtimes]
     lock = threading.Lock()
@@ -314,3 +320,180 @@ def test_vector_runtime_shards_preserve_failure_degradation_and_global_top_k(
     assert results[0]["metadata"]["_retrieval_expected_embedding_space_hash"] == "high"
     assert len(failures) == 1
     assert str(failures[0]) == "shard unavailable"
+
+
+def test_multi_runtime_vector_search_wraps_each_shard_with_backend_budget_helper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.retriever as retriever_module
+    from app.rag.retriever import HybridRetriever
+
+    monkeypatch.setattr(retriever_module.settings, "RAG_VECTOR_SHARD_MAX_CONCURRENCY", 2, raising=False)
+    runtimes = [_runtime(f"space-{index}") for index in range(3)]
+    helper_calls: list[str] = []
+
+    def _budget(func, *args, **kwargs):  # noqa: ANN001,ANN202
+        helper_calls.append(threading.current_thread().name)
+        return func(*args, **kwargs)
+
+    def search_shard(self, *, embedding_runtime, **_kwargs):  # noqa: ANN001, ANN003
+        return [{"content": embedding_runtime.embedding_space_hash, "score": 1.0, "metadata": {}}]
+
+    monkeypatch.setattr(retriever_module, "run_with_retrieval_backend_budget_sync", _budget, raising=True)
+    monkeypatch.setattr(HybridRetriever, "_search_dataset_scoped_vectors", search_shard)
+
+    results, failures = HybridRetriever()._search_vector_runtime_shards(
+        query="query",
+        top_k=3,
+        score_threshold=0.0,
+        document_ids=None,
+        tenant_id=uuid.uuid4(),
+        metadata_filter=None,
+        runtime_shards=[(runtime, (uuid.uuid4(),)) for runtime in runtimes],
+        vector_store=pytest.fail,
+    )
+
+    assert failures == []
+    assert len(results) == 3
+    assert len(helper_calls) == 3
+
+
+def test_vector_runtime_shards_degrade_when_backend_budget_helper_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.retriever as retriever_module
+    from app.rag.retriever import HybridRetriever
+    from app.services.rag_runtime_limiter import RetrievalAdmissionTimeoutError
+
+    runtimes = [_runtime("ok"), _runtime("timed-out")]
+
+    def _budget(func, shard, *args, **kwargs):  # noqa: ANN001,ANN202
+        runtime, _dataset_ids = shard
+        if runtime.embedding_space_hash == "timed-out":
+            raise RetrievalAdmissionTimeoutError(0.2)
+        return func(shard, *args, **kwargs)
+
+    def search_shard(self, *, embedding_runtime, **_kwargs):  # noqa: ANN001, ANN003
+        return [{"content": embedding_runtime.embedding_space_hash, "score": 1.0, "metadata": {}}]
+
+    monkeypatch.setattr(retriever_module, "run_with_retrieval_backend_budget_sync", _budget, raising=True)
+    monkeypatch.setattr(HybridRetriever, "_search_dataset_scoped_vectors", search_shard)
+
+    results, failures = HybridRetriever()._search_vector_runtime_shards(
+        query="query",
+        top_k=2,
+        score_threshold=0.0,
+        document_ids=None,
+        tenant_id=uuid.uuid4(),
+        metadata_filter=None,
+        runtime_shards=[(runtime, (uuid.uuid4(),)) for runtime in runtimes],
+        vector_store=pytest.fail,
+    )
+
+    assert [item["content"] for item in results] == ["ok"]
+    assert len(failures) == 1
+    assert isinstance(failures[0], RetrievalAdmissionTimeoutError)
+
+
+def test_hybrid_search_degrades_when_some_runtime_shards_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.retriever as retriever_module
+    from app.rag.retriever import HybridRetriever
+    from app.services.rag_runtime_limiter import RetrievalAdmissionTimeoutError
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    runtime = _runtime("test-space")
+
+    for name, value in {
+        "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED": False,
+        "RETRIEVAL_CANDIDATE_CACHE_ENABLED": False,
+        "SEMANTIC_CACHE_ENABLED": False,
+    }.items():
+        monkeypatch.setattr(retriever_module.settings, name, value, raising=False)
+
+    monkeypatch.setattr(HybridRetriever, "_explicit_dataset_scope_ids", lambda self: (dataset_id,), raising=True)  # noqa: ANN001
+    monkeypatch.setattr(HybridRetriever, "_resolve_dataset_runtime_shards", lambda self, *, tenant_id, dataset_ids=None: [(runtime, (dataset_id,))], raising=True)  # noqa: ANN001,ARG005,E501
+    monkeypatch.setattr(HybridRetriever, "_resolve_embedding_runtime", lambda self, *, tenant_id: runtime, raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(HybridRetriever, "_search_vector_runtime_shards", lambda self, **kwargs: ([{"chunk_id": "chunk-1", "content": "vector ok", "score": 0.9, "metadata": {"document_id": "doc-1", "dataset_id": str(dataset_id), "chunk_id": "chunk-1", "embedding_space_hash": runtime.embedding_space_hash}}], [RetrievalAdmissionTimeoutError(0.2)]), raising=True)  # noqa: ANN001,E501
+    monkeypatch.setattr(HybridRetriever, "_enrich_results_with_db_metadata", lambda self, items, **kwargs: list(items), raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(HybridRetriever, "_expand_results_with_neighbors", lambda self, items: list(items), raising=True)  # noqa: ANN001
+    monkeypatch.setattr(HybridRetriever, "_auto_merge_parent_child", lambda self, items: list(items), raising=True)  # noqa: ANN001
+    monkeypatch.setattr(HybridRetriever, "_deduplicate_results", lambda self, items: list(items), raising=True)  # noqa: ANN001
+    monkeypatch.setattr(HybridRetriever, "_apply_document_diversity", lambda self, items, **kwargs: list(items), raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(HybridRetriever, "_apply_metadata_exact_anchor_post_ordering", lambda self, query, items, **kwargs: list(items), raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(HybridRetriever, "_merge_results", lambda self, vector_results, *args, **kwargs: list(vector_results), raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(HybridRetriever, "_search_bm25", lambda self, **kwargs: [], raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(HybridRetriever, "_search_lexical_db", lambda self, **kwargs: [], raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(HybridRetriever, "_search_sparse", lambda self, **kwargs: [], raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(retriever_module, "emit_stream_event", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(retriever_module, "get_vector_store", lambda: SimpleNamespace(search=lambda **kwargs: []), raising=True)
+
+    retriever = HybridRetriever(
+        tenant_id=tenant_id,
+        account_id="member-1",
+        dataset_id=dataset_id,
+        retrieval_mode="hybrid",
+        enable_reranker=False,
+        sparse_enabled=False,
+        dedup_enabled=False,
+    )
+
+    out = retriever._hybrid_search(
+        "query",
+        top_k=1,
+        score_threshold=0.0,
+        tenant_id=tenant_id,
+        retrieval_mode="hybrid",
+    )
+
+    assert [item["content"] for item in out] == ["vector ok"]
+
+
+def test_hybrid_search_propagates_retryable_timeout_when_all_runtime_shards_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.retriever as retriever_module
+    from app.rag.retriever import HybridRetriever
+    from app.services.rag_runtime_limiter import RetrievalAdmissionTimeoutError
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    runtime = _runtime("test-space")
+
+    for name, value in {
+        "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED": False,
+        "RETRIEVAL_CANDIDATE_CACHE_ENABLED": False,
+        "SEMANTIC_CACHE_ENABLED": False,
+    }.items():
+        monkeypatch.setattr(retriever_module.settings, name, value, raising=False)
+
+    monkeypatch.setattr(HybridRetriever, "_explicit_dataset_scope_ids", lambda self: (dataset_id,), raising=True)  # noqa: ANN001
+    monkeypatch.setattr(HybridRetriever, "_resolve_dataset_runtime_shards", lambda self, *, tenant_id, dataset_ids=None: [(runtime, (dataset_id,))], raising=True)  # noqa: ANN001,ARG005,E501
+    monkeypatch.setattr(HybridRetriever, "_resolve_embedding_runtime", lambda self, *, tenant_id: runtime, raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(HybridRetriever, "_search_vector_runtime_shards", lambda self, **kwargs: ([], [RetrievalAdmissionTimeoutError(0.2)]), raising=True)  # noqa: ANN001
+    monkeypatch.setattr(HybridRetriever, "_search_bm25", lambda self, **kwargs: [], raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(HybridRetriever, "_search_lexical_db", lambda self, **kwargs: [], raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(HybridRetriever, "_search_sparse", lambda self, **kwargs: [], raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(retriever_module, "emit_stream_event", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(retriever_module, "get_vector_store", lambda: SimpleNamespace(search=lambda **kwargs: []), raising=True)
+
+    retriever = HybridRetriever(
+        tenant_id=tenant_id,
+        account_id="member-1",
+        dataset_id=dataset_id,
+        retrieval_mode="hybrid",
+        enable_reranker=False,
+        sparse_enabled=False,
+        dedup_enabled=False,
+    )
+
+    with pytest.raises(RetrievalAdmissionTimeoutError):
+        retriever._hybrid_search(
+            "query",
+            top_k=1,
+            score_threshold=0.0,
+            tenant_id=tenant_id,
+            retrieval_mode="hybrid",
+        )

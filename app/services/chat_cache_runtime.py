@@ -16,7 +16,9 @@ from app.services.chat_response_cache import (
     resolve_chat_response_cache_key,
     resolve_inflight_chat_response,
     set_cached_chat_response,
+    wait_for_inflight_chat_response,
 )
+from app.services.rag_runtime_limiter import RetrievalAdmissionTimeoutError
 
 
 def annotate_chat_cache_metrics(
@@ -133,10 +135,11 @@ def prepare_chat_cache_lookup(
 ) -> tuple[bool, str | None, str | None]:
     lookup = _resolve_chat_cache_lookup_input(options=options, legacy_overrides=legacy_overrides)
     cache_enabled = bool(getattr(settings, "CHAT_RESPONSE_CACHE_ENABLED", False))
-    if not cache_enabled:
+    singleflight_enabled = bool(getattr(settings, "CHAT_RESPONSE_SINGLEFLIGHT_ENABLED", False))
+    if not (cache_enabled or singleflight_enabled):
         return False, None, None
     if not lookup.document_ids and lookup.dataset_id is None:
-        return True, None, "missing_scope"
+        return cache_enabled, None, "missing_scope"
     if bool(getattr(settings, "CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY", True)):
         if (
             lookup.history
@@ -144,7 +147,7 @@ def prepare_chat_cache_lookup(
             or lookup.long_term_messages
             or lookup.enable_structured_memory
         ):
-            return True, None, "history_not_empty"
+            return cache_enabled, None, "history_not_empty"
     try:
         cache_key, skip_reason = resolve_chat_response_cache_key(
             db=lookup.db,
@@ -160,8 +163,8 @@ def prepare_chat_cache_lookup(
             use_graph=lookup.use_graph,
         )
     except Exception:
-        return True, None, "lookup_error"
-    return True, cache_key, skip_reason
+        return cache_enabled, None, "lookup_error"
+    return cache_enabled, cache_key, skip_reason
 
 
 async def prepare_non_streaming_chat_cache_state(
@@ -172,7 +175,7 @@ async def prepare_non_streaming_chat_cache_state(
         options=options,
     )
     cache_eligible = bool(cache_key)
-    cached = await get_cached_chat_response_async(cache_key) if cache_key else None
+    cached = await get_cached_chat_response_async(cache_key) if cache_feature_enabled and cache_key else None
     if isinstance(cached, dict):
         metrics_data = annotate_chat_cache_metrics(
             dict(cached.get("metrics") or {}),
@@ -219,8 +222,14 @@ async def prepare_non_streaming_chat_cache_state(
         0,
         int(getattr(settings, "CHAT_RESPONSE_CACHE_TTL_SEC", 300) or 0),
     )
+    singleflight_wait_timeout_sec = max(
+        1e-3,
+        float(getattr(settings, "CHAT_RESPONSE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC", 60.0) or 0.0),
+    )
     singleflight_key = cache_key if singleflight_feature_enabled and cache_key else None
     if singleflight_key:
+        loop = asyncio.get_running_loop()
+        singleflight_wait_deadline = loop.time() + singleflight_wait_timeout_sec
         while True:
             singleflight_leader, inflight_future = await acquire_inflight_chat_response(
                 singleflight_key
@@ -228,7 +237,13 @@ async def prepare_non_streaming_chat_cache_state(
             if singleflight_leader:
                 break
             try:
-                shared_payload = await asyncio.shield(inflight_future)
+                remaining_wait_sec = singleflight_wait_deadline - loop.time()
+                if remaining_wait_sec <= 0:
+                    raise RetrievalAdmissionTimeoutError(singleflight_wait_timeout_sec)
+                shared_payload = await wait_for_inflight_chat_response(
+                    inflight_future,
+                    timeout_sec=remaining_wait_sec,
+                )
             except InflightResponseLeaderCancelledError:
                 continue
             full_response = str(shared_payload.get("content") or "")
@@ -252,9 +267,10 @@ async def prepare_non_streaming_chat_cache_state(
             structured_data = shared_payload.get("structured_data")
             singleflight_hit = True
             break
-        if singleflight_leader and response_cache_ttl_sec > 0:
+        if singleflight_leader:
             distributed_leader, shared_payload = await acquire_or_wait_for_distributed_inflight_chat_response(
                 singleflight_key,
+                cache_enabled=cache_feature_enabled,
                 response_cache_ttl_sec=response_cache_ttl_sec,
             )
             if not distributed_leader:

@@ -20,6 +20,7 @@ from app.parsing.backends import normalize_parser_backend
 from app.parsing.factory import parser_factory
 from app.parsing.routing import route_pdf_backend
 from app.rag.core.logging import get_logger
+from app.services.document_preview_utils import _write_preview_owner_binding
 
 logger = get_logger(__name__)
 
@@ -55,7 +56,13 @@ def _rewrite_preview_image_refs(
 
 
 class DocumentParserService:
-    def _materialize_local_images_for_preview(self, documents: list[Document], tenant_id: UUID) -> list[dict]:
+    def _materialize_local_images_for_preview(
+        self,
+        documents: list[Document],
+        tenant_id: UUID,
+        *,
+        owner_binding: dict[str, str] | None,
+    ) -> list[dict]:
         """
         Rewrite local/relative image references in Markdown/HTML into preview-time
         `/api/v1/documents/image/{uuid}` URLs.
@@ -229,6 +236,11 @@ class DocumentParserService:
                     out_path = images_dir / f"{preview_id}{out_ext}"
                     try:
                         out_path.write_bytes(image_bytes)
+                        _write_preview_owner_binding(
+                            images_dir=images_dir,
+                            preview_id=preview_id,
+                            binding=owner_binding,
+                        )
                     except Exception:
                         get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                         continue
@@ -259,6 +271,7 @@ class DocumentParserService:
         self,
         file_path: Path,
         tenant_id: UUID,
+        account_id: str | None = None,
         parser_backend: str | None = None,
     ) -> dict:
         """
@@ -286,13 +299,28 @@ class DocumentParserService:
             file_path,
             parser_backend=parser_backend,
             tenant_id=str(tenant_id),
+            account_id=str(account_id or "").strip() or None,
             pdf_quality=pdf_quality,
             allow_fallback=not explicit_pdf_backend,
         )
-        local_images = self._materialize_local_images_for_preview(documents, tenant_id)
+        owner_account_id = str(account_id or "").strip()
+        owner_binding = (
+            {"tenant_id": str(tenant_id), "account_id": owner_account_id}
+            if owner_account_id
+            else None
+        )
+        local_images = self._materialize_local_images_for_preview(
+            documents,
+            tenant_id,
+            owner_binding=owner_binding,
+        )
         markdown_text = self._merge_documents(documents)
 
-        images = self._extract_and_save_inline_images(markdown_text, tenant_id)
+        images = self._extract_and_save_inline_images(
+            markdown_text,
+            tenant_id,
+            owner_binding=owner_binding,
+        )
         if images:
             # Replace data URIs with local references.
             for img in images:
@@ -319,7 +347,13 @@ class DocumentParserService:
             parts.append(text.strip())
         return "\n\n".join(p for p in parts if p)
 
-    def _extract_and_save_inline_images(self, markdown_text: str, tenant_id: UUID) -> list[dict]:
+    def _extract_and_save_inline_images(
+        self,
+        markdown_text: str,
+        tenant_id: UUID,
+        *,
+        owner_binding: dict[str, str] | None,
+    ) -> list[dict]:
         """
         Find data URI images, save to uploads/{tenant_id}/images, and return mapping info.
         """
@@ -362,6 +396,11 @@ class DocumentParserService:
                 if len(binary) > max_image_bytes:
                     continue
                 file_path.write_bytes(binary)
+                _write_preview_owner_binding(
+                    images_dir=images_dir,
+                    preview_id=img_id,
+                    binding=owner_binding,
+                )
             except Exception:
                 get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                 continue

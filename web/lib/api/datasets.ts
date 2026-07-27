@@ -78,6 +78,19 @@ export type DatasetAnalysisGlossaryWritebackParams = DatasetAnalysisFilters & {
 
 export type DatasetAnalysisResponse = Record<string, unknown>
 export type DatasetPurgeResponse = Record<string, unknown>
+export type DatasetListParams = {
+  skip?: number
+  limit?: number
+  q?: string
+  category_id?: string
+  include_descendants?: boolean
+  order_by?: 'created_at' | 'name'
+  order_dir?: 'asc' | 'desc'
+  operational_status?: 'all' | 'active' | 'anomaly' | 'pending' | 'testing'
+}
+export type ExhaustiveDatasetListParams = Omit<DatasetListParams, 'skip' | 'limit'> & {
+  pageSize?: number
+}
 export type DatasetRetrievalAuditPayload = {
   status: string
   plugin_refs?: string[]
@@ -95,20 +108,63 @@ export type DatasetRetrievalAuditPayload = {
   recommended_next_action?: string | null
 }
 
+const DEFAULT_DATASET_PAGE_SIZE = 200
+
+async function listDatasets(params?: DatasetListParams): Promise<DatasetListResponse> {
+  return openapiRequest({ path: '/api/v1/datasets/', method: 'get', query: params })
+}
+
+function datasetIdentityKey(dataset: Dataset): string | null {
+  const id = typeof dataset?.id === 'string' ? dataset.id.trim() : ''
+  return id || null
+}
+
+export async function listAllDatasets(
+  params?: ExhaustiveDatasetListParams
+): Promise<Dataset[]> {
+  const requestedPageSize = Number(params?.pageSize ?? DEFAULT_DATASET_PAGE_SIZE)
+  const pageSize = Math.max(1, Math.min(DEFAULT_DATASET_PAGE_SIZE, Math.trunc(requestedPageSize)))
+  const { pageSize: _pageSize, ...rest } = params || {}
+
+  const items: Dataset[] = []
+  const seenIds = new Set<string>()
+  let skip = 0
+  let total = Number.POSITIVE_INFINITY
+
+  while (items.length < total) {
+    const page = await listDatasets({ ...rest, skip, limit: pageSize })
+    const pageItems = Array.isArray(page.items) ? page.items : []
+    const reportedTotal = Number(page.total)
+    total = Number.isFinite(reportedTotal) && reportedTotal >= 0
+      ? reportedTotal
+      : Number.POSITIVE_INFINITY
+    if (pageItems.length === 0) break
+
+    let added = 0
+    for (const pageItem of pageItems) {
+      const identity = datasetIdentityKey(pageItem)
+      if (identity && seenIds.has(identity)) continue
+      if (identity) seenIds.add(identity)
+      items.push(pageItem)
+      added += 1
+    }
+
+    if (added === 0) break
+    skip += pageItems.length
+    if (pageItems.length < pageSize) break
+  }
+
+  return items
+}
+
 export const datasetApi = {
   async create(params: DatasetCreate): Promise<Dataset> {
     return openapiRequest({ path: '/api/v1/datasets/', method: 'post', body: params })
   },
 
-  async list(params?: {
-    skip?: number
-    limit?: number
-    q?: string
-    category_id?: string
-    include_descendants?: boolean
-  }): Promise<DatasetListResponse> {
-    return openapiRequest({ path: '/api/v1/datasets/', method: 'get', query: params })
-  },
+  list: listDatasets,
+
+  listAll: listAllDatasets,
 
   async get(datasetId: string): Promise<Dataset> {
     return openapiRequest({

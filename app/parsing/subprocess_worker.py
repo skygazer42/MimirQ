@@ -221,6 +221,7 @@ def _parse_documents(payload: dict[str, Any]) -> dict[str, Any]:
         dataset_id=str(dataset_id) if dataset_id else None,
         document_id=str(document_id) if document_id else None,
         tenant_id=str(tenant_id),
+        account_id=str(payload.get("account_id") or "").strip() or None,
         pdf_quality=pdf_quality,
         html_xpath=(payload.get("html_xpath") if isinstance(payload.get("html_xpath"), str) else None),
     )
@@ -237,8 +238,13 @@ def _parse_documents(payload: dict[str, Any]) -> dict[str, Any]:
             _materialize_local_images_for_preview,
         )
 
-        documents = _materialize_extracted_images_for_preview(documents, tenant_id=tenant_id)
-        documents = _materialize_local_images_for_preview(documents, tenant_id=tenant_id)
+        account_id = str(payload.get("account_id") or "").strip() or None
+        documents = _materialize_extracted_images_for_preview(
+            documents, tenant_id=tenant_id, account_id=account_id
+        )
+        documents = _materialize_local_images_for_preview(
+            documents, tenant_id=tenant_id, account_id=account_id
+        )
     else:
         artifact_root = None
         raw_root = payload.get("artifact_root")
@@ -265,9 +271,23 @@ def _integrated_chunk(payload: dict[str, Any]) -> dict[str, Any]:
     documents = document_processor._integrated_chunk_file(file_path, strategy)
 
     if mode == "preview":
-        from app.services.document_preview_utils import _materialize_extracted_images_for_preview
+        from app.services.document_preview_utils import (
+            _materialize_extracted_images_for_preview,
+            _materialize_local_images_for_preview,
+        )
 
-        documents = _materialize_extracted_images_for_preview(documents, tenant_id=tenant_id)
+        account_id = str(payload.get("account_id") or "").strip() or None
+
+        documents = _materialize_extracted_images_for_preview(
+            documents,
+            tenant_id=tenant_id,
+            account_id=account_id,
+        )
+        documents = _materialize_local_images_for_preview(
+            documents,
+            tenant_id=tenant_id,
+            account_id=account_id,
+        )
     else:
         artifact_root = None
         raw_root = payload.get("artifact_root")
@@ -284,7 +304,10 @@ def _pipeline_parse_preview(payload: dict[str, Any]) -> dict[str, Any]:
     parser_backend = payload.get("parser_backend")
     document_parser_service = _get_document_parser_service()
     result = document_parser_service.parse_for_preview(
-        file_path=file_path, tenant_id=tenant_id, parser_backend=parser_backend
+        file_path=file_path,
+        tenant_id=tenant_id,
+        account_id=str(payload.get("account_id") or "").strip() or None,
+        parser_backend=parser_backend,
     )
     return _jsonable(result)
 

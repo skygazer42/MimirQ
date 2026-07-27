@@ -8,6 +8,7 @@ This module keeps checks best-effort and dependency-light:
 
 
 from collections.abc import Callable
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
@@ -28,7 +29,20 @@ def redis_usage_flags(settings) -> dict[str, bool]:
     }
 
 
-def check_database(session_local) -> tuple[dict[str, Any], bool]:
+@lru_cache(maxsize=1)
+def _expected_alembic_heads() -> frozenset[str]:
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    repo_root = Path(__file__).resolve().parents[2]
+    config = Config(str(repo_root / "alembic.ini"))
+    script_location = Path(config.get_main_option("script_location"))
+    if not script_location.is_absolute():
+        config.set_main_option("script_location", str(repo_root / script_location))
+    return frozenset(str(value) for value in ScriptDirectory.from_config(config).get_heads())
+
+
+def check_database(session_local, *, require_schema_current: bool = False) -> tuple[dict[str, Any], bool]:
     """Return (db_status, ok)."""
     from sqlalchemy import text
     from sqlalchemy.exc import SQLAlchemyError
@@ -39,6 +53,37 @@ def check_database(session_local) -> tuple[dict[str, Any], bool]:
     try:
         db.execute(text("SELECT 1"))
         db_status["status"] = "connected"
+        if require_schema_current:
+            try:
+                expected_revisions = _expected_alembic_heads()
+                current_revisions = frozenset(
+                    str(row[0]) for row in db.execute(text("SELECT version_num FROM alembic_version"))
+                )
+            except SQLAlchemyError:
+                current_revisions = frozenset()
+            except Exception as exc:  # noqa: BLE001
+                ok = False
+                db_status.update(
+                    {
+                        "status": "schema_check_failed",
+                        "schema_current": False,
+                        "error": f"database schema revision check failed: {str(exc)[:120]}",
+                    }
+                )
+                return db_status, ok
+
+            schema_current = bool(expected_revisions) and current_revisions == expected_revisions
+            db_status.update(
+                {
+                    "schema_current": schema_current,
+                    "current_revisions": sorted(current_revisions),
+                    "expected_revisions": sorted(expected_revisions),
+                }
+            )
+            if not schema_current:
+                ok = False
+                db_status["status"] = "schema_outdated"
+                db_status["error"] = "database schema is not at the expected Alembic head"
     except SQLAlchemyError as exc:
         ok = False
         db_status["error"] = str(exc)[:200]

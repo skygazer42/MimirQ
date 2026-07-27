@@ -24,7 +24,7 @@ def _patch_asyncio_threadsafe_wakeup_for_sandbox() -> None:
     in this environment.
     """
 
-    # Import lazily so we don't change runtime behavior outside of pytest.
+    # Import lazily so the sandbox-specific asyncio shim only affects pytest runs.
     import asyncio.selector_events as se  # noqa: WPS433
 
     # Detect whether socket send is blocked by the sandbox.
@@ -147,8 +147,7 @@ _disable_proxy_env_for_tests()
 _block_outbound_network_for_tests()
 _patch_asyncio_threadsafe_wakeup_for_sandbox()
 
-# Ensure `app.__init__` runs early in the pytest process so it can backfill
-# `datetime.UTC` on Python 3.10 before any test modules import it.
+# Initialize application-level dependency compatibility hooks before services.
 import app  # noqa: F401,E402
 
 

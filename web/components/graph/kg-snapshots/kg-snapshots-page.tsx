@@ -164,9 +164,9 @@ export function KGSnapshotsPage() {
     setDatasetsLoading(true)
     ;(async () => {
       try {
-        const result = await datasetApi.list({ skip: 0, limit: 200 })
+        const result = await datasetApi.listAll()
         if (!cancelled) {
-          setDatasets(Array.isArray(result.items) ? result.items : [])
+          setDatasets(result)
         }
       } catch {
         if (!cancelled) setDatasets([])

@@ -907,6 +907,9 @@ async def parse_workspace_document(
                 payload={
                     "action": "parse_documents",
                     "tenant_id": str(tenant_id),
+                    "account_id": str(account_id),
+                    "dataset_id": str(doc.dataset_id),
+                    "document_id": str(doc.id),
                     "file_path": str(source_path),
                     "parser_backend": resolved_backend,
                     "mode": "preview",
@@ -1077,6 +1080,9 @@ async def parse_workspace_document(
                         payload={
                             "action": "parse_documents",
                             "tenant_id": str(tenant_id),
+                            "account_id": str(account_id),
+                            "dataset_id": str(doc.dataset_id),
+                            "document_id": str(doc.id),
                             "file_path": str(source_path),
                             "parser_backend": cand_backend,
                             "mode": "preview",

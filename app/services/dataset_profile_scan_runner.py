@@ -205,6 +205,7 @@ def run_dataset_profile_deep_scan(
     run.status = "running"
     run.progress = 0
     run.started_at = _now_utc()
+    run.updated_at = run.started_at
     run.error_message = None
     db.commit()
 
@@ -232,6 +233,7 @@ def run_dataset_profile_deep_scan(
         run.status = "completed"
         run.progress = 100
         run.finished_at = _now_utc()
+        run.updated_at = run.finished_at
         db.commit()
         summary = compute_dataset_profile_summary(db, tenant_id=tenant_id, account_id=account_id, dataset_id=dataset_id)
         run.summary = summary.model_dump(mode="json")
@@ -259,6 +261,7 @@ def run_dataset_profile_deep_scan(
         last_progress_write = now
         pct = int((processed / max(1, total)) * 100)
         run.progress = max(0, min(100, pct))
+        run.updated_at = _now_utc()
         db.commit()
 
     for idx, doc in enumerate(docs, start=1):
@@ -529,6 +532,7 @@ def run_dataset_profile_deep_scan(
     run.status = "completed"
     run.progress = 100
     run.finished_at = _now_utc()
+    run.updated_at = run.finished_at
     db.commit()
     # Persist summary snapshot in run (after status update so latest_scan_run reflects completion).
     summary = compute_dataset_profile_summary(db, tenant_id=tenant_id, account_id=account_id, dataset_id=dataset_id)

@@ -232,7 +232,7 @@ export interface paths {
         get: operations["get_document_access_api_v1_documents__document_id__access_get"];
         /**
          * Put Document Access
-         * @description Update document-level ACL settings (requires dataset write or tenant edit role).
+         * @description Update document ACL settings using dataset or unassigned-document ownership policy.
          */
         put: operations["put_document_access_api_v1_documents__document_id__access_put"];
         post?: never;
@@ -10748,11 +10748,9 @@ export interface components {
          */
         DatasetIngestionStats: {
             /**
-             * Dataset Id
-             * Format: uuid
+             * Total Documents
+             * @default 0
              */
-            dataset_id: string;
-            /** Total Documents */
             total_documents: number;
             /** By Status */
             by_status?: {
@@ -10775,6 +10773,11 @@ export interface components {
             total_characters: number;
             /** Last Processed At */
             last_processed_at?: string | null;
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
         };
         /** DatasetKGEntityTypeCount */
         DatasetKGEntityTypeCount: {
@@ -10911,12 +10914,59 @@ export interface components {
              */
             retry_chunks: number;
         };
+        /** DatasetListFacets */
+        DatasetListFacets: {
+            /**
+             * Scope Total
+             * @default 0
+             */
+            scope_total: number;
+            /**
+             * Filtered Total
+             * @default 0
+             */
+            filtered_total: number;
+            /** Status Counts */
+            status_counts?: {
+                [key: string]: number;
+            };
+        };
+        /** DatasetListIngestionSummary */
+        DatasetListIngestionSummary: {
+            /**
+             * Total Documents
+             * @default 0
+             */
+            total_documents: number;
+            /** By Status */
+            by_status?: {
+                [key: string]: number;
+            };
+            /**
+             * Total Chunks
+             * @default 0
+             */
+            total_chunks: number;
+            /**
+             * Total Size
+             * @default 0
+             */
+            total_size: number;
+            /**
+             * Total Characters
+             * @default 0
+             */
+            total_characters: number;
+            /** Last Processed At */
+            last_processed_at?: string | null;
+        };
         /** DatasetListResponse */
         DatasetListResponse: {
             /** Total */
             total: number;
             /** Items */
             items: components["schemas"]["DatasetOut"][];
+            facets?: components["schemas"]["DatasetListFacets"] | null;
         };
         /**
          * DatasetMustRecallSummaryOut
@@ -10990,6 +11040,9 @@ export interface components {
             chunk_targets_v2?: components["schemas"]["DatasetChunkTargetsV2"] | null;
             pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
             retention_policy?: components["schemas"]["DatasetRetentionPolicy"] | null;
+            ingestion_summary?: components["schemas"]["DatasetListIngestionSummary"] | null;
+            /** Operational Status */
+            operational_status?: ("active" | "anomaly" | "pending" | "testing") | null;
         };
         /** DatasetParseRiskDocumentOut */
         DatasetParseRiskDocumentOut: {
@@ -31270,8 +31323,11 @@ export interface operations {
                 category_id?: string | null;
                 /** @description When filtering by category_id, include subtree */
                 include_descendants?: boolean;
-                /** @description Search dataset name or description */
+                /** @description Search dataset name, description, or ID */
                 q?: string | null;
+                order_by?: "created_at" | "name";
+                order_dir?: "asc" | "desc";
+                operational_status?: "all" | "active" | "anomaly" | "pending" | "testing";
             };
             header?: {
                 "x-tenant-id"?: string | null;

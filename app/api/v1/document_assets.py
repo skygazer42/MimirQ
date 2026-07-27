@@ -17,6 +17,8 @@ from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.rag.core.logging import get_logger
 from app.services.dataset_service import DatasetService
+from app.services.document_preview_legacy import find_legacy_preview_document_ids
+from app.services.document_preview_utils import _load_preview_owner_binding, _write_preview_owner_binding
 from app.storage.object.runtime import is_object_storage_uri, resolve_document_object_reference
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -42,6 +44,142 @@ _ACTIVE_CONTENT_MEDIA_TYPES = {
     "text/javascript",
     "text/xml",
 }
+
+
+def _authorize_bound_preview_document(
+    *,
+    db: Session,
+    docs_mod: Any,
+    tenant_id: UUID,
+    account_id: str | None,
+    dataset_id: UUID,
+    document_id: UUID,
+) -> DBDocument | None:
+    document = (
+        db.query(DBDocument)
+        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
+        .first()
+    )
+    if not document or getattr(document, "dataset_id", None) != dataset_id:
+        return None
+    if account_id:
+        dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+        DatasetService.assert_dataset_readable(db, dataset, account_id)
+        docs_mod._assert_document_acl_readable(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            document=document,
+            dataset=dataset,
+        )
+    return document
+
+
+def _locate_preview_image_asset(*, images_dir: Path, preview_id: str, docs_mod: Any) -> tuple[Path, str] | None:
+    images_dir_resolved = images_dir.resolve(strict=False)
+    candidates: list[tuple[str, str]] = [
+        (".png", "image/png"),
+        (".jpg", docs_mod.IMAGE_JPEG_MEDIA_TYPE),
+        (docs_mod.IMAGE_FILE_EXT_JPEG, docs_mod.IMAGE_JPEG_MEDIA_TYPE),
+        (docs_mod.IMAGE_FILE_EXT_WEBP, "image/webp"),
+        (".gif", "image/gif"),
+        (".bmp", "image/bmp"),
+    ]
+    for ext, media_type in candidates:
+        file_path = (images_dir / f"{preview_id}{ext}").resolve(strict=False)
+        try:
+            file_path.relative_to(images_dir_resolved)
+        except ValueError:
+            continue
+        if file_path.exists() and file_path.is_file():
+            return file_path, media_type
+    return None
+
+
+def _resolve_legacy_preview_binding(
+    *,
+    db: Session,
+    docs_mod: Any,
+    images_dir: Path,
+    tenant_id: UUID,
+    account_id: str | None,
+    preview_id: str,
+) -> dict[str, str] | None:
+    if not account_id:
+        return None
+    try:
+        document_ids = find_legacy_preview_document_ids(
+            db,
+            tenant_id=tenant_id,
+            preview_id=preview_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Legacy preview image ownership lookup failed: %s", str(exc)[:160])
+        return None
+
+    documents = (
+        db.query(DBDocument)
+        .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(document_ids))
+        .all()
+    )
+    documents_by_id = {
+        document.id: document
+        for document in documents
+        if document is not None and isinstance(getattr(document, "dataset_id", None), UUID)
+    }
+    dataset_ids = {document.dataset_id for document in documents_by_id.values()}
+    datasets_by_id = {
+        dataset.id: dataset
+        for dataset in db.query(Dataset).filter(Dataset.tenant_id == tenant_id, Dataset.id.in_(dataset_ids)).all()
+        if dataset is not None
+    }
+    readable_datasets: dict[UUID, Dataset | None] = {}
+
+    for document_id in sorted(document_ids, key=str):
+        document = documents_by_id.get(document_id)
+        dataset_id = getattr(document, "dataset_id", None) if document is not None else None
+        if document is None or not isinstance(dataset_id, UUID):
+            continue
+        dataset = readable_datasets.get(dataset_id)
+        if dataset is None and dataset_id not in readable_datasets:
+            candidate_dataset = datasets_by_id.get(dataset_id)
+            if candidate_dataset is None:
+                readable_datasets[dataset_id] = None
+                continue
+            try:
+                DatasetService.assert_dataset_readable(db, candidate_dataset, account_id)
+            except HTTPException:
+                readable_datasets[dataset_id] = None
+                continue
+            readable_datasets[dataset_id] = candidate_dataset
+            dataset = candidate_dataset
+        if dataset is None:
+            continue
+        try:
+            docs_mod._assert_document_acl_readable(
+                db=db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                document=document,
+                dataset=dataset,
+            )
+        except HTTPException:
+            continue
+        binding = {
+            "tenant_id": str(tenant_id),
+            "dataset_id": str(dataset_id),
+            "document_id": str(document_id),
+        }
+        if len(document_ids) == 1:
+            _write_preview_owner_binding(
+                images_dir=images_dir,
+                preview_id=preview_id,
+                binding=binding,
+            )
+        return binding
+    return None
+
+
 _ACTIVE_CONTENT_SUFFIXES = {
     ".css",
     ".htm",
@@ -286,66 +424,89 @@ async def get_image(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=docs_mod.IMAGE_NOT_FOUND_DETAIL) from exc
 
-    images_dir_resolved = images_dir.resolve(strict=False)
+    image_asset = _locate_preview_image_asset(images_dir=images_dir, preview_id=safe_id, docs_mod=docs_mod)
+    if image_asset is None:
+        raise HTTPException(status_code=404, detail=docs_mod.IMAGE_NOT_FOUND_DETAIL)
+    file_path, media_type = image_asset
+    preview_binding = _load_preview_owner_binding(images_dir=images_dir, preview_id=safe_id)
+    legacy_binding_authorized = False
+    if preview_binding is None:
+        preview_binding = _resolve_legacy_preview_binding(
+            db=db,
+            docs_mod=docs_mod,
+            images_dir=images_dir,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            preview_id=safe_id,
+        )
+        legacy_binding_authorized = preview_binding is not None
+    if preview_binding is None:
+        raise HTTPException(status_code=404, detail=docs_mod.IMAGE_NOT_FOUND_DETAIL)
+    if preview_binding.get("tenant_id") != str(tenant_id):
+        raise HTTPException(status_code=404, detail=docs_mod.IMAGE_NOT_FOUND_DETAIL)
 
-    candidates: list[tuple[str, str]] = [
-        (".png", "image/png"),
-        (".jpg", docs_mod.IMAGE_JPEG_MEDIA_TYPE),
-        (docs_mod.IMAGE_FILE_EXT_JPEG, docs_mod.IMAGE_JPEG_MEDIA_TYPE),
-        (docs_mod.IMAGE_FILE_EXT_WEBP, "image/webp"),
-        (".gif", "image/gif"),
-        (".bmp", "image/bmp"),
-    ]
-
-    for ext, media_type in candidates:
-        file_path = (images_dir / f"{safe_id}{ext}").resolve(strict=False)
+    bound_account_id = str(preview_binding.get("account_id") or "").strip()
+    if bound_account_id:
+        if not account_id or bound_account_id != str(account_id):
+            raise HTTPException(status_code=404, detail=docs_mod.IMAGE_NOT_FOUND_DETAIL)
+    else:
         try:
-            file_path.relative_to(images_dir_resolved)
-        except ValueError:
-            continue
-        if file_path.exists() and file_path.is_file():
-            max_age = max(0, int(getattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 0) or 0))
-            cache_control = docs_mod._asset_cache_control(max_age=max_age)
-            try:
-                stat_result = file_path.stat()
-            except Exception:
-                stat_result = None
+            document_uuid = UUID(str(preview_binding.get("document_id") or ""))
+            dataset_uuid = UUID(str(preview_binding.get("dataset_id") or ""))
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=docs_mod.IMAGE_NOT_FOUND_DETAIL) from exc
 
-            etag: str | None = None
-            if stat_result is not None:
-                etag = (
-                    f"\"{int(getattr(stat_result, 'st_mtime_ns', 0) or 0):x}-"
-                    f"{int(getattr(stat_result, 'st_size', 0) or 0):x}\""
-                )
-
-            if etag:
-                if_none_match = (request.headers.get("if-none-match") or "").strip()
-                if if_none_match:
-                    candidates_etag = [part.strip() for part in if_none_match.split(",") if part.strip()]
-                    if "*" in candidates_etag or etag in candidates_etag:
-                        return Response(
-                            status_code=304,
-                            headers={
-                                "ETag": etag,
-                                "Cache-Control": cache_control,
-                                "Referrer-Policy": "no-referrer",
-                                "X-Content-Type-Options": "nosniff",
-                            },
-                        )
-            return FileResponse(
-                file_path,
-                media_type=media_type,
-                headers={
-                    "Cache-Control": cache_control,
-                    "Referrer-Policy": "no-referrer",
-                    "X-Content-Type-Options": "nosniff",
-                    **({"ETag": etag} if etag else {}),
-                },
-                stat_result=stat_result,
-                content_disposition_type="inline",
+        if not legacy_binding_authorized:
+            document = _authorize_bound_preview_document(
+                db=db,
+                docs_mod=docs_mod,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                dataset_id=dataset_uuid,
+                document_id=document_uuid,
             )
+            if document is None:
+                raise HTTPException(status_code=404, detail=docs_mod.IMAGE_NOT_FOUND_DETAIL)
+    max_age = max(0, int(getattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 0) or 0))
+    cache_control = docs_mod._asset_cache_control(max_age=max_age)
+    try:
+        stat_result = file_path.stat()
+    except Exception:
+        stat_result = None
 
-    raise HTTPException(status_code=404, detail=docs_mod.IMAGE_NOT_FOUND_DETAIL)
+    etag: str | None = None
+    if stat_result is not None:
+        etag = (
+            f"\"{int(getattr(stat_result, 'st_mtime_ns', 0) or 0):x}-"
+            f"{int(getattr(stat_result, 'st_size', 0) or 0):x}\""
+        )
+
+    if etag:
+        if_none_match = (request.headers.get("if-none-match") or "").strip()
+        if if_none_match:
+            candidates_etag = [part.strip() for part in if_none_match.split(",") if part.strip()]
+            if "*" in candidates_etag or etag in candidates_etag:
+                return Response(
+                    status_code=304,
+                    headers={
+                        "ETag": etag,
+                        "Cache-Control": cache_control,
+                        "Referrer-Policy": "no-referrer",
+                        "X-Content-Type-Options": "nosniff",
+                    },
+                )
+    return FileResponse(
+        file_path,
+        media_type=media_type,
+        headers={
+            "Cache-Control": cache_control,
+            "Referrer-Policy": "no-referrer",
+            "X-Content-Type-Options": "nosniff",
+            **({"ETag": etag} if etag else {}),
+        },
+        stat_result=stat_result,
+        content_disposition_type="inline",
+    )
 
 
 @router.get("/image-url/{img_id}", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)

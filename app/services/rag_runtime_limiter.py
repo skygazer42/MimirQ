@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 _gate_lock = threading.Lock()
 _gate_limit = 0
 _gate: threading.BoundedSemaphore | None = None
+_backend_gate_lock = threading.Lock()
+_backend_gate_limit = 0
+_backend_gate: threading.BoundedSemaphore | None = None
 _admission_state = threading.local()
 _distributed_admission_lease_heartbeats: dict[
     tuple[str, str],
@@ -65,6 +68,13 @@ def _configured_distributed_limit(limit: int) -> int:
     return max(0, limit if configured <= 0 else configured)
 
 
+def _configured_backend_limit() -> int:
+    configured = int(getattr(settings, "RAG_VECTOR_SHARD_GLOBAL_MAX_CONCURRENCY", 0) or 0)
+    if configured > 0:
+        return configured
+    return _configured_limit()
+
+
 def _distributed_admission_enabled(limit: int) -> bool:
     return bool(getattr(settings, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED", False)) and (
         _configured_distributed_limit(limit) > 0
@@ -76,6 +86,14 @@ def _distributed_admission_prefix() -> str:
         str(getattr(settings, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX", "ragadm") or "ragadm").strip()
         or "ragadm"
     )
+
+
+def _distributed_backend_admission_enabled(limit: int) -> bool:
+    return bool(getattr(settings, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED", False)) and limit > 0
+
+
+def _distributed_backend_admission_prefix() -> str:
+    return f"{_distributed_admission_prefix()}:backend"
 
 
 def _distributed_admission_ttl_sec(timeout_sec: float) -> int:
@@ -91,21 +109,22 @@ def _current_distributed_admission_lease() -> _DistributedAdmissionLease | None:
     return lease if isinstance(lease, _DistributedAdmissionLease) else None
 
 
-def _try_acquire_distributed_admission_slot(
+def _current_backend_budget_depth() -> int:
+    return int(getattr(_admission_state, "backend_budget_depth", 0) or 0)
+
+
+def _try_acquire_distributed_slot(
     *,
+    prefix: str,
     limit: int,
     timeout_sec: float,
 ) -> tuple[_DistributedAdmissionLease | None, bool]:
-    if not _distributed_admission_enabled(limit) or _current_distributed_admission_depth() > 0:
-        return None, False
     client = _get_redis_client()
     if client is None:
         return None, True
     owner = uuid4().hex
     ttl_sec = _distributed_admission_ttl_sec(timeout_sec)
-    prefix = _distributed_admission_prefix()
-    distributed_limit = _configured_distributed_limit(limit)
-    for slot in range(1, distributed_limit + 1):
+    for slot in range(1, limit + 1):
         key = f"{prefix}:{slot}"
         try:
             if try_acquire_redis_lease(client, key, value=owner, ttl_sec=ttl_sec):
@@ -115,6 +134,34 @@ def _try_acquire_distributed_admission_slot(
             _invalidate_redis_client()
             return None, True
     return None, False
+
+
+def _try_acquire_distributed_admission_slot(
+    *,
+    limit: int,
+    timeout_sec: float,
+) -> tuple[_DistributedAdmissionLease | None, bool]:
+    if not _distributed_admission_enabled(limit) or _current_distributed_admission_depth() > 0:
+        return None, False
+    return _try_acquire_distributed_slot(
+        prefix=_distributed_admission_prefix(),
+        limit=_configured_distributed_limit(limit),
+        timeout_sec=timeout_sec,
+    )
+
+
+def _try_acquire_distributed_backend_slot(
+    *,
+    limit: int,
+    timeout_sec: float,
+) -> tuple[_DistributedAdmissionLease | None, bool]:
+    if not _distributed_backend_admission_enabled(limit) or _current_backend_budget_depth() > 0:
+        return None, False
+    return _try_acquire_distributed_slot(
+        prefix=_distributed_backend_admission_prefix(),
+        limit=limit,
+        timeout_sec=timeout_sec,
+    )
 
 
 def _release_distributed_admission_slot(lease: _DistributedAdmissionLease | None) -> None:
@@ -214,6 +261,27 @@ def _get_gate(limit: int) -> threading.BoundedSemaphore | None:
             _gate = threading.BoundedSemaphore(limit)
             _gate_limit = limit
         return _gate
+
+
+def _get_backend_gate(limit: int) -> threading.BoundedSemaphore | None:
+    global _backend_gate, _backend_gate_limit
+    if limit <= 0:
+        return None
+    with _backend_gate_lock:
+        if _backend_gate is None or _backend_gate_limit != limit:
+            _backend_gate = threading.BoundedSemaphore(limit)
+            _backend_gate_limit = limit
+        return _backend_gate
+
+
+@contextmanager
+def _backend_budget_scope():
+    previous_depth = _current_backend_budget_depth()
+    _admission_state.backend_budget_depth = previous_depth + 1
+    try:
+        yield
+    finally:
+        _admission_state.backend_budget_depth = previous_depth
 
 
 def _release_gate_after_worker(
@@ -502,6 +570,70 @@ def run_blocking_retrieval_call_sync(
             }
         )
     return result
+
+
+def run_with_retrieval_backend_budget_sync(
+    func: Callable[..., T],
+    *args: Any,
+    timeout_sec: float | None = None,
+    **kwargs: Any,
+) -> T:
+    """Run shard/backend work under a cross-instance budget when distributed admission is enabled."""
+
+    limit = _configured_backend_limit()
+    gate = _get_backend_gate(limit)
+    if _current_backend_budget_depth() > 0:
+        with _backend_budget_scope():
+            return func(*args, **kwargs)
+
+    wait_timeout_sec = (
+        _configured_admission_timeout_sec()
+        if timeout_sec is None
+        else max(0.0, float(timeout_sec or 0.0))
+    )
+    deadline = _admission_deadline(wait_timeout_sec)
+    distributed_ttl_sec = _distributed_admission_ttl_sec(wait_timeout_sec)
+    gate_acquired = False
+    distributed_lease: _DistributedAdmissionLease | None = None
+    try:
+        while True:
+            if gate is not None and not gate_acquired:
+                while True:
+                    remaining = _remaining_admission_time(
+                        deadline=deadline,
+                        timeout_sec=wait_timeout_sec,
+                    )
+                    wait_sec = min(0.05, remaining) if remaining is not None else 0.05
+                    if gate.acquire(timeout=wait_sec):
+                        gate_acquired = True
+                        break
+            distributed_lease, degraded = _try_acquire_distributed_backend_slot(
+                limit=limit,
+                timeout_sec=wait_timeout_sec,
+            )
+            if distributed_lease is not None:
+                _start_distributed_admission_lease_heartbeat(
+                    distributed_lease,
+                    ttl_sec=distributed_ttl_sec,
+                )
+                break
+            if not _distributed_backend_admission_enabled(limit) or degraded:
+                break
+            if gate_acquired and gate is not None:
+                gate.release()
+                gate_acquired = False
+            remaining = _remaining_admission_time(
+                deadline=deadline,
+                timeout_sec=wait_timeout_sec,
+            )
+            time.sleep(min(0.01, remaining) if remaining is not None else 0.01)
+        with _backend_budget_scope():
+            return func(*args, **kwargs)
+    finally:
+        if gate_acquired and gate is not None:
+            gate.release()
+        _stop_distributed_admission_lease_heartbeat(distributed_lease)
+        _release_distributed_admission_slot(distributed_lease)
 
 
 async def run_blocking_retrieval_call_with_managed_session(

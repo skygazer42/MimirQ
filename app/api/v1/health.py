@@ -100,6 +100,8 @@ def _ready_cache_key() -> tuple[object, ...]:
     return (
         (getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").lower(),
         bool(getattr(settings, "TASK_QUEUE_ENABLED", False)),
+        bool(getattr(settings, "DB_CREATE_ALL_ON_STARTUP", True)),
+        bool(getattr(settings, "DB_RUNTIME_MIGRATIONS_ENABLED", True)),
         bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", False)),
         bool(getattr(settings, "MINIO_ENABLED", False)),
         bool(getattr(settings, "OBJECT_STORAGE_ENABLED", False)),
@@ -140,7 +142,10 @@ def _collect_ready_details() -> tuple[dict[str, Any], int, dict[str, Any] | None
 
     ok = True
 
-    db_status, db_ok = check_database(SessionLocal)
+    application_manages_schema = bool(getattr(settings, "DB_CREATE_ALL_ON_STARTUP", True)) or bool(
+        getattr(settings, "DB_RUNTIME_MIGRATIONS_ENABLED", True)
+    )
+    db_status, db_ok = check_database(SessionLocal, require_schema_current=not application_manages_schema)
     ok &= db_ok
 
     vector_backend = (getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").lower()

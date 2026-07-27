@@ -283,8 +283,8 @@ export function useParsingViewState({
     enabled: isLibraryLoaded,
     queryFn: async (): Promise<DatasetOption[]> => {
       try {
-        const response = await datasetApi.list({ skip: 0, limit: 200 })
-        return (response.items || []).map((dataset) => ({
+        const response = await datasetApi.listAll()
+        return response.map((dataset) => ({
           id: String(dataset.id),
           name: dataset.name || String(dataset.id),
         }))

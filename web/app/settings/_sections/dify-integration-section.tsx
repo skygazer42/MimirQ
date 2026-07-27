@@ -119,9 +119,8 @@ export function DifyIntegrationSection({
       setDatasetsLoading(true)
       setDatasetsError('')
       try {
-        const res = await datasetApi.list({ limit: 200 })
+        const items = await datasetApi.listAll()
         if (cancelled) return
-        const items = Array.isArray(res.items) ? res.items : []
         setDatasets(items)
         setSelectedDatasetIds((prev) => prev.filter((id) => items.some((dataset) => dataset.id === id)))
       } catch {

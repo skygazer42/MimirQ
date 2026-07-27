@@ -625,6 +625,7 @@ def create_dataset_analysis_png_task(
     tenant_id: UUID,
     dataset_id: UUID,
     dataset_name: str,
+    account_id: str,
     background_tasks: Any,
     from_ts: str | None = None,
     to_ts: str | None = None,
@@ -643,6 +644,8 @@ def create_dataset_analysis_png_task(
             feedback_polarity=feedback_polarity,
             category=category,
         ),
+        requested_by=account_id,
+        account_id=account_id,
     )
 
     def _run() -> None:
@@ -775,17 +778,19 @@ def create_dataset_analysis_png_task(
     return task
 
 
-def get_dataset_analysis_png_task_status(*, task_id: str, tenant_id: UUID, dataset_id: UUID) -> dict[str, Any]:
+def get_dataset_analysis_png_task_status(*, task_id: str, tenant_id: UUID, dataset_id: UUID, account_id: str) -> dict[str, Any]:
     return get_png_export_task(
         task_id,
         tenant_id=str(tenant_id),
         dataset_id=str(dataset_id),
+        account_id=account_id,
     )
 
 
-def get_dataset_analysis_png_result(*, task_id: str, tenant_id: UUID, dataset_id: UUID) -> bytes:
+def get_dataset_analysis_png_result(*, task_id: str, tenant_id: UUID, dataset_id: UUID, account_id: str) -> bytes:
     return get_png_export_task_result(
         task_id,
         tenant_id=str(tenant_id),
         dataset_id=str(dataset_id),
+        account_id=account_id,
     )

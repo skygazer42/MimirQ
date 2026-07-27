@@ -303,6 +303,24 @@ class DatasetUpdate(BaseModel):
     retention_policy: DatasetRetentionPolicy | None = None
 
 
+DatasetOperationalStatus = Literal["active", "anomaly", "pending", "testing"]
+
+
+class DatasetListIngestionSummary(BaseModel):
+    total_documents: int = 0
+    by_status: dict[str, int] = Field(default_factory=dict)
+    total_chunks: int = 0
+    total_size: int = 0
+    total_characters: int = 0
+    last_processed_at: datetime | None = None
+
+
+class DatasetListFacets(BaseModel):
+    scope_total: int = 0
+    filtered_total: int = 0
+    status_counts: dict[DatasetOperationalStatus, int] = Field(default_factory=dict)
+
+
 class DatasetOut(OrmModel):
     id: UUID
     tenant_id: UUID
@@ -325,23 +343,20 @@ class DatasetOut(OrmModel):
     chunk_targets_v2: DatasetChunkTargetsV2 | None = None
     pipeline: DocumentPipelineOptions | None = None
     retention_policy: DatasetRetentionPolicy | None = None
+    ingestion_summary: DatasetListIngestionSummary | None = None
+    operational_status: DatasetOperationalStatus | None = None
 
 
 class DatasetListResponse(BaseModel):
     total: int
     items: list[DatasetOut]
+    facets: DatasetListFacets | None = None
 
 
-class DatasetIngestionStats(BaseModel):
+class DatasetIngestionStats(DatasetListIngestionSummary):
     """Lightweight dataset ingestion stats for dashboards."""
 
     dataset_id: UUID
-    total_documents: int
-    by_status: dict[str, int] = Field(default_factory=dict)
-    total_chunks: int = 0
-    total_size: int = 0
-    total_characters: int = 0
-    last_processed_at: datetime | None = None
 
 
 class DatasetConfigBundle(BaseModel):

@@ -26,6 +26,7 @@ from app.core.redis_lease import extend_redis_lease, release_redis_lease, try_ac
 from app.rag.core.logging import get_logger
 from app.rag.embedding.utils import current_embedding_space_hash
 from app.services.corpus_cache_tokens import resolve_corpus_cache_token
+from app.services.rag_runtime_limiter import RetrievalAdmissionTimeoutError
 
 logger = get_logger("chat.cache")
 
@@ -44,17 +45,25 @@ _redis_client_slot = LazyRedisClient(
 _get_redis_client = _redis_client_slot.get
 _invalidate_redis_client = _redis_client_slot.invalidate
 _inflight_response_futures: dict[str, asyncio.Future[dict[str, Any]]] = {}
-_inflight_response_leases: dict[str, tuple[str, str, asyncio.Task[None]]] = {}
+_inflight_response_leases: dict[str, tuple[str, str, asyncio.Task[None], bool]] = {}
 _inflight_response_cache_write_tasks: dict[str, asyncio.Task[bool]] = {}
+_inflight_response_result_write_tasks: dict[str, asyncio.Task[bool]] = {}
 _inflight_response_lock: asyncio.Lock | None = None
 _CHAT_RESPONSE_SINGLEFLIGHT_LEASE_SUFFIX = ":lease"
+_CHAT_RESPONSE_SINGLEFLIGHT_RESULT_SUFFIX = ":result"
 _CHAT_RESPONSE_SINGLEFLIGHT_LEASE_POLL_INITIAL_SEC = 0.05
 _CHAT_RESPONSE_SINGLEFLIGHT_LEASE_POLL_MAX_SEC = 0.25
+_CHAT_RESPONSE_SINGLEFLIGHT_TRANSIENT_RESULT_TTL_SEC = 10
 
 
 def _forget_completed_cache_write(key: str, task: asyncio.Task[bool]) -> None:
     if _inflight_response_cache_write_tasks.get(key) is task:
         _inflight_response_cache_write_tasks.pop(key, None)
+
+
+def _forget_completed_result_write(key: str, task: asyncio.Task[bool]) -> None:
+    if _inflight_response_result_write_tasks.get(key) is task:
+        _inflight_response_result_write_tasks.pop(key, None)
 
 
 class InflightResponseLeaderCancelledError(RuntimeError):
@@ -71,6 +80,23 @@ def _get_inflight_response_lock() -> asyncio.Lock:
     if _inflight_response_lock is None:
         _inflight_response_lock = asyncio.Lock()
     return _inflight_response_lock
+
+
+def _chat_response_singleflight_wait_timeout_sec() -> float:
+    return max(
+        1e-3,
+        float(getattr(settings, "CHAT_RESPONSE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC", 60.0) or 0.0),
+    )
+
+
+def _chat_response_singleflight_result_key(key: str) -> str:
+    return f"{key}{_CHAT_RESPONSE_SINGLEFLIGHT_RESULT_SUFFIX}"
+
+
+def _chat_response_singleflight_should_publish_transient_result(
+    *, cache_enabled: bool, response_cache_ttl_sec: int
+) -> bool:
+    return (not cache_enabled) or response_cache_ttl_sec <= 0
 
 
 def _hash_doc_scope(document_ids: list[str]) -> str:
@@ -421,6 +447,21 @@ async def acquire_inflight_chat_response(key: str) -> tuple[bool, asyncio.Future
         return True, future
 
 
+async def wait_for_inflight_chat_response(
+    future: asyncio.Future[dict[str, Any]],
+    *,
+    timeout_sec: float,
+) -> dict[str, Any]:
+    done, _pending = await asyncio.wait(
+        {future},
+        timeout=max(1e-3, float(timeout_sec or 0.0)),
+        return_when=asyncio.FIRST_COMPLETED,
+    )
+    if not done:
+        raise RetrievalAdmissionTimeoutError(timeout_sec)
+    return future.result()
+
+
 def _chat_response_singleflight_lease_ttl_sec(response_cache_ttl_sec: int) -> int:
     admission_timeout_sec = max(
         15,
@@ -451,20 +492,33 @@ async def _maintain_inflight_chat_response_lease(
 async def acquire_or_wait_for_distributed_inflight_chat_response(
     key: str,
     *,
+    cache_enabled: bool,
     response_cache_ttl_sec: int,
 ) -> tuple[bool, dict[str, Any] | None]:
-    if not key or response_cache_ttl_sec <= 0:
+    if not key:
         return True, None
 
     lease_key = f"{key}{_CHAT_RESPONSE_SINGLEFLIGHT_LEASE_SUFFIX}"
+    result_key = _chat_response_singleflight_result_key(key)
+    should_read_transient_result = _chat_response_singleflight_should_publish_transient_result(
+        cache_enabled=cache_enabled,
+        response_cache_ttl_sec=response_cache_ttl_sec,
+    )
     owner = uuid4().hex
     lease_ttl_sec = _chat_response_singleflight_lease_ttl_sec(response_cache_ttl_sec)
     poll_delay = _CHAT_RESPONSE_SINGLEFLIGHT_LEASE_POLL_INITIAL_SEC
+    loop = asyncio.get_running_loop()
+    wait_timeout_sec = _chat_response_singleflight_wait_timeout_sec()
+    deadline = loop.time() + wait_timeout_sec
 
     while True:
-        cached = await get_cached_chat_response_async(key)
+        cached = await get_cached_chat_response_async(key) if cache_enabled else None
         if isinstance(cached, dict):
             return False, cached
+        if should_read_transient_result:
+            transient = await get_best_effort_json_cache_value(result_key)
+            if isinstance(transient, dict):
+                return False, transient
 
         acquired = await try_acquire_best_effort_redis_lease(
             lease_key,
@@ -481,8 +535,21 @@ async def acquire_or_wait_for_distributed_inflight_chat_response(
                     ttl_sec=lease_ttl_sec,
                 )
             )
-            _inflight_response_leases[key] = (lease_key, owner, heartbeat)
+            _inflight_response_leases[key] = (
+                lease_key,
+                owner,
+                heartbeat,
+                should_read_transient_result,
+            )
             return True, None
+
+        if loop.time() >= deadline:
+            logger.warning(
+                "Chat distributed singleflight timed out waiting for lease payload: %s (timeout=%.2fs)",
+                key,
+                wait_timeout_sec,
+            )
+            raise RetrievalAdmissionTimeoutError(wait_timeout_sec)
 
         await asyncio.sleep(poll_delay)
         poll_delay = min(
@@ -495,7 +562,9 @@ def _pop_inflight_chat_response_future(key: str) -> asyncio.Future[dict[str, Any
     return _inflight_response_futures.pop(key, None)
 
 
-def _pop_inflight_chat_response_lease(key: str) -> tuple[str, str, asyncio.Task[None]] | None:
+def _pop_inflight_chat_response_lease(
+    key: str,
+) -> tuple[str, str, asyncio.Task[None], bool] | None:
     return _inflight_response_leases.pop(key, None)
 
 
@@ -503,13 +572,17 @@ def _schedule_inflight_chat_response_lease_release(key: str) -> None:
     lease = _pop_inflight_chat_response_lease(key)
     if lease is None:
         return
-    lease_key, owner, heartbeat = lease
+    lease_key, owner, heartbeat, _publish_transient_result = lease
     cache_write = _inflight_response_cache_write_tasks.get(key)
+    result_write = _inflight_response_result_write_tasks.get(key)
 
     async def _release_after_cache_write() -> None:
         if cache_write is not None:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await asyncio.shield(cache_write)
+        if result_write is not None:
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await asyncio.shield(result_write)
         heartbeat.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await heartbeat
@@ -520,6 +593,20 @@ def _schedule_inflight_chat_response_lease_release(key: str) -> None:
 
 
 def resolve_inflight_chat_response(key: str, payload: dict[str, Any]) -> None:
+    lease = _inflight_response_leases.get(key)
+    if lease is not None and lease[3]:
+        task = asyncio.create_task(
+            set_best_effort_json_cache_value(
+                _chat_response_singleflight_result_key(key),
+                payload,
+                ttl_sec=_CHAT_RESPONSE_SINGLEFLIGHT_TRANSIENT_RESULT_TTL_SEC,
+                max_value_bytes=int(
+                    getattr(settings, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 200_000) or 0
+                ),
+            )
+        )
+        _inflight_response_result_write_tasks[key] = task
+        task.add_done_callback(lambda done, cache_key=key: _forget_completed_result_write(cache_key, done))
     _schedule_inflight_chat_response_lease_release(key)
     future = _pop_inflight_chat_response_future(key)
     if future is None or future.done():
@@ -540,7 +627,10 @@ def clear_inflight_chat_responses() -> None:
     Test helper: drop all in-process singleflight state.
     """
     _inflight_response_futures.clear()
-    for _lease_key, _owner, heartbeat in _inflight_response_leases.values():
+    for _lease_key, _owner, heartbeat, _publish_transient_result in _inflight_response_leases.values():
         heartbeat.cancel()
     _inflight_response_leases.clear()
+    for task in _inflight_response_result_write_tasks.values():
+        task.cancel()
+    _inflight_response_result_write_tasks.clear()
     _inflight_response_cache_write_tasks.clear()

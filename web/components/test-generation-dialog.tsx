@@ -43,7 +43,6 @@ type SourceType = 'documents' | 'conversations'
 type Step = 'select_source' | 'configure' | 'preview'
 
 const TEST_GEN_DOCUMENT_PARAMS = { limit: 100, status: 'completed' as const }
-const TEST_GEN_DATASET_PARAMS = { limit: 50 }
 const TEST_GEN_CONVERSATION_PARAMS = { limit: 100 }
 
 const EMPTY_DOCUMENTS: Document[] = []
@@ -95,9 +94,9 @@ export function TestGenerationDialog({
     queryFn: () => documentApi.list(TEST_GEN_DOCUMENT_PARAMS),
   })
   const datasetsQuery = useQuery({
-    queryKey: queryKeys.datasets.list(TEST_GEN_DATASET_PARAMS),
+    queryKey: queryKeys.datasets.exhaustive({ purpose: 'test-generation' }),
     enabled: open && sourceType === 'documents',
-    queryFn: () => datasetApi.list(TEST_GEN_DATASET_PARAMS),
+    queryFn: () => datasetApi.listAll(),
   })
   const conversationsQuery = useQuery({
     queryKey: queryKeys.chat.conversations(TEST_GEN_CONVERSATION_PARAMS),
@@ -106,7 +105,7 @@ export function TestGenerationDialog({
   })
 
   const documents = documentsQuery.data?.items ?? EMPTY_DOCUMENTS
-  const datasets = datasetsQuery.data?.items ?? EMPTY_DATASETS
+  const datasets = datasetsQuery.data ?? EMPTY_DATASETS
   const conversations = conversationsQuery.data?.items ?? EMPTY_CONVERSATIONS
   const isLoadingData =
     (sourceType === 'documents' && (documentsQuery.isLoading || datasetsQuery.isLoading)) ||

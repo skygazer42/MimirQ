@@ -27,17 +27,14 @@ Examples:
 
 import argparse
 import json
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from app.core.config import settings
-from app.core.database import SessionLocal
-from app.models.dataset import Dataset
-from app.models.evaluation import RagasRegressionCase, RagasRegressionRun
-from app.rag.evaluation.ragas import run_regression_ragas_evaluation
-
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 def _parse_uuid(value: str) -> UUID:
     try:
@@ -112,14 +109,15 @@ def _resolve_case_ids_from_questions(
     tenant_id: UUID,
     dataset_id: UUID,
     questions: list[str],
+    case_model: Any,
 ) -> list[UUID]:
     if not questions:
         return []
 
     want = set(questions)
     rows = (
-        db.query(RagasRegressionCase)
-        .filter(RagasRegressionCase.tenant_id == tenant_id, RagasRegressionCase.dataset_id == dataset_id)
+        db.query(case_model)
+        .filter(case_model.tenant_id == tenant_id, case_model.dataset_id == dataset_id)
         .all()
     )
 
@@ -148,7 +146,7 @@ def _resolve_case_ids_from_questions(
     return [by_question[q] for q in questions]
 
 
-def _default_ablations() -> list[dict]:
+def _default_ablations(*, reranker_top_n: int = 20) -> list[dict]:
     """
     Small, industrial default ablation set (retrieval-only friendly).
 
@@ -233,7 +231,7 @@ def _default_ablations() -> list[dict]:
             {
                 "enable_reranker": True,
                 "reranker_provider": "pc",
-                "reranker_top_n": min(20, int(settings.RERANKER_TOP_N or 20)),
+                "reranker_top_n": min(20, int(reranker_top_n or 20)),
             },
         ),
     ]
@@ -270,12 +268,18 @@ def main(argv: list[str] | None = None) -> int:
 
     args = p.parse_args(argv)
 
+    from app.core.config import settings
+    from app.core.database import SessionLocal
+    from app.models.dataset import Dataset
+    from app.models.evaluation import RagasRegressionCase, RagasRegressionRun
+    from app.rag.evaluation.ragas import run_regression_ragas_evaluation
+
     tenant_id = args.tenant_id or UUID(str(settings.DEFAULT_TENANT_ID))
     execute = bool(args.execute)
     dry_run = not execute
 
     metric_names = [m.strip() for m in str(args.metrics or "").split(",") if m.strip()]
-    ablations = _default_ablations()
+    ablations = _default_ablations(reranker_top_n=int(settings.RERANKER_TOP_N or 20))
 
     cases_path: Path | None = None
     bundle_dataset_id: UUID | None = None
@@ -363,6 +367,7 @@ def main(argv: list[str] | None = None) -> int:
                         tenant_id=tenant_id,
                         dataset_id=ds_id,
                         questions=bundle_questions,
+                        case_model=RagasRegressionCase,
                     )
                 except Exception as exc:  # noqa: BLE001
                     print(
