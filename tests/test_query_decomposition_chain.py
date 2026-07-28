@@ -58,12 +58,16 @@ def test_run_retrieval_chains_decomposed_queries_sequentially(monkeypatch: pytes
     monkeypatch.setattr(orch, "get_rag_engine", lambda: _FakeEngine(), raising=True)
     monkeypatch.setattr(orch, "_decompose_query", lambda *args, **kwargs: ["subquestion one", "subquestion two"], raising=False)
 
-    orch.run_retrieval(_base_state())
+    out = orch.run_retrieval(_base_state())
 
     assert captured_queries[:2] == [
         "subquestion one",
         "subquestion two\n\nPrior findings:\n- subquestion one",
     ]
+    per_query = (out.get("metrics") or {}).get("retrieval_per_query") or []
+    chained_queries = [item for item in per_query if item.get("kind") == "subq"]
+    assert len(chained_queries) == 2
+    assert all(int(item.get("query_tokens") or 0) > 0 for item in chained_queries)
 
 
 def test_decompose_query_parses_deduplicates_and_truncates_llm_output(

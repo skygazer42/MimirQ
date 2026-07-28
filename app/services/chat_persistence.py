@@ -7,6 +7,7 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.token_utils import num_tokens_from_string
 from app.rag.core.logging import get_logger
 from app.services.chat_response_cache import resolve_inflight_chat_response
 from app.services.chat_runtime import store_chat_response_cache_if_needed
@@ -69,6 +70,71 @@ def _retrieval_elapsed_seconds(metrics: dict[str, Any]) -> float | None:
 def _compact_retrieval_errors(metrics: dict[str, Any]) -> list[str]:
     errors_raw = metrics.get("retrieval_errors") or metrics.get("errors") or []
     return [str(item)[:200] for item in errors_raw if str(item or "").strip()]
+
+
+def _safe_non_negative_int(value: Any) -> int:
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError, OverflowError):
+        return 0
+
+
+def _fallback_rerank_elapsed_seconds(citations: list) -> float | None:
+    values: list[float] = []
+    for citation in citations or []:
+        if not isinstance(citation, dict):
+            continue
+        try:
+            value = float(citation.get("rerank_elapsed_sec"))
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if value >= 0:
+            values.append(value)
+    return round(max(values), 3) if values else None
+
+
+def _extractive_fallback_cost_attribution(
+    *,
+    metrics: dict[str, Any],
+    citations: list,
+    question: str,
+) -> dict[str, Any]:
+    per_query = [item for item in (metrics.get("retrieval_per_query") or []) if isinstance(item, dict)]
+    if per_query:
+        query_count = len(per_query)
+        query_chars = sum(_safe_non_negative_int(item.get("query_chars")) for item in per_query)
+        query_tokens = sum(_safe_non_negative_int(item.get("query_tokens")) for item in per_query)
+    else:
+        fallback_query = str(metrics.get("query_for_retrieval") or question or "")
+        query_count = _safe_non_negative_int(metrics.get("retrieval_query_count")) or int(bool(fallback_query))
+        query_chars = len(fallback_query)
+        query_tokens = num_tokens_from_string(fallback_query) if fallback_query else 0
+    retrieval_elapsed_sec = _retrieval_elapsed_seconds(metrics)
+
+    return {
+        "schema": "mimirq.cost_attribution.v1",
+        "llm": {
+            "model_used": None,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "source": "extractive_fallback",
+        },
+        "embeddings": {
+            "provider": str(getattr(settings, "EMBEDDING_PROVIDER", "") or ""),
+            "model": str(getattr(settings, "EMBEDDING_MODEL", "") or ""),
+            "query_count": int(query_count),
+            "query_chars": int(query_chars),
+            "query_tokens": int(query_tokens),
+            "source": "estimate",
+        },
+        "retrieval": {
+            "elapsed_sec": round(float(retrieval_elapsed_sec or 0.0), 3),
+            "rerank_elapsed_sec": _fallback_rerank_elapsed_seconds(citations),
+            "vector_backend": str(metrics.get("vector_backend") or settings.VECTOR_BACKEND or ""),
+            "query_count": int(query_count),
+        },
+    }
 
 
 def _online_eval_contexts(citations: list) -> list[str]:
@@ -180,6 +246,11 @@ def _log_extractive_fallback_rag_trace(
         "vector_backend": metrics.get("vector_backend") or settings.VECTOR_BACKEND,
         "generation_fallback_kind": metrics.get("generation_fallback_kind"),
         "generation_fallback_reason": metrics.get("generation_fallback_reason"),
+        "cost_attribution": _extractive_fallback_cost_attribution(
+            metrics=metrics,
+            citations=citations,
+            question=question,
+        ),
     }
     log_metrics(payload)
 

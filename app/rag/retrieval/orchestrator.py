@@ -23,6 +23,7 @@ from uuid import UUID
 from langchain_core.documents import Document
 
 from app.core.config import settings
+from app.core.token_utils import num_tokens_from_string
 from app.core.utils import parse_csv
 from app.query.normalize import normalize_query
 from app.rag.core.citations import build_citations_from_docs
@@ -1767,6 +1768,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                     {
                         "kind": kind,
                         "query_chars": len(chained_query or ""),
+                        "query_tokens": num_tokens_from_string(chained_query or ""),
                         "elapsed_sec": round(elapsed_i, 3),
                         "ok": err is None,
                         "retriever_debug": dbg,
@@ -1805,7 +1807,16 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     if retrieval_parallelism <= 1 or len(retrieval_plan) <= 1:
         for kind, q, r in retrieval_plan:
             kind, docs_i, err, elapsed_i, dbg = _invoke_with_timing(kind, q, r)
-            retrieval_per_query.append({"kind": kind, "query_chars": len(q or ""), "elapsed_sec": round(elapsed_i, 3), "ok": err is None, "retriever_debug": dbg})
+            retrieval_per_query.append(
+                {
+                    "kind": kind,
+                    "query_chars": len(q or ""),
+                    "query_tokens": num_tokens_from_string(q or ""),
+                    "elapsed_sec": round(elapsed_i, 3),
+                    "ok": err is None,
+                    "retriever_debug": dbg,
+                }
+            )
             if err:
                 retrieval_errors.append(f"{kind}:{err[:160]}")
             docs_by_query_kinds.append(kind)
@@ -1818,7 +1829,16 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             ]
             for query, fut in futures:
                 kind, docs_i, err, elapsed_i, dbg = fut.result()
-                retrieval_per_query.append({"kind": kind, "query_chars": len(query or ""), "elapsed_sec": round(elapsed_i, 3), "ok": err is None, "retriever_debug": dbg})
+                retrieval_per_query.append(
+                    {
+                        "kind": kind,
+                        "query_chars": len(query or ""),
+                        "query_tokens": num_tokens_from_string(query or ""),
+                        "elapsed_sec": round(elapsed_i, 3),
+                        "ok": err is None,
+                        "retriever_debug": dbg,
+                    }
+                )
                 if err:
                     retrieval_errors.append(f"{kind}:{err[:160]}")
                 docs_by_query_kinds.append(kind)
@@ -3157,6 +3177,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                     "kind": "contextual_followup",
                     "hop": int(hop),
                     "query_chars": len(q2 or ""),
+                    "query_tokens": num_tokens_from_string(q2 or ""),
                     "elapsed_sec": round(float(hop_elapsed), 3),
                     "ok": cf_err is None,
                     "retriever_debug": contextual_followup_retriever_debug,
@@ -3281,6 +3302,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             {
                 "kind": "hard_fallback",
                 "query_chars": len(query_for_retrieval or ""),
+                "query_tokens": num_tokens_from_string(query_for_retrieval or ""),
                 "elapsed_sec": round(float(hard_fallback_elapsed), 3),
                 "ok": fb_err is None,
                 "retriever_debug": hard_fallback_retriever_debug,

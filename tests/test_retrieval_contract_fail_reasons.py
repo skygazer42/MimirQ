@@ -139,3 +139,49 @@ def test_must_recall_auto_source_keys_are_inferred_when_missing(
     metrics = out.get("metrics") or {}
     assert bool(metrics.get("must_recall_auto_expected_source_keys_applied")) is True
     assert "inventory" in list(metrics.get("must_recall_expected_source_keys") or [])
+
+
+def test_deterministic_contract_hard_fallback_records_query_tokens(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.rag.retrieval.orchestrator as orch_mod
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_HYDE", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_QUERY_DECOMPOSITION", False, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_QUERY_PARALLELISM", 1, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_ENABLED", False, raising=False)
+
+    retriever = _ModeRetriever(
+        docs_by_mode={
+            "vector": [],
+            "keyword": [_mk_doc(table_id="fallback")],
+        },
+        mode="vector",
+    )
+    monkeypatch.setattr(orch_mod, "hybrid_retriever", retriever, raising=True)
+
+    out = orch_mod.run_retrieval(
+        {
+            "question": "find fallback evidence",
+            "history": [],
+            "tenant_id": str(uuid.uuid4()),
+            "account_id": "u",
+            "dataset_id": None,
+            "document_ids": [str(uuid.uuid4())],
+            "top_k": 5,
+            "retrieval_mode": "vector",
+            "retrieval_contract_mode": "deterministic_recall",
+            "metrics": {},
+        }
+    )
+
+    metrics = out.get("metrics") or {}
+    assert metrics.get("hard_fallback_attempted") is True
+    fallback_queries = [
+        item
+        for item in (metrics.get("retrieval_per_query") or [])
+        if item.get("kind") == "hard_fallback"
+    ]
+    assert len(fallback_queries) == 1
+    assert fallback_queries[0]["query_tokens"] > 0

@@ -273,6 +273,7 @@ def test_retrieval_regression_gate_is_offline_and_reuses_bounded_proof_artifacts
     assert "EMBEDDING_PROVIDER: deterministic_test" in backend_step
     assert "EMBEDDING_MODEL: mimirq-deterministic-test-v1" in backend_step
     assert "LLM_MOCK_ENABLED: \"true\"" in backend_step
+    assert "RERANKER_PROVIDER: pc" in backend_step
     assert (
         "--parsing-proof-summary "
         "bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/summary.json"

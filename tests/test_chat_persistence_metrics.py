@@ -94,6 +94,15 @@ def test_finalize_chat_response_sync_logs_rag_trace_for_extractive_fallback(
         "generation_fallback_reason": "explicit_extractive_answer_mode",
         "retrieval_mode": "keyword",
         "retrieval_elapsed_sec": 0.12,
+        "retrieval_per_query": [
+            {
+                "kind": "main",
+                "query_chars": 31,
+                "query_tokens": 7,
+                "elapsed_sec": 0.12,
+                "ok": True,
+            }
+        ],
         "vector_backend": "milvus",
     }
 
@@ -135,6 +144,29 @@ def test_finalize_chat_response_sync_logs_rag_trace_for_extractive_fallback(
     assert payload["citations_count"] == 1
     assert payload["retrieval"]["mode"] == "keyword"
     assert payload["generation_fallback_reason"] == "explicit_extractive_answer_mode"
+    cost = payload["cost_attribution"]
+    assert cost["schema"] == "mimirq.cost_attribution.v1"
+    assert cost["llm"] == {
+        "model_used": None,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "source": "extractive_fallback",
+    }
+    assert cost["embeddings"] == {
+        "provider": str(persistence.settings.EMBEDDING_PROVIDER or ""),
+        "model": str(persistence.settings.EMBEDDING_MODEL or ""),
+        "query_count": 1,
+        "query_chars": 31,
+        "query_tokens": 7,
+        "source": "estimate",
+    }
+    assert cost["retrieval"] == {
+        "elapsed_sec": 0.12,
+        "rerank_elapsed_sec": None,
+        "vector_backend": "milvus",
+        "query_count": 1,
+    }
     assert len(persisted) == 1
 
 
@@ -197,6 +229,21 @@ def test_finalize_chat_response_sync_skips_rag_trace_when_not_extractive_fallbac
     )
 
     assert captured == []
+
+
+def test_extractive_fallback_cost_attribution_counts_the_main_query_when_breakdown_is_missing() -> None:
+    question = "fallback retrieval query"
+
+    cost = persistence._extractive_fallback_cost_attribution(
+        metrics={"retrieval_elapsed_sec": 0.2, "vector_backend": "faiss"},
+        citations=[],
+        question=question,
+    )
+
+    assert cost["embeddings"]["query_count"] == 1
+    assert cost["embeddings"]["query_chars"] == len(question)
+    assert cost["embeddings"]["query_tokens"] > 0
+    assert cost["retrieval"]["query_count"] == 1
 
 
 def test_finalize_chat_response_sync_orders_persist_cache_then_resolve(

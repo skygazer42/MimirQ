@@ -239,7 +239,7 @@ python scripts/seed_ci_retrieval_regression.py \
 ENV=ci AUTH_MODE=header DEFAULT_TENANT_ID=00000000-0000-0000-0000-000000000000 \
 VECTOR_BACKEND=faiss TASK_QUEUE_ENABLED=false EMBEDDING_CACHE_ENABLED=false MINIO_ENABLED=false \
 EMBEDDING_PROVIDER=deterministic_test EMBEDDING_MODEL=mimirq-deterministic-test-v1 \
-LEXICAL_DB_TRGM_ENABLED=false LLM_MOCK_ENABLED=true ENABLE_RERANKER=true RERANKER_PROVIDER=llm BM25_INDEX_ENABLED=true \
+LEXICAL_DB_TRGM_ENABLED=false LLM_MOCK_ENABLED=true ENABLE_RERANKER=true RERANKER_PROVIDER=pc BM25_INDEX_ENABLED=true \
 uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 # 4) 运行 gate（写出 run detail + 生成候选阈值）

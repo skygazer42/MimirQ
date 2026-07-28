@@ -79,8 +79,9 @@ def _model_provider_circuit_key() -> str:
     api_key = str(getattr(settings, "LLM_API_KEY", "") or "").strip()
     model = str(getattr(settings, "LLM_MODEL", "") or "").strip()
     api_base = str(getattr(settings, "LLM_API_BASE", "") or "").strip()
+    mock_enabled = bool(getattr(settings, "LLM_MOCK_ENABLED", False))
     digest = hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:12] if api_key else ""
-    return "|".join((api_base, model, digest))
+    return "|".join((api_base, model, digest, str(mock_enabled)))
 
 
 def _ensure_model_provider_circuit_key() -> str:
@@ -102,6 +103,8 @@ def mark_model_provider_unavailable(*, ttl_sec: float = _MODEL_PROVIDER_UNAVAILA
 
 def is_model_provider_unavailable_circuit_open() -> bool:
     _ensure_model_provider_circuit_key()
+    if bool(getattr(settings, "LLM_MOCK_ENABLED", False)):
+        return False
     return time.monotonic() < _MODEL_PROVIDER_UNAVAILABLE_UNTIL
 
 
@@ -116,6 +119,9 @@ async def preflight_model_provider_fast() -> tuple[bool, str | None]:
 
     _ensure_model_provider_circuit_key()
     now = time.monotonic()
+    if bool(getattr(settings, "LLM_MOCK_ENABLED", False)):
+        _MODEL_PROVIDER_AVAILABLE_UNTIL = now + _MODEL_PROVIDER_AVAILABLE_TTL_SEC
+        return True, None
     if now < _MODEL_PROVIDER_UNAVAILABLE_UNTIL:
         return False, "model_provider_circuit_open"
     if now < _MODEL_PROVIDER_AVAILABLE_UNTIL:

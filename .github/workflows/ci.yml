@@ -1414,9 +1414,9 @@ jobs:
           MINIO_ENABLED: "false"
           # Keep lexical retrieval deterministic (no pg_trgm dependency in CI).
           LEXICAL_DB_TRGM_ENABLED: "false"
-          # Exercise the real bounded hybrid stack in CI without external providers.
+          # Exercise the real bounded hybrid stack with an offline-safe local reranker.
           ENABLE_RERANKER: "true"
-          RERANKER_PROVIDER: "llm"
+          RERANKER_PROVIDER: pc
           RERANKER_TOP_N: "20"
           # Keep embeddings offline in CI; LLM mock alone does not affect embedding calls.
           EMBEDDING_PROVIDER: deterministic_test

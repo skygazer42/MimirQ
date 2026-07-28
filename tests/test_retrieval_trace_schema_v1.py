@@ -188,6 +188,9 @@ def test_orchestrator_emits_stable_retrieval_trace_schema(monkeypatch: pytest.Mo
 
     metrics = out.get("metrics") or {}
     assert isinstance(metrics.get("must_recall_proof"), dict)
+    query_metrics = metrics.get("retrieval_per_query") or []
+    assert query_metrics[0]["query_chars"] == 1
+    assert query_metrics[0]["query_tokens"] > 0
 
     qd = out.get("query_debug") or {}
     assert isinstance((qd.get("parse_repair_actions") if isinstance(qd, dict) else {}), dict)

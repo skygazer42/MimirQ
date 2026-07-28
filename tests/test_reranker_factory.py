@@ -10,6 +10,25 @@ def test_get_reranker_rejects_unknown_provider() -> None:
         get_reranker("typo-provider")
 
 
+def test_pc_reranker_is_local_parent_child_implementation() -> None:
+    from app.rag.reranker.factory import get_reranker
+    from app.rag.reranker.parent_child import ParentChildReranker
+    from app.rag.reranker.types import RerankCandidate
+
+    reranker = get_reranker("pc")
+    result = reranker.rerank(
+        "query",
+        [
+            RerankCandidate(id="low", text="low", metadata={"score": 0.1}),
+            RerankCandidate(id="high", text="high", metadata={"score": 0.9}),
+        ],
+        top_n=2,
+    )
+
+    assert isinstance(reranker, ParentChildReranker)
+    assert result.ordered_ids == ["high", "low"]
+
+
 def test_get_reranker_passes_explicit_openai_timeout_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
