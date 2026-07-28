@@ -2,9 +2,10 @@
 
 <img src="./docs/images/banner.svg" alt="MimirQ：可检查、可回归、可治理的开源 RAG 知识库" width="100%"/>
 
-<p><b>全栈开源、中文优先的企业 RAG 知识库</b><br/>覆盖文档解析、切块、检索、生成与引用，支持全链路检查、调试和回归验证。</p>
+<p><b>全栈开源、中文优先的企业 RAG 知识库</b><br/>把解析、治理、切块、检索、重排与引用做成可检查、可替换、可回归的知识流水线。</p>
 
 <p>
+  <a href="#为什么做-mimirq"><b>为什么 MimirQ</b></a> ·
   <a href="#产品界面"><b>产品界面</b></a> ·
   <a href="#快速开始"><b>快速开始</b></a> ·
   <a href="#dify-接入"><b>Dify 接入</b></a> ·
@@ -31,42 +32,29 @@
 
 ---
 
-## 项目概述
+## 为什么做 MimirQ
 
-**MimirQ** 是一个专注 RAG 全链路可观测性的知识库问答平台，前后端全开源，可通过 Docker Compose 或 Helm 部署。
+**企业知识库真正难的，不是把文档向量化，而是让错误可定位、策略可替换、质量可回归。**
+
+MimirQ 起源于一次真实的政务知识库交付。回答出错时，团队必须能判断：解析是否丢了表格，治理是否漏了规则，切块是否破坏了语义，召回是否漏掉了证据，重排是否排错，还是生成偏离了引用。把整条链路藏在一个“上传并开始问答”的按钮后面，原型很快，长期交付却难以估算、验收和治理。
+
+> **一条可控的企业知识流水线**
+>
+> `数据评估` → `场景化解析` → `清洗治理` → `业务切块`<br/>→ `向量 / 全文索引` → `混合召回` → `重排与引用` → `Golden 回归`
+
+真实项目先抽样评估数据：统计扫描页、图片、表格、公式和版式复杂度，验证解析质量并估算资源与人工成本；再按材料选择解析器。复杂版式或扫描件可优先评估 [MinerU](https://opendatalab.github.io/MinerU/) / [DeepDoc](https://github.com/infiniflow/ragflow/tree/main/deepdoc)，公式、表格与版面结构密集的材料可纳入 [Docling](https://docling-project.github.io/docling/)，数字原生 Office 或纯文本可从 [MarkItDown](https://github.com/microsoft/markitdown) 等轻量路径开始。高风险资料仍需人工校验。
+
+解析结果经脚本、规则 DSL 或插件治理后，再按标题、章节、业务记录或父子关系切块，而不是统一套用固定长度和重叠窗口。索引层可使用 Milvus 等向量库，并组合 BM25、向量检索与重排；上层应用可以是 Dify、LangGraph、PydanticAI 或一个简单 API 服务。
+
+MimirQ 不试图取代所有平台：
+
+- **业务简单、流程稳定、低代码优先**：直接使用 Dify 或 RAGFlow 通常更快。
+- **希望一体化使用 DeepDoc 与 GraphRAG**：RAGFlow 是成熟选择。
+- **知识链路需要按业务替换、审计和回归**：MimirQ 将知识能力从具体聊天业务中解耦，也可作为 Dify 的外部知识层。
+
+当前仓库覆盖 30 个解析后端、86 种切块策略、13 类重排器，并保留固定 800 题的实测证据。数字只是实现广度，核心是每一步都能检查输入输出、追溯引用与版本，并用 Golden 题集守住发布质量。完整方法见[企业知识流水线设计准则](./docs/guides/rag_platform_design_principles.md)。
 
 > 最新稳定版：v1.0.0。见 [发布说明](./docs/releases/v1.0.0.md) 与 [发布索引](./docs/releases/README.md)。
-
-<table>
-  <tr>
-    <td align="center" width="25%"><strong>30</strong><br/><sub>文档解析后端</sub></td>
-    <td align="center" width="25%"><strong>86</strong><br/><sub>切块策略</sub></td>
-    <td align="center" width="25%"><strong>13</strong><br/><sub>重排器</sub></td>
-    <td align="center" width="25%"><strong>800</strong><br/><sub>固定题集实测</sub></td>
-  </tr>
-</table>
-
-<table>
-  <tr>
-    <td width="50%"><strong>可观测</strong><br/><sub>解析结果、切块边界、检索与重排过程</sub></td>
-    <td width="50%"><strong>可追溯</strong><br/><sub>逐句引用、版本、证据与完整 Trace</sub></td>
-  </tr>
-  <tr>
-    <td><strong>可治理</strong><br/><sub>文档 ACL、RBAC、脱敏、审计与安全护栏</sub></td>
-    <td><strong>可回归</strong><br/><sub>Golden 题集、评测看板与发布门禁</sub></td>
-  </tr>
-</table>
-
-<details>
-<summary><b>项目背景</b></summary>
-
-MimirQ 起源于政务智能问答项目。系统可以回答问题，但错误根因难以在解析、切块、召回、重排和生成环节之间定位。政务知识还包含多地区版本、政策更新、扫描件和表格；引用过期政策的流畅回答具有更高风险。
-
-现有平台通常侧重工作流或 Agent，RAG 排障所需的解析、索引、检索、引用和评测则分布在不同组件。MimirQ 不构建通用节点画布，重点提供可检查的 RAG 链路。
-
-> **MimirQ 的目标是让 RAG 结果具备可解释、可追溯和可验证的依据。**
-
-</details>
 
 ---
 

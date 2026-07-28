@@ -32,7 +32,7 @@
 
 - [architecture.md](./architecture.md)：MimirQ 技术架构总览。
 - [backend_structure.md](./backend_structure.md)：Backend 目录结构与路由认证约定。
-- [guides/rag_platform_design_principles.md](./guides/rag_platform_design_principles.md)：RAG 平台设计准则。
+- [guides/rag_platform_design_principles.md](./guides/rag_platform_design_principles.md)：企业知识流水线设计准则（数据评估、解析选型、治理、检索与发布边界）。
 - [guides/langchain_agent_migration.md](./guides/langchain_agent_migration.md)：LangChain / LangGraph 架构说明与迁移记录。
 - [guides/pipeline_plugins.md](./guides/pipeline_plugins.md)：Pipeline 插件机制（可选行业示例的挂载方式）。
 - [standards/import-policy.md](./standards/import-policy.md)：Import 与可选依赖策略。

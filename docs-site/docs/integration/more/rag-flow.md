@@ -5,15 +5,29 @@ sidebar_position: 1
 
 # RAG 端到端数据流
 
-从文档入库到对话检索与生成的完整数据流，帮助理解 MimirQ 各组件如何协作。
+从数据评估、文档入库到检索与生成的完整数据流，帮助理解 MimirQ 各组件如何协作。企业知识库不应从“上传文件”直接开始：先用代表性样本验证解析质量与资源成本，再确定 dataset 的解析、治理和切块策略。
+
+## 交付起点
+
+1. **抽样评估**：统计扫描页、图片、表格、公式和版式复杂度，建立验收样本。
+2. **选择解析器**：用同一批样本比较结构完整性、阅读顺序、吞吐和失败率，不把某个解析器写死为全局最优。
+3. **确定治理与切块规则**：明确人工校验范围、规则 DSL、metadata 合约，以及标题、记录或父子块边界。
+4. **固定回归集**：在正式发布前用 Golden 题集验证召回证据，而不是只观察最终回答是否流畅。
 
 ## 全流程总览
 
 ```mermaid
 flowchart LR
+    subgraph 交付准备
+        A0[代表性样本] --> A1[解析质量与成本评估]
+        A1 --> A2[确定 Pipeline 配置]
+    end
+
     subgraph 入库阶段
-        A[文档上传] --> B[解析]
-        B --> C[切块]
+        A2 --> A[文档上传]
+        A --> B[场景化解析]
+        B --> B1[规则治理与人工校验]
+        B1 --> C[业务切块]
         C --> D[Embedding]
         D --> E[向量索引]
         C --> F[BM25 索引]
@@ -41,6 +55,15 @@ flowchart LR
         Q --> R[LLM 生成]
         R --> S[流式输出 + 引用]
     end
+
+    subgraph 质量闭环
+        C --> T[切块边界检查]
+        P --> U[检索与重排 Trace]
+        S --> V[引用与答案评测]
+        T --> W[Golden 发布门禁]
+        U --> W
+        V --> W
+    end
 ```
 
 ## 入库阶段详解
@@ -61,11 +84,11 @@ sequenceDiagram
     API-->>Client: document_id
 
     Parser->>Store: 读取文件
-    Parser->>Parser: 解析为结构化文本
+    Parser->>Parser: 按 dataset 配置解析为结构化内容
     Parser->>DB: 更新状态 (parsing)
 
     Pipeline->>DB: 读取解析结果
-    Pipeline->>Pipeline: 切块 + 清洗
+    Pipeline->>Pipeline: 规则治理 + 业务切块
     Pipeline->>Pipeline: Embedding (BAAI/bge-m3 等)
     Pipeline->>VecDB: 写入向量索引
     Pipeline->>DB: 写入切块记录 + 更新状态 (completed)
@@ -75,9 +98,11 @@ sequenceDiagram
 
 | 阶段 | 组件 | 输入 | 输出 |
 |------|------|------|------|
+| 评估 | Parser Benchmark + 人工复核 | 代表性样本 | 数据画像 + 解析基线 + 成本估算 |
 | 上传 | API Server | 原始文件 | document_id + 对象存储路径 |
 | 解析 | Parser Service | 原始文件 | 结构化文本 + 元数据 |
-| 切块 | Pipeline Worker | 结构化文本 | 文本片段列表 |
+| 治理 | Pipeline Worker + 可选人工复核 | 解析结果 + 规则 / DSL | 规范化内容 + metadata |
+| 切块 | Pipeline Worker | 治理后内容 | 带 provenance 的业务片段 |
 | Embedding | Pipeline Worker | 文本片段 | 向量表示 |
 | 索引 | Milvus + PostgreSQL | 向量 + 文本 | 可检索的索引 |
 
@@ -147,7 +172,9 @@ sequenceDiagram
 
 | 参数 | 影响阶段 | 说明 |
 |------|----------|------|
-| `chunk_size` | 切块 | 片段大小，影响检索粒度 |
+| `parser_backend` | 解析 | 按 dataset / 文档选择解析器 |
+| `chunk_strategy` | 切块 | 选择标题、父子、语义或其他业务适配策略 |
+| `chunk_size` | 切块 | 策略允许时的长度上限，不应作为所有文档的统一边界 |
 | `embedding_model` | Embedding | 向量模型选择 |
 | `top_k` | 检索 | 各路召回数量 |
 | `rerank_model` | 重排序 | 重排模型选择 |

@@ -2,9 +2,10 @@
 
 <img src="./images/logo.png" alt="MimirQ: an inspectable, regression-testable, governable open-source RAG knowledge base" width="100%"/>
 
-<p><b>Full-stack open-source, Chinese-first enterprise RAG knowledge base</b><br/>Covers parsing, chunking, retrieval, generation, and citations with inspection, debugging, and regression controls across the pipeline.</p>
+<p><b>Full-stack, open-source, Chinese-first enterprise RAG knowledge base</b><br/>Turns parsing, governance, chunking, retrieval, reranking, and citations into an inspectable, replaceable, regression-tested knowledge pipeline.</p>
 
 <p>
+  <a href="#why-mimirq"><b>Why MimirQ</b></a> ·
   <a href="#product-screenshots"><b>Screenshots</b></a> ·
   <a href="#quick-start"><b>Quick Start</b></a> ·
   <a href="#dify-integration"><b>Dify Integration</b></a> ·
@@ -31,42 +32,29 @@
 
 ---
 
-## Project Overview
+## Why MimirQ
 
-**MimirQ** (named after **Mímir**, the Norse guardian of the Well of Wisdom) is a RAG knowledge-base Q&A platform focused on **full-chain observability**. Frontend and backend are both open source, and it deploys via Docker Compose or Helm.
+**The hard part of an enterprise knowledge base is not embedding documents. It is locating failures, replacing strategies, and proving quality did not regress.**
+
+MimirQ began with a real government knowledge-base delivery. When an answer was wrong, the team needed to determine whether parsing lost a table, governance missed a rule, chunking broke the meaning, retrieval missed the evidence, reranking misplaced it, or generation departed from its citations. Hiding that path behind an “upload and chat” button makes prototypes fast, but long-term delivery difficult to estimate, validate, and govern.
+
+> **A controllable enterprise knowledge pipeline**
+>
+> `Assess data` → `Select parsers` → `Govern content` → `Chunk by domain`<br/>→ `Vector / full-text index` → `Hybrid retrieval` → `Rerank and cite` → `Golden regression`
+
+A real project starts with representative samples: measure scanned pages, images, tables, formulas, and layout complexity; validate parser quality; and estimate compute and review costs. Complex layouts and scans can start with [MinerU](https://opendatalab.github.io/MinerU/) or [DeepDoc](https://github.com/infiniflow/ragflow/tree/main/deepdoc), formula-, table-, or layout-heavy material should include [Docling](https://docling-project.github.io/docling/) in the evaluation, and digitally born Office or plain-text files can begin with a lighter path such as [MarkItDown](https://github.com/microsoft/markitdown). High-risk corpora still require human review.
+
+After scripts, rule DSLs, or plugins govern the parsed output, content is chunked by headings, sections, business records, or parent-child structure instead of one fixed length and overlap window. The index can combine Milvus or another vector store with BM25, vector retrieval, and reranking. The application above it can be Dify, LangGraph, PydanticAI, or a small API service.
+
+MimirQ does not try to replace every platform:
+
+- **For simple, stable, low-code applications**, Dify or RAGFlow is usually the faster path.
+- **For an integrated DeepDoc and GraphRAG experience**, RAGFlow is a mature choice.
+- **When the knowledge path must be replaceable, auditable, and regression-tested**, MimirQ keeps that capability independent from the chat application and can serve as Dify's external knowledge layer.
+
+The repository currently covers 30 parsing backends, 86 chunking strategies, 13 reranker families, and a fixed 800-question evaluation trail. Those counts show breadth; the product goal is to inspect every stage, trace citations and versions, and protect releases with Golden sets. See the [enterprise knowledge-pipeline design principles](./docs/guides/rag_platform_design_principles.md).
 
 > Latest stable release: v1.0.0. See the [release notes](./docs/releases/v1.0.0.md) and [release index](./docs/releases/README.md).
-
-<table>
-  <tr>
-    <td align="center" width="25%"><strong>30</strong><br/><sub>parsing backends</sub></td>
-    <td align="center" width="25%"><strong>86</strong><br/><sub>chunking strategies</sub></td>
-    <td align="center" width="25%"><strong>13</strong><br/><sub>rerankers</sub></td>
-    <td align="center" width="25%"><strong>800</strong><br/><sub>fixed-set eval</sub></td>
-  </tr>
-</table>
-
-<table>
-  <tr>
-    <td width="50%"><strong>Observable</strong><br/><sub>parsed output, chunk boundaries, retrieval and rerank steps</sub></td>
-    <td width="50%"><strong>Traceable</strong><br/><sub>sentence-level citations, versions, evidence, and full trace</sub></td>
-  </tr>
-  <tr>
-    <td><strong>Governed</strong><br/><sub>document ACL, RBAC, redaction, audit, and safety rails</sub></td>
-    <td><strong>Regression-tested</strong><br/><sub>golden sets, evaluation dashboard, and release gates</sub></td>
-  </tr>
-</table>
-
-<details>
-<summary><b>Project background</b></summary>
-
-MimirQ began with a concrete government-service Q&A project: the system could already answer questions, but when an answer was wrong it was hard to tell whether the root cause was in parsing, chunking, retrieval, reranking, or generation. Government knowledge also carries multi-region versions, policy updates, scanned pages, and tables — and a fluent answer grounded in an obsolete policy is more dangerous than an explicit "I don't know."
-
-Existing platforms are strong at workflows or agents, but the parsing, indexing, retrieval, citation, and evaluation needed to diagnose RAG are usually scattered across separate components. MimirQ does not build yet another general-purpose node canvas; it focuses on an inspectable RAG path.
-
-> **MimirQ makes RAG results explainable, traceable, and verifiable.**
-
-</details>
 
 ---
 
