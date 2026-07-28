@@ -55,6 +55,27 @@ def test_self_hosted_python_jobs_allow_a_cold_cache_fill() -> None:
         assert re.search(pattern, workflow), job_name
 
 
+def test_ci_seed_entrypoints_bootstrap_the_repository_before_app_imports() -> None:
+    for relative_path in (
+        "scripts/seed_ci_retrieval_regression.py",
+        "scripts/seed_ci_kg_search_regression.py",
+    ):
+        script = _read(relative_path)
+        bootstrap = "sys.path.insert(0, str(REPO_ROOT))"
+        assert "REPO_ROOT = Path(__file__).resolve().parents[1]" in script
+        assert bootstrap in script
+        assert script.index(bootstrap) < script.index("import app.models._all")
+
+    workflow = _read(".github/workflows/ci.yml")
+    for step_name in (
+        "Seed CI retrieval fixture (DB + cases bundle)",
+        "Seed CI KG search fixture (DB + KG rows + cases bundle)",
+    ):
+        step = workflow.split(f"- name: {step_name}", 1)[1].split("\n      - name:", 1)[0]
+        assert "ENV: ci" in step
+        assert "AUTH_MODE: header" in step
+
+
 def test_public_pr_live_core_gate_launcher_contract() -> None:
     script = _read("scripts/run_ci_live_core_gate.sh")
 

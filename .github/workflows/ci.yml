@@ -1348,6 +1348,8 @@ jobs:
       - name: Seed CI retrieval fixture (DB + cases bundle)
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mimirq
+          ENV: ci
+          AUTH_MODE: header
         run: |
           mkdir -p artifacts
           python scripts/seed_ci_retrieval_regression.py \
@@ -1567,6 +1569,8 @@ jobs:
       - name: Seed CI KG search fixture (DB + KG rows + cases bundle)
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mimirq
+          ENV: ci
+          AUTH_MODE: header
         run: |
           mkdir -p artifacts
           python scripts/seed_ci_kg_search_regression.py \

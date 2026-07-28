@@ -11,12 +11,18 @@ It also exports a portable regression cases bundle (mimirq.regression_cases.v1) 
 imported via the existing regression-case import API.
 """
 
+# The script must make the repository importable before loading app modules.
+# ruff: noqa: E402
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 from uuid import UUID
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO_ROOT))
 
 import app.models._all  # noqa: F401
 from app.core.database import Base, SessionLocal, engine
