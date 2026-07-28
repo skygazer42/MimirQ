@@ -358,6 +358,57 @@ def test_multi_runtime_vector_search_wraps_each_shard_with_backend_budget_helper
     assert len(helper_calls) == 3
 
 
+def test_vector_runtime_shards_are_deterministic_for_equal_scores(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.rag.retriever import HybridRetriever
+
+    runtimes = [_runtime("space-b"), _runtime("space-a")]
+    shard_hits = {
+        "space-b": [
+            {
+                "chunk_id": "chunk-b",
+                "content": "beta",
+                "score": 0.9,
+                "metadata": {
+                    "document_id": "doc-b",
+                    "chunk_index": 0,
+                    "chunk_id": "chunk-b",
+                },
+            }
+        ],
+        "space-a": [
+            {
+                "chunk_id": "chunk-a",
+                "content": "alpha",
+                "score": 0.9,
+                "metadata": {
+                    "document_id": "doc-a",
+                    "chunk_index": 0,
+                    "chunk_id": "chunk-a",
+                },
+            }
+        ],
+    }
+
+    def search_shard(self, *, embedding_runtime, **_kwargs):  # noqa: ANN001, ANN003
+        return shard_hits[embedding_runtime.embedding_space_hash]
+
+    monkeypatch.setattr(HybridRetriever, "_search_dataset_scoped_vectors", search_shard)
+
+    results, failures = HybridRetriever()._search_vector_runtime_shards(
+        query="query",
+        top_k=2,
+        score_threshold=0.0,
+        document_ids=None,
+        tenant_id=uuid.uuid4(),
+        metadata_filter=None,
+        runtime_shards=[(runtime, (uuid.uuid4(),)) for runtime in runtimes],
+        vector_store=pytest.fail,
+    )
+
+    assert failures == []
+    assert [item["chunk_id"] for item in results] == ["chunk-a", "chunk-b"]
+
+
 def test_vector_runtime_shards_degrade_when_backend_budget_helper_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

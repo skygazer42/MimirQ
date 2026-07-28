@@ -38,22 +38,11 @@ import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import UUID
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from app.core.config import settings
-from app.core.database import SessionLocal
-from app.models.dataset import Dataset
-from app.models.tenant import Tenant
-from app.services.retention_jobs import (
-    run_audit_log_retention,
-    run_knowledge_asset_retention,
-    run_regression_run_retention,
-)
-from app.services.retention_policy import parse_retention_policy_from_metadata, run_dataset_retention_sweep
-from app.services.semantic_cache import run_semantic_cache_retention
 
 
 def _parse_uuid(value: str) -> UUID:
@@ -61,6 +50,33 @@ def _parse_uuid(value: str) -> UUID:
         return UUID(str(value))
     except Exception as exc:  # noqa: BLE001
         raise argparse.ArgumentTypeError("tenant-id must be a valid UUID") from exc
+
+
+def _load_runtime_dependencies() -> SimpleNamespace:
+    from app.core.config import settings
+    from app.core.database import SessionLocal
+    from app.models.dataset import Dataset
+    from app.models.tenant import Tenant
+    from app.services.retention_jobs import (
+        run_audit_log_retention,
+        run_knowledge_asset_retention,
+        run_regression_run_retention,
+    )
+    from app.services.retention_policy import parse_retention_policy_from_metadata, run_dataset_retention_sweep
+    from app.services.semantic_cache import run_semantic_cache_retention
+
+    return SimpleNamespace(
+        settings=settings,
+        SessionLocal=SessionLocal,
+        Dataset=Dataset,
+        Tenant=Tenant,
+        run_audit_log_retention=run_audit_log_retention,
+        run_knowledge_asset_retention=run_knowledge_asset_retention,
+        run_regression_run_retention=run_regression_run_retention,
+        parse_retention_policy_from_metadata=parse_retention_policy_from_metadata,
+        run_dataset_retention_sweep=run_dataset_retention_sweep,
+        run_semantic_cache_retention=run_semantic_cache_retention,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -112,6 +128,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
+    deps = _load_runtime_dependencies()
     dry_run = True
     if bool(args.execute):
         dry_run = False
@@ -119,9 +136,9 @@ def main(argv: list[str] | None = None) -> int:
     # Default tenant: allow running in single-tenant setups without passing args.
     tenant_ids: list[UUID] = []
     if bool(args.all_tenants):
-        db = SessionLocal()
+        db = deps.SessionLocal()
         try:
-            rows = db.query(Tenant.id).all()
+            rows = db.query(deps.Tenant.id).all()
             for row in rows:
                 candidate = getattr(row, "id", None)
                 if candidate is None:
@@ -136,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.tenant_id is not None:
         tenant_ids = [args.tenant_id]
     else:
-        tenant_ids = [UUID(str(settings.DEFAULT_TENANT_ID))]
+        tenant_ids = [UUID(str(deps.settings.DEFAULT_TENANT_ID))]
 
     ran_at = datetime.now(UTC)
     results: list[dict] = []
@@ -144,7 +161,7 @@ def main(argv: list[str] | None = None) -> int:
     for tid in tenant_ids:
         if bool(args.semantic_cache):
             results.append(
-                run_semantic_cache_retention(
+                deps.run_semantic_cache_retention(
                     tenant_id=tid,
                     dry_run=bool(dry_run),
                     max_delete=int(args.max_delete or 0),
@@ -155,10 +172,10 @@ def main(argv: list[str] | None = None) -> int:
         if not (bool(args.audit_logs) or bool(args.regression_runs) or bool(args.knowledge_assets) or bool(args.dataset_retention)):
             continue
 
-        db = SessionLocal()
+        db = deps.SessionLocal()
         try:
             if bool(args.audit_logs):
-                res = run_audit_log_retention(
+                res = deps.run_audit_log_retention(
                     db,
                     tenant_id=tid,
                     retention_days=int(args.retention_days or 0),
@@ -169,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 results.append(res)
             if bool(args.regression_runs):
-                res = run_regression_run_retention(
+                res = deps.run_regression_run_retention(
                     db,
                     tenant_id=tid,
                     retention_days=int(args.retention_days or 0),
@@ -181,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
                 results.append(res)
             if bool(args.knowledge_assets):
                 res = asyncio.run(
-                    run_knowledge_asset_retention(
+                    deps.run_knowledge_asset_retention(
                         db,
                         tenant_id=tid,
                         retention_days=int(args.retention_days or 0),
@@ -195,18 +212,18 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 results.append(res)
             if bool(args.dataset_retention):
-                ds_query = db.query(Dataset.id, Dataset.dataset_metadata).filter(Dataset.tenant_id == tid)
+                ds_query = db.query(deps.Dataset.id, deps.Dataset.dataset_metadata).filter(deps.Dataset.tenant_id == tid)
                 if args.dataset_id is not None:
-                    ds_query = ds_query.filter(Dataset.id == args.dataset_id)
-                ds_rows = ds_query.order_by(Dataset.created_at.asc()).all()
+                    ds_query = ds_query.filter(deps.Dataset.id == args.dataset_id)
+                ds_rows = ds_query.order_by(deps.Dataset.created_at.asc()).all()
 
                 for dsid, meta in ds_rows:
                     meta_dict = meta if isinstance(meta, dict) else {}
-                    policy = parse_retention_policy_from_metadata(meta_dict)
+                    policy = deps.parse_retention_policy_from_metadata(meta_dict)
                     if policy is None or not bool(getattr(policy, "enabled", False)):
                         continue
                     res = asyncio.run(
-                        run_dataset_retention_sweep(
+                        deps.run_dataset_retention_sweep(
                             db,
                             tenant_id=tid,
                             dataset_id=dsid,

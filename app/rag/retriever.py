@@ -528,10 +528,7 @@ class HybridRetriever(
 
         shard_results = [hit for hits, _failure in outcomes for hit in hits]
         failures = [failure for _hits, failure in outcomes if failure is not None]
-        return (
-            heapq.nlargest(top_k, shard_results, key=lambda item: float(item.get("score") or 0.0)),
-            failures,
-        )
+        return (self._top_scored_results(shard_results, top_k), failures)
 
     @staticmethod
     def _normalize_partition_keys(value: Any, *, max_items: int = 8) -> list[str]:
@@ -1099,11 +1096,17 @@ class HybridRetriever(
             return False
         return not (metadata_filter and metadata_filter_enabled and not matcher(metadata, metadata_filter))
 
-    @staticmethod
-    def _top_scored_results(results: list[dict[str, Any]], top_k: int) -> list[dict[str, Any]]:
+    def _top_scored_results(self, results: list[dict[str, Any]], top_k: int) -> list[dict[str, Any]]:
         if not results:
             return []
-        return heapq.nlargest(max(0, int(top_k or 0)), results, key=lambda x: float(x.get("score", 0.0) or 0.0))
+        return heapq.nsmallest(
+            max(0, int(top_k or 0)),
+            results,
+            key=lambda item: (
+                -_float_or_default(item.get("score"), 0.0),
+                self._result_key(item),
+            ),
+        )
 
     def _hybrid_search(
         self,

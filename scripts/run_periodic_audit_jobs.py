@@ -33,16 +33,6 @@ from uuid import UUID
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.core.config import settings
-from app.core.database import SessionLocal
-from app.models.tenant import Tenant
-from app.services.periodic_audit_jobs import (
-    run_daily_access_review_summary,
-    run_daily_embedding_drift_report,
-    run_daily_evidence_drift_audit_report,
-    run_daily_index_audit_report,
-)
-
 
 def _parse_uuid(value: str) -> UUID:
     try:
@@ -98,6 +88,16 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+
+    from app.core.config import settings
+    from app.core.database import SessionLocal
+    from app.models.tenant import Tenant
+    from app.services.periodic_audit_jobs import (
+        run_daily_access_review_summary,
+        run_daily_embedding_drift_report,
+        run_daily_evidence_drift_audit_report,
+        run_daily_index_audit_report,
+    )
 
     execute = bool(args.execute)
     if not bool(args.dry_run) and not bool(args.execute):

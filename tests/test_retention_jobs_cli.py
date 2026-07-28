@@ -7,17 +7,32 @@ import pytest
 import scripts.run_retention_jobs as cli
 
 
+@pytest.fixture
+def runtime_deps(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
+    deps = SimpleNamespace(
+        settings=SimpleNamespace(DEFAULT_TENANT_ID=str(uuid.UUID(int=0))),
+        SessionLocal=None,
+        Dataset=None,
+        Tenant=SimpleNamespace(id=object()),
+        run_audit_log_retention=None,
+        run_knowledge_asset_retention=None,
+        run_regression_run_retention=None,
+        parse_retention_policy_from_metadata=None,
+        run_dataset_retention_sweep=None,
+        run_semantic_cache_retention=None,
+    )
+    monkeypatch.setattr(cli, "_load_runtime_dependencies", lambda: deps)
+    return deps
+
+
 def test_retention_jobs_cli_runs_semantic_cache_dry_run(
-    monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    runtime_deps: SimpleNamespace,
 ) -> None:
     tenant_id = uuid.uuid4()
     calls: list[dict[str, object]] = []
-    monkeypatch.setattr(
-        cli,
-        "run_semantic_cache_retention",
-        lambda **kwargs: calls.append(kwargs) or {"job": "semantic-cache", "deleted": 0, "eligible": 3, "failed": False},
-        raising=True,
+    runtime_deps.run_semantic_cache_retention = (
+        lambda **kwargs: calls.append(kwargs) or {"job": "semantic-cache", "deleted": 0, "eligible": 3, "failed": False}
     )
 
     rc = cli.main(
@@ -41,17 +56,14 @@ def test_retention_jobs_cli_runs_semantic_cache_dry_run(
 
 
 def test_retention_jobs_cli_runs_semantic_cache_execute_for_default_tenant(
-    monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    runtime_deps: SimpleNamespace,
 ) -> None:
     default_tenant = uuid.uuid4()
     calls: list[dict[str, object]] = []
-    monkeypatch.setattr(cli.settings, "DEFAULT_TENANT_ID", str(default_tenant), raising=False)
-    monkeypatch.setattr(
-        cli,
-        "run_semantic_cache_retention",
-        lambda **kwargs: calls.append(kwargs) or {"job": "semantic-cache", "deleted": 2, "eligible": 2, "failed": False},
-        raising=True,
+    runtime_deps.settings.DEFAULT_TENANT_ID = str(default_tenant)
+    runtime_deps.run_semantic_cache_retention = (
+        lambda **kwargs: calls.append(kwargs) or {"job": "semantic-cache", "deleted": 2, "eligible": 2, "failed": False}
     )
 
     rc = cli.main(["--semantic-cache", "--execute", "--max-delete", "9", "--max-scan", "15"])
@@ -63,15 +75,16 @@ def test_retention_jobs_cli_runs_semantic_cache_execute_for_default_tenant(
 
 
 def test_retention_jobs_cli_returns_nonzero_on_semantic_cache_failure(
-    monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    runtime_deps: SimpleNamespace,
 ) -> None:
-    monkeypatch.setattr(
-        cli,
-        "run_semantic_cache_retention",
-        lambda **_kwargs: {"job": "semantic-cache", "deleted": 0, "eligible": 0, "failed": True, "errors": ["query failed"]},
-        raising=True,
-    )
+    runtime_deps.run_semantic_cache_retention = lambda **_kwargs: {
+        "job": "semantic-cache",
+        "deleted": 0,
+        "eligible": 0,
+        "failed": True,
+        "errors": ["query failed"],
+    }
 
     rc = cli.main(["--semantic-cache", "--execute"])
 
@@ -82,8 +95,8 @@ def test_retention_jobs_cli_returns_nonzero_on_semantic_cache_failure(
 
 
 def test_retention_jobs_cli_runs_semantic_cache_for_all_tenants(
-    monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    runtime_deps: SimpleNamespace,
 ) -> None:
     tenant_ids = [uuid.uuid4(), uuid.uuid4()]
     calls: list[dict[str, object]] = []
@@ -103,14 +116,10 @@ def test_retention_jobs_cli_runs_semantic_cache_for_all_tenants(
         def close(self) -> None:
             return None
 
-    monkeypatch.setattr(cli, "SessionLocal", lambda: _FakeSession(), raising=True)
-    monkeypatch.setattr(cli, "Tenant", SimpleNamespace(id=object()), raising=True)
-    monkeypatch.setattr(
-        cli,
-        "run_semantic_cache_retention",
+    runtime_deps.SessionLocal = lambda: _FakeSession()
+    runtime_deps.run_semantic_cache_retention = (
         lambda **kwargs: calls.append(kwargs)
-        or {"job": "semantic-cache", "tenant_id": str(kwargs["tenant_id"]), "deleted": 1, "eligible": 1, "failed": False},
-        raising=True,
+        or {"job": "semantic-cache", "tenant_id": str(kwargs["tenant_id"]), "deleted": 1, "eligible": 1, "failed": False}
     )
 
     rc = cli.main(["--semantic-cache", "--all-tenants", "--execute", "--max-delete", "5", "--max-scan", "12"])
@@ -122,3 +131,120 @@ def test_retention_jobs_cli_runs_semantic_cache_for_all_tenants(
     ]
     body = json.loads(capsys.readouterr().out)
     assert [item["tenant_id"] for item in body["results"]] == [str(tenant_id) for tenant_id in tenant_ids]
+
+
+def test_retention_jobs_cli_runs_db_backed_audit_retention(
+    capsys: pytest.CaptureFixture[str],
+    runtime_deps: SimpleNamespace,
+) -> None:
+    tenant_id = uuid.uuid4()
+    calls: list[tuple[object, dict[str, object]]] = []
+
+    class _FakeSession:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    session = _FakeSession()
+    runtime_deps.SessionLocal = lambda: session
+    runtime_deps.run_audit_log_retention = (
+        lambda db, **kwargs: calls.append((db, kwargs))
+        or {"job": "audit-log-retention", "deleted": 0, "eligible": 2, "failed": False}
+    )
+
+    rc = cli.main(
+        [
+            "--audit-logs",
+            "--dry-run",
+            "--tenant-id",
+            str(tenant_id),
+            "--retention-days",
+            "30",
+            "--max-delete",
+            "7",
+        ]
+    )
+
+    assert rc == 0
+    assert len(calls) == 1
+    assert calls[0][0] is session
+    assert calls[0][1]["tenant_id"] == tenant_id
+    assert calls[0][1]["retention_days"] == 30
+    assert calls[0][1]["max_delete"] == 7
+    assert calls[0][1]["dry_run"] is True
+    assert session.closed is True
+    assert json.loads(capsys.readouterr().out)["ok"] is True
+
+
+def test_retention_jobs_cli_runs_dataset_retention(
+    capsys: pytest.CaptureFixture[str],
+    runtime_deps: SimpleNamespace,
+) -> None:
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    policy = SimpleNamespace(enabled=True)
+    calls: list[dict[str, object]] = []
+
+    class _Column:
+        def __eq__(self, _other: object) -> "_Column":
+            return self
+
+        def asc(self) -> "_Column":
+            return self
+
+    class _DatasetQuery:
+        def filter(self, *_conditions: object) -> "_DatasetQuery":
+            return self
+
+        def order_by(self, *_columns: object) -> "_DatasetQuery":
+            return self
+
+        def all(self) -> list[tuple[uuid.UUID, dict[str, object]]]:
+            return [(dataset_id, {"retention": {"enabled": True}})]
+
+    class _FakeSession:
+        closed = False
+
+        def query(self, *_columns: object) -> _DatasetQuery:
+            return _DatasetQuery()
+
+        def close(self) -> None:
+            self.closed = True
+
+    async def _run_dataset_retention_sweep(_db: object, **kwargs: object) -> dict[str, object]:
+        calls.append(kwargs)
+        return {"job": "dataset-retention", "deleted": 0, "eligible": 1, "failed": False}
+
+    session = _FakeSession()
+    column = _Column()
+    runtime_deps.SessionLocal = lambda: session
+    runtime_deps.Dataset = SimpleNamespace(id=column, dataset_metadata=column, tenant_id=column, created_at=column)
+    runtime_deps.parse_retention_policy_from_metadata = lambda _metadata: policy
+    runtime_deps.run_dataset_retention_sweep = _run_dataset_retention_sweep
+
+    rc = cli.main(
+        [
+            "--dataset-retention",
+            "--dry-run",
+            "--tenant-id",
+            str(tenant_id),
+            "--dataset-id",
+            str(dataset_id),
+            "--max-documents",
+            "17",
+            "--max-versions-pruned",
+            "3",
+        ]
+    )
+
+    assert rc == 0
+    assert len(calls) == 1
+    assert calls[0]["tenant_id"] == tenant_id
+    assert calls[0]["dataset_id"] == dataset_id
+    assert calls[0]["policy"] is policy
+    assert calls[0]["max_documents"] == 17
+    assert calls[0]["max_versions_pruned"] == 3
+    assert calls[0]["dry_run"] is True
+    assert session.closed is True
+    assert json.loads(capsys.readouterr().out)["ok"] is True

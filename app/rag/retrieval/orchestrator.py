@@ -52,6 +52,7 @@ from app.rag.core.text import (
     parse_json_from_text,
     should_rewrite_query,
 )
+from app.rag.engine_support.doc_utils import DocUtilsMixin
 from app.rag.industry_rules.runtime import apply_industry_rules_query_expansion
 from app.rag.policy.intent_router import route_adaptive_retrieval_overrides, route_intent, route_retrieval_preset
 from app.rag.policy.must_recall import (
@@ -526,7 +527,7 @@ def _invoke_decomposition_chain(
 
 def _decompose_query(
     query_for_retrieval: str,
-    engine: Any,
+    engine: Any | None,
     *,
     enabled: bool | None = None,
 ) -> tuple[list[str], float, str | None, dict[str, Any]]:
@@ -538,6 +539,9 @@ def _decompose_query(
     if heuristic_enabled and not llm_api_key:
         sub_questions, parse_meta = _heuristic_decompose(query_for_retrieval, max_questions=dq_n)
         return sub_questions, 0.0, None, parse_meta
+
+    if engine is None:
+        engine = get_rag_engine()
 
     sub_questions, elapsed, model_used, parse_meta = _invoke_decomposition_chain(
         query_for_retrieval,
@@ -670,7 +674,13 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             "retrieval_trace": retrieval_trace,
         }
 
-    engine = get_rag_engine()
+    engine: Any | None = None
+
+    def _llm_engine() -> Any:
+        nonlocal engine
+        if engine is None:
+            engine = get_rag_engine()
+        return engine
 
     query_for_retrieval = question
     rewrite_elapsed = 0.0
@@ -732,7 +742,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         and len(question) <= int(rewrite_max_chars or 0)
         and should_rewrite_query(question)
     ):
-        rewrite_llm = engine.models.get("fast") or engine.models.get("default")  # type: ignore[attr-defined]
+        rewrite_engine = _llm_engine()
+        rewrite_llm = rewrite_engine.models.get("fast") or rewrite_engine.models.get("default")  # type: ignore[attr-defined]
         rewrite_model_used = getattr(rewrite_llm, "model_name", None) or getattr(rewrite_llm, "model", None)
         try:
             chat_prompt_template_cls, str_output_parser_cls = _get_langchain_text_pipeline_primitives()
@@ -1502,12 +1513,13 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     mq_max_chars = max(0, int(mq_max_chars or 0))
 
     if mq_enabled and mq_n > 0 and mq_max_chars > 0 and len(query_for_retrieval) <= mq_max_chars:
-        mq_llm = engine.models.get("fast") or engine.models.get("default")  # type: ignore[attr-defined]
+        mq_engine = _llm_engine()
+        mq_llm = mq_engine.models.get("fast") or mq_engine.models.get("default")  # type: ignore[attr-defined]
         multi_query_model_used = getattr(mq_llm, "model_name", None) or getattr(mq_llm, "model", None)
         try:
             _, str_output_parser_cls = _get_langchain_text_pipeline_primitives()
             mq_chain = (
-                engine.multi_query_prompt  # type: ignore[attr-defined]
+                mq_engine.multi_query_prompt  # type: ignore[attr-defined]
                 | mq_llm.bind(temperature=mq_temp)
                 | str_output_parser_cls()
             )
@@ -1550,12 +1562,13 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     retrieval_mode_norm = str(request_retrieval_mode or "hybrid").lower()
     hyde_enabled = bool(settings.ENABLE_HYDE) if state.get("enable_hyde") is None else bool(state.get("enable_hyde"))
     if hyde_enabled and retrieval_mode_norm not in ("keyword",) and hyde_max_chars > 0 and len(query_for_retrieval) <= hyde_max_chars:
-        hyde_llm = engine.models.get("fast") or engine.models.get("default")  # type: ignore[attr-defined]
+        hyde_engine = _llm_engine()
+        hyde_llm = hyde_engine.models.get("fast") or hyde_engine.models.get("default")  # type: ignore[attr-defined]
         hyde_model_used = getattr(hyde_llm, "model_name", None) or getattr(hyde_llm, "model", None)
         try:
             _, str_output_parser_cls = _get_langchain_text_pipeline_primitives()
             hyde_chain = (
-                engine.hyde_prompt  # type: ignore[attr-defined]
+                hyde_engine.hyde_prompt  # type: ignore[attr-defined]
                 | hyde_llm.bind(temperature=settings.HYDE_TEMPERATURE)
                 | str_output_parser_cls()
             )
@@ -1583,12 +1596,13 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     step_back_temp = min(2.0, max(0.0, float(getattr(settings, "STEP_BACK_TEMPERATURE", 0.2) or 0.0)))
     step_back_output_max = max(0, int(getattr(settings, "STEP_BACK_OUTPUT_MAX_CHARS", 0) or 0))
     if step_back_enabled and step_back_max_chars > 0 and len(query_for_retrieval) <= step_back_max_chars:
-        sb_llm = engine.models.get("fast") or engine.models.get("default")  # type: ignore[attr-defined]
+        step_back_engine = _llm_engine()
+        sb_llm = step_back_engine.models.get("fast") or step_back_engine.models.get("default")  # type: ignore[attr-defined]
         step_back_model_used = getattr(sb_llm, "model_name", None) or getattr(sb_llm, "model", None)
         try:
             _, str_output_parser_cls = _get_langchain_text_pipeline_primitives()
             sb_chain = (
-                engine.step_back_prompt  # type: ignore[attr-defined]
+                step_back_engine.step_back_prompt  # type: ignore[attr-defined]
                 | sb_llm.bind(temperature=step_back_temp)
                 | str_output_parser_cls()
             )
@@ -1701,7 +1715,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         t0 = time.time()
         try:
             docs_i = r.invoke(q)
-            docs_i = engine._annotate_docs_with_role(docs_i or [], kind)  # type: ignore[attr-defined]
+            docs_i = DocUtilsMixin._annotate_docs_with_role(docs_i or [], kind)
             dbg = getattr(r, "_last_debug_metrics", None)
             dbg = _sanitize_retriever_debug(dbg if isinstance(dbg, dict) else None)
             if bool(hierarchy_recall_enabled) and docs_i:
@@ -1839,7 +1853,11 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     if len(docs_by_query) <= 1:
         docs = docs_by_query[0] if docs_by_query else []
     else:
-        docs_fused_all = engine.fuse_docs_rrf(docs_by_query, rrf_k=settings.RETRIEVAL_RRF_K, meta_prefix="query_expansion")  # type: ignore[attr-defined]
+        docs_fused_all = DocUtilsMixin.fuse_docs_rrf(
+            docs_by_query,
+            rrf_k=settings.RETRIEVAL_RRF_K,
+            meta_prefix="query_expansion",
+        )
         docs_refill_pool = docs_fused_all
         if family_aggregation_enabled:
             try:
@@ -1863,12 +1881,20 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             if mq_lists and non_mq_lists:
                 mq_diversify_used = True
                 docs_non_mq = (
-                    engine.fuse_docs_rrf(non_mq_lists, rrf_k=settings.RETRIEVAL_RRF_K, meta_prefix="query_expansion")  # type: ignore[attr-defined]
+                    DocUtilsMixin.fuse_docs_rrf(
+                        non_mq_lists,
+                        rrf_k=settings.RETRIEVAL_RRF_K,
+                        meta_prefix="query_expansion",
+                    )
                     if len(non_mq_lists) > 1
                     else (non_mq_lists[0] or [])
                 )
                 docs_mq = (
-                    engine.fuse_docs_rrf(mq_lists, rrf_k=settings.RETRIEVAL_RRF_K, meta_prefix="query_expansion")  # type: ignore[attr-defined]
+                    DocUtilsMixin.fuse_docs_rrf(
+                        mq_lists,
+                        rrf_k=settings.RETRIEVAL_RRF_K,
+                        meta_prefix="query_expansion",
+                    )
                     if len(mq_lists) > 1
                     else (mq_lists[0] or [])
                 )
@@ -1894,7 +1920,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 selected_keys: set[str] = set()
 
                 for d in docs_non_mq:
-                    k = engine._doc_key(d)  # type: ignore[attr-defined]
+                    k = DocUtilsMixin._doc_key(d)
                     if k in selected_keys:
                         continue
                     selected_keys.add(k)
@@ -1907,7 +1933,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 for d in docs_mq:
                     if mq_added >= want_mq:
                         break
-                    k = engine._doc_key(d)  # type: ignore[attr-defined]
+                    k = DocUtilsMixin._doc_key(d)
                     if k in selected_keys:
                         continue
                     selected_keys.add(k)
@@ -1919,7 +1945,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 for d in docs_fused_all:
                     if len(selected) >= int(top_k):
                         break
-                    k = engine._doc_key(d)  # type: ignore[attr-defined]
+                    k = DocUtilsMixin._doc_key(d)
                     if k in selected_keys:
                         continue
                     selected_keys.add(k)
@@ -3113,7 +3139,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 )
                 contextual_retriever = hybrid_retriever.model_copy(update=contextual_update)
                 cf_docs = contextual_retriever.invoke(q2) or []
-                cf_docs = engine._annotate_docs_with_role(cf_docs, "contextual_followup")  # type: ignore[attr-defined]
+                cf_docs = DocUtilsMixin._annotate_docs_with_role(cf_docs, "contextual_followup")
                 dbg = getattr(contextual_retriever, "_last_debug_metrics", None)
                 contextual_followup_retriever_debug = _sanitize_retriever_debug(
                     dbg if isinstance(dbg, dict) else None
@@ -3240,7 +3266,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             )
             fallback_retriever = hybrid_retriever.model_copy(update=fallback_update)
             fb_docs = fallback_retriever.invoke(query_for_retrieval) or []
-            fb_docs = engine._annotate_docs_with_role(fb_docs, "hard_fallback")  # type: ignore[attr-defined]
+            fb_docs = DocUtilsMixin._annotate_docs_with_role(fb_docs, "hard_fallback")
             dbg = getattr(fallback_retriever, "_last_debug_metrics", None)
             hard_fallback_retriever_debug = _sanitize_retriever_debug(dbg if isinstance(dbg, dict) else None)
         except Exception as exc:  # noqa: BLE001
@@ -3378,7 +3404,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             )
             second_pass_retriever = hybrid_retriever.model_copy(update=second_pass_update)
             fb_docs = second_pass_retriever.invoke(query_for_retrieval) or []
-            fb_docs = engine._annotate_docs_with_role(fb_docs, "must_recall_second_pass")  # type: ignore[attr-defined]
+            fb_docs = DocUtilsMixin._annotate_docs_with_role(fb_docs, "must_recall_second_pass")
         except Exception as exc:  # noqa: BLE001
             _log_orchestrator_fallback('run_retrieval', exc)
             fb_docs = []

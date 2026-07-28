@@ -52,6 +52,7 @@ def test_orchestrator_emits_stable_retrieval_trace_schema(monkeypatch: pytest.Mo
     monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_HYDE", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_STEP_BACK_QUERY", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_QUERY_DECOMPOSITION", False, raising=False)
     monkeypatch.setattr(settings, "RETRIEVAL_QUERY_PARALLELISM", 1, raising=False)
 
@@ -91,6 +92,12 @@ def test_orchestrator_emits_stable_retrieval_trace_schema(monkeypatch: pytest.Mo
         ]
     )
     monkeypatch.setattr(orch_mod, "hybrid_retriever", retriever, raising=True)
+    monkeypatch.setattr(
+        orch_mod,
+        "get_rag_engine",
+        lambda: pytest.fail("retrieval-only paths must not initialize the LLM engine"),
+        raising=True,
+    )
 
     out = orch_mod.run_retrieval(
         {

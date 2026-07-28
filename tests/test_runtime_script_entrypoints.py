@@ -13,10 +13,15 @@ RUNTIME_SCRIPTS = (
     "run_periodic_audit_jobs.py",
     "run_retention_jobs.py",
 )
+LAZY_APP_IMPORT_SCRIPTS = (
+    "run_nightly_ablations.py",
+    "run_periodic_audit_jobs.py",
+    "run_retention_jobs.py",
+)
 
-
-def test_nightly_help_keeps_app_runtime_imports_lazy() -> None:
-    script = REPO_ROOT / "scripts" / "run_nightly_ablations.py"
+@pytest.mark.parametrize("script_name", LAZY_APP_IMPORT_SCRIPTS)
+def test_runtime_help_keeps_app_runtime_imports_lazy(script_name: str) -> None:
+    script = REPO_ROOT / "scripts" / script_name
     tree = ast.parse(script.read_text(encoding="utf-8"))
     eager_app_imports = [
         node.module
