@@ -40,6 +40,10 @@ from app.rag.core.http import httpx_trust_env
 from app.rag.core.logging import get_logger
 from app.rag.core.text import parse_json_from_text
 from app.rag.embedding import create_langchain_embeddings_from_config
+from app.rag.evaluation.evidence_retrieve_gate import (
+    build_retrieval_gate_summary,
+    compute_retrieval_item_meta,
+)
 from app.rag.evaluation.multimodal_slices import (
     classify_regression_case_multimodal_slice,
     summarize_multimodal_regression_slices,
@@ -728,23 +732,16 @@ def _build_retrieval_metrics_summary(metas: list[dict[str, Any]]) -> dict[str, A
             vals.append(1.0 if bool(v) else 0.0)
         return _mean(vals)
 
-    out = {
-        "retrieval_recall": _mean(m.get("retrieval_recall") for m in metas),
-        "retrieval_mrr": _mean(m.get("retrieval_mrr") for m in metas),
-        "retrieval_ndcg_at_10": _mean(m.get("retrieval_ndcg_at_10") for m in metas),
-        "retrieval_ndcg_at_20": _mean(m.get("retrieval_ndcg_at_20") for m in metas),
-        "retrieval_hit_at_1": _mean_bool("retrieval_hit_at_1"),
-        "retrieval_hit_at_3": _mean_bool("retrieval_hit_at_3"),
-        "retrieval_hit_at_5": _mean_bool("retrieval_hit_at_5"),
-        "retrieval_hit_at_10": _mean_bool("retrieval_hit_at_10"),
-        "retrieval_hit_at_20": _mean_bool("retrieval_hit_at_20"),
-        "retrieval_effective_context_rate": _mean(m.get("retrieval_effective_context_rate") for m in metas),
-        "retrieval_noise_rate": _mean(m.get("retrieval_noise_rate") for m in metas),
-        "multihop_path_completeness": _mean(m.get("multihop_path_completeness") for m in metas),
-        "multihop_order_consistency": _mean(m.get("multihop_order_consistency") for m in metas),
-        "multihop_chain_hit_rate": _mean_bool("multihop_chain_hit"),
-        "abstain_rate": _mean_bool("abstain_triggered"),
-    }
+    out = build_retrieval_gate_summary(metas)
+    out.update(
+        {
+            "retrieval_effective_context_rate": _mean(m.get("retrieval_effective_context_rate") for m in metas),
+            "retrieval_noise_rate": _mean(m.get("retrieval_noise_rate") for m in metas),
+            "multihop_path_completeness": _mean(m.get("multihop_path_completeness") for m in metas),
+            "multihop_order_consistency": _mean(m.get("multihop_order_consistency") for m in metas),
+            "multihop_chain_hit_rate": _mean_bool("multihop_chain_hit"),
+        }
+    )
     out.update(build_expected_metadata_metrics_summary(metas))
     return out
 
@@ -2275,6 +2272,13 @@ def run_regression_ragas_evaluation(
                 "top_relevance_score": meta.get("top_relevance_score") if isinstance(meta, dict) else None,
             }
             sample_kwargs, item_meta = build_regression_sample(case, eval_item)
+            if retrieval_only:
+                item_meta = compute_retrieval_item_meta(
+                    case=case,
+                    citations=citations,
+                    retrieval_metrics=meta,
+                    base_meta=item_meta,
+                )
             eval_item["sample_kwargs"] = sample_kwargs
             # Attach slice keys for report slicing (best-effort).
             merged_meta = dict(item_meta or {})

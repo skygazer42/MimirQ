@@ -57,6 +57,15 @@ def test_build_regression_item_meta_includes_ids_and_abstain_fields():
         "retrieval_hit_at_5": None,
         "retrieval_hit_at_10": None,
         "retrieval_hit_at_20": None,
+        "retrieval_doc_recall": None,
+        "retrieval_doc_hit": None,
+        "retrieval_family_recall": None,
+        "retrieval_family_hit": None,
+        "must_recall_passed": None,
+        "must_recall_status": None,
+        "evidence_capsule": None,
+        "provenance_integrity_passed": None,
+        "provenance_integrity_status": None,
         "faithfulness_det": None,
         "citation_accuracy": None,
         "citation_coverage": None,
@@ -95,3 +104,41 @@ def test_build_regression_item_meta_preserves_effective_context_metrics():
     assert meta["retrieval_noise_rate"] == 0.25
     assert meta["retrieval_effective_records"] == 3
     assert meta["retrieval_evaluated_records"] == 4
+
+
+def test_build_regression_item_meta_preserves_retrieval_audit_fields():
+    from app.rag.evaluation.regression_sample_builder import build_regression_item_meta
+
+    capsule = {
+        "schema": "mimirq.evidence_capsule.v1",
+        "capsule_hash": "capsule-123",
+        "citations": [{"citation_hash": "cit-1"}],
+    }
+    meta = build_regression_item_meta(
+        sample_kwargs={},
+        item_meta={
+            "retrieval_doc_recall": 1.0,
+            "retrieval_doc_hit": True,
+            "retrieval_family_recall": 1.0,
+            "retrieval_family_hit": True,
+            "must_recall_passed": True,
+            "must_recall_status": "passed",
+            "evidence_capsule": capsule,
+            "provenance_integrity_passed": True,
+            "provenance_integrity_status": "passed",
+            "parse_quality_alert": False,
+            "parse_risk_level": "low",
+        },
+    )
+
+    assert meta["retrieval_doc_recall"] == 1.0
+    assert meta["retrieval_doc_hit"] is True
+    assert meta["retrieval_family_recall"] == 1.0
+    assert meta["retrieval_family_hit"] is True
+    assert meta["must_recall_passed"] is True
+    assert meta["must_recall_status"] == "passed"
+    assert meta["evidence_capsule"] == capsule
+    assert meta["provenance_integrity_passed"] is True
+    assert meta["provenance_integrity_status"] == "passed"
+    assert meta["parse_quality_alert"] is False
+    assert meta["parse_risk_level"] == "low"

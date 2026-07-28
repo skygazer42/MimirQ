@@ -1024,6 +1024,15 @@ def build_regression_item_meta(*, sample_kwargs: dict[str, Any] | None, item_met
         "retrieval_hit_at_5": meta.get("retrieval_hit_at_5"),
         "retrieval_hit_at_10": meta.get("retrieval_hit_at_10"),
         "retrieval_hit_at_20": meta.get("retrieval_hit_at_20"),
+        "retrieval_doc_recall": meta.get("retrieval_doc_recall"),
+        "retrieval_doc_hit": meta.get("retrieval_doc_hit"),
+        "retrieval_family_recall": meta.get("retrieval_family_recall"),
+        "retrieval_family_hit": meta.get("retrieval_family_hit"),
+        "must_recall_passed": meta.get("must_recall_passed"),
+        "must_recall_status": meta.get("must_recall_status"),
+        "evidence_capsule": meta.get("evidence_capsule"),
+        "provenance_integrity_passed": meta.get("provenance_integrity_passed"),
+        "provenance_integrity_status": meta.get("provenance_integrity_status"),
         "citation_accuracy": meta.get("citation_accuracy"),
         "citation_coverage": meta.get("citation_coverage"),
         "citation_eval_limit": meta.get("citation_eval_limit"),
@@ -1050,6 +1059,16 @@ def build_regression_item_meta(*, sample_kwargs: dict[str, Any] | None, item_met
         "retrieval_noise_rate",
         "retrieval_effective_records",
         "retrieval_evaluated_records",
+    ):
+        if key in meta:
+            out[key] = meta.get(key)
+    for key in (
+        "parse_quality_alert",
+        "parse_quality_low_ratio",
+        "parse_risk_level",
+        "parse_risk_score",
+        "parse_quality_gate_profile",
+        "parse_quality_gate_blocked",
     ):
         if key in meta:
             out[key] = meta.get(key)

@@ -18,38 +18,132 @@ def _load_json(path: Path) -> dict[str, Any]:
     return obj
 
 
-def _compute_must_recall_pass_rate(run: dict[str, Any]) -> tuple[float | None, int, int]:
-    summary = run.get("summary") if isinstance(run.get("summary"), dict) else {}
-    raw = summary.get("must_recall_pass_rate")
-    if raw is not None:
-        try:
-            return float(raw), int(summary.get("must_recall_passed_cases") or 0), int(summary.get("total_cases") or 0)
-        except Exception:
-            pass
+def _run_summary(run: dict[str, Any]) -> dict[str, Any]:
+    if isinstance(run.get("summary"), dict):
+        return dict(run.get("summary") or {})
+    wrapped = run.get("run")
+    if isinstance(wrapped, dict) and isinstance(wrapped.get("summary"), dict):
+        return dict(wrapped.get("summary") or {})
+    return {}
 
+
+def _run_rows(run: dict[str, Any]) -> list[dict[str, Any]] | None:
     rows = run.get("items")
     if not isinstance(rows, list):
         rows = run.get("results")
+    if not isinstance(rows, list) and isinstance(run.get("run"), dict):
+        wrapped = run.get("run") or {}
+        rows = wrapped.get("items")
+        if not isinstance(rows, list):
+            rows = wrapped.get("results")
     if not isinstance(rows, list):
-        return None, 0, 0
+        return None
+    return [row for row in rows if isinstance(row, dict)]
 
-    total = 0
+
+def _row_metrics(row: dict[str, Any]) -> dict[str, Any]:
+    metrics = row.get("metrics")
+    return metrics if isinstance(metrics, dict) else {}
+
+
+def _row_meta(row: dict[str, Any]) -> dict[str, Any]:
+    meta = row.get("meta")
+    return meta if isinstance(meta, dict) else {}
+
+
+def _first_non_none(*values: Any) -> Any:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
+def _coerce_bool_flag(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and value in {0, 1}:
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes"}:
+            return True
+        if normalized in {"false", "0", "no"}:
+            return False
+    return None
+
+
+def _summary_case_total(summary: dict[str, Any], *keys: str) -> int:
+    for key in keys:
+        raw = summary.get(key)
+        try:
+            if raw is not None:
+                return int(raw)
+        except Exception:
+            continue
+    progress = summary.get("progress")
+    if isinstance(progress, dict):
+        try:
+            raw_total = progress.get("total_cases")
+            if raw_total is not None:
+                return int(raw_total)
+        except Exception:
+            pass
+    return 0
+
+
+def _summary_rate(
+    summary: dict[str, Any],
+    *,
+    rate_key: str,
+    passed_keys: tuple[str, ...],
+    total_keys: tuple[str, ...],
+) -> tuple[float | None, int, int]:
+    total = _summary_case_total(summary, *total_keys)
+    try:
+        rate = float(summary.get(rate_key))
+        passed_raw = _first_non_none(*(summary.get(key) for key in passed_keys))
+        passed = int(passed_raw if passed_raw is not None else 0)
+    except (TypeError, ValueError):
+        return None, 0, total
+    if total <= 0 or not 0.0 <= rate <= 1.0 or not 0 <= passed <= total:
+        return None, 0, total
+    return rate, passed, total
+
+
+def _compute_must_recall_pass_rate(run: dict[str, Any]) -> tuple[float | None, int, int]:
+    rows = _run_rows(run)
+    if not rows:
+        return _summary_rate(
+            _run_summary(run),
+            rate_key="must_recall_pass_rate",
+            passed_keys=("must_recall_passed_cases", "must_recall_cases_passed"),
+            total_keys=("total_cases", "must_recall_cases_total"),
+        )
+
+    total = len(rows)
     passed = 0
     for row in rows:
-        if not isinstance(row, dict):
-            continue
-        total += 1
-        metrics = row.get("metrics") if isinstance(row.get("metrics"), dict) else {}
-        status = str(metrics.get("must_recall_status") or row.get("must_recall_status") or "").strip().lower()
-        passed_flag = row.get("must_recall_passed")
-        if passed_flag is None:
-            passed_flag = metrics.get("must_recall_passed")
+        metrics = _row_metrics(row)
+        meta = _row_meta(row)
+        status = str(
+            _first_non_none(
+                row.get("must_recall_status"),
+                metrics.get("must_recall_status"),
+                meta.get("must_recall_status"),
+                "",
+            )
+        ).strip().lower()
+        passed_flag = _coerce_bool_flag(
+            _first_non_none(
+                row.get("must_recall_passed"),
+                metrics.get("must_recall_passed"),
+                meta.get("must_recall_passed"),
+            )
+        )
         if passed_flag is None:
             passed_flag = status in {"passed", "partial_miss_recovered"}
-        if bool(passed_flag):
+        if passed_flag:
             passed += 1
-    if total <= 0:
-        return None, 0, 0
     return float(passed) / float(total), int(passed), int(total)
 
 
@@ -87,38 +181,46 @@ def _compute_provenance_integrity_rate(
     strict_integrity: bool,
     require_signature: bool,
 ) -> tuple[float | None, int, int]:
-    summary = run.get("summary") if isinstance(run.get("summary"), dict) else {}
-    raw = summary.get("provenance_integrity_rate")
-    if raw is not None:
-        try:
-            return float(raw), int(summary.get("provenance_passed_cases") or 0), int(summary.get("total_cases") or 0)
-        except Exception:
-            pass
+    rows = _run_rows(run)
+    if not rows:
+        if strict_integrity or require_signature:
+            return None, 0, 0
+        return _summary_rate(
+            _run_summary(run),
+            rate_key="provenance_integrity_rate",
+            passed_keys=("provenance_passed_cases", "provenance_cases_passed"),
+            total_keys=("total_cases", "provenance_cases_total"),
+        )
 
-    rows = run.get("items")
-    if not isinstance(rows, list):
-        rows = run.get("results")
-    if not isinstance(rows, list):
-        return None, 0, 0
-
-    total = 0
+    total = len(rows)
     passed = 0
     for row in rows:
-        if not isinstance(row, dict):
-            continue
-        total += 1
+        metrics = _row_metrics(row)
+        meta = _row_meta(row)
         capsule = row.get("evidence_capsule")
         if not isinstance(capsule, dict):
-            metrics = row.get("metrics") if isinstance(row.get("metrics"), dict) else {}
             capsule = metrics.get("evidence_capsule")
-        if isinstance(capsule, dict) and _capsule_is_valid(
-            capsule,
-            strict_integrity=bool(strict_integrity),
-            require_signature=bool(require_signature),
-        ):
+        if not isinstance(capsule, dict):
+            capsule = meta.get("evidence_capsule")
+        if isinstance(capsule, dict):
+            if _capsule_is_valid(
+                capsule,
+                strict_integrity=bool(strict_integrity),
+                require_signature=bool(require_signature),
+            ):
+                passed += 1
+            continue
+        if strict_integrity or require_signature:
+            continue
+        passed_flag = _coerce_bool_flag(
+            _first_non_none(
+                row.get("provenance_integrity_passed"),
+                metrics.get("provenance_integrity_passed"),
+                meta.get("provenance_integrity_passed"),
+            )
+        )
+        if passed_flag:
             passed += 1
-    if total <= 0:
-        return None, 0, 0
     return float(passed) / float(total), int(passed), int(total)
 
 
@@ -158,7 +260,7 @@ def run_gate(
             "require_signature": bool(require_signature),
         },
         "summary": {
-            "total_cases": int(total_cases or provenance_total),
+            "total_cases": max(int(total_cases), int(provenance_total)),
             "must_recall_passed_cases": int(must_recall_passed),
             "must_recall_pass_rate": must_recall_rate,
             "provenance_passed_cases": int(provenance_passed),

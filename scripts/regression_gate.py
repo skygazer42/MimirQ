@@ -1115,6 +1115,23 @@ def _require(cond: bool, msg: str) -> None:
     sys.exit(2)
 
 
+def _fetch_run_detail(
+    client: httpx.Client,
+    *,
+    base_url: str,
+    run_id: str,
+    include_items: bool,
+    include_contexts: bool | None = None,
+) -> dict[str, Any]:
+    params: dict[str, Any] = {"include_items": bool(include_items)}
+    if include_contexts is not None:
+        params["include_contexts"] = bool(include_contexts)
+    response = client.get(f"{base_url}/evaluations/ragas/regression/runs/{run_id}", params=params)
+    response.raise_for_status()
+    detail = response.json() or {}
+    return detail if isinstance(detail, dict) else {}
+
+
 def _add_tristate_flag(
     p: argparse.ArgumentParser,
     *,
@@ -1563,9 +1580,7 @@ def main() -> int:
         status = ""
         summary: dict[str, Any] = {}
         while time.time() < deadline:
-            r = client.get(f"{base}/evaluations/ragas/regression/runs/{run_id}", params={"include_items": False})
-            r.raise_for_status()
-            detail = r.json() or {}
+            detail = _fetch_run_detail(client, base_url=base, run_id=str(run_id), include_items=False)
             status = str((detail.get("run") or {}).get("status") or "")
             summary = dict((detail.get("run") or {}).get("summary") or {})
             if status in {"completed", "failed"}:
@@ -1575,6 +1590,20 @@ def main() -> int:
         if status != "completed":
             err = (detail.get("run") or {}).get("error_message") if isinstance(detail, dict) else None
             print(f"[regression_gate] ERROR: run status={status} error={err}", file=sys.stderr)
+            return 1
+
+        detail = _fetch_run_detail(
+            client,
+            base_url=base,
+            run_id=str(run_id),
+            include_items=True,
+            include_contexts=False,
+        )
+        status = str((detail.get("run") or {}).get("status") or "")
+        summary = dict((detail.get("run") or {}).get("summary") or {})
+        if status != "completed":
+            err = (detail.get("run") or {}).get("error_message") if isinstance(detail, dict) else None
+            print(f"[regression_gate] ERROR: final run detail status={status} error={err}", file=sys.stderr)
             return 1
 
         if args.out_run_json:

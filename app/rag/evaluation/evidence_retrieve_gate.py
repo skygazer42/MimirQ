@@ -17,6 +17,7 @@ import math
 from collections.abc import Iterable
 from typing import Any
 
+from app.rag.core.evidence_capsule_builder import build_evidence_capsule, validate_evidence_capsule
 from app.rag.core.logging import get_logger
 from app.rag.evaluation.regression_sample_builder import (
     build_expected_metadata_metrics_summary,
@@ -28,9 +29,10 @@ logger = get_logger(__name__)
 
 def compute_retrieval_item_meta(
     *,
-    case: dict[str, Any],
+    case: Any,
     citations: list[dict[str, Any]],
     retrieval_metrics: dict[str, Any] | None = None,
+    base_meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Compute retrieval-only metrics for a single case given retrieved citations.
@@ -42,19 +44,27 @@ def compute_retrieval_item_meta(
     Returns:
     - A dict containing retrieval metrics fields (retrieval_recall, retrieval_mrr, retrieval_hit_at_10, ...).
     """
-    _sample_kwargs, meta = build_regression_sample(
-        case,
-        {
-            # BuildRegressionSample is pure-ish and only needs citations + reference_sources for retrieval metrics.
-            "question": str(case.get("question") or ""),
-            "response": "",
-            "retrieved_contexts": [],
-            "citations": list(citations or []),
-            "abstain_triggered": False,
-            "abstain_reason": None,
-        },
-    )
-    out = dict(meta or {})
+    if isinstance(case, dict):
+        question = str(case.get("question") or "")
+    else:
+        question = str(getattr(case, "question", "") or "")
+
+    if isinstance(base_meta, dict):
+        out = dict(base_meta)
+    else:
+        _sample_kwargs, meta = build_regression_sample(
+            case,
+            {
+                # BuildRegressionSample is pure-ish and only needs citations + reference_sources for retrieval metrics.
+                "question": question,
+                "response": "",
+                "retrieved_contexts": [],
+                "citations": list(citations or []),
+                "abstain_triggered": False,
+                "abstain_reason": None,
+            },
+        )
+        out = dict(meta or {})
     must_recall_passed = out.get("must_recall_passed")
     if must_recall_passed is None:
         rr = out.get("retrieval_recall")
@@ -62,10 +72,7 @@ def compute_retrieval_item_meta(
             rr_float = float(rr) if rr is not None else None
         except Exception:
             rr_float = None
-    if rr_float is not None:
-        must_recall_passed = bool(rr_float >= 0.9999)
-    else:
-        must_recall_passed = None
+        must_recall_passed = bool(rr_float >= 0.9999) if rr_float is not None else None
     if must_recall_passed is None:
         must_recall_status = "unknown"
     else:
@@ -85,22 +92,39 @@ def compute_retrieval_item_meta(
             out[key] = metrics.get(key)
 
     capsule = metrics.get("evidence_capsule")
+    if not isinstance(capsule, dict):
+        try:
+            capsule_metrics = {
+                **metrics,
+                "must_recall_passed": must_recall_passed,
+                "must_recall_status": must_recall_status,
+            }
+            capsule = build_evidence_capsule(
+                query_for_retrieval=question,
+                citations=[c for c in (citations or []) if isinstance(c, dict)],
+                metrics=capsule_metrics,
+                retrieval_trace=metrics.get("retrieval_trace") if isinstance(metrics.get("retrieval_trace"), dict) else None,
+                query_debug=metrics.get("query_debug") if isinstance(metrics.get("query_debug"), dict) else None,
+                request_context={
+                    "surface": "ragas_regression",
+                    "mode": "retrieval_only",
+                },
+            )
+        except Exception as exc:
+            logger.debug("Ignoring retrieval item evidence capsule build failure: %s", exc)
+            capsule = None
     provenance_integrity_passed: bool | None = None
+    provenance_integrity_status = "unknown"
     if isinstance(capsule, dict):
-        has_capsule_hash = bool(str(capsule.get("capsule_hash") or "").strip())
-        cits = capsule.get("citations")
-        has_citation_hashes = True
-        if isinstance(cits, list):
-            for row in cits:
-                if not isinstance(row, dict):
-                    continue
-                if not str(row.get("citation_hash") or "").strip():
-                    has_citation_hashes = False
-                    break
-        else:
-            has_citation_hashes = False
-        provenance_integrity_passed = bool(has_capsule_hash and has_citation_hashes)
+        provenance_integrity_passed, _reason = validate_evidence_capsule(
+            capsule,
+            strict=True,
+            verify_signature=False,
+        )
+        provenance_integrity_status = "passed" if bool(provenance_integrity_passed) else "failed"
+        out["evidence_capsule"] = capsule
     out["provenance_integrity_passed"] = provenance_integrity_passed
+    out["provenance_integrity_status"] = provenance_integrity_status
     return out
 
 
@@ -141,6 +165,7 @@ def build_retrieval_gate_summary(items_meta: list[dict[str, Any]]) -> dict[str, 
             vals.append(1.0 if bool(v) else 0.0)
         return _mean(vals)
 
+    total_cases = int(len([m for m in (items_meta or []) if isinstance(m, dict)]))
     must_recall_values = []
     for m in (items_meta or []):
         if not isinstance(m, dict):
@@ -220,10 +245,12 @@ def build_retrieval_gate_summary(items_meta: list[dict[str, Any]]) -> dict[str, 
         "retrieval_doc_hit_rate": _mean_bool("retrieval_doc_hit"),
         "retrieval_family_hit_rate": _mean_bool("retrieval_family_hit"),
         "abstain_rate": _mean_bool("abstain_triggered"),
+        "total_cases": total_cases,
         "must_recall_pass_rate": must_recall_pass_rate,
         "must_recall_cases_total": must_recall_cases_total,
         "must_recall_cases_passed": must_recall_cases_passed,
         "must_recall_cases_failed": must_recall_cases_failed,
+        "must_recall_passed_cases": must_recall_cases_passed,
         "parse_quality_alert_rate": _mean(parse_alert_values),
         "parse_quality_gate_block_rate": _mean(parse_gate_block_values),
         "parse_risk_cases_total": parse_cases_total,
@@ -236,6 +263,7 @@ def build_retrieval_gate_summary(items_meta: list[dict[str, Any]]) -> dict[str, 
         "provenance_cases_total": provenance_cases_total,
         "provenance_cases_passed": provenance_cases_passed,
         "provenance_cases_failed": provenance_cases_failed,
+        "provenance_passed_cases": provenance_cases_passed,
     }
     out.update(build_expected_metadata_metrics_summary([m for m in (items_meta or []) if isinstance(m, dict)]))
     return out

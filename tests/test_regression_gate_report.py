@@ -1,8 +1,10 @@
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
+import httpx
 import pytest
 
 
@@ -120,3 +122,95 @@ def test_render_regression_gate_markdown_renders_summary_and_failures() -> None:
     assert "| bm25 | 2 |" in markdown
     assert "retrieval_recall=0.2000 < min 0.3000" in markdown
     assert "## Multi-hop Diagnostics" in markdown
+
+
+def test_main_refetches_completed_run_with_items_for_final_artifact(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    mod = _load_module()
+    cases_path = tmp_path / "cases.json"
+    out_path = tmp_path / "run.detail.json"
+    cases_path.write_text(
+        '{"dataset_id":"ds-1","items":[{"question":"What is retried?"}]}',
+        encoding="utf-8",
+    )
+
+    requests_seen: list[tuple[str, str, dict | None]] = []
+
+    def _response(method: str, url: str, payload: dict) -> httpx.Response:
+        return httpx.Response(
+            status_code=200,
+            json=payload,
+            request=httpx.Request(method, url),
+        )
+
+    class _FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def post(self, url: str, json: dict | None = None) -> httpx.Response:
+            requests_seen.append(("POST", url, json))
+            assert url.endswith("/evaluations/ragas/regression/runs")
+            return _response("POST", url, {"id": "run-1"})
+
+        def get(self, url: str, params: dict | None = None) -> httpx.Response:
+            requests_seen.append(("GET", url, params))
+            if url.endswith("/evaluations/ragas/regression/cases"):
+                return _response(
+                    "GET",
+                    url,
+                    {
+                        "items": [{"id": "case-1", "question": "What is retried?", "dataset_id": "ds-1"}],
+                        "total": 1,
+                    },
+                )
+            if params == {"include_items": False}:
+                return _response(
+                    "GET",
+                    url,
+                    {"run": {"status": "completed", "summary": {"retrieval_recall": 1.0}}, "items": []},
+                )
+            if params == {"include_items": True, "include_contexts": False}:
+                return _response(
+                    "GET",
+                    url,
+                    {
+                        "run": {"status": "completed", "summary": {"retrieval_recall": 1.0}},
+                        "items": [{"id": "item-1", "meta": {"must_recall_passed": True}}],
+                    },
+                )
+            raise AssertionError(f"unexpected GET params: {params}")
+
+    monkeypatch.setattr(mod.httpx, "Client", lambda **_kwargs: _FakeClient())
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "regression_gate.py",
+            "--base-url",
+            "http://example.test/api/v1",
+            "--user-id",
+            "ci-bot",
+            "--cases",
+            str(cases_path),
+            "--skip-import",
+            "--metrics",
+            "retrieval_recall",
+            "--out-run-json",
+            str(out_path),
+        ],
+    )
+
+    assert mod.main() == 0  # type: ignore[attr-defined]
+    artifact = json.loads(out_path.read_text(encoding="utf-8"))
+
+    assert artifact["items"] == [{"id": "item-1", "meta": {"must_recall_passed": True}}]
+    assert requests_seen[-1] == (
+        "GET",
+        "http://example.test/api/v1/evaluations/ragas/regression/runs/run-1",
+        {"include_items": True, "include_contexts": False},
+    )

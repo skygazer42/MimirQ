@@ -195,3 +195,126 @@ def test_evidence_api_offline_regression_gate_hit_at_20_and_recall(monkeypatch: 
     assert summary["must_recall_pass_rate"] == pytest.approx(1.0)
     assert summary["must_recall_cases_total"] == 3
     assert summary["must_recall_cases_failed"] == 0
+
+
+def test_compute_retrieval_item_meta_builds_valid_provenance_capsule() -> None:
+    case = {
+        "question": "retry header",
+        "reference_sources": [
+            {
+                "chunk_id": "chunk-1",
+                "document_id": "doc-1",
+                "doc_pipeline_key": "doc-1:pipeline-a",
+                "chunk_index": 0,
+                "quote": "Retry-After header guidance",
+            }
+        ],
+    }
+    citations = [
+        {
+            "chunk_id": "chunk-1",
+            "document_id": "doc-1",
+            "doc_pipeline_key": "doc-1:pipeline-a",
+            "chunk_index": 0,
+            "quote": "Retry-After header guidance",
+            "retrieval_role": "main",
+            "hit_type": "keyword",
+        }
+    ]
+
+    meta = compute_retrieval_item_meta(case=case, citations=citations, retrieval_metrics={"retrieval_mode": "keyword"})
+    summary = build_retrieval_gate_summary([meta])
+
+    assert meta["must_recall_passed"] is True
+    assert meta["must_recall_status"] == "passed"
+    assert meta["provenance_integrity_passed"] is True
+    assert meta["provenance_integrity_status"] == "passed"
+    assert isinstance(meta["evidence_capsule"], dict)
+    assert meta["evidence_capsule"]["must_recall"]["passed"] is True
+    assert meta["evidence_capsule"]["must_recall"]["status"] == "passed"
+    assert summary["total_cases"] == 1
+    assert summary["must_recall_pass_rate"] == pytest.approx(1.0)
+    assert summary["must_recall_passed_cases"] == 1
+    assert summary["provenance_integrity_rate"] == pytest.approx(1.0)
+    assert summary["provenance_passed_cases"] == 1
+
+
+def test_compute_retrieval_item_meta_marks_invalid_provenance_capsule_failed() -> None:
+    case = {
+        "question": "retry header",
+        "reference_sources": [
+            {
+                "chunk_id": "chunk-1",
+                "document_id": "doc-1",
+                "doc_pipeline_key": "doc-1:pipeline-a",
+                "chunk_index": 0,
+                "quote": "Retry-After header guidance",
+            }
+        ],
+    }
+    citations = [
+        {
+            "chunk_id": "chunk-1",
+            "document_id": "doc-1",
+            "doc_pipeline_key": "doc-1:pipeline-a",
+            "chunk_index": 0,
+            "quote": "Retry-After header guidance",
+        }
+    ]
+
+    meta = compute_retrieval_item_meta(
+        case=case,
+        citations=citations,
+        retrieval_metrics={"evidence_capsule": {"schema": "mimirq.evidence_capsule.v1", "citations": []}},
+    )
+
+    assert meta["must_recall_passed"] is True
+    assert meta["provenance_integrity_passed"] is False
+    assert meta["provenance_integrity_status"] == "failed"
+
+
+def test_compute_retrieval_item_meta_preserves_explicit_base_must_recall_result() -> None:
+    meta = compute_retrieval_item_meta(
+        case={"question": "already evaluated"},
+        citations=[],
+        base_meta={"must_recall_passed": False, "retrieval_recall": 1.0},
+    )
+
+    assert meta["must_recall_passed"] is False
+    assert meta["must_recall_status"] == "failed"
+
+
+def test_ragas_regression_gate_summary_includes_must_recall_and_provenance() -> None:
+    from app.rag.evaluation.ragas import _build_regression_gate_summary
+
+    case = {
+        "question": "retry header",
+        "reference_sources": [
+            {
+                "chunk_id": "chunk-1",
+                "document_id": "doc-1",
+                "doc_pipeline_key": "doc-1:pipeline-a",
+                "chunk_index": 0,
+                "quote": "Retry-After header guidance",
+            }
+        ],
+    }
+    citations = [
+        {
+            "chunk_id": "chunk-1",
+            "document_id": "doc-1",
+            "doc_pipeline_key": "doc-1:pipeline-a",
+            "chunk_index": 0,
+            "quote": "Retry-After header guidance",
+            "retrieval_role": "main",
+            "hit_type": "keyword",
+        }
+    ]
+    item_meta = compute_retrieval_item_meta(case=case, citations=citations, retrieval_metrics={"retrieval_mode": "keyword"})
+
+    summary = _build_regression_gate_summary([{"item_meta": item_meta}])
+
+    assert summary["must_recall_pass_rate"] == pytest.approx(1.0)
+    assert summary["must_recall_passed_cases"] == 1
+    assert summary["provenance_integrity_rate"] == pytest.approx(1.0)
+    assert summary["provenance_passed_cases"] == 1
