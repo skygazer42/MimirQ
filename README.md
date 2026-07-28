@@ -276,13 +276,13 @@ MimirQ 已用于**市级政务智能问答助手**，覆盖 7 个区域级 + 1 �
 
 <!-- 数据来源：artifacts/dify_4way_800_20260727/comparison_report.json、artifacts/dify_4way_800_20260727/summary_for_sharing.md 与 artifacts/changzhou_local_3model_800_20260727/summary.json；输入 SHA-256 5a4c67c42e8f8123774279d46af39ccc793da1b89fdea19a7359f63c8cb2fac2。 -->
 
-| 链路 | 成功执行 | 准确 / 部分准确 / 证据不足 | 准确率 / 可用率 | 证据覆盖 | 平均 / P50 / P95 |
+| <sub>链路</sub> | <sub>成功执行</sub> | <sub>准确 / 部分准确 /<br>证据不足</sub> | <sub>准确率 / 可用率</sub> | <sub>证据覆盖</sub> | <sub>平均 / P50 / P95</sub> |
 |:---|---:|---:|---:|---:|---:|
-| **MimirQ 检索直连** | **800 / 800** | **791 / 9 / 0** | **98.9% / 100%** | **99.5%** | **3.64s / 2.02s / 12.58s** |
-| **真实 Embedding + Reranker + LLM** | **800 / 800** | **727 / 73 / 0** | **90.9% / 100%** | **99.7%** | **2.59s / 1.53s / 8.15s** |
-| **Dify HTTP → MimirQ** | **800 / 800** | 514 / 223 / 63 | 64.3% / 92.1% | 96.3% | 13.15s / 12.93s / 17.33s |
-| **Dify External → MimirQ** | **800 / 800** | 502 / 232 / 66 | 62.7% / 91.7% | **99.7%** | 12.14s / 11.17s / 23.49s |
-| **Dify 原生知识库** | **800 / 800** | 309 / 287 / 204 | 38.6% / 74.5% | 83.8% | 13.67s / 11.34s / 29.55s |
+| <sub><b>MimirQ 检索直连</b></sub> | <sub><b>800 / 800</b></sub> | <sub><b>791 / 9 / 0</b></sub> | <sub><b>98.9% / 100%</b></sub> | <sub><b>99.5%</b></sub> | <sub><b>3.64s / 2.02s / 12.58s</b></sub> |
+| <sub><b>真实 Embedding + Reranker + LLM</b></sub> | <sub><b>800 / 800</b></sub> | <sub><b>727 / 73 / 0</b></sub> | <sub><b>90.9% / 100%</b></sub> | <sub><b>99.7%</b></sub> | <sub><b>2.59s / 1.53s / 8.15s</b></sub> |
+| <sub><b>Dify HTTP → MimirQ</b></sub> | <sub><b>800 / 800</b></sub> | <sub>514 / 223 / 63</sub> | <sub>64.3% / 92.1%</sub> | <sub>96.3%</sub> | <sub>13.15s / 12.93s / 17.33s</sub> |
+| <sub><b>Dify External → MimirQ</b></sub> | <sub><b>800 / 800</b></sub> | <sub>502 / 232 / 66</sub> | <sub>62.7% / 91.7%</sub> | <sub><b>99.7%</b></sub> | <sub>12.14s / 11.17s / 23.49s</sub> |
+| <sub><b>Dify 原生知识库</b></sub> | <sub><b>800 / 800</b></sub> | <sub>309 / 287 / 204</sub> | <sub>38.6% / 74.5%</sub> | <sub>83.8%</sub> | <sub>13.67s / 11.34s / 29.55s</sub> |
 
 直连输出检索证据，其他链路输出生成答案，因此准确率与延迟不是严格同任务横比。Dify HTTP / External 的证据覆盖为 96.3% / 99.7%，答案条款覆盖仅为 83.6% / 83.8%，主要损失在 Dify 生成编排而不是 MimirQ 召回；Dify 原生知识库不经过 MimirQ。
 
