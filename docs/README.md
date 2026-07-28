@@ -107,6 +107,11 @@
 - [templates/retrieval_debt_audit_template.md](./templates/retrieval_debt_audit_template.md)：Retrieval Debt Audit 模板。
 - [contributing/retrieval_pr_checklist.md](./contributing/retrieval_pr_checklist.md)：Retrieval PR Checklist。
 
+## 发布与版本（Releases / Versions）
+
+- [releases/README.md](./releases/README.md)：最新发布与版本索引。
+- [releases/v1.0.0.md](./releases/v1.0.0.md)：当前最新稳定版的对外发布说明。
+
 ## 数据治理（Governance）
 
 - [guides/data_governance.md](./guides/data_governance.md)：数据治理/清洗工作台。

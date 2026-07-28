@@ -9,6 +9,7 @@
   <a href="#-产品界面"><b>产品界面</b></a> ·
   <a href="#-接入-dify"><b>Dify 接入</b></a> ·
   <a href="#-已在真实场景验证"><b>800 题实测</b></a> ·
+  <a href="./docs/releases/v1.0.0.md"><b>v1.0.0 发布说明</b></a> ·
   <a href="https://skygazer42.github.io/MimirQ/"><b>API 文档</b></a>
 </p>
 
@@ -33,6 +34,8 @@
 ## 💡 MimirQ 是什么
 
 **MimirQ** 是一个专注 RAG 全链路可观测性的知识库问答平台，前后端全开源，可通过 Docker Compose 或 Helm 部署。
+
+> 最新稳定版：v1.0.0。见 [发布说明](./docs/releases/v1.0.0.md) 与 [发布索引](./docs/releases/README.md)。
 
 <table>
   <tr>

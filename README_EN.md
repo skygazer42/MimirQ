@@ -9,6 +9,7 @@
   <a href="#-product-screenshots"><b>Screenshots</b></a> ·
   <a href="#-dify-integration"><b>Dify Integration</b></a> ·
   <a href="#-proven-in-a-real-deployment"><b>800-question benchmark</b></a> ·
+  <a href="./docs/releases/v1.0.0.md"><b>v1.0.0 Release Notes</b></a> ·
   <a href="https://skygazer42.github.io/MimirQ/"><b>API Docs</b></a>
 </p>
 
@@ -33,6 +34,8 @@
 ## 💡 What is MimirQ
 
 **MimirQ** (named after **Mímir**, the Norse guardian of the Well of Wisdom) is a RAG knowledge-base Q&A platform focused on **full-chain observability**. Frontend and backend are both open source, and it deploys via Docker Compose or Helm.
+
+> Latest stable release: v1.0.0. See the [release notes](./docs/releases/v1.0.0.md) and [release index](./docs/releases/README.md).
 
 <table>
   <tr>

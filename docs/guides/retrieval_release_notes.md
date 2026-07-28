@@ -1,23 +1,11 @@
-# Retrieval Release Notes Template
+# Retrieval Release Notes Template / 检索发布说明模板
 
-This guide defines a stable format for publishing retrieval-quality changes across releases.
+Use this page as the canonical GitHub Release block for retrieval-facing changes.
+Use the same structure for every public tag so the release history stays readable and comparable.
 
-Goal:
+## Recommended layout / 推荐结构
 
-- Make hit-rate/ranking changes transparent to OSS users.
-- Keep release notes machine-readable enough for future automation.
-- Link quality claims to concrete benchmark and gate artifacts.
-
----
-
-## 1) GitHub Release Block
-
-Use the section below in each GitHub Release:
-
-```markdown
-### Retrieval Quality
-
-#### Snapshot
+### 1) Snapshot / 概览
 
 | Metric | Baseline | Current | Delta |
 | --- | ---: | ---: | ---: |
@@ -29,61 +17,49 @@ Use the section below in each GitHub Release:
 | contextual_followup_used_rate | 0.0000 | 0.0000 | +0.0000 |
 | p95 latency (ms) | 0.0 | 0.0 | +0.0 |
 
-#### Artifacts
+### 2) What changed / 变更点
+
+- One sentence on the retrieval or ranking root cause.
+- One sentence on the behavior change that users will feel.
+- One sentence on rollout or compatibility notes.
+
+### 3) Artifacts / 工件
 
 - Benchmark summary: `runs/.../leaderboard.json`
 - Gate report: `runs/.../gate_report.json`
-- Trace bundle / diff (if relevant): `runs/.../trace_bundle.json`
+- Trace bundle or diff, when relevant: `runs/.../trace_bundle.json`
 - Bounded hybrid summary: `artifacts/sample_retrieval_bench.hybrid.json`
 - Bounded ColBERT fallback summary: `artifacts/sample_retrieval_bench.colbert.json`
 - Claim verifier contract: `artifacts/claim_verifier.contract.json`
 - Queryset diff reports: `artifacts/queryset_health.diff.json`, `artifacts/queryset_health.diff.hybrid.json`
-- Must-recall + provenance gate: `artifacts/must_recall_provenance_gate.report.json`
+- Must-recall plus provenance gate: `artifacts/must_recall_provenance_gate.report.json`
 - Parser benchmark diff: `artifacts/parser_benchmark.diff.json`
-- Contextual follow-up diagnostics (if enabled): `artifacts/retrieval_trace.contextual_followup.json`
-- Iterative pass diagnostics (if enabled): `artifacts/retrieval_trace.iterative_pass.json`
+- Contextual follow-up diagnostics, if enabled: `artifacts/retrieval_trace.contextual_followup.json`
+- Iterative pass diagnostics, if enabled: `artifacts/retrieval_trace.iterative_pass.json`
 
-#### Thresholds
+### 4) Thresholds / 门禁
 
 - Retrieval gate thresholds file: `runs/.../thresholds.v2.json`
-- Notes: any temporary waivers or strictness changes.
-```
+- Release gate budgets file: `ci/release_gate_budgets.v1.json`
+- Notes on temporary waivers or strictness changes.
 
----
-
-## 2) Minimum Evidence Checklist
+## Minimum evidence checklist / 最小证据清单
 
 Before publishing retrieval-quality notes:
 
-1. Confirm benchmark artifacts are reproducible from committed scripts/config.
-2. Confirm gate thresholds used for pass/fail are attached.
-3. If quality regressed, explicitly state why release proceeds.
-4. Include one sentence on ranking-impact root cause (retrieval/fusion/rerank/cache).
-5. If hybrid or ColBERT behavior changed, include the bounded artifact outcome and whether rollout criteria still passed.
-6. If must-recall/provenance claims are made, attach capsule/gate artifacts.
-7. If contextual follow-up is enabled, include its used-rate and average added citations.
+1. Confirm benchmark artifacts are reproducible from committed scripts and config.
+2. Confirm the gate thresholds used for pass or fail are attached.
+3. If quality regressed, state why the release still proceeds.
+4. Include one sentence on the ranking-impact root cause: retrieval, fusion, rerank, or cache.
+5. If hybrid or ColBERT behavior changed, include the bounded artifact result and rollout decision.
+6. If must-recall or provenance claims are made, attach capsule or gate artifacts.
+7. If contextual follow-up is enabled, include its used rate and average added citations.
 8. If iterative pass is enabled, include hop distribution (`hops_attempted/hops_used`) and latency budget.
 
----
+## Anti-patterns / 反模式
 
-## 3) Recommended Artifact Naming
-
-To keep links stable across CI and local runs:
-
-- `runs/release/<version>/leaderboard.json`
-- `runs/release/<version>/gate_report.json`
-- `runs/release/<version>/thresholds.v2.json`
-- `runs/release/<version>/trace_bundle.json` (optional)
-- `runs/release/<version>/sample_retrieval_bench.hybrid.json`
-- `runs/release/<version>/sample_retrieval_bench.colbert.json`
-- `runs/release/<version>/claim_verifier.contract.json`
-
----
-
-## 4) Anti-Patterns to Avoid
-
-- Reporting only global averages without hit@k/mrr/ndcg.
+- Reporting only global averages without hit@k, mrr, or ndcg.
 - Claiming improvements without artifact links.
-- Mixing datasets/slices in one snapshot table without explicit labels.
+- Mixing datasets or slices in one snapshot table without explicit labels.
 - Hiding regressions by silently changing thresholds in the same release note block.
-- 把 hybrid bounded artifact 和 ColBERT fallback artifact 混为一个结论。二者反映的是不同链路。
+- Combining hybrid bounded artifacts and ColBERT fallback artifacts into one conclusion. They reflect different paths.
