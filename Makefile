@@ -166,8 +166,8 @@ help:
 	@echo "  make doctor    - quick env sanity checks"
 	@for target in $(PLUGIN_HELP_TARGETS); do $(MAKE) --no-print-directory $$target; done
 
+# Cross-platform env bootstrap (non-destructive by default).
 init:
-	@# Cross-platform env bootstrap (non-destructive by default).
 	@$(PY) scripts/init_env.py
 
 install-host:
@@ -469,9 +469,9 @@ audit-py:
 		--ignore-vuln PYSEC-2026-2447 \
 		--ignore-vuln PYSEC-2026-1325
 
+# Remaining unfixed brace-expansion versions are permitted only in bounded build tooling.
 audit-web:
 	cd web && pnpm audit --prod --audit-level high --registry https://registry.npmjs.org/
-	# Remaining unfixed brace-expansion versions are permitted only in bounded build tooling.
 	(cd web && pnpm audit --audit-level high --json --registry https://registry.npmjs.org/) | $(PY) scripts/check_pnpm_audit.py
 
 audit-docs:

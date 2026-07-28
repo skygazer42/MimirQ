@@ -41,4 +41,4 @@ def _ensure_langchain_legacy_globals() -> None:
 _preload_conda_libstdcxx()
 _ensure_langchain_legacy_globals()
 
-__version__ = "0.8.0"
+__version__ = "1.0.0"

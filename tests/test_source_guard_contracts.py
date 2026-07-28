@@ -466,6 +466,14 @@ def test_host_quickstart_make_targets_cover_backend_worker_and_web() -> None:
     assert "终端 2：文档解析与索引 Worker" in quickstart
 
 
+def test_makefile_recipes_do_not_execute_posix_comment_lines() -> None:
+    makefile = _read("Makefile")
+
+    # A tab-indented `#` line is passed to the recipe shell. It is harmless in
+    # POSIX shells but becomes an attempted executable under Windows cmd.exe.
+    assert re.findall(r"(?m)^\t@?#", makefile) == []
+
+
 def test_docker_verification_keeps_dev_lint_tools_out_of_the_runtime_image() -> None:
     makefile = _read("Makefile")
     lint_target = makefile.split("\nlint-py-docker:", 1)[1].split("\ncompileall-docker:", 1)[0]
