@@ -788,17 +788,17 @@ class DedupDiversityMixin:
             out_all = selected + rest
         if any(isinstance(item, dict) and item.get("fusion_budgeted_prefix_rank") is not None for item in out_all):
             def _budgeted_prefix_sort_key(item: dict[str, Any]) -> tuple[int, float, str]:
-                try:
-                    prefix_rank = int(item.get("fusion_budgeted_prefix_rank"))
-                except (TypeError, ValueError):
-                    prefix_rank = len(out_all) + 1
                 return (
-                    prefix_rank,
+                    0 if item.get("fusion_budgeted_prefix_rank") is not None else 1,
                     -float(item.get("score", 0.0) or 0.0),
                     self._result_key(item),
                 )
 
-            out_all = sorted(out_all, key=_budgeted_prefix_sort_key)
+            # Keep the diversity-selected top-k set authoritative. Budgeted fusion
+            # may order that set, but candidates in the remainder must not jump
+            # back into it after document/page caps have been applied.
+            selected_count = len(selected)
+            out_all = sorted(out_all[:selected_count], key=_budgeted_prefix_sort_key) + out_all[selected_count:]
 
         self._record_document_diversity_post_stats(stats=stats, out_all=out_all, top_k=top_k, pre_keys=pre_keys)
         return out_all

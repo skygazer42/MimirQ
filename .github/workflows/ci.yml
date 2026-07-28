@@ -156,6 +156,7 @@ jobs:
       - name: Database migrations and integration tests
         env:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/mimirq_ci
+          SECRET_KEY: ci-db-upgrade-secret-key-0123456789
           MIMIRQ_DB_CREATE_ALL_ON_STARTUP: "false"
           MIMIRQ_DB_RUNTIME_MIGRATIONS_ENABLED: "false"
           MIMIRQ_INTEGRATION_TESTS: "1"
@@ -279,6 +280,7 @@ jobs:
       - name: Database migrations and integration tests
         env:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/mimirq_ci
+          SECRET_KEY: ci-db-upgrade-secret-key-0123456789
           MIMIRQ_DB_CREATE_ALL_ON_STARTUP: "false"
           MIMIRQ_DB_RUNTIME_MIGRATIONS_ENABLED: "false"
           MIMIRQ_INTEGRATION_TESTS: "1"

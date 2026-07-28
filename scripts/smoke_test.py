@@ -173,16 +173,22 @@ def wait_ready(
     deadline = time.monotonic() + max(0.0, float(timeout_sec or 0.0))
     last_note = ""
     while True:
-        resp = client.get(url)
-        payload = _parse_json(resp)
-        ok = bool(isinstance(payload, dict) and payload.get("ok") is True)
-        if resp.status_code == 200 and ok:
-            return payload if isinstance(payload, dict) else {"ok": True}
+        resp: httpx.Response | None = None
+        payload: Any = None
+        note = ""
+        try:
+            resp = client.get(url)
+            payload = _parse_json(resp)
+            ok = bool(isinstance(payload, dict) and payload.get("ok") is True)
+            if resp.status_code == 200 and ok:
+                return payload if isinstance(payload, dict) else {"ok": True}
 
+            note = f"status={resp.status_code}"
+            if isinstance(payload, dict):
+                note = f"{note} ok={payload.get('ok')} deps={{{', '.join(k for k in payload.keys() if k != 'ok')}}}"
+        except (httpx.RequestError, ConnectionError) as exc:
+            note = f"transport_error={redact_secrets(str(exc))}"
         # Only print when status changes / every few seconds to avoid CI spam.
-        note = f"status={resp.status_code}"
-        if isinstance(payload, dict):
-            note = f"{note} ok={payload.get('ok')} deps={{{', '.join(k for k in payload.keys() if k != 'ok')}}}"
         note = redact_secrets(note)
         now = time.monotonic()
         if note != last_note:
@@ -190,7 +196,9 @@ def wait_ready(
             last_note = note
 
         if now >= deadline:
-            raise CallError(method="GET", url=url, status_code=resp.status_code, detail="timeout waiting for readiness")
+            status_code = resp.status_code if resp is not None else None
+            detail = note or "timeout waiting for readiness"
+            raise CallError(method="GET", url=url, status_code=status_code, detail=detail)
         time.sleep(max(0.1, float(poll_interval_sec or 0.0)))
 
 

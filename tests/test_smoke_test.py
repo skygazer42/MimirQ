@@ -9,6 +9,7 @@ from scripts.smoke_test import (
     _register_for_token,
     _summarize_retrieval_evidence,
     _upload_form_data,
+    wait_ready,
 )
 
 
@@ -188,3 +189,33 @@ def test_probe_web_auth_page_requires_login_labels() -> None:
         summary = _probe_web_auth_page(client, web_base="http://web.test")
 
     assert summary == {"status_code": 200, "labels": ["登录", "账号", "密码"]}
+
+
+def test_wait_ready_retries_connection_refused_until_service_is_up(monkeypatch) -> None:
+    calls: list[str] = []
+
+    class _Response:
+        status_code = 200
+        content = b"{\"ok\": true}"
+
+        def json(self) -> dict[str, bool]:
+            return {"ok": True}
+
+    class _Client:
+        def get(self, url: str) -> _Response:
+            calls.append(url)
+            if len(calls) < 3:
+                raise ConnectionRefusedError(111, "Connection refused")
+            return _Response()
+
+    monkeypatch.setattr("scripts.smoke_test.time.sleep", lambda *_args, **_kwargs: None)
+
+    payload = wait_ready(
+        _Client(),
+        api_base="http://secondary.test/api/v1",
+        timeout_sec=1.0,
+        poll_interval_sec=0.0,
+    )
+
+    assert payload == {"ok": True}
+    assert len(calls) == 3

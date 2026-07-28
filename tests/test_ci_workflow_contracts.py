@@ -134,6 +134,7 @@ def test_main_ci_runs_database_migrations_and_integrations() -> None:
 
     assert "MIMIRQ_INTEGRATION_TESTS: \"1\"" in workflow
     assert "make db-upgrade" in workflow
+    assert workflow.count("SECRET_KEY: ci-db-upgrade-secret-key-0123456789") == 2
     assert "tests/test_alembic_upgrade_from_prior_revision.py" in workflow
     assert "tests/test_core_schema_integration.py" in workflow
     assert "tests/test_document_version_diff_integration.py" in workflow

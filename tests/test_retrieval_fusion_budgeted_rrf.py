@@ -131,6 +131,39 @@ def test_budgeted_rrf_weights_exact_hits_inside_existing_candidates() -> None:
     assert out[0]["exact_phrase_boost"] > 0.0
 
 
+def test_document_diversity_does_not_undo_budgeted_prefix_reranking() -> None:
+    retriever = HybridRetriever(max_chunks_per_doc=10, min_distinct_docs=0)
+    lower_rerank = _mk_result(doc_id="d1", chunk_index=0, score=0.1)
+    lower_rerank["fusion_budgeted_prefix_rank"] = 1
+    higher_rerank = _mk_result(doc_id="d1", chunk_index=1, score=0.9)
+    higher_rerank["fusion_budgeted_prefix_rank"] = 2
+    outside_prefix = _mk_result(doc_id="d2", chunk_index=0, score=1.0)
+
+    out = retriever._apply_document_diversity(
+        [higher_rerank, lower_rerank, outside_prefix],
+        top_k=3,
+    )
+
+    assert [retriever._result_key(item) for item in out] == ["d1:1", "d1:0", "d2:0"]
+
+
+def test_budgeted_prefix_does_not_override_diversity_selected_top_k() -> None:
+    retriever = HybridRetriever(max_chunks_per_doc=1, min_distinct_docs=0)
+    selected_prefix = _mk_result(doc_id="d1", chunk_index=0, score=0.9)
+    selected_prefix["fusion_budgeted_prefix_rank"] = 2
+    capped_prefix = _mk_result(doc_id="d1", chunk_index=1, score=0.8)
+    capped_prefix["fusion_budgeted_prefix_rank"] = 1
+    diverse_candidate = _mk_result(doc_id="d2", chunk_index=0, score=0.1)
+
+    out = retriever._apply_document_diversity(
+        [selected_prefix, capped_prefix, diverse_candidate],
+        top_k=2,
+    )
+
+    assert [retriever._result_key(item) for item in out[:2]] == ["d1:0", "d2:0"]
+    assert retriever._result_key(out[2]) == "d1:1"
+
+
 def test_family_collapse_deduplicates_candidates_without_hierarchy_expansion() -> None:
     retriever = HybridRetriever(hierarchy_family_collapse=True, enable_hierarchy_recall=False)
     results = [
