@@ -10,8 +10,7 @@
   <a href="#快速开始"><b>快速开始</b></a> ·
   <a href="#dify-接入"><b>Dify 接入</b></a> ·
   <a href="#真实场景验证"><b>800 题实测</b></a> ·
-  <a href="./docs/releases/v1.0.0.md"><b>v1.0.0 发布说明</b></a> ·
-  <a href="https://skygazer42.github.io/MimirQ/"><b>API 文档</b></a>
+  <a href="./docs/releases/v1.0.0.md"><b>v1.0.0 发布说明</b></a>
 </p>
 
 <p>
@@ -116,7 +115,7 @@ MimirQ 不试图取代所有平台：
 
 - [Docker](https://docs.docker.com/get-docker/) 20.10+ 与 [Docker Compose](https://docs.docker.com/compose/install/) 2.0+
 - GNU Make；Docker 一键启动另需 Python 3.9+ 生成配置
-- 主机源码启动另需 Python 3.11+、Node.js 20+ 与 pnpm 10.26
+- 源码开发模式另需 Python 3.11+、Node.js 20+ 与 pnpm 10.26
 - 至少 4 核 CPU / 16 GB RAM / 50 GB 磁盘
 
 ### 初始化
@@ -140,7 +139,7 @@ make init
 | 启动方式 | 适用场景 | 应用运行位置 |
 |:---|:---|:---|
 | **Docker 一键启动（推荐）** | 首次体验、服务器部署 | 前端、API、Worker 与依赖服务均在容器中 |
-| **主机源码启动** | 前后端开发、热更新调试 | 前端、API（及可选 Worker）在主机；依赖服务在 Docker 中 |
+| **源码开发模式** | 前后端开发、热更新调试 | `.venv` + pip 运行 API，pnpm 运行 Web；Docker 运行基础设施 |
 
 ### 方式一：Docker 一键启动
 
@@ -172,15 +171,15 @@ make api-ping
 
 </details>
 
-### 方式二：主机源码启动 API + Web
+### 方式二：源码开发（Python venv + pip + pnpm）
 
-先安装主机依赖并启动基础设施：
+这是常见的本地开发方式，无需 Conda。FastAPI 运行在 Python `.venv` 中，Next.js 由 pnpm 启动；Docker 只运行 PostgreSQL、Redis、Milvus 等基础设施：
 
 ```bash
 make setup-host
 ```
 
-`make setup-host` 安装主机依赖并启动 Docker 基础设施。默认使用 API 进程内后台任务，只需打开两个终端：
+`make setup-host` 会创建 `.venv`、执行 pip 与 pnpm 依赖安装、准备解析模型并启动 Docker 基础设施。默认使用 API 进程内后台任务，只需打开两个终端：
 
 ```bash
 # 终端 1：FastAPI（热更新）
@@ -273,36 +272,41 @@ Dify 标准外部知识库端点为 `POST /api/v1/integrations/dify/retrieval`�
 
 ## 真实场景验证
 
-MimirQ 已用于**市级政务智能问答助手**，覆盖 7 个区域级 + 1 个市级知识库。2026-07-27 使用同一固定 800 题和真实自托管模型复测，五条链路最终均无失败：
+MimirQ 已用于**市级政务智能问答助手**，覆盖 7 个区域级 + 1 个市级知识库。2026-07-27 使用同一固定 800 题和真实自托管模型复测，五条链路最终都完成 **800 / 800**。
 
 <!-- 数据来源：artifacts/dify_4way_800_20260727/comparison_report.json、artifacts/dify_4way_800_20260727/summary_for_sharing.md 与 artifacts/changzhou_local_3model_800_20260727/summary.json；输入 SHA-256 5a4c67c42e8f8123774279d46af39ccc793da1b89fdea19a7359f63c8cb2fac2。 -->
 
-| 链路 | 成功执行 | 准确 / 部分准确 / 证据不足 | 准确率 / 可用率 | 证据覆盖 | 平均 / P50 / P95 |
-|:---|---:|---:|---:|---:|---:|
-| **MimirQ 检索直连** | **800 / 800** | **791 / 9 / 0** | **98.9% / 100%** | **99.5%** | **3.64s / 2.02s / 12.58s** |
-| **真实 Embedding + Reranker + LLM** | **800 / 800** | **727 / 73 / 0** | **90.9% / 100%** | **99.7%** | **2.59s / 1.53s / 8.15s** |
-| **Dify HTTP → MimirQ** | **800 / 800** | 514 / 223 / 63 | 64.3% / 92.1% | 96.3% | 13.15s / 12.93s / 17.33s |
-| **Dify External → MimirQ** | **800 / 800** | 502 / 232 / 66 | 62.7% / 91.7% | **99.7%** | 12.14s / 11.17s / 23.49s |
-| **Dify 原生知识库** | **800 / 800** | 309 / 287 / 204 | 38.6% / 74.5% | 83.8% | 13.67s / 11.34s / 29.55s |
+> **“检索核心”不是 LLM 问答。** 它执行 Embedding、混合召回和 Reranker，直接返回 Top-K 证据；“RAG 生成”才会继续调用 LLM 形成答案。
 
-直连输出检索证据，其他链路输出生成答案，因此准确率与延迟不是严格同任务横比。Dify HTTP / External 的证据覆盖为 96.3% / 99.7%，答案条款覆盖仅为 83.6% / 83.8%，主要损失在 Dify 生成编排而不是 MimirQ 召回；Dify 原生知识库不经过 MimirQ。
+### 检索核心（不含 LLM 生成）
 
-并发 5 直连首轮触发 15 次配置化 admission backpressure，降至并发 3 仅重试失败题后恢复为 800 / 800。MimirQ 没有加入地区、事项或题目特判；不同 Embedding runtime 的多库请求由通用检索层分片处理。
+| 证据链路 | 准确率 | 可用率 | 证据覆盖 | 时延（均值 / P95） |
+|:---|---:|---:|---:|---:|
+| **MimirQ 检索核心** | **98.9%** | **100%** | **99.5%** | **3.64s / 12.58s** |
+
+### 端到端问答（包含 LLM 生成）
+
+| 答案链路 | 准确率 | 可用率 | 覆盖（证据 / 答案） | 时延（均值 / P95） |
+|:---|---:|---:|---:|---:|
+| **MimirQ RAG 生成** | **90.9%** | **100%** | **99.7% / 96.6%** | **2.59s / 8.15s** |
+| **Dify HTTP → MimirQ** | 64.3% | 92.1% | 96.3% / 83.6% | 13.15s / 17.33s |
+| **Dify External → MimirQ** | 62.7% | 91.7% | **99.7%** / 83.8% | 12.14s / 23.49s |
+| **Dify 原生知识库¹** | 38.6% | 74.5% | 83.8% / 66.1% | 13.67s / 29.55s |
+
+¹ Dify 原生知识库不经过 MimirQ。完整的准确、部分准确与证据不足题数见详细报告。
+
+Dify HTTP / External 已取得 96.3% / 99.7% 的检索证据覆盖，但答案条款覆盖为 83.6% / 83.8%，主要损失发生在 Dify 生成编排，而不是 MimirQ 召回。
+
+<details>
+<summary><b>测试口径、并发与通用性说明</b></summary>
+
+- 检索核心输出证据，另外四条链路输出生成答案；两张表的准确率和延迟不能直接横向比较。
+- 并发 5 的检索首轮触发 15 次配置化 admission backpressure；降至并发 3 后，仅重试失败题即恢复为 800 / 800。
+- MimirQ 没有加入地区、事项或题目特判；不同 Embedding runtime 的多库请求由通用检索层分片处理。
+
+</details>
 
 [完整方法、指标解释与历史复测](./docs/benchmarks/changzhou_dify.md) · [Dify 接入方式与真实工作流](#dify-接入)
-
----
-
-## API 参考（OpenAPI / GitHub Pages）
-
-| 资源 | 链接 / 说明 |
-|:---|:---|
-| **在线交互文档（GitHub Pages）** | [https://skygazer42.github.io/MimirQ/](https://skygazer42.github.io/MimirQ/)（Redoc，全量 `openapi.json`；fork 后请改为 `https://<owner>.github.io/<repo>/`） |
-| **仓库内导读** | [docs/api/README.md](./docs/api/README.md)（认证、Base path、**全量 Tag 对照表**） |
-| **场景化调用顺序** | [docs/api/workflows.md](./docs/api/workflows.md) |
-| **本地 Swagger** | 后端启动后 [http://localhost:8000/docs](http://localhost:8000/docs) |
-| **导出 OpenAPI** | `make openapi-export` → `web/openapi.json` |
-| **构建静态站（与 CI 一致）** | `make api-docs-build` → `docs/api/site/` |
 
 ---
 
@@ -337,9 +341,6 @@ MimirQ 已用于**市级政务智能问答助手**，覆盖 7 个区域级 + 1 �
 | [RAG 优化](./docs/guides/rag_optimization.md) | 检索效果与回答质量优化 |
 | [检索排障](./docs/guides/retrieval_debugging.md) | 检索问题诊断 |
 | [SAML SSO](./docs/guides/saml_sso.md) | SAML 单点登录集成 |
-| [API 参考导读](./docs/api/README.md) | OpenAPI Tag 全表、GitHub Pages、静态站构建 |
-| [API 场景流程](./docs/api/workflows.md) | 认证 / 入库 / 检索 / 对话等端点顺序 |
-| [API 文档总览](./docs/API.md) | OpenAPI SSOT 导航、分片参考与手册入口 |
 | [快速开始](./docs/quickstart.md) | 从源码开发部署 |
 | [运维手册](./docs/deployment/runbook.md) | 生产运维与排障 |
 
@@ -412,8 +413,6 @@ make rag-concurrency-gate
 MimirQ 构建于优秀的开源生态之上，感谢以下项目：
 
 [Dify](https://github.com/langgenius/dify) · [RAGFlow](https://github.com/infiniflow/ragflow) · [FastAPI](https://fastapi.tiangolo.com/) · [LangChain](https://langchain.com/) · [LangGraph](https://langchain-ai.github.io/langgraph/) · [Milvus](https://milvus.io/) · [Next.js](https://nextjs.org/) · [PostgreSQL](https://www.postgresql.org/) · [RAGAS](https://docs.ragas.io/) · [PyMuPDF](https://pymupdf.readthedocs.io/) · [MinerU](https://github.com/opendatalab/MinerU) · [Tailwind CSS](https://tailwindcss.com/) · [shadcn/ui](https://ui.shadcn.com/)
-
-感谢[硅基流动](https://siliconflow.cn/)为 MimirQ 的公开联调提供 50 元 API 体验额度支持。
 
 ---
 

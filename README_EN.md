@@ -10,8 +10,7 @@
   <a href="#quick-start"><b>Quick Start</b></a> ·
   <a href="#dify-integration"><b>Dify Integration</b></a> ·
   <a href="#real-world-validation"><b>800-question benchmark</b></a> ·
-  <a href="./docs/releases/v1.0.0.md"><b>v1.0.0 Release Notes</b></a> ·
-  <a href="https://skygazer42.github.io/MimirQ/"><b>API Docs</b></a>
+  <a href="./docs/releases/v1.0.0.md"><b>v1.0.0 Release Notes</b></a>
 </p>
 
 <p>
@@ -116,7 +115,7 @@ These screens use the public government-service plugin samples included in the r
 
 - [Docker](https://docs.docker.com/get-docker/) 20.10+ & [Docker Compose](https://docs.docker.com/compose/install/) 2.0+
 - GNU Make; Docker startup also needs Python 3.9+ to generate local config
-- Host source startup also needs Python 3.11+, Node.js 20+, and pnpm 10.26
+- Source development mode also needs Python 3.11+, Node.js 20+, and pnpm 10.26
 - At least 4 CPU cores / 16 GB RAM / 50 GB disk
 
 ### Initialize
@@ -140,7 +139,7 @@ See [Model Services and Initial Administrator Configuration](./docs/guides/model
 | Startup mode | Best for | Where the app runs |
 |:---|:---|:---|
 | **Docker (recommended)** | First use and server deployment | Web, API, worker, and dependencies run in containers |
-| **Host source** | Frontend/backend development and hot reload | Web, API, and an optional worker run on the host; dependencies run in Docker |
+| **Source development** | Frontend/backend development and hot reload | `.venv` + pip run the API, pnpm runs the Web app, and Docker runs infrastructure |
 
 ### Option 1: Start everything with Docker
 
@@ -172,15 +171,15 @@ See the [Docker Compose deployment guide](./docs/deployment/docker_compose.md) a
 
 </details>
 
-### Option 2: Run the frontend and backend on the host
+### Option 2: Develop from source (Python venv + pip + pnpm)
 
-Install host dependencies and start the infrastructure services:
+This is the conventional local-development path and does not require Conda. FastAPI runs from a Python `.venv`, Next.js runs with pnpm, and Docker is used only for infrastructure such as PostgreSQL, Redis, and Milvus:
 
 ```bash
 make setup-host
 ```
 
-`make setup-host` installs host dependencies and starts the Docker infrastructure. The default in-process background mode requires two terminals:
+`make setup-host` creates `.venv`, installs the pip and pnpm dependencies, prepares parser models, and starts the Docker infrastructure. The default in-process background mode requires two terminals:
 
 ```bash
 # Terminal 1: FastAPI with hot reload
@@ -273,55 +272,41 @@ The standard Dify external-knowledge endpoint is `POST /api/v1/integrations/dify
 
 ## Real-world Validation
 
-MimirQ has powered a **municipal government Q&A assistant** across seven district-level and one city-level knowledge base. The latest direct-retrieval rerun used input SHA-256 `5a4c67...fac2`, with the following results:
+MimirQ has powered a **municipal government Q&A assistant** across seven district-level and one city-level knowledge base. On 2026-07-27, the same fixed 800 questions were rerun with real self-hosted models; all five paths ultimately completed **800 / 800**.
 
-| Latest result (2026-07-24) | Result |
-|:---|---:|
-| Successful execution | **800 / 800**, 0 timeouts |
-| Accurate / partially accurate / insufficient evidence | **797 / 3 / 0** |
-| Accuracy / usability | **99.6% / 100%** |
-| Mean / P50 / P95 / P99 | **1.15s / 0.83s / 4.00s / 8.95s** |
+<!-- Data sources: artifacts/dify_4way_800_20260727/comparison_report.json, artifacts/dify_4way_800_20260727/summary_for_sharing.md, and artifacts/changzhou_local_3model_800_20260727/summary.json; input SHA-256 5a4c67c42e8f8123774279d46af39ccc793da1b89fdea19a7359f63c8cb2fac2. -->
 
-This direct-retrieval run reached 99.7% evidence-clause coverage. Multi-knowledge-base retrieval across different embedding runtimes is sharded by a generic retrieval layer, with no domain hard-coding.
+> **“Retrieval core” is not LLM question answering.** It runs embedding, hybrid retrieval, and reranking, then returns Top-K evidence directly. “RAG generation” continues by asking an LLM to produce the answer.
 
-An independent E2E load test — reranker enabled, response cache bypassed per request — cut total wall time for 12 requests from 41.46s to 30.14s at retrieval concurrency 3, and for 6 requests from 54.61s to 31.60s at conversation concurrency 3, both with 0 errors. Concurrency raises per-request latency; what is validated here is same-batch throughput improvement, not a hardware capacity ceiling.
+### Retrieval Core (No LLM Generation)
+
+| Evidence path | Accuracy | Usability | Evidence coverage | Latency (mean / P95) |
+|:---|---:|---:|---:|---:|
+| **MimirQ retrieval core** | **98.9%** | **100%** | **99.5%** | **3.64s / 12.58s** |
+
+### End-to-End Answers (With LLM Generation)
+
+| Answer path | Accuracy | Usability | Coverage (evidence / answer) | Latency (mean / P95) |
+|:---|---:|---:|---:|---:|
+| **MimirQ RAG generation** | **90.9%** | **100%** | **99.7% / 96.6%** | **2.59s / 8.15s** |
+| **Dify HTTP → MimirQ** | 64.3% | 92.1% | 96.3% / 83.6% | 13.15s / 17.33s |
+| **Dify External → MimirQ** | 62.7% | 91.7% | **99.7%** / 83.8% | 12.14s / 23.49s |
+| **Dify native knowledge¹** | 38.6% | 74.5% | 83.8% / 66.1% | 13.67s / 29.55s |
+
+¹ Dify native knowledge does not use MimirQ. See the detailed report for accurate, partially accurate, and insufficient-evidence counts.
+
+Dify HTTP / External reached 96.3% / 99.7% retrieval-evidence coverage, while generated-answer clause coverage was 83.6% / 83.8%. The main loss was in Dify answer generation rather than MimirQ retrieval.
 
 <details>
-<summary><b>Expand the 2026-07-24 four-way same-question rerun</b></summary>
+<summary><b>Test boundary, concurrency, and generality notes</b></summary>
 
-The same fixed 800 questions were rerun across four real integration paths:
-
-<!-- Data source: artifacts/changzhou_dify_4way_800_20260724/comparison_report.json (2026-07-24T04:02:01Z); input SHA-256 5a4c67c42e8f8123774279d46af39ccc793da1b89fdea19a7359f63c8cb2fac2. -->
-
-| Path | Successful execution | Accuracy / usability | Answer clause coverage | Answer evidence-supported | Wrong-evidence rate | Mean / P50 / P95 |
-|:---|---:|---:|---:|---:|---:|---:|
-| **MimirQ direct retrieval** | **800 / 800** | **99.6% / 100%** | **99.7%** | **99.8%** | 3.0% | **1.15s / 0.83s / 4.00s** |
-| **Dify External → MimirQ** | **800 / 800** | 60.8% / 91.4% | 82.9% | **97.3%** | **2.7%** | 6.69s / 6.09s / 11.79s |
-| **Dify HTTP → MimirQ** | **800 / 800** | **67.6% / 93.0%** | **85.6%** | 94.6% | 3.6% | 5.20s / 5.04s / 7.19s |
-| **Dify native knowledge** | **800 / 800** | 38.8% / 74.9% | 66.0% | 85.6% | 79.1% | 10.34s / 8.28s / 26.49s |
-
-Retrieval evidence coverage on MimirQ's two Dify paths was 99.7% / 96.8%, but generated-answer clause coverage was 82.9% / 85.6%: the main loss is in workflow answer generation, not knowledge recall. All four paths ran the full 800 questions at concurrency 3 in this round. Dify native knowledge does not go through MimirQ; two upstream Nginx 504 responses on its first pass recovered automatically, yielding 800 / 800 final successes.
+- The retrieval core returns evidence; the other four paths return generated answers. Accuracy and latency across the two tables are not direct like-for-like comparisons.
+- Retrieval concurrency 5 initially triggered 15 configured admission-backpressure responses. Retrying only those cases at concurrency 3 restored 800 / 800.
+- MimirQ contains no region, service-item, or question-specific special cases. A generic retrieval layer shards multi-dataset requests across different embedding runtimes.
 
 </details>
 
 [Full methodology, metric definitions, and historical reruns](./docs/benchmarks/changzhou_dify.md) · [Dify integration modes and real workflows](#dify-integration)
-
----
-
-## API Reference (OpenAPI / GitHub Pages)
-
-| Resource | Link / notes |
-|:---|:---|
-| **Hosted API browser (GitHub Pages)** | [https://skygazer42.github.io/MimirQ/](https://skygazer42.github.io/MimirQ/) (Redoc + full `openapi.json`; use `https://<owner>.github.io/<repo>/` after fork) |
-| **Repository guide** | [docs/api/README.md](./docs/api/README.md) (auth, base path, full OpenAPI tag map) |
-| **Scenario flows** | [docs/api/workflows.md](./docs/api/workflows.md) |
-| **Local Swagger** | [http://localhost:8000/docs](http://localhost:8000/docs) when the backend is running |
-| **Export OpenAPI** | `make openapi-export` → `web/openapi.json` |
-| **Build static site** | `make api-docs-build` → `docs/api/site/` |
-
-> Auth convention: there is no global auth middleware — **every route must explicitly depend on `get_current_account_id`**; routes accessing tenant data must also depend on `get_tenant_id`. See [backend_structure.md](./docs/backend_structure.md).
-
-Enable **Settings → Pages → GitHub Actions** on the repository; pushes to `main` run [`.github/workflows/api-docs.yml`](./.github/workflows/api-docs.yml).
 
 ---
 
@@ -357,9 +342,6 @@ See the [Docker Compose guide](./docs/deployment/docker_compose.md), [Helm guide
 | [Retrieval Debugging](./docs/guides/retrieval_debugging.md) | Retrieval issue diagnosis |
 | [SAML SSO](./docs/guides/saml_sso.md) | SAML single sign-on integration |
 | [Public Benchmarks](./docs/guides/public_benchmarks_zh.md) | Reproducible Chinese benchmarks (MIRACL-zh / CFEVER) |
-| [API guide](./docs/api/README.md) | OpenAPI tag map, Pages link, static build |
-| [API workflows](./docs/api/workflows.md) | Endpoint order by scenario |
-| [API overview](./docs/API.md) | OpenAPI SSOT navigation, sharded reference, and handbook entry |
 | [Quick Start](./docs/quickstart.md) | Development from source |
 | [Runbook](./docs/deployment/runbook.md) | Production operations & troubleshooting |
 
@@ -430,8 +412,6 @@ This project is licensed under the [Apache License 2.0](LICENSE). Attribution fo
 MimirQ is built on the shoulders of outstanding open-source projects:
 
 [Dify](https://github.com/langgenius/dify) · [RAGFlow](https://github.com/infiniflow/ragflow) · [FastAPI](https://fastapi.tiangolo.com/) · [LangChain](https://langchain.com/) · [LangGraph](https://langchain-ai.github.io/langgraph/) · [Milvus](https://milvus.io/) · [Next.js](https://nextjs.org/) · [PostgreSQL](https://www.postgresql.org/) · [RAGAS](https://docs.ragas.io/) · [PyMuPDF](https://pymupdf.readthedocs.io/) · [MinerU](https://github.com/opendatalab/MinerU) · [Tailwind CSS](https://tailwindcss.com/) · [shadcn/ui](https://ui.shadcn.com/)
-
-Thanks to [SiliconFlow](https://siliconflow.cn/) for providing CNY 50 in API trial credit for MimirQ's public integration testing.
 
 ---
 

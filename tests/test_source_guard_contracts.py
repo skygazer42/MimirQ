@@ -393,14 +393,10 @@ def test_production_docs_call_out_strong_compose_credentials_and_proxy_boundary(
     assert "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY_DOCKER=3" in docker_doc
     assert "FORWARDED_ALLOW_IPS_DOCKER" in docker_doc
     assert "禁止 `*`" in docker_doc
+    assert "MARKDOWN_IMAGE_PROXY_SECRET" in docker_doc
 
     readme = _read("README.md")
-    assert "MINIO_ACCESS_KEY_DOCKER=<强访问密钥>" in readme
-    assert "MINIO_SECRET_KEY_DOCKER=<强私密密钥>" in readme
-    assert "UPLOAD_DEDUP_ENABLED_DOCKER=true" in readme
-    assert "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED_DOCKER=true" in readme
-    assert "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY_DOCKER=3" in readme
-    assert "MARKDOWN_IMAGE_PROXY_SECRET" in readme
+    assert "[Docker Compose 部署指南](./docs/deployment/docker_compose.md)" in readme
 
     env_example = _read(".env.example")
     assert "生产环境必须改掉默认的 minioadmin" in env_example
@@ -452,18 +448,18 @@ def test_host_quickstart_make_targets_cover_backend_worker_and_web() -> None:
     assert "\t$(PY) -m arq --check app.tasks.queue.WorkerHealthSettings\n" in makefile
 
     assert "make backend" in readme
-    assert "make worker" in readme
     assert "make web" in readme
     assert ".venv/bin/arq app.tasks.worker.WorkerSettings" not in readme
-    assert "主机源码启动 API + Worker + Web" in readme
+    assert "源码开发（Python venv + pip + pnpm）" in readme
 
     assert "make setup-host" in quickstart
     assert "make backend" in quickstart
     assert "make worker" in quickstart
     assert "make web" in quickstart
     assert "make worker-check" in quickstart
-    assert "分别打开三个终端" in quickstart
-    assert "终端 2：文档解析与索引 Worker" in quickstart
+    assert "分别打开两个终端" in quickstart
+    assert "需要独立队列时" in quickstart
+    assert "第三个终端运行 `make worker`" in quickstart
 
 
 def test_makefile_recipes_do_not_execute_posix_comment_lines() -> None:

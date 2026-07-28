@@ -9,8 +9,7 @@
   <a href="#プロダクト画面"><b>プロダクト画面</b></a> ·
   <a href="#クイックスタート"><b>クイックスタート</b></a> ·
   <a href="#dify-連携"><b>Dify 連携</b></a> ·
-  <a href="#実運用での検証"><b>800問ベンチマーク</b></a> ·
-  <a href="https://skygazer42.github.io/MimirQ/"><b>API ドキュメント</b></a>
+  <a href="#実運用での検証"><b>800問ベンチマーク</b></a>
 </p>
 
 <p>
@@ -113,7 +112,7 @@ MimirQ は、すべてのプラットフォームを置き換えようとはし�
 
 - [Docker](https://docs.docker.com/get-docker/) 20.10+ & [Docker Compose](https://docs.docker.com/compose/install/) 2.0+
 - GNU Make。Docker 起動ではローカル設定の生成に Python 3.9+ も必要
-- ホストでのソース起動では Python 3.11+、Node.js 20+、pnpm 10.26 も必要
+- ソース開発モードでは Python 3.11+、Node.js 20+、pnpm 10.26 も必要
 - 最低 4 CPU コア / 16 GB RAM / 50 GB ディスク
 
 ### 初期化
@@ -137,7 +136,7 @@ make init
 | 起動方法 | 用途 | アプリの実行場所 |
 |:---|:---|:---|
 | **Docker 一括起動（推奨）** | 初回利用、サーバーデプロイ | Web、API、Worker、依存サービスをコンテナで実行 |
-| **ホストでソース起動** | フロントエンド・バックエンド開発、ホットリロード | Web、API はホストで実行。`TASK_QUEUE_ENABLED=true` のときだけ Worker もホストで起動し、依存サービスは Docker で実行 |
+| **ソース開発** | フロントエンド・バックエンド開発、ホットリロード | `.venv` + pip で API、pnpm で Web、Docker で基盤を実行 |
 
 ### 方法 1：Docker で一括起動
 
@@ -148,15 +147,15 @@ make api-ping
 
 [http://localhost:3000](http://localhost:3000) にアクセスします。初期管理者を設定していない場合は、画面で最初のアカウントを登録します。初回ビルド、プロキシ、本番用シークレット、ネットワーク設定は [Docker Compose ガイド](./docs/deployment/docker_compose.md)を参照してください。
 
-### 方法 2：フロントエンドとバックエンドをホストで起動
+### 方法 2：ソース開発（Python venv + pip + pnpm）
 
-ホスト側の依存関係をインストールし、基盤サービスを起動します。
+これは一般的なローカル開発方式で、Conda は不要です。FastAPI は Python `.venv`、Next.js は pnpm で実行し、Docker は PostgreSQL、Redis、Milvus などの基盤だけに使用します。
 
 ```bash
 make setup-host
 ```
 
-`make setup-host` はホスト依存関係をインストールし、Docker 基盤を起動します。デフォルトでは 2 つのターミナルを使用します。
+`make setup-host` は `.venv` の作成、pip / pnpm 依存関係のインストール、パーサーモデルの準備、Docker 基盤の起動を行います。デフォルトでは 2 つのターミナルを使用します。
 
 ```bash
 # ターミナル 1：FastAPI（ホットリロード）
@@ -249,55 +248,41 @@ Dify 標準の外部ナレッジベースエンドポイントは `POST /api/v1/
 
 ## 実運用での検証
 
-MimirQ は、7 つの地区レベルと 1 つの市レベルのナレッジベースにまたがる**市レベルの行政 Q&A アシスタント**で使われています。最新の直接検索の再測定では入力 SHA-256 `5a4c67...fac2` を用い、結果は次のとおりです。
+MimirQ は、7 つの地区レベルと 1 つの市レベルのナレッジベースにまたがる**市レベルの行政 Q&A アシスタント**で使われています。2026-07-27 に同じ固定 800 問を実セルフホストモデルで再測定し、5 経路すべてが最終的に **800 / 800** を完了しました。
 
-| 最新結果（2026-07-24） | 結果 |
-|:---|---:|
-| 実行成功 | **800 / 800**、タイムアウト 0 |
-| 正確 / 部分的に正確 / エビデンス不足 | **797 / 3 / 0** |
-| 正確率 / 利用可能率 | **99.6% / 100%** |
-| 平均 / P50 / P95 / P99 | **1.15s / 0.83s / 4.00s / 8.95s** |
+<!-- データ出典：artifacts/dify_4way_800_20260727/comparison_report.json、artifacts/dify_4way_800_20260727/summary_for_sharing.md、artifacts/changzhou_local_3model_800_20260727/summary.json；入力 SHA-256 5a4c67c42e8f8123774279d46af39ccc793da1b89fdea19a7359f63c8cb2fac2。 -->
 
-今回の直接検索ではエビデンス条項カバレッジ 99.7% を達成しました。異なる embedding ランタイムをまたぐマルチナレッジベース検索は汎用の検索レイヤーがシャーディングして処理し、ドメイン固有のハードコードはありません。
+> **「検索コア」は LLM 問答ではありません。** Embedding、ハイブリッド検索、リランクを実行して Top-K エビデンスを直接返します。「RAG 生成」で初めて LLM が回答を生成します。
 
-独立した E2E 負荷テストでは、リランカーを有効化しリクエストごとにレスポンスキャッシュをバイパスした状態で、検索の並列度 3 で 12 リクエストの総時間を 41.46s から 30.14s に、会話の並列度 3 で 6 リクエストを 54.61s から 31.60s に短縮し、いずれもエラー 0 でした。並列化は単一リクエストのレイテンシを上げます。ここで検証しているのは同一バッチのスループット改善であり、ハードウェアの容量上限ではありません。
+### 検索コア（LLM 生成なし）
+
+| エビデンス経路 | 正確率 | 利用可能率 | エビデンスカバレッジ | レイテンシ（平均 / P95） |
+|:---|---:|---:|---:|---:|
+| **MimirQ 検索コア** | **98.9%** | **100%** | **99.5%** | **3.64s / 12.58s** |
+
+### エンドツーエンド回答（LLM 生成あり）
+
+| 回答経路 | 正確率 | 利用可能率 | カバレッジ（エビデンス / 回答） | レイテンシ（平均 / P95） |
+|:---|---:|---:|---:|---:|
+| **MimirQ RAG 生成** | **90.9%** | **100%** | **99.7% / 96.6%** | **2.59s / 8.15s** |
+| **Dify HTTP → MimirQ** | 64.3% | 92.1% | 96.3% / 83.6% | 13.15s / 17.33s |
+| **Dify External → MimirQ** | 62.7% | 91.7% | **99.7%** / 83.8% | 12.14s / 23.49s |
+| **Dify ネイティブナレッジ¹** | 38.6% | 74.5% | 83.8% / 66.1% | 13.67s / 29.55s |
+
+¹ Dify ネイティブナレッジは MimirQ を経由しません。正確・部分正確・エビデンス不足の件数は詳細レポートを参照してください。
+
+Dify HTTP / External の検索エビデンスカバレッジは 96.3% / 99.7%、生成回答の条項カバレッジは 83.6% / 83.8% でした。主な損失は MimirQ の検索ではなく、Dify の回答生成で生じています。
 
 <details>
-<summary><b>2026-07-24 の四方向・同一問題再測定を開く</b></summary>
+<summary><b>テスト境界、並列性、汎用性の説明</b></summary>
 
-同一の固定 800 問を、4 つの実際の連携経路で再測定しました。
-
-<!-- データ出典：artifacts/changzhou_dify_4way_800_20260724/comparison_report.json（2026-07-24T04:02:01Z）；入力 SHA-256 5a4c67c42e8f8123774279d46af39ccc793da1b89fdea19a7359f63c8cb2fac2。 -->
-
-| 経路 | 実行成功 | 正確率 / 利用可能率 | 回答条項カバレッジ | 回答のエビデンス裏付け | 誤エビデンス率 | 平均 / P50 / P95 |
-|:---|---:|---:|---:|---:|---:|---:|
-| **MimirQ 直接検索** | **800 / 800** | **99.6% / 100%** | **99.7%** | **99.8%** | 3.0% | **1.15s / 0.83s / 4.00s** |
-| **Dify External → MimirQ** | **800 / 800** | 60.8% / 91.4% | 82.9% | **97.3%** | **2.7%** | 6.69s / 6.09s / 11.79s |
-| **Dify HTTP → MimirQ** | **800 / 800** | **67.6% / 93.0%** | **85.6%** | 94.6% | 3.6% | 5.20s / 5.04s / 7.19s |
-| **Dify ネイティブナレッジ** | **800 / 800** | 38.8% / 74.9% | 66.0% | 85.6% | 79.1% | 10.34s / 8.28s / 26.49s |
-
-MimirQ の 2 つの Dify 経路の検索エビデンスカバレッジは 99.7% / 96.8% でしたが、生成回答の条項カバレッジは 82.9% / 85.6% でした。主な損失は知識のリコールではなく、ワークフローの回答生成で生じています。今回は 4 経路すべてで並列度 3 の 800 問を完全実行しました。Dify ネイティブナレッジは MimirQ を経由せず、初回の上流 Nginx 504 2 件は自動再試行で回復し、最終的に 800 / 800 が成功しました。
+- 検索コアはエビデンスを返し、他の 4 経路は生成回答を返します。2 表の正確率とレイテンシは同一タスクとして直接比較できません。
+- 検索の並列度 5 では初回に設定済み admission backpressure が 15 件発生しました。並列度 3 で該当問題だけを再試行し、800 / 800 に復旧しました。
+- MimirQ には地域・事項・問題の特別扱いはありません。異なる Embedding ランタイムをまたぐマルチナレッジベース要求は汎用検索レイヤーがシャーディングします。
 
 </details>
 
 [完全な手法、指標の定義、過去の再測定](./docs/benchmarks/changzhou_dify.md) · [Dify の連携方式と実際のワークフロー](#dify-連携)
-
----
-
-## API リファレンス（OpenAPI / GitHub Pages）
-
-| リソース | リンク / 説明 |
-|:---|:---|
-| **オンライン API ブラウザ（GitHub Pages）** | [https://skygazer42.github.io/MimirQ/](https://skygazer42.github.io/MimirQ/)（Redoc + 全量 `openapi.json`；fork 後は `https://<owner>.github.io/<repo>/` に変更） |
-| **リポジトリガイド** | [docs/api/README.md](./docs/api/README.md)（認証、ベースパス、全 OpenAPI タグ対応表） |
-| **シナリオ別フロー** | [docs/api/workflows.md](./docs/api/workflows.md) |
-| **ローカル Swagger** | バックエンド起動後の [http://localhost:8000/docs](http://localhost:8000/docs) |
-| **OpenAPI のエクスポート** | `make openapi-export` → `web/openapi.json` |
-| **静的サイトのビルド** | `make api-docs-build` → `docs/api/site/` |
-
-> 認証の規約：グローバルな認証ミドルウェアはありません。**すべてのルートが明示的に `get_current_account_id` に依存する必要があります**。テナントデータにアクセスするルートは `get_tenant_id` にも依存する必要があります。[backend_structure.md](./docs/backend_structure.md) を参照してください。
-
-リポジトリで **Settings → Pages → GitHub Actions** を有効にしてください。`main` への push で [`.github/workflows/api-docs.yml`](./.github/workflows/api-docs.yml) が実行されます。
 
 ---
 
@@ -333,9 +318,6 @@ MimirQ の 2 つの Dify 経路の検索エビデンスカバレッジは 99.7% 
 | [検索トラブルシューティング](./docs/guides/retrieval_debugging.md) | 検索問題の診断 |
 | [SAML SSO](./docs/guides/saml_sso.md) | SAML シングルサインオン連携 |
 | [公開ベンチマーク](./docs/guides/public_benchmarks_zh.md) | 再現可能な中国語ベンチマーク（MIRACL-zh / CFEVER） |
-| [API ガイド](./docs/api/README.md) | OpenAPI タグ対応表、Pages リンク、静的ビルド |
-| [API ワークフロー](./docs/api/workflows.md) | シナリオ別のエンドポイント順序 |
-| [API 総覧](./docs/API.md) | OpenAPI SSOT ナビゲーション・分割リファレンス・ハンドブックへの入口 |
 | [クイックスタート](./docs/quickstart.md) | ソースからの開発 |
 | [運用ハンドブック](./docs/deployment/runbook.md) | 本番運用とトラブルシューティング |
 
@@ -406,8 +388,6 @@ make enterprise-checks
 MimirQ は優れたオープンソースエコシステムの上に構築されています。以下のプロジェクトに感謝します。
 
 [Dify](https://github.com/langgenius/dify) · [RAGFlow](https://github.com/infiniflow/ragflow) · [FastAPI](https://fastapi.tiangolo.com/) · [LangChain](https://langchain.com/) · [LangGraph](https://langchain-ai.github.io/langgraph/) · [Milvus](https://milvus.io/) · [Next.js](https://nextjs.org/) · [PostgreSQL](https://www.postgresql.org/) · [RAGAS](https://docs.ragas.io/) · [PyMuPDF](https://pymupdf.readthedocs.io/) · [MinerU](https://github.com/opendatalab/MinerU) · [Tailwind CSS](https://tailwindcss.com/) · [shadcn/ui](https://ui.shadcn.com/)
-
-MimirQ の公開連携テストに CNY 50 の API 体験クレジットを提供してくださった [SiliconFlow](https://siliconflow.cn/) に感謝します。
 
 ---
 
