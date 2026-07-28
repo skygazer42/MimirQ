@@ -226,7 +226,7 @@ def apply_retrieval_profile_overrides(
         out["top_k"] = max(int(out["top_k"] or 0), 20)
         out["score_threshold"] = 0.0
         out["enable_reranker"] = True
-        out["reranker_provider"] = _configured_reranker_provider(out)
+        out["reranker_provider"] = "cross_encoder"
         out["reranker_top_n"] = max(int(out["reranker_top_n"] or 0), int(out["top_k"] or 0), 20)
         out["enable_weight_rerank"] = False
         out["retrieval_contract_mode"] = "evidence_strict"
@@ -238,7 +238,7 @@ def apply_retrieval_profile_overrides(
         out["top_k"] = max(int(out["top_k"] or 0), 20)
         out["score_threshold"] = 0.0
         out["enable_reranker"] = True
-        out["reranker_provider"] = _configured_reranker_provider(out)
+        out["reranker_provider"] = "cross_encoder"
         out["reranker_top_n"] = max(int(out["reranker_top_n"] or 0), int(out["top_k"] or 0), 20)
         out["enable_weight_rerank"] = False
         out["retrieval_contract_mode"] = "evidence_strict"

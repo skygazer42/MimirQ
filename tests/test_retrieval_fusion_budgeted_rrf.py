@@ -306,9 +306,7 @@ def test_enterprise_profiles_gate_expensive_work_on_runtime_readiness() -> None:
         "balanced",
         "quality",
         "hybrid_ce",
-        "grounded_strict",
         "hierarchy_hybrid_ce",
-        "hierarchy_grounded_strict",
     ],
 )
 def test_reranking_profiles_preserve_configured_remote_provider(profile: str) -> None:
@@ -325,3 +323,22 @@ def test_reranking_profiles_preserve_configured_remote_provider(profile: str) ->
 
     assert applied["enable_reranker"] is True
     assert applied["reranker_provider"] == "openai"
+
+
+@pytest.mark.parametrize("profile", ["grounded_strict", "hierarchy_grounded_strict"])
+def test_grounded_strict_profiles_force_cross_encoder(profile: str) -> None:
+    applied = apply_retrieval_profile_overrides(
+        profile=profile,
+        top_k=10,
+        score_threshold=0.0,
+        retrieval_mode="keyword",
+        enable_reranker=False,
+        reranker_provider="llm",
+        reranker_top_n=5,
+        enable_weight_rerank=True,
+    )
+
+    assert applied["enable_reranker"] is True
+    assert applied["reranker_provider"] == "cross_encoder"
+    assert applied["retrieval_contract_mode"] == "evidence_strict"
+    assert applied["visible_evidence_only"] is True
