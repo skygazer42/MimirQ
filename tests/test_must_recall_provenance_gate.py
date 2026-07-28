@@ -170,6 +170,43 @@ def test_run_gate_prefers_explicit_item_failures_over_passing_summary(tmp_path: 
     assert result["summary"]["provenance_integrity_rate"] == 0.0
 
 
+def test_run_gate_does_not_override_explicit_provenance_failure_with_nonstrict_capsule(tmp_path: Path) -> None:
+    from app.rag.core.evidence_capsule_builder import build_evidence_capsule
+
+    mod = _load_module()
+    capsule = build_evidence_capsule(
+        query_for_retrieval="retry header",
+        citations=[{"chunk_id": "chunk-1", "document_id": "doc-1"}],
+        metrics={"must_recall_passed": True, "must_recall_status": "passed"},
+        retrieval_trace=None,
+    )
+    run_json = _write_run_json(
+        tmp_path,
+        {
+            "items": [
+                {
+                    "meta": {
+                        "must_recall_passed": True,
+                        "provenance_integrity_passed": False,
+                        "provenance_integrity_status": "failed",
+                        "evidence_capsule": capsule,
+                    }
+                }
+            ]
+        },
+    )
+
+    result = mod.run_gate(  # type: ignore[attr-defined]
+        run_json=run_json,
+        must_recall_min=1.0,
+        provenance_min=1.0,
+    )
+
+    assert result["passed"] is False
+    assert result["summary"]["provenance_integrity_rate"] == 0.0
+    assert "provenance_integrity_rate_below_threshold" in result["failures"]
+
+
 def test_run_gate_strict_provenance_validates_capsule_from_item_meta(tmp_path: Path) -> None:
     from app.rag.core.evidence_capsule_builder import build_evidence_capsule
 

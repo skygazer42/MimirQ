@@ -197,6 +197,15 @@ def _compute_provenance_integrity_rate(
     for row in rows:
         metrics = _row_metrics(row)
         meta = _row_meta(row)
+        passed_flag = _coerce_bool_flag(
+            _first_non_none(
+                row.get("provenance_integrity_passed"),
+                metrics.get("provenance_integrity_passed"),
+                meta.get("provenance_integrity_passed"),
+            )
+        )
+        if passed_flag is False:
+            continue
         capsule = row.get("evidence_capsule")
         if not isinstance(capsule, dict):
             capsule = metrics.get("evidence_capsule")
@@ -212,13 +221,6 @@ def _compute_provenance_integrity_rate(
             continue
         if strict_integrity or require_signature:
             continue
-        passed_flag = _coerce_bool_flag(
-            _first_non_none(
-                row.get("provenance_integrity_passed"),
-                metrics.get("provenance_integrity_passed"),
-                meta.get("provenance_integrity_passed"),
-            )
-        )
         if passed_flag:
             passed += 1
     return float(passed) / float(total), int(passed), int(total)

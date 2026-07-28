@@ -6,6 +6,8 @@ import pytest
 from langchain_core.documents import Document
 
 from app.core.config import settings
+from app.rag.core.evidence_capsule_builder import validate_evidence_capsule
+from app.rag.core.hashing import stable_json_hash
 from app.rag.evaluation.evidence_retrieve_gate import build_retrieval_gate_summary, compute_retrieval_item_meta
 from app.rag.retriever import HybridRetriever
 from app.services.dataset_embedding_config import resolve_dataset_embedding_runtime
@@ -237,6 +239,36 @@ def test_compute_retrieval_item_meta_builds_valid_provenance_capsule() -> None:
     assert summary["must_recall_passed_cases"] == 1
     assert summary["provenance_integrity_rate"] == pytest.approx(1.0)
     assert summary["provenance_passed_cases"] == 1
+
+
+def test_compute_retrieval_item_meta_rehashes_sanitized_upstream_citation() -> None:
+    case = {
+        "question": "retry header",
+        "reference_sources": [{"chunk_id": "chunk-1", "document_id": "doc-1"}],
+    }
+    citation = {
+        "chunk_id": "chunk-1",
+        "document_id": "doc-1",
+        "chunk_content": "Retry-After header guidance",
+        "evidence_anchor_hash": "anchor-1",
+        "retrieval_role": "main",
+        "hit_type": "keyword",
+    }
+    citation["citation_hash"] = stable_json_hash(citation, length=16)
+    upstream_hash = citation["citation_hash"]
+
+    meta = compute_retrieval_item_meta(
+        case=case,
+        citations=[citation],
+        retrieval_metrics={"retrieval_mode": "keyword"},
+    )
+
+    capsule = meta["evidence_capsule"]
+    capsule_citation = capsule["citations"][0]
+    assert capsule_citation["source_citation_hash"] == upstream_hash
+    assert capsule_citation["citation_hash"] != upstream_hash
+    assert validate_evidence_capsule(capsule, strict=True, verify_signature=False) == (True, "ok")
+    assert meta["provenance_integrity_passed"] is True
 
 
 def test_compute_retrieval_item_meta_marks_invalid_provenance_capsule_failed() -> None:

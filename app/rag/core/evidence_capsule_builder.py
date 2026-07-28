@@ -27,9 +27,9 @@ def _coerce_bool(value: Any) -> bool | None:
 
 
 def _sanitize_citation(citation: dict[str, Any]) -> dict[str, Any]:
+    source_citation_hash = str(citation.get("source_citation_hash") or citation.get("citation_hash") or "").strip()
     out: dict[str, Any] = {}
     for key in (
-        "citation_hash",
         "evidence_anchor_hash",
         "document_id",
         "chunk_id",
@@ -81,10 +81,9 @@ def _sanitize_citation(citation: dict[str, Any]) -> dict[str, Any]:
             "row_source_pk_hashes": out.get("row_source_pk_hashes"),
         }
         out["evidence_anchor_hash"] = stable_json_hash(anchor_payload, length=16)
-    if "citation_hash" not in out:
-        payload = dict(out)
-        payload.pop("citation_hash", None)
-        out["citation_hash"] = stable_json_hash(payload, length=16)
+    if source_citation_hash:
+        out["source_citation_hash"] = source_citation_hash
+    out["citation_hash"] = stable_json_hash(out, length=16)
     return out
 
 

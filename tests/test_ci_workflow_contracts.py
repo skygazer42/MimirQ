@@ -286,6 +286,20 @@ def test_retrieval_regression_gate_is_offline_and_reuses_bounded_proof_artifacts
     )
 
 
+def test_retrieval_regression_gate_requires_strict_provenance_integrity() -> None:
+    workflow = _read(".github/workflows/ci.yml")
+    retrieval_regression_job = workflow.split("\n  retrieval-regression-gate:\n", 1)[1].split(
+        "\n  kg-search-regression-gate:\n",
+        1,
+    )[0]
+    provenance_gate_step = retrieval_regression_job.split("- name: Must-recall + provenance gate", 1)[1].split(
+        "\n      - name:",
+        1,
+    )[0]
+
+    assert "--strict-integrity" in provenance_gate_step
+
+
 def test_main_ci_uploads_the_generated_test_inventory() -> None:
     workflow = _read(".github/workflows/ci.yml")
 

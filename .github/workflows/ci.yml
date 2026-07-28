@@ -1495,6 +1495,7 @@ jobs:
             --run-json artifacts/run.detail.json \
             --must-recall-min 1.0 \
             --provenance-min 1.0 \
+            --strict-integrity \
             --out artifacts/must_recall_provenance_gate.report.json
 
       - name: Release gate (SLO + cost budgets)
