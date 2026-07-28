@@ -11,6 +11,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+WHEEL_DOWNLOAD_USER_AGENT = "MimirQ-CI/1.0 (+https://github.com/skygazer42/MimirQ)"
+
 
 @dataclasses.dataclass(frozen=True)
 class WheelSpec:
@@ -64,7 +66,11 @@ def _download(spec: WheelSpec, target: Path, retries: int, timeout_sec: int) -> 
                 mode="wb", prefix=f".{spec.filename}.", suffix=".tmp", dir=target.parent, delete=False
             ) as tmp:
                 tmp_path = Path(tmp.name)
-                with urllib.request.urlopen(spec.url, timeout=timeout_sec) as response:
+                request = urllib.request.Request(
+                    spec.url,
+                    headers={"User-Agent": WHEEL_DOWNLOAD_USER_AGENT},
+                )
+                with urllib.request.urlopen(request, timeout=timeout_sec) as response:
                     shutil.copyfileobj(response, tmp)
 
             actual_sha256 = _sha256(tmp_path)
