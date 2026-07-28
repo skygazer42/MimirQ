@@ -19,6 +19,7 @@ env:
   SELF_HOSTED_VENV_DIR: ${{ vars.CI_SELF_HOSTED_VENV_DIR || '' }}
   PIP_INDEX_URL: ${{ vars.CI_PIP_INDEX_URL || 'https://pypi.org/simple' }}
   PIP_CACHE_DIR: ${{ vars.CI_PIP_CACHE_DIR || '' }}
+  TORCH_WHEEL_DIR: ${{ vars.CI_TORCH_WHEEL_DIR || '' }}
   SELF_HOSTED_HTTP_PROXY: ${{ vars.CI_HTTP_PROXY || '' }}
   SELF_HOSTED_HTTPS_PROXY: ${{ vars.CI_HTTPS_PROXY || '' }}
   SELF_HOSTED_NO_PROXY: ${{ vars.CI_NO_PROXY || '' }}
@@ -28,6 +29,10 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      PIP_INDEX_URL: https://pypi.org/simple
+      PIP_CACHE_DIR: /home/runner/.cache/pip
+      TORCH_WHEEL_DIR: /home/runner/.cache/torch-wheels
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -42,8 +47,18 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Build static API site
-        run: make api-docs-build-static
+      - name: Install Python dependencies
+        run: |
+          mkdir -p "$PIP_CACHE_DIR" "$TORCH_WHEEL_DIR"
+          python -m pip install --upgrade pip
+          python ci/download_verified_wheels.py --cache-dir "$TORCH_WHEEL_DIR"
+          python -m pip install --retries 5 --timeout 120 \
+            "$TORCH_WHEEL_DIR/torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
+            "$TORCH_WHEEL_DIR/torchvision-0.28.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
+          python -m pip install --retries 10 --timeout 120 -r requirements.txt
+
+      - name: Build API site
+        run: make api-docs-build
 
   deploy:
     if: github.event_name != 'pull_request'
@@ -56,23 +71,16 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           clean: true
-        env:
-          http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}
-          https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}
-          no_proxy: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}
 
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' }}
-        run: bash scripts/prepare_self_hosted_ci.sh
+        run: bash scripts/prepare_self_hosted_ci.sh --include-torch-wheel-dir
 
       - name: Prepare self-hosted Node
         if: ${{ runner.environment == 'self-hosted' }}
         run: |
           node -v
           npm -v
-
-      - name: Build static API site (OpenAPI + Redoc + Docusaurus handbook)
-        run: make api-docs-build-static
 
       - name: Check GitHub Pages availability
         id: pages
@@ -102,6 +110,29 @@ jobs:
               ;;
           esac
 
+      - name: Install Python dependencies
+        if: steps.pages.outputs.enabled == 'true'
+        run: |
+          mkdir -p "$PIP_CACHE_DIR" "$TORCH_WHEEL_DIR"
+          python -m pip install --upgrade pip
+          python ci/download_verified_wheels.py --cache-dir "$TORCH_WHEEL_DIR"
+          python -m pip install --retries 5 --timeout 120 \
+            "$TORCH_WHEEL_DIR/torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
+            "$TORCH_WHEEL_DIR/torchvision-0.28.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
+          python -m pip install --retries 10 --timeout 120 -r requirements.txt
+
+      - name: Build API site (OpenAPI + Redoc + Docusaurus handbook)
+        if: steps.pages.outputs.enabled == 'true'
+        run: make api-docs-build
+
+      - name: Upload API site artifact
+        if: steps.pages.outputs.enabled == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: api-docs-site
+          path: docs/api/site
+          if-no-files-found: error
+
       - name: Summarize built API docs output
         if: always()
         run: |
@@ -121,11 +152,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-
-      - name: Build static API site (OpenAPI + Redoc + Docusaurus handbook)
-        run: make api-docs-build-static
+      - name: Download API site artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: api-docs-site
+          path: docs/api/site
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5

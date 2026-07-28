@@ -362,12 +362,13 @@ def test_api_docs_workflow_actually_deploys_pages() -> None:
     assert "SELF_HOSTED_VENV_DIR: ${{ vars.CI_SELF_HOSTED_VENV_DIR || '' }}" in workflow
     assert "PIP_INDEX_URL: ${{ vars.CI_PIP_INDEX_URL || 'https://pypi.org/simple' }}" in workflow
     assert "PIP_CACHE_DIR: ${{ vars.CI_PIP_CACHE_DIR || '' }}" in workflow
+    assert "TORCH_WHEEL_DIR: ${{ vars.CI_TORCH_WHEEL_DIR || '' }}" in workflow
     assert "SELF_HOSTED_HTTP_PROXY: ${{ vars.CI_HTTP_PROXY || '' }}" in workflow
     assert "SELF_HOSTED_HTTPS_PROXY: ${{ vars.CI_HTTPS_PROXY || '' }}" in workflow
     assert "SELF_HOSTED_NO_PROXY: ${{ vars.CI_NO_PROXY || '' }}" in workflow
     _assert_uses_self_hosted_bootstrap(
         workflow,
-        "bash scripts/prepare_self_hosted_ci.sh",
+        "bash scripts/prepare_self_hosted_ci.sh --include-torch-wheel-dir",
         count=1,
     )
     assert "runner.name == 'mimirq-main-01'" not in workflow
@@ -376,7 +377,14 @@ def test_api_docs_workflow_actually_deploys_pages() -> None:
     assert "127.0.0.1:35983" not in workflow
     assert "\n  build:\n" in workflow
     assert "runs-on: ubuntu-latest" in workflow
-    assert "make api-docs-build-static" in workflow
+    assert workflow.count("make api-docs-build") == 2
+    assert workflow.count("python ci/download_verified_wheels.py") == 2
+    assert "make api-docs-build-static" not in workflow
+    assert "Upload API site artifact" in workflow
+    assert "actions/upload-artifact@" in workflow
+    assert "actions/download-artifact@" in workflow
+    assert "name: api-docs-site" in workflow
+    assert "http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}" not in workflow
     assert "actions/configure-pages@" in workflow
     assert "actions/upload-pages-artifact@" in workflow
     assert "actions/deploy-pages@" in workflow
@@ -395,6 +403,9 @@ def test_api_docs_pages_actions_are_gated_before_runner_setup() -> None:
     assert "if: github.event_name != 'pull_request'" in build_job
     assert "needs: deploy" in publish_job
     assert "needs.deploy.outputs.pages_enabled == 'true'" in publish_job
+    assert "actions/download-artifact@" in publish_job
+    assert "make api-docs-build" not in publish_job
+    assert "actions/checkout@" not in publish_job
     assert "pages: write" not in build_job
     assert "id-token: write" not in build_job
     assert "pages: write" in publish_job
