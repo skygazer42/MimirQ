@@ -211,6 +211,7 @@ def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     assert "Prepare Docker build proxy" in workflow
     assert '"${SELF_HOSTED_HTTP_PROXY:-${HTTP_PROXY:-}}"' in workflow
     assert '"${SELF_HOSTED_HTTPS_PROXY:-${HTTPS_PROXY:-}}"' in workflow
+    assert "printf 'DOCKER_BUILD_NETWORK=host\\n'" in workflow
     assert "http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}" not in workflow
     assert "https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}" not in workflow
     assert "public-pr-verify:" in workflow

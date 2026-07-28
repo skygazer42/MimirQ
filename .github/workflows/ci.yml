@@ -362,6 +362,7 @@ jobs:
             printf 'https_proxy=%s\n' "${SELF_HOSTED_HTTPS_PROXY:-${https_proxy:-}}"
             printf 'NO_PROXY=%s\n' "127.0.0.1,localhost${SELF_HOSTED_NO_PROXY:+,$SELF_HOSTED_NO_PROXY}"
             printf 'no_proxy=%s\n' "127.0.0.1,localhost${SELF_HOSTED_NO_PROXY:+,$SELF_HOSTED_NO_PROXY}"
+            printf 'DOCKER_BUILD_NETWORK=host\n'
           } >> "$GITHUB_ENV"
 
       - name: Validate Helm chart
