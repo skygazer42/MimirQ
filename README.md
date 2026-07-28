@@ -2,13 +2,13 @@
 
 <img src="./docs/images/banner.svg" alt="MimirQ：可检查、可回归、可治理的开源 RAG 知识库" width="100%"/>
 
-<p><b>全栈开源、中文优先的企业 RAG 知识库</b><br/>从文档怎么被切，到检索命中什么、答案凭什么生成，整条链路都可查看、可调试、可回归。</p>
+<p><b>全栈开源、中文优先的企业 RAG 知识库</b><br/>覆盖文档解析、切块、检索、生成与引用，支持全链路检查、调试和回归验证。</p>
 
 <p>
-  <a href="#-快速开始"><b>快速开始</b></a> ·
-  <a href="#-产品界面"><b>产品界面</b></a> ·
-  <a href="#-接入-dify"><b>Dify 接入</b></a> ·
-  <a href="#-已在真实场景验证"><b>800 题实测</b></a> ·
+  <a href="#快速开始"><b>快速开始</b></a> ·
+  <a href="#产品界面"><b>产品界面</b></a> ·
+  <a href="#dify-接入"><b>Dify 接入</b></a> ·
+  <a href="#真实场景验证"><b>800 题实测</b></a> ·
   <a href="./docs/releases/v1.0.0.md"><b>v1.0.0 发布说明</b></a> ·
   <a href="https://skygazer42.github.io/MimirQ/"><b>API 文档</b></a>
 </p>
@@ -31,7 +31,7 @@
 
 ---
 
-## 💡 MimirQ 是什么
+## 项目概述
 
 **MimirQ** 是一个专注 RAG 全链路可观测性的知识库问答平台，前后端全开源，可通过 Docker Compose 或 Helm 部署。
 
@@ -48,29 +48,29 @@
 
 <table>
   <tr>
-    <td width="50%"><strong>看得见</strong><br/><sub>解析结果、切块边界、检索与重排过程</sub></td>
-    <td width="50%"><strong>追得回</strong><br/><sub>逐句引用、版本、证据与完整 Trace</sub></td>
+    <td width="50%"><strong>可观测</strong><br/><sub>解析结果、切块边界、检索与重排过程</sub></td>
+    <td width="50%"><strong>可追溯</strong><br/><sub>逐句引用、版本、证据与完整 Trace</sub></td>
   </tr>
   <tr>
-    <td><strong>守得住</strong><br/><sub>文档 ACL、RBAC、脱敏、审计与安全护栏</sub></td>
-    <td><strong>能回归</strong><br/><sub>Golden 题集、评测看板与发布门禁</sub></td>
+    <td><strong>可治理</strong><br/><sub>文档 ACL、RBAC、脱敏、审计与安全护栏</sub></td>
+    <td><strong>可回归</strong><br/><sub>Golden 题集、评测看板与发布门禁</sub></td>
   </tr>
 </table>
 
 <details>
-<summary><b>为什么做 MimirQ？</b></summary>
+<summary><b>项目背景</b></summary>
 
-MimirQ 起源于一个政务智能问答项目：系统已经能回答问题，但答错时很难判断根因在解析、切块、召回、重排还是生成。政务知识又存在多地区版本、政策更新、扫描件和表格，一个通顺但引用旧政策的答案，比直接说不知道更危险。
+MimirQ 起源于政务智能问答项目。系统可以回答问题，但错误根因难以在解析、切块、召回、重排和生成环节之间定位。政务知识还包含多地区版本、政策更新、扫描件和表格；引用过期政策的流畅回答具有更高风险。
 
-现成平台擅长工作流或 Agent，但 RAG 排障所需的解析、索引、检索、引用和评测往往散落在不同组件。MimirQ 不再造通用节点画布，而是把重点放在可检查的 RAG 链路。
+现有平台通常侧重工作流或 Agent，RAG 排障所需的解析、索引、检索、引用和评测则分布在不同组件。MimirQ 不构建通用节点画布，重点提供可检查的 RAG 链路。
 
-> **MimirQ 想解决的不是“RAG 能不能跑”，而是“这套 RAG 为什么值得被相信”。**
+> **MimirQ 的目标是让 RAG 结果具备可解释、可追溯和可验证的依据。**
 
 </details>
 
 ---
 
-## 🚀 快速开始
+## 快速开始
 
 ### 前置要求
 
@@ -87,17 +87,59 @@ cd MimirQ
 make init
 ```
 
-`make init` 会生成完整 `.env`、随机 JWT `SECRET_KEY` 和前端图片代理密钥。`.env` 是高级配置参考，不是需要逐项填写的表单；默认硅基流动配置只需填写这一项：
+`make init` 会在配置文件不存在时生成 `.env` 和 `web/.env.local`，并自动填充随机 JWT `SECRET_KEY` 与前端图片代理密钥；已有配置不会被覆盖。接着编辑 `.env`，先选择一套模型配置。
+
+### 启动前的最小配置
+
+| 能力 | 默认行为 | 需要填写 |
+|:---|:---|:---|
+| **LLM** | 硅基流动 `Qwen/Qwen3-32B` | 真实模型调用必须填写 `LLM_API_KEY`；换供应商时再改 `LLM_API_BASE` / `LLM_MODEL` |
+| **Embedding** | `BAAI/bge-m3`，自动复用 LLM 的 Key 与 Base URL | 默认无需额外填写；独立服务才配置 `EMBEDDING_API_KEY` / `EMBEDDING_API_BASE` / `EMBEDDING_MODEL` |
+| **Reranker** | 默认关闭 | 需要时设置 `ENABLE_RERANKER=true`；Key 可复用 LLM，`RERANKER_API_BASE` 必须是完整 rerank 端点 |
+| **首个管理员** | 未配置时，在 Web 页面手工注册首个 owner | 无人值守部署建议配置 `INITIAL_ADMIN_EMAIL`、`INITIAL_ADMIN_USERNAME` 和一种密码来源 |
+
+默认硅基流动最小配置：
 
 ```dotenv
-# 唯一必填
 LLM_API_KEY=<your-siliconflow-api-key>
+
+# 可选：开启默认 SiliconFlow reranker
+# ENABLE_RERANKER=true
+
+# 可选但推荐用于无人值守部署：自动创建首个 owner
+# INITIAL_ADMIN_EMAIL=owner@example.com
+# INITIAL_ADMIN_USERNAME=owner
+# INITIAL_ADMIN_PASSWORD=<strong-password>
 ```
+
+<details>
+<summary><b>LLM、Embedding、Reranker 使用三个独立服务</b></summary>
+
+```dotenv
+LLM_API_BASE=https://llm.example.com/v1
+LLM_API_KEY=<llm-key>
+LLM_MODEL=<chat-model>
+
+EMBEDDING_PROVIDER=openai_compatible
+EMBEDDING_API_BASE=https://embedding.example.com/v1
+EMBEDDING_API_KEY=<embedding-key>
+EMBEDDING_MODEL=<embedding-model>
+
+ENABLE_RERANKER=true
+RERANKER_PROVIDER=openai
+RERANKER_API_BASE=https://reranker.example.com/rerank
+RERANKER_API_KEY=<reranker-key>
+RERANKER_MODEL=<reranker-model>
+```
+
+</details>
+
+管理员密码也可通过 `INITIAL_ADMIN_PASSWORD_FILE=/run/secrets/mimirq_initial_admin_password` 注入；它与 `INITIAL_ADMIN_PASSWORD` 二选一。初始化成功后，同一账号重启不会重置密码；默认租户已有其他成员时系统会拒绝覆盖或自动提权。完整字段、Docker/主机地址差异与排错见[模型服务与首次管理员配置](./docs/guides/model_services.md)。
 
 | 启动方式 | 适用场景 | 应用运行位置 |
 |:---|:---|:---|
 | **Docker 一键启动（推荐）** | 首次体验、服务器部署 | 前端、API、Worker 与依赖服务均在容器中 |
-| **主机源码启动** | 前后端开发、热更新调试 | 前端、API、Worker 在主机；依赖服务在 Docker 中 |
+| **主机源码启动** | 前后端开发、热更新调试 | 前端、API（及可选 Worker）在主机；依赖服务在 Docker 中 |
 
 ### 方式一：Docker 一键启动
 
@@ -107,7 +149,7 @@ make ps
 curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
 ```
 
-`make up-web` 会启动前端、后端、Worker、Postgres、Milvus、Etcd、MinIO 与 Redis；已有配置不会被覆盖。打开 [http://localhost:3000](http://localhost:3000) 后创建本地账户即可进入系统。
+`make up-web` 会启动前端、后端、Worker、Postgres、Milvus、Etcd、MinIO 与 Redis；本地体验无需修改默认基础设施地址。生产部署必须另行设置强 `POSTGRES_PASSWORD`、MinIO 凭据和租户认证边界，详见 [Docker Compose 部署指南](./docs/deployment/docker_compose.md)。若未配置 `INITIAL_ADMIN_*`，打开 [http://localhost:3000](http://localhost:3000) 后创建第一个本地账户即可进入系统。
 
 首次构建会下载固定版本的解析模型。如果代理仅监听 Linux 主机回环地址，请先配置 Docker 代理，或使用 `DOCKER_BUILD_NETWORK=host make up-web`。Docker Hub 不可达时，可在 `.env` 中将 `MILVUS_IMAGE` 指向可信镜像仓库中的同版本镜像，无需把个人代理写入项目配置。
 
@@ -131,7 +173,7 @@ curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
 <summary><b>展开查看最小 .env 配置</b></summary>
 
 ```dotenv
-# 只保留你选择的那一组
+# 仅保留所选配置组
 MARKER_ENABLED=true
 MARKER_API_URL=http://mimirq-marker:2080/convert
 
@@ -172,7 +214,7 @@ docker compose --env-file .env \
   -f docker/docker-compose.web.yml down
 ```
 
-### 方式二：主机源码启动 API + Worker + Web
+### 方式二：主机源码启动 API + Web
 
 先安装主机依赖并启动基础设施：
 
@@ -180,24 +222,22 @@ docker compose --env-file .env \
 make setup-host
 ```
 
-`make setup-host` 会创建 `.venv`、安装 CPU 版后端依赖和前端依赖、校验 Python 依赖、下载固定解析模型，并启动 Postgres、Milvus、Etcd、MinIO 与 Redis。它不会覆盖已有 `.env`。
+`make setup-host` 会创建 `.venv`、安装 CPU 版后端依赖和前端依赖、校验 Python 依赖、下载固定解析模型，并启动 Postgres、Milvus、Etcd、MinIO 与 Redis。它不会覆盖已有 `.env`；若配置了 `INITIAL_ADMIN_*`，后端首次启动时会自动引导首个 owner。
 
-分别打开三个终端：
+默认 `TASK_QUEUE_ENABLED=false`，后台文档任务由 API 进程内有界处理，因此只需打开两个终端：
 
 ```bash
 # 终端 1：FastAPI（热更新）
 make backend
 
-# 终端 2：文档解析与索引 Worker
-make worker
-
-# 终端 3：Next.js（热更新）
+# 终端 2：Next.js（热更新）
 make web
 ```
 
-Worker 启动后，可在另一个终端确认它正在向 Redis 发布存活标记：
+如需与 Docker 模式一致的独立队列，在启动 API 前设置 `TASK_QUEUE_ENABLED=true`，再于第三个终端启动并检查 Worker：
 
 ```bash
+make worker
 make worker-check
 ```
 
@@ -209,7 +249,7 @@ NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 make web-api-ping
 curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
 ```
 
-结束三个主机进程后，执行 `make infra-down` 停止依赖服务。
+结束主机进程后，执行 `make infra-down` 停止依赖服务。
 
 ### 服务地址
 
@@ -218,13 +258,13 @@ curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
 | **前端 UI** | [http://localhost:3000](http://localhost:3000) |
 | **API 文档** | [http://localhost:8000/docs](http://localhost:8000/docs) |
 
-> 低资源模式可使用 `make up-lite`，它用 Chroma/FAISS 替代 Milvus、免 MinIO，默认不含前端；适合先验证 API `ready` 与 `make core-e2e` 最小闭环。需要 UI 时另运行 `make web`，或直接改用 `make up-web`。外部 LLM/Embedding 调用仍需自己的模型供应商密钥。
+> 低资源模式可使用 `make up-lite`，它用 Chroma/FAISS 替代 Milvus、免 MinIO，默认不含前端；适合验证 API `ready` 与 `make core-e2e` 最小闭环。需要 UI 时另运行 `make web`，或改用 `make up-web`。外部 LLM/Embedding 调用仍需对应模型供应商密钥。
 
 高级模型、解析器和代理配置见 [`.env.example`](./.env.example)。更换 Embedding 模型后必须重建已有知识库索引；更多平台与 Windows 步骤见[开发文档](./docs/quickstart.md)，可选政务示例见[插件说明](./plugins/pipelines/changzhou-gov-service-knowledge/README.md)。
 
 ---
 
-## 🖼️ 产品界面
+## 产品界面
 
 以下界面使用仓库内公开的政务插件演示样例生成，不含生产知识库数据。
 
@@ -276,7 +316,7 @@ curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
 
 ---
 
-## 🔌 接入 Dify
+## Dify 接入
 
 MimirQ 可作为 Dify 的可治理 RAG 层接入现有应用，不重复实现工作流画布。当前支持两种方式：
 
@@ -305,11 +345,11 @@ MimirQ 可作为 Dify 的可治理 RAG 层接入现有应用，不重复实现�
 
 > 图中的地区路由来自可选示例插件；MimirQ 核心不内置地区、事项或行业规则。
 
-Dify 标准外部知识库端点为 `POST /api/v1/integrations/dify/retrieval`；可选用 `POST /api/v1/integrations/dify/conversation-turns` 回传答案、引用与会话标识。`knowledge_id` 默认必须显式配置在 `DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON` 中。配置见 [`.env.example`](./.env.example)，部署前校验见 [readiness gate](./scripts/README.md)，实测结果见[真实场景验证](#-已在真实场景验证)。
+Dify 标准外部知识库端点为 `POST /api/v1/integrations/dify/retrieval`；可选用 `POST /api/v1/integrations/dify/conversation-turns` 回传答案、引用与会话标识。`knowledge_id` 默认必须显式配置在 `DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON` 中。配置见 [`.env.example`](./.env.example)，部署前校验见 [readiness gate](./scripts/README.md)，实测结果见[真实场景验证](#真实场景验证)。
 
 ---
 
-## 🧭 核心功能对比
+## 核心功能对比
 
 <details>
 <summary><b>展开查看与 Dify、RAGFlow、FastGPT、AnythingLLM 和 LangChain 的功能对比</b></summary>
@@ -336,7 +376,7 @@ Dify 标准外部知识库端点为 `POST /api/v1/integrations/dify/retrieval`�
 
 ---
 
-## 📍 已在真实场景验证
+## 真实场景验证
 
 MimirQ 已用于**市级政务智能问答助手**，覆盖 7 个区域级 + 1 个市级知识库。2026-07-27 使用同一固定 800 题和真实自托管模型复测，五条链路最终均无失败：
 
@@ -354,11 +394,11 @@ MimirQ 已用于**市级政务智能问答助手**，覆盖 7 个区域级 + 1 �
 
 并发 5 直连首轮触发 15 次配置化 admission backpressure，降至并发 3 仅重试失败题后恢复为 800 / 800。MimirQ 没有加入地区、事项或题目特判；不同 Embedding runtime 的多库请求由通用检索层分片处理。
 
-[完整方法、指标解释与历史复测](./docs/benchmarks/changzhou_dify.md) · [Dify 接入方式与真实工作流](#-接入-dify)
+[完整方法、指标解释与历史复测](./docs/benchmarks/changzhou_dify.md) · [Dify 接入方式与真实工作流](#dify-接入)
 
 ---
 
-## 📡 API 参考（OpenAPI / GitHub Pages）
+## API 参考（OpenAPI / GitHub Pages）
 
 | 资源 | 链接 / 说明 |
 |:---|:---|
@@ -371,7 +411,7 @@ MimirQ 已用于**市级政务智能问答助手**，覆盖 7 个区域级 + 1 �
 
 ---
 
-## 📦 部署方式
+## 部署方式
 
 从本地体验到生产集群，覆盖各种场景：
 
@@ -413,7 +453,7 @@ make up-prod
 
 ---
 
-## 📖 功能指南
+## 功能指南
 
 | 指南 | 说明 |
 |:---|:---|
@@ -435,7 +475,7 @@ make up-prod
 
 ---
 
-## ✅ 开发自检
+## 开发自检
 
 提交前建议运行一键自检（后端 + 前端），与 CI 保持一致：
 
@@ -470,7 +510,7 @@ make rag-concurrency-gate
 
 ---
 
-## 🗺 Roadmap
+## 路线图
 
 已交付能力见上方对比表。近期计划：
 
@@ -479,25 +519,25 @@ make rag-concurrency-gate
 - [ ] 跨语言检索
 - [ ] 统一 LLM-as-Judge（G-Eval + Self-Consistency）
 
-> Roadmap 通过 [GitHub Issues](https://github.com/skygazer42/MimirQ/issues) 公开跟踪，欢迎提需求 / 投票。
+> 路线图、功能请求与投票通过 [GitHub Issues](https://github.com/skygazer42/MimirQ/issues) 管理。
 
 ---
 
-## 🤝 参与贡献
+## 参与贡献
 
-修复 typo、报告 bug 或提交功能前，请阅读 [CONTRIBUTING.md](./.github/CONTRIBUTING.md)。本地开发流程见[快速开始](./docs/quickstart.md)，提交前运行 `make enterprise-checks`。
+贡献代码、报告问题或提交功能建议前，请阅读 [CONTRIBUTING.md](./.github/CONTRIBUTING.md)。本地开发流程见[快速开始](./docs/quickstart.md)，提交前运行 `make enterprise-checks`。
 
 ---
 
-## 📜 许可证
+## 许可证
 
 本项目采用 [Apache License 2.0](LICENSE)。第三方组件（含 vendored 自 RAGFlow/DeepDoc 的代码及构建时下载的模型权重）的归属声明见 [NOTICE](NOTICE)。
 
-> ⚠️ **注意 PyMuPDF (AGPL-3.0)**：默认 PDF 解析可能使用 PyMuPDF，其协议为 AGPL-3.0 / 商业双授权。若你以 SaaS 形式对外提供服务，AGPL 的网络条款可能要求公开整个组合作品的源码。如需规避，请改用宽松协议的解析后端（pypdf / pdfplumber）。详见 NOTICE。
+> **PyMuPDF (AGPL-3.0) 说明**：默认 PDF 解析可能使用 PyMuPDF，其协议为 AGPL-3.0 / 商业双授权。以 SaaS 形式提供服务时，AGPL 网络条款可能要求公开整个组合作品的源码。需要避免该约束时，请改用宽松协议的解析后端（pypdf / pdfplumber）。详见 NOTICE。
 
 ---
 
-## 🙏 致谢
+## 致谢
 
 MimirQ 构建于优秀的开源生态之上，感谢以下项目：
 
@@ -508,10 +548,6 @@ MimirQ 构建于优秀的开源生态之上，感谢以下项目：
 ---
 
 <div align="center">
-
-**如果 MimirQ 帮你把 RAG 从"能跑"做到了"敢上生产"，请给我们一个 ⭐ Star！**
-
-每一个 Star 都是我们把黑盒继续打开的动力。
 
 [![Star History Chart](https://api.star-history.com/svg?repos=skygazer42/MimirQ&type=Date)](https://star-history.com/#skygazer42/MimirQ&Date)
 

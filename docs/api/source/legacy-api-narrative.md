@@ -926,17 +926,17 @@ curl http://localhost:8000/api/v1/chat/conversations/CONV_ID/messages \
 
 ---
 
-## 5. 健康检查 API `/health`
+## 5. 健康检查 API `/api/v1/health`
 
-### GET /health - 轻量检查
+### GET /api/v1/health - 轻量检查
 
 ```json
-{"ok": true, "time": "2024-01-01T00:00:00Z"}
+{"ok": true, "status": "ok"}
 ```
 
-### GET /health/ready - 就绪探针
+### GET /api/v1/health/ready - 就绪探针
 
-检查数据库、Milvus、Redis、MinIO 连接状态。
+检查必需运行依赖并返回最小 `ready` / `unready` 状态；管理员通过 `/api/v1/health/details` 查看具体依赖明细。
 
 ---
 

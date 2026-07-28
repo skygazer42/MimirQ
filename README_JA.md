@@ -2,13 +2,13 @@
 
 <img src="./images/logo.png" alt="MimirQ: 検査・回帰・ガバナンス可能なオープンソース RAG ナレッジベース" width="100%"/>
 
-<p><b>フルスタックでオープンソース、中国語ファーストのエンタープライズ RAG ナレッジベース</b><br/>ドキュメントがどうチャンク分割されるか、検索が実際に何にヒットするか、なぜその回答が生成されるのか——チェーン全体を検査・デバッグ・回帰テストできます。</p>
+<p><b>フルスタックでオープンソース、中国語ファーストのエンタープライズ RAG ナレッジベース</b><br/>パース、チャンク分割、検索、生成、引用を対象に、パイプライン全体の検査・デバッグ・回帰検証を提供します。</p>
 
 <p>
-  <a href="#-クイックスタート"><b>クイックスタート</b></a> ·
-  <a href="#-プロダクト画面"><b>プロダクト画面</b></a> ·
-  <a href="#-dify-連携"><b>Dify 連携</b></a> ·
-  <a href="#-実運用で検証済み"><b>800問ベンチマーク</b></a> ·
+  <a href="#クイックスタート"><b>クイックスタート</b></a> ·
+  <a href="#プロダクト画面"><b>プロダクト画面</b></a> ·
+  <a href="#dify-連携"><b>Dify 連携</b></a> ·
+  <a href="#実運用での検証"><b>800問ベンチマーク</b></a> ·
   <a href="https://skygazer42.github.io/MimirQ/"><b>API ドキュメント</b></a>
 </p>
 
@@ -30,7 +30,7 @@
 
 ---
 
-## 💡 MimirQ とは
+## プロジェクト概要
 
 **MimirQ**（知恵の泉を守る北欧神話の番人 **Mímir** に由来）は、**フルチェーンの可観測性**に注力した RAG ナレッジベース Q&A プラットフォームです。フロントエンドとバックエンドの両方がオープンソースで、Docker Compose または Helm でデプロイできます。
 
@@ -45,29 +45,29 @@
 
 <table>
   <tr>
-    <td width="50%"><strong>見える</strong><br/><sub>パース結果、チャンク境界、検索とリランクの過程</sub></td>
-    <td width="50%"><strong>追跡できる</strong><br/><sub>文単位の引用、バージョン、エビデンス、完全なトレース</sub></td>
+    <td width="50%"><strong>可観測</strong><br/><sub>パース結果、チャンク境界、検索とリランクの過程</sub></td>
+    <td width="50%"><strong>追跡可能</strong><br/><sub>文単位の引用、バージョン、エビデンス、完全なトレース</sub></td>
   </tr>
   <tr>
-    <td><strong>守れる</strong><br/><sub>ドキュメント ACL、RBAC、マスキング、監査、セーフティレール</sub></td>
-    <td><strong>回帰できる</strong><br/><sub>ゴールデンセット、評価ダッシュボード、リリースゲート</sub></td>
+    <td><strong>ガバナンス</strong><br/><sub>ドキュメント ACL、RBAC、マスキング、監査、セーフティレール</sub></td>
+    <td><strong>回帰検証</strong><br/><sub>ゴールデンセット、評価ダッシュボード、リリースゲート</sub></td>
   </tr>
 </table>
 
 <details>
-<summary><b>なぜ MimirQ を作ったのか？</b></summary>
+<summary><b>プロジェクト背景</b></summary>
 
 MimirQ は、ある行政サービスの Q&A プロジェクトから生まれました。システムは質問に答えられていたものの、回答が誤ったときに、その原因がパース・チャンク分割・検索・リランク・生成のどこにあるのかを明確に切り分けられませんでした。行政ナレッジには地域ごとの版、政策の更新、スキャン文書や表があり、流暢だが古い政策を引用した回答は、「わかりません」と明言するよりも危険です。
 
 既存プラットフォームはワークフローやエージェントには強い一方で、RAG のトラブルシューティングに必要なパース・インデックス・検索・引用・評価は、別々のコンポーネントに散在しがちです。MimirQ は汎用のノードキャンバスをもう一つ作るのではなく、検査可能な RAG チェーンに注力します。
 
-> **MimirQ が解こうとしているのは「RAG が動くかどうか」ではなく、「なぜその RAG が信頼に値するのか」です。**
+> **MimirQ は、RAG の結果を説明可能・追跡可能・検証可能にすることを目的としています。**
 
 </details>
 
 ---
 
-## 🚀 クイックスタート
+## クイックスタート
 
 ### 前提条件
 
@@ -84,17 +84,37 @@ cd MimirQ
 make init
 ```
 
-`make init` は完全な `.env` とランダムな JWT `SECRET_KEY` を生成します。`.env` は高度な設定リファレンスであり、一行ずつ埋めるフォームではありません。デフォルトの SiliconFlow 構成では、必須項目は次の一つだけです。
+`make init` は不足している `.env` と `web/.env.local` だけを作成し、ランダムな JWT `SECRET_KEY` と画像プロキシ用シークレットを設定します。既存値は上書きしません。
+
+### 起動前の最小設定
+
+| 機能 | デフォルト動作 | 設定する値 |
+|:---|:---|:---|
+| **LLM** | SiliconFlow `Qwen/Qwen3-32B` | 実モデルの呼び出しには `LLM_API_KEY` が必要。別プロバイダーでは `LLM_API_BASE` / `LLM_MODEL` も変更 |
+| **Embedding** | `BAAI/bge-m3`、LLM の Key/Base URL を再利用 | 独立サービスの場合のみ `EMBEDDING_API_KEY` / `EMBEDDING_API_BASE` / `EMBEDDING_MODEL` を設定 |
+| **Reranker** | デフォルト無効 | 必要な場合だけ `ENABLE_RERANKER=true`。Key は LLM と共有可能だが、`RERANKER_API_BASE` は完全な rerank エンドポイントが必要 |
+| **最初の管理者** | Web 画面で最初のアカウントを登録 | 無人デプロイでは `INITIAL_ADMIN_EMAIL`、`INITIAL_ADMIN_USERNAME`、パスワードソースを一つ設定 |
+
+デフォルトの SiliconFlow 構成例：
 
 ```dotenv
-# 唯一の必須項目
 LLM_API_KEY=<your-siliconflow-api-key>
+
+# 任意：デフォルトの SiliconFlow reranker を有効化
+# ENABLE_RERANKER=true
+
+# 任意（無人デプロイ向け）：最初の owner を自動作成
+# INITIAL_ADMIN_EMAIL=owner@example.com
+# INITIAL_ADMIN_USERNAME=owner
+# INITIAL_ADMIN_PASSWORD=<strong-password>
 ```
+
+管理者パスワードは `INITIAL_ADMIN_PASSWORD_FILE=/run/secrets/mimirq_initial_admin_password` から注入することもでき、`INITIAL_ADMIN_PASSWORD` とは排他的です。同じ設定で再起動してもパスワードは更新されず、デフォルトテナントに別のメンバーがいる場合は上書きや自動昇格を拒否します。
 
 | 起動方法 | 用途 | アプリの実行場所 |
 |:---|:---|:---|
 | **Docker 一括起動（推奨）** | 初回利用、サーバーデプロイ | Web、API、Worker、依存サービスをコンテナで実行 |
-| **ホストでソース起動** | フロントエンド・バックエンド開発、ホットリロード | Web、API、Worker はホスト、依存サービスは Docker で実行 |
+| **ホストでソース起動** | フロントエンド・バックエンド開発、ホットリロード | Web、API はホストで実行。`TASK_QUEUE_ENABLED=true` のときだけ Worker もホストで起動し、依存サービスは Docker で実行 |
 
 ### 方法 1：Docker で一括起動
 
@@ -104,7 +124,7 @@ make ps
 curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
 ```
 
-`make up-web` は Web アプリ、API、Worker、Postgres、Milvus、Etcd、MinIO、Redis を起動します。既存の設定は上書きされません。[http://localhost:3000](http://localhost:3000) を開いてローカルアカウントを作成すればシステムに入れます。
+`make up-web` は Web アプリ、API、Worker、Postgres、Milvus、Etcd、MinIO、Redis を起動します。既存の設定は上書きされません。`INITIAL_ADMIN_*` を設定していない場合は、[http://localhost:3000](http://localhost:3000) を開いて最初のローカルアカウントを作成します。
 
 初回の Docker ビルドでは、固定バージョンの DeepDoc モデルバンドルをダウンロードして検証します。プロキシが Linux ホストのループバックでのみ待ち受けている場合は、Docker 側でローカルに設定するか、`DOCKER_BUILD_NETWORK=host make up-web` を実行します。プロキシアドレスはコミットしないでください。Docker Hub に接続できない場合は、`.env` の `MILVUS_IMAGE` を信頼できるレジストリ上の同一バージョンのイメージに変更できます。
 
@@ -124,19 +144,23 @@ docker compose --env-file .env \
 make setup-host
 ```
 
-`make setup-host` は `.venv` を作成し、CPU 版バックエンド依存関係と Web 依存関係をインストール・検証し、固定パーサーモデルを取得して Postgres、Milvus、Etcd、MinIO、Redis を起動します。既存の `.env` は上書きしません。
+`make setup-host` は `.venv` を作成し、CPU 版のバックエンド依存関係と Web 依存関係をインストール・検証し、固定パーサーモデルを取得して Postgres、Milvus、Etcd、MinIO、Redis を起動します。既存の `.env` は上書きしません。
 
-3 つのターミナルを開きます。
+デフォルトの `TASK_QUEUE_ENABLED=false` では、バックグラウンドの文書処理は API プロセス内で有界に処理されるため、開くターミナルは 2 つだけです。
 
 ```bash
 # ターミナル 1：FastAPI（ホットリロード）
 make backend
 
-# ターミナル 2：文書パース・インデックス Worker
-make worker
-
-# ターミナル 3：Next.js（ホットリロード）
+# ターミナル 2：Next.js（ホットリロード）
 make web
+```
+
+Docker と同じ独立キューにしたい場合は、API を起動する前に `TASK_QUEUE_ENABLED=true` を `.env` に設定し、3 つ目のターミナルで Worker を起動・確認します。
+
+```bash
+make worker
+make worker-check
 ```
 
 ホスト側のサービスを確認します。
@@ -146,7 +170,7 @@ make infra-ps
 curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
 ```
 
-3 つのホストプロセスを終了した後、`make infra-down` で依存サービスを停止します。
+ホストプロセスを終了した後、`make infra-down` で依存サービスを停止します。
 
 ### サービス URL
 
@@ -183,7 +207,7 @@ make changzhou-gov-plugin-chunk-report
 
 ---
 
-## 🖼️ プロダクト画面
+## プロダクト画面
 
 以下の画面は、リポジトリに含まれる公開の行政サービスプラグインサンプルで生成しています。本番のナレッジベースデータは含まれていません。
 
@@ -235,7 +259,7 @@ make changzhou-gov-plugin-chunk-report
 
 ---
 
-## 🔌 Dify 連携
+## Dify 連携
 
 MimirQ は、ワークフローキャンバスを再実装することなく、ガバナンス可能な RAG レイヤーとして既存の Dify アプリに組み込めます。現在、2 つの方式をサポートしています。
 
@@ -264,11 +288,11 @@ MimirQ は、ワークフローキャンバスを再実装することなく、�
 
 > 図中の地域ルーティングはオプションのサンプルプラグインによるものです。MimirQ コアは地域・事項・業種ルールを内蔵しません。
 
-Dify 標準の外部ナレッジベースエンドポイントは `POST /api/v1/integrations/dify/retrieval` です。オプションで `POST /api/v1/integrations/dify/conversation-turns` を使って、回答・引用・会話識別子を返送できます。設定は [`.env.example`](./.env.example)、デプロイ前の検証は [readiness gate](./scripts/README.md)、実測結果は[実運用で検証済み](#-実運用で検証済み)を参照してください。
+Dify 標準の外部ナレッジベースエンドポイントは `POST /api/v1/integrations/dify/retrieval` です。`POST /api/v1/integrations/dify/conversation-turns` は、回答・引用・会話識別子の返送に使用できます。設定は [`.env.example`](./.env.example)、デプロイ前の検証は [readiness gate](./scripts/README.md)、実測結果は[実運用での検証](#実運用での検証)を参照してください。
 
 ---
 
-## 🧭 主要機能の比較
+## 主要機能の比較
 
 <details>
 <summary><b>Dify、RAGFlow、FastGPT、AnythingLLM、LangChain との機能比較を開く</b></summary>
@@ -295,7 +319,7 @@ Dify 標準の外部ナレッジベースエンドポイントは `POST /api/v1/
 
 ---
 
-## 📍 実運用で検証済み
+## 実運用での検証
 
 MimirQ は、7 つの地区レベルと 1 つの市レベルのナレッジベースにまたがる**市レベルの行政 Q&A アシスタント**で使われています。最新の直接検索の再測定では入力 SHA-256 `5a4c67...fac2` を用い、結果は次のとおりです。
 
@@ -328,11 +352,11 @@ MimirQ の 2 つの Dify 経路の検索エビデンスカバレッジは 99.7% 
 
 </details>
 
-[完全な手法、指標の定義、過去の再測定](./docs/benchmarks/changzhou_dify.md) · [Dify の連携方式と実際のワークフロー](#-dify-連携)
+[完全な手法、指標の定義、過去の再測定](./docs/benchmarks/changzhou_dify.md) · [Dify の連携方式と実際のワークフロー](#dify-連携)
 
 ---
 
-## 📡 API リファレンス（OpenAPI / GitHub Pages）
+## API リファレンス（OpenAPI / GitHub Pages）
 
 | リソース | リンク / 説明 |
 |:---|:---|
@@ -349,7 +373,7 @@ MimirQ の 2 つの Dify 経路の検索エビデンスカバレッジは 99.7% 
 
 ---
 
-## 📦 デプロイ方法
+## デプロイ方法
 
 ローカルでの試用から本番クラスタまで対応します。
 
@@ -381,7 +405,7 @@ Kubernetes の本番デプロイについては [Helm デプロイガイド](./d
 
 ---
 
-## 📖 機能ガイド
+## 機能ガイド
 
 | ガイド | 説明 |
 |:---|:---|
@@ -404,7 +428,7 @@ Kubernetes の本番デプロイについては [Helm デプロイガイド](./d
 
 ---
 
-## ✅ 開発
+## 開発
 
 push 前に CI と同一のチェックを実行してください（バックエンド + フロントエンド）。
 
@@ -421,7 +445,7 @@ cd web && pnpm lint && pnpm test
 
 ---
 
-## 🗺 ロードマップ
+## ロードマップ
 
 提供済みの機能は上記の比較表を参照してください。近日の予定：
 
@@ -430,13 +454,13 @@ cd web && pnpm lint && pnpm test
 - [ ] 言語横断検索
 - [ ] 統一 LLM-as-Judge（G-Eval + Self-Consistency）
 
-> ロードマップは [GitHub Issues](https://github.com/skygazer42/MimirQ/issues) で公開追跡しています。機能要望・投票を歓迎します。
+> ロードマップ、機能要望、投票は [GitHub Issues](https://github.com/skygazer42/MimirQ/issues) で管理します。
 
 ---
 
-## 🤝 コントリビュート
+## コントリビュート
 
-タイポの修正、バグ報告、機能提案のいずれでも、まず [CONTRIBUTING.md](./.github/CONTRIBUTING.md) をお読みください。ローカル開発フローは[クイックスタート](./docs/quickstart.md)を参照し、push 前に `make enterprise-checks` を実行してください。
+コードの提供、問題報告、機能提案の前に [CONTRIBUTING.md](./.github/CONTRIBUTING.md) を参照してください。ローカル開発フローは[クイックスタート](./docs/quickstart.md)に記載しています。push 前に `make enterprise-checks` を実行してください。
 
 ```bash
 # フォークしてクローン
@@ -456,15 +480,15 @@ make enterprise-checks
 
 ---
 
-## 📜 ライセンス
+## ライセンス
 
 本プロジェクトは [Apache License 2.0](LICENSE) の下でライセンスされています。サードパーティコンポーネント（RAGFlow/DeepDoc から vendored したコード、およびビルド時にダウンロードされるモデルウェイトを含む）の帰属表示は [NOTICE](NOTICE) に記載されています。
 
-> ⚠️ **PyMuPDF (AGPL-3.0) に関する注意**：デフォルトの PDF パースは PyMuPDF を使う場合があり、そのライセンスは AGPL-3.0 / 商用のデュアルライセンスです。本ソフトウェアを SaaS としてネットワーク越しに提供する場合、AGPL のネットワーク条項により、結合著作物全体のソース公開が求められる可能性があります。回避するには、寛容なライセンスのパース基盤（pypdf / pdfplumber）に切り替えてください。詳細は NOTICE を参照してください。
+> **PyMuPDF (AGPL-3.0) に関する注意**：デフォルトの PDF パースは PyMuPDF を使う場合があり、そのライセンスは AGPL-3.0 / 商用のデュアルライセンスです。本ソフトウェアを SaaS としてネットワーク越しに提供する場合、AGPL のネットワーク条項により、結合著作物全体のソース公開が求められる可能性があります。この制約を避ける場合は、寛容なライセンスのパース基盤（pypdf / pdfplumber）に切り替えてください。詳細は NOTICE を参照してください。
 
 ---
 
-## 🙏 謝辞
+## 謝辞
 
 MimirQ は優れたオープンソースエコシステムの上に構築されています。以下のプロジェクトに感謝します。
 
@@ -475,10 +499,6 @@ MimirQ の公開連携テストに CNY 50 の API 体験クレジットを提供
 ---
 
 <div align="center">
-
-**MimirQ が、あなたの RAG を「動く」から「本番に出せる」に引き上げたなら、ぜひ ⭐ Star をお願いします！**
-
-一つ一つの Star が、ブラックボックスを開き続ける私たちの原動力です。
 
 [![Star History Chart](https://api.star-history.com/svg?repos=skygazer42/MimirQ&type=Date)](https://star-history.com/#skygazer42/MimirQ&Date)
 

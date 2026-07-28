@@ -11,7 +11,7 @@
 
 ## 场景 A：账号与租户
 
-1. 未初始化部署仅可调用一次 `POST /api/v1/auth/register` 创建首个 owner；生产环境还必须临时配置 `INITIAL_REGISTRATION_TOKEN`，并通过 `X-Bootstrap-Token` 请求头发送原始 token。之后使用 `POST /api/v1/auth/login` 获取 `access_token`，其他账号由管理员、SSO 或 SCIM 配置。
+1. 默认推荐使用环境变量自动引导首个 owner：配置 `INITIAL_ADMIN_EMAIL`、`INITIAL_ADMIN_USERNAME`，并在 `INITIAL_ADMIN_PASSWORD` 与 `INITIAL_ADMIN_PASSWORD_FILE` 中二选一，服务首次启动时会自动创建默认租户的首个 owner。已有不同成员时服务会拒绝覆盖并停止启动。若这些变量全为空，则保持原有手工首登流程不变：仅可调用一次 `POST /api/v1/auth/register` 创建首个 owner；生产环境还必须临时配置 `INITIAL_REGISTRATION_TOKEN`，并通过 `X-Bootstrap-Token` 请求头发送原始 token。之后使用 `POST /api/v1/auth/login` 获取 `access_token`，其他账号由管理员、SSO 或 SCIM 配置。
 2. `GET /api/v1/auth/me` — 校验会话与用户信息。  
 
 （若启用 SAML/SCIM，见 OpenAPI 中 **Auth**、**SCIM v2** 下其余路径。）

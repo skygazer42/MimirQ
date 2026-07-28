@@ -16,7 +16,7 @@ This handbook is for **backend developers, architects, and integration engineers
 | Vector Database | Milvus | 2.x (BM25 + SPLADE + ColBERT ANN hybrid retrieval) |
 | Relational Database | PostgreSQL | Primary storage |
 | Cache / Queue | Redis | Session, rate limiting & Pub/Sub |
-| Task Queue | Celery | Async parsing, indexing, evaluation tasks |
+| Task Queue | Arq | Async parsing, indexing, evaluation tasks |
 | Object Storage | MinIO / S3-compatible | Raw document files |
 
 ## System Architecture
@@ -33,7 +33,7 @@ graph LR
     VEC["Milvus"]
     CACHE["Redis"]
     OSS["MinIO"]
-    TASK["Celery Workers"]
+    TASK["Arq Workers"]
 
     Client --> GW --> API --> SVC
     SVC --> RAG

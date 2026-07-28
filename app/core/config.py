@@ -837,6 +837,12 @@ class Settings(BaseSettings):
     # One-time bootstrap gate for the very first local owner registration in production.
     # Provide either a raw token or `sha256:<hex>` and send it via `X-Bootstrap-Token`.
     INITIAL_REGISTRATION_TOKEN: str = ""
+    # Optional unattended bootstrap for the very first local owner account.
+    # Configure email + username + exactly one password source, then remove after first successful startup.
+    INITIAL_ADMIN_EMAIL: str = ""
+    INITIAL_ADMIN_USERNAME: str = ""
+    INITIAL_ADMIN_PASSWORD: str = ""
+    INITIAL_ADMIN_PASSWORD_FILE: str = ""
     # Optional previous keys for decrypting already-encrypted secrets (comma-separated).
     # This enables key rotation for connector configs without breaking existing entries.
     SECRET_KEY_FALLBACKS: str = ""
@@ -2461,6 +2467,7 @@ class Settings(BaseSettings):
         env_file=None if _should_disable_repo_env_file() else str(_env_file),
         case_sensitive=True,
         extra="ignore",
+        hide_input_in_errors=True,
     )
 
     @model_validator(mode="after")
@@ -2472,6 +2479,7 @@ class Settings(BaseSettings):
         _settings_validation.validate_production_api_surface(self)
         _settings_validation.validate_cors(self)
         _settings_validation.validate_auth_mode_and_jwt_claims(self)
+        _settings_validation.validate_initial_admin_bootstrap(self)
         _settings_validation.validate_scim(self)
         _settings_validation.validate_dify_resolution_mode(self)
         _settings_validation.validate_rag_runtime_warmup(self)

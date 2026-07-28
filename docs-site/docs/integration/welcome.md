@@ -19,7 +19,7 @@ graph LR
     VEC["Milvus"]
     CACHE["Redis"]
     OSS["MinIO / S3"]
-    WORKER["Celery Workers"]
+    WORKER["Arq Workers"]
 
     EXT -->|"HTTPS + JWT / API Key"| GW
     GW --> API

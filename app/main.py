@@ -58,6 +58,10 @@ from app.core.sentry import init_sentry
 from app.core.utils import parse_csv
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
+from app.services.initial_admin_service import (
+    InitialAdminBootstrapError,
+    bootstrap_initial_admin_if_configured,
+)
 from app.tasks.queue import close_queue, init_queue
 
 logger = logging.getLogger("mimirq")
@@ -256,6 +260,16 @@ async def lifespan(app: FastAPI):
         logger.info("Database initialized")
     else:
         logger.info("DB auto-create disabled; expecting schema to be managed externally (e.g. Alembic)")
+
+    try:
+        db = SessionLocal()
+        try:
+            if bootstrap_initial_admin_if_configured(db):
+                logger.info("Bootstrapped initial local administrator from environment")
+        finally:
+            db.close()
+    except InitialAdminBootstrapError as exc:
+        raise RuntimeError(f"Initial administrator bootstrap failed: {exc}") from exc
 
     # Initialize task queue (optional).
     try:

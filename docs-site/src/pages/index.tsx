@@ -38,6 +38,7 @@ function copy(locale: string) {
     pipelineQuery: en ? 'Query Pipeline' : '问答流程',
     useCasesTitle: en ? 'Use Cases' : '适用场景',
     quickLinksTitle: en ? 'Quick Links' : '快速链接',
+    quickStart: en ? 'Quick Start' : '快速开始',
     externalLinks: en ? 'External Resources' : '外部资源',
 
     category: en ? 'Category' : '类别',
@@ -63,7 +64,7 @@ const CORE_FEATURES = [
 ];
 
 const TECH_STACK = [
-  ['Backend', 'Python 3.11+ / FastAPI 0.135 / SQLAlchemy 2.0 / Celery'],
+  ['Backend', 'Python 3.11+ / FastAPI 0.135 / SQLAlchemy 2.0 / Arq'],
   ['Vector DB', 'Milvus (HNSW / IVF-FLAT)'],
   ['Storage', 'PostgreSQL / Redis / MinIO'],
   ['Embedding', 'BAAI/bge-m3 (15 models / 7 providers)'],
@@ -107,6 +108,9 @@ function HeroBanner() {
         <p className={styles.heroLead}>{t.heroLead}</p>
 
         <div className={styles.buttons}>
+          <Link className="button button--secondary button--lg" to="/docs/ops/getting-started">
+            {t.quickStart}
+          </Link>
           <Link className="button button--secondary button--lg" to="/docs/backend/welcome">
             {t.backend}
           </Link>
@@ -282,6 +286,11 @@ function QuickLinks() {
         </Heading>
         <p className="text--italic margin-bottom--lg">{t.searchHint}</p>
         <div className={styles.quickLinks}>
+          <Link
+            className="button button--outline button--primary button--md"
+            to="/docs/ops/getting-started">
+            {t.quickStart}
+          </Link>
           <a
             className="button button--outline button--primary button--md"
             href="https://skygazer42.github.io/MimirQ/">

@@ -5,69 +5,44 @@ sidebar_position: 8
 
 # 环境矩阵
 
-MimirQ 的多环境（dev / staging / prod）部署涉及不同的配置策略，本页说明关键配置差异与注意事项。
+MimirQ 的配置主要分成三类：本地开发、Docker 一键启动、生产部署。权威变量定义见 [设置 / Meta](../../ops/settings-meta.md)。
 
 ## 环境对比
 
-| 配置项 | Development | Staging | Production |
-|--------|-------------|---------|------------|
-| 认证模式 | Header 调试 + JWT | JWT | JWT（强制） |
-| 日志级别 | DEBUG | INFO | WARNING |
-| CORS | 宽松（`*`） | 限定域名 | 限定域名 |
-| 限流 | 关闭或宽松 | 与生产一致 | 严格 |
-| SSL/TLS | 可选 | 启用 | 强制 |
-| 健康探针 | 手动检查 | K8s 集成 | K8s 集成 + 外部监控 |
+| 场景 | 前端 | 后端 | 说明 |
+|---|---|---|---|
+| 开发机主机启动 | `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000` | `make init` 后填写 `LLM_API_KEY` | `make setup-host` + `make backend` / `make web`；仅启用任务队列时运行 `make worker` |
+| Docker 一键启动 | `NEXT_PUBLIC_API_URL_DOCKER=/`、`API_INTERNAL_URL_DOCKER=http://mimirq-api:8000` | `make init` 后填写 `LLM_API_KEY` | 适合 `make up-web`；本地基础设施可保留默认值 |
+| 生产部署 | 按实际域名设置浏览器地址 | 强 JWT/数据库/对象存储凭据、可信租户来源和受限 CORS/Hosts | 敏感值应通过 Secret / `_FILE` 注入 |
 
-## 后端关键环境变量
+## 最小必填清单
 
-:::info
-完整配置清单以部署文档与 `.env.example` 为准。以下仅列出联调中最常遇到的变量。
-:::
+1. 运行 `make init`，让工具生成缺失配置与本地 `SECRET_KEY`。
+2. 填写 `LLM_API_KEY`，完成默认硅基流动 LLM 与 Embedding 的真实调用。
+3. 需要重排时设置 `ENABLE_RERANKER=true`；独立服务必须填写完整 `RERANKER_API_BASE`。
+4. 需要无人值守首登时，再配置 `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_USERNAME` 和一种密码来源。
 
-| 变量 | 说明 | 典型值 |
-|------|------|--------|
-| `DATABASE_URL` | PostgreSQL 连接串 | `postgresql://...` |
-| `REDIS_URL` | Redis 连接地址 | `redis://...` |
-| `MILVUS_HOST` / `MILVUS_PORT` | 向量数据库地址 | `localhost:19530` |
-| `JWT_SECRET_KEY` | JWT 签名密钥 | 随机字符串 |
-| `EMBEDDING_MODEL` | 默认 embedding 模型 | `BAAI/bge-m3` |
-| `LOG_LEVEL` | 日志级别 | `INFO` |
+Embedding 默认复用 LLM 的 Key/Base URL。Reranker 默认关闭；启用后 Key 可复用 LLM，但请求地址必须是供应商的完整 rerank 端点。
 
-:::danger 密钥管理
-生产环境中，`JWT_SECRET_KEY`、数据库密码等敏感信息**不应写在 `.env` 文件中**，应使用 Secret Manager 或 K8s Secrets 管理。
-:::
-
-## 前端环境变量
+## 前端变量
 
 | 变量 | 说明 | 注意事项 |
-|------|------|----------|
-| `NEXT_PUBLIC_API_BASE_URL` | 后端 API 地址 | 修改后需重新构建 |
-| `NEXT_PUBLIC_*` | 其他公开配置 | 会暴露到客户端 |
+|---|---|---|
+| `NEXT_PUBLIC_API_URL` | 主机模式前端访问后端的地址 | 修改后需要重新构建前端 |
+| `NEXT_PUBLIC_API_URL_DOCKER` | Docker 浏览器侧使用的 API 地址 | 默认同源 `/`，不要写成容器内主机名 |
+| `API_INTERNAL_URL_DOCKER` | Docker SSR 访问后端的地址 | 只给前端容器内部用 |
+| `FORWARDED_ALLOW_IPS_DOCKER` | 可信代理来源 | 不要设成 `*` |
 
-:::warning
-`NEXT_PUBLIC_` 前缀的变量会被打包到客户端 JS 中，**不要放置敏感信息**。修改后需要重新构建前端。
-:::
+## 常见问题
 
-## 联调常见问题
-
-| 问题 | 原因 | 解决方案 |
-|------|------|----------|
-| CORS 错误 | 前端与后端 origin 不一致 | 检查后端 CORS 配置与前端 base URL |
-| API 请求到错误端口 | 环境变量未更新 | 确认 `NEXT_PUBLIC_API_BASE_URL` |
-| SSL 证书错误 | 自签名证书在 staging | 配置证书信任或使用 HTTP |
-| 配置不生效 | 缓存或未重启 | 清除缓存、重启服务/重新构建前端 |
-
-## 环境切换检查清单
-
-切换环境时确认：
-
-- [ ] `NEXT_PUBLIC_API_BASE_URL` 指向正确的后端地址
-- [ ] 认证方式与目标环境一致（dev 可用 Header，prod 必须 JWT）
-- [ ] CORS 配置允许当前前端域名
-- [ ] 数据库与向量库连接指向正确的实例
+| 问题 | 原因 | 解决方式 |
+|---|---|---|
+| 前端请求 404 / CORS | API 地址填错 | 检查 `NEXT_PUBLIC_API_URL` 或 `NEXT_PUBLIC_API_URL_DOCKER` |
+| Docker 里看不到后端 | 把浏览器地址写成了容器名 | 改回同源 `/`，SSR 再用 `API_INTERNAL_URL_DOCKER` |
+| 首次管理员没生效 | 已有成员或 bootstrap 变量不一致 | 清理 `INITIAL_ADMIN_*` 并确保所有实例一致 |
 
 ## 相关链接
 
-- [Redoc — API 完整参考](https://skygazer42.github.io/MimirQ/)
-- [认证模式](./auth-modes.md) | [租户 Header](./tenant-headers.md)
-- [运维 / SRE 角色](../roles/sre-ops.md)
+- [快速入门](../../ops/getting-started.md)
+- [部署指南](../../ops/deployment.md)
+- [设置 / Meta](../../ops/settings-meta.md)

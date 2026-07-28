@@ -68,24 +68,19 @@ curl http://localhost:9091/healthz
 
 ### 2. 验证连接
 
-访问后端 API 健康检查：
+访问后端 API 就绪检查：
 
 ```bash
-curl http://localhost:8000/health
+curl -f http://localhost:8000/api/v1/health/ready
 ```
 
 应返回：
 
 ```json
-{
-  "status": "healthy",
-  "database": "connected",
-  "milvus": {
-    "status": "connected",
-    "count": 0
-  }
-}
+{"ok": true, "status": "ready"}
 ```
+
+公开 readiness 不暴露具体依赖明细；管理员可在鉴权后请求 `/api/v1/health/details` 查看向量后端状态。
 
 ---
 

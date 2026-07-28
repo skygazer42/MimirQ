@@ -2,13 +2,13 @@
 
 <img src="./images/logo.png" alt="MimirQ: an inspectable, regression-testable, governable open-source RAG knowledge base" width="100%"/>
 
-<p><b>Full-stack open-source, Chinese-first enterprise RAG knowledge base</b><br/>From how a document gets chunked, to what retrieval actually hits, to why an answer is generated — the whole chain is inspectable, debuggable, and regression-testable.</p>
+<p><b>Full-stack open-source, Chinese-first enterprise RAG knowledge base</b><br/>Covers parsing, chunking, retrieval, generation, and citations with inspection, debugging, and regression controls across the pipeline.</p>
 
 <p>
-  <a href="#-quick-start"><b>Quick Start</b></a> ·
-  <a href="#-product-screenshots"><b>Screenshots</b></a> ·
-  <a href="#-dify-integration"><b>Dify Integration</b></a> ·
-  <a href="#-proven-in-a-real-deployment"><b>800-question benchmark</b></a> ·
+  <a href="#quick-start"><b>Quick Start</b></a> ·
+  <a href="#product-screenshots"><b>Screenshots</b></a> ·
+  <a href="#dify-integration"><b>Dify Integration</b></a> ·
+  <a href="#real-world-validation"><b>800-question benchmark</b></a> ·
   <a href="./docs/releases/v1.0.0.md"><b>v1.0.0 Release Notes</b></a> ·
   <a href="https://skygazer42.github.io/MimirQ/"><b>API Docs</b></a>
 </p>
@@ -31,7 +31,7 @@
 
 ---
 
-## 💡 What is MimirQ
+## Project Overview
 
 **MimirQ** (named after **Mímir**, the Norse guardian of the Well of Wisdom) is a RAG knowledge-base Q&A platform focused on **full-chain observability**. Frontend and backend are both open source, and it deploys via Docker Compose or Helm.
 
@@ -48,29 +48,29 @@
 
 <table>
   <tr>
-    <td width="50%"><strong>See it</strong><br/><sub>parsed output, chunk boundaries, retrieval and rerank steps</sub></td>
-    <td width="50%"><strong>Trace it</strong><br/><sub>sentence-level citations, versions, evidence, and full trace</sub></td>
+    <td width="50%"><strong>Observable</strong><br/><sub>parsed output, chunk boundaries, retrieval and rerank steps</sub></td>
+    <td width="50%"><strong>Traceable</strong><br/><sub>sentence-level citations, versions, evidence, and full trace</sub></td>
   </tr>
   <tr>
-    <td><strong>Guard it</strong><br/><sub>document ACL, RBAC, redaction, audit, and safety rails</sub></td>
-    <td><strong>Regress it</strong><br/><sub>golden sets, evaluation dashboard, and release gates</sub></td>
+    <td><strong>Governed</strong><br/><sub>document ACL, RBAC, redaction, audit, and safety rails</sub></td>
+    <td><strong>Regression-tested</strong><br/><sub>golden sets, evaluation dashboard, and release gates</sub></td>
   </tr>
 </table>
 
 <details>
-<summary><b>Why build MimirQ?</b></summary>
+<summary><b>Project background</b></summary>
 
 MimirQ began with a concrete government-service Q&A project: the system could already answer questions, but when an answer was wrong it was hard to tell whether the root cause was in parsing, chunking, retrieval, reranking, or generation. Government knowledge also carries multi-region versions, policy updates, scanned pages, and tables — and a fluent answer grounded in an obsolete policy is more dangerous than an explicit "I don't know."
 
 Existing platforms are strong at workflows or agents, but the parsing, indexing, retrieval, citation, and evaluation needed to diagnose RAG are usually scattered across separate components. MimirQ does not build yet another general-purpose node canvas; it focuses on an inspectable RAG path.
 
-> **MimirQ is not trying to prove that RAG can run — it is trying to show why a RAG system deserves to be trusted.**
+> **MimirQ makes RAG results explainable, traceable, and verifiable.**
 
 </details>
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -87,17 +87,59 @@ cd MimirQ
 make init
 ```
 
-`make init` generates the complete `.env` and a random JWT `SECRET_KEY`. The `.env` file is an advanced configuration reference, not a form to fill in line by line. With the default SiliconFlow setup, only one value is required:
+`make init` creates `.env` and `web/.env.local` only when they are missing, then fills a random JWT `SECRET_KEY` and image-proxy secret. Existing values are preserved. Edit `.env` and choose one model setup before continuing.
+
+### Minimum configuration before startup
+
+| Capability | Default behavior | What to set |
+|:---|:---|:---|
+| **LLM** | SiliconFlow `Qwen/Qwen3-32B` | Real model calls require `LLM_API_KEY`; change `LLM_API_BASE` / `LLM_MODEL` only for another provider |
+| **Embedding** | `BAAI/bge-m3`, reusing the LLM key and base URL | Nothing else by default; set `EMBEDDING_API_KEY` / `EMBEDDING_API_BASE` / `EMBEDDING_MODEL` for a separate service |
+| **Reranker** | Disabled | Set `ENABLE_RERANKER=true` when needed; the key may reuse the LLM key, but `RERANKER_API_BASE` must be the complete rerank endpoint |
+| **First administrator** | Register the first owner in the web UI | For unattended deployment, set `INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_USERNAME`, and exactly one password source |
+
+Minimum default SiliconFlow setup:
 
 ```dotenv
-# The only required value
 LLM_API_KEY=<your-siliconflow-api-key>
+
+# Optional: enable the default SiliconFlow reranker
+# ENABLE_RERANKER=true
+
+# Optional, recommended for unattended deployment: create the first owner
+# INITIAL_ADMIN_EMAIL=owner@example.com
+# INITIAL_ADMIN_USERNAME=owner
+# INITIAL_ADMIN_PASSWORD=<strong-password>
 ```
+
+<details>
+<summary><b>Use separate LLM, embedding, and reranker services</b></summary>
+
+```dotenv
+LLM_API_BASE=https://llm.example.com/v1
+LLM_API_KEY=<llm-key>
+LLM_MODEL=<chat-model>
+
+EMBEDDING_PROVIDER=openai_compatible
+EMBEDDING_API_BASE=https://embedding.example.com/v1
+EMBEDDING_API_KEY=<embedding-key>
+EMBEDDING_MODEL=<embedding-model>
+
+ENABLE_RERANKER=true
+RERANKER_PROVIDER=openai
+RERANKER_API_BASE=https://reranker.example.com/rerank
+RERANKER_API_KEY=<reranker-key>
+RERANKER_MODEL=<reranker-model>
+```
+
+</details>
+
+The administrator password can be injected through `INITIAL_ADMIN_PASSWORD_FILE=/run/secrets/mimirq_initial_admin_password`; it is mutually exclusive with `INITIAL_ADMIN_PASSWORD`. A successful bootstrap is idempotent and does not rotate the password on restart. If the default tenant already has another member, MimirQ refuses to overwrite or elevate it. See [Model Services and Initial Administrator Configuration](./docs/guides/model_services.md) for every field, Docker/host addressing, and troubleshooting.
 
 | Startup mode | Best for | Where the app runs |
 |:---|:---|:---|
 | **Docker (recommended)** | First use and server deployment | Web, API, worker, and dependencies run in containers |
-| **Host source** | Frontend/backend development and hot reload | Web, API, and worker run on the host; dependencies run in Docker |
+| **Host source** | Frontend/backend development and hot reload | Web, API, and an optional worker run on the host; dependencies run in Docker |
 
 ### Option 1: Start everything with Docker
 
@@ -107,13 +149,13 @@ make ps
 curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
 ```
 
-`make up-web` starts the web app, API, worker, Postgres, Milvus, Etcd, MinIO, and Redis; existing configuration is never overwritten. Open [http://localhost:3000](http://localhost:3000) and create a local account to enter the system.
+`make up-web` starts the web app, API, worker, Postgres, Milvus, Etcd, MinIO, and Redis. Local evaluation can keep the generated infrastructure endpoints. Production deployments must set a strong `POSTGRES_PASSWORD`, replace the MinIO credentials, and define a trusted tenant boundary; see the [Docker Compose deployment guide](./docs/deployment/docker_compose.md). If `INITIAL_ADMIN_*` is not configured, open [http://localhost:3000](http://localhost:3000) and create the first local account.
 
 The first Docker build downloads and verifies a pinned DeepDoc model bundle. If a proxy only listens on the Linux host loopback, configure it in Docker locally or run `DOCKER_BUILD_NETWORK=host make up-web`; never commit proxy addresses. If Docker Hub is unavailable, set `MILVUS_IMAGE` in `.env` to the same image in a trusted registry.
 
 ### Optional: choose a parser by document workload
 
-`make up-web` uses the built-in DeepDoc parser and does not start heavyweight parser services. Configure the matching `.env` values, then start only the profiles your workload needs (one at a time when VRAM is tight); the existing web stack keeps running. You must still select that parser for an upload or preview: starting its container does not change the default parsing path.
+`make up-web` uses the built-in DeepDoc parser and does not start heavyweight parser services. Configure the matching `.env` values, then start only the profiles required by the workload (one at a time when VRAM is constrained); the existing web stack keeps running. The parser must still be selected for an upload or preview because starting its container does not change the default parsing path.
 
 | Document workload | Recommended parser | Extra requirement | Start after the main stack |
 |:---|:---|:---|:---|
@@ -131,7 +173,7 @@ The first Docker build downloads and verifies a pinned DeepDoc model bundle. If 
 <summary><b>Expand the minimal .env configuration</b></summary>
 
 ```dotenv
-# Keep only the group you selected
+# Keep only the selected group
 MARKER_ENABLED=true
 MARKER_API_URL=http://mimirq-marker:2080/convert
 
@@ -180,19 +222,23 @@ Install host dependencies and start the infrastructure services:
 make setup-host
 ```
 
-`make setup-host` creates `.venv`, installs and validates the CPU backend and web dependencies, downloads the pinned parser models, and starts Postgres, Milvus, Etcd, MinIO, and Redis. Existing `.env` values are preserved.
+`make setup-host` creates `.venv`, installs and validates the CPU backend and web dependencies, downloads the pinned parser models, and starts Postgres, Milvus, Etcd, MinIO, and Redis. Existing `.env` values are preserved; if `INITIAL_ADMIN_*` is configured, the backend bootstraps the first owner on its first startup.
 
-Open three terminals:
+With the default `TASK_QUEUE_ENABLED=false`, the API handles bounded background document work in-process, so only two terminals are required:
 
 ```bash
 # Terminal 1: FastAPI with hot reload
 make backend
 
-# Terminal 2: document parsing and indexing worker
-make worker
-
-# Terminal 3: Next.js with hot reload
+# Terminal 2: Next.js with hot reload
 make web
+```
+
+To use a separate queue like the Docker stack, set `TASK_QUEUE_ENABLED=true` before starting the API, then run the worker in a third terminal:
+
+```bash
+make worker
+make worker-check
 ```
 
 Verify the host services:
@@ -202,7 +248,7 @@ make infra-ps
 curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
 ```
 
-After stopping the three host processes, run `make infra-down` to stop the dependency services.
+After stopping the host processes, run `make infra-down` to stop the dependency services.
 
 ### Service URLs
 
@@ -211,7 +257,7 @@ After stopping the three host processes, run `make infra-down` to stop the depen
 | **Frontend UI** | [http://localhost:3000](http://localhost:3000) |
 | **API Docs** | [http://localhost:8000/docs](http://localhost:8000/docs) |
 
-> For a lighter setup, use `make up-lite`. It swaps Milvus for Chroma/FAISS and skips MinIO, but does not start the frontend by default; run `make web` separately when you need the UI. External LLM and embedding calls still require your own provider credentials.
+> For a lighter setup, use `make up-lite`. It swaps Milvus for Chroma/FAISS and skips MinIO, but does not start the frontend by default; run `make web` separately when the UI is required. External LLM and embedding calls still require provider credentials.
 
 | Scenario | Change | Required? |
 |:---|:---|:---:|
@@ -239,7 +285,7 @@ For advanced model, parser, and proxy settings, see [`.env.example`](./.env.exam
 
 ---
 
-## 🖼️ Product Screenshots
+## Product Screenshots
 
 These screens use the public government-service plugin samples included in the repository. No production knowledge-base data is shown.
 
@@ -291,7 +337,7 @@ These screens use the public government-service plugin samples included in the r
 
 ---
 
-## 🔌 Dify Integration
+## Dify Integration
 
 MimirQ can plug into existing Dify applications as a governable RAG layer, without re-implementing the workflow canvas. Two integration modes are supported today:
 
@@ -320,11 +366,11 @@ MimirQ can plug into existing Dify applications as a governable RAG layer, witho
 
 > The regional routing in the diagram comes from the optional sample plugin; the MimirQ core ships no region, service-item, or industry rules.
 
-The standard Dify external-knowledge endpoint is `POST /api/v1/integrations/dify/retrieval`; you can optionally use `POST /api/v1/integrations/dify/conversation-turns` to report answers, citations, and a conversation identifier. See [`.env.example`](./.env.example) for configuration, the [readiness gate](./scripts/README.md) for pre-deploy validation, and [Proven in a Real Deployment](#-proven-in-a-real-deployment) for measured results.
+The standard Dify external-knowledge endpoint is `POST /api/v1/integrations/dify/retrieval`; `POST /api/v1/integrations/dify/conversation-turns` optionally reports answers, citations, and a conversation identifier. See [`.env.example`](./.env.example) for configuration, the [readiness gate](./scripts/README.md) for pre-deploy validation, and [Real-world Validation](#real-world-validation) for measured results.
 
 ---
 
-## 🧭 Core Feature Comparison
+## Core Feature Comparison
 
 <details>
 <summary><b>Expand to compare with Dify, RAGFlow, FastGPT, AnythingLLM, and LangChain</b></summary>
@@ -351,7 +397,7 @@ The standard Dify external-knowledge endpoint is `POST /api/v1/integrations/dify
 
 ---
 
-## 📍 Proven in a Real Deployment
+## Real-world Validation
 
 MimirQ has powered a **municipal government Q&A assistant** across seven district-level and one city-level knowledge base. The latest direct-retrieval rerun used input SHA-256 `5a4c67...fac2`, with the following results:
 
@@ -384,11 +430,11 @@ Retrieval evidence coverage on MimirQ's two Dify paths was 99.7% / 96.8%, but ge
 
 </details>
 
-[Full methodology, metric definitions, and historical reruns](./docs/benchmarks/changzhou_dify.md) · [Dify integration modes and real workflows](#-dify-integration)
+[Full methodology, metric definitions, and historical reruns](./docs/benchmarks/changzhou_dify.md) · [Dify integration modes and real workflows](#dify-integration)
 
 ---
 
-## 📡 API Reference (OpenAPI / GitHub Pages)
+## API Reference (OpenAPI / GitHub Pages)
 
 | Resource | Link / notes |
 |:---|:---|
@@ -405,7 +451,7 @@ Enable **Settings → Pages → GitHub Actions** on the repository; pushes to `m
 
 ---
 
-## 📦 Deployment Options
+## Deployment Options
 
 From a local look to a production cluster:
 
@@ -437,7 +483,7 @@ For Kubernetes production deployment, see the [Helm Guide](./docs/deployment/hel
 
 ---
 
-## 📖 Feature Guides
+## Feature Guides
 
 | Guide | Description |
 |:---|:---|
@@ -460,7 +506,7 @@ For Kubernetes production deployment, see the [Helm Guide](./docs/deployment/hel
 
 ---
 
-## ✅ Development
+## Development
 
 Run CI-consistent checks before pushing (backend + frontend):
 
@@ -477,7 +523,7 @@ cd web && pnpm lint && pnpm test
 
 ---
 
-## 🗺 Roadmap
+## Roadmap
 
 Delivered capabilities are in the comparison table above. Near-term plans:
 
@@ -486,13 +532,13 @@ Delivered capabilities are in the comparison table above. Near-term plans:
 - [ ] Cross-language retrieval
 - [ ] Unified LLM-as-Judge (G-Eval + Self-Consistency)
 
-> The roadmap is tracked publicly in [GitHub Issues](https://github.com/skygazer42/MimirQ/issues) — feature requests and votes welcome.
+> The roadmap, feature requests, and voting are managed through [GitHub Issues](https://github.com/skygazer42/MimirQ/issues).
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
-Whether it's fixing a typo, filing a bug, or proposing a feature, please read [CONTRIBUTING.md](./.github/CONTRIBUTING.md) first. For the local development flow, see [Quick Start](./docs/quickstart.md), and run `make enterprise-checks` before pushing.
+Before contributing code, reporting an issue, or proposing a feature, read [CONTRIBUTING.md](./.github/CONTRIBUTING.md). See [Quick Start](./docs/quickstart.md) for local development and run `make enterprise-checks` before pushing.
 
 ```bash
 # Fork and clone
@@ -512,15 +558,15 @@ make enterprise-checks
 
 ---
 
-## 📜 License
+## License
 
 This project is licensed under the [Apache License 2.0](LICENSE). Attribution for third-party components (including code vendored from RAGFlow/DeepDoc and build-provisioned model weights) is recorded in [NOTICE](NOTICE).
 
-> ⚠️ **PyMuPDF (AGPL-3.0) notice**: Default PDF parsing may use PyMuPDF, which is licensed under AGPL-3.0 / commercial dual license. If you offer this software as a network service (SaaS), the AGPL network clause may require you to release the source of the entire combined work. To avoid this, switch to a permissively-licensed parsing backend (pypdf / pdfplumber). See NOTICE for details.
+> **PyMuPDF (AGPL-3.0) notice**: Default PDF parsing may use PyMuPDF, which is licensed under AGPL-3.0 / commercial dual license. Offering this software as a network service (SaaS) may require release of the entire combined work under the AGPL network clause. To avoid this constraint, use a permissively licensed parsing backend (pypdf / pdfplumber). See NOTICE for details.
 
 ---
 
-## 🙏 Acknowledgements
+## Acknowledgements
 
 MimirQ is built on the shoulders of outstanding open-source projects:
 
@@ -531,10 +577,6 @@ Thanks to [SiliconFlow](https://siliconflow.cn/) for providing CNY 50 in API tri
 ---
 
 <div align="center">
-
-**If MimirQ took your RAG from "it runs" to "I'd ship it," please give us a ⭐ Star!**
-
-Every star is fuel for us to keep opening the black box.
 
 [![Star History Chart](https://api.star-history.com/svg?repos=skygazer42/MimirQ&type=Date)](https://star-history.com/#skygazer42/MimirQ&Date)
 

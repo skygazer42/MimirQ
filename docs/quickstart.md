@@ -15,13 +15,25 @@ cd MimirQ
 make init
 ```
 
-`.env` 是高级配置参考，不需要逐项填写。默认使用硅基流动 `Qwen/Qwen3-32B` 和 `BAAI/bge-m3`，只需填写：
+`.env` 是高级配置参考，不需要逐项填写。默认使用硅基流动 `Qwen/Qwen3-32B` 和 `BAAI/bge-m3`；完成真实知识库闭环时，最少先确认这几项：
+
+| 变量 | 必填 | 说明 |
+|:---|:---|:---|
+| `LLM_API_KEY` | 是 | 默认对话与基础抽取凭证 |
+| `LLM_API_BASE` / `LLM_MODEL` | 否 | 默认值已可用于硅基流动 |
+| `EMBEDDING_API_KEY` / `EMBEDDING_API_BASE` | 否 | 为空时复用 `LLM_*` |
+| `ENABLE_RERANKER=true` | 否 | 默认关闭，避免额外时延 |
+| `INITIAL_ADMIN_*` | 否 | 可选但推荐，首次启动自动创建第一个 `owner` |
+
+如果你希望首次进入系统时就自动拥有第一个本地管理员，可以额外配置：
 
 ```env
-LLM_API_KEY=<your-siliconflow-api-key>
+INITIAL_ADMIN_EMAIL=owner@example.com
+INITIAL_ADMIN_USERNAME=owner
+INITIAL_ADMIN_PASSWORD=<strong-password>
 ```
 
-Embedding 默认复用同一地址和密钥。Reranker 默认关闭；需要时只设置 `ENABLE_RERANKER=true`，同样复用 LLM 密钥。只有更换供应商时才需要修改 `LLM_API_BASE`、`LLM_MODEL` 或 `EMBEDDING_*`；其他参数保持默认。然后启动：
+管理员密码也可改用 `INITIAL_ADMIN_PASSWORD_FILE`，与明文密码二选一。LLM、Embedding 与 Reranker 使用不同服务时，必须分别填写对应地址、Key 与模型；Reranker 地址是完整请求端点。完整模板、Docker/主机地址差异和首次管理员规则见[模型服务与首次管理员配置](./guides/model_services.md)。然后启动：
 
 ```bash
 make up-web
@@ -29,7 +41,7 @@ make core-e2e CORE_E2E_BASE_URL=http://127.0.0.1:8000 CORE_E2E_BOOTSTRAP_REGISTE
 curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
 ```
 
-打开 [http://localhost:3000](http://localhost:3000)，创建本地账户即可进入系统。
+打开 [http://localhost:3000](http://localhost:3000)。若未配置 `INITIAL_ADMIN_*`，在页面中创建第一个本地账户。
 
 首次构建会下载并校验固定版本的解析模型。代理仅监听 Linux 宿主机回环地址时，先在本机 Docker 配置代理，再运行 `DOCKER_BUILD_NETWORK=host make up-web`；不要把个人代理地址提交到配置模板。
 
@@ -63,26 +75,23 @@ docker compose --env-file .env -f docker/docker-compose.yml ps
 
 > 本地源码运行后端需要 Python 3.11+（项目包含 `match/case` 等语法与依赖约束）。如果你只想快速跑起来，优先使用 Docker。
 >
-> 如果你要本地源码调试完整 Web 栈，请先启动依赖服务，再分别启动 API、Worker 和前端，不要手写全局 `uvicorn` / `arq` 命令：
+> 如果你要本地源码调试完整 Web 栈，请先启动依赖服务，再启动 API 和前端，不要手写全局 `uvicorn` / `arq` 命令：
 >
 > ```bash
 > make setup-host
 > ```
 >
-> 然后分别打开三个终端运行：
+> 默认 `TASK_QUEUE_ENABLED=false`，后台文档任务由 API 进程内有界处理；分别打开两个终端运行：
 >
 > ```bash
 > # 终端 1：FastAPI（热更新）
 > make backend
 >
-> # 终端 2：文档解析与索引 Worker
-> make worker
->
-> # 终端 3：Next.js（热更新）
+> # 终端 2：Next.js（热更新）
 > make web
 > ```
 >
-> Worker 启动后，可在另一个终端运行 `make worker-check` 检查 Redis 存活标记。
+> 需要独立队列时，在 `.env` 设置 `TASK_QUEUE_ENABLED=true` 并重启 API，再于第三个终端运行 `make worker`；随后可用 `make worker-check` 检查 Redis 存活标记。Docker 一键启动默认已启用队列。
 >
 > 若宿主机文件监听额度较低、`uploads/` 又比较大，API 进程优先改用：
 >
@@ -308,7 +317,7 @@ make verify
 - 前端界面 (需启动前端): http://localhost:3000
 - 健康检查: http://localhost:8000/api/v1/health
 - 就绪探针: http://localhost:8000/api/v1/health/ready
-- 详细依赖状态: http://localhost:8000/health
+- 详细依赖状态（需管理员权限）: http://localhost:8000/api/v1/health/details
 
 > 提示：如需查看/回滚文档的 `pipeline_hash` 版本，可在「知识库」打开文档详情弹窗后点击“版本”。详见：[docs/guides/document_versions.md](./guides/document_versions.md)。
 

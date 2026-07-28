@@ -10,7 +10,7 @@ sidebar_position: 6
 | 症状 | 可能原因 | 排查步骤 |
 |------|----------|----------|
 | 上传卡在 0% | 网络问题 / Nginx 限制 | 检查 Network 面板；确认 `client_max_body_size` |
-| 上传成功但状态一直 processing | Worker 未运行 / 队列堆积 | 查看后端 Celery worker 状态 |
+| 上传成功但状态一直 processing | Worker 未运行 / 队列堆积 | 查看后端 Arq worker 状态 |
 | 文档列表加载慢 | 数据量大 / 缺少索引 | 使用筛选缩小范围；确认后端分页 |
 | 解析内容为空 | 解析器不支持文件格式 | 检查 `parser_backend` 配置 |
 | Chunk 预览报错 | 后端解析器服务不可用 | 检查后端解析器容器日志 |

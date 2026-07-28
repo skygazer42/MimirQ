@@ -11,8 +11,8 @@ This handbook is for **operations engineers, SREs, and platform administrators**
 
 | Service | Default Port | Health Check Endpoint | Description |
 | --- | --- | --- | --- |
-| FastAPI (Main Service) | 8000 | `GET /health` | API gateway entry point |
-| Celery Worker | — | Celery inspect ping | Async task execution |
+| FastAPI (Main Service) | 8000 | `GET /api/v1/health/ready` | API entry point |
+| Arq Worker | — | `make worker-check` | Document parsing and indexing tasks |
 | PostgreSQL | 5432 | `pg_isready` | Relational data storage |
 | Milvus | 19530 | gRPC health check | Vector database |
 | Redis | 6379 | `redis-cli ping` | Cache & message queue |
@@ -23,7 +23,7 @@ This handbook is for **operations engineers, SREs, and platform administrators**
 ```mermaid
 graph TD
     API["FastAPI :8000"]
-    WORKER["Celery Workers"]
+    WORKER["Arq Workers"]
     PG["PostgreSQL :5432"]
     MV["Milvus :19530"]
     RD["Redis :6379"]
@@ -56,14 +56,14 @@ For production, Helm / K8s deployment is recommended, paired with a PostgreSQL H
 
 ### Prometheus Metrics
 
-MimirQ exposes Prometheus-compatible metrics endpoints:
+With `PROMETHEUS_ENABLED=true`, MimirQ exposes a Prometheus-compatible `/metrics` endpoint:
 
 | Metric Category | Examples | Description |
 | --- | --- | --- |
 | HTTP Requests | `http_requests_total`, `http_request_duration_seconds` | Grouped by route, method, status code |
-| Task Queue | `celery_tasks_total`, `celery_task_duration_seconds` | Grouped by task type, status |
-| Database Connections | `sqlalchemy_pool_size`, `sqlalchemy_pool_checkedout` | Connection pool monitoring |
-| Vector Search | `milvus_search_duration_seconds` | Search latency |
+| In-flight Requests | `http_requests_in_progress` | Current API concurrency |
+
+Monitor Arq, PostgreSQL, Milvus, Redis, and MinIO through application logs, `make worker-check`, and dependency-specific exporters; MimirQ does not expose queue-specific metrics directly.
 
 ### Grafana Dashboard
 
@@ -80,6 +80,7 @@ See [Observability Configuration](./observability) for details.
 
 | Operation | Documentation |
 | --- | --- |
+| First install and minimum configuration | [Quick Start](./getting-started) |
 | Health Probe Configuration | [Health Checks](./health-probes) |
 | Monitoring & Alerting | [Observability](./observability) |
 | Deployment & Upgrades | [Deployment Guide](./deployment) |
@@ -89,7 +90,7 @@ See [Observability Configuration](./observability) for details.
 
 :::note Daily Checks
 1. Verify all service health endpoints return 200
-2. Confirm Celery Worker process count matches expectations
+2. Run `make worker-check` to confirm the Arq worker heartbeat
 3. Check PostgreSQL connection pool utilization < 80%
 4. Confirm Milvus collection sync status is normal
 5. Check disk usage (MinIO storage / PostgreSQL WAL)
@@ -100,11 +101,11 @@ See [Observability Configuration](./observability) for details.
 
 | File | Purpose |
 | --- | --- |
-| `docker-compose.yml` | Docker Compose orchestration |
-| `helm/` | Helm Chart templates |
-| `app/core/config.py` | Application config (1200+ entries) |
+| `docker/docker-compose*.yml` | Docker Compose orchestration |
+| `deploy/helm/mimirq/` | Helm Chart templates |
+| `.env.example` / `app/core/config.py` | Environment template and application settings |
 | `alembic.ini` | Database migration config |
-| `.env` / `.env.production` | Environment variables |
+| `.env` / `web/.env.local` | Local backend and frontend environment variables |
 
 :::warning Sensitive Configuration
 Database passwords, JWT secrets, API keys, and other sensitive configuration should be injected via environment variables or Kubernetes Secrets. Never commit them to the code repository.
@@ -113,6 +114,7 @@ Database passwords, JWT secrets, API keys, and other sensitive configuration sho
 ## Related Links
 
 - [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/)
+- [Quick Start](./getting-started)
 - [Backend Overview](../backend/welcome)
 - [Frontend Overview](../frontend/welcome)
 - [Integration & E2E Overview](../integration/welcome)

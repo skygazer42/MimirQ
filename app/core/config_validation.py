@@ -16,6 +16,8 @@ from collections.abc import Mapping
 from urllib.parse import urlparse
 from uuid import UUID
 
+from email_validator import EmailNotValidError, validate_email
+
 # The names below are injected by ``app.core.config`` at import time. This module
 # must not import any app-internal module (``app.core.config`` and its imports
 # form the dependency-tree leaf), so the shared helpers/constants defined or
@@ -179,6 +181,50 @@ def validate_auth_mode_and_jwt_claims(settings):
     if jwks_urls_raw:
         for raw_url in [item.strip() for item in jwks_urls_raw.split(",") if item.strip()]:
             validate_jwt_remote_url(raw_url, field_name="JWT_JWKS_URLS")
+
+
+def validate_initial_admin_bootstrap(settings):
+    email = str(getattr(settings, "INITIAL_ADMIN_EMAIL", "") or "").strip()
+    username = str(getattr(settings, "INITIAL_ADMIN_USERNAME", "") or "").strip()
+    password = str(getattr(settings, "INITIAL_ADMIN_PASSWORD", "") or "")
+    password_file = str(getattr(settings, "INITIAL_ADMIN_PASSWORD_FILE", "") or "").strip()
+
+    if not any((email, username, password, password_file)):
+        return
+
+    if not email or not username:
+        raise ValueError(
+            "INITIAL_ADMIN bootstrap requires "
+            "INITIAL_ADMIN_EMAIL, INITIAL_ADMIN_USERNAME, and exactly one password source"
+        )
+
+    password_sources = int(bool(password)) + int(bool(password_file))
+    if password_sources != 1:
+        if password and password_file:
+            raise ValueError("INITIAL_ADMIN_PASSWORD and INITIAL_ADMIN_PASSWORD_FILE are mutually exclusive")
+        raise ValueError(
+            "INITIAL_ADMIN bootstrap requires "
+            "INITIAL_ADMIN_EMAIL, INITIAL_ADMIN_USERNAME, and exactly one password source"
+        )
+
+    try:
+        normalized_email = validate_email(email, check_deliverability=False).normalized.lower()
+    except EmailNotValidError as exc:
+        raise ValueError("INITIAL_ADMIN_EMAIL must be a valid email address") from exc
+    if len(normalized_email) > 255:
+        raise ValueError("INITIAL_ADMIN_EMAIL must be a valid email address")
+    if len(username) < 3 or len(username) > 64:
+        raise ValueError("INITIAL_ADMIN_USERNAME must be between 3 and 64 characters")
+    if password:
+        min_len = int(getattr(settings, "PASSWORD_MIN_LENGTH", 8) or 8)
+        if len(password) < min_len:
+            raise ValueError(f"INITIAL_ADMIN_PASSWORD must be at least {min_len} characters")
+        if len(password.encode("utf-8")) > 72:
+            raise ValueError("INITIAL_ADMIN_PASSWORD cannot be longer than 72 bytes for bcrypt")
+
+    settings.INITIAL_ADMIN_EMAIL = normalized_email
+    settings.INITIAL_ADMIN_USERNAME = username
+    settings.INITIAL_ADMIN_PASSWORD_FILE = password_file
 
 
 def validate_scim(settings):

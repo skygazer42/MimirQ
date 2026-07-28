@@ -27,10 +27,16 @@ make init
 # Windows without make: python scripts/init_env.py
 ```
 
-编辑 `.env`，至少配置：
+编辑 `.env`。本地真实模型闭环最低只需填写 `LLM_API_KEY`；`make init` 已生成 `SECRET_KEY`，其余基础设施变量有本地默认值。
 
-- `LLM_API_KEY`（以及可选的 `LLM_API_BASE/LLM_MODEL`）
-- 默认启用 `AUTH_MODE=jwt`；`make init` 会生成长度 >= 32 的 `SECRET_KEY`
+| 能力 | Docker 本地默认 | 需要修改的情况 |
+|:---|:---|:---|
+| LLM | 硅基流动 `Qwen/Qwen3-32B` | `LLM_API_KEY` 必填；其他供应商再改 `LLM_API_BASE` / `LLM_MODEL` |
+| Embedding | `BAAI/bge-m3`，复用 LLM Key/Base URL | 独立服务才填写 `EMBEDDING_*` |
+| Reranker | 关闭 | 设置 `ENABLE_RERANKER=true`；Key 可复用 LLM，但 Base URL 必须是完整 rerank 端点 |
+| 首个管理员 | Web 手工注册 | 无人值守部署建议配置 `INITIAL_ADMIN_EMAIL`、`INITIAL_ADMIN_USERNAME` 和一种密码来源 |
+
+LLM、Embedding 与 Reranker 分离部署、宿主机模型地址和管理员完整规则见[模型服务与首次管理员配置](../guides/model_services.md)。容器内基础设施地址应继续使用 `_DOCKER` 变量（如 `MILVUS_HOST_DOCKER`、`REDIS_URL_DOCKER`、`MINIO_ENDPOINT_DOCKER`），不要把它们与外部模型服务地址混淆。
 
 若使用 DashScope / 通义千问的 OpenAI-compatible 接口，示例：
 
@@ -128,7 +134,12 @@ make up-web
 - `UPLOAD_DEDUP_ENABLED_DOCKER=true`（默认已开启；仅在排查兼容性时临时关闭）
 - `RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED_DOCKER=true`（默认已开启）
 - `RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY_DOCKER=3`（保守默认；按实例 CPU / 上游模型吞吐再调）
-- 首次初始化前临时设置 `INITIAL_REGISTRATION_TOKEN`（首个本地 owner 注册一次性 token，请通过 `X-Bootstrap-Token` 发送；支持 `sha256:<hex>`，初始化完成后可移除）
+- 二选一配置首个本地管理员：
+  - `INITIAL_ADMIN_EMAIL` + `INITIAL_ADMIN_USERNAME` + `INITIAL_ADMIN_PASSWORD`
+  - 或 `INITIAL_ADMIN_EMAIL` + `INITIAL_ADMIN_USERNAME` + `INITIAL_ADMIN_PASSWORD_FILE`
+  - 适合无人值守部署；启动成功后会自动成为默认租户 owner，后续重启不会重置密码
+  - 如果使用 `INITIAL_ADMIN_PASSWORD_FILE`，请通过 Compose override 或 Docker secret 把该文件挂载到 `mimirq-api` 容器内可读的位置，默认 Compose 不会自动提供任意密码文件路径
+- 如果不使用自动管理员引导，则继续保留 `INITIAL_REGISTRATION_TOKEN` 作为手工首登 fallback（首个本地 owner 注册一次性 token，请通过 `X-Bootstrap-Token` 发送；支持 `sha256:<hex>`，初始化完成后可移除）
 - `POSTGRES_PASSWORD`（强密码）
 - `MINIO_ACCESS_KEY_DOCKER` / `MINIO_SECRET_KEY_DOCKER`（强凭据；不要保留 `minioadmin`）
 - `JWT_TENANT_CLAIM`（推荐）或在可信网关会重写租户头时显式设 `TENANT_HEADER_TRUSTED=true`
@@ -141,7 +152,17 @@ make up-prod
 make ps
 ```
 
-首次创建 owner 时发送原始 bootstrap token（如果 `.env` 保存的是 `sha256:<hex>`，这里仍发送计算摘要前的原始 token）：
+如果使用环境变量自动引导首个管理员，可直接在 `.env` 中补：
+
+```dotenv
+INITIAL_ADMIN_EMAIL=owner@example.com
+INITIAL_ADMIN_USERNAME=owner
+INITIAL_ADMIN_PASSWORD_FILE=/run/secrets/mimirq_initial_admin_password
+```
+
+推荐把密码通过 Compose override / Docker secret 或宿主机只读文件挂载到 `mimirq-api` 容器内的 `INITIAL_ADMIN_PASSWORD_FILE` 路径，避免把明文密码留在 `.env`；默认 Compose 不会自动挂载这个文件。多实例必须使用完全相同的 `INITIAL_ADMIN_*`，初始化成功后再统一删除。若默认租户已有不同成员，API 会拒绝覆盖或自动提权并停止启动，此时应移除这些变量并使用现有 owner。
+
+如果你走的是手工首登 fallback，首次创建 owner 时发送原始 bootstrap token（如果 `.env` 保存的是 `sha256:<hex>`，这里仍发送计算摘要前的原始 token）：
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/v1/auth/register \
@@ -151,6 +172,8 @@ curl -X POST http://127.0.0.1:8000/api/v1/auth/register \
 ```
 
 创建成功后可从 `.env` 删除 `INITIAL_REGISTRATION_TOKEN` 并重启服务；后续注册请求仍会返回 `409`。
+
+如果已经使用 `INITIAL_ADMIN_*` 自动创建了首个 owner，则不需要再调用上面的 `/auth/register` bootstrap 接口；`INITIAL_REGISTRATION_TOKEN` 可以完全留空。
 
 生产前再核对一次：
 

@@ -13,7 +13,7 @@ sidebar_position: 6
 | 分类树不显示 | `listTree` 返回空 | 确认后端已初始化分类；检查 RBAC 权限 |
 | 预检扫描无进度 | SSE 连接断开 | 检查 EventSource 连接；查看 Console 错误 |
 | 健康度图表空白 | 数据集无文档或入库未完成 | 确认数据集有已完成入库的文档 |
-| 画像扫描一直 pending | 后端 Celery worker 未运行 | 检查后端 worker 日志 |
+| 画像扫描一直 pending | 后端 Arq worker 未运行 | 检查后端 worker 日志 |
 | 上传文件失败 | 文件过大 / 格式不支持 | 检查 Nginx `client_max_body_size`；确认文件类型 |
 | KG Tab 消失 | `kg_enabled` 为 false | 检查 Feature Flag 配置 |
 | Toast 显示 "操作失败" | API 返回未知错误 | 打开 Network 面板查看完整响应体 |

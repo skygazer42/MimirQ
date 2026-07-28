@@ -16,7 +16,7 @@ sidebar_position: 1
 | 向量数据库 | Milvus | 2.x（BM25 + SPLADE + ColBERT ANN 混合检索） |
 | 关系数据库 | PostgreSQL | 主存储 |
 | 缓存 / 队列 | Redis | Session、限流与 Pub/Sub |
-| 任务队列 | Celery | 异步解析、索引、评测任务 |
+| 任务队列 | Arq | 异步解析、索引、评测任务 |
 | 对象存储 | MinIO / S3 兼容 | 文档原始文件 |
 
 ## 系统架构
@@ -33,7 +33,7 @@ graph LR
     VEC["Milvus"]
     CACHE["Redis"]
     OSS["MinIO"]
-    TASK["Celery Workers"]
+    TASK["Arq Workers"]
 
     Client --> GW --> API --> SVC
     SVC --> RAG
