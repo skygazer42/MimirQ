@@ -5,8 +5,8 @@
 <p><b>풀스택 오픈소스, 중국어 우선 엔터프라이즈 RAG 지식베이스</b><br/>파싱, 청킹, 검색, 생성, 인용을 대상으로 파이프라인 전체의 검사·디버깅·회귀 검증을 제공합니다.</p>
 
 <p>
-  <a href="#빠른-시작"><b>빠른 시작</b></a> ·
   <a href="#제품-화면"><b>제품 화면</b></a> ·
+  <a href="#빠른-시작"><b>빠른 시작</b></a> ·
   <a href="#dify-연동"><b>Dify 연동</b></a> ·
   <a href="#운영-환경-검증"><b>800문항 벤치마크</b></a> ·
   <a href="https://skygazer42.github.io/MimirQ/"><b>API 문서</b></a>
@@ -67,146 +67,6 @@ MimirQ는 하나의 구체적인 행정 서비스 Q&A 프로젝트에서 시작�
 
 ---
 
-## 빠른 시작
-
-### 사전 요구 사항
-
-- [Docker](https://docs.docker.com/get-docker/) 20.10+ & [Docker Compose](https://docs.docker.com/compose/install/) 2.0+
-- GNU Make. Docker 시작에는 로컬 설정 생성을 위한 Python 3.9+도 필요
-- 호스트 소스 시작에는 Python 3.11+, Node.js 20+, pnpm 10.26도 필요
-- 최소 4 CPU 코어 / 16 GB RAM / 50 GB 디스크
-
-### 공통 준비
-
-```bash
-git clone --depth 1 --single-branch https://github.com/skygazer42/MimirQ.git
-cd MimirQ
-make init
-```
-
-`make init`는 누락된 `.env`와 `web/.env.local`만 만들고 무작위 JWT `SECRET_KEY`와 이미지 프록시 시크릿을 채웁니다. 기존 값은 덮어쓰지 않습니다.
-
-### 시작 전 최소 설정
-
-| 기능 | 기본 동작 | 설정할 값 |
-|:---|:---|:---|
-| **LLM** | SiliconFlow `Qwen/Qwen3-32B` | 실제 모델 호출에는 `LLM_API_KEY`가 필요합니다. 다른 공급자를 쓰면 `LLM_API_BASE` / `LLM_MODEL`을 바꾸세요 |
-| **Embedding** | `BAAI/bge-m3`, LLM의 Key/Base URL 재사용 | 별도 서비스가 있으면 `EMBEDDING_API_KEY` / `EMBEDDING_API_BASE` / `EMBEDDING_MODEL`을 지정하세요 |
-| **Reranker** | 기본 비활성화 | 필요할 때만 `ENABLE_RERANKER=true`로 켜세요. Key는 LLM과 공유할 수 있지만 `RERANKER_API_BASE`는 완전한 rerank 엔드포인트여야 합니다 |
-| **첫 관리자** | Web 화면에서 첫 계정을 수동 생성 | 무인 배포라면 `INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_USERNAME`, 그리고 비밀번호 공급원 하나를 설정하세요 |
-
-기본 SiliconFlow 최소 설정 예시는 다음과 같습니다.
-
-```dotenv
-LLM_API_KEY=<your-siliconflow-api-key>
-
-# 선택 사항: 기본 SiliconFlow reranker 활성화
-# ENABLE_RERANKER=true
-
-# 선택 사항(무인 배포용): 첫 owner 자동 생성
-# INITIAL_ADMIN_EMAIL=owner@example.com
-# INITIAL_ADMIN_USERNAME=owner
-# INITIAL_ADMIN_PASSWORD=<strong-password>
-```
-
-관리자 비밀번호는 `INITIAL_ADMIN_PASSWORD_FILE=/run/secrets/mimirq_initial_admin_password`로 주입할 수도 있으며 `INITIAL_ADMIN_PASSWORD`와 둘 중 하나만 사용해야 합니다. 같은 설정으로 다시 시작해도 비밀번호는 변경되지 않고, 기본 테넌트에 다른 멤버가 있으면 계정 덮어쓰기나 자동 권한 상승을 거부합니다.
-
-| 시작 방식 | 용도 | 애플리케이션 실행 위치 |
-|:---|:---|:---|
-| **Docker 일괄 시작(권장)** | 첫 사용, 서버 배포 | 웹, API, 워커, 의존 서비스를 컨테이너에서 실행 |
-| **호스트 소스 시작** | 프런트엔드·백엔드 개발, 핫 리로드 | 웹, API는 호스트에서 실행하고, 필요할 때만 워커를 추가로 실행합니다. 의존 서비스는 Docker에서 실행 |
-
-### 방법 1: Docker로 일괄 시작
-
-```bash
-make up-web
-make ps
-curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
-```
-
-`make up-web`는 웹 앱, API, 워커, Postgres, Milvus, Etcd, MinIO, Redis를 시작합니다. 기존 설정은 덮어쓰지 않습니다. `INITIAL_ADMIN_*`를 설정하지 않았다면 [http://localhost:3000](http://localhost:3000)을 열고 첫 로컬 계정을 만드세요.
-
-첫 Docker 빌드에서는 고정 버전의 DeepDoc 모델 번들을 내려받아 검증합니다. 프록시가 Linux 호스트 루프백에서만 수신 대기 중이라면 Docker 쪽에서 로컬로 설정하거나 `DOCKER_BUILD_NETWORK=host make up-web`을 실행하세요. 프록시 주소는 커밋하지 마세요. Docker Hub에 연결할 수 없다면 `.env`의 `MILVUS_IMAGE`를 신뢰할 수 있는 레지스트리의 동일 버전 이미지로 지정할 수 있습니다.
-
-전체 웹 스택을 중지합니다.
-
-```bash
-docker compose --env-file .env \
-  -f docker/docker-compose.yml \
-  -f docker/docker-compose.web.yml down
-```
-
-### 방법 2: 프런트엔드와 백엔드를 호스트에서 시작
-
-호스트 의존성을 설치하고 인프라 서비스를 시작합니다.
-
-```bash
-make setup-host
-```
-
-`make setup-host`는 `.venv`를 만들고 CPU 백엔드 및 웹 의존성을 설치·검증한 뒤 고정 파서 모델을 내려받고 Postgres, Milvus, Etcd, MinIO, Redis를 시작합니다. 기존 `.env` 값은 덮어쓰지 않습니다.
-
-기본 `TASK_QUEUE_ENABLED=false`에서는 백엔드가 제한된 배경 작업을 프로세스 내부에서 처리하므로 터미널 두 개만 열면 됩니다.
-
-```bash
-# 터미널 1: FastAPI(핫 리로드)
-make backend
-
-# 터미널 2: Next.js(핫 리로드)
-make web
-```
-
-별도 큐를 Docker와 동일하게 쓰려면 `.env`에서 `TASK_QUEUE_ENABLED=true`로 바꾼 뒤 백엔드를 다시 시작하고, 세 번째 터미널에서 워커를 실행하세요.
-
-```bash
-make worker
-make worker-check
-```
-
-호스트 서비스를 확인합니다.
-
-```bash
-make infra-ps
-curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
-```
-
-호스트 프로세스가 모두 종료되면 `make infra-down`으로 의존 서비스를 중지합니다.
-
-### 서비스 URL
-
-| 서비스 | URL |
-|:---:|:---|
-| **프런트엔드 UI** | [http://localhost:3000](http://localhost:3000) |
-| **API 문서** | [http://localhost:8000/docs](http://localhost:8000/docs) |
-
-> 경량 구성에는 `make up-lite`를 사용할 수 있습니다. Milvus를 Chroma/FAISS로 대체하고 MinIO를 생략하지만, 기본적으로 프런트엔드를 시작하지 않습니다. UI가 필요하면 `make web`을 별도로 실행하세요. 외부 LLM / Embedding 호출에는 본인의 모델 공급자 자격 증명이 필요합니다.
-
-| 시나리오 | 변경 | 필수? |
-|:---|:---|:---:|
-| 기본 SiliconFlow LLM + Embedding | `LLM_API_KEY` | **예** |
-| 다른 채팅 공급자나 모델 | `LLM_API_BASE`, `LLM_MODEL` | 아니오 |
-| Embedding을 별도 공급자로 | `EMBEDDING_API_KEY`, `EMBEDDING_API_BASE`, `EMBEDDING_MODEL` | 아니오; 키와 URL을 비우면 LLM 설정 재사용 |
-| SiliconFlow 리랭커 | `ENABLE_RERANKER=true` | 아니오; 검색 지연을 피하려 기본 비활성, LLM 키 재사용 |
-| MinerU 온라인 PDF 파싱 | `MINERU_ENABLED=true`, `MINERU_API_TOKEN` | 아니오; 업로드 시 `mineru` 선택 |
-| 그 밖의 모든 `.env` 설정 | 변경 없음 | 아니오; 기본값 유지 |
-
-모델 ID는 SiliconFlow의 `/v1/models` 응답에 존재해야 합니다. 검증된 채팅 모델에는 `Qwen/Qwen3-32B`와 `Qwen/Qwen3-8B`, 검증된 Embedding 모델에는 `BAAI/bge-m3`와 `Qwen/Qwen3-Embedding-0.6B`, 검증된 리랭커에는 `BAAI/bge-reranker-v2-m3`가 있습니다. Embedding 모델을 변경한 뒤에는 기존 지식베이스 인덱스를 다시 구축해야 하며, 이전 벡터와 새 벡터를 섞어서는 안 됩니다. 자격 증명은 [SiliconFlow 콘솔](https://cloud.siliconflow.cn/account/ak)과 [MinerU](https://mineru.net/)에서 만들고, 실제 키는 로컬 `.env`에만 보관하세요.
-
-### 행정 서비스 플러그인 샘플 실행
-
-리포지토리에는 여섯 개 소스 계열(서비스 항목, 원스톱 서비스, 자주 묻는 질문, 주제별 FAQ, 부서 FAQ, 구역 FAQ)을 위한 작은 공개 샘플이 포함된 창저우 행정 서비스 지식 플러그인이 들어 있습니다. 데이터베이스를 시작하지 않고도 거버넌스·청킹·KG 출력·골든 초안을 검증할 수 있습니다.
-
-```bash
-make changzhou-gov-plugin-test-report
-make changzhou-gov-plugin-chunk-report
-```
-
-리포트는 `/tmp/changzhou_gov_plugin_*` 아래에 기록되며, 이 명령들은 데이터베이스·벡터 스토어·KG에 쓰지 않습니다. 샘플 경로, 플러그인 참조, 실제 코퍼스 폐루프 명령은 [플러그인 가이드](./plugins/pipelines/changzhou-gov-service-knowledge/README.md)를 참조하세요.
-
-고급 모델, 파서, 프록시 설정은 [`.env.example`](./.env.example)을 참조하세요. Embedding 모델을 변경한 뒤에는 기존 지식베이스 인덱스를 다시 구축해야 합니다. 다른 플랫폼과 Windows 절차는 [개발 가이드](./docs/quickstart.md)를 참조하세요.
-
----
-
 ## 제품 화면
 
 아래 화면은 리포지토리에 포함된 공개 행정 서비스 플러그인 샘플로 생성했습니다. 운영 지식베이스 데이터는 포함되어 있지 않습니다.
@@ -256,6 +116,86 @@ make changzhou-gov-plugin-chunk-report
     </td>
   </tr>
 </table>
+
+---
+
+## 빠른 시작
+
+### 사전 요구 사항
+
+- [Docker](https://docs.docker.com/get-docker/) 20.10+ & [Docker Compose](https://docs.docker.com/compose/install/) 2.0+
+- GNU Make. Docker 시작에는 로컬 설정 생성을 위한 Python 3.9+도 필요
+- 호스트 소스 시작에는 Python 3.11+, Node.js 20+, pnpm 10.26도 필요
+- 최소 4 CPU 코어 / 16 GB RAM / 50 GB 디스크
+
+### 초기화
+
+```bash
+git clone --depth 1 --single-branch https://github.com/skygazer42/MimirQ.git
+cd MimirQ
+make init
+```
+
+`make init`는 누락된 `.env`와 `web/.env.local`만 만들며 기존 값은 덮어쓰지 않습니다. `.env`에는 배포 방식에 따라 다음 항목을 설정합니다.
+
+- 기본 모델: `LLM_API_KEY`(필수)
+- 사용자 지정 LLM: `LLM_API_BASE`, `LLM_MODEL`
+- 독립 Embedding: `EMBEDDING_API_BASE`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL`
+- Reranker: `ENABLE_RERANKER`, `RERANKER_API_BASE`, `RERANKER_API_KEY`, `RERANKER_MODEL`
+- 초기 관리자: `INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_USERNAME`, `INITIAL_ADMIN_PASSWORD`
+
+설정값과 초기화 규칙은 [모델 서비스 및 초기 관리자 설정](./docs/guides/model_services.md)을 참조하세요.
+
+| 시작 방식 | 용도 | 애플리케이션 실행 위치 |
+|:---|:---|:---|
+| **Docker 일괄 시작(권장)** | 첫 사용, 서버 배포 | 웹, API, 워커, 의존 서비스를 컨테이너에서 실행 |
+| **호스트 소스 시작** | 프런트엔드·백엔드 개발, 핫 리로드 | 웹, API는 호스트에서 실행하고, 필요할 때만 워커를 추가로 실행합니다. 의존 서비스는 Docker에서 실행 |
+
+### 방법 1: Docker로 일괄 시작
+
+```bash
+make up-web
+make api-ping
+```
+
+[http://localhost:3000](http://localhost:3000)에 접속합니다. 초기 관리자를 설정하지 않았다면 화면에서 첫 계정을 등록하세요. 첫 빌드, 프록시, 운영 시크릿, 네트워크 설정은 [Docker Compose 가이드](./docs/deployment/docker_compose.md)를 참조하세요.
+
+### 방법 2: 프런트엔드와 백엔드를 호스트에서 시작
+
+호스트 의존성을 설치하고 인프라 서비스를 시작합니다.
+
+```bash
+make setup-host
+```
+
+`make setup-host`는 호스트 의존성을 설치하고 Docker 인프라를 시작합니다. 기본 구성에서는 터미널 두 개를 사용합니다.
+
+```bash
+# 터미널 1: FastAPI(핫 리로드)
+make backend
+
+# 터미널 2: Next.js(핫 리로드)
+make web
+```
+
+독립 Worker 설정은 [모델 서비스 및 초기 관리자 설정](./docs/guides/model_services.md)을 참조하세요. 호스트 서비스를 확인합니다.
+
+```bash
+make api-ping
+```
+
+호스트 프로세스가 모두 종료되면 `make infra-down`으로 의존 서비스를 중지합니다.
+
+### 서비스 URL
+
+| 서비스 | URL |
+|:---:|:---|
+| **프런트엔드 UI** | [http://localhost:3000](http://localhost:3000) |
+| **API 문서** | [http://localhost:8000/docs](http://localhost:8000/docs) |
+
+> 경량 구성에는 `make up-lite`를 사용하고, UI가 필요하면 `make web`을 별도로 실행합니다.
+
+모델, 파서, 프록시, Windows 세부 절차는 [개발 가이드](./docs/quickstart.md), 공개 샘플은 [플러그인 가이드](./plugins/pipelines/changzhou-gov-service-knowledge/README.md)를 참조하세요.
 
 ---
 
@@ -375,7 +315,7 @@ MimirQ의 두 Dify 경로의 검색 근거 커버리지는 99.7% / 96.8%였지�
 
 ## 배포 방식
 
-로컬 체험부터 프로덕션 클러스터까지 지원합니다.
+다음 배포 방식을 지원합니다.
 
 | 방식 | 명령 | 설명 |
 |:---:|:---|:---|
@@ -384,24 +324,9 @@ MimirQ의 두 Dify 경로의 검색 근거 커버리지는 99.7% / 96.8%였지�
 | **경량 모드** | `make up-lite` | Milvus 대신 Chroma/FAISS, MinIO 불필요, 빠른 체험용 |
 | **개발 모드** | `make infra-up` | 인프라만; 백엔드 / 프런트엔드를 로컬 실행 |
 | **Helm / K8s** | `helm install` | 프로덕션 등급, HPA, PDB, CronJob, PrometheusRule 포함 |
-| **파서 확장** | [시작 명령 선택](./docs/quickstart.md) | 문서 유형에 필요한 CPU / GPU 프로필만 시작 |
+| **파서 확장** | [Docker Compose 가이드](./docs/deployment/docker_compose.md) | 필요한 CPU / GPU 프로필 시작 |
 
-<details>
-<summary><b>프로덕션 배포 팁</b></summary>
-
-```bash
-# .env를 편집해 프로덕션 파라미터 설정
-# ENV=production
-# AUTH_MODE=jwt
-# SECRET_KEY=<32자 이상의 무작위 문자열>
-# POSTGRES_PASSWORD=<강력한 비밀번호>
-
-make up-prod
-```
-
-Kubernetes 프로덕션 배포는 [Helm 배포 가이드](./docs/deployment/helm.md)와 [운영 핸드북](./docs/deployment/runbook.md)을 참조하세요.
-
-</details>
+프로덕션 설정과 업그레이드 순서는 [Docker Compose 가이드](./docs/deployment/docker_compose.md), [Helm 배포 가이드](./docs/deployment/helm.md), [운영 핸드북](./docs/deployment/runbook.md)을 참조하세요.
 
 ---
 

@@ -5,8 +5,8 @@
 <p><b>全栈开源、中文优先的企业 RAG 知识库</b><br/>覆盖文档解析、切块、检索、生成与引用，支持全链路检查、调试和回归验证。</p>
 
 <p>
-  <a href="#快速开始"><b>快速开始</b></a> ·
   <a href="#产品界面"><b>产品界面</b></a> ·
+  <a href="#快速开始"><b>快速开始</b></a> ·
   <a href="#dify-接入"><b>Dify 接入</b></a> ·
   <a href="#真实场景验证"><b>800 题实测</b></a> ·
   <a href="./docs/releases/v1.0.0.md"><b>v1.0.0 发布说明</b></a> ·
@@ -70,200 +70,6 @@ MimirQ 起源于政务智能问答项目。系统可以回答问题，但错误�
 
 ---
 
-## 快速开始
-
-### 前置要求
-
-- [Docker](https://docs.docker.com/get-docker/) 20.10+ 与 [Docker Compose](https://docs.docker.com/compose/install/) 2.0+
-- GNU Make；Docker 一键启动另需 Python 3.9+ 生成配置
-- 主机源码启动另需 Python 3.11+、Node.js 20+ 与 pnpm 10.26
-- 至少 4 核 CPU / 16 GB RAM / 50 GB 磁盘
-
-### 公共准备
-
-```bash
-git clone --depth 1 --single-branch https://github.com/skygazer42/MimirQ.git
-cd MimirQ
-make init
-```
-
-`make init` 会在配置文件不存在时生成 `.env` 和 `web/.env.local`，并自动填充随机 JWT `SECRET_KEY` 与前端图片代理密钥；已有配置不会被覆盖。接着编辑 `.env`，先选择一套模型配置。
-
-### 启动前的最小配置
-
-| 能力 | 默认行为 | 需要填写 |
-|:---|:---|:---|
-| **LLM** | 硅基流动 `Qwen/Qwen3-32B` | 真实模型调用必须填写 `LLM_API_KEY`；换供应商时再改 `LLM_API_BASE` / `LLM_MODEL` |
-| **Embedding** | `BAAI/bge-m3`，自动复用 LLM 的 Key 与 Base URL | 默认无需额外填写；独立服务才配置 `EMBEDDING_API_KEY` / `EMBEDDING_API_BASE` / `EMBEDDING_MODEL` |
-| **Reranker** | 默认关闭 | 需要时设置 `ENABLE_RERANKER=true`；Key 可复用 LLM，`RERANKER_API_BASE` 必须是完整 rerank 端点 |
-| **首个管理员** | 未配置时，在 Web 页面手工注册首个 owner | 无人值守部署建议配置 `INITIAL_ADMIN_EMAIL`、`INITIAL_ADMIN_USERNAME` 和一种密码来源 |
-
-默认硅基流动最小配置：
-
-```dotenv
-LLM_API_KEY=<your-siliconflow-api-key>
-
-# 可选：开启默认 SiliconFlow reranker
-# ENABLE_RERANKER=true
-
-# 可选但推荐用于无人值守部署：自动创建首个 owner
-# INITIAL_ADMIN_EMAIL=owner@example.com
-# INITIAL_ADMIN_USERNAME=owner
-# INITIAL_ADMIN_PASSWORD=<strong-password>
-```
-
-<details>
-<summary><b>LLM、Embedding、Reranker 使用三个独立服务</b></summary>
-
-```dotenv
-LLM_API_BASE=https://llm.example.com/v1
-LLM_API_KEY=<llm-key>
-LLM_MODEL=<chat-model>
-
-EMBEDDING_PROVIDER=openai_compatible
-EMBEDDING_API_BASE=https://embedding.example.com/v1
-EMBEDDING_API_KEY=<embedding-key>
-EMBEDDING_MODEL=<embedding-model>
-
-ENABLE_RERANKER=true
-RERANKER_PROVIDER=openai
-RERANKER_API_BASE=https://reranker.example.com/rerank
-RERANKER_API_KEY=<reranker-key>
-RERANKER_MODEL=<reranker-model>
-```
-
-</details>
-
-管理员密码也可通过 `INITIAL_ADMIN_PASSWORD_FILE=/run/secrets/mimirq_initial_admin_password` 注入；它与 `INITIAL_ADMIN_PASSWORD` 二选一。初始化成功后，同一账号重启不会重置密码；默认租户已有其他成员时系统会拒绝覆盖或自动提权。完整字段、Docker/主机地址差异与排错见[模型服务与首次管理员配置](./docs/guides/model_services.md)。
-
-| 启动方式 | 适用场景 | 应用运行位置 |
-|:---|:---|:---|
-| **Docker 一键启动（推荐）** | 首次体验、服务器部署 | 前端、API、Worker 与依赖服务均在容器中 |
-| **主机源码启动** | 前后端开发、热更新调试 | 前端、API（及可选 Worker）在主机；依赖服务在 Docker 中 |
-
-### 方式一：Docker 一键启动
-
-```bash
-make up-web
-make ps
-curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
-```
-
-`make up-web` 会启动前端、后端、Worker、Postgres、Milvus、Etcd、MinIO 与 Redis；本地体验无需修改默认基础设施地址。生产部署必须另行设置强 `POSTGRES_PASSWORD`、MinIO 凭据和租户认证边界，详见 [Docker Compose 部署指南](./docs/deployment/docker_compose.md)。若未配置 `INITIAL_ADMIN_*`，打开 [http://localhost:3000](http://localhost:3000) 后创建第一个本地账户即可进入系统。
-
-首次构建会下载固定版本的解析模型。如果代理仅监听 Linux 主机回环地址，请先配置 Docker 代理，或使用 `DOCKER_BUILD_NETWORK=host make up-web`。Docker Hub 不可达时，可在 `.env` 中将 `MILVUS_IMAGE` 指向可信镜像仓库中的同版本镜像，无需把个人代理写入项目配置。
-
-### 可选：按文档类型启用解析器
-
-`make up-web` 默认使用内置 DeepDoc，不会启动重型解析服务。先配置对应 `.env` 项，再只启动业务需要的 profile（显存紧张时一次只启一个）；已有 Web 主栈会继续运行。启动后仍需在上传或预览时选择对应解析器，只启动容器不会改变默认解析路径。
-
-| 文档场景 | 建议解析器 | 额外要求 | 启动命令 |
-|:---|:---|:---|:---|
-| 常规 PDF / Office / 文本 | 内置 DeepDoc | 无 | 无需额外容器 |
-| PDF 转 Markdown，服务器无 GPU | Marker | CPU | `make up-marker` |
-| 版面、表格与图片混合文档 | ETL4LLM | CPU | `make up-etl4llm` |
-| 扫描件、OCR、复杂版面 | PaddleOCR-VL | NVIDIA GPU，建议预留 10 GiB | `make up-paddlevl` |
-| 表格、公式与图片较多的 PDF | MinerU pipeline | NVIDIA GPU、首次下载模型 | `make up-mineru` |
-| VLM 复杂 PDF | MinerU VLM | NVIDIA GPU，资源占用较高 | `make up-mineru-vlm` |
-| 高精度 PDF OCR | olmOCR | NVIDIA GPU，建议 48 GiB 级显存 | `make up-olmocr` |
-| 公式 / 表格 PDF 转 Markdown | MagicPDF | NVIDIA GPU | `make up-magicpdf` |
-| PDF / 图片走外部视觉 OCR | Qianfan-OCR | 上游 URL 与 API Key，本地无需 GPU | `make up-qianfanocr` |
-
-<details>
-<summary><b>展开查看最小 .env 配置</b></summary>
-
-```dotenv
-# 仅保留所选配置组
-MARKER_ENABLED=true
-MARKER_API_URL=http://mimirq-marker:2080/convert
-
-ETL4LLM_ENABLED=true
-ETL4LLM_API_URL=http://mimirq-etl4llm:10001/v1/etl4llm/predict
-
-PADDLE_VL_ENABLED=true
-PADDLE_VL_API_URL=http://mimirq-paddlevl:9030/convert
-
-MINERU_ENABLED=true
-MINERU_BACKEND=pipeline
-MINERU_LOCAL_SERVER_URL=http://mimirq-mineru:8000
-# MinerU VLM 额外改为：
-# MINERU_BACKEND=vlm-http-client
-# MINERU_VL_SERVER=http://mimirq-mineru-vlm:30000
-
-OLMOCR_ENABLED=true
-OLMOCR_API_URL=http://mimirq-olmocr:2085/convert
-
-MAGIC_PDF_ENABLED=true
-MAGIC_PDF_API_URL=http://mimirq-magicpdf:2095/convert
-
-QIANFAN_OCR_ENABLED=true
-QIANFAN_OCR_API_URL=http://mimirq-qianfanocr:2090/convert
-QIANFAN_OCR_SERVER_URL=https://qianfan.baidubce.com/v2
-QIANFAN_OCR_SERVER_API_KEY=<your-api-key>
-```
-
-</details>
-
-> macOS 的 Docker Desktop 不能直接运行 NVIDIA CUDA profile。Mac 用户请使用 DeepDoc / CPU 解析器，或把 `*_API_URL` 指向远程 GPU 解析服务；也可改用 [TextIn 外部 API](./docs/quickstart.md#可选-启用-textin-xparse外部-api-文档解析)。完整参数、显存实测和主机源码模式地址见 [Docker Compose 部署指南](./docs/deployment/docker_compose.md) 与 [解析器快速开始](./docs/quickstart.md#可选-启用-etl4llmbisheng-unstructured版面解析)。
-
-停止完整 Web 栈：
-
-```bash
-docker compose --env-file .env \
-  -f docker/docker-compose.yml \
-  -f docker/docker-compose.web.yml down
-```
-
-### 方式二：主机源码启动 API + Web
-
-先安装主机依赖并启动基础设施：
-
-```bash
-make setup-host
-```
-
-`make setup-host` 会创建 `.venv`、安装 CPU 版后端依赖和前端依赖、校验 Python 依赖、下载固定解析模型，并启动 Postgres、Milvus、Etcd、MinIO 与 Redis。它不会覆盖已有 `.env`；若配置了 `INITIAL_ADMIN_*`，后端首次启动时会自动引导首个 owner。
-
-默认 `TASK_QUEUE_ENABLED=false`，后台文档任务由 API 进程内有界处理，因此只需打开两个终端：
-
-```bash
-# 终端 1：FastAPI（热更新）
-make backend
-
-# 终端 2：Next.js（热更新）
-make web
-```
-
-如需与 Docker 模式一致的独立队列，在启动 API 前设置 `TASK_QUEUE_ENABLED=true`，再于第三个终端启动并检查 Worker：
-
-```bash
-make worker
-make worker-check
-```
-
-验证主机前后端：
-
-```bash
-make infra-ps
-NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 make web-api-ping
-curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
-```
-
-结束主机进程后，执行 `make infra-down` 停止依赖服务。
-
-### 服务地址
-
-| 服务 | 地址 |
-|:---:|:---|
-| **前端 UI** | [http://localhost:3000](http://localhost:3000) |
-| **API 文档** | [http://localhost:8000/docs](http://localhost:8000/docs) |
-
-> 低资源模式可使用 `make up-lite`，它用 Chroma/FAISS 替代 Milvus、免 MinIO，默认不含前端；适合验证 API `ready` 与 `make core-e2e` 最小闭环。需要 UI 时另运行 `make web`，或改用 `make up-web`。外部 LLM/Embedding 调用仍需对应模型供应商密钥。
-
-高级模型、解析器和代理配置见 [`.env.example`](./.env.example)。更换 Embedding 模型后必须重建已有知识库索引；更多平台与 Windows 步骤见[开发文档](./docs/quickstart.md)，可选政务示例见[插件说明](./plugins/pipelines/changzhou-gov-service-knowledge/README.md)。
-
----
-
 ## 产品界面
 
 以下界面使用仓库内公开的政务插件演示样例生成，不含生产知识库数据。
@@ -313,6 +119,107 @@ curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
     </td>
   </tr>
 </table>
+
+---
+
+## 快速开始
+
+### 前置要求
+
+- [Docker](https://docs.docker.com/get-docker/) 20.10+ 与 [Docker Compose](https://docs.docker.com/compose/install/) 2.0+
+- GNU Make；Docker 一键启动另需 Python 3.9+ 生成配置
+- 主机源码启动另需 Python 3.11+、Node.js 20+ 与 pnpm 10.26
+- 至少 4 核 CPU / 16 GB RAM / 50 GB 磁盘
+
+### 初始化
+
+```bash
+git clone --depth 1 --single-branch https://github.com/skygazer42/MimirQ.git
+cd MimirQ
+make init
+```
+
+`make init` 只创建缺失的 `.env` 和 `web/.env.local`，不会覆盖已有配置。编辑 `.env`，按部署场景填写：
+
+- 默认模型调用：`LLM_API_KEY`（必填）
+- 自定义 LLM：`LLM_API_BASE`、`LLM_MODEL`
+- 独立 Embedding：`EMBEDDING_API_BASE`、`EMBEDDING_API_KEY`、`EMBEDDING_MODEL`
+- 启用 Reranker：`ENABLE_RERANKER`、`RERANKER_API_BASE`、`RERANKER_API_KEY`、`RERANKER_MODEL`
+- 自动创建首个管理员：`INITIAL_ADMIN_EMAIL`、`INITIAL_ADMIN_USERNAME`、`INITIAL_ADMIN_PASSWORD`
+
+字段取值、独立模型服务和管理员初始化规则见[模型服务与首次管理员配置](./docs/guides/model_services.md)。
+
+| 启动方式 | 适用场景 | 应用运行位置 |
+|:---|:---|:---|
+| **Docker 一键启动（推荐）** | 首次体验、服务器部署 | 前端、API、Worker 与依赖服务均在容器中 |
+| **主机源码启动** | 前后端开发、热更新调试 | 前端、API（及可选 Worker）在主机；依赖服务在 Docker 中 |
+
+### 方式一：Docker 一键启动
+
+```bash
+make up-web
+make api-ping
+```
+
+启动后访问 [http://localhost:3000](http://localhost:3000)；未预置管理员时，在页面注册首个账户。首次构建、代理、生产凭据和网络配置见 [Docker Compose 部署指南](./docs/deployment/docker_compose.md)。
+
+<details>
+<summary><b>按文档类型启用可选解析器</b></summary>
+
+默认使用内置 DeepDoc。其他解析器仅在业务需要时启动：
+
+| 文档场景 | 建议解析器 | 额外要求 | 启动命令 |
+|:---|:---|:---|:---|
+| 常规 PDF / Office / 文本 | 内置 DeepDoc | 无 | 无需额外容器 |
+| PDF 转 Markdown，服务器无 GPU | Marker | CPU | `make up-marker` |
+| 版面、表格与图片混合文档 | ETL4LLM | CPU | `make up-etl4llm` |
+| 扫描件、OCR、复杂版面 | PaddleOCR-VL | NVIDIA GPU，建议预留 10 GiB | `make up-paddlevl` |
+| 表格、公式与图片较多的 PDF | MinerU pipeline | NVIDIA GPU、首次下载模型 | `make up-mineru` |
+| VLM 复杂 PDF | MinerU VLM | NVIDIA GPU，资源占用较高 | `make up-mineru-vlm` |
+| 高精度 PDF OCR | olmOCR | NVIDIA GPU，建议 48 GiB 级显存 | `make up-olmocr` |
+| 公式 / 表格 PDF 转 Markdown | MagicPDF | NVIDIA GPU | `make up-magicpdf` |
+| PDF / 图片走外部视觉 OCR | Qianfan-OCR | 上游 URL 与 API Key，本地无需 GPU | `make up-qianfanocr` |
+
+完整参数和平台限制见 [Docker Compose 部署指南](./docs/deployment/docker_compose.md) 与 [解析器文档](./docs/quickstart.md#可选-启用-etl4llmbisheng-unstructured版面解析)。
+
+</details>
+
+### 方式二：主机源码启动 API + Web
+
+先安装主机依赖并启动基础设施：
+
+```bash
+make setup-host
+```
+
+`make setup-host` 安装主机依赖并启动 Docker 基础设施。默认使用 API 进程内后台任务，只需打开两个终端：
+
+```bash
+# 终端 1：FastAPI（热更新）
+make backend
+
+# 终端 2：Next.js（热更新）
+make web
+```
+
+启用独立 Worker 的配置见[模型服务与首次管理员配置](./docs/guides/model_services.md)。验证主机前后端：
+
+```bash
+make api-ping
+```
+
+结束主机进程后，执行 `make infra-down` 停止依赖服务。
+
+### 服务地址
+
+| 服务 | 地址 |
+|:---:|:---|
+| **前端 UI** | [http://localhost:3000](http://localhost:3000) |
+| **API 文档** | [http://localhost:8000/docs](http://localhost:8000/docs) |
+
+> 低资源模式可使用 `make up-lite`，它用 Chroma/FAISS 替代 Milvus、免 MinIO，默认不含前端；适合验证 API `ready` 与 `make core-e2e` 最小闭环。需要 UI 时另运行 `make web`，或改用 `make up-web`。外部 LLM/Embedding 调用仍需对应模型供应商密钥。
+
+高级模型、解析器和代理配置见 [`.env.example`](./.env.example)。更换 Embedding 模型后必须重建已有知识库索引；更多平台与 Windows 步骤见[开发文档](./docs/quickstart.md)，可选政务示例见[插件说明](./plugins/pipelines/changzhou-gov-service-knowledge/README.md)。
 
 ---
 
@@ -413,7 +320,7 @@ MimirQ 已用于**市级政务智能问答助手**，覆盖 7 个区域级 + 1 �
 
 ## 部署方式
 
-从本地体验到生产集群，覆盖各种场景：
+支持以下部署方式：
 
 | 方式 | 命令 | 说明 |
 |:---:|:---|:---|
@@ -422,34 +329,9 @@ MimirQ 已用于**市级政务智能问答助手**，覆盖 7 个区域级 + 1 �
 | **轻量模式** | `make up-lite` | Chroma/FAISS 替代 Milvus，无需 MinIO，适合快速体验 |
 | **开发模式** | `make infra-up` | 仅基础设施，后端/前端本地运行 |
 | **Helm / K8s** | `helm install` | 生产级部署，含 HPA、PDB、CronJob、PrometheusRule |
-| **解析器扩展** | [选择启动命令](#可选按文档类型启用解析器) | 只启动业务需要的 CPU / GPU profile |
+| **解析器扩展** | [Docker Compose 指南](./docs/deployment/docker_compose.md) | 按需启动 CPU / GPU profile |
 
-<details>
-<summary><b>生产部署建议</b></summary>
-
-```bash
-# 编辑 .env 设置生产参数
-# ENV=production
-# AUTH_MODE=jwt
-# SECRET_KEY=<至少 32 位随机字符串>
-# POSTGRES_PASSWORD=<强密码>
-# MINIO_ACCESS_KEY_DOCKER=<强访问密钥>
-# MINIO_SECRET_KEY_DOCKER=<强私密密钥>
-# UPLOAD_DEDUP_ENABLED_DOCKER=true
-# RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED_DOCKER=true
-# RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY_DOCKER=3
-# JWT_TENANT_CLAIM=tenant_id
-# MIMIRQ_DB_CREATE_ALL_ON_STARTUP=false
-# MIMIRQ_DB_RUNTIME_MIGRATIONS_ENABLED=false
-
-make infra-up
-make db-upgrade
-make up-prod
-```
-
-若启用前端容器，还应设置非空 `MARKDOWN_IMAGE_PROXY_SECRET`，并确保 `FORWARDED_ALLOW_IPS_DOCKER` 只包含受信任代理地址。Kubernetes 生产部署请参考 [Helm 部署文档](./docs/deployment/helm.md) 和 [运维手册](./docs/deployment/runbook.md)。
-
-</details>
+生产配置和升级顺序见 [Docker Compose 指南](./docs/deployment/docker_compose.md)、[Helm 部署文档](./docs/deployment/helm.md) 和 [运维手册](./docs/deployment/runbook.md)。
 
 ---
 

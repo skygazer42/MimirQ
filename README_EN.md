@@ -5,8 +5,8 @@
 <p><b>Full-stack open-source, Chinese-first enterprise RAG knowledge base</b><br/>Covers parsing, chunking, retrieval, generation, and citations with inspection, debugging, and regression controls across the pipeline.</p>
 
 <p>
-  <a href="#quick-start"><b>Quick Start</b></a> ·
   <a href="#product-screenshots"><b>Screenshots</b></a> ·
+  <a href="#quick-start"><b>Quick Start</b></a> ·
   <a href="#dify-integration"><b>Dify Integration</b></a> ·
   <a href="#real-world-validation"><b>800-question benchmark</b></a> ·
   <a href="./docs/releases/v1.0.0.md"><b>v1.0.0 Release Notes</b></a> ·
@@ -70,221 +70,6 @@ Existing platforms are strong at workflows or agents, but the parsing, indexing,
 
 ---
 
-## Quick Start
-
-### Prerequisites
-
-- [Docker](https://docs.docker.com/get-docker/) 20.10+ & [Docker Compose](https://docs.docker.com/compose/install/) 2.0+
-- GNU Make; Docker startup also needs Python 3.9+ to generate local config
-- Host source startup also needs Python 3.11+, Node.js 20+, and pnpm 10.26
-- At least 4 CPU cores / 16 GB RAM / 50 GB disk
-
-### Common setup
-
-```bash
-git clone --depth 1 --single-branch https://github.com/skygazer42/MimirQ.git
-cd MimirQ
-make init
-```
-
-`make init` creates `.env` and `web/.env.local` only when they are missing, then fills a random JWT `SECRET_KEY` and image-proxy secret. Existing values are preserved. Edit `.env` and choose one model setup before continuing.
-
-### Minimum configuration before startup
-
-| Capability | Default behavior | What to set |
-|:---|:---|:---|
-| **LLM** | SiliconFlow `Qwen/Qwen3-32B` | Real model calls require `LLM_API_KEY`; change `LLM_API_BASE` / `LLM_MODEL` only for another provider |
-| **Embedding** | `BAAI/bge-m3`, reusing the LLM key and base URL | Nothing else by default; set `EMBEDDING_API_KEY` / `EMBEDDING_API_BASE` / `EMBEDDING_MODEL` for a separate service |
-| **Reranker** | Disabled | Set `ENABLE_RERANKER=true` when needed; the key may reuse the LLM key, but `RERANKER_API_BASE` must be the complete rerank endpoint |
-| **First administrator** | Register the first owner in the web UI | For unattended deployment, set `INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_USERNAME`, and exactly one password source |
-
-Minimum default SiliconFlow setup:
-
-```dotenv
-LLM_API_KEY=<your-siliconflow-api-key>
-
-# Optional: enable the default SiliconFlow reranker
-# ENABLE_RERANKER=true
-
-# Optional, recommended for unattended deployment: create the first owner
-# INITIAL_ADMIN_EMAIL=owner@example.com
-# INITIAL_ADMIN_USERNAME=owner
-# INITIAL_ADMIN_PASSWORD=<strong-password>
-```
-
-<details>
-<summary><b>Use separate LLM, embedding, and reranker services</b></summary>
-
-```dotenv
-LLM_API_BASE=https://llm.example.com/v1
-LLM_API_KEY=<llm-key>
-LLM_MODEL=<chat-model>
-
-EMBEDDING_PROVIDER=openai_compatible
-EMBEDDING_API_BASE=https://embedding.example.com/v1
-EMBEDDING_API_KEY=<embedding-key>
-EMBEDDING_MODEL=<embedding-model>
-
-ENABLE_RERANKER=true
-RERANKER_PROVIDER=openai
-RERANKER_API_BASE=https://reranker.example.com/rerank
-RERANKER_API_KEY=<reranker-key>
-RERANKER_MODEL=<reranker-model>
-```
-
-</details>
-
-The administrator password can be injected through `INITIAL_ADMIN_PASSWORD_FILE=/run/secrets/mimirq_initial_admin_password`; it is mutually exclusive with `INITIAL_ADMIN_PASSWORD`. A successful bootstrap is idempotent and does not rotate the password on restart. If the default tenant already has another member, MimirQ refuses to overwrite or elevate it. See [Model Services and Initial Administrator Configuration](./docs/guides/model_services.md) for every field, Docker/host addressing, and troubleshooting.
-
-| Startup mode | Best for | Where the app runs |
-|:---|:---|:---|
-| **Docker (recommended)** | First use and server deployment | Web, API, worker, and dependencies run in containers |
-| **Host source** | Frontend/backend development and hot reload | Web, API, and an optional worker run on the host; dependencies run in Docker |
-
-### Option 1: Start everything with Docker
-
-```bash
-make up-web
-make ps
-curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
-```
-
-`make up-web` starts the web app, API, worker, Postgres, Milvus, Etcd, MinIO, and Redis. Local evaluation can keep the generated infrastructure endpoints. Production deployments must set a strong `POSTGRES_PASSWORD`, replace the MinIO credentials, and define a trusted tenant boundary; see the [Docker Compose deployment guide](./docs/deployment/docker_compose.md). If `INITIAL_ADMIN_*` is not configured, open [http://localhost:3000](http://localhost:3000) and create the first local account.
-
-The first Docker build downloads and verifies a pinned DeepDoc model bundle. If a proxy only listens on the Linux host loopback, configure it in Docker locally or run `DOCKER_BUILD_NETWORK=host make up-web`; never commit proxy addresses. If Docker Hub is unavailable, set `MILVUS_IMAGE` in `.env` to the same image in a trusted registry.
-
-### Optional: choose a parser by document workload
-
-`make up-web` uses the built-in DeepDoc parser and does not start heavyweight parser services. Configure the matching `.env` values, then start only the profiles required by the workload (one at a time when VRAM is constrained); the existing web stack keeps running. The parser must still be selected for an upload or preview because starting its container does not change the default parsing path.
-
-| Document workload | Recommended parser | Extra requirement | Start after the main stack |
-|:---|:---|:---|:---|
-| Regular PDF / Office / text | Built-in DeepDoc | None | No extra container |
-| PDF to Markdown without a server GPU | Marker | CPU | `make up-marker` |
-| Mixed layout, tables, and images | ETL4LLM | CPU | `make up-etl4llm` |
-| Scans, OCR, and complex layouts | PaddleOCR-VL | NVIDIA GPU; reserve 10 GiB | `make up-paddlevl` |
-| PDFs with many tables, formulas, and images | MinerU pipeline | NVIDIA GPU; first-run model download | `make up-mineru` |
-| VLM-based complex PDFs | MinerU VLM | NVIDIA GPU; high resource use | `make up-mineru-vlm` |
-| High-accuracy PDF OCR | olmOCR | NVIDIA GPU; 48-GiB-class VRAM recommended | `make up-olmocr` |
-| Formula/table PDF to Markdown | MagicPDF | NVIDIA GPU | `make up-magicpdf` |
-| PDF/image OCR through an external vision model | Qianfan-OCR | Upstream URL and API key; no local GPU | `make up-qianfanocr` |
-
-<details>
-<summary><b>Expand the minimal .env configuration</b></summary>
-
-```dotenv
-# Keep only the selected group
-MARKER_ENABLED=true
-MARKER_API_URL=http://mimirq-marker:2080/convert
-
-ETL4LLM_ENABLED=true
-ETL4LLM_API_URL=http://mimirq-etl4llm:10001/v1/etl4llm/predict
-
-PADDLE_VL_ENABLED=true
-PADDLE_VL_API_URL=http://mimirq-paddlevl:9030/convert
-
-MINERU_ENABLED=true
-MINERU_BACKEND=pipeline
-MINERU_LOCAL_SERVER_URL=http://mimirq-mineru:8000
-# For MinerU VLM, also change to:
-# MINERU_BACKEND=vlm-http-client
-# MINERU_VL_SERVER=http://mimirq-mineru-vlm:30000
-
-OLMOCR_ENABLED=true
-OLMOCR_API_URL=http://mimirq-olmocr:2085/convert
-
-MAGIC_PDF_ENABLED=true
-MAGIC_PDF_API_URL=http://mimirq-magicpdf:2095/convert
-
-QIANFAN_OCR_ENABLED=true
-QIANFAN_OCR_API_URL=http://mimirq-qianfanocr:2090/convert
-QIANFAN_OCR_SERVER_URL=https://qianfan.baidubce.com/v2
-QIANFAN_OCR_SERVER_API_KEY=<your-api-key>
-```
-
-</details>
-
-> Docker Desktop on macOS cannot run the NVIDIA CUDA profiles directly. Use DeepDoc / a CPU parser, or point the relevant `*_API_URL` at a remote GPU parser; [TextIn](./docs/quickstart.md) is also available as an external API. See the [Docker Compose deployment guide](./docs/deployment/docker_compose.md) and [parser quick start](./docs/quickstart.md) for full parameters, measured VRAM, and host-source URLs.
-
-Stop the complete web stack with:
-
-```bash
-docker compose --env-file .env \
-  -f docker/docker-compose.yml \
-  -f docker/docker-compose.web.yml down
-```
-
-### Option 2: Run the frontend and backend on the host
-
-Install host dependencies and start the infrastructure services:
-
-```bash
-make setup-host
-```
-
-`make setup-host` creates `.venv`, installs and validates the CPU backend and web dependencies, downloads the pinned parser models, and starts Postgres, Milvus, Etcd, MinIO, and Redis. Existing `.env` values are preserved; if `INITIAL_ADMIN_*` is configured, the backend bootstraps the first owner on its first startup.
-
-With the default `TASK_QUEUE_ENABLED=false`, the API handles bounded background document work in-process, so only two terminals are required:
-
-```bash
-# Terminal 1: FastAPI with hot reload
-make backend
-
-# Terminal 2: Next.js with hot reload
-make web
-```
-
-To use a separate queue like the Docker stack, set `TASK_QUEUE_ENABLED=true` before starting the API, then run the worker in a third terminal:
-
-```bash
-make worker
-make worker-check
-```
-
-Verify the host services:
-
-```bash
-make infra-ps
-curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
-```
-
-After stopping the host processes, run `make infra-down` to stop the dependency services.
-
-### Service URLs
-
-| Service | URL |
-|:---:|:---|
-| **Frontend UI** | [http://localhost:3000](http://localhost:3000) |
-| **API Docs** | [http://localhost:8000/docs](http://localhost:8000/docs) |
-
-> For a lighter setup, use `make up-lite`. It swaps Milvus for Chroma/FAISS and skips MinIO, but does not start the frontend by default; run `make web` separately when the UI is required. External LLM and embedding calls still require provider credentials.
-
-| Scenario | Change | Required? |
-|:---|:---|:---:|
-| Default SiliconFlow LLM + embeddings | `LLM_API_KEY` | **Yes** |
-| Different chat provider or model | `LLM_API_BASE`, `LLM_MODEL` | No |
-| Separate embedding provider | `EMBEDDING_API_KEY`, `EMBEDDING_API_BASE`, `EMBEDDING_MODEL` | No; blank key and URL reuse the LLM settings |
-| SiliconFlow reranker | `ENABLE_RERANKER=true` | No; disabled by default to avoid retrieval latency, reuses the LLM key |
-| MinerU online PDF parsing | `MINERU_ENABLED=true`, `MINERU_API_TOKEN` | No; select `mineru` when uploading |
-| Every other `.env` setting | Nothing | No; keep the defaults |
-
-Model IDs must appear in SiliconFlow's `/v1/models` response. Verified chat models include `Qwen/Qwen3-32B` and `Qwen/Qwen3-8B`; verified embedding models include `BAAI/bge-m3` and `Qwen/Qwen3-Embedding-0.6B`; the verified reranker is `BAAI/bge-reranker-v2-m3`. Rebuild existing knowledge-base indexes after changing the embedding model; old and new vectors must not be mixed. Create credentials in the [SiliconFlow console](https://cloud.siliconflow.cn/account/ak) and at [MinerU](https://mineru.net/), and keep real keys only in the local `.env`.
-
-### Run the government-service plugin sample
-
-The repository includes the Changzhou government-service knowledge plugin with small public samples for six source families: service items, one-stop services, common questions, topic FAQs, department FAQs, and district FAQs. Validate governance, chunking, KG output, and the Golden draft without starting a database:
-
-```bash
-make changzhou-gov-plugin-test-report
-make changzhou-gov-plugin-chunk-report
-```
-
-Reports are written under `/tmp/changzhou_gov_plugin_*`; these commands do not write to a database, vector store, or KG. See the [plugin guide](./plugins/pipelines/changzhou-gov-service-knowledge/README.md) for sample paths, plugin refs, and the real-corpus closed-loop command.
-
-For advanced model, parser, and proxy settings, see [`.env.example`](./.env.example). Rebuild existing knowledge-base indexes after changing the embedding model. For more platforms and Windows instructions, see the [Development Guide](./docs/quickstart.md).
-
----
-
 ## Product Screenshots
 
 These screens use the public government-service plugin samples included in the repository. No production knowledge-base data is shown.
@@ -334,6 +119,107 @@ These screens use the public government-service plugin samples included in the r
     </td>
   </tr>
 </table>
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) 20.10+ & [Docker Compose](https://docs.docker.com/compose/install/) 2.0+
+- GNU Make; Docker startup also needs Python 3.9+ to generate local config
+- Host source startup also needs Python 3.11+, Node.js 20+, and pnpm 10.26
+- At least 4 CPU cores / 16 GB RAM / 50 GB disk
+
+### Initialize
+
+```bash
+git clone --depth 1 --single-branch https://github.com/skygazer42/MimirQ.git
+cd MimirQ
+make init
+```
+
+`make init` creates only missing `.env` and `web/.env.local` files. Edit `.env` for the selected deployment:
+
+- Default model calls: `LLM_API_KEY` (required)
+- Custom LLM: `LLM_API_BASE`, `LLM_MODEL`
+- Separate embedding service: `EMBEDDING_API_BASE`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL`
+- Reranker: `ENABLE_RERANKER`, `RERANKER_API_BASE`, `RERANKER_API_KEY`, `RERANKER_MODEL`
+- Initial administrator: `INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_USERNAME`, `INITIAL_ADMIN_PASSWORD`
+
+See [Model Services and Initial Administrator Configuration](./docs/guides/model_services.md) for values, separate-service examples, and bootstrap rules.
+
+| Startup mode | Best for | Where the app runs |
+|:---|:---|:---|
+| **Docker (recommended)** | First use and server deployment | Web, API, worker, and dependencies run in containers |
+| **Host source** | Frontend/backend development and hot reload | Web, API, and an optional worker run on the host; dependencies run in Docker |
+
+### Option 1: Start everything with Docker
+
+```bash
+make up-web
+make api-ping
+```
+
+Open [http://localhost:3000](http://localhost:3000) after startup. If no administrator was preconfigured, register the first account in the UI. First-build, proxy, production-secret, and network guidance is in the [Docker Compose deployment guide](./docs/deployment/docker_compose.md).
+
+<details>
+<summary><b>Optional parsers by document workload</b></summary>
+
+MimirQ uses built-in DeepDoc by default. Start other parsers only when required:
+
+| Document workload | Recommended parser | Extra requirement | Start after the main stack |
+|:---|:---|:---|:---|
+| Regular PDF / Office / text | Built-in DeepDoc | None | No extra container |
+| PDF to Markdown without a server GPU | Marker | CPU | `make up-marker` |
+| Mixed layout, tables, and images | ETL4LLM | CPU | `make up-etl4llm` |
+| Scans, OCR, and complex layouts | PaddleOCR-VL | NVIDIA GPU; reserve 10 GiB | `make up-paddlevl` |
+| PDFs with many tables, formulas, and images | MinerU pipeline | NVIDIA GPU; first-run model download | `make up-mineru` |
+| VLM-based complex PDFs | MinerU VLM | NVIDIA GPU; high resource use | `make up-mineru-vlm` |
+| High-accuracy PDF OCR | olmOCR | NVIDIA GPU; 48-GiB-class VRAM recommended | `make up-olmocr` |
+| Formula/table PDF to Markdown | MagicPDF | NVIDIA GPU | `make up-magicpdf` |
+| PDF/image OCR through an external vision model | Qianfan-OCR | Upstream URL and API key; no local GPU | `make up-qianfanocr` |
+
+See the [Docker Compose deployment guide](./docs/deployment/docker_compose.md) and [parser documentation](./docs/quickstart.md) for full settings and platform limits.
+
+</details>
+
+### Option 2: Run the frontend and backend on the host
+
+Install host dependencies and start the infrastructure services:
+
+```bash
+make setup-host
+```
+
+`make setup-host` installs host dependencies and starts the Docker infrastructure. The default in-process background mode requires two terminals:
+
+```bash
+# Terminal 1: FastAPI with hot reload
+make backend
+
+# Terminal 2: Next.js with hot reload
+make web
+```
+
+See [Model Services and Initial Administrator Configuration](./docs/guides/model_services.md) for the optional worker configuration. Verify the host services with:
+
+```bash
+make api-ping
+```
+
+After stopping the host processes, run `make infra-down` to stop the dependency services.
+
+### Service URLs
+
+| Service | URL |
+|:---:|:---|
+| **Frontend UI** | [http://localhost:3000](http://localhost:3000) |
+| **API Docs** | [http://localhost:8000/docs](http://localhost:8000/docs) |
+
+> For a lighter setup, use `make up-lite`; run `make web` separately when the UI is required.
+
+Advanced model, parser, proxy, and Windows guidance is in the [Development Guide](./docs/quickstart.md). The public government-service sample is documented in the [plugin guide](./plugins/pipelines/changzhou-gov-service-knowledge/README.md).
 
 ---
 
@@ -453,7 +339,7 @@ Enable **Settings → Pages → GitHub Actions** on the repository; pushes to `m
 
 ## Deployment Options
 
-From a local look to a production cluster:
+Supported deployment modes:
 
 | Mode | Command | Description |
 |:---:|:---|:---|
@@ -462,24 +348,9 @@ From a local look to a production cluster:
 | **Lite Mode** | `make up-lite` | Chroma/FAISS instead of Milvus, no MinIO — quick evaluation |
 | **Dev Mode** | `make infra-up` | Infrastructure only, run backend/frontend locally |
 | **Helm / K8s** | `helm install` | Production-grade with HPA, PDB, CronJob, PrometheusRule |
-| **Parser Extensions** | [Choose a start command](#optional-choose-a-parser-by-document-workload) | Start only the CPU / GPU profiles required by the workload |
+| **Parser Extensions** | [Docker Compose guide](./docs/deployment/docker_compose.md) | Start CPU / GPU profiles as required |
 
-<details>
-<summary><b>Production Deployment Tips</b></summary>
-
-```bash
-# Edit .env for production settings
-# ENV=production
-# AUTH_MODE=jwt
-# SECRET_KEY=<random string, 32+ chars>
-# POSTGRES_PASSWORD=<strong password>
-
-make up-prod
-```
-
-For Kubernetes production deployment, see the [Helm Guide](./docs/deployment/helm.md) and [Runbook](./docs/deployment/runbook.md).
-
-</details>
+See the [Docker Compose guide](./docs/deployment/docker_compose.md), [Helm guide](./docs/deployment/helm.md), and [runbook](./docs/deployment/runbook.md) for production settings and upgrade order.
 
 ---
 

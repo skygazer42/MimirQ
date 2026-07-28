@@ -5,8 +5,8 @@
 <p><b>フルスタックでオープンソース、中国語ファーストのエンタープライズ RAG ナレッジベース</b><br/>パース、チャンク分割、検索、生成、引用を対象に、パイプライン全体の検査・デバッグ・回帰検証を提供します。</p>
 
 <p>
-  <a href="#クイックスタート"><b>クイックスタート</b></a> ·
   <a href="#プロダクト画面"><b>プロダクト画面</b></a> ·
+  <a href="#クイックスタート"><b>クイックスタート</b></a> ·
   <a href="#dify-連携"><b>Dify 連携</b></a> ·
   <a href="#実運用での検証"><b>800問ベンチマーク</b></a> ·
   <a href="https://skygazer42.github.io/MimirQ/"><b>API ドキュメント</b></a>
@@ -67,146 +67,6 @@ MimirQ は、ある行政サービスの Q&A プロジェクトから生まれ�
 
 ---
 
-## クイックスタート
-
-### 前提条件
-
-- [Docker](https://docs.docker.com/get-docker/) 20.10+ & [Docker Compose](https://docs.docker.com/compose/install/) 2.0+
-- GNU Make。Docker 起動ではローカル設定の生成に Python 3.9+ も必要
-- ホストでのソース起動では Python 3.11+、Node.js 20+、pnpm 10.26 も必要
-- 最低 4 CPU コア / 16 GB RAM / 50 GB ディスク
-
-### 共通準備
-
-```bash
-git clone --depth 1 --single-branch https://github.com/skygazer42/MimirQ.git
-cd MimirQ
-make init
-```
-
-`make init` は不足している `.env` と `web/.env.local` だけを作成し、ランダムな JWT `SECRET_KEY` と画像プロキシ用シークレットを設定します。既存値は上書きしません。
-
-### 起動前の最小設定
-
-| 機能 | デフォルト動作 | 設定する値 |
-|:---|:---|:---|
-| **LLM** | SiliconFlow `Qwen/Qwen3-32B` | 実モデルの呼び出しには `LLM_API_KEY` が必要。別プロバイダーでは `LLM_API_BASE` / `LLM_MODEL` も変更 |
-| **Embedding** | `BAAI/bge-m3`、LLM の Key/Base URL を再利用 | 独立サービスの場合のみ `EMBEDDING_API_KEY` / `EMBEDDING_API_BASE` / `EMBEDDING_MODEL` を設定 |
-| **Reranker** | デフォルト無効 | 必要な場合だけ `ENABLE_RERANKER=true`。Key は LLM と共有可能だが、`RERANKER_API_BASE` は完全な rerank エンドポイントが必要 |
-| **最初の管理者** | Web 画面で最初のアカウントを登録 | 無人デプロイでは `INITIAL_ADMIN_EMAIL`、`INITIAL_ADMIN_USERNAME`、パスワードソースを一つ設定 |
-
-デフォルトの SiliconFlow 構成例：
-
-```dotenv
-LLM_API_KEY=<your-siliconflow-api-key>
-
-# 任意：デフォルトの SiliconFlow reranker を有効化
-# ENABLE_RERANKER=true
-
-# 任意（無人デプロイ向け）：最初の owner を自動作成
-# INITIAL_ADMIN_EMAIL=owner@example.com
-# INITIAL_ADMIN_USERNAME=owner
-# INITIAL_ADMIN_PASSWORD=<strong-password>
-```
-
-管理者パスワードは `INITIAL_ADMIN_PASSWORD_FILE=/run/secrets/mimirq_initial_admin_password` から注入することもでき、`INITIAL_ADMIN_PASSWORD` とは排他的です。同じ設定で再起動してもパスワードは更新されず、デフォルトテナントに別のメンバーがいる場合は上書きや自動昇格を拒否します。
-
-| 起動方法 | 用途 | アプリの実行場所 |
-|:---|:---|:---|
-| **Docker 一括起動（推奨）** | 初回利用、サーバーデプロイ | Web、API、Worker、依存サービスをコンテナで実行 |
-| **ホストでソース起動** | フロントエンド・バックエンド開発、ホットリロード | Web、API はホストで実行。`TASK_QUEUE_ENABLED=true` のときだけ Worker もホストで起動し、依存サービスは Docker で実行 |
-
-### 方法 1：Docker で一括起動
-
-```bash
-make up-web
-make ps
-curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
-```
-
-`make up-web` は Web アプリ、API、Worker、Postgres、Milvus、Etcd、MinIO、Redis を起動します。既存の設定は上書きされません。`INITIAL_ADMIN_*` を設定していない場合は、[http://localhost:3000](http://localhost:3000) を開いて最初のローカルアカウントを作成します。
-
-初回の Docker ビルドでは、固定バージョンの DeepDoc モデルバンドルをダウンロードして検証します。プロキシが Linux ホストのループバックでのみ待ち受けている場合は、Docker 側でローカルに設定するか、`DOCKER_BUILD_NETWORK=host make up-web` を実行します。プロキシアドレスはコミットしないでください。Docker Hub に接続できない場合は、`.env` の `MILVUS_IMAGE` を信頼できるレジストリ上の同一バージョンのイメージに変更できます。
-
-Web スタック全体を停止します。
-
-```bash
-docker compose --env-file .env \
-  -f docker/docker-compose.yml \
-  -f docker/docker-compose.web.yml down
-```
-
-### 方法 2：フロントエンドとバックエンドをホストで起動
-
-ホスト側の依存関係をインストールし、基盤サービスを起動します。
-
-```bash
-make setup-host
-```
-
-`make setup-host` は `.venv` を作成し、CPU 版のバックエンド依存関係と Web 依存関係をインストール・検証し、固定パーサーモデルを取得して Postgres、Milvus、Etcd、MinIO、Redis を起動します。既存の `.env` は上書きしません。
-
-デフォルトの `TASK_QUEUE_ENABLED=false` では、バックグラウンドの文書処理は API プロセス内で有界に処理されるため、開くターミナルは 2 つだけです。
-
-```bash
-# ターミナル 1：FastAPI（ホットリロード）
-make backend
-
-# ターミナル 2：Next.js（ホットリロード）
-make web
-```
-
-Docker と同じ独立キューにしたい場合は、API を起動する前に `TASK_QUEUE_ENABLED=true` を `.env` に設定し、3 つ目のターミナルで Worker を起動・確認します。
-
-```bash
-make worker
-make worker-check
-```
-
-ホスト側のサービスを確認します。
-
-```bash
-make infra-ps
-curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
-```
-
-ホストプロセスを終了した後、`make infra-down` で依存サービスを停止します。
-
-### サービス URL
-
-| サービス | URL |
-|:---:|:---|
-| **フロントエンド UI** | [http://localhost:3000](http://localhost:3000) |
-| **API ドキュメント** | [http://localhost:8000/docs](http://localhost:8000/docs) |
-
-> 軽量構成には `make up-lite` を使用できます。Milvus を Chroma/FAISS に置き換えて MinIO を省きますが、デフォルトではフロントエンドを起動しません。UI が必要な場合は別途 `make web` を実行してください。外部 LLM / Embedding の呼び出しには、自分のモデルプロバイダーの認証情報が必要です。
-
-| シナリオ | 変更 | 必須？ |
-|:---|:---|:---:|
-| デフォルトの SiliconFlow LLM + Embedding | `LLM_API_KEY` | **はい** |
-| 別のチャットプロバイダーやモデル | `LLM_API_BASE`, `LLM_MODEL` | いいえ |
-| Embedding を別プロバイダーに | `EMBEDDING_API_KEY`, `EMBEDDING_API_BASE`, `EMBEDDING_MODEL` | いいえ。キーと URL を空にすると LLM 設定を再利用 |
-| SiliconFlow リランカー | `ENABLE_RERANKER=true` | いいえ。検索レイテンシを避けるためデフォルト無効、LLM キーを再利用 |
-| MinerU のオンライン PDF パース | `MINERU_ENABLED=true`, `MINERU_API_TOKEN` | いいえ。アップロード時に `mineru` を選択 |
-| その他すべての `.env` 設定 | 変更なし | いいえ。デフォルトのまま |
-
-モデル ID は SiliconFlow の `/v1/models` レスポンスに存在する必要があります。検証済みのチャットモデルには `Qwen/Qwen3-32B` と `Qwen/Qwen3-8B`、検証済みの Embedding モデルには `BAAI/bge-m3` と `Qwen/Qwen3-Embedding-0.6B`、検証済みのリランカーには `BAAI/bge-reranker-v2-m3` があります。Embedding モデルを変更した後は、既存のナレッジベースのインデックスを再構築してください。新旧のベクトルを混在させてはいけません。認証情報は [SiliconFlow コンソール](https://cloud.siliconflow.cn/account/ak) と [MinerU](https://mineru.net/) で作成し、実際のキーはローカルの `.env` のみに保管してください。
-
-### 行政サービスプラグインのサンプルを実行する
-
-リポジトリには、6 つのソース系統（サービス項目、ワンストップサービス、よくある質問、テーマ別 FAQ、部門 FAQ、地区 FAQ）向けの小さな公開サンプルを含む常州行政サービスナレッジプラグインが含まれています。データベースを起動せずに、ガバナンス・チャンク分割・KG 出力・ゴールデン草案を検証できます。
-
-```bash
-make changzhou-gov-plugin-test-report
-make changzhou-gov-plugin-chunk-report
-```
-
-レポートは `/tmp/changzhou_gov_plugin_*` に出力されます。これらのコマンドはデータベース・ベクトルストア・KG に書き込みません。サンプルパス、プラグイン参照、実コーパスのクローズドループコマンドについては[プラグインガイド](./plugins/pipelines/changzhou-gov-service-knowledge/README.md)を参照してください。
-
-高度なモデル、パーサー、プロキシ設定は [`.env.example`](./.env.example) を参照してください。Embedding モデルを変更した後は、既存のナレッジベースのインデックスを再構築する必要があります。その他のプラットフォームや Windows の手順は[開発ガイド](./docs/quickstart.md)を参照してください。
-
----
-
 ## プロダクト画面
 
 以下の画面は、リポジトリに含まれる公開の行政サービスプラグインサンプルで生成しています。本番のナレッジベースデータは含まれていません。
@@ -256,6 +116,86 @@ make changzhou-gov-plugin-chunk-report
     </td>
   </tr>
 </table>
+
+---
+
+## クイックスタート
+
+### 前提条件
+
+- [Docker](https://docs.docker.com/get-docker/) 20.10+ & [Docker Compose](https://docs.docker.com/compose/install/) 2.0+
+- GNU Make。Docker 起動ではローカル設定の生成に Python 3.9+ も必要
+- ホストでのソース起動では Python 3.11+、Node.js 20+、pnpm 10.26 も必要
+- 最低 4 CPU コア / 16 GB RAM / 50 GB ディスク
+
+### 初期化
+
+```bash
+git clone --depth 1 --single-branch https://github.com/skygazer42/MimirQ.git
+cd MimirQ
+make init
+```
+
+`make init` は不足している `.env` と `web/.env.local` だけを作成し、既存値は上書きしません。`.env` にはデプロイ方式に応じて次の項目を設定します。
+
+- デフォルトモデル：`LLM_API_KEY`（必須）
+- カスタム LLM：`LLM_API_BASE`、`LLM_MODEL`
+- 独立 Embedding：`EMBEDDING_API_BASE`、`EMBEDDING_API_KEY`、`EMBEDDING_MODEL`
+- Reranker：`ENABLE_RERANKER`、`RERANKER_API_BASE`、`RERANKER_API_KEY`、`RERANKER_MODEL`
+- 初期管理者：`INITIAL_ADMIN_EMAIL`、`INITIAL_ADMIN_USERNAME`、`INITIAL_ADMIN_PASSWORD`
+
+設定値と初期化ルールは[モデルサービスと初期管理者の設定](./docs/guides/model_services.md)を参照してください。
+
+| 起動方法 | 用途 | アプリの実行場所 |
+|:---|:---|:---|
+| **Docker 一括起動（推奨）** | 初回利用、サーバーデプロイ | Web、API、Worker、依存サービスをコンテナで実行 |
+| **ホストでソース起動** | フロントエンド・バックエンド開発、ホットリロード | Web、API はホストで実行。`TASK_QUEUE_ENABLED=true` のときだけ Worker もホストで起動し、依存サービスは Docker で実行 |
+
+### 方法 1：Docker で一括起動
+
+```bash
+make up-web
+make api-ping
+```
+
+[http://localhost:3000](http://localhost:3000) にアクセスします。初期管理者を設定していない場合は、画面で最初のアカウントを登録します。初回ビルド、プロキシ、本番用シークレット、ネットワーク設定は [Docker Compose ガイド](./docs/deployment/docker_compose.md)を参照してください。
+
+### 方法 2：フロントエンドとバックエンドをホストで起動
+
+ホスト側の依存関係をインストールし、基盤サービスを起動します。
+
+```bash
+make setup-host
+```
+
+`make setup-host` はホスト依存関係をインストールし、Docker 基盤を起動します。デフォルトでは 2 つのターミナルを使用します。
+
+```bash
+# ターミナル 1：FastAPI（ホットリロード）
+make backend
+
+# ターミナル 2：Next.js（ホットリロード）
+make web
+```
+
+独立 Worker の設定は[モデルサービスと初期管理者の設定](./docs/guides/model_services.md)を参照してください。ホスト側のサービスを確認します。
+
+```bash
+make api-ping
+```
+
+ホストプロセスを終了した後、`make infra-down` で依存サービスを停止します。
+
+### サービス URL
+
+| サービス | URL |
+|:---:|:---|
+| **フロントエンド UI** | [http://localhost:3000](http://localhost:3000) |
+| **API ドキュメント** | [http://localhost:8000/docs](http://localhost:8000/docs) |
+
+> 軽量構成には `make up-lite` を使用し、UI が必要な場合は別途 `make web` を実行します。
+
+モデル、パーサー、プロキシ、Windows の詳細は[開発ガイド](./docs/quickstart.md)、公開サンプルは[プラグインガイド](./plugins/pipelines/changzhou-gov-service-knowledge/README.md)を参照してください。
 
 ---
 
@@ -375,7 +315,7 @@ MimirQ の 2 つの Dify 経路の検索エビデンスカバレッジは 99.7% 
 
 ## デプロイ方法
 
-ローカルでの試用から本番クラスタまで対応します。
+次のデプロイ方式をサポートします。
 
 | 方式 | コマンド | 説明 |
 |:---:|:---|:---|
@@ -384,24 +324,9 @@ MimirQ の 2 つの Dify 経路の検索エビデンスカバレッジは 99.7% 
 | **軽量モード** | `make up-lite` | Milvus の代わりに Chroma/FAISS、MinIO 不要、素早い試用向け |
 | **開発モード** | `make infra-up` | インフラのみ、バックエンド / フロントエンドをローカル実行 |
 | **Helm / K8s** | `helm install` | 本番グレード、HPA、PDB、CronJob、PrometheusRule 付き |
-| **パーサー拡張** | [起動コマンドを選択](./docs/quickstart.md) | 文書タイプに必要な CPU / GPU プロファイルだけを起動 |
+| **パーサー拡張** | [Docker Compose ガイド](./docs/deployment/docker_compose.md) | 必要な CPU / GPU プロファイルを起動 |
 
-<details>
-<summary><b>本番デプロイのヒント</b></summary>
-
-```bash
-# .env を編集して本番パラメータを設定
-# ENV=production
-# AUTH_MODE=jwt
-# SECRET_KEY=<32 文字以上のランダム文字列>
-# POSTGRES_PASSWORD=<強いパスワード>
-
-make up-prod
-```
-
-Kubernetes の本番デプロイについては [Helm デプロイガイド](./docs/deployment/helm.md) と [運用ハンドブック](./docs/deployment/runbook.md) を参照してください。
-
-</details>
+本番設定とアップグレード手順は [Docker Compose ガイド](./docs/deployment/docker_compose.md)、[Helm デプロイガイド](./docs/deployment/helm.md)、[運用ハンドブック](./docs/deployment/runbook.md)を参照してください。
 
 ---
 
