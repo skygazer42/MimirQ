@@ -1096,13 +1096,26 @@ jobs:
 
           from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides
 
+          configured_reranker_provider = "llm"
           applied = apply_retrieval_profile_overrides(
               profile="grounded_strict",
               top_k=5,
               score_threshold=0.3,
               retrieval_mode="keyword",
               enable_reranker=False,
-              reranker_provider="llm",
+              reranker_provider=configured_reranker_provider,
+              reranker_top_n=5,
+              enable_weight_rerank=True,
+              retrieval_contract_mode="",
+              visible_evidence_only=False,
+          )
+          fallback_applied = apply_retrieval_profile_overrides(
+              profile="grounded_strict",
+              top_k=5,
+              score_threshold=0.3,
+              retrieval_mode="keyword",
+              enable_reranker=False,
+              reranker_provider="none",
               reranker_top_n=5,
               enable_weight_rerank=True,
               retrieval_contract_mode="",
@@ -1114,7 +1127,7 @@ jobs:
               "retrieval_contract_mode": "evidence_strict",
               "visible_evidence_only": True,
               "enable_reranker": True,
-              "reranker_provider": "cross_encoder",
+              "reranker_provider": configured_reranker_provider,
               "enable_weight_rerank": False,
           }
           failures = []
@@ -1126,6 +1139,8 @@ jobs:
               failures.append(("top_k", applied.get("top_k"), ">=20"))
           if int(applied.get("reranker_top_n") or 0) < 20:
               failures.append(("reranker_top_n", applied.get("reranker_top_n"), ">=20"))
+          if fallback_applied.get("reranker_provider") != "cross_encoder":
+              failures.append(("fallback_reranker_provider", fallback_applied.get("reranker_provider"), "cross_encoder"))
 
           out_path = Path("artifacts/retrieval_profile.grounded_strict.contract.json")
           out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1135,6 +1150,7 @@ jobs:
                       "schema": "mimirq.retrieval_profile_contract.v1",
                       "profile": "grounded_strict",
                       "applied": applied,
+                      "fallback_applied": fallback_applied,
                       "failures": failures,
                   },
                   ensure_ascii=False,

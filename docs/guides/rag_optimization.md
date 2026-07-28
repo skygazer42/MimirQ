@@ -169,7 +169,7 @@ Wave D adds a strict grounding retrieval profile:
 
 - `retrieval_mode=hybrid`
 - `top_k>=20`
-- `enable_reranker=true` with `reranker_provider=cross_encoder`
+- `enable_reranker=true`; the provider follows the deployment's `RERANKER_PROVIDER` and falls back to `cross_encoder`
 - `retrieval_contract_mode=evidence_strict`
 - `visible_evidence_only=true`
 

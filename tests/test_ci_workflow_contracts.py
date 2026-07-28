@@ -92,6 +92,20 @@ def test_retrieval_only_job_uses_the_non_jwt_ci_runtime() -> None:
     assert "    env:\n      ENV: ci\n      AUTH_MODE: header\n" in job
 
 
+def test_grounded_strict_ci_contract_preserves_the_configured_reranker() -> None:
+    workflow = _read(".github/workflows/ci.yml")
+    step = workflow.split("- name: Validate grounded_strict retrieval-profile contract", 1)[1].split(
+        "\n      - name:", 1
+    )[0]
+
+    assert 'configured_reranker_provider = "llm"' in step
+    assert "reranker_provider=configured_reranker_provider" in step
+    assert '"reranker_provider": configured_reranker_provider' in step
+    assert 'reranker_provider="none"' in step
+    assert 'fallback_applied.get("reranker_provider") != "cross_encoder"' in step
+    assert '"fallback_applied": fallback_applied' in step
+
+
 def test_public_pr_live_core_gate_launcher_contract() -> None:
     script = _read("scripts/run_ci_live_core_gate.sh")
 
