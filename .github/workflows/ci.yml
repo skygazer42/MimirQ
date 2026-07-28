@@ -229,6 +229,10 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           clean: true
+        env:
+          http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}
+          https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}
+          no_proxy: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}
 
       - name: Ensure self-hosted toolchain
         if: ${{ runner.environment == 'self-hosted' }}
@@ -310,6 +314,10 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           clean: true
+        env:
+          http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}
+          https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}
+          no_proxy: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}
 
       - name: Prepare self-hosted Node
         if: ${{ runner.environment == 'self-hosted' }}
@@ -346,6 +354,10 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           clean: true
+        env:
+          http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}
+          https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}
+          no_proxy: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}
 
       - name: Prepare self-hosted Node
         run: |
@@ -364,6 +376,7 @@ jobs:
             printf 'no_proxy=%s\n' "127.0.0.1,localhost${SELF_HOSTED_NO_PROXY:+,$SELF_HOSTED_NO_PROXY}"
             printf 'DOCKER_BUILD_NETWORK=host\n'
           } >> "$GITHUB_ENV"
+          python scripts/select_free_docker_subnet.py --seed "$GITHUB_RUN_ID" >> "$GITHUB_ENV"
 
       - name: Validate Helm chart
         run: |
@@ -384,6 +397,7 @@ jobs:
         run: |
           docker build --network host \
             --build-arg HTTP_PROXY --build-arg HTTPS_PROXY --build-arg NO_PROXY \
+            --build-arg NEXT_PUBLIC_API_URL=/ \
             -t mimirq-web -f web/Dockerfile.prod web
 
       - name: Install JWT browser smoke dependencies
@@ -558,11 +572,18 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: [self-hosted, Linux, X64, mimirq]
     timeout-minutes: 60
+    env:
+      ENV: ci
+      AUTH_MODE: header
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           clean: true
+        env:
+          http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}
+          https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}
+          no_proxy: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}
 
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' }}
@@ -1313,6 +1334,10 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           clean: true
+        env:
+          http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}
+          https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}
+          no_proxy: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}
 
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' }}
@@ -1552,6 +1577,10 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           clean: true
+        env:
+          http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}
+          https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}
+          no_proxy: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}
 
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' }}

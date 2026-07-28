@@ -76,6 +76,15 @@ def test_ci_seed_entrypoints_bootstrap_the_repository_before_app_imports() -> No
         assert "AUTH_MODE: header" in step
 
 
+def test_retrieval_only_job_uses_the_non_jwt_ci_runtime() -> None:
+    workflow = _read(".github/workflows/ci.yml")
+    job = workflow.split("\n  retrieval-only-bounded-gate:\n", 1)[1].split(
+        "\n  retrieval-regression-gate:\n", 1
+    )[0]
+
+    assert "    env:\n      ENV: ci\n      AUTH_MODE: header\n" in job
+
+
 def test_public_pr_live_core_gate_launcher_contract() -> None:
     script = _read("scripts/run_ci_live_core_gate.sh")
 
@@ -223,6 +232,12 @@ def test_main_ci_uploads_the_generated_test_inventory() -> None:
 def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     workflow = _read(".github/workflows/ci.yml")
     public_pr_job = workflow.split("\n  test-and-verify:\n", 1)[0]
+    checkout_proxy = (
+        "        env:\n"
+        "          http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}\n"
+        "          https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}\n"
+        "          no_proxy: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}\n"
+    )
 
     assert "permissions:\n  contents: read" in workflow
     assert "SELF_HOSTED_PYTHON_BIN: ${{ vars.CI_SELF_HOSTED_PYTHON_BIN || '' }}" in workflow
@@ -248,8 +263,9 @@ def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     assert '"${SELF_HOSTED_HTTP_PROXY:-${HTTP_PROXY:-}}"' in workflow
     assert '"${SELF_HOSTED_HTTPS_PROXY:-${HTTPS_PROXY:-}}"' in workflow
     assert "printf 'DOCKER_BUILD_NETWORK=host\\n'" in workflow
-    assert "http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}" not in workflow
-    assert "https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}" not in workflow
+    assert workflow.count(checkout_proxy) == 6
+    assert "http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}" not in public_pr_job
+    assert "https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}" not in public_pr_job
     assert "public-pr-verify:" in workflow
     assert "if: github.event_name == 'pull_request'" in workflow
     assert "runs-on: ubuntu-latest" in workflow
@@ -393,6 +409,13 @@ def test_pull_request_lint_and_security_jobs_use_hosted_runners() -> None:
 
 def test_api_docs_workflow_actually_deploys_pages() -> None:
     workflow = _read(".github/workflows/api-docs.yml")
+    hosted_build = workflow.split("\n  deploy:\n", 1)[0]
+    checkout_proxy = (
+        "        env:\n"
+        "          http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}\n"
+        "          https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}\n"
+        "          no_proxy: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}\n"
+    )
 
     assert "pull_request:" in workflow
     assert "SELF_HOSTED_PYTHON_BIN: ${{ vars.CI_SELF_HOSTED_PYTHON_BIN || '' }}" in workflow
@@ -421,7 +444,8 @@ def test_api_docs_workflow_actually_deploys_pages() -> None:
     assert "actions/upload-artifact@" in workflow
     assert "actions/download-artifact@" in workflow
     assert "name: api-docs-site" in workflow
-    assert "http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}" not in workflow
+    assert workflow.count(checkout_proxy) == 1
+    assert "http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}" not in hosted_build
     assert "actions/configure-pages@" in workflow
     assert "actions/upload-pages-artifact@" in workflow
     assert "actions/deploy-pages@" in workflow
@@ -510,6 +534,9 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     assert "/opt/venv/bin/python scripts/bootstrap_mimirq_models.py" in backend_dockerfile
     assert 'if [ "$attempt" = "3" ]; then exit 1; fi' in backend_dockerfile
     assert "PNPM_REGISTRY: ${PNPM_REGISTRY:-https://registry.npmmirror.com}" in web_compose
+    assert 'python scripts/select_free_docker_subnet.py --seed "$GITHUB_RUN_ID"' in docker_job
+    assert 'printf \'DOCKER_BUILD_NETWORK=host\\n\'' in docker_job
+    assert "--build-arg NEXT_PUBLIC_API_URL=/" in docker_job
     assert "README docker quickstart smoke" in docker_job
     assert "make up-web" in docker_job
     assert "artifacts/core-e2e.readme-docker.json" in docker_job
