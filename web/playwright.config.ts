@@ -5,6 +5,7 @@ const baseURL = `http://127.0.0.1:${PORT}`
 const useProdServer = Boolean(process.env.CI) || process.env.PLAYWRIGHT_USE_PROD_SERVER === '1'
 const useExternalServer = process.env.PLAYWRIGHT_EXTERNAL_SERVER === '1'
 const reuseBuildOutput = process.env.PLAYWRIGHT_REUSE_BUILD === '1'
+const runLiveStack = process.env.PLAYWRIGHT_LIVE_STACK === '1'
 const browserChannel = process.env.PLAYWRIGHT_CHANNEL
 const markdownImageProxySecret =
   process.env.MARKDOWN_IMAGE_PROXY_SECRET || 'playwright-markdown-image-proxy-secret'
@@ -28,6 +29,7 @@ ensureLocalNoProxy('no_proxy')
 
 export default defineConfig({
   testDir: './e2e',
+  testIgnore: runLiveStack ? undefined : /live-stack\.smoke\.spec\.ts/,
   outputDir: './test-results/playwright',
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),

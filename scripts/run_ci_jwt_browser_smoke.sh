@@ -89,6 +89,7 @@ if [[ -n "${GITHUB_ENV:-}" && "$reuse_account" == "0" ]]; then
 fi
 
 PLAYWRIGHT_EXTERNAL_SERVER=1 \
+PLAYWRIGHT_LIVE_STACK=1 \
 PLAYWRIGHT_PORT="$mapped_port" \
 PLAYWRIGHT_LIVE_IDENTIFIER="$jwt_identifier" \
 PLAYWRIGHT_LIVE_PASSWORD="$jwt_password" \

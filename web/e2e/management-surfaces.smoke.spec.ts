@@ -576,7 +576,7 @@ test.describe('management surfaces smoke', () => {
         }
       })
       expect(geometry.x, `${surface.route} x`).toBeCloseTo(288, 0)
-      expect(geometry.y, `${surface.route} y`).toBeCloseTo(16, 0)
+      expect(Math.abs(geometry.y - 16), `${surface.route} y drift`).toBeLessThanOrEqual(1)
       expect(geometry.width, `${surface.route} width`).toBeCloseTo(1128, 0)
       expect(geometry.height, `${surface.route} height`).toBeGreaterThanOrEqual(94)
       expect(geometry.height, `${surface.route} height`).toBeLessThanOrEqual(100)

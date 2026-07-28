@@ -470,9 +470,9 @@ audit-py:
 		--ignore-vuln PYSEC-2026-1325
 
 audit-web:
-	pnpm --dir web audit --prod --audit-level high --registry https://registry.npmjs.org/
+	cd web && pnpm audit --prod --audit-level high --registry https://registry.npmjs.org/
 	# Remaining unfixed brace-expansion versions are permitted only in bounded build tooling.
-	pnpm --dir web audit --audit-level high --json --registry https://registry.npmjs.org/ | $(PY) scripts/check_pnpm_audit.py
+	(cd web && pnpm audit --audit-level high --json --registry https://registry.npmjs.org/) | $(PY) scripts/check_pnpm_audit.py
 
 audit-docs:
 	cd docs-site && npm audit --audit-level=high --registry https://registry.npmjs.org/

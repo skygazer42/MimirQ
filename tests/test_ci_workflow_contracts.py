@@ -29,6 +29,9 @@ def test_self_hosted_ci_bootstrap_script_contract() -> None:
     assert 'echo "PIP_CACHE_DIR=$PIP_CACHE_DIR_VALUE"' in script
     assert 'echo "TORCH_WHEEL_DIR=$TORCH_WHEEL_DIR_VALUE"' in script
     assert 'echo "NO_PROXY=$NO_PROXY_VALUE"' in script
+    assert 'HTTP_PROXY_VALUE="${SELF_HOSTED_HTTP_PROXY:-${HTTP_PROXY:-${http_proxy:-}}}"' in script
+    assert 'HTTPS_PROXY_VALUE="${SELF_HOSTED_HTTPS_PROXY:-${HTTPS_PROXY:-${https_proxy:-}}}"' in script
+    assert 'ALL_PROXY_VALUE="${ALL_PROXY:-${all_proxy:-}}"' in script
     assert "/home/user/.local/share/uv" not in script
     assert "/data/actions-runner" not in script
     assert "127.0.0.1:35983" not in script
@@ -109,7 +112,9 @@ def test_dependency_audit_covers_web_and_handbook_with_shared_policy() -> None:
     security_workflow = _read(".github/workflows/security.yml")
 
     assert "audit-docs:" in makefile
-    assert "pnpm --dir web audit --prod --audit-level high" in makefile
+    assert "cd web && pnpm audit --prod --audit-level high" in makefile
+    assert "(cd web && pnpm audit --audit-level high --json" in makefile
+    assert "pnpm --dir web audit" not in makefile
     assert "scripts/check_pnpm_audit.py" in makefile
     assert "--ignore-registry-errors" not in makefile
     assert "npm audit --audit-level=high" in makefile
@@ -133,6 +138,7 @@ def test_main_ci_runs_all_browser_smoke_specs_and_critical_coverage() -> None:
     assert "pnpm exec playwright install chromium" in web_job
     assert "clean: true" in web_job
     assert "runs-on: [self-hosted, Linux, X64, mimirq]" in web_job
+    assert "PLAYWRIGHT_LIVE_STACK" not in web_job
     # The web job is intentionally frontend-only: no Python dep install, no needs
     # chain, so it runs in parallel with the backend test-and-verify job.
     assert "needs:" not in web_job
@@ -159,6 +165,7 @@ def test_main_ci_host_browser_smoke_stays_on_the_live_stack_spec_in_non_pr_jobs(
     assert "if: github.event_name != 'pull_request'" in retrieval_regression_job
     assert 'AUTH_MODE: header' in retrieval_regression_job
     assert "README host browser smoke" in retrieval_regression_job
+    assert 'PLAYWRIGHT_LIVE_STACK: "1"' in retrieval_regression_job
     assert "NEXT_PUBLIC_USER_ID: ci-bot" in retrieval_regression_job
     assert "NEXT_PUBLIC_TENANT_ID: 00000000-0000-0000-0000-000000000000" in retrieval_regression_job
     assert "pnpm exec playwright test e2e/live-stack.smoke.spec.ts" in retrieval_regression_job
@@ -196,6 +203,13 @@ def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     assert "/home/user/.local/share/uv" not in workflow
     assert "/data/actions-runner" not in workflow
     assert "127.0.0.1:35983" not in workflow
+    assert "docker build --network host" in workflow
+    assert workflow.count("docker build --network host") == 2
+    assert "Prepare Docker build proxy" in workflow
+    assert '"${SELF_HOSTED_HTTP_PROXY:-${HTTP_PROXY:-}}"' in workflow
+    assert '"${SELF_HOSTED_HTTPS_PROXY:-${HTTPS_PROXY:-}}"' in workflow
+    assert "http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}" not in workflow
+    assert "https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}" not in workflow
     assert "public-pr-verify:" in workflow
     assert "if: github.event_name == 'pull_request'" in workflow
     assert "runs-on: ubuntu-latest" in workflow
@@ -264,9 +278,8 @@ def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     assert "PR hosted browser smoke" in public_pr_job
     assert 'PLAYWRIGHT_REUSE_BUILD: "1"' in public_pr_job
     assert "pnpm exec playwright test e2e/document-chat.smoke.spec.ts" in public_pr_job
-    assert "HTTP_PROXY: ${{ vars.CI_HTTP_PROXY || '' }}" in workflow
-    assert "HTTPS_PROXY: ${{ vars.CI_HTTPS_PROXY || '' }}" in workflow
-    assert "NO_PROXY: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}" in workflow
+    assert re.search(r"(?m)^\s+HTTP_PROXY: \$\{\{ vars\.CI_HTTP_PROXY", workflow) is None
+    assert re.search(r"(?m)^\s+HTTPS_PROXY: \$\{\{ vars\.CI_HTTPS_PROXY", workflow) is None
     for job in (
         "test-and-verify",
         "web-test-and-verify",
@@ -434,6 +447,7 @@ def test_docker_ci_supports_cold_web_builds() -> None:
         "\n  retrieval-only-bounded-gate:", 1
     )[0]
     retrieval_compose = _read("docker/docker-compose.retrieval-dev.yml")
+    backend_dockerfile = _read("docker/Dockerfile")
     web_dockerfile = _read("web/Dockerfile.prod")
     web_compose = _read("docker/docker-compose.web.yml")
 
@@ -442,6 +456,8 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     assert "target=/root/.local/share/pnpm/store" in web_dockerfile
     assert "https://registry.npmmirror.com" in web_dockerfile
     assert "ENV COREPACK_NPM_REGISTRY=$PNPM_REGISTRY" in web_dockerfile
+    assert "/opt/venv/bin/python scripts/bootstrap_mimirq_models.py" in backend_dockerfile
+    assert 'if [ "$attempt" = "3" ]; then exit 1; fi' in backend_dockerfile
     assert "PNPM_REGISTRY: ${PNPM_REGISTRY:-https://registry.npmmirror.com}" in web_compose
     assert "README docker quickstart smoke" in docker_job
     assert "make up-web" in docker_job
@@ -513,6 +529,7 @@ def test_built_web_jwt_browser_smoke_is_explicitly_wired() -> None:
     assert "@example.com`" in script
     assert "@example.invalid" not in script
     assert "PLAYWRIGHT_EXTERNAL_SERVER=1" in script
+    assert "PLAYWRIGHT_LIVE_STACK=1" in script
     assert 'PLAYWRIGHT_PORT="$mapped_port"' in script
     assert 'PLAYWRIGHT_LIVE_IDENTIFIER="$jwt_identifier"' in script
     assert 'PLAYWRIGHT_LIVE_PASSWORD="$jwt_password"' in script
@@ -550,6 +567,15 @@ def test_playwright_prod_server_can_reuse_an_existing_build_artifact() -> None:
     assert "const reuseBuildOutput = process.env.PLAYWRIGHT_REUSE_BUILD === '1'" in playwright_config
     assert "MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} HOST=127.0.0.1 PORT=${PORT} pnpm start" in playwright_config
     assert "MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} pnpm exec next build --webpack && MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} HOST=127.0.0.1 PORT=${PORT} pnpm start" in playwright_config
+
+
+def test_generic_browser_suite_does_not_probe_an_ambient_live_backend() -> None:
+    playwright_config = _read("web/playwright.config.ts")
+    live_config = _read("web/playwright.live.config.ts")
+
+    assert "const runLiveStack = process.env.PLAYWRIGHT_LIVE_STACK === '1'" in playwright_config
+    assert "testIgnore: runLiveStack ? undefined : /live-stack\\.smoke\\.spec\\.ts/" in playwright_config
+    assert "testMatch: /live-stack\\.smoke\\.spec\\.ts/" in live_config
 
 
 def test_main_ci_runs_core_e2e_against_the_existing_host_backend() -> None:

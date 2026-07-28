@@ -229,10 +229,6 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           clean: true
-        env:
-          http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}
-          https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}
-          no_proxy: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}
 
       - name: Ensure self-hosted toolchain
         if: ${{ runner.environment == 'self-hosted' }}
@@ -314,10 +310,6 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           clean: true
-        env:
-          http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}
-          https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}
-          no_proxy: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}
 
       - name: Prepare self-hosted Node
         if: ${{ runner.environment == 'self-hosted' }}
@@ -354,16 +346,23 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           clean: true
-        env:
-          http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}
-          https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}
-          no_proxy: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}
 
       - name: Prepare self-hosted Node
         run: |
           node -v
           npm -v
           pnpm -v
+
+      - name: Prepare Docker build proxy
+        run: |
+          {
+            printf 'HTTP_PROXY=%s\n' "${SELF_HOSTED_HTTP_PROXY:-${HTTP_PROXY:-}}"
+            printf 'HTTPS_PROXY=%s\n' "${SELF_HOSTED_HTTPS_PROXY:-${HTTPS_PROXY:-}}"
+            printf 'http_proxy=%s\n' "${SELF_HOSTED_HTTP_PROXY:-${http_proxy:-}}"
+            printf 'https_proxy=%s\n' "${SELF_HOSTED_HTTPS_PROXY:-${https_proxy:-}}"
+            printf 'NO_PROXY=%s\n' "127.0.0.1,localhost${SELF_HOSTED_NO_PROXY:+,$SELF_HOSTED_NO_PROXY}"
+            printf 'no_proxy=%s\n' "127.0.0.1,localhost${SELF_HOSTED_NO_PROXY:+,$SELF_HOSTED_NO_PROXY}"
+          } >> "$GITHUB_ENV"
 
       - name: Validate Helm chart
         run: |
@@ -375,17 +374,16 @@ jobs:
           done
 
       - name: Build backend image
-        env:
-          HTTP_PROXY: ${{ vars.CI_HTTP_PROXY || '' }}
-          HTTPS_PROXY: ${{ vars.CI_HTTPS_PROXY || '' }}
-          NO_PROXY: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}
         run: |
           docker build --network host \
             --build-arg HTTP_PROXY --build-arg HTTPS_PROXY --build-arg NO_PROXY \
             -t mimirq-backend -f docker/Dockerfile .
 
       - name: Build web image
-        run: docker build -t mimirq-web -f web/Dockerfile.prod web
+        run: |
+          docker build --network host \
+            --build-arg HTTP_PROXY --build-arg HTTPS_PROXY --build-arg NO_PROXY \
+            -t mimirq-web -f web/Dockerfile.prod web
 
       - name: Install JWT browser smoke dependencies
         working-directory: web
@@ -564,10 +562,6 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           clean: true
-        env:
-          http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}
-          https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}
-          no_proxy: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}
 
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' }}
@@ -1318,10 +1312,6 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           clean: true
-        env:
-          http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}
-          https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}
-          no_proxy: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}
 
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' }}
@@ -1421,6 +1411,7 @@ jobs:
           NEXT_PUBLIC_API_URL: http://127.0.0.1:8000
           NEXT_PUBLIC_USER_ID: ci-bot
           NEXT_PUBLIC_TENANT_ID: 00000000-0000-0000-0000-000000000000
+          PLAYWRIGHT_LIVE_STACK: "1"
           PLAYWRIGHT_USE_PROD_SERVER: "1"
         run: pnpm exec playwright test e2e/live-stack.smoke.spec.ts
 
@@ -1558,10 +1549,6 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           clean: true
-        env:
-          http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}
-          https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}
-          no_proxy: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}
 
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' }}

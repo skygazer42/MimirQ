@@ -108,7 +108,12 @@ RUN mkdir -p uploads logs vector_faiss vector_chroma chroma_db /data/uploads \
 COPY scripts/bootstrap_mimirq_models.py ./scripts/bootstrap_mimirq_models.py
 # Parsing weights are pinned and verified during the image build; runtime stays offline.
 RUN --mount=type=cache,target=/app/.cache/huggingface \
-    /opt/venv/bin/python scripts/bootstrap_mimirq_models.py
+    for attempt in 1 2 3; do \
+        /opt/venv/bin/python scripts/bootstrap_mimirq_models.py \
+        && break; \
+        if [ "$attempt" = "3" ]; then exit 1; fi; \
+        sleep "$((attempt * 10))"; \
+    done
 
 # Avoid making the first prompt-preview request download the token encoding.
 ENV TIKTOKEN_CACHE_DIR=/app/.cache/tiktoken
