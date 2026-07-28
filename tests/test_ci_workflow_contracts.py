@@ -20,7 +20,7 @@ def test_self_hosted_ci_bootstrap_script_contract() -> None:
 
     assert script.startswith("#!/usr/bin/env bash\nset -euo pipefail\n")
     assert "--include-torch-wheel-dir" in script
-    assert 'PY_BIN="$(command -v python3.11 || command -v python3 || true)"' in script
+    assert 'PY_BIN="$(command -v python3.11 || true)"' in script
     assert 'VENV_DIR="${SELF_HOSTED_VENV_DIR:-$RUNNER_TEMP/mimirq-py311}"' in script
     assert 'PIP_CACHE_DIR_VALUE="${PIP_CACHE_DIR:-$RUNNER_TEMP/pip-cache}"' in script
     assert 'TORCH_WHEEL_DIR_VALUE="${TORCH_WHEEL_DIR:-$RUNNER_TEMP/torch-wheels}"' in script
@@ -32,6 +32,9 @@ def test_self_hosted_ci_bootstrap_script_contract() -> None:
     assert 'HTTP_PROXY_VALUE="${SELF_HOSTED_HTTP_PROXY:-${HTTP_PROXY:-${http_proxy:-}}}"' in script
     assert 'HTTPS_PROXY_VALUE="${SELF_HOSTED_HTTPS_PROXY:-${HTTPS_PROXY:-${https_proxy:-}}}"' in script
     assert 'ALL_PROXY_VALUE="${ALL_PROXY:-${all_proxy:-}}"' in script
+    assert 'PY_BIN="$(uv python find 3.11 2>/dev/null || true)"' in script
+    assert 'if [ "$PY_VERSION" != "3.11" ]; then' in script
+    assert "command -v python3 || true" not in script
     assert "/home/user/.local/share/uv" not in script
     assert "/data/actions-runner" not in script
     assert "127.0.0.1:35983" not in script

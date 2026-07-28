@@ -21,10 +21,18 @@ if [ -n "$PY_BIN" ] && [ -d "$PY_BIN" ]; then
   PY_BIN="$PY_BIN/python3.11"
 fi
 if [ -z "$PY_BIN" ]; then
-  PY_BIN="$(command -v python3.11 || command -v python3 || true)"
+  PY_BIN="$(command -v python3.11 || true)"
+fi
+if [ -z "$PY_BIN" ] && command -v uv >/dev/null 2>&1; then
+  PY_BIN="$(uv python find 3.11 2>/dev/null || true)"
 fi
 if [ -z "$PY_BIN" ]; then
-  echo "python3.11/python3 not found on self-hosted runner" >&2
+  echo "Python 3.11 not found; install it with 'uv python install 3.11' or set SELF_HOSTED_PYTHON_BIN" >&2
+  exit 1
+fi
+PY_VERSION="$("$PY_BIN" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+if [ "$PY_VERSION" != "3.11" ]; then
+  echo "Python 3.11 is required, but $PY_BIN reports $PY_VERSION" >&2
   exit 1
 fi
 
