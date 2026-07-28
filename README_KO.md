@@ -79,7 +79,7 @@ MimirQ는 하나의 구체적인 행정 서비스 Q&A 프로젝트에서 시작�
 ### 공통 준비
 
 ```bash
-git clone https://github.com/skygazer42/MimirQ.git
+git clone --depth 1 --single-branch https://github.com/skygazer42/MimirQ.git
 cd MimirQ
 make init
 ```
@@ -104,9 +104,9 @@ make ps
 curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
 ```
 
-`make up-web`는 웹 앱, API, 워커, Postgres, Milvus, MinIO, Redis를 시작합니다. 기존 설정은 덮어쓰지 않습니다. [http://localhost:3000](http://localhost:3000)을 열고 로컬 계정을 만들면 시스템에 들어갈 수 있습니다.
+`make up-web`는 웹 앱, API, 워커, Postgres, Milvus, Etcd, MinIO, Redis를 시작합니다. 기존 설정은 덮어쓰지 않습니다. [http://localhost:3000](http://localhost:3000)을 열고 로컬 계정을 만들면 시스템에 들어갈 수 있습니다.
 
-첫 Docker 빌드에서는 고정 버전의 DeepDoc 모델 번들을 내려받아 검증합니다. 프록시가 Linux 호스트 루프백에서만 수신 대기 중이라면 Docker 쪽에서 로컬로 설정하거나 `DOCKER_BUILD_NETWORK=host make up-web`을 실행하세요. 프록시 주소는 커밋하지 마세요.
+첫 Docker 빌드에서는 고정 버전의 DeepDoc 모델 번들을 내려받아 검증합니다. 프록시가 Linux 호스트 루프백에서만 수신 대기 중이라면 Docker 쪽에서 로컬로 설정하거나 `DOCKER_BUILD_NETWORK=host make up-web`을 실행하세요. 프록시 주소는 커밋하지 마세요. Docker Hub에 연결할 수 없다면 `.env`의 `MILVUS_IMAGE`를 신뢰할 수 있는 레지스트리의 동일 버전 이미지로 지정할 수 있습니다.
 
 전체 웹 스택을 중지합니다.
 
@@ -121,12 +121,10 @@ docker compose --env-file .env \
 호스트 의존성을 설치하고 인프라 서비스를 시작합니다.
 
 ```bash
-python3.11 -m venv .venv
-.venv/bin/python -m pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
-pnpm -C web install
-make models
-make infra-up
+make setup-host
 ```
+
+`make setup-host`는 `.venv`를 만들고 CPU 백엔드 및 웹 의존성을 설치·검증한 뒤 고정 파서 모델을 내려받고 Postgres, Milvus, Etcd, MinIO, Redis를 시작합니다. 기존 `.env` 값은 덮어쓰지 않습니다.
 
 터미널 세 개를 엽니다.
 
@@ -135,7 +133,7 @@ make infra-up
 make backend
 
 # 터미널 2: 문서 파싱 및 인덱싱 워커
-.venv/bin/arq app.tasks.worker.WorkerSettings
+make worker
 
 # 터미널 3: Next.js(핫 리로드)
 make web
@@ -357,7 +355,7 @@ MimirQ의 두 Dify 경로의 검색 근거 커버리지는 99.7% / 96.8%였지�
 
 | 방식 | 명령 | 설명 |
 |:---:|:---|:---|
-| **표준 배포** | `make up` | 풀스택: Postgres + Milvus + MinIO + Redis + API + Worker |
+| **표준 배포** | `make up` | 풀스택: Postgres + Milvus + Etcd + MinIO + Redis + API + Worker |
 | **표준 + 프런트엔드** | `make up-web` | 첫 기동에 권장; 로컬 설정을 초기화하고 완전한 웹 스택 기동 |
 | **경량 모드** | `make up-lite` | Milvus 대신 Chroma/FAISS, MinIO 불필요, 빠른 체험용 |
 | **개발 모드** | `make infra-up` | 인프라만; 백엔드 / 프런트엔드를 로컬 실행 |

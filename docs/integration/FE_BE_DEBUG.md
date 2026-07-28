@@ -11,8 +11,8 @@
 - 完整 Web 栈（后端 + worker + infra + 前端）：`make up-web`
 
 ### B. 本地后端 + Docker 跑依赖（开发常用）
-- 依赖：`make infra-up`
-- 本地后端：`pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt` → `python main.py`
+- 首次准备：`make setup-host`
+- 本地后端：`make backend`
 - 本地前端：`cd web; pnpm dev`
 
 不同启动方式下，前端访问后端的地址不同（见下文“API URL”）。

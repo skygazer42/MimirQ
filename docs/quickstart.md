@@ -4,7 +4,7 @@
 
 ### 1. 克隆项目
 ```bash
-git clone https://github.com/skygazer42/MimirQ.git
+git clone --depth 1 --single-branch https://github.com/skygazer42/MimirQ.git
 cd MimirQ
 ```
 
@@ -66,9 +66,7 @@ docker compose --env-file .env -f docker/docker-compose.yml ps
 > 如果你要本地源码调试完整 Web 栈，请先启动依赖服务，再分别启动 API、Worker 和前端，不要手写全局 `uvicorn` / `arq` 命令：
 >
 > ```bash
-> make infra-up
-> make models
-> make worker-check
+> make setup-host
 > ```
 >
 > 然后分别打开三个终端运行：
@@ -83,6 +81,8 @@ docker compose --env-file .env -f docker/docker-compose.yml ps
 > # 终端 3：Next.js（热更新）
 > make web
 > ```
+>
+> Worker 启动后，可在另一个终端运行 `make worker-check` 检查 Redis 存活标记。
 >
 > 若宿主机文件监听额度较低、`uploads/` 又比较大，API 进程优先改用：
 >
@@ -290,13 +290,8 @@ docker compose -f docker-compose.yml -f docker-compose.web.yml up -d --build   #
 
 可选：本地启动后端（Python），依赖服务仍用 Docker：
 ```bash
-cd docker
-cp .env.example .env
-docker compose -f docker-compose.infra.yml up -d
-
-cd ..
-pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
-python main.py
+make setup-host
+make backend-no-reload
 ```
 
 启动后建议做一次快速校验：

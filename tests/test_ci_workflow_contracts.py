@@ -287,15 +287,43 @@ def test_ci_backend_full_suite_runs_pytest_xdist_in_parallel() -> None:
     # parallelized with pytest-xdist (`-n auto`).
     assert "$(PY) -m pytest -q -n auto $(PYTEST_ARGS)" in makefile
     assert "pytest-xdist==3.8.0" in requirements_dev
-    # The two jobs that run `make test` install the filtered requirements-dev
-    # set; the CPU filter only drops the xgboost pin, so pytest-xdist is kept.
-    assert (
-        workflow.count(
-            "python scripts/filter_cpu_ci_requirements.py requirements-dev.txt /tmp/requirements-dev.cpu-ci.txt"
-        )
-        == 2
-    )
+    # Both jobs install the complete dev set; xgboost-cpu keeps the dependency
+    # graph CPU-only without filtering requirements or bypassing pip metadata.
+    assert workflow.count("python -m pip install --retries 10 --timeout 120 -r requirements-dev.txt") == 2
+    assert "filter_cpu_ci_requirements.py" not in workflow
+    assert "--no-deps xgboost" not in workflow
     assert workflow.count("run: make test\n") == 2
+
+
+def test_host_setup_uses_project_venv_and_complete_cpu_dependencies() -> None:
+    makefile = _read("Makefile")
+    requirements = _read("requirements.txt")
+    dockerfile = _read("docker/Dockerfile")
+    compose = _read("docker/docker-compose.yml")
+    env_example = _read(".env.example")
+
+    assert "VENV_READY" not in makefile
+    assert "ifneq ($(wildcard $(VENV_PY)),)" in makefile
+    assert "$(VENV_PY) -m pip check" in makefile
+    assert "cd web && pnpm install" in makefile
+    assert 'xgboost-cpu==3.2.0; platform_system == "Linux"' in requirements
+    assert "filter_cpu_ci_requirements.py" not in dockerfile
+    assert "--no-deps" not in dockerfile
+    assert "${MILVUS_IMAGE:-milvusdb/milvus:v2.6.11}" in compose
+    assert "MIMIRQ_SMOKE_IDENTIFIER=" in env_example
+    assert "MIMIRQ_SMOKE_PASSWORD=" in env_example
+    assert "PNPM_REGISTRY=https://registry.npmmirror.com" in env_example
+
+    for readme_path in ("README.md", "README_EN.md", "README_JA.md", "README_KO.md"):
+        readme = _read(readme_path)
+        assert "git clone --depth 1 --single-branch" in readme
+        assert "make setup-host" in readme
+        assert "pnpm -C web install" not in readme
+
+    assert (
+        "make core-e2e CORE_E2E_BASE_URL=http://127.0.0.1:8000 CORE_E2E_BOOTSTRAP_REGISTER=1"
+        not in _read("README.md")
+    )
 
 
 def test_pull_request_lint_and_security_jobs_use_hosted_runners() -> None:
@@ -407,11 +435,14 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     )[0]
     retrieval_compose = _read("docker/docker-compose.retrieval-dev.yml")
     web_dockerfile = _read("web/Dockerfile.prod")
+    web_compose = _read("docker/docker-compose.web.yml")
 
     assert "timeout-minutes: 60" in docker_job
     assert "docker compose -f docker/docker-compose.retrieval-dev.yml config --quiet" in workflow
     assert "target=/root/.local/share/pnpm/store" in web_dockerfile
     assert "https://registry.npmmirror.com" in web_dockerfile
+    assert "ENV COREPACK_NPM_REGISTRY=$PNPM_REGISTRY" in web_dockerfile
+    assert "PNPM_REGISTRY: ${PNPM_REGISTRY:-https://registry.npmmirror.com}" in web_compose
     assert "README docker quickstart smoke" in docker_job
     assert "make up-web" in docker_job
     assert "artifacts/core-e2e.readme-docker.json" in docker_job

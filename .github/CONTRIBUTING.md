@@ -32,8 +32,9 @@ powershell -ExecutionPolicy Bypass -File scripts/dev_all.ps1
 
 Frontend (local):
 ```bash
-pnpm -C web install
-pnpm -C web dev
+cd web
+pnpm install
+pnpm dev
 ```
 
 Docker (recommended one‑command stack):

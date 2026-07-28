@@ -67,7 +67,7 @@ services:
       retries: 3
 
   mimirq-milvus:
-    image: milvusdb/milvus:v2.6.11
+    image: ${MILVUS_IMAGE:-milvusdb/milvus:v2.6.11}
     restart: unless-stopped
     command: ["milvus", "run", "standalone"]
     security_opt:

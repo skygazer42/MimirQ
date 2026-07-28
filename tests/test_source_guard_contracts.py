@@ -445,7 +445,7 @@ def test_host_quickstart_make_targets_cover_backend_worker_and_web() -> None:
     quickstart = _read("docs/quickstart.md")
 
     assert "make worker   - run background worker locally from the project venv (arq)" in makefile
-    assert "make worker-check - verify the local worker can reach Redis with the configured queue settings" in makefile
+    assert "make worker-check - verify a running local worker is publishing its Redis health sentinel" in makefile
     assert "\nworker:\n" in makefile
     assert "\t$(PY) -m arq app.tasks.worker.WorkerSettings\n" in makefile
     assert "\nworker-check:\n" in makefile
@@ -457,7 +457,7 @@ def test_host_quickstart_make_targets_cover_backend_worker_and_web() -> None:
     assert ".venv/bin/arq app.tasks.worker.WorkerSettings" not in readme
     assert "主机源码启动 API + Worker + Web" in readme
 
-    assert "make infra-up" in quickstart
+    assert "make setup-host" in quickstart
     assert "make backend" in quickstart
     assert "make worker" in quickstart
     assert "make web" in quickstart

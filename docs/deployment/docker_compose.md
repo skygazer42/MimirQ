@@ -99,11 +99,8 @@ make logs-lite
 如需本地开发后端（推荐）：只启动基础设施，然后本地运行后端：
 
 ```bash
-make infra-up
-
-pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
-make models
-python main.py
+make setup-host
+make backend
 ```
 
 启动本地热更新前端（可选）：

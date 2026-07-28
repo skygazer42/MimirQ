@@ -189,7 +189,7 @@ autoscaling:
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/skygazer42/MimirQ.git
+git clone --depth 1 --single-branch https://github.com/skygazer42/MimirQ.git
 cd MimirQ
 
 # 2. 安装 Python 依赖

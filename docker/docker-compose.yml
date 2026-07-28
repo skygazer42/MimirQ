@@ -136,7 +136,7 @@ services:
 
   # Milvus 向量数据库
   mimirq-milvus:
-    image: milvusdb/milvus:v2.6.11
+    image: ${MILVUS_IMAGE:-milvusdb/milvus:v2.6.11}
     restart: unless-stopped
     logging: *docker_logging
     command: ["milvus", "run", "standalone"]

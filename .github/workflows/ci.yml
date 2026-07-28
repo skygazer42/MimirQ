@@ -101,9 +101,7 @@ jobs:
           python -m pip install --retries 5 --timeout 120 \
             "$TORCH_WHEEL_DIR/torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
             "$TORCH_WHEEL_DIR/torchvision-0.28.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
-          python scripts/filter_cpu_ci_requirements.py requirements-dev.txt /tmp/requirements-dev.cpu-ci.txt
-          python -m pip install --retries 10 --timeout 120 -r /tmp/requirements-dev.cpu-ci.txt
-          python -m pip install --retries 5 --timeout 120 --no-deps xgboost==3.2.0
+          python -m pip install --retries 10 --timeout 120 -r requirements-dev.txt
 
       - name: Install web deps
         working-directory: web
@@ -258,9 +256,7 @@ jobs:
           python -m pip install --retries 5 --timeout 120 \
             "$TORCH_WHEEL_DIR/torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
             "$TORCH_WHEEL_DIR/torchvision-0.28.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
-          python scripts/filter_cpu_ci_requirements.py requirements-dev.txt /tmp/requirements-dev.cpu-ci.txt
-          python -m pip install --retries 10 --timeout 120 -r /tmp/requirements-dev.cpu-ci.txt
-          python -m pip install --retries 5 --timeout 120 --no-deps xgboost==3.2.0
+          python -m pip install --retries 10 --timeout 120 -r requirements-dev.txt
 
       - name: Install web deps
         working-directory: web
@@ -585,9 +581,7 @@ jobs:
           python -m pip install --retries 5 --timeout 120 \
             "$TORCH_WHEEL_DIR/torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
             "$TORCH_WHEEL_DIR/torchvision-0.28.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
-          python scripts/filter_cpu_ci_requirements.py requirements.txt /tmp/requirements.cpu-ci.txt
-          python -m pip install --retries 10 --timeout 120 -r /tmp/requirements.cpu-ci.txt
-          python -m pip install --retries 5 --timeout 120 --no-deps xgboost==3.2.0
+          python -m pip install --retries 10 --timeout 120 -r requirements.txt
 
       - name: Validate query-set health policy config
         run: |
@@ -1341,9 +1335,7 @@ jobs:
           python -m pip install --retries 5 --timeout 120 \
             "$TORCH_WHEEL_DIR/torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
             "$TORCH_WHEEL_DIR/torchvision-0.28.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
-          python scripts/filter_cpu_ci_requirements.py requirements.txt /tmp/requirements.cpu-ci.txt
-          python -m pip install --retries 10 --timeout 120 -r /tmp/requirements.cpu-ci.txt
-          python -m pip install --retries 5 --timeout 120 --no-deps xgboost==3.2.0
+          python -m pip install --retries 10 --timeout 120 -r requirements.txt
 
       - name: Prepare self-hosted Node
         if: ${{ runner.environment == 'self-hosted' }}
@@ -1578,9 +1570,11 @@ jobs:
       - name: Install Python deps
         run: |
           python -m pip install --upgrade pip
-          python scripts/filter_cpu_ci_requirements.py requirements.txt /tmp/requirements.cpu-ci.txt
-          python -m pip install -r /tmp/requirements.cpu-ci.txt
-          python -m pip install --no-deps xgboost==3.2.0
+          python ci/download_verified_wheels.py --cache-dir "$TORCH_WHEEL_DIR"
+          python -m pip install --retries 5 --timeout 120 \
+            "$TORCH_WHEEL_DIR/torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
+            "$TORCH_WHEEL_DIR/torchvision-0.28.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
+          python -m pip install --retries 10 --timeout 120 -r requirements.txt
 
       - name: Seed CI KG search fixture (DB + KG rows + cases bundle)
         env:

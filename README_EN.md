@@ -79,7 +79,7 @@ Existing platforms are strong at workflows or agents, but the parsing, indexing,
 ### Common setup
 
 ```bash
-git clone https://github.com/skygazer42/MimirQ.git
+git clone --depth 1 --single-branch https://github.com/skygazer42/MimirQ.git
 cd MimirQ
 make init
 ```
@@ -104,9 +104,9 @@ make ps
 curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
 ```
 
-`make up-web` starts the web app, API, worker, Postgres, Milvus, MinIO, and Redis; existing configuration is never overwritten. Open [http://localhost:3000](http://localhost:3000) and create a local account to enter the system.
+`make up-web` starts the web app, API, worker, Postgres, Milvus, Etcd, MinIO, and Redis; existing configuration is never overwritten. Open [http://localhost:3000](http://localhost:3000) and create a local account to enter the system.
 
-The first Docker build downloads and verifies a pinned DeepDoc model bundle. If a proxy only listens on the Linux host loopback, configure it in Docker locally or run `DOCKER_BUILD_NETWORK=host make up-web`; never commit proxy addresses.
+The first Docker build downloads and verifies a pinned DeepDoc model bundle. If a proxy only listens on the Linux host loopback, configure it in Docker locally or run `DOCKER_BUILD_NETWORK=host make up-web`; never commit proxy addresses. If Docker Hub is unavailable, set `MILVUS_IMAGE` in `.env` to the same image in a trusted registry.
 
 Stop the complete web stack with:
 
@@ -121,12 +121,10 @@ docker compose --env-file .env \
 Install host dependencies and start the infrastructure services:
 
 ```bash
-python3.11 -m venv .venv
-.venv/bin/python -m pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
-pnpm -C web install
-make models
-make infra-up
+make setup-host
 ```
+
+`make setup-host` creates `.venv`, installs and validates the CPU backend and web dependencies, downloads the pinned parser models, and starts Postgres, Milvus, Etcd, MinIO, and Redis. Existing `.env` values are preserved.
 
 Open three terminals:
 
@@ -135,7 +133,7 @@ Open three terminals:
 make backend
 
 # Terminal 2: document parsing and indexing worker
-.venv/bin/arq app.tasks.worker.WorkerSettings
+make worker
 
 # Terminal 3: Next.js with hot reload
 make web
@@ -357,7 +355,7 @@ From a local look to a production cluster:
 
 | Mode | Command | Description |
 |:---:|:---|:---|
-| **Standard** | `make up` | Full stack: Postgres + Milvus + MinIO + Redis + API + Worker |
+| **Standard** | `make up` | Full stack: Postgres + Milvus + Etcd + MinIO + Redis + API + Worker |
 | **Standard + Web** | `make up-web` | Recommended first run; initializes local config and starts the complete web stack |
 | **Lite Mode** | `make up-lite` | Chroma/FAISS instead of Milvus, no MinIO — quick evaluation |
 | **Dev Mode** | `make infra-up` | Infrastructure only, run backend/frontend locally |

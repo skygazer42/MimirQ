@@ -1,9 +1,9 @@
 
 import locale
 import platform
-import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -62,14 +62,6 @@ def _check_file(path: Path, *, required: bool) -> bool:
     return not required
 
 
-def _parse_python_version(output: str) -> tuple[int, int, int] | None:
-    # Expected: "Python 3.11.7"
-    m = re.search(r"Python\s+(\d+)\.(\d+)\.(\d+)", output or "")
-    if not m:
-        return None
-    return int(m.group(1)), int(m.group(2)), int(m.group(3))
-
-
 def main() -> int:
     repo_root = Path(__file__).resolve().parent.parent
     os_name = platform.system()
@@ -78,28 +70,16 @@ def main() -> int:
 
     ok = True
 
-    # Prefer python3 on Unix-like systems; prefer python on Windows.
-    if os_name == "Windows":
-        py_ok = _check_cmd("Python (python)", ["python", "--version"])
-        # Optional: python3 alias (some Windows setups have it).
-        _check_cmd("Python (python3) (optional)", ["python3", "--version"], required=False)
-        if not py_ok:
-            py_ok = _check_cmd("Python (python3)", ["python3", "--version"])
-    else:
-        py_ok = _check_cmd("Python (python3)", ["python3", "--version"])
-        if not py_ok:
-            py_ok = _check_cmd("Python (python)", ["python", "--version"])
-    ok &= py_ok
-
-    # Warn (but don't fail) if local Python is < 3.11 (repo requires 3.11+ for syntax/deps).
-    for exe in ("python3", "python"):
-        code, out = _run([exe, "--version"])
-        if code != 0:
-            continue
-        ver = _parse_python_version(out)
-        if ver and (ver[0], ver[1]) < (3, 11):
-            print(f"[doctor] WARN: {exe} is {ver[0]}.{ver[1]}.{ver[2]} (MimirQ requires Python 3.11+ for local backend)")
-        break
+    version = sys.version_info
+    print(
+        f"[doctor] OK: Python runtime ({Path(sys.executable).as_posix()}): "
+        f"Python {version.major}.{version.minor}.{version.micro}"
+    )
+    if (version.major, version.minor) < (3, 11):
+        print(
+            f"[doctor] WARN: active Python is {version.major}.{version.minor}.{version.micro} "
+            "(MimirQ requires Python 3.11+ for local backend)"
+        )
 
     _check_cmd("Node", ["node", "--version"])
     _check_cmd("pnpm", ["pnpm", "--version"])

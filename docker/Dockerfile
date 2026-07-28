@@ -22,7 +22,6 @@ FROM base AS builder
 
 # 复制依赖文件
 COPY requirements.txt /tmp/requirements.txt
-COPY scripts/filter_cpu_ci_requirements.py /tmp/filter_cpu_ci_requirements.py
 
 # 安装系统依赖 + Python 依赖（builder stage）
 RUN --mount=type=cache,target=/root/.cache/pip \
@@ -47,17 +46,12 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     && /opt/venv/bin/pip install --retries 5 --timeout 120 \
         "/tmp/torch-wheels/${TORCH_WHL}" \
         "/tmp/torch-wheels/${TORCHVISION_WHL}" \
-    && python /tmp/filter_cpu_ci_requirements.py /tmp/requirements.txt /tmp/requirements.cpu-ci.txt \
     && for attempt in 1 2 3; do \
-        /opt/venv/bin/pip install --retries 10 --timeout 120 --no-build-isolation -r "/tmp/requirements.cpu-ci.txt" \
+        /opt/venv/bin/pip install --retries 10 --timeout 120 --no-build-isolation -r "/tmp/requirements.txt" \
         && break; \
         if [ "$attempt" = "3" ]; then exit 1; fi; \
         sleep "$((attempt * 10))"; \
     done \
-    && /opt/venv/bin/pip install --retries 5 --timeout 120 --no-deps \
-        xgboost==3.2.0 \
-    # Keep MagicPDF in its dedicated image. Its dependency pins conflict with
-    # the FastAPI runtime; the default backend uses the service integration.
     && apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/*
 

@@ -13,6 +13,7 @@ services:
       dockerfile: Dockerfile.prod
       network: ${DOCKER_BUILD_NETWORK:-default}
       args:
+        PNPM_REGISTRY: ${PNPM_REGISTRY:-https://registry.npmmirror.com}
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL_DOCKER:-/}
         API_INTERNAL_URL: ${API_INTERNAL_URL_DOCKER:-http://mimirq-api:8000}
         NEXT_PUBLIC_API_TIMEOUT_MS: ${NEXT_PUBLIC_API_TIMEOUT_MS:-60000}

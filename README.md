@@ -79,7 +79,7 @@ MimirQ 起源于一个政务智能问答项目：系统已经能回答问题，�
 ### 公共准备
 
 ```bash
-git clone https://github.com/skygazer42/MimirQ.git
+git clone --depth 1 --single-branch https://github.com/skygazer42/MimirQ.git
 cd MimirQ
 make init
 ```
@@ -101,13 +101,12 @@ LLM_API_KEY=<your-siliconflow-api-key>
 ```bash
 make up-web
 make ps
-make core-e2e CORE_E2E_BASE_URL=http://127.0.0.1:8000 CORE_E2E_BOOTSTRAP_REGISTER=1
 curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
 ```
 
-`make up-web` 会启动前端、后端、Worker、Postgres、Milvus、MinIO 与 Redis；已有配置不会被覆盖。打开 [http://localhost:3000](http://localhost:3000) 后创建本地账户即可进入系统。
+`make up-web` 会启动前端、后端、Worker、Postgres、Milvus、Etcd、MinIO 与 Redis；已有配置不会被覆盖。打开 [http://localhost:3000](http://localhost:3000) 后创建本地账户即可进入系统。
 
-首次构建会下载固定版本的解析模型。如果代理仅监听 Linux 主机回环地址，请先配置 Docker 代理，或使用 `DOCKER_BUILD_NETWORK=host make up-web`。
+首次构建会下载固定版本的解析模型。如果代理仅监听 Linux 主机回环地址，请先配置 Docker 代理，或使用 `DOCKER_BUILD_NETWORK=host make up-web`。Docker Hub 不可达时，可在 `.env` 中将 `MILVUS_IMAGE` 指向可信镜像仓库中的同版本镜像，无需把个人代理写入项目配置。
 
 停止完整 Web 栈：
 
@@ -122,12 +121,10 @@ docker compose --env-file .env \
 先安装主机依赖并启动基础设施：
 
 ```bash
-python3.11 -m venv .venv
-.venv/bin/python -m pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
-pnpm -C web install
-make models
-make infra-up
+make setup-host
 ```
+
+`make setup-host` 会创建 `.venv`、安装 CPU 版后端依赖和前端依赖、校验 Python 依赖、下载固定解析模型，并启动 Postgres、Milvus、Etcd、MinIO 与 Redis。它不会覆盖已有 `.env`。
 
 分别打开三个终端：
 
@@ -142,7 +139,7 @@ make worker
 make web
 ```
 
-如需先确认 Worker 的 Redis / 队列配置可达，再启动长驻进程：
+Worker 启动后，可在另一个终端确认它正在向 Redis 发布存活标记：
 
 ```bash
 make worker-check
@@ -153,7 +150,6 @@ make worker-check
 ```bash
 make infra-ps
 NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 make web-api-ping
-make core-e2e CORE_E2E_BASE_URL=http://127.0.0.1:8000 CORE_E2E_BOOTSTRAP_REGISTER=1
 curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
 ```
 
@@ -325,7 +321,7 @@ MimirQ 已用于**市级政务智能问答助手**，覆盖 7 个区域级 + 1 �
 
 | 方式 | 命令 | 说明 |
 |:---:|:---|:---|
-| **标准部署** | `make up` | 完整栈：Postgres + Milvus + MinIO + Redis + API + Worker |
+| **标准部署** | `make up` | 完整栈：Postgres + Milvus + Etcd + MinIO + Redis + API + Worker |
 | **标准 + 前端** | `make up-web` | 推荐首次启动；自动初始化本地配置并启动完整 Web 栈 |
 | **轻量模式** | `make up-lite` | Chroma/FAISS 替代 Milvus，无需 MinIO，适合快速体验 |
 | **开发模式** | `make infra-up` | 仅基础设施，后端/前端本地运行 |
@@ -401,7 +397,7 @@ cd web && pnpm lint && pnpm test
 make test-core-browser-smoke
 ```
 
-任一部署方式启动后，可运行同一套知识库核心闭环门禁；它验证就绪、入库、解析与检索证据，不依赖 LLM，并在成功后删除临时数据集：
+任一部署方式启动并在网页注册账号后，可将该账号写入本地 `.env` 的 `MIMIRQ_SMOKE_IDENTIFIER` 与 `MIMIRQ_SMOKE_PASSWORD`，再运行同一套知识库核心闭环门禁。它验证就绪、入库、解析与检索证据，不依赖 LLM，并在成功后删除临时数据集。不要在需要人工注册的环境中使用 `CORE_E2E_BOOTSTRAP_REGISTER=1`，因为首个管理员创建后会关闭公开注册：
 
 ```bash
 make core-e2e

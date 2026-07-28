@@ -1,23 +1,18 @@
-.PHONY: help init models up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload worker worker-check web test test-serial test-full test-web test-web-full test-web-e2e test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit-docs audit openapi-export openapi-types openapi-validate openapi-check api-docs-build api-docs-build-static diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure plugin-release-gate mixed-rag-quality live-core-release-gate check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init install-host setup-host models up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload worker worker-check web test test-serial test-full test-web test-web-full test-web-e2e test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit-docs audit openapi-export openapi-types openapi-validate openapi-check api-docs-build api-docs-build-static diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure plugin-release-gate mixed-rag-quality live-core-release-gate check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
 
-# Prefer project venv when available so local dev doesn't depend on global tooling.
+# Prefer the project venv whenever it exists. Missing packages should fail in the
+# project environment rather than silently falling back to unrelated global tools.
 PY := python3
 VENV_PY := .venv/bin/python
-VENV_READY := $(shell if [ -x "$(VENV_PY)" ]; then "$(VENV_PY)" -c "import importlib.util as u, sys; sys.exit(0 if u.find_spec('pytest') and u.find_spec('sqlalchemy') and u.find_spec('fastapi') else 1)" >/dev/null 2>&1; echo $$?; else echo 1; fi)
-ifeq ($(wildcard $(VENV_PY)),$(VENV_PY))
-ifeq ($(VENV_READY),0)
-PY := $(VENV_PY)
-endif
-endif
 ifeq ($(OS),Windows_NT)
 PY := python
 VENV_PY := .venv/Scripts/python.exe
-VENV_READY := $(shell if exist "$(VENV_PY)" ("$(VENV_PY)" -c "import importlib.util as u, sys; sys.exit(0 if u.find_spec('pytest') and u.find_spec('sqlalchemy') and u.find_spec('fastapi') else 1)" >NUL 2>&1 & echo %ERRORLEVEL%) else echo 1)
-ifeq ($(wildcard $(VENV_PY)),$(VENV_PY))
-ifeq ($(VENV_READY),0)
+HOST_PYTHON ?= python
+else
+HOST_PYTHON ?= python3.11
+endif
+ifneq ($(wildcard $(VENV_PY)),)
 PY := $(VENV_PY)
-endif
-endif
 endif
 
 # `PYTHONPYCACHEPREFIX=... cmd` is POSIX-only; keep `make verify` working on Windows.
@@ -69,6 +64,8 @@ LIVE_CORE_GATE_OUT ?= artifacts/live-core-release-gate.json
 LIVE_CORE_GATE_EXTRA_ARGS ?=
 PYTEST_ARGS ?=
 VITEST_ARGS ?=
+PIP_INSTALL_ARGS ?= --retries 10 --timeout 120
+PYTORCH_CPU_INDEX_URL ?= https://download.pytorch.org/whl/cpu
 PLUGIN_HELP_TARGETS ?=
 CHANGZHOU_GOV_PLUGIN_MAKEFILE := plugins/pipelines/changzhou-gov-service-knowledge/changzhou-gov-service-knowledge.mk
 
@@ -77,6 +74,8 @@ CHANGZHOU_GOV_PLUGIN_MAKEFILE := plugins/pipelines/changzhou-gov-service-knowled
 help:
 	@echo "MimirQ dev commands (run from repo root):"
 	@echo "  make init      - create local env files if missing (.env, web/.env.local)"
+	@echo "  make install-host - create .venv and install host backend + web dependencies"
+	@echo "  make setup-host - install host dependencies/models and start Docker infrastructure"
 	@echo "  make models    - download and verify the pinned DeepDoc model bundle"
 	@echo "  make up        - docker compose up (build + detach)"
 	@echo "  make up-web    - initialize local env and start backend + infra + frontend"
@@ -112,7 +111,7 @@ help:
 	@echo "  make backend   - run backend locally from the project venv (uvicorn --reload)"
 	@echo "  make backend-no-reload - run backend locally from the project venv without file watching"
 	@echo "  make worker   - run background worker locally from the project venv (arq)"
-	@echo "  make worker-check - verify the local worker can reach Redis with the configured queue settings"
+	@echo "  make worker-check - verify a running local worker is publishing its Redis health sentinel"
 	@echo "  make web       - run web locally (pnpm dev)"
 	@echo "  make test      - run all backend tests (parallel via pytest-xdist)"
 	@echo "  make test-serial - run all backend tests serially (escape hatch / debugging)"
@@ -170,6 +169,17 @@ help:
 init:
 	@# Cross-platform env bootstrap (non-destructive by default).
 	@$(PY) scripts/init_env.py
+
+install-host:
+	$(HOST_PYTHON) -m venv .venv
+	$(VENV_PY) -m pip install $(PIP_INSTALL_ARGS) --upgrade pip setuptools wheel
+	$(VENV_PY) -m pip install $(PIP_INSTALL_ARGS) --extra-index-url $(PYTORCH_CPU_INDEX_URL) -r requirements.txt
+	$(VENV_PY) -m pip check
+	cd web && pnpm install
+
+setup-host: init install-host
+	@$(MAKE) models
+	@$(MAKE) infra-up
 
 models:
 	@$(PY) scripts/bootstrap_mimirq_models.py

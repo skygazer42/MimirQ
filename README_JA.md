@@ -79,7 +79,7 @@ MimirQ は、ある行政サービスの Q&A プロジェクトから生まれ�
 ### 共通準備
 
 ```bash
-git clone https://github.com/skygazer42/MimirQ.git
+git clone --depth 1 --single-branch https://github.com/skygazer42/MimirQ.git
 cd MimirQ
 make init
 ```
@@ -104,9 +104,9 @@ make ps
 curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
 ```
 
-`make up-web` は Web アプリ、API、Worker、Postgres、Milvus、MinIO、Redis を起動します。既存の設定は上書きされません。[http://localhost:3000](http://localhost:3000) を開いてローカルアカウントを作成すればシステムに入れます。
+`make up-web` は Web アプリ、API、Worker、Postgres、Milvus、Etcd、MinIO、Redis を起動します。既存の設定は上書きされません。[http://localhost:3000](http://localhost:3000) を開いてローカルアカウントを作成すればシステムに入れます。
 
-初回の Docker ビルドでは、固定バージョンの DeepDoc モデルバンドルをダウンロードして検証します。プロキシが Linux ホストのループバックでのみ待ち受けている場合は、Docker 側でローカルに設定するか、`DOCKER_BUILD_NETWORK=host make up-web` を実行します。プロキシアドレスはコミットしないでください。
+初回の Docker ビルドでは、固定バージョンの DeepDoc モデルバンドルをダウンロードして検証します。プロキシが Linux ホストのループバックでのみ待ち受けている場合は、Docker 側でローカルに設定するか、`DOCKER_BUILD_NETWORK=host make up-web` を実行します。プロキシアドレスはコミットしないでください。Docker Hub に接続できない場合は、`.env` の `MILVUS_IMAGE` を信頼できるレジストリ上の同一バージョンのイメージに変更できます。
 
 Web スタック全体を停止します。
 
@@ -121,12 +121,10 @@ docker compose --env-file .env \
 ホスト側の依存関係をインストールし、基盤サービスを起動します。
 
 ```bash
-python3.11 -m venv .venv
-.venv/bin/python -m pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
-pnpm -C web install
-make models
-make infra-up
+make setup-host
 ```
+
+`make setup-host` は `.venv` を作成し、CPU 版バックエンド依存関係と Web 依存関係をインストール・検証し、固定パーサーモデルを取得して Postgres、Milvus、Etcd、MinIO、Redis を起動します。既存の `.env` は上書きしません。
 
 3 つのターミナルを開きます。
 
@@ -135,7 +133,7 @@ make infra-up
 make backend
 
 # ターミナル 2：文書パース・インデックス Worker
-.venv/bin/arq app.tasks.worker.WorkerSettings
+make worker
 
 # ターミナル 3：Next.js（ホットリロード）
 make web
@@ -357,7 +355,7 @@ MimirQ の 2 つの Dify 経路の検索エビデンスカバレッジは 99.7% 
 
 | 方式 | コマンド | 説明 |
 |:---:|:---|:---|
-| **標準デプロイ** | `make up` | フルスタック：Postgres + Milvus + MinIO + Redis + API + Worker |
+| **標準デプロイ** | `make up` | フルスタック：Postgres + Milvus + Etcd + MinIO + Redis + API + Worker |
 | **標準 + フロントエンド** | `make up-web` | 初回起動に推奨；ローカル設定を初期化し完全な Web スタックを起動 |
 | **軽量モード** | `make up-lite` | Milvus の代わりに Chroma/FAISS、MinIO 不要、素早い試用向け |
 | **開発モード** | `make infra-up` | インフラのみ、バックエンド / フロントエンドをローカル実行 |
