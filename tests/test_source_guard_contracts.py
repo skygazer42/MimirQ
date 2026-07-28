@@ -474,6 +474,32 @@ def test_makefile_recipes_do_not_execute_posix_comment_lines() -> None:
     assert re.findall(r"(?m)^\t@?#", makefile) == []
 
 
+def test_optional_parser_profiles_are_actionable_from_public_docs() -> None:
+    makefile = _read("Makefile")
+    readme = _read("README.md")
+    readme_en = _read("README_EN.md")
+    quickstart = _read("docs/quickstart.md")
+    parser_targets = (
+        "up-etl4llm",
+        "up-marker",
+        "up-paddlevl",
+        "up-mineru",
+        "up-mineru-vlm",
+        "up-olmocr",
+        "up-magicpdf",
+        "up-qianfanocr",
+    )
+
+    for target in parser_targets:
+        assert f"\n{target}:" in makefile
+        assert f"`make {target}`" in readme
+        assert f"`make {target}`" in readme_en
+
+    assert "\ninfra-up-magicpdf:" in makefile
+    assert "PADDLE_VL_API_URL=http://mimirq-paddlevl:9030/convert" in quickstart
+    assert "PADDLE_VL_API_URL=http://127.0.0.1:9030/convert" not in quickstart
+
+
 def test_docker_verification_keeps_dev_lint_tools_out_of_the_runtime_image() -> None:
     makefile = _read("Makefile")
     lint_target = makefile.split("\nlint-py-docker:", 1)[1].split("\ncompileall-docker:", 1)[0]

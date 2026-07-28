@@ -111,6 +111,59 @@ curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
 
 首次构建会下载固定版本的解析模型。如果代理仅监听 Linux 主机回环地址，请先配置 Docker 代理，或使用 `DOCKER_BUILD_NETWORK=host make up-web`。Docker Hub 不可达时，可在 `.env` 中将 `MILVUS_IMAGE` 指向可信镜像仓库中的同版本镜像，无需把个人代理写入项目配置。
 
+### 可选：按文档类型启用解析器
+
+`make up-web` 默认使用内置 DeepDoc，不会启动重型解析服务。先配置对应 `.env` 项，再只启动业务需要的 profile（显存紧张时一次只启一个）；已有 Web 主栈会继续运行。启动后仍需在上传或预览时选择对应解析器，只启动容器不会改变默认解析路径。
+
+| 文档场景 | 建议解析器 | 额外要求 | 启动命令 |
+|:---|:---|:---|:---|
+| 常规 PDF / Office / 文本 | 内置 DeepDoc | 无 | 无需额外容器 |
+| PDF 转 Markdown，服务器无 GPU | Marker | CPU | `make up-marker` |
+| 版面、表格与图片混合文档 | ETL4LLM | CPU | `make up-etl4llm` |
+| 扫描件、OCR、复杂版面 | PaddleOCR-VL | NVIDIA GPU，建议预留 10 GiB | `make up-paddlevl` |
+| 表格、公式与图片较多的 PDF | MinerU pipeline | NVIDIA GPU、首次下载模型 | `make up-mineru` |
+| VLM 复杂 PDF | MinerU VLM | NVIDIA GPU，资源占用较高 | `make up-mineru-vlm` |
+| 高精度 PDF OCR | olmOCR | NVIDIA GPU，建议 48 GiB 级显存 | `make up-olmocr` |
+| 公式 / 表格 PDF 转 Markdown | MagicPDF | NVIDIA GPU | `make up-magicpdf` |
+| PDF / 图片走外部视觉 OCR | Qianfan-OCR | 上游 URL 与 API Key，本地无需 GPU | `make up-qianfanocr` |
+
+<details>
+<summary><b>展开查看最小 .env 配置</b></summary>
+
+```dotenv
+# 只保留你选择的那一组
+MARKER_ENABLED=true
+MARKER_API_URL=http://mimirq-marker:2080/convert
+
+ETL4LLM_ENABLED=true
+ETL4LLM_API_URL=http://mimirq-etl4llm:10001/v1/etl4llm/predict
+
+PADDLE_VL_ENABLED=true
+PADDLE_VL_API_URL=http://mimirq-paddlevl:9030/convert
+
+MINERU_ENABLED=true
+MINERU_BACKEND=pipeline
+MINERU_LOCAL_SERVER_URL=http://mimirq-mineru:8000
+# MinerU VLM 额外改为：
+# MINERU_BACKEND=vlm-http-client
+# MINERU_VL_SERVER=http://mimirq-mineru-vlm:30000
+
+OLMOCR_ENABLED=true
+OLMOCR_API_URL=http://mimirq-olmocr:2085/convert
+
+MAGIC_PDF_ENABLED=true
+MAGIC_PDF_API_URL=http://mimirq-magicpdf:2095/convert
+
+QIANFAN_OCR_ENABLED=true
+QIANFAN_OCR_API_URL=http://mimirq-qianfanocr:2090/convert
+QIANFAN_OCR_SERVER_URL=https://qianfan.baidubce.com/v2
+QIANFAN_OCR_SERVER_API_KEY=<your-api-key>
+```
+
+</details>
+
+> macOS 的 Docker Desktop 不能直接运行 NVIDIA CUDA profile。Mac 用户请使用 DeepDoc / CPU 解析器，或把 `*_API_URL` 指向远程 GPU 解析服务；也可改用 [TextIn 外部 API](./docs/quickstart.md#可选-启用-textin-xparse外部-api-文档解析)。完整参数、显存实测和主机源码模式地址见 [Docker Compose 部署指南](./docs/deployment/docker_compose.md) 与 [解析器快速开始](./docs/quickstart.md#可选-启用-etl4llmbisheng-unstructured版面解析)。
+
 停止完整 Web 栈：
 
 ```bash
@@ -329,7 +382,7 @@ MimirQ 已用于**市级政务智能问答助手**，覆盖 7 个区域级 + 1 �
 | **轻量模式** | `make up-lite` | Chroma/FAISS 替代 Milvus，无需 MinIO，适合快速体验 |
 | **开发模式** | `make infra-up` | 仅基础设施，后端/前端本地运行 |
 | **Helm / K8s** | `helm install` | 生产级部署，含 HPA、PDB、CronJob、PrometheusRule |
-| **解析器扩展** | `make up-etl4llm` | 启用 ETL4LLM / Marker / MinerU / PaddleOCR-VL / Qianfan-OCR 等解析器 |
+| **解析器扩展** | [选择启动命令](#可选按文档类型启用解析器) | 只启动业务需要的 CPU / GPU profile |
 
 <details>
 <summary><b>生产部署建议</b></summary>

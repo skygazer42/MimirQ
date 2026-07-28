@@ -111,6 +111,59 @@ curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
 
 The first Docker build downloads and verifies a pinned DeepDoc model bundle. If a proxy only listens on the Linux host loopback, configure it in Docker locally or run `DOCKER_BUILD_NETWORK=host make up-web`; never commit proxy addresses. If Docker Hub is unavailable, set `MILVUS_IMAGE` in `.env` to the same image in a trusted registry.
 
+### Optional: choose a parser by document workload
+
+`make up-web` uses the built-in DeepDoc parser and does not start heavyweight parser services. Configure the matching `.env` values, then start only the profiles your workload needs (one at a time when VRAM is tight); the existing web stack keeps running. You must still select that parser for an upload or preview: starting its container does not change the default parsing path.
+
+| Document workload | Recommended parser | Extra requirement | Start after the main stack |
+|:---|:---|:---|:---|
+| Regular PDF / Office / text | Built-in DeepDoc | None | No extra container |
+| PDF to Markdown without a server GPU | Marker | CPU | `make up-marker` |
+| Mixed layout, tables, and images | ETL4LLM | CPU | `make up-etl4llm` |
+| Scans, OCR, and complex layouts | PaddleOCR-VL | NVIDIA GPU; reserve 10 GiB | `make up-paddlevl` |
+| PDFs with many tables, formulas, and images | MinerU pipeline | NVIDIA GPU; first-run model download | `make up-mineru` |
+| VLM-based complex PDFs | MinerU VLM | NVIDIA GPU; high resource use | `make up-mineru-vlm` |
+| High-accuracy PDF OCR | olmOCR | NVIDIA GPU; 48-GiB-class VRAM recommended | `make up-olmocr` |
+| Formula/table PDF to Markdown | MagicPDF | NVIDIA GPU | `make up-magicpdf` |
+| PDF/image OCR through an external vision model | Qianfan-OCR | Upstream URL and API key; no local GPU | `make up-qianfanocr` |
+
+<details>
+<summary><b>Expand the minimal .env configuration</b></summary>
+
+```dotenv
+# Keep only the group you selected
+MARKER_ENABLED=true
+MARKER_API_URL=http://mimirq-marker:2080/convert
+
+ETL4LLM_ENABLED=true
+ETL4LLM_API_URL=http://mimirq-etl4llm:10001/v1/etl4llm/predict
+
+PADDLE_VL_ENABLED=true
+PADDLE_VL_API_URL=http://mimirq-paddlevl:9030/convert
+
+MINERU_ENABLED=true
+MINERU_BACKEND=pipeline
+MINERU_LOCAL_SERVER_URL=http://mimirq-mineru:8000
+# For MinerU VLM, also change to:
+# MINERU_BACKEND=vlm-http-client
+# MINERU_VL_SERVER=http://mimirq-mineru-vlm:30000
+
+OLMOCR_ENABLED=true
+OLMOCR_API_URL=http://mimirq-olmocr:2085/convert
+
+MAGIC_PDF_ENABLED=true
+MAGIC_PDF_API_URL=http://mimirq-magicpdf:2095/convert
+
+QIANFAN_OCR_ENABLED=true
+QIANFAN_OCR_API_URL=http://mimirq-qianfanocr:2090/convert
+QIANFAN_OCR_SERVER_URL=https://qianfan.baidubce.com/v2
+QIANFAN_OCR_SERVER_API_KEY=<your-api-key>
+```
+
+</details>
+
+> Docker Desktop on macOS cannot run the NVIDIA CUDA profiles directly. Use DeepDoc / a CPU parser, or point the relevant `*_API_URL` at a remote GPU parser; [TextIn](./docs/quickstart.md) is also available as an external API. See the [Docker Compose deployment guide](./docs/deployment/docker_compose.md) and [parser quick start](./docs/quickstart.md) for full parameters, measured VRAM, and host-source URLs.
+
 Stop the complete web stack with:
 
 ```bash
@@ -363,7 +416,7 @@ From a local look to a production cluster:
 | **Lite Mode** | `make up-lite` | Chroma/FAISS instead of Milvus, no MinIO — quick evaluation |
 | **Dev Mode** | `make infra-up` | Infrastructure only, run backend/frontend locally |
 | **Helm / K8s** | `helm install` | Production-grade with HPA, PDB, CronJob, PrometheusRule |
-| **Parser Extensions** | `make up-etl4llm` | Enable ETL4LLM / Marker / MinerU / PaddleOCR-VL / Qianfan-OCR parsers |
+| **Parser Extensions** | [Choose a start command](#optional-choose-a-parser-by-document-workload) | Start only the CPU / GPU profiles required by the workload |
 
 <details>
 <summary><b>Production Deployment Tips</b></summary>

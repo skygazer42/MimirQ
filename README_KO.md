@@ -360,7 +360,7 @@ MimirQ의 두 Dify 경로의 검색 근거 커버리지는 99.7% / 96.8%였지�
 | **경량 모드** | `make up-lite` | Milvus 대신 Chroma/FAISS, MinIO 불필요, 빠른 체험용 |
 | **개발 모드** | `make infra-up` | 인프라만; 백엔드 / 프런트엔드를 로컬 실행 |
 | **Helm / K8s** | `helm install` | 프로덕션 등급, HPA, PDB, CronJob, PrometheusRule 포함 |
-| **파서 확장** | `make up-etl4llm` | ETL4LLM / Marker / MinerU / PaddleOCR-VL / Qianfan-OCR 등 파서 활성화 |
+| **파서 확장** | [시작 명령 선택](./docs/quickstart.md) | 문서 유형에 필요한 CPU / GPU 프로필만 시작 |
 
 <details>
 <summary><b>프로덕션 배포 팁</b></summary>

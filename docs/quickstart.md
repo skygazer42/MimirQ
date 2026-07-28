@@ -106,6 +106,8 @@ make core-e2e CORE_E2E_BASE_URL=http://127.0.0.1:8000 CORE_E2E_BOOTSTRAP_REGISTE
 
 > Docker 前端默认通过同源 `/api/*` 代理访问后端；浏览器地址由 `NEXT_PUBLIC_API_URL_DOCKER=/` 控制，SSR 容器内地址由 `API_INTERNAL_URL_DOCKER=http://mimirq-api:8000` 控制。`make up-web` 会启动完整 Docker Web 栈，不是“只起前端”；本地热更新前端请使用 `make web`。不要把 Docker 内部主机名暴露给浏览器。
 
+以下解析器都是可选 profile，默认不会启动。请按文档类型选择一个；完整选择矩阵、资源要求和最小 `.env` 配置见根目录 [README](../README.md#可选按文档类型启用解析器)。
+
 ### (可选) 启用 ETL4LLM（Bisheng Unstructured）版面解析
 
 MimirQ 已内置 `etl4llm` 解析器（并兼容 `bisheng` / `bisheng-unstructured` 别名），你只需要把服务跑起来并配置好 API URL：
@@ -146,7 +148,7 @@ make up-paddlevl
 然后在 `.env` 里配置：
 ```env
 PADDLE_VL_ENABLED=true
-PADDLE_VL_API_URL=http://127.0.0.1:9030/convert
+PADDLE_VL_API_URL=http://mimirq-paddlevl:9030/convert
 PADDLEOCR_DEVICE=gpu:0
 ```
 
@@ -232,7 +234,7 @@ MAGIC_PDF_MAX_CONCURRENT_JOBS=1
 诊断：
 
 ```bash
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile magicpdf up -d --build
+make up-magicpdf
 docker compose -f docker/docker-compose.yml exec -T -w /app mimirq-api python scripts/check_parsers.py
 ```
 

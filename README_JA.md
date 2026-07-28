@@ -360,7 +360,7 @@ MimirQ の 2 つの Dify 経路の検索エビデンスカバレッジは 99.7% 
 | **軽量モード** | `make up-lite` | Milvus の代わりに Chroma/FAISS、MinIO 不要、素早い試用向け |
 | **開発モード** | `make infra-up` | インフラのみ、バックエンド / フロントエンドをローカル実行 |
 | **Helm / K8s** | `helm install` | 本番グレード、HPA、PDB、CronJob、PrometheusRule 付き |
-| **パーサー拡張** | `make up-etl4llm` | ETL4LLM / Marker / MinerU / PaddleOCR-VL / Qianfan-OCR などのパーサーを有効化 |
+| **パーサー拡張** | [起動コマンドを選択](./docs/quickstart.md) | 文書タイプに必要な CPU / GPU プロファイルだけを起動 |
 
 <details>
 <summary><b>本番デプロイのヒント</b></summary>

@@ -1,4 +1,4 @@
-.PHONY: help init install-host setup-host models up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload worker worker-check web test test-serial test-full test-web test-web-full test-web-e2e test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit-docs audit openapi-export openapi-types openapi-validate openapi-check api-docs-build api-docs-build-static diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure plugin-release-gate mixed-rag-quality live-core-release-gate check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init install-host setup-host models up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-magicpdf up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-magicpdf infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload worker worker-check web test test-serial test-full test-web test-web-full test-web-e2e test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit-docs audit openapi-export openapi-types openapi-validate openapi-check api-docs-build api-docs-build-static diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure plugin-release-gate mixed-rag-quality live-core-release-gate check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer the project venv whenever it exists. Missing packages should fail in the
 # project environment rather than silently falling back to unrelated global tools.
@@ -87,6 +87,7 @@ help:
 	@echo "  make up-mineru - docker compose up + MinerU local API (profile mineru)"
 	@echo "  make up-mineru-vlm - docker compose up + MinerU API and VLM server (profiles mineru, mineru-vlm)"
 	@echo "  make up-olmocr - docker compose up + olmOCR parser (profile olmocr)"
+	@echo "  make up-magicpdf - docker compose up + MagicPDF parser (profile magicpdf)"
 	@echo "  make up-qianfanocr - docker compose up + Qianfan-OCR parser (profile qianfanocr)"
 	@echo "  make up-dev    - alias of up (set UVICORN_RELOAD in .env)"
 	@echo "  make up-dev-web - alias of up-web"
@@ -99,6 +100,7 @@ help:
 	@echo "  make infra-up-mineru - infra-up + MinerU local API (profile mineru)"
 	@echo "  make infra-up-mineru-vlm - infra-up + MinerU API and VLM server (profiles mineru, mineru-vlm)"
 	@echo "  make infra-up-olmocr - infra-up + olmOCR parser (profile olmocr)"
+	@echo "  make infra-up-magicpdf - infra-up + MagicPDF parser (profile magicpdf)"
 	@echo "  make infra-up-qianfanocr - infra-up + Qianfan-OCR parser (profile qianfanocr)"
 	@echo "  make infra-ps  - infra docker compose ps"
 	@echo "  make infra-down - stop infra only"
@@ -214,6 +216,9 @@ up-mineru-vlm: init
 up-olmocr: init
 	$(COMPOSE_PARSERS) --profile olmocr up -d --build
 
+up-magicpdf: init
+	$(COMPOSE_PARSERS) --profile magicpdf up -d --build
+
 up-qianfanocr: init
 	$(COMPOSE_PARSERS) --profile qianfanocr up -d --build
 
@@ -253,6 +258,9 @@ infra-up-mineru-vlm: init
 
 infra-up-olmocr: init
 	$(COMPOSE_INFRA_PARSERS) --profile olmocr up -d --build
+
+infra-up-magicpdf: init
+	$(COMPOSE_INFRA_PARSERS) --profile magicpdf up -d --build
 
 infra-up-qianfanocr: init
 	$(COMPOSE_INFRA_PARSERS) --profile qianfanocr up -d --build
