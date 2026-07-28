@@ -1418,6 +1418,9 @@ jobs:
           ENABLE_RERANKER: "true"
           RERANKER_PROVIDER: "llm"
           RERANKER_TOP_N: "20"
+          # Keep embeddings offline in CI; LLM mock alone does not affect embedding calls.
+          EMBEDDING_PROVIDER: deterministic_test
+          EMBEDDING_MODEL: mimirq-deterministic-test-v1
           BM25_INDEX_ENABLED: "true"
           # Enable PII-safe metrics JSONL so we can also gate SLO + cost budgets.
           ENABLE_METRICS_LOG: "true"
@@ -1512,6 +1515,8 @@ jobs:
             --queryset-health-snapshot-hybrid bounded_gate_artifacts/artifacts/queryset_health.snapshot.hybrid.json \
             --queryset-health-diff bounded_gate_artifacts/artifacts/queryset_health.diff.json \
             --queryset-health-diff-hybrid bounded_gate_artifacts/artifacts/queryset_health.diff.hybrid.json \
+            --parsing-proof-summary bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/summary.json \
+            --parsing-proof-diff bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/diff.json \
             --skip-regression \
             --out-report artifacts/release_gate.report.json \
             --out-report-md artifacts/release_gate.report.md

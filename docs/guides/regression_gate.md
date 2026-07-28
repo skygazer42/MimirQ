@@ -215,9 +215,9 @@ python scripts/regression_gate.py \
 
 详见：`docs/guides/evidence_pack_to_regression.md`
 
-## CI 集成（Retrieval-only Gate in PR）
+## CI 集成（Retrieval-only Gate）
 
-仓库内置了一个极小的、确定性的 fixture，用于在 PR 中做 retrieval-only gate（不依赖 RAGAS/LLM）：
+仓库内置了一个极小的、确定性的 fixture，用于在受信任的 push/发布 CI 中做 retrieval-only gate（不依赖 RAGAS/LLM）：
 
 - Fixture：`ci/retrieval_regression_fixture.v1.json`
 - 阈值：`ci/retrieval_thresholds.v2.json`
@@ -238,6 +238,7 @@ python scripts/seed_ci_retrieval_regression.py \
 # 3) 启动后端（禁用外部依赖；使用 faiss 让 /health/ready 通过）
 ENV=ci AUTH_MODE=header DEFAULT_TENANT_ID=00000000-0000-0000-0000-000000000000 \
 VECTOR_BACKEND=faiss TASK_QUEUE_ENABLED=false EMBEDDING_CACHE_ENABLED=false MINIO_ENABLED=false \
+EMBEDDING_PROVIDER=deterministic_test EMBEDDING_MODEL=mimirq-deterministic-test-v1 \
 LEXICAL_DB_TRGM_ENABLED=false LLM_MOCK_ENABLED=true ENABLE_RERANKER=true RERANKER_PROVIDER=llm BM25_INDEX_ENABLED=true \
 uvicorn app.main:app --host 127.0.0.1 --port 8000
 

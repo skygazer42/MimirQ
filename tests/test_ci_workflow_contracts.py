@@ -241,6 +241,50 @@ def test_main_ci_host_browser_smoke_stays_on_the_live_stack_spec_in_non_pr_jobs(
     assert "pnpm exec playwright test e2e/live-stack.smoke.spec.ts" in retrieval_regression_job
 
 
+def test_retrieval_regression_gate_is_offline_and_reuses_bounded_proof_artifacts() -> None:
+    workflow = _read(".github/workflows/ci.yml")
+    bounded_gate_job = workflow.split("\n  retrieval-only-bounded-gate:\n", 1)[1].split(
+        "\n  retrieval-regression-gate:\n",
+        1,
+    )[0]
+    retrieval_regression_job = workflow.split("\n  retrieval-regression-gate:\n", 1)[1].split(
+        "\n  kg-search-regression-gate:\n",
+        1,
+    )[0]
+    upload_step = bounded_gate_job.split("- name: Upload bounded gate artifacts", 1)[1]
+    download_step = retrieval_regression_job.split("- name: Download bounded gate artifacts", 1)[1].split(
+        "\n      - name:",
+        1,
+    )[0]
+    backend_step = retrieval_regression_job.split("- name: Start backend (no external deps)", 1)[1].split(
+        "\n      - name:",
+        1,
+    )[0]
+    release_gate_step = retrieval_regression_job.split("- name: Release gate (SLO + cost budgets)", 1)[1].split(
+        "\n      - name:",
+        1,
+    )[0]
+
+    assert "name: retrieval-only-bounded-gate" in upload_step
+    assert "artifacts/parsing_proof_broader_sample/summary.json" in upload_step
+    assert "artifacts/parsing_proof_broader_sample/diff.json" in upload_step
+    assert "name: retrieval-only-bounded-gate" in download_step
+    assert "path: bounded_gate_artifacts" in download_step
+    assert "EMBEDDING_PROVIDER: deterministic_test" in backend_step
+    assert "EMBEDDING_MODEL: mimirq-deterministic-test-v1" in backend_step
+    assert "LLM_MOCK_ENABLED: \"true\"" in backend_step
+    assert (
+        "--parsing-proof-summary "
+        "bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/summary.json"
+        in release_gate_step
+    )
+    assert (
+        "--parsing-proof-diff "
+        "bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/diff.json"
+        in release_gate_step
+    )
+
+
 def test_main_ci_uploads_the_generated_test_inventory() -> None:
     workflow = _read(".github/workflows/ci.yml")
 
