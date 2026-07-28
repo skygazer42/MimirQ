@@ -21,9 +21,10 @@ def test_self_hosted_ci_bootstrap_script_contract() -> None:
     assert script.startswith("#!/usr/bin/env bash\nset -euo pipefail\n")
     assert "--include-torch-wheel-dir" in script
     assert 'PY_BIN="$(command -v python3.11 || true)"' in script
-    assert 'VENV_DIR="${SELF_HOSTED_VENV_DIR:-$RUNNER_TEMP/mimirq-py311}"' in script
-    assert 'PIP_CACHE_DIR_VALUE="${PIP_CACHE_DIR:-$RUNNER_TEMP/pip-cache}"' in script
-    assert 'TORCH_WHEEL_DIR_VALUE="${TORCH_WHEEL_DIR:-$RUNNER_TEMP/torch-wheels}"' in script
+    assert 'CACHE_ROOT="${RUNNER_TOOL_CACHE:-$RUNNER_TEMP}/mimirq"' in script
+    assert 'VENV_DIR="${SELF_HOSTED_VENV_DIR:-$CACHE_ROOT/python-3.11}"' in script
+    assert 'PIP_CACHE_DIR_VALUE="${PIP_CACHE_DIR:-$CACHE_ROOT/pip}"' in script
+    assert 'TORCH_WHEEL_DIR_VALUE="${TORCH_WHEEL_DIR:-$CACHE_ROOT/torch-wheels}"' in script
     assert 'echo "$VENV_DIR/bin" >> "$GITHUB_PATH"' in script
     assert 'echo "PIP_INDEX_URL=${PIP_INDEX_URL:-https://pypi.org/simple}"' in script
     assert 'echo "PIP_CACHE_DIR=$PIP_CACHE_DIR_VALUE"' in script
@@ -38,6 +39,20 @@ def test_self_hosted_ci_bootstrap_script_contract() -> None:
     assert "/home/user/.local/share/uv" not in script
     assert "/data/actions-runner" not in script
     assert "127.0.0.1:35983" not in script
+
+
+def test_self_hosted_python_jobs_allow_a_cold_cache_fill() -> None:
+    workflow = _read(".github/workflows/ci.yml")
+
+    expected_timeouts = {
+        "test-and-verify": 90,
+        "retrieval-only-bounded-gate": 60,
+        "retrieval-regression-gate": 60,
+        "kg-search-regression-gate": 60,
+    }
+    for job_name, timeout_minutes in expected_timeouts.items():
+        pattern = rf"(?s)\n  {re.escape(job_name)}:\n.*?\n    timeout-minutes: {timeout_minutes}\n"
+        assert re.search(pattern, workflow), job_name
 
 
 def test_public_pr_live_core_gate_launcher_contract() -> None:

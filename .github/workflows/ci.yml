@@ -209,7 +209,7 @@ jobs:
   test-and-verify:
     if: github.event_name != 'pull_request'
     runs-on: [self-hosted, Linux, X64, mimirq]
-    timeout-minutes: 45
+    timeout-minutes: 90
     services:
       postgres:
         image: postgres:15
@@ -557,7 +557,7 @@ jobs:
   retrieval-only-bounded-gate:
     if: github.event_name != 'pull_request'
     runs-on: [self-hosted, Linux, X64, mimirq]
-    timeout-minutes: 10
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -1291,7 +1291,7 @@ jobs:
   retrieval-regression-gate:
     if: github.event_name != 'pull_request'
     runs-on: [self-hosted, Linux, X64, mimirq]
-    timeout-minutes: 30
+    timeout-minutes: 60
     needs:
       - retrieval-only-bounded-gate
     services:
@@ -1530,7 +1530,7 @@ jobs:
   kg-search-regression-gate:
     if: github.event_name != 'pull_request'
     runs-on: [self-hosted, Linux, X64, mimirq]
-    timeout-minutes: 30
+    timeout-minutes: 60
     services:
       postgres:
         image: postgres:15
