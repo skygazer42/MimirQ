@@ -147,7 +147,7 @@ make api-ping
 
 [http://localhost:3000](http://localhost:3000)에 접속합니다. 초기 관리자를 설정하지 않았다면 화면에서 첫 계정을 등록하세요. 첫 빌드, 프록시, 운영 시크릿, 네트워크 설정은 [Docker Compose 가이드](./docs/deployment/docker_compose.md)를 참조하세요.
 
-중지에는 `make down`, 영구 데이터 삭제에는 `make docker-reset`, 이 프로젝트의 서비스 이미지까지 삭제하려면 `make docker-purge`를 사용합니다. 마지막 두 명령은 되돌릴 수 없으며, 정확한 범위는 [Docker Compose 가이드](./docs/deployment/docker_compose.md)를 참조하세요.
+중지에는 `make down`, 영구 데이터 삭제에는 `make docker-reset`, 이 프로젝트의 서비스 이미지까지 삭제하려면 `make docker-purge`를 사용합니다. MimirQ는 독립된 Compose 프로젝트 이름 `mimirq`를 사용하므로 같은 호스트의 Dify는 정리 대상이 아닙니다. 마지막 두 명령은 되돌릴 수 없습니다. PowerShell 명령, 소유 관계 확인, 기존 데이터 이전, 복구 및 정확한 범위는 [Docker Compose 가이드](./docs/deployment/docker_compose.md)를 참조하세요.
 
 ### 방법 2: 소스 개발(Python venv + pip + pnpm)
 

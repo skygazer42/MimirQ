@@ -64,9 +64,9 @@ make up-retrieval-dev
 make ps-retrieval-dev
 make api-ping
 
-# 或直接使用 docker compose（从仓库根目录执行）
-docker compose --env-file .env -f docker/docker-compose.yml up -d --build
-docker compose --env-file .env -f docker/docker-compose.yml ps
+# 或直接使用 docker compose（从仓库根目录执行，并固定项目名）
+docker compose --project-name mimirq --env-file .env -f docker/docker-compose.yml up -d --build
+docker compose --project-name mimirq --env-file .env -f docker/docker-compose.yml ps
 
 # 本地前端开发（热更新）
 # cd web; pnpm install; pnpm dev

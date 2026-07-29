@@ -39,6 +39,26 @@ Heavy parser profiles are optional and remain stopped by default. See the reposi
 
 The last two operations are destructive. MimirQ defaults to an isolated `mimirq` Compose project name, so Dify and other stacks are not treated as orphans. These commands do not delete `.env` or source files. See the [Docker Compose guide](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/docker_compose.md#4-%E6%95%B0%E6%8D%AE%E5%8D%B7%E4%B8%8E%E6%B8%85%E7%90%86) for the exact database, upload, vector-index, parser-cache, and shared-image impact.
 
+### Ownership checks and recovery
+
+Check resource ownership in a terminal or PowerShell before deletion:
+
+```powershell
+docker compose ls
+docker ps -a --filter "label=com.docker.compose.project=mimirq"
+```
+
+Only MimirQ services should appear under the `mimirq` project. Compose `[+] Running N/N` counts
+container, volume, image, and network operations; it does not mean that N containers were running.
+The standard Web stack contains eight containers when optional parsers are disabled.
+
+If an older cleanup command removed Dify containers, stop immediately and do not run
+`docker system prune` or `docker volume prune`. From the original Dify Compose directory, reuse its
+original project name and run `docker compose up -d`. Verify Dify data before running `git pull`,
+`make up-web`, `make ps`, and `make api-ping` from MimirQ. Legacy MimirQ `docker_*` volumes are not
+automatically migrated to the new `mimirq_*` volumes; back up and migrate data before deleting them.
+See the repository [Docker Compose guide](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/docker_compose.md#4-%E6%95%B0%E6%8D%AE%E5%8D%B7%E4%B8%8E%E6%B8%85%E7%90%86) for complete PowerShell, project-name, and recovery steps.
+
 ## Host source processes
 
 ```bash

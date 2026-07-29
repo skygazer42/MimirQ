@@ -474,6 +474,7 @@ def test_docker_cleanup_targets_are_project_scoped_and_explicitly_destructive() 
     makefile = _read("Makefile")
     readme = _read("README.md")
     deployment_guide = _read("docs/deployment/docker_compose.md")
+    deployment_site = _read("docs-site/docs/ops/deployment.md")
 
     assert "COMPOSE_PROJECT_NAME ?= mimirq" in makefile
     compose_prefix = "docker compose --project-name $(COMPOSE_PROJECT_NAME) --env-file .env"
@@ -529,6 +530,18 @@ def test_docker_cleanup_targets_are_project_scoped_and_explicitly_destructive() 
     assert "不会删除 `.env`" in deployment_guide
     assert "--project-name mimirq" in deployment_guide
     assert "Dify" in deployment_guide
+
+    for document in (deployment_guide, deployment_site):
+        assert "docker compose ls" in document
+        assert 'label=com.docker.compose.project=mimirq' in document
+        assert "Running N/N" in document
+        assert "docker system prune" in document
+        assert "PowerShell" in document
+        assert "Dify" in document
+
+    assert "旧版 MimirQ" in deployment_guide
+    assert "backup_restore.md" in deployment_guide
+    assert "docker compose up -d" in deployment_guide
 
 
 def test_optional_parser_profiles_are_actionable_from_public_docs() -> None:

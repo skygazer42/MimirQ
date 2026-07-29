@@ -39,6 +39,26 @@ make down
 
 后两项不可恢复。MimirQ 默认使用独立的 `mimirq` Compose 项目名，不会把 Dify 等其他栈当作 orphan；命令不会删除 `.env` 或源码。数据库、上传文件、向量索引、解析器缓存和共享镜像的完整影响范围见 [Docker Compose 指南](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/docker_compose.md#4-%E6%95%B0%E6%8D%AE%E5%8D%B7%E4%B8%8E%E6%B8%85%E7%90%86)。
 
+### 项目归属与异常恢复
+
+删除前先在终端或 PowerShell 核对资源归属：
+
+```powershell
+docker compose ls
+docker ps -a --filter "label=com.docker.compose.project=mimirq"
+```
+
+`mimirq` 项目下只能出现 MimirQ 服务。Compose 的 `[+] Running N/N` 是容器、卷、镜像和
+网络等资源动作总数，并不表示启动了 N 个容器；未启用可选解析器时，标准 Web 栈为 8 个
+容器。
+
+如果旧版清理误删了 Dify 容器，立即停止操作，不要运行 `docker system prune` 或
+`docker volume prune`。进入原 Dify Compose 目录并复用原项目名运行 `docker compose up -d`，
+确认 Dify 数据后，再在 MimirQ 目录执行 `git pull`、`make up-web`、`make ps` 和
+`make api-ping`。旧版 MimirQ 的 `docker_*` 卷不会自动迁移到新的 `mimirq_*` 卷；保留数据时
+应先备份再迁移。PowerShell 完整命令、项目名判断和恢复细节见仓库的
+[Docker Compose 指南](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/docker_compose.md#4-%E6%95%B0%E6%8D%AE%E5%8D%B7%E4%B8%8E%E6%B8%85%E7%90%86)。
+
 ## 方式二：主机源码运行
 
 该模式便于前后端热更新，PostgreSQL、Milvus、Etcd、Redis 与 MinIO 仍由 Docker 提供。

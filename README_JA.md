@@ -147,7 +147,7 @@ make api-ping
 
 [http://localhost:3000](http://localhost:3000) にアクセスします。初期管理者を設定していない場合は、画面で最初のアカウントを登録します。初回ビルド、プロキシ、本番用シークレット、ネットワーク設定は [Docker Compose ガイド](./docs/deployment/docker_compose.md)を参照してください。
 
-停止は `make down`、永続データの削除は `make docker-reset`、このプロジェクトのサービスイメージも含めた削除は `make docker-purge` を使用します。後者 2 つは元に戻せません。対象範囲は [Docker Compose ガイド](./docs/deployment/docker_compose.md)を参照してください。
+停止は `make down`、永続データの削除は `make docker-reset`、このプロジェクトのサービスイメージも含めた削除は `make docker-purge` を使用します。MimirQ は独立した Compose プロジェクト名 `mimirq` を使用するため、同じホストの Dify は削除対象になりません。後者 2 つは元に戻せません。PowerShell、所有関係の確認、旧データ移行、復旧、正確な対象範囲は [Docker Compose ガイド](./docs/deployment/docker_compose.md)を参照してください。
 
 ### 方法 2：ソース開発（Python venv + pip + pnpm）
 

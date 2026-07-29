@@ -275,6 +275,94 @@ docker compose --project-name mimirq --env-file .env \
 依次覆盖这些变体。如果显式自定义了 `COMPOSE_PROJECT_NAME` 或 `docker compose -p`，
 清理时必须使用同一个值，并且不要与 Dify 等其他应用复用项目名。
 
+### 核对项目归属与理解清理输出
+
+执行停止或删除命令前，先确认 Docker 识别到的项目和资源归属：
+
+```powershell
+docker compose ls
+docker ps -a --filter "label=com.docker.compose.project=mimirq"
+docker volume ls --filter "label=com.docker.compose.project=mimirq"
+```
+
+新版本 MimirQ 必须显示为独立项目 `mimirq`。第二条命令只应列出 `mimirq-api`、
+`mimirq-worker`、`web` 和 MimirQ 基础设施；如果其中出现 Dify 服务，不要继续执行
+`docker-reset` 或 `docker-purge`，先检查是否在 `.env` 或命令行把两个应用配置成了同一个
+`COMPOSE_PROJECT_NAME`。
+
+Compose 的 `[+] Running N/N` 表示本次处理的资源动作总数，不是容器数量。它会把容器、
+命名卷、镜像和网络分别计数；`make docker-purge` 还会依次覆盖完整、lite 和
+retrieval-dev 三种配置，因此可能重复显示已经处理过的卷名。默认 `make up-web` 在未启用
+可选解析器时运行 8 个容器，不会运行输出中列出的 Dify 服务。
+
+### Windows PowerShell 直接操作
+
+已安装 GNU Make 时，Windows、macOS 和 Linux 都优先使用相同命令：
+
+```powershell
+git pull
+make init
+make up-web
+make ps
+make api-ping
+```
+
+没有 GNU Make 时，可在仓库根目录使用 PowerShell 续行符 `` ` `` 直接启动完整 Web 栈：
+
+```powershell
+python scripts/init_env.py
+docker compose --project-name mimirq --env-file .env `
+  -f docker/docker-compose.yml `
+  -f docker/docker-compose.web.yml `
+  up -d --build
+docker compose --project-name mimirq --env-file .env `
+  -f docker/docker-compose.yml `
+  -f docker/docker-compose.web.yml `
+  ps
+Invoke-RestMethod http://localhost:8000/api/v1/health/ready
+```
+
+停止并保留数据时，把最后的 `ps` 改为 `down`。如果启动过解析器，还应叠加
+`-f docker/docker-compose.parsers.yml --profile "*"`；推荐安装 Make 后使用 `make down`，
+避免遗漏可选配置。
+
+### 旧版 MimirQ、Dify 共存与误删恢复
+
+早期版本从 `docker/` 目录继承通用项目名 `docker`。如果同机 Dify 也使用该项目名，旧版
+`--remove-orphans` 可能删除 Dify 容器。出现这种情况时按以下顺序恢复：
+
+1. **立即停止清理，不要执行 `docker system prune`、`docker volume prune` 或其他全局 prune。**
+2. 查看刚才的输出或运行 `docker volume ls`。如果只列出 Dify 容器被删除、没有列出 Dify
+   命名卷，数据通常仍在；如果相应卷也被删除，只能从 Dify 备份恢复。
+3. 进入原 Dify Compose 目录，用它原来使用的项目名重新创建容器：
+
+```powershell
+cd C:\path\to\dify\docker
+docker compose up -d
+docker compose ps
+```
+
+如果 Dify 最初通过 `docker compose --project-name NAME` 或 `-p NAME` 启动，恢复时必须带上
+完全相同的 `--project-name NAME`。不要直接换成新项目名，否则 Compose 会创建另一组卷，
+看起来会像数据丢失。容器启动后先登录 Dify，核对应用、知识库和账户数据。
+
+4. 再更新并启动隔离后的 MimirQ：
+
+```powershell
+cd C:\path\to\MimirQ
+git pull
+make init
+make up-web
+make ps
+make api-ping
+docker ps -a --filter "label=com.docker.compose.project=mimirq"
+```
+
+如果需要保留旧版 MimirQ 的 `docker_*` 数据卷，不要直接删除它们。新项目名 `mimirq` 会创建
+新的 `mimirq_*` 卷，不会自动挂载旧数据。应在维护窗口使用旧项目名临时启动旧数据，按
+[备份与恢复指南](./backup_restore.md) 导出 Postgres、MinIO 和向量数据，再切回 `mimirq`
+项目恢复。确认新项目数据完整后，才可手工删除遗留资源。
+
 ---
 
 ## 5) 常见排错
