@@ -21,14 +21,16 @@ ifeq ($(OS),Windows_NT)
 COMPILEALL_VERIFY := $(PY) -m compileall -q app
 endif
 
-COMPOSE := docker compose --env-file .env -f docker/docker-compose.yml
-COMPOSE_INFRA := docker compose --env-file .env -f docker/docker-compose.infra.yml
-COMPOSE_PARSERS := docker compose --env-file .env -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml
-COMPOSE_INFRA_PARSERS := docker compose --env-file .env -f docker/docker-compose.infra.yml -f docker/docker-compose.parsers.yml
-COMPOSE_WEB := docker compose --env-file .env -f docker/docker-compose.yml -f docker/docker-compose.web.yml
-COMPOSE_ALL := docker compose --env-file .env -f docker/docker-compose.yml -f docker/docker-compose.web.yml -f docker/docker-compose.parsers.yml
-COMPOSE_LITE := docker compose --env-file .env -f docker/docker-compose.lite.yml
-COMPOSE_RETRIEVAL_DEV := docker compose --env-file .env -f docker/docker-compose.retrieval-dev.yml
+COMPOSE_PROJECT_NAME ?= mimirq
+COMPOSE_CLI := docker compose --project-name $(COMPOSE_PROJECT_NAME) --env-file .env
+COMPOSE := $(COMPOSE_CLI) -f docker/docker-compose.yml
+COMPOSE_INFRA := $(COMPOSE_CLI) -f docker/docker-compose.infra.yml
+COMPOSE_PARSERS := $(COMPOSE_CLI) -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml
+COMPOSE_INFRA_PARSERS := $(COMPOSE_CLI) -f docker/docker-compose.infra.yml -f docker/docker-compose.parsers.yml
+COMPOSE_WEB := $(COMPOSE_CLI) -f docker/docker-compose.yml -f docker/docker-compose.web.yml
+COMPOSE_ALL := $(COMPOSE_CLI) -f docker/docker-compose.yml -f docker/docker-compose.web.yml -f docker/docker-compose.parsers.yml
+COMPOSE_LITE := $(COMPOSE_CLI) -f docker/docker-compose.lite.yml
+COMPOSE_RETRIEVAL_DEV := $(COMPOSE_CLI) -f docker/docker-compose.retrieval-dev.yml
 QUERYSET_HEALTH_POLICY ?= ci/queryset_health_policy.v1.json
 DIFY_CONSOLE_BASE_URL ?= https://dify.example.com:5001/console/api
 DIFY_CONSOLE_ORIGIN ?= https://dify.example.com:3000
@@ -275,19 +277,19 @@ infra-down:
 	$(COMPOSE_INFRA) down
 
 down:
-	$(COMPOSE_ALL) --profile "*" down --remove-orphans
-	$(COMPOSE_LITE) down --remove-orphans
-	$(COMPOSE_RETRIEVAL_DEV) down --remove-orphans
+	$(COMPOSE_ALL) --profile "*" down
+	$(COMPOSE_LITE) down
+	$(COMPOSE_RETRIEVAL_DEV) down
 
 docker-reset:
-	$(COMPOSE_ALL) --profile "*" down --volumes --remove-orphans
-	$(COMPOSE_LITE) down --volumes --remove-orphans
-	$(COMPOSE_RETRIEVAL_DEV) down --volumes --remove-orphans
+	$(COMPOSE_ALL) --profile "*" down --volumes
+	$(COMPOSE_LITE) down --volumes
+	$(COMPOSE_RETRIEVAL_DEV) down --volumes
 
 docker-purge:
-	$(COMPOSE_ALL) --profile "*" down --volumes --rmi all --remove-orphans
-	$(COMPOSE_LITE) down --volumes --rmi all --remove-orphans
-	$(COMPOSE_RETRIEVAL_DEV) down --volumes --rmi all --remove-orphans
+	$(COMPOSE_ALL) --profile "*" down --volumes --rmi all
+	$(COMPOSE_LITE) down --volumes --rmi all
+	$(COMPOSE_RETRIEVAL_DEV) down --volumes --rmi all
 
 down-lite:
 	$(COMPOSE_LITE) down

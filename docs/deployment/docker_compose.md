@@ -214,9 +214,9 @@ make up-prod-web
 make down
 ```
 
-该命令覆盖完整 Web 栈、主栈、可选解析器以及 lite / retrieval-dev 变体，并带
-`--remove-orphans` 清理同一 Compose 项目遗留的容器。PostgreSQL、上传文件、向量索引、
-MinIO 对象和解析器模型缓存仍保存在命名卷中，下次 `make up-web` 可继续使用。
+该命令覆盖完整 Web 栈、主栈、可选解析器以及 lite / retrieval-dev 变体。PostgreSQL、
+上传文件、向量索引、MinIO 对象和解析器模型缓存仍保存在命名卷中，下次
+`make up-web` 可继续使用。
 
 只停止某个轻量变体时仍可使用：
 
@@ -248,7 +248,12 @@ MimirQ API / Web / 解析器镜像以及 PostgreSQL、Redis、Milvus、MinIO 等
 启动会重新下载或构建。若同一镜像仍被其他容器引用，Docker 会保留它并报告冲突；该命令
 也可能清掉其他项目复用的本地镜像缓存，因此只在确实需要完全重建时使用。
 
-以上三个目标都只处理当前 `.env` / `COMPOSE_PROJECT_NAME` 对应的 Compose 项目，
+MimirQ 的默认 Compose 项目名固定为 `mimirq`，不会再使用目录名 `docker`。这是资源隔离边界：
+同一台机器上的 Dify 或其他 Compose 应用即使也放在名为 `docker` 的目录中，也不会被
+MimirQ 的停止或清理命令识别为同一项目。Make 目标还会显式传入项目名，并且不会使用
+`--remove-orphans` 扫描未在 MimirQ 配置中声明的服务。
+
+以上三个目标都只处理当前 `COMPOSE_PROJECT_NAME` 对应的 Compose 项目，
 不会删除 `.env`、`web/.env.local`、源码、`.venv` 或宿主机上的模型目录，也不会执行
 影响其他项目的 `docker system prune` / `docker builder prune`。BuildKit 全局构建缓存会保留。
 
@@ -258,17 +263,17 @@ MimirQ API / Web / 解析器镜像以及 PostgreSQL、Redis、Milvus、MinIO 等
 `docker compose down` 可能遗漏 Web 或可选解析器。以完整栈为例，`make down` 的主清理步骤等价于：
 
 ```bash
-docker compose --env-file .env \
+docker compose --project-name mimirq --env-file .env \
   -f docker/docker-compose.yml \
   -f docker/docker-compose.web.yml \
   -f docker/docker-compose.parsers.yml \
-  --profile "*" down --remove-orphans
+  --profile "*" down
 ```
 
 在末尾增加 `--volumes` 等价于清空该配置声明的数据卷；再增加 `--rmi all` 会同时删除
 服务镜像。项目也可能曾用 lite / retrieval-dev 配置启动，因此推荐使用 Make 目标，它们会
-依次覆盖这些变体。如果启动时自定义了 `COMPOSE_PROJECT_NAME` 或 `docker compose -p`，
-清理时必须使用同一个值。
+依次覆盖这些变体。如果显式自定义了 `COMPOSE_PROJECT_NAME` 或 `docker compose -p`，
+清理时必须使用同一个值，并且不要与 Dify 等其他应用复用项目名。
 
 ---
 

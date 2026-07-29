@@ -1,3 +1,5 @@
+name: ${COMPOSE_PROJECT_NAME:-mimirq}
+
 x-backend-build: &backend_build
   context: ..
   dockerfile: docker/Dockerfile

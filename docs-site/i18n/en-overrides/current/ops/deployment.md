@@ -37,7 +37,7 @@ Heavy parser profiles are optional and remain stopped by default. See the reposi
 | Rebuild from empty data | `make docker-reset` | Deleted | Kept |
 | Rebuild images and data | `make docker-purge` | Deleted | Deleted |
 
-The last two operations are destructive. They are scoped to the current MimirQ Compose project and do not delete `.env` or source files. See the [Docker Compose guide](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/docker_compose.md#4-%E6%95%B0%E6%8D%AE%E5%8D%B7%E4%B8%8E%E6%B8%85%E7%90%86) for the exact database, upload, vector-index, parser-cache, and shared-image impact.
+The last two operations are destructive. MimirQ defaults to an isolated `mimirq` Compose project name, so Dify and other stacks are not treated as orphans. These commands do not delete `.env` or source files. See the [Docker Compose guide](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/docker_compose.md#4-%E6%95%B0%E6%8D%AE%E5%8D%B7%E4%B8%8E%E6%B8%85%E7%90%86) for the exact database, upload, vector-index, parser-cache, and shared-image impact.
 
 ## Host source processes
 

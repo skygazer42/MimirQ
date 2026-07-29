@@ -475,11 +475,33 @@ def test_docker_cleanup_targets_are_project_scoped_and_explicitly_destructive() 
     readme = _read("README.md")
     deployment_guide = _read("docs/deployment/docker_compose.md")
 
+    assert "COMPOSE_PROJECT_NAME ?= mimirq" in makefile
+    compose_prefix = "docker compose --project-name $(COMPOSE_PROJECT_NAME) --env-file .env"
+    assert f"COMPOSE_CLI := {compose_prefix}" in makefile
     assert (
-        "COMPOSE_ALL := docker compose --env-file .env -f docker/docker-compose.yml "
+        "COMPOSE_ALL := $(COMPOSE_CLI) -f docker/docker-compose.yml "
         "-f docker/docker-compose.web.yml -f docker/docker-compose.parsers.yml"
         in makefile
     )
+    for variable in (
+        "COMPOSE",
+        "COMPOSE_INFRA",
+        "COMPOSE_PARSERS",
+        "COMPOSE_INFRA_PARSERS",
+        "COMPOSE_WEB",
+        "COMPOSE_ALL",
+        "COMPOSE_LITE",
+        "COMPOSE_RETRIEVAL_DEV",
+    ):
+        assert f"{variable} := $(COMPOSE_CLI)" in makefile
+
+    for compose_path in (
+        "docker/docker-compose.yml",
+        "docker/docker-compose.infra.yml",
+        "docker/docker-compose.lite.yml",
+        "docker/docker-compose.retrieval-dev.yml",
+    ):
+        assert yaml.safe_load(_read(compose_path))["name"] == "${COMPOSE_PROJECT_NAME:-mimirq}"
 
     down = makefile.split("\ndown:\n", 1)[1].split("\ndocker-reset:\n", 1)[0]
     reset = makefile.split("\ndocker-reset:\n", 1)[1].split("\ndocker-purge:\n", 1)[0]
@@ -489,7 +511,7 @@ def test_docker_cleanup_targets_are_project_scoped_and_explicitly_destructive() 
         assert '$(COMPOSE_ALL) --profile "*" down' in recipe
         assert "$(COMPOSE_LITE) down" in recipe
         assert "$(COMPOSE_RETRIEVAL_DEV) down" in recipe
-        assert "--remove-orphans" in recipe
+        assert "--remove-orphans" not in recipe
 
     assert "--volumes" not in down
     assert "--rmi" not in down
@@ -505,6 +527,8 @@ def test_docker_cleanup_targets_are_project_scoped_and_explicitly_destructive() 
         assert command in deployment_guide
     assert "不可恢复" in deployment_guide
     assert "不会删除 `.env`" in deployment_guide
+    assert "--project-name mimirq" in deployment_guide
+    assert "Dify" in deployment_guide
 
 
 def test_optional_parser_profiles_are_actionable_from_public_docs() -> None:

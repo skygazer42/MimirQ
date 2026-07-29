@@ -1,3 +1,5 @@
+name: ${COMPOSE_PROJECT_NAME:-mimirq}
+
 services:
   mimirq-postgres:
     image: postgres:15

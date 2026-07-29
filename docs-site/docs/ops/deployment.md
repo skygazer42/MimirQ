@@ -37,7 +37,7 @@ make down
 | 清空数据重建 | `make docker-reset` | 删除 | 保留 |
 | 从镜像开始完全重建 | `make docker-purge` | 删除 | 删除 |
 
-后两项不可恢复。命令只处理当前 MimirQ Compose 项目，不会删除 `.env` 或源码；数据库、上传文件、向量索引、解析器缓存和共享镜像的完整影响范围见 [Docker Compose 指南](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/docker_compose.md#4-%E6%95%B0%E6%8D%AE%E5%8D%B7%E4%B8%8E%E6%B8%85%E7%90%86)。
+后两项不可恢复。MimirQ 默认使用独立的 `mimirq` Compose 项目名，不会把 Dify 等其他栈当作 orphan；命令不会删除 `.env` 或源码。数据库、上传文件、向量索引、解析器缓存和共享镜像的完整影响范围见 [Docker Compose 指南](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/docker_compose.md#4-%E6%95%B0%E6%8D%AE%E5%8D%B7%E4%B8%8E%E6%B8%85%E7%90%86)。
 
 ## 方式二：主机源码运行
 
