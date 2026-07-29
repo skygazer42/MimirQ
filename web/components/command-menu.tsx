@@ -198,7 +198,7 @@ export function CommandMenu() {
   const setOpen = useCommandMenuState((state) => state.setOpen)
   const toggleOpen = useCommandMenuState((state) => state.toggle)
   const { lastOpenedTarget, openDocument, reopenLastDocument } = useDocumentView()
-  const tenantAccess = useTenantAccess()
+  const tenantAccess = useTenantAccess({ enabled: !pathname.startsWith('/auth') })
   const currentViewPrompt = React.useMemo(() => buildCurrentViewPrompt(pathname || '/', t), [pathname, t])
   const trimmedQuery = query.trim().slice(0, COMMAND_MENU_SEARCH_MAX_LENGTH)
   const isSlashMode = trimmedQuery.startsWith("/")

@@ -203,7 +203,7 @@ export const DropZone = React.forwardRef<DropZoneHandle, {
             <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 p-4 text-sm">
               <p className="font-medium text-foreground">尚无数据集,请先前往新建</p>
               <Button asChild className="mt-3" variant="outline">
-                <Link href="/knowledge/datasets">前往新建</Link>
+                <Link href="/datasets">前往新建</Link>
               </Button>
             </div>
           ) : (

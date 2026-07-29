@@ -712,6 +712,7 @@ export function Navbar({
                     aria-hidden="true"
                     width={40}
                     height={40}
+                    loading="eager"
                     unoptimized
                     className="size-[38px] rounded-[10px] object-contain dark:invert dark:hue-rotate-180"
                   />
