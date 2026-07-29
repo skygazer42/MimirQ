@@ -92,4 +92,4 @@ Inside Docker, `127.0.0.1` is the application container itself. Use a container-
 
 The readiness endpoint verifies infrastructure, not external models. Before release, log in, upload a small document, wait for embedding, and run one cited query.
 
-Next: [Configuration](./settings-meta) · [Deployment](./deployment) · [Health checks](./health-probes)
+Next: [Full operation guide](../guide/welcome) · [Configuration](./settings-meta) · [Deployment](./deployment) · [Health checks](./health-probes)

@@ -16,8 +16,9 @@ function copy(locale: string) {
   const en = locale === 'en';
   return {
     heroLead: en
-      ? 'Narrative handbook covering backend contracts, frontend routes, integration flows, and ops runbooks. OpenAPI remains the schema SSOT in Redoc.'
-      : '叙事型全栈手册：后端契约、前端路由、联调序列与运维 Runbook。OpenAPI 仍以 Redoc 为 Schema 单一事实来源。',
+      ? 'Operation guide plus backend contracts, frontend routes, integration flows, and ops runbooks. OpenAPI remains the schema SSOT in Redoc.'
+      : '从完整操作指南进入，再深入后端契约、前端路由、联调序列与运维 Runbook。OpenAPI 仍以 Redoc 为 Schema 单一事实来源。',
+    guide: en ? 'Full Guide' : '完整操作指南',
     backend: en ? 'Backend' : '后端（Backend）',
     frontend: en ? 'Frontend' : '前端（Frontend）',
     integration: en ? 'Integration' : '集成（Integration）',
@@ -108,6 +109,9 @@ function HeroBanner() {
         <p className={styles.heroLead}>{t.heroLead}</p>
 
         <div className={styles.buttons}>
+          <Link className="button button--secondary button--lg" to="/docs/guide/welcome">
+            {t.guide}
+          </Link>
           <Link className="button button--secondary button--lg" to="/docs/ops/getting-started">
             {t.quickStart}
           </Link>

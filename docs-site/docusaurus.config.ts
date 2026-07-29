@@ -4,7 +4,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
   title: 'MimirQ 全栈手册',
-  tagline: '后端 · 前端 · 集成 · 运维',
+  tagline: '使用 · 后端 · 前端 · 集成 · 运维',
   favicon: 'img/favicon.ico',
 
   url: 'https://skygazer42.github.io',
@@ -72,6 +72,12 @@ const config: Config = {
       items: [
         {
           type: 'docSidebar',
+          sidebarId: 'guide',
+          position: 'left',
+          label: 'Guide',
+        },
+        {
+          type: 'docSidebar',
           sidebarId: 'backend',
           position: 'left',
           label: 'Backend',
@@ -116,6 +122,7 @@ const config: Config = {
         {
           title: '手册分区',
           items: [
+            {label: 'Guide', to: '/docs/guide/welcome'},
             {label: 'Backend', to: '/docs/backend/welcome'},
             {label: 'Frontend', to: '/docs/frontend/welcome'},
             {label: 'Integration', to: '/docs/integration/welcome'},

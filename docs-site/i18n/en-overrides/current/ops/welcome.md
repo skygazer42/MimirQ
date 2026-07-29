@@ -80,6 +80,7 @@ See [Observability Configuration](./observability) for details.
 
 | Operation | Documentation |
 | --- | --- |
+| Full path from dataset to evaluation | [Full Operation Guide](../guide/welcome) |
 | First install and minimum configuration | [Quick Start](./getting-started) |
 | Health Probe Configuration | [Health Checks](./health-probes) |
 | Monitoring & Alerting | [Observability](./observability) |

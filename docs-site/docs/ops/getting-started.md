@@ -96,4 +96,4 @@ make web
 
 readiness 只验证基础设施，不证明外部模型可用。首次部署还应登录 Web、上传一份小文档、等待索引完成，并执行一次带引用的检索或问答。
 
-相关入口：[配置参考](./settings-meta) · [部署指南](./deployment) · [健康检查](./health-probes)
+下一步：[完整操作指南](../guide/welcome) · [配置参考](./settings-meta) · [部署指南](./deployment) · [健康检查](./health-probes)

@@ -80,6 +80,7 @@ Arq 队列、PostgreSQL、Milvus、Redis 与 MinIO 的运行状态应结合应�
 
 | 操作 | 文档 |
 | --- | --- |
+| 从建库到评测的完整操作 | [完整操作指南](../guide/welcome) |
 | 首次安装与最小配置 | [快速开始](./getting-started) |
 | 健康探针配置 | [健康检查](./health-probes) |
 | 监控与告警 | [可观测性](./observability) |

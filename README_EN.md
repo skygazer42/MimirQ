@@ -136,6 +136,8 @@ make init
 
 See [Model Services and Initial Administrator Configuration](./docs/guides/model_services.md) for values, separate-service examples, and bootstrap rules.
 
+For the full path from dataset creation and ingestion through retrieval, cited answers, governance, evaluation, Dify, and operations, use the [online operation guide](https://skygazer42.github.io/MimirQ/handbook/en/docs/guide/welcome).
+
 | Startup mode | Best for | Where the app runs |
 |:---|:---|:---|
 | **Docker (recommended)** | First use and server deployment | Web, API, worker, and dependencies run in containers |

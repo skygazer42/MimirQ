@@ -4,6 +4,7 @@
 
 ## 快速上手
 
+- [user_guide.md](./user_guide.md)：从部署、建库、入库、解析、切块、检索、问答到评测和运维的完整操作指南。
 - [quickstart.md](./quickstart.md)：环境准备、服务启动与基础校验（含 Windows / 多平台步骤）。
 - [guides/model_services.md](./guides/model_services.md)：`.env` 最小项、LLM / Embedding / Reranker 独立接入、初始管理员与 Docker / 主机地址差异。
 - [deployment/docker_compose.md](./deployment/docker_compose.md)：Docker Compose 的开发/生产模式与常见排错。
