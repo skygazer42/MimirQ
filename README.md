@@ -150,6 +150,8 @@ make api-ping
 
 启动后访问 [http://localhost:3000](http://localhost:3000)；未预置管理员时，在页面注册首个账户。首次构建、代理、生产凭据和网络配置见 [Docker Compose 部署指南](./docs/deployment/docker_compose.md)。
 
+停止使用 `make down`；清空持久化数据使用 `make docker-reset`；连同本项目服务镜像删除使用 `make docker-purge`。后两项不可恢复，删除范围见 [Docker Compose 部署指南](./docs/deployment/docker_compose.md#4-数据卷与清理)。
+
 <details>
 <summary><b>按文档类型启用可选解析器</b></summary>
 

@@ -198,32 +198,77 @@ make up-prod-web
 - `milvus_data` / `etcd_data` / `minio_data`：Milvus 相关数据
 - `upload_data`：上传文件（后端容器内路径默认为 `/data/uploads`）
 - `vector_data`：lite 模式下的本地向量库持久化目录（`CHROMA_PERSIST_PATH_DOCKER=/app/vector_chroma`）
+- `*_cache`：按需启动的解析器模型与运行缓存
 
-仅停止服务：
+从仓库根目录按需要选择一个命令：
+
+| 目的 | 命令 | 容器 / 网络 | 数据卷 | 服务镜像 |
+|:---|:---|:---:|:---:|:---:|
+| 暂停并保留数据 | `make down` | 删除 | 保留 | 保留 |
+| 清空数据后重建 | `make docker-reset` | 删除 | 删除 | 保留 |
+| 完全重新拉取 / 构建 | `make docker-purge` | 删除 | 删除 | 删除 |
+
+### 仅停止，保留数据
 
 ```bash
 make down
 ```
 
-仅停止 lite 栈：
+该命令覆盖完整 Web 栈、主栈、可选解析器以及 lite / retrieval-dev 变体，并带
+`--remove-orphans` 清理同一 Compose 项目遗留的容器。PostgreSQL、上传文件、向量索引、
+MinIO 对象和解析器模型缓存仍保存在命名卷中，下次 `make up-web` 可继续使用。
+
+只停止某个轻量变体时仍可使用：
 
 ```bash
 make down-lite
+make down-retrieval-dev
 ```
 
-重置所有数据（谨慎）：
+### 清空数据，保留镜像
 
 ```bash
-cd docker
-docker compose down -v
+make docker-reset
+make up-web
 ```
 
-如需重置 lite 栈数据（谨慎）：
+`make docker-reset` 会额外删除 MimirQ 的命名卷，包括数据库、上传文件、向量索引、
+对象存储和解析器模型缓存。此操作不可恢复，但会保留已拉取或构建的镜像，适合首次管理员
+状态异常、测试数据污染或需要从空库重新验证的本地环境。
+
+### 删除数据和服务镜像
 
 ```bash
-cd docker
-docker compose -f docker-compose.lite.yml down -v
+make docker-purge
+make up-web
 ```
+
+`make docker-purge` 在重置数据的基础上使用 `--rmi all`，删除这些 Compose 文件引用的
+MimirQ API / Web / 解析器镜像以及 PostgreSQL、Redis、Milvus、MinIO 等依赖镜像。下次
+启动会重新下载或构建。若同一镜像仍被其他容器引用，Docker 会保留它并报告冲突；该命令
+也可能清掉其他项目复用的本地镜像缓存，因此只在确实需要完全重建时使用。
+
+以上三个目标都只处理当前 `.env` / `COMPOSE_PROJECT_NAME` 对应的 Compose 项目，
+不会删除 `.env`、`web/.env.local`、源码、`.venv` 或宿主机上的模型目录，也不会执行
+影响其他项目的 `docker system prune` / `docker builder prune`。BuildKit 全局构建缓存会保留。
+
+### 直接使用 Docker Compose
+
+`docker compose down` 可以使用，但必须复用启动时相同的 Compose 项目名和叠加文件；只写
+`docker compose down` 可能遗漏 Web 或可选解析器。以完整栈为例，`make down` 的主清理步骤等价于：
+
+```bash
+docker compose --env-file .env \
+  -f docker/docker-compose.yml \
+  -f docker/docker-compose.web.yml \
+  -f docker/docker-compose.parsers.yml \
+  --profile "*" down --remove-orphans
+```
+
+在末尾增加 `--volumes` 等价于清空该配置声明的数据卷；再增加 `--rmi all` 会同时删除
+服务镜像。项目也可能曾用 lite / retrieval-dev 配置启动，因此推荐使用 Make 目标，它们会
+依次覆盖这些变体。如果启动时自定义了 `COMPOSE_PROJECT_NAME` 或 `docker compose -p`，
+清理时必须使用同一个值。
 
 ---
 

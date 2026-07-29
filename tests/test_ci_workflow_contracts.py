@@ -474,6 +474,10 @@ def test_host_setup_uses_project_venv_and_complete_cpu_dependencies() -> None:
         "make core-e2e CORE_E2E_BASE_URL=http://127.0.0.1:8000 CORE_E2E_BOOTSTRAP_REGISTER=1"
         not in _read("README.md")
     )
+    assert (
+        "make core-e2e CORE_E2E_BASE_URL=http://127.0.0.1:8000 CORE_E2E_BOOTSTRAP_REGISTER=1"
+        not in _read("docs/quickstart.md")
+    )
 
 
 def test_pull_request_lint_and_security_jobs_use_hosted_runners() -> None:

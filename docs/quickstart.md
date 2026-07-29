@@ -37,11 +37,10 @@ INITIAL_ADMIN_PASSWORD=<strong-password>
 
 ```bash
 make up-web
-make core-e2e CORE_E2E_BASE_URL=http://127.0.0.1:8000 CORE_E2E_BOOTSTRAP_REGISTER=1
-curl --noproxy '*' -f http://localhost:8000/api/v1/health/ready
+make api-ping
 ```
 
-打开 [http://localhost:3000](http://localhost:3000)。若未配置 `INITIAL_ADMIN_*`，在页面中创建第一个本地账户。
+打开 [http://localhost:3000](http://localhost:3000)。若未配置 `INITIAL_ADMIN_*`，先在页面中创建第一个本地账户。不要在人工注册前使用 `CORE_E2E_BOOTSTRAP_REGISTER=1`，否则 smoke 测试会先创建一个随机 owner 并关闭首次设置。
 
 首次构建会下载并校验固定版本的解析模型。代理仅监听 Linux 宿主机回环地址时，先在本机 Docker 配置代理，再运行 `DOCKER_BUILD_NETWORK=host make up-web`；不要把个人代理地址提交到配置模板。
 
@@ -103,8 +102,9 @@ docker compose --env-file .env -f docker/docker-compose.yml ps
 
 ```bash
 NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 make web-api-ping
-make core-e2e CORE_E2E_BASE_URL=http://127.0.0.1:8000 CORE_E2E_BOOTSTRAP_REGISTER=1
 ```
+
+在页面完成首次设置后，将同一账号配置为 `MIMIRQ_SMOKE_IDENTIFIER` 与 `MIMIRQ_SMOKE_PASSWORD`，再运行 `make core-e2e`。
 
 #### retrieval-dev 资源与时延预期（经验值）
 

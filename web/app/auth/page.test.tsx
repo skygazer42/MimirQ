@@ -157,6 +157,41 @@ describe('auth page registration', () => {
     act(() => root.unmount())
   })
 
+  it('explains how an apparently fresh deployment can already have an owner', async () => {
+    authApiMock.register.mockRejectedValue({
+      response: {
+        status: 409,
+        data: { detail: 'Initial registration is closed; contact an administrator' },
+      },
+    })
+
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    act(() => {
+      root.render(<AuthPage />)
+    })
+
+    clickButtonByText(container, '首次设置')
+    setInputValue(container.querySelector('#email'), 'owner@example.com')
+    setInputValue(container.querySelector('#username'), 'owner')
+    setInputValue(container.querySelector('#password'), 'correct-horse-battery-staple')
+    setInputValue(container.querySelector('#confirmPassword'), 'correct-horse-battery-staple')
+
+    await submitForm(container)
+
+    await vi.waitFor(() => {
+      expect(container.textContent).toContain('已有初始化数据')
+      expect(container.textContent).toContain('请使用已配置账号登录')
+      expect(container.textContent).toContain('INITIAL_ADMIN_*')
+      expect(container.textContent).toContain('持久化 Docker 数据卷')
+      expect(container.textContent).toContain('bootstrap smoke')
+    })
+
+    act(() => root.unmount())
+  })
+
   it('announces the active auth mode through pressed button state', () => {
     const container = document.createElement('div')
     document.body.appendChild(container)

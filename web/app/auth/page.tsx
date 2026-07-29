@@ -55,7 +55,7 @@ function toAuthPageError(err: unknown, mode: Mode): ApiErrorInfo {
     if (info.status === 409) {
         return {
             ...info,
-            message: '首次初始化已关闭，后续注册不能再自助创建 owner，请联系管理员开通账号。',
+            message: '系统检测到已有初始化数据，首次设置已关闭。请使用已配置账号登录；若这是全新本地部署，请检查 INITIAL_ADMIN_*、持久化 Docker 数据卷或是否运行过 bootstrap smoke。',
         }
     }
 

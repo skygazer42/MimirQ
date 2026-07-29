@@ -83,6 +83,19 @@ INITIAL_ADMIN_PASSWORD=<strong-password>
 - 相同配置再次启动不会重置密码；已有其他成员或冲突身份时系统会拒绝覆盖和自动提权。
 - 多实例首次启动必须使用完全相同的值，创建成功后应从所有实例统一删除这些变量。
 
+### 首次设置已关闭但不知道管理员账号
+
+先检查 `.env` 中是否配置了 `INITIAL_ADMIN_EMAIL`、`INITIAL_ADMIN_USERNAME` 和密码来源；若配置过这些值，启动阶段已经创建 owner，应直接使用该账号登录。Docker 命名卷不会随重新构建或重新克隆仓库自动删除，旧数据库中的成员也会继续关闭首次设置。另请确认没有在人工注册前运行 `CORE_E2E_BOOTSTRAP_REGISTER=1`，该选项只适用于结束后销毁数据卷的 CI / 临时测试栈。
+
+只有在确认这是无业务数据的本地新安装时，才可以删除 Compose 数据卷并重新初始化：
+
+```bash
+make docker-reset
+make up-web
+```
+
+`down -v` 会永久删除 PostgreSQL、Milvus、MinIO、Etcd 和上传文件等本地持久化数据。需要保留数据时不要执行，应使用已有账号登录或由部署管理员进行受控账号恢复；系统不会在检测到既有租户状态后自动开放匿名 owner 注册。
+
 ## 6. 启动与验证
 
 Docker 一键启动：

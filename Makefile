@@ -1,4 +1,4 @@
-.PHONY: help init install-host setup-host models up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-magicpdf up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-magicpdf infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload worker worker-check web test test-serial test-full test-web test-web-full test-web-e2e test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit-docs audit openapi-export openapi-types openapi-validate openapi-check api-docs-build api-docs-build-static diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure plugin-release-gate mixed-rag-quality live-core-release-gate check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init install-host setup-host models up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-magicpdf up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-magicpdf infra-up-qianfanocr infra-ps infra-down down docker-reset docker-purge down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload worker worker-check web test test-serial test-full test-web test-web-full test-web-e2e test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit-docs audit openapi-export openapi-types openapi-validate openapi-check api-docs-build api-docs-build-static diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure plugin-release-gate mixed-rag-quality live-core-release-gate check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer the project venv whenever it exists. Missing packages should fail in the
 # project environment rather than silently falling back to unrelated global tools.
@@ -26,6 +26,7 @@ COMPOSE_INFRA := docker compose --env-file .env -f docker/docker-compose.infra.y
 COMPOSE_PARSERS := docker compose --env-file .env -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml
 COMPOSE_INFRA_PARSERS := docker compose --env-file .env -f docker/docker-compose.infra.yml -f docker/docker-compose.parsers.yml
 COMPOSE_WEB := docker compose --env-file .env -f docker/docker-compose.yml -f docker/docker-compose.web.yml
+COMPOSE_ALL := docker compose --env-file .env -f docker/docker-compose.yml -f docker/docker-compose.web.yml -f docker/docker-compose.parsers.yml
 COMPOSE_LITE := docker compose --env-file .env -f docker/docker-compose.lite.yml
 COMPOSE_RETRIEVAL_DEV := docker compose --env-file .env -f docker/docker-compose.retrieval-dev.yml
 QUERYSET_HEALTH_POLICY ?= ci/queryset_health_policy.v1.json
@@ -104,7 +105,9 @@ help:
 	@echo "  make infra-up-qianfanocr - infra-up + Qianfan-OCR parser (profile qianfanocr)"
 	@echo "  make infra-ps  - infra docker compose ps"
 	@echo "  make infra-down - stop infra only"
-	@echo "  make down      - docker compose down"
+	@echo "  make down      - stop/remove all MimirQ Compose containers and networks; keep data/images"
+	@echo "  make docker-reset - also delete MimirQ named volumes and all persisted data"
+	@echo "  make docker-purge - also delete images used by MimirQ services"
 	@echo "  make down-retrieval-dev - stop retrieval-dev compose stack"
 	@echo "  make ps        - docker compose ps"
 	@echo "  make ps-retrieval-dev - retrieval-dev docker compose ps"
@@ -272,7 +275,19 @@ infra-down:
 	$(COMPOSE_INFRA) down
 
 down:
-	$(COMPOSE) down
+	$(COMPOSE_ALL) --profile "*" down --remove-orphans
+	$(COMPOSE_LITE) down --remove-orphans
+	$(COMPOSE_RETRIEVAL_DEV) down --remove-orphans
+
+docker-reset:
+	$(COMPOSE_ALL) --profile "*" down --volumes --remove-orphans
+	$(COMPOSE_LITE) down --volumes --remove-orphans
+	$(COMPOSE_RETRIEVAL_DEV) down --volumes --remove-orphans
+
+docker-purge:
+	$(COMPOSE_ALL) --profile "*" down --volumes --rmi all --remove-orphans
+	$(COMPOSE_LITE) down --volumes --rmi all --remove-orphans
+	$(COMPOSE_RETRIEVAL_DEV) down --volumes --rmi all --remove-orphans
 
 down-lite:
 	$(COMPOSE_LITE) down

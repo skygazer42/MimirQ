@@ -29,6 +29,16 @@ make down
 
 默认主栈使用内置 DeepDoc，不会启动 GPU 解析器。Marker、ETL4LLM、MinerU、PaddleOCR-VL 等都是可选 profile，只启动业务需要的服务；完整命令见仓库的 [Docker Compose 指南](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/docker_compose.md)。
 
+### 停止与重新开始
+
+| 目的 | 命令 | 数据卷 | 服务镜像 |
+|:---|:---|:---:|:---:|
+| 停止并保留数据 | `make down` | 保留 | 保留 |
+| 清空数据重建 | `make docker-reset` | 删除 | 保留 |
+| 从镜像开始完全重建 | `make docker-purge` | 删除 | 删除 |
+
+后两项不可恢复。命令只处理当前 MimirQ Compose 项目，不会删除 `.env` 或源码；数据库、上传文件、向量索引、解析器缓存和共享镜像的完整影响范围见 [Docker Compose 指南](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/docker_compose.md#4-%E6%95%B0%E6%8D%AE%E5%8D%B7%E4%B8%8E%E6%B8%85%E7%90%86)。
+
 ## 方式二：主机源码运行
 
 该模式便于前后端热更新，PostgreSQL、Milvus、Etcd、Redis 与 MinIO 仍由 Docker 提供。

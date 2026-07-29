@@ -147,6 +147,8 @@ make api-ping
 
 [http://localhost:3000](http://localhost:3000)에 접속합니다. 초기 관리자를 설정하지 않았다면 화면에서 첫 계정을 등록하세요. 첫 빌드, 프록시, 운영 시크릿, 네트워크 설정은 [Docker Compose 가이드](./docs/deployment/docker_compose.md)를 참조하세요.
 
+중지에는 `make down`, 영구 데이터 삭제에는 `make docker-reset`, 이 프로젝트의 서비스 이미지까지 삭제하려면 `make docker-purge`를 사용합니다. 마지막 두 명령은 되돌릴 수 없으며, 정확한 범위는 [Docker Compose 가이드](./docs/deployment/docker_compose.md)를 참조하세요.
+
 ### 방법 2: 소스 개발(Python venv + pip + pnpm)
 
 일반적인 로컬 개발 방식으로 Conda는 필요하지 않습니다. FastAPI는 Python `.venv`, Next.js는 pnpm으로 실행하고 Docker는 PostgreSQL, Redis, Milvus 같은 인프라에만 사용합니다.

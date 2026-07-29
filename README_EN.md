@@ -150,6 +150,8 @@ make api-ping
 
 Open [http://localhost:3000](http://localhost:3000) after startup. If no administrator was preconfigured, register the first account in the UI. First-build, proxy, production-secret, and network guidance is in the [Docker Compose deployment guide](./docs/deployment/docker_compose.md).
 
+Use `make down` to stop the stack, `make docker-reset` to delete persisted data, or `make docker-purge` to also delete this project's service images. The last two are destructive; see the [Docker Compose deployment guide](./docs/deployment/docker_compose.md) for the exact scope.
+
 <details>
 <summary><b>Optional parsers by document workload</b></summary>
 

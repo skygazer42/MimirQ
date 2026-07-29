@@ -470,6 +470,43 @@ def test_makefile_recipes_do_not_execute_posix_comment_lines() -> None:
     assert re.findall(r"(?m)^\t@?#", makefile) == []
 
 
+def test_docker_cleanup_targets_are_project_scoped_and_explicitly_destructive() -> None:
+    makefile = _read("Makefile")
+    readme = _read("README.md")
+    deployment_guide = _read("docs/deployment/docker_compose.md")
+
+    assert (
+        "COMPOSE_ALL := docker compose --env-file .env -f docker/docker-compose.yml "
+        "-f docker/docker-compose.web.yml -f docker/docker-compose.parsers.yml"
+        in makefile
+    )
+
+    down = makefile.split("\ndown:\n", 1)[1].split("\ndocker-reset:\n", 1)[0]
+    reset = makefile.split("\ndocker-reset:\n", 1)[1].split("\ndocker-purge:\n", 1)[0]
+    purge = makefile.split("\ndocker-purge:\n", 1)[1].split("\ndown-lite:\n", 1)[0]
+
+    for recipe in (down, reset, purge):
+        assert '$(COMPOSE_ALL) --profile "*" down' in recipe
+        assert "$(COMPOSE_LITE) down" in recipe
+        assert "$(COMPOSE_RETRIEVAL_DEV) down" in recipe
+        assert "--remove-orphans" in recipe
+
+    assert "--volumes" not in down
+    assert "--rmi" not in down
+    assert "--volumes" in reset
+    assert "--rmi" not in reset
+    assert "--volumes" in purge
+    assert "--rmi all" in purge
+    assert "docker system prune" not in makefile
+    assert "docker builder prune" not in makefile
+
+    for command in ("make down", "make docker-reset", "make docker-purge"):
+        assert command in readme
+        assert command in deployment_guide
+    assert "不可恢复" in deployment_guide
+    assert "不会删除 `.env`" in deployment_guide
+
+
 def test_optional_parser_profiles_are_actionable_from_public_docs() -> None:
     makefile = _read("Makefile")
     readme = _read("README.md")
