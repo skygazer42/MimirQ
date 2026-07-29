@@ -16,10 +16,19 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  PIP_INDEX_URL: ${{ github.event_name == 'pull_request' && 'https://pypi.org/simple' || vars.CI_PIP_INDEX_URL || 'https://pypi.org/simple' }}
+  http_proxy: ${{ github.event_name != 'pull_request' && vars.CI_HTTP_PROXY || '' }}
+  https_proxy: ${{ github.event_name != 'pull_request' && vars.CI_HTTPS_PROXY || '' }}
+  HTTP_PROXY: ${{ github.event_name != 'pull_request' && vars.CI_HTTP_PROXY || '' }}
+  HTTPS_PROXY: ${{ github.event_name != 'pull_request' && vars.CI_HTTPS_PROXY || '' }}
+  no_proxy: ${{ github.event_name != 'pull_request' && vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}
+  NO_PROXY: ${{ github.event_name != 'pull_request' && vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}
+
 jobs:
   secret-scan:
     name: Secret Scan (TruffleHog)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'mimirq' }}
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -37,7 +46,7 @@ jobs:
 
   dependency-audit:
     name: Dependency Audit (pip-audit, pnpm audit, npm audit)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'mimirq' }}
     timeout-minutes: 30
     steps:
       - name: Checkout

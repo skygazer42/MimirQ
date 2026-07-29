@@ -504,15 +504,23 @@ def test_host_setup_uses_project_venv_and_complete_cpu_dependencies() -> None:
 
 
 def test_pull_request_lint_and_security_jobs_use_hosted_runners() -> None:
-    for workflow_path in (
-        ".github/workflows/lint-fast.yml",
-        ".github/workflows/security.yml",
-    ):
+    runner_policy = (
+        "runs-on: ${{ github.event_name == 'pull_request' && "
+        "'ubuntu-latest' || 'mimirq' }}"
+    )
+    expected_counts = {
+        ".github/workflows/lint-fast.yml": 1,
+        ".github/workflows/security.yml": 2,
+    }
+
+    for workflow_path, expected_count in expected_counts.items():
         workflow = _read(workflow_path)
         assert "pull_request:" in workflow
-        assert "runs-on: ubuntu-latest" in workflow
+        assert workflow.count(runner_policy) == expected_count
         assert "runs-on: [self-hosted" not in workflow
         assert "contents: read" in workflow
+        assert "github.event_name != 'pull_request' && vars.CI_HTTP_PROXY" in workflow
+        assert "github.event_name != 'pull_request' && vars.CI_HTTPS_PROXY" in workflow
 
 
 def test_api_docs_workflow_actually_deploys_pages() -> None:
