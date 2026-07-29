@@ -79,11 +79,49 @@ describe('auth page registration', () => {
     authApiMock.register.mockReset()
     routerMock.push.mockReset()
     sessionMock.setAuthSession.mockReset()
+    delete process.env.NEXT_PUBLIC_ADMIN_CONTACT_URL
   })
 
   afterEach(() => {
     document.body.innerHTML = ''
     vi.clearAllMocks()
+    delete process.env.NEXT_PUBLIC_ADMIN_CONTACT_URL
+  })
+
+  it('renders contact administrator as a safe clickable link', () => {
+    process.env.NEXT_PUBLIC_ADMIN_CONTACT_URL = 'mailto:ops@example.com'
+
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    act(() => {
+      root.render(<AuthPage />)
+    })
+
+    const contact = container.querySelector<HTMLAnchorElement>('a[href="mailto:ops@example.com"]')
+    expect(contact?.textContent).toContain('联系管理员')
+
+    act(() => root.unmount())
+  })
+
+  it('falls back to the project support page for an unsafe contact target', () => {
+    process.env.NEXT_PUBLIC_ADMIN_CONTACT_URL = 'javascript:alert(1)'
+
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    act(() => {
+      root.render(<AuthPage />)
+    })
+
+    const contact = Array.from(container.querySelectorAll<HTMLAnchorElement>('a')).find((link) =>
+      link.textContent?.includes('联系管理员')
+    )
+    expect(contact?.href).toBe('https://github.com/skygazer42/MimirQ/issues')
+
+    act(() => root.unmount())
   })
 
   it('passes the optional bootstrap token during first-owner registration', async () => {

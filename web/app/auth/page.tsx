@@ -17,6 +17,23 @@ import { cn, detachPromise } from '@/lib/utils'
 
 type Mode = 'login' | 'register'
 
+const DEFAULT_ADMIN_CONTACT_URL = 'https://github.com/skygazer42/MimirQ/issues'
+const SAFE_ADMIN_CONTACT_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:'])
+
+function getAdminContactHref(): string {
+    const configuredUrl = (process.env.NEXT_PUBLIC_ADMIN_CONTACT_URL || '').trim()
+    if (!configuredUrl) return DEFAULT_ADMIN_CONTACT_URL
+
+    try {
+        const parsedUrl = new URL(configuredUrl)
+        return SAFE_ADMIN_CONTACT_PROTOCOLS.has(parsedUrl.protocol)
+            ? configuredUrl
+            : DEFAULT_ADMIN_CONTACT_URL
+    } catch {
+        return DEFAULT_ADMIN_CONTACT_URL
+    }
+}
+
 function getAuthSsoProviderLabel(provider?: { id?: string; name?: string }): string {
     if (provider?.name) return `Continue with ${provider.name}`
     if (provider?.id) return `Continue with ${provider.id}`
@@ -76,6 +93,7 @@ export default function AuthPage() {
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [ssoProviderWorkingId, setSsoProviderWorkingId] = useState<string | null>(null)
     const [error, setError] = useState<ApiErrorInfo | null>(null)
+    const contactAdminHref = getAdminContactHref()
 
     const isSsoSubmitting = ssoProviderWorkingId !== null
 
@@ -386,9 +404,12 @@ export default function AuthPage() {
                 <div className="mt-8 text-center">
                     <p className="text-xs text-muted-foreground">
                         遇到问题？{" "}
-                        <span className="font-medium text-foreground/80">
+                        <a
+                            href={contactAdminHref}
+                            className="focus-ring rounded-sm font-medium text-foreground/80 underline underline-offset-4 transition-colors hover:text-foreground"
+                        >
                             联系管理员
-                        </span>
+                        </a>
                     </p>
                 </div>
             </div>

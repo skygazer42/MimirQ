@@ -543,7 +543,7 @@ function HistoryPageContent({
               <div className="sticky top-0 z-20 min-w-0 space-y-1 border-b border-border/50 bg-background/80 px-2 pb-1.5 pt-2 backdrop-blur-md md:min-w-[19.5rem]">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <div className="flex size-9 shrink-0 items-center justify-center rounded-2xl border border-info/30 bg-[radial-gradient(circle_at_34%_24%,hsl(var(--card)/0.98),hsl(var(--info)/0.10)_48%,hsl(var(--info)/0.14)_100%)] text-primary shadow-[0_8px_18px_hsl(var(--info)/0.12)] ring-1 ring-border/40">
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded-2xl border border-border/65 bg-background/92 text-foreground shadow-[0_8px_18px_rgba(15,23,42,0.05)] ring-1 ring-background">
                       <PageTitleIcon name="qa-history" className="size-7" />
                     </div>
                     <h2 className="text-sm font-medium text-foreground  uppercase">历史记录</h2>
@@ -866,22 +866,13 @@ function HistoryMainEmptyState() {
     <div className="flex-1 bg-muted/[0.12] p-4 md:p-6">
       <section
         data-history-main-empty="true"
-        className="relative isolate flex min-h-full items-center justify-center overflow-hidden rounded-[32px] border border-info/20 bg-[linear-gradient(135deg,hsl(var(--info)/0.08),transparent_42%),radial-gradient(circle_at_50%_105%,hsl(var(--info)/0.10),transparent_45%)] px-8 py-12 text-center shadow-soft"
+        className="relative isolate flex min-h-full items-center justify-center overflow-hidden rounded-[32px] border border-border/60 bg-background/96 px-8 py-12 text-center shadow-[inset_0_1px_0_hsl(var(--background)),0_18px_40px_rgba(15,23,42,0.04)]"
       >
-        <div
-          aria-hidden="true"
-          className="absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--info)/0.08)_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--info)/0.07)_1px,transparent_1px)] bg-[size:44px_44px] opacity-35"
-        />
-        <div
-          aria-hidden="true"
-          className="absolute left-1/2 top-1/2 size-[420px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-info/15 blur-3xl"
-        />
-
         <div className="relative mx-auto flex max-w-xl flex-col items-center">
-          <div className="mb-5 grid size-[72px] place-items-center rounded-[26px] border border-info/30 bg-[linear-gradient(145deg,hsl(var(--card)),hsl(var(--info)/0.12))] text-primary shadow-[0_18px_38px_hsl(var(--info)/0.16)]">
+          <div className="mb-5 grid size-[72px] place-items-center rounded-[26px] border border-border/70 bg-muted/55 text-foreground shadow-[0_14px_30px_rgba(15,23,42,0.06)]">
             <History className="size-8" />
           </div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-info/80">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-muted-foreground/70">
             {t('historyEmptyKicker')}
           </p>
           <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-foreground">
@@ -893,7 +884,7 @@ function HistoryMainEmptyState() {
           </p>
 
           <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
-            <Button asChild className="h-10 rounded-full bg-info px-5 text-[13px] font-semibold text-primary-foreground shadow-[0_14px_28px_hsl(var(--info)/0.24)] hover:bg-info/90">
+            <Button asChild className="h-10 rounded-full bg-foreground px-5 text-[13px] font-semibold text-background hover:bg-foreground/92">
               <Link href="/">
                 <Plus className="h-4 w-4" />
                 {t('startNewConversation')}
@@ -903,7 +894,7 @@ function HistoryMainEmptyState() {
               asChild
               variant="outline"
               size="sm"
-              className="h-10 rounded-full border-warning/20 bg-warning/10 px-4 text-xs font-semibold text-warning shadow-sm hover:bg-warning/15 hover:text-warning"
+              className="h-10 rounded-full border-border/70 bg-background/90 px-4 text-xs font-semibold text-foreground shadow-none hover:bg-muted/70 hover:text-foreground"
             >
               <Link href="/evaluations">
                 <BarChart3 className="h-3.5 w-3.5" />
@@ -914,7 +905,7 @@ function HistoryMainEmptyState() {
               asChild
               variant="outline"
               size="sm"
-              className="h-10 rounded-full border-info/20 bg-info/10 px-4 text-xs font-semibold text-info shadow-sm hover:bg-info/15 hover:text-info"
+              className="h-10 rounded-full border-border/70 bg-background/90 px-4 text-xs font-semibold text-foreground shadow-none hover:bg-muted/70 hover:text-foreground"
             >
               <Link href="/observability">
                 <Route className="h-3.5 w-3.5" />
@@ -931,10 +922,10 @@ function HistoryMainEmptyState() {
             ].map(([title, desc]) => (
               <div
                 key={title}
-                className="rounded-2xl border border-border/80 bg-background/72 px-3.5 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)] backdrop-blur"
+                className="rounded-2xl border border-border/75 bg-background/92 px-3.5 py-3 shadow-[0_8px_18px_rgba(15,23,42,0.035)]"
               >
                 <div className="flex items-center gap-2 text-[12px] font-semibold text-foreground/82">
-                  <span className="size-1.5 rounded-full bg-info" />
+                  <span className="size-1.5 rounded-full bg-foreground/80" />
                   {title}
                 </div>
                 <p className="mt-1 text-[11px] leading-4 text-muted-foreground/70">
@@ -990,7 +981,7 @@ function HistorySidebarEmptyState({
       <Button
         asChild
         size="sm"
-        className="mt-5 h-9 rounded-full bg-info px-4 text-[12px] font-semibold text-primary-foreground shadow-[0_10px_20px_hsl(var(--info)/0.20)] hover:bg-info/90"
+        className="mt-5 h-9 rounded-full bg-foreground px-4 text-[12px] font-semibold text-background hover:bg-foreground/92"
       >
         <Link href="/">
           <Plus className="size-3.5" />

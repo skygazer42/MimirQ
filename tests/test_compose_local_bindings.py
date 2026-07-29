@@ -46,8 +46,14 @@ def test_web_compose_uses_docker_scoped_api_env_vars_with_same_origin_default() 
     web = _compose("docker/docker-compose.web.yml")["services"]["web"]
 
     assert web["build"]["args"]["NEXT_PUBLIC_API_URL"] == "${NEXT_PUBLIC_API_URL_DOCKER:-/}"
+    assert web["build"]["args"]["NEXT_PUBLIC_ADMIN_CONTACT_URL"] == (
+        "${NEXT_PUBLIC_ADMIN_CONTACT_URL:-https://github.com/skygazer42/MimirQ/issues}"
+    )
     assert web["build"]["args"]["API_INTERNAL_URL"] == "${API_INTERNAL_URL_DOCKER:-http://mimirq-api:8000}"
     assert web["environment"]["NEXT_PUBLIC_API_URL"] == "${NEXT_PUBLIC_API_URL_DOCKER:-/}"
+    assert web["environment"]["NEXT_PUBLIC_ADMIN_CONTACT_URL"] == (
+        "${NEXT_PUBLIC_ADMIN_CONTACT_URL:-https://github.com/skygazer42/MimirQ/issues}"
+    )
     assert web["environment"]["API_INTERNAL_URL"] == "${API_INTERNAL_URL_DOCKER:-http://mimirq-api:8000}"
 
 

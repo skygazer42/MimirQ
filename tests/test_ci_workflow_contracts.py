@@ -759,7 +759,7 @@ def test_main_ci_runs_core_e2e_against_the_existing_host_backend() -> None:
 
     assert "README host web contract smoke" in regression_job
     assert "node web/scripts/api-ping.mjs" in regression_job
-    assert "NEXT_PUBLIC_API_URL: http://127.0.0.1:8000" in regression_job
+    assert 'NEXT_PUBLIC_API_URL="http://127.0.0.1:${MIMIRQ_RETRIEVAL_API_PORT}"' in regression_job
     assert "Install web deps" in regression_job
     assert "pnpm install --frozen-lockfile" in regression_job
     assert "Install Playwright browsers for host browser smoke" in regression_job
@@ -768,8 +768,33 @@ def test_main_ci_runs_core_e2e_against_the_existing_host_backend() -> None:
     assert "pnpm exec playwright test e2e/live-stack.smoke.spec.ts" in regression_job
     assert "README host quickstart smoke" in regression_job
     assert "make core-e2e" in regression_job
-    assert "CORE_E2E_BASE_URL=http://127.0.0.1:8000" in regression_job
+    assert 'CORE_E2E_BASE_URL="http://127.0.0.1:${MIMIRQ_RETRIEVAL_API_PORT}"' in regression_job
     assert "CORE_E2E_OUT=artifacts/core-e2e.retrieval-regression.json" in regression_job
+
+
+def test_host_regression_jobs_isolate_database_and_api_ports() -> None:
+    workflow = _read(".github/workflows/ci.yml")
+    retrieval_job = workflow.split("\n  retrieval-regression-gate:\n", 1)[1].split(
+        "\n  kg-search-regression-gate:\n",
+        1,
+    )[0]
+    kg_job = workflow.split("\n  kg-search-regression-gate:\n", 1)[1]
+
+    for job, port_var in (
+        (retrieval_job, "MIMIRQ_RETRIEVAL_API_PORT"),
+        (kg_job, "MIMIRQ_KG_API_PORT"),
+    ):
+        assert "- 5432/tcp" in job
+        assert "- 5432:5432" not in job
+        assert "Allocate isolated host ports" in job
+        assert f'echo "{port_var}=$port" >> "$GITHUB_ENV"' in job
+        assert f'--port "${port_var}"' in job
+        assert "${{ job.services.postgres.ports['5432'] }}" in job
+        assert "http://localhost:8000" not in job
+        assert "http://127.0.0.1:8000" not in job
+
+    assert 'echo "MIMIRQ_RETRIEVAL_WEB_PORT=$port" >> "$GITHUB_ENV"' in retrieval_job
+    assert 'PLAYWRIGHT_PORT="$MIMIRQ_RETRIEVAL_WEB_PORT"' in retrieval_job
 
 
 def test_live_browser_smoke_never_bootstraps_a_persistent_admin() -> None:

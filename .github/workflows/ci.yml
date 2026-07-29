@@ -1341,7 +1341,7 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
         ports:
-          - 5432:5432
+          - 5432/tcp
         options: >-
           --health-cmd "pg_isready -U postgres"
           --health-interval 10s
@@ -1388,9 +1388,21 @@ jobs:
           name: retrieval-only-bounded-gate
           path: bounded_gate_artifacts
 
+      - name: Allocate isolated host ports
+        run: |
+          port="$(python - <<'PY'
+          import socket
+
+          with socket.socket() as sock:
+              sock.bind(("127.0.0.1", 0))
+              print(sock.getsockname()[1])
+          PY
+          )"
+          echo "MIMIRQ_RETRIEVAL_API_PORT=$port" >> "$GITHUB_ENV"
+
       - name: Seed CI retrieval fixture (DB + cases bundle)
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mimirq
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/mimirq
           ENV: ci
           AUTH_MODE: header
         run: |
@@ -1402,10 +1414,11 @@ jobs:
       - name: Start backend (no external deps)
         env:
           # Use the same DB seeded above.
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mimirq
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/mimirq
           # Ensure dev-friendly auth/membership auto-bootstrap.
           ENV: ci
           AUTH_MODE: header
+          SECRET_KEY: ci-retrieval-regression-secret-key-0123456789
           DEFAULT_TENANT_ID: 00000000-0000-0000-0000-000000000000
           # Keep /health/ready green without Milvus/Redis/MinIO.
           VECTOR_BACKEND: faiss
@@ -1428,18 +1441,16 @@ jobs:
           # Avoid any external LLM calls in CI (probe traffic uses mock responses).
           LLM_MOCK_ENABLED: "true"
         run: |
-          python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 \
+          python -m uvicorn app.main:app --host 127.0.0.1 --port "$MIMIRQ_RETRIEVAL_API_PORT" \
             > artifacts/backend.log 2>&1 &
           echo $! > artifacts/backend.pid
 
       - name: Wait for backend ready
         id: backend_ready
-        env:
-          BACKEND_BASE_URL: http://localhost:8000
         run: |
           backend_pid="$(cat artifacts/backend.pid)"
           for i in $(seq 1 120); do
-            if python scripts/api_ping.py; then
+            if BACKEND_BASE_URL="http://127.0.0.1:${MIMIRQ_RETRIEVAL_API_PORT}" python scripts/api_ping.py; then
               exit 0
             fi
             if ! kill -0 "$backend_pid" 2>/dev/null; then
@@ -1454,39 +1465,53 @@ jobs:
           exit 1
 
       - name: README host web contract smoke
-        env:
-          NEXT_PUBLIC_API_URL: http://127.0.0.1:8000
-        run: node web/scripts/api-ping.mjs
+        run: |
+          NEXT_PUBLIC_API_URL="http://127.0.0.1:${MIMIRQ_RETRIEVAL_API_PORT}" \
+            node web/scripts/api-ping.mjs
 
       - name: Install Playwright browsers for host browser smoke
         if: ${{ runner.environment == 'self-hosted' }}
         working-directory: web
         run: pnpm exec playwright install chromium
 
+      - name: Allocate isolated browser port
+        run: |
+          port="$(python - <<'PY'
+          import socket
+
+          with socket.socket() as sock:
+              sock.bind(("127.0.0.1", 0))
+              print(sock.getsockname()[1])
+          PY
+          )"
+          echo "MIMIRQ_RETRIEVAL_WEB_PORT=$port" >> "$GITHUB_ENV"
+
       - name: README host browser smoke
         working-directory: web
         env:
-          NEXT_PUBLIC_API_URL: http://127.0.0.1:8000
           NEXT_PUBLIC_USER_ID: ci-bot
           NEXT_PUBLIC_TENANT_ID: 00000000-0000-0000-0000-000000000000
           PLAYWRIGHT_LIVE_STACK: "1"
           PLAYWRIGHT_USE_PROD_SERVER: "1"
-        run: pnpm exec playwright test e2e/live-stack.smoke.spec.ts
+        run: |
+          NEXT_PUBLIC_API_URL="http://127.0.0.1:${MIMIRQ_RETRIEVAL_API_PORT}" \
+          PLAYWRIGHT_PORT="$MIMIRQ_RETRIEVAL_WEB_PORT" \
+            pnpm exec playwright test e2e/live-stack.smoke.spec.ts
 
       - name: README host quickstart smoke
         run: |
           mkdir -p artifacts
           make core-e2e \
-            CORE_E2E_BASE_URL=http://127.0.0.1:8000 \
+            CORE_E2E_BASE_URL="http://127.0.0.1:${MIMIRQ_RETRIEVAL_API_PORT}" \
             CORE_E2E_OUT=artifacts/core-e2e.retrieval-regression.json
 
       - name: Run retrieval-only regression gate + generate candidate thresholds
         env:
           # Used by the backend process; keep env consistent for subprocesses.
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mimirq
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/mimirq
         run: |
           python scripts/regression_gate.py \
-            --base-url http://localhost:8000/api/v1 \
+            --base-url "http://127.0.0.1:${MIMIRQ_RETRIEVAL_API_PORT}/api/v1" \
             --tenant-id 00000000-0000-0000-0000-000000000000 \
             --user-id ci-bot \
             --cases artifacts/regression_cases.json \
@@ -1510,10 +1535,10 @@ jobs:
       - name: Release gate (SLO + cost budgets)
         if: always() && steps.backend_ready.outcome == 'success'
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mimirq
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/mimirq
         run: |
           python scripts/release_gate.py \
-            --base-url http://localhost:8000/api/v1 \
+            --base-url "http://127.0.0.1:${MIMIRQ_RETRIEVAL_API_PORT}/api/v1" \
             --tenant-id 00000000-0000-0000-0000-000000000000 \
             --user-id ci-bot \
             --budgets ci/release_gate_budgets.v1.json \
@@ -1599,7 +1624,7 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
         ports:
-          - 5432:5432
+          - 5432/tcp
         options: >-
           --health-cmd "pg_isready -U postgres"
           --health-interval 10s
@@ -1628,9 +1653,21 @@ jobs:
             "$TORCH_WHEEL_DIR/torchvision-0.28.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
           python -m pip install --retries 10 --timeout 120 -r requirements.txt
 
+      - name: Allocate isolated host ports
+        run: |
+          port="$(python - <<'PY'
+          import socket
+
+          with socket.socket() as sock:
+              sock.bind(("127.0.0.1", 0))
+              print(sock.getsockname()[1])
+          PY
+          )"
+          echo "MIMIRQ_KG_API_PORT=$port" >> "$GITHUB_ENV"
+
       - name: Seed CI KG search fixture (DB + KG rows + cases bundle)
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mimirq
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/mimirq
           ENV: ci
           AUTH_MODE: header
         run: |
@@ -1641,9 +1678,10 @@ jobs:
 
       - name: Start backend (KG enabled, no Milvus/embeddings)
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mimirq
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/mimirq
           ENV: ci
           AUTH_MODE: header
+          SECRET_KEY: ci-kg-search-secret-key-0123456789
           DEFAULT_TENANT_ID: 00000000-0000-0000-0000-000000000000
           VECTOR_BACKEND: faiss
           TASK_QUEUE_ENABLED: "false"
@@ -1655,17 +1693,15 @@ jobs:
           KG_ENABLED: "true"
           KG_SEARCH_VECTOR_RECALL_ENABLED: "false"
         run: |
-          python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 \
+          python -m uvicorn app.main:app --host 127.0.0.1 --port "$MIMIRQ_KG_API_PORT" \
             > artifacts/kg-backend.log 2>&1 &
           echo $! > artifacts/backend.pid
 
       - name: Wait for backend ready
-        env:
-          BACKEND_BASE_URL: http://localhost:8000
         run: |
           backend_pid="$(cat artifacts/backend.pid)"
           for i in $(seq 1 120); do
-            if python scripts/api_ping.py; then
+            if BACKEND_BASE_URL="http://127.0.0.1:${MIMIRQ_KG_API_PORT}" python scripts/api_ping.py; then
               exit 0
             fi
             if ! kill -0 "$backend_pid" 2>/dev/null; then
@@ -1681,10 +1717,10 @@ jobs:
 
       - name: Run KG search regression gate
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mimirq
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/mimirq
         run: |
           python scripts/kg_search_regression_gate.py \
-            --base-url http://localhost:8000/api/v1 \
+            --base-url "http://127.0.0.1:${MIMIRQ_KG_API_PORT}/api/v1" \
             --tenant-id 00000000-0000-0000-0000-000000000000 \
             --user-id ci-bot \
             --cases artifacts/kg_regression_cases.json \
