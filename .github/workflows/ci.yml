@@ -1505,7 +1505,8 @@ jobs:
           PLAYWRIGHT_LIVE_STACK: "1"
           PLAYWRIGHT_USE_PROD_SERVER: "1"
         run: |
-          NEXT_PUBLIC_API_URL="http://127.0.0.1:${MIMIRQ_RETRIEVAL_API_PORT}" \
+          NEXT_PUBLIC_API_URL="/" \
+          API_INTERNAL_URL="http://127.0.0.1:${MIMIRQ_RETRIEVAL_API_PORT}" \
           PLAYWRIGHT_PORT="$MIMIRQ_RETRIEVAL_WEB_PORT" \
             pnpm exec playwright test e2e/live-stack.smoke.spec.ts
 

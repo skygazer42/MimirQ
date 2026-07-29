@@ -248,6 +248,19 @@ def test_main_ci_host_browser_smoke_stays_on_the_live_stack_spec_in_non_pr_jobs(
     assert 'PLAYWRIGHT_LIVE_STACK: "1"' in retrieval_regression_job
     assert "NEXT_PUBLIC_USER_ID: ci-bot" in retrieval_regression_job
     assert "NEXT_PUBLIC_TENANT_ID: 00000000-0000-0000-0000-000000000000" in retrieval_regression_job
+    browser_smoke = retrieval_regression_job.split("- name: README host browser smoke", 1)[1].split(
+        "- name: README host quickstart smoke",
+        1,
+    )[0]
+    assert 'NEXT_PUBLIC_API_URL="/"' in browser_smoke
+    assert (
+        'API_INTERNAL_URL="http://127.0.0.1:${MIMIRQ_RETRIEVAL_API_PORT}"'
+        in browser_smoke
+    )
+    assert (
+        'NEXT_PUBLIC_API_URL="http://127.0.0.1:${MIMIRQ_RETRIEVAL_API_PORT}"'
+        not in browser_smoke
+    )
     assert "pnpm exec playwright test e2e/live-stack.smoke.spec.ts" in retrieval_regression_job
 
 
