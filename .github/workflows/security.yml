@@ -17,7 +17,10 @@ permissions:
   contents: read
 
 env:
+  SELF_HOSTED_PYTHON_BIN: ${{ github.event_name != 'pull_request' && vars.CI_SELF_HOSTED_PYTHON_BIN || '' }}
+  SELF_HOSTED_VENV_DIR: ${{ github.event_name != 'pull_request' && vars.CI_SELF_HOSTED_VENV_DIR || '' }}
   PIP_INDEX_URL: ${{ github.event_name == 'pull_request' && 'https://pypi.org/simple' || vars.CI_PIP_INDEX_URL || 'https://pypi.org/simple' }}
+  PIP_CACHE_DIR: ${{ github.event_name == 'pull_request' && '/home/runner/.cache/pip' || vars.CI_PIP_CACHE_DIR || '' }}
   http_proxy: ${{ github.event_name != 'pull_request' && vars.CI_HTTP_PROXY || '' }}
   https_proxy: ${{ github.event_name != 'pull_request' && vars.CI_HTTPS_PROXY || '' }}
   no_proxy: ${{ github.event_name != 'pull_request' && vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}
@@ -49,14 +52,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Set up Python
+        if: ${{ runner.environment == 'github-hosted' }}
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.11"
 
+      - name: Prepare self-hosted Python
+        if: ${{ runner.environment == 'self-hosted' }}
+        run: bash scripts/prepare_self_hosted_ci.sh
+
       - name: Set up Node
+        if: ${{ runner.environment == 'github-hosted' }}
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
+
+      - name: Prepare self-hosted Node
+        if: ${{ runner.environment == 'self-hosted' }}
+        run: |
+          node -v
+          npm -v
+          corepack enable
+          pnpm -v
 
       - name: Enable pnpm
         run: corepack enable

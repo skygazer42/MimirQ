@@ -521,6 +521,10 @@ def test_pull_request_lint_and_security_jobs_use_hosted_runners() -> None:
         assert "contents: read" in workflow
         assert "github.event_name != 'pull_request' && vars.CI_HTTP_PROXY" in workflow
         assert "github.event_name != 'pull_request' && vars.CI_HTTPS_PROXY" in workflow
+        assert "if: ${{ runner.environment == 'github-hosted' }}" in workflow
+        assert "if: ${{ runner.environment == 'self-hosted' }}" in workflow
+        assert "run: bash scripts/prepare_self_hosted_ci.sh" in workflow
+        assert "Prepare self-hosted Node" in workflow
 
 
 def test_api_docs_workflow_actually_deploys_pages() -> None:
