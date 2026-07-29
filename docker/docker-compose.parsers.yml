@@ -59,7 +59,13 @@ services:
       context: ./paddlevl
     restart: unless-stopped
     hostname: mimirq-paddlevl
-    gpus: all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     environment:
       TZ: Asia/Shanghai
       NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
@@ -117,7 +123,13 @@ services:
       context: ./mineru
     restart: unless-stopped
     hostname: mimirq-mineru
-    gpus: all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     ports:
       # Avoid clashing with MimirQ backend (8000).
       - "127.0.0.1:30001:8000"
@@ -161,7 +173,13 @@ services:
       context: ./mineru
     restart: unless-stopped
     hostname: mimirq-mineru-vlm
-    gpus: all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     ipc: host
     command: ["python3", "/app/start_vlm_server.py"]
     ports:
@@ -208,7 +226,13 @@ services:
       context: ./olmocr
     restart: unless-stopped
     hostname: mimirq-olmocr
-    gpus: all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     environment:
       TZ: Asia/Shanghai
       NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
@@ -257,7 +281,13 @@ services:
       context: ./magicpdf
     restart: unless-stopped
     hostname: mimirq-magicpdf
-    gpus: all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     ports:
       - "127.0.0.1:2095:2095"
     environment:

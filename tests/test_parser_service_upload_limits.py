@@ -38,3 +38,20 @@ def test_parser_host_ports_bind_to_loopback() -> None:
     assert compose["services"]["mimirq-marker"]["ports"] == ["127.0.0.1:2080:2080"]
     assert compose["services"]["mimirq-magicpdf"]["ports"] == ["127.0.0.1:2095:2095"]
     assert compose["services"]["mimirq-qianfanocr"]["ports"] == ["127.0.0.1:2090:2090"]
+
+
+def test_gpu_parsers_use_compose_compatible_device_reservations() -> None:
+    compose = yaml.safe_load(Path("docker/docker-compose.parsers.yml").read_text(encoding="utf-8"))
+    gpu_services = (
+        "mimirq-paddlevl",
+        "mimirq-mineru",
+        "mimirq-mineru-vlm",
+        "mimirq-olmocr",
+        "mimirq-magicpdf",
+    )
+
+    expected = [{"driver": "nvidia", "count": "all", "capabilities": ["gpu"]}]
+    for service_name in gpu_services:
+        service = compose["services"][service_name]
+        assert "gpus" not in service
+        assert service["deploy"]["resources"]["reservations"]["devices"] == expected
