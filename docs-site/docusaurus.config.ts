@@ -15,6 +15,8 @@ const config: Config = {
 
   trailingSlash: false,
 
+  staticDirectories: ['static', '../docs/images'],
+
   onBrokenLinks: 'throw',
 
   i18n: {

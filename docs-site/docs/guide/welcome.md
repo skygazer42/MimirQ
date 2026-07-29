@@ -51,6 +51,10 @@ make api-ping
 
 数据集是权限、索引、检索范围与评测的边界。敏感资料使用 `only_me` 或 `partial_members`，不要全部放入默认公开范围。
 
+![创建并选择数据集](/screenshots/guide-create-dataset.png)
+
+创建后先在数据集页面检查权限范围、文档数与 Chunk 数。
+
 ### Step 2：上传并建立索引
 
 1. 打开 `/knowledge/ingestion?datasetId=<dataset_id>`。
@@ -58,6 +62,10 @@ make api-ping
 3. 拖入一份包含唯一测试短语的小文件。
 4. 点击“解析并建索引”。
 5. 等待状态从 `pending`、`processing` 进入 `completed`。
+
+![上传文档并建立索引](/screenshots/guide-ingestion.png)
+
+入库工作台统一选择数据集、数据源和执行阶段，并显示任务进度与失败状态。
 
 如果进入 `failed`，查看失败详情；进入 `quarantined`，到 `/knowledge/quarantine` 审核。文档长期不结束时使用[文档卡住排障](../integration/tasks/document-stuck)。
 
@@ -78,6 +86,10 @@ Chunk Preview 用于试验策略，正式资产仍从入库页面进入目标数
 3. 输入文件中的唯一短语或已知答案问题。
 4. 检查命中 Chunk、来源、分数、通道和 Trace。
 
+![检索测试与命中证据](/screenshots/guide-retrieval-test.png)
+
+候选排序与命中细节应能说明召回来源、重排分数和所用证据。
+
 没有命中时先检查文档状态、Chunk、索引、数据集范围和 ACL；不要先改 Prompt。
 
 ### Step 5：做带引用问答
@@ -87,6 +99,10 @@ Chunk Preview 用于试验策略，正式资产仍从入库页面进入目标数
 3. 选择刚创建的数据集并提问。
 4. 展开“来源与证据”。
 5. 确认引用指向正确文件和支撑原文。
+
+![回答中的来源与证据](/screenshots/guide-source-evidence.png)
+
+生成答案必须能回到具体文件、页码与证据片段。
 
 完整闭环的验收标准：文档 `completed`、检索命中正确证据、答案与证据一致、引用可定位。API 方式见[上传后对话](../integration/scenarios/s01-upload-chat)和[知识库问答验收](../integration/tasks/knowledge-base-qa)。
 

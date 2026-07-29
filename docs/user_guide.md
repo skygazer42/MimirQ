@@ -106,6 +106,10 @@ make web
 
 数据集是权限、索引、检索范围和评测基线的边界。不同部门、不同保密范围或不同 Embedding runtime 的资料应拆成独立数据集。
 
+![创建并选择数据集](./images/screenshots/guide-create-dataset.png)
+
+*创建数据集后，可在同一页面检查文档数、Chunk 数、权限范围与后续操作入口。*
+
 ### 3.2 可选：先做数据预检
 
 正式批量入库前，可打开 `/datasets/{dataset_id}/precheck` 查看文件类型、文本密度、图片、表格和异常样本，再决定解析器、清洗规则和资源预算。操作细节见[数据集预检](./guides/dataset_precheck.md)。
@@ -120,6 +124,10 @@ make web
 4. 确认目标数据集和解析配置。
 5. 点击“解析并建索引”。
 6. 等待文档从 `pending`、`processing` 进入 `completed`。
+
+![上传文档并建立索引](./images/screenshots/guide-ingestion.png)
+
+*入库工作台统一选择数据集、数据源和执行阶段，并显示任务进度与失败状态。*
 
 `failed` 表示处理失败，`quarantined` 表示治理规则将文档送入隔离区，`cancelled` 表示任务被取消。批量任务可在 `/knowledge/ingestion` 查看，不要反复上传同一文件来掩盖失败原因。
 
@@ -139,6 +147,10 @@ Chunk Preview 用于试验参数；正式资产仍应从入库页面进入目标
 4. 输入文件中可唯一命中的短语或业务问题。
 5. 检查返回 Chunk、文档来源、分数、检索通道和 Trace。
 
+![检索测试与命中证据](./images/screenshots/guide-retrieval-test.png)
+
+*检索测试把候选排序与命中细节并排展示，用于区分召回、重排和数据范围问题。*
+
 检索结果为空时，先检查文档是否 `completed`、是否生成 Chunk、数据集范围是否正确，再调整 top-k、过滤或重排；不要先修改 LLM Prompt。
 
 ### 3.6 验证带引用问答
@@ -148,6 +160,10 @@ Chunk Preview 用于试验参数；正式资产仍应从入库页面进入目标
 3. 提问一个只能由测试文档回答的问题。
 4. 展开回答下方的“来源与证据”。
 5. 确认引用卡片指向正确文件，并包含支撑答案的原文。
+
+![回答中的来源与证据](./images/screenshots/guide-source-evidence.png)
+
+*生成答案必须能回到具体文件、页码与证据片段；只有回答文本而没有可核对引用，不算完成闭环。*
 
 最小验收标准：
 

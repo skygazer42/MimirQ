@@ -13,7 +13,7 @@ sidebar_position: 3
 
 | 路由 | 页面文件 | 功能 |
 |------|----------|------|
-| `/knowledge/retrieval` | — | 检索证据入口 |
+| `/knowledge` | `web/app/knowledge/page.tsx` | 选择数据集后切换到“检索测试” |
 | `/knowledge/similarity` | — | 相似度诊断 |
 | `/knowledge/nebula` | — | 向量星云可视化 |
 

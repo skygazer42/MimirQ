@@ -922,29 +922,32 @@ export function RetrievePreviewPanel({
                 const terms = getMatchedTerms(hit)
 
                 return (
-                  <button
+                  <div
                     key={key || String(idx)}
-                    type="button"
-                    onClick={() => setActiveHit(hit)}
-                    onMouseEnter={() => {
-                      const hitKey = toHitKey(hit)
-                      if (prefetchedHitTargetsRef.current.has(hitKey)) return
-                      prefetchedHitTargetsRef.current.add(hitKey)
-                      handlePrefetchHitDocument(hit)
-                    }}
-                    onFocus={() => {
-                      const hitKey = toHitKey(hit)
-                      if (prefetchedHitTargetsRef.current.has(hitKey)) return
-                      prefetchedHitTargetsRef.current.add(hitKey)
-                      handlePrefetchHitDocument(hit)
-                    }}
                     style={{ animationDelay: `${staggerDelayMs}ms` }}
                     className={cn(
-                      'animate-in fade-in-0 slide-in-from-bottom-1 duration-300 motion-reduce:animate-none w-full px-5 py-4 text-left transition-colors hover:bg-primary/[0.03]',
+                      'animate-in fade-in-0 slide-in-from-bottom-1 duration-300 motion-reduce:animate-none flex w-full items-start gap-4 px-5 py-4 text-left transition-colors hover:bg-primary/[0.03]',
                       activeResult === hit && 'bg-primary/[0.04]'
                     )}
                   >
-                    <div className="flex items-start gap-4">
+                    <button
+                      type="button"
+                      aria-pressed={activeResult === hit}
+                      className="flex min-w-0 flex-1 items-start gap-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                      onClick={() => setActiveHit(hit)}
+                      onMouseEnter={() => {
+                        const hitKey = toHitKey(hit)
+                        if (prefetchedHitTargetsRef.current.has(hitKey)) return
+                        prefetchedHitTargetsRef.current.add(hitKey)
+                        handlePrefetchHitDocument(hit)
+                      }}
+                      onFocus={() => {
+                        const hitKey = toHitKey(hit)
+                        if (prefetchedHitTargetsRef.current.has(hitKey)) return
+                        prefetchedHitTargetsRef.current.add(hitKey)
+                        handlePrefetchHitDocument(hit)
+                      }}
+                    >
                       <div className="flex size-9 shrink-0 items-center justify-center rounded-[14px] border border-primary/20 bg-primary/8 text-primary">
                         <span className="font-mono text-[12px] font-semibold">{idx + 1}</span>
                       </div>
@@ -981,31 +984,28 @@ export function RetrievePreviewPanel({
                         ) : null}
                       </div>
 
-                      <div className="flex shrink-0 items-center gap-2">
-                        <IconButton
-                          label="在文档查看器中打开"
-                          variant="ghost"
-                          className="h-8 w-8 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/8"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            handleOpenHitInDocumentViewer(hit)
-                          }}
-                        >
-                          <ExternalLink className="size-4" />
-                        </IconButton>
-                        <button
-                          type="button"
-                          className="text-[12px] text-muted-foreground/62"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            setExpanded((prev) => ({ ...prev, [key]: !prev[key] }))
-                          }}
-                        >
-                          {expandedHit ? '收起' : '展开'}
-                        </button>
-                      </div>
+                    </button>
+
+                    <div className="flex shrink-0 items-center gap-2">
+                      <IconButton
+                        label="在文档查看器中打开"
+                        variant="ghost"
+                        className="h-8 w-8 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/8"
+                        onClick={() => handleOpenHitInDocumentViewer(hit)}
+                      >
+                        <ExternalLink className="size-4" />
+                      </IconButton>
+                      <button
+                        type="button"
+                        className="text-[12px] text-muted-foreground/62"
+                        onClick={() => {
+                          setExpanded((prev) => ({ ...prev, [key]: !prev[key] }))
+                        }}
+                      >
+                        {expandedHit ? '收起' : '展开'}
+                      </button>
                     </div>
-                  </button>
+                  </div>
                 )
               })}
             </div>

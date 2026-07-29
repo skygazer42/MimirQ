@@ -112,7 +112,8 @@
 ## 发布与版本（Releases / Versions）
 
 - [releases/README.md](./releases/README.md)：最新发布与版本索引。
-- [releases/v1.0.0.md](./releases/v1.0.0.md)：当前最新稳定版的对外发布说明。
+- [releases/v1.0.1.md](./releases/v1.0.1.md)：当前最新稳定版的对外发布说明。
+- [releases/v1.0.0.md](./releases/v1.0.0.md)：首个公开稳定版的发布说明。
 
 ## 数据治理（Governance）
 

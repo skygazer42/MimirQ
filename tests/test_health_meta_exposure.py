@@ -46,7 +46,7 @@ def test_public_version_metadata_matches_package_version() -> None:
 
     root_payload = asyncio.run(main_module.root())
 
-    assert app_package.__version__ == "1.0.0"
+    assert app_package.__version__ == "1.0.1"
     assert main_module.app.version == app_package.__version__
     assert root_payload["version"] == app_package.__version__
 

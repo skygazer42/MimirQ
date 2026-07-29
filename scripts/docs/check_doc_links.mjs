@@ -13,6 +13,10 @@ const ROOTS = [
   path.join(REPO, "docs-site", "docs"),
   path.join(REPO, "docs-site", "i18n", "en", "docusaurus-plugin-content-docs", "current"),
 ];
+const STATIC_ROOTS = [
+  path.join(REPO, "docs-site", "static"),
+  path.join(REPO, "docs", "images"),
+];
 
 const LINK_RE = /\]\(([^)]+)\)/g;
 
@@ -37,13 +41,17 @@ function checkFile(file) {
     if (href.startsWith("mailto:") || href.startsWith("#")) continue;
     const noHash = href.split("#")[0];
     if (!noHash) continue;
-    const target = path.normalize(path.join(base, noHash));
-    const exists =
-      fs.existsSync(target) ||
-      fs.existsSync(`${target}.md`) ||
-      fs.existsSync(`${target}.mdx`);
+    const targets = noHash.startsWith("/")
+      ? STATIC_ROOTS.map((root) => path.join(root, noHash.slice(1)))
+      : [path.normalize(path.join(base, noHash))];
+    const exists = targets.some(
+      (target) =>
+        fs.existsSync(target) ||
+        fs.existsSync(`${target}.md`) ||
+        fs.existsSync(`${target}.mdx`),
+    );
     if (!exists) {
-      errors.push({ href, target });
+      errors.push({ href, target: targets.join(" | ") });
     }
   }
   return errors;

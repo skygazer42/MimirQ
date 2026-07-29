@@ -7,7 +7,8 @@ Git tags remain the authoritative history; this folder is the human-readable lay
 
 | Version | Status | Focus |
 | --- | --- | --- |
-| [v1.0.0](./v1.0.0.md) | Latest stable | Docker + host quick start, Dify integration, real-model 800-question validation, strict provenance gates |
+| [v1.0.1](./v1.0.1.md) | Latest stable | Safe first-run bootstrap, isolated Docker cleanup, complete operation guide, current UI screenshots |
+| [v1.0.0](./v1.0.0.md) | Previous stable | Docker + host quick start, Dify integration, real-model 800-question validation, strict provenance gates |
 
 ## Previous milestone / 里程碑
 

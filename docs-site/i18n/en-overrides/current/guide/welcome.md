@@ -47,6 +47,10 @@ For source development, run `make setup-host`, then run `make backend` and `make
 
 A dataset is the boundary for permissions, indexes, retrieval scope, and evaluation. Separate content with different confidentiality or embedding runtimes.
 
+![Create and select a dataset](/screenshots/guide-create-dataset.png)
+
+Confirm the access scope, document count, and chunk count before ingestion.
+
 ### Upload and index
 
 1. Open `/knowledge/ingestion?datasetId=<dataset_id>`.
@@ -54,6 +58,10 @@ A dataset is the boundary for permissions, indexes, retrieval scope, and evaluat
 3. Upload a small file containing a unique test phrase.
 4. Start parsing and indexing.
 5. Wait for `pending` and `processing` to become `completed`.
+
+![Upload and index a document](/screenshots/guide-ingestion.png)
+
+The ingestion workbench keeps the dataset, source, execution stage, progress, and failures in one place.
 
 Inspect `failed` tasks instead of repeatedly uploading the file. Review `quarantined` documents under `/knowledge/quarantine`. Use [Document troubleshooting](../integration/tasks/document-stuck) for tasks that do not finish.
 
@@ -74,6 +82,10 @@ Chunk Preview is an experiment surface; ingest production assets through the ing
 3. Query the unique phrase or a known-answer question.
 4. Inspect chunks, sources, scores, channels, and trace data.
 
+![Inspect retrieval hits](/screenshots/guide-retrieval-test.png)
+
+The ranked candidates and active-hit detail should expose where evidence came from and how it was scored.
+
 If nothing is returned, check document completion, chunks, index state, dataset scope, and ACL before changing prompts.
 
 ### Run a cited chat
@@ -83,6 +95,10 @@ If nothing is returned, check document completion, chunks, index state, dataset 
 3. Ask a question that only the test file can answer.
 4. Expand **来源与证据** (Sources and evidence).
 5. Confirm that the citation points to the correct file and supporting text.
+
+![Inspect sources and evidence](/screenshots/guide-source-evidence.png)
+
+A generated answer completes the loop only when its file, page, and supporting evidence remain inspectable.
 
 The loop passes only when the document is completed, retrieval finds the expected evidence, the answer follows that evidence, and the citation is inspectable. API users can follow [Upload and chat](../integration/scenarios/s01-upload-chat) and [Knowledge-base QA](../integration/tasks/knowledge-base-qa).
 

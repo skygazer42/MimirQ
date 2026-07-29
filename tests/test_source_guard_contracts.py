@@ -552,6 +552,7 @@ def test_full_project_user_guide_is_discoverable_and_covers_the_closed_loop() ->
     handbook_guide_en = _read("docs-site/i18n/en-overrides/current/guide/welcome.md")
     sidebars = _read("docs-site/sidebars.ts")
     docusaurus_config = _read("docs-site/docusaurus.config.ts")
+    link_checker = _read("scripts/docs/check_doc_links.mjs")
 
     assert "[完整操作指南](./docs/user_guide.md)" in readme
     assert "[user_guide.md](./user_guide.md)" in docs_index
@@ -581,6 +582,53 @@ def test_full_project_user_guide_is_discoverable_and_covers_the_closed_loop() ->
     assert "Full Operation Guide" in handbook_guide_en
     assert "make up-web" in handbook_guide_en
     assert "/knowledge/ingestion?datasetId=" in handbook_guide_en
+
+    guide_screenshots = (
+        "guide-create-dataset.png",
+        "guide-ingestion.png",
+        "guide-retrieval-test.png",
+        "guide-source-evidence.png",
+    )
+    for screenshot in guide_screenshots:
+        assert (ROOT / "docs" / "images" / "screenshots" / screenshot).is_file()
+        assert screenshot in guide
+        assert screenshot in handbook_guide
+        assert screenshot in handbook_guide_en
+    assert "'../docs/images'" in docusaurus_config
+    assert 'path.join(REPO, "docs", "images")' in link_checker
+
+
+def test_retrieval_handbook_uses_the_live_knowledge_tab_route() -> None:
+    retrieval_doc = _read("docs-site/docs/frontend/more/retrieval.md")
+    knowledge_page = _read("web/components/knowledge/knowledge-page.tsx")
+    knowledge_query_state = _read(
+        "web/components/knowledge/use-knowledge-query-state.ts"
+    )
+
+    assert "/knowledge/retrieval" not in retrieval_doc
+    assert "`/knowledge`" in retrieval_doc
+    assert "检索测试" in retrieval_doc
+    assert "type TabKey = 'documents' | 'retrieval' | 'settings'" in knowledge_page
+    assert "searchParams.get('tab')" in knowledge_query_state
+
+
+def test_current_release_metadata_is_consistent() -> None:
+    version = "1.0.1"
+    tag = f"v{version}"
+    app_package = _read("app/__init__.py")
+    web_package = json.loads(_read("web/package.json"))
+    readme = _read("README.md")
+    readme_en = _read("README_EN.md")
+    docs_index = _read("docs/README.md")
+    release_index = _read("docs/releases/README.md")
+    release_notes_path = ROOT / "docs" / "releases" / f"{tag}.md"
+
+    assert f'__version__ = "{version}"' in app_package
+    assert web_package["version"] == version
+    assert release_notes_path.is_file()
+    for document in (readme, readme_en, docs_index, release_index):
+        assert tag in document
+    assert "Latest stable" in release_index.split(f"[{tag}]", 1)[1].splitlines()[0]
 
 
 def test_optional_parser_profiles_are_actionable_from_public_docs() -> None:

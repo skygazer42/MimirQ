@@ -10,7 +10,7 @@
   <a href="#快速开始"><b>快速开始</b></a> ·
   <a href="#dify-接入"><b>Dify 接入</b></a> ·
   <a href="#真实场景验证"><b>800 题实测</b></a> ·
-  <a href="./docs/releases/v1.0.0.md"><b>v1.0.0 发布说明</b></a>
+  <a href="./docs/releases/v1.0.1.md"><b>v1.0.1 发布说明</b></a>
 </p>
 
 <p>
@@ -53,7 +53,7 @@ MimirQ 不试图取代所有平台：
 
 当前仓库覆盖 30 个解析后端、86 种切块策略、13 类重排器，并保留固定 800 题的实测证据。数字只是实现广度，核心是每一步都能检查输入输出、追溯引用与版本，并用 Golden 题集守住发布质量。完整方法见[企业知识流水线设计准则](./docs/guides/rag_platform_design_principles.md)。
 
-> 最新稳定版：v1.0.0。见 [发布说明](./docs/releases/v1.0.0.md) 与 [发布索引](./docs/releases/README.md)。
+> 最新稳定版：v1.0.1。见 [发布说明](./docs/releases/v1.0.1.md) 与 [发布索引](./docs/releases/README.md)。
 
 ---
 

@@ -10,7 +10,7 @@
   <a href="#quick-start"><b>Quick Start</b></a> ·
   <a href="#dify-integration"><b>Dify Integration</b></a> ·
   <a href="#real-world-validation"><b>800-question benchmark</b></a> ·
-  <a href="./docs/releases/v1.0.0.md"><b>v1.0.0 Release Notes</b></a>
+  <a href="./docs/releases/v1.0.1.md"><b>v1.0.1 Release Notes</b></a>
 </p>
 
 <p>
@@ -53,7 +53,7 @@ MimirQ does not try to replace every platform:
 
 The repository currently covers 30 parsing backends, 86 chunking strategies, 13 reranker families, and a fixed 800-question evaluation trail. Those counts show breadth; the product goal is to inspect every stage, trace citations and versions, and protect releases with Golden sets. See the [enterprise knowledge-pipeline design principles](./docs/guides/rag_platform_design_principles.md).
 
-> Latest stable release: v1.0.0. See the [release notes](./docs/releases/v1.0.0.md) and [release index](./docs/releases/README.md).
+> Latest stable release: v1.0.1. See the [release notes](./docs/releases/v1.0.1.md) and [release index](./docs/releases/README.md).
 
 ---
 

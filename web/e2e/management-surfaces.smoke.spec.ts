@@ -1,3 +1,5 @@
+import path from 'node:path'
+
 import { expect, test, type Page, type Route } from '@playwright/test'
 
 import { installCommonApiMocks, installDeterministicRandom, type EnterpriseTelemetryMockState } from './enterprise-quality-telemetry.helpers'
@@ -30,6 +32,29 @@ async function scrollContainerMetrics(page: Page, selector: string) {
       scrolled: target.scrollTop > before,
       overflowY: window.getComputedStyle(target).overflowY,
     }
+  })
+}
+
+async function captureGuideScreenshot(page: Page, filename: string) {
+  await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' })
+  await page.addStyleTag({
+    content: `
+      *, *::before, *::after {
+        animation-delay: 0s !important;
+        animation-duration: 0s !important;
+        caret-color: transparent !important;
+        transition-delay: 0s !important;
+        transition-duration: 0s !important;
+      }
+    `,
+  })
+  await page.evaluate(async () => {
+    await document.fonts.ready
+    document.querySelectorAll('nextjs-portal').forEach((portal) => portal.remove())
+  })
+  await page.screenshot({
+    path: path.resolve(__dirname, '../../docs/images/screenshots', filename),
+    fullPage: false,
   })
 }
 
@@ -872,5 +897,197 @@ test.describe('management surfaces smoke', () => {
     await page.goto('/access-review')
     await expect(page).toHaveURL(/\/audit/)
     await expect(page.getByRole('heading', { name: '审计日志' })).toBeVisible({ timeout: 60_000 })
+  })
+
+  test('renders retrieval results without nested interactive controls', async ({ page }) => {
+    const nestedControlErrors: string[] = []
+    page.on('console', (message) => {
+      if (message.type() !== 'error') return
+      const text = message.text()
+      if (text.includes('<button> cannot be a descendant of <button>')) {
+        nestedControlErrors.push(text)
+      }
+    })
+    await page.route('**/api/v1/rag/retrieve', async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback()
+      return fulfillJson(route, {
+        schema: 'mimirq.evidence.v1',
+        query_for_retrieval: '发布验收',
+        citations: [
+          {
+            document_id: 'doc-retrieval-a11y',
+            document_name: '发布验收规范.pdf',
+            chunk_id: 'chunk-retrieval-a11y',
+            chunk_content: '发布前应检查权限、检索结果和引用证据。',
+            score: 0.94,
+          },
+        ],
+        has_evidence: true,
+        abstain_triggered: false,
+      })
+    })
+
+    await page.goto('/knowledge?tab=retrieval&dataset=ds-smoke')
+    const searchInput = page.getByPlaceholder(
+      '例如：请按第十二条说明例外条件，并指出适用范围与例外条款'
+    )
+    await expect(searchInput).toBeVisible({ timeout: 60_000 })
+    await searchInput.fill('发布验收')
+    await page.getByRole('button', { name: '开始检索' }).click()
+    await expect(page.getByText('发布验收规范.pdf').first()).toBeVisible()
+    await expect(
+      page.locator('[aria-label="检索结果排名列表"] button button')
+    ).toHaveCount(0)
+    expect(nestedControlErrors).toEqual([])
+  })
+
+  test('captures the documented knowledge-base journey on demand', async ({ page }) => {
+    test.skip(
+      process.env.CAPTURE_DOCS_SCREENSHOTS !== '1',
+      'Set CAPTURE_DOCS_SCREENSHOTS=1 to refresh committed guide screenshots.'
+    )
+    test.setTimeout(240_000)
+    await page.setViewportSize({ width: 1600, height: 1000 })
+
+    const evidence = {
+      document_id: 'doc-guide-1',
+      document_name: '企业知识库操作规范.pdf',
+      chunk_id: 'chunk-guide-1',
+      chunk_content:
+        '正式发布前应完成数据集权限检查、真实检索验证与引用核对，并保留可回归的 Golden 题集。',
+      page_number: 12,
+      score: 0.943,
+      relevance_score: 0.943,
+      retrieval_score: 0.918,
+      retrieval_role: 'hierarchy_primary',
+      matched_terms: ['权限检查', '检索验证', '引用核对'],
+      policy_clause_number: '第十二条',
+      policy_path_str: '发布管理 / 上线验收 / 知识库',
+      family_hit: true,
+      has_image: false,
+    }
+
+    await page.route('**/api/v1/rag/retrieve', async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback()
+      return fulfillJson(route, {
+        schema: 'mimirq.evidence.v1',
+        query_for_retrieval: '知识库发布前需要完成哪些验收？',
+        citations: [
+          evidence,
+          {
+            ...evidence,
+            chunk_id: 'chunk-guide-2',
+            chunk_content:
+              '上线后应通过 request_id 关联 API、Worker、模型服务和检索 Trace，并持续复测关键问题。',
+            page_number: 13,
+            score: 0.887,
+            relevance_score: 0.887,
+            retrieval_role: 'vector_primary',
+            policy_clause_number: '第十三条',
+            policy_path_str: '发布管理 / 运行观测',
+            family_hit: false,
+          },
+        ],
+        metrics: {
+          candidate_count: 24,
+          returned_count: 2,
+          retrieval_mode: 'hybrid',
+          reranker: 'enabled',
+        },
+        has_evidence: true,
+        abstain_triggered: false,
+      })
+    })
+
+    await page.route('**/api/v1/chat/stream', async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback()
+      const body = [
+        { type: 'citations', data: [evidence] },
+        {
+          type: 'token',
+          data: {
+            content:
+              '发布前需要完成数据集权限检查、真实检索验证和引用核对，并保存 Golden 题集作为回归基线。',
+          },
+        },
+        {
+          type: 'done',
+          request_id: 'req-guide-screenshot',
+          data: {
+            conversation_id: 'conv-guide-screenshot',
+            assistant_message_id: 'assistant-guide-screenshot',
+            request_id: 'req-guide-screenshot',
+          },
+        },
+      ]
+        .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+        .join('')
+      return route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream',
+        headers: {
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+          'X-Request-ID': 'req-guide-screenshot',
+          'X-Conversation-ID': 'conv-guide-screenshot',
+        },
+        body,
+      })
+    })
+
+    await page.route('**/api/v1/datasets**', async (route) => {
+      const request = route.request()
+      const pathname = new URL(request.url()).pathname.replace(/\/$/, '')
+      if (request.method() !== 'GET') return route.fallback()
+      const dataset = {
+        id: 'ds-smoke',
+        name: '企业知识库示例',
+        description: '用于演示建库、入库、检索与引用闭环的公开样例。',
+        created_at: '2026-07-29T00:00:00Z',
+        updated_at: '2026-07-29T00:00:00Z',
+      }
+      if (pathname === '/api/v1/datasets') {
+        return fulfillJson(route, { items: [dataset], total: 1 })
+      }
+      if (pathname === '/api/v1/datasets/ds-smoke') {
+        return fulfillJson(route, dataset)
+      }
+      return route.fallback()
+    })
+
+    await page.goto('/datasets')
+    await expect(page.getByRole('heading', { name: '数据集' }).first()).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByText('企业知识库示例').first()).toBeVisible()
+    await captureGuideScreenshot(page, 'guide-create-dataset.png')
+
+    await page.goto('/knowledge/ingestion?datasetId=ds-smoke')
+    await expect(page.getByRole('heading', { name: '入库管理', exact: true })).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByText('企业知识库示例').first()).toBeVisible()
+    await captureGuideScreenshot(page, 'guide-ingestion.png')
+
+    await page.goto('/knowledge?tab=retrieval&dataset=ds-smoke')
+    await expect(page.getByText('语义检索测试', { exact: true }).first()).toBeVisible({ timeout: 60_000 })
+    await page.getByRole('button', { name: '收起侧栏' }).click()
+    await page
+      .getByPlaceholder('例如：请按第十二条说明例外条件，并指出适用范围与例外条款')
+      .fill('知识库发布前需要完成哪些验收？')
+    await page.getByRole('button', { name: '开始检索' }).click()
+    await expect(page.getByText('企业知识库操作规范.pdf').first()).toBeVisible()
+    await captureGuideScreenshot(page, 'guide-retrieval-test.png')
+
+    await page.goto('/')
+    const datasetScope = page.getByRole('button', { name: '选择数据集', exact: true })
+    await expect(datasetScope).toBeVisible({ timeout: 60_000 })
+    await datasetScope.click()
+    await page.getByRole('button', { name: /企业知识库示例/ }).last().click()
+    const composer = page.getByPlaceholder('问点什么... (Shift + Enter 换行)')
+    await composer.fill('知识库发布前需要完成哪些验收？')
+    await page.getByRole('button', { name: '发送' }).click()
+    await expect(page.getByText('发布前需要完成数据集权限检查')).toBeVisible({ timeout: 60_000 })
+    await page.getByText('来源与证据', { exact: true }).last().click()
+    const openEvidence = page.locator('details[open]').last()
+    await expect(openEvidence.getByText('企业知识库操作规范.pdf')).toBeVisible()
+    await openEvidence.scrollIntoViewIfNeeded()
+    await captureGuideScreenshot(page, 'guide-source-evidence.png')
   })
 })
