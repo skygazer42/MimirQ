@@ -1428,20 +1428,29 @@ jobs:
           # Avoid any external LLM calls in CI (probe traffic uses mock responses).
           LLM_MOCK_ENABLED: "true"
         run: |
-          python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+          python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 \
+            > artifacts/backend.log 2>&1 &
           echo $! > artifacts/backend.pid
 
       - name: Wait for backend ready
+        id: backend_ready
         env:
           BACKEND_BASE_URL: http://localhost:8000
         run: |
-          for i in $(seq 1 30); do
+          backend_pid="$(cat artifacts/backend.pid)"
+          for i in $(seq 1 120); do
             if python scripts/api_ping.py; then
               exit 0
+            fi
+            if ! kill -0 "$backend_pid" 2>/dev/null; then
+              echo "backend exited before becoming ready" >&2
+              tail -200 artifacts/backend.log >&2
+              exit 1
             fi
             sleep 1
           done
           echo "backend not ready" >&2
+          tail -200 artifacts/backend.log >&2
           exit 1
 
       - name: README host web contract smoke
@@ -1499,7 +1508,7 @@ jobs:
             --out artifacts/must_recall_provenance_gate.report.json
 
       - name: Release gate (SLO + cost budgets)
-        if: always()
+        if: always() && steps.backend_ready.outcome == 'success'
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mimirq
         run: |

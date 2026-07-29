@@ -75,12 +75,22 @@ def test_ci_seed_entrypoints_bootstrap_the_repository_before_app_imports() -> No
         assert "ENV: ci" in step
         assert "AUTH_MODE: header" in step
 
+    retrieval_job = workflow.split("\n  retrieval-regression-gate:\n", 1)[1].split(
+        "\n  kg-search-regression-gate:\n", 1
+    )[0]
     kg_job = workflow.split("\n  kg-search-regression-gate:\n", 1)[1]
-    assert "> artifacts/kg-backend.log 2>&1 &" in kg_job
-    assert "for i in $(seq 1 120); do" in kg_job
-    assert 'if ! kill -0 "$backend_pid" 2>/dev/null; then' in kg_job
-    assert "backend exited before becoming ready" in kg_job
-    assert "tail -200 artifacts/kg-backend.log" in kg_job
+    for job, log_path in (
+        (retrieval_job, "artifacts/backend.log"),
+        (kg_job, "artifacts/kg-backend.log"),
+    ):
+        assert f"> {log_path} 2>&1 &" in job
+        assert "for i in $(seq 1 120); do" in job
+        assert 'if ! kill -0 "$backend_pid" 2>/dev/null; then' in job
+        assert "backend exited before becoming ready" in job
+        assert f"tail -200 {log_path}" in job
+
+    assert "id: backend_ready" in retrieval_job
+    assert "if: always() && steps.backend_ready.outcome == 'success'" in retrieval_job
 
 
 def test_retrieval_only_job_uses_the_non_jwt_ci_runtime() -> None:
