@@ -253,10 +253,9 @@ export function SnapshotAuditPanel({
                 const tone = DELTA_TEXT_CLASSES[direction]
                 const tint = DELTA_TINT_CLASSES[direction]
                 return (
-                  <button
+                  <div
                     key={`drift:${type}:${index}`}
-                    type="button"
-                    className="grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 border-b border-border/60 px-4 py-2 text-left transition-colors hover:bg-muted/30"
+                    className="grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 border-b border-border/60 px-4 py-2 text-left"
                     title={`${type} Δ ${sign}${delta}`}
                   >
                     <span className="truncate font-mono text-[12px] text-foreground">
@@ -278,7 +277,7 @@ export function SnapshotAuditPanel({
                     >
                       {DELTA_LABELS[direction]}
                     </Badge>
-                  </button>
+                  </div>
                 )
               })
             ) : (

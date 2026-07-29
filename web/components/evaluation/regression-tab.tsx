@@ -1213,15 +1213,6 @@ export function RegressionTestTab({
                 } else if (visibleRuns.length === 0) {
                   return (
                     <div className="flex min-h-[128px] flex-col items-center justify-center px-3 py-5 text-center">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="mb-3 h-7 rounded-full border-border bg-card px-3 text-[11px] text-muted-foreground"
-                        disabled
-                      >
-                        <Clock3 className="mr-1.5 h-3.5 w-3.5" />
-                        查看全部历史
-                      </Button>
                       <div className="text-sm font-medium text-foreground">
                         暂无运行记录
                       </div>

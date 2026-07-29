@@ -1449,12 +1449,11 @@ export function KnowledgeDocumentsPanel({
                     <span className="text-[11px] text-muted-foreground/74">
                       显示 {pageStart}-{pageEnd} / 共 {visibleDocumentsCount} 条
                     </span>
-                    <button
-                      type="button"
+                    <span
                       className="inline-flex h-8 items-center rounded-xl border border-border/55 bg-background/78 px-2.5 text-[11px] text-muted-foreground shadow-none"
                     >
                       {pageSize} 条/页
-                    </button>
+                    </span>
                     <div className="inline-flex items-center gap-1.5">
                       <button
                         type="button"

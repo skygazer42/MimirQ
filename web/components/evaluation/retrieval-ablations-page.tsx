@@ -10,7 +10,6 @@ import {
 import {
   AlertTriangle,
   BarChart3,
-  Bell,
   ChevronLeft,
   ChevronDown,
   ChevronRight,
@@ -2196,14 +2195,6 @@ export function RetrievalAblationsPage() {
                   }}
                 >
                   <RefreshCcw className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  aria-label="查看消融实验通知"
-                  className="h-9 w-9 rounded-xl border-border bg-card text-foreground/85 hover:bg-muted/50"
-                >
-                  <Bell className="h-4 w-4" />
                 </Button>
               </div>
           </PageHeader>

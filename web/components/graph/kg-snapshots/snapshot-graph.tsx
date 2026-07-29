@@ -224,9 +224,9 @@ export function buildSnapshotStudioGraphFromKgGraph(graph: KGGraphResponse | nul
     const source = nodeById.get(link.source)
     const target = nodeById.get(link.target)
     if (source && target)
-      source.relations.push({ label: link.label, target: target.label })
+      source.relations.push({ label: link.label, target: target.label, targetId: target.id })
     if (target && source)
-      target.relations.push({ label: link.label, target: source.label })
+      target.relations.push({ label: link.label, target: source.label, targetId: source.id })
   }
 
   for (const node of nodes) {

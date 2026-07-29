@@ -29,7 +29,7 @@
     "e2e:list": "playwright test --list",
     "assets:optimize": "svgo -r public --config=.svgo.config.mjs",
     "verify": "pnpm run lint && pnpm run ui-check && pnpm run typecheck && pnpm run test && pnpm run api-check",
-    "ui-check": "node scripts/check-design-tokens.mjs && node scripts/check-native-dialogs.mjs && node scripts/check-theme-contrast.mjs && node scripts/check-internal-routes.mjs",
+    "ui-check": "node scripts/check-design-tokens.mjs && node scripts/check-native-dialogs.mjs && node scripts/check-theme-contrast.mjs && node scripts/check-internal-routes.mjs && node scripts/check-interactive-controls.mjs",
     "api-check": "node scripts/check-api-contract.mjs && node scripts/check-api-coverage.mjs && node scripts/check-api-types-drift.mjs --strict --baseline scripts/api-types-drift-baseline.json",
     "api-types-drift": "node scripts/check-api-types-drift.mjs --strict --baseline scripts/api-types-drift-baseline.json",
     "api-ping": "node scripts/api-ping.mjs",

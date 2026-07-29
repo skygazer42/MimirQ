@@ -198,6 +198,7 @@ export function QuerysetHealthTab({
 }: Readonly<{ embedded?: boolean }>) {
   const [baselineTs, setBaselineTs] = useState<string>('')
   const [currentTs, setCurrentTs] = useState<string>('')
+  const [showAllRuns, setShowAllRuns] = useState(false)
   const runsQuery = useQuery({
     queryKey: queryKeys.evaluations.querysetHealthRuns({ limit: 90 }),
     queryFn: () => observabilityApi.getQuerysetHealthRuns({ limit: 90 }),
@@ -424,13 +425,9 @@ export function QuerysetHealthTab({
             </div>
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
               <span>Hit@K / MRR / NDCG</span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 rounded-lg border-border px-2 text-[11px]"
-              >
+              <span className="inline-flex h-7 items-center rounded-lg border border-border px-2 text-[11px]">
                 近 7 天
-              </Button>
+              </span>
             </div>
           </div>
           <div className="relative h-[145px]">
@@ -478,13 +475,9 @@ export function QuerysetHealthTab({
             </div>
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
               <span>P95 / 漏检 / 弱命中</span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 rounded-lg border-border px-2 text-[11px]"
-              >
+              <span className="inline-flex h-7 items-center rounded-lg border border-border px-2 text-[11px]">
                 近 7 天
-              </Button>
+              </span>
             </div>
           </div>
           <div className="relative h-[145px]">
@@ -656,13 +649,17 @@ export function QuerysetHealthTab({
               展示最近 {runs?.items?.length ?? 0} 条（按时间倒序）
             </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 rounded-lg border-border px-2 text-[11px]"
-          >
-            查看全部
-          </Button>
+          {runItems.length > 30 ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 rounded-lg border-border px-2 text-[11px]"
+              aria-expanded={showAllRuns}
+              onClick={() => setShowAllRuns((showAll) => !showAll)}
+            >
+              {showAllRuns ? '收起' : '查看全部'}
+            </Button>
+          ) : null}
         </div>
 
         <div className="mt-2 max-h-[190px] overflow-auto">
@@ -696,7 +693,7 @@ export function QuerysetHealthTab({
                   </td>
                 </tr>
               ) : (
-                runItems.slice(0, 30).map((it) => {
+                (showAllRuns ? runItems : runItems.slice(0, 30)).map((it) => {
                   const m = isJsonObject(it.metrics) ? it.metrics : {}
                   const r = isJsonObject(it.risk) ? it.risk : {}
                   const st = String(it?.status || 'unknown')

@@ -14,7 +14,6 @@ import {
   Eye,
   Layers,
   LayoutList,
-  MoreHorizontal,
   Play,
   RefreshCw,
   RotateCcw,
@@ -1424,15 +1423,6 @@ export default function QuarantineQueuePage() {
                                 onClick={() => openDocument(doc.id)}
                               >
                                 <Download className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                aria-label="更多隔离操作"
-                                title="更多隔离操作"
-                                className="h-7 w-7 rounded-lg text-muted-foreground hover:bg-muted"
-                              >
-                                <MoreHorizontal className="h-4 w-4" />
                               </Button>
                             </div>
                           </td>

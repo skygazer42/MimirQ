@@ -12,9 +12,13 @@ import type { SnapshotStudioNode } from '../types'
 export function SnapshotNodeDetailsRail({
   selectedNode,
   diffOverview,
+  onClose,
+  onSelectRelationTarget,
 }: Readonly<{
   selectedNode: SnapshotStudioNode | null
   diffOverview: Array<{ label: string; value: number; tone: string }>
+  onClose: () => void
+  onSelectRelationTarget: (targetId: string) => void
 }>) {
   return (
     <aside className="hidden min-h-0 w-[300px] shrink-0 flex-col border-l border-border/70 bg-background xl:flex">
@@ -27,6 +31,8 @@ export function SnapshotNodeDetailsRail({
           size="icon"
           className="h-8 w-8 rounded-lg text-muted-foreground"
           title="收起详情"
+          aria-label="收起节点详情"
+          onClick={onClose}
         >
           <X className="h-4 w-4" aria-hidden="true" />
         </Button>
@@ -92,6 +98,7 @@ export function SnapshotNodeDetailsRail({
                     key={`${relation.label}:${relation.target}`}
                     type="button"
                     className="flex w-full items-center justify-between gap-3 py-2 text-left text-[12px] transition-colors hover:text-primary"
+                    onClick={() => onSelectRelationTarget(relation.targetId)}
                   >
                     <span className="inline-flex items-center gap-2 text-muted-foreground">
                       <ChevronRight
@@ -106,12 +113,6 @@ export function SnapshotNodeDetailsRail({
                   </button>
                 ))}
               </div>
-              <Button
-                variant="link"
-                className="mt-2 h-auto p-0 text-[12px] font-semibold"
-              >
-                查看全部 →
-              </Button>
             </section>
           </>
         ) : (

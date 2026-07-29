@@ -81,7 +81,7 @@ export type SnapshotStudioNode = {
   icon: ReactNode
   occurrences: number
   status: '一致' | '新增' | '移除' | '变化'
-  relations: Array<{ label: string; target: string }>
+  relations: Array<{ label: string; target: string; targetId: string }>
 }
 
 export type SnapshotStudioLink = {

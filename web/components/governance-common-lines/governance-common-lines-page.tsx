@@ -9,7 +9,6 @@ import {
   Database,
   FileSearch,
   FileText,
-  Filter,
   Hash,
   Loader2,
   RefreshCw,
@@ -963,16 +962,6 @@ export function GovernanceCommonLinesPage() {
                     </Button>
                   </>
                 ) : null}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="size-10 rounded-xl border-border/60 bg-background text-muted-foreground shadow-none"
-                  aria-label="筛选候选结果"
-                  disabled={!candidates.length}
-                >
-                  <Filter className="size-4" />
-                </Button>
                 <span className="text-[14px] font-medium text-muted-foreground">
                   {resp
                     ? sortedCandidates.length

@@ -1251,6 +1251,8 @@ export function KGSnapshotsPage() {
             <SnapshotNodeDetailsRail
               selectedNode={selectedStudioNode}
               diffOverview={diffOverview}
+              onClose={() => setSelectedStudioNodeId('')}
+              onSelectRelationTarget={setSelectedStudioNodeId}
             />
           </div>
         </div>

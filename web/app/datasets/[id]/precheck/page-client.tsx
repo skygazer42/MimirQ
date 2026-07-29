@@ -197,6 +197,7 @@ export default function DatasetPrecheckPage() {
   const [summary, setSummary] = useState<DatasetPrecheckSummary | null>(null)
 
   const [scanRunning, setScanRunning] = useState(false)
+  const [configHelpOpen, setConfigHelpOpen] = useState(false)
   const pollTimerRef = useRef<number | null>(null)
   const pollRunRef = useRef<(datasetIdValue: string, runId: string) => Promise<void>>(async () => {})
   const sseAbortRef = useRef<AbortController | null>(null)
@@ -884,12 +885,28 @@ export default function DatasetPrecheckPage() {
                           {latestRunStatus ? String(latestRunStatus) : 'no run'}
                         </Badge>
                       </div>
-                      <button type="button" className="mt-1 text-[11px] font-medium leading-none text-primary hover:underline">
+                      <button
+                        type="button"
+                        className="mt-1 text-[11px] font-medium leading-none text-primary hover:underline"
+                        aria-expanded={configHelpOpen}
+                        aria-controls="precheck-config-help"
+                        onClick={() => setConfigHelpOpen((open) => !open)}
+                      >
                         如何配置？
                       </button>
                     </div>
                   </div>
                 </div>
+
+                {configHelpOpen ? (
+                  <div
+                    id="precheck-config-help"
+                    role="note"
+                    className="rounded-xl border border-info/25 bg-info/[0.06] px-3 py-2 text-[11px] leading-5 text-muted-foreground"
+                  >
+                    root_path 必须是 API 或 Worker 可访问的目录；首次扫描建议限制最大文件数并开启 PDF 质量与文本抽样，确认结果后再启用 PII、Secrets 和增量复用。
+                  </div>
+                ) : null}
 
                 <div className="flex items-start gap-2 rounded-xl border border-info/30 bg-[linear-gradient(90deg,hsl(var(--info)/0.08),hsl(var(--success)/0.05))] px-3 py-2 text-[11px] leading-4 text-info/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:bg-info/10">
                   <Info className="mt-0.5 size-3.5 shrink-0" />
@@ -906,7 +923,10 @@ export default function DatasetPrecheckPage() {
                         setSelectedRun(next)
                       }}
                     >
-                      <SelectTrigger className="h-9 w-full rounded-xl bg-card/78 text-[13px] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] dark:bg-background/60">
+                      <SelectTrigger
+                        id="precheck-run-history"
+                        className="h-9 w-full rounded-xl bg-card/78 text-[13px] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] dark:bg-background/60"
+                      >
                         <SelectValue placeholder="选择 scan run" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1074,7 +1094,16 @@ export default function DatasetPrecheckPage() {
                 <div>
                   <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-foreground/85">RUN STATE</div>
                 </div>
-                <button type="button" className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+                  onClick={() => {
+                    const trigger = globalThis.document.getElementById('precheck-run-history')
+                    trigger?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                    trigger?.focus()
+                    trigger?.click()
+                  }}
+                >
                   查看历史记录
                   <History className="size-3" />
                 </button>
