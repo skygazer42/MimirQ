@@ -760,3 +760,15 @@ def test_web_production_healthcheck_uses_ipv4_loopback() -> None:
 def test_web_production_image_drops_next_build_cache() -> None:
     dockerfile = _read("web/Dockerfile.prod")
     assert "RUN rm -rf .next_build/cache" in dockerfile
+
+
+def test_web_proxy_preserves_collection_trailing_slashes() -> None:
+    config = _read("web/next.config.mjs")
+    generic_source = "source: '/api/v1/:path*'"
+
+    for endpoint in ("documents", "datasets", "groups", "dataset-categories"):
+        source = f"source: '/api/v1/{endpoint}'"
+        destination = f"destination: `${{backendBase}}/api/v1/{endpoint}/`"
+        assert source in config
+        assert destination in config
+        assert config.index(source) < config.index(generic_source)

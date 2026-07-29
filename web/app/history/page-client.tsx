@@ -961,7 +961,7 @@ function HistorySidebarEmptyState({
       data-history-empty-archive="true"
       data-history-empty-inline="true"
       aria-live="polite"
-      className="mx-2 mt-8 px-4 text-center"
+      className="mx-2 mt-4 px-4 text-center"
     >
       <div className="relative mx-auto mb-4 grid size-14 place-items-center rounded-[22px] bg-info/5 text-primary">
         <History className="size-6" />

@@ -19,6 +19,8 @@ describe('history page empty state', () => {
     expect(src).toContain('function HistoryMainEmptyState')
     expect(src).toContain('data-history-empty-archive="true"')
     expect(src).toContain('data-history-empty-inline="true"')
+    expect(src).toContain('className="mx-2 mt-4 px-4 text-center"')
+    expect(src).not.toContain('className="mx-2 mt-8 px-4 text-center"')
     expect(src).toContain('data-history-main-empty="true"')
     expect(src).toContain("t('historyEmptyKicker')")
     expect(src).toContain("t('historyEmptyDescription')")

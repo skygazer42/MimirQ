@@ -638,7 +638,11 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     assert "README lite quickstart smoke" in docker_job
     assert "make up-lite" in docker_job
     assert "artifacts/core-e2e.readme-lite.json" in docker_job
-    assert "curl --noproxy '*' -fsS http://127.0.0.1:8000/api/v1/health/ready >/dev/null" in docker_job
+    assert docker_job.count('BACKEND_PORT: "0"') >= 6
+    assert 'WEB_PORT: "0"' in docker_job
+    assert docker_job.count('api_port=$("${compose[@]}" port mimirq-api 8000') >= 2
+    assert "CORE_E2E_BASE_URL=http://127.0.0.1:$api_port" in docker_job
+    assert "http://127.0.0.1:$api_port/api/v1/health/ready" in docker_job
     assert "Clean up README lite quickstart stack" in docker_job
     assert (
         "docker compose --env-file .env -f docker/docker-compose.lite.yml down -v --remove-orphans"

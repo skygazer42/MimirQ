@@ -899,6 +899,55 @@ test.describe('management surfaces smoke', () => {
     await expect(page.getByRole('heading', { name: '审计日志' })).toBeVisible({ timeout: 60_000 })
   })
 
+  test('all major management surface routes are reachable', async ({ page }) => {
+    test.setTimeout(600_000)
+
+    await page.route('**/*', async (route) => {
+      const headers = route.request().headers()
+      if (headers['next-router-prefetch'] === '1' || headers.purpose === 'prefetch') {
+        await route.abort()
+        return
+      }
+      await route.fallback()
+    })
+
+    const routes = [
+      '/',
+      '/history',
+      '/datasets',
+      '/knowledge',
+      '/knowledge/quarantine',
+      '/knowledge/feedback',
+      '/knowledge/ingestion',
+      '/parsing',
+      '/data-governance',
+      '/data-governance/profiles',
+      '/chunk-preview',
+      '/graph',
+      '/evaluations',
+      '/reports',
+      '/prompts',
+      '/diagnostics',
+      '/usage',
+      '/audit',
+      '/settings/rbac',
+      '/settings/groups',
+      '/settings',
+    ]
+
+    for (const route of routes) {
+      await test.step(route, async () => {
+        const response = await page.request.get(route, { failOnStatusCode: false })
+        expect(response.status()).toBeLessThan(400)
+        await page.goto(route, { waitUntil: 'domcontentloaded' })
+        await expect(page, `${route} redirected to authentication`).not.toHaveURL(/\/auth(?:\?|$)/)
+      })
+    }
+
+    await page.goto('/access-review')
+    await expect(page).toHaveURL(/\/audit/)
+  })
+
   test('renders retrieval results without nested interactive controls', async ({ page }) => {
     const nestedControlErrors: string[] = []
     page.on('console', (message) => {

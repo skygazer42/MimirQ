@@ -410,31 +410,41 @@ jobs:
 
       - name: README docker quickstart smoke
         env:
+          BACKEND_PORT: "0"
           COMPOSE_PROJECT_NAME: mimirq-readme-${{ github.run_id }}-${{ github.run_attempt }}
           MARKDOWN_IMAGE_PROXY_SECRET: ci-markdown-image-proxy-secret
+          WEB_PORT: "0"
         run: |
           mkdir -p artifacts
+          compose=(docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file .env -f docker/docker-compose.yml -f docker/docker-compose.web.yml)
           make up-web
+          api_port=$("${compose[@]}" port mimirq-api 8000 | head -n 1 | sed 's/.*://')
+          [[ "$api_port" =~ ^[0-9]+$ ]]
           make core-e2e \
-            CORE_E2E_BASE_URL=http://127.0.0.1:8000 \
+            CORE_E2E_BASE_URL=http://127.0.0.1:$api_port \
             CORE_E2E_BOOTSTRAP_REGISTER=1 \
             CORE_E2E_OUT=artifacts/core-e2e.readme-docker.json
 
       - name: Clean up README docker quickstart stack
         if: always()
         env:
+          BACKEND_PORT: "0"
           COMPOSE_PROJECT_NAME: mimirq-readme-${{ github.run_id }}-${{ github.run_attempt }}
+          WEB_PORT: "0"
         run: docker compose --env-file .env -f docker/docker-compose.yml -f docker/docker-compose.web.yml down -v --remove-orphans
 
       - name: README lite quickstart smoke
         env:
+          BACKEND_PORT: "0"
           COMPOSE_PROJECT_NAME: mimirq-lite-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           mkdir -p artifacts
-          compose=(docker compose --env-file .env -f docker/docker-compose.lite.yml)
+          compose=(docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file .env -f docker/docker-compose.lite.yml)
           make up-lite
+          api_port=$("${compose[@]}" port mimirq-api 8000 | head -n 1 | sed 's/.*://')
+          [[ "$api_port" =~ ^[0-9]+$ ]]
           for i in $(seq 1 60); do
-            if curl --noproxy '*' -fsS http://127.0.0.1:8000/api/v1/health/ready >/dev/null; then
+            if curl --noproxy '*' -fsS http://127.0.0.1:$api_port/api/v1/health/ready >/dev/null; then
               break
             fi
             if [ "$i" -eq 60 ]; then
@@ -445,13 +455,14 @@ jobs:
             sleep 5
           done
           make core-e2e \
-            CORE_E2E_BASE_URL=http://127.0.0.1:8000 \
+            CORE_E2E_BASE_URL=http://127.0.0.1:$api_port \
             CORE_E2E_BOOTSTRAP_REGISTER=1 \
             CORE_E2E_OUT=artifacts/core-e2e.readme-lite.json
 
       - name: Clean up README lite quickstart stack
         if: always()
         env:
+          BACKEND_PORT: "0"
           COMPOSE_PROJECT_NAME: mimirq-lite-${{ github.run_id }}-${{ github.run_attempt }}
         run: docker compose --env-file .env -f docker/docker-compose.lite.yml down -v --remove-orphans
 

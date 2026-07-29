@@ -181,6 +181,10 @@ const nextConfig = {
         destination: `${backendBase}/api/v1/groups/`,
       },
       {
+        source: '/api/v1/dataset-categories',
+        destination: `${backendBase}/api/v1/dataset-categories/`,
+      },
+      {
         source: '/api/v1/:path*',
         destination: `${backendBase}/api/v1/:path*`,
       },
