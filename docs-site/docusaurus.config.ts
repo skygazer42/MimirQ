@@ -79,10 +79,10 @@ const config: Config = {
           activeBaseRegex: '^/docs/ops/getting-started',
         },
         {
-          to: '/docs/guide/welcome',
+          type: 'docSidebar',
+          sidebarId: 'guide',
           position: 'left',
           label: '使用指南',
-          activeBaseRegex: '^/docs/guide/',
         },
         {
           type: 'dropdown',
