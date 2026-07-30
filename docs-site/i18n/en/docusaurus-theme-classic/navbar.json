@@ -1,0 +1,46 @@
+{
+  "title": {
+    "message": "MimirQ",
+    "description": "The title in the navbar"
+  },
+  "logo.alt": {
+    "message": "MimirQ",
+    "description": "The alt text of navbar logo"
+  },
+  "item.label.快速开始": {
+    "message": "Quick Start",
+    "description": "Navbar item with label 快速开始"
+  },
+  "item.label.使用指南": {
+    "message": "Guide",
+    "description": "Navbar item with label 使用指南"
+  },
+  "item.label.开发者资源": {
+    "message": "Developers",
+    "description": "Navbar item with label 开发者资源"
+  },
+  "item.label.运维": {
+    "message": "Operations",
+    "description": "Navbar item with label 运维"
+  },
+  "item.label.API": {
+    "message": "API",
+    "description": "Navbar item with label API"
+  },
+  "item.label.GitHub": {
+    "message": "GitHub",
+    "description": "Navbar item with label GitHub"
+  },
+  "item.label.后端契约": {
+    "message": "Backend Contracts",
+    "description": "Navbar item with label 后端契约"
+  },
+  "item.label.前端路由": {
+    "message": "Frontend Routes",
+    "description": "Navbar item with label 前端路由"
+  },
+  "item.label.集成与联调": {
+    "message": "Integrations",
+    "description": "Navbar item with label 集成与联调"
+  }
+}

@@ -3,8 +3,8 @@ import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
-  title: 'MimirQ 全栈手册',
-  tagline: '使用 · 后端 · 前端 · 集成 · 运维',
+  title: 'MimirQ Docs',
+  tagline: '可控、可观测、可回归的企业知识能力层',
   favicon: 'img/favicon.ico',
 
   url: 'https://skygazer42.github.io',
@@ -66,41 +66,39 @@ const config: Config = {
   themeConfig: {
     image: 'img/docusaurus-social-card.jpg',
     navbar: {
-      title: 'MimirQ 手册',
+      title: 'MimirQ',
       logo: {
         alt: 'MimirQ',
         src: 'img/logo.svg',
       },
       items: [
         {
-          type: 'docSidebar',
-          sidebarId: 'guide',
+          to: '/docs/ops/getting-started',
           position: 'left',
-          label: 'Guide',
+          label: '快速开始',
+          activeBaseRegex: '^/docs/ops/getting-started',
         },
         {
-          type: 'docSidebar',
-          sidebarId: 'backend',
+          to: '/docs/guide/welcome',
           position: 'left',
-          label: 'Backend',
+          label: '使用指南',
+          activeBaseRegex: '^/docs/guide/',
         },
         {
-          type: 'docSidebar',
-          sidebarId: 'frontend',
+          type: 'dropdown',
           position: 'left',
-          label: 'Frontend',
+          label: '开发者资源',
+          items: [
+            {to: '/docs/backend/welcome', label: '后端契约'},
+            {to: '/docs/frontend/welcome', label: '前端路由'},
+            {to: '/docs/integration/welcome', label: '集成与联调'},
+          ],
         },
         {
-          type: 'docSidebar',
-          sidebarId: 'integration',
+          to: '/docs/ops/welcome',
           position: 'left',
-          label: 'Integration',
-        },
-        {
-          type: 'docSidebar',
-          sidebarId: 'ops',
-          position: 'left',
-          label: 'Ops',
+          label: '运维',
+          activeBaseRegex: '^/docs/ops/(?!getting-started)',
         },
         {
           type: 'localeDropdown',
@@ -108,7 +106,7 @@ const config: Config = {
         },
         {
           href: 'https://skygazer42.github.io/MimirQ/',
-          label: 'OpenAPI (Redoc)',
+          label: 'API',
           position: 'right',
         },
         {
@@ -118,38 +116,18 @@ const config: Config = {
         },
       ],
     },
+    colorMode: {
+      defaultMode: 'light',
+      disableSwitch: false,
+      respectPrefersColorScheme: false,
+    },
     footer: {
-      style: 'dark',
-      links: [
-        {
-          title: '手册分区',
-          items: [
-            {label: 'Guide', to: '/docs/guide/welcome'},
-            {label: 'Backend', to: '/docs/backend/welcome'},
-            {label: 'Frontend', to: '/docs/frontend/welcome'},
-            {label: 'Integration', to: '/docs/integration/welcome'},
-            {label: 'Ops', to: '/docs/ops/welcome'},
-          ],
-        },
-        {
-          title: '参考',
-          items: [
-            {
-              label: '仓库 README',
-              href: 'https://github.com/skygazer42/MimirQ/blob/main/README.md',
-            },
-            {
-              label: 'OpenAPI / Redoc',
-              href: 'https://skygazer42.github.io/MimirQ/',
-            },
-            {
-              label: '集成排障 (仓库内)',
-              href: 'https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md',
-            },
-          ],
-        },
-      ],
-      copyright: `© ${new Date().getFullYear()} MimirQ · Built with Docusaurus`,
+      style: 'light',
+      copyright: `© ${new Date().getFullYear()} MimirQ · 可控、可观测、可回归`,
+    },
+    tableOfContents: {
+      minHeadingLevel: 2,
+      maxHeadingLevel: 3,
     },
     prism: {
       theme: prismThemes.github,
