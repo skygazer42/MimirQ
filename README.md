@@ -403,10 +403,3 @@ MimirQ 构建于优秀的开源生态之上，感谢以下项目：
 ## 友情链接
 
 - [LINUX DO](https://linux.do)
----
-
-<div align="center">
-
-[![Star History Chart](https://api.star-history.com/svg?repos=skygazer42/MimirQ&type=Date)](https://star-history.com/#skygazer42/MimirQ&Date)
-
-</div>
