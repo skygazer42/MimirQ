@@ -154,8 +154,7 @@ make api-ping
 
 停止使用 `make down`；清空持久化数据使用 `make docker-reset`；连同本项目服务镜像删除使用 `make docker-purge`。MimirQ 固定使用独立的 `mimirq` Compose 项目名，不会把同机 Dify 当成本项目；后两项不可恢复。Windows PowerShell、容器归属检查、旧版数据迁移、误删恢复和精确删除范围见 [Docker Compose 部署指南](./docs/deployment/docker_compose.md#4-数据卷与清理)。
 
-<details>
-<summary><b>按文档类型启用可选解析器</b></summary>
+#### 按文档类型启用可选解析器
 
 默认使用内置 DeepDoc。其他解析器仅在业务需要时启动：
 
@@ -173,9 +172,7 @@ make api-ping
 
 完整参数和平台限制见 [Docker Compose 部署指南](./docs/deployment/docker_compose.md) 与 [解析器文档](./docs/quickstart.md#可选-启用-etl4llmbisheng-unstructured版面解析)。
 
-</details>
-
-### 方式二：源码开发（Python venv + pip + pnpm）
+### 方式二：本地源码运行（Python venv + pip + pnpm）
 
 这是常见的本地开发方式，无需 Conda。FastAPI 运行在 Python `.venv` 中，Next.js 由 pnpm 启动；Docker 只运行 PostgreSQL、Redis、Milvus 等基础设施：
 
@@ -249,9 +246,7 @@ Dify 标准外部知识库端点为 `POST /api/v1/integrations/dify/retrieval`�
 
 ## 核心功能对比
 
-<details>
-<summary><b>展开查看与 Dify、RAGFlow、FastGPT、AnythingLLM 和 LangChain 的功能对比</b></summary>
-
+### 与 Dify、RAGFlow、FastGPT、AnythingLLM 和 LangChain 的功能对比
 
 | 功能维度 | **MimirQ** | [Dify](https://github.com/langgenius/dify) | [RAGFlow](https://github.com/infiniflow/ragflow) | [FastGPT](https://github.com/labring/FastGPT) | [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) | [LangChain](https://github.com/langchain-ai/langchain) |
 |:---|:---|:---|:---|:---|:---|:---|
@@ -269,8 +264,6 @@ Dify 标准外部知识库端点为 `POST /api/v1/integrations/dify/retrieval`�
 | **开箱方式** | Docker Compose / Helm；完整企业 RAG 栈 | Docker Compose / Cloud | Docker Compose；官方建议 4C / 16 GB / 50 GB | Docker / Cloud | Desktop / Docker | Python / JS 库；需自行组装应用 |
 
 > 对比基于各项目公开版本与官方文档（2026-07），描述的是**仓库直接提供的能力表面**，不是统一 benchmark。插件、商业版和后续版本可能改变结果。
-
-</details>
 
 ---
 
