@@ -193,17 +193,18 @@ def test_dependency_audit_covers_web_and_handbook_with_shared_policy() -> None:
 
     assert "audit-docs:" in makefile
     assert "cd web && pnpm audit --prod --audit-level high" in makefile
-    assert "(cd web && pnpm audit --audit-level high --json" in makefile
+    assert "cd web && pnpm audit --audit-level high" in makefile
     assert "pnpm --dir web audit" not in makefile
-    assert "scripts/check_pnpm_audit.py" in makefile
+    assert "scripts/check_pnpm_audit.py" not in makefile
     assert "--ignore-registry-errors" not in makefile
-    assert "npm audit --audit-level=high" in makefile
+    assert "npm audit --audit-level=high --json" in makefile
+    assert "scripts/check_npm_audit.py" in makefile
     assert "npm audit --omit=dev" not in makefile
     assert "$(MAKE) audit-web" in makefile
     assert "$(MAKE) audit-docs" in makefile
     assert "run: make audit-web" in security_workflow
     assert "run: make audit-docs" in security_workflow
-    assert "npm --prefix docs-site audit --audit-level=high" in powershell_audit
+    assert "npm --prefix docs-site audit --audit-level=high --json | python scripts/check_npm_audit.py" in powershell_audit
     assert powershell_audit.count("Assert-AuditSucceeded") == 5
 
 

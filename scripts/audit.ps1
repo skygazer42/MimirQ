@@ -34,7 +34,7 @@ if (-not $SkipWeb) {
   Write-Host "[audit] Web (pnpm audit)"
   pnpm -C web audit --prod --audit-level high
   Assert-AuditSucceeded "Web production dependencies"
-  pnpm -C web audit --audit-level high --json | python scripts/check_pnpm_audit.py
+  pnpm -C web audit --audit-level high
   Assert-AuditSucceeded "Web complete dependency tree"
 } else {
   Write-Host "[audit] Skip: web"
@@ -42,7 +42,7 @@ if (-not $SkipWeb) {
 
 if (-not $SkipDocs) {
   Write-Host "[audit] Handbook (npm audit)"
-  npm --prefix docs-site audit --audit-level=high
+  npm --prefix docs-site audit --audit-level=high --json | python scripts/check_npm_audit.py
   Assert-AuditSucceeded "Handbook complete dependency tree"
 } else {
   Write-Host "[audit] Skip: handbook"

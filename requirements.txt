@@ -55,7 +55,7 @@ markitdown==0.1.5
 # NOTE: Keep numpy on the tested 2.4.x line used by the current parsing/ML stack.
 numpy==2.4.4
 pdfplumber==0.11.9
-pypdf==6.14.2
+pypdf==6.15.0
 # NOTE: docling 2.80.0 resolves with pandas 3.0.x; keep on this tested line.
 pandas==3.0.2
 openpyxl==3.1.5

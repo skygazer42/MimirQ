@@ -450,7 +450,7 @@ def test_host_quickstart_make_targets_cover_backend_worker_and_web() -> None:
     assert "make backend" in readme
     assert "make web" in readme
     assert ".venv/bin/arq app.tasks.worker.WorkerSettings" not in readme
-    assert "源码开发（Python venv + pip + pnpm）" in readme
+    assert "本地源码运行（Python venv + pip + pnpm）" in readme
 
     assert "make setup-host" in quickstart
     assert "make backend" in quickstart

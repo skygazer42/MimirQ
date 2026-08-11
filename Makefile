@@ -494,13 +494,14 @@ audit-py:
 		--ignore-vuln PYSEC-2026-2447 \
 		--ignore-vuln PYSEC-2026-1325
 
-# Remaining unfixed brace-expansion versions are permitted only in bounded build tooling.
 audit-web:
 	cd web && pnpm audit --prod --audit-level high --registry https://registry.npmjs.org/
-	(cd web && pnpm audit --audit-level high --json --registry https://registry.npmjs.org/) | $(PY) scripts/check_pnpm_audit.py
+	cd web && pnpm audit --audit-level high --registry https://registry.npmjs.org/
 
+# image-size has no patched release; the policy permits only its exact Docusaurus
+# build-time path and rejects every unrelated high/critical advisory.
 audit-docs:
-	cd docs-site && npm audit --audit-level=high --registry https://registry.npmjs.org/
+	(cd docs-site && npm audit --audit-level=high --json --registry https://registry.npmjs.org/) | $(PY) scripts/check_npm_audit.py
 
 audit:
 	@$(MAKE) audit-py
