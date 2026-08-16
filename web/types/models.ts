@@ -45,12 +45,44 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
   {
     id: 'openai',
     name: 'OpenAI',
-    description: 'GPT-5.5 / GPT-5.4 系列模型',
+    description: 'GPT-5.6 / GPT-5.5 / GPT-5.4 系列模型',
     icon: 'openai',
     color: 'emerald',
     category: 'model',
     isConfigured: false,
     models: [
+      {
+        id: 'gpt-5.6',
+        name: 'gpt-5.6',
+        displayName: 'GPT-5.6（旗舰别名）',
+        type: 'chat',
+        contextWindow: 1050000,
+        maxTokens: 128000,
+      },
+      {
+        id: 'gpt-5.6-sol',
+        name: 'gpt-5.6-sol',
+        displayName: 'GPT-5.6 Sol',
+        type: 'chat',
+        contextWindow: 1050000,
+        maxTokens: 128000,
+      },
+      {
+        id: 'gpt-5.6-terra',
+        name: 'gpt-5.6-terra',
+        displayName: 'GPT-5.6 Terra',
+        type: 'chat',
+        contextWindow: 1050000,
+        maxTokens: 128000,
+      },
+      {
+        id: 'gpt-5.6-luna',
+        name: 'gpt-5.6-luna',
+        displayName: 'GPT-5.6 Luna',
+        type: 'chat',
+        contextWindow: 1050000,
+        maxTokens: 128000,
+      },
       {
         id: 'gpt-5.4-mini',
         name: 'gpt-5.4-mini',
@@ -357,16 +389,16 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
   {
     id: 'ark',
     name: '火山引擎',
-    description: 'Doubao-Seed 系列模型',
+    description: 'Doubao-Seed 2.0 / 1.8 在线推理模型',
     icon: 'ark',
     color: 'orange',
     category: 'model',
     isConfigured: false,
     models: [
       {
-        id: 'doubao-seed-2-0-pro',
-        name: 'doubao-seed-2-0-pro',
-        displayName: 'Doubao-Seed-2.0 Pro',
+        id: 'doubao-seed-2-0-pro-260215',
+        name: 'doubao-seed-2-0-pro-260215',
+        displayName: 'Doubao-Seed-2.0 Pro (260215)',
         type: 'chat',
       },
       {
@@ -376,21 +408,21 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         type: 'chat',
       },
       {
-        id: 'doubao-seed-2-0-mini',
-        name: 'doubao-seed-2-0-mini',
-        displayName: 'Doubao-Seed-2.0 Mini',
+        id: 'doubao-seed-2-0-mini-260428',
+        name: 'doubao-seed-2-0-mini-260428',
+        displayName: 'Doubao-Seed-2.0 Mini (260428)',
         type: 'chat',
       },
       {
-        id: 'doubao-seed-1-6',
-        name: 'doubao-seed-1-6',
-        displayName: 'Doubao-Seed-1.6',
+        id: 'doubao-seed-2-0-code-preview-260215',
+        name: 'doubao-seed-2-0-code-preview-260215',
+        displayName: 'Doubao-Seed-2.0 Code Preview (260215)',
         type: 'chat',
       },
       {
-        id: 'doubao-seed-1-6-flash',
-        name: 'doubao-seed-1-6-flash',
-        displayName: 'Doubao-Seed-1.6 Flash',
+        id: 'doubao-seed-1-8-251228',
+        name: 'doubao-seed-1-8-251228',
+        displayName: 'Doubao-Seed-1.8 (251228)',
         type: 'chat',
       }
     ]

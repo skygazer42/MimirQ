@@ -8,6 +8,7 @@ import { Eye, EyeOff, AlertCircle, CheckCircle2, FlaskConical, Save, ChevronRigh
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -15,11 +16,20 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { ProviderIcon } from '@/components/provider-icon'
 import { cn } from '@/lib/utils'
 import { settingsApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import type { ModelProvider, ProviderConfig } from '@/types/models'
+
+type ModelEntryMode = 'preset' | 'custom'
 
 interface ModelConfigDialogProps {
   provider: ModelProvider | null
@@ -48,6 +58,16 @@ function getDefaultApiBase(providerId: string): string {
   return defaults[providerId] || ''
 }
 
+function getProviderModelOptions(provider: ModelProvider | null) {
+  if (!provider) return []
+  return provider.models.filter((model) => {
+    if (provider.category === 'model') return model.type === 'chat'
+    if (provider.category === 'embedding') return model.type === 'embedding'
+    if (provider.category === 'reranker') return model.type === 'reranker'
+    return true
+  })
+}
+
 export function ModelConfigDialog({
   provider,
   open,
@@ -70,30 +90,30 @@ export function ModelConfigDialog({
     message: string
   } | null>(null)
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [modelEntryMode, setModelEntryMode] = useState<ModelEntryMode>('preset')
+  const [customModelId, setCustomModelId] = useState('')
   const apiKeyId = `${idPrefix}-apiKey`
   const apiBaseId = `${idPrefix}-apiBase`
-  const modelId = `${idPrefix}-model`
-  const modelOptionsId = `${idPrefix}-model-options`
+  const modelPresetId = `${idPrefix}-model-preset`
+  const modelCustomId = `${idPrefix}-model-custom`
   const modelHintId = `${idPrefix}-model-hint`
+  const presetTabId = `${idPrefix}-preset-tab`
+  const customTabId = `${idPrefix}-custom-tab`
+  const modelPanelId = `${idPrefix}-model-panel`
   const temperatureId = `${idPrefix}-temperature`
   const maxTokensId = `${idPrefix}-maxTokens`
 
   useEffect(() => {
-    const modelOptions = provider
-      ? provider.models.filter((m) => {
-          if (provider.category === 'model') return m.type === 'chat'
-          if (provider.category === 'embedding') return m.type === 'embedding'
-          if (provider.category === 'reranker') return m.type === 'reranker'
-          return true
-        })
-      : []
+    const modelOptions = getProviderModelOptions(provider)
     const defaultModel = modelOptions[0]?.name || ''
+    const configuredModel = provider?.config?.model || defaultModel
+    const usesPreset = modelOptions.some((model) => model.name === configuredModel)
 
     if (provider?.config) {
       setConfig({
         apiKey: provider.config.apiKey || '',
         apiBase: provider.config.apiBase || getDefaultApiBase(provider.id),
-        model: provider.config.model || defaultModel,
+        model: configuredModel,
         temperature: provider.config.temperature ?? 0.7,
         maxTokens: provider.config.maxTokens ?? 4096,
         timeout: provider.config.timeout ?? 60,
@@ -108,9 +128,38 @@ export function ModelConfigDialog({
         timeout: 60,
       })
     }
+    setModelEntryMode(usesPreset || !configuredModel ? 'preset' : 'custom')
+    setCustomModelId(usesPreset ? '' : configuredModel)
     setTestResult(null)
     setShowAdvanced(false)
   }, [provider, open])
+
+  const handleModelModeChange = (nextMode: ModelEntryMode) => {
+    if (nextMode === modelEntryMode) return
+
+    const modelOptions = getProviderModelOptions(provider)
+    if (nextMode === 'custom') {
+      const nextCustomId = customModelId || config.model || ''
+      setCustomModelId(nextCustomId)
+      setConfig((current) => ({ ...current, model: nextCustomId }))
+    } else {
+      setCustomModelId(config.model || customModelId)
+      setConfig((current) => ({
+        ...current,
+        model: modelOptions.some((model) => model.name === current.model)
+          ? current.model
+          : modelOptions[0]?.name || '',
+      }))
+    }
+    setModelEntryMode(nextMode)
+    setTestResult(null)
+  }
+
+  const handleCustomModelChange = (value: string) => {
+    setCustomModelId(value)
+    setConfig((current) => ({ ...current, model: value }))
+    setTestResult(null)
+  }
 
   const handleSave = () => {
     if (!provider) return
@@ -133,7 +182,7 @@ export function ModelConfigDialog({
         return
       }
       if (!config.model) {
-        setTestResult({ success: false, message: '请选择模型' })
+        setTestResult({ success: false, message: '请选择或输入模型 ID' })
         return
       }
 
@@ -155,9 +204,12 @@ export function ModelConfigDialog({
 
   if (!provider) return null
 
+  const modelOptions = getProviderModelOptions(provider)
+  const selectedPresetModel = modelOptions.find((model) => model.name === config.model)
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[550px] p-0 overflow-hidden gap-0 rounded-2xl border-0 shadow-strong">
+      <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden gap-0 rounded-2xl border-0 shadow-strong">
         {/* 头部 */}
         <div className="bg-muted/40 border-b border-border p-6 flex items-start gap-4">
           <div className="h-11 w-11 rounded-xl bg-card border border-border flex items-center justify-center shadow-sm flex-shrink-0">
@@ -167,9 +219,9 @@ export function ModelConfigDialog({
             <DialogTitle className="text-xl font-semibold text-foreground mb-1">
               配置 {provider.name}
             </DialogTitle>
-            <p className="text-sm text-muted-foreground leading-tight">
+            <DialogDescription className="leading-tight">
               {provider.description}
-            </p>
+            </DialogDescription>
           </div>
         </div>
 
@@ -226,34 +278,116 @@ export function ModelConfigDialog({
           </div>
 
           {/* Model */}
-          <div className="space-y-2">
-            <Label htmlFor={modelId} className="text-sm font-medium text-foreground">
-              模型调用 ID
-            </Label>
-            <Input
-              id={modelId}
-              type="text"
-              list={modelOptionsId}
-              value={config.model || ''}
-              onChange={(e) => setConfig({ ...config, model: e.target.value })}
-              placeholder={provider.id === 'ark' ? '例如 doubao-seed-2-0-lite-260428' : '输入或选择模型 ID'}
-              aria-describedby={modelHintId}
-              className="font-mono"
-            />
-            <datalist id={modelOptionsId}>
-              {provider.models
-                .filter((m) => {
-                  if (provider.category === 'model') return m.type === 'chat'
-                  if (provider.category === 'embedding') return m.type === 'embedding'
-                  if (provider.category === 'reranker') return m.type === 'reranker'
-                  return true
-                })
-                .map((model) => (
-                  <option key={model.id} value={model.name} label={model.displayName} />
-                ))}
-            </datalist>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <Label className="text-sm font-medium text-foreground">模型</Label>
+              <span className="text-[11px] text-muted-foreground">请求字段：model</span>
+            </div>
+
+            <div
+              role="tablist"
+              aria-label="模型 ID 来源"
+              className="grid grid-cols-2 gap-1 rounded-lg border border-border/60 bg-muted/35 p-1"
+            >
+              <button
+                id={presetTabId}
+                type="button"
+                role="tab"
+                aria-selected={modelEntryMode === 'preset'}
+                aria-controls={modelPanelId}
+                onClick={() => handleModelModeChange('preset')}
+                className={cn(
+                  'h-9 rounded-md px-3 text-sm font-medium transition-[background-color,color,box-shadow] motion-reduce:transition-none focus-ring',
+                  modelEntryMode === 'preset'
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:bg-card/55 hover:text-foreground'
+                )}
+              >
+                推荐模型
+              </button>
+              <button
+                id={customTabId}
+                type="button"
+                role="tab"
+                aria-selected={modelEntryMode === 'custom'}
+                aria-controls={modelPanelId}
+                onClick={() => handleModelModeChange('custom')}
+                className={cn(
+                  'h-9 rounded-md px-3 text-sm font-medium transition-[background-color,color,box-shadow] motion-reduce:transition-none focus-ring',
+                  modelEntryMode === 'custom'
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:bg-card/55 hover:text-foreground'
+                )}
+              >
+                自定义模型 ID
+              </button>
+            </div>
+
+            <div
+              id={modelPanelId}
+              role="tabpanel"
+              aria-labelledby={modelEntryMode === 'preset' ? presetTabId : customTabId}
+              className="space-y-2"
+            >
+              {modelEntryMode === 'preset' ? (
+                <>
+                  <Label htmlFor={modelPresetId} className="sr-only">推荐模型</Label>
+                  <Select
+                    value={config.model || ''}
+                    onValueChange={(value) => {
+                      setConfig((current) => ({ ...current, model: value }))
+                      setTestResult(null)
+                    }}
+                  >
+                    <SelectTrigger id={modelPresetId} aria-describedby={modelHintId} className="h-11">
+                      <SelectValue placeholder="选择推荐模型">
+                        {selectedPresetModel?.displayName || config.model}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {modelOptions.map((model) => (
+                        <SelectItem key={model.id} value={model.name} className="py-2.5">
+                          <span className="grid min-w-0 gap-0.5">
+                            <span className="font-medium text-foreground">{model.displayName}</span>
+                            <span className="truncate font-mono text-[11px] text-muted-foreground">
+                              {model.name}
+                            </span>
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </>
+              ) : (
+                <>
+                  <Label htmlFor={modelCustomId} className="sr-only">自定义模型 ID</Label>
+                  <Input
+                    id={modelCustomId}
+                    type="text"
+                    value={config.model || ''}
+                    onChange={(event) => handleCustomModelChange(event.target.value)}
+                    placeholder={provider.id === 'ark' ? '例如 doubao-seed-2-0-lite-260428' : '输入服务商控制台中的完整模型 ID'}
+                    aria-describedby={modelHintId}
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="h-11 font-mono"
+                  />
+                </>
+              )}
+
+              <div className="rounded-lg border border-border/55 bg-muted/25 px-3 py-2.5">
+                <div className="mb-1 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
+                  <span>实际请求 ID</span>
+                  <span>{modelEntryMode === 'preset' ? '推荐项' : '自定义'}</span>
+                </div>
+                <code className="block break-all text-[12px] font-medium text-foreground">
+                  {config.model || '尚未填写'}
+                </code>
+              </div>
+            </div>
+
             <p id={modelHintId} className="text-xs leading-relaxed text-muted-foreground">
-              可选择推荐项，也可输入服务商要求的完整模型 ID；保存和测试时会原样发送。
+              推荐清单用于快捷选择；若服务商按账号、地域或版本提供其他 ID，请切换到自定义，测试和保存时会原样发送。
             </p>
           </div>
 
