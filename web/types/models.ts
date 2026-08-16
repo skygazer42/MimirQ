@@ -370,9 +370,9 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         type: 'chat',
       },
       {
-        id: 'doubao-seed-2-0-lite',
-        name: 'doubao-seed-2-0-lite',
-        displayName: 'Doubao-Seed-2.0 Lite',
+        id: 'doubao-seed-2-0-lite-260428',
+        name: 'doubao-seed-2-0-lite-260428',
+        displayName: 'Doubao-Seed-2.0 Lite (260428)',
         type: 'chat',
       },
       {

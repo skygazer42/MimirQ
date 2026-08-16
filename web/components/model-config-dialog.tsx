@@ -73,6 +73,8 @@ export function ModelConfigDialog({
   const apiKeyId = `${idPrefix}-apiKey`
   const apiBaseId = `${idPrefix}-apiBase`
   const modelId = `${idPrefix}-model`
+  const modelOptionsId = `${idPrefix}-model-options`
+  const modelHintId = `${idPrefix}-model-hint`
   const temperatureId = `${idPrefix}-temperature`
   const maxTokensId = `${idPrefix}-maxTokens`
 
@@ -226,14 +228,19 @@ export function ModelConfigDialog({
           {/* Model */}
           <div className="space-y-2">
             <Label htmlFor={modelId} className="text-sm font-medium text-foreground">
-              模型
+              模型调用 ID
             </Label>
-            <select
+            <Input
               id={modelId}
+              type="text"
+              list={modelOptionsId}
               value={config.model || ''}
               onChange={(e) => setConfig({ ...config, model: e.target.value })}
-              className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:h-10"
-            >
+              placeholder={provider.id === 'ark' ? '例如 doubao-seed-2-0-lite-260428' : '输入或选择模型 ID'}
+              aria-describedby={modelHintId}
+              className="font-mono"
+            />
+            <datalist id={modelOptionsId}>
               {provider.models
                 .filter((m) => {
                   if (provider.category === 'model') return m.type === 'chat'
@@ -242,11 +249,12 @@ export function ModelConfigDialog({
                   return true
                 })
                 .map((model) => (
-                  <option key={model.id} value={model.name}>
-                    {model.displayName}
-                  </option>
+                  <option key={model.id} value={model.name} label={model.displayName} />
                 ))}
-            </select>
+            </datalist>
+            <p id={modelHintId} className="text-xs leading-relaxed text-muted-foreground">
+              可选择推荐项，也可输入服务商要求的完整模型 ID；保存和测试时会原样发送。
+            </p>
           </div>
 
           {/* 高级设置开关 */}
