@@ -17,6 +17,9 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.health import HealthDetailsResponse, HealthResponse, ReadyResponse
+from app.api.utils.http_exception_responses import (
+    DEFAULT_HTTP_EXCEPTION_RESPONSES as _DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.core.health_checks import check_database, check_minio, check_redis, check_vector
@@ -27,14 +30,6 @@ from app.services.rag_runtime_warmup import (
 )
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 from app.tasks.queue import is_queue_initialized
-
-_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
-    400: {"description": "Bad Request"},
-    403: {"description": "Forbidden"},
-    404: {"description": "Not Found"},
-    409: {"description": "Conflict"},
-    416: {"description": "Range Not Satisfiable"},
-}
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 _READY_CACHE_TTL_SEC = max(0.0, float(getattr(settings, "READY_CACHE_TTL_SEC", 2.0) or 2.0))

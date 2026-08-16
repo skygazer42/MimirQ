@@ -79,6 +79,8 @@ Docker 默认允许：
 若你显式使用 `AUTH_MODE=header`（仅限本地开发）：
 - 无 JWT 时，前端从 `NEXT_PUBLIC_USER_ID` / `NEXT_PUBLIC_TENANT_ID` 发送开发身份头
 - 登录态用户/租户元数据不会在 token 已清除后单独作为身份凭据发送，避免跨标签页串号
+- 默认不会自动创建租户 owner。只有确需本机首次联调时才临时设置
+  `LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED=true`；它仍只接受 loopback、隐式默认租户且非生产环境，完成后应恢复为 `false`
 
 若你用 `AUTH_MODE=jwt`：
 - 需要先登录拿 token；token 优先写入当前标签页的 `sessionStorage`

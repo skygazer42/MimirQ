@@ -1,3 +1,4 @@
+import hashlib
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
@@ -381,6 +382,304 @@ async def test_ingest_local_html_request_persists_minio_uri_and_cleans_temp_afte
 
     assert document.file_path == f"minio://documents/documents/{tenant_id}/{dataset_id}/{document.id}.html"
     assert document.doc_metadata["task_id"] == "task-456"
+    assert not any((tmp_path / str(tenant_id)).glob("*.html"))
+
+
+@pytest.mark.asyncio
+async def test_ingest_local_html_request_enforces_upload_quota_before_object_storage_and_cleans_temp(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    import app.services.tenant_quota_service as quota_service
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    quota_calls: list[dict[str, int]] = []
+
+    monkeypatch.setattr(documents_module.settings, "URL_INGEST_ENABLED", True, raising=False)
+    monkeypatch.setattr(documents_module.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(documents_module, "_resolve_writable_dataset", lambda *_args, **_kwargs: _dataset(dataset_id), raising=True)
+    monkeypatch.setattr(documents_module, "_prepare_document_ingestion", lambda **_kwargs: _prepared(), raising=True)
+    monkeypatch.setattr(documents_module, "_create_local_html_ingestion_run", lambda **_kwargs: None, raising=True)
+    monkeypatch.setattr(
+        quota_service,
+        "enforce_tenant_upload_quotas",
+        lambda _db, *, tenant_id, additional_docs, additional_bytes: (
+            quota_calls.append(
+                {
+                    "tenant_id": str(tenant_id),
+                    "additional_docs": int(additional_docs),
+                    "additional_bytes": int(additional_bytes),
+                }
+            ),
+            (_ for _ in ()).throw(
+                HTTPException(
+                    status_code=429,
+                    detail={
+                        "message": "Tenant storage quota exceeded",
+                        "retry_after_sec": None,
+                        "limit": 16,
+                        "scope": "tenant_storage",
+                    },
+                )
+            ),
+        )[-1],
+        raising=True,
+    )
+    monkeypatch.setattr(
+        documents_module,
+        "_store_ingested_source",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("object storage should not run after quota failure")),
+        raising=True,
+    )
+
+    html = "<html><body>Hello quota</body></html>"
+    body = documents_module.LocalHtmlIngestRequest(
+        html=html,
+        source_url="https://example.com/page",
+        dataset_id=dataset_id,
+        filename="page.html",
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await documents_module._ingest_local_html_request(
+            background_tasks=BackgroundTasks(),
+            body=body,
+            tenant_id=tenant_id,
+            account_id="account-1",
+            db=_DB(),
+        )
+
+    assert exc_info.value.status_code == 429
+    assert exc_info.value.detail["scope"] == "tenant_storage"
+    assert quota_calls == [
+        {
+            "tenant_id": str(tenant_id),
+            "additional_docs": 1,
+            "additional_bytes": len(html.encode("utf-8")),
+        }
+    ]
+    assert not any((tmp_path / str(tenant_id)).glob("*.html"))
+
+
+@pytest.mark.asyncio
+async def test_ingest_url_request_reuses_existing_document_when_audit_metadata_differs(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    expected_pipeline_hash = documents_module._compute_pipeline_hash(
+        {
+            "parser_backend": "auto",
+            "parser_backend_requested": "auto",
+            "chunk_strategy": "langchain_recursive",
+            "chunk_strategy_requested": "langchain_recursive",
+            "source_url": "https://old.example/doc",
+            "source_etag": "old-etag",
+            "source_last_modified_raw": "Wed, 01 Jan 2025 00:00:00 GMT",
+        }
+    )
+    final_path = tmp_path / str(tenant_id) / "dup.txt"
+    final_path.parent.mkdir(parents=True, exist_ok=True)
+    final_path.write_text("same payload", encoding="utf-8")
+
+    duplicate = SimpleNamespace(
+        id=uuid.uuid4(),
+        filename="existing.txt",
+        status="completed",
+        doc_metadata={
+            "content_sha256": "sha-same",
+            "pipeline_hash": expected_pipeline_hash,
+            "source_url": "https://old.example/doc",
+            "source_etag": "old-etag",
+            "source_last_modified_raw": "Wed, 01 Jan 2025 00:00:00 GMT",
+        },
+        dedup_key=f"sha-same:{expected_pipeline_hash}",
+    )
+    seen: list[dict[str, object]] = []
+
+    downloaded = DownloadedURL(
+        size_bytes=12,
+        content_type="text/plain",
+        final_url="https://new.example/doc",
+        last_modified="Thu, 02 Jan 2025 00:00:00 GMT",
+        etag="new-etag",
+    )
+
+    monkeypatch.setattr(documents_module.settings, "URL_INGEST_ENABLED", True, raising=False)
+    monkeypatch.setattr(documents_module.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(documents_module, "_resolve_writable_dataset", lambda *_args, **_kwargs: _dataset(dataset_id), raising=True)
+    monkeypatch.setattr(documents_module, "_prepare_document_ingestion", lambda **_kwargs: _prepared(), raising=True)
+    monkeypatch.setattr(documents_module, "_create_url_ingestion_run", lambda **_kwargs: None, raising=True)
+    async def _validate(url: str) -> str:
+        return url
+
+    monkeypatch.setattr(documents_module, "validate_url_for_ingest", _validate, raising=True)
+    async def _download(**_kwargs):  # noqa: ANN202
+        return documents_module.UrlIngestFile(
+            file_id=uuid.uuid4(),
+            final_path=final_path,
+            file_ext=".txt",
+            downloaded=downloaded,
+            content_type="text/plain",
+            fetched_at_iso="2026-08-16T00:00:00+00:00",
+            content_sha256="sha-same",
+        )
+
+    async def _source_meta(**_kwargs):  # noqa: ANN202
+        return documents_module.UrlSourceMetadata(
+            final_url="https://new.example/doc",
+            normalized_requested="https://new.example/doc",
+            normalized_final="https://new.example/doc",
+            canonical_url="https://new.example/canonical",
+            normalized_canonical="https://new.example/canonical",
+            normalized_url="https://new.example/canonical",
+            last_modified_at="2025-01-02T00:00:00+00:00",
+            last_modified_source="http:last-modified",
+            last_modified_raw="Thu, 02 Jan 2025 00:00:00 GMT",
+            etag="new-etag",
+        )
+
+    monkeypatch.setattr(documents_module, "_download_url_ingest_file", _download, raising=True)
+    monkeypatch.setattr(documents_module, "_url_source_metadata", _source_meta, raising=True)
+    monkeypatch.setattr(
+        documents_module,
+        "_find_duplicate_document",
+        lambda _db, *, tenant_id, dataset_id, file_sha256, pipeline_hash, **_kwargs: (
+            seen.append(
+                {
+                    "tenant_id": str(tenant_id),
+                    "dataset_id": str(dataset_id),
+                    "file_sha256": file_sha256,
+                    "pipeline_hash": pipeline_hash,
+                }
+            )
+            or duplicate
+        ),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        documents_module,
+        "_store_ingested_source",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("duplicate reuse should bypass object storage")),
+        raising=True,
+    )
+
+    body = documents_module.UrlUploadRequest(
+        url="https://new.example/doc",
+        dataset_id=dataset_id,
+        filename="dup.txt",
+        parser_backend="auto",
+        chunk_strategy="langchain_recursive",
+    )
+
+    result = await documents_module._ingest_url_upload_request(
+        background_tasks=BackgroundTasks(),
+        body=body,
+        tenant_id=tenant_id,
+        account_id="account-1",
+        db=_DB(),
+    )
+
+    assert result is duplicate
+    assert seen == [
+        {
+            "tenant_id": str(tenant_id),
+            "dataset_id": str(dataset_id),
+            "file_sha256": "sha-same",
+            "pipeline_hash": expected_pipeline_hash,
+        }
+    ]
+    assert not final_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_ingest_local_html_request_reuses_existing_document_when_source_url_differs(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    content_sha = hashlib.sha256(b"<html><body>Hello</body></html>").hexdigest()
+    expected_pipeline_hash = documents_module._compute_pipeline_hash(
+        {
+            "parser_backend": "auto",
+            "parser_backend_requested": "auto",
+            "chunk_strategy": "langchain_recursive",
+            "chunk_strategy_requested": "langchain_recursive",
+            "source_url": "https://old.example/page",
+        }
+    )
+
+    duplicate = SimpleNamespace(
+        id=uuid.uuid4(),
+        filename="existing.html",
+        status="completed",
+        doc_metadata={
+            "content_sha256": content_sha,
+            "pipeline_hash": expected_pipeline_hash,
+            "source_url": "https://old.example/page",
+        },
+        dedup_key=f"{content_sha}:{expected_pipeline_hash}",
+    )
+    seen: list[dict[str, object]] = []
+
+    monkeypatch.setattr(documents_module.settings, "URL_INGEST_ENABLED", True, raising=False)
+    monkeypatch.setattr(documents_module.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(documents_module.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+    monkeypatch.setattr(documents_module, "_resolve_writable_dataset", lambda *_args, **_kwargs: _dataset(dataset_id), raising=True)
+    monkeypatch.setattr(documents_module, "_prepare_document_ingestion", lambda **_kwargs: _prepared(), raising=True)
+    monkeypatch.setattr(documents_module, "_create_local_html_ingestion_run", lambda **_kwargs: None, raising=True)
+    monkeypatch.setattr(
+        documents_module,
+        "_find_duplicate_document",
+        lambda _db, *, tenant_id, dataset_id, file_sha256, pipeline_hash, **_kwargs: (
+            seen.append(
+                {
+                    "tenant_id": str(tenant_id),
+                    "dataset_id": str(dataset_id),
+                    "file_sha256": file_sha256,
+                    "pipeline_hash": pipeline_hash,
+                }
+            )
+            or duplicate
+        ),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        documents_module,
+        "_store_ingested_source",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("duplicate reuse should bypass object storage")),
+        raising=True,
+    )
+
+    body = documents_module.LocalHtmlIngestRequest(
+        html="<html><body>Hello</body></html>",
+        source_url="https://new.example/page",
+        dataset_id=dataset_id,
+        filename="page.html",
+        parser_backend="auto",
+        chunk_strategy="langchain_recursive",
+    )
+
+    result = await documents_module._ingest_local_html_request(
+        background_tasks=BackgroundTasks(),
+        body=body,
+        tenant_id=tenant_id,
+        account_id="account-1",
+        db=_DB(),
+    )
+
+    assert result is duplicate
+    assert seen == [
+        {
+            "tenant_id": str(tenant_id),
+            "dataset_id": str(dataset_id),
+            "file_sha256": content_sha,
+            "pipeline_hash": expected_pipeline_hash,
+        }
+    ]
     assert not any((tmp_path / str(tenant_id)).glob("*.html"))
 
 

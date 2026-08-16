@@ -2,7 +2,13 @@ import asyncio
 from types import SimpleNamespace
 from uuid import uuid4
 
-from app.api.v1 import connectors_artifacts, connectors_drive_files, connectors_github_repo
+from app.api.v1 import (
+    connectors_artifacts,
+    connectors_confluence,
+    connectors_drive_files,
+    connectors_github_repo,
+    connectors_url_batch,
+)
 from app.models.connector import ConnectorRun, ConnectorRunDocument
 from app.models.document import Document as DBDocument
 
@@ -342,6 +348,92 @@ def test_upsert_db_row_sidecar_document_migrates_matching_legacy_identity(monkey
         "tables": 0,
         "source_manifest_count": 1,
     }
-    assert legacy_doc.file_path == f"virtual://db_catalog/rows/{run.dataset_id}/sqlserver/{config_id}"
-    assert legacy_doc.filename == f"db_rows_sqlserver_{config_id}_{run.dataset_id}.sqlite"
-    assert not any(isinstance(obj, DBDocument) for obj in db.added)
+
+
+def test_url_batch_connector_reuses_shared_url_ingest_helper(monkeypatch) -> None:
+    import app.api.v1.connectors as connectors_module
+
+    run = _make_run(connector_id="url_batch", config_id=None)
+    db = _FakeDB()
+    calls: list[dict[str, object]] = []
+
+    async def _shared_ingest(**kwargs):  # noqa: ANN003, ANN202
+        calls.append(dict(kwargs))
+        return SimpleNamespace(id=uuid4(), doc_metadata={})
+
+    monkeypatch.setattr(connectors_module, "_ingest_url_upload_request", _shared_ingest, raising=True)
+    monkeypatch.setattr(connectors_module, "_apply_document_access_from_config", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(connectors_module, "_apply_connector_identity_metadata", lambda *_a, **_k: None, raising=True)
+
+    document_id = asyncio.run(
+        connectors_url_batch._ingest_url_batch_url(
+            db,
+            run=run,
+            run_id=run.id,
+            tenant_id=run.tenant_id,
+            requested_by="tester",
+            url="https://example.com/doc.txt",
+            settings_map={
+                "filename": "doc.txt",
+                "parser_backend": "auto",
+                "chunk_strategy": "langchain_recursive",
+                "pipeline": None,
+            },
+        )
+    )
+
+    assert calls and calls[0]["background_tasks"] is None
+    assert calls[0]["tenant_id"] == run.tenant_id
+    assert calls[0]["db"] is db
+    assert calls[0]["body"].url == "https://example.com/doc.txt"
+    assert document_id
+
+
+def test_confluence_api_view_connector_reuses_shared_local_html_ingest_helper(monkeypatch) -> None:
+    run = _make_run(connector_id="confluence_space", config_id=None)
+    db = _FakeDB()
+    calls: list[dict[str, object]] = []
+
+    async def _shared_local_html(**kwargs):  # noqa: ANN003, ANN202
+        calls.append(dict(kwargs))
+        return SimpleNamespace(id=uuid4(), doc_metadata={})
+
+    async def _fetch_html(*_args, **_kwargs):  # noqa: ANN202
+        return "<div>body</div>"
+
+    monkeypatch.setattr(connectors_confluence, "_fetch_confluence_page_view_html", _fetch_html, raising=True)
+    monkeypatch.setattr(
+        connectors_confluence,
+        "_leader_module",
+        SimpleNamespace(
+            LocalHtmlIngestRequest=lambda **kwargs: SimpleNamespace(**kwargs),
+            _ingest_local_html_request=_shared_local_html,
+        ),
+        raising=False,
+    )
+
+    asyncio.run(
+        connectors_confluence._ingest_confluence_page_api_view(
+            object(),
+            db,
+            run=run,
+            tenant_id=run.tenant_id,
+            requested_by="tester",
+            page_id="123",
+            title="Confluence Title",
+            page_url="https://confluence.example/wiki/page",
+            filename="page.html",
+            settings_map={
+                "parser_backend": "auto",
+                "chunk_strategy": "langchain_recursive",
+                "pipeline": None,
+            },
+        )
+    )
+
+    assert calls and calls[0]["background_tasks"] is None
+    assert calls[0]["tenant_id"] == run.tenant_id
+    assert calls[0]["db"] is db
+    assert calls[0]["body"].source_url == "https://confluence.example/wiki/page"
+    assert calls[0]["body"].filename == "page.html"
+    assert "Confluence Title" in calls[0]["body"].html

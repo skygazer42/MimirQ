@@ -20,6 +20,12 @@ from app.api.v1.documents import UrlUploadRequest
 from app.core.config import settings
 from app.core.database import get_db
 from app.rag.core.logging import get_logger
+from app.services.document_identity import (
+    build_document_dedup_key,
+    get_content_sha256,
+    sync_pipeline_execution_identity,
+)
+from app.services.document_index_channel_service import reconcile_document_index_channels
 from app.storage.object.minio import minio_service  # noqa: F401
 from app.storage.object.runtime import (
     document_object_storage_enabled,
@@ -256,7 +262,7 @@ def _find_duplicate_document_for_persist_conflict(db: Session, *, db_document: A
     if not isinstance(dataset_id, UUID) or not isinstance(tenant_id, UUID):
         return None
     doc_metadata = dict(getattr(db_document, "doc_metadata", None) or {})
-    file_sha256 = str(doc_metadata.get("file_sha256") or "").strip().lower()
+    file_sha256 = get_content_sha256(doc_metadata)
     pipeline_hash = str(doc_metadata.get("pipeline_hash") or "").strip()
     if file_sha256 and pipeline_hash:
         return documents_module._find_duplicate_document(
@@ -332,11 +338,7 @@ def _retain_ingest_lock_if_task_handed_off(document: Any, *, ingest_lock: _Inges
 
 
 def _build_document_dedup_key(*, file_sha256: str | None, pipeline_hash: str | None) -> str | None:
-    sha = str(file_sha256 or "").strip().lower()
-    ph = str(pipeline_hash or "").strip()
-    if not sha or not ph:
-        return None
-    return f"{sha}:{ph}"
+    return build_document_dedup_key(content_sha256=file_sha256, pipeline_hash=pipeline_hash)
 
 
 def _document_matches_dedup_identity(
@@ -351,7 +353,7 @@ def _document_matches_dedup_identity(
     metadata = dict(getattr(document, "doc_metadata", None) or {})
     return bool(
         expected
-        and str(metadata.get("file_sha256") or "").strip().lower() == str(file_sha256 or "").strip().lower()
+        and get_content_sha256(metadata) == str(file_sha256 or "").strip().lower()
         and str(metadata.get("pipeline_hash") or "").strip() == str(pipeline_hash or "").strip()
     )
 
@@ -371,7 +373,12 @@ def _sync_duplicate_document_pipeline_identity(
     file_sha256: str,
     pipeline_hash: str,
 ) -> None:
-    doc_metadata["file_sha256"] = str(file_sha256).strip().lower()
+    sync_pipeline_execution_identity(
+        doc_metadata,
+        content_sha256=file_sha256,
+        pipeline_hash=pipeline_hash,
+        parser_backend_resolved=str(doc_metadata.get("parser_backend_resolved") or "").strip() or None,
+    )
     doc_metadata["pipeline_hash"] = str(pipeline_hash or "").strip() or None
     if hasattr(duplicate_document, "dedup_key"):
         duplicate_document.dedup_key = _build_document_dedup_key(file_sha256=file_sha256, pipeline_hash=pipeline_hash)
@@ -800,16 +807,20 @@ async def _upload_document_impl(
         additional_bytes=int(file_size or 0),
     )
 
+    requested_parser_backend = (parser_backend or "").strip().lower()
     doc_metadata = {
         "parser_backend": resolved_parser_backend,
-        "parser_backend_requested": (parser_backend or "").lower(),
+        "parser_backend_requested": requested_parser_backend,
+        "parser_backend_resolved": (
+            None if file_ext == ".pdf" and requested_parser_backend in {"", "auto"} else resolved_parser_backend
+        ),
         "chunk_strategy": resolved_chunk_strategy,
         "chunk_strategy_requested": (chunk_strategy or "").lower(),
     }
     if source_path:
         doc_metadata["source_path"] = source_path
     if isinstance(file_sha256, str) and file_sha256:
-        doc_metadata["file_sha256"] = file_sha256
+        documents_module.set_content_sha256(doc_metadata, file_sha256)
     documents_module.upsert_pipeline_metadata(doc_metadata, options=pipeline_options)
     if ingestion_meta:
         doc_metadata["ingestion"] = ingestion_meta
@@ -830,6 +841,12 @@ async def _upload_document_impl(
     doc_metadata["pipeline_hash"] = pipeline_hash
     doc_metadata.setdefault("active_pipeline_hash", pipeline_hash)
     doc_metadata.setdefault("active_pipeline_ready", False)
+    sync_pipeline_execution_identity(
+        doc_metadata,
+        content_sha256=file_sha256 if isinstance(file_sha256, str) else None,
+        pipeline_hash=pipeline_hash,
+        parser_backend_resolved=str(doc_metadata.get("parser_backend_resolved") or "").strip() or None,
+    )
 
     await _maybe_acquire_ingest_lock(
         tenant_id=tenant_id,
@@ -937,7 +954,10 @@ async def _upload_document_impl(
 
                 meta_any = dict(getattr(dup_any, "doc_metadata", None) or {})
                 meta_any["parser_backend"] = resolved_parser_backend
-                meta_any["parser_backend_requested"] = (parser_backend or "").lower()
+                meta_any["parser_backend_requested"] = requested_parser_backend
+                meta_any["parser_backend_resolved"] = (
+                    None if file_ext == ".pdf" and requested_parser_backend in {"", "auto"} else resolved_parser_backend
+                )
                 meta_any["chunk_strategy"] = resolved_chunk_strategy
                 meta_any["chunk_strategy_requested"] = (chunk_strategy or "").lower()
                 if source_path and not meta_any.get("source_path"):
@@ -974,6 +994,12 @@ async def _upload_document_impl(
                     meta_any["active_pipeline_hash"] = str(meta_any.get("pipeline_hash") or "").strip() or None
                 if "active_pipeline_ready" not in meta_any:
                     meta_any["active_pipeline_ready"] = bool(status0 == "completed")
+                sync_pipeline_execution_identity(
+                    meta_any,
+                    content_sha256=file_sha256,
+                    pipeline_hash=pipeline_hash,
+                    parser_backend_resolved=str(meta_any.get("parser_backend_resolved") or "").strip() or None,
+                )
                 if ingest_lock.key and ingest_lock.value:
                     meta_any["ingest_lock_key"] = ingest_lock.key
                     meta_any["ingest_lock_value"] = ingest_lock.value
@@ -1047,6 +1073,14 @@ async def _upload_document_impl(
             raise
         with contextlib.suppress(Exception):
             _attach_doc_to_ingestion_run(db_document, created=True)
+        with contextlib.suppress(Exception):
+            reconcile_document_index_channels(
+                db,
+                document=db_document,
+                pipeline_hash=pipeline_hash,
+                reset_enabled_to_pending=True,
+                commit=True,
+            )
         if not is_object_storage_uri(str(stored_path)):
             file_lease.transfer()
 
@@ -1688,16 +1722,20 @@ async def upload_documents_batch(
                             pipeline_effective.chunk_overlap,
                         )
 
+                    requested_parser_backend = (parser_backend or "").strip().lower()
                     doc_metadata = {
                         "parser_backend": resolved_parser_backend,
-                        "parser_backend_requested": (parser_backend or "").lower(),
+                        "parser_backend_requested": requested_parser_backend,
+                        "parser_backend_resolved": (
+                            None if file_ext == ".pdf" and requested_parser_backend in {"", "auto"} else resolved_parser_backend
+                        ),
                         "chunk_strategy": resolved_chunk_strategy,
                         "chunk_strategy_requested": (chunk_strategy or "").lower(),
                     }
                     if source_path:
                         doc_metadata["source_path"] = source_path
                     if isinstance(file_sha256, str) and file_sha256:
-                        doc_metadata["file_sha256"] = file_sha256
+                        documents_module.set_content_sha256(doc_metadata, file_sha256)
                     documents_module.upsert_pipeline_metadata(doc_metadata, options=pipeline_options)
                     if ingestion_meta:
                         doc_metadata["ingestion"] = ingestion_meta
@@ -1721,6 +1759,12 @@ async def upload_documents_batch(
                     doc_metadata["pipeline_hash"] = pipeline_hash
                     doc_metadata.setdefault("active_pipeline_hash", pipeline_hash)
                     doc_metadata.setdefault("active_pipeline_ready", False)
+                    sync_pipeline_execution_identity(
+                        doc_metadata,
+                        content_sha256=file_sha256 if isinstance(file_sha256, str) else None,
+                        pipeline_hash=pipeline_hash,
+                        parser_backend_resolved=str(doc_metadata.get("parser_backend_resolved") or "").strip() or None,
+                    )
                     await _maybe_acquire_ingest_lock(
                         tenant_id=tenant_id,
                         dataset_id=getattr(dataset, "id", None) if dataset is not None else None,
@@ -1775,7 +1819,10 @@ async def upload_documents_batch(
 
                             meta_any = dict(getattr(dup_any, "doc_metadata", None) or {})
                             meta_any["parser_backend"] = resolved_parser_backend
-                            meta_any["parser_backend_requested"] = (parser_backend or "").lower()
+                            meta_any["parser_backend_requested"] = requested_parser_backend
+                            meta_any["parser_backend_resolved"] = (
+                                None if file_ext == ".pdf" and requested_parser_backend in {"", "auto"} else resolved_parser_backend
+                            )
                             meta_any["chunk_strategy"] = resolved_chunk_strategy
                             meta_any["chunk_strategy_requested"] = (chunk_strategy or "").lower()
                             if source_path and not meta_any.get("source_path"):
@@ -1799,11 +1846,15 @@ async def upload_documents_batch(
                                 )
 
                             if "active_pipeline_hash" not in meta_any:
-                                meta_any["active_pipeline_hash"] = (
-                                    str(meta_any.get("pipeline_hash") or "").strip() or None
-                            )
+                                meta_any["active_pipeline_hash"] = str(meta_any.get("pipeline_hash") or "").strip() or None
                             if "active_pipeline_ready" not in meta_any:
                                 meta_any["active_pipeline_ready"] = bool(status0 == "completed")
+                            sync_pipeline_execution_identity(
+                                meta_any,
+                                content_sha256=file_sha256,
+                                pipeline_hash=pipeline_hash,
+                                parser_backend_resolved=str(meta_any.get("parser_backend_resolved") or "").strip() or None,
+                            )
                             if ingest_lock.key and ingest_lock.value:
                                 meta_any["ingest_lock_key"] = ingest_lock.key
                                 meta_any["ingest_lock_value"] = ingest_lock.value
@@ -1885,6 +1936,14 @@ async def upload_documents_batch(
 
                     if upload_only:
                         # Upload-only stores the source document but intentionally does not enqueue parsing.
+                        with contextlib.suppress(Exception):
+                            reconcile_document_index_channels(
+                                item_db,
+                                document=db_document,
+                                pipeline_hash=pipeline_hash,
+                                reset_enabled_to_pending=True,
+                                commit=True,
+                            )
                         if is_object_storage_uri(stored_path):
                             _unlink_upload(file_path)
                         return {
@@ -1893,6 +1952,14 @@ async def upload_documents_batch(
                             **_document_result_snapshot(db_document, source_path=source_path),
                         }
 
+                    with contextlib.suppress(Exception):
+                        reconcile_document_index_channels(
+                            item_db,
+                            document=db_document,
+                            pipeline_hash=pipeline_hash,
+                            reset_enabled_to_pending=True,
+                            commit=True,
+                        )
                     keep_local_file = await _schedule_document_processing(
                         background_tasks=background_tasks,
                         file_path=file_path,
@@ -2114,16 +2181,20 @@ async def upload_documents_batch(
                         "error": str(getattr(exc, "detail", "") or "tenant_quota_exceeded"),
                     }
 
+                requested_parser_backend = (parser_backend or "").strip().lower()
                 doc_metadata = {
                     "parser_backend": resolved_parser_backend,
-                    "parser_backend_requested": (parser_backend or "").lower(),
+                    "parser_backend_requested": requested_parser_backend,
+                    "parser_backend_resolved": (
+                        None if file_ext == ".pdf" and requested_parser_backend in {"", "auto"} else resolved_parser_backend
+                    ),
                     "chunk_strategy": resolved_chunk_strategy,
                     "chunk_strategy_requested": (chunk_strategy or "").lower(),
                 }
                 if source_path:
                     doc_metadata["source_path"] = source_path
                 if isinstance(file_sha256, str) and file_sha256:
-                    doc_metadata["file_sha256"] = file_sha256
+                    documents_module.set_content_sha256(doc_metadata, file_sha256)
                 documents_module.upsert_pipeline_metadata(doc_metadata, options=pipeline_options)
                 if ingestion_meta:
                     doc_metadata["ingestion"] = ingestion_meta
@@ -2147,6 +2218,12 @@ async def upload_documents_batch(
                 doc_metadata["pipeline_hash"] = pipeline_hash
                 doc_metadata.setdefault("active_pipeline_hash", pipeline_hash)
                 doc_metadata.setdefault("active_pipeline_ready", False)
+                sync_pipeline_execution_identity(
+                    doc_metadata,
+                    content_sha256=file_sha256 if isinstance(file_sha256, str) else None,
+                    pipeline_hash=pipeline_hash,
+                    parser_backend_resolved=str(doc_metadata.get("parser_backend_resolved") or "").strip() or None,
+                )
                 await _maybe_acquire_ingest_lock(
                     tenant_id=tenant_id,
                     dataset_id=getattr(dataset, "id", None) if dataset is not None else None,
@@ -2201,7 +2278,10 @@ async def upload_documents_batch(
 
                         meta_any = dict(getattr(dup_any, "doc_metadata", None) or {})
                         meta_any["parser_backend"] = resolved_parser_backend
-                        meta_any["parser_backend_requested"] = (parser_backend or "").lower()
+                        meta_any["parser_backend_requested"] = requested_parser_backend
+                        meta_any["parser_backend_resolved"] = (
+                            None if file_ext == ".pdf" and requested_parser_backend in {"", "auto"} else resolved_parser_backend
+                        )
                         meta_any["chunk_strategy"] = resolved_chunk_strategy
                         meta_any["chunk_strategy_requested"] = (chunk_strategy or "").lower()
                         if source_path and not meta_any.get("source_path"):
@@ -2230,6 +2310,12 @@ async def upload_documents_batch(
                             )
                         if "active_pipeline_ready" not in meta_any:
                             meta_any["active_pipeline_ready"] = bool(status0 == "completed")
+                        sync_pipeline_execution_identity(
+                            meta_any,
+                            content_sha256=file_sha256,
+                            pipeline_hash=pipeline_hash,
+                            parser_backend_resolved=str(meta_any.get("parser_backend_resolved") or "").strip() or None,
+                        )
                         if ingest_lock.key and ingest_lock.value:
                             meta_any["ingest_lock_key"] = ingest_lock.key
                             meta_any["ingest_lock_value"] = ingest_lock.value
@@ -2307,6 +2393,14 @@ async def upload_documents_batch(
 
                 if upload_only:
                     # Upload-only stores the source document but intentionally does not enqueue parsing.
+                    with contextlib.suppress(Exception):
+                        reconcile_document_index_channels(
+                            item_db,
+                            document=db_document,
+                            pipeline_hash=pipeline_hash,
+                            reset_enabled_to_pending=True,
+                            commit=True,
+                        )
                     if is_object_storage_uri(stored_path):
                         _unlink_upload(file_path)
                     return {
@@ -2315,6 +2409,13 @@ async def upload_documents_batch(
                         **_document_result_snapshot(db_document, source_path=source_path),
                     }
 
+                reconcile_document_index_channels(
+                    item_db,
+                    document=db_document,
+                    pipeline_hash=pipeline_hash,
+                    reset_enabled_to_pending=True,
+                    commit=True,
+                )
                 keep_local_file = await _schedule_document_processing(
                     background_tasks=background_tasks,
                     file_path=file_path,

@@ -7,6 +7,7 @@
 import { useMemo, useState } from 'react'
 import {
   Activity,
+  AlertCircle,
   Check,
   Database,
   FileStack,
@@ -31,6 +32,7 @@ import { cn, detachPromise } from '@/lib/utils'
 
 type KnowledgeRetrievalPanelProps = {
   selectedDatasetId?: string
+  selectedDocumentIds?: string[]
   compact?: boolean
   aggregateDocuments?: number
   aggregateChunks?: number
@@ -61,6 +63,8 @@ function getCompactByteDigits(value: number): number {
 function getChecklistStateLabel(state: string): string {
   if (state === 'ok') return '正常'
   if (state === 'warning') return '关注'
+  if (state === 'compat') return '兼容'
+  if (state === 'unknown') return '未知'
   return '等待'
 }
 
@@ -98,6 +102,7 @@ function estimateIndexSizeBytes(vectorCount: number): number {
 
 export function KnowledgeRetrievalPanel({
   selectedDatasetId,
+  selectedDocumentIds = [],
   compact = false,
   aggregateDocuments = 0,
   aggregateChunks = 0,
@@ -105,12 +110,123 @@ export function KnowledgeRetrievalPanel({
   const t = useTranslations('KnowledgeRetrievalPanel')
   // t("empty.title")
   // t("empty.description")
-  const { indexAudit, indexAuditError, indexAuditLoading, runIndexAudit } =
-    useIndexAudit({ selectedDatasetId })
+  const {
+    indexAudit,
+    indexAuditError,
+    indexAuditHasDocumentScope,
+    indexAuditLoading,
+    indexAuditReconcileState,
+    reconcileIndexAudit,
+    runIndexAudit,
+  } = useIndexAudit({ selectedDatasetId, selectedDocumentIds })
   const [detailsExpanded, setDetailsExpanded] = useState(false)
   const hasAggregateOverview =
     !selectedDatasetId && (aggregateDocuments > 0 || aggregateChunks > 0)
   const overviewDatasetLabel = selectedDatasetId || '全部数据集'
+
+  const channelRows = useMemo(() => {
+    const summary = indexAudit?.index_channels
+    if (!summary) return []
+
+    const countsByChannel = summary.status_counts_by_channel ?? {}
+    const legacyByChannel = summary.legacy_by_channel ?? {}
+    const preferredOrder = [
+      'vector',
+      'bm25',
+      'kg',
+      'event_vector',
+      'entity_vector',
+    ]
+    const channels = [
+      ...preferredOrder.filter((channel) => channel in countsByChannel),
+      ...Object.keys(countsByChannel)
+        .filter((channel) => !preferredOrder.includes(channel))
+        .sort(),
+    ]
+
+    return channels.map((channel) => {
+      const counts = countsByChannel[channel] ?? {}
+      const rowCount = Object.values(counts).reduce(
+        (total, value) => total + Math.max(0, Number(value || 0)),
+        0
+      )
+      const errorCount = Math.max(0, Number(counts.error || 0))
+      const nonTerminalCount = Object.entries(counts).reduce(
+        (total, [status, value]) =>
+          ['ready', 'disabled', 'skipped', 'error'].includes(status)
+            ? total
+            : total + Math.max(0, Number(value || 0)),
+        0
+      )
+      const legacyCount = Math.max(
+        0,
+        Number(legacyByChannel[channel] || 0)
+      )
+      const unknown = rowCount === 0
+      const state = errorCount
+        ? 'warning'
+        : nonTerminalCount
+          ? 'pending'
+          : legacyCount
+            ? 'compat'
+            : unknown
+              ? 'unknown'
+              : 'ok'
+      const statusParts = Object.entries(counts)
+        .filter(([, count]) => Number(count || 0) > 0)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([status, count]) => `${status} ${count}`)
+      if (legacyCount > 0) statusParts.push(`legacy ${legacyCount}`)
+
+      return {
+        channel,
+        detail:
+          legacyCount > 0
+            ? `${legacyCount} 个文档使用兼容推断状态（无持久化通道行）`
+            : null,
+        readinessLabel:
+          state === 'warning'
+            ? 'Error'
+            : state === 'pending'
+              ? 'Pending'
+              : state === 'compat'
+                ? 'Compatibility'
+                : state === 'unknown'
+                  ? 'Unknown'
+                  : 'Ready',
+        rowCount,
+        state,
+        statusLabel:
+          state === 'compat'
+            ? `兼容 / ${statusParts.join(' · ')}`
+            : statusParts.join(' · ') || 'unknown',
+        summaryKind:
+          state === 'compat'
+            ? 'compat'
+            : state === 'unknown'
+              ? 'unknown'
+              : state === 'ok'
+                ? 'ready'
+                : 'other',
+      }
+    })
+  }, [indexAudit?.index_channels])
+
+  const channelSummary = useMemo(
+    () =>
+      channelRows.reduce(
+        (acc, row) => {
+          if (row.summaryKind === 'ready') acc.ready += 1
+          else if (row.summaryKind === 'compat') acc.compat += 1
+          else if (row.summaryKind === 'unknown') acc.unknown += 1
+          else if (row.state === 'warning') acc.warning += 1
+          else acc.pending += 1
+          return acc
+        },
+        { ready: 0, compat: 0, unknown: 0, warning: 0, pending: 0 }
+      ),
+    [channelRows]
+  )
 
   const metricCards = useMemo(() => {
     if (indexAudit) {
@@ -202,7 +318,7 @@ export function KnowledgeRetrievalPanel({
 
   const auditStatus = useMemo(() => {
     if (hasAggregateOverview) {
-      return { label: '正常运行', tone: 'success' as const }
+      return { label: '聚合数据（未审计）', tone: 'neutral' as const }
     }
     if (!selectedDatasetId) {
       return { label: '等待选择数据集', tone: 'warning' as const }
@@ -214,6 +330,22 @@ export function KnowledgeRetrievalPanel({
       return { label: '审计异常', tone: 'danger' as const }
     }
     if (indexAudit) {
+      const channels = indexAudit.index_channels
+      if (!channels) {
+        return { label: '通道状态未知', tone: 'warning' as const }
+      }
+      if ((channels.required_error_documents ?? 0) > 0) {
+        return { label: '发现索引错误', tone: 'danger' as const }
+      }
+      if ((channels.required_pending_documents ?? 0) > 0) {
+        return { label: '索引同步中', tone: 'warning' as const }
+      }
+      if ((channels.documents_using_legacy_fallback ?? 0) > 0) {
+        return { label: '兼容状态（待迁移）', tone: 'warning' as const }
+      }
+      if (indexAudit.active_documents === 0) {
+        return { label: '无可审计文档', tone: 'neutral' as const }
+      }
       return { label: '正常运行', tone: 'success' as const }
     }
     return { label: '待执行审计', tone: 'neutral' as const }
@@ -228,10 +360,10 @@ export function KnowledgeRetrievalPanel({
   const healthChecklist = useMemo(() => {
     if (hasAggregateOverview) {
       return [
-        { label: '索引服务', state: 'ok' },
-        { label: '向量服务', state: 'ok' },
-        { label: '存储服务', state: 'ok' },
-        { label: '权限校验', state: 'ok' },
+        { label: '索引服务', state: 'unknown' },
+        { label: '向量服务', state: 'unknown' },
+        { label: '存储服务', state: 'unknown' },
+        { label: '权限校验', state: 'unknown' },
       ] as const
     }
     if (!indexAudit) {
@@ -241,6 +373,13 @@ export function KnowledgeRetrievalPanel({
         { label: '存储服务', state: 'pending' },
         { label: '权限校验', state: 'pending' },
       ]
+    }
+
+    if (channelRows.length > 0) {
+      return channelRows.map((row) => ({
+        label: row.channel,
+        state: row.state,
+      }))
     }
 
     return [
@@ -259,9 +398,9 @@ export function KnowledgeRetrievalPanel({
             ? 'warning'
             : 'ok',
       },
-      { label: '权限校验', state: 'ok' },
+      { label: '权限校验', state: 'unknown' },
     ] as const
-  }, [hasAggregateOverview, indexAudit])
+  }, [channelRows, hasAggregateOverview, indexAudit])
 
   const hasIndexDetails = Boolean(indexAudit || hasAggregateOverview)
   const detailsButtonLabel = getDetailsButtonLabel({
@@ -374,6 +513,137 @@ export function KnowledgeRetrievalPanel({
       </Button>
     </div>
   )
+
+  const renderChannelStatusSummary = () => {
+    if (!indexAudit) return null
+
+    return (
+      <div className="space-y-3 border-t border-border/60 pt-3.5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-[13px] font-medium text-foreground">
+            通道 readiness
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+            <span className="rounded-full border border-success/20 bg-success/10 px-2 py-0.5 text-success">
+              ready {channelSummary.ready}
+            </span>
+            <span className="rounded-full border border-destructive/20 bg-destructive/10 px-2 py-0.5 text-destructive">
+              error {channelSummary.warning}
+            </span>
+            <span className="rounded-full border border-info/20 bg-info/10 px-2 py-0.5 text-info">
+              pending {channelSummary.pending}
+            </span>
+            <span className="rounded-full border border-warning/20 bg-warning/10 px-2 py-0.5 text-warning">
+              compat {channelSummary.compat}
+            </span>
+            <span className="rounded-full border border-border/60 bg-muted/30 px-2 py-0.5 text-muted-foreground">
+              unknown {channelSummary.unknown}
+            </span>
+          </div>
+        </div>
+        {channelRows.length > 0 ? (
+          <div className="space-y-2">
+            {channelRows.map((row) => (
+              <div
+                key={row.channel}
+                className="rounded-[13px] border border-border/60 bg-background px-3 py-2"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-[12px] font-medium text-foreground">
+                      {row.channel}
+                    </div>
+                    <div className="mt-1 text-[10px] text-muted-foreground/70">
+                      {row.statusLabel}
+                      {typeof row.rowCount === 'number'
+                        ? ` · rows ${row.rowCount}`
+                        : ''}
+                    </div>
+                  </div>
+                  <span
+                    className={cn(
+                      'rounded-full px-2.5 py-1 text-[11px] font-medium',
+                      row.state === 'ok' && 'bg-success/10 text-success',
+                      (row.state === 'warning' || row.state === 'compat') &&
+                        'bg-warning/10 text-warning',
+                      row.state === 'unknown' &&
+                        'bg-muted/30 text-muted-foreground',
+                      row.state === 'pending' && 'bg-info/10 text-info'
+                    )}
+                  >
+                    {row.readinessLabel}
+                  </span>
+                </div>
+                {row.detail ? (
+                  <div className="mt-1 text-[10px] text-muted-foreground/66">
+                    {row.detail}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-[13px] border border-border/60 bg-background px-3 py-2 text-[11px] text-muted-foreground/76">
+            后端未返回 `index_channels`，保持兼容展示。
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const renderReconcileAction = () => {
+    if (!indexAuditHasDocumentScope) return null
+
+    const loading = indexAuditReconcileState.status === 'loading'
+    return (
+      <div className="space-y-3 border-t border-border/60 pt-3.5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[13px] font-medium text-foreground">
+              Document-scoped reconcile
+            </div>
+            <div className="mt-1 text-[11px] text-muted-foreground/66">
+              仅对当前文档范围提交修复任务；dataset-only 不支持。
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 rounded-xl border-border/60 bg-background/50 px-4 text-xs font-medium uppercase"
+            onClick={() => detachPromise(reconcileIndexAudit())}
+            disabled={loading || !selectedDatasetId}
+          >
+            {loading ? (
+              <Loader2 className="mr-2 size-3.5 animate-spin" />
+            ) : (
+              <AlertCircle className="mr-2 size-3.5" />
+            )}
+            {loading ? '提交中' : 'Reconcile'}
+          </Button>
+        </div>
+        {indexAuditReconcileState.status !== 'idle' ? (
+          <div
+            className={cn(
+              'rounded-[13px] border px-3 py-2 text-[11px]',
+              indexAuditReconcileState.status === 'success' &&
+                'border-success/20 bg-success/10 text-success',
+              indexAuditReconcileState.status === 'error' &&
+                'border-destructive/20 bg-destructive/10 text-destructive',
+              indexAuditReconcileState.status === 'loading' &&
+                'border-info/20 bg-info/10 text-info'
+            )}
+          >
+            {indexAuditReconcileState.message}
+            {indexAuditReconcileState.backendStatus ? (
+              <span className="ml-2 font-mono opacity-75">
+                [{indexAuditReconcileState.backendStatus}]
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    )
+  }
 
   if (compact) {
     return (
@@ -505,7 +775,7 @@ export function KnowledgeRetrievalPanel({
                   : '尚未运行'}
               </div>
               <div className="inline-flex items-center rounded-full bg-success/10 px-3 py-1 text-[12px] font-medium text-success">
-                {indexAudit || hasAggregateOverview ? '同步成功' : '等待执行'}
+                {indexAudit || hasAggregateOverview ? '同步完成' : '等待执行'}
               </div>
             </div>
 
@@ -552,6 +822,9 @@ export function KnowledgeRetrievalPanel({
                 ))}
               </div>
             </div>
+
+            {renderChannelStatusSummary()}
+            {renderReconcileAction()}
 
             <Button
               type="button"
@@ -625,6 +898,8 @@ export function KnowledgeRetrievalPanel({
                     当前为全局聚合估算；选择单个数据集并运行审计后，可查看缺失向量、孤儿向量和后端一致性明细。
                   </div>
                 )}
+                {renderChannelStatusSummary()}
+                {renderReconcileAction()}
               </div>
             ) : null}
           </div>

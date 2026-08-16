@@ -32,6 +32,11 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "RerankMode": (_MODULE_HYBRID, "RerankMode"),
     "get_reranker": ("app.rag.reranker.factory", "get_reranker"),
     "get_rag_reranker": ("app.rag.reranker.factory", "get_rag_reranker"),
+    "describe_reranker_provider": ("app.rag.reranker.factory", "describe_reranker_provider"),
+    "get_reranker_capabilities": ("app.rag.reranker.capabilities", "get_reranker_capabilities"),
+    "list_reranker_capabilities": ("app.rag.reranker.capabilities", "list_reranker_capabilities"),
+    "get_reranker_provider_family": ("app.rag.reranker.registry", "get_reranker_provider_family"),
+    "list_registered_reranker_providers": ("app.rag.reranker.registry", "list_registered_reranker_providers"),
     "get_llm_reranker": (_MODULE_LLM_BASED, "get_llm_reranker"),
 }
 

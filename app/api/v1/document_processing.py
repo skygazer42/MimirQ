@@ -225,11 +225,12 @@ async def retry_document_processing(
         meta = dict(document.doc_metadata or {})
         meta["parser_backend_requested"] = requested_parser_backend
         meta["parser_backend"] = resolved_parser_backend
+        meta["parser_backend_resolved"] = None if resolved_parser_backend == "auto" else resolved_parser_backend
         document.doc_metadata = meta
 
     if skip_if_unchanged and current_status == "completed" and force:
         meta0 = dict(document.doc_metadata or {})
-        file_sha = str(meta0.get("file_sha256") or "").strip().lower()
+        file_sha = str(documents_module.get_content_sha256(meta0) or "").strip().lower()
         ready0 = bool(meta0.get("active_pipeline_ready")) if "active_pipeline_ready" in meta0 else True
         active0 = str(meta0.get("active_pipeline_hash") or meta0.get("pipeline_hash") or "").strip()
         if file_sha and ready0 and active0:
@@ -326,6 +327,12 @@ async def retry_document_processing(
     if not active_pipeline_hash:
         active_pipeline_hash = pipeline_hash
         meta["active_pipeline_hash"] = active_pipeline_hash
+    documents_module.sync_pipeline_execution_identity(
+        meta,
+        content_sha256=documents_module.get_content_sha256(meta),
+        pipeline_hash=pipeline_hash,
+        parser_backend_resolved=str(meta.get("parser_backend_resolved") or "").strip() or None,
+    )
 
     preserve_existing_versions = bool(meta.get("active_pipeline_ready")) and pipeline_hash != active_pipeline_hash
     retry_cleanup = {
@@ -348,6 +355,14 @@ async def retry_document_processing(
     document.error_message = None
     db.commit()
     db.refresh(document)
+    with contextlib.suppress(Exception):
+        documents_module.reconcile_document_index_channels(
+            db,
+            document=document,
+            pipeline_hash=pipeline_hash,
+            reset_enabled_to_pending=True,
+            commit=True,
+        )
 
     job_id = f"doc:{tenant_id}:{document_id}:{pipeline_hash}"
     task_id = None

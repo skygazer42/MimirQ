@@ -55,6 +55,9 @@ def _tenant_uuid_from_claim(payload: dict, claim: str) -> UUID | None:
 def _cache_jwt_identity(request: Request, *, payload: dict, tenant_uuid: UUID) -> None:
     request.state._jwt_payload = payload  # noqa: SLF001
     request.state.tenant_id = tenant_uuid
+    request.state.tenant_id_source = "jwt"
+    if request.client is not None:
+        request.state.client_host = str(request.client.host or "").strip()
     raw_sub = payload.get("sub")
     if raw_sub:
         request.state.user_id = str(raw_sub)
@@ -88,14 +91,21 @@ def _tenant_header_value(request: Request, x_tenant_id: str | None) -> tuple[str
 
 def _tenant_uuid_from_header_or_default(request: Request, x_tenant_id: str | None) -> UUID:
     raw, tenant_header = _tenant_header_value(request, x_tenant_id)
+    source = "header"
     if not raw:
         if is_production_env():
             raise HTTPException(status_code=400, detail=f"{tenant_header} header required")
         raw = settings.DEFAULT_TENANT_ID
+        source = "default"
     try:
-        return UUID(str(raw))
+        tenant_uuid = UUID(str(raw))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid tenant id") from exc
+    request.state.tenant_id = tenant_uuid
+    request.state.tenant_id_source = source
+    if request.client is not None:
+        request.state.client_host = str(request.client.host or "").strip()
+    return tenant_uuid
 
 
 async def get_tenant_id(request: Request, x_tenant_id: str | None = Header(default=None)) -> UUID:

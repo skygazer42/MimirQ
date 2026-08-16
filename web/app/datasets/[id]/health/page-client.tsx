@@ -125,61 +125,6 @@ export default function DatasetHealthPage() {
     return Number(s.scanned || 0) + Number(s.not_scanned || 0) + Number(s.unknown || 0)
   }, [profile?.pdf_scan])
 
-  const suggestions = useMemo(() => {
-    const out: Array<{ severity: 'info' | 'warning' | 'error'; title: string; detail: string }> = []
-    if (!health) return out
-
-    const failed = Number(ingestion?.failed || 0)
-    const quarantined = Number(ingestion?.quarantined || 0)
-    const notScanned = Number(profile?.pdf_scan?.not_scanned || 0)
-    const hasFindings = (profile?.findings || []).some((f) => Number(f.count || 0) > 0)
-
-    if (failed > 0) {
-      out.push({
-        severity: 'error',
-        title: '失败文档偏多',
-        detail: `failed=${failed}；建议先查看失败文档的错误原因并重试/调整解析与切块策略。`,
-      })
-    }
-    if (quarantined > 0) {
-      out.push({
-        severity: 'warning',
-        title: '存在隔离文档',
-        detail: `quarantined=${quarantined}；建议检查治理策略（PII/Secrets/清洗规则）与阈值设置。`,
-      })
-    }
-    if (notScanned > 0) {
-      out.push({
-        severity: 'warning',
-        title: '扫描 PDF 占比偏高',
-        detail: `not_scanned=${notScanned}；建议启用 OCR（或切换更适合的 parser_backend），提高可检索文本质量。`,
-      })
-    }
-    if (piiTotal > 0) {
-      out.push({
-        severity: 'warning',
-        title: '检测到 PII 命中',
-        detail: `pii_hits_total=${piiTotal}；建议在治理阶段开启脱敏/隔离策略并审计命中类型。`,
-      })
-    }
-    if (secretsTotal > 0) {
-      out.push({
-        severity: 'warning',
-        title: '检测到 Secrets 命中',
-        detail: `secrets_hits_total=${secretsTotal}；建议隔离或清洗敏感信息并复查来源。`,
-      })
-    }
-    if (!failed && !quarantined && !notScanned && !hasFindings) {
-      out.push({
-        severity: 'info',
-        title: '健康状态良好',
-        detail: '暂无明显风险信号；可继续通过画像/预检页做抽样复核。',
-      })
-    }
-
-    return out
-  }, [health, ingestion?.failed, ingestion?.quarantined, profile?.pdf_scan?.not_scanned, profile?.findings, piiTotal, secretsTotal])
-
   const exportPayload = useMemo(() => {
     if (!datasetId || !health) return null
     return {
@@ -192,9 +137,8 @@ export default function DatasetHealthPage() {
           }
         : { id: datasetId, name: null },
       health,
-      suggestions,
     }
-  }, [dataset, datasetId, health, suggestions])
+  }, [dataset, datasetId, health])
 
   const topFindings: DatasetProfileFindingSummary[] = useMemo(() => {
     return (profile?.findings || [])
@@ -209,15 +153,12 @@ export default function DatasetHealthPage() {
   const secretsLabel = profile ? secretsTotal : (isLoading ? '…' : 0)
   const failedCount = Number(ingestion?.failed || 0)
   const quarantinedCount = Number(ingestion?.quarantined || 0)
-  const riskCount = suggestions.filter((s) => s.severity !== 'info').length
   const generatedAtLabel = health?.generated_at ? formatDate(health.generated_at) : '--'
   const healthStatusLabel = loadError
     ? '加载失败'
-    : riskCount > 0
-      ? `需处理 ${riskCount} 项`
-      : health
-        ? '健康良好'
-        : '待加载'
+    : health
+      ? '后端快照已返回'
+      : '待加载'
 
   return (
     <AppFrame>
@@ -280,15 +221,13 @@ export default function DatasetHealthPage() {
                   'inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border px-3 text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]',
                   loadError
                     ? 'border-destructive/30 bg-destructive/5 text-destructive'
-                    : riskCount > 0
-                      ? 'border-warning/30 bg-warning/5 text-warning'
-                      : 'border-success/30 bg-success/5 text-success',
+                    : 'border-info/30 bg-info/5 text-info',
                 )}
               >
                 <span
                   className={cn(
                     'size-2 rounded-full',
-                    loadError ? 'bg-destructive' : riskCount > 0 ? 'bg-warning' : 'bg-success',
+                    loadError ? 'bg-destructive' : 'bg-info',
                   )}
                 />
                 {healthStatusLabel}
@@ -373,7 +312,7 @@ export default function DatasetHealthPage() {
                     generatedAt: exportedHealth.generated_at ?? null,
                     profile: exportedHealth.profile ?? null,
                     ingestion: exportedHealth.ingestion ?? null,
-                    suggestions,
+                    suggestions: [],
                   })
                   downloadTextFile(`${filenameBase}.health.md`, md, 'text/markdown;charset=utf-8')
                   toast.success('已导出 health.md')
@@ -523,41 +462,36 @@ export default function DatasetHealthPage() {
           <Panel className={cn(healthPanelClass, 'p-3')}>
             <div className="mb-3 flex items-start justify-between gap-4">
               <div>
-                <div className="text-sm font-semibold">质量洞察</div>
+                <div className="text-sm font-semibold">后端健康字段</div>
                 <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground/60">
-                  汇总规则建议和画像发现，用于快速判断是否需要补扫或人工复核。
+                  仅展示后端真实返回的状态计数与画像发现；不再在前端推导“健康良好”或自动建议。
                 </div>
               </div>
               <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-mono text-muted-foreground">
-                rules v1
+                backend only
               </Badge>
             </div>
 
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_360px]">
               <div className="rounded-xl border border-border/50 bg-card/45 p-3 dark:bg-card/40">
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <div className="text-[13px] font-semibold text-foreground/85">建议</div>
-                  <Badge variant={suggestions.length ? 'soft' : 'outline'} className="h-5 px-1.5 text-[10px] font-mono">
-                    {suggestions.length}
+                  <div className="text-[13px] font-semibold text-foreground/85">入库状态计数</div>
+                  <Badge variant={statusChartData.length ? 'soft' : 'outline'} className="h-5 px-1.5 text-[10px] font-mono">
+                    {statusChartData.length}
                   </Badge>
                 </div>
-                {suggestions.length ? (
+                {statusChartData.length ? (
                   <div className="divide-y divide-border/45 overflow-hidden rounded-lg border border-border/45">
-                    {suggestions.map((s) => (
-                      <div key={`${s.severity}-${s.title}-${s.detail}`} className="grid gap-2 px-2.5 py-2 md:grid-cols-[auto_minmax(0,1fr)]">
-                        <Badge variant={suggestionBadgeVariant(s.severity)} className="h-5 px-1.5 text-[10px] font-mono uppercase">
-                          {s.severity}
-                        </Badge>
-                        <div className="min-w-0">
-                          <div className="truncate text-[12px] font-semibold text-foreground/85">{s.title}</div>
-                          <div className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-muted-foreground/65">{s.detail}</div>
-                        </div>
+                    {statusChartData.map((item) => (
+                      <div key={item.name} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-2.5 py-2">
+                        <div className="truncate text-[12px] font-semibold text-foreground/85">{item.name}</div>
+                        <div className="font-mono text-[11px] text-muted-foreground">{item.value}</div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="rounded-lg border border-success/20 bg-success/5 px-2.5 py-2 text-[11px] leading-4 text-success">
-                    当前没有 rule-based 建议。若仍不放心，可查看画像与预检详情确认是否需要补扫。
+                  <div className="rounded-lg border border-dashed border-border/55 bg-muted/40 px-2.5 py-2 text-[11px] leading-4 text-muted-foreground/65">
+                    后端未返回可展示的状态分布。
                   </div>
                 )}
               </div>

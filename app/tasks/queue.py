@@ -265,6 +265,36 @@ async def enqueue_rebuild_indexes(
     return getattr(job, "job_id", None) if job is not None else None
 
 
+async def enqueue_index_audit_reconcile_job(
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    requested_by: str,
+    document_id: UUID | None = None,
+    limit: int = 100,
+    dry_run: bool = True,
+    job_id: str | None = None,
+) -> str | None:
+    """Enqueue a bounded tenant+dataset scoped index-audit reconcile job."""
+    q = await get_queue()
+    if q is None:
+        return None
+    queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
+    job = await q.enqueue_job(
+        "reconcile_index_audit_job",
+        str(tenant_id),
+        str(dataset_id),
+        requested_by,
+        str(document_id) if document_id is not None else None,
+        int(limit or 0),
+        bool(dry_run),
+        _queue_name=queue_name,
+        _job_id=job_id,
+        _job_try=1,
+    )
+    return getattr(job, "job_id", None) if job is not None else None
+
+
 async def enqueue_dataset_profile_scan(
     *,
     tenant_id: UUID,

@@ -23,7 +23,6 @@ from uuid import UUID
 from langchain_core.documents import Document
 
 from app.core.config import settings
-from app.core.token_utils import num_tokens_from_string
 from app.core.utils import parse_csv
 from app.query.normalize import normalize_query
 from app.rag.core.citations import build_citations_from_docs
@@ -39,23 +38,13 @@ from app.rag.core.query_rewrite_strategy import (
     build_query_rewrite_strategy_spec,
     get_query_rewrite_prompt_template,
 )
-from app.rag.core.retrieval_config_fingerprint import build_retrieval_config_fingerprint
-from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides, is_recall_first_profile
 from app.rag.core.temporal import (
     apply_recency_boost,
     detect_temporal_intent,
     fetch_document_updated_ts,
 )
-from app.rag.core.text import (
-    build_abstain_followup,
-    guess_retrieval_mode,
-    normalize_retrieval_mode,
-    parse_json_from_text,
-    should_rewrite_query,
-)
 from app.rag.engine_support.doc_utils import DocUtilsMixin
 from app.rag.industry_rules.runtime import apply_industry_rules_query_expansion
-from app.rag.policy.intent_router import route_adaptive_retrieval_overrides, route_intent, route_retrieval_preset
 from app.rag.policy.must_recall import (
     MUST_RECALL_FAIL_REASON_TAXONOMY_V1,
     build_must_recall_fail_reasons,
@@ -66,28 +55,21 @@ from app.rag.policy.must_recall_auto import (
     infer_expected_source_keys,
     infer_required_anchor_fields,
 )
-from app.rag.policy.out_of_scope_live_gate import (
-    maybe_apply_out_of_scope_live_guard,
-    run_default_out_of_scope_live_guard,
-)
 from app.rag.policy.query_expansion import build_clause_fastlane_queries, build_lightweight_subquery_queries
 from app.rag.policy.recall_obligation import build_must_recall_proof
-from app.rag.policy.router_layers import build_router_layers
 from app.rag.query_expansion import generate_alias_queries
-from app.rag.rerank_result_cache import (
-    build_evidence_post_rerank_cache_key,
-    fingerprint_rerank_candidates,
-    get_cached_evidence_post_rerank_result,
-    get_evidence_post_rerank_cache_backend,
-    set_cached_evidence_post_rerank_result,
-)
-from app.rag.reranker.factory import describe_reranker_provider, get_reranker
 from app.rag.reranker.types import RerankCandidate
 from app.rag.retrieval.contextual_followup import build_contextual_followup_query
 from app.rag.retrieval.contract import resolve_retrieval_contract_policy
 from app.rag.retrieval.evidence_gap import detect_evidence_gap
 from app.rag.retrieval.orchestration.anchors import (
     _apply_metadata_exact_anchor_doc_ordering as _apply_metadata_exact_anchor_doc_ordering,
+)
+from app.rag.retrieval.orchestration.anchors import (
+    _apply_metadata_exact_anchor_to_result as _apply_metadata_exact_anchor_to_result,
+)
+from app.rag.retrieval.orchestration.anchors import (
+    _float_or_default as _float_or_default,
 )
 from app.rag.retrieval.orchestration.anchors import (
     _metadata_exact_anchor_doc_order_meta as _metadata_exact_anchor_doc_order_meta,
@@ -215,6 +197,7 @@ from app.rag.retrieval.orchestration.common import (
 from app.rag.retrieval.orchestration.common import (
     _safe_int as _safe_int,
 )
+from app.rag.retrieval.orchestration.corpus_cache_tokens import resolve_corpus_cache_token
 from app.rag.retrieval.orchestration.debug_sanitize import (
     _bounded_string_sample as _bounded_string_sample,
 )
@@ -247,6 +230,10 @@ from app.rag.retrieval.orchestration.debug_sanitize import (
 )
 from app.rag.retrieval.orchestration.debug_sanitize import (
     _sanitize_timing_debug as _sanitize_timing_debug,
+)
+from app.rag.retrieval.orchestration.finalize_trace import (
+    RetrievalTraceStageInput,
+    build_retrieval_trace_stage,
 )
 from app.rag.retrieval.orchestration.hierarchy import (
     _apply_hierarchy_family_aggregation as _apply_hierarchy_family_aggregation,
@@ -320,6 +307,18 @@ from app.rag.retrieval.orchestration.hierarchy import (
 from app.rag.retrieval.orchestration.hierarchy import (
     _update_hierarchy_family_feature as _update_hierarchy_family_feature,
 )
+from app.rag.retrieval.orchestration.intent_router import (
+    build_router_layers as build_router_layers,
+)
+from app.rag.retrieval.orchestration.intent_router import (
+    route_adaptive_retrieval_overrides as route_adaptive_retrieval_overrides,
+)
+from app.rag.retrieval.orchestration.intent_router import (
+    route_intent as route_intent,
+)
+from app.rag.retrieval.orchestration.intent_router import (
+    route_retrieval_preset as route_retrieval_preset,
+)
 from app.rag.retrieval.orchestration.kg_merge_boost import (
     _apply_kg_chunk_boost as _apply_kg_chunk_boost,
 )
@@ -365,17 +364,56 @@ from app.rag.retrieval.orchestration.kg_merge_boost import (
 from app.rag.retrieval.orchestration.kg_merge_boost import (
     _resolve_kg_scope as _resolve_kg_scope,
 )
-from app.rag.retriever import (
-    _apply_metadata_exact_anchor_to_result as _apply_metadata_exact_anchor_to_result,
+from app.rag.retrieval.orchestration.out_of_scope_live_gate import (
+    maybe_apply_out_of_scope_live_guard as maybe_apply_out_of_scope_live_guard,
 )
-from app.rag.retriever import (
-    _float_or_default as _float_or_default,
+from app.rag.retrieval.orchestration.out_of_scope_live_gate import (
+    run_default_out_of_scope_live_guard as run_default_out_of_scope_live_guard,
 )
-from app.rag.retriever import (
-    hybrid_retriever,
+from app.rag.retrieval.orchestration.query_contract import (
+    HierarchyContractSettings,
+    QueryContractDefaults,
+    QueryContractNormalizationInput,
+    RetrievalConfigSnapshotInput,
+    build_retrieval_config_snapshot,
+    normalize_query_contract,
 )
-from app.services.chunk_quality_scoring import summarize_retrieved_chunk_quality
-from app.services.corpus_cache_tokens import resolve_corpus_cache_token
+from app.rag.retrieval.orchestration.query_invocation import (
+    QueryInvocationRecordInput,
+    build_query_invocation_record,
+)
+from app.rag.retrieval.orchestration.query_variants import (
+    QueryVariantStageInput,
+    build_query_variant_stage,
+)
+from app.rag.retrieval.orchestration.rerank_result_cache import (
+    build_evidence_post_rerank_cache_key,
+    fingerprint_rerank_candidates,
+    get_cached_evidence_post_rerank_result,
+    get_evidence_post_rerank_cache_backend,
+    set_cached_evidence_post_rerank_result,
+)
+from app.rag.retrieval.orchestration.reranker_factory import (
+    describe_reranker_provider as describe_reranker_provider,
+)
+from app.rag.retrieval.orchestration.reranker_factory import (
+    get_reranker as get_reranker,
+)
+from app.rag.retrieval.orchestration.retriever_shim import (
+    hybrid_retriever as hybrid_retriever,
+)
+from app.rag.retrieval.orchestration.text_helpers import (
+    build_abstain_followup as build_abstain_followup,
+)
+from app.rag.retrieval.orchestration.text_helpers import (
+    normalize_retrieval_mode as normalize_retrieval_mode,
+)
+from app.rag.retrieval.orchestration.text_helpers import (
+    parse_json_from_text as parse_json_from_text,
+)
+from app.rag.retrieval.orchestration.text_helpers import (
+    should_rewrite_query as should_rewrite_query,
+)
 from app.services.hardcase_discovery_service import (
     build_parse_risk_hardcase_candidate,
     evaluate_parse_risk_auto_enqueue_policy,
@@ -555,11 +593,6 @@ def _decompose_query(
             return sub_questions, 0.0, None, heuristic_meta
 
     return sub_questions, elapsed, model_used, parse_meta
-
-
-def _is_recall_profile(profile: str | None) -> bool:
-    return is_recall_first_profile(profile)
-
 
 def _resolve_post_rerank_corpus_cache_token(state: dict[str, Any]) -> str | None:
     db = state.get("db")
@@ -1146,61 +1179,61 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 "error": f"adaptive_router_exception:{str(exc)[:160]}",
             }
 
-    effective_retrieval_mode = state.get("retrieval_mode", "hybrid") or "hybrid"
-    request_retrieval_mode = normalize_retrieval_mode(effective_retrieval_mode)
-    retrieval_mode_routed = False
-    mode_norm = str(request_retrieval_mode or "hybrid").lower().strip()
-    if mode_norm == "auto":
-        request_retrieval_mode = guess_retrieval_mode(query_for_retrieval)
-        retrieval_mode_routed = True
-        mode_norm = str(request_retrieval_mode or "hybrid").lower().strip()
-    if mode_norm not in ("hybrid", "vector", "keyword", "mmr"):
-        request_retrieval_mode = "hybrid"
-        mode_norm = "hybrid"
-
-    profile_applied = apply_retrieval_profile_overrides(
-        profile=state.get("retrieval_profile"),
-        top_k=int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 5),
-        score_threshold=float(
-            state.get("score_threshold", settings.SIMILARITY_THRESHOLD)
-            if state.get("score_threshold", settings.SIMILARITY_THRESHOLD) is not None
-            else (settings.SIMILARITY_THRESHOLD or 0.0)
-        ),
-        retrieval_mode=request_retrieval_mode,
-        enable_reranker=bool(state.get("enable_reranker", settings.ENABLE_RERANKER)),
-        reranker_provider=str(state.get("reranker_provider", settings.RERANKER_PROVIDER) or ""),
-        reranker_top_n=int(state.get("reranker_top_n", settings.RERANKER_TOP_N) or settings.RERANKER_TOP_N or 20),
-        enable_weight_rerank=bool(state.get("enable_weight_rerank", True)),
-        retrieval_contract_mode=(
-            state.get("retrieval_contract_mode")
-            if state.get("retrieval_contract_mode") is not None
-            else getattr(settings, "RETRIEVAL_CONTRACT_MODE", "")
-        ),
-        visible_evidence_only=(
-            bool(state.get("visible_evidence_only"))
-            if state.get("visible_evidence_only") is not None
-            else None
-        ),
+    query_contract = normalize_query_contract(
+        QueryContractNormalizationInput(
+            state=state,
+            query_for_retrieval=query_for_retrieval,
+            requested_retrieval_mode=requested_retrieval_mode,
+            requested_retrieval_profile=requested_retrieval_profile,
+            sparse_enabled=bool(sparse_enabled),
+            sparse_provider=str(sparse_provider or ""),
+            hierarchy=HierarchyContractSettings(
+                enabled=bool(hierarchy_recall_enabled),
+                family_collapse=bool(hierarchy_family_collapse),
+                family_aggregation=str(hierarchy_family_aggregation),
+                tree_dedup=bool(hierarchy_tree_dedup),
+                parent_depth=int(hierarchy_parent_depth),
+                sibling_window=int(hierarchy_sibling_window),
+                overfetch_factor=int(hierarchy_overfetch_factor),
+            ),
+            defaults=QueryContractDefaults(
+                retrieval_top_k=int(settings.RETRIEVAL_TOP_K or 5),
+                similarity_threshold=float(settings.SIMILARITY_THRESHOLD or 0.0),
+                enable_reranker=bool(settings.ENABLE_RERANKER),
+                reranker_provider=str(settings.RERANKER_PROVIDER or ""),
+                reranker_top_n=int(settings.RERANKER_TOP_N or 20),
+                retrieval_contract_mode=str(getattr(settings, "RETRIEVAL_CONTRACT_MODE", "") or ""),
+                hard_fallback_enabled_setting=bool(getattr(settings, "RETRIEVAL_HARD_FALLBACK_ENABLED", False)),
+                hard_fallback_mode_setting=str(
+                    getattr(settings, "RETRIEVAL_HARD_FALLBACK_MODE", "keyword") or "keyword"
+                ),
+                hard_fallback_top_k_setting=int(
+                    getattr(settings, "RETRIEVAL_HARD_FALLBACK_TOP_K", 30) or 30
+                ),
+                visible_evidence_only_setting=bool(
+                    getattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False)
+                ),
+                evidence_span_strict_setting=bool(
+                    getattr(settings, "RAG_EVIDENCE_REQUIRE_SPANS_ENABLED", False)
+                ),
+                retrieval_fusion_strategy=str(settings.RETRIEVAL_FUSION_STRATEGY or ""),
+                retrieval_mmr_lambda=float(settings.RETRIEVAL_MMR_LAMBDA or 0.0),
+            ),
+        )
     )
-    profile_norm = str(profile_applied.get("retrieval_profile") or "").strip().lower()
-    if profile_applied.get("enable_hierarchy_recall") is not None:
-        hierarchy_recall_enabled = bool(profile_applied.get("enable_hierarchy_recall"))
-    if profile_applied.get("hierarchy_family_collapse") is not None:
-        hierarchy_family_collapse = bool(profile_applied.get("hierarchy_family_collapse"))
-    if profile_applied.get("hierarchy_family_aggregation") is not None:
-        hierarchy_family_aggregation = str(profile_applied.get("hierarchy_family_aggregation") or "combined").strip().lower() or "combined"
-    if profile_applied.get("hierarchy_tree_dedup") is not None:
-        hierarchy_tree_dedup = bool(profile_applied.get("hierarchy_tree_dedup"))
-    if profile_applied.get("hierarchy_parent_depth") is not None:
-        hierarchy_parent_depth = max(0, int(profile_applied.get("hierarchy_parent_depth") or 0))
-    if profile_applied.get("hierarchy_sibling_window") is not None:
-        hierarchy_sibling_window = max(0, int(profile_applied.get("hierarchy_sibling_window") or 0))
-    if profile_applied.get("hierarchy_overfetch_factor") is not None:
-        hierarchy_overfetch_factor = max(1, int(profile_applied.get("hierarchy_overfetch_factor") or 1))
-    if profile_applied.get("sparse_retrieval_enabled") is not None:
-        sparse_enabled = bool(profile_applied.get("sparse_retrieval_enabled"))
-    if profile_applied.get("sparse_retrieval_provider"):
-        sparse_provider = normalize_sparse_provider_name(str(profile_applied.get("sparse_retrieval_provider") or ""))
+    request_retrieval_mode = query_contract.request_retrieval_mode
+    retrieval_mode_routed = bool(query_contract.retrieval_mode_routed)
+    profile_applied = dict(query_contract.profile_applied)
+    profile_norm = query_contract.profile_norm or ""
+    sparse_enabled = bool(query_contract.sparse_enabled)
+    sparse_provider = normalize_sparse_provider_name(str(query_contract.sparse_provider or ""))
+    hierarchy_recall_enabled = bool(query_contract.hierarchy.enabled)
+    hierarchy_family_collapse = bool(query_contract.hierarchy.family_collapse)
+    hierarchy_family_aggregation = str(query_contract.hierarchy.family_aggregation or "combined")
+    hierarchy_tree_dedup = bool(query_contract.hierarchy.tree_dedup)
+    hierarchy_parent_depth = int(query_contract.hierarchy.parent_depth)
+    hierarchy_sibling_window = int(query_contract.hierarchy.sibling_window)
+    hierarchy_overfetch_factor = int(query_contract.hierarchy.overfetch_factor)
 
     explicit_fusion_budgets = state.get("fusion_budgets") if isinstance(state.get("fusion_budgets"), dict) else None
     explicit_fusion_weights = state.get("fusion_weights") if isinstance(state.get("fusion_weights"), dict) else None
@@ -1237,98 +1270,13 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             if overrides:
                 for k, v in overrides.items():
                     state[k] = v
-    retriever_update: dict[str, Any] = {
-        "k": int(profile_applied.get("top_k") or settings.RETRIEVAL_TOP_K),
-        "score_threshold": float(profile_applied.get("score_threshold") or 0.0),
-        "alpha": state.get("alpha", 0.6),
-        "retrieval_profile": profile_norm or None,
-        "context_neighbor_window": profile_applied.get("context_neighbor_window"),
-        "context_neighbor_max_added": profile_applied.get("context_neighbor_max_added"),
-        "context_neighbor_score_driven": profile_applied.get("context_neighbor_score_driven"),
-        "context_neighbor_high_threshold": profile_applied.get("context_neighbor_high_threshold"),
-        "context_neighbor_mid_threshold": profile_applied.get("context_neighbor_mid_threshold"),
-        "context_neighbor_high_span": profile_applied.get("context_neighbor_high_span"),
-        "context_neighbor_mid_span": profile_applied.get("context_neighbor_mid_span"),
-        # Optional: channel fusion override (used by Evidence API ablations / retrieval-only tuning).
-        "fusion_strategy": state.get("fusion_strategy") or settings.RETRIEVAL_FUSION_STRATEGY,
-        "fusion_budgets": state.get("fusion_budgets"),
-        "fusion_min_scores": state.get("fusion_min_scores"),
-        "fusion_weights": state.get("fusion_weights"),
-        "retrieval_overfetch_multiplier": state.get("retrieval_overfetch_multiplier"),
-        "retrieval_overfetch_max_k": state.get("retrieval_overfetch_max_k"),
-        "retrieval_mode": str(profile_applied.get("retrieval_mode") or request_retrieval_mode),
-        "enable_weight_rerank": (
-            profile_applied.get("enable_weight_rerank")
-            if profile_applied.get("enable_weight_rerank") is not None
-            else state.get("enable_weight_rerank", True)
-        ),
-        "vector_weight": state.get("vector_weight", 0.6),
-        "keyword_weight": state.get("keyword_weight", 0.4),
-        "mmr_lambda": state.get("mmr_lambda", settings.RETRIEVAL_MMR_LAMBDA),
-        "enable_reranker": (
-            profile_applied.get("enable_reranker")
-            if profile_applied.get("enable_reranker") is not None
-            else state.get("enable_reranker", settings.ENABLE_RERANKER)
-        ),
-        "reranker_provider": str(
-            profile_applied.get("reranker_provider")
-            or state.get("reranker_provider", settings.RERANKER_PROVIDER)
-            or settings.RERANKER_PROVIDER
-        ),
-        "reranker_top_n": int(
-            profile_applied.get("reranker_top_n")
-            if profile_applied.get("reranker_top_n") is not None
-            else state.get("reranker_top_n", settings.RERANKER_TOP_N)
-        ),
-        "sparse_enabled": sparse_enabled,
-        "sparse_provider": sparse_provider,
-        "tenant_id": state.get("tenant_id"),
-        "account_id": state.get("account_id"),
-        "dataset_id": state.get("dataset_id"),
-        "dataset_ids": state.get("dataset_ids"),
-        "document_ids": state.get("document_ids"),
-        "metadata_filter": state.get("metadata_filter"),
-        "lexical_db_hybrid_fallback_only": state.get("lexical_db_hybrid_fallback_only"),
-        "lexical_db_hybrid_metadata_exact_fallback_enabled": state.get(
-            "lexical_db_hybrid_metadata_exact_fallback_enabled"
-        ),
-        "metadata_exact_db_fallback_enabled": state.get("metadata_exact_db_fallback_enabled"),
-        "enable_hierarchy_recall": bool(hierarchy_recall_enabled),
-        "hierarchy_family_collapse": bool(hierarchy_family_collapse),
-        "hierarchy_overfetch_factor": int(hierarchy_overfetch_factor),
-    }
+    retriever_update: dict[str, Any] = dict(query_contract.retriever_update)
+    for key, value in query_contract.state_updates.items():
+        state[key] = value
 
-    if profile_applied.get("retrieval_contract_mode") is not None:
-        state["retrieval_contract_mode"] = profile_applied.get("retrieval_contract_mode")
-    if profile_applied.get("visible_evidence_only") is not None:
-        state["visible_evidence_only"] = bool(profile_applied.get("visible_evidence_only"))
-
-    retrieval_contract_policy = resolve_retrieval_contract_policy(
-        mode=(
-            state.get("retrieval_contract_mode")
-            if state.get("retrieval_contract_mode") is not None
-            else getattr(settings, "RETRIEVAL_CONTRACT_MODE", "")
-        ),
-        requested_top_k=int(retriever_update.get("k") or settings.RETRIEVAL_TOP_K or 5),
-        hard_fallback_enabled_setting=bool(getattr(settings, "RETRIEVAL_HARD_FALLBACK_ENABLED", False)),
-        hard_fallback_mode_setting=str(getattr(settings, "RETRIEVAL_HARD_FALLBACK_MODE", "keyword") or "keyword"),
-        hard_fallback_top_k_setting=int(getattr(settings, "RETRIEVAL_HARD_FALLBACK_TOP_K", 30) or 30),
-        visible_evidence_only_setting=bool(getattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False)),
-        evidence_span_strict_setting=bool(getattr(settings, "RAG_EVIDENCE_REQUIRE_SPANS_ENABLED", False)),
-    )
-    retrieval_contract_mode = str(retrieval_contract_policy.get("mode") or "").strip().lower()
-    contract_deterministic_recall = bool(retrieval_contract_policy.get("deterministic_recall"))
-
-    # Recall-first profiles: do not drop candidates due to dedup/diversity heuristics.
-    if _is_recall_profile(profile_norm):
-        retriever_update.update(
-            {
-                "dedup_enabled": False,
-                "max_chunks_per_doc": 0,
-                "max_chunks_per_page": 0,
-                "min_distinct_docs": 0,
-            }
-        )
+    retrieval_contract_policy = dict(query_contract.retrieval_contract_policy or {})
+    retrieval_contract_mode = str(query_contract.retrieval_contract_mode or "").strip().lower()
+    contract_deterministic_recall = bool(query_contract.contract_deterministic_recall)
 
     retriever = hybrid_retriever.model_copy(update=retriever_update)
 
@@ -1502,8 +1450,19 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     multi_query_model_used = None
     multi_query_parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
     multi_queries: list[str] = []
+    multi_query_ab_test_key = str(state.get("multi_query_ab_test_key") or "").strip() or None
+    multi_query_ab_variant = str(state.get("multi_query_ab_variant") or "").strip().lower() or None
+    multi_query_ab_seed = state.get("multi_query_ab_seed")
+    multi_query_ab_forced = bool(
+        state.get("enable_multi_query") is None
+        and multi_query_ab_variant in {"on", "enabled", "treatment", "mq"}
+    )
 
-    mq_enabled = bool(settings.ENABLE_MULTI_QUERY) if state.get("enable_multi_query") is None else bool(state.get("enable_multi_query"))
+    mq_enabled = (
+        bool(state.get("enable_multi_query"))
+        if state.get("enable_multi_query") is not None
+        else (bool(settings.ENABLE_MULTI_QUERY) or multi_query_ab_forced)
+    )
     mq_n = settings.MULTI_QUERY_COUNT if state.get("multi_query_count") is None else int(state.get("multi_query_count") or 0)
     mq_temp = settings.MULTI_QUERY_TEMPERATURE if state.get("multi_query_temperature") is None else float(state.get("multi_query_temperature") or 0.0)
     mq_max_chars = settings.MULTI_QUERY_MAX_CHARS if state.get("multi_query_max_chars") is None else int(state.get("multi_query_max_chars") or 0)
@@ -1547,6 +1506,15 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                     multi_queries.append(q)
                     if len(multi_queries) >= mq_n:
                         break
+                if multi_query_ab_seed is not None and multi_queries:
+                    seed_prefix = str(multi_query_ab_seed)
+                    multi_queries = sorted(
+                        multi_queries,
+                        key=lambda item: (
+                            stable_hash(f"{seed_prefix}:{item}", length=16),
+                            item,
+                        ),
+                    )
         except Exception as exc:  # noqa: BLE001
             _log_orchestrator_fallback('run_retrieval', exc)
             multi_query_elapsed = 0.0
@@ -1652,50 +1620,54 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     decompose_chain_elapsed = 0.0
     decompose_chain_queries: list[str] = []
 
-    retrieval_queries: list[tuple[str, str]] = [("main", query_for_retrieval)]
-    for q in alias_queries:
-        retrieval_queries.append(("alias", q))
-    for e in dict_expansions:
-        q = e.get("expanded_text") if isinstance(e, dict) else None
-        if q:
-            retrieval_queries.append(("dict", str(q)))
-    for q in kg_query_expansion_queries:
-        retrieval_queries.append(("kgq", q))
     clause_fastlane_queries = build_clause_fastlane_queries(query_for_retrieval)
-    for q in clause_fastlane_queries:
-        retrieval_queries.append(("clause", q))
     if bool(getattr(settings, "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_ENABLED", False)):
         lightweight_subqueries = build_lightweight_subquery_queries(
             query_for_retrieval,
             max_queries=int(getattr(settings, "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_MAX_QUERIES", 3) or 3),
             min_query_chars=int(getattr(settings, "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_MIN_QUERY_CHARS", 28) or 28),
         )
-        for q in lightweight_subqueries:
-            retrieval_queries.append(("lite_subq", q))
     else:
         lightweight_subqueries = []
-    for q in multi_queries:
-        retrieval_queries.append(("mq", q))
-    if step_back_used and step_back_query:
-        retrieval_queries.append(("step_back", step_back_query))
-    for q in sub_questions:
-        retrieval_queries.append(("subq", q))
-    if hyde_used and hyde_text:
-        retrieval_queries.append(("hyde", hyde_text))
-
-    # Deduplicate query variants (avoid redundant retrieval calls).
-    seen_queries: set[str] = set()
-    deduped_queries: list[tuple[str, str]] = []
-    for kind, q in retrieval_queries:
-        norm = " ".join((q or "").strip().split())
-        if not norm:
-            continue
-        key = norm.casefold() if norm.isascii() else norm
-        if key in seen_queries:
-            continue
-        seen_queries.add(key)
-        deduped_queries.append((kind, norm))
-    retrieval_queries = deduped_queries
+    query_expansion_elapsed_ms = float(
+        (
+            alias_elapsed
+            + dict_elapsed
+            + kg_query_expansion_elapsed
+            + multi_query_elapsed
+            + step_back_elapsed
+            + hyde_elapsed
+            + decompose_elapsed
+        )
+        * 1000.0
+    )
+    query_variant_stage = build_query_variant_stage(
+        QueryVariantStageInput(
+            query_for_retrieval=query_for_retrieval,
+            alias_queries=list(alias_queries or []),
+            dict_expansions=list(dict_expansions or []),
+            kg_query_expansion_queries=list(kg_query_expansion_queries or []),
+            clause_fastlane_queries=list(clause_fastlane_queries or []),
+            lightweight_subqueries=list(lightweight_subqueries or []),
+            multi_queries=list(multi_queries or []),
+            step_back_used=bool(step_back_used),
+            step_back_query=str(step_back_query or ""),
+            sub_questions=list(sub_questions or []),
+            hyde_used=bool(hyde_used),
+            hyde_text=str(hyde_text or ""),
+            query_expansion_max_queries_raw=state.get("query_expansion_max_queries"),
+            query_expansion_max_candidates_raw=state.get("query_expansion_max_candidates"),
+            query_expansion_token_budget_raw=state.get("query_expansion_token_budget"),
+            query_expansion_latency_budget_ms_raw=state.get("query_expansion_latency_budget_ms"),
+            query_expansion_elapsed_ms=query_expansion_elapsed_ms,
+        )
+    )
+    retrieval_queries = list(query_variant_stage.retrieval_queries or [])
+    query_expansion_budget_meta = dict(query_variant_stage.query_expansion_budget_meta or {})
+    query_expansion_budget_max_queries = int(query_variant_stage.query_expansion_budget_max_queries or 0)
+    query_expansion_budget_max_candidates = int(query_variant_stage.query_expansion_budget_max_candidates or 0)
+    query_expansion_budget_token_budget = int(query_variant_stage.query_expansion_budget_token_budget or 0)
+    query_expansion_budget_latency_ms = float(query_variant_stage.query_expansion_budget_latency_ms or 0.0)
 
     docs_by_query: list[list[Document]] = []
     docs_by_query_kinds: list[str] = []
@@ -1764,20 +1736,21 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 decompose_chain_queries.append(chained_query)
                 chained_retriever = retriever.model_copy(update={"enable_reranker": False})
                 kind, docs_i, err, elapsed_i, dbg = _invoke_with_timing("subq", chained_query, chained_retriever)
-                retrieval_per_query.append(
-                    {
-                        "kind": kind,
-                        "query_chars": len(chained_query or ""),
-                        "query_tokens": num_tokens_from_string(chained_query or ""),
-                        "elapsed_sec": round(elapsed_i, 3),
-                        "ok": err is None,
-                        "retriever_debug": dbg,
-                    }
+                query_record = build_query_invocation_record(
+                    QueryInvocationRecordInput(
+                        kind=kind,
+                        query=chained_query,
+                        docs=docs_i,
+                        error=err,
+                        elapsed_sec=elapsed_i,
+                        retriever_debug=dbg,
+                    )
                 )
-                if err:
-                    retrieval_errors.append(f"{kind}:{err[:160]}")
-                docs_by_query_kinds.append(kind)
-                docs_by_query.append(docs_i or [])
+                retrieval_per_query.append(query_record.per_query_item)
+                if query_record.error_entry:
+                    retrieval_errors.append(query_record.error_entry)
+                docs_by_query_kinds.append(query_record.kind)
+                docs_by_query.append(query_record.docs)
 
                 try:
                     chain_citations = build_citations_from_docs(
@@ -1807,20 +1780,21 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     if retrieval_parallelism <= 1 or len(retrieval_plan) <= 1:
         for kind, q, r in retrieval_plan:
             kind, docs_i, err, elapsed_i, dbg = _invoke_with_timing(kind, q, r)
-            retrieval_per_query.append(
-                {
-                    "kind": kind,
-                    "query_chars": len(q or ""),
-                    "query_tokens": num_tokens_from_string(q or ""),
-                    "elapsed_sec": round(elapsed_i, 3),
-                    "ok": err is None,
-                    "retriever_debug": dbg,
-                }
+            query_record = build_query_invocation_record(
+                QueryInvocationRecordInput(
+                    kind=kind,
+                    query=q,
+                    docs=docs_i,
+                    error=err,
+                    elapsed_sec=elapsed_i,
+                    retriever_debug=dbg,
+                )
             )
-            if err:
-                retrieval_errors.append(f"{kind}:{err[:160]}")
-            docs_by_query_kinds.append(kind)
-            docs_by_query.append(docs_i or [])
+            retrieval_per_query.append(query_record.per_query_item)
+            if query_record.error_entry:
+                retrieval_errors.append(query_record.error_entry)
+            docs_by_query_kinds.append(query_record.kind)
+            docs_by_query.append(query_record.docs)
     else:
         with concurrent.futures.ThreadPoolExecutor(max_workers=retrieval_parallelism) as pool:
             futures = [
@@ -1829,20 +1803,21 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             ]
             for query, fut in futures:
                 kind, docs_i, err, elapsed_i, dbg = fut.result()
-                retrieval_per_query.append(
-                    {
-                        "kind": kind,
-                        "query_chars": len(query or ""),
-                        "query_tokens": num_tokens_from_string(query or ""),
-                        "elapsed_sec": round(elapsed_i, 3),
-                        "ok": err is None,
-                        "retriever_debug": dbg,
-                    }
+                query_record = build_query_invocation_record(
+                    QueryInvocationRecordInput(
+                        kind=kind,
+                        query=query,
+                        docs=docs_i,
+                        error=err,
+                        elapsed_sec=elapsed_i,
+                        retriever_debug=dbg,
+                    )
                 )
-                if err:
-                    retrieval_errors.append(f"{kind}:{err[:160]}")
-                docs_by_query_kinds.append(kind)
-                docs_by_query.append(docs_i or [])
+                retrieval_per_query.append(query_record.per_query_item)
+                if query_record.error_entry:
+                    retrieval_errors.append(query_record.error_entry)
+                docs_by_query_kinds.append(query_record.kind)
+                docs_by_query.append(query_record.docs)
     retrieval_elapsed = time.time() - start
 
     top_k = int(retriever_update.get("k") or state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 5)
@@ -3172,20 +3147,21 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             hop_elapsed = max(0.0, float(time.time() - t_cf))
             contextual_followup_elapsed += float(hop_elapsed)
             retrieval_elapsed += float(hop_elapsed)
-            retrieval_per_query.append(
-                {
-                    "kind": "contextual_followup",
-                    "hop": int(hop),
-                    "query_chars": len(q2 or ""),
-                    "query_tokens": num_tokens_from_string(q2 or ""),
-                    "elapsed_sec": round(float(hop_elapsed), 3),
-                    "ok": cf_err is None,
-                    "retriever_debug": contextual_followup_retriever_debug,
-                }
+            contextual_query_record = build_query_invocation_record(
+                QueryInvocationRecordInput(
+                    kind="contextual_followup",
+                    query=q2,
+                    docs=cf_docs,
+                    error=cf_err,
+                    elapsed_sec=float(hop_elapsed),
+                    retriever_debug=contextual_followup_retriever_debug,
+                    hop=int(hop),
+                )
             )
-            if cf_err:
+            retrieval_per_query.append(contextual_query_record.per_query_item)
+            if contextual_query_record.error_entry:
                 contextual_followup_error = cf_err
-                retrieval_errors.append(f"contextual_followup:{cf_err[:160]}")
+                retrieval_errors.append(contextual_query_record.error_entry)
 
             hop_added_docs = 0
             hop_added_citations = 0
@@ -3262,17 +3238,49 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         [d for d in (docs or []) if isinstance(d, Document)],
     )
 
+    evidence_span_strict_enabled = bool(retrieval_contract_policy.get("require_evidence_spans"))
+    evidence_span_missing_citations = 0
+
+    def _filter_strict_span_citations(items: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+        if not evidence_span_strict_enabled or not items:
+            return items, 0
+        filtered_items: list[dict[str, Any]] = []
+        missing_count = 0
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            start = item.get("evidence_start_char")
+            end = item.get("evidence_end_char")
+            try:
+                start_i = int(start) if start is not None else None
+                end_i = int(end) if end is not None else None
+            except (TypeError, ValueError, AttributeError):
+                start_i = None
+                end_i = None
+            if start_i is None or end_i is None or end_i <= start_i:
+                missing_count += 1
+                continue
+            filtered_items.append(item)
+        return filtered_items, missing_count
+
     citations = build_citations_from_docs(
         docs,
         retrieval_elapsed_sec=retrieval_elapsed,
         retrieval_mode=request_retrieval_mode,
         query=query_for_retrieval,
     )
+    citations, missing_count = _filter_strict_span_citations(citations)
+    evidence_span_missing_citations += int(missing_count)
+    retrieval_fallback_reason: str | None = None
+    if evidence_span_strict_enabled and not citations and evidence_span_missing_citations > 0:
+        retrieval_fallback_reason = "strict_span_empty"
 
     # Deterministic hard fallback (opt-in): when primary retrieval yields no citations,
     # run one bounded fallback pass (typically keyword-first) to reduce false-empty cases.
     if hard_fallback_enabled and not citations:
         hard_fallback_attempted = True
+        if retrieval_fallback_reason is None:
+            retrieval_fallback_reason = "empty_retrieval"
         fb_start = time.time()
         fb_docs: list[Document] = []
         fb_err: str | None = None
@@ -3298,19 +3306,20 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         hard_fallback_elapsed = max(0.0, float(time.time() - fb_start))
         retrieval_elapsed += float(hard_fallback_elapsed)
 
-        retrieval_per_query.append(
-            {
-                "kind": "hard_fallback",
-                "query_chars": len(query_for_retrieval or ""),
-                "query_tokens": num_tokens_from_string(query_for_retrieval or ""),
-                "elapsed_sec": round(float(hard_fallback_elapsed), 3),
-                "ok": fb_err is None,
-                "retriever_debug": hard_fallback_retriever_debug,
-            }
+        hard_fallback_query_record = build_query_invocation_record(
+            QueryInvocationRecordInput(
+                kind="hard_fallback",
+                query=query_for_retrieval,
+                docs=fb_docs,
+                error=fb_err,
+                elapsed_sec=float(hard_fallback_elapsed),
+                retriever_debug=hard_fallback_retriever_debug,
+            )
         )
-        if fb_err:
+        retrieval_per_query.append(hard_fallback_query_record.per_query_item)
+        if hard_fallback_query_record.error_entry:
             hard_fallback_error = fb_err
-            retrieval_errors.append(f"hard_fallback:{fb_err[:160]}")
+            retrieval_errors.append(hard_fallback_query_record.error_entry)
 
         if fb_docs:
             seen_keys: set[str] = set()
@@ -3347,30 +3356,11 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 retrieval_mode=request_retrieval_mode,
                 query=query_for_retrieval,
             )
+            citations_after, missing_count = _filter_strict_span_citations(citations_after)
+            evidence_span_missing_citations += int(missing_count)
             hard_fallback_added_citations = max(0, int(len(citations_after) - len(citations)))
             citations = citations_after
             hard_fallback_used = bool(hard_fallback_added_docs > 0 and citations)
-
-    evidence_span_strict_enabled = bool(retrieval_contract_policy.get("require_evidence_spans"))
-    evidence_span_missing_citations = 0
-    if evidence_span_strict_enabled and citations:
-        filtered_citations: list[dict[str, Any]] = []
-        for item in citations:
-            if not isinstance(item, dict):
-                continue
-            start = item.get("evidence_start_char")
-            end = item.get("evidence_end_char")
-            try:
-                start_i = int(start) if start is not None else None
-                end_i = int(end) if end is not None else None
-            except (TypeError, ValueError, AttributeError):
-                start_i = None
-                end_i = None
-            if start_i is None or end_i is None or end_i <= start_i:
-                evidence_span_missing_citations += 1
-                continue
-            filtered_citations.append(item)
-        citations = filtered_citations
 
     # Must-recall contract checks:
     # 1) required source keys are represented in citations
@@ -3457,6 +3447,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 retrieval_mode=request_retrieval_mode,
                 query=query_for_retrieval,
             )
+            citations_after, missing_count = _filter_strict_span_citations(citations_after)
+            evidence_span_missing_citations += int(missing_count)
             must_recall_second_pass_added_citations = max(0, int(len(citations_after) - len(citations_before)))
             citations = citations_after
 
@@ -3728,6 +3720,59 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     metrics["retrieval_query_parallelism"] = retrieval_parallelism
     metrics["retrieval_query_count"] = len(retrieval_plan)
     metrics["retrieval_per_query"] = retrieval_per_query[:8]
+    channel_health_queries: list[dict[str, Any]] = []
+    retrieval_degraded_reason_codes: list[str] = []
+    for item in retrieval_per_query:
+        if not isinstance(item, dict):
+            continue
+        dbg = item.get("retriever_debug")
+        dbg = dbg if isinstance(dbg, dict) else {}
+        channels = dbg.get("channels")
+        channels = channels if isinstance(channels, dict) else {}
+        if not channels:
+            continue
+        degraded_reasons = list(channels.get("degraded_reasons") or [])
+        health_item = {
+            "kind": str(item.get("kind") or "main"),
+            "attempted_channels": list(channels.get("attempted_channels") or []),
+            "successful_channels": list(channels.get("successful_channels") or []),
+            "retrieval_degraded": bool(channels.get("retrieval_degraded", False)),
+            "degraded_reasons": degraded_reasons,
+            "all_retrieval_channels_failed": bool(channels.get("all_retrieval_channels_failed", False)),
+        }
+        native_hybrid = channels.get("milvus_native_hybrid")
+        if isinstance(native_hybrid, dict):
+            health_item["milvus_native_hybrid"] = dict(native_hybrid)
+        channel_health_queries.append(health_item)
+        for reason in degraded_reasons:
+            if not isinstance(reason, dict):
+                continue
+            channel = str(reason.get("channel") or "").strip() or "unknown"
+            error_type = str(reason.get("error_type") or "").strip() or "unknown"
+            retrieval_degraded_reason_codes.append(f"{health_item['kind']}:{channel}:{error_type}")
+    channel_health_primary = next(
+        (item for item in channel_health_queries if str(item.get("kind") or "") == "main"),
+        (channel_health_queries[0] if channel_health_queries else None),
+    )
+    retrieval_channel_health = {
+        "queries": channel_health_queries,
+        "attempted_channels": list((channel_health_primary or {}).get("attempted_channels") or []),
+        "successful_channels": list((channel_health_primary or {}).get("successful_channels") or []),
+        "all_retrieval_channels_failed": bool((channel_health_primary or {}).get("all_retrieval_channels_failed", False)),
+    }
+    if isinstance((channel_health_primary or {}).get("milvus_native_hybrid"), dict):
+        retrieval_channel_health["milvus_native_hybrid"] = dict(
+            (channel_health_primary or {}).get("milvus_native_hybrid") or {}
+        )
+    retrieval_degraded = bool(
+        any(bool(item.get("retrieval_degraded")) for item in channel_health_queries)
+    )
+    retrieval_degraded_reason_codes = list(dict.fromkeys(retrieval_degraded_reason_codes))
+    metrics["retrieval_degraded"] = bool(retrieval_degraded)
+    metrics["retrieval_degraded_reasons"] = retrieval_degraded_reason_codes
+    metrics["retrieval_channel_health"] = retrieval_channel_health
+    metrics["retrieval_fallback_reason"] = retrieval_fallback_reason
+    metrics["query_expansion_budget"] = dict(query_expansion_budget_meta)
     metrics["vector_backend"] = settings.VECTOR_BACKEND
     metrics["hard_fallback_enabled"] = bool(hard_fallback_enabled)
     metrics["hard_fallback_attempted"] = bool(hard_fallback_attempted)
@@ -4204,6 +4249,17 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         if isinstance(metrics.get("parse_repair_actions"), dict)
         else None
     )
+    query_debug["query_expansion_budget"] = dict(query_expansion_budget_meta)
+    query_debug["retrieval_degraded"] = bool(retrieval_degraded)
+    query_debug["retrieval_degraded_reasons"] = list(retrieval_degraded_reason_codes or [])
+    query_debug["channel_health"] = dict(retrieval_channel_health)
+    query_debug["fallback_reason"] = retrieval_fallback_reason
+    query_debug["multi_query_ab"] = {
+        "test_key": multi_query_ab_test_key,
+        "variant": multi_query_ab_variant,
+        "seed": multi_query_ab_seed,
+        "forced_enable": bool(multi_query_ab_forced),
+    }
     query_debug["retrieval_contract"] = {
         "mode": retrieval_contract_mode or None,
         "deterministic_recall": bool(contract_deterministic_recall),
@@ -4241,337 +4297,194 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     # Stable retrieval trace contract (versioned, parseable by downstream systems).
     #
     # Keep this separate from `metrics` (free-form counters) and `query_debug` (best-effort text payloads).
-    try:
-        variants: dict[str, int] = {}
-        for kind, _q, _r in retrieval_plan:
-            k = str(kind or "").strip() or "main"
-            variants[k] = int(variants.get(k, 0) or 0) + 1
-    except (TypeError, ValueError, AttributeError):
-        variants = {}
-
-    def _trace_per_query_item(item: dict[str, Any]) -> dict[str, Any]:
-        kind = str(item.get("kind") or "").strip() or "main"
-        q_chars = int(item.get("query_chars") or 0)
-        ok = bool(item.get("ok"))
-        elapsed = float(item.get("elapsed_sec") or 0.0)
-        payload: dict[str, Any] = {
-            "kind": kind,
-            "query_chars": q_chars,
-            "ok": ok,
-            "elapsed_sec": round(elapsed, 3),
-        }
-        dbg = item.get("retriever_debug")
-        if isinstance(dbg, dict):
-            # Strip text-y fields (normalized query) to keep this safe as a stable trace object.
-            dbg2 = dict(dbg)
-            qn = dbg2.get("query_normalization")
-            if isinstance(qn, dict):
-                qn2 = dict(qn)
-                qn2.pop("normalized", None)
-                if qn2:
-                    dbg2["query_normalization"] = qn2
-                else:
-                    dbg2.pop("query_normalization", None)
-            payload["retriever_debug"] = dbg2
-        return payload
-
-    try:
-        per_query_trace = [_trace_per_query_item(it) for it in (retrieval_per_query or []) if isinstance(it, dict)]
-    except Exception as exc:
-        _log_orchestrator_fallback('run_retrieval', exc)
-        per_query_trace = []
-
-    citations_by_role: dict[str, int] = {}
-    try:
-        for c in citations:
-            if not isinstance(c, dict):
-                continue
-            role = str(c.get("retrieval_role") or "main").strip().lower() or "main"
-            citations_by_role[role] = int(citations_by_role.get(role, 0) or 0) + 1
-    except (TypeError, ValueError, AttributeError):
-        citations_by_role = {}
-
-    chunk_quality_summary = None
-    try:
-        chunk_quality_summary = summarize_retrieved_chunk_quality(
-            docs,
-            max_candidates=min(max(1, int(top_k or 0)), 20),
-            max_items=8,
+    retrieval_trace = build_retrieval_trace_stage(
+        RetrievalTraceStageInput(
+            query_for_retrieval=query_for_retrieval,
+            requested_retrieval_mode=requested_retrieval_mode,
+            request_retrieval_mode=request_retrieval_mode,
+            retrieval_mode_routed=bool(retrieval_mode_routed),
+            requested_retrieval_profile=requested_retrieval_profile,
+            profile_norm=profile_norm or None,
+            retrieval_contract_mode=retrieval_contract_mode or None,
+            retrieval_contract_policy=dict(retrieval_contract_policy or {}),
+            contract_deterministic_recall=bool(contract_deterministic_recall),
+            must_recall_enabled=bool(must_recall_enabled),
+            must_recall_status=str(must_recall_status),
+            must_recall_passed=bool(must_recall_passed),
+            must_recall_expected_source_keys=list(must_recall_expected_source_keys or []),
+            missing_source_keys=list(missing_source_keys or []),
+            must_recall_required_anchor_fields=list(must_recall_required_anchor_fields or []),
+            must_recall_auto_expected_source_keys_enabled=bool(must_recall_auto_expected_source_keys_enabled),
+            must_recall_auto_expected_source_keys_applied=bool(must_recall_auto_expected_source_keys_applied),
+            must_recall_auto_expected_source_keys=list(must_recall_auto_expected_source_keys or []),
+            must_recall_auto_expected_source_keys_reason_codes=list(
+                must_recall_auto_expected_source_keys_reason_codes or []
+            ),
+            must_recall_auto_expected_source_keys_confidence=str(
+                must_recall_auto_expected_source_keys_confidence or "none"
+            ),
+            must_recall_auto_required_anchor_fields_enabled=bool(
+                must_recall_auto_required_anchor_fields_enabled
+            ),
+            must_recall_auto_required_anchor_fields_applied=bool(
+                must_recall_auto_required_anchor_fields_applied
+            ),
+            must_recall_auto_required_anchor_fields=list(must_recall_auto_required_anchor_fields or []),
+            must_recall_auto_required_anchor_fields_reason_codes=list(
+                must_recall_auto_required_anchor_fields_reason_codes or []
+            ),
+            must_recall_anchor_eval=dict(must_recall_anchor_eval or {}),
+            must_recall_fail_reasons=list(must_recall_fail_reasons or []),
+            must_recall_second_pass_payload=dict(must_recall_second_pass_payload),
+            must_recall_proof=dict(must_recall_proof),
+            intent_router_meta=dict(intent_router_meta),
+            industry_rules_meta=dict(industry_rules_meta),
+            adaptive_router_meta=dict(adaptive_router_meta),
+            channel_budget_policy_meta=dict(channel_budget_policy_meta),
+            router_layers=dict(router_layers),
+            contextual_followup_enabled=bool(contextual_followup_enabled),
+            contextual_followup_attempted=bool(contextual_followup_attempted),
+            contextual_followup_used=bool(contextual_followup_used),
+            contextual_followup_mode=str(contextual_followup_mode),
+            contextual_followup_top_k=int(contextual_followup_top_k),
+            contextual_followup_max_docs=int(contextual_followup_max_docs),
+            contextual_followup_max_terms=int(contextual_followup_max_terms),
+            contextual_followup_min_term_chars=int(contextual_followup_min_term_chars),
+            contextual_followup_query_hash=contextual_followup_query_hash,
+            contextual_followup_added_docs=int(contextual_followup_added_docs),
+            contextual_followup_added_citations=int(contextual_followup_added_citations),
+            contextual_followup_reason_codes=list(contextual_followup_reason_codes or []),
+            contextual_followup_selected_terms=list(contextual_followup_selected_terms or []),
+            contextual_followup_elapsed=float(contextual_followup_elapsed or 0.0),
+            contextual_followup_error=contextual_followup_error,
+            contextual_followup_max_hops=int(contextual_followup_max_hops),
+            contextual_followup_latency_budget_ms=float(contextual_followup_latency_budget_ms),
+            iterative_pass_hops=list(iterative_pass_hops or []),
+            iterative_pass_reason_codes=list(iterative_pass_reason_codes or []),
+            iterative_pass_gap=(dict(iterative_pass_gap or {}) if isinstance(iterative_pass_gap, dict) else None),
+            hard_fallback_enabled=bool(hard_fallback_enabled),
+            hard_fallback_attempted=bool(hard_fallback_attempted),
+            hard_fallback_used=bool(hard_fallback_used),
+            retrieval_fallback_reason=retrieval_fallback_reason,
+            hard_fallback_mode=hard_fallback_mode,
+            hard_fallback_top_k=int(hard_fallback_top_k),
+            hard_fallback_elapsed=float(hard_fallback_elapsed or 0.0),
+            hard_fallback_added_docs=int(hard_fallback_added_docs or 0),
+            hard_fallback_added_citations=int(hard_fallback_added_citations or 0),
+            hard_fallback_error=hard_fallback_error,
+            rewrite_enabled=bool(rewrite_enabled),
+            rewrite_strategy_id=rewrite_strategy_id,
+            rewrite_strategy_hash=rewrite_strategy_hash,
+            rewrite_temperature=rewrite_temperature,
+            rewrite_max_chars=rewrite_max_chars,
+            rewrite_used=bool(rewrite_used),
+            rewrite_elapsed=float(rewrite_elapsed or 0.0),
+            rewrite_model_used=rewrite_model_used,
+            query_expansion_budget_meta=dict(query_expansion_budget_meta),
+            alias_enabled=bool(alias_enabled),
+            alias_used=bool(alias_used),
+            alias_queries=list(alias_queries or []),
+            alias_elapsed=float(alias_elapsed or 0.0),
+            dict_meta=dict(dict_meta or {}),
+            dict_used=bool(dict_used),
+            dict_expansions=list(dict_expansions or []),
+            dict_elapsed=float(dict_elapsed or 0.0),
+            kg_query_expansion_enabled=bool(kg_query_expansion_enabled),
+            kg_query_expansion_used=bool(kg_query_expansion_used),
+            kg_query_expansion_entities_total=int(kg_query_expansion_entities_total),
+            kg_query_expansion_entities_selected=int(kg_query_expansion_entities_selected),
+            kg_query_expansion_queries=list(kg_query_expansion_queries or []),
+            kg_query_expansion_elapsed=float(kg_query_expansion_elapsed or 0.0),
+            kg_query_expansion_error=kg_query_expansion_error,
+            clause_fastlane_queries=list(clause_fastlane_queries or []),
+            lightweight_subqueries=list(lightweight_subqueries or []),
+            mq_enabled=bool(mq_enabled),
+            multi_query_used=bool(multi_query_used),
+            multi_queries=list(multi_queries or []),
+            multi_query_elapsed=float(multi_query_elapsed or 0.0),
+            multi_query_model_used=multi_query_model_used,
+            multi_query_parse_meta=dict(multi_query_parse_meta or {}),
+            multi_query_ab_test_key=multi_query_ab_test_key,
+            multi_query_ab_variant=multi_query_ab_variant,
+            multi_query_ab_seed=multi_query_ab_seed,
+            multi_query_ab_forced=bool(multi_query_ab_forced),
+            step_back_enabled=bool(step_back_enabled),
+            step_back_used=bool(step_back_used),
+            step_back_elapsed=float(step_back_elapsed or 0.0),
+            step_back_model_used=step_back_model_used,
+            step_back_parse_meta=dict(step_back_parse_meta or {}),
+            hyde_enabled=bool(hyde_enabled),
+            hyde_used=bool(hyde_used),
+            hyde_elapsed=float(hyde_elapsed or 0.0),
+            hyde_model_used=hyde_model_used,
+            decompose_used=bool(decompose_used),
+            sub_questions=list(sub_questions or []),
+            decompose_elapsed=float(decompose_elapsed or 0.0),
+            decompose_model_used=decompose_model_used,
+            decompose_parse_meta=dict(decompose_parse_meta or {}),
+            top_k=int(top_k),
+            retriever_update=dict(retriever_update or {}),
+            retrieval_parallelism=int(retrieval_parallelism),
+            retrieval_plan=list(retrieval_plan or []),
+            retrieval_per_query=list(retrieval_per_query or []),
+            retrieval_errors=list(retrieval_errors or []),
+            retrieval_elapsed=float(retrieval_elapsed or 0.0),
+            retrieval_degraded=bool(retrieval_degraded),
+            retrieval_degraded_reason_codes=list(retrieval_degraded_reason_codes or []),
+            retrieval_channel_health=dict(retrieval_channel_health),
+            docs_by_query=docs_by_query,
+            mq_diversify_enabled=bool(mq_diversify_enabled),
+            mq_diversify_budget=int(mq_diversify_budget or 0),
+            mq_diversify_used=bool(mq_diversify_used),
+            mq_diversify_selected_mq=int(mq_diversify_selected_mq or 0),
+            mq_diversify_selected_non_mq=int(mq_diversify_selected_non_mq or 0),
+            mq_diversify_fill_from_fused=int(mq_diversify_fill_from_fused or 0),
+            hierarchy_recall_enabled=bool(hierarchy_recall_enabled),
+            hierarchy_family_collapse=bool(hierarchy_family_collapse),
+            hierarchy_family_aggregation=str(hierarchy_family_aggregation),
+            hierarchy_tree_dedup=bool(hierarchy_tree_dedup),
+            hierarchy_parent_depth=int(hierarchy_parent_depth),
+            hierarchy_sibling_window=int(hierarchy_sibling_window),
+            hierarchy_overfetch_factor=int(hierarchy_overfetch_factor),
+            kg_chunk_injection_enabled=bool(kg_chunk_injection_enabled),
+            kg_chunk_injection_max_chunks=int(kg_chunk_injection_max_chunks),
+            kg_chunks_injected=int(kg_chunks_injected or 0),
+            kg_chunk_boost_meta=dict(kg_chunk_boost_meta or {}),
+            kg_chunk_injection_error=kg_chunk_injection_error,
+            post_rerank_enabled=bool(post_rerank_enabled),
+            post_rerank_used=bool(post_rerank_used),
+            post_rerank_provider=post_rerank_provider,
+            post_rerank_skip_reason=post_rerank_skip_reason,
+            post_rerank_cache_enabled=bool(post_rerank_cache_enabled),
+            post_rerank_cache_backend=post_rerank_cache_backend,
+            post_rerank_cache_hits=int(post_rerank_cache_hits or 0),
+            post_rerank_cache_misses=int(post_rerank_cache_misses or 0),
+            post_rerank_pipeline_enabled=bool(post_rerank_pipeline_enabled),
+            post_rerank_pipeline_used=bool(post_rerank_pipeline_used),
+            post_rerank_pipeline=list(post_rerank_pipeline or []),
+            post_rerank_pipeline_stages=list(post_rerank_pipeline_stages or []),
+            post_rerank_candidates_n=int(post_rerank_candidates_n or 0),
+            post_rerank_elapsed=float(post_rerank_elapsed or 0.0),
+            post_rerank_model_used=post_rerank_model_used,
+            post_rerank_score_calibration_stats=dict(post_rerank_score_calibration_stats or {}),
+            post_rerank_error=post_rerank_error,
+            abstain_enabled=bool(abstain_enabled),
+            abstain_triggered=bool(abstain_triggered),
+            abstain_reason=abstain_reason,
+            evidence_span_strict_enabled=bool(evidence_span_strict_enabled),
+            evidence_span_missing_citations=int(evidence_span_missing_citations or 0),
+            top_rel=float(top_rel or 0.0),
+            citations=[citation for citation in citations if isinstance(citation, dict)],
+            docs=list(docs or []),
+            parse_quality_summary=dict(parse_quality_summary or {}),
+            parse_quality_gate_profile=str(parse_quality_gate_profile),
+            parse_quality_gate_violation=bool(parse_quality_gate_violation),
+            parse_quality_gate_blocked=bool(parse_quality_gate_blocked),
+            parse_quality_gate_reason=parse_quality_gate_reason,
+            parse_risk=dict(parse_risk or {}),
+            metrics=dict(metrics or {}),
         )
-    except Exception as exc:
-        _log_orchestrator_fallback('run_retrieval', exc)
-        chunk_quality_summary = None
-
-    retrieval_trace: dict[str, Any] = {
-        "schema": "mimirq.retrieval_trace_pass.v1",
-        "query_for_retrieval_hash": stable_hash(query_for_retrieval),
-        "requested_retrieval_mode": str(requested_retrieval_mode or ""),
-        "retrieval_mode": str(request_retrieval_mode or ""),
-        "retrieval_mode_auto_routed": bool(retrieval_mode_routed),
-        "retrieval_profile": profile_norm or None,
-        "retrieval_profile_requested": (
-            str(requested_retrieval_profile).strip().lower() if requested_retrieval_profile is not None else None
-        ),
-        "retrieval_contract_mode": retrieval_contract_mode or None,
-        "retrieval_contract_policy": dict(retrieval_contract_policy or {}),
-        "retrieval_contract_deterministic_recall": bool(contract_deterministic_recall),
-        "contract_diagnostics": {
-            "contract_fail_reason_taxonomy": str(
-                retrieval_contract_policy.get("contract_fail_reason_taxonomy") or MUST_RECALL_FAIL_REASON_TAXONOMY_V1
-            ),
-            "must_recall": {
-                "enabled": bool(must_recall_enabled),
-                "status": str(must_recall_status),
-                "passed": bool(must_recall_passed),
-                "expected_source_keys": list(must_recall_expected_source_keys or []),
-                "missing_source_keys": list(missing_source_keys or [])[:40],
-                "required_anchor_fields": list(must_recall_required_anchor_fields or []),
-                "auto_expected_source_keys": {
-                    "enabled": bool(must_recall_auto_expected_source_keys_enabled),
-                    "applied": bool(must_recall_auto_expected_source_keys_applied),
-                    "keys": list(must_recall_auto_expected_source_keys or []),
-                    "reason_codes": list(must_recall_auto_expected_source_keys_reason_codes or []),
-                    "confidence": str(must_recall_auto_expected_source_keys_confidence or "none"),
-                },
-                "auto_required_anchor_fields": {
-                    "enabled": bool(must_recall_auto_required_anchor_fields_enabled),
-                    "applied": bool(must_recall_auto_required_anchor_fields_applied),
-                    "fields": list(must_recall_auto_required_anchor_fields or []),
-                    "reason_codes": list(must_recall_auto_required_anchor_fields_reason_codes or []),
-                },
-                "anchor_missing_counts": dict(must_recall_anchor_eval.get("missing_counts") or {}),
-                "fail_reasons": list(must_recall_fail_reasons or [])[:12],
-                "second_pass": dict(must_recall_second_pass_payload),
-                "proof": dict(must_recall_proof),
-            },
-        },
-        "intent_router": intent_router_meta,
-        "industry_rules": industry_rules_meta,
-        "adaptive_router": adaptive_router_meta,
-        "channel_budget_policy": channel_budget_policy_meta,
-        "router_layers": router_layers,
-        "contextual_followup": {
-            "enabled": bool(contextual_followup_enabled),
-            "attempted": bool(contextual_followup_attempted),
-            "used": bool(contextual_followup_used),
-            "mode": str(contextual_followup_mode),
-            "top_k": int(contextual_followup_top_k),
-            "max_docs": int(contextual_followup_max_docs),
-            "max_terms": int(contextual_followup_max_terms),
-            "min_term_chars": int(contextual_followup_min_term_chars),
-            "query_hash": contextual_followup_query_hash,
-            "added_docs": int(contextual_followup_added_docs),
-            "added_citations": int(contextual_followup_added_citations),
-            "reason_codes": list(contextual_followup_reason_codes or []),
-            "selected_terms": list(contextual_followup_selected_terms or [])[:10],
-            "elapsed_sec": round(float(contextual_followup_elapsed or 0.0), 3),
-            "error": contextual_followup_error,
-        },
-        "iterative_pass": {
-            "enabled": bool(contextual_followup_enabled),
-            "max_hops": int(contextual_followup_max_hops),
-            "latency_budget_ms": round(float(contextual_followup_latency_budget_ms), 3),
-            "hops_attempted": int(
-                len([h for h in iterative_pass_hops if isinstance(h, dict) and bool(h.get("attempted"))])
-            ),
-            "hops_used": int(
-                len([h for h in iterative_pass_hops if isinstance(h, dict) and bool(h.get("used"))])
-            ),
-            "reason_codes": list(iterative_pass_reason_codes or [])[:16],
-            "gap": (dict(iterative_pass_gap or {}) if isinstance(iterative_pass_gap, dict) else None),
-            "hops": [h for h in list(iterative_pass_hops or [])[:5] if isinstance(h, dict)],
-        },
-        "hard_fallback": {
-            "enabled": bool(hard_fallback_enabled),
-            "attempted": bool(hard_fallback_attempted),
-            "used": bool(hard_fallback_used),
-            "mode": hard_fallback_mode,
-            "top_k": int(hard_fallback_top_k),
-            "elapsed_sec": round(float(hard_fallback_elapsed or 0.0), 3),
-            "added_docs": int(hard_fallback_added_docs or 0),
-            "added_citations": int(hard_fallback_added_citations or 0),
-            "error": hard_fallback_error,
-        },
-        "rewrite": {
-            "enabled": bool(rewrite_enabled),
-            "strategy_id": rewrite_strategy_id,
-            "strategy_hash": rewrite_strategy_hash,
-            "temperature": rewrite_temperature if rewrite_enabled else None,
-            "max_chars": int(rewrite_max_chars or 0) if rewrite_enabled else None,
-            "used": bool(rewrite_used),
-            "elapsed_sec": round(float(rewrite_elapsed or 0.0), 3),
-            "model_used": rewrite_model_used,
-        },
-        "expansions": {
-            "alias": {
-                "enabled": bool(alias_enabled),
-                "used": bool(alias_used),
-                "count": int(len(alias_queries)),
-                "elapsed_sec": round(float(alias_elapsed or 0.0), 3),
-            },
-            "dict": {
-                "enabled": bool(dict_meta.get("enabled")),
-                "used": bool(dict_used),
-                "count": int(len(dict_expansions)),
-                "elapsed_sec": round(float(dict_elapsed or 0.0), 3),
-            },
-            "kg_query": {
-                "enabled": bool(kg_query_expansion_enabled),
-                "used": bool(kg_query_expansion_used),
-                "entities_total": int(kg_query_expansion_entities_total),
-                "entities_selected": int(kg_query_expansion_entities_selected),
-                "query_count": int(len(kg_query_expansion_queries)),
-                "elapsed_sec": round(float(kg_query_expansion_elapsed or 0.0), 3),
-                "error": kg_query_expansion_error,
-            },
-            "clause_fastlane": {
-                "used": bool(clause_fastlane_queries),
-                "count": int(len(clause_fastlane_queries)),
-            },
-            "lightweight_subquery": {
-                "enabled": bool(getattr(settings, "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_ENABLED", False)),
-                "used": bool(lightweight_subqueries),
-                "count": int(len(lightweight_subqueries)),
-            },
-            "multi_query": {
-                "enabled": bool(mq_enabled),
-                "used": bool(multi_query_used),
-                "count": int(len(multi_queries)),
-                "elapsed_sec": round(float(multi_query_elapsed or 0.0), 3),
-                "model_used": multi_query_model_used,
-                "parse_ok": bool(multi_query_parse_meta.get("ok")),
-                "parse_method": multi_query_parse_meta.get("method"),
-                "parse_error": multi_query_parse_meta.get("error"),
-            },
-            "step_back": {
-                "enabled": bool(step_back_enabled),
-                "used": bool(step_back_used),
-                "elapsed_sec": round(float(step_back_elapsed or 0.0), 3),
-                "model_used": step_back_model_used,
-                "parse_ok": bool(step_back_parse_meta.get("ok")),
-                "parse_method": step_back_parse_meta.get("method"),
-                "parse_error": step_back_parse_meta.get("error"),
-            },
-            "hyde": {
-                "enabled": bool(hyde_enabled),
-                "used": bool(hyde_used),
-                "elapsed_sec": round(float(hyde_elapsed or 0.0), 3),
-                "model_used": hyde_model_used,
-            },
-            "decompose": {
-                "enabled": bool(settings.ENABLE_QUERY_DECOMPOSITION),
-                "used": bool(decompose_used),
-                "count": int(len(sub_questions)),
-                "elapsed_sec": round(float(decompose_elapsed or 0.0), 3),
-                "model_used": decompose_model_used,
-                "parse_ok": bool(decompose_parse_meta.get("ok")),
-                "parse_method": decompose_parse_meta.get("method"),
-                "parse_error": decompose_parse_meta.get("error"),
-            },
-        },
-        "retrieval": {
-            "top_k": int(top_k),
-            "score_threshold": float(retriever_update.get("score_threshold") or 0.0),
-            "alpha": float(retriever_update.get("alpha") or 0.0),
-            "enable_weight_rerank": bool(retriever_update.get("enable_weight_rerank", True)),
-            "vector_weight": float(retriever_update.get("vector_weight") or 0.0),
-            "keyword_weight": float(retriever_update.get("keyword_weight") or 0.0),
-            "channel_fusion_strategy": str(retriever_update.get("fusion_strategy") or "linear"),
-            "channel_fusion_budgets": (retriever_update.get("fusion_budgets") if isinstance(retriever_update.get("fusion_budgets"), dict) else None),
-            "channel_fusion_min_scores": (retriever_update.get("fusion_min_scores") if isinstance(retriever_update.get("fusion_min_scores"), dict) else None),
-            "rrf_k": int(getattr(settings, "RETRIEVAL_RRF_K", 60) or 60),
-            "query_parallelism": int(retrieval_parallelism),
-            "query_count": int(len(retrieval_plan)),
-            "query_variants": variants,
-            "per_query": per_query_trace[:8],
-            "errors": retrieval_errors[:5],
-            "elapsed_sec": round(float(retrieval_elapsed or 0.0), 3),
-            "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
-        },
-        "query_variant_fusion": {
-            "strategy": ("rrf" if len(docs_by_query) > 1 else "single"),
-            "rrf_k": int(settings.RETRIEVAL_RRF_K or 0) if len(docs_by_query) > 1 else None,
-            "multi_query_diversify": {
-                "enabled": bool(mq_diversify_enabled),
-                "budget": int(mq_diversify_budget or 0) if mq_diversify_enabled else None,
-                "used": bool(mq_diversify_used),
-                "selected_mq": int(mq_diversify_selected_mq or 0),
-                "selected_non_mq": int(mq_diversify_selected_non_mq or 0),
-                "fill_from_fused": int(mq_diversify_fill_from_fused or 0),
-            },
-        },
-        "hierarchy_recall": {
-            "enabled": bool(hierarchy_recall_enabled),
-            "family_collapse": bool(hierarchy_family_collapse),
-            "family_aggregation": str(hierarchy_family_aggregation),
-            "tree_dedup": bool(hierarchy_tree_dedup),
-            "parent_depth": int(hierarchy_parent_depth),
-            "sibling_window": int(hierarchy_sibling_window),
-            "overfetch_factor": int(hierarchy_overfetch_factor),
-        },
-        "kg_chunk_injection": {
-            "enabled": bool(kg_chunk_injection_enabled),
-            "max_chunks": int(kg_chunk_injection_max_chunks),
-            "chunks_injected": int(kg_chunks_injected or 0),
-            "boost": dict(kg_chunk_boost_meta or {}),
-            "error": kg_chunk_injection_error,
-        },
-        "post_rerank": {
-            "enabled": bool(post_rerank_enabled),
-            "used": bool(post_rerank_used),
-            "provider": post_rerank_provider,
-            "skip_reason": post_rerank_skip_reason,
-            "cache": {
-                "enabled": bool(post_rerank_cache_enabled),
-                "backend": post_rerank_cache_backend,
-                "hits": int(post_rerank_cache_hits or 0),
-                "misses": int(post_rerank_cache_misses or 0),
-            },
-            "pipeline_enabled": bool(post_rerank_pipeline_enabled),
-            "pipeline_used": bool(post_rerank_pipeline_used),
-            "pipeline": post_rerank_pipeline[:4],
-            "pipeline_stages": post_rerank_pipeline_stages[:4],
-            "candidates_n": int(post_rerank_candidates_n or 0),
-            "elapsed_sec": round(float(post_rerank_elapsed or 0.0), 3),
-            "model_used": post_rerank_model_used,
-            "score_calibration": dict(post_rerank_score_calibration_stats or {}),
-            "error": post_rerank_error,
-        },
-        "abstain": {
-            "enabled": bool(abstain_enabled),
-            "triggered": bool(abstain_triggered),
-            "reason": abstain_reason,
-            "evidence_span_strict_enabled": bool(evidence_span_strict_enabled),
-            "evidence_span_missing_citations": int(evidence_span_missing_citations or 0),
-            "min_citations": int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0),
-            "min_top_relevance_score": float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0),
-            "top_relevance_score": round(float(top_rel or 0.0), 3),
-        },
-        "citations": {
-            "count": int(len(citations)),
-            "by_role": citations_by_role,
-            "chunk_quality": chunk_quality_summary,
-        },
-        "parse_quality": dict(parse_quality_summary or {}),
-        "parse_quality_gate": {
-            "profile": str(parse_quality_gate_profile),
-            "violation": bool(parse_quality_gate_violation),
-            "blocked": bool(parse_quality_gate_blocked),
-            "reason": parse_quality_gate_reason,
-        },
-        "parse_risk": dict(parse_risk or {}),
-        "parse_risk_auto_enqueue_policy": (
-            dict(metrics.get("parse_risk_auto_enqueue_policy"))
-            if isinstance(metrics.get("parse_risk_auto_enqueue_policy"), dict)
-            else None
-        ),
-        "parse_repair_actions": (
-            dict(metrics.get("parse_repair_actions"))
-            if isinstance(metrics.get("parse_repair_actions"), dict)
-            else None
-        ),
-        "hardcase_candidate": (metrics.get("hardcase_candidate") if isinstance(metrics.get("hardcase_candidate"), dict) else None),
-    }
+    ).retrieval_trace
     observe_router_layers(router_layers)
 
     # Stable retrieval config fingerprint (PII-safe).
@@ -4672,6 +4585,9 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 "count": int(mq_n or 0),
                 "temperature": float(mq_temp or 0.0),
                 "max_chars": int(mq_max_chars or 0),
+                "ab_test_key": multi_query_ab_test_key,
+                "ab_variant": multi_query_ab_variant,
+                "ab_seed": multi_query_ab_seed,
                 "diversify": {
                     "enabled": bool(getattr(settings, "MULTI_QUERY_DIVERSIFY_ENABLED", False)) and bool(mq_enabled),
                     "budget": max(
@@ -4696,42 +4612,20 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 "temperature": rewrite_temperature if rewrite_enabled else None,
                 "max_chars": int(rewrite_max_chars or 0) if rewrite_enabled else None,
             },
+            "query_expansion_budget": {
+                "max_queries": int(query_expansion_budget_max_queries or 0),
+                "max_candidates": int(query_expansion_budget_max_candidates or 0),
+                "token_budget": int(query_expansion_budget_token_budget or 0),
+                "latency_budget_ms": round(float(query_expansion_budget_latency_ms or 0.0), 3),
+            },
         }
 
-        # Optional: experiment lineage for retrieval config templates.
-        #
-        # Keep stable keys only (no UUIDs) so retrieval_config_hash is comparable across environments.
-        tmpl_raw = state.get("rag_config_template")
-        if isinstance(tmpl_raw, dict) and tmpl_raw:
-            tmpl_fp: dict[str, Any] = {}
-
-            key = str(tmpl_raw.get("template_key") or "").strip()
-            if key:
-                tmpl_fp["template_key"] = key
-
-            try:
-                version = int(tmpl_raw.get("version") or 0)
-            except (TypeError, ValueError, AttributeError):
-                version = 0
-            if version > 0:
-                tmpl_fp["version"] = version
-
-            exp = str(tmpl_raw.get("ab_experiment_key") or "").strip()
-            if exp:
-                tmpl_fp["ab_experiment_key"] = exp
-
-            var = str(tmpl_raw.get("ab_variant") or "").strip()
-            if var:
-                tmpl_fp["ab_variant"] = var
-
-            ph = str(tmpl_raw.get("patch_hash") or "").strip()
-            if ph:
-                tmpl_fp["patch_hash"] = ph
-
-            if tmpl_fp:
-                retrieval_cfg["rag_config_template"] = tmpl_fp
-
-        fp = build_retrieval_config_fingerprint(config=retrieval_cfg)
+        fp = build_retrieval_config_snapshot(
+            RetrievalConfigSnapshotInput(
+                retrieval_config=retrieval_cfg,
+                rag_config_template=state.get("rag_config_template"),
+            )
+        ).fingerprint
         retrieval_trace["retrieval_config"] = fp
         metrics["retrieval_config_hash"] = fp.get("hash")
         hc = metrics.get("hardcase_candidate")
@@ -4759,6 +4653,9 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         "docs": docs,
         "citations": citations,
         "metrics": metrics,
+        "retrieval_degraded": bool(retrieval_degraded),
+        "fallback_reason": retrieval_fallback_reason,
+        "channel_health": retrieval_channel_health,
         "abstain_triggered": bool(abstain_triggered),
         "abstain_reason": abstain_reason,
         "query_debug": query_debug,

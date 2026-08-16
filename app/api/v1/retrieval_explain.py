@@ -54,6 +54,9 @@ class RetrievalExplainResponse(BaseModel):
     schema_: str = Field(default=_SCHEMA, alias="schema", serialization_alias="schema")
     retrieval_only: bool = True
     query_for_retrieval: str
+    retrieval_degraded: bool = False
+    fallback_reason: str | None = None
+    channel_health: dict[str, Any] = Field(default_factory=dict)
     channels: dict[str, Any] = Field(default_factory=dict)
     hierarchy_recall: dict[str, Any] = Field(default_factory=dict)
     candidate_counts: dict[str, int] = Field(default_factory=dict)
@@ -136,7 +139,7 @@ async def explain_retrieval(
 
     request_fields_set = set(getattr(body, "model_fields_set", set()) or set())
     rag_config_provided = "rag_config" in request_fields_set
-    effective_rag_config = body.rag_config if rag_config_provided else ChatRAGConfig(retrieval_profile="recall50")
+    effective_rag_config = body.rag_config if rag_config_provided else ChatRAGConfig()
 
     state = build_rag_state(
         question=body.query,
@@ -208,6 +211,9 @@ async def explain_retrieval(
     retrieval_trace = out.get("retrieval_trace") if isinstance(out.get("retrieval_trace"), dict) else {}
 
     channels = query_debug.get("channels") if isinstance(query_debug.get("channels"), dict) else {}
+    channel_health = out.get("channel_health") if isinstance(out.get("channel_health"), dict) else {}
+    if not channel_health:
+        channel_health = metrics.get("retrieval_channel_health") if isinstance(metrics.get("retrieval_channel_health"), dict) else {}
     hierarchy_recall = query_debug.get("hierarchy_recall") if isinstance(query_debug.get("hierarchy_recall"), dict) else {}
     if not hierarchy_recall:
         hierarchy_recall = retrieval_trace.get("hierarchy_recall") if isinstance(retrieval_trace.get("hierarchy_recall"), dict) else {}
@@ -239,6 +245,11 @@ async def explain_retrieval(
         schema=_SCHEMA,
         retrieval_only=True,
         query_for_retrieval=str(out.get("query_for_retrieval") or body.query),
+        retrieval_degraded=bool(out.get("retrieval_degraded") or metrics.get("retrieval_degraded")),
+        fallback_reason=(
+            str(out.get("fallback_reason") or metrics.get("retrieval_fallback_reason") or "").strip() or None
+        ),
+        channel_health=channel_health,
         channels=channels,
         hierarchy_recall=hierarchy_recall,
         candidate_counts={

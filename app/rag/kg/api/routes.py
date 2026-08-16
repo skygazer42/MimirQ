@@ -7,6 +7,9 @@ from datetime import UTC
 from typing import Annotated, Any
 from uuid import UUID
 
+# GraphML export only constructs and serializes a new tree; no untrusted XML is parsed.
+from xml.etree import ElementTree as ET  # nosemgrep: python.lang.security.use-defused-xml.use-defused-xml
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -1102,7 +1105,11 @@ def export_kg_snapshot(
     )
 
 
-@router.post("/snapshots/diff", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/snapshots/diff",
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+    dependencies=[Depends(get_current_account_id)],
+)
 def diff_kg_snapshots_api(body: KGSnapshotDiffRequest):
     from app.rag.kg.snapshot import diff_kg_snapshots  # noqa: WPS433
 
@@ -1146,14 +1153,10 @@ def compare_kg_snapshots(
 
 
 def _add_graphml_key(root: Any, *, key_id: str, kind: str, name: str, typ: str) -> None:
-    import xml.etree.ElementTree as ET
-
     ET.SubElement(root, "key", {"id": key_id, "for": kind, "attr.name": name, "attr.type": typ})
 
 
 def _build_graphml_root() -> tuple[Any, Any]:
-    import xml.etree.ElementTree as ET
-
     graphml_xmlns = "http" + "://graphml.graphdrawing.org/xmlns"
     root = ET.Element("graphml", xmlns=graphml_xmlns)
     for key_id, kind, name, typ in (
@@ -1176,8 +1179,6 @@ def _build_graphml_root() -> tuple[Any, Any]:
 
 
 def _add_graphml_node(graph_el: Any, node: Any) -> None:
-    import xml.etree.ElementTree as ET
-
     n = ET.SubElement(graph_el, "node", {"id": str(node.id)})
     meta = dict(getattr(node, "meta", {}) or {})
     ET.SubElement(n, "data", {"key": "d0"}).text = str(node.label or node.id)
@@ -1191,8 +1192,6 @@ def _add_graphml_node(graph_el: Any, node: Any) -> None:
 
 
 def _add_graphml_edge(graph_el: Any, idx: int, link: Any) -> None:
-    import xml.etree.ElementTree as ET
-
     edge = ET.SubElement(
         graph_el,
         "edge",
@@ -1206,8 +1205,6 @@ def _add_graphml_edge(graph_el: Any, idx: int, link: Any) -> None:
 
 
 def _kg_graphml_payload(graph: KGGraphResponse) -> str:
-    import xml.etree.ElementTree as ET
-
     root, graph_el = _build_graphml_root()
     for node in graph.nodes:
         _add_graphml_node(graph_el, node)

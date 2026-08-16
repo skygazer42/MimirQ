@@ -27,6 +27,7 @@ EXPECTED_MODEL_MODULES = {
     "dataset_profile_scan",
     "db_catalog",
     "document",
+    "document_index_channel",
     "evaluation",
     "evidence",
     "feedback",
@@ -47,6 +48,7 @@ EXPECTED_CRITICAL_TABLES = {
     "tenant_group_members",
     "dataset_group_permissions",
     "document_group_permissions",
+    "document_index_channels",
     "ingest_dead_letters",
     "kg_relations",
 }

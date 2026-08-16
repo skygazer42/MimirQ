@@ -23,6 +23,9 @@ from app.api.schemas.rbac import (
     TenantMemberOut,
     TenantMemberUpdateRequest,
 )
+from app.api.utils.http_exception_responses import (
+    DEFAULT_HTTP_EXCEPTION_RESPONSES as _DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 from app.core.config import settings
 from app.core.constants import UserRoles
 from app.core.database import get_db
@@ -34,14 +37,6 @@ from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import DatasetService
 from app.services.navigation_visibility import navigation_user_visible_modules_from_settings
 from app.services.rbac_service import TenantPermissions, all_tenant_permissions, ensure_tenant_permission, role_allows
-
-_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
-    400: {"description": "Bad Request"},
-    403: {"description": "Forbidden"},
-    404: {"description": "Not Found"},
-    409: {"description": "Conflict"},
-    416: {"description": "Range Not Satisfiable"},
-}
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 

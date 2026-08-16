@@ -6,6 +6,7 @@ from app.models.chunk_preset import ChunkPreset
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.db_catalog import DbCatalogColumn, DbCatalogTable, DbProfileSnapshot
 from app.models.document import Document, DocumentChunk
+from app.models.document_index_channel import DocumentIndexChannel
 from app.models.evaluation import RagasEvaluationItem, RagasEvaluationRun
 from app.models.evidence import EvidenceItem, EvidenceSuite
 from app.models.governance_profile import GovernanceProfile
@@ -21,6 +22,7 @@ from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
 __all__ = [
     "Document",
     "DocumentChunk",
+    "DocumentIndexChannel",
     "Conversation",
     "Message",
     "Tenant",

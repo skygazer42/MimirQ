@@ -80,6 +80,41 @@ def _kg_lock_flag(value: bool | None) -> str:
     if value is None:
         return "auto"
     return "1" if bool(value) else "0"
+
+
+def _transition_document_index_channel_best_effort(
+    db: Any,
+    *,
+    document: DBDocument | None,
+    channel: str,
+    status: str,
+    error: str | None = None,
+    increment_attempt: bool = False,
+    commit: bool = True,
+) -> None:
+    if document is None:
+        return
+    try:
+        from app.services.document_index_channel_service import transition_document_index_channel
+
+        transition_document_index_channel(
+            db,
+            document=document,
+            channel=channel,
+            status=status,
+            error=error,
+            increment_attempt=increment_attempt,
+            commit=commit,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Failed to persist document index channel transition in worker tenant=%s document=%s channel=%s status=%s: %s",
+            getattr(document, "tenant_id", None),
+            getattr(document, "id", None),
+            str(channel or ""),
+            str(status or ""),
+            str(exc)[:200],
+        )
 TASK_JOB_RESULT_SCHEMA_V1 = "mimirq.task_job_result.v1"
 
 
@@ -1230,6 +1265,7 @@ async def extract_kg_job(
     dataset_sem_key = None
     lock_key = None
     lock_val = None
+    doc: DBDocument | None = None
     kg_retry_defer_sec = max(2, int(getattr(settings, "TASK_KG_RETRY_DEFER_SEC", 30) or 30))
     try:
         frozen_options: dict[str, Any] | None = None
@@ -1359,6 +1395,13 @@ async def extract_kg_job(
             if not _is_retry_error(exc) or _current_job_try(ctx) < _kg_job_max_tries():
                 raise
             reason = _coordination_retry_reason(exc)
+            _transition_document_index_channel_best_effort(
+                db,
+                document=doc,
+                channel="kg",
+                status="error",
+                error=reason,
+            )
             return await _job_result(
                 ctx,
                 job_name="extract_kg_job",
@@ -1392,6 +1435,13 @@ async def extract_kg_job(
             .all()
         )
         if not chunks:
+            _transition_document_index_channel_best_effort(
+                db,
+                document=doc,
+                channel="kg",
+                status="error",
+                error="no_chunks",
+            )
             return await _job_result(
                 ctx,
                 job_name="extract_kg_job",
@@ -1424,6 +1474,13 @@ async def extract_kg_job(
             if scoped:
                 chunks = scoped
             elif pipeline_scope_required:
+                _transition_document_index_channel_best_effort(
+                    db,
+                    document=doc,
+                    channel="kg",
+                    status="error",
+                    error="pipeline_chunks_not_found",
+                )
                 return await _job_result(
                     ctx,
                     job_name="extract_kg_job",
@@ -1436,57 +1493,84 @@ async def extract_kg_job(
                     pipeline_hash=selected_ph,
                 )
 
-        dataset_meta = {}
-        if doc.dataset_id:
-            ds = db.query(Dataset).filter(Dataset.id == doc.dataset_id, Dataset.tenant_id == tid).first()
-            if ds is not None and isinstance(getattr(ds, "dataset_metadata", None), dict):
-                dataset_meta = dict(ds.dataset_metadata or {})
+        try:
+            dataset_meta = {}
+            if doc.dataset_id:
+                ds = db.query(Dataset).filter(Dataset.id == doc.dataset_id, Dataset.tenant_id == tid).first()
+                if ds is not None and isinstance(getattr(ds, "dataset_metadata", None), dict):
+                    dataset_meta = dict(ds.dataset_metadata or {})
 
-        effective = resolve_pipeline_effective(
-            dataset_metadata=dataset_meta,
-            document_metadata=(doc.doc_metadata or {}),
-            request_overrides=None,
-        )
-        index_options = build_indexing_options(effective)
-        if frozen_options is not None:
-            prompt_template_id = (
-                UUID(str(frozen_options["prompt_template_id"])) if frozen_options["prompt_template_id"] else None
+            effective = resolve_pipeline_effective(
+                dataset_metadata=dataset_meta,
+                document_metadata=(doc.doc_metadata or {}),
+                request_overrides=None,
             )
-            prompt_template_key = frozen_options["prompt_template_key"]
-            prompt_ab_experiment_key = frozen_options["prompt_ab_experiment_key"]
-            extraction_backend = frozen_options["extraction_backend"]
-            kg_python_plugin_ref = str(frozen_options["kg_python_plugin"] or "").strip()
-            kg_python_params = dict(frozen_options["kg_python_params"] or {})
-        else:
-            prompt_template_id = None
-            prompt_template_key = None
-            prompt_ab_experiment_key = None
-            extraction_backend = None
-            kg_python_plugin_ref = str(getattr(effective, "kg_python_plugin", "") or "").strip()
-            if not kg_python_plugin_ref:
-                kg_python_plugin_ref = derive_registered_stage_plugin_ref(
-                    str(getattr(effective, "chunk_python_plugin", "") or "").strip(),
-                    "kg",
+            index_options = build_indexing_options(effective)
+            if frozen_options is not None:
+                prompt_template_id = (
+                    UUID(str(frozen_options["prompt_template_id"])) if frozen_options["prompt_template_id"] else None
                 )
-            kg_python_params = dict(getattr(effective, "kg_python_params", {}) or {})
+                prompt_template_key = frozen_options["prompt_template_key"]
+                prompt_ab_experiment_key = frozen_options["prompt_ab_experiment_key"]
+                extraction_backend = frozen_options["extraction_backend"]
+                kg_python_plugin_ref = str(frozen_options["kg_python_plugin"] or "").strip()
+                kg_python_params = dict(frozen_options["kg_python_params"] or {})
+            else:
+                prompt_template_id = None
+                prompt_template_key = None
+                prompt_ab_experiment_key = None
+                extraction_backend = None
+                kg_python_plugin_ref = str(getattr(effective, "kg_python_plugin", "") or "").strip()
+                if not kg_python_plugin_ref:
+                    kg_python_plugin_ref = derive_registered_stage_plugin_ref(
+                        str(getattr(effective, "chunk_python_plugin", "") or "").strip(),
+                        "kg",
+                    )
+                kg_python_params = dict(getattr(effective, "kg_python_params", {}) or {})
 
-        events = await extract_events(
-            [c.id for c in chunks],
-            tenant_id=tid,
-            chunks=chunks,
-            index_options=index_options,
-            prompt_template_id=prompt_template_id,
-            prompt_template_key=prompt_template_key,
-            prompt_ab_experiment_key=prompt_ab_experiment_key,
-            ab_user_key=requested_by,
-            extract_relations=extract_relations,
-            extract_skills=extract_skills,
-            extraction_backend=extraction_backend,
-            kg_python_plugin=kg_python_plugin_ref,
-            kg_python_params=kg_python_params,
-            replace_existing=replace_existing,
-            prune_orphan_entities=prune_orphan_entities,
+            events = await extract_events(
+                [c.id for c in chunks],
+                tenant_id=tid,
+                chunks=chunks,
+                index_options=index_options,
+                prompt_template_id=prompt_template_id,
+                prompt_template_key=prompt_template_key,
+                prompt_ab_experiment_key=prompt_ab_experiment_key,
+                ab_user_key=requested_by,
+                extract_relations=extract_relations,
+                extract_skills=extract_skills,
+                extraction_backend=extraction_backend,
+                kg_python_plugin=kg_python_plugin_ref,
+                kg_python_params=kg_python_params,
+                replace_existing=replace_existing,
+                prune_orphan_entities=prune_orphan_entities,
+            )
+        except Exception as exc:
+            if _is_retry_error(exc) and _current_job_try(ctx) < _kg_job_max_tries():
+                raise
+            _transition_document_index_channel_best_effort(
+                db,
+                document=doc,
+                channel="kg",
+                status="error",
+                error=str(exc)[:2000],
+            )
+            raise
+
+        _transition_document_index_channel_best_effort(
+            db,
+            document=doc,
+            channel="kg",
+            status="ready",
         )
+        if not events:
+            for channel_name in ("event_vector", "entity_vector"):
+                _transition_document_index_channel_best_effort(
+                    db,
+                    document=doc,
+                    channel=channel_name,
+                    status="skipped",
+                )
         cache_invalidation: dict[str, Any] | None = None
         if doc.dataset_id:
             try:
@@ -1600,6 +1684,178 @@ async def rebuild_indexes_job(
             started_at=t0,
             tenant_id=tenant_id,
             document_id=str(document_uuid) if document_uuid is not None else None,
+        )
+    finally:
+        if redis is not None and lock_key and lock_val:
+            await release_lock(redis, key=lock_key, value=lock_val)
+        await tenant_release(redis, sem_key)
+        db.close()
+
+
+async def reconcile_index_audit_job(
+    ctx,
+    tenant_id: str,
+    dataset_id: str,
+    requested_by: str,
+    document_id: str | None = None,
+    limit: int = 100,
+    dry_run: bool = True,
+) -> dict:  # noqa: ANN001
+    """
+    Bounded tenant+dataset scoped index-audit reconcile scan.
+
+    This job never scans all tenants. Dataset-only scans are bounded and report-only
+    for legacy/no-row documents; rebuild enqueue remains document-scoped.
+    """
+    from app.services.index_audit_service import enqueue_index_audit_reconcile, plan_index_audit_reconcile
+
+    t0 = time.perf_counter()
+    tid = UUID(tenant_id)
+    dsid = UUID(dataset_id)
+    document_uuid = UUID(str(document_id)) if document_id is not None else None
+    db = SessionLocal()
+    redis = None
+    sem_key = None
+    lock_key = None
+    lock_val = None
+    retry_defer_sec = _TASK_LOCK_RETRY_DEFER_SEC
+    try:
+        try:
+            redis = _task_queue_redis_or_retry(ctx, retry_defer_sec=retry_defer_sec)
+            sem_key = await tenant_acquire(
+                redis,
+                tenant_id=tenant_id,
+                kind="index_audit_reconcile",
+                limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_DOC", 0) or 0),
+                ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
+                retry_defer_sec=retry_defer_sec,
+                wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
+            )
+
+            lock_scope = str(document_uuid) if document_uuid is not None else f"{dataset_id}:{int(limit or 0)}:{int(bool(dry_run))}"
+            lock_key = f"lock:index-audit-reconcile:{tenant_id}:{lock_scope}"
+            lock_val = make_lock_value(requested_by)
+            lock_ttl = _task_job_lock_ttl_sec()
+            acquired = await _acquire_task_lock_or_retry(
+                redis,
+                key=lock_key,
+                value=lock_val,
+                ttl_sec=lock_ttl,
+                retry_defer_sec=retry_defer_sec,
+            )
+        except Exception as exc:
+            if not _is_retry_error(exc) or _current_job_try(ctx) < _task_job_max_tries():
+                raise
+            reason = _coordination_retry_reason(exc)
+            return await _job_result(
+                ctx,
+                job_name="reconcile_index_audit_job",
+                ok=False,
+                started_at=t0,
+                reason=reason,
+                progress=_job_progress(stage="failed", done=0, total=1),
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                document_id=document_id,
+            )
+        if not acquired:
+            logger.info("Skip index audit reconcile job due to active lock: %s", lock_key)
+            return await _job_result(
+                ctx,
+                job_name="reconcile_index_audit_job",
+                ok=True,
+                started_at=t0,
+                reason="locked",
+                progress=_job_progress(stage="locked", done=0, total=1),
+                skipped="locked",
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                document_id=document_id,
+            )
+
+        plan = plan_index_audit_reconcile(
+            db=db,
+            tenant_id=tid,
+            dataset_id=dsid,
+            document_id=document_uuid,
+            limit=int(limit or 0),
+            dry_run=bool(dry_run),
+        )
+        if document_uuid is not None and int(plan.get("scanned_documents") or 0) <= 0:
+            return await _job_result(
+                ctx,
+                job_name="reconcile_index_audit_job",
+                ok=False,
+                started_at=t0,
+                reason="document_not_found",
+                progress=_job_progress(stage="missing", done=0, total=1),
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                document_id=document_id,
+            )
+
+        items_out: list[dict[str, Any]] = []
+        candidate_documents = int(((plan.get("counts") if isinstance(plan.get("counts"), dict) else {}) or {}).get("candidate_documents") or 0)
+        enqueued_count = 0
+        already_queued_count = 0
+        report_only_count = 0
+        unsupported_count = 0
+        for item in list(plan.get("items") or []):
+            if not isinstance(item, dict):
+                continue
+            row = dict(item)
+            action = str(row.get("action") or "report_only")
+            if action != "enqueue_rebuild":
+                row["enqueue_status"] = "report_only"
+                report_only_count += 1
+                items_out.append(row)
+                continue
+            if bool(dry_run):
+                row["enqueue_status"] = "would_enqueue"
+                items_out.append(row)
+                continue
+
+            reconcile = await enqueue_index_audit_reconcile(
+                tenant_id=tid,
+                dataset_id=dsid,
+                document_id=UUID(str(row["document_id"])),
+                requested_by=requested_by,
+            )
+            row["enqueue_status"] = str(reconcile.get("status") or "unknown")
+            row["enqueue_reason"] = reconcile.get("reason")
+            row["task_id"] = reconcile.get("task_id")
+            if row["enqueue_status"] == "enqueued":
+                enqueued_count += 1
+            elif row["enqueue_status"] == "already_queued":
+                already_queued_count += 1
+            elif row["enqueue_status"] == "unsupported":
+                unsupported_count += 1
+            items_out.append(row)
+
+        progress_stage = "planned" if bool(dry_run) else "completed"
+        return await _job_result(
+            ctx,
+            job_name="reconcile_index_audit_job",
+            ok=True,
+            started_at=t0,
+            progress=_job_progress(stage=progress_stage, done=len(items_out), total=int(plan.get("scanned_documents") or 0)),
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            document_id=document_id,
+            dry_run=bool(dry_run),
+            scan_limit=int(plan.get("scan_limit") or 0),
+            scanned_documents=int(plan.get("scanned_documents") or 0),
+            candidate_documents=candidate_documents,
+            enqueued_count=enqueued_count,
+            already_queued_count=already_queued_count,
+            report_only_count=report_only_count,
+            unsupported_count=unsupported_count,
+            report={
+                "schema": str(plan.get("schema") or "mimirq.index_audit_reconcile_plan.v1"),
+                "scope": str(plan.get("scope") or ("document" if document_uuid is not None else "dataset")),
+                "counts": dict(plan.get("counts") or {}) if isinstance(plan.get("counts"), dict) else {},
+                "items": items_out,
+            },
         )
     finally:
         if redis is not None and lock_key and lock_val:

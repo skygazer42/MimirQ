@@ -50,9 +50,20 @@ import {
 import { useBackendHealth } from '@/hooks/use-backend-health'
 import { useBackendMetaDetails } from '@/hooks/use-backend-meta'
 import { formatApiError } from '@/lib/api-errors'
-import { datasetApi, documentApi, observabilityApi, ragApi } from '@/lib/api'
+import {
+  datasetApi,
+  documentApi,
+  observabilityApi,
+  ragApi,
+  retrievalApi,
+} from '@/lib/api'
+import {
+  buildRetrievalConfigHashRequest,
+  hasDatasetRagContract,
+} from '@/lib/dataset-rag-contract'
 import { API_V1_BASE_URL } from '@/lib/env'
 import { queryKeys } from '@/lib/query-keys'
+import { buildRagPreviewDiagnosticsSummary } from '@/lib/rag-preview-diagnostics'
 import { cn } from '@/lib/utils'
 import type {
   Dataset,
@@ -911,6 +922,11 @@ export default function DiagnosticsPage() {
   const [probeResult, setProbeResult] = useState<PromptPreviewResponse | null>(
     null
   )
+  const [probeExplainResult, setProbeExplainResult] = useState<JsonObject | null>(
+    null
+  )
+  const [probeConfigHashResult, setProbeConfigHashResult] =
+    useState<JsonObject | null>(null)
   const [probeRunning, setProbeRunning] = useState(false)
   const [selectedDimensions, setSelectedDimensions] = useState<
     DiagnosticDimensionId[]
@@ -937,6 +953,19 @@ export default function DiagnosticsPage() {
   const datasets = datasetsQuery.data ?? EMPTY_DATASETS
   const datasetsLoading = datasetsQuery.isPending
   const activeDatasetId = probeDatasetId || datasets[0]?.id || ''
+  const activeDatasetQuery = useQuery({
+    queryKey: queryKeys.datasets.detail(activeDatasetId),
+    enabled: Boolean(activeDatasetId),
+    queryFn: () => datasetApi.get(activeDatasetId),
+    staleTime: 30_000,
+  })
+  const activeDataset = activeDatasetQuery.data ?? null
+  const explainContractReason = !activeDatasetId
+    ? '请选择数据集'
+    : hasDatasetRagContract(activeDataset?.rag_defaults)
+      ? null
+      : '当前数据集未配置 rag_defaults，explain/hash 已禁用'
+  const canExplainProbe = Boolean(activeDatasetId) && !explainContractReason
 
   const documentsQuery = useQuery({
     queryKey: queryKeys.documents.list({
@@ -1029,14 +1058,48 @@ export default function DiagnosticsPage() {
     }
     setProbeRunning(true)
     setProbeResult(null)
+    setProbeExplainResult(null)
+    setProbeConfigHashResult(null)
     try {
-      const res = await ragApi.promptPreview({
+      const promptPreviewRequest = {
         query: probeQuery.trim(),
         dataset_id: activeDatasetId || undefined,
         document_ids: validSelectedDocumentIds,
         structured_output: false,
-      })
-      setProbeResult(res)
+      }
+      const configHashRequest = buildRetrievalConfigHashRequest(
+        activeDataset?.rag_defaults
+      )
+
+      const [previewResponse, explainResponse, hashResponse] =
+        await Promise.all([
+          ragApi.promptPreview(promptPreviewRequest),
+          canExplainProbe && configHashRequest
+            ? retrievalApi.explain({
+                query: probeQuery.trim(),
+                dataset_id: activeDatasetId || undefined,
+                document_ids: validSelectedDocumentIds,
+                rag_config: configHashRequest.rag_config,
+                retrieval_only: true,
+                top_citations_limit: 8,
+              })
+            : Promise.resolve(null),
+          canExplainProbe && configHashRequest
+            ? retrievalApi.configHash(configHashRequest)
+            : Promise.resolve(null),
+        ])
+
+      setProbeResult(previewResponse)
+      setProbeExplainResult(
+        explainResponse && isDiagnosticRecord(explainResponse)
+          ? explainResponse
+          : null
+      )
+      setProbeConfigHashResult(
+        hashResponse && isDiagnosticRecord(hashResponse)
+          ? hashResponse
+          : null
+      )
       toast.success('RAG 预览完成')
     } catch (err) {
       toast.error(formatApiError(err, 'RAG 预览失败'))
@@ -1127,7 +1190,7 @@ export default function DiagnosticsPage() {
     { label: '服务 API', status: serviceDependencyStatus(healthOk) },
   ]
   const selectedDataset =
-    datasets.find((dataset) => dataset.id === activeDatasetId) || null
+    activeDataset || datasets.find((dataset) => dataset.id === activeDatasetId) || null
   const selectedDocuments = documents.filter((document) =>
     validSelectedDocumentIds.includes(document.id)
   )
@@ -1270,7 +1333,13 @@ export default function DiagnosticsPage() {
   const backendSummaryJson = useMemo(
     () => {
       const runState = diagnosticsRunState(
-        Boolean(probeResult || driftSnapshot || perfSuiteResult)
+        Boolean(
+          probeResult ||
+            probeExplainResult ||
+            probeConfigHashResult ||
+            driftSnapshot ||
+            perfSuiteResult
+        )
       )
       return prettyJson({
         status: runState.status,
@@ -1281,6 +1350,8 @@ export default function DiagnosticsPage() {
           document_ids: validSelectedDocumentIds,
           selected_dimensions: selectedDimensions,
           rag_preview: probeResult ?? null,
+          retrieval_explain: probeExplainResult ?? null,
+          retrieval_config_hash: probeConfigHashResult ?? null,
           embedding_drift: driftSnapshot ?? null,
           perf_suite: perfSuiteResult ?? null,
           deps: depsSnapshot ?? null,
@@ -1298,6 +1369,8 @@ export default function DiagnosticsPage() {
       validSelectedDocumentIds,
       selectedDimensions,
       probeResult,
+      probeExplainResult,
+      probeConfigHashResult,
       driftSnapshot,
       perfSuiteResult,
       depsSnapshot,
@@ -1307,7 +1380,11 @@ export default function DiagnosticsPage() {
     ]
   )
   const hasManualDiagnostics = Boolean(
-    probeResult || driftSnapshot || perfSuiteResult
+    probeResult ||
+      probeExplainResult ||
+      probeConfigHashResult ||
+      driftSnapshot ||
+      perfSuiteResult
   )
   const manualDiagnosticsStatusLabel = manualDiagnosticsStatus(
     probeRunning || driftRunning || perfSuiteRunning,
@@ -1318,6 +1395,23 @@ export default function DiagnosticsPage() {
     diagnosticField(onlineQuality, 'recommendations')
   )
   const backendRecommendationItems = recommendationItems(backendRecommendations)
+  const ragPreviewSummary = useMemo(
+    () =>
+      buildRagPreviewDiagnosticsSummary({
+        promptPreview: probeResult,
+        explain: probeExplainResult,
+        configHash: probeConfigHashResult,
+        explainEnabled: canExplainProbe,
+        contractReason: explainContractReason,
+      }),
+    [
+      probeResult,
+      probeExplainResult,
+      probeConfigHashResult,
+      canExplainProbe,
+      explainContractReason,
+    ]
+  )
 
   return (
     <AppFrame>
@@ -1750,6 +1844,112 @@ export default function DiagnosticsPage() {
             </div>
           </div>
 
+          <div className={CARD_BASE}>
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="m-0 flex items-center gap-2 text-[14px] font-semibold text-foreground">
+                  <Search className="size-4 text-primary" /> 主预览
+                </h3>
+                <p className="mt-1 text-[11px] text-muted-foreground/80">
+                  这里基于真实后端返回值显示 prompt-preview、retrieval explain 与 config hash。
+                </p>
+              </div>
+              <DiagnosticStatusPill
+                value={
+                  canExplainProbe
+                    ? probeRunning
+                      ? 'explain 运行中'
+                      : 'explain 已接入'
+                    : 'explain 已禁用'
+                }
+                tone={canExplainProbe ? 'green' : 'amber'}
+              />
+            </div>
+
+            {!probeResult && !probeRunning ? (
+              <div className="rounded-xl border border-dashed border-border/60 bg-card/50 px-4 py-5 text-[12px] text-muted-foreground">
+                运行一次 RAG 预览后，这里会展示 profile、config hash、通道候选、过滤/融合/reranker/耗时，以及 degraded/fallback 信号。
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                  <PreviewInfoCard
+                    label="query_for_retrieval"
+                    mono={false}
+                    value={
+                      ragPreviewSummary.queryForRetrieval || MISSING_RESULT_LABEL
+                    }
+                  />
+                  <PreviewInfoCard
+                    label="retrieval_profile"
+                    value={ragPreviewSummary.profile || MISSING_RESULT_LABEL}
+                  />
+                  <PreviewInfoCard
+                    label="config_hash"
+                    value={ragPreviewSummary.configHash || MISSING_RESULT_LABEL}
+                  />
+                  <PreviewInfoCard
+                    label="contract"
+                    mono={false}
+                    value={
+                      ragPreviewSummary.explainEnabled
+                        ? 'dataset rag_defaults'
+                        : ragPreviewSummary.contractReason || 'disabled'
+                    }
+                  />
+                </div>
+
+                {!ragPreviewSummary.explainEnabled &&
+                ragPreviewSummary.contractReason ? (
+                  <div className="rounded-xl border border-warning/20 bg-warning/10 px-3 py-2 text-[12px] text-warning">
+                    {ragPreviewSummary.contractReason}
+                  </div>
+                ) : null}
+
+                <div className="grid gap-3 xl:grid-cols-4">
+                  <PreviewListCard
+                    title="通道候选"
+                    emptyLabel="后端未返回 channel 数据"
+                    items={ragPreviewSummary.channelCandidates}
+                  />
+                  <PreviewListCard
+                    title="过滤"
+                    emptyLabel="后端未返回 filtering/contract 字段"
+                    items={ragPreviewSummary.filtering}
+                  />
+                  <PreviewListCard
+                    title="融合"
+                    emptyLabel="后端未返回 fusion 字段"
+                    items={ragPreviewSummary.fusion}
+                  />
+                  <PreviewListCard
+                    title="Reranker / 耗时"
+                    emptyLabel="后端未返回 reranker/timing 字段"
+                    items={[
+                      ...ragPreviewSummary.reranker,
+                      ...ragPreviewSummary.timings,
+                    ]}
+                  />
+                </div>
+
+                {ragPreviewSummary.degraded.length > 0 ? (
+                  <PreviewMessageCard
+                    title="Degraded"
+                    tone="amber"
+                    items={ragPreviewSummary.degraded}
+                  />
+                ) : null}
+                {ragPreviewSummary.fallback.length > 0 ? (
+                  <PreviewMessageCard
+                    title="Fallback"
+                    tone="red"
+                    items={ragPreviewSummary.fallback}
+                  />
+                ) : null}
+              </div>
+            )}
+          </div>
+
           {/* 5. 底层分析网格 */}
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
             {/* 执行结果 */}
@@ -1999,5 +2199,109 @@ function RawDiagnosticsDetails({
         </pre>
       </div>
     </details>
+  )
+}
+
+function PreviewInfoCard({
+  label,
+  mono = true,
+  value,
+}: Readonly<{
+  label: string
+  mono?: boolean
+  value: string
+}>) {
+  return (
+    <div className="rounded-xl border border-border/60 bg-card/70 px-3 py-2.5">
+      <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/80">
+        {label}
+      </div>
+      <div
+        className={cn(
+          'mt-1 truncate text-[12px] font-semibold text-foreground',
+          mono && 'font-mono'
+        )}
+        title={value}
+      >
+        {value}
+      </div>
+    </div>
+  )
+}
+
+function PreviewListCard({
+  emptyLabel,
+  items,
+  title,
+}: Readonly<{
+  emptyLabel: string
+  items: Array<{ label: string; value: string }>
+  title: string
+}>) {
+  return (
+    <div className="rounded-xl border border-border/60 bg-card/60 p-3">
+      <div className="text-[12px] font-semibold text-foreground">{title}</div>
+      {items.length > 0 ? (
+        <div className="mt-2 space-y-2">
+          {items.map((item) => (
+            <div
+              key={`${title}-${item.label}-${item.value}`}
+              className="rounded-lg border border-border/50 bg-background/70 px-2.5 py-2"
+            >
+              <div className="text-[10px] uppercase tracking-[0.1em] text-muted-foreground/75">
+                {item.label}
+              </div>
+              <div className="mt-1 break-words font-mono text-[11px] text-foreground/90">
+                {item.value}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-2 text-[11px] text-muted-foreground/75">
+          {emptyLabel}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PreviewMessageCard({
+  items,
+  title,
+  tone,
+}: Readonly<{
+  items: string[]
+  title: string
+  tone: 'amber' | 'red'
+}>) {
+  return (
+    <div
+      className={cn(
+        'rounded-xl border px-3 py-3',
+        tone === 'amber'
+          ? 'border-warning/20 bg-warning/10'
+          : 'border-destructive/20 bg-destructive/10'
+      )}
+    >
+      <div
+        className={cn(
+          'text-[12px] font-semibold',
+          tone === 'amber' ? 'text-warning' : 'text-destructive'
+        )}
+      >
+        {title}
+      </div>
+      <div className="mt-2 space-y-1.5">
+        {items.map((item) => (
+          <div
+            key={`${title}-${item}`}
+            className="rounded-lg bg-background/75 px-2.5 py-2 font-mono text-[11px] text-foreground/90"
+          >
+            {item}
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }

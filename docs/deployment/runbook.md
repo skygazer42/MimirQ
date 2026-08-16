@@ -151,7 +151,11 @@ K8s readiness 建议用 `/api/v1/health/ready`。
 
 当 `PROMETHEUS_ENABLED=true` 时，会额外暴露 `GET /metrics`（Prometheus 抓取入口）。
 
-> 建议：`/metrics` 通常不做 RBAC，但应通过网关 / 网络策略限制访问范围（仅 Prometheus 可抓取）。
+认证方式：
+- 推荐配置 `METRICS_BEARER_TOKEN`（支持原始 token 或 `sha256:<hex>`）供 Prometheus 抓取。
+- 若未配置 `METRICS_BEARER_TOKEN`，`/metrics` 会回退到应用账号认证，不适合无头 scrape。
+
+> 建议：即使配置了 `METRICS_BEARER_TOKEN`，仍应通过网关 / 网络策略限制访问范围（仅 Prometheus 可抓取）。
 
 ### RAG SLI（PII-safe）
 

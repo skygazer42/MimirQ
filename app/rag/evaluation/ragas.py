@@ -18,7 +18,6 @@ from uuid import UUID
 import httpx
 from fastapi import HTTPException
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 from app.core.config import settings
@@ -35,15 +34,14 @@ from app.models.evaluation import (
     RagasRegressionItem,
     RagasRegressionRun,
 )
-from app.rag.core.hashing import stable_json_hash
 from app.rag.core.http import httpx_trust_env
 from app.rag.core.logging import get_logger
-from app.rag.core.text import parse_json_from_text
 from app.rag.embedding import create_langchain_embeddings_from_config
 from app.rag.evaluation.evidence_retrieve_gate import (
     build_retrieval_gate_summary,
     compute_retrieval_item_meta,
 )
+from app.rag.evaluation.llm_judge import attach_llm_judge_to_eval_items
 from app.rag.evaluation.multimodal_slices import (
     classify_regression_case_multimodal_slice,
     summarize_multimodal_regression_slices,
@@ -64,7 +62,6 @@ from app.rag.pipeline_plugins.contracts import (
 from app.services.chat_conversation_access import ensure_conversation_access
 from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, get_allowed_document_id_sets
-from app.services.prompt_resolver import resolve_prompt_template
 
 logger = get_logger(__name__)
 _TOKEN_RE = re.compile(r"[\u4e00-\u9fff]|[A-Za-z0-9_]{2,}")
@@ -839,376 +836,6 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_json_safe(v) for v in value]
     return value
-
-
-def _clip_text(value: Any, *, max_len: int = 400) -> str:
-    text = str(value or "").strip()
-    max_len = max(0, int(max_len or 0))
-    if not max_len:
-        return ""
-    if len(text) <= max_len:
-        return text
-    return f"{text[: max_len - 3].rstrip()}..."
-
-
-def _clip_contexts_for_judge(contexts: list[Any] | None, *, max_contexts: int = 6, max_chars: int = 900) -> list[str]:
-    cap_ctx = max(1, int(max_contexts or 1))
-    cap_chars = max(50, int(max_chars or 50))
-    out: list[str] = []
-    for raw in contexts or []:
-        t = str(raw or "").strip()
-        if not t:
-            continue
-        out.append(t[:cap_chars])
-        if len(out) >= cap_ctx:
-            break
-    return out
-
-
-def _default_llm_judge_prompt(*, kind: str, question: str, answer: str, contexts: list[str]) -> str:
-    """
-    Create a compact LLM-as-judge prompt that returns strict JSON.
-
-    `kind`:
-      - "retrieval": judge context quality only
-      - "generation": judge answer quality given contexts
-    """
-    ctx_lines = "\n".join([f"[C{i+1}] {c}" for i, c in enumerate(contexts or [])]).strip()
-    if kind == "retrieval":
-        return (
-            "You are a strict evaluator for a RAG system.\n"
-            "Evaluate retrieval quality ONLY (do not judge the final answer).\n\n"
-            f"Question:\n{question}\n\n"
-            "Retrieved contexts (snippets):\n"
-            f"{ctx_lines}\n\n"
-            "Return STRICT JSON only:\n"
-            '{\n'
-            '  "score": 0.0,\n'
-            '  "reason": "short reason",\n'
-            '  "evidence_quotes": ["quote copied verbatim from contexts (<=160 chars)", "..."]\n'
-            '}\n\n'
-            "Scoring guide:\n"
-            "- 1.0: contexts are highly relevant and sufficient to answer.\n"
-            "- 0.7: mostly relevant, small gaps.\n"
-            "- 0.4: weak relevance or missing key evidence.\n"
-            "- 0.0: irrelevant/noisy contexts.\n"
-            "Rules:\n"
-            "- evidence_quotes must be copied from the provided contexts.\n"
-            "- Keep reason <= 240 chars.\n"
-            "- evidence_quotes: 0-3 items.\n"
-        )
-
-    return (
-        "You are a strict evaluator for a RAG system.\n"
-        "Evaluate answer quality given the retrieved contexts.\n\n"
-        f"Question:\n{question}\n\n"
-        f"Answer:\n{answer}\n\n"
-        "Retrieved contexts (snippets):\n"
-        f"{ctx_lines}\n\n"
-        "Return STRICT JSON only:\n"
-        '{\n'
-        '  "score": 0.0,\n'
-        '  "reason": "short reason",\n'
-        '  "evidence_quotes": ["quote copied verbatim from contexts (<=160 chars)", "..."]\n'
-        '}\n\n'
-        "Scoring guide:\n"
-        "- 1.0: answers the question and is fully supported by contexts.\n"
-        "- 0.7: mostly supported, minor unsupported detail.\n"
-        "- 0.4: partially supported or incomplete.\n"
-        "- 0.0: mostly unsupported/hallucinated or wrong.\n"
-        "Rules:\n"
-        "- evidence_quotes must be copied from the provided contexts.\n"
-        "- Keep reason <= 240 chars.\n"
-        "- evidence_quotes: 0-3 items.\n"
-    )
-
-
-def _llm_judge_version_hash(
-    *,
-    model: Any,
-    generation_prompt_content: str | None = None,
-    generation_prompt_variables: list[str] | None = None,
-    generation_prompt_version: int | None = None,
-) -> str:
-    model_used = getattr(model, "model_name", None) or getattr(model, "model", None)
-    default_inputs = {"question": "{question}", "answer": "{answer}", "contexts": ["{context}"]}
-    return stable_json_hash(
-        {
-            "schema": "mimirq.llm_judge.version.v1",
-            "model": str(model_used or ""),
-            "temperature": getattr(model, "temperature", None),
-            "retrieval_rubric": _default_llm_judge_prompt(kind="retrieval", **default_inputs),
-            "generation_rubric": generation_prompt_content
-            or _default_llm_judge_prompt(kind="generation", **default_inputs),
-            "generation_prompt_variables": sorted(str(item) for item in (generation_prompt_variables or [])),
-            "generation_prompt_version": generation_prompt_version,
-        },
-        length=24,
-    )
-
-
-def _render_llm_judge_prompt(
-    *,
-    kind: str,
-    question: str,
-    answer: str,
-    contexts: list[str],
-    prompt_content: str | None = None,
-    prompt_variables: list[str] | None = None,
-) -> str:
-    if kind != "generation" or not str(prompt_content or "").strip():
-        return _default_llm_judge_prompt(kind=kind, question=question, answer=answer, contexts=contexts)
-
-    variable_names = [str(item).strip() for item in (prompt_variables or []) if str(item).strip()]
-    if not variable_names:
-        variable_names = ["question", "answer", "contexts"]
-    contexts_text = "\n".join([f"[C{i+1}] {c}" for i, c in enumerate(contexts or [])]).strip()
-    payload: dict[str, Any] = {}
-    if "question" in variable_names:
-        payload["question"] = str(question or "")
-    if "answer" in variable_names:
-        payload["answer"] = str(answer or "")
-    if "contexts" in variable_names:
-        payload["contexts"] = contexts_text
-    prompt = PromptTemplate(template=str(prompt_content), input_variables=variable_names)
-    return str(prompt.format(**payload))
-
-
-def _coerce_llm_judge_payload(raw: Any) -> dict[str, Any]:
-    obj = raw if isinstance(raw, dict) else {}
-    score_raw = obj.get("score")
-    try:
-        score = float(score_raw) if score_raw is not None else None
-    except Exception:
-        score = None
-    if score is not None:
-        score = min(1.0, max(0.0, float(score)))
-        score = round(float(score), 4)
-
-    reason = _clip_text(obj.get("reason") or obj.get("explanation") or "", max_len=240)
-
-    quotes_raw = obj.get("evidence_quotes") or obj.get("quotes") or obj.get("evidence") or []
-    quotes: list[str] = []
-    if isinstance(quotes_raw, list):
-        for q in quotes_raw:
-            t = _clip_text(q, max_len=160)
-            if not t:
-                continue
-            if t in quotes:
-                continue
-            quotes.append(t)
-            if len(quotes) >= 3:
-                break
-    elif isinstance(quotes_raw, str) and quotes_raw.strip():
-        quotes = [_clip_text(quotes_raw, max_len=160)]
-
-    out = {"score": score, "reason": reason, "evidence_quotes": quotes}
-    detail_fields = {
-        "atomic_facts": {"fact", "status", "verdict", "evidence_quote"},
-        "chunk_judgments": {"rank", "is_relevant", "evidence_quote"},
-        "citation_checks": {"citation", "claim", "verdict", "evidence_quote"},
-    }
-    for key, allowed_fields in detail_fields.items():
-        items: list[dict[str, Any]] = []
-        for item in obj.get(key) if isinstance(obj.get(key), list) else []:
-            if not isinstance(item, dict):
-                continue
-            cleaned: dict[str, Any] = {}
-            for field in allowed_fields:
-                value = item.get(field)
-                if isinstance(value, (bool, int, float)):
-                    cleaned[field] = value
-                elif isinstance(value, str) and value.strip():
-                    cleaned[field] = _clip_text(value, max_len=500)
-            if cleaned:
-                items.append(cleaned)
-            if len(items) >= 100:
-                break
-        if items:
-            out[key] = items
-    return out
-
-
-def _run_llm_judge(
-    *,
-    llm: Any,
-    kind: str,
-    question: str,
-    answer: str,
-    contexts: list[str],
-    prompt_content: str | None = None,
-    prompt_variables: list[str] | None = None,
-    prompt_meta: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    prompt = _render_llm_judge_prompt(
-        kind=kind,
-        question=question,
-        answer=answer,
-        contexts=contexts,
-        prompt_content=prompt_content,
-        prompt_variables=prompt_variables,
-    )
-    content = ""
-    err: str | None = None
-    try:
-        resp = llm.invoke(prompt)
-        content = str(getattr(resp, "content", None) or resp or "")
-    except Exception as exc:  # noqa: BLE001
-        err = f"invoke_error:{type(exc).__name__}:{str(exc)[:120]}"
-        content = ""
-
-    obj, meta = parse_json_from_text(content, expected="object")
-    out = _coerce_llm_judge_payload(obj)
-    out["ok"] = bool(meta.get("ok"))
-    out["method"] = meta.get("method")
-    out["error"] = err or meta.get("error")
-    if isinstance(prompt_meta, dict) and prompt_meta:
-        out.update(prompt_meta)
-    return out
-
-
-def _attach_llm_judge_to_eval_items(
-    *,
-    eval_items: list[dict[str, Any]],
-    llm: Any,
-    db: Any | None = None,
-    tenant_id: UUID | None = None,
-    judge_prompt_template_id: UUID | None = None,
-    judge_prompt_template_key: str | None = None,
-    judge_prompt_ab_experiment_key: str | None = None,
-    judge_ab_user_key: str | None = None,
-) -> dict[str, Any]:
-    model_used = getattr(llm, "model_name", None) or getattr(llm, "model", None)
-    gen_scores: list[float] = []
-    ret_scores: list[float] = []
-    overall_scores: list[float] = []
-    selected_generation_template = None
-    generation_prompt_content: str | None = None
-    generation_prompt_variables: list[str] | None = None
-    generation_prompt_version: int | None = None
-    generation_prompt_meta: dict[str, Any] = {}
-
-    if db is not None and tenant_id is not None and (
-        judge_prompt_template_id
-        or (judge_prompt_template_key or "").strip()
-        or (judge_prompt_ab_experiment_key or "").strip()
-    ):
-        try:
-            selected_generation_template = resolve_prompt_template(
-                db=db,
-                tenant_id=tenant_id,
-                prompt_template_id=judge_prompt_template_id,
-                template_key=judge_prompt_template_key,
-                ab_experiment_key=judge_prompt_ab_experiment_key,
-                ab_user_key=judge_ab_user_key,
-            )
-        except Exception as exc:
-            logger.warning("Failed to resolve llm judge prompt template: %s", exc)
-            selected_generation_template = None
-
-    if selected_generation_template is not None:
-        generation_prompt_content = str(getattr(selected_generation_template, "content", "") or "").strip() or None
-        generation_prompt_variables = list(getattr(selected_generation_template, "variables", None) or [])
-        generation_prompt_version = int(getattr(selected_generation_template, "version", 0) or 0) or None
-        generation_prompt_meta = {
-            "prompt_template_id": str(getattr(selected_generation_template, "id", "") or "") or None,
-            "prompt_template_key": str(getattr(selected_generation_template, "template_key", "") or "").strip() or None,
-            "prompt_ab_experiment_key": str(getattr(selected_generation_template, "ab_experiment_key", "") or "").strip() or None,
-            "prompt_ab_variant": str(getattr(selected_generation_template, "ab_variant", "") or "").strip() or None,
-            "prompt_template_version": generation_prompt_version,
-        }
-
-    judge_version_hash = _llm_judge_version_hash(
-        model=llm,
-        generation_prompt_content=generation_prompt_content,
-        generation_prompt_variables=generation_prompt_variables,
-        generation_prompt_version=generation_prompt_version,
-    )
-
-    def _run() -> None:
-        for item in eval_items:
-            if not isinstance(item, dict):
-                continue
-            q = str(item.get("question") or "")
-            a = str(item.get("response") or "")
-            ctx = _clip_contexts_for_judge(item.get("retrieved_contexts"), max_contexts=6, max_chars=900)
-            if not q.strip():
-                continue
-
-            retrieval = _run_llm_judge(llm=llm, kind="retrieval", question=q, answer="", contexts=ctx)
-            generation = _run_llm_judge(
-                llm=llm,
-                kind="generation",
-                question=q,
-                answer=a,
-                contexts=ctx,
-                prompt_content=generation_prompt_content,
-                prompt_variables=generation_prompt_variables,
-                prompt_meta=generation_prompt_meta,
-            )
-
-            scores_for_overall: list[float] = []
-            r_score = retrieval.get("score")
-            g_score = generation.get("score")
-            if isinstance(r_score, (int, float)) and not isinstance(r_score, bool):
-                ret_scores.append(float(r_score))
-                scores_for_overall.append(float(r_score))
-            if isinstance(g_score, (int, float)) and not isinstance(g_score, bool):
-                gen_scores.append(float(g_score))
-                scores_for_overall.append(float(g_score))
-
-            overall = round(sum(scores_for_overall) / len(scores_for_overall), 4) if scores_for_overall else None
-            if overall is not None:
-                overall_scores.append(float(overall))
-
-            meta = item.get("item_meta") if isinstance(item.get("item_meta"), dict) else {}
-            meta["llm_judge"] = {
-                "enabled": True,
-                "model_used": model_used,
-                "version_hash": judge_version_hash,
-                "retrieval": retrieval,
-                "generation": generation,
-                "overall_score": overall,
-            }
-            item["item_meta"] = meta
-
-    prompt_tokens: int | None = None
-    completion_tokens: int | None = None
-    total_cost: float | None = None
-    get_openai_callback = None
-    try:  # best-effort; do not add a hard dependency for judge integration
-        from langchain_community.callbacks.manager import get_openai_callback as _get_openai_callback  # type: ignore
-
-        get_openai_callback = _get_openai_callback
-    except Exception:
-        get_openai_callback = None
-
-    if get_openai_callback is not None:
-        with get_openai_callback() as cb:
-            _run()
-        prompt_tokens = int(getattr(cb, "prompt_tokens", 0) or 0)
-        completion_tokens = int(getattr(cb, "completion_tokens", 0) or 0)
-        total_cost = float(getattr(cb, "total_cost", 0.0) or 0.0)
-    else:
-        _run()
-
-    return {
-        "llm_judge_model_used": str(model_used or "") or None,
-        "llm_judge_version_hash": judge_version_hash,
-        "llm_judge_items": int(len(overall_scores)),
-        "llm_judge_retrieval_avg": _mean(ret_scores),
-        "llm_judge_generation_avg": _mean(gen_scores),
-        "llm_judge_overall_avg": _mean(overall_scores),
-        "llm_judge_prompt_template_id": generation_prompt_meta.get("prompt_template_id"),
-        "llm_judge_prompt_template_key": generation_prompt_meta.get("prompt_template_key"),
-        "llm_judge_prompt_ab_experiment_key": generation_prompt_meta.get("prompt_ab_experiment_key"),
-        "llm_judge_prompt_ab_variant": generation_prompt_meta.get("prompt_ab_variant"),
-        "llm_judge_prompt_template_version": generation_prompt_meta.get("prompt_template_version"),
-        # Gap8 (P2): cost tracking for judge calls (best-effort).
-        "llm_judge_tokens_input": prompt_tokens,
-        "llm_judge_tokens_output": completion_tokens,
-        "llm_judge_estimated_cost_usd": (round(float(total_cost), 6) if total_cost is not None else None),
-    }
 
 
 def _resolve_case_scope(
@@ -2325,7 +1952,7 @@ def run_regression_ragas_evaluation(
             # LLM-as-judge is optional and should never fail the whole regression run.
             try:
                 shared_llm, shared_embeddings = _build_llm_and_embeddings()
-                llm_judge_summary = _attach_llm_judge_to_eval_items(
+                llm_judge_summary = attach_llm_judge_to_eval_items(
                     eval_items=eval_items,
                     llm=shared_llm,
                     db=db,

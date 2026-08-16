@@ -11,6 +11,7 @@ import atexit
 import contextlib
 import contextvars
 import hashlib
+import importlib
 import json
 import os
 import queue
@@ -40,6 +41,8 @@ _ctx_conversation_id: contextvars.ContextVar[str | None] = contextvars.ContextVa
 )
 _ctx_account_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("metrics.account_id", default=None)
 _ctx_extra: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar("metrics.extra", default=None)
+_OTEL_API_UNAVAILABLE = object()
+_otel_api_cache: tuple[Any, Any, Any] | object | None = None
 
 
 def _now_ts_ms() -> int:
@@ -549,34 +552,157 @@ def shutdown_metrics_logger(timeout_sec: float = 2.0) -> None:
         flush_metrics(timeout_sec=timeout_sec)
 
 
+def _resolve_otel_api() -> tuple[Any, Any, Any] | None:
+    global _otel_api_cache
+    if _otel_api_cache is _OTEL_API_UNAVAILABLE:
+        return None
+    if _otel_api_cache is None:
+        try:
+            otel_trace = importlib.import_module("opentelemetry.trace")
+            otel_status = importlib.import_module("opentelemetry.trace.status")
+            _otel_api_cache = (
+                otel_trace,
+                otel_status.Status,
+                otel_status.StatusCode,
+            )
+        except Exception:
+            _otel_api_cache = _OTEL_API_UNAVAILABLE
+            return None
+    return _otel_api_cache if isinstance(_otel_api_cache, tuple) else None
+
+
+def _otel_provider_configured(provider: Any) -> bool:
+    module_name = str(getattr(provider.__class__, "__module__", "") or "")
+    if not module_name.startswith("opentelemetry.sdk.trace"):
+        return False
+    return callable(getattr(provider, "get_tracer", None))
+
+
+def _get_optional_otel_tracer() -> Any | None:
+    api = _resolve_otel_api()
+    if api is None:
+        return None
+    otel_trace, _status_cls, _status_code = api
+    try:
+        provider = otel_trace.get_tracer_provider()
+    except Exception as exc:
+        logger.debug(_SERVICE_FALLBACK_LOG_MESSAGE, exc)
+        return None
+    if not _otel_provider_configured(provider):
+        return None
+    try:
+        return provider.get_tracer("app.services.metrics_logger")
+    except Exception as exc:
+        logger.debug(_SERVICE_FALLBACK_LOG_MESSAGE, exc)
+        return None
+
+
+def _sanitize_otel_attributes(attributes: Mapping[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(attributes, Mapping):
+        return {}
+    out: dict[str, Any] = {}
+    for raw_key, raw_value in attributes.items():
+        key = str(raw_key or "").strip()
+        if not key:
+            continue
+        if isinstance(raw_value, bool):
+            out[key] = raw_value
+            continue
+        if isinstance(raw_value, int) and not isinstance(raw_value, bool):
+            out[key] = raw_value
+            continue
+        if isinstance(raw_value, float):
+            out[key] = raw_value
+            continue
+        if isinstance(raw_value, str):
+            out[key] = raw_value[:120]
+            continue
+    return out
+
+
 @contextlib.contextmanager
-def metrics_span(event: str, **fields: Any):
+def _optional_otel_span(span_name: str, *, attributes: Mapping[str, Any] | None = None):
+    tracer = _get_optional_otel_tracer()
+    api = _resolve_otel_api()
+    if tracer is None or api is None:
+        yield None
+        return
+
+    _otel_trace, status_cls, status_code = api
+    span_cm = None
+    span = None
+    caught_exc: Exception | None = None
+    try:
+        span_cm = tracer.start_as_current_span(str(span_name or "").strip() or "span")
+        span = span_cm.__enter__()
+    except Exception as exc:
+        logger.debug(_SERVICE_FALLBACK_LOG_MESSAGE, exc)
+        span_cm = None
+        span = None
+
+    if span is not None and getattr(span, "is_recording", lambda: False)():
+        for key, value in _sanitize_otel_attributes(attributes).items():
+            with contextlib.suppress(Exception):
+                span.set_attribute(key, value)
+
+    try:
+        yield span
+    except Exception as exc:  # noqa: BLE001
+        caught_exc = exc
+        if span is not None and getattr(span, "is_recording", lambda: False)():
+            with contextlib.suppress(Exception):
+                span.record_exception(exc)
+            with contextlib.suppress(Exception):
+                span.set_status(status_cls(status_code.ERROR, str(exc)[:200]))
+        raise
+    else:
+        if span is not None and getattr(span, "is_recording", lambda: False)():
+            with contextlib.suppress(Exception):
+                span.set_status(status_cls(status_code.OK))
+    finally:
+        if span_cm is not None:
+            with contextlib.suppress(Exception):
+                if caught_exc is None:
+                    span_cm.__exit__(None, None, None)
+                else:
+                    span_cm.__exit__(type(caught_exc), caught_exc, caught_exc.__traceback__)
+
+
+@contextlib.contextmanager
+def metrics_span(
+    event: str,
+    *,
+    otel_span_name: str | None = None,
+    otel_attributes: Mapping[str, Any] | None = None,
+    **fields: Any,
+):
     """
     Context-manager helper to log elapsed time + success/error for a block.
     """
 
     start = time.perf_counter()
-    try:
-        yield
-    except Exception as exc:  # noqa: BLE001
-        elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
-        log_metrics(
-            {
-                "event": event,
-                "success": False,
-                "elapsed_ms": elapsed_ms,
-                "error": str(exc)[:200],
-                **fields,
-            }
-        )
-        raise
-    else:
-        elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
-        log_metrics(
-            {
-                "event": event,
-                "success": True,
-                "elapsed_ms": elapsed_ms,
-                **fields,
-            }
-        )
+    with _optional_otel_span(otel_span_name or event, attributes=otel_attributes):
+        try:
+            yield
+        except Exception as exc:  # noqa: BLE001
+            elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+            log_metrics(
+                {
+                    "event": event,
+                    "success": False,
+                    "elapsed_ms": elapsed_ms,
+                    "error": str(exc)[:200],
+                    **fields,
+                }
+            )
+            raise
+        else:
+            elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+            log_metrics(
+                {
+                    "event": event,
+                    "success": True,
+                    "elapsed_ms": elapsed_ms,
+                    **fields,
+                }
+            )

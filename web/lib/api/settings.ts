@@ -64,12 +64,25 @@ export interface RAGConfig {
   chunk_min_chars: number
   retrieval_top_k: number
   similarity_threshold: number
+  retrieval_profile?: string
+  retrieval_mode?: string
+  retrieval_contract_mode?: string
+  alpha?: number
+  fusion_strategy?: string | null
+  fusion_budgets?: Record<string, number> | null
+  fusion_min_scores?: Record<string, number> | null
+  fusion_weights?: Record<string, number> | null
+  enable_weight_rerank?: boolean
+  vector_weight?: number
+  keyword_weight?: number
+  mmr_lambda?: number
   default_parser_backend: string
   default_chunk_strategy: string
   bm25_index_enabled: boolean
   enable_reranker: boolean
   reranker_provider: string
   reranker_top_n: number
+  visible_evidence_only?: boolean
   show_image_in_answer: boolean
   image_append_max: number
 }

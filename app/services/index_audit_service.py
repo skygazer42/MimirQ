@@ -10,9 +10,20 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
+from app.models.document_index_channel import DocumentIndexChannel
 from app.models.index_drift_item import IndexDriftItem
 from app.rag.core.logging import get_logger
 from app.services.dataset_service import DatasetService
+from app.services.document_index_channel_service import (
+    DOCUMENT_INDEX_CHANNEL_TERMINAL_ERROR,
+    DOCUMENT_INDEX_CHANNEL_TERMINAL_READY,
+    DOCUMENT_INDEX_CHANNELS,
+    summarize_document_index_channels,
+)
+from app.services.pipeline_config import resolve_pipeline_effective
+
+_DEFAULT_INDEX_AUDIT_RECONCILE_SCAN_LIMIT = 100
+_MAX_INDEX_AUDIT_RECONCILE_SCAN_LIMIT = 200
 
 
 def _now_utc_iso() -> str:
@@ -492,6 +503,7 @@ def compute_index_audit_summary(
     vector_ids_existing: set[str] | None,
     milvus_ids_sample: list[str] | None = None,
     active_chunk_ids_present: set[str] | None = None,
+    index_channels: dict[str, Any] | None = None,
     sample_limit: int = 20,
 ) -> dict[str, Any]:
     """
@@ -529,6 +541,473 @@ def compute_index_audit_summary(
         "vector_ids_missing_in_backend_sample": _sample(missing_in_vector_sorted),
         "milvus_ids_sampled": int(len(milvus_ids_sample or [])),
         "milvus_orphan_ids_sample": _sample(orphan_sample),
+        "index_channels": dict(index_channels or {}),
+    }
+
+
+def _document_pipeline_hash(document: Any) -> str | None:
+    meta = dict(getattr(document, "doc_metadata", None) or {})
+    return str(meta.get("active_pipeline_hash") or meta.get("pipeline_hash") or "").strip() or None
+
+
+def _document_channel_flags(document: Any) -> dict[str, bool]:
+    effective = resolve_pipeline_effective(document_metadata=dict(getattr(document, "doc_metadata", None) or {}))
+    return {
+        "vector": bool(getattr(effective, "chunk_vector_enabled", False)),
+        "bm25": bool(getattr(effective, "bm25_index_enabled", False)),
+        "kg": bool(getattr(effective, "kg_enabled", False)),
+        "event_vector": bool(getattr(effective, "event_vector_enabled", False)),
+        "entity_vector": bool(getattr(effective, "entity_vector_enabled", False)),
+    }
+
+
+def _legacy_index_channel_status(document: Any, *, channel: str, enabled: bool) -> dict[str, Any]:
+    status_raw = str(getattr(document, "status", "") or "").strip().lower()
+    meta = dict(getattr(document, "doc_metadata", None) or {})
+    active_ready = bool(meta.get("active_pipeline_ready")) or status_raw == "completed"
+
+    if not enabled:
+        status = "disabled"
+    elif active_ready:
+        status = "ready"
+    elif status_raw in {"failed", "quarantined", "cancelled"}:
+        status = "error"
+    elif status_raw in {"processing"}:
+        status = "processing"
+    else:
+        status = "pending"
+
+    error = None
+    if status == "error":
+        error = str(getattr(document, "error_message", "") or meta.get("error_message") or "").strip() or None
+
+    return {
+        "channel": channel,
+        "required": bool(enabled),
+        "enabled": bool(enabled),
+        "status": status,
+        "error": error,
+        "legacy": True,
+    }
+
+
+def _row_index_channel_status(row: Any) -> dict[str, Any]:
+    return {
+        "channel": str(getattr(row, "channel", "") or ""),
+        "required": bool(getattr(row, "required", False)),
+        "enabled": bool(getattr(row, "enabled", False)),
+        "status": str(getattr(row, "status", "pending") or "pending").strip().lower(),
+        "error": str(getattr(row, "error", "") or "").strip() or None,
+        "legacy": False,
+    }
+
+
+def compute_index_channel_audit_summary(
+    *,
+    documents: list[Any],
+    channel_rows: list[Any],
+) -> dict[str, Any]:
+    rows_by_document: dict[str, dict[str, dict[str, Any]]] = {}
+    rows_seen_by_document: set[str] = set()
+    pipeline_hash_by_document = {
+        str(getattr(document, "id", "") or ""): _document_pipeline_hash(document)
+        for document in documents
+        if getattr(document, "id", None) is not None
+    }
+    for row in channel_rows:
+        document_key = str(getattr(row, "document_id", "") or "")
+        if not document_key:
+            continue
+        pipeline_hash = str(getattr(row, "pipeline_hash", "") or "").strip() or None
+        if pipeline_hash != pipeline_hash_by_document.get(document_key):
+            continue
+        rows_seen_by_document.add(document_key)
+        rows_by_document.setdefault(document_key, {})[str(getattr(row, "channel", "") or "")] = _row_index_channel_status(row)
+
+    status_counts: dict[str, int] = {}
+    status_counts_by_channel: dict[str, dict[str, int]] = {
+        channel: {} for channel in DOCUMENT_INDEX_CHANNELS
+    }
+    legacy_by_channel = {channel: 0 for channel in DOCUMENT_INDEX_CHANNELS}
+    required_pending_by_channel = {channel: 0 for channel in DOCUMENT_INDEX_CHANNELS}
+    required_error_by_channel = {channel: 0 for channel in DOCUMENT_INDEX_CHANNELS}
+    optional_disabled_by_channel = {channel: 0 for channel in DOCUMENT_INDEX_CHANNELS}
+    optional_skipped_by_channel = {channel: 0 for channel in DOCUMENT_INDEX_CHANNELS}
+
+    ready_documents = 0
+    required_pending_documents = 0
+    required_error_documents = 0
+    optional_disabled_documents = 0
+    optional_skipped_documents = 0
+    legacy_fallback_documents = 0
+
+    for document in documents:
+        document_key = str(getattr(document, "id", "") or "")
+        flags = _document_channel_flags(document)
+        statuses = dict(rows_by_document.get(document_key) or {})
+        if document_key not in rows_seen_by_document:
+            legacy_fallback_documents += 1
+        for channel in DOCUMENT_INDEX_CHANNELS:
+            if channel not in statuses:
+                statuses[channel] = _legacy_index_channel_status(
+                    document,
+                    channel=channel,
+                    enabled=bool(flags.get(channel, False)),
+                )
+
+        doc_required_pending = False
+        doc_required_error = False
+        doc_optional_disabled = False
+        doc_optional_skipped = False
+        for channel, payload in statuses.items():
+            status = str(payload.get("status") or "").strip().lower() or "pending"
+            enabled = bool(payload.get("enabled"))
+            status_counts[status] = int(status_counts.get(status, 0) or 0) + 1
+            channel_status_counts = status_counts_by_channel.setdefault(channel, {})
+            channel_status_counts[status] = int(channel_status_counts.get(status, 0) or 0) + 1
+            if bool(payload.get("legacy")):
+                legacy_by_channel[channel] = int(legacy_by_channel.get(channel, 0) or 0) + 1
+            if enabled and status in DOCUMENT_INDEX_CHANNEL_TERMINAL_ERROR:
+                required_error_by_channel[channel] = int(required_error_by_channel.get(channel, 0) or 0) + 1
+                doc_required_error = True
+            elif enabled and status not in DOCUMENT_INDEX_CHANNEL_TERMINAL_READY | DOCUMENT_INDEX_CHANNEL_TERMINAL_ERROR:
+                required_pending_by_channel[channel] = int(required_pending_by_channel.get(channel, 0) or 0) + 1
+                doc_required_pending = True
+            elif not enabled and status == "disabled":
+                optional_disabled_by_channel[channel] = int(optional_disabled_by_channel.get(channel, 0) or 0) + 1
+                doc_optional_disabled = True
+            elif not enabled and status == "skipped":
+                optional_skipped_by_channel[channel] = int(optional_skipped_by_channel.get(channel, 0) or 0) + 1
+                doc_optional_skipped = True
+
+        if doc_required_error:
+            required_error_documents += 1
+        if doc_required_pending:
+            required_pending_documents += 1
+        if doc_optional_disabled:
+            optional_disabled_documents += 1
+        if doc_optional_skipped:
+            optional_skipped_documents += 1
+        if not doc_required_pending and not doc_required_error:
+            ready_documents += 1
+
+    return {
+        "documents_with_channel_rows": int(len(rows_seen_by_document)),
+        "documents_using_legacy_fallback": int(legacy_fallback_documents),
+        "ready_documents": int(ready_documents),
+        "required_pending_documents": int(required_pending_documents),
+        "required_error_documents": int(required_error_documents),
+        "optional_disabled_documents": int(optional_disabled_documents),
+        "optional_skipped_documents": int(optional_skipped_documents),
+        "required_pending_channels": int(sum(required_pending_by_channel.values())),
+        "required_error_channels": int(sum(required_error_by_channel.values())),
+        "optional_disabled_channels": int(sum(optional_disabled_by_channel.values())),
+        "optional_skipped_channels": int(sum(optional_skipped_by_channel.values())),
+        "required_pending_by_channel": {
+            channel: int(count) for channel, count in required_pending_by_channel.items() if int(count or 0) > 0
+        },
+        "required_error_by_channel": {
+            channel: int(count) for channel, count in required_error_by_channel.items() if int(count or 0) > 0
+        },
+        "optional_disabled_by_channel": {
+            channel: int(count) for channel, count in optional_disabled_by_channel.items() if int(count or 0) > 0
+        },
+        "optional_skipped_by_channel": {
+            channel: int(count) for channel, count in optional_skipped_by_channel.items() if int(count or 0) > 0
+        },
+        "status_counts": dict(sorted(status_counts.items(), key=lambda item: item[0])),
+        "status_counts_by_channel": {
+            channel: dict(sorted(counts.items(), key=lambda item: item[0]))
+            for channel, counts in status_counts_by_channel.items()
+            if counts
+        },
+        "legacy_by_channel": {
+            channel: int(count) for channel, count in legacy_by_channel.items() if int(count or 0) > 0
+        },
+    }
+
+
+def get_index_audit_reconcile_document_state(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    document_id: UUID,
+) -> dict[str, Any] | None:
+    DatasetService.get_dataset(db, tenant_id, dataset_id)
+    document = (
+        db.query(DBDocument)
+        .filter(
+            DBDocument.tenant_id == tenant_id,
+            DBDocument.dataset_id == dataset_id,
+            DBDocument.id == document_id,
+        )
+        .first()
+    )
+    if document is None:
+        return None
+    summary = summarize_document_index_channels(db, document=document).to_dict()
+    return {
+        "document": document,
+        "current_index_readiness": summary,
+        "already_ready": bool(summary.get("ready")),
+    }
+
+
+def _bounded_index_audit_reconcile_scan_limit(limit: int | None) -> int:
+    try:
+        parsed = int(limit or 0)
+    except (TypeError, ValueError):
+        parsed = 0
+    if parsed <= 0:
+        parsed = _DEFAULT_INDEX_AUDIT_RECONCILE_SCAN_LIMIT
+    return max(1, min(parsed, _MAX_INDEX_AUDIT_RECONCILE_SCAN_LIMIT))
+
+
+def _active_index_audit_documents_query(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    dataset_id: UUID,
+):
+    doc_ready_clause = or_(
+        DBDocument.status == "completed",
+        (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true"),  # type: ignore[attr-defined]
+    )
+    return (
+        db.query(DBDocument)
+        .filter(
+            DBDocument.tenant_id == tenant_id,
+            DBDocument.dataset_id == dataset_id,
+            DBDocument.archived_at.is_(None),
+            DBDocument.disabled_at.is_(None),
+        )
+        .filter(doc_ready_clause)
+        .order_by(DBDocument.updated_at.desc().nullslast(), DBDocument.id.desc())  # type: ignore[attr-defined]
+    )
+
+
+def _build_index_audit_reconcile_document_status_payload(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    document: DBDocument,
+) -> dict[str, Any]:
+    summary = summarize_document_index_channels(db, document=document).to_dict()
+    pipeline_hash = _document_pipeline_hash(document)
+    rows_query = db.query(DocumentIndexChannel).filter(
+        DocumentIndexChannel.tenant_id == tenant_id,
+        DocumentIndexChannel.document_id == document.id,
+    )
+    if pipeline_hash:
+        rows_query = rows_query.filter(DocumentIndexChannel.pipeline_hash == pipeline_hash)
+    channel_rows_present = len(list(rows_query.all()))
+    classified = _classify_index_audit_reconcile_status(
+        current_index_readiness=summary,
+        channel_rows_present=channel_rows_present,
+    )
+    return {
+        "schema": "mimirq.index_audit_reconcile_status.v1",
+        "tenant_id": str(tenant_id),
+        "dataset_id": str(dataset_id),
+        "document_id": str(document.id),
+        "status": classified["status"],
+        "reason": classified["reason"],
+        "legacy": bool(classified["legacy"]),
+        "ready": bool(classified["ready"]),
+        "channel_rows_present": int(classified["channel_rows_present"]),
+        "current_index_readiness": summary,
+    }
+
+
+def _classify_index_audit_reconcile_status(
+    *,
+    current_index_readiness: dict[str, Any],
+    channel_rows_present: int,
+) -> dict[str, Any]:
+    summary = dict(current_index_readiness or {})
+    pending_channels = list(summary.get("pending_channels") or [])
+    error_channels = list(summary.get("error_channels") or [])
+    ready = bool(summary.get("ready"))
+    rows_present = max(0, int(channel_rows_present or 0))
+
+    if rows_present <= 0:
+        status = "legacy_unknown"
+        reason = "document_has_no_current_pipeline_channel_rows"
+    elif error_channels:
+        status = "error"
+        reason = "document_index_channels_error"
+    elif pending_channels:
+        status = "pending"
+        reason = "document_index_channels_pending"
+    elif ready:
+        status = "ready"
+        reason = None
+    else:
+        status = "unknown"
+        reason = "document_index_channels_unknown"
+
+    return {
+        "status": status,
+        "reason": reason,
+        "legacy": bool(rows_present <= 0),
+        "channel_rows_present": rows_present,
+        "ready": ready,
+    }
+
+
+def get_index_audit_reconcile_document_status(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    document_id: UUID,
+) -> dict[str, Any] | None:
+    state = get_index_audit_reconcile_document_state(
+        db=db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        document_id=document_id,
+    )
+    if state is None:
+        return None
+    document = state.get("document")
+    if document is None:
+        return None
+    return _build_index_audit_reconcile_document_status_payload(
+        db=db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        document=document,
+    )
+
+
+def plan_index_audit_reconcile(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    document_id: UUID | None = None,
+    limit: int | None = None,
+    dry_run: bool = True,
+) -> dict[str, Any]:
+    DatasetService.get_dataset(db, tenant_id, dataset_id)
+    cap = _bounded_index_audit_reconcile_scan_limit(limit)
+
+    documents: list[DBDocument]
+    if document_id is not None:
+        document = (
+            db.query(DBDocument)
+            .filter(
+                DBDocument.tenant_id == tenant_id,
+                DBDocument.dataset_id == dataset_id,
+                DBDocument.id == document_id,
+            )
+            .first()
+        )
+        documents = [document] if document is not None else []
+    else:
+        documents = list(_active_index_audit_documents_query(db=db, tenant_id=tenant_id, dataset_id=dataset_id).limit(cap).all())
+
+    items: list[dict[str, Any]] = []
+    counts = {
+        "ready": 0,
+        "pending": 0,
+        "error": 0,
+        "legacy_unknown": 0,
+        "unknown": 0,
+        "candidate_documents": 0,
+        "report_only_documents": 0,
+    }
+    for document in documents:
+        status_payload = _build_index_audit_reconcile_document_status_payload(
+            db=db,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            document=document,
+        )
+        status = str(status_payload.get("status") or "unknown")
+        counts[status] = int(counts.get(status, 0) or 0) + 1
+        action = "enqueue_rebuild" if status in {"pending", "error"} else "report_only"
+        if action == "enqueue_rebuild":
+            counts["candidate_documents"] = int(counts["candidate_documents"] or 0) + 1
+        else:
+            counts["report_only_documents"] = int(counts["report_only_documents"] or 0) + 1
+        items.append(
+            {
+                "document_id": str(document.id),
+                "status": status,
+                "reason": status_payload.get("reason"),
+                "legacy": bool(status_payload.get("legacy")),
+                "ready": bool(status_payload.get("ready")),
+                "channel_rows_present": int(status_payload.get("channel_rows_present") or 0),
+                "action": action,
+                "current_index_readiness": dict(status_payload.get("current_index_readiness") or {}),
+            }
+        )
+
+    return {
+        "schema": "mimirq.index_audit_reconcile_plan.v1",
+        "tenant_id": str(tenant_id),
+        "dataset_id": str(dataset_id),
+        "document_id": str(document_id) if document_id is not None else None,
+        "scope": ("document" if document_id is not None else "dataset"),
+        "dry_run": bool(dry_run),
+        "scan_limit": int(cap),
+        "scanned_documents": int(len(documents)),
+        "counts": counts,
+        "items": items,
+    }
+
+
+async def enqueue_index_audit_reconcile(
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    document_id: UUID | None,
+    requested_by: str,
+) -> dict[str, Any]:
+    if document_id is None:
+        return {
+            "schema": "mimirq.index_audit_reconcile.v1",
+            "tenant_id": str(tenant_id),
+            "dataset_id": str(dataset_id),
+            "document_id": None,
+            "scope": "dataset",
+            "status": "unsupported",
+            "reason": "dataset_scoped_reconcile_not_supported_by_current_worker",
+            "task_id": None,
+        }
+    if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+        return {
+            "schema": "mimirq.index_audit_reconcile.v1",
+            "tenant_id": str(tenant_id),
+            "dataset_id": str(dataset_id),
+            "document_id": str(document_id),
+            "scope": "document",
+            "status": "not_enqueued",
+            "reason": "task_queue_disabled",
+            "task_id": None,
+        }
+
+    from app.tasks.queue import enqueue_rebuild_indexes
+
+    task_id = await enqueue_rebuild_indexes(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        requested_by=str(requested_by or "system:index-audit"),
+        job_id=f"index-audit-reconcile:{tenant_id}:{dataset_id}:{document_id}",
+    )
+    return {
+        "schema": "mimirq.index_audit_reconcile.v1",
+        "tenant_id": str(tenant_id),
+        "dataset_id": str(dataset_id),
+        "document_id": str(document_id),
+        "scope": "document",
+        "status": ("enqueued" if task_id else "already_queued"),
+        "reason": (None if task_id else "duplicate_job"),
+        "task_id": str(task_id) if task_id else None,
     }
 
 
@@ -604,7 +1083,7 @@ def _run_dataset_index_audit_core(
         (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true"),  # type: ignore[attr-defined]
     )
     docs_q = (
-        db.query(DBDocument.id, DBDocument.doc_metadata)
+        db.query(DBDocument)
         .filter(
             DBDocument.tenant_id == tenant_id,
             DBDocument.dataset_id == dataset_id,
@@ -614,7 +1093,8 @@ def _run_dataset_index_audit_core(
         .filter(doc_ready_clause)
     )
 
-    active_doc_ids = [row[0] for row in docs_q.all() if row and row[0]]
+    active_documents_rows = [row for row in docs_q.all() if row and getattr(row, "id", None)]
+    active_doc_ids = [row.id for row in active_documents_rows]
     active_documents = len(active_doc_ids)
 
     # Active pipeline hash: chunks must match this version to be considered "active".
@@ -716,6 +1196,22 @@ def _run_dataset_index_audit_core(
         else:
             active_chunk_ids_present = set()
 
+    index_channels: dict[str, Any] = {}
+    if active_doc_ids:
+        channel_rows = list(
+            db.query(DocumentIndexChannel)
+            .filter(
+                DocumentIndexChannel.tenant_id == tenant_id,
+                DocumentIndexChannel.dataset_id == dataset_id,
+                DocumentIndexChannel.document_id.in_(active_doc_ids),
+            )
+            .all()
+        )
+        index_channels = compute_index_channel_audit_summary(
+            documents=active_documents_rows,
+            channel_rows=channel_rows,
+        )
+
     return compute_index_audit_summary(
         tenant_id=tenant_id,
         dataset_id=dataset_id,
@@ -726,14 +1222,20 @@ def _run_dataset_index_audit_core(
         vector_ids_existing=vector_ids_existing,
         milvus_ids_sample=milvus_ids_sample,
         active_chunk_ids_present=active_chunk_ids_present,
+        index_channels=index_channels,
         sample_limit=sample_limit,
     )
 
 
 __all__ = [
     "build_index_drift_marker",
+    "compute_index_channel_audit_summary",
     "compute_index_audit_summary",
+    "enqueue_index_audit_reconcile",
+    "get_index_audit_reconcile_document_status",
+    "get_index_audit_reconcile_document_state",
     "list_index_drift_items",
+    "plan_index_audit_reconcile",
     "record_index_drift_item",
     "replay_index_drift_items",
     "resolve_index_drift_item",

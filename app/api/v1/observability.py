@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.utils.response_headers import download_response_headers
+from app.core.config import settings
 from app.core.database import get_db
 from app.services.corpus_cache_tokens import invalidate_dataset_cache_namespace
 from app.services.dataset_service import DatasetService
@@ -388,6 +389,105 @@ class IndexAuditResponse(BaseModel):
 
     milvus_ids_sampled: int = 0
     milvus_orphan_ids_sample: list[str] = []
+    index_channels: dict[str, Any] = Field(default_factory=dict)
+
+
+class IndexAuditReconcileRequest(BaseModel):
+    dataset_id: UUID
+    document_id: UUID | None = None
+
+
+class IndexAuditReconcileResponse(_SchemaAliasedModel):
+    schema_: str = Field(alias="schema", serialization_alias="schema")
+    tenant_id: str
+    dataset_id: str
+    document_id: str | None = None
+    scope: str
+    status: str
+    reason: str | None = None
+    task_id: str | None = None
+    current_index_readiness: dict[str, Any] | None = None
+
+
+class IndexAuditReconcileStatusResponse(_SchemaAliasedModel):
+    schema_: str = Field(alias="schema", serialization_alias="schema")
+    tenant_id: str
+    dataset_id: str
+    document_id: str
+    status: str
+    reason: str | None = None
+    legacy: bool = False
+    ready: bool = False
+    channel_rows_present: int = 0
+    current_index_readiness: dict[str, Any] = Field(default_factory=dict)
+
+
+class IndexAuditReconcileEnqueueRequest(BaseModel):
+    dataset_id: UUID
+    document_id: UUID | None = None
+    limit: int = Field(default=100, ge=1, le=200)
+    dry_run: bool = True
+
+
+class IndexAuditReconcileEnqueueResponse(_SchemaAliasedModel):
+    schema_: str = Field(alias="schema", serialization_alias="schema")
+    job_name: str
+    job_id: str
+    tenant_id: str
+    dataset_id: str
+    document_id: str | None = None
+    scope: str
+    dry_run: bool
+    limit: int
+    status: str
+    reason: str | None = None
+    report_in_job_result: bool = True
+    legacy_unknown_report_only: bool = True
+
+
+def _audit_index_reconcile_request(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: UUID,
+    document_id: UUID | None,
+    scope: str,
+    status: str,
+    dry_run: bool | None = None,
+    limit: int | None = None,
+    job_id: str | None = None,
+) -> None:
+    """Persist a PII-safe repair-request audit event without blocking the request."""
+    try:
+        from app.services.audit_log_service import audit_log_event
+
+        details: dict[str, Any] = {
+            "dataset_id": str(dataset_id),
+            "document_id": str(document_id) if document_id is not None else None,
+            "scope": str(scope),
+            "status": str(status),
+            "job_id": str(job_id)[:255] if job_id else None,
+        }
+        if dry_run is not None:
+            details["dry_run"] = bool(dry_run)
+        if limit is not None:
+            details["limit"] = int(limit)
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="index_audit.reconcile.request",
+            resource_type="document" if document_id is not None else "dataset",
+            resource_id=str(document_id or dataset_id),
+            details=details,
+        )
+        db.commit()
+    except Exception:  # noqa: BLE001
+        try:
+            db.rollback()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 class IndexDriftItemResponse(BaseModel):
@@ -991,6 +1091,207 @@ def get_index_audit(
         milvus_list_limit=milvus_list_limit,
         sample_limit=sample_limit,
     )
+
+
+@router.post("/index-audit/reconcile", response_model=IndexAuditReconcileResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+async def reconcile_index_audit(
+    payload: IndexAuditReconcileRequest,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Minimal admin-triggered reconcile entrypoint for index audit findings.
+
+    Current worker support is document-scoped only. Dataset-only requests remain
+    explicitly unsupported rather than broadening to a tenant-wide rebuild.
+    """
+    _ensure_admin(db, tenant_id, account_id)
+
+    from app.services.index_audit_service import (
+        enqueue_index_audit_reconcile,
+        get_index_audit_reconcile_document_state,
+    )
+
+    current_index_readiness: dict[str, Any] | None = None
+    if payload.document_id is not None:
+        state = get_index_audit_reconcile_document_state(
+            db=db,
+            tenant_id=tenant_id,
+            dataset_id=payload.dataset_id,
+            document_id=payload.document_id,
+        )
+        if state is None:
+            raise HTTPException(status_code=404, detail="document not found in dataset")
+        current_index_readiness = (
+            dict(state.get("current_index_readiness") or {})
+            if isinstance(state.get("current_index_readiness"), dict)
+            else None
+        )
+        if bool(state.get("already_ready")):
+            response = {
+                "schema": "mimirq.index_audit_reconcile.v1",
+                "tenant_id": str(tenant_id),
+                "dataset_id": str(payload.dataset_id),
+                "document_id": str(payload.document_id),
+                "scope": "document",
+                "status": "noop_ready",
+                "reason": "document_index_channels_already_ready",
+                "task_id": None,
+                "current_index_readiness": current_index_readiness,
+            }
+            _audit_index_reconcile_request(
+                db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                dataset_id=payload.dataset_id,
+                document_id=payload.document_id,
+                scope="document",
+                status="noop_ready",
+            )
+            return response
+
+    result = await enqueue_index_audit_reconcile(
+        tenant_id=tenant_id,
+        dataset_id=payload.dataset_id,
+        document_id=payload.document_id,
+        requested_by=account_id,
+    )
+    result["current_index_readiness"] = current_index_readiness
+    _audit_index_reconcile_request(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=payload.dataset_id,
+        document_id=payload.document_id,
+        scope=str(result.get("scope") or ("document" if payload.document_id is not None else "dataset")),
+        status=str(result.get("status") or "unknown"),
+        job_id=str(result.get("task_id") or "") or None,
+    )
+    return result
+
+
+@router.get("/index-audit/reconcile-status", response_model=IndexAuditReconcileStatusResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def get_index_audit_reconcile_status(
+    dataset_id: Annotated[UUID, Query(..., description="Dataset id for the reconciled document")],
+    document_id: Annotated[UUID, Query(..., description="Document id to inspect reconcile readiness for")],
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Read current persisted document index-channel readiness for a reconcile target.
+
+    This does not infer queue completion from task ids; it reports only durable
+    `document_index_channels` state for the document's current pipeline.
+    """
+    _ensure_admin(db, tenant_id, account_id)
+
+    from app.services.index_audit_service import get_index_audit_reconcile_document_status
+
+    status = get_index_audit_reconcile_document_status(
+        db=db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        document_id=document_id,
+    )
+    if status is None:
+        raise HTTPException(status_code=404, detail="document not found in dataset")
+    return status
+
+
+@router.post("/index-audit/reconcile-jobs", response_model=IndexAuditReconcileEnqueueResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+async def enqueue_index_audit_reconcile_job_endpoint(
+    payload: IndexAuditReconcileEnqueueRequest,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Manually enqueue a bounded tenant+dataset scoped index-audit reconcile job.
+
+    This never schedules a cross-tenant scan. Legacy/no-row documents remain
+    report-only inside the job and are not auto-rebuilt.
+    """
+    _ensure_admin(db, tenant_id, account_id)
+    DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
+
+    if payload.document_id is not None:
+        from app.services.index_audit_service import get_index_audit_reconcile_document_state
+
+        state = get_index_audit_reconcile_document_state(
+            db=db,
+            tenant_id=tenant_id,
+            dataset_id=payload.dataset_id,
+            document_id=payload.document_id,
+        )
+        if state is None:
+            raise HTTPException(status_code=404, detail="document not found in dataset")
+
+    from app.tasks.queue import enqueue_index_audit_reconcile_job
+
+    scope = "document" if payload.document_id is not None else "dataset"
+    job_id = (
+        f"index-audit-reconcile-job:{tenant_id}:{payload.dataset_id}:"
+        f"{payload.document_id or 'dataset'}:{int(payload.limit)}:{int(bool(payload.dry_run))}"
+    )
+    queued_job_id = await enqueue_index_audit_reconcile_job(
+        tenant_id=tenant_id,
+        dataset_id=payload.dataset_id,
+        document_id=payload.document_id,
+        requested_by=account_id,
+        limit=int(payload.limit),
+        dry_run=bool(payload.dry_run),
+        job_id=job_id,
+    )
+    if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+        response = {
+            "schema": "mimirq.index_audit_reconcile_enqueue.v1",
+            "job_name": "reconcile_index_audit_job",
+            "job_id": job_id,
+            "tenant_id": str(tenant_id),
+            "dataset_id": str(payload.dataset_id),
+            "document_id": str(payload.document_id) if payload.document_id is not None else None,
+            "scope": scope,
+            "dry_run": bool(payload.dry_run),
+            "limit": int(payload.limit),
+            "status": "not_enqueued",
+            "reason": "task_queue_disabled",
+            "report_in_job_result": True,
+            "legacy_unknown_report_only": True,
+        }
+    else:
+        response = {
+            "schema": "mimirq.index_audit_reconcile_enqueue.v1",
+            "job_name": "reconcile_index_audit_job",
+            "job_id": str(queued_job_id or job_id),
+            "tenant_id": str(tenant_id),
+            "dataset_id": str(payload.dataset_id),
+            "document_id": str(payload.document_id) if payload.document_id is not None else None,
+            "scope": scope,
+            "dry_run": bool(payload.dry_run),
+            "limit": int(payload.limit),
+            "status": ("enqueued" if queued_job_id else "already_queued"),
+            "reason": (None if queued_job_id else "duplicate_job"),
+            "report_in_job_result": True,
+            "legacy_unknown_report_only": True,
+        }
+    _audit_index_reconcile_request(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=payload.dataset_id,
+        document_id=payload.document_id,
+        scope=scope,
+        status=str(response["status"]),
+        dry_run=bool(payload.dry_run),
+        limit=int(payload.limit),
+        job_id=str(response["job_id"]),
+    )
+    return response
 
 
 @router.get("/embedding-drift/snapshot", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)

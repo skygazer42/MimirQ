@@ -23,6 +23,7 @@ from app.models import dataset_precheck_scan as _dataset_precheck_scan  # noqa: 
 from app.models import dataset_profile_scan as _dataset_profile_scan  # noqa: F401
 from app.models import db_catalog as _db_catalog  # noqa: F401
 from app.models import document as _document  # noqa: F401
+from app.models import document_index_channel as _document_index_channel  # noqa: F401
 from app.models import evaluation as _evaluation  # noqa: F401
 from app.models import evidence as _evidence  # noqa: F401
 from app.models import feedback as _feedback  # noqa: F401

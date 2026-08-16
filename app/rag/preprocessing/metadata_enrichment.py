@@ -148,6 +148,7 @@ def build_document_metadata_enrichment(
     keyword_max_chars: int = 4000,
     summary_max_chars: int = 220,
     question_count: int = 3,
+    generate_questions: bool = True,
 ) -> dict[str, Any]:
     """
     Build deterministic document-level enrichment fields.
@@ -215,7 +216,7 @@ def build_document_metadata_enrichment(
             keywords = []
 
     questions = _safe_str_list(meta.get("document_questions"), max_items=max(1, int(question_count or 1)), max_len=200)
-    if not questions:
+    if not questions and bool(generate_questions):
         questions = _build_questions(
             title=title,
             summary=summary,
@@ -280,6 +281,7 @@ def enrich_documents_metadata(
     keyword_max_chars: int = 4000,
     summary_max_chars: int = 220,
     question_count: int = 3,
+    generate_questions: bool = True,
 ) -> list[Document]:
     out: list[Document] = []
     for doc in documents or []:
@@ -293,6 +295,7 @@ def enrich_documents_metadata(
                 keyword_max_chars=keyword_max_chars,
                 summary_max_chars=summary_max_chars,
                 question_count=question_count,
+                generate_questions=generate_questions,
             )
         )
         try:

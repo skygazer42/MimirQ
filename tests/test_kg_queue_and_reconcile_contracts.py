@@ -115,6 +115,34 @@ async def test_enqueue_rebuild_indexes_returns_none_for_duplicate_job(monkeypatc
     assert result is None
 
 
+@pytest.mark.asyncio
+async def test_enqueue_index_audit_reconcile_job_returns_none_for_duplicate_job(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.tasks import queue
+
+    class _Queue:
+        async def enqueue_job(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return None
+
+    async def _get_queue():  # noqa: ANN202
+        return _Queue()
+
+    monkeypatch.setattr(queue, "get_queue", _get_queue, raising=True)
+
+    result = await queue.enqueue_index_audit_reconcile_job(
+        tenant_id=uuid.uuid4(),
+        dataset_id=uuid.uuid4(),
+        document_id=uuid.uuid4(),
+        requested_by="member-1",
+        limit=25,
+        dry_run=True,
+        job_id="index-audit:job",
+    )
+
+    assert result is None
+
+
 def test_kg_pipeline_scope_rejects_missing_selected_version() -> None:
     from app.rag.kg.api import routes
 

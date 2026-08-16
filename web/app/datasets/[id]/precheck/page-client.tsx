@@ -61,6 +61,7 @@ import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
 import { datasetApi, sseApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { reportClientError, reportClientWarning } from '@/lib/client-logging'
+import { normalizePrecheckEmbeddingAdvisories } from '@/lib/precheck-embedding-advisories'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, formatFileSize, formatDate, detachPromise } from '@/lib/utils'
 import { useRouter } from '@/i18n/navigation'
@@ -721,6 +722,10 @@ export default function DatasetPrecheckPage() {
   const runStatusLabel = formatRunStatus(latestRunStatus)
   const runBatchLabel = selectedRun?.id ? selectedRun.id.slice(0, 8) : 'none'
   const hasRunOutput = Boolean(selectedRun?.id && summary)
+  const embeddingAdvisories = useMemo(
+    () => normalizePrecheckEmbeddingAdvisories(summary?.embedding_advisories),
+    [summary?.embedding_advisories]
+  )
 
   return (
     <AppFrame>
@@ -1368,6 +1373,63 @@ export default function DatasetPrecheckPage() {
 })()} color="orange" />
             </StatsGrid>
           </Panel>
+
+          {embeddingAdvisories.length > 0 ? (
+            <Panel className="border-warning/25 bg-[linear-gradient(135deg,hsl(var(--warning)/0.10),hsl(var(--card)/0.96))] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]">
+              <div className="flex items-start gap-3">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-2xl border border-warning/30 bg-warning/10 text-warning">
+                  <AlertCircle className="size-4" />
+                </div>
+                <div className="min-w-0 flex-1 space-y-3">
+                  <div>
+                    <div className="text-sm font-semibold text-foreground">Embedding 建议</div>
+                    <div className="mt-1 text-[12px] leading-5 text-muted-foreground">
+                      来自当前预检 summary 的后端 advisory。这里只做风险提示，不表示系统已经自动切换了向量模型。
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    {embeddingAdvisories.map((advisory) => (
+                      <div
+                        key={`${advisory.code}-${advisory.effectiveEmbedding || 'none'}`}
+                        className="rounded-xl border border-warning/20 bg-card/80 px-3 py-2.5"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="soft" className="border-warning/20 bg-warning/10 text-warning">
+                            warning
+                          </Badge>
+                          <div className="text-[13px] font-semibold text-foreground">
+                            {advisory.title}
+                          </div>
+                          <div className="font-mono text-[11px] text-muted-foreground">
+                            code={advisory.code}
+                          </div>
+                        </div>
+                        <div className="mt-2 grid gap-2 text-[12px] leading-5 text-muted-foreground md:grid-cols-2">
+                          <div>
+                            <span className="font-medium text-foreground">当前模型：</span>
+                            {advisory.effectiveEmbedding || '未返回'}
+                          </div>
+                          <div>
+                            <span className="font-medium text-foreground">建议动作：</span>
+                            {advisory.recommendedAction || '未返回'}
+                          </div>
+                        </div>
+                        {advisory.recommendedModelIds.length > 0 ? (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {advisory.recommendedModelIds.map((modelId) => (
+                              <Badge key={modelId} variant="outline" className="font-mono text-[11px]">
+                                {modelId}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </Panel>
+          ) : null}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Panel className="p-5">

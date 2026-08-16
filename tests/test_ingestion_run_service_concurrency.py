@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
 from sqlalchemy import UniqueConstraint
 from sqlalchemy.exc import IntegrityError
 
@@ -525,3 +526,30 @@ def test_status_update_locks_runs_before_attachment_rows() -> None:
     ]
     assert locked_rows[0].status == "completed"
     assert locked_rows[1].status == "completed"
+
+
+def test_status_update_raises_when_required_commit_fails() -> None:
+    tenant_id = uuid4()
+    run = SimpleNamespace(
+        id=uuid4(),
+        tenant_id=tenant_id,
+        dataset_id=None,
+        kind="upload",
+        status="running",
+        stats={"total_documents": 1, "status_counts": {"created": 1}},
+        started_at=datetime.now(timezone.utc),
+        finished_at=None,
+    )
+    row = SimpleNamespace(run_id=run.id, id=1, status="created")
+    db = _ServiceDB(run=run, document_query_results=[[row], [row]], commit_exc=RuntimeError("commit failed"))
+
+    with pytest.raises(RuntimeError, match="commit failed"):
+        IngestionRunService.on_document_status_update(
+            db,
+            tenant_id=tenant_id,
+            document_id=uuid4(),
+            new_status="completed",
+            error_message=None,
+            doc_meta=None,
+            criticality="required",
+        )

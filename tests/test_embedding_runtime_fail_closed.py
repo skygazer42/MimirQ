@@ -44,6 +44,8 @@ def test_index_chunks_raises_when_scoped_document_runtime_cannot_be_resolved(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import app.services.indexer as indexer_module
+    from app.models.dataset import Dataset as DBDataset
+    from app.models.document import Document as DBDocument
     from app.types.indexing import ChunkInput
 
     tenant_id = uuid.uuid4()
@@ -63,10 +65,18 @@ def test_index_chunks_raises_when_scoped_document_runtime_cannot_be_resolved(
             return self._result
 
     class _DB:
+        def __init__(self) -> None:
+            self._query_calls = 0
+
         def query(self, *entities):  # noqa: ANN002, ANN003, ANN202
-            if len(entities) == 4:
-                return _Query((dataset_id, "txt", "doc.txt", {}))
-            return _Query(RuntimeError("dataset metadata unavailable"))
+            self._query_calls += 1
+            if self._query_calls == 1:
+                assert entities == (DBDocument.dataset_id,)
+                return _Query((dataset_id,))
+            if self._query_calls == 2:
+                assert entities == (DBDataset.dataset_metadata,)
+                return _Query(RuntimeError("dataset metadata unavailable"))
+            raise AssertionError("channel tracking query should not run before runtime resolution fails")
 
     indexer = indexer_module.Indexer.__new__(indexer_module.Indexer)
     indexer._db = _DB()

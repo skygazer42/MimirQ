@@ -158,6 +158,7 @@ def build_run_create_request_payload(
     dataset_id: str,
     metrics: list[str],
     max_cases: int,
+    use_llm_judge: bool = False,
     retrieval_overrides: dict[str, Any] | None = None,
     skip_empty_contexts: bool = True,
 ) -> dict[str, Any]:
@@ -170,6 +171,7 @@ def build_run_create_request_payload(
         "case_ids": list(case_ids or []),
         "dataset_id": dataset_id,
         "metrics": list(metrics or []),
+        "use_llm_judge": bool(use_llm_judge),
         "skip_empty_contexts": bool(skip_empty_contexts),
         "max_cases": int(max_cases),
     }
@@ -1264,6 +1266,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default="",
         help="Write a compact regression gate Markdown artifact (optional)",
     )
+    p.add_argument(
+        "--use-llm-judge",
+        action="store_true",
+        help="Enable unified llm_judge scoring for answer-quality runs.",
+    )
 
     # Gap9 (P2): Optional queryset-health gate integration.
     p.add_argument(
@@ -1561,6 +1568,7 @@ def main() -> int:
             case_ids=matched_ids,
             dataset_id=dataset_id,
             metrics=metrics,
+            use_llm_judge=bool(args.use_llm_judge),
             skip_empty_contexts=True,
             max_cases=min(500, len(matched_ids)),
             retrieval_overrides=overrides,

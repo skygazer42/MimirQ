@@ -11,14 +11,15 @@ import re
 import shutil
 import uuid
 from dataclasses import asdict, dataclass, replace
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any, cast
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Form, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id_from_headers
@@ -26,7 +27,7 @@ from app.api.dependencies.tenant import _preferred_jwt_tenant_id
 from app.api.schemas.document import (
     DocumentPipelineOptions,
 )
-from app.api.utils.upload import save_upload_file_with_hash
+from app.api.utils.upload import compute_file_hash, save_upload_file_with_hash
 from app.api.utils.url_ingest import URLDownloadOptions, download_url_to_path, validate_url_for_ingest
 from app.api.v1 import (
     document_access,
@@ -186,6 +187,14 @@ from app.services import document_access_service
 from app.services.dataset_precheck_ingestion_suggestion import apply_ingestion_policy_suggestion
 from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
 from app.services.dataset_service import EDIT_ROLES, DatasetService
+from app.services.document_identity import (
+    build_document_dedup_key,
+    compute_pipeline_hash,
+    get_content_sha256,
+    set_content_sha256,
+    sync_pipeline_execution_identity,
+)
+from app.services.document_index_channel_service import reconcile_document_index_channels
 from app.services.document_preview_legacy import legacy_preview_ref_belongs_to_document
 from app.services.document_preview_utils import (
     _compute_chunk_preview_quality,
@@ -336,6 +345,7 @@ CHUNK_NOT_FOUND_DETAIL = 'Chunk not found'
 CHUNK_NOT_ACTIVE_PIPELINE_DETAIL = 'Chunk is not in the active pipeline version'
 DOCUMENT_FILE_ACCESS_DENIED_DETAIL = 'Document file access denied'
 DOCUMENT_FILE_NOT_FOUND_DETAIL = 'Document file not found'
+DOCUMENT_DEDUP_CONSTRAINT_NAME = "uq_documents_tenant_dataset_dedup_key_active"
 DATA_IMAGE_PREFIX = 'data:image'
 CHUNK_OVERLAP_LESS_THAN_SIZE_DETAIL = 'chunk_overlap must be less than chunk_size'
 MANUAL_FILE_PATH_PREFIX = 'manual://'
@@ -1051,9 +1061,7 @@ def _parse_pipeline_json(pipeline: str | None) -> DocumentPipelineOptions | None
         payload = json.loads(raw)
         if not isinstance(payload, dict):
             raise ValueError("pipeline must be a JSON object")
-        allowed = DocumentPipelineOptions.model_fields
-        normalized = {key: value for key, value in payload.items() if key in allowed}
-        return DocumentPipelineOptions.model_validate(normalized)
+        return DocumentPipelineOptions.model_validate(payload)
     except Exception as exc:  # noqa: BLE001
         msg = (str(exc) or exc.__class__.__name__)[:200]
         detail = "Invalid pipeline JSON" if is_production_env() else f"Invalid pipeline JSON: {msg}"
@@ -1061,15 +1069,7 @@ def _parse_pipeline_json(pipeline: str | None) -> DocumentPipelineOptions | None
 
 
 def _compute_pipeline_hash(doc_metadata: dict) -> str:
-    relevant = {
-        "parser_backend": doc_metadata.get("parser_backend"),
-        "parser_backend_requested": doc_metadata.get("parser_backend_requested"),
-        "chunk_strategy": doc_metadata.get("chunk_strategy"),
-        "chunk_strategy_requested": doc_metadata.get("chunk_strategy_requested"),
-        "pipeline": doc_metadata.get("pipeline") or {},
-    }
-    raw = json.dumps(relevant, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(raw).hexdigest()[:16]
+    return compute_pipeline_hash(doc_metadata)
 
 
 def _is_uploaded_only_pending_document(document: Any) -> bool:
@@ -1242,6 +1242,8 @@ def _assert_document_writable_for_chunk_ops(
 class UrlUploadRequest(BaseModel):
     """Upload a document by fetching a remote URL (connector skeleton)."""
 
+    model_config = ConfigDict(extra="forbid")
+
     url: str = Field(..., max_length=2000)
     dataset_id: UUID | None = None
     filename: str | None = Field(default=None, max_length=500, description="Optional override filename (used for extension + display)")
@@ -1268,8 +1270,8 @@ def _parse_datetime_best_effort(raw: str | None) -> datetime | None:
     with contextlib.suppress(Exception):
         dt = parsedate_to_datetime(value)
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=UTC)
-        return dt.astimezone(UTC)
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
 
     with contextlib.suppress(Exception):
         iso = value
@@ -1277,8 +1279,8 @@ def _parse_datetime_best_effort(raw: str | None) -> datetime | None:
             iso = iso[:-1] + "+00:00"
         dt = datetime.fromisoformat(iso)
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=UTC)
-        return dt.astimezone(UTC)
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
 
     return None
 
@@ -1292,6 +1294,8 @@ def _normalize_datetime_utc_iso(raw: str | None) -> str | None:
 
 class LocalHtmlIngestRequest(BaseModel):
     """Ingest a local HTML payload as a document (internal connector helper)."""
+
+    model_config = ConfigDict(extra="forbid")
 
     html: str = Field(..., description="HTML content (fragment or full document)")
     source_url: str | None = Field(default=None, max_length=2000, description="Best-effort source URL for citations/debug")
@@ -1324,6 +1328,7 @@ class UrlIngestFile:
     downloaded: Any
     content_type: str
     fetched_at_iso: str
+    content_sha256: str
 
 
 @dataclass
@@ -1334,6 +1339,7 @@ class LocalHtmlIngestFile:
     filename: str
     file_size: int
     fetched_at_iso: str
+    content_sha256: str
 
 
 @dataclass
@@ -1644,12 +1650,15 @@ def _create_ingestion_run_if_missing(
 def _finalize_document_metadata(
     doc_metadata: dict[str, Any],
     *,
+    content_sha256: str | None,
     pipeline_options: PipelineOptions,
     ingestion_meta: dict[str, Any] | None,
     ingestion_run_id: UUID | None,
     ingestion_kind: str | None,
     default_kind: str,
+    parser_backend_resolved: str | None = None,
 ) -> tuple[dict[str, Any], str]:
+    set_content_sha256(doc_metadata, content_sha256)
     upsert_pipeline_metadata(doc_metadata, options=pipeline_options)
     if ingestion_meta:
         doc_metadata["ingestion"] = ingestion_meta
@@ -1658,6 +1667,12 @@ def _finalize_document_metadata(
     doc_metadata["pipeline_hash"] = pipeline_hash
     doc_metadata.setdefault("active_pipeline_hash", pipeline_hash)
     doc_metadata.setdefault("active_pipeline_ready", False)
+    sync_pipeline_execution_identity(
+        doc_metadata,
+        content_sha256=content_sha256,
+        pipeline_hash=pipeline_hash,
+        parser_backend_resolved=parser_backend_resolved,
+    )
     if ingestion_run_id is not None:
         doc_metadata.setdefault("created_by_run_id", str(ingestion_run_id))
         doc_metadata["last_ingestion_run_id"] = str(ingestion_run_id)
@@ -1723,6 +1738,56 @@ def _raise_document_processing_queue_unavailable(
     if exc is not None:
         raise HTTPException(status_code=503, detail=DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL) from exc
     raise HTTPException(status_code=503, detail=DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL)
+
+
+def _document_matches_dedup_identity(
+    document: Any,
+    *,
+    content_sha256: str,
+    pipeline_hash: str,
+) -> bool:
+    expected = build_document_dedup_key(content_sha256=content_sha256, pipeline_hash=pipeline_hash)
+    if expected and str(getattr(document, "dedup_key", "") or "").strip() == expected:
+        return True
+    metadata = dict(getattr(document, "doc_metadata", None) or {})
+    return bool(
+        expected
+        and get_content_sha256(metadata) == str(content_sha256 or "").strip().lower()
+        and str(metadata.get("pipeline_hash") or "").strip() == str(pipeline_hash or "").strip()
+    )
+
+
+def _is_document_dedup_integrity_error(exc: IntegrityError) -> bool:
+    diag = getattr(getattr(exc, "orig", None), "diag", None)
+    if str(getattr(diag, "constraint_name", "") or "").strip() == DOCUMENT_DEDUP_CONSTRAINT_NAME:
+        return True
+    message = str(getattr(exc, "orig", "") or exc)
+    return DOCUMENT_DEDUP_CONSTRAINT_NAME in message
+
+
+class _DuplicatePersistedDocumentError(RuntimeError):
+    def __init__(self, document: Any) -> None:
+        super().__init__("duplicate persisted document")
+        self.document = document
+
+
+def _find_duplicate_document_for_persist_conflict(db: Session, *, db_document: Any) -> Any | None:
+    dataset_id = getattr(db_document, "dataset_id", None)
+    tenant_id = getattr(db_document, "tenant_id", None)
+    if not isinstance(dataset_id, UUID) or not isinstance(tenant_id, UUID):
+        return None
+    doc_metadata = dict(getattr(db_document, "doc_metadata", None) or {})
+    content_sha256 = get_content_sha256(doc_metadata)
+    pipeline_hash = str(doc_metadata.get("pipeline_hash") or "").strip()
+    if content_sha256 and pipeline_hash:
+        return _find_duplicate_document(
+            db,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            file_sha256=content_sha256,
+            pipeline_hash=pipeline_hash,
+        )
+    return None
 
 
 async def _store_ingested_source(
@@ -1986,13 +2051,15 @@ async def _download_url_ingest_file(*, url: str, body: UrlUploadRequest, tenant_
     file_ext = _resolve_url_file_ext(filename=body.filename, url=url, content_type=content_type)
     final_path = upload_dir / f"{file_id}{file_ext}"
     _finalize_url_download(temp_path, final_path)
+    content_sha256 = await asyncio.to_thread(compute_file_hash, final_path)
     return UrlIngestFile(
         file_id=file_id,
         final_path=final_path,
         file_ext=file_ext,
         downloaded=downloaded,
         content_type=content_type,
-        fetched_at_iso=datetime.now(UTC).isoformat(),
+        fetched_at_iso=datetime.now(timezone.utc).isoformat(),
+        content_sha256=content_sha256,
     )
 
 
@@ -2019,7 +2086,8 @@ def _write_local_html_ingest_file(*, body: LocalHtmlIngestRequest, tenant_id: UU
         file_ext=file_ext,
         filename=safe_name,
         file_size=int(len(data)),
-        fetched_at_iso=datetime.now(UTC).isoformat(),
+        fetched_at_iso=datetime.now(timezone.utc).isoformat(),
+        content_sha256=hashlib.sha256(data).hexdigest(),
     )
 
 
@@ -2167,9 +2235,12 @@ def _build_url_document_metadata(
     source: UrlSourceMetadata,
     pipeline: ResolvedDocumentPipeline,
 ) -> dict[str, Any]:
+    requested_parser_backend = str(body.parser_backend or "").strip().lower()
+    parser_backend_resolved = None if pipeline.parser_backend == "auto" and requested_parser_backend in {"", "auto"} else pipeline.parser_backend
     return {
         "parser_backend": pipeline.parser_backend,
         "parser_backend_requested": str(body.parser_backend or "").lower(),
+        "parser_backend_resolved": parser_backend_resolved,
         "chunk_strategy": pipeline.chunk_strategy,
         "chunk_strategy_requested": str(body.chunk_strategy or "").lower(),
         "source_url": url,
@@ -2197,9 +2268,12 @@ def _build_local_html_document_metadata(
     content_type: str,
     pipeline: ResolvedDocumentPipeline,
 ) -> dict[str, Any]:
+    requested_parser_backend = str(body.parser_backend or "").strip().lower()
+    parser_backend_resolved = None if pipeline.parser_backend == "auto" and requested_parser_backend in {"", "auto"} else pipeline.parser_backend
     return {
         "parser_backend": pipeline.parser_backend,
         "parser_backend_requested": str(body.parser_backend or "").lower(),
+        "parser_backend_resolved": parser_backend_resolved,
         "chunk_strategy": pipeline.chunk_strategy,
         "chunk_strategy_requested": str(body.chunk_strategy or "").lower(),
         "source_url": source_url,
@@ -2244,6 +2318,11 @@ async def _persist_and_process_ingested_document(
         account_id=account_id,
         doc_metadata=doc_metadata,
     )
+    if bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)):
+        db_document.dedup_key = build_document_dedup_key(
+            content_sha256=get_content_sha256(doc_metadata),
+            pipeline_hash=pipeline_hash,
+        )
     keep_local_processing_file = False
     try:
         db.add(db_document)
@@ -2259,6 +2338,22 @@ async def _persist_and_process_ingested_document(
 
     try:
         db.commit()
+    except IntegrityError as exc:
+        with contextlib.suppress(Exception):
+            db.rollback()
+        duplicate = (
+            _find_duplicate_document_for_persist_conflict(db, db_document=db_document)
+            if _is_document_dedup_integrity_error(exc)
+            else None
+        )
+        await _cleanup_unpersisted_ingested_source(
+            str(file_path),
+            document_metadata=dict(getattr(db_document, "doc_metadata", None) or {}),
+        )
+        _unlink_ingest_temp(processing_file_path)
+        if duplicate is not None:
+            raise _DuplicatePersistedDocumentError(duplicate) from exc
+        raise
     except Exception:
         with contextlib.suppress(Exception):
             db.rollback()
@@ -2274,6 +2369,15 @@ async def _persist_and_process_ingested_document(
         db.refresh(db_document)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Document committed but refresh failed: %s", str(exc)[:200])
+
+    with contextlib.suppress(Exception):
+        reconcile_document_index_channels(
+            db,
+            document=db_document,
+            pipeline_hash=pipeline_hash,
+            reset_enabled_to_pending=True,
+            commit=True,
+        )
 
     _add_document_to_ingestion_run(
         db=db,
@@ -2360,12 +2464,35 @@ async def _ingest_url_upload_request(
     )
     doc_metadata, pipeline_hash = _finalize_document_metadata(
         doc_metadata,
+        content_sha256=ingest_file.content_sha256,
         pipeline_options=prepared.policy.pipeline_options,
         ingestion_meta=prepared.policy.ingestion_meta,
         ingestion_run_id=ingestion_run_id,
         ingestion_kind=ingestion_kind,
         default_kind="upload_url",
+        parser_backend_resolved=str(doc_metadata.get("parser_backend_resolved") or "").strip() or None,
     )
+
+    if bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)) and ingest_file.content_sha256:
+        duplicate = _find_duplicate_document(
+            db,
+            tenant_id=tenant_id,
+            dataset_id=dataset.id,
+            file_sha256=ingest_file.content_sha256,
+            pipeline_hash=pipeline_hash,
+        )
+        if duplicate is not None:
+            with contextlib.suppress(OSError):
+                ingest_file.final_path.unlink(missing_ok=True)
+            return await _reuse_duplicate_document_for_ingest(
+                background_tasks=background_tasks,
+                db=db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                duplicate=duplicate,
+                content_sha256=ingest_file.content_sha256,
+                pipeline_hash=pipeline_hash,
+            )
 
     file_size = int(ingest_file.downloaded.size_bytes)
     _enforce_url_upload_quota(db, tenant_id=tenant_id, additional_bytes=file_size, final_path=ingest_file.final_path)
@@ -2382,24 +2509,35 @@ async def _ingest_url_upload_request(
         if store is not None:
             doc_metadata.update(document_object_store_metadata(store))
 
-    return await _persist_and_process_ingested_document(
-        db=db,
-        background_tasks=background_tasks,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        dataset=dataset,
-        file_id=ingest_file.file_id,
-        filename=safe_name,
-        file_ext=ingest_file.file_ext,
-        file_size=file_size,
-        file_path=stored_path,
-        processing_file_path=ingest_file.final_path,
-        source_ref=url,
-        doc_metadata=doc_metadata,
-        pipeline_hash=pipeline_hash,
-        pipeline=prepared.pipeline,
-        ingestion_run_id=ingestion_run_id,
-    )
+    try:
+        return await _persist_and_process_ingested_document(
+            db=db,
+            background_tasks=background_tasks,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset=dataset,
+            file_id=ingest_file.file_id,
+            filename=safe_name,
+            file_ext=ingest_file.file_ext,
+            file_size=file_size,
+            file_path=stored_path,
+            processing_file_path=ingest_file.final_path,
+            source_ref=url,
+            doc_metadata=doc_metadata,
+            pipeline_hash=pipeline_hash,
+            pipeline=prepared.pipeline,
+            ingestion_run_id=ingestion_run_id,
+        )
+    except _DuplicatePersistedDocumentError as exc:
+        return await _reuse_duplicate_document_for_ingest(
+            background_tasks=background_tasks,
+            db=db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            duplicate=exc.document,
+            content_sha256=ingest_file.content_sha256,
+            pipeline_hash=pipeline_hash,
+        )
 
 
 def _duplicate_document_query(db: Session, *, tenant_id: UUID, dataset_id: UUID):
@@ -2449,7 +2587,10 @@ def _find_duplicate_document(
     try:
         return (
             _duplicate_document_query(db, tenant_id=tenant_id, dataset_id=dataset_id)
-            .filter(DBDocument.doc_metadata["file_sha256"].astext == sha)  # type: ignore[attr-defined]
+            .filter(
+                (DBDocument.doc_metadata["content_sha256"].astext == sha)  # type: ignore[attr-defined]
+                | (DBDocument.doc_metadata["file_sha256"].astext == sha)  # type: ignore[attr-defined]
+            )
             .filter(DBDocument.doc_metadata["pipeline_hash"].astext == ph)  # type: ignore[attr-defined]
             .first()
         )
@@ -2460,7 +2601,7 @@ def _find_duplicate_document(
             dataset_id=dataset_id,
             max_scan=max_scan,
             predicate=lambda meta: (
-                str(meta.get("file_sha256") or "").strip().lower() == sha
+                get_content_sha256(meta) == sha
                 and str(meta.get("pipeline_hash") or "").strip() == ph
             ),
         )
@@ -2483,7 +2624,10 @@ def _find_duplicate_document_by_sha(
     try:
         return (
             _duplicate_document_query(db, tenant_id=tenant_id, dataset_id=dataset_id)
-            .filter(DBDocument.doc_metadata["file_sha256"].astext == sha)  # type: ignore[attr-defined]
+            .filter(
+                (DBDocument.doc_metadata["content_sha256"].astext == sha)  # type: ignore[attr-defined]
+                | (DBDocument.doc_metadata["file_sha256"].astext == sha)  # type: ignore[attr-defined]
+            )
             .first()
         )
     except Exception:
@@ -2492,8 +2636,57 @@ def _find_duplicate_document_by_sha(
             tenant_id=tenant_id,
             dataset_id=dataset_id,
             max_scan=max_scan,
-            predicate=lambda meta: str(meta.get("file_sha256") or "").strip().lower() == sha,
+            predicate=lambda meta: get_content_sha256(meta) == sha,
         )
+
+
+async def _reuse_duplicate_document_for_ingest(
+    *,
+    background_tasks: BackgroundTasks | None,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    duplicate: DBDocument,
+    content_sha256: str,
+    pipeline_hash: str,
+) -> DBDocument:
+    status0 = str(getattr(duplicate, "status", "") or "").strip().lower()
+    if status0 in {"pending", "processing"}:
+        if _document_matches_dedup_identity(
+            duplicate,
+            content_sha256=content_sha256,
+            pipeline_hash=pipeline_hash,
+        ):
+            return duplicate
+        raise HTTPException(status_code=409, detail=DUPLICATE_DOCUMENT_PROCESSING_DETAIL)
+
+    meta = dict(getattr(duplicate, "doc_metadata", None) or {})
+    sync_pipeline_execution_identity(
+        meta,
+        content_sha256=content_sha256,
+        pipeline_hash=pipeline_hash,
+        parser_backend_resolved=str(meta.get("parser_backend_resolved") or "").strip() or None,
+    )
+    duplicate.doc_metadata = meta
+    if hasattr(duplicate, "dedup_key"):
+        duplicate.dedup_key = build_document_dedup_key(content_sha256=content_sha256, pipeline_hash=pipeline_hash)
+    db.commit()
+    db.refresh(duplicate)
+
+    if status0 == "failed":
+        if background_tasks is None:
+            raise HTTPException(status_code=409, detail="Failed duplicate requires retry scheduling context")
+        await retry_document_processing(
+            document_id=duplicate.id,
+            background_tasks=background_tasks,
+            force=True,
+            skip_if_unchanged=True,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            db=db,
+        )
+        db.refresh(duplicate)
+    return duplicate
 
 
 @dataclass
@@ -2600,11 +2793,40 @@ async def _ingest_local_html_request(
     )
     doc_metadata, pipeline_hash = _finalize_document_metadata(
         doc_metadata,
+        content_sha256=ingest_file.content_sha256,
         pipeline_options=prepared.policy.pipeline_options,
         ingestion_meta=prepared.policy.ingestion_meta,
         ingestion_run_id=ingestion_run_id,
         ingestion_kind=ingestion_kind,
         default_kind="connector_html",
+        parser_backend_resolved=str(doc_metadata.get("parser_backend_resolved") or "").strip() or None,
+    )
+    if bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)) and ingest_file.content_sha256:
+        duplicate = _find_duplicate_document(
+            db,
+            tenant_id=tenant_id,
+            dataset_id=dataset.id,
+            file_sha256=ingest_file.content_sha256,
+            pipeline_hash=pipeline_hash,
+        )
+        if duplicate is not None:
+            with contextlib.suppress(OSError):
+                ingest_file.file_path.unlink(missing_ok=True)
+            return await _reuse_duplicate_document_for_ingest(
+                background_tasks=background_tasks,
+                db=db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                duplicate=duplicate,
+                content_sha256=ingest_file.content_sha256,
+                pipeline_hash=pipeline_hash,
+            )
+
+    _enforce_url_upload_quota(
+        db,
+        tenant_id=tenant_id,
+        additional_bytes=ingest_file.file_size,
+        final_path=ingest_file.file_path,
     )
     stored_path = await _store_ingested_source(
         file_path=ingest_file.file_path,
@@ -2619,24 +2841,35 @@ async def _ingest_local_html_request(
         if store is not None:
             doc_metadata.update(document_object_store_metadata(store))
 
-    return await _persist_and_process_ingested_document(
-        db=db,
-        background_tasks=background_tasks,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        dataset=dataset,
-        file_id=ingest_file.file_id,
-        filename=ingest_file.filename,
-        file_ext=ingest_file.file_ext,
-        file_size=ingest_file.file_size,
-        file_path=stored_path,
-        processing_file_path=ingest_file.file_path,
-        source_ref=(source_url or ingest_file.filename)[:1000] if (source_url or ingest_file.filename) else None,
-        doc_metadata=doc_metadata,
-        pipeline_hash=pipeline_hash,
-        pipeline=prepared.pipeline,
-        ingestion_run_id=ingestion_run_id,
-    )
+    try:
+        return await _persist_and_process_ingested_document(
+            db=db,
+            background_tasks=background_tasks,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset=dataset,
+            file_id=ingest_file.file_id,
+            filename=ingest_file.filename,
+            file_ext=ingest_file.file_ext,
+            file_size=ingest_file.file_size,
+            file_path=stored_path,
+            processing_file_path=ingest_file.file_path,
+            source_ref=(source_url or ingest_file.filename)[:1000] if (source_url or ingest_file.filename) else None,
+            doc_metadata=doc_metadata,
+            pipeline_hash=pipeline_hash,
+            pipeline=prepared.pipeline,
+            ingestion_run_id=ingestion_run_id,
+        )
+    except _DuplicatePersistedDocumentError as exc:
+        return await _reuse_duplicate_document_for_ingest(
+            background_tasks=background_tasks,
+            db=db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            duplicate=exc.document,
+            content_sha256=ingest_file.content_sha256,
+            pipeline_hash=pipeline_hash,
+        )
 
 
 document_upload = importlib.import_module("app.api.v1.document_upload")

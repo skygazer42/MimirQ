@@ -17,6 +17,9 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
+from app.api.utils.http_exception_responses import (
+    DEFAULT_HTTP_EXCEPTION_RESPONSES as _DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 from app.core.database import get_db
 from app.rag.core.logging import get_logger
 from app.services.audit_log_service import audit_log_event
@@ -28,14 +31,6 @@ from app.services.ltr_model_registry import (
     rollback_active_model,
 )
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
-
-_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
-    400: {"description": "Bad Request"},
-    403: {"description": "Forbidden"},
-    404: {"description": "Not Found"},
-    409: {"description": "Conflict"},
-    416: {"description": "Range Not Satisfiable"},
-}
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 logger = get_logger(__name__)

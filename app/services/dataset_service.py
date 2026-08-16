@@ -2,13 +2,16 @@
 Dataset service: creation, permission checks, partial member management.
 """
 
+import ipaddress
 from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.constants import UserRoles
 from app.core.env import is_production_env
+from app.core.request_state import get_request_state
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.group_permissions import DatasetGroupPermission
 from app.models.tenant import Tenant, TenantMember
@@ -22,6 +25,47 @@ EDIT_ROLES = UserRoles.EDIT_ROLES
 
 class DatasetService:
     @staticmethod
+    def _default_tenant_id() -> UUID | None:
+        raw_tenant_id = str(getattr(settings, "DEFAULT_TENANT_ID", "") or "").strip()
+        if not raw_tenant_id:
+            return None
+        try:
+            return UUID(raw_tenant_id)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _is_loopback_client(host: object) -> bool:
+        value = str(host or "").strip().lower()
+        if not value:
+            return False
+        if value in {"localhost", "localhost.localdomain"}:
+            return True
+        try:
+            return bool(ipaddress.ip_address(value).is_loopback)
+        except ValueError:
+            return False
+
+    @staticmethod
+    def _allow_local_owner_bootstrap(*, tenant_id: UUID) -> bool:
+        if not bool(getattr(settings, "LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED", False)):
+            return False
+        if is_production_env():
+            return False
+        if str(getattr(settings, "AUTH_MODE", "jwt") or "jwt").strip().lower() != "header":
+            return False
+        default_tenant_id = DatasetService._default_tenant_id()
+        if default_tenant_id is None or tenant_id != default_tenant_id:
+            return False
+
+        request_state = get_request_state()
+        if request_state is None:
+            return False
+        if str(getattr(request_state, "tenant_id_source", "") or "").strip().lower() != "default":
+            return False
+        return DatasetService._is_loopback_client(getattr(request_state, "client_host", None))
+
+    @staticmethod
     def ensure_member(db: Session, tenant_id: UUID, account_id: str) -> TenantMember:
         member = (
             db.query(TenantMember)
@@ -29,8 +73,8 @@ class DatasetService:
             .first()
         )
         if not member:
-            if not is_production_env():
-                # Dev-friendly bootstrap: create tenant + membership on first use.
+            if DatasetService._allow_local_owner_bootstrap(tenant_id=tenant_id):
+                # Local convenience only: implicit default-tenant bootstrap from loopback header-auth flows.
                 tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
                 if not tenant:
                     db.add(

@@ -55,7 +55,30 @@ have separate rights to those weights may provide them through
 `SEAL_RECOGNITION_MODEL_DIR`.
 
 ================================================================================
-3. Other dependencies
+3. Bundled NLTK data resources
+================================================================================
+
+The directory `app/deepdoc/resources/nltk_data/` contains selected data
+packages distributed through the NLTK Data project:
+
+  - corpora/wordnet.zip
+  - taggers/averaged_perceptron_tagger.zip and its extracted model
+  - tokenizers/punkt.zip, tokenizers/punkt/, and tokenizers/punkt_tab/
+
+NLTK Data is available from https://github.com/nltk/nltk_data. Individual
+data packages have their own terms rather than inheriting one uniform license.
+The WordNet archive includes its upstream `wordnet/LICENSE`; the NLTK Data
+license inventory identifies the averaged perceptron tagger as MIT-licensed.
+The same inventory currently marks the Punkt tokenizer model license as
+unclarified. Redistributors must review the package-specific upstream terms
+and should not infer redistribution rights from the NLTK Data repository's
+top-level license alone:
+
+  https://github.com/nltk/nltk_data/blob/gh-pages/LICENSE-OVERVIEW.md
+  https://github.com/nltk/nltk_data/blob/gh-pages/DATASET-LICENSES.md
+
+================================================================================
+4. Other dependencies
 ================================================================================
 
 This product depends on additional third-party packages declared in

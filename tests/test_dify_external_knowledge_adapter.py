@@ -1401,6 +1401,187 @@ def test_dify_response_compaction_keeps_single_exact_anchor_answer_record(
     assert [record["title"] for record in compacted] == ["alpha.txt"]
 
 
+def test_dify_response_compaction_checks_unique_plugin_refs_in_order(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    seen_refs: list[str] = []
+
+    def _fake_policy(ref: str) -> dict[str, object]:
+        seen_refs.append(ref)
+        return {"plugin_ref": ref}
+
+    def _fake_compaction(policy: dict[str, object]) -> dict[str, bool]:
+        return {"enabled": policy.get("plugin_ref") == "plugin-b"}
+
+    monkeypatch.setattr(dify_api, "_retrieval_policy_for_plugin_ref", _fake_policy, raising=True)
+    monkeypatch.setattr(dify_api, "retrieval_policy_response_compaction", _fake_compaction, raising=True)
+
+    records = [
+        {"metadata": {"chunk_python_plugin": "plugin-b"}},
+        {"metadata": {"chunk_python_plugin": "plugin-b"}},
+        {"metadata": {"chunk_python_plugin": "plugin-c"}},
+    ]
+
+    compaction = dify_api._response_compaction_for_records(
+        records,
+        policy_plugin_refs=("plugin-a", "plugin-a", "plugin-b"),
+    )
+
+    assert compaction == {"enabled": True}
+    assert seen_refs == ["plugin-a", "plugin-b"]
+
+
+def test_dify_knowledge_mapping_plugin_refs_dedupes_and_normalizes_inputs() -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    assert dify_api._knowledge_mapping_plugin_refs(None) == ()
+    assert dify_api._knowledge_mapping_plugin_refs({"plugin_ref": " plugin-a "}) == ("plugin-a",)
+    assert dify_api._knowledge_mapping_plugin_refs(
+        {"plugin_refs": [" plugin-a ", "plugin-a", "", "plugin-b"]}
+    ) == ("plugin-a", "plugin-b")
+
+
+def test_dify_resolve_knowledge_policy_helpers_use_mapping_plugin_refs(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    monkeypatch.setattr(
+        dify_api,
+        "_load_knowledge_map",
+        lambda: {
+            "city": {
+                "plugin_refs": [" plugin-a ", "plugin-b", "plugin-a"],
+            }
+        },
+        raising=True,
+    )
+    monkeypatch.setattr(
+        dify_api,
+        "_retrieval_policy_for_plugin_ref",
+        lambda ref: {
+            "plugin-a": {"schema": "mimirq.retrieval_policy.v1", "filter_fields": ["category"]},
+            "plugin-b": {"schema": "mimirq.retrieval_policy.v1", "filter_fields": ["district"]},
+        }.get(ref, {}),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        dify_api,
+        "retrieval_policy_fallback_multiplier",
+        lambda policy: 3 if policy.get("filter_fields") == ["district"] else 2,
+        raising=True,
+    )
+
+    assert dify_api._resolve_knowledge_policy_plugin_refs("city") == ("plugin-a", "plugin-b")
+    assert dify_api._resolve_knowledge_policy_filter_fields("city") == {"category", "district"}
+    assert dify_api._resolve_knowledge_policy_fallback_multiplier("city") == 3
+
+
+def test_dify_resolve_knowledge_policy_helpers_fall_back_for_unknown_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    monkeypatch.setattr(dify_api, "_load_knowledge_map", lambda: {}, raising=True)
+
+    assert dify_api._resolve_knowledge_policy_plugin_refs("missing") == ()
+    assert dify_api._resolve_knowledge_policy_filter_fields("missing") is None
+    assert dify_api._resolve_knowledge_policy_fallback_multiplier("missing") == 1
+
+
+def test_dify_apply_policy_fallback_candidate_multiplier_enforces_bounds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX", 20, raising=False)
+
+    assert dify_api._apply_policy_fallback_candidate_multiplier(5, multiplier=3) == 15
+    assert dify_api._apply_policy_fallback_candidate_multiplier(5, multiplier=10) == 20
+    assert dify_api._apply_policy_fallback_candidate_multiplier(0, multiplier=0) == 1
+
+
+def test_dify_apply_policy_fallback_candidate_multiplier_uses_default_when_setting_is_invalid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX", "bad", raising=False)
+
+    assert dify_api._apply_policy_fallback_candidate_multiplier(7, multiplier=9) == 50
+    assert dify_api._apply_policy_fallback_candidate_multiplier(60, multiplier=1) == 60
+
+
+def test_dify_policy_fast_response_helpers_preserve_plugin_order(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    policies = {
+        "plugin-a": {
+            "schema": "mimirq.retrieval_policy.v1",
+            "fast_response_field_rules": [
+                {"label": "申请材料", "markers": ["申请材料", "材料"]},
+                {"label": "办理入口", "markers": ["入口"]},
+            ],
+            "response_hints": {
+                "answer_highlight_metadata_fields": [
+                    {"requested_labels_prefix": "必答字段"},
+                    {"requested_labels_prefix": "补充字段"},
+                ]
+            },
+        },
+        "plugin-b": {
+            "schema": "mimirq.retrieval_policy.v1",
+            "fast_response_field_rules": [
+                {"label": "申请材料", "markers": ["材料清单"]},
+                {"label": "联系方式", "markers": ["联系电话"]},
+            ],
+            "response_hints": {
+                "answer_highlight_metadata_fields": [
+                    {"requested_labels_prefix": "补充字段"},
+                    {"requested_labels_prefix": "更多字段"},
+                ]
+            },
+        },
+    }
+    monkeypatch.setattr(
+        dify_api,
+        "_retrieval_policy_for_plugin_ref",
+        lambda ref: policies.get(ref, {}),
+        raising=True,
+    )
+
+    assert dify_api._fast_response_field_rules_for_policy_refs(("plugin-a", "plugin-b")) == (
+        ("申请材料", ("申请材料", "材料")),
+        ("办理入口", ("入口",)),
+        ("联系方式", ("联系电话",)),
+    )
+    assert dify_api._requested_label_prefixes_for_policy_refs(("plugin-a", "plugin-b")) == (
+        "必答字段",
+        "补充字段",
+        "更多字段",
+    )
+
+
+def test_dify_record_answerfulness_wrapper_uses_api_bound_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    monkeypatch.setattr(
+        dify_api,
+        "_record_has_answer_evidence",
+        lambda *_args, **_kwargs: False,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        dify_api,
+        "_record_is_anchor_only_qa",
+        lambda *_args, **_kwargs: True,
+        raising=True,
+    )
+
+    score = dify_api._record_answerfulness_score(
+        {"content": "检索锚点：事项 A"},
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+    assert score == -dify_api._ANCHOR_ONLY_QA_RECORD_PENALTY
+
+
 def test_dify_metadata_anchor_fallback_prefers_region_anchored_duplicate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -5904,7 +6085,6 @@ def test_dify_mixed_intent_unquoted_anchor_keeps_supplemental_evidence(
         "alpha-place.txt",
     ]
 
-
 def test_dify_mixed_intent_subquery_strong_question_anchor_beats_generic_primary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -7953,6 +8133,38 @@ def test_dify_strong_question_anchor_rejects_canonical_intent_conflict(
     ) == 0.0
 
 
+def test_dify_strong_question_anchor_records_require_answerful_content(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(monkeypatch, dify_api)
+    answerful = {
+        "title": "answerful",
+        "content": "问题：Alpha Desk 在哪里办理？\n答案：街道服务中心。",
+        "metadata": {
+            "question": "Alpha Desk 在哪里办理？",
+            "chunk_kind": "qa_pair",
+            "chunk_python_plugin": _DEMO_PLUGIN_REF,
+        },
+    }
+    anchor_only = {
+        "title": "anchor-only",
+        "content": "检索锚点：Alpha Desk 在哪里办理\n问题：Alpha Desk 在哪里办理？\n相似问法：Alpha Desk 办理地点",
+        "metadata": {
+            "question": "Alpha Desk 在哪里办理？",
+            "chunk_kind": "qa_pair",
+            "chunk_python_plugin": _DEMO_PLUGIN_REF,
+        },
+    }
+
+    filtered = dify_api._strong_question_anchor_records(
+        [answerful, anchor_only],
+        query="Alpha Desk 在哪里办理？",
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+    assert filtered == [answerful]
+
+
 def test_dify_record_ranking_uses_registered_plugin_retrieval_policy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -8844,6 +9056,49 @@ def test_dify_fast_response_enforces_total_context_budget(monkeypatch: pytest.Mo
     assert len(compacted) == 2
     assert sum(len(str(record["content"])) for record in compacted) <= 200
     assert compacted[0]["metadata"]["dify_fast_compacted"] is True
+    assert compacted[0]["metadata"]["dify_fast_total_context_budget_chars"] == 200
+
+
+def test_dify_fast_response_trims_first_record_when_budget_is_smaller_than_compacted_content(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(monkeypatch, dify_api)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_RESPONSE_TOP_K_MAX", 2, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS", 600, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_TOTAL_CONTENT_MAX_CHARS", 200, raising=False)
+
+    records = [
+        {
+            "content": (
+                "事项名称：Alpha Desk\n办理地点：A区1号窗口\n办理材料："
+                + "申请表、身份证、授权书、经办人材料、营业执照复印件、代办委托书。" * 12
+            ),
+            "score": 0.9,
+            "title": "alpha.md",
+            "metadata": {},
+        },
+        {
+            "content": "事项名称：Beta Desk\n办理地点：B区2号窗口",
+            "score": 0.8,
+            "title": "beta.md",
+            "metadata": {},
+        },
+    ]
+
+    compacted = dify_api._compact_fast_records_for_response(
+        records,
+        query="Alpha Desk 办理地点和办理材料是什么",
+        top_k=2,
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+    assert len(compacted) == 1
+    assert "..." in compacted[0]["content"]
+    assert len(compacted[0]["content"]) < len(records[0]["content"])
+    assert compacted[0]["metadata"]["dify_fast_context_chars"] == len(compacted[0]["content"])
+    assert compacted[0]["metadata"]["dify_fast_context_budget_applied"] is True
     assert compacted[0]["metadata"]["dify_fast_total_context_budget_chars"] == 200
 
 
@@ -9814,6 +10069,71 @@ def test_dify_dedupe_collapses_chunks_from_same_source_record(monkeypatch: pytes
 
     assert len(deduped) == 1
     assert "苏服办APP" in deduped[0]["content"]
+
+
+def test_dify_dedupe_prefers_answerful_duplicate_over_higher_raw_score(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(monkeypatch, dify_api)
+    records = [
+        {
+            "content": "检索锚点：汽车置换更新\n问题：汽车置换更新\n相似问法：汽车置换补贴怎么申请",
+            "score": 0.92,
+            "title": "anchor-only.txt",
+            "metadata": {
+                "knowledge_section": "03城市常见问题",
+                "source_record_id": "record-car-subsidy",
+                "question": "汽车置换更新",
+                "chunk_kind": "qa_pair",
+            },
+        },
+        {
+            "content": "问题：汽车置换更新\n答案：在苏服办APP申请汽车置换补贴。",
+            "score": 0.81,
+            "title": "answer.txt",
+            "metadata": {
+                "knowledge_section": "03城市常见问题",
+                "source_record_id": "record-car-subsidy",
+                "question": "汽车置换更新",
+                "chunk_kind": "qa_pair",
+            },
+        },
+    ]
+
+    deduped = dify_api._dedupe_records(records, query="汽车置换补贴怎么申请", policy_plugin_refs=(_DEMO_PLUGIN_REF,))
+
+    assert deduped == [records[1]]
+
+
+def test_dify_answerfulness_score_uses_bonus_and_penalty(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(monkeypatch, dify_api)
+    answer_record = {
+        "content": "问题：汽车置换更新\n答案：在苏服办APP申请汽车置换补贴。",
+        "metadata": {
+            "question": "汽车置换更新",
+            "chunk_kind": "qa_pair",
+            "chunk_python_plugin": _DEMO_PLUGIN_REF,
+        },
+    }
+    anchor_only_record = {
+        "content": "检索锚点：汽车置换更新\n问题：汽车置换更新\n相似问法：汽车置换补贴怎么申请",
+        "metadata": {
+            "question": "汽车置换更新",
+            "chunk_kind": "qa_pair",
+            "chunk_python_plugin": _DEMO_PLUGIN_REF,
+        },
+    }
+
+    assert (
+        dify_api._record_answerfulness_score(answer_record, policy_plugin_refs=(_DEMO_PLUGIN_REF,))
+        == dify_api._ANSWERFUL_RECORD_BONUS
+    )
+    assert (
+        dify_api._record_answerfulness_score(anchor_only_record, policy_plugin_refs=(_DEMO_PLUGIN_REF,))
+        == -dify_api._ANCHOR_ONLY_QA_RECORD_PENALTY
+    )
 
 
 def test_dify_answer_bearing_qa_beats_anchor_only_metadata_match(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -12086,6 +12406,57 @@ def test_dify_metadata_condition_is_converted_to_mimirq_filter() -> None:
     assert match_metadata_filter({"tags": ["sales-pricing"]}, metadata_filter)
     assert match_metadata_filter({"page": 4}, metadata_filter)
     assert not match_metadata_filter({"category": "faq", "tags": ["ops"], "page": 2}, metadata_filter)
+
+
+def test_dify_metadata_condition_rejects_invalid_logical_operator() -> None:
+    from fastapi import HTTPException
+
+    from app.api.v1.integrations_dify import _metadata_condition_to_filter
+
+    with pytest.raises(HTTPException) as exc_info:
+        _metadata_condition_to_filter(
+            {
+                "logical_operator": "xor",
+                "conditions": [{"name": "category", "comparison_operator": "is", "value": "contract"}],
+            }
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Invalid Dify metadata_condition logical_operator"
+
+
+def test_dify_metadata_condition_rejects_invalid_condition_shape() -> None:
+    from fastapi import HTTPException
+
+    from app.api.v1.integrations_dify import _metadata_condition_to_filter
+
+    with pytest.raises(HTTPException) as exc_info:
+        _metadata_condition_to_filter(
+            {
+                "conditions": ["bad-shape"],
+            }
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Invalid Dify metadata_condition condition"
+
+
+def test_dify_metadata_condition_rejects_unsupported_operator() -> None:
+    from fastapi import HTTPException
+
+    from app.api.v1.integrations_dify import _dify_metadata_condition_item_to_filter
+
+    with pytest.raises(HTTPException) as exc_info:
+        _dify_metadata_condition_item_to_filter(
+            {
+                "name": "category",
+                "comparison_operator": "regex",
+                "value": "contract",
+            }
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Unsupported Dify metadata comparison operator: regex"
 
 
 def test_dify_record_conversion_keeps_metadata_object_and_clamps_score() -> None:

@@ -266,6 +266,7 @@ networkPolicy:
 前提：后端必须开启 `/metrics`（通过 env）：
 
 - `PROMETHEUS_ENABLED=true`（推荐由外部 Secret 提供）
+- `METRICS_BEARER_TOKEN=<token>`（推荐由外部 Secret 提供；支持原始 token 或 `sha256:<hex>`）
 
 Kubernetes / Prometheus Operator 环境下，你可以用 Helm 一键启用：
 

@@ -488,7 +488,10 @@ compileall-docker:
 # - DiskCache: exploitation requires prior write access to the private cache directory.
 # - ecdsa: JWT signing uses the cryptography backend; verification is unaffected.
 audit-py:
-	$(PY) -m pip_audit -r requirements.txt \
+	PIP_DEFAULT_TIMEOUT=60 $(PY) -m pip_audit -r requirements.txt \
+		--timeout 60 \
+		--index-url https://pypi.org/simple \
+		--extra-index-url https://download.pytorch.org/whl/cpu \
 		--ignore-vuln PYSEC-2026-311 \
 		--ignore-vuln PYSEC-2026-3046 \
 		--ignore-vuln PYSEC-2026-2447 \

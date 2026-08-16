@@ -12,6 +12,10 @@ from langchain_core.documents import Document
 
 from app.core.config import settings
 from app.parsing.backends import normalize_parser_backend
+from app.parsing.parsers.registry import (
+    get_parser_backend_family,
+    iter_parser_backend_families,
+)
 from app.parsing.parsers.text_parser import MarkdownParser, TextParser
 from app.rag.core.logging import get_logger
 
@@ -95,42 +99,30 @@ if TYPE_CHECKING:
     from app.parsing.parsers.video_parser import VideoParser
 
 
+_PARSER_BACKEND_FAMILIES = iter_parser_backend_families()
+_USER_SELECTABLE_BACKEND_FAMILIES = tuple(
+    family for family in _PARSER_BACKEND_FAMILIES if family.user_selectable and not family.implicit_only
+)
+
+
 class ParserFactory:
     """Select appropriate parser based on file type"""
 
     PDF_ADVANCED_FALLBACK_BACKENDS = {
-        "docling",
-        "deepdoc",
-        "marker",
-        "paddle_vl",
-        "glm_ocr",
-        "olmocr",
-        "qianfan_ocr",
-        "textin",
-        "mineru",
-        "magicpdf",
-        "deepseek_ocr",
-        "etl4llm",
+        family.canonical_name
+        for family in _USER_SELECTABLE_BACKEND_FAMILIES
+        if family.pdf_advanced_fallback
     }
-    DOCX_ADVANCED_FALLBACK_BACKENDS = {"docling", "deepdoc", "textin"}
+    DOCX_ADVANCED_FALLBACK_BACKENDS = {
+        family.canonical_name
+        for family in _USER_SELECTABLE_BACKEND_FAMILIES
+        if family.docx_advanced_fallback
+    }
 
     SUPPORTED_PDF_BACKENDS = {
-        "auto",
-        "basic",
-        "marker",
-        "paddle_vl",
-        "glm_ocr",
-        "olmocr",
-        "qianfan_ocr",
-        "textin",
-        "mineru",
-        "deepdoc",
-        "deepseek_ocr",
-        "etl4llm",
-        "markitdown",
-        "docling",
-        "magicpdf",
-        "colpali",
+        family.canonical_name
+        for family in _USER_SELECTABLE_BACKEND_FAMILIES
+        if family.supports_pdf
     }
     PLAIN_TEXT_EXTENSIONS = SOURCE_CODE_EXTENSIONS | {
         ".txt",
@@ -183,81 +175,37 @@ class ParserFactory:
     }
     # Non-PDF formats are primarily handled by general converters (MarkItDown/Pandoc),
     # but some advanced backends (e.g. DeepDoc/Docling) can also handle DOCX when enabled.
-    SUPPORTED_NON_PDF_BACKENDS = {"auto", "markitdown", "pandoc", "excel", "docx", "pptx", "html", "csv", "json", "deepdoc", "docling", "email", "image", "audio", "video", "textin", "colpali"}
+    SUPPORTED_NON_PDF_BACKENDS = {
+        family.canonical_name
+        for family in _USER_SELECTABLE_BACKEND_FAMILIES
+        if family.supports_non_pdf
+    }
 
     PDF_SETTING_REQUIREMENTS = {
-        "marker": (
-            "MARKER_ENABLED",
-            "Marker parser is not enabled. Please set MARKER_ENABLED=True and configure MARKER_API_URL.",
-            (("MARKER_API_URL", "Marker parser requires MARKER_API_URL."),),
-        ),
-        "paddle_vl": (
-            "PADDLE_VL_ENABLED",
-            "PaddleOCR-VL parser is not enabled. Please set PADDLE_VL_ENABLED=True and configure PADDLE_VL_API_URL.",
-            (("PADDLE_VL_API_URL", "PaddleOCR-VL parser requires PADDLE_VL_API_URL."),),
-        ),
-        "glm_ocr": (
-            "GLM_OCR_ENABLED",
-            "GLM-OCR parser is not enabled. Please set GLM_OCR_ENABLED=True and configure GLM_OCR_API_URL.",
-            (("GLM_OCR_API_URL", "GLM-OCR parser requires GLM_OCR_API_URL."),),
-        ),
-        "olmocr": (
-            "OLMOCR_ENABLED",
-            "olmOCR parser is not enabled. Please set OLMOCR_ENABLED=True and configure OLMOCR_API_URL.",
-            (("OLMOCR_API_URL", "olmOCR parser requires OLMOCR_API_URL."),),
-        ),
-        "qianfan_ocr": (
-            "QIANFAN_OCR_ENABLED",
-            "Qianfan-OCR parser is not enabled. Please set QIANFAN_OCR_ENABLED=True and configure QIANFAN_OCR_API_URL.",
-            (("QIANFAN_OCR_API_URL", "Qianfan-OCR parser requires QIANFAN_OCR_API_URL."),),
-        ),
-        "textin": (
-            "TEXTIN_ENABLED",
-            "TextIn parser is not enabled. Please set TEXTIN_ENABLED=True and configure TEXTIN credentials.",
-            (
-                ("TEXTIN_APP_ID", "TextIn parser requires TEXTIN_APP_ID."),
-                ("TEXTIN_SECRET_CODE", "TextIn parser requires TEXTIN_SECRET_CODE."),
-            ),
-        ),
-        "deepseek_ocr": (
-            "DEEPSEEK_OCR_ENABLED",
-            "DeepSeek OCR parser is not enabled. Please set DEEPSEEK_OCR_ENABLED=True and configure SILICONFLOW_API_KEY.",
-            (("SILICONFLOW_API_KEY", "DeepSeek OCR parser requires SILICONFLOW_API_KEY."),),
-        ),
-        "etl4llm": (
-            "ETL4LLM_ENABLED",
-            "ETL4LLM parser is not enabled. Please set ETL4LLM_ENABLED=True and configure ETL4LLM_API_URL.",
-            (("ETL4LLM_API_URL", "ETL4LLM parser requires ETL4LLM_API_URL."),),
-        ),
+        family.canonical_name: (
+            str(family.pdf_required_setting_flag or ""),
+            str(family.pdf_disabled_message or ""),
+            tuple(family.pdf_required_settings),
+        )
+        for family in _USER_SELECTABLE_BACKEND_FAMILIES
+        if family.pdf_required_setting_flag
     }
 
     NON_PDF_BACKEND_EXTENSION_RULES = {
-        "excel": ({".xls", XLSX_EXTENSION}, "excel backend supports only .xls/.xlsx"),
-        "docx": ({DOCX_EXTENSION}, "docx backend supports only .docx"),
-        "pptx": ({PPTX_EXTENSION}, "pptx backend supports only .pptx"),
-        "html": ({HTML_EXTENSION, ".htm"}, "html backend supports only .html/.htm"),
-        "csv": ({".csv"}, "csv backend supports only .csv"),
-        "json": ({JSON_EXTENSION}, "json backend supports only .json"),
-        "email": ({EML_EXTENSION, MSG_EXTENSION}, "email backend supports only .eml/.msg"),
-        "image": (IMAGE_EXTENSIONS, f"image backend supports only: {sorted(IMAGE_EXTENSIONS)}"),
-        "docling": ({DOCX_EXTENSION}, "docling backend currently supports only .docx (non-PDF)"),
-        "deepdoc": ({DOCX_EXTENSION}, "deepdoc backend currently supports only .docx (non-PDF)"),
+        family.canonical_name: (set(family.non_pdf_extensions), str(family.non_pdf_extension_error or ""))
+        for family in _USER_SELECTABLE_BACKEND_FAMILIES
+        if family.non_pdf_extensions
     }
 
     PDF_PARSER_SPECS = {
-        "marker": ("_marker_parser", "app.parsing.parsers.marker_parser", "MarkerParser", "[pdf] Initializing Marker parser (external service)"),
-        "paddle_vl": ("_paddle_vl_parser", "app.parsing.parsers.paddle_vl_parser", "PaddleVLParser", "[pdf] Initializing PaddleOCR-VL parser (external service)"),
-        "glm_ocr": ("_glm_ocr_parser", "app.parsing.parsers.glm_ocr_parser", "GlmOCRParser", "[pdf] Initializing GLM-OCR parser (external service)"),
-        "olmocr": ("_olmocr_parser", "app.parsing.parsers.olmocr_parser", "OlmocrParser", "[pdf] Initializing olmOCR parser (external service)"),
-        "qianfan_ocr": ("_qianfan_ocr_parser", "app.parsing.parsers.qianfan_ocr_parser", "QianfanOCRParser", "[pdf] Initializing Qianfan-OCR parser (external service)"),
-        "textin": ("_textin_parser", "app.parsing.parsers.textin_parser", "TextInParser", "[pdf] Initializing TextIn xParse parser (external API)"),
-        "mineru": ("_mineru_parser", "app.parsing.parsers.mineru_parser", "MinerUParser", "[pdf] Initializing MinerU parser (advanced)"),
-        "deepdoc": ("_deepdoc_parser", "app.parsing.parsers.deepdoc_parser", "DeepDocParser", "[pdf] Initializing DeepDoc parser (structure-aware)"),
-        "deepseek_ocr": ("_deepseek_ocr_parser", "app.parsing.parsers.deepseek_ocr_parser", "DeepSeekOCRParser", "[pdf] Initializing DeepSeek OCR parser (SiliconFlow)"),
-        "etl4llm": ("_etl4llm_parser", "app.parsing.parsers.etl4llm_parser", "Etl4LlmParser", "[pdf] Initializing ETL4LLM parser (layout-aware)"),
-        "markitdown": ("_markitdown_parser", "app.parsing.parsers.markitdown_parser", "MarkItDownParser", "[pdf] Initializing MarkItDown parser (markdown-focused)"),
-        "docling": ("_docling_parser", "app.parsing.parsers.docling_parser", "DoclingParser", "[pdf] Initializing Docling parser (structure-aware)"),
-        "magicpdf": ("_magicpdf_parser", "app.parsing.parsers.magic_pdf_parser", "MagicPDFParser", "[pdf] Initializing MagicPDF parser (local advanced)"),
+        family.canonical_name: (
+            str(family.pdf_cache_attr or ""),
+            str(family.parser_module_name or ""),
+            str(family.parser_class_name or ""),
+            str(family.init_log_message or ""),
+        )
+        for family in _USER_SELECTABLE_BACKEND_FAMILIES
+        if family.pdf_cache_attr and family.parser_module_name and family.parser_class_name and family.init_log_message
     }
 
     def __init__(self):
@@ -406,9 +354,12 @@ class ParserFactory:
         return None
 
     def _normalize_non_pdf_backend(self, backend: str) -> str:
-        if backend in {"", "auto"} or backend in self.SUPPORTED_NON_PDF_BACKENDS:
+        family = get_parser_backend_family(backend)
+        if backend in {"", "auto"} or (
+            family is not None and family.supports_non_pdf and family.user_selectable and not family.implicit_only
+        ):
             return backend
-        if backend in self.SUPPORTED_PDF_BACKENDS:
+        if family is not None and family.supports_pdf and family.user_selectable:
             return "auto"
         return backend
 
@@ -481,21 +432,21 @@ class ParserFactory:
         return "basic"
 
     def _validate_pdf_backend(self, backend: str) -> None:
-        if backend in {"basic", "deepdoc", "markitdown", "colpali"}:
-            return
-        if backend in self.PDF_SETTING_REQUIREMENTS:
+        family = get_parser_backend_family(backend)
+        if family is None or not family.supports_pdf:
+            raise ValueError(f"Unsupported parser backend '{backend}'")
+        if family.pdf_required_setting_flag:
             self._validate_pdf_setting_requirements(backend)
             return
-        if backend == "mineru":
+        if family.pdf_validation_kind == "mineru":
             self._validate_mineru_backend()
             return
-        if backend == "docling":
+        if family.pdf_validation_kind == "docling":
             self._validate_docling_backend()
             return
-        if backend == "magicpdf":
+        if family.pdf_validation_kind == "magicpdf":
             self._validate_magicpdf_backend()
             return
-        raise ValueError(f"Unsupported parser backend '{backend}'")
 
     def _validate_pdf_setting_requirements(self, backend: str) -> None:
         flag_name, disabled_message, required_values = self.PDF_SETTING_REQUIREMENTS[backend]
@@ -537,47 +488,18 @@ class ParserFactory:
             )
 
     def _resolve_non_pdf_parser(self, *, backend: str, file_ext: str) -> Any:
-        if backend in {"deepdoc", "docling", "textin"}:
+        family = get_parser_backend_family(backend)
+        if family is None:
+            raise ValueError(f"Unsupported parser backend '{backend}' for {file_ext}")
+        if family.reuse_pdf_parser_for_non_pdf:
             # These parsers are initialized in the PDF backend factory, but can also
             # handle certain non-PDF formats (e.g. DOCX) when explicitly requested.
             return self._get_pdf_parser(backend)
-
-        direct_factories = {
-            "markitdown": self._get_markitdown_parser,
-            "pandoc": self._get_pandoc_parser,
-            "email": self._get_email_parser,
-            "image": self._get_image_parser,
-            "colpali": self._get_colpali_parser,
-            "audio": self._get_audio_parser,
-            "video": self._get_video_parser,
-        }
-        if backend in direct_factories:
-            return direct_factories[backend]()
-
-        if backend == "excel":
-            from app.parsing.parsers.excel_parser import ExcelParser
-
-            return ExcelParser()
-        if backend == "docx":
-            from app.parsing.parsers.docx_parser import DocxParser
-
-            return DocxParser()
-        if backend == "pptx":
-            from app.parsing.parsers.pptx_parser import PptxParser
-
-            return PptxParser()
-        if backend == "html":
-            from app.parsing.parsers.html_parser import HtmlParser
-
-            return HtmlParser()
-        if backend == "csv":
-            from app.parsing.parsers.csv_parser import CsvParser
-
-            return CsvParser()
-        if backend == "json":
-            from app.parsing.parsers.json_parser import JsonParser
-
-            return JsonParser()
+        if family.non_pdf_factory_getter_name:
+            return getattr(self, family.non_pdf_factory_getter_name)()
+        if family.non_pdf_constructor_module_name and family.non_pdf_constructor_class_name:
+            module = importlib.import_module(family.non_pdf_constructor_module_name)
+            return getattr(module, family.non_pdf_constructor_class_name)()
         raise ValueError(f"Unsupported parser backend '{backend}' for {file_ext}")
 
     def _select_parser(self, *, file_ext: str, backend: str) -> Any:
@@ -1098,10 +1020,11 @@ class ParserFactory:
         return self._fallback_parse(file_path=file_path, file_ext=file_ext, requested_backend="markitdown", error=error)
 
     def _get_pdf_parser(self, backend: str):
-        if backend == "basic":
-            return self._get_basic_pdf_parser()
-        if backend == "colpali":
-            return self._get_colpali_parser()
+        family = get_parser_backend_family(backend)
+        if family is None or not family.supports_pdf:
+            raise ValueError(f"Unsupported PDF parser backend '{backend}'")
+        if family.pdf_factory_getter_name:
+            return getattr(self, family.pdf_factory_getter_name)()
         spec = self.PDF_PARSER_SPECS.get(backend)
         if spec is None:
             raise ValueError(f"Unsupported PDF parser backend '{backend}'")

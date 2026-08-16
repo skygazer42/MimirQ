@@ -7031,6 +7031,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/observability/index-audit/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reconcile Index Audit
+         * @description Minimal admin-triggered reconcile entrypoint for index audit findings.
+         *
+         *     Current worker support is document-scoped only. Dataset-only requests remain
+         *     explicitly unsupported rather than broadening to a tenant-wide rebuild.
+         */
+        post: operations["reconcile_index_audit_api_v1_observability_index_audit_reconcile_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/observability/index-audit/reconcile-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Index Audit Reconcile Status
+         * @description Read current persisted document index-channel readiness for a reconcile target.
+         *
+         *     This does not infer queue completion from task ids; it reports only durable
+         *     `document_index_channels` state for the document's current pipeline.
+         */
+        get: operations["get_index_audit_reconcile_status_api_v1_observability_index_audit_reconcile_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/observability/index-audit/reconcile-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enqueue Index Audit Reconcile Job Endpoint
+         * @description Manually enqueue a bounded tenant+dataset scoped index-audit reconcile job.
+         *
+         *     This never schedules a cross-tenant scan. Legacy/no-row documents remain
+         *     report-only inside the job and are not auto-rebuilt.
+         */
+        post: operations["enqueue_index_audit_reconcile_job_endpoint_api_v1_observability_index_audit_reconcile_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/observability/embedding-drift/snapshot": {
         parameters: {
             query?: never;
@@ -11204,6 +11273,44 @@ export interface components {
                 [key: string]: number;
             };
         };
+        /** DatasetPrecheckEmbeddingAdvisory */
+        DatasetPrecheckEmbeddingAdvisory: {
+            /** Schema */
+            schema: string;
+            /** Code */
+            code: string;
+            /**
+             * Severity
+             * @default warning
+             * @enum {string}
+             */
+            severity: "info" | "warning" | "error";
+            /** Reason */
+            reason: string;
+            /** Language Mix */
+            language_mix?: {
+                [key: string]: number;
+            };
+            /** Effective Embedding */
+            effective_embedding?: {
+                [key: string]: string;
+            };
+            /** Recommended Action */
+            recommended_action: string;
+            /** Migration Action For Indexed Dataset */
+            migration_action_for_indexed_dataset: string;
+            /** Configured Language Models */
+            configured_language_models?: {
+                [key: string]: string;
+            };
+            /** Recommended Model Ids */
+            recommended_model_ids?: string[];
+            /**
+             * Mutates Existing Dataset
+             * @default false
+             */
+            mutates_existing_dataset: boolean;
+        };
         /** DatasetPrecheckFileOut */
         DatasetPrecheckFileOut: {
             /** Name */
@@ -11842,6 +11949,8 @@ export interface components {
             language_mix?: {
                 [key: string]: number;
             };
+            /** Embedding Advisories */
+            embedding_advisories?: components["schemas"]["DatasetPrecheckEmbeddingAdvisory"][];
             /** Directory Stats */
             directory_stats?: components["schemas"]["DatasetPrecheckDirectoryStat"][];
             /** File Size Histogram */
@@ -13665,6 +13774,7 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             retrieval_hits?: components["schemas"]["DocumentHealthRetrievalHits"] | null;
+            index_readiness?: components["schemas"]["DocumentHealthIndexReadiness"] | null;
         };
         /** DocumentHealthChunkCoverage */
         DocumentHealthChunkCoverage: {
@@ -13717,6 +13827,70 @@ export interface components {
             total_characters: number;
             coverage?: components["schemas"]["DocumentHealthChunkCoverage"];
             semantic_quality?: components["schemas"]["DocumentHealthSemanticQualitySummary"] | null;
+        };
+        /** DocumentHealthIndexChannelStatus */
+        DocumentHealthIndexChannelStatus: {
+            /** Channel */
+            channel: string;
+            /**
+             * Required
+             * @default false
+             */
+            required: boolean;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Status
+             * @default pending
+             */
+            status: string;
+            /** Error */
+            error?: string | null;
+            /**
+             * Attempt Count
+             * @default 0
+             */
+            attempt_count: number;
+            /** Last Attempted At */
+            last_attempted_at?: string | null;
+            /** Last Succeeded At */
+            last_succeeded_at?: string | null;
+            /** Last Failed At */
+            last_failed_at?: string | null;
+            /** Last Status Changed At */
+            last_status_changed_at?: string | null;
+            /**
+             * Legacy
+             * @default false
+             */
+            legacy: boolean;
+        };
+        /** DocumentHealthIndexReadiness */
+        DocumentHealthIndexReadiness: {
+            /** Pipeline Hash */
+            pipeline_hash?: string | null;
+            /**
+             * Ready
+             * @default false
+             */
+            ready: boolean;
+            /** Pending Channels */
+            pending_channels?: string[];
+            /** Error Channels */
+            error_channels?: string[];
+            /** Disabled Channels */
+            disabled_channels?: string[];
+            /** Required Channels */
+            required_channels?: string[];
+            /** Enabled Channels */
+            enabled_channels?: string[];
+            /** Statuses */
+            statuses?: {
+                [key: string]: components["schemas"]["DocumentHealthIndexChannelStatus"];
+            };
         };
         /** DocumentHealthParsing */
         DocumentHealthParsing: {
@@ -16711,6 +16885,128 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** IndexAuditReconcileEnqueueRequest */
+        IndexAuditReconcileEnqueueRequest: {
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /** Document Id */
+            document_id?: string | null;
+            /**
+             * Limit
+             * @default 100
+             */
+            limit: number;
+            /**
+             * Dry Run
+             * @default true
+             */
+            dry_run: boolean;
+        };
+        /** IndexAuditReconcileEnqueueResponse */
+        IndexAuditReconcileEnqueueResponse: {
+            /** Schema */
+            schema: string;
+            /** Job Name */
+            job_name: string;
+            /** Job Id */
+            job_id: string;
+            /** Tenant Id */
+            tenant_id: string;
+            /** Dataset Id */
+            dataset_id: string;
+            /** Document Id */
+            document_id?: string | null;
+            /** Scope */
+            scope: string;
+            /** Dry Run */
+            dry_run: boolean;
+            /** Limit */
+            limit: number;
+            /** Status */
+            status: string;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Report In Job Result
+             * @default true
+             */
+            report_in_job_result: boolean;
+            /**
+             * Legacy Unknown Report Only
+             * @default true
+             */
+            legacy_unknown_report_only: boolean;
+        };
+        /** IndexAuditReconcileRequest */
+        IndexAuditReconcileRequest: {
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /** Document Id */
+            document_id?: string | null;
+        };
+        /** IndexAuditReconcileResponse */
+        IndexAuditReconcileResponse: {
+            /** Schema */
+            schema: string;
+            /** Tenant Id */
+            tenant_id: string;
+            /** Dataset Id */
+            dataset_id: string;
+            /** Document Id */
+            document_id?: string | null;
+            /** Scope */
+            scope: string;
+            /** Status */
+            status: string;
+            /** Reason */
+            reason?: string | null;
+            /** Task Id */
+            task_id?: string | null;
+            /** Current Index Readiness */
+            current_index_readiness?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** IndexAuditReconcileStatusResponse */
+        IndexAuditReconcileStatusResponse: {
+            /** Schema */
+            schema: string;
+            /** Tenant Id */
+            tenant_id: string;
+            /** Dataset Id */
+            dataset_id: string;
+            /** Document Id */
+            document_id: string;
+            /** Status */
+            status: string;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Legacy
+             * @default false
+             */
+            legacy: boolean;
+            /**
+             * Ready
+             * @default false
+             */
+            ready: boolean;
+            /**
+             * Channel Rows Present
+             * @default 0
+             */
+            channel_rows_present: number;
+            /** Current Index Readiness */
+            current_index_readiness?: {
+                [key: string]: unknown;
+            };
+        };
         /** IndexAuditResponse */
         IndexAuditResponse: {
             /** Tenant Id */
@@ -16762,6 +17058,10 @@ export interface components {
              * @default []
              */
             milvus_orphan_ids_sample: string[];
+            /** Index Channels */
+            index_channels?: {
+                [key: string]: unknown;
+            };
         };
         /** IndexDriftItemResponse */
         IndexDriftItemResponse: {
@@ -23100,6 +23400,17 @@ export interface components {
             retrieval_only: boolean;
             /** Query For Retrieval */
             query_for_retrieval: string;
+            /**
+             * Retrieval Degraded
+             * @default false
+             */
+            retrieval_degraded: boolean;
+            /** Fallback Reason */
+            fallback_reason?: string | null;
+            /** Channel Health */
+            channel_health?: {
+                [key: string]: unknown;
+            };
             /** Channels */
             channels?: {
                 [key: string]: unknown;
@@ -37143,7 +37454,11 @@ export interface operations {
     diff_kg_snapshots_api_api_v1_kg_snapshots_diff_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+                "x-tenant-id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -44884,7 +45199,11 @@ export interface operations {
     get_industry_rulesets_api_v1_industry_rules_rulesets_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+                "x-tenant-id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -44934,12 +45253,25 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     get_industry_ruleset_api_v1_industry_rules_rulesets__name__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+                "x-tenant-id"?: string | null;
+            };
             path: {
                 name: string;
             };
@@ -45227,7 +45559,11 @@ export interface operations {
     preview_industry_rules_rewrite_api_v1_industry_rules_preview_rewrite_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+                "x-tenant-id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -45439,7 +45775,11 @@ export interface operations {
     list_pipeline_plugins_endpoint_api_v1_pipeline_plugins_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+                "x-tenant-id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -45488,6 +45828,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };
@@ -47272,7 +47621,11 @@ export interface operations {
     list_connectors_api_v1_connectors_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+                "x-tenant-id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -47285,6 +47638,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConnectorInfo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -49480,7 +49842,11 @@ export interface operations {
     get_retrieval_profiles_api_v1_retrieval_profiles_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+                "x-tenant-id"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -49531,6 +49897,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };
@@ -53270,6 +53645,223 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IndexAuditResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reconcile_index_audit_api_v1_observability_index_audit_reconcile_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IndexAuditReconcileRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexAuditReconcileResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_index_audit_reconcile_status_api_v1_observability_index_audit_reconcile_status_get: {
+        parameters: {
+            query: {
+                /** @description Dataset id for the reconciled document */
+                dataset_id: string;
+                /** @description Document id to inspect reconcile readiness for */
+                document_id: string;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexAuditReconcileStatusResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enqueue_index_audit_reconcile_job_endpoint_api_v1_observability_index_audit_reconcile_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IndexAuditReconcileEnqueueRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexAuditReconcileEnqueueResponse"];
                 };
             };
             /** @description Bad Request */

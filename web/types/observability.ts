@@ -226,6 +226,27 @@ export interface SloSnapshotResponse {
   windows: SloWindowSnapshotResponse[]
 }
 
+export interface IndexAuditChannelSummary {
+  documents_with_channel_rows?: number
+  documents_using_legacy_fallback?: number
+  ready_documents?: number
+  required_pending_documents?: number
+  required_error_documents?: number
+  optional_disabled_documents?: number
+  optional_skipped_documents?: number
+  required_pending_channels?: number
+  required_error_channels?: number
+  optional_disabled_channels?: number
+  optional_skipped_channels?: number
+  required_pending_by_channel?: Record<string, number>
+  required_error_by_channel?: Record<string, number>
+  optional_disabled_by_channel?: Record<string, number>
+  optional_skipped_by_channel?: Record<string, number>
+  status_counts?: Record<string, number>
+  status_counts_by_channel?: Record<string, Record<string, number>>
+  legacy_by_channel?: Record<string, number>
+}
+
 export interface IndexAuditResponse {
   tenant_id: string
   dataset_id: string
@@ -241,6 +262,59 @@ export interface IndexAuditResponse {
 
   milvus_ids_sampled: number
   milvus_orphan_ids_sample: string[]
+  index_channels?: IndexAuditChannelSummary
+}
+
+export interface IndexAuditReconcileResponse {
+  schema?: string
+  task_id?: string | null
+  reconcile_task_id?: string | null
+  status?: string | null
+  enqueued?: boolean | null
+  message?: string | null
+}
+
+export interface IndexAuditReconcileEnqueueRequest {
+  dataset_id: string
+  document_id?: string | null
+  limit?: number
+  dry_run?: boolean
+}
+
+export interface IndexAuditReconcileEnqueueResponse {
+  schema: string
+  job_name: string
+  job_id: string
+  tenant_id: string
+  dataset_id: string
+  document_id?: string | null
+  scope: 'dataset' | 'document' | string
+  dry_run: boolean
+  limit: number
+  status: 'enqueued' | 'already_queued' | 'not_enqueued' | string
+  reason?: string | null
+  report_in_job_result: boolean
+  legacy_unknown_report_only: boolean
+}
+
+export interface IndexAuditReconcileStatusResponse {
+  status:
+    | 'legacy_unknown'
+    | 'pending'
+    | 'error'
+    | 'ready'
+    | 'unknown'
+  reason?: string | null
+  legacy?: boolean | null
+  ready?: boolean | null
+  channel_rows_present?: number | null
+  current_index_readiness?: {
+    ready?: boolean
+    pending_channels?: string[]
+    error_channels?: string[]
+    statuses?: Record<string, unknown>
+    [key: string]: unknown
+  } | null
 }
 
 export interface IngestionDashboardSummaryResponse {

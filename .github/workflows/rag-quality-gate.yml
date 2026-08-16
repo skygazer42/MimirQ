@@ -1,20 +1,50 @@
-name: RAG Quality Gate
+name: Nightly Real-Provider Answer Quality Gate
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "30 2 * * *"
 
 jobs:
-  rag-quality-gate:
+  answer-quality-nightly:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: mimirq
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
     env:
+      ENV: ci
+      AUTH_MODE: header
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/mimirq
+      SECRET_KEY: ci-answer-quality-secret-key-0123456789
+      DEFAULT_TENANT_ID: 00000000-0000-0000-0000-000000000000
+      VECTOR_BACKEND: faiss
+      TASK_QUEUE_ENABLED: "false"
+      EMBEDDING_CACHE_ENABLED: "false"
+      MINIO_ENABLED: "false"
+      LEXICAL_DB_TRGM_ENABLED: "false"
+      EMBEDDING_PROVIDER: deterministic_test
+      EMBEDDING_MODEL: mimirq-deterministic-test-v1
+      ENABLE_RERANKER: "true"
+      RERANKER_PROVIDER: pc
+      RERANKER_TOP_N: "20"
+      LLM_MOCK_ENABLED: "false"
+      LLM_API_KEY: ${{ secrets.RAG_EVAL_LLM_API_KEY }}
+      LLM_API_BASE: ${{ vars.RAG_EVAL_LLM_API_BASE }}
+      LLM_MODEL: ${{ vars.RAG_EVAL_LLM_MODEL }}
       RAG_EVAL_GATE_ENABLED: "true"
-      RAG_EVAL_GATE_SUMMARY_PATH: "artifacts/answer_quality.summary.json"
-      # Keep these canonical paths duplicated in the workflow so the regression
-      # test can assert the quality-gate inputs/outputs stay wired together:
-      # - scripts/run_sample_retrieval_benchmark.py
-      # - scripts/build_rag_quality_gate_artifacts.py
-      # - data/sample/retrieval_fixture_v1.json
+      RAG_EVAL_GATE_SUMMARY_PATH: artifacts/answer_quality.summary.json
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -35,58 +65,89 @@ jobs:
             --extra-index-url https://download.pytorch.org/whl/cpu \
             -r requirements-dev.txt
 
-      - name: Generate bounded retrieval benchmark via scripts/run_sample_retrieval_benchmark.py using data/sample/retrieval_fixture_v1.json
-        env:
-          LLM_MOCK_ENABLED: "true"
+      - name: Require explicit real-provider configuration
+        run: |
+          if [ -z "$LLM_API_KEY" ] || [ -z "$LLM_API_BASE" ] || [ -z "$LLM_MODEL" ]; then
+            echo "::error::Configure RAG_EVAL_LLM_API_KEY secret plus RAG_EVAL_LLM_API_BASE and RAG_EVAL_LLM_MODEL variables."
+            exit 1
+          fi
+
+      - name: Seed deterministic regression fixture
         run: |
           mkdir -p artifacts
-          python scripts/run_sample_retrieval_benchmark.py \
-            --fixture data/sample/retrieval_fixture_v1.json \
-            --out artifacts/sample_retrieval_bench.json \
-            --retrieval-mode keyword \
-            --top-k 5
+          python scripts/seed_ci_retrieval_regression.py \
+            --fixture ci/retrieval_regression_fixture.v1.json \
+            --out-cases artifacts/regression_cases.json
 
-      - name: Build RAG quality gate artifacts via scripts/build_rag_quality_gate_artifacts.py
+      - name: Start backend for real-provider answer evaluation
         run: |
-          python scripts/build_rag_quality_gate_artifacts.py \
-            --benchmark artifacts/sample_retrieval_bench.json \
-            --summary-out artifacts/answer_quality.summary.json \
-            --report-out artifacts/rag_quality_gate.report.json
+          python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > artifacts/backend.log 2>&1 &
+          echo $! > artifacts/backend.pid
 
-      - name: Run sample broader parsing proof sweep
-        env:
-          LLM_MOCK_ENABLED: "true"
+      - name: Wait for backend ready
         run: |
-          mkdir -p artifacts/parsing_proof_broader_sample
-          python scripts/run_sample_parsing_retrieval_proof.py \
-            --out-dir artifacts/parsing_proof_broader_sample
+          backend_pid="$(cat artifacts/backend.pid)"
+          for i in $(seq 1 120); do
+            if BACKEND_BASE_URL="http://127.0.0.1:8000" python scripts/api_ping.py; then
+              exit 0
+            fi
+            if ! kill -0 "$backend_pid" 2>/dev/null; then
+              echo "backend exited before becoming ready" >&2
+              tail -200 artifacts/backend.log >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "backend not ready" >&2
+          tail -200 artifacts/backend.log >&2
+          exit 1
 
-      - name: Evaluate broader parsing proof thresholds
+      - name: Run nightly real-provider regression + llm_judge
         run: |
-          python scripts/parsing_retrieval_proof_gate.py \
-            --input artifacts/parsing_proof_broader_sample/summary.json \
-            --thresholds ci/parsing_retrieval_proof_thresholds.v1.json \
-            --out artifacts/parsing_proof_broader_sample/gate.json
+          python scripts/regression_gate.py \
+            --base-url http://127.0.0.1:8000/api/v1 \
+            --tenant-id 00000000-0000-0000-0000-000000000000 \
+            --user-id ci-bot \
+            --cases artifacts/regression_cases.json \
+            --metrics faithfulness_det \
+            --use-llm-judge \
+            --retrieval-mode hybrid \
+            --out-run-json artifacts/answer_quality.run.json \
+            --out-report-json artifacts/answer_quality.regression_gate.json \
+            --out-report-md artifacts/answer_quality.regression_gate.md
 
-      - name: Run RAG quality gate test
+      - name: Build answer-quality summary
+        run: |
+          python scripts/build_answer_quality_summary.py \
+            --input artifacts/answer_quality.run.json \
+            --out artifacts/answer_quality.summary.json
+
+      - name: Gate nightly answer quality
+        run: |
+          python scripts/answer_quality_gate.py \
+            --input artifacts/answer_quality.summary.json \
+            --thresholds ci/answer_quality_thresholds.v1.json \
+            --out artifacts/answer_quality.gate.json
+
+      - name: Run answer-quality workflow contract test
         run: pytest -q tests/rag/evaluation/test_rag_quality_gate.py --junitxml=artifacts/rag_quality_gate.junit.xml
 
-      - name: Upload RAG quality gate artifacts
+      - name: Upload nightly answer-quality artifacts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: rag-quality-gate
+          name: answer-quality-nightly-real-provider
           path: |
-            artifacts/sample_retrieval_bench.json
+            artifacts/answer_quality.run.json
+            artifacts/answer_quality.regression_gate.json
+            artifacts/answer_quality.regression_gate.md
             artifacts/answer_quality.summary.json
-            artifacts/rag_quality_gate.report.json
+            artifacts/answer_quality.gate.json
             artifacts/rag_quality_gate.junit.xml
-            artifacts/parsing_proof_broader_sample/parsing_proof_batch.spec.json
-            artifacts/parsing_proof_broader_sample/*.fixture.json
-            artifacts/parsing_proof_broader_sample/*.report.json
-            artifacts/parsing_proof_broader_sample/rollout.json
-            artifacts/parsing_proof_broader_sample/summary.json
-            artifacts/parsing_proof_broader_sample/gate.json
-            artifacts/parsing_proof_broader_sample/diff.json
-            artifacts/parsing_proof_broader_sample/diff.md
-            artifacts/parsing_proof_broader_sample/review.md
+
+      - name: Stop backend
+        if: always()
+        run: |
+          if [ -f artifacts/backend.pid ]; then
+            kill "$(cat artifacts/backend.pid)" || true
+          fi

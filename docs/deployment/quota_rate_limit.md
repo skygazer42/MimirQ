@@ -83,6 +83,8 @@
 ## 4) Upload 配额（文档数 / 存储容量）
 
 作用：对上传入口做“文档数 / 存储容量”保护，避免无限增长。
+`multipart`、URL ingest、local HTML ingest 复用同一组 tenant 文档数 / 存储字节配额，
+并且在持久化到对象存储前先检查；超额或 fail-closed 故障时会清理临时文件。
 
 配置：
 
@@ -106,10 +108,15 @@
 - `TENANT_EMBED_CHAR_QUOTA_LIMIT`
 - `TENANT_EMBED_CHAR_QUOTA_WINDOW_HOURS`
 - `TENANT_EMBED_CHAR_QUOTA_MODE`：`block` / `warn`
+- `TENANT_QUOTA_FAIL_CLOSED`：配额依赖异常时是否阻断入库；默认 `false` 保持兼容
 
 说明：
 
-- 这是 best-effort 的保护，依赖 DB 聚合查询；在 DB 故障/异常时会倾向 fail-open（避免把依赖故障扩大成全站不可用）。
+- 默认 `TENANT_QUOTA_FAIL_CLOSED=false`：QPS、文档数、存储、embedding 配额的
+  Redis / DB / 查询故障保持兼容 fail-open，但会记录低敏 metrics / audit 证据。
+- 对计费或租户隔离边界要求严格的生产环境，建议显式设置
+  `TENANT_QUOTA_FAIL_CLOSED=true`；QPS 会返回 `503`，文档上传配额会显式拒绝，
+  embedding 配额会抛领域异常，并保留 `closed` 原因供重试与排障。
 
 ---
 

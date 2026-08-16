@@ -420,15 +420,33 @@ class FusionMixin:
 
             budgets = _coerce_budgets(getattr(self, "fusion_budgets", None))
             if not budgets:
-                # Default: ensure cross-channel recall in the visible prefix.
-                # - vector: ~50%
-                # - keyword (bm25 + lexical): remaining, split evenly
-                # - sparse: 0 by default (can be enabled via fusion_budgets)
-                vec = int(math.ceil(k_prefix * 0.5))
-                keyword = max(0, k_prefix - vec)
-                bm = int(math.ceil(keyword * 0.5)) if keyword else 0
-                lex = max(0, keyword - bm)
-                budgets = {"vector": vec, "bm25": bm, "lexical": lex, "sparse": 0}
+                channel_results = {
+                    "vector": v_sorted,
+                    "bm25": b_sorted,
+                    "lexical": l_sorted,
+                    "sparse": s_sorted,
+                }
+                active_channels = [channel for channel, rows in channel_results.items() if rows]
+                budgets = {channel: 0 for channel in channel_results}
+                if active_channels:
+                    # Default: allocate the visible prefix across channels that are
+                    # actually healthy enough to produce candidates. Give every active
+                    # channel one slot first, then distribute the remainder with a
+                    # stable priority that still favors dense recall slightly.
+                    remaining = int(k_prefix)
+                    for channel in active_channels:
+                        if remaining <= 0:
+                            break
+                        budgets[channel] = 1
+                        remaining -= 1
+
+                    priority = [channel for channel in ("vector", "bm25", "lexical", "sparse") if channel in active_channels]
+                    idx = 0
+                    while remaining > 0 and priority:
+                        channel = priority[idx % len(priority)]
+                        budgets[channel] = int(budgets.get(channel, 0) or 0) + 1
+                        remaining -= 1
+                        idx += 1
 
             min_scores = _coerce_min_scores(getattr(self, "fusion_min_scores", None))
 

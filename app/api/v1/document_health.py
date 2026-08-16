@@ -25,6 +25,7 @@ from app.rag.core.logging import get_logger
 from app.services.chunk_coverage_utils import compute_chunk_coverage_metrics_from_ranges
 from app.services.dataset_service import DatasetService
 from app.services.document_access_service import assert_document_acl_readable
+from app.services.document_index_channel_service import summarize_document_index_channels
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -258,6 +259,12 @@ def get_document_health_card(
     except Exception:
         retrieval_hits = None
 
+    index_readiness = None
+    try:
+        index_readiness = summarize_document_index_channels(db, document=document).to_dict()
+    except Exception:
+        index_readiness = None
+
     return DocumentHealthCard(
         document_id=document.id,
         dataset_id=document.dataset_id,
@@ -272,4 +279,5 @@ def get_document_health_card(
         chunking=chunking,
         kg=kg_report,
         retrieval_hits=retrieval_hits,
+        index_readiness=index_readiness,
     )

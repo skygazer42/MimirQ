@@ -120,6 +120,7 @@ def test_documents_upload_url_happy_path(monkeypatch, tmp_path):  # noqa: ANN001
     assert meta.get("source_last_modified_source") == "http:last-modified"
     assert meta.get("source_last_modified_at") == "2015-10-21T07:28:00+00:00"
     assert meta.get("source_etag") == "etag-123"
+    assert meta.get("content_sha256")
     assert isinstance(meta.get("source_fetched_at"), str) and meta.get("source_fetched_at")
     assert (meta.get("pipeline") or {}).get("chunk_merge_small_min_chars") == 200
     assert ((meta.get("pipeline") or {}).get("chunk_strategy_params") or {}).get("child_ratio") == pytest.approx(0.25)
@@ -183,3 +184,32 @@ def test_documents_upload_url_falls_back_when_last_modified_missing(monkeypatch,
     assert meta.get("source_last_modified_at") == meta.get("source_fetched_at")
     assert meta.get("source_last_modified_raw") is None
     assert meta.get("source_etag") == "etag-456"
+    assert meta.get("content_sha256")
+
+
+def test_documents_upload_url_rejects_unknown_pipeline_fields_with_422(monkeypatch, tmp_path):  # noqa: ANN001
+    from app.api.v1.documents import upload_document_from_url
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "URL_INGEST_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
+    app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
+    app.post("/api/v1/documents/upload-url", status_code=201, response_model=DocumentDetail)(upload_document_from_url)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/documents/upload-url",
+        json={
+            "url": "https://example.com/doc.txt",
+            "pipeline": {
+                "chunk_size": 512,
+                "unexpected_field": True,
+            },
+        },
+    )
+
+    assert response.status_code == 422, response.text

@@ -48,10 +48,18 @@ import { Switch } from '@/components/ui/switch'
 
 import {
   datasetApi,
+  retrievalApi,
   settingsApi,
   type SystemSettings,
 } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import {
+  buildDatasetRagDefaultsForUpdate,
+  buildRetrievalConfigHashRequest,
+  datasetRagContractModeLabel,
+  hasDatasetRagContract,
+  mergeDatasetRagDefaultsIntoRagConfig,
+} from '@/lib/dataset-rag-contract'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise, formatDate } from '@/lib/utils'
@@ -59,6 +67,12 @@ import type { ConnectorRunOut, Dataset } from '@/types'
 
 // --- 类型定义 ---
 type KnowledgeSettingsConfig = Pick<SystemSettings, 'embedding' | 'rag'>
+type DatasetRagVerificationState = {
+  datasetId: string
+  hash: string
+  effectiveConfig: Record<string, unknown>
+  verifiedAt: string
+}
 type ConnectorRunStatusFilter =
   | 'all'
   | 'pending'
@@ -231,6 +245,7 @@ function buildScopedSettingsConfig(
   selectedDataset?: Dataset | null
 ): KnowledgeSettingsConfig {
   const datasetEmbedding = selectedDataset?.embedding_defaults
+  const datasetRagDefaults = selectedDataset?.rag_defaults
   return {
     embedding: {
       ...settings.embedding,
@@ -238,7 +253,7 @@ function buildScopedSettingsConfig(
       model: datasetEmbedding?.model || settings.embedding.model,
       api_base: datasetEmbedding?.api_base ?? settings.embedding.api_base,
     },
-    rag: settings.rag,
+    rag: mergeDatasetRagDefaultsIntoRagConfig(settings.rag, datasetRagDefaults),
   }
 }
 
@@ -280,7 +295,8 @@ export function KnowledgeSettingsPanel({
   const [isSavingSettings, setIsSavingSettings] = useState(false)
   const [confirmEmbeddingSaveOpen, setConfirmEmbeddingSaveOpen] =
     useState(false)
-  const [retrievalModeView, setRetrievalModeView] = useState('vector')
+  const [datasetRagVerification, setDatasetRagVerification] =
+    useState<DatasetRagVerificationState | null>(null)
   const [guideExpanded, setGuideExpanded] = useState(false)
   const [currentConfigOpen, setCurrentConfigOpen] = useState(true)
 
@@ -325,14 +341,55 @@ export function KnowledgeSettingsPanel({
     setIsSavingSettings(true)
     try {
       if (selectedDatasetId) {
+        const nextRagDefaults = buildDatasetRagDefaultsForUpdate({
+          currentDefaults: selectedDataset?.rag_defaults,
+          savedRag: savedConfig?.rag ?? draftConfig.rag,
+          draftRag: draftConfig.rag,
+        })
         await datasetApi.update(selectedDatasetId, {
           embedding_defaults: buildDatasetEmbeddingDefaults(draftConfig),
+          rag_defaults: nextRagDefaults ?? undefined,
         })
+        const refreshedDataset = await datasetApi.get(selectedDatasetId)
+        queryClient.setQueryData(
+          queryKeys.datasets.detail(selectedDatasetId),
+          refreshedDataset
+        )
         await queryClient.invalidateQueries({
           queryKey: queryKeys.datasets.all,
         })
-        setSavedConfig(cloneSettingsConfig(draftConfig))
-        toast.success('已保存到当前数据集，既有数据集不会被全局改动影响')
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.datasets.exhaustive(),
+        })
+
+        const nextConfig = settingsQuery.data
+          ? buildScopedSettingsConfig(settingsQuery.data, refreshedDataset)
+          : cloneSettingsConfig(draftConfig)
+        setSavedConfig(cloneSettingsConfig(nextConfig))
+        setDraftConfig(cloneSettingsConfig(nextConfig))
+
+        const hashRequest = buildRetrievalConfigHashRequest(
+          refreshedDataset.rag_defaults
+        )
+        if (hashRequest) {
+          const hashResponse = await retrievalApi.configHash(hashRequest)
+          setDatasetRagVerification({
+            datasetId: selectedDatasetId,
+            hash: toTrimmedPrimitiveString(hashResponse.hash),
+            effectiveConfig: isRecord(hashResponse.effective_config)
+              ? hashResponse.effective_config
+              : {},
+            verifiedAt: new Date().toISOString(),
+          })
+          toast.success(
+            `已保存并验证数据集契约（cfg ${toTrimmedPrimitiveString(
+              hashResponse.hash
+            ).slice(0, 12) || '--'}）`
+          )
+        } else {
+          setDatasetRagVerification(null)
+          toast.success('已保存到当前数据集；当前未配置 dataset 级检索契约')
+        }
       } else {
         await settingsApi.update(draftConfig)
         setSavedConfig(cloneSettingsConfig(draftConfig))
@@ -394,14 +451,33 @@ export function KnowledgeSettingsPanel({
   const hasDatasetEmbeddingOverride = Boolean(
     selectedDataset?.embedding_defaults?.model
   )
+  const datasetRagContract = selectedDataset?.rag_defaults ?? null
+  const datasetRagVerificationForScope =
+    datasetRagVerification?.datasetId === selectedDatasetId
+      ? datasetRagVerification
+      : null
+  const canExplainWithDatasetContract =
+    Boolean(selectedDatasetId) &&
+    (hasDatasetRagContract(datasetRagContract) ||
+      Boolean(datasetRagVerificationForScope?.hash))
+  const retrievalModeValue =
+    draftConfig?.rag.retrieval_mode || savedConfig?.rag.retrieval_mode || 'hybrid'
   const saveScopeDescription = isDatasetScoped
-    ? '保存到当前数据集元数据；只影响该数据集后续入库和后续迁移策略。'
+    ? '保存到当前数据集元数据；embedding 与 dataset 级 rag_defaults 只影响该数据集后续入库/检索契约。'
     : '写入系统默认配置；用于新数据集或未设置独立 embedding 的数据集。'
   const embeddingChangeDescription = isDatasetScoped
     ? '这次只更新当前数据集的 embedding 配置，不会改动其他已维护数据集。已有已解析文档不会自动重新嵌入；隔离中的文档保持隔离状态，只有人工释放或显式重新入库时才会进入向量化。'
     : '这次只更新系统默认 embedding 配置，不会自动迁移已有数据集向量。已经设置独立 embedding 的数据集不会被覆盖；隔离中的文档也不会因为默认配置变化而重新嵌入。'
   const retrievalTopK = draftConfig?.rag.retrieval_top_k ?? 5
   const similarityThreshold = draftConfig?.rag.similarity_threshold ?? 0.7
+  const ragContractLabel = isDatasetScoped
+    ? datasetRagContractModeLabel(datasetRagContract)
+    : '全局 API 未暴露检索契约'
+  const ragHashLabel = datasetRagVerificationForScope?.hash
+    ? `${datasetRagVerificationForScope.hash.slice(0, 12)}…`
+    : isDatasetScoped
+      ? '未验证'
+      : '已禁用'
   const estimatedRecall = Math.max(
     68,
     Math.min(92, Math.round(70 + retrievalTopK * 0.8 - similarityThreshold * 8))
@@ -679,6 +755,36 @@ export function KnowledgeSettingsPanel({
                         </span>
                         <span className="mt-0.5 block truncate text-[9px] text-muted-foreground/62">
                           {currentEmbeddingBrand}
+                        </span>
+                      </span>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-[10px] text-muted-foreground/72">
+                        RAG 契约
+                      </span>
+                      <span className="max-w-[8rem] text-right">
+                        <span className="block truncate text-[10px] font-medium text-foreground">
+                          {ragContractLabel}
+                        </span>
+                        <span className="mt-0.5 block text-[9px] text-muted-foreground/62">
+                          {canExplainWithDatasetContract ? 'Explain 可验证' : 'Explain 已禁用'}
+                        </span>
+                      </span>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-[10px] text-muted-foreground/72">
+                        配置指纹
+                      </span>
+                      <span className="max-w-[8rem] text-right">
+                        <span className="block truncate font-mono text-[10px] text-foreground">
+                          {ragHashLabel}
+                        </span>
+                        <span className="mt-0.5 block text-[9px] text-muted-foreground/62">
+                          {datasetRagVerificationForScope?.verifiedAt
+                            ? formatDate(datasetRagVerificationForScope.verifiedAt)
+                            : isDatasetScoped
+                              ? '保存后回读验证'
+                              : '全局作用域不校验'}
                         </span>
                       </span>
                     </div>
@@ -1029,21 +1135,38 @@ export function KnowledgeSettingsPanel({
                   </div>
                   <div className="mt-3">
                     <Select
-                      value={retrievalModeView}
-                      onValueChange={setRetrievalModeView}
+                      value={retrievalModeValue}
+                      onValueChange={(value) =>
+                        setDraftConfig((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                rag: {
+                                  ...prev.rag,
+                                  retrieval_mode: value,
+                                },
+                              }
+                            : null
+                        )
+                      }
+                      disabled={!isDatasetScoped}
                     >
                       <SelectTrigger className="h-8 rounded-[12px] border-border/60 bg-background/74 text-[10px] font-medium dark:border-border/70 dark:bg-background/62">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="vector">向量检索（默认）</SelectItem>
                         <SelectItem value="hybrid">混合检索</SelectItem>
-                        <SelectItem value="reranker">Reranker 优先</SelectItem>
+                        <SelectItem value="vector">向量检索</SelectItem>
+                        <SelectItem value="keyword">关键词检索</SelectItem>
+                        <SelectItem value="mmr">MMR</SelectItem>
+                        <SelectItem value="auto">Auto</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="mt-2 rounded-[12px] border border-border/60 bg-background/74 px-2.5 py-1.5 text-[10px] font-medium text-muted-foreground/84 dark:border-border/70 dark:bg-muted/30">
-                    默认策略，适合大多数场景
+                    {isDatasetScoped
+                      ? '写入数据集 rag_defaults；保存后会重新获取并校验 effective config/hash。'
+                      : '全局设置接口当前未暴露 retrieval contract，预览 explain/hash 在此作用域下保持禁用。'}
                   </div>
                 </div>
               </div>

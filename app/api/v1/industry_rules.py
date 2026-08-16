@@ -96,6 +96,7 @@ def _require_ruleset(name: str) -> str:
 
 @router.get(
     "/rulesets",
+    dependencies=[Depends(get_current_account_id)],
     response_model=IndustryRulesetListResponse,
     summary="列出行业规则集",
     description=(
@@ -117,6 +118,7 @@ def get_industry_rulesets() -> dict[str, Any]:
 
 @router.get(
     "/rulesets/{name}",
+    dependencies=[Depends(get_current_account_id)],
     response_model=IndustryRulesetDetailResponse,
     summary="获取单个行业规则集详情",
     description=(
@@ -208,6 +210,7 @@ def put_industry_ruleset_intents(
 
 @router.post(
     "/preview-rewrite",
+    dependencies=[Depends(get_current_account_id)],
     response_model=IndustryRulesRewritePreviewResponse,
     summary="预览查询改写效果",
     description=(

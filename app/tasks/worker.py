@@ -26,6 +26,7 @@ from app.tasks.jobs import (
     ping_job,
     process_document_job,
     rebuild_indexes_job,
+    reconcile_index_audit_job,
 )
 
 logger = get_logger("tasks.worker")
@@ -153,6 +154,7 @@ class WorkerSettings:
             extract_kg_job,
             max_tries=int(getattr(settings, "TASK_KG_JOB_MAX_TRIES", 80) or 80),
         ),
+        reconcile_index_audit_job,
         rebuild_indexes_job,
         dataset_profile_scan_job,
         dataset_precheck_scan_job,

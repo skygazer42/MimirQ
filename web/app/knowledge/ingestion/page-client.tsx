@@ -11,14 +11,11 @@ import { useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import {
   Activity,
-  Check,
   CheckCircle2,
   CircleDashed,
-  ChevronLeft,
   ChevronRight,
   CircleAlert,
   Clock3,
-  Download,
   FileDigit,
   FileCheck2,
   FileSearch,
@@ -27,7 +24,6 @@ import {
   RefreshCcw,
   ShieldAlert,
   ShieldCheck,
-  UploadCloud,
   Workflow,
 } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
@@ -36,6 +32,7 @@ import { toast } from 'sonner'
 
 import { datasetApi, documentApi, observabilityApi } from '@/lib/api'
 import { globalEventBus } from '@/lib/event-bus'
+import { normalizePrecheckEmbeddingAdvisories } from '@/lib/precheck-embedding-advisories'
 import type {
   DatasetPrecheckFileOut,
   DatasetPrecheckNearDupResponse,
@@ -48,26 +45,18 @@ import type {
 import { cn, formatDate, formatFileSize } from '@/lib/utils'
 import { useDatasets } from '@/hooks/use-datasets'
 import { usePathname, useRouter } from '@/i18n/navigation'
-import { Button } from '@/components/ui/button'
 import { EChart } from '@/components/ui/echart'
-import { PageTitleIcon } from '@/components/ui/page-title-icon'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
 import { DropZone, type DropZoneHandle } from '@/components/ingestion/drop-zone'
 import { EmptyState } from '@/components/ingestion/empty-state'
-import { IngestionDetailDialog } from '@/components/ingestion/ingestion-detail-dialog'
+import { ExecutionMonitorPanel } from '@/components/knowledge/ingestion/execution-monitor-panel'
+import { IngestionDetailSurface } from '@/components/knowledge/ingestion/ingestion-detail-surface'
+import { IngestionHeroPanel } from '@/components/knowledge/ingestion/ingestion-hero-panel'
+import { PrecheckSignalsPanel } from '@/components/knowledge/ingestion/precheck-signals-panel'
+import { SalesAuditSummaryPanel } from '@/components/knowledge/ingestion/sales-audit-summary-panel'
+import {
+  AuditDispositionFilter,
+  DesktopAuditRail,
+} from '@/components/knowledge/ingestion/desktop-audit-rail'
 import {
   buildEvidenceSlotReason,
   buildEvidenceSlotTags,
@@ -79,13 +68,10 @@ import {
   computeDocsPerMinute,
   computeDurationPercentiles,
   computeMegabytesPerSecond,
-  getDocumentKind,
-  getDocumentKindAccent,
   matchesReasonFilter,
 } from '@/components/ingestion/monitor-utils'
 
 import { buildDemoDocuments } from './demo-documents'
-import { IngestionViewSwitch } from './view-switch'
 import { LoadingWireframe } from './components/loading-wireframe'
 import { SalesPanelHeader } from './components/sales-panel-header'
 import {
@@ -116,14 +102,12 @@ import {
   buildPrecheckProfileFile,
   formatPdfPageAverageLabel,
   formatStructureAverageLabel,
-  getAuditRailStatusTone,
   getDocumentStatusLabel,
   getDocumentStatusTone,
   getDriverDotTone,
   getHeaderAnimation,
   getHeaderBodyVisibilityClass,
   getPdfSplitColor,
-  getProgressTone,
   getQueueOutcomeReason,
   getRecentLogDetail,
   getRecentLogTone,
@@ -150,8 +134,6 @@ const INGESTION_BACKGROUND_CLASS =
   'bg-background bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.10),transparent_34rem)] dark:bg-background'
 const INGESTION_HERO_PANEL_CLASS =
   'relative overflow-hidden rounded-[28px] border border-info/30 bg-[linear-gradient(135deg,hsl(var(--card)/0.92),hsl(var(--info)/0.10)_45%,hsl(var(--background)/0.82))] shadow-[0_24px_70px_-48px_hsl(var(--info)/0.55)] backdrop-blur-2xl'
-
-type AuditDispositionFilter = 'all' | 'pending' | 'manual' | 'approved'
 
 const EMPTY_INGESTION_SUMMARY: IngestionDashboardSummaryResponse = {
   window_hours: 0,
@@ -386,6 +368,10 @@ export default function KnowledgeIngestionPageClient() {
         ? buildDemoNearDupResponse()
         : (precheckNearDupQuery.data ?? null),
     [demoMode, precheckNearDupQuery.data]
+  )
+  const salesAuditEmbeddingAdvisories = useMemo(
+    () => normalizePrecheckEmbeddingAdvisories(salesAuditSummary?.embedding_advisories),
+    [salesAuditSummary?.embedding_advisories]
   )
 
   useEffect(() => {
@@ -1690,7 +1676,9 @@ export default function KnowledgeIngestionPageClient() {
       })
   }, [salesAuditSummary])
 
-  const salesCoreSummary = useMemo(() => {
+  const salesCoreSummary = useMemo<
+    Array<readonly [string, string, string]>
+  >(() => {
     const totalFiles = Number(salesAuditSummary?.total_files || 0)
     const pdfScanned = Number(salesAuditSummary?.pdf_scan.scanned || 0)
     const pdfUnknown = Number(salesAuditSummary?.pdf_scan.unknown || 0)
@@ -2336,290 +2324,30 @@ export default function KnowledgeIngestionPageClient() {
             mode === 'sales-audit' ? 'min-h-0' : 'min-h-[calc(100dvh-2rem)]'
           )}
         >
-          <button
-            type="button"
-            aria-label="展开运行范围侧栏"
-            onClick={() => setDesktopScopeCollapsed((previous) => !previous)}
-            className={cn(
-              'absolute left-0 top-7 z-40 hidden h-16 w-8 items-center justify-center gap-1 rounded-r-[0.9rem] border border-border/35 bg-background/78 text-[8px] font-semibold uppercase tracking-[0.16em] text-muted-foreground opacity-0 hover:opacity-100 focus-visible:opacity-100 shadow-none backdrop-blur-xl transition-all duration-200 hover:border-info/25 hover:bg-background/94 hover:text-info focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/30',
-              showDesktopAuditRailToggle && desktopScopeCollapsed
-                ? 'translate-x-0 pointer-events-auto lg:flex'
-                : 'pointer-events-none -translate-x-3 opacity-0 lg:hidden'
-            )}
-          >
-            <span
-              aria-hidden="true"
-              className="h-7 w-px rounded-full bg-info/35"
-            />
-            <span className="[writing-mode:vertical-rl]">范围</span>
-          </button>
-
-          <aside
-            className={cn(
-              'hidden shrink-0 overflow-hidden pr-3 transition-all duration-300 ease-out lg:block',
-              showDesktopAuditRail
-                ? 'w-[15.5rem] opacity-100'
-                : 'w-0 opacity-0 -translate-x-4 pointer-events-none'
-            )}
-          >
-            <div className="sticky top-4">
-              <div className="overflow-hidden rounded-[0.95rem] border border-border/38 bg-background/64 p-1.5 shadow-none backdrop-blur-xl">
-                <div className="flex items-center justify-between gap-2 px-1 pb-1.5">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[0.65rem] border border-border/45 bg-muted/20 text-muted-foreground">
-                      <Check className="h-3.5 w-3.5" />
-                    </span>
-                    <div className="min-w-0">
-                      <div className="text-[10px] font-semibold text-foreground">
-                        运行范围
-                      </div>
-                      <div className="mt-0.5 truncate text-[8px] text-muted-foreground">
-                        轻量筛选数据集与线索
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border/45 bg-background/60 text-muted-foreground transition-colors hover:border-info/25 hover:text-foreground"
-                    onClick={() => setDesktopScopeCollapsed(true)}
-                  >
-                    <ChevronLeft className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-
-                <div className="mb-1.5 rounded-[0.68rem] border border-border/35 bg-background/45 p-1.5">
-                  <div className="mb-1 flex items-center justify-between gap-2 px-1">
-                    <span className="text-[8px] font-medium text-muted-foreground">
-                      数据集
-                    </span>
-                    <span className="font-mono text-[7px] text-muted-foreground">
-                      {selectedDatasetId ? '单库' : '全部'}
-                    </span>
-                  </div>
-                  <Select
-                    value={datasetScope}
-                    onValueChange={handleDatasetScopeChange}
-                  >
-                    <SelectTrigger className="h-7 rounded-[0.6rem] border-border/45 bg-background/70 px-2 text-[9px] font-medium shadow-none">
-                      <SelectValue placeholder="全部项目" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={DATASET_ALL}>全部项目</SelectItem>
-                      {datasets.map((dataset) => (
-                        <SelectItem key={dataset.id} value={dataset.id}>
-                          {dataset.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="mb-1.5 grid grid-cols-2 gap-1">
-                  {([
-                    ['pending', '待确认', auditRailCounts.pending],
-                    ['manual', '人工处理', auditRailCounts.manual],
-                    ['approved', '已确认', auditRailCounts.approved],
-                  ] as const).map(([value, label, count]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      aria-pressed={auditDispositionFilter === value}
-                      onClick={() => setAuditDispositionFilter(value)}
-                      className={cn(
-                        'rounded-[0.56rem] border px-1.5 py-1 text-left text-[8px] transition-colors',
-                        auditDispositionFilter === value
-                          ? 'border-info/25 bg-info/10 text-info'
-                          : 'border-border/35 bg-background/50 text-muted-foreground hover:text-foreground'
-                      )}
-                    >
-                      <span className="block font-medium">{label}</span>
-                      <span className="font-mono tabular-nums">{count}</span>
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    aria-pressed={auditDispositionFilter === 'all'}
-                    onClick={() => setAuditDispositionFilter('all')}
-                    className={cn(
-                      'rounded-[0.56rem] border px-1.5 py-1 text-left text-[8px] transition-colors',
-                      auditDispositionFilter === 'all'
-                        ? 'border-info/25 bg-info/10 text-info'
-                        : 'border-border/35 bg-background/50 text-muted-foreground hover:text-foreground'
-                    )}
-                  >
-                    <span className="block font-medium">全部</span>
-                    <span className="font-mono tabular-nums">{auditRailCounts.all}</span>
-                  </button>
-                </div>
-
-                <div className="space-y-1.5">
-                  {visibleAuditSamples.map((document) => {
-                        const kind = getDocumentKind(document.filename)
-                        const disposition =
-                          resolvedSampleDispositions[document.id]
-                        const status = String(
-                          document.status || ''
-                        ).toLowerCase()
-                        const progress = Math.max(
-                          0,
-                          Math.min(
-                            100,
-                            Number(document.processing_progress || 0)
-                          )
-                        )
-                        const statusPresentation = getAuditRailStatusTone({
-                          disposition,
-                          status,
-                        })
-                        const stageLabel =
-                          document.current_stage ||
-                          (status === 'completed' ? 'completed' : status)
-                        return (
-                          <motion.article
-                            key={document.id}
-                            drag="x"
-                            dragConstraints={{ left: 0, right: 0 }}
-                            dragElastic={0.16}
-                            onDragEnd={(_, info) => {
-                              if (info.offset.x > 100)
-                                handleSampleDisposition(document.id, 'approved')
-                              if (info.offset.x < -100)
-                                handleSampleDisposition(document.id, 'manual')
-                            }}
-                            className="group relative overflow-hidden rounded-[0.74rem] border border-border/38 bg-background/62 px-1.5 py-1.5 shadow-none transition-colors hover:border-info/25 hover:bg-background/82"
-                          >
-                            <div className="flex items-start gap-2">
-                                <input
-                                  checked={selectedAuditIds.includes(
-                                    document.id
-                                  )}
-                                  onChange={() =>
-                                    handleSelectAudit(document.id)
-                                  }
-                                  className="mt-1 h-2.5 w-2.5 rounded border-border/60 text-foreground"
-                                  type="checkbox"
-                                  aria-label={`选择 ${document.filename}`}
-                                />
-                                <span
-                                  className={cn(
-                                    'mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[0.65rem] border text-[7px] font-semibold uppercase',
-                                    getDocumentKindAccent(kind)
-                                  )}
-                                >
-                                  {String(
-                                    document.file_type || kind
-                                  ).toUpperCase()}
-                                </span>
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center justify-between gap-2">
-                                    <div className="min-w-0">
-                                      <div className="truncate text-[10.5px] font-semibold leading-4 text-foreground">
-                                        {document.filename}
-                                      </div>
-                                    </div>
-                                    <span
-                                      className={cn(
-                                        'shrink-0 rounded-full border px-1.5 py-0.5 text-[8px] font-medium',
-                                        statusPresentation.tone
-                                      )}
-                                    >
-                                      {statusPresentation.label}
-                                    </span>
-                                  </div>
-
-                                  <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[8px] text-muted-foreground">
-                                    <span className="max-w-[6.5rem] truncate">
-                                      {stageLabel}
-                                    </span>
-                                    <span className="font-mono tabular-nums">
-                                      {formatFileSize(document.file_size || 0)}
-                                    </span>
-                                    <span className="font-mono tabular-nums">
-                                      {Number(document.chunk_count || 0)} 块
-                                    </span>
-                                    <span className="font-mono tabular-nums">
-                                      {progress}%
-                                    </span>
-                                  </div>
-
-                                  {document.error_message ? (
-                                    <div className="mt-1 line-clamp-1 rounded-[0.6rem] border border-destructive/15 bg-destructive/6 px-2 py-1 text-[8px] leading-3 text-destructive">
-                                      {document.error_message}
-                                    </div>
-                                  ) : null}
-
-                                  <div className="mt-1 h-0.5 overflow-hidden rounded-full bg-muted/45">
-                                    <div
-                                      className={cn(
-                                        'h-full rounded-full transition-all',
-                                        getProgressTone(status)
-                                      )}
-                                      style={{ width: `${progress}%` }}
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="mt-1.5 grid grid-cols-3 gap-1">
-                                <button
-                                  type="button"
-                                  className="inline-flex h-5 items-center justify-center rounded-[0.45rem] border border-success/20 bg-success/8 px-1.5 text-[7.5px] font-medium text-success transition-colors hover:border-success/35 hover:bg-success/12"
-                                  onClick={() =>
-                                    handleSampleDisposition(
-                                      document.id,
-                                      'approved'
-                                    )
-                                  }
-                                >
-                                  确认
-                                </button>
-                                <button
-                                  type="button"
-                                  className="inline-flex h-5 items-center justify-center rounded-[0.45rem] border border-warning/20 bg-warning/8 px-1.5 text-[7.5px] font-medium text-warning transition-colors hover:border-warning/35 hover:bg-warning/12"
-                                  onClick={() =>
-                                    handleSampleDisposition(
-                                      document.id,
-                                      'manual'
-                                    )
-                                  }
-                                >
-                                  转人工
-                                </button>
-                                <button
-                                  type="button"
-                                  className="inline-flex h-5 items-center justify-center rounded-[0.45rem] border border-border/55 bg-background/70 px-1.5 text-[7.5px] font-medium text-foreground transition-colors hover:border-info/25 hover:text-info"
-                                  onClick={() =>
-                                    handleOpenAuditSnapshot(document.id)
-                                  }
-                                >
-                                  快照
-                                </button>
-                              </div>
-                          </motion.article>
-                        )
-                      })}
-                  {visibleAuditSamples.length === 0 ? (
-                    <div className="rounded-[0.78rem] border border-dashed border-border/55 bg-background/48 px-3 py-4 text-center text-[10px] text-muted-foreground">
-                      暂无可见资产
-                    </div>
-                  ) : null}
-                    <div className="flex items-center justify-between border-t border-border/45 px-1 pt-2 text-[9px] font-medium text-muted-foreground">
-                      <span>共 {visibleAuditSamples.length} 项线索</span>
-                      {selectedReason ? (
-                        <button
-                          type="button"
-                          className="text-info transition-colors hover:text-info"
-                          onClick={() => setSelectedReason(null)}
-                        >
-                          清除聚焦
-                        </button>
-                      ) : (
-                        <span>范围筛选</span>
-                      )}
-                    </div>
-                </div>
-              </div>
-            </div>
-          </aside>
+          <DesktopAuditRail
+            auditDispositionFilter={auditDispositionFilter}
+            auditRailCounts={auditRailCounts}
+            datasetScope={datasetScope}
+            datasets={datasets}
+            desktopScopeCollapsed={desktopScopeCollapsed}
+            resolvedSampleDispositions={resolvedSampleDispositions}
+            scopeLabel={selectedDatasetId ? '单库' : '全部'}
+            selectedAuditIds={selectedAuditIds}
+            selectedReason={selectedReason}
+            showDesktopAuditRail={showDesktopAuditRail}
+            showDesktopAuditRailToggle={showDesktopAuditRailToggle}
+            visibleAuditSamples={visibleAuditSamples}
+            onClearSelectedReason={() => setSelectedReason(null)}
+            onDatasetScopeChange={handleDatasetScopeChange}
+            onOpenAuditSnapshot={handleOpenAuditSnapshot}
+            onSampleDisposition={handleSampleDisposition}
+            onSelectAudit={handleSelectAudit}
+            onSetAuditDispositionFilter={setAuditDispositionFilter}
+            onSetDesktopScopeCollapsed={setDesktopScopeCollapsed}
+            onToggleDesktopScope={() =>
+              setDesktopScopeCollapsed((previous) => !previous)
+            }
+          />
 
           <div className="min-w-0 flex-1">
             <div className="sticky top-3 z-30">
@@ -2643,208 +2371,37 @@ export default function KnowledgeIngestionPageClient() {
                   className="pointer-events-none absolute bottom-0 left-8 right-8 h-px bg-[linear-gradient(90deg,transparent,hsl(var(--info)/0.38),transparent)]"
                   aria-hidden="true"
                 />
-                <div
-                  className={cn(
-                    'relative px-2.5 md:px-3',
-                    mode === 'execution-monitor'
-                      ? 'py-3 md:py-3.5'
-                      : 'py-0'
+                <IngestionHeroPanel
+                  demoMode={demoMode}
+                  headerBodyVisibilityClass={getHeaderBodyVisibilityClass(
+                    mode,
+                    headerCollapsed
                   )}
-                >
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {showSalesPolicyBadge ? (
-                          <span className="inline-flex items-center rounded-full border border-foreground/10 bg-foreground/[0.04] px-2 py-0.5 text-[7px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                            Sensitive Data Policy
-                          </span>
-                        ) : null}
-                        {demoMode ? (
-                          <span className="inline-flex items-center rounded-full border border-info/20 bg-info/10 px-2 py-0.5 text-[7px] font-medium uppercase tracking-[0.16em] text-info">
-                            演示模式
-                          </span>
-                        ) : null}
-                      </div>
-                      <div
-                        className={cn(
-                          'overflow-hidden transition-[max-height,opacity,margin] duration-200 ease-out',
-                          getHeaderBodyVisibilityClass(mode, headerCollapsed)
-                        )}
-                      >
-                        <div className="flex min-w-0 items-start gap-2">
-                          <div className="relative flex size-12 shrink-0 items-center justify-center rounded-[22px] border border-info/20 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.12))] text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_18px_36px_-24px_hsl(var(--info)/0.9)]">
-                            <span
-                              className="absolute inset-x-2 top-1 h-px bg-card/70"
-                              aria-hidden="true"
-                            />
-                            <PageTitleIcon name="ingestion-monitor" className="size-9" />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <h1 className="text-[clamp(0.96rem,1.18vw,1.26rem)] font-semibold tracking-[-0.015em] text-foreground">
-                                <span className="bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent">
-                                  {mode === 'sales-audit'
-                                    ? '入库预检工作台'
-                                    : '执行监控'}
-                                </span>
-                              </h1>
-                              {mode === 'execution-monitor' ? (
-                                <span
-                                  className={cn(
-                                    'inline-flex items-center rounded-full border px-2 py-0.5 text-[8px] font-medium',
-                                    taskQueueStatusTone
-                                  )}
-                                >
-                                  {taskQueueStatusLabel}
-                                </span>
-                              ) : null}
-                            </div>
-                            <p className="mt-1 max-w-[52rem] text-[9px] leading-[1.42] text-muted-foreground">
-                              {mode === 'sales-audit'
-                                ? '选择目标数据集后先做入库预检，确认目录、策略、重复与风险，再把文件写入知识库；入库完成后可切换执行监控查看队列和失败重试。'
-                                : '集中观察处理模式、吞吐、失败重试与运行态列表，快速判断入库链路是否健康。'}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap items-center justify-end gap-1">
-                      <IngestionViewSwitch />
-                      {demoMode ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-7 rounded-lg px-2 text-[9px]"
-                          onClick={handleExitDemoMode}
-                        >
-                          退出演示
-                        </Button>
-                      ) : null}
-                      {mode === 'sales-audit' ? (
-                        <>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="h-7 rounded-lg px-2 text-[9px]"
-                            onClick={handleUploadSampleAssessment}
-                          >
-                            <UploadCloud className="mr-1.5 h-3.5 w-3.5" />
-                            上传预检文件
-                          </Button>
-                          <Button
-                            type="button"
-                            className="h-7 rounded-lg px-2 text-[9px]"
-                            onClick={handleUploadFormalIngest}
-                          >
-                            <UploadCloud className="mr-1.5 h-3.5 w-3.5" />
-                            正式入库
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="h-7 rounded-lg px-2 text-[9px]"
-                            onClick={() => handleExportSalesAuditReport()}
-                          >
-                            <Download className="mr-1.5 h-3.5 w-3.5" />
-                            入库预检报告
-                          </Button>
-                        </>
-                      ) : (
-                        <>
-                          <Button
-                            type="button"
-                            className="h-7 rounded-lg px-2 text-[9px]"
-                            onClick={handleDownloadReport}
-                          >
-                            <Download className="mr-1.5 h-3.5 w-3.5" />
-                            导出报告
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {mode === 'sales-audit' && (
-                    <div className={cn('mt-2.5', SALES_SUMMARY_STRIP_CLASS)}>
-                      <div className="grid gap-px sm:grid-cols-4">
-                        {[
-                          {
-                            label: '范围',
-                            value: selectedDatasetLabel,
-                            icon: FileSearch,
-                            tone: 'text-muted-foreground/65',
-                            detail: '',
-                          },
-                          {
-                            label: '入库建议',
-                            value: ingestionRecommendationLabel,
-                            icon: Workflow,
-                            tone: 'text-accent',
-                            detail: '',
-                          },
-                          {
-                            label: '抽样确认量',
-                            value: salesAuditPocSampleLabel,
-                            icon: FileCheck2,
-                            tone: 'text-info',
-                            detail: '',
-                          },
-                          {
-                            label: '处理复杂度',
-                            value: salesAuditProfile?.complexity || '待预检',
-                            icon: Radar,
-                            tone: 'text-warning',
-                            detail: '',
-                          },
-                        ].map(({ label, value, icon: Icon, tone, detail }) => (
-                          <div
-                            key={label}
-                            className="relative min-h-[3.4rem] bg-background/78 px-2.5 py-2"
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="text-[7px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                                {label}
-                              </div>
-                              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-border/45 bg-muted/30">
-                                <Icon
-                                  className={cn('h-2.5 w-2.5 shrink-0', tone)}
-                                />
-                              </span>
-                            </div>
-                            <div className="mt-1 font-mono text-[10px] tabular-nums leading-none text-foreground">
-                              {value}
-                            </div>
-                            {detail ? (
-                              <div className="mt-1 text-[7px] text-muted-foreground">
-                                {detail}
-                              </div>
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                  ingestionRecommendationLabel={ingestionRecommendationLabel}
+                  mode={mode}
+                  salesAuditComplexity={
+                    salesAuditProfile?.complexity || '待预检'
+                  }
+                  salesAuditPocSampleLabel={salesAuditPocSampleLabel}
+                  selectedDatasetLabel={selectedDatasetLabel}
+                  showSalesPolicyBadge={showSalesPolicyBadge}
+                  summaryStripClassName={SALES_SUMMARY_STRIP_CLASS}
+                  taskQueueStatusLabel={taskQueueStatusLabel}
+                  taskQueueStatusTone={taskQueueStatusTone}
+                  onDownloadReport={handleDownloadReport}
+                  onExitDemoMode={handleExitDemoMode}
+                  onExportSalesAuditReport={handleExportSalesAuditReport}
+                  onUploadFormalIngest={handleUploadFormalIngest}
+                  onUploadSampleAssessment={handleUploadSampleAssessment}
+                />
               </motion.div>
             </div>
 
-            <AnimatePresence>
-              {successPulseVisible ? (
-                <motion.div
-                  initial={{ opacity: 0, scaleX: 0.92 }}
-                  animate={{ opacity: 1, scaleX: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="pointer-events-none relative mt-3 overflow-hidden rounded-[1.1rem] border border-success/15 bg-success/8 px-3 py-2.5"
-                >
-                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.24),transparent_62%)]" />
-                  <div className="relative flex items-center gap-2 text-[12px] text-success">
-                    <ShieldCheck className="h-4 w-4" />
-                    入库确认反馈：当前数据集已出现健康可入库样本，可继续批量确认。
-                  </div>
-                </motion.div>
-              ) : null}
-            </AnimatePresence>
+            <PrecheckSignalsPanel
+              mode={mode}
+              successPulseVisible={successPulseVisible}
+              advisories={salesAuditEmbeddingAdvisories}
+            />
 
             <div className={cn(mode === 'sales-audit' ? 'mt-5' : 'mt-2.5')}>
               {mode === 'sales-audit' && showEmptyState && (
@@ -2856,396 +2413,38 @@ export default function KnowledgeIngestionPageClient() {
               )}
 
               {mode === 'sales-audit' && !showEmptyState && (
-                  <div
-                    title="入库依据"
-                    className={cn(
-                      'relative overflow-hidden rounded-[1.3rem] border border-border/60 bg-background/86 p-2.5 shadow-[0_24px_68px_-44px_rgba(15,23,42,0.24)] md:p-3',
-                      'bg-[linear-gradient(rgba(148,163,184,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.08)_1px,transparent_1px)] [background-size:28px_28px]'
-                    )}
-                  >
-                    <div
-                      aria-hidden
-                      className="pointer-events-none absolute inset-0 opacity-70"
-                      style={{
-                        background: 'radial-gradient(circle at 36% 24%, rgba(255,255,255,0.48), transparent 28%)',
-                      }}
-                    />
-                    <div className="relative z-10 space-y-2">
-                      <section className={cn(SALES_PANEL_CLASS, 'p-2.5')}>
-                        <div className="grid gap-1.5 xl:grid-cols-[184px_minmax(0,1fr)] xl:items-stretch">
-                          <div className="rounded-[0.9rem] border border-border/50 bg-[linear-gradient(180deg,hsl(var(--card)),hsl(var(--muted)/0.3))] px-2.5 py-2">
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="text-[7px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                                入库依据
-                              </div>
-                              <FileDigit className="h-3 w-3 text-muted-foreground/65" />
-                            </div>
-                            <div className="mt-1 text-[11px] font-medium text-foreground">
-                              核心摘要
-                            </div>
-                            <p className="mt-1 text-[9px] leading-3.5 text-muted-foreground">
-                              默认输出脱敏后的客观事实，用于解释入库策略、预检范围与人工阻断来源。
-                            </p>
-                            <div className="mt-1.5 inline-flex items-center rounded-full border border-border/60 bg-background/80 px-1.5 py-0.5 text-[8px] font-medium text-muted-foreground">
-                              Evidence-first · De-identified
-                            </div>
-                          </div>
-
-                          <div className="grid gap-1 sm:grid-cols-2 xl:grid-cols-4">
-                            {salesCoreSummary.map(
-                              ([label, value, note], index) => {
-                                const Icon = getSalesCoreIcon(index)
-                                const iconTone = getSalesCoreIconTone(index)
-                                return (
-                                  <div
-                                    key={label}
-                                    className={cn(
-                                      SALES_PANEL_INSET_CLASS,
-                                      'px-1.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.58)]'
-                                    )}
-                                  >
-                                    <div className="flex items-center gap-1.5">
-                                      <div className="flex h-4 w-4 items-center justify-center rounded-full bg-muted/30">
-                                        <Icon
-                                          className={cn(
-                                            'h-2.5 w-2.5',
-                                            iconTone
-                                          )}
-                                        />
-                                      </div>
-                                      <div className="text-[8px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
-                                        {label}
-                                      </div>
-                                    </div>
-                                    <div className="mt-1 font-mono text-[11px] font-medium leading-none text-foreground">
-                                      {value}
-                                    </div>
-                                    <div
-                                      className={cn(
-                                        'mt-0.5 text-[7px] leading-3',
-                                        index === 2
-                                          ? 'text-rose'
-                                          : 'text-muted-foreground'
-                                      )}
-                                    >
-                                      {note}
-                                    </div>
-                                  </div>
-                                )
-                              }
-                            )}
-                          </div>
-                        </div>
-                      </section>
-
-                      <div className="grid gap-1.5 xl:grid-cols-[0.96fr_1.12fr_0.8fr]">
-                        <section
-                          className={cn(
-                            SALES_PANEL_CLASS,
-                            'flex h-full flex-col p-2.5'
-                          )}
-                        >
-                          <SalesPanelHeader
-                            title="PDF 类型分布"
-                            icon={CircleDashed}
-                          />
-                          <div className="mt-1 h-[9rem]">
-                            <EChart option={salesPdfSplitOption} />
-                          </div>
-                          <div className="mt-auto rounded-[0.75rem] border border-warning/15 bg-warning/6 px-2 py-1 text-[8px] leading-3.5 text-warning">
-                            扫描型 PDF 需要先 OCR 处理，预计工期抬升较大。
-                          </div>
-                        </section>
-
-                        <section className={cn(SALES_PANEL_CLASS, 'p-2.5')}>
-                          <SalesPanelHeader
-                            title="文档长度分布（按字符数）"
-                            icon={FileSearch}
-                          />
-                          <div className="mt-1.5 grid gap-2 xl:grid-cols-[1fr_148px]">
-                            <div className="h-[8rem]">
-                              <EChart option={salesLengthOption} />
-                            </div>
-                            <div
-                              className={cn(
-                                SALES_PANEL_INSET_CLASS,
-                                'space-y-1 px-2 py-1.5'
-                              )}
-                            >
-                              {[
-                                [
-                                  'P50（中位数）',
-                                  salesAuditSummary?.length_percentiles.p50 ||
-                                    0,
-                                ],
-                                [
-                                  'P90',
-                                  salesAuditSummary?.length_percentiles.p90 ||
-                                    0,
-                                ],
-                                [
-                                  'P99',
-                                  salesAuditSummary?.length_percentiles.p99 ||
-                                    0,
-                                ],
-                                [
-                                  '最大值',
-                                  salesAuditSummary?.length_percentiles.p99 ||
-                                    0,
-                                ],
-                              ].map(([label, value]) => (
-                                <div
-                                  key={label}
-                                  className="flex items-center justify-between gap-2 text-[8px]"
-                                >
-                                  <span className="text-muted-foreground">
-                                    {label}
-                                  </span>
-                                  <span className="font-mono text-[9px] text-foreground">
-                                    {value}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </section>
-
-                        <section className={cn(SALES_PANEL_CLASS, 'p-2.5')}>
-                          <SalesPanelHeader
-                            title="复杂度细节"
-                            icon={Radar}
-                            iconTone="text-accent"
-                          />
-                          <div className="mt-1.5 space-y-1">
-                            {(salesAuditProfile?.costDrivers || []).map(
-                              (driver) => (
-                                <div
-                                  key={driver.key}
-                                  className={cn(
-                                    SALES_PANEL_INSET_CLASS,
-                                    'flex items-center justify-between gap-3 px-2 py-1 text-[8px]'
-                                  )}
-                                >
-                                  <div className="flex items-center gap-2">
-                                    <span
-                                      className={cn(
-                                        'h-2 w-2 rounded-full',
-                                        getDriverDotTone(driver.key)
-                                      )}
-                                    />
-                                    <span className="text-foreground">
-                                      {driver.label}
-                                    </span>
-                                  </div>
-                                  <span className="font-mono text-[9px] text-foreground">
-                                    {driver.count}
-                                  </span>
-                                </div>
-                              )
-                            )}
-                          </div>
-                          <div className="mt-1.5 h-[7.25rem] overflow-visible">
-                            <EChart option={salesRadarOption} />
-                          </div>
-                        </section>
-                      </div>
-
-                      <div className="grid gap-1.5 xl:grid-cols-[1.1fr_0.9fr]">
-                        <section className={cn(SALES_PANEL_CLASS, 'p-2.5')}>
-                          <SalesPanelHeader
-                            title="风险热区（按风险类型）"
-                            icon={ShieldAlert}
-                            iconTone="text-rose"
-                            actionLabel="查看全部"
-                            onAction={() => setSelectedReason(null)}
-                          />
-                          <div className="mt-1.5 grid gap-1.5 sm:grid-cols-5">
-                            {salesHeatmapData.slice(0, 5).map((item) => (
-                              <button
-                                key={item.name}
-                                type="button"
-                                onClick={() => handleHeatmapSelect(item.name)}
-                                className={cn(
-                                  SALES_PANEL_INSET_CLASS,
-                                  'px-2 py-1.5 text-left'
-                                )}
-                              >
-                                <div className="text-[8px] text-muted-foreground">
-                                  {item.name}
-                                </div>
-                                <div className="mt-1 font-mono text-[12px] font-medium text-foreground">
-                                  {item.count.toLocaleString()}
-                                </div>
-                                <div className="mt-0.5 text-[8px] text-muted-foreground">
-                                  占比{' '}
-                                  {(
-                                    (item.count /
-                                      Math.max(
-                                        1,
-                                        salesAuditSummary?.total_files || 1
-                                      )) *
-                                    100
-                                  ).toFixed(1)}
-                                  %
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                        </section>
-
-                        <section className={cn(SALES_PANEL_CLASS, 'p-2.5')}>
-                          <SalesPanelHeader
-                            title="处理清单（待处理文件数）"
-                            icon={Workflow}
-                            iconTone="text-info"
-                            actionLabel="查看全部"
-                            onAction={() => setSelectedReason(null)}
-                          />
-                          <div className="mt-1.5 grid gap-1.5 sm:grid-cols-4">
-                            {salesProcessingLanes.map((lane) => (
-                              <div
-                                key={lane.key}
-                                className={cn(
-                                  'rounded-[0.9rem] border px-2 py-1.5',
-                                  lane.tone
-                                )}
-                              >
-                                <div className="text-[8px]">{lane.label}</div>
-                                <div className="mt-1 text-center font-mono text-[14px] font-semibold">
-                                  {lane.count.toLocaleString()}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </section>
-                      </div>
-
-                      <div className="grid gap-1.5 xl:grid-cols-[1.05fr_0.95fr]">
-                        <section className={cn(SALES_PANEL_CLASS, 'p-2.5')}>
-                          <SalesPanelHeader
-                            title="入库抽样确认（5 份）"
-                            icon={FileCheck2}
-                            iconTone="text-success"
-                            subtitle="按复杂度维度覆盖主风险项"
-                            actionLabel="查看全部"
-                          />
-                          <div className="mt-1.5 overflow-hidden rounded-[0.9rem] border border-border/50">
-                            <table className="w-full text-left text-[8px]">
-                              <thead className="bg-muted/25 text-muted-foreground">
-                                <tr>
-                                  <th className="px-2 py-1 font-medium">
-                                    文件名
-                                  </th>
-                                  <th className="px-2 py-1 font-medium">
-                                    类型
-                                  </th>
-                                  <th className="px-2 py-1 font-medium">
-                                    大小
-                                  </th>
-                                  <th className="px-2 py-1 font-medium">
-                                    主要风险
-                                  </th>
-                                  <th className="px-2 py-1 font-medium">
-                                    建议处理
-                                  </th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {salesPocCandidates.map((row) => (
-                                  <tr
-                                    key={row.id}
-                                    className="border-t border-border/50"
-                                  >
-                                    <td className="px-2 py-1 font-mono text-foreground">
-                                      {row.fileName}
-                                    </td>
-                                    <td className="px-2 py-1 text-muted-foreground">
-                                      {row.fileType}
-                                    </td>
-                                    <td className="px-2 py-1 font-mono text-muted-foreground">
-                                      {row.fileSizeLabel}
-                                    </td>
-                                    <td className="px-2 py-1 text-muted-foreground">
-                                      {row.primaryRisk}
-                                    </td>
-                                    <td className="px-2 py-1">
-                                      <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[7px] text-foreground">
-                                        {row.actionLabel}
-                                      </span>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </section>
-
-                        <section className={cn(SALES_PANEL_CLASS, 'p-2.5')}>
-                          <SalesPanelHeader
-                            title="高风险文件（示例）"
-                            icon={CircleAlert}
-                            iconTone="text-warning"
-                            subtitle="优先解释阻断和人工处理归因"
-                            actionLabel="查看入库依据"
-                          />
-                          <div className="mt-1.5 overflow-hidden rounded-[0.9rem] border border-border/50">
-                            <table className="w-full text-left text-[8px]">
-                              <thead className="bg-muted/25 text-muted-foreground">
-                                <tr>
-                                  <th className="px-2 py-1 font-medium">
-                                    文件名
-                                  </th>
-                                  <th className="px-2 py-1 font-medium">
-                                    风险类型
-                                  </th>
-                                  <th className="px-2 py-1 font-medium">
-                                    风险描述
-                                  </th>
-                                  <th className="px-2 py-1 font-medium">
-                                    操作
-                                  </th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {salesHighRiskFiles.map((row) => (
-                                  <tr
-                                    key={row.id}
-                                    className="border-t border-border/50"
-                                  >
-                                    <td className="px-2 py-1 font-mono text-foreground">
-                                      {row.fileName}
-                                    </td>
-                                    <td className="px-2 py-1 text-muted-foreground">
-                                      {row.primaryRisk}
-                                    </td>
-                                    <td className="px-2 py-1 text-muted-foreground">
-                                      {row.riskDescription}
-                                    </td>
-                                    <td className="px-2 py-1">
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const file = salesEvidenceItems.find(
-                                            (item) =>
-                                              String(item.name) === row.id
-                                          )
-                                          if (file)
-                                            setSelectedEvidenceFile(file)
-                                        }}
-                                        className="text-[7px] text-info transition-colors hover:text-info"
-                                      >
-                                        查看
-                                      </button>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </section>
-                      </div>
-                    </div>
-                  </div>
+                <SalesAuditSummaryPanel
+                  batchProfileBarOption={batchProfileBarOption}
+                  complexity={executionBatchAnalysis.complexity}
+                  coreSummary={
+                    salesCoreSummary
+                  }
+                  costDrivers={salesAuditProfile?.costDrivers || []}
+                  heatmapData={salesHeatmapData}
+                  highRiskFiles={salesHighRiskFiles}
+                  imageProxyNote={executionBatchAnalysis.imageProxyNote}
+                  lengthOption={salesLengthOption}
+                  lengthPercentiles={salesAuditSummary?.length_percentiles ?? null}
+                  pdfSplitOption={salesPdfSplitOption}
+                  pocCandidates={salesPocCandidates}
+                  pricingMode={executionBatchAnalysis.pricingMode}
+                  processingLanes={salesProcessingLanes}
+                  radarOption={salesRadarOption}
+                  samplePoolLabel={executionBatchAnalysis.samplePoolLabel}
+                  sampleTarget={executionBatchAnalysis.sampleTarget}
+                  sampleTargetDetail={executionBatchAnalysis.sampleTargetDetail}
+                  sourceLabel={executionBatchAnalysis.sourceLabel}
+                  totalFiles={Number(salesAuditSummary?.total_files || 0)}
+                  totalSizeLabel={executionBatchAnalysis.totalSizeLabel}
+                  onClearSelectedReason={() => setSelectedReason(null)}
+                  onHeatmapSelect={handleHeatmapSelect}
+                  onOpenEvidenceFile={(fileId) => {
+                    const file = salesEvidenceItems.find(
+                      (item) => String(item.name) === fileId
+                    )
+                    if (file) setSelectedEvidenceFile(file)
+                  }}
+                />
               )}
 
               {mode !== 'sales-audit' && (
@@ -3263,595 +2462,38 @@ export default function KnowledgeIngestionPageClient() {
                     />
                   )}
                   {!showEmptyState && (
-                    <div
-                      title="入库预检报告"
-                      className={cn(
-                        'relative overflow-hidden rounded-[1.45rem] border border-border/60 bg-background/86 p-3 shadow-[0_28px_72px_-46px_rgba(15,23,42,0.32)] md:p-3.5',
-                        demoMode &&
-                          'bg-[linear-gradient(rgba(148,163,184,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.08)_1px,transparent_1px)] [background-size:28px_28px]'
-                      )}
-                    >
-                      <div
-                        aria-hidden
-                        className="pointer-events-none absolute inset-0 opacity-70"
-                        style={{
-                          background: 'radial-gradient(circle at 36% 24%, rgba(255,255,255,0.48), transparent 28%)',
-                        }}
-                      />
-                      <div className="relative z-10 space-y-3">
-                        <div className="grid gap-2 xl:grid-cols-[0.72fr_1.28fr]">
-                          <section className="rounded-[1.05rem] border border-border/55 bg-background/90 p-2.5 shadow-[0_16px_36px_-30px_rgba(15,23,42,0.18)]">
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-2">
-                                <span className="inline-flex size-6 items-center justify-center rounded-full border border-info/18 bg-info/8 text-info">
-                                  <Activity className="size-3.5" />
-                                </span>
-                                <div>
-                                  <div className="text-[10px] font-semibold text-foreground">
-                                    文件类型分布
-                                  </div>
-                                  <div className="mt-0.5 text-[8px] text-muted-foreground">
-                                    {taskQueueSnapshot?.generated_at
-                                      ? `快照 ${formatClockSecondsLabel(taskQueueSnapshot.generated_at)}`
-                                      : '按文件格式统计'}
-                                  </div>
-                                </div>
-                              </div>
-                              <span className="rounded-full border border-border/45 bg-muted/20 px-2 py-0.5 font-mono text-[9px] text-foreground">
-                                {executionFileTypeDistributionTotal} 个
-                              </span>
-                            </div>
-                            <div className="mt-2 grid grid-cols-[6.6rem_minmax(0,1fr)] items-center gap-2">
-                              <div className="relative h-[6.35rem]">
-                                <EChart
-                                  option={executionFileTypeDistributionOption}
-                                />
-                                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                                  <div className="font-mono text-[15px] font-semibold text-foreground tabular-nums">
-                                    {executionFileTypeDistributionTotal}
-                                  </div>
-                                  <div className="text-[7px] text-muted-foreground">
-                                    文件
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="space-y-1.5">
-                                {executionFileTypeDistributionRows.length ? (
-                                  executionFileTypeDistributionRows.map((item) => (
-                                    <div
-                                      key={item.label}
-                                      className="flex items-center justify-between gap-2 rounded-[0.65rem] border border-border/35 bg-muted/10 px-2 py-1"
-                                    >
-                                      <div className="flex min-w-0 items-center gap-1.5">
-                                        <span
-                                          className={cn(
-                                            'size-2 rounded-full',
-                                            item.tone
-                                          )}
-                                        />
-                                        <span className="truncate text-[8px] text-muted-foreground">
-                                          {item.label}
-                                        </span>
-                                      </div>
-                                      <span className="font-mono text-[9px] font-medium text-foreground tabular-nums">
-                                        {item.value}
-                                      </span>
-                                    </div>
-                                  ))
-                                ) : (
-                                  <div className="rounded-[0.78rem] border border-dashed border-border/55 bg-muted/10 px-2 py-4 text-center text-[9px] text-muted-foreground">
-                                    暂无文件类型数据
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </section>
-
-                          <section className="rounded-[1.05rem] border border-border/55 bg-background/90 p-2.5 shadow-[0_16px_36px_-30px_rgba(15,23,42,0.18)]">
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex min-w-0 items-center gap-2">
-                                <div className="text-[10px] font-semibold text-foreground">
-                                  处理流水线
-                                </div>
-                                <span className="rounded-full border border-info/20 bg-info/10 px-2 py-0.5 text-[8px] font-medium text-info">
-                                  {executionPipelineState.estimateLabel}
-                                </span>
-                              </div>
-                              <div className="min-w-[9rem]">
-                                <div className="flex items-center justify-between gap-2 text-[8px] text-muted-foreground">
-                                  <span>总体进度</span>
-                                  <span className="font-mono text-foreground tabular-nums">
-                                    {executionOverallProgress}%
-                                  </span>
-                                </div>
-                                <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted/55">
-                                  <div
-                                    className="h-full rounded-full bg-info"
-                                    style={{
-                                      width: `${executionOverallProgress}%`,
-                                    }}
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                            <div className="mt-2 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-4">
-                              {executionPipelineCards.map((card, index) => (
-                                <div key={card.key} className="relative">
-                                  {index < executionPipelineCards.length - 1 ? (
-                                    <ChevronRight className="absolute -right-2 top-1/2 hidden h-4 w-4 -translate-y-1/2 text-muted-foreground/45 xl:block" />
-                                  ) : null}
-                                  <div
-                                    className={cn(
-                                      'rounded-[0.82rem] border px-2 py-1.5',
-                                      card.tone
-                                    )}
-                                  >
-                                    <div className="flex items-center gap-1.5">
-                                      <span
-                                        className={cn(
-                                          'h-2 w-2 rounded-full',
-                                          card.statusTone
-                                        )}
-                                      />
-                                      <span className="text-[10px] font-medium text-foreground">
-                                        {card.label}
-                                      </span>
-                                      <span className="ml-auto rounded-full border border-border/45 bg-card/80 px-1.5 py-0.5 text-[7.5px] text-muted-foreground">
-                                        {card.statusLabel}
-                                      </span>
-                                    </div>
-                                    <div className="mt-1.5 flex flex-wrap gap-x-2 gap-y-0.5">
-                                      {card.metrics.map(([label, value]) => (
-                                        <span
-                                          key={label}
-                                          className="inline-flex items-center gap-1 text-[8px] text-muted-foreground"
-                                        >
-                                          <span>{label}</span>
-                                          <span className="font-mono text-[8.5px] font-medium text-foreground tabular-nums">
-                                            {value}
-                                          </span>
-                                        </span>
-                                      ))}
-                                    </div>
-                                    <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-muted/55">
-                                      <div
-                                        className={cn(
-                                          'h-full rounded-full',
-                                          card.statusTone
-                                        )}
-                                        style={{ width: `${card.progress}%` }}
-                                      />
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                            <div className="mt-2 flex items-center justify-end text-[8px] text-muted-foreground">
-                              已处理{' '}
-                              <span className="ml-1 font-mono text-foreground tabular-nums">
-                                {executionProcessedTotal}
-                              </span>{' '}
-                              / {executionDocuments.length}
-                            </div>
-                          </section>
-                        </div>
-
-                        <section className="overflow-hidden rounded-[1.05rem] border border-border/55 bg-card/92 p-2.5 shadow-sm">
-                          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                            <div className="flex items-center gap-2">
-                              <span className="inline-flex size-6 items-center justify-center rounded-full border border-info/20 bg-info/10 text-info">
-                                <Activity className="size-3.5" />
-                              </span>
-                              <div>
-                                <div className="text-[10px] font-semibold text-foreground">
-                                  运行信息汇聚
-                                </div>
-                                <div className="mt-0.5 text-[8px] text-muted-foreground text-pretty">
-                                  范围、模式、吞吐与质量读数
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-1.5 text-[8px] text-muted-foreground">
-                              <span className="rounded-full border border-border/55 bg-background/80 px-2 py-0.5 tabular-nums">
-                                已处理 {executionProcessedTotal} / {executionDocuments.length}
-                              </span>
-                              <span className="rounded-full border border-success/20 bg-success/10 px-2 py-0.5 text-success tabular-nums">
-                                成功率 {executionSuccessRate}%
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="mt-2 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
-                            {executionKpiCards.map((item) => {
-                              const Icon = item.icon
-                              return (
-                                <div
-                                  key={item.label}
-                                  className="rounded-[0.82rem] border border-border/45 bg-background/82 px-2 py-1.5"
-                                >
-                                  <div className="flex items-center justify-between gap-1.5">
-                                    <div className="min-w-0">
-                                      <div className="truncate text-[8px] text-muted-foreground">
-                                        {item.label}
-                                      </div>
-                                      <div className="mt-0.5 flex items-baseline gap-1">
-                                        <span className="truncate font-mono text-[12px] font-semibold text-foreground tabular-nums">
-                                          {item.value}
-                                        </span>
-                                        {item.suffix ? (
-                                          <span className="text-[7.5px] text-muted-foreground">
-                                            {item.suffix}
-                                          </span>
-                                        ) : null}
-                                      </div>
-                                    </div>
-                                    <Icon
-                                      className={cn(
-                                        'size-3.5 shrink-0',
-                                        item.tone
-                                      )}
-                                    />
-                                  </div>
-                                  <div className="mt-1 truncate text-[7.5px] text-muted-foreground">
-                                    {item.detail}
-                                  </div>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </section>
-
-                        <section className="rounded-[1.3rem] border border-border/55 bg-background/92 p-3 shadow-sm">
-                          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                            <div className="flex items-center gap-2">
-                              <span className="inline-flex size-7 items-center justify-center rounded-full border border-info/20 bg-info/10 text-info">
-                                <FileSearch className="size-3.5" />
-                              </span>
-                              <div>
-                                <div className="text-[11px] font-semibold text-foreground">
-                                  批次数据画像
-                                </div>
-                                <div className="mt-0.5 text-[9px] text-muted-foreground text-pretty">
-                                  按 3/1000 抽代表样本，已出现的文件类型每类至少覆盖 1 个
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-1.5 text-[9px]">
-                              <span className="rounded-full border border-border/55 bg-muted/25 px-2 py-1 text-muted-foreground">
-                                {executionBatchAnalysis.sourceLabel}
-                              </span>
-                              <span className="rounded-full border border-info/20 bg-info/10 px-2 py-1 font-medium text-info">
-                                难度 {executionBatchAnalysis.complexity}
-                              </span>
-                              <span className="rounded-full border border-warning/20 bg-warning/10 px-2 py-1 font-medium text-warning">
-                                {executionBatchAnalysis.pricingMode}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="mt-3 grid gap-3 xl:grid-cols-[1fr_210px]">
-                            <div className="h-[15rem] rounded-[1rem] border border-border/45 bg-card/86 p-2">
-                              <EChart option={batchProfileBarOption} />
-                            </div>
-                            <div className="grid gap-2">
-                              <div className="rounded-[1rem] border border-border/45 bg-muted/18 px-3 py-2.5">
-                                <div className="text-[8px] text-muted-foreground">
-                                  预检样本
-                                </div>
-                                <div className="mt-1 text-[18px] font-semibold text-foreground tabular-nums">
-                                  {executionBatchAnalysis.sampleTarget || '--'} 个
-                                </div>
-                                <div className="mt-1 text-[8px] text-muted-foreground">
-                                  {executionBatchAnalysis.sampleTargetDetail}
-                                </div>
-                              </div>
-                              <div className="rounded-[1rem] border border-border/45 bg-muted/18 px-3 py-2.5">
-                                <div className="text-[8px] text-muted-foreground">
-                                  批次体量
-                                </div>
-                                <div className="mt-1 font-mono text-[13px] font-semibold text-foreground tabular-nums">
-                                  {executionBatchAnalysis.totalSizeLabel}
-                                </div>
-                                <div className="mt-1 text-[8px] text-muted-foreground">
-                                  {executionBatchAnalysis.samplePoolLabel}
-                                </div>
-                              </div>
-                              <div className="rounded-[1rem] border border-border/45 bg-muted/18 px-3 py-2.5 text-[8px] leading-3.5 text-muted-foreground text-pretty">
-                                {executionBatchAnalysis.imageProxyNote}
-                              </div>
-                            </div>
-                          </div>
-                        </section>
-
-                        <div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-[1.1fr_0.9fr_0.9fr]">
-                          <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="text-[11px] font-medium text-foreground">
-                                处理吞吐趋势
-                              </div>
-                              <span className="rounded-full border border-border/60 px-2 py-0.5 text-[9px] text-muted-foreground">
-                                {throughputTrendWindowLabel}
-                              </span>
-                            </div>
-                            <div className="mt-3 h-[12rem]">
-                              <EChart option={predictionOption} />
-                            </div>
-                          </section>
-
-                          <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="text-[11px] font-medium text-foreground">
-                                成本雷达
-                              </div>
-                              <Radar className="h-4 w-4 text-accent" />
-                            </div>
-                            <div className="mt-3 h-[13rem]">
-                              <EChart option={radarOption} />
-                            </div>
-                          </section>
-
-                          <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)] xl:col-span-2 2xl:col-span-1">
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="text-[11px] font-medium text-foreground">
-                                运行日志（最近）
-                              </div>
-                              <span className="text-[9px] text-muted-foreground">
-                                {recentQueueOutcomes.length
-                                  ? '来自任务队列'
-                                  : '来自文档状态'}
-                              </span>
-                            </div>
-                            <div className="mt-3 space-y-2">
-                              {executionRecentLogs.map((log) => (
-                                <div
-                                  key={log.id}
-                                  className="flex items-start gap-2.5 rounded-[0.9rem] border border-border/50 bg-background/78 px-2.5 py-2"
-                                >
-                                  <span
-                                    className={cn(
-                                      'mt-1 h-2.5 w-2.5 shrink-0 rounded-full',
-                                      log.tone
-                                    )}
-                                  />
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex items-center gap-2 text-[9px] text-muted-foreground">
-                                      <span className="font-mono">
-                                        {log.time}
-                                      </span>
-                                      <span>{log.stage}</span>
-                                    </div>
-                                    <div className="mt-0.5 truncate text-[10px] text-foreground">
-                                      {log.detail}
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </section>
-                        </div>
-
-                        <section className="rounded-[1.2rem] border border-border/60 bg-background/90 p-3 shadow-[0_18px_42px_-32px_rgba(15,23,42,0.16)]">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="text-[11px] font-medium text-foreground">
-                              任务列表
-                            </div>
-                            <div className="text-[9px] text-muted-foreground">
-                              {executionTaskRows.length} 个任务
-                            </div>
-                          </div>
-                          <div className="mt-3 overflow-hidden rounded-[1rem] border border-border/50">
-                            <table className="w-full text-left text-[9px]">
-                              <thead className="bg-muted/20 text-muted-foreground">
-                                <tr>
-                                  <th className="px-3 py-2 font-medium">
-                                    文件名
-                                  </th>
-                                  <th className="px-3 py-2 font-medium">
-                                    类型
-                                  </th>
-                                  <th className="px-3 py-2 font-medium">
-                                    大小
-                                  </th>
-                                  <th className="px-3 py-2 font-medium">
-                                    当前阶段
-                                  </th>
-                                  <th className="px-3 py-2 font-medium">
-                                    状态
-                                  </th>
-                                  <th className="px-3 py-2 font-medium">
-                                    处理进度
-                                  </th>
-                                  <th className="px-3 py-2 font-medium">
-                                    耗时
-                                  </th>
-                                  <th className="px-3 py-2 font-medium">
-                                    操作
-                                  </th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {showExecutionMonitorEmptyShell ? (
-                                  <tr className="border-t border-border/40">
-                                    <td colSpan={8} className="px-3 py-8">
-                                      <div className="mx-auto flex max-w-xl flex-col items-center rounded-[1rem] border border-dashed border-border/65 bg-background/74 px-4 py-5 text-center">
-                                        <div className="text-[11px] font-semibold text-foreground">
-                                          当前范围暂无执行任务
-                                        </div>
-                                        <div className="mt-1 max-w-md text-[9px] leading-4 text-muted-foreground">
-                                          这个监控范围可以直接打开，但当前知识库还没有解析任务。可以切到入库操作提交解析，或查看全部项目的运行态。
-                                        </div>
-                                        <div className="mt-3 flex flex-wrap justify-center gap-2">
-                                          <Button
-                                            type="button"
-                                            size="sm"
-                                            className="h-7 rounded-lg px-2 text-[9px]"
-                                            onClick={handleOpenIngestionOperation}
-                                          >
-                                            去入库操作
-                                          </Button>
-                                          {selectedDatasetId ? (
-                                            <Button
-                                              type="button"
-                                              variant="outline"
-                                              size="sm"
-                                              className="h-7 rounded-lg px-2 text-[9px]"
-                                              onClick={() =>
-                                                handleDatasetScopeChange(
-                                                  DATASET_ALL
-                                                )
-                                              }
-                                            >
-                                              查看全部项目
-                                            </Button>
-                                          ) : null}
-                                        </div>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                ) : (
-                                  visibleExecutionTaskRows.map((document) => {
-                                    const progress = getTaskProgress(document)
-                                    const elapsedMinutes = (() => {
-                                      const created = new Date(
-                                        String(document.created_at || '')
-                                      ).getTime()
-                                      const updated = new Date(
-                                        String(document.updated_at || '')
-                                      ).getTime()
-                                      if (
-                                        !Number.isFinite(created) ||
-                                        !Number.isFinite(updated) ||
-                                        updated <= created
-                                      )
-                                        return '--'
-                                      return formatDurationClock(
-                                        (updated - created) / 1000
-                                      )
-                                    })()
-                                    const statusLabel = getDocumentStatusLabel(
-                                      document.status
-                                    )
-                                    const statusTone = getDocumentStatusTone(
-                                      document.status
-                                    )
-
-                                    return (
-                                      <tr
-                                        key={document.id}
-                                        className="border-t border-border/40"
-                                      >
-                                        <td className="px-3 py-2 font-medium text-foreground">
-                                          {document.filename}
-                                        </td>
-                                        <td className="px-3 py-2 text-muted-foreground">
-                                          {String(
-                                            document.file_type || ''
-                                          ).toUpperCase()}
-                                        </td>
-                                        <td className="px-3 py-2 font-mono text-muted-foreground">
-                                          {formatFileSize(
-                                            document.file_size || 0
-                                          )}
-                                        </td>
-                                        <td className="px-3 py-2 text-muted-foreground">
-                                          {String(
-                                            document.current_stage || 'Parser'
-                                          )}
-                                        </td>
-                                        <td
-                                          className={cn(
-                                            'px-3 py-2 font-medium',
-                                            statusTone
-                                          )}
-                                        >
-                                          {statusLabel}
-                                        </td>
-                                        <td className="px-3 py-2">
-                                          <div className="flex items-center gap-2">
-                                            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted/60">
-                                              <div
-                                                className="h-full rounded-full bg-info"
-                                                style={{
-                                                  width: `${progress}%`,
-                                                }}
-                                              />
-                                            </div>
-                                            <span className="font-mono text-[8px] text-foreground">
-                                              {progress}%
-                                            </span>
-                                          </div>
-                                        </td>
-                                        <td className="px-3 py-2 font-mono text-muted-foreground">
-                                          {elapsedMinutes}
-                                        </td>
-                                        <td className="px-3 py-2">
-                                          <button
-                                            type="button"
-                                            className="text-[9px] font-medium text-info transition-colors hover:text-info"
-                                            onClick={() =>
-                                              handleOpenAuditSnapshot(
-                                                document.id
-                                              )
-                                            }
-                                          >
-                                            详情
-                                          </button>
-                                        </td>
-                                      </tr>
-                                    )
-                                  })
-                                )}
-                              </tbody>
-                            </table>
-                          </div>
-                          <div className="mt-2.5 flex flex-col gap-2 border-t border-border/45 pt-2.5 text-[9px] text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-                            <span className="font-mono tabular-nums">
-                              共 {executionTaskRows.length} 条
-                            </span>
-                            <div className="flex items-center justify-end gap-1.5">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-7 rounded-lg px-2 text-[9px]"
-                                disabled={executionTaskPage <= 1}
-                                onClick={() =>
-                                  setExecutionTaskPage((page) =>
-                                    Math.max(1, page - 1)
-                                  )
-                                }
-                              >
-                                <ChevronLeft className="mr-1 h-3 w-3" />
-                                上一页
-                              </Button>
-                              <span className="min-w-[4.5rem] rounded-lg border border-border/50 bg-background/70 px-2 py-1 text-center font-mono tabular-nums text-foreground">
-                                第 {executionTaskPage} /{' '}
-                                {executionTaskPageCount} 页
-                              </span>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-7 rounded-lg px-2 text-[9px]"
-                                disabled={
-                                  executionTaskPage >= executionTaskPageCount
-                                }
-                                onClick={() =>
-                                  setExecutionTaskPage((page) =>
-                                    Math.min(
-                                      executionTaskPageCount,
-                                      page + 1
-                                    )
-                                  )
-                                }
-                              >
-                                下一页
-                                <ChevronRight className="ml-1 h-3 w-3" />
-                              </Button>
-                            </div>
-                          </div>
-                        </section>
-                      </div>
-                    </div>
+                    <ExecutionMonitorPanel
+                      batchProfileBarOption={batchProfileBarOption}
+                      executionBatchAnalysis={executionBatchAnalysis}
+                      executionDocuments={executionDocuments}
+                      executionKpiCards={executionKpiCards}
+                      executionProcessedTotal={executionProcessedTotal}
+                      executionRecentLogs={executionRecentLogs}
+                      executionRunStateCards={executionRunStateCards}
+                      executionSuccessRate={executionSuccessRate}
+                      executionTaskPage={executionTaskPage}
+                      executionTaskPageCount={executionTaskPageCount}
+                      executionTaskRows={executionTaskRows}
+                      predictionOption={predictionOption}
+                      radarOption={radarOption}
+                      recentQueueOutcomesCount={recentQueueOutcomes.length}
+                      selectedDatasetId={selectedDatasetId}
+                      showEmptyShell={showExecutionMonitorEmptyShell}
+                      visibleExecutionTaskRows={visibleExecutionTaskRows}
+                      onNextPage={() =>
+                        setExecutionTaskPage((page) =>
+                          Math.min(executionTaskPageCount, page + 1)
+                        )
+                      }
+                      onOpenAuditSnapshot={handleOpenAuditSnapshot}
+                      onOpenIngestionOperation={handleOpenIngestionOperation}
+                      onPrevPage={() =>
+                        setExecutionTaskPage((page) => Math.max(1, page - 1))
+                      }
+                      onScopeAllProjects={() =>
+                        handleDatasetScopeChange(DATASET_ALL)
+                      }
+                    />
                   )}
                 </>
               )}
@@ -3860,259 +2502,15 @@ export default function KnowledgeIngestionPageClient() {
         </div>
       </div>
 
-      {selectedEvidenceFile && (
-        <Sheet
-          open={Boolean(selectedEvidenceFile)}
-          onOpenChange={(open) => !open && setSelectedEvidenceFile(null)}
-        >
-          <SheetContent
-            side="right"
-            className="h-[100dvh] w-[min(820px,100vw)] max-w-[820px] overflow-hidden border-l border-border/60 bg-background/95 shadow-strong"
-          >
-            <SheetHeader className="sr-only">
-              <SheetTitle>
-                {anonymizeEvidenceName(selectedEvidenceFile.name)}
-              </SheetTitle>
-              <SheetDescription>
-                {selectedEvidenceFile.file_type}
-              </SheetDescription>
-            </SheetHeader>
-            <div className="flex h-full min-h-0 flex-col">
-              <div className="border-b border-border/60 px-6 py-5">
-                <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                  入库依据
-                </div>
-                <div className="mt-1 text-lg font-semibold text-foreground">
-                  {anonymizeEvidenceName(selectedEvidenceFile.name)}
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <span className="font-mono tabular-nums">
-                    {selectedEvidenceFile.file_type.toUpperCase()}
-                  </span>
-                  <span className="font-mono tabular-nums">
-                    {formatFileSize(selectedEvidenceFile.file_size || 0)}
-                  </span>
-                  <span className="font-mono tabular-nums">
-                    {selectedEvidenceFile.text_characters} chars
-                  </span>
-                </div>
-              </div>
-              <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
-                <div className="rounded-[1.3rem] border border-border/60 bg-muted/20 p-4">
-                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                    处理标签
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {buildEvidenceSlotTags(selectedEvidenceFile).map((tag) => (
-                      <span
-                        key={tag}
-                        className="rounded-full border border-border/60 bg-background/86 px-2.5 py-1 text-[11px] font-medium text-foreground"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-[1.3rem] border border-border/60 bg-background/80 p-4">
-                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                    为何复杂
-                  </div>
-                  <div className="mt-2 text-sm leading-6 text-foreground">
-                    {buildEvidenceSlotReason(selectedEvidenceFile)}
-                  </div>
-                </div>
-
-                {selectedEvidenceFile.pdf_pages ? (
-                  <div className="rounded-[1.3rem] border border-border/60 bg-background/80 p-4">
-                    <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                      PDF 类型分流依据
-                    </div>
-                    <div className="mt-3 grid gap-3 md:grid-cols-2">
-                      <div className="rounded-[1rem] border border-border/55 bg-muted/20 px-3 py-2.5 text-sm">
-                        总页数：{selectedEvidenceFile.pdf_pages.page_count}
-                      </div>
-                      <div className="rounded-[1rem] border border-border/55 bg-muted/20 px-3 py-2.5 text-sm">
-                        扫描页：{selectedEvidenceFile.pdf_pages.scanned_pages}
-                      </div>
-                      <div className="rounded-[1rem] border border-border/55 bg-muted/20 px-3 py-2.5 text-sm">
-                        文字页：{selectedEvidenceFile.pdf_pages.text_pages}
-                      </div>
-                      <div className="rounded-[1rem] border border-border/55 bg-muted/20 px-3 py-2.5 text-sm">
-                        扫描占比：
-                        {Math.round(
-                          selectedEvidenceFile.pdf_pages.scan_ratio * 100
-                        )}
-                        %
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-
-                {selectedEvidenceFile.pii_samples?.length ? (
-                  <div className="rounded-[1.3rem] border border-border/60 bg-background/80 p-4">
-                    <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                      敏感信息待审核列表
-                    </div>
-                    <div className="mt-3 space-y-3">
-                      {selectedEvidenceFile.pii_samples
-                        .slice(0, 3)
-                        .map((item, index) => (
-                          <div
-                            key={`${item.kind}-${index}`}
-                            className="rounded-[1rem] border border-border/55 bg-muted/20 p-3 text-sm"
-                          >
-                            <div className="font-mono text-xs text-muted-foreground">
-                              {item.kind}
-                            </div>
-                            <div className="mt-1 font-mono text-foreground">
-                              {item.masked}
-                            </div>
-                            <div className="mt-2 rounded-lg border border-border/50 bg-background/80 px-3 py-2 font-mono text-xs text-muted-foreground">
-                              {item.context}
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                <div className="rounded-[1.3rem] border border-border/60 bg-background/80 p-4">
-                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                    本地复核
-                  </div>
-                  <div className="mt-2 text-sm leading-6 text-muted-foreground">
-                    一键打开本地文件仅在本地入库复核模式可用；普通 Web
-                    部署默认禁用。
-                  </div>
-                  <Button className="mt-3 rounded-xl" disabled>
-                    打开本地文件
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </SheetContent>
-        </Sheet>
-      )}
-
-      {!selectedEvidenceFile && activeAuditIsDemo && (
-        <Sheet
-          open={Boolean(activeAuditDocument)}
-          onOpenChange={(open) => !open && setActiveDetailId(null)}
-        >
-          <SheetContent
-            side="right"
-            className="h-[100dvh] w-[min(820px,100vw)] max-w-[820px] overflow-hidden border-l border-border/60 bg-background/95 shadow-strong"
-          >
-            <SheetHeader className="sr-only">
-              <SheetTitle>
-                {activeAuditDocument?.filename || '入库快照'}
-              </SheetTitle>
-              <SheetDescription>
-                {activeAuditDocument?.id || ''}
-              </SheetDescription>
-            </SheetHeader>
-            {activeAuditDocument && (
-              <div className="flex h-full min-h-0 flex-col">
-                <div className="border-b border-border/60 px-6 py-5">
-                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                    入库快照
-                  </div>
-                  <div className="mt-1 text-lg font-semibold text-foreground">
-                    {activeAuditDocument.filename}
-                  </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <span className="font-mono tabular-nums">
-                      {formatFileSize(activeAuditDocument.file_size || 0)}
-                    </span>
-                    <span>
-                      {formatDate(
-                        activeAuditDocument.updated_at ||
-                          activeAuditDocument.created_at
-                      )}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
-                  <div className="rounded-[1.4rem] border border-border/60 bg-muted/20 p-4">
-                    <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                      Sensitive Data Policy
-                    </div>
-                    <div className="mt-2 text-sm leading-6 text-foreground/82">
-                      默认仅展示脱敏后的聚合事实与待确认线索，不做主观评分。该快照用于演示侧边抽屉入库依据视图。
-                    </div>
-                  </div>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {[
-                      ['状态', String(activeAuditDocument.status || '-')],
-                      [
-                        '阶段',
-                        String(activeAuditDocument.current_stage || '-'),
-                      ],
-                      ['数据集', String(activeAuditDocument.dataset_id || '-')],
-                      [
-                        '风险线索',
-                        activeAuditDocument.error_message ||
-                          '无明确错误，建议抽样核查',
-                      ],
-                    ].map(([label, value]) => (
-                      <div
-                        key={label}
-                        className="rounded-[1.2rem] border border-border/60 bg-background/80 p-4"
-                      >
-                        <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                          {label}
-                        </div>
-                        <div className="mt-2 text-sm font-medium text-foreground">
-                          {value}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="rounded-[1.4rem] border border-border/60 bg-background/82 p-4">
-                    <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                      建议动作
-                    </div>
-                    <div className="mt-3 grid gap-3 md:grid-cols-2">
-                      <Button
-                        className="rounded-xl"
-                        onClick={() =>
-                          handleSampleDisposition(
-                            activeAuditDocument.id,
-                            'approved'
-                          )
-                        }
-                      >
-                        确认可入库
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="rounded-xl"
-                        onClick={() =>
-                          handleSampleDisposition(
-                            activeAuditDocument.id,
-                            'manual'
-                          )
-                        }
-                      >
-                        需人工处理
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </SheetContent>
-        </Sheet>
-      )}
-
-      {!selectedEvidenceFile && !activeAuditIsDemo && (
-        <IngestionDetailDialog
-          open={Boolean(activeDetailId)}
-          onOpenChange={(open) => !open && setActiveDetailId(null)}
-          documentId={activeDetailId}
-        />
-      )}
+      <IngestionDetailSurface
+        activeAuditDocument={activeAuditDocument}
+        activeAuditIsDemo={activeAuditIsDemo}
+        activeDetailId={activeDetailId}
+        selectedEvidenceFile={selectedEvidenceFile}
+        onCloseActiveDetail={() => setActiveDetailId(null)}
+        onCloseEvidenceFile={() => setSelectedEvidenceFile(null)}
+        onSampleDisposition={handleSampleDisposition}
+      />
     </div>
   )
 }

@@ -4,6 +4,7 @@
 
 import type { JsonObject, PermissionEnum } from './common'
 import type { DocumentFolderTreeResponse } from './documents'
+import type { components } from './openapi'
 import type { DocumentPipelineOptions, IngestionPolicy } from './processing'
 
 // ==================== 数据集相关类型 ====================
@@ -14,6 +15,8 @@ export interface DatasetEmbeddingDefaults {
   api_base?: string | null
 }
 
+export type DatasetRagDefaults = components['schemas']['DatasetRAGDefaults']
+
 export interface Dataset {
   id: string
   tenant_id: string
@@ -23,6 +26,7 @@ export interface Dataset {
   owner_id?: string | null
   partial_member_list?: string[] | null
   partial_group_list?: string[] | null
+  rag_defaults?: DatasetRagDefaults | null
   embedding_defaults?: DatasetEmbeddingDefaults | null
   pipeline?: DocumentPipelineOptions | null
   ingestion_summary?: DatasetIngestionSummary | null
@@ -35,6 +39,7 @@ export interface DatasetCreate {
   permission: PermissionEnum
   partial_member_list?: string[] | null
   partial_group_list?: string[] | null
+  rag_defaults?: DatasetRagDefaults | null
   embedding_defaults?: DatasetEmbeddingDefaults | null
   pipeline?: DocumentPipelineOptions | null
 }
@@ -45,6 +50,7 @@ export interface DatasetUpdate {
   permission?: PermissionEnum | null
   partial_member_list?: string[] | null
   partial_group_list?: string[] | null
+  rag_defaults?: DatasetRagDefaults | null
   embedding_defaults?: DatasetEmbeddingDefaults | null
   pipeline?: DocumentPipelineOptions | null
 }
@@ -255,7 +261,7 @@ export interface DatasetReport {
 export interface DatasetConfigBundle {
   default_parser_backend?: string | null
   default_chunk_strategy?: string | null
-  rag_defaults?: Record<string, unknown> | null
+  rag_defaults?: DatasetRagDefaults | null
   embedding_defaults?: DatasetEmbeddingDefaults | null
   default_prompt_template_id?: string | null
   default_prompt_template_key?: string | null
@@ -530,6 +536,7 @@ export interface DatasetPrecheckSummary {
   secrets_hits_total: Record<string, number>
 
   findings: DatasetPrecheckFindingSummary[]
+  embedding_advisories?: DatasetPrecheckEmbeddingAdvisory[] | null
 }
 
 export interface DatasetPrecheckFileOut {
@@ -684,6 +691,12 @@ export interface DatasetPrecheckManualReviewBucket {
   sample_names: string[]
 }
 
+export interface DatasetPrecheckEmbeddingAdvisory {
+  code: string
+  effective_embedding?: string | null
+  recommended_action?: string | null
+  recommended_model_ids?: string[] | null
+}
 export interface DatasetPrecheckIngestionSuggestionResponse {
   generated_at: string
   policy: IngestionPolicy

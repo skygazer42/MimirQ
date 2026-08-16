@@ -52,12 +52,13 @@ def test_budgeted_rrf_fusion_respects_quotas_and_dedup() -> None:
     )
 
     keys = [r._result_key(x) for x in out[:4]]
-    # Expected quotas (default): vector=2, bm25=1, lexical=1 (sparse gets 0 for top_k=4)
-    # Dedup: d2:0 appears in vector+bm25; bm25 slot should skip it and take d4:0.
-    assert set(keys) == {"d1:0", "d2:0", "d4:0", "d5:0"}
+    # Default quotas follow active channels: with 4 healthy channels and top_k=4,
+    # each active channel gets one visible-prefix slot.
+    assert set(keys) == {"d1:0", "d2:0", "d5:0", "d7:0"}
     assert len(keys) == 4
     scores = [float(x.get("score") or 0.0) for x in out[:4]]
     assert scores == sorted(scores, reverse=True)
+    assert r._last_channel_metrics["fusion_budgeted_rrf"]["picked_by_channel"]["sparse"] == 1
 
     for item in out[:4]:
         assert item.get("fusion_strategy") == "budgeted_rrf"
@@ -109,6 +110,52 @@ def test_budgeted_rrf_fusion_min_score_threshold_truncates_channel_queue() -> No
     # Lexical has quota=2 but threshold keeps only the first lexical item.
     assert set(keys) == {"d1:0", "d2:0", "d3:0", "d4:0", "d6:0"}
     assert "d5:0" not in keys
+
+
+def test_budgeted_rrf_default_budgets_follow_healthy_channels() -> None:
+    retriever = HybridRetriever()
+    out = retriever._merge_results(
+        [_mk_result(doc_id="d1", chunk_index=0, score=0.9)],
+        [],
+        [],
+        [_mk_result(doc_id="d2", chunk_index=0, score=0.8)],
+        fusion_strategy="budgeted_rrf",
+        top_k=3,
+    )
+
+    stats = retriever._last_channel_metrics["fusion_budgeted_rrf"]
+    assert stats["budgets"] == {"bm25": 0, "lexical": 0, "sparse": 1, "vector": 2}
+    assert stats["picked_by_channel"]["sparse"] == 1
+    assert [retriever._result_key(item) for item in out[:2]] == ["d1:0", "d2:0"]
+
+
+@pytest.mark.parametrize(
+    ("alpha", "expected"),
+    [
+        (1.0, ["d1:0", "d2:0"]),
+        (0.0, ["d2:0", "d1:0"]),
+    ],
+)
+def test_linear_fusion_respects_alpha_boundaries(alpha: float, expected: list[str]) -> None:
+    retriever = HybridRetriever()
+    vector = [
+        _mk_result(doc_id="d1", chunk_index=0, score=0.99),
+        _mk_result(doc_id="d2", chunk_index=0, score=0.50),
+    ]
+    bm25 = [
+        _mk_result(doc_id="d1", chunk_index=0, score=1.0),
+        _mk_result(doc_id="d2", chunk_index=0, score=10.0),
+    ]
+
+    out = retriever._merge_results(
+        vector,
+        bm25,
+        fusion_strategy="linear",
+        alpha=alpha,
+        top_k=2,
+    )
+
+    assert [retriever._result_key(item) for item in out[:2]] == expected
 
 
 def test_budgeted_rrf_weights_exact_hits_inside_existing_candidates() -> None:

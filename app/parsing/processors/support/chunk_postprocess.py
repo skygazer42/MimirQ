@@ -198,7 +198,11 @@ def _build_page_start_offsets(
     cursor = 0
     last_index = len(documents) - 1
     for index, doc in enumerate(documents):
-        page_start[_document_page_index(doc, index)] = cursor
+        # A few parsers can emit multiple Documents for one physical page.  A
+        # chunk only carries the page index, so the first document is the only
+        # deterministic base we can preserve; later duplicates must not move
+        # every chunk on that page to the final fragment's offset.
+        page_start.setdefault(_document_page_index(doc, index), cursor)
         cursor += len(doc.page_content or "")
         if index < last_index:
             cursor += sep_len
@@ -256,8 +260,8 @@ def _build_page_text_lookup(
     last_index = len(documents) - 1
     for index, doc in enumerate(documents):
         page_index = _document_page_index(doc, index)
-        page_text[page_index] = doc.page_content or ""
-        page_base[page_index] = cursor
+        page_text.setdefault(page_index, doc.page_content or "")
+        page_base.setdefault(page_index, cursor)
         cursor += len(doc.page_content or "")
         if index < last_index:
             cursor += sep_len

@@ -156,6 +156,61 @@ async def test_retrieval_explain_replaces_request_session_before_offload(
 
 
 @pytest.mark.asyncio
+async def test_retrieval_explain_uses_chat_rag_defaults_when_rag_config_omitted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.retrieval_explain as explain
+    from app.api.schemas.chat import ChatRAGConfig
+
+    captured: dict[str, object] = {}
+    request_db = SimpleNamespace(rollback=lambda: None)
+    worker_db = object()
+    dataset_id = uuid.uuid4()
+
+    monkeypatch.setattr(explain.DatasetService, "ensure_member", lambda *_args: None)
+    monkeypatch.setattr(explain.DatasetService, "get_dataset", lambda *_args: object())
+    monkeypatch.setattr(explain.DatasetService, "assert_dataset_readable", lambda *_args: None)
+    monkeypatch.setattr(explain, "_enforce_non_empty_retrieval_scope", lambda *_args, **_kwargs: None)
+
+    def fake_build_rag_state(**kwargs):  # noqa: ANN001, ANN202
+        captured.update(kwargs)
+        return dict(kwargs)
+
+    monkeypatch.setattr(explain, "build_rag_state", fake_build_rag_state)
+    monkeypatch.setattr(
+        explain,
+        "run_retrieval",
+        lambda state: {
+            "citations": [],
+            "metrics": {},
+            "retrieval_degraded": False,
+            "fallback_reason": None,
+            "channel_health": {},
+        },
+        raising=True,
+    )
+    async def managed_offload(work, *, request_db, runtime_metrics):  # noqa: ANN001, ANN202
+        assert runtime_metrics == {}
+        return work(worker_db)
+
+    monkeypatch.setattr(
+        explain,
+        "run_blocking_retrieval_call_with_managed_session",
+        managed_offload,
+        raising=False,
+    )
+
+    await explain.explain_retrieval(
+        explain.RetrievalExplainRequest(query="where", dataset_id=dataset_id),
+        tenant_id=uuid.uuid4(),
+        account_id="member-1",
+        db=request_db,
+    )
+
+    assert captured["retrieval_profile"] == ChatRAGConfig().retrieval_profile
+
+
+@pytest.mark.asyncio
 async def test_multi_agent_retrieval_replaces_request_session(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

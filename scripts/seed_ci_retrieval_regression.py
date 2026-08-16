@@ -28,6 +28,7 @@ from app.core.migrations import apply_runtime_migrations
 from app.models.dataset import Dataset, DatasetPermissionEnum
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
+from app.models.tenant import Tenant, TenantMember
 
 
 def _load_json(path: Path) -> Any:
@@ -73,6 +74,38 @@ def build_cases_bundle(fixture: dict[str, Any]) -> dict[str, Any]:
     return {"schema": "mimirq.regression_cases.v1", "dataset_id": ds, "items": items}
 
 
+def ensure_fixture_tenant_owner(db: Any, *, tenant_id: UUID, account_id: str) -> None:
+    """Create the explicit CI tenant membership required by authenticated APIs."""
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    if tenant is None:
+        tenant = Tenant(
+            id=tenant_id,
+            name=f"CI Retrieval Regression {str(tenant_id)[:8]}",
+            status="active",
+            plan="basic",
+        )
+        db.add(tenant)
+
+    member = (
+        db.query(TenantMember)
+        .filter(TenantMember.tenant_id == tenant_id, TenantMember.user_id == account_id)
+        .first()
+    )
+    if member is None:
+        member = TenantMember(
+            tenant_id=tenant_id,
+            user_id=account_id,
+            role="owner",
+            is_active=True,
+            is_current=True,
+        )
+        db.add(member)
+    else:
+        member.role = "owner"
+        member.is_active = True
+        member.is_current = True
+
+
 def seed_fixture(*, fixture: dict[str, Any]) -> None:
     tenant_id = UUID(str(fixture.get("tenant_id") or "").strip())
     account_id = str(fixture.get("account_id") or "").strip() or "ci-bot"
@@ -93,6 +126,11 @@ def seed_fixture(*, fixture: dict[str, Any]) -> None:
 
     db = SessionLocal()
     try:
+        # Security contract: CI creates an explicit membership instead of relying
+        # on the local-development owner bootstrap escape hatch.
+        ensure_fixture_tenant_owner(db, tenant_id=tenant_id, account_id=account_id)
+        db.commit()
+
         # Upsert dataset by id.
         ds = (
             db.query(Dataset)

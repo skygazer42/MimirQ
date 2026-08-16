@@ -34,6 +34,7 @@ from app.core.config import settings
 from app.core.constants import NON_CRITICAL_EXCEPTION_LOG_MESSAGE
 from app.core.optional_deps import optional_import
 from app.core.token_utils import estimate_tokens
+from app.models.dataset import Dataset as DBDataset
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.parsing.quality.text_quality import score_parsed_text_quality
 from app.rag.core.logging import get_logger
@@ -41,6 +42,7 @@ from app.rag.preprocessing.language import detect_language
 from app.rag.preprocessing.pii_anonymizer import anonymize_pii, find_pii_matches
 from app.rag.preprocessing.secrets import find_secret_matches, redact_secrets
 from app.rag.tools.pre_poc_scanner.settings import resolve_pre_poc_scanner_thresholds
+from app.services.dataset_embedding_advisory import build_embedding_language_advisories
 from app.services.dataset_precheck_classification import (
     classify_parse_failure_kind,
     infer_primary_tag,
@@ -876,6 +878,13 @@ def run_dataset_precheck_scan(
     if run is None:
         raise ValueError("scan_run_not_found")
 
+    dataset_metadata_raw = (
+        db.query(DBDataset.dataset_metadata)
+        .filter(DBDataset.id == dataset_id, DBDataset.tenant_id == tenant_id)
+        .scalar()
+    )
+    dataset_metadata = dict(dataset_metadata_raw) if isinstance(dataset_metadata_raw, dict) else {}
+
     # Mark running.
     run.status = "running"
     run.progress = 0
@@ -1058,6 +1067,7 @@ def run_dataset_precheck_scan(
             "by_file_type_bytes": {},
             "file_type_stats": [],
             "language_mix": {},
+            "embedding_advisories": [],
             "directory_stats": [],
             "file_size_histogram": [],
             "length_percentiles": {"p25": 0, "p50": 0, "p75": 0, "p90": 0, "p99": 0},
@@ -1960,6 +1970,10 @@ def run_dataset_precheck_scan(
         },
         "file_type_stats": file_type_stats,
         "language_mix": lang_mix,
+        "embedding_advisories": build_embedding_language_advisories(
+            language_mix=lang_mix,
+            dataset_metadata=dataset_metadata,
+        ),
         "directory_stats": dir_items,
         "file_size_histogram": histogram(file_sizes, FILE_SIZE_BINS),
         "length_percentiles": percentiles,

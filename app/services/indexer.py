@@ -39,6 +39,14 @@ from app.services.dataset_embedding_config import (
     create_embeddings_for_runtime,
     resolve_dataset_embedding_runtime,
 )
+from app.services.document_index_channel_service import (
+    DOCUMENT_INDEX_CHANNEL_DISABLED,
+    DOCUMENT_INDEX_CHANNEL_ERROR,
+    DOCUMENT_INDEX_CHANNEL_PROCESSING,
+    DOCUMENT_INDEX_CHANNEL_READY,
+    DOCUMENT_INDEX_CHANNEL_SKIPPED,
+    transition_document_index_channel,
+)
 from app.services.metrics_logger import log_metrics
 from app.storage.vector.factory import get_vector_store
 from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
@@ -60,6 +68,7 @@ _CHUNK_METADATA_SCAN_BATCH_SIZE = 256
 _shadow_vector_writer_sig: str | None = None
 _shadow_vector_writer: tuple[Any, Any, str] | None = None  # (embeddings, adapter, embedding_space_hash)
 _SHADOW_VECTOR_WRITE_EVENT = "ingest.shadow_vector_write"
+_INGEST_GATE_ACTION = "document.ingest_gate"
 
 
 class DatasetScopedEmbeddingRuntimeResolutionError(RuntimeError):
@@ -277,6 +286,181 @@ def _safe_int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _tenant_quota_fail_closed_enabled() -> bool:
+    return bool(getattr(settings, "TENANT_QUOTA_FAIL_CLOSED", False))
+
+
+def _now_iso() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+def _record_ingest_gate_outcome(
+    metadata: dict[str, Any] | None,
+    *,
+    gate: str,
+    outcome: str,
+    reason: str,
+    details: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    out = dict(metadata or {})
+    gates = out.get("ingest_gate_outcomes")
+    gates = dict(gates) if isinstance(gates, dict) else {}
+    entry: dict[str, Any] = {
+        "gate": str(gate or "").strip() or "unknown",
+        "outcome": str(outcome or "").strip() or "degraded",
+        "reason": str(reason or "").strip() or "unknown",
+        "recorded_at": _now_iso(),
+    }
+    if isinstance(details, dict):
+        for key, value in details.items():
+            if value not in (None, "", [], {}):
+                entry[str(key)] = value
+    gates[entry["gate"]] = entry
+    out["ingest_gate_outcomes"] = gates
+    return out
+
+
+def _audit_ingest_gate_event(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    gate: str,
+    outcome: str,
+    reason: str,
+    details: dict[str, Any] | None = None,
+) -> None:
+    try:
+        from app.services.audit_log_service import audit_log_event
+
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=None,
+            action=_INGEST_GATE_ACTION,
+            resource_type="document",
+            resource_id=str(document_id),
+            details={
+                "gate": str(gate or "").strip() or "unknown",
+                "outcome": str(outcome or "").strip() or "degraded",
+                "reason": str(reason or "").strip() or "unknown",
+                **(dict(details or {}) if isinstance(details, dict) else {}),
+            },
+        )
+    except Exception as exc:
+        logger.debug(_INDEXER_FALLBACK_LOG_MESSAGE, exc)
+
+
+def _persist_ingest_gate_outcome_best_effort(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    gate: str,
+    outcome: str,
+    reason: str,
+    details: dict[str, Any] | None = None,
+) -> None:
+    try:
+        db_document = (
+            db.query(DBDocument)
+            .filter(DBDocument.tenant_id == tenant_id, DBDocument.id == document_id)
+            .first()
+        )
+        if db_document is not None:
+            db_document.doc_metadata = _record_ingest_gate_outcome(
+                dict(getattr(db_document, "doc_metadata", None) or {}),
+                gate=gate,
+                outcome=outcome,
+                reason=reason,
+                details=details,
+            )
+    except Exception as exc:
+        logger.debug(_INDEXER_FALLBACK_LOG_MESSAGE, exc)
+
+
+def _enforce_embedding_quota_gate(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    additional_chars: int,
+) -> dict[str, Any]:
+    from app.services.tenant_quota_service import (
+        TenantQuotaExceededError,
+        enforce_tenant_embedding_char_quota,
+    )
+
+    try:
+        return enforce_tenant_embedding_char_quota(
+            db,
+            tenant_id=tenant_id,
+            additional_chars=int(additional_chars or 0),
+        )
+    except TenantQuotaExceededError:
+        raise
+    except Exception as exc:
+        closed = _tenant_quota_fail_closed_enabled()
+        outcome = "closed" if closed else "degraded"
+        reason = "tenant_quota_gate_unavailable"
+        details = {
+            "quota": "embedding_chars",
+            "additional_chars": max(0, int(additional_chars or 0)),
+            "error": str(exc)[:200],
+            "fail_closed": bool(closed),
+        }
+        log_metrics(
+            {
+                "event": "ingest.quota_gate",
+                "tenant_id": str(tenant_id),
+                "document_id": str(document_id),
+                "quota": "embedding_chars",
+                "outcome": outcome,
+                "reason": reason,
+                "fail_closed": bool(closed),
+            }
+        )
+        _persist_ingest_gate_outcome_best_effort(
+            db,
+            tenant_id=tenant_id,
+            document_id=document_id,
+            gate="tenant_quota",
+            outcome=outcome,
+            reason=reason,
+            details=details,
+        )
+        _audit_ingest_gate_event(
+            db,
+            tenant_id=tenant_id,
+            document_id=document_id,
+            gate="tenant_quota",
+            outcome=outcome,
+            reason=reason,
+            details=details,
+        )
+        if closed:
+            raise TenantQuotaExceededError(
+                "embedding_chars_gate_unavailable",
+                "Tenant embedding quota enforcement unavailable",
+                meta={
+                    **details,
+                    "outcome": outcome,
+                    "reason": reason,
+                },
+            ) from exc
+        logger.warning("Tenant quota check degraded during indexing; continuing fail-open: %s", str(exc)[:200])
+        return {
+            "enabled": False,
+            "mode": "warn",
+            "limit_chars": 0,
+            "used_chars": 0,
+            "additional_chars": max(0, int(additional_chars or 0)),
+            "would_exceed": False,
+            "gate_outcome": outcome,
+            "gate_reason": reason,
+        }
 
 
 def _metadata_flag_enabled(value: Any) -> bool:
@@ -950,6 +1134,37 @@ class Indexer:
             return bool(options.entity_vector_enabled)
         return bool(getattr(settings, "ENTITY_VECTOR_ENABLED", True))
 
+    def _load_document_for_channel_tracking(self, *, tenant_id: UUID, document_id: UUID) -> DBDocument | None:
+        return (
+            self._db.query(DBDocument)
+            .filter(
+                DBDocument.tenant_id == tenant_id,
+                DBDocument.id == document_id,
+            )
+            .first()
+        )
+
+    def _track_document_channel(
+        self,
+        *,
+        document: DBDocument | None,
+        channel: str,
+        status: str,
+        error: str | None = None,
+        increment_attempt: bool = False,
+    ) -> None:
+        if document is None:
+            return
+        transition_document_index_channel(
+            self._db,
+            document=document,
+            channel=channel,
+            status=status,
+            error=error,
+            increment_attempt=increment_attempt,
+            commit=False,
+        )
+
     def _load_dataset_metadata(
         self,
         *,
@@ -1330,14 +1545,20 @@ class Indexer:
         embedding_runtime = resolve_dataset_embedding_runtime(None)
         embedding_space = embedding_runtime.embedding_space_hash
         try:
-            row = (
-                self._db.query(DBDocument.dataset_id, DBDocument.file_type, DBDocument.filename, DBDocument.doc_metadata)
-                .filter(DBDocument.tenant_id == tenant_id, DBDocument.id == document_id)
-                .first()
+            embedding_runtime = self._embedding_runtime_for_document(
+                tenant_id=tenant_id,
+                document_id=document_id,
+                strict=True,
             )
-            if row is None:
+            embedding_space = embedding_runtime.embedding_space_hash
+            db_document = self._load_document_for_channel_tracking(tenant_id=tenant_id, document_id=document_id)
+            if db_document is None:
                 raise _dataset_scoped_runtime_unavailable(document_id=document_id, tenant_id=tenant_id)
-            ds_id, ft, fn, doc_meta = row
+
+            ds_id = db_document.dataset_id
+            ft = db_document.file_type
+            fn = db_document.filename
+            doc_meta = db_document.doc_metadata
             if ds_id is not None:
                 dataset_uuid = ds_id
                 dataset_id_str = str(ds_id)
@@ -1346,21 +1567,6 @@ class Indexer:
             if isinstance(doc_meta, dict):
                 document_retrieval_metadata = dict(doc_meta)
             document_title = _derive_document_title(fn, doc_meta)
-            if dataset_uuid is not None:
-                dataset_row = (
-                    self._db.query(DBDataset.dataset_metadata)
-                    .filter(DBDataset.tenant_id == tenant_id, DBDataset.id == dataset_uuid)
-                    .first()
-                )
-                if dataset_row is None:
-                    raise _dataset_scoped_runtime_unavailable(document_id=document_id, tenant_id=tenant_id)
-                dataset_meta = dataset_row[0] if dataset_row else None
-                if dataset_meta is not None and not isinstance(dataset_meta, dict):
-                    raise _dataset_scoped_runtime_unavailable(document_id=document_id, tenant_id=tenant_id)
-                embedding_runtime = resolve_dataset_embedding_runtime(dict(dataset_meta or {}))
-            else:
-                embedding_runtime = resolve_dataset_embedding_runtime(None)
-            embedding_space = embedding_runtime.embedding_space_hash
         except ValueError:
             raise
         except DatasetScopedEmbeddingRuntimeResolutionError:
@@ -1372,27 +1578,17 @@ class Indexer:
 
         source = str(default_source or "").strip() or "unknown"
         total_characters = sum(len(c.content or "") for c in chunks)
+        vector_enabled = self._resolve_chunk_vector_enabled(options)
+        bm25_enabled = self._resolve_bm25_enabled(options)
 
-        # Best-effort tenant rolling cap on indexing and embedding volume.
-        #
-        # Note: this is deliberately enforced here (right before vector/BM25 writes) so any
-        # ingestion path that calls Indexer will respect quotas.
-        try:
-            from app.services.tenant_quota_service import (
-                TenantQuotaExceededError,
-                enforce_tenant_embedding_char_quota,
-            )
-
-            enforce_tenant_embedding_char_quota(
-                self._db,
-                tenant_id=tenant_id,
-                additional_chars=int(total_characters or 0),
-            )
-        except TenantQuotaExceededError:
-            raise
-        except Exception as exc:
-            # Fail open if quota checks are unavailable (misconfig/DB issues).
-            logger.debug("Tenant quota check failed during indexing; continuing fail-open: %s", exc)
+        # Enforce tenant rolling caps right before vector/BM25 writes so every ingest path
+        # shares the same gate. When fail-closed is disabled, degraded checks remain explicit.
+        _enforce_embedding_quota_gate(
+            self._db,
+            tenant_id=tenant_id,
+            document_id=document_id,
+            additional_chars=int(total_characters or 0),
+        )
 
         normalized_chunks: list[ChunkInput] = []
         vector_docs: list[dict[str, Any]] = []
@@ -1512,14 +1708,30 @@ class Indexer:
                         {"content": normalize_query(f"[Heading] {heading}").normalized_text, "metadata": meta_h}
                     )
 
-        vector_ids = self._index_chunk_vectors(
-            vector_docs,
-            document_id=document_id,
-            tenant_id=tenant_id,
-            enable_vectors=self._resolve_chunk_vector_enabled(options),
-            embedding_runtime=embedding_runtime,
+        self._track_document_channel(
+            document=db_document,
+            channel="vector",
+            status=DOCUMENT_INDEX_CHANNEL_PROCESSING if vector_enabled else DOCUMENT_INDEX_CHANNEL_DISABLED,
+            increment_attempt=vector_enabled,
         )
-        if extra_vector_docs and self._resolve_chunk_vector_enabled(options):
+        try:
+            vector_ids = self._index_chunk_vectors(
+                vector_docs,
+                document_id=document_id,
+                tenant_id=tenant_id,
+                enable_vectors=vector_enabled,
+                embedding_runtime=embedding_runtime,
+            )
+        except Exception as exc:
+            self._track_document_channel(
+                document=db_document,
+                channel="vector",
+                status=DOCUMENT_INDEX_CHANNEL_ERROR,
+                error=str(exc)[:2000],
+            )
+            raise
+
+        if extra_vector_docs and vector_enabled:
             # Best-effort: do not fail ingest if extra vectors can't be written (legacy collections,
             # transient Milvus issues, etc.). The base body embedding is the compatibility path.
             try:
@@ -1541,17 +1753,40 @@ class Indexer:
             chunk_ids=chunk_ids,
             commit=commit,
         )
+        self._track_document_channel(
+            document=db_document,
+            channel="vector",
+            status=DOCUMENT_INDEX_CHANNEL_READY if vector_enabled else DOCUMENT_INDEX_CHANNEL_DISABLED,
+        )
 
+        self._track_document_channel(
+            document=db_document,
+            channel="bm25",
+            status=DOCUMENT_INDEX_CHANNEL_PROCESSING if bm25_enabled else DOCUMENT_INDEX_CHANNEL_DISABLED,
+            increment_attempt=bm25_enabled,
+        )
         try:
             self._update_bm25_for_chunks(
                 db_chunks=db_chunks,
                 tenant_id=tenant_id,
                 document_id=document_id,
                 default_source=default_source,
-                enable_bm25=self._resolve_bm25_enabled(options),
+                enable_bm25=bm25_enabled,
             )
         except Exception as exc:
+            self._track_document_channel(
+                document=db_document,
+                channel="bm25",
+                status=DOCUMENT_INDEX_CHANNEL_ERROR if bm25_enabled else DOCUMENT_INDEX_CHANNEL_DISABLED,
+                error=str(exc)[:2000] if bm25_enabled else None,
+            )
             logger.warning("Failed to update BM25 index incrementally: %s", exc)
+        else:
+            self._track_document_channel(
+                document=db_document,
+                channel="bm25",
+                status=DOCUMENT_INDEX_CHANNEL_READY if bm25_enabled else DOCUMENT_INDEX_CHANNEL_DISABLED,
+            )
 
         return PersistChunksResult(
             db_chunks=db_chunks,
@@ -1605,6 +1840,14 @@ class Indexer:
 
         entity_cache: dict[tuple[str, str, str], KgEntity] = {}
         db_events: list[KgSourceEvent] = []
+        document_ids = {item.document_id for item in events if item.document_id is not None}
+        tracked_document = (
+            self._load_document_for_channel_tracking(tenant_id=tenant_id, document_id=next(iter(document_ids)))
+            if len(document_ids) == 1
+            else None
+        )
+        event_vector_enabled = self._resolve_event_vector_enabled(options)
+        entity_vector_enabled = self._resolve_entity_vector_enabled(options)
 
         for item in events:
             refs = item.references if isinstance(getattr(item, "references", None), dict) else {}
@@ -1695,10 +1938,67 @@ class Indexer:
         event_vector_ids: list[str] = []
         entity_vector_ids: list[str] = []
         if commit:
-            if self._resolve_event_vector_enabled(options):
-                event_vector_ids = self._index_event_vectors(db_events)
-            if self._resolve_entity_vector_enabled(options):
-                entity_vector_ids = self._index_entity_vectors(list(entity_cache.values()))
+            if event_vector_enabled:
+                self._track_document_channel(
+                    document=tracked_document,
+                    channel="event_vector",
+                    status=DOCUMENT_INDEX_CHANNEL_PROCESSING,
+                    increment_attempt=True,
+                )
+                event_vector_candidates = [event for event in db_events if getattr(event, "content_vector", None)]
+                if not event_vector_candidates:
+                    self._track_document_channel(
+                        document=tracked_document,
+                        channel="event_vector",
+                        status=DOCUMENT_INDEX_CHANNEL_SKIPPED,
+                    )
+                else:
+                    event_vector_ids = self._index_event_vectors(db_events)
+                    self._track_document_channel(
+                        document=tracked_document,
+                        channel="event_vector",
+                        status=DOCUMENT_INDEX_CHANNEL_READY
+                        if len(event_vector_ids) == len(event_vector_candidates)
+                        else DOCUMENT_INDEX_CHANNEL_ERROR,
+                        error=None if len(event_vector_ids) == len(event_vector_candidates) else "event_vector_write_failed",
+                    )
+            else:
+                self._track_document_channel(
+                    document=tracked_document,
+                    channel="event_vector",
+                    status=DOCUMENT_INDEX_CHANNEL_DISABLED,
+                )
+
+            if entity_vector_enabled:
+                self._track_document_channel(
+                    document=tracked_document,
+                    channel="entity_vector",
+                    status=DOCUMENT_INDEX_CHANNEL_PROCESSING,
+                    increment_attempt=True,
+                )
+                entity_vector_candidates = [entity for entity in entity_cache.values() if getattr(entity, "vector", None)]
+                if not entity_vector_candidates:
+                    self._track_document_channel(
+                        document=tracked_document,
+                        channel="entity_vector",
+                        status=DOCUMENT_INDEX_CHANNEL_SKIPPED,
+                    )
+                else:
+                    entity_vector_ids = self._index_entity_vectors(list(entity_cache.values()))
+                    self._track_document_channel(
+                        document=tracked_document,
+                        channel="entity_vector",
+                        status=DOCUMENT_INDEX_CHANNEL_READY
+                        if len(entity_vector_ids) == len(entity_vector_candidates)
+                        else DOCUMENT_INDEX_CHANNEL_ERROR,
+                        error=None if len(entity_vector_ids) == len(entity_vector_candidates) else "entity_vector_write_failed",
+                    )
+            else:
+                self._track_document_channel(
+                    document=tracked_document,
+                    channel="entity_vector",
+                    status=DOCUMENT_INDEX_CHANNEL_DISABLED,
+                )
 
         return PersistEventsResult(
             events=db_events,

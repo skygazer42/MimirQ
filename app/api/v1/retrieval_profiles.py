@@ -10,8 +10,9 @@ Goal:
 import json
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from app.api.dependencies.auth import get_current_account_id
 from app.core.config import settings
 from app.rag.core.hashing import stable_hash
 from app.rag.core.retrieval_profiles import (
@@ -29,7 +30,10 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     416: {"description": "Range Not Satisfiable"},
 }
 
-router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+router = APIRouter(
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+    dependencies=[Depends(get_current_account_id)],
+)
 
 _SCHEMA = "mimirq.retrieval_profiles.v1"
 

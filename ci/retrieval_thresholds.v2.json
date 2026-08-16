@@ -17,6 +17,18 @@
       "pdf": {
         "retrieval_recall": { "min": 1.0 },
         "retrieval_hit_at_20": { "min": 1.0 }
+      },
+      "png": {
+        "retrieval_recall": { "min": 1.0 },
+        "retrieval_hit_at_20": { "min": 1.0 }
+      },
+      "docx": {
+        "retrieval_recall": { "min": 1.0 },
+        "retrieval_hit_at_20": { "min": 1.0 }
+      },
+      "xlsx": {
+        "retrieval_recall": { "min": 1.0 },
+        "retrieval_hit_at_20": { "min": 1.0 }
       }
     },
     "language": {
@@ -25,6 +37,10 @@
         "retrieval_hit_at_20": { "min": 1.0 }
       },
       "zh": {
+        "retrieval_recall": { "min": 1.0 },
+        "retrieval_hit_at_20": { "min": 1.0 }
+      },
+      "mixed": {
         "retrieval_recall": { "min": 1.0 },
         "retrieval_hit_at_20": { "min": 1.0 }
       }

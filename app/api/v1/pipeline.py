@@ -203,6 +203,7 @@ def _safe_pipeline_plugin_error_path(path: Path | None, roots: Iterable[Path]) -
 
 @router.get(
     "/plugins",
+    dependencies=[Depends(get_current_account_id)],
     response_model=PipelinePluginListResponse,
     response_model_exclude_none=True,
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,

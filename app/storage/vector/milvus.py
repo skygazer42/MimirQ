@@ -913,6 +913,84 @@ class MilvusAdapter:
             )
         return out
 
+    def search_native_hybrid(
+        self,
+        *,
+        query_vector: list[float],
+        sparse_query_vector: Any,
+        top_k: int = 10,
+        expr: str | None = None,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Best-effort Milvus native dense+sparse search contract.
+
+        Notes:
+        - This method only uses native hybrid when the underlying store exposes an
+          explicit hybrid-search hook.
+        - When the current Milvus/LangChain runtime does not expose such a hook, we
+          raise ``NotImplementedError`` so the caller can deterministically fall back
+          to the existing channel-fusion path without pretending native support exists.
+        """
+        self._require_store()
+
+        supported_filter = _sanitize_milvus_metadata_filter(metadata_filter)
+        metadata_expr = _build_milvus_metadata_expr(supported_filter)
+        metadata_expr_fallback = False
+        if expr and metadata_expr:
+            combined_expr = f"({expr}) and ({metadata_expr})"
+        else:
+            combined_expr = expr or metadata_expr
+
+        sparse_payload = sparse_query_vector
+        if hasattr(sparse_query_vector, "weights"):
+            sparse_payload = sparse_query_vector.weights
+
+        def _invoke(store_expr: str | None):  # noqa: ANN202
+            if hasattr(self._store, "similarity_search_with_hybrid_score_by_vector"):
+                return self._store.similarity_search_with_hybrid_score_by_vector(
+                    embedding=query_vector,
+                    sparse_embedding=sparse_payload,
+                    k=top_k,
+                    expr=store_expr,
+                )
+            if hasattr(self._store, "hybrid_search_with_score"):
+                return self._store.hybrid_search_with_score(
+                    dense_embedding=query_vector,
+                    sparse_embedding=sparse_payload,
+                    k=top_k,
+                    expr=store_expr,
+                )
+            raise NotImplementedError("milvus_native_hybrid_unsupported")
+
+        try:
+            results = _invoke(combined_expr)
+        except NotImplementedError:
+            raise
+        except Exception:
+            metadata_expr_fallback = bool(metadata_expr)
+            results = _invoke(expr)
+
+        client_filter = (
+            _milvus_scalar_client_filter_spec(supported_filter)
+            if metadata_expr_fallback
+            else _milvus_client_filter_spec(supported_filter)
+        )
+        out: list[dict[str, Any]] = []
+        for doc, score in results:
+            meta = _rehydrate_indexed_metadata_slots(doc.metadata or {})
+            if client_filter and not _match_metadata_filter(meta, client_filter):
+                continue
+            out.append(
+                {
+                    "id": doc.id,
+                    "metadata": meta,
+                    "score": float(score),
+                    "content": doc.page_content,
+                }
+            )
+        return out
+
     def open_semantic_cache_maintenance_iterator(
         self,
         *,

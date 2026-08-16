@@ -177,6 +177,10 @@ def test_repo_checks_enforce_api_type_drift_and_shared_python_audit_policy() -> 
     ) in makefile
     assert "make audit-py" in security_workflow
     assert "--no-deps" not in python_audit
+    assert "PIP_DEFAULT_TIMEOUT=60" in python_audit
+    assert "--timeout 60" in python_audit
+    assert "--index-url https://pypi.org/simple" in python_audit
+    assert "--extra-index-url https://download.pytorch.org/whl/cpu" in python_audit
     for advisory in (
         "PYSEC-2026-311",
         "PYSEC-2026-3046",
@@ -234,7 +238,7 @@ def test_main_ci_runs_all_browser_smoke_specs_and_critical_coverage() -> None:
     assert "make verify" in backend_job
 
 
-def test_main_ci_host_browser_smoke_stays_on_the_live_stack_spec_in_non_pr_jobs() -> None:
+def test_main_ci_host_browser_smoke_stays_on_the_live_stack_spec_in_pr_jobs_too() -> None:
     workflow = _read(".github/workflows/ci.yml")
 
     assert "README host browser smoke" in workflow
@@ -243,7 +247,6 @@ def test_main_ci_host_browser_smoke_stays_on_the_live_stack_spec_in_non_pr_jobs(
         "\n  kg-search-regression-gate:\n",
         1,
     )[0]
-    assert "if: github.event_name != 'pull_request'" in retrieval_regression_job
     assert 'AUTH_MODE: header' in retrieval_regression_job
     assert "README host browser smoke" in retrieval_regression_job
     assert 'PLAYWRIGHT_LIVE_STACK: "1"' in retrieval_regression_job
@@ -417,12 +420,14 @@ def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     assert "docker run --rm -v \"$PWD:/work\" -w /work alpine/helm@sha256:aef9b56f64e866207d9591d0abd8f6d767b36aadd12edf68f8a719716d9d29c9 lint deploy/helm/mimirq" in workflow
     assert "template mimirq deploy/helm/mimirq >/dev/null" in workflow
     assert "make test" in workflow
-    assert "PR bounded hybrid RAG quality gate" in workflow
+    assert "PR deterministic retrieval-ranking proxy gate" in workflow
     assert "scripts/run_sample_retrieval_benchmark.py" in workflow
     assert "scripts/build_rag_quality_gate_artifacts.py" in workflow
     assert "data/sample/retrieval_fixture_hybrid_v1.json" in workflow
     assert "--retrieval-mode hybrid" in workflow
     assert "tests/rag/evaluation/test_rag_quality_gate.py" in workflow
+    assert "artifacts/retrieval_ranking_proxy.summary.json" in workflow
+    assert "artifacts/retrieval_ranking_proxy_gate.report.json" in workflow
     assert "PR hosted live core gate" in workflow
     assert "bash scripts/run_ci_live_core_gate.sh artifacts/live-core-release-gate.pr.json" in workflow
     assert "REDIS_URL: redis://127.0.0.1:${{ job.services.redis.ports['6379'] }}/0" in workflow
@@ -445,11 +450,11 @@ def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
         "test-and-verify",
         "web-test-and-verify",
         "docker-build",
-        "retrieval-only-bounded-gate",
-        "retrieval-regression-gate",
         "kg-search-regression-gate",
     ):
         assert f"{job}:\n    if: github.event_name != 'pull_request'" in workflow
+    for job in ("retrieval-only-bounded-gate", "retrieval-regression-gate"):
+        assert f"{job}:\n    if: github.event_name != 'pull_request'" not in workflow
 
 
 def test_ci_backend_full_suite_runs_pytest_xdist_in_parallel() -> None:

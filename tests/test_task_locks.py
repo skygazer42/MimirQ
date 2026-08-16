@@ -1023,6 +1023,7 @@ async def test_extract_kg_job_keeps_concurrency_limits_on_final_retry(monkeypatc
         doc_metadata={},
     )
     observed: dict[str, int] = {}
+    transitions: list[tuple[str, str, bool, str | None]] = []
 
     async def _tenant_acquire(_redis, **kwargs):  # noqa: ANN001, ANN003, ANN202
         observed["tenant_limit"] = int(kwargs["limit"])
@@ -1040,6 +1041,14 @@ async def test_extract_kg_job_keeps_concurrency_limits_on_final_retry(monkeypatc
     monkeypatch.setattr(jobs.settings, "TASK_KG_JOB_MAX_TRIES", 3, raising=False)
     monkeypatch.setattr(jobs.settings, "TASK_TENANT_MAX_CONCURRENCY_KG", 2, raising=False)
     monkeypatch.setattr(jobs.settings, "TASK_DATASET_MAX_CONCURRENCY_KG", 4, raising=False)
+    monkeypatch.setattr(
+        jobs,
+        "_transition_document_index_channel_best_effort",
+        lambda _db, *, channel, status, increment_attempt=False, error=None, **_kwargs: transitions.append(
+            (channel, status, increment_attempt, error)
+        ),
+        raising=True,
+    )
 
     result = await jobs.extract_kg_job(
         {"job_try": 3, "redis": object()},
@@ -1051,6 +1060,7 @@ async def test_extract_kg_job_keeps_concurrency_limits_on_final_retry(monkeypatc
     assert result["ok"] is False
     assert result["reason"] == "task_concurrency_busy"
     assert observed == {"tenant_limit": 2, "dataset_limit": 4}
+    assert transitions == [("kg", "error", False, "task_concurrency_busy")]
 
 
 @pytest.mark.asyncio
@@ -1241,6 +1251,184 @@ async def test_extract_kg_job_invalidates_dataset_cache_after_success(monkeypatc
     assert extract_calls[0][1]["extract_skills"] is False
     assert acquired_locks == [f"lock:kg:{tenant_id}:{document_id}:pipe-a:{fingerprint}"]
     assert cache_invalidations == [(tenant_id, dataset_id)]
+
+
+@pytest.mark.asyncio
+async def test_extract_kg_job_does_not_mark_terminal_status_before_retryable_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from app.tasks import jobs
+
+    tenant_id = uuid4()
+    document_id = uuid4()
+    document = SimpleNamespace(
+        id=document_id,
+        tenant_id=tenant_id,
+        dataset_id=None,
+        status="completed",
+        doc_metadata={"active_pipeline_hash": "pipe-a", "pipeline_hash": "pipe-a"},
+    )
+    chunks = [
+        SimpleNamespace(id=uuid4(), doc_metadata={"pipeline_hash": "pipe-a", "doc_pipeline_key": f"{document_id}:pipe-a"}),
+    ]
+    db = _KGDB(document=document, chunks=chunks)
+    transitions: list[tuple[str, str, bool, str | None]] = []
+
+    async def _tenant_acquire(_redis, **_kwargs):  # noqa: ANN001, ANN003, ANN202
+        return None
+
+    async def _dataset_acquire(_redis, **_kwargs):  # noqa: ANN001, ANN003, ANN202
+        return None
+
+    async def _acquire(_redis, **_kwargs):  # noqa: ANN001, ANN003, ANN202
+        return True
+
+    async def _release(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        return None
+
+    async def _extract_events(*_args, **_kwargs):  # noqa: ANN202
+        raise FakeRetryError(defer=7)
+
+    monkeypatch.setattr(jobs, "SessionLocal", lambda: db, raising=True)
+    monkeypatch.setattr(jobs, "get_retry_exc", lambda: FakeRetryError, raising=True)
+    monkeypatch.setattr(jobs, "_task_queue_redis_or_retry", lambda *_args, **_kwargs: object(), raising=True)
+    monkeypatch.setattr(jobs, "tenant_acquire", _tenant_acquire, raising=True)
+    monkeypatch.setattr(jobs, "dataset_acquire", _dataset_acquire, raising=True)
+    monkeypatch.setattr(jobs, "_acquire_task_lock_or_retry", _acquire, raising=True)
+    monkeypatch.setattr(jobs, "release_lock", _release, raising=True)
+    monkeypatch.setattr(jobs, "dataset_release", _release, raising=True)
+    monkeypatch.setattr(jobs, "tenant_release", _release, raising=True)
+    monkeypatch.setattr(
+        "app.services.pipeline_config.resolve_pipeline_effective",
+        lambda **_kwargs: SimpleNamespace(kg_python_plugin="", chunk_python_plugin="", kg_python_params={}),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        "app.services.pipeline_config.build_indexing_options",
+        lambda *_args, **_kwargs: SimpleNamespace(event_vector_enabled=True, entity_vector_enabled=True),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        "app.rag.pipeline_plugins.registry.derive_registered_stage_plugin_ref",
+        lambda *_args, **_kwargs: "",
+        raising=True,
+    )
+    monkeypatch.setattr("app.rag.kg.pipeline.extract_events", _extract_events, raising=True)
+    monkeypatch.setattr(
+        jobs,
+        "_transition_document_index_channel_best_effort",
+        lambda _db, *, channel, status, increment_attempt=False, error=None, **_kwargs: transitions.append(
+            (channel, status, increment_attempt, error)
+        ),
+        raising=True,
+    )
+    monkeypatch.setattr(jobs.settings, "TASK_KG_JOB_MAX_TRIES", 3, raising=False)
+
+    with pytest.raises(FakeRetryError):
+        await jobs.extract_kg_job(
+            {"job_try": 1, "redis": object()},
+            str(tenant_id),
+            str(document_id),
+            "member-1",
+        )
+
+    assert transitions == []
+
+
+@pytest.mark.asyncio
+async def test_extract_kg_job_marks_ready_and_skipped_channels_when_no_events(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from app.tasks import jobs
+
+    tenant_id = uuid4()
+    document_id = uuid4()
+    dataset_id = uuid4()
+    document = SimpleNamespace(
+        id=document_id,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        status="completed",
+        doc_metadata={"active_pipeline_hash": "pipe-a", "pipeline_hash": "pipe-a"},
+    )
+    chunks = [
+        SimpleNamespace(id=uuid4(), doc_metadata={"pipeline_hash": "pipe-a", "doc_pipeline_key": f"{document_id}:pipe-a"}),
+    ]
+    dataset = SimpleNamespace(dataset_metadata={})
+    db = _KGDB(document=document, chunks=chunks, dataset=dataset)
+    transitions: list[tuple[str, str, bool, str | None]] = []
+
+    async def _tenant_acquire(_redis, **_kwargs):  # noqa: ANN001, ANN003, ANN202
+        return None
+
+    async def _dataset_acquire(_redis, **_kwargs):  # noqa: ANN001, ANN003, ANN202
+        return None
+
+    async def _acquire(_redis, **_kwargs):  # noqa: ANN001, ANN003, ANN202
+        return True
+
+    async def _release(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        return None
+
+    async def _extract_events(*_args, **_kwargs):  # noqa: ANN202
+        return []
+
+    monkeypatch.setattr(jobs, "SessionLocal", lambda: db, raising=True)
+    monkeypatch.setattr(jobs, "_task_queue_redis_or_retry", lambda *_args, **_kwargs: object(), raising=True)
+    monkeypatch.setattr(jobs, "tenant_acquire", _tenant_acquire, raising=True)
+    monkeypatch.setattr(jobs, "dataset_acquire", _dataset_acquire, raising=True)
+    monkeypatch.setattr(jobs, "_acquire_task_lock_or_retry", _acquire, raising=True)
+    monkeypatch.setattr(jobs, "release_lock", _release, raising=True)
+    monkeypatch.setattr(jobs, "dataset_release", _release, raising=True)
+    monkeypatch.setattr(jobs, "tenant_release", _release, raising=True)
+    monkeypatch.setattr(
+        "app.services.pipeline_config.resolve_pipeline_effective",
+        lambda **_kwargs: SimpleNamespace(kg_python_plugin="", chunk_python_plugin="", kg_python_params={}),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        "app.services.pipeline_config.build_indexing_options",
+        lambda *_args, **_kwargs: SimpleNamespace(event_vector_enabled=True, entity_vector_enabled=True),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        "app.rag.pipeline_plugins.registry.derive_registered_stage_plugin_ref",
+        lambda *_args, **_kwargs: "",
+        raising=True,
+    )
+    monkeypatch.setattr("app.rag.kg.pipeline.extract_events", _extract_events, raising=True)
+    monkeypatch.setattr(
+        "app.services.corpus_cache_tokens.invalidate_dataset_cache_namespace",
+        lambda *_args, **_kwargs: {"dataset_id": str(dataset_id)},
+        raising=True,
+    )
+    monkeypatch.setattr(
+        jobs,
+        "_transition_document_index_channel_best_effort",
+        lambda _db, *, channel, status, increment_attempt=False, error=None, **_kwargs: transitions.append(
+            (channel, status, increment_attempt, error)
+        ),
+        raising=True,
+    )
+
+    result = await jobs.extract_kg_job(
+        {"job_try": 1, "redis": object()},
+        str(tenant_id),
+        str(document_id),
+        "member-1",
+    )
+
+    assert result["ok"] is True
+    assert result["event_count"] == 0
+    assert transitions == [
+        ("kg", "ready", False, None),
+        ("event_vector", "skipped", False, None),
+        ("entity_vector", "skipped", False, None),
+    ]
     assert db.commits >= 1
 
 
@@ -1303,6 +1491,153 @@ async def test_rebuild_job_marks_failed_on_final_coordination_retry(monkeypatch:
 
     assert result["ok"] is False
     assert result["reason"] == "task_coordination_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_index_audit_job_reports_candidates_in_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.tasks import jobs
+
+    tenant_id = uuid4()
+    dataset_id = uuid4()
+
+    async def _tenant_acquire(_redis, **_kwargs):  # noqa: ANN001, ANN003, ANN202
+        return None
+
+    async def _acquire(_redis, **_kwargs):  # noqa: ANN001, ANN003, ANN202
+        return True
+
+    async def _release(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        return None
+
+    monkeypatch.setattr(jobs, "SessionLocal", lambda: _ValueDB(None), raising=True)
+    monkeypatch.setattr(jobs, "_task_queue_redis_or_retry", lambda *_args, **_kwargs: object(), raising=True)
+    monkeypatch.setattr(jobs, "tenant_acquire", _tenant_acquire, raising=True)
+    monkeypatch.setattr(jobs, "_acquire_task_lock_or_retry", _acquire, raising=True)
+    monkeypatch.setattr(jobs, "release_lock", _release, raising=True)
+    monkeypatch.setattr(jobs, "tenant_release", _release, raising=True)
+    monkeypatch.setattr(
+        "app.services.index_audit_service.plan_index_audit_reconcile",
+        lambda **_kwargs: {
+            "schema": "mimirq.index_audit_reconcile_plan.v1",
+            "scope": "dataset",
+            "scan_limit": 50,
+            "scanned_documents": 3,
+            "counts": {"candidate_documents": 2, "report_only_documents": 1},
+            "items": [
+                {"document_id": "doc-pending", "status": "pending", "action": "enqueue_rebuild"},
+                {"document_id": "doc-error", "status": "error", "action": "enqueue_rebuild"},
+                {"document_id": "doc-legacy", "status": "legacy_unknown", "action": "report_only"},
+            ],
+        },
+        raising=True,
+    )
+
+    async def _unexpected_enqueue(**_kwargs):  # noqa: ANN202
+        raise AssertionError("dry-run must not enqueue rebuild jobs")
+
+    monkeypatch.setattr("app.services.index_audit_service.enqueue_index_audit_reconcile", _unexpected_enqueue, raising=True)
+
+    result = await jobs.reconcile_index_audit_job(
+        {"job_try": 1, "redis": object()},
+        str(tenant_id),
+        str(dataset_id),
+        "member-1",
+        None,
+        50,
+        True,
+    )
+
+    assert result["ok"] is True
+    assert result["dry_run"] is True
+    assert result["scan_limit"] == 50
+    assert result["candidate_documents"] == 2
+    assert result["report_only_count"] == 1
+    assert [item["enqueue_status"] for item in result["report"]["items"]] == [
+        "would_enqueue",
+        "would_enqueue",
+        "report_only",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_reconcile_index_audit_job_enqueues_only_pending_error_documents(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.tasks import jobs
+
+    tenant_id = uuid4()
+    dataset_id = uuid4()
+    enqueued: list[str] = []
+
+    async def _tenant_acquire(_redis, **_kwargs):  # noqa: ANN001, ANN003, ANN202
+        return None
+
+    async def _acquire(_redis, **_kwargs):  # noqa: ANN001, ANN003, ANN202
+        return True
+
+    async def _release(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        return None
+
+    monkeypatch.setattr(jobs, "SessionLocal", lambda: _ValueDB(None), raising=True)
+    monkeypatch.setattr(jobs, "_task_queue_redis_or_retry", lambda *_args, **_kwargs: object(), raising=True)
+    monkeypatch.setattr(jobs, "tenant_acquire", _tenant_acquire, raising=True)
+    monkeypatch.setattr(jobs, "_acquire_task_lock_or_retry", _acquire, raising=True)
+    monkeypatch.setattr(jobs, "release_lock", _release, raising=True)
+    monkeypatch.setattr(jobs, "tenant_release", _release, raising=True)
+    monkeypatch.setattr(
+        "app.services.index_audit_service.plan_index_audit_reconcile",
+        lambda **_kwargs: {
+            "schema": "mimirq.index_audit_reconcile_plan.v1",
+            "scope": "dataset",
+            "scan_limit": 25,
+            "scanned_documents": 3,
+            "counts": {"candidate_documents": 2, "report_only_documents": 1},
+            "items": [
+                {"document_id": str(uuid4()), "status": "pending", "action": "enqueue_rebuild"},
+                {"document_id": str(uuid4()), "status": "error", "action": "enqueue_rebuild"},
+                {"document_id": str(uuid4()), "status": "legacy_unknown", "action": "report_only"},
+            ],
+        },
+        raising=True,
+    )
+
+    async def _enqueue(**kwargs):  # noqa: ANN003, ANN202
+        document_id = str(kwargs["document_id"])
+        enqueued.append(document_id)
+        return {
+            "schema": "mimirq.index_audit_reconcile.v1",
+            "tenant_id": str(tenant_id),
+            "dataset_id": str(dataset_id),
+            "document_id": document_id,
+            "scope": "document",
+            "status": ("enqueued" if len(enqueued) == 1 else "already_queued"),
+            "reason": (None if len(enqueued) == 1 else "duplicate_job"),
+            "task_id": (f"job-{len(enqueued)}" if len(enqueued) == 1 else None),
+        }
+
+    monkeypatch.setattr("app.services.index_audit_service.enqueue_index_audit_reconcile", _enqueue, raising=True)
+
+    result = await jobs.reconcile_index_audit_job(
+        {"job_try": 1, "redis": object()},
+        str(tenant_id),
+        str(dataset_id),
+        "member-1",
+        None,
+        25,
+        False,
+    )
+
+    assert result["ok"] is True
+    assert result["dry_run"] is False
+    assert result["enqueued_count"] == 1
+    assert result["already_queued_count"] == 1
+    assert result["report_only_count"] == 1
+    assert len(enqueued) == 2
+    assert [item["enqueue_status"] for item in result["report"]["items"]] == [
+        "enqueued",
+        "already_queued",
+        "report_only",
+    ]
 
 
 def test_mark_run_failed_rolls_back_when_terminal_state_cannot_be_persisted() -> None:

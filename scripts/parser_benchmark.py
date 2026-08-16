@@ -19,6 +19,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from app.parsing.quality.grits import compute_table_collection_grits  # noqa: E402
+
 
 @dataclass(frozen=True, slots=True)
 class BenchmarkCase:
@@ -393,6 +395,21 @@ def _extract_markdown_table_blocks(markdown: str) -> list[list[str]]:
     if current:
         blocks.append(current)
     return blocks
+
+
+def _table_block_to_grid(block: list[str]) -> list[list[str]]:
+    rows: list[list[str]] = []
+    for index, line in enumerate(block):
+        if index == 1 and _TABLE_SEP_RE.match(line):
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if cells:
+            rows.append(cells)
+    return rows
+
+
+def _extract_markdown_tables(markdown: str) -> list[list[list[str]]]:
+    return [_table_block_to_grid(block) for block in _extract_markdown_table_blocks(markdown) if block]
 
 
 def _score_table_continuity(markdown: str, expectation: dict[str, Any] | None) -> float | None:
@@ -1054,6 +1071,9 @@ def main() -> int:
             "coverage_ratio": [],
             "image_ref_recall": [],
             "table_continuity_recall": [],
+            "table_grits_topology": [],
+            "table_grits_content": [],
+            "table_grits_f1": [],
             "reading_order_score": [],
             "specialty_recall": {kind: [] for kind in _SPECIALTY_KINDS},
             "specialty_image_visual_kind_recall": {},
@@ -1175,6 +1195,20 @@ def main() -> int:
                 if golden_md:
                     sim = _similarity(md, golden_md)
                     attempt["golden_similarity"] = round(float(sim), 4)
+                    table_grits = compute_table_collection_grits(
+                        pred_tables=_extract_markdown_tables(md),
+                        gold_tables=_extract_markdown_tables(golden_md),
+                    )
+                    if any(value is not None for value in table_grits.values()):
+                        attempt["table_grits"] = table_grits
+                        for key, stats_key in (
+                            ("topology", "table_grits_topology"),
+                            ("content", "table_grits_content"),
+                            ("f1", "table_grits_f1"),
+                        ):
+                            value = table_grits.get(key)
+                            if value is not None:
+                                by_backend[backend][stats_key].append(float(value))
                     if golden_plain_chars > 0:
                         cov = float(struct.get("plain_chars") or 0) / float(golden_plain_chars)
                         attempt["golden_coverage_ratio"] = round(float(cov), 4)
@@ -1261,6 +1295,9 @@ def main() -> int:
         covs = [float(x) for x in stats.get("coverage_ratio") or []]
         img_recalls = [float(x) for x in stats.get("image_ref_recall") or []]
         table_continuity = [float(x) for x in stats.get("table_continuity_recall") or []]
+        table_grits_topology = [float(x) for x in stats.get("table_grits_topology") or []]
+        table_grits_content = [float(x) for x in stats.get("table_grits_content") or []]
+        table_grits_f1 = [float(x) for x in stats.get("table_grits_f1") or []]
         reading_order_scores = [float(x) for x in stats.get("reading_order_score") or []]
         specialty_recalls = stats.get("specialty_recall") if isinstance(stats.get("specialty_recall"), dict) else {}
         image_visual_kind_recalls = (
@@ -1288,6 +1325,9 @@ def main() -> int:
             "golden_coverage_ratio_mean": (round(sum(covs) / len(covs), 4) if covs else None),
             "golden_image_ref_recall_mean": (round(sum(img_recalls) / len(img_recalls), 4) if img_recalls else None),
             "mean_table_continuity_recall": (round(sum(table_continuity) / len(table_continuity), 4) if table_continuity else None),
+            "mean_table_grits_topology": (round(sum(table_grits_topology) / len(table_grits_topology), 4) if table_grits_topology else None),
+            "mean_table_grits_content": (round(sum(table_grits_content) / len(table_grits_content), 4) if table_grits_content else None),
+            "mean_table_grits_f1": (round(sum(table_grits_f1) / len(table_grits_f1), 4) if table_grits_f1 else None),
             "mean_reading_order_score": (round(sum(reading_order_scores) / len(reading_order_scores), 4) if reading_order_scores else None),
         }
         for kind in _SPECIALTY_KINDS:

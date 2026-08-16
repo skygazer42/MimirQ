@@ -8,7 +8,7 @@ Design goals:
 
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
@@ -21,6 +21,7 @@ logger = get_logger(__name__)
 _INGESTION_RUN_FALLBACK_LOG_MESSAGE = "Ignoring non-critical ingestion-run fallback failure: %s"
 _INGESTION_RUN_DOCUMENT_UNIQUE_CONSTRAINT = "uq_ingestion_run_documents_tenant_run_document"
 _TERMINAL_DOCUMENT_STATUSES = ("completed", "failed", "quarantined", "cancelled")
+IngestionRunCriticality = Literal["best_effort", "required"]
 
 
 def _now_utc() -> datetime:
@@ -115,6 +116,25 @@ def _complete_transaction_quietly(db: Session) -> None:
             db.rollback()
         except Exception as rollback_exc:
             logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, rollback_exc)
+
+
+def _normalize_criticality(value: object) -> IngestionRunCriticality:
+    raw = str(value or "").strip().lower()
+    return "required" if raw == "required" else "best_effort"
+
+
+def _handle_ingestion_run_failure(
+    db: Session,
+    *,
+    exc: Exception,
+    criticality: IngestionRunCriticality,
+) -> None:
+    try:
+        db.rollback()
+    except Exception as rollback_exc:
+        logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, rollback_exc)
+    if criticality == "required":
+        raise exc
 
 
 def _update_progress_and_finalize_run(
@@ -339,11 +359,13 @@ class IngestionRunService:
         new_status: str,
         error_message: str | None = None,
         doc_meta: dict[str, Any] | None = None,
+        criticality: IngestionRunCriticality = "best_effort",
     ) -> None:
         """
         Best-effort: update run manifest records when a document changes status.
         """
         status_norm = _normalize_status(new_status)
+        criticality_norm = _normalize_criticality(criticality)
 
         target_run_id: UUID | None = None
         if isinstance(doc_meta, dict):
@@ -365,13 +387,15 @@ class IngestionRunService:
 
         try:
             rows = _candidate_rows_for_run_ids(run_filter=target_run_id)
-        except Exception:
+        except Exception as exc:
+            _handle_ingestion_run_failure(db, exc=exc, criticality=criticality_norm)
             return
         if not rows and target_run_id is not None:
             # Backward-compatible fallback: if metadata was missing/malformed, update any active run attachments.
             try:
                 rows = _candidate_rows_for_run_ids(run_filter=None)
-            except Exception:
+            except Exception as exc:
+                _handle_ingestion_run_failure(db, exc=exc, criticality=criticality_norm)
                 return
         if not rows:
             return
@@ -381,7 +405,8 @@ class IngestionRunService:
         for run_id in candidate_run_ids:
             try:
                 run = _lock_run_for_update(db, tenant_id=tenant_id, run_id=run_id)
-            except Exception:
+            except Exception as exc:
+                _handle_ingestion_run_failure(db, exc=exc, criticality=criticality_norm)
                 run = None
             if run is not None:
                 locked_runs[run_id] = run
@@ -401,11 +426,8 @@ class IngestionRunService:
                 .with_for_update()
                 .all()
             )
-        except Exception:
-            try:
-                db.rollback()
-            except Exception as rollback_exc:
-                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, rollback_exc)
+        except Exception as exc:
+            _handle_ingestion_run_failure(db, exc=exc, criticality=criticality_norm)
             return
 
         # Update each run attachment (a doc may belong to multiple runs, e.g. replays).
@@ -480,11 +502,8 @@ class IngestionRunService:
             run.stats = stats
         try:
             db.commit()
-        except Exception:
-            try:
-                db.rollback()
-            except Exception as rollback_exc:
-                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, rollback_exc)
+        except Exception as exc:
+            _handle_ingestion_run_failure(db, exc=exc, criticality=criticality_norm)
             return
         if finished_runs:
             try:

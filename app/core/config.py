@@ -357,6 +357,7 @@ class Settings(BaseSettings):
     TENANT_EMBED_CHAR_QUOTA_LIMIT: int = 0
     TENANT_EMBED_CHAR_QUOTA_WINDOW_HOURS: int = 24
     TENANT_EMBED_CHAR_QUOTA_MODE: str = "block"
+    TENANT_QUOTA_FAIL_CLOSED: bool = False
 
     # Vector write batching (Milvus/Chroma/etc). Smaller batches reduce tail latency and memory spikes.
     VECTOR_WRITE_BATCH_SIZE: int = 256
@@ -453,6 +454,9 @@ class Settings(BaseSettings):
 
     # Prometheus metrics
     PROMETHEUS_ENABLED: bool = False
+    # Optional bearer token for /metrics. Accepts raw token or sha256:<hex>.
+    # When unset, /metrics falls back to the standard authenticated-account dependency.
+    METRICS_BEARER_TOKEN: str = ""
     # Optional high-cardinality labels (off by default).
     # When disabled, metrics still include the label keys but collapse values to "all"
     # to keep time series count low.
@@ -828,6 +832,10 @@ class Settings(BaseSettings):
     # - jwt: require Authorization: Bearer <JWT> (validated with SECRET_KEY)
     # - header: require X-User-ID header (unsafe; intended for local/dev only)
     AUTH_MODE: Literal["jwt", "header"] = "jwt"
+    # Explicit local-only escape hatch for bootstrapping the default tenant owner.
+    # The service also requires header auth, implicit default-tenant resolution,
+    # a loopback client and a non-production environment.
+    LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED: bool = False
     # Non-production escape hatch for browser-driven asset fetches in AUTH_MODE=header.
     # Disabled by default so asset endpoints do not become anonymously readable unless
     # the operator explicitly opts in for local compatibility.
@@ -1101,6 +1109,10 @@ class Settings(BaseSettings):
 
     CHUNK_SIZE: int = 1000
     CHUNK_OVERLAP: int = 200
+    # Optional deterministic document-question enrichment used by retrieval metadata.
+    # Disabled by default to preserve zero-cost ingestion; count is bounded to 3..5 at runtime.
+    DOCUMENT_QUESTIONS_ENABLED: bool = False
+    DOCUMENT_QUESTIONS_COUNT: int = 3
     # Drop extremely short chunks during indexing (0 disables).
     CHUNK_MIN_CHARS: int = 30
     # Optional: merge extremely short chunks with neighbors before indexing (0 disables).
@@ -1300,6 +1312,10 @@ class Settings(BaseSettings):
     # - Production SPLADE models (HF/transformers) must be loaded lazily and are optional.
     SPARSE_RETRIEVAL_ENABLED: bool = False
     SPARSE_RETRIEVAL_PROVIDER: str = "deterministic"  # deterministic | splade
+    # Optional Milvus native dense+sparse retrieval path.
+    # Safe-off by default: callers must opt in and the retriever auto-falls back
+    # unless the request is dataset-scoped on Milvus with sparse retrieval enabled.
+    MILVUS_NATIVE_HYBRID: bool = False
     # Persist sparse indices to disk (scoped by tenant/dataset/document_ids).
     # This is safe because sparse retrieval is disabled by default.
     SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED: bool = True

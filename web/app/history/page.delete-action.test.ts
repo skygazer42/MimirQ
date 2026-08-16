@@ -112,7 +112,13 @@ describe('history page delete action', () => {
       await vi.waitFor(() =>
         expect(container.querySelector('[data-history-empty-archive="true"]')).not.toBeNull()
       )
+      await vi.waitFor(() =>
+        expect(container.querySelector('[data-history-main-empty="true"]')).not.toBeNull()
+      )
     })
+
+    expect(container.querySelector('a[href="/evaluations"]')?.textContent).toContain('evaluateConversation')
+    expect(container.querySelector('a[href="/observability"]')?.textContent).toContain('ragTrace')
 
     act(() => root.unmount())
   })

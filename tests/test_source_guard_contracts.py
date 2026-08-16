@@ -287,7 +287,6 @@ def test_parser_quality_gates_cannot_ignore_complete_regressions() -> None:
         ".github/workflows/ci.yml",
         ".github/workflows/parsing-proof-nightly.yml",
         ".github/workflows/parsing-proof-sample.yml",
-        ".github/workflows/rag-quality-gate.yml",
     ):
         workflow = _read(workflow_path)
         assert "parsing_retrieval_proof_gate.py" in workflow
@@ -296,10 +295,15 @@ def test_parser_quality_gates_cannot_ignore_complete_regressions() -> None:
     for workflow_path in (
         ".github/workflows/ci.yml",
         ".github/workflows/parsing-proof-sample.yml",
-        ".github/workflows/rag-quality-gate.yml",
     ):
         workflow = _read(workflow_path)
         assert "build_parsing_retrieval_proof_artifacts.py" not in workflow
+
+    answer_quality_workflow = _read(".github/workflows/rag-quality-gate.yml")
+    assert "scripts/build_answer_quality_summary.py" in answer_quality_workflow
+    assert "scripts/answer_quality_gate.py" in answer_quality_workflow
+    assert "parsing_retrieval_proof_gate.py" not in answer_quality_workflow
+    assert "build_parsing_retrieval_proof_artifacts.py" not in answer_quality_workflow
 
     ci_workflow = _read(".github/workflows/ci.yml")
     assert "--input-dir tests/fixtures/parsing_golden" in ci_workflow

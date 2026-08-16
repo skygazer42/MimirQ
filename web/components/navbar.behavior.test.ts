@@ -244,10 +244,12 @@ describe('Navbar behavior', () => {
     const view = renderComponent(React.createElement(Navbar))
 
     const appearance = view.container.querySelector('[data-testid="appearance-customizer"]')
+    const appearanceButton = appearance?.querySelector('button')
     expect(appearance).not.toBeNull()
     expect(appearance?.textContent).toContain('界面外观')
     expect(appearance?.textContent).toContain('5 种风格')
-    expect(appearance?.querySelector('button')?.getAttribute('class')).toContain('w-full')
+    expect(appearanceButton?.getAttribute('aria-label')).toBe('界面外观')
+    expect(appearanceButton?.getAttribute('title')).toBe('界面外观')
     expect(view.container.querySelector('[data-testid="mode-toggle"]')).not.toBeNull()
 
     view.unmount()
@@ -274,22 +276,23 @@ describe('Navbar behavior', () => {
     routerMocks.pathname = '/graph'
 
     const secondView = renderComponent(React.createElement(Navbar))
-    const coreSection = secondView.container.querySelector(
-      '#sidebar-section-core'
-    )
-    const knowledgeSection = secondView.container.querySelector(
-      '#sidebar-section-knowledge'
-    )
+    const coreToggleAfterRemount = secondView.container.querySelector(
+      'button[aria-controls="sidebar-section-core"]'
+    ) as HTMLButtonElement
+    const knowledgeToggleAfterRemount = secondView.container.querySelector(
+      'button[aria-controls="sidebar-section-knowledge"]'
+    ) as HTMLButtonElement
     const analysisToggle = secondView.container.querySelector(
       'button[aria-controls="sidebar-section-analysis"]'
     ) as HTMLButtonElement
-    const analysisSection = secondView.container.querySelector(
-      '#sidebar-section-analysis'
+    const graphLink = Array.from(secondView.container.querySelectorAll('a')).find(
+      (node) => node.textContent?.includes('items.knowledgeGraph')
     )
 
-    // After V3: verify analysis section auto-opens for active route
+    expect(coreToggleAfterRemount.getAttribute('aria-expanded')).toBe('false')
+    expect(knowledgeToggleAfterRemount.getAttribute('aria-expanded')).toBe('false')
     expect(analysisToggle.getAttribute('aria-expanded')).toBe('true')
-    expect(analysisSection?.getAttribute('class')).toContain('grid-rows-[1fr]')
+    expect(graphLink?.getAttribute('aria-current')).toBe('page')
 
     secondView.unmount()
   })

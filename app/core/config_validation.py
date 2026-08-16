@@ -146,6 +146,11 @@ def validate_auth_mode_and_jwt_claims(settings):
         raise ValueError(f"Unsupported AUTH_MODE: {auth_mode}")
     if auth_mode == "header" and is_production:
         raise ValueError("AUTH_MODE=header is not allowed in production")
+    if bool(getattr(settings, "LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED", False)):
+        if is_production:
+            raise ValueError("LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED is not allowed in production")
+        if auth_mode != "header":
+            raise ValueError("LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED requires AUTH_MODE=header")
 
     initial_registration_token = str(getattr(settings, "INITIAL_REGISTRATION_TOKEN", "") or "").strip()
     if initial_registration_token.lower().startswith("sha256:"):

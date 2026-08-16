@@ -548,3 +548,109 @@ def test_hybrid_search_propagates_retryable_timeout_when_all_runtime_shards_time
             tenant_id=tenant_id,
             retrieval_mode="hybrid",
         )
+
+
+def test_dataset_scoped_vector_search_uses_milvus_native_hybrid_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.retrieval.sparse as sparse_module
+    import app.rag.retriever as retriever_module
+    from app.rag.retrieval.sparse import SparseVector
+    from app.rag.retriever import HybridRetriever
+
+    monkeypatch.setattr(retriever_module.settings, "VECTOR_BACKEND", "milvus", raising=False)
+    monkeypatch.setattr(retriever_module.settings, "MILVUS_NATIVE_HYBRID", True, raising=False)
+
+    class _Encoder:
+        def encode_batch(self, _texts):  # noqa: ANN001, ANN202
+            return [SparseVector(weights={"term": 1.0})]
+
+    calls = {"native": 0, "search": 0}
+
+    class _Adapter:
+        def search_native_hybrid(self, **_kwargs):  # noqa: ANN001, ANN202
+            calls["native"] += 1
+            return [{"id": "c1", "metadata": {"document_id": "d1"}, "score": 0.9, "content": "hybrid"}]
+
+        def search(self, **_kwargs):  # noqa: ANN001, ANN202
+            calls["search"] += 1
+            return []
+
+    monkeypatch.setattr(
+        retriever_module,
+        "create_embeddings_for_runtime",
+        lambda _runtime: SimpleNamespace(embed_query=lambda _q: [1.0]),
+        raising=True,
+    )
+    monkeypatch.setattr(sparse_module, "parse_synonyms", lambda _raw: {}, raising=True)
+    monkeypatch.setattr(sparse_module, "get_sparse_encoder", lambda **_kwargs: _Encoder(), raising=True)
+    monkeypatch.setattr(retriever_module, "resolve_collection_name", lambda name: name, raising=True)
+    monkeypatch.setattr(retriever_module, "get_milvus_adapter", lambda _name: _Adapter(), raising=True)
+
+    retriever = HybridRetriever(sparse_enabled=True, sparse_provider="deterministic")
+    retriever._last_channel_metrics = {}
+
+    results = retriever._search_dataset_scoped_vectors(
+        query="query",
+        top_k=2,
+        score_threshold=0.0,
+        document_ids=None,
+        tenant_id=uuid.uuid4(),
+        metadata_filter=None,
+        embedding_runtime=_runtime("native"),
+    )
+
+    assert results[0]["content"] == "hybrid"
+    assert calls == {"native": 1, "search": 0}
+    assert retriever._last_channel_metrics["milvus_native_hybrid"]["used"] is True
+
+
+def test_dataset_scoped_vector_search_falls_back_when_native_hybrid_is_unsupported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.retrieval.sparse as sparse_module
+    import app.rag.retriever as retriever_module
+    from app.rag.retrieval.sparse import SparseVector
+    from app.rag.retriever import HybridRetriever
+
+    monkeypatch.setattr(retriever_module.settings, "VECTOR_BACKEND", "milvus", raising=False)
+    monkeypatch.setattr(retriever_module.settings, "MILVUS_NATIVE_HYBRID", True, raising=False)
+
+    class _Encoder:
+        def encode_batch(self, _texts):  # noqa: ANN001, ANN202
+            return [SparseVector(weights={"term": 1.0})]
+
+    class _Adapter:
+        def search_native_hybrid(self, **_kwargs):  # noqa: ANN001, ANN202
+            raise NotImplementedError("unsupported")
+
+        def search(self, **_kwargs):  # noqa: ANN001, ANN202
+            return [{"id": "c1", "metadata": {"document_id": "d1"}, "score": 0.8, "content": "fallback"}]
+
+    monkeypatch.setattr(
+        retriever_module,
+        "create_embeddings_for_runtime",
+        lambda _runtime: SimpleNamespace(embed_query=lambda _q: [1.0]),
+        raising=True,
+    )
+    monkeypatch.setattr(sparse_module, "parse_synonyms", lambda _raw: {}, raising=True)
+    monkeypatch.setattr(sparse_module, "get_sparse_encoder", lambda **_kwargs: _Encoder(), raising=True)
+    monkeypatch.setattr(retriever_module, "resolve_collection_name", lambda name: name, raising=True)
+    monkeypatch.setattr(retriever_module, "get_milvus_adapter", lambda _name: _Adapter(), raising=True)
+
+    retriever = HybridRetriever(sparse_enabled=True, sparse_provider="deterministic")
+    retriever._last_channel_metrics = {}
+
+    results = retriever._search_dataset_scoped_vectors(
+        query="query",
+        top_k=2,
+        score_threshold=0.0,
+        document_ids=None,
+        tenant_id=uuid.uuid4(),
+        metadata_filter=None,
+        embedding_runtime=_runtime("fallback"),
+    )
+
+    assert results[0]["content"] == "fallback"
+    assert retriever._last_channel_metrics["milvus_native_hybrid"]["used"] is False
+    assert retriever._last_channel_metrics["milvus_native_hybrid"]["fallback_reason"] == "unsupported"

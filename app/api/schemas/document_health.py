@@ -75,6 +75,31 @@ class DocumentHealthRetrievalHits(BaseModel):
     hit_rate: float | None = None
 
 
+class DocumentHealthIndexChannelStatus(BaseModel):
+    channel: str
+    required: bool = False
+    enabled: bool = False
+    status: str = "pending"
+    error: str | None = None
+    attempt_count: int = 0
+    last_attempted_at: datetime | None = None
+    last_succeeded_at: datetime | None = None
+    last_failed_at: datetime | None = None
+    last_status_changed_at: datetime | None = None
+    legacy: bool = False
+
+
+class DocumentHealthIndexReadiness(BaseModel):
+    pipeline_hash: str | None = None
+    ready: bool = False
+    pending_channels: list[str] = Field(default_factory=list)
+    error_channels: list[str] = Field(default_factory=list)
+    disabled_channels: list[str] = Field(default_factory=list)
+    required_channels: list[str] = Field(default_factory=list)
+    enabled_channels: list[str] = Field(default_factory=list)
+    statuses: dict[str, DocumentHealthIndexChannelStatus] = Field(default_factory=dict)
+
+
 class DocumentHealthCard(BaseModel):
     document_id: UUID
     dataset_id: UUID | None = None
@@ -91,3 +116,4 @@ class DocumentHealthCard(BaseModel):
     chunking: DocumentHealthChunking
     kg: dict[str, Any] | None = None
     retrieval_hits: DocumentHealthRetrievalHits | None = None
+    index_readiness: DocumentHealthIndexReadiness | None = None

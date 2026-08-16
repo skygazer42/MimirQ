@@ -132,6 +132,20 @@ from app.parsing.processors.support.quality import (  # noqa: F401
     _seal_summary_to_specialty_signals,
     _string_count_map,
 )
+from app.parsing.processors.support.recovery import (
+    CheckpointedRetryRequiredError,
+    apply_pending_retry_cleanup,
+    audit_ingest_gate,
+    checkpoint_stage,
+    indexed_checkpoint_is_reusable,
+    maybe_enrich_document_questions,
+    parsed_checkpoint_is_reusable,
+    persist_retry_boundary_failure,
+    record_ingest_gate_outcome,
+    resolve_ingestion_run_update_criticality,
+    run_post_completion_kg,
+    upsert_ingest_checkpoint,
+)
 from app.parsing.processors.support.results import (  # noqa: F401
     ChunkAssetOptions,
     ChunkAssetResult,
@@ -170,11 +184,6 @@ from app.rag.core.metadata import (
     normalize_image_metadata,  # noqa: F401
     normalize_section_metadata,  # noqa: F401
 )
-from app.rag.kg.extraction_job_options import (
-    build_kg_extraction_job_options,
-    kg_extraction_job_options_fingerprint,
-)
-from app.rag.kg.pipeline import extract_events
 from app.rag.pipeline_plugins.registry import derive_registered_stage_plugin_ref
 from app.rag.pipeline_plugins.runtime import apply_chunk_python_plugin, apply_governance_python_plugin  # noqa: F401
 from app.rag.preprocessing.markdown_canonical import canonicalize_markdown  # noqa: F401
@@ -210,18 +219,8 @@ RetryCleanupStatus = Literal["applied", "deferred", "invalid"]
 LOG_DOC_ID_FMT = '%s document_id=%s'
 AUDIT_ACTION_DOCUMENT_QUARANTINE = 'document.quarantine'
 
-
-def _parsed_checkpoint_is_reusable(metadata: dict[str, Any]) -> bool:
-    checkpoint = metadata.get("ingest_checkpoint")
-    if not (
-        isinstance(checkpoint, dict)
-        and str(checkpoint.get("version") or "") == "1"
-        and str(checkpoint.get("stage") or "") == "parsed"
-    ):
-        return False
-    persisted = metadata.get("parsed_content_persisted")
-    cleaned = persisted.get("cleaned") if isinstance(persisted, dict) else None
-    return not (isinstance(cleaned, dict) and bool(cleaned.get("truncated")))
+_parsed_checkpoint_is_reusable = parsed_checkpoint_is_reusable
+_indexed_checkpoint_is_reusable = indexed_checkpoint_is_reusable
 
 
 def _build_combined_governance_rules(pipeline_effective: PipelineEffective):
@@ -373,115 +372,15 @@ class DocumentProcessorService:
         tenant_id: UUID,
         document_id: UUID,
     ) -> RetryCleanupStatus:
-        original_meta = dict(getattr(db_document, "doc_metadata", None) or {})
-        original_chunk_count = getattr(db_document, "chunk_count", None)
-        original_total_characters = getattr(db_document, "total_characters", None)
-        meta = dict(original_meta)
-        request = meta.get("retry_cleanup")
-        if request is None:
-            return "applied"
-        if not isinstance(request, dict) or str(request.get("version") or "") != "1":
-            logger.error("Refusing unknown retry cleanup intent for document %s", document_id)
-            return "invalid"
-
-        pipeline_hash = str(meta.get("pipeline_hash") or "").strip()
-        scope = str(request.get("scope") or "").strip()
-        target_key = str(request.get("doc_pipeline_key") or "").strip()
-        if str(request.get("pipeline_hash") or "").strip() != pipeline_hash or scope not in {"document", "pipeline"}:
-            logger.error("Refusing stale retry cleanup intent for document %s", document_id)
-            return "invalid"
-        if scope == "pipeline" and target_key != f"{document_id}:{pipeline_hash}":
-            logger.error("Refusing invalid scoped retry cleanup intent for document %s", document_id)
-            return "invalid"
-
-        preserve_existing = scope == "pipeline"
-        indexer = Indexer(db)
-        cleanup_chunk_ids: list[UUID] = []
-
-        if bool(request.get("force")):
-            meta.pop("ingest_checkpoint", None)
-            meta.pop("parsed_content_persisted", None)
-            db.query(DocumentParsedContent).filter(
-                DocumentParsedContent.document_id == document_id,
-                DocumentParsedContent.tenant_id == tenant_id,
-            ).delete(synchronize_session=False)
-
-        if preserve_existing:
-            cleanup_chunk_ids = [
-                chunk_id
-                for (chunk_id,) in (
-                    db.query(DocumentChunk.id)
-                    .filter(
-                        DocumentChunk.document_id == document_id,
-                        DocumentChunk.tenant_id == tenant_id,
-                        DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
-                    )
-                    .all()
-                )
-                if isinstance(chunk_id, UUID)
-            ]
-            indexer.delete_chunk_indexes_for_doc_pipeline_key(
-                tenant_id=tenant_id,
-                document_id=document_id,
-                doc_pipeline_key=target_key,
-            )
-            db.query(DocumentChunk).filter(
-                DocumentChunk.document_id == document_id,
-                DocumentChunk.tenant_id == tenant_id,
-                DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key,  # type: ignore[attr-defined]
-            ).delete(synchronize_session=False)
-        else:
-            indexer.delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
-            db.query(DocumentChunk).filter(
-                DocumentChunk.document_id == document_id,
-                DocumentChunk.tenant_id == tenant_id,
-            ).delete(synchronize_session=False)
-            meta.pop("img_ids", None)
-            db_document.chunk_count = 0
-            db_document.total_characters = 0
-
-        db_document.doc_metadata = meta
-
-        try:
-            from app.rag.kg.models import KgRelation
-
-            relation_query = db.query(KgRelation).filter(KgRelation.tenant_id == tenant_id)
-            if preserve_existing:
-                if cleanup_chunk_ids:
-                    relation_query.filter(KgRelation.chunk_id.in_(cleanup_chunk_ids)).delete(synchronize_session=False)
-                    indexer.delete_event_indexes_for_chunks(
-                        tenant_id=tenant_id,
-                        chunk_ids=cleanup_chunk_ids,
-                        commit=False,
-                        prune_orphan_entities=True,
-                    )
-            else:
-                relation_query.filter(KgRelation.document_id == document_id).delete(synchronize_session=False)
-                indexer.delete_event_indexes(
-                    tenant_id=tenant_id,
-                    document_id=document_id,
-                    commit=False,
-                    prune_orphan_entities=True,
-                )
-            meta.pop("retry_cleanup", None)
-            db_document.doc_metadata = meta
-            db.commit()
-        except Exception as exc:  # noqa: BLE001
-            db.rollback()
-            db_document.doc_metadata = original_meta
-            if original_chunk_count is not None:
-                db_document.chunk_count = original_chunk_count
-            if original_total_characters is not None:
-                db_document.total_characters = original_total_characters
-            logger.warning(
-                "Failed to complete retry cleanup for document %s; keeping retry cleanup marker for a later retry: %s",
-                document_id,
-                str(exc)[:200],
-            )
-            return "deferred"
-
-        db.refresh(db_document)
-        return "applied"
+        return apply_pending_retry_cleanup(
+            db,
+            db_document=db_document,
+            tenant_id=tenant_id,
+            document_id=document_id,
+            indexer_factory=Indexer,
+            parsed_content_model=DocumentParsedContent,
+            chunk_model=DocumentChunk,
+        )
 
     async def process_document(
         self,
@@ -618,6 +517,74 @@ class DocumentProcessorService:
             self._record_pipeline_effective(db, tenant_id, document_id, pipeline_effective)
             table_sidecar_tables_imported = 0
             table_sidecar_routing_audit: dict[str, Any] | None = None
+
+            meta0 = dict(db_document.doc_metadata or {})
+            if indexed_checkpoint_is_reusable(meta0):
+                checkpoint = dict(meta0.get("ingest_checkpoint") or {})
+                doc_pipeline_key = str(
+                    checkpoint.get("doc_pipeline_key") or f"{document_id}:{str(meta0.get('pipeline_hash') or '').strip()}"
+                ).strip()
+                indexed_chunks_query = db.query(DocumentChunk).filter(
+                    DocumentChunk.document_id == document_id,
+                    DocumentChunk.tenant_id == tenant_id,
+                )
+                if doc_pipeline_key:
+                    indexed_chunks_query = indexed_chunks_query.filter(
+                        DocumentChunk.doc_metadata["doc_pipeline_key"].astext == doc_pipeline_key,  # type: ignore[attr-defined]
+                    )
+                indexed_chunks = list(indexed_chunks_query.order_by(DocumentChunk.chunk_index, DocumentChunk.id).all())
+                if indexed_chunks:
+                    logger.info(
+                        "Resuming ingest finalization from indexed checkpoint: tenant=%s document=%s checkpoint=%s",
+                        tenant_id,
+                        document_id,
+                        doc_pipeline_key or "document",
+                    )
+                    resolved_backend = (
+                        str(meta0.get("parser_backend") or meta0.get("parser_backend_requested") or parser_backend or "auto").strip()
+                        or "auto"
+                    )
+                    resolved_chunk_strategy = (
+                        str(meta0.get("chunk_strategy") or meta0.get("chunk_strategy_requested") or chunk_strategy or "auto").strip()
+                        or "auto"
+                    )
+                    total_chars = int(
+                        checkpoint.get("total_characters")
+                        or meta0.get("indexed_total_characters")
+                        or sum(len(str(getattr(chunk, "content", "") or "")) for chunk in indexed_chunks)
+                    )
+                    meta_patch = dict(db_document.doc_metadata or {})
+                    meta_patch.pop("ingest_resume_required", None)
+                    meta_patch = _with_stage_durations(meta_patch)
+                    await self._update_status(
+                        db,
+                        tenant_id,
+                        document_id,
+                        "completed",
+                        100,
+                        "completed",
+                        chunk_count=len(indexed_chunks),
+                        total_characters=total_chars,
+                        doc_metadata=meta_patch,
+                    )
+                    await run_post_completion_kg(
+                        db=db,
+                        db_document=db_document,
+                        tenant_id=tenant_id,
+                        document_id=document_id,
+                        chunk_ids=[chunk.id for chunk in indexed_chunks],
+                        db_chunks=indexed_chunks,
+                        index_options=index_options,
+                        pipeline_effective=pipeline_effective,
+                    )
+                    return {
+                        "status": "success",
+                        "reason": "indexed_checkpoint_resume",
+                        "chunk_count": len(indexed_chunks),
+                        "total_characters": total_chars,
+                        "parser_backend": resolved_backend,
+                        "chunk_strategy": resolved_chunk_strategy,
+                    }
 
             if bool(getattr(pipeline_effective, "ingest_pre_poc_scanner_enabled", False)):
                 try:
@@ -1036,7 +1003,7 @@ class DocumentProcessorService:
             try:
                 meta0 = dict(db_document.doc_metadata or {})
                 ck = meta0.get("ingest_checkpoint") if isinstance(meta0, dict) else None
-                ck_ok = _parsed_checkpoint_is_reusable(meta0)
+                ck_ok = parsed_checkpoint_is_reusable(meta0)
                 if ck_ok:
                     pipeline_hash0 = str(meta0.get("pipeline_hash") or "").strip()
                     file_sha0 = str(meta0.get("file_sha256") or "").strip().lower()
@@ -1132,6 +1099,29 @@ class DocumentProcessorService:
                     "ingest.parse",
                     parser_backend_requested=parser_backend,
                     chunk_strategy_requested=chunk_strategy,
+                    otel_span_name="ingest.parse",
+                    otel_attributes={
+                        "ingest.stage": "parse",
+                        "document.file_type": str(file_path.suffix.lstrip(".") or "unknown").lower(),
+                        "parser.backend_requested": (
+                            str(
+                                (db_document.doc_metadata or {}).get("parser_backend_requested")
+                                or (db_document.doc_metadata or {}).get("parser_backend")
+                                or parser_backend
+                                or "auto"
+                            ).strip().lower()
+                            or "auto"
+                        ),
+                        "chunk.strategy_requested": (
+                            str(
+                                (db_document.doc_metadata or {}).get("chunk_strategy_requested")
+                                or (db_document.doc_metadata or {}).get("chunk_strategy")
+                                or chunk_strategy
+                                or ""
+                            ).strip().lower()
+                            or "default"
+                        ),
+                    },
                 ):
                     t_parse0 = time.perf_counter()
                     parsed = await parsing_stage.run(
@@ -1441,7 +1431,17 @@ class DocumentProcessorService:
                                 "Consider enabling OCR/backends or lowering parse fallback thresholds."
                             )
                             logger.warning(LOG_DOC_ID_FMT, msg, document_id)
-                            meta_patch = _with_stage_durations(dict(db_document.doc_metadata or {}))
+                            meta_patch = record_ingest_gate_outcome(
+                                _with_stage_durations(dict(db_document.doc_metadata or {})),
+                                gate="parse_quality",
+                                outcome=("quarantine" if quarantined else "closed"),
+                                reason=reason,
+                                details={
+                                    "parser_backend": str(resolved_backend or ""),
+                                    "parsed_content_chars": int(final_chars),
+                                    "parse_score": round(float(final_score), 3),
+                                },
+                            )
 
                             from app.core.pipeline_versions import should_preserve_existing_versions
 
@@ -1490,7 +1490,26 @@ class DocumentProcessorService:
                                 "chunk_strategy": resolved_chunk_strategy,
                             }
                 except Exception as exc:  # noqa: BLE001
-                    logger.warning("Parse quality gate failed (ignored): %s", str(exc)[:200])
+                    degraded_meta = record_ingest_gate_outcome(
+                        _with_stage_durations(dict(db_document.doc_metadata or {})),
+                        gate="parse_quality",
+                        outcome="degraded",
+                        reason="parse_quality_gate_failed",
+                        details={"error": str(exc)[:200]},
+                    )
+                    db_document.doc_metadata = degraded_meta
+                    db.commit()
+                    db.refresh(db_document)
+                    audit_ingest_gate(
+                        db,
+                        tenant_id=tenant_id,
+                        db_document=db_document,
+                        gate="parse_quality",
+                        outcome="degraded",
+                        reason="parse_quality_gate_failed",
+                        details={"error": str(exc)[:200]},
+                    )
+                    logger.warning("Parse quality gate degraded: %s", str(exc)[:200])
 
             # Governance: normalize/clean documents or integrated chunks.
             merge_small_min_chars = 0
@@ -1590,7 +1609,16 @@ class DocumentProcessorService:
                 _add_stage_duration("normalize", (time.perf_counter() - t0) * 1000)
 
                 t0 = time.perf_counter()
-                with metrics_span("ingest.governance", enabled=bool(pipeline_effective.governance_enabled)):
+                with metrics_span(
+                    "ingest.governance",
+                    enabled=bool(pipeline_effective.governance_enabled),
+                    otel_span_name="ingest.governance",
+                    otel_attributes={
+                        "ingest.stage": "governance",
+                        "document.file_type": str(file_path.suffix.lstrip(".") or "unknown").lower(),
+                        "governance.enabled": bool(pipeline_effective.governance_enabled),
+                    },
+                ):
                     gov = governance_stage.run(
                         items=parsed_chunks,
                         enabled=bool(pipeline_effective.governance_enabled),
@@ -1752,7 +1780,16 @@ class DocumentProcessorService:
                     _add_stage_duration("governance_python_plugin", (time.perf_counter() - t0) * 1000)
 
                 t0 = time.perf_counter()
-                with metrics_span("ingest.governance", enabled=bool(pipeline_effective.governance_enabled)):
+                with metrics_span(
+                    "ingest.governance",
+                    enabled=bool(pipeline_effective.governance_enabled),
+                    otel_span_name="ingest.governance",
+                    otel_attributes={
+                        "ingest.stage": "governance",
+                        "document.file_type": str(file_path.suffix.lstrip(".") or "unknown").lower(),
+                        "governance.enabled": bool(pipeline_effective.governance_enabled),
+                    },
+                ):
                     gov = governance_stage.run(
                         items=parsed_documents,
                         enabled=bool(pipeline_effective.governance_enabled),
@@ -1804,13 +1841,11 @@ class DocumentProcessorService:
                         if bool((persist_meta.get("cleaned") or {}).get("truncated")):
                             meta.pop("ingest_checkpoint", None)
                         else:
-                            meta["ingest_checkpoint"] = {
-                                "version": "1",
-                                "stage": "parsed",
-                                "source": "document_parsed_contents",
-                                "file_sha256": str(meta.get("file_sha256") or "").strip().lower(),
-                                "pipeline_hash": str(meta.get("pipeline_hash") or "").strip(),
-                            }
+                            meta = upsert_ingest_checkpoint(
+                                meta,
+                                stage="parsed",
+                                source="document_parsed_contents",
+                            )
                         db_document.doc_metadata = meta
                         db.commit()
                         db.refresh(db_document)
@@ -1921,6 +1956,12 @@ class DocumentProcessorService:
                     chunk_strategy=resolved_chunk_strategy,
                     chunk_size=int(pipeline_effective.chunk_size),
                     chunk_overlap=int(pipeline_effective.chunk_overlap),
+                    otel_span_name="ingest.chunk",
+                    otel_attributes={
+                        "ingest.stage": "chunk",
+                        "document.file_type": str(file_path.suffix.lstrip(".") or "unknown").lower(),
+                        "chunk.strategy": str(resolved_chunk_strategy or "").strip().lower() or "default",
+                    },
                 ):
                     chunked = chunking_stage.run(
                         documents=parsed_documents,
@@ -2211,6 +2252,15 @@ class DocumentProcessorService:
                     audit_patch=governance_audit_patch,
                 )
 
+            try:
+                maybe_enrich_document_questions(
+                    db,
+                    db_document=db_document,
+                    documents=(parsed_documents or chunks),
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Failed to persist document questions metadata: %s", str(exc)[:200])
+
             await raise_if_cancelled()
 
             if not chunks:
@@ -2364,6 +2414,13 @@ class DocumentProcessorService:
                 chunk_count=len(chunks),
                 chunk_vector_enabled=bool(getattr(index_options, "chunk_vector_enabled", True)),
                 bm25_index_enabled=bool(getattr(index_options, "bm25_index_enabled", True)),
+                otel_span_name="ingest.index",
+                otel_attributes={
+                    "ingest.stage": "index",
+                    "document.file_type": str(file_path.suffix.lstrip(".") or "unknown").lower(),
+                    "index.chunk_vector_enabled": bool(getattr(index_options, "chunk_vector_enabled", True)),
+                    "index.bm25_index_enabled": bool(getattr(index_options, "bm25_index_enabled", True)),
+                },
             ):
                 indexed = index_stage.run(
                     db=db,
@@ -2385,169 +2442,106 @@ class DocumentProcessorService:
                 }
             )
 
-            await raise_if_cancelled(force=True)
-
-            # Versioning: only switch the *active* pipeline after a successful completion,
-            # so ongoing reprocessing doesn't immediately "downgrade" retrieval quality.
-            meta_patch = dict(db_document.doc_metadata or {})
-            completed_pipeline_hash = str(meta_patch.get("pipeline_hash") or "").strip()
-            if completed_pipeline_hash:
-                meta_patch["active_pipeline_hash"] = completed_pipeline_hash
-                meta_patch["active_pipeline_ready"] = True
-                # Best-effort: record per-version pipeline provenance for reproducibility/debug.
-                try:
-                    from app.services.pipeline_provenance_service import (
-                        build_pipeline_version_snapshot,
-                        upsert_pipeline_provenance_version,
-                    )
-
-                    snap = build_pipeline_version_snapshot(meta=meta_patch, pipeline_hash=completed_pipeline_hash)
-                    meta_patch = upsert_pipeline_provenance_version(
-                        meta_patch,
-                        pipeline_hash=completed_pipeline_hash,
-                        snapshot=snap,
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    logger.info("Failed to record pipeline provenance (ignored): %s", str(exc)[:200])
-
-            if table_sidecar_routing_audit:
-                meta_patch["table_sidecar_routing"] = dict(table_sidecar_routing_audit)
-
-            meta_patch = _with_stage_durations(meta_patch)
-            await self._update_status(
-                db,
-                tenant_id,
-                document_id,
-                "completed",
-                100,
-                "completed",
+            with metrics_span(
+                "ingest.finalize",
                 chunk_count=len(chunks),
                 total_characters=total_chars,
-                doc_metadata=meta_patch,
-            )
+                kg_enabled=bool(getattr(pipeline_effective, "kg_enabled", False)),
+                otel_span_name="ingest.finalize",
+                otel_attributes={
+                    "ingest.stage": "finalize",
+                    "document.file_type": str(file_path.suffix.lstrip(".") or "unknown").lower(),
+                    "pipeline.kg_enabled": bool(getattr(pipeline_effective, "kg_enabled", False)),
+                },
+            ):
+                checkpoint_meta = _with_stage_durations(dict(db_document.doc_metadata or {}))
+                checkpoint_meta["indexed_total_characters"] = int(total_chars)
+                checkpoint_meta = upsert_ingest_checkpoint(
+                    checkpoint_meta,
+                    stage="indexed",
+                    source="document_chunks",
+                    extra={
+                        "chunk_count": len(chunks),
+                        "total_characters": int(total_chars),
+                        "doc_pipeline_key": (
+                            f"{document_id}:{str(checkpoint_meta.get('pipeline_hash') or '').strip()}"
+                            if str(checkpoint_meta.get("pipeline_hash") or "").strip()
+                            else None
+                        ),
+                    },
+                )
+                db_document.doc_metadata = checkpoint_meta
+                db.commit()
+                db.refresh(db_document)
 
-            logger.info(
-                "Document processed: %s chunks (parser=%s, chunker=%s)",
-                len(chunks),
-                resolved_backend,
-                resolved_chunk_strategy,
-            )
-            log_metrics(
-                {
-                    "event": "ingest.completed",
-                    "chunk_count": len(chunks),
-                    "total_characters": total_chars,
-                    "parser_backend": resolved_backend,
-                    "chunk_strategy": resolved_chunk_strategy,
-                    "img_count": len(document_img_ids),
-                }
-            )
+                await raise_if_cancelled(force=True)
 
-            # Step 7: run KG extraction (events/entities) when enabled.
-            if pipeline_effective.kg_enabled:
-                # When queue is enabled, move KG extraction to the worker for better ingest throughput.
-                if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+                # Versioning: only switch the *active* pipeline after a successful completion,
+                # so ongoing reprocessing doesn't immediately "downgrade" retrieval quality.
+                meta_patch = dict(db_document.doc_metadata or {})
+                completed_pipeline_hash = str(meta_patch.get("pipeline_hash") or "").strip()
+                if completed_pipeline_hash:
+                    meta_patch["active_pipeline_hash"] = completed_pipeline_hash
+                    meta_patch["active_pipeline_ready"] = True
+                    # Best-effort: record per-version pipeline provenance for reproducibility/debug.
                     try:
-                        from app.core.pipeline_versions import get_active_pipeline_hash  # noqa: WPS433
-                        from app.tasks.queue import enqueue_kg_extraction
+                        from app.services.pipeline_provenance_service import (
+                            build_pipeline_version_snapshot,
+                            upsert_pipeline_provenance_version,
+                        )
 
-                        raw_pipeline_hash = (
-                            get_active_pipeline_hash(db_document.doc_metadata or {})
-                            or (db_document.doc_metadata or {}).get("pipeline_hash")
-                            or None
-                        )
-                        pipeline_hash = (
-                            (str(raw_pipeline_hash).strip() or None) if raw_pipeline_hash is not None else None
-                        )
-                        raw_prompt_template_id = (getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_ID", "") or "").strip()
-                        prompt_template_id = UUID(raw_prompt_template_id) if raw_prompt_template_id else None
-                        kg_python_plugin_ref = str(getattr(pipeline_effective, "kg_python_plugin", "") or "").strip()
-                        if not kg_python_plugin_ref:
-                            kg_python_plugin_ref = derive_registered_stage_plugin_ref(
-                                str(getattr(pipeline_effective, "chunk_python_plugin", "") or "").strip(),
-                                "kg",
-                            )
-                        effective_options = build_kg_extraction_job_options(
-                            pipeline_hash=pipeline_hash,
-                            prompt_template_id=prompt_template_id,
-                            prompt_template_key=(getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", "") or "").strip() or None,
-                            prompt_ab_experiment_key=(
-                                getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or ""
-                            ).strip()
-                            or None,
-                            extraction_backend=(getattr(settings, "KG_EXTRACTION_BACKEND", "") or "").strip() or None,
-                            kg_python_plugin=kg_python_plugin_ref,
-                            kg_python_params=dict(getattr(pipeline_effective, "kg_python_params", {}) or {}),
-                            replace_existing=bool(getattr(settings, "KG_EXTRACT_REPLACE_EXISTING", True)),
-                            prune_orphan_entities=bool(getattr(settings, "KG_EXTRACT_PRUNE_ORPHAN_ENTITIES", True)),
-                            extract_relations=bool(getattr(settings, "KG_RELATION_ENABLED", False)),
-                            extract_skills=bool(getattr(settings, "KG_SKILL_ENABLED", False)),
-                        )
-                        options_fingerprint = kg_extraction_job_options_fingerprint(effective_options)
-                        pipeline_job_label = pipeline_hash or "unversioned"
-                        job_id = f"kg:{tenant_id}:{document_id}:{pipeline_job_label}:{options_fingerprint}"
-                        kg_task_id = await enqueue_kg_extraction(
-                            tenant_id=tenant_id,
-                            document_id=document_id,
-                            requested_by="system",
-                            job_id=job_id,
-                            pipeline_hash=pipeline_hash,
-                            effective_options=effective_options,
-                        )
-                        if kg_task_id:
-                            meta = dict(db_document.doc_metadata or {})
-                            meta["kg_task_id"] = kg_task_id
-                            db_document.doc_metadata = meta
-                            db.commit()
-                            db.refresh(db_document)
-                        logger.info("KG extraction enqueued for document %s (task_id=%s)", document_id, kg_task_id)
-                        log_metrics(
-                            {
-                                "event": "ingest.kg.enqueued",
-                                "kg_task_id": kg_task_id,
-                            }
+                        snap = build_pipeline_version_snapshot(meta=meta_patch, pipeline_hash=completed_pipeline_hash)
+                        meta_patch = upsert_pipeline_provenance_version(
+                            meta_patch,
+                            pipeline_hash=completed_pipeline_hash,
+                            snapshot=snap,
                         )
                     except Exception as exc:  # noqa: BLE001
-                        # Queue errors should not affect the main document flow.
-                        logger.warning("Failed to enqueue KG extraction: %s", str(exc)[:200])
-                else:
-                    logger.info("Running KG extraction on document chunks...")
-                    prompt_template_id = None
-                    raw_tid = (getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_ID", "") or "").strip()
-                    if raw_tid:
-                        try:
-                            prompt_template_id = UUID(raw_tid)
-                        except Exception:
-                            logger.warning("Invalid KG_EXTRACT_PROMPT_TEMPLATE_ID: %s", raw_tid[:50])
-                    try:
-                        kg_python_plugin_ref = str(getattr(pipeline_effective, "kg_python_plugin", "") or "").strip()
-                        if not kg_python_plugin_ref:
-                            kg_python_plugin_ref = derive_registered_stage_plugin_ref(
-                                str(getattr(pipeline_effective, "chunk_python_plugin", "") or "").strip(),
-                                "kg",
-                            )
-                        kg_python_params = dict(getattr(pipeline_effective, "kg_python_params", {}) or {})
-                        events = await extract_events(
-                            chunk_ids,
-                            tenant_id=tenant_id,
-                            chunks=indexed.db_chunks,
-                            index_options=index_options,
-                            prompt_template_id=prompt_template_id,
-                            prompt_template_key=(getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", "") or "").strip() or None,
-                            prompt_ab_experiment_key=(getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or "").strip() or None,
-                            kg_python_plugin=kg_python_plugin_ref,
-                            kg_python_params=kg_python_params,
-                        )
-                        logger.info("KG extracted %s events for document %s", len(events), document_id)
-                        log_metrics(
-                            {
-                                "event": "ingest.kg.completed",
-                                "event_count": len(events),
-                                "kg_python_plugin": kg_python_plugin_ref,
-                            }
-                        )
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("KG extraction failed for document %s: %s", document_id, str(exc)[:200])
+                        logger.info("Failed to record pipeline provenance (ignored): %s", str(exc)[:200])
+
+                if table_sidecar_routing_audit:
+                    meta_patch["table_sidecar_routing"] = dict(table_sidecar_routing_audit)
+
+                meta_patch = _with_stage_durations(meta_patch)
+                await self._update_status(
+                    db,
+                    tenant_id,
+                    document_id,
+                    "completed",
+                    100,
+                    "completed",
+                    chunk_count=len(chunks),
+                    total_characters=total_chars,
+                    doc_metadata=meta_patch,
+                )
+
+                logger.info(
+                    "Document processed: %s chunks (parser=%s, chunker=%s)",
+                    len(chunks),
+                    resolved_backend,
+                    resolved_chunk_strategy,
+                )
+                log_metrics(
+                    {
+                        "event": "ingest.completed",
+                        "chunk_count": len(chunks),
+                        "total_characters": total_chars,
+                        "parser_backend": resolved_backend,
+                        "chunk_strategy": resolved_chunk_strategy,
+                        "img_count": len(document_img_ids),
+                    }
+                )
+
+                await run_post_completion_kg(
+                    db=db,
+                    db_document=db_document,
+                    tenant_id=tenant_id,
+                    document_id=document_id,
+                    chunk_ids=chunk_ids,
+                    db_chunks=indexed.db_chunks,
+                    index_options=index_options,
+                    pipeline_effective=pipeline_effective,
+                )
 
             return {
                 "status": "success",
@@ -2591,6 +2585,22 @@ class DocumentProcessorService:
             except Exception as exc:
                 logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
             raise
+        except CheckpointedRetryRequiredError as e:
+            logger.warning(
+                "Document finalization deferred to retry boundary: tenant=%s document=%s reason=%s",
+                tenant_id,
+                document_id,
+                str(e)[:160],
+            )
+            log_metrics(
+                {
+                    "event": "ingest.retry_boundary",
+                    "tenant_id": str(tenant_id),
+                    "document_id": str(document_id),
+                    "reason": str(e)[:160],
+                }
+            )
+            return {"status": "failed", "reason": str(e)}
         except TenantQuotaExceededError as e:
             # NOTE: Keep this block after asyncio.CancelledError so task cancellations propagate.
             quota_key = str(getattr(e, "quota", "") or "").strip() or "quota"
@@ -2618,7 +2628,13 @@ class DocumentProcessorService:
                 "quota": quota_key,
                 "meta": dict(getattr(e, "meta", None) or {}),
             }
-            meta_patch = _with_stage_durations(meta_patch)
+            meta_patch = record_ingest_gate_outcome(
+                _with_stage_durations(meta_patch),
+                gate="tenant_quota",
+                outcome="closed",
+                reason=f"tenant_quota_exceeded:{quota_key}",
+                details=dict(getattr(e, "meta", None) or {}),
+            )
 
             from app.core.pipeline_versions import should_preserve_existing_versions  # noqa: WPS433
 
@@ -2638,6 +2654,15 @@ class DocumentProcessorService:
                 0,
                 "failed",
                 **update_kwargs,
+            )
+            audit_ingest_gate(
+                db,
+                tenant_id=tenant_id,
+                db_document=db_document,
+                gate="tenant_quota",
+                outcome="closed",
+                reason=f"tenant_quota_exceeded:{quota_key}",
+                details=dict(getattr(e, "meta", None) or {}),
             )
             return {
                 "status": "failed",
@@ -2761,6 +2786,7 @@ class DocumentProcessorService:
         document_id: UUID,
         status: str,
         db_doc: DBDocument,
+        criticality: str = "best_effort",
     ) -> None:
         try:
             from app.services.ingestion_run_service import IngestionRunService
@@ -2773,8 +2799,11 @@ class DocumentProcessorService:
                 new_status=str(status or ""),
                 error_message=getattr(db_doc, "error_message", None),
                 doc_meta=(dict(doc_meta or {}) if isinstance(doc_meta, dict) else None),
+                criticality=criticality,
             )
         except Exception as exc:
+            if str(criticality or "").strip().lower() == "required":
+                raise
             logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
 
     async def _update_status(
@@ -2809,6 +2838,10 @@ class DocumentProcessorService:
             status_norm = str(status or "").strip().lower()
             failed_stage_hint = kwargs.pop("failed_stage", None)
             error_code_hint = kwargs.pop("error_code", None)
+            criticality = str(
+                kwargs.pop("ingestion_run_criticality", None)
+                or resolve_ingestion_run_update_criticality(db_doc, status_norm=status_norm)
+            ).strip().lower()
             self._apply_status_update_fields(
                 db_doc,
                 status=status,
@@ -2819,6 +2852,27 @@ class DocumentProcessorService:
 
             if status_norm in {"pending", "completed", "cancelled"}:
                 self._clear_failure_retry_fields(db_doc)
+
+            if criticality == "required":
+                try:
+                    self._notify_ingestion_run_status(
+                        db,
+                        tenant_id=tenant_id,
+                        document_id=document_id,
+                        status=status,
+                        db_doc=db_doc,
+                        criticality=criticality,
+                    )
+                except Exception as exc:
+                    if checkpoint_stage(dict(getattr(db_doc, "doc_metadata", None) or {})) == "indexed":
+                        persist_retry_boundary_failure(
+                            db,
+                            tenant_id=tenant_id,
+                            document_id=document_id,
+                            reason="ingestion_run_status_update_failed",
+                            error=exc,
+                        )
+                    raise
 
             db.commit()
             db.refresh(db_doc)
@@ -2837,13 +2891,15 @@ class DocumentProcessorService:
                 status=status,
                 stage=stage,
             )
-            self._notify_ingestion_run_status(
-                db,
-                tenant_id=tenant_id,
-                document_id=document_id,
-                status=status,
-                db_doc=db_doc,
-            )
+            if criticality != "required":
+                self._notify_ingestion_run_status(
+                    db,
+                    tenant_id=tenant_id,
+                    document_id=document_id,
+                    status=status,
+                    db_doc=db_doc,
+                    criticality=criticality,
+                )
 
     async def _rebuild_bm25_index_for_tenant(self, db: Session, tenant_id: UUID):
         """Rebuild BM25 index for a specific tenant."""
@@ -3712,6 +3768,8 @@ class DocumentProcessorService:
             "document_tags",
             "document_keywords",
             "document_keywords_provider",
+            "document_questions",
+            "document_questions_generation",
             "document_llm_auto_summary",
             "document_llm_auto_tags",
             "document_llm_auto_tagging",

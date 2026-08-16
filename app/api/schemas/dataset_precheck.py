@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.schemas.ingestion_policy import IngestionPolicy
 
@@ -114,6 +114,22 @@ class DatasetPrecheckDirectoryStat(BaseModel):
     findings: dict[str, int] = Field(default_factory=dict)
 
 
+class DatasetPrecheckEmbeddingAdvisory(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    schema_id: str = Field(alias="schema", serialization_alias="schema")
+    code: str
+    severity: Literal["info", "warning", "error"] = "warning"
+    reason: str
+    language_mix: dict[str, int] = Field(default_factory=dict)
+    effective_embedding: dict[str, str] = Field(default_factory=dict)
+    recommended_action: str
+    migration_action_for_indexed_dataset: str
+    configured_language_models: dict[str, str] = Field(default_factory=dict)
+    recommended_model_ids: list[str] = Field(default_factory=list)
+    mutates_existing_dataset: bool = False
+
+
 class DatasetPrecheckSummary(BaseModel):
     dataset_id: UUID
     scan_run_id: UUID
@@ -133,6 +149,8 @@ class DatasetPrecheckSummary(BaseModel):
     file_type_stats: list[DatasetPrecheckFileTypeStat] = Field(default_factory=list)
     # Best-effort language/script mix from sampled extracted text.
     language_mix: dict[str, int] = Field(default_factory=dict)
+    # Non-mutating guidance derived from language mix and the effective embedding.
+    embedding_advisories: list[DatasetPrecheckEmbeddingAdvisory] = Field(default_factory=list)
     # Top directory aggregates (path prefix under scan root).
     directory_stats: list[DatasetPrecheckDirectoryStat] = Field(default_factory=list)
 

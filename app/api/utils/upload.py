@@ -105,3 +105,17 @@ async def save_upload_file_with_hash(
 
 
 __all__ = ["save_upload_file", "save_upload_file_with_hash"]
+
+
+def compute_file_hash(path: Path, *, hash_name: str = "sha256", chunk_size: int = 1024 * 1024) -> str:
+    hasher = hashlib.new(hash_name)
+    with path.open("rb") as f:
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk:
+                break
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+__all__.append("compute_file_hash")

@@ -135,11 +135,9 @@ jobs:
           OPENAI_API_KEY: "sk-test"
         run: make test
 
-      - name: PR bounded hybrid RAG quality gate
+      - name: PR deterministic retrieval-ranking proxy gate
         env:
           LLM_MOCK_ENABLED: "true"
-          RAG_EVAL_GATE_ENABLED: "true"
-          RAG_EVAL_GATE_SUMMARY_PATH: artifacts/answer_quality.summary.json
         run: |
           mkdir -p artifacts
           python scripts/run_sample_retrieval_benchmark.py \
@@ -149,8 +147,8 @@ jobs:
             --top-k 5
           python scripts/build_rag_quality_gate_artifacts.py \
             --benchmark artifacts/sample_retrieval_bench.json \
-            --summary-out artifacts/answer_quality.summary.json \
-            --report-out artifacts/rag_quality_gate.report.json
+            --summary-out artifacts/retrieval_ranking_proxy.summary.json \
+            --report-out artifacts/retrieval_ranking_proxy_gate.report.json
           python -m pytest -q tests/rag/evaluation/test_rag_quality_gate.py
 
       - name: Database migrations and integration tests
@@ -582,7 +580,6 @@ jobs:
         run: docker compose -f docker/docker-compose.retrieval-dev.yml down -v --remove-orphans
 
   retrieval-only-bounded-gate:
-    if: github.event_name != 'pull_request'
     runs-on: [self-hosted, Linux, X64, mimirq]
     timeout-minutes: 60
     env:
@@ -741,13 +738,13 @@ jobs:
             --out artifacts/queryset_health.diff.sparse.json \
             --out-md artifacts/queryset_health.diff.sparse.md
 
-      - name: Run parser benchmark strict gate (docs slice)
+      - name: Run parse_bench strict gate (docs slice)
         run: |
           mkdir -p artifacts
-          python scripts/parser_benchmark.py \
+          python -m app.rag.evaluation.parse_bench run \
             --input-dir tests/fixtures/parsing_golden \
             --manifest tests/fixtures/parsing_golden/manifest.json \
-            --backends basic \
+            --parsers basic \
             --max-files 8 \
             --out artifacts/parser_benchmark.current.json \
             --baseline ci/parser_benchmark_baseline.v1.json \
@@ -830,37 +827,13 @@ jobs:
             --input artifacts/intent_router_training.v1.json \
             --out artifacts/intent_router_model.v1.json
 
-      - name: Build deterministic answer-quality summary artifact
+      - name: Build deterministic retrieval-ranking proxy artifact
         if: always()
         run: |
-          python - <<'PY'
-          from __future__ import annotations
-
-          import json
-          from pathlib import Path
-
-          bench = json.loads(Path("artifacts/sample_retrieval_bench.json").read_text(encoding="utf-8"))
-          summary = bench.get("summary") if isinstance(bench.get("summary"), dict) else {}
-          payload = {
-              "schema": "mimirq.answer_quality_summary.v1",
-              "summary": {
-                  # Deterministic proxy metrics for retrieval-only CI path.
-                  "faithfulness_det": float(summary.get("mrr") or 0.0),
-                  "refusal_correctness": 1.0,
-                  "abstain_rate": 0.0,
-              },
-          }
-          out = Path("artifacts/answer_quality.summary.json")
-          out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-          PY
-
-      - name: Run deterministic answer-quality gate
-        if: always()
-        run: |
-          python scripts/answer_quality_gate.py \
-            --input artifacts/answer_quality.summary.json \
-            --thresholds ci/answer_quality_thresholds.v1.json \
-            --out artifacts/answer_quality.gate.json
+          python scripts/build_rag_quality_gate_artifacts.py \
+            --benchmark artifacts/sample_retrieval_bench.json \
+            --summary-out artifacts/retrieval_ranking_proxy.summary.json \
+            --report-out artifacts/retrieval_ranking_proxy_gate.report.json
 
       - name: Build multi-hop diagnostics summary artifact
         if: always()
@@ -1328,8 +1301,8 @@ jobs:
             artifacts/channel_budget_policy.v1.json
             artifacts/intent_router_training.v1.json
             artifacts/intent_router_model.v1.json
-            artifacts/answer_quality.summary.json
-            artifacts/answer_quality.gate.json
+            artifacts/retrieval_ranking_proxy.summary.json
+            artifacts/retrieval_ranking_proxy_gate.report.json
             artifacts/multihop_diagnostics.summary.json
             ci/parser_benchmark_baseline.v1.json
             ci/queryset_health_snapshot_baseline.v1.json
@@ -1339,7 +1312,6 @@ jobs:
             ci/retrieval_thresholds.v2.json
 
   retrieval-regression-gate:
-    if: github.event_name != 'pull_request'
     runs-on: [self-hosted, Linux, X64, mimirq]
     timeout-minutes: 60
     needs:

@@ -217,11 +217,14 @@ python scripts/regression_gate.py \
 
 ## CI 集成（Retrieval-only Gate）
 
-仓库内置了一个极小的、确定性的 fixture，用于在受信任的 push/发布 CI 中做 retrieval-only gate（不依赖 RAGAS/LLM）：
+仓库内置了一个极小的、确定性的 fixture，用于在 PR、push 和发布 CI 中做 retrieval-only gate（不依赖 RAGAS/LLM）：
 
 - Fixture：`ci/retrieval_regression_fixture.v1.json`
 - 阈值：`ci/retrieval_thresholds.v2.json`
 - GitHub Actions：`.github/workflows/ci.yml` 的 `retrieval-regression-gate` job
+
+> 该 fixture 直接 seed 已生成的 chunks，只验证 **post-parse retrieval** 的 file-type/language
+> 切片，不证明真实 PDF/OCR/DOCX/XLSX 解析质量；解析质量由 parse bench 与真实样本 nightly 单独提供证据。
 
 本地复现（示例）：
 
@@ -279,6 +282,29 @@ python scripts/must_recall_proof_audit.py \
 - 推荐把该 JSON 报告与 regression gate 报告一起上传为 CI artifact，作为发版审计依据。
 - bounded hybrid CI 还会生成 `artifacts/multihop_diagnostics.summary.json`，
   用于审计 multi-hop 指标是否进入 artifact 链路。
+
+## Nightly 真实模型答案质量门禁
+
+`.github/workflows/rag-quality-gate.yml` 只在显式配置真实 provider 后运行，缺少任一项会直接失败而不是跳过 judge：
+
+- Secret：`RAG_EVAL_LLM_API_KEY`
+- Repository variable：`RAG_EVAL_LLM_API_BASE`
+- Repository variable：`RAG_EVAL_LLM_MODEL`（必须是 provider 实际接受的完整模型 ID）
+
+该工作流要求 `llm_judge_generation_avg` 与 `llm_judge_overall_avg` 都存在并达到阈值；PR 中的确定性 retrieval proxy 不会被命名或上传为 answer-quality 指标。
+
+人工校准数据完成后，再运行独立 κ 门禁：
+
+```bash
+python scripts/llm_judge_calibration_gate.py \
+  --input /secure/path/llm_judge_calibration.v1.json \
+  --min-items 50 \
+  --min-kappa 0.6 \
+  --out artifacts/llm_judge_calibration.report.json
+```
+
+输入顶层必须固定 `judge_version_hash`、`dataset_version`、`label_policy_version`，逐条包含唯一
+`case_id`、`human_label`、`judge_label`、`reviewer_hash` 和 ISO 8601 `reviewed_at`。仓库不捆绑伪造的“人工”标签；没有真实审核记录时，HUMAN-01 仍是未完成证据。
 
 ## CI 集成（KG Search Gate in PR）
 

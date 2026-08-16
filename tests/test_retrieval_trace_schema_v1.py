@@ -13,10 +13,10 @@ def _stub_langchain_globals(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 class _FakeRetriever:
-    def __init__(self, *, docs: list[Document]) -> None:
+    def __init__(self, *, docs: list[Document], debug_metrics: dict | None = None) -> None:
         self._docs = list(docs)
         # Include a debug payload with normalized text so the trace sanitizer can prove it strips it.
-        self._last_debug_metrics: dict = {
+        self._last_debug_metrics: dict = debug_metrics or {
             "requested_k": 5,
             "search_k": 5,
             "query_normalization": {
@@ -212,3 +212,210 @@ def test_orchestrator_emits_stable_retrieval_trace_schema(monkeypatch: pytest.Mo
     assert "entity" in router_layers
     assert "intent" in router_layers
     assert "composite" in router_layers
+
+
+def test_orchestrator_preserves_degradation_contract_in_query_debug_and_trace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.retrieval.orchestrator as orch_mod
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_HYDE", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_STEP_BACK_QUERY", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_QUERY_DECOMPOSITION", False, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_QUERY_PARALLELISM", 1, raising=False)
+    monkeypatch.setattr(settings, "KG_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "KG_CHAT_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RAG_KG_QUERY_EXPANSION_ENABLED", False, raising=False)
+
+    import app.query.expand as expand_mod
+
+    monkeypatch.setattr(expand_mod, "load_base_dictionary_rules", lambda: [], raising=True)
+    monkeypatch.setattr(
+        expand_mod,
+        "generate_dictionary_expansions",
+        lambda **_k: ([], {"enabled": False, "used": False}),
+        raising=True,
+    )
+
+    doc_id = uuid.uuid4()
+    chunk_id = uuid.uuid4()
+    retriever = _FakeRetriever(
+        docs=[
+            Document(
+                page_content="degraded hit",
+                id=str(chunk_id),
+                metadata={
+                    "document_id": str(doc_id),
+                    "chunk_id": str(chunk_id),
+                    "chunk_index": 0,
+                    "source": "degraded.md",
+                    "score": 0.8,
+                },
+            )
+        ],
+        debug_metrics={
+            "query_normalization": {
+                "original": "ORIGINAL",
+                "normalized": "NORMALIZED",
+                "applied_rules": ["rule_a"],
+            },
+            "channels": {
+                "attempted_channels": ["vector", "sparse"],
+                "successful_channels": ["vector"],
+                "retrieval_degraded": True,
+                "degraded_reasons": [
+                    {"channel": "sparse", "error_type": "timeout", "detail": "ignored by public contract"}
+                ],
+                "all_retrieval_channels_failed": False,
+            },
+        },
+    )
+    monkeypatch.setattr(orch_mod, "hybrid_retriever", retriever, raising=True)
+
+    out = orch_mod.run_retrieval(
+        {
+            "question": "q",
+            "history": [],
+            "tenant_id": str(uuid.uuid4()),
+            "account_id": "u",
+            "dataset_id": None,
+            "document_ids": [str(doc_id)],
+            "top_k": 5,
+            "retrieval_mode": "vector",
+            "metrics": {},
+        }
+    )
+
+    query_debug = out.get("query_debug") or {}
+    assert query_debug.get("retrieval_degraded") is True
+    assert query_debug.get("retrieval_degraded_reasons") == ["main:sparse:timeout"]
+    channel_health = query_debug.get("channel_health") or {}
+    assert channel_health.get("attempted_channels") == ["vector", "sparse"]
+    assert channel_health.get("successful_channels") == ["vector"]
+    assert channel_health.get("all_retrieval_channels_failed") is False
+
+    trace = out.get("retrieval_trace") or {}
+    retrieval = trace.get("retrieval") or {}
+    assert retrieval.get("retrieval_degraded") is True
+    assert retrieval.get("retrieval_degraded_reasons") == ["main:sparse:timeout"]
+    assert (retrieval.get("channel_health") or {}).get("queries") == [
+        {
+            "kind": "main",
+            "attempted_channels": ["vector", "sparse"],
+            "successful_channels": ["vector"],
+            "retrieval_degraded": True,
+            "degraded_reasons": [{"channel": "sparse", "error_type": "timeout", "detail": "ignored by public contract"}],
+            "all_retrieval_channels_failed": False,
+        }
+    ]
+
+
+def test_orchestrator_preserves_query_contract_defaults_and_hash_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.retrieval.orchestration.query_contract as contract_mod
+    import app.rag.retrieval.orchestrator as orch_mod
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_HYDE", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_STEP_BACK_QUERY", False, raising=False)
+    monkeypatch.setattr(settings, "ENABLE_QUERY_DECOMPOSITION", False, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_QUERY_PARALLELISM", 1, raising=False)
+    monkeypatch.setattr(settings, "KG_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "KG_CHAT_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RAG_KG_QUERY_EXPANSION_ENABLED", False, raising=False)
+
+    import app.query.expand as expand_mod
+
+    monkeypatch.setattr(expand_mod, "load_base_dictionary_rules", lambda: [], raising=True)
+    monkeypatch.setattr(
+        expand_mod,
+        "generate_dictionary_expansions",
+        lambda **_k: ([], {"enabled": False, "used": False}),
+        raising=True,
+    )
+    monkeypatch.setattr(contract_mod, "guess_retrieval_mode", lambda _q: "vector", raising=True)
+
+    doc_id = uuid.uuid4()
+    chunk_id = uuid.uuid4()
+    retriever = _FakeRetriever(
+        docs=[
+            Document(
+                page_content="contract hit",
+                id=str(chunk_id),
+                metadata={
+                    "document_id": str(doc_id),
+                    "chunk_id": str(chunk_id),
+                    "chunk_index": 0,
+                    "source": "contract.md",
+                    "score": 0.7,
+                },
+            )
+        ]
+    )
+    monkeypatch.setattr(orch_mod, "hybrid_retriever", retriever, raising=True)
+
+    def _run(dataset_id: str, document_id: str) -> dict:
+        return orch_mod.run_retrieval(
+            {
+                "question": "q",
+                "history": [],
+                "tenant_id": str(uuid.uuid4()),
+                "account_id": "u",
+                "dataset_id": dataset_id,
+                "document_ids": [document_id],
+                "top_k": 5,
+                "retrieval_mode": "auto",
+                "retrieval_profile": " Grounded_Strict ",
+                "enable_reranker": False,
+                "reranker_provider": "none",
+                "reranker_top_n": 5,
+                "enable_weight_rerank": True,
+                "rag_config_template": {
+                    "template_key": "baseline",
+                    "version": "2",
+                    "ab_variant": "B",
+                    "patch_hash": "patch-01",
+                    "ignored": "not-in-hash-contract",
+                },
+                "metrics": {},
+            }
+        )
+
+    out_a = _run(str(uuid.uuid4()), str(uuid.uuid4()))
+    out_b = _run(str(uuid.uuid4()), str(uuid.uuid4()))
+
+    metrics = out_a.get("metrics") or {}
+    assert metrics.get("retrieval_mode_requested") == "auto"
+    assert metrics.get("retrieval_mode") == "vector"
+    assert metrics.get("retrieval_mode_auto_routed") is True
+    assert metrics.get("retrieval_profile_requested") == "grounded_strict"
+    assert metrics.get("retrieval_profile") == "grounded_strict"
+    assert metrics.get("retrieval_contract_mode") == "evidence_strict"
+
+    trace = out_a.get("retrieval_trace") or {}
+    retrieval_config = trace.get("retrieval_config") or {}
+    assert retrieval_config.get("hash") == metrics.get("retrieval_config_hash")
+    config = retrieval_config.get("config") or {}
+    assert config.get("requested_retrieval_mode") == "auto"
+    assert config.get("retrieval_mode") == "vector"
+    assert config.get("retrieval_profile") == "grounded_strict"
+    assert config.get("retrieval_contract_mode") == "evidence_strict"
+    assert config.get("rag_config_template") == {
+        "template_key": "baseline",
+        "version": 2,
+        "ab_variant": "B",
+        "patch_hash": "patch-01",
+    }
+    assert "dataset_id" not in config
+    assert "document_ids" not in config
+
+    trace_b = out_b.get("retrieval_trace") or {}
+    assert retrieval_config.get("hash") == (trace_b.get("retrieval_config") or {}).get("hash")

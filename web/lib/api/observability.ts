@@ -1,5 +1,9 @@
 import type {
   DepsDiagnosticsResponse,
+  IndexAuditReconcileEnqueueRequest,
+  IndexAuditReconcileEnqueueResponse,
+  IndexAuditReconcileResponse,
+  IndexAuditReconcileStatusResponse,
   IndexAuditResponse,
   IngestionDashboardSummaryResponse,
   OnlineQualitySummaryResponse,
@@ -201,6 +205,38 @@ export const observabilityApi = {
     sample_limit?: number
   }): Promise<IndexAuditResponse> {
     const { data } = await apiClient.get('/observability/index-audit', { params })
+    return data
+  },
+
+  async reconcileIndexAudit(payload: {
+    dataset_id: string
+    document_id?: string | null
+  }): Promise<IndexAuditReconcileResponse> {
+    const { data } = await apiClient.post(
+      '/observability/index-audit/reconcile',
+      payload
+    )
+    return data
+  },
+
+  async getIndexAuditReconcileStatus(
+    params: { dataset_id: string; document_id: string },
+    options: { signal?: AbortSignal } = {}
+  ): Promise<IndexAuditReconcileStatusResponse> {
+    const { data } = await apiClient.get(
+      '/observability/index-audit/reconcile-status',
+      { params, signal: options.signal }
+    )
+    return data
+  },
+
+  async enqueueIndexAuditReconcileJob(
+    payload: IndexAuditReconcileEnqueueRequest
+  ): Promise<IndexAuditReconcileEnqueueResponse> {
+    const { data } = await apiClient.post(
+      '/observability/index-audit/reconcile-jobs',
+      payload
+    )
     return data
   },
 

@@ -114,6 +114,10 @@ class Document(Base):
         uselist=False,
     )
     permissions = relationship("DocumentPermission", back_populates="document", cascade=DELETE_ORPHAN_CASCADE)
+    index_channels = relationship(
+        "DocumentIndexChannel",
+        cascade=DELETE_ORPHAN_CASCADE,
+    )
 
 
 class DocumentPermission(Base):

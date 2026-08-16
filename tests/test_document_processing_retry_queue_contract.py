@@ -147,6 +147,91 @@ async def test_retry_document_processing_fails_closed_when_queue_handoff_fails(
 
 
 @pytest.mark.asyncio
+async def test_retry_document_processing_hash_ignores_parser_backend_resolved_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    documents_module = document_processing._documents_module()
+    source = tmp_path / "retry-stable.txt"
+    source.write_text("hello", encoding="utf-8")
+    document = SimpleNamespace(
+        id=uuid.uuid4(),
+        tenant_id=uuid.uuid4(),
+        dataset_id=uuid.uuid4(),
+        file_path=str(source),
+        file_type="txt",
+        filename="retry-stable.txt",
+        status="completed",
+        processing_progress=100,
+        current_stage="completed",
+        failed_stage=None,
+        error_code=None,
+        next_retry_at=None,
+        error_message=None,
+        chunk_count=12,
+        total_characters=34,
+        doc_metadata={
+            "content_sha256": "sha-stable",
+            "file_sha256": "sha-stable",
+            "parser_backend": "auto",
+            "parser_backend_requested": "auto",
+            "parser_backend_resolved": "mineru",
+            "chunk_strategy": "langchain_recursive",
+            "pipeline_hash": "stable-pipeline",
+            "active_pipeline_hash": "stable-pipeline",
+            "active_pipeline_ready": True,
+        },
+    )
+    db = _DB(document)
+
+    async def _task(**_kwargs):  # noqa: ANN003, ANN202
+        return "task-123"
+
+    monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(
+        documents_module.DatasetService,
+        "get_dataset",
+        lambda *_args, **_kwargs: SimpleNamespace(id=document.dataset_id),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        documents_module.DatasetService,
+        "assert_dataset_writable",
+        lambda *_args, **_kwargs: None,
+        raising=True,
+    )
+    monkeypatch.setattr(documents_module, "enqueue_document_processing", _task, raising=True)
+    monkeypatch.setattr(documents_module, "_task_queue_required", lambda: True, raising=True)
+    monkeypatch.setattr(
+        documents_module,
+        "reconcile_document_index_channels",
+        lambda *_args, **_kwargs: None,
+        raising=True,
+    )
+    expected_hash = documents_module._compute_pipeline_hash(
+        {
+            key: value
+            for key, value in document.doc_metadata.items()
+            if key != "parser_backend_resolved"
+        }
+    )
+
+    result = await document_processing.retry_document_processing(
+        document_id=document.id,
+        background_tasks=BackgroundTasks(),
+        force=True,
+        tenant_id=document.tenant_id,
+        account_id="acct-1",
+        db=db,
+    )
+
+    assert result["status"] == "pending"
+    assert document.doc_metadata["pipeline_hash"] == expected_hash
+    assert document.doc_metadata["pipeline_execution_identity"]["pipeline_hash"] == expected_hash
+
+
+@pytest.mark.asyncio
 async def test_retry_document_processing_local_fallback_preserves_then_consumes_retry_cleanup(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

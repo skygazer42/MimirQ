@@ -26,8 +26,9 @@ class _ModeRetriever:
 def _mk_tag_doc(*, table_id: str) -> Document:
     chunk_id = uuid.uuid4()
     document_id = uuid.uuid4()
+    page_content = '{"kind":"tag_table_store","rows":[["ok"]]}'
     return Document(
-        page_content='{"kind":"tag_table_store","rows":[["ok"]]}',
+        page_content=page_content,
         id=str(chunk_id),
         metadata={
             "retrieval_role": "tag",
@@ -36,6 +37,8 @@ def _mk_tag_doc(*, table_id: str) -> Document:
             "document_id": str(document_id),
             "source": "table",
             "table_id": table_id,
+            "start_char": 0,
+            "end_char": len(page_content),
             "score": 0.9,
             "retrieval_score": 0.9,
         },

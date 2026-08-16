@@ -1,11 +1,12 @@
 {
   "schema": "mimirq.ci_retrieval_regression_fixture.v1",
+  "fixture_scope": "post_parse_retrieval",
   "tenant_id": "00000000-0000-0000-0000-000000000000",
   "account_id": "ci-bot",
   "dataset": {
     "id": "11111111-1111-1111-1111-111111111111",
     "name": "CI Retrieval Regression Fixture",
-    "description": "Tiny deterministic fixture dataset for retrieval-only regression gate in CI."
+    "description": "Deterministic post-parse retrieval fixture across file-type metadata slices; chunks are precomputed, so this does not validate parser or OCR quality."
   },
   "documents": [
     {
@@ -15,7 +16,7 @@
       "doc_metadata": {
         "source_path": "handbook/ci_fixture_doc1.md",
         "language": "en",
-        "active_pipeline_hash": "ci-fixture-v1",
+        "active_pipeline_hash": "ci-fixture-v2",
         "governance_quality": {
           "density": 0.2,
           "heading_ratio": 0.1,
@@ -26,13 +27,13 @@
         {
           "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0001",
           "chunk_index": 0,
-          "content": "CI Retrieval Fixture (Doc1)\\n\\nQ: What is CITOKENALPHA9B7C3E?\\nA: CITOKENALPHA9B7C3E is a CI retrieval regression token used to validate lexical retrieval.\\n",
+          "content": "CI Retrieval Fixture (Doc1)\n\nQ: What is CITOKENALPHA9B7C3E?\nA: CITOKENALPHA9B7C3E is a CI retrieval regression token used to validate lexical retrieval.\n",
           "page_number": 1
         },
         {
           "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0002",
           "chunk_index": 1,
-          "content": "CI Retrieval Fixture (Doc1)\\n\\nThis chunk is filler text for slice coverage.\\n",
+          "content": "CI Retrieval Fixture (Doc1)\n\nThis markdown slice represents handbook prose and should remain easy to recall.\n",
           "page_number": 1
         }
       ]
@@ -44,7 +45,7 @@
       "doc_metadata": {
         "source_path": "policies/ci_fixture_doc2.pdf",
         "language": "zh",
-        "active_pipeline_hash": "ci-fixture-v1",
+        "active_pipeline_hash": "ci-fixture-v2",
         "governance_quality": {
           "density": 0.05,
           "heading_ratio": 0.2,
@@ -55,13 +56,82 @@
         {
           "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0001",
           "chunk_index": 0,
-          "content": "CI Retrieval Fixture (Doc2)\\n\\nQ: What is CITOKENGAMMA2F4D8A?\\nA: CITOKENGAMMA2F4D8A is a second CI retrieval regression token.\\n",
+          "content": "CI Retrieval Fixture (Doc2)\n\n问：CITOKENGAMMA2F4D8A 是什么？\n答：CITOKENGAMMA2F4D8A 是第二个用于验证 PDF 中文召回的 CI token。\n",
           "page_number": 1
         },
         {
           "id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0002",
           "chunk_index": 1,
-          "content": "CI Retrieval Fixture (Doc2)\\n\\nThis chunk is filler text for slice coverage.\\n",
+          "content": "CI Retrieval Fixture (Doc2)\n\n该文档模拟中文 PDF 解析切片。\n",
+          "page_number": 1
+        }
+      ]
+    },
+    {
+      "id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      "filename": "ci_fixture_doc3.png",
+      "file_type": "png",
+      "doc_metadata": {
+        "source_path": "scan/ci_fixture_doc3.png",
+        "language": "en",
+        "active_pipeline_hash": "ci-fixture-v2",
+        "governance_quality": {
+          "density": 0.07,
+          "heading_ratio": 0.05,
+          "content_chars": 320
+        }
+      },
+      "chunks": [
+        {
+          "id": "cccccccc-cccc-cccc-cccc-cccccccc0001",
+          "chunk_index": 0,
+          "content": "Scanned memo token CISCANDELTA7K2P1M confirms OCR-heavy image retrieval coverage.",
+          "page_number": 1
+        }
+      ]
+    },
+    {
+      "id": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+      "filename": "ci_fixture_doc4.docx",
+      "file_type": "docx",
+      "doc_metadata": {
+        "source_path": "briefs/ci_fixture_doc4.docx",
+        "language": "mixed",
+        "active_pipeline_hash": "ci-fixture-v2",
+        "governance_quality": {
+          "density": 0.18,
+          "heading_ratio": 0.12,
+          "content_chars": 640
+        }
+      },
+      "chunks": [
+        {
+          "id": "dddddddd-dddd-dddd-dddd-dddddddd0001",
+          "chunk_index": 0,
+          "content": "Project brief: MIXTOKENEPSILON4H6Q2S means bilingual DOCX retrieval remains stable. 项目说明保持可检索。",
+          "page_number": 1
+        }
+      ]
+    },
+    {
+      "id": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+      "filename": "ci_fixture_doc5.xlsx",
+      "file_type": "xlsx",
+      "doc_metadata": {
+        "source_path": "finance/ci_fixture_doc5.xlsx",
+        "language": "en",
+        "active_pipeline_hash": "ci-fixture-v2",
+        "governance_quality": {
+          "density": 0.16,
+          "heading_ratio": 0.08,
+          "content_chars": 420
+        }
+      },
+      "chunks": [
+        {
+          "id": "eeeeeeee-eeee-eeee-eeee-eeeeeeee0001",
+          "chunk_index": 0,
+          "content": "Budget row token TABLETOKENZETA5N8R4W marks spreadsheet/table retrieval correctness.",
           "page_number": 1
         }
       ]
@@ -81,23 +151,67 @@
           "label": "alpha_token"
         }
       ],
-      "tags": ["ci", "token_alpha"]
+      "tags": ["ci", "md", "en"]
     },
     {
-      "question": "What is CITOKENGAMMA2F4D8A?",
-      "expected_answer": "CITOKENGAMMA2F4D8A is a CI retrieval regression token.",
+      "question": "CITOKENGAMMA2F4D8A 是什么？",
+      "expected_answer": "CITOKENGAMMA2F4D8A 是第二个用于验证 PDF 中文召回的 CI token。",
       "reference_sources": [
         {
           "document_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
           "chunk_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0001",
           "chunk_index": 0,
           "page_number": 1,
-          "quote": "CITOKENGAMMA2F4D8A is a second CI retrieval regression token.",
+          "quote": "CITOKENGAMMA2F4D8A 是第二个用于验证 PDF 中文召回的 CI token。",
           "label": "gamma_token"
         }
       ],
-      "tags": ["ci", "token_gamma"]
+      "tags": ["ci", "pdf", "zh"]
+    },
+    {
+      "question": "What token confirms OCR-heavy image retrieval coverage?",
+      "expected_answer": "CISCANDELTA7K2P1M confirms OCR-heavy image retrieval coverage.",
+      "reference_sources": [
+        {
+          "document_id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+          "chunk_id": "cccccccc-cccc-cccc-cccc-cccccccc0001",
+          "chunk_index": 0,
+          "page_number": 1,
+          "quote": "Scanned memo token CISCANDELTA7K2P1M confirms OCR-heavy image retrieval coverage.",
+          "label": "scan_token"
+        }
+      ],
+      "tags": ["ci", "png", "ocr"]
+    },
+    {
+      "question": "What does MIXTOKENEPSILON4H6Q2S mean?",
+      "expected_answer": "MIXTOKENEPSILON4H6Q2S means bilingual DOCX retrieval remains stable.",
+      "reference_sources": [
+        {
+          "document_id": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+          "chunk_id": "dddddddd-dddd-dddd-dddd-dddddddd0001",
+          "chunk_index": 0,
+          "page_number": 1,
+          "quote": "MIXTOKENEPSILON4H6Q2S means bilingual DOCX retrieval remains stable.",
+          "label": "mixed_docx_token"
+        }
+      ],
+      "tags": ["ci", "docx", "mixed"]
+    },
+    {
+      "question": "Which token marks spreadsheet/table retrieval correctness?",
+      "expected_answer": "TABLETOKENZETA5N8R4W marks spreadsheet/table retrieval correctness.",
+      "reference_sources": [
+        {
+          "document_id": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+          "chunk_id": "eeeeeeee-eeee-eeee-eeee-eeeeeeee0001",
+          "chunk_index": 0,
+          "page_number": 1,
+          "quote": "Budget row token TABLETOKENZETA5N8R4W marks spreadsheet/table retrieval correctness.",
+          "label": "table_token"
+        }
+      ],
+      "tags": ["ci", "xlsx", "table"]
     }
   ]
 }
-
