@@ -224,9 +224,9 @@ def main() -> int:
     parser.add_argument("--dataset-id", required=True, help="Target dataset UUID")
     parser.add_argument(
         "--auth-mode",
-        default=str(os.getenv("AUTH_MODE") or "header"),
+        default="header",
         choices=["header", "jwt"],
-        help="Auth mode: header (X-User-ID) or jwt (Authorization Bearer). Default: env AUTH_MODE or header",
+        help="Auth mode: header (X-User-ID) or jwt (Authorization Bearer). Default: header",
     )
     parser.add_argument(
         "--tenant-id",

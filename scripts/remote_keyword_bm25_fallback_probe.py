@@ -4,11 +4,28 @@
 import argparse
 import json
 import shutil
+import sys
 import time
 from pathlib import Path
 from typing import Any
 
-try:
+
+def ensure_repo_root_on_sys_path(script_path: str | Path) -> str:
+    repo_root = Path(script_path).resolve().parents[1]
+    for entry in sys.path:
+        try:
+            if Path(entry or ".").resolve() == repo_root:
+                return str(repo_root)
+        except (OSError, RuntimeError):
+            continue
+    sys.path.insert(0, str(repo_root))
+    return str(repo_root)
+
+
+ensure_repo_root_on_sys_path(__file__)
+
+
+def _load_remote_kb_boundary_matrix() -> tuple[Any, ...]:
     from scripts.remote_kb_boundary_matrix import (
         LiveApi,
         citation_document_ids,
@@ -17,8 +34,8 @@ try:
         response_text_from_body,
         wait_for_document_completed,
     )
-except ModuleNotFoundError:
-    from remote_kb_boundary_matrix import (  # type: ignore[no-redef]
+
+    return (
         LiveApi,
         citation_document_ids,
         ensure_success,
@@ -26,6 +43,16 @@ except ModuleNotFoundError:
         response_text_from_body,
         wait_for_document_completed,
     )
+
+
+(
+    LiveApi,
+    citation_document_ids,
+    ensure_success,
+    record_step,
+    response_text_from_body,
+    wait_for_document_completed,
+) = _load_remote_kb_boundary_matrix()
 
 
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"

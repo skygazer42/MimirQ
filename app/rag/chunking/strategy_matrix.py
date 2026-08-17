@@ -936,9 +936,10 @@ def _is_expected_unavailable(strategy: str, exc: Exception) -> bool:
     message = str(exc or "")
     if strategy in {"llama_index", "llama_index_hierarchical"}:
         try:
-            import llama_index.core  # noqa: F401
+            import llama_index.core as llama_index_core
         except Exception:
             return True
+        del llama_index_core
     return "disabled" in message.lower() or "not installed" in message.lower()
 
 

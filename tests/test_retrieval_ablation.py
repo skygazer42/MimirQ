@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -32,7 +31,7 @@ class _FakeClient:
         self._plan = list(plan)
         self.calls = calls
 
-    def __enter__(self) -> _FakeClient:
+    def __enter__(self) -> "_FakeClient":
         return self
 
     def __exit__(self, *_args: object) -> None:

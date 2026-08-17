@@ -13,7 +13,7 @@ from typing import Any
 from app.core.config import settings
 from app.rag.core.logging import get_logger
 from app.rag.reranker.base import BaseReranker
-from app.rag.reranker.capabilities import describe_reranker_provider  # noqa: F401
+from app.rag.reranker.capabilities import describe_reranker_provider as describe_reranker_provider
 from app.rag.reranker.registry import get_reranker_provider_family
 
 logger = get_logger(__name__)

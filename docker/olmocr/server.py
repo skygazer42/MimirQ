@@ -1,4 +1,3 @@
-
 import asyncio
 import importlib.util
 import os
@@ -127,6 +126,46 @@ def _runtime_status() -> dict[str, Any]:
     return status
 
 
+async def _wait_for_process_exit(
+    process: asyncio.subprocess.Process,
+    *,
+    timeout: float | None = None,
+) -> bool:
+    try:
+        if timeout is None:
+            await process.wait()
+        else:
+            await asyncio.wait_for(process.wait(), timeout=timeout)
+        return True
+    except asyncio.TimeoutError:
+        return False
+    except Exception:
+        return True
+
+
+def _signal_process_group(
+    process: asyncio.subprocess.Process,
+    *,
+    pid: int,
+    sig: signal.Signals,
+    fallback_name: str,
+) -> bool:
+    try:
+        os.killpg(pid, sig)
+        return True
+    except ProcessLookupError:
+        return False
+    except Exception:
+        fallback = getattr(process, fallback_name, None)
+        if not callable(fallback):
+            return False
+        try:
+            fallback()
+            return True
+        except Exception:
+            return False
+
+
 async def _terminate_process_group(process: asyncio.subprocess.Process, *, grace_sec: float = 3.0) -> None:
     if process.returncode is not None:
         return
@@ -134,38 +173,16 @@ async def _terminate_process_group(process: asyncio.subprocess.Process, *, grace
     if pid is None:
         return
 
-    try:
-        os.killpg(pid, signal.SIGTERM)
-    except ProcessLookupError:
-        return
-    except Exception:
-        try:
-            process.terminate()
-        except Exception:
-            return
-
-    try:
-        await asyncio.wait_for(process.wait(), timeout=grace_sec)
-        return
-    except asyncio.TimeoutError:
-        pass
-    except Exception:
+    if not _signal_process_group(process, pid=pid, sig=signal.SIGTERM, fallback_name="terminate"):
         return
 
-    try:
-        os.killpg(pid, signal.SIGKILL)
-    except ProcessLookupError:
+    if await _wait_for_process_exit(process, timeout=grace_sec):
         return
-    except Exception:
-        try:
-            process.kill()
-        except Exception:
-            return
 
-    try:
-        await process.wait()
-    except Exception:
+    if not _signal_process_group(process, pid=pid, sig=signal.SIGKILL, fallback_name="kill"):
         return
+
+    await _wait_for_process_exit(process)
 
 
 def _pick_markdown_path(workspace: Path) -> Optional[Path]:
@@ -226,6 +243,34 @@ def _build_pipeline_command(*, workspace: Path, input_name: str) -> list[str]:
     return cmd
 
 
+async def _read_process_chunk(process: asyncio.subprocess.Process) -> bytes:
+    if process.stdout is None:
+        return b""
+    try:
+        return await asyncio.wait_for(process.stdout.read(4096), timeout=0.2)
+    except asyncio.TimeoutError:
+        return b""
+
+
+def _append_log_tail(log_tail: bytearray, chunk: bytes) -> None:
+    if not chunk:
+        return
+    log_tail.extend(chunk)
+    if len(log_tail) > _LOG_TAIL_BYTES:
+        del log_tail[: len(log_tail) - _LOG_TAIL_BYTES]
+
+
+async def _drain_process_output(process: asyncio.subprocess.Process, log_tail: bytearray) -> None:
+    if process.stdout is None:
+        return
+    while chunk := await process.stdout.read(4096):
+        _append_log_tail(log_tail, chunk)
+
+
+def _decode_log_tail(log_tail: bytearray) -> str:
+    return log_tail.decode("utf-8", errors="ignore").strip()
+
+
 async def _run_pipeline(
     *,
     request: Request,
@@ -244,35 +289,17 @@ async def _run_pipeline(
 
     log_tail = bytearray()
     try:
-        while True:
+        while process.returncode is None:
             if await request.is_disconnected():
                 await _terminate_process_group(process)
                 raise HTTPException(status_code=499, detail="client_disconnected")
 
-            if process.stdout is None:
-                break
-
-            try:
-                chunk = await asyncio.wait_for(process.stdout.read(4096), timeout=0.2)
-            except asyncio.TimeoutError:
-                chunk = b""
-
-            if chunk:
-                log_tail.extend(chunk)
-                if len(log_tail) > _LOG_TAIL_BYTES:
-                    del log_tail[: len(log_tail) - _LOG_TAIL_BYTES]
-
-            if process.returncode is not None:
-                break
-
+            _append_log_tail(log_tail, await _read_process_chunk(process))
             await asyncio.sleep(0.05)
 
-        try:
-            await asyncio.wait_for(process.wait(), timeout=2.0)
-        except Exception:
-            pass
-
-        return int(process.returncode or 0), log_tail.decode("utf-8", errors="ignore").strip()
+        await _wait_for_process_exit(process, timeout=2.0)
+        await _drain_process_output(process, log_tail)
+        return int(process.returncode or 0), _decode_log_tail(log_tail)
     finally:
         try:
             if process.returncode is None:

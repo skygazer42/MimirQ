@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 import datetime as _datetime
 import sys
@@ -20,16 +19,16 @@ class _ListQuery:
         self._rows = rows
         self._events = events
 
-    def filter(self, *_args: object, **_kwargs: object) -> _ListQuery:
+    def filter(self, *_args: object, **_kwargs: object) -> "_ListQuery":
         return self
 
-    def order_by(self, *_args: object, **_kwargs: object) -> _ListQuery:
+    def order_by(self, *_args: object, **_kwargs: object) -> "_ListQuery":
         return self
 
-    def limit(self, _limit: int) -> _ListQuery:
+    def limit(self, _limit: int) -> "_ListQuery":
         return self
 
-    def distinct(self) -> _ListQuery:
+    def distinct(self) -> "_ListQuery":
         return self
 
     def all(self) -> list[object]:

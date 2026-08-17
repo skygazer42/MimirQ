@@ -30,6 +30,8 @@ from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.models.tenant import Tenant, TenantMember
 
+MODEL_REGISTRY = app.models._all.REGISTERED_MODEL_MODULES
+
 
 def _load_json(path: Path) -> Any:
     # PowerShell commonly writes UTF-8 JSON with BOM; `utf-8-sig` handles both BOM/no-BOM.
@@ -87,9 +89,7 @@ def ensure_fixture_tenant_owner(db: Any, *, tenant_id: UUID, account_id: str) ->
         db.add(tenant)
 
     member = (
-        db.query(TenantMember)
-        .filter(TenantMember.tenant_id == tenant_id, TenantMember.user_id == account_id)
-        .first()
+        db.query(TenantMember).filter(TenantMember.tenant_id == tenant_id, TenantMember.user_id == account_id).first()
     )
     if member is None:
         member = TenantMember(
@@ -106,7 +106,9 @@ def ensure_fixture_tenant_owner(db: Any, *, tenant_id: UUID, account_id: str) ->
         member.is_current = True
 
 
-def seed_fixture(*, fixture: dict[str, Any]) -> None:
+def _parse_fixture_config(
+    fixture: dict[str, Any],
+) -> tuple[UUID, str, UUID, str, str | None, list[dict[str, Any]]]:
     tenant_id = UUID(str(fixture.get("tenant_id") or "").strip())
     account_id = str(fixture.get("account_id") or "").strip() or "ci-bot"
 
@@ -119,6 +121,165 @@ def seed_fixture(*, fixture: dict[str, Any]) -> None:
     if not isinstance(documents, list) or not documents:
         raise ValueError("fixture.documents must be a non-empty list")
 
+    normalized_documents = [doc for doc in documents if isinstance(doc, dict)]
+    return tenant_id, account_id, dataset_id, dataset_name, dataset_desc, normalized_documents
+
+
+def _upsert_dataset(
+    db: Any,
+    *,
+    dataset_id: UUID,
+    tenant_id: UUID,
+    dataset_name: str,
+    dataset_desc: str | None,
+    account_id: str,
+) -> None:
+    ds = db.query(Dataset).filter(Dataset.id == dataset_id, Dataset.tenant_id == tenant_id).first()
+    if ds is None:
+        ds = Dataset(
+            id=dataset_id,
+            tenant_id=tenant_id,
+            name=dataset_name,
+            description=dataset_desc,
+            permission=DatasetPermissionEnum.ALL_TEAM_MEMBERS,
+            owner_id=account_id,
+            dataset_metadata={},
+        )
+        db.add(ds)
+    else:
+        ds.name = dataset_name
+        ds.description = dataset_desc
+        ds.owner_id = account_id
+
+
+def _document_total_chars(chunks: list[dict[str, Any]]) -> int:
+    return sum(len(str(ch.get("content") or "")) for ch in chunks)
+
+
+def _normalize_page_number(value: object) -> int | None:
+    try:
+        return int(value) if value is not None else None
+    except Exception:
+        return None
+
+
+def _chunk_metadata(
+    *,
+    dataset_id: UUID,
+    filename: str,
+    doc_id: UUID,
+    doc_meta: dict[str, Any],
+) -> dict[str, Any]:
+    chunk_meta: dict[str, Any] = {
+        "dataset_id": str(dataset_id),
+        "source": filename,
+    }
+    for key in ("active_pipeline_hash", "pipeline_hash", "doc_pipeline_key"):
+        if key in doc_meta and doc_meta.get(key) is not None:
+            chunk_meta[key] = doc_meta.get(key)
+
+    active_hash = str(doc_meta.get("active_pipeline_hash") or doc_meta.get("pipeline_hash") or "").strip()
+    if active_hash:
+        chunk_meta.setdefault("pipeline_hash", active_hash)
+        chunk_meta.setdefault("doc_pipeline_key", f"{doc_id}:{active_hash}")
+    return chunk_meta
+
+
+def _replace_document_chunks(
+    db: Any,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    doc_id: UUID,
+    filename: str,
+    doc_meta: dict[str, Any],
+    chunks: list[dict[str, Any]],
+) -> None:
+    db.query(DocumentChunk).filter(
+        DocumentChunk.tenant_id == tenant_id,
+        DocumentChunk.document_id == doc_id,
+    ).delete(synchronize_session=False)
+
+    for ch in chunks:
+        chunk_id = UUID(str(ch.get("id") or "").strip())
+        db.add(
+            DocumentChunk(
+                id=chunk_id,
+                tenant_id=tenant_id,
+                document_id=doc_id,
+                chunk_index=int(ch.get("chunk_index") or 0),
+                content=str(ch.get("content") or ""),
+                page_number=_normalize_page_number(ch.get("page_number")),
+                doc_metadata=_chunk_metadata(
+                    dataset_id=dataset_id,
+                    filename=filename,
+                    doc_id=doc_id,
+                    doc_meta=doc_meta,
+                ),
+            )
+        )
+
+
+def _upsert_document(
+    db: Any,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    doc: dict[str, Any],
+) -> None:
+    doc_id = UUID(str(doc.get("id") or "").strip())
+    filename = str(doc.get("filename") or "").strip() or f"{doc_id}.txt"
+    file_type = str(doc.get("file_type") or "md").strip().lower() or "md"
+    doc_meta = doc.get("doc_metadata") if isinstance(doc.get("doc_metadata"), dict) else {}
+
+    raw_chunks = doc.get("chunks")
+    if not isinstance(raw_chunks, list) or not raw_chunks:
+        raise ValueError("each document must include chunks[]")
+    chunks = [chunk for chunk in raw_chunks if isinstance(chunk, dict)]
+
+    total_chars = _document_total_chars(chunks)
+    row = db.query(DBDocument).filter(DBDocument.id == doc_id, DBDocument.tenant_id == tenant_id).first()
+    if row is None:
+        row = DBDocument(
+            id=doc_id,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            filename=filename,
+            file_type=file_type,
+            file_size=int(total_chars),
+            file_path=f"ci://{filename}",
+            status="completed",
+            chunk_count=len(chunks),
+            total_characters=int(total_chars),
+            doc_metadata=dict(doc_meta),
+        )
+        db.add(row)
+    else:
+        row.dataset_id = dataset_id
+        row.filename = filename
+        row.file_type = file_type
+        row.file_size = int(total_chars)
+        row.file_path = f"ci://{filename}"
+        row.status = "completed"
+        row.error_message = None
+        row.chunk_count = len(chunks)
+        row.total_characters = int(total_chars)
+        row.doc_metadata = dict(doc_meta)
+
+    _replace_document_chunks(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        doc_id=doc_id,
+        filename=filename,
+        doc_meta=doc_meta,
+        chunks=chunks,
+    )
+
+
+def seed_fixture(*, fixture: dict[str, Any]) -> None:
+    tenant_id, account_id, dataset_id, dataset_name, dataset_desc, documents = _parse_fixture_config(fixture)
+
     # Ensure schema is up-to-date (best-effort; mirrors app startup).
     apply_runtime_migrations(engine)
     Base.metadata.create_all(bind=engine)
@@ -129,129 +290,16 @@ def seed_fixture(*, fixture: dict[str, Any]) -> None:
         # Security contract: CI creates an explicit membership instead of relying
         # on the local-development owner bootstrap escape hatch.
         ensure_fixture_tenant_owner(db, tenant_id=tenant_id, account_id=account_id)
-        db.commit()
-
-        # Upsert dataset by id.
-        ds = (
-            db.query(Dataset)
-            .filter(Dataset.id == dataset_id, Dataset.tenant_id == tenant_id)
-            .first()
+        _upsert_dataset(
+            db,
+            dataset_id=dataset_id,
+            tenant_id=tenant_id,
+            dataset_name=dataset_name,
+            dataset_desc=dataset_desc,
+            account_id=account_id,
         )
-        if ds is None:
-            ds = Dataset(
-                id=dataset_id,
-                tenant_id=tenant_id,
-                name=dataset_name,
-                description=dataset_desc,
-                permission=DatasetPermissionEnum.ALL_TEAM_MEMBERS,
-                owner_id=account_id,
-                dataset_metadata={},
-            )
-            db.add(ds)
-        else:
-            ds.name = dataset_name
-            ds.description = dataset_desc
-            ds.owner_id = account_id
-        db.commit()
-
-        # Upsert documents + replace chunks for determinism.
         for doc in documents:
-            if not isinstance(doc, dict):
-                continue
-            doc_id = UUID(str(doc.get("id") or "").strip())
-            filename = str(doc.get("filename") or "").strip() or f"{doc_id}.txt"
-            file_type = str(doc.get("file_type") or "md").strip().lower() or "md"
-            doc_meta = doc.get("doc_metadata") if isinstance(doc.get("doc_metadata"), dict) else {}
-
-            chunks = doc.get("chunks")
-            if not isinstance(chunks, list) or not chunks:
-                raise ValueError("each document must include chunks[]")
-            total_chars = 0
-            for ch in chunks:
-                if isinstance(ch, dict):
-                    total_chars += len(str(ch.get("content") or ""))
-
-            row = (
-                db.query(DBDocument)
-                .filter(DBDocument.id == doc_id, DBDocument.tenant_id == tenant_id)
-                .first()
-            )
-            if row is None:
-                row = DBDocument(
-                    id=doc_id,
-                    tenant_id=tenant_id,
-                    dataset_id=dataset_id,
-                    filename=filename,
-                    file_type=file_type,
-                    file_size=int(total_chars),
-                    file_path=f"ci://{filename}",
-                    status="completed",
-                    chunk_count=len(chunks),
-                    total_characters=int(total_chars),
-                    doc_metadata=dict(doc_meta),
-                )
-                db.add(row)
-            else:
-                row.dataset_id = dataset_id
-                row.filename = filename
-                row.file_type = file_type
-                row.file_size = int(total_chars)
-                row.file_path = f"ci://{filename}"
-                row.status = "completed"
-                row.error_message = None
-                row.chunk_count = len(chunks)
-                row.total_characters = int(total_chars)
-                row.doc_metadata = dict(doc_meta)
-
-            # Replace chunks for this document (idempotent across reruns).
-            db.query(DocumentChunk).filter(
-                DocumentChunk.tenant_id == tenant_id,
-                DocumentChunk.document_id == doc_id,
-            ).delete(synchronize_session=False)
-
-            for ch in chunks:
-                if not isinstance(ch, dict):
-                    continue
-                chunk_id = UUID(str(ch.get("id") or "").strip())
-                chunk_index = int(ch.get("chunk_index") or 0)
-                content = str(ch.get("content") or "")
-                page_number = ch.get("page_number")
-                try:
-                    page_number = int(page_number) if page_number is not None else None
-                except Exception:
-                    page_number = None
-
-                # Chunk metadata: include dataset_id so BM25 filtering works when dataset-scoped.
-                chunk_meta: dict[str, Any] = {
-                    "dataset_id": str(dataset_id),
-                    "source": filename,
-                }
-                # Carry selected doc-level audit fields down for convenience (best-effort).
-                for k in ("active_pipeline_hash", "pipeline_hash", "doc_pipeline_key"):
-                    if k in doc_meta and doc_meta.get(k) is not None:
-                        chunk_meta[k] = doc_meta.get(k)
-                # Active-pipeline trimming expects chunks to carry either:
-                # - doc_pipeline_key = f"{document_id}:{pipeline_hash}", OR
-                # - pipeline_hash (so the key can be reconstructed).
-                #
-                # CI fixtures store the active pipeline under `active_pipeline_hash` at doc-level,
-                # so mirror it into the chunk-level fields used by retrieval trimming.
-                active_hash = str(doc_meta.get("active_pipeline_hash") or doc_meta.get("pipeline_hash") or "").strip()
-                if active_hash:
-                    chunk_meta.setdefault("pipeline_hash", active_hash)
-                    chunk_meta.setdefault("doc_pipeline_key", f"{doc_id}:{active_hash}")
-
-                db.add(
-                    DocumentChunk(
-                        id=chunk_id,
-                        tenant_id=tenant_id,
-                        document_id=doc_id,
-                        chunk_index=chunk_index,
-                        content=content,
-                        page_number=page_number,
-                        doc_metadata=chunk_meta,
-                    )
-                )
+            _upsert_document(db, tenant_id=tenant_id, dataset_id=dataset_id, doc=doc)
 
         db.commit()
     finally:

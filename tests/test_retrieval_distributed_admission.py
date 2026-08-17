@@ -445,6 +445,7 @@ async def test_async_distributed_wait_releases_local_gate_between_attempts(
     monkeypatch.setattr(limiter, "_get_gate", lambda _limit: _TrackingGate(), raising=True)
     monkeypatch.setattr(limiter, "_try_acquire_distributed_admission_slot", _try_slot, raising=True)
     monkeypatch.setattr(limiter.asyncio, "sleep", _sleep, raising=True)
+    monkeypatch.setattr(limiter.time, "perf_counter", lambda: 10.0, raising=True)
 
     assert await limiter.run_blocking_retrieval_call(lambda: events.append("work") or "ok") == "ok"
     assert events.index("local_release") < events.index("wait")

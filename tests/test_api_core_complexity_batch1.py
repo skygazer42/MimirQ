@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 from types import SimpleNamespace
 from uuid import uuid4
@@ -12,7 +11,7 @@ class _TemplateQuery:
     def __init__(self, template: object) -> None:
         self.template = template
 
-    def filter(self, *_args: object) -> _TemplateQuery:
+    def filter(self, *_args: object) -> "_TemplateQuery":
         return self
 
     def first(self) -> object:

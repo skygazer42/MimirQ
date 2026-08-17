@@ -3,20 +3,40 @@
 
 import argparse
 import json
+import sys
 import tempfile
 import time
 from pathlib import Path
 from typing import Any
 
-try:
-    from scripts.remote_kb_boundary_matrix import LiveApi, ensure_success, record_step, wait_for_document_completed
-except ModuleNotFoundError:
-    from remote_kb_boundary_matrix import (  # type: ignore[no-redef]
+
+def ensure_repo_root_on_sys_path(script_path: str | Path) -> str:
+    repo_root = Path(script_path).resolve().parents[1]
+    for entry in sys.path:
+        try:
+            if Path(entry or ".").resolve() == repo_root:
+                return str(repo_root)
+        except (OSError, RuntimeError):
+            continue
+    sys.path.insert(0, str(repo_root))
+    return str(repo_root)
+
+
+ensure_repo_root_on_sys_path(__file__)
+
+
+def _load_remote_kb_boundary_matrix() -> tuple[Any, ...]:
+    from scripts.remote_kb_boundary_matrix import (
         LiveApi,
         ensure_success,
         record_step,
         wait_for_document_completed,
     )
+
+    return LiveApi, ensure_success, record_step, wait_for_document_completed
+
+
+LiveApi, ensure_success, record_step, wait_for_document_completed = _load_remote_kb_boundary_matrix()
 
 
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"

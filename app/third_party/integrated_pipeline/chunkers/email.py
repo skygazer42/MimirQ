@@ -26,6 +26,81 @@ from app.third_party.integrated_pipeline.chunkers.naive import chunk as naive_ch
 from app.third_party.integrated_pipeline.nlp import naive_merge, rag_tokenizer, tokenize_chunks
 
 
+def _build_doc(filename):
+    doc = {
+        "docnm_kwd": filename,
+        "title_tks": rag_tokenizer.tokenize(re.sub(r"\.[a-zA-Z]+$", "", filename)),
+    }
+    doc["title_sm_tks"] = rag_tokenizer.fine_grained_tokenize(doc["title_tks"])
+    return doc
+
+
+def _load_message(filename, binary):
+    if binary:
+        with io.BytesIO(binary) as buffer:
+            return BytesParser(policy=policy.default).parse(buffer)
+    with open(filename, "rb") as buffer:
+        return BytesParser(policy=policy.default).parse(buffer)
+
+
+def _decode_payload(payload, charset):
+    try:
+        return payload.decode(charset)
+    except (UnicodeDecodeError, LookupError):
+        for enc in ["utf-8", "gb2312", "gbk", "gb18030", "latin1"]:
+            try:
+                return payload.decode(enc)
+            except UnicodeDecodeError:
+                continue
+    return payload.decode("utf-8", errors="ignore")
+
+
+def _append_part_content(message, text_txt, html_txt):
+    content_type = message.get_content_type()
+    if content_type == "text/plain":
+        payload = message.get_payload(decode=True)
+        charset = message.get_content_charset() or "utf-8"
+        text_txt.append(_decode_payload(payload, charset))
+        return
+    if content_type == "text/html":
+        payload = message.get_payload(decode=True)
+        charset = message.get_content_charset() or "utf-8"
+        html_txt.append(_decode_payload(payload, charset))
+        return
+    if "multipart" in content_type and message.is_multipart():
+        for part in message.iter_parts():
+            _append_part_content(part, text_txt, html_txt)
+
+
+def _collect_sections(message):
+    text_txt = [f"{header}: {value}" for header, value in message.items()]
+    html_txt = []
+    _append_part_content(message, text_txt, html_txt)
+
+    html_sections = []
+    if any(str(line or "").strip() for line in html_txt):
+        html_sections = [(line, "") for line in HtmlParser.parser_txt("\n".join(html_txt)) if line]
+    return TxtParser.parser_txt("\n".join(text_txt)) + html_sections
+
+
+def _chunk_attachments(message, callback, kwargs):
+    attachment_res = []
+    for part in message.iter_attachments():
+        content_disposition = part.get("Content-Disposition")
+        if not content_disposition:
+            continue
+        dispositions = content_disposition.strip().split(";")
+        if dispositions[0].lower() != "attachment":
+            continue
+        filename = part.get_filename()
+        payload = part.get_payload(decode=True)
+        try:
+            attachment_res.extend(naive_chunk(filename, payload, callback=callback, **kwargs))
+        except Exception as exc:
+            logging.debug("Failed to chunk email attachment %s: %s", filename, exc)
+    return attachment_res
+
+
 def chunk(
     filename,
     binary=None,
@@ -44,61 +119,9 @@ def chunk(
         "parser_config",
         {"chunk_token_num": 512, "delimiter": "\n!?。；！？", "layout_recognize": "DeepDOC"},
     )
-    doc = {
-        "docnm_kwd": filename,
-        "title_tks": rag_tokenizer.tokenize(re.sub(r"\.[a-zA-Z]+$", "", filename)),
-    }
-    doc["title_sm_tks"] = rag_tokenizer.fine_grained_tokenize(doc["title_tks"])
-    main_res = []
-    attachment_res = []
-
-    if binary:
-        with io.BytesIO(binary) as buffer:
-            msg = BytesParser(policy=policy.default).parse(buffer)
-    else:
-        with open(filename, "rb") as buffer:
-            msg = BytesParser(policy=policy.default).parse(buffer)
-
-    text_txt, html_txt = [], []
-    # get the email header info
-    for header, value in msg.items():
-        text_txt.append(f"{header}: {value}")
-
-    #  get the email main info
-    def _add_content(msg, content_type):
-        def _decode_payload(payload, charset, target_list):
-            try:
-                target_list.append(payload.decode(charset))
-            except (UnicodeDecodeError, LookupError):
-                for enc in ["utf-8", "gb2312", "gbk", "gb18030", "latin1"]:
-                    try:
-                        target_list.append(payload.decode(enc))
-                        break
-                    except UnicodeDecodeError:
-                        continue
-                else:
-                    target_list.append(payload.decode("utf-8", errors="ignore"))
-
-        if content_type == "text/plain":
-            payload = msg.get_payload(decode=True)
-            charset = msg.get_content_charset() or "utf-8"
-            _decode_payload(payload, charset, text_txt)
-        elif content_type == "text/html":
-            payload = msg.get_payload(decode=True)
-            charset = msg.get_content_charset() or "utf-8"
-            _decode_payload(payload, charset, html_txt)
-        elif "multipart" in content_type:
-            if msg.is_multipart():
-                for part in msg.iter_parts():
-                    _add_content(part, part.get_content_type())
-
-    _add_content(msg, msg.get_content_type())
-
-    html_sections = []
-    if any(str(line or "").strip() for line in html_txt):
-        html_sections = [(line, "") for line in HtmlParser.parser_txt("\n".join(html_txt)) if line]
-
-    sections = TxtParser.parser_txt("\n".join(text_txt)) + html_sections
+    doc = _build_doc(filename)
+    msg = _load_message(filename, binary)
+    sections = _collect_sections(msg)
 
     st = timer()
     chunks = naive_merge(
@@ -107,24 +130,9 @@ def chunk(
         parser_config.get("delimiter", "\n!?。；！？"),
     )
 
-    main_res.extend(tokenize_chunks(chunks, doc, eng, None))
+    main_res = tokenize_chunks(chunks, doc, eng, None)
     logging.debug("naive_merge({}): {}".format(filename, timer() - st))
-    # get the attachment info
-    for part in msg.iter_attachments():
-        content_disposition = part.get("Content-Disposition")
-        if content_disposition:
-            dispositions = content_disposition.strip().split(";")
-            if dispositions[0].lower() == "attachment":
-                filename = part.get_filename()
-                payload = part.get_payload(decode=True)
-                try:
-                    attachment_res.extend(
-                        naive_chunk(filename, payload, callback=callback, **kwargs)
-                    )
-                except Exception as exc:
-                    logging.debug("Failed to chunk email attachment %s: %s", filename, exc)
-
-    return main_res + attachment_res
+    return main_res + _chunk_attachments(msg, callback, kwargs)
 
 
 if __name__ == "__main__":

@@ -227,8 +227,8 @@ from app.storage.object.runtime import (
     is_object_storage_uri,
     object_store_backend_config,
     parse_object_storage_uri,
-    resolve_document_object_reference,  # noqa: F401
 )
+from app.storage.object.runtime import resolve_document_object_reference as resolve_document_object_reference
 from app.tasks.queue import enqueue_document_processing
 from app.types.pipeline import PipelineOptions
 

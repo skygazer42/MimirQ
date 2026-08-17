@@ -1,6 +1,7 @@
 """
 Chat API.
 """
+
 import asyncio
 import contextlib
 import uuid
@@ -31,7 +32,7 @@ from app.services.chat_conversation_titles import (
     CONVERSATION_TITLE_SOURCE_MANUAL as CONVERSATION_TITLE_SOURCE_MANUAL,
 )
 from app.services.chat_conversation_titles import (
-    apply_auto_conversation_title as _apply_auto_conversation_title,  # noqa: F401
+    apply_auto_conversation_title as _apply_auto_conversation_title,
 )
 from app.services.chat_execution_runtime import (
     ChatExecutionContext as _ChatExecutionContext,
@@ -114,6 +115,7 @@ _BACKGROUND_TASKS: set[asyncio.Task[Any]] = set()
 
 ChatCacheLookupInput = _ChatCacheLookupInput
 _prepare_chat_cache_lookup = _prepare_chat_cache_lookup_impl
+_apply_auto_conversation_title = _apply_auto_conversation_title
 
 
 async def _offload_extractive_fallback(
@@ -454,6 +456,7 @@ def _spawn_background_task(coro: Any) -> None:
 
     task.add_done_callback(_done)
 
+
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
     403: {"description": "Forbidden"},
@@ -471,6 +474,8 @@ CONVERSATION_NOT_FOUND_DETAIL = "Conversation not found"
 DATASET_REQUIRED_WHEN_DOC_IDS_EMPTY_DETAIL = "dataset_id is required when document_ids is empty"
 DOC_IDS_MUST_MATCH_DATASET_DETAIL = "document_ids must all belong to the specified dataset_id"
 NO_ACCESSIBLE_DOCS_CHAT_RETRIEVAL_DETAIL = "No accessible documents for chat retrieval"
+
+
 @router.post("", response_model=ChatResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def chat(
     http_request: Request,
@@ -681,13 +686,10 @@ async def chat(
                 cache_key=cache_key,
                 singleflight_key=singleflight_key,
                 singleflight_leader=singleflight_leader,
-                request_enable_structured_memory=bool(
-                    getattr(request, "enable_structured_memory", False)
-                ),
+                request_enable_structured_memory=bool(getattr(request, "enable_structured_memory", False)),
                 ip=getattr(getattr(http_request, "client", None), "host", None),
                 user_agent=http_request.headers.get("user-agent"),
-                enable_online_eval=bool(effective_rag_config.use_graph)
-                or bool(cache_hit),
+                enable_online_eval=bool(effective_rag_config.use_graph) or bool(cache_hit),
                 retrieval_mode_default=effective_rag_config.retrieval_mode,
             ),
         )
@@ -764,7 +766,7 @@ async def stream_chat(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
-    db: Annotated[Session, Depends(get_db)]
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Streaming chat endpoint (core flow).
@@ -836,5 +838,5 @@ async def stream_chat(
             "X-Conversation-ID": str(conversation_id) if conversation_id else "",
             "X-Assistant-Message-ID": str(assistant_message_id),
             "Access-Control-Expose-Headers": "X-Request-ID, X-Conversation-ID, X-Assistant-Message-ID",
-        }
+        },
     )

@@ -160,7 +160,7 @@ def delete_regression_cases(
     return {"deleted_regression_cases": deleted}
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run a remote prompt workflow matrix on a live MimirQ API.")
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--tenant-id", default=DEFAULT_TENANT_ID)
@@ -170,354 +170,590 @@ def main() -> int:
     parser.add_argument("--timeout", type=int, default=1200)
     parser.add_argument("--poll-timeout", type=int, default=1800)
     parser.add_argument("--delete-dataset-after", action="store_true")
-    args = parser.parse_args()
+    return parser
 
-    run_id = time.strftime("%Y%m%d-%H%M%S")
+
+def create_artifact_dir(args: argparse.Namespace, *, run_id: str) -> Path:
     artifact_dir = Path(args.artifact_dir or f"artifacts/prompt-matrix/{run_id}").resolve()
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    api = LiveApi(args.base_url, args.tenant_id, args.account_id, args.user_id, args.timeout)
-    steps: list[dict[str, Any]] = []
-    summary: dict[str, Any] = {
+    return artifact_dir
+
+
+def create_summary(args: argparse.Namespace, *, artifact_dir: Path) -> dict[str, Any]:
+    return {
         "ok": False,
         "artifact_dir": str(artifact_dir),
         "base_url": args.base_url,
     }
 
-    dataset_id = ""
-    document_ids: list[str] = []
-    regression_case_ids: list[str] = []
-    try:
-        status, body, elapsed = api.json(
-            "POST", "/api/v1/prompt-templates/builtins/sync", payload={}, timeout=args.timeout
-        )
-        record_step(steps, "sync_builtin_prompt_templates", status, body, elapsed)
-        if not ok_status(status):
-            raise RuntimeError(f"builtin prompt sync failed: {snippet(body)}")
-        summary["prompt_templates_sync"] = body
 
-        status, body, elapsed = api.json(
-            "POST",
-            "/api/v1/datasets/",
-            payload={
-                "name": f"Prompt Matrix {run_id}",
-                "description": "Remote prompt workflow verification dataset",
-                "default_parser_backend": "basic",
-                "default_chunk_strategy": "langchain_recursive",
-            },
-            timeout=args.timeout,
-        )
-        record_step(steps, "create_dataset", status, body, elapsed)
-        if not ok_status(status):
-            raise RuntimeError(f"create_dataset failed: {snippet(body)}")
-        dataset_id = str((body or {}).get("id") or (body or {}).get("dataset_id") or "")
-        if not dataset_id:
-            raise RuntimeError(f"create_dataset missing id: {snippet(body)}")
-        summary["dataset_id"] = dataset_id
+def sync_builtin_prompt_templates(
+    api: LiveApi,
+    *,
+    steps: list[dict[str, Any]],
+    summary: dict[str, Any],
+    timeout: int,
+) -> None:
+    status, body, elapsed = api.json("POST", "/api/v1/prompt-templates/builtins/sync", payload={}, timeout=timeout)
+    record_step(steps, "sync_builtin_prompt_templates", status, body, elapsed)
+    if not ok_status(status):
+        raise RuntimeError(f"builtin prompt sync failed: {snippet(body)}")
+    summary["prompt_templates_sync"] = body
 
-        fixture_dir = artifact_dir / "fixtures"
-        for fixture in FIXTURES:
-            file_path = fixture_dir / fixture["filename"]
-            write_fixture(file_path, fixture["content"])
-            status, body, elapsed = api.multipart(
-                "POST",
-                "/api/v1/documents/upload",
-                fields={
-                    "dataset_id": dataset_id,
-                    "parser_backend": "basic",
-                    "chunk_strategy": "langchain_recursive",
-                    "governance_enabled": "true",
-                    "chunk_vector_enabled": "true",
-                    "bm25_index_enabled": "true",
-                    "kg_enabled": "false",
-                    "event_vector_enabled": "false",
-                    "entity_vector_enabled": "false",
-                },
-                file_path=file_path,
-                timeout=args.timeout,
-            )
-            record_step(steps, "upload_document", status, body, elapsed, filename=fixture["filename"])
-            if not ok_status(status):
-                raise RuntimeError(f"upload failed for {fixture['filename']}: {snippet(body)}")
-            document_id = str((body or {}).get("id") or (body or {}).get("document_id") or "")
-            if not document_id:
-                raise RuntimeError(f"upload missing document_id for {fixture['filename']}")
-            final_doc = poll_document_until_completed(
-                api, document_id=document_id, steps=steps, timeout=args.poll_timeout
-            )
-            document_ids.append(document_id)
-            if not summary.get("documents"):
-                summary["documents"] = []
-            summary["documents"].append(
-                {
-                    "document_id": document_id,
-                    "filename": fixture["filename"],
-                    "pipeline_hash": str(
-                        (final_doc.get("metadata") or {}).get("active_pipeline_hash")
-                        or (final_doc.get("metadata") or {}).get("pipeline_hash")
-                        or ""
-                    ),
-                }
-            )
 
-        alpha_document_id = document_ids[0]
-        alpha_pipeline_hash = str((summary["documents"][0] or {}).get("pipeline_hash") or "")
+def create_dataset(
+    api: LiveApi,
+    *,
+    steps: list[dict[str, Any]],
+    summary: dict[str, Any],
+    run_id: str,
+    timeout: int,
+) -> str:
+    status, body, elapsed = api.json(
+        "POST",
+        "/api/v1/datasets/",
+        payload={
+            "name": f"Prompt Matrix {run_id}",
+            "description": "Remote prompt workflow verification dataset",
+            "default_parser_backend": "basic",
+            "default_chunk_strategy": "langchain_recursive",
+        },
+        timeout=timeout,
+    )
+    record_step(steps, "create_dataset", status, body, elapsed)
+    if not ok_status(status):
+        raise RuntimeError(f"create_dataset failed: {snippet(body)}")
+    dataset_id = str((body or {}).get("id") or (body or {}).get("dataset_id") or "")
+    if not dataset_id:
+        raise RuntimeError(f"create_dataset missing id: {snippet(body)}")
+    summary["dataset_id"] = dataset_id
+    return dataset_id
 
-        status, body, elapsed = api.json(
-            "POST",
-            "/api/v1/rag/prompt-preview",
-            payload={
-                "query": "What color flag does the Alpha rollout use?",
-                "dataset_id": dataset_id,
-                "prompt_template_key": PROMPT_KEYS["answer"],
-                "rag_config": {
-                    "top_k": 4,
-                    "score_threshold": 0.0,
-                    "retrieval_mode": "hybrid",
-                    "enable_reranker": False,
-                    "enable_multi_query": False,
-                    "enable_hyde": False,
-                    "enable_query_decomposition": False,
-                },
-            },
-            timeout=args.timeout,
-        )
-        record_step(
-            steps, "prompt_preview", status, body, elapsed, citation_count=len((body or {}).get("citations") or [])
-        )
-        if not ok_status(status):
-            raise RuntimeError(f"prompt preview failed: {snippet(body)}")
-        prompt_text = str((body or {}).get("prompt_text") or "")
-        if str((body or {}).get("prompt_template_key") or "") != PROMPT_KEYS["answer"]:
-            raise RuntimeError(f"prompt preview did not select expected template: {snippet(body)}")
-        if "<context>" not in prompt_text or "Alpha rollout uses the blue flag" not in prompt_text:
-            raise RuntimeError("prompt preview text missing expected context markers/content")
-        summary["prompt_preview"] = {
-            "prompt_template_key": body.get("prompt_template_key"),
-            "citation_count": len((body or {}).get("citations") or []),
-            "prompt_chars": len(prompt_text),
-        }
 
-        status, body, elapsed = api.json(
-            "POST",
-            "/api/v1/chat",
-            payload={
-                "message": "What color flag does the Alpha rollout use?",
-                "dataset_id": dataset_id,
-                "stream": False,
-                "prompt_template_key": PROMPT_KEYS["answer"],
-                "rag_config": {
-                    "top_k": 4,
-                    "score_threshold": 0.0,
-                    "retrieval_mode": "hybrid",
-                    "enable_reranker": False,
-                    "enable_multi_query": False,
-                    "enable_hyde": False,
-                    "enable_query_decomposition": False,
-                },
-            },
-            timeout=args.timeout,
-        )
-        record_step(steps, "chat_answer_prompt", status, body, elapsed)
-        if not ok_status(status):
-            raise RuntimeError(f"chat failed: {snippet(body)}")
-        metrics = body.get("metrics") if isinstance(body, dict) and isinstance(body.get("metrics"), dict) else {}
-        if str(metrics.get("prompt_template_key") or "") != PROMPT_KEYS["answer"]:
-            raise RuntimeError(f"chat metrics missing expected prompt_template_key: {snippet(body)}")
-        if len((body.get("citations") or [])) <= 0:
-            raise RuntimeError("chat returned no citations")
-        summary["chat"] = {
-            "prompt_template_key": metrics.get("prompt_template_key"),
-            "citation_count": len(body.get("citations") or []),
-            "content_preview": str(body.get("content") or "")[:200],
-        }
-
-        status, body, elapsed = api.json(
-            "POST",
-            (
-                f"/api/v1/kg/documents/{alpha_document_id}/extract"
-                f"?replace_existing=true&extract_relations=false&extract_skills=false"
-                f"&extraction_backend=llm&prompt_template_key={PROMPT_KEYS['kg']}"
+def append_document_summary(
+    summary: dict[str, Any],
+    *,
+    document_id: str,
+    filename: str,
+    final_doc: dict[str, Any],
+) -> None:
+    summary.setdefault("documents", []).append(
+        {
+            "document_id": document_id,
+            "filename": filename,
+            "pipeline_hash": str(
+                (final_doc.get("metadata") or {}).get("active_pipeline_hash")
+                or (final_doc.get("metadata") or {}).get("pipeline_hash")
+                or ""
             ),
-            payload={},
-            timeout=args.timeout,
-        )
-        record_step(steps, "kg_extract_prompt", status, body, elapsed)
-        if not ok_status(status):
-            raise RuntimeError(f"kg extract failed: {snippet(body)}")
-
-        status, body, elapsed = api.json(
-            "GET",
-            f"/api/v1/kg/graph?document_ids={alpha_document_id}&pipeline_hash={alpha_pipeline_hash}&max_events=10&max_entities=20&max_links=20",
-            timeout=args.timeout,
-        )
-        record_step(steps, "kg_graph", status, body, elapsed)
-        if not ok_status(status):
-            raise RuntimeError(f"kg graph failed: {snippet(body)}")
-        event_id = extract_first_event_id(body)
-        if not event_id:
-            raise RuntimeError(f"kg graph returned no event nodes: {snippet(body)}")
-
-        status, body, elapsed = api.json(
-            "GET",
-            f"/api/v1/kg/events/{event_id}?document_ids={alpha_document_id}&pipeline_hash={alpha_pipeline_hash}",
-            timeout=args.timeout,
-        )
-        record_step(steps, "kg_event_detail", status, body, elapsed)
-        if not ok_status(status):
-            raise RuntimeError(f"kg event detail failed: {snippet(body)}")
-        event = body.get("event") if isinstance(body, dict) and isinstance(body.get("event"), dict) else {}
-        event_extra = event.get("extra_data") if isinstance(event.get("extra_data"), dict) else {}
-        if str(event_extra.get("kg_prompt_template_key") or "") != PROMPT_KEYS["kg"]:
-            raise RuntimeError(f"kg event extra_data missing expected prompt key: {snippet(body)}")
-        summary["kg_extract"] = {
-            "event_id": event_id,
-            "kg_prompt_template_key": event_extra.get("kg_prompt_template_key"),
         }
+    )
 
-        status, body, elapsed = api.json(
+
+def upload_fixture_documents(
+    api: LiveApi,
+    *,
+    artifact_dir: Path,
+    dataset_id: str,
+    run_state: dict[str, Any],
+    steps: list[dict[str, Any]],
+    summary: dict[str, Any],
+    timeout: int,
+    poll_timeout: int,
+) -> list[str]:
+    document_ids: list[str] = run_state["document_ids"]
+    fixture_dir = artifact_dir / "fixtures"
+    for fixture in FIXTURES:
+        file_path = fixture_dir / fixture["filename"]
+        write_fixture(file_path, fixture["content"])
+        status, body, elapsed = api.multipart(
             "POST",
-            "/api/v1/evaluations/ragas/test-gen/from-documents",
-            payload={
+            "/api/v1/documents/upload",
+            fields={
                 "dataset_id": dataset_id,
-                "document_ids": [alpha_document_id],
-                "num_questions": 2,
-                "question_types": ["factual", "reasoning"],
-                "auto_save_as_cases": True,
-                "prompt_template_key": PROMPT_KEYS["testgen"],
+                "parser_backend": "basic",
+                "chunk_strategy": "langchain_recursive",
+                "governance_enabled": "true",
+                "chunk_vector_enabled": "true",
+                "bm25_index_enabled": "true",
+                "kg_enabled": "false",
+                "event_vector_enabled": "false",
+                "entity_vector_enabled": "false",
             },
-            timeout=args.timeout,
+            file_path=file_path,
+            timeout=timeout,
         )
-        record_step(steps, "testgen_from_documents", status, body, elapsed)
+        record_step(steps, "upload_document", status, body, elapsed, filename=fixture["filename"])
         if not ok_status(status):
-            raise RuntimeError(f"test generation failed: {snippet(body)}")
-        generated_questions = (
-            body.get("generated_questions")
-            if isinstance(body, dict) and isinstance(body.get("generated_questions"), list)
-            else []
+            raise RuntimeError(f"upload failed for {fixture['filename']}: {snippet(body)}")
+        document_id = str((body or {}).get("id") or (body or {}).get("document_id") or "")
+        if not document_id:
+            raise RuntimeError(f"upload missing document_id for {fixture['filename']}")
+        document_ids.append(document_id)
+        final_doc = poll_document_until_completed(
+            api,
+            document_id=document_id,
+            steps=steps,
+            timeout=poll_timeout,
         )
-        regression_case_ids = [str(item) for item in (body.get("saved_case_ids") or []) if str(item).strip()]
-        if len(generated_questions) <= 0 or len(regression_case_ids) <= 0:
-            raise RuntimeError(f"test generation returned no questions/cases: {snippet(body)}")
-        if first_generated_question_metadata_value(body, "prompt_template_key") != PROMPT_KEYS["testgen"]:
-            raise RuntimeError(f"test generation metadata missing prompt_template_key: {snippet(body)}")
-        summary["testgen"] = {
-            "generated_questions": len(generated_questions),
-            "saved_case_ids": regression_case_ids,
-            "prompt_template_key": first_generated_question_metadata_value(body, "prompt_template_key"),
-        }
+        append_document_summary(
+            summary,
+            document_id=document_id,
+            filename=fixture["filename"],
+            final_doc=final_doc,
+        )
+    return document_ids
 
-        status, body, elapsed = api.json(
-            "POST",
-            "/api/v1/evaluations/ragas/regression/runs",
-            payload={
-                "case_ids": list(regression_case_ids),
-                "dataset_id": dataset_id,
-                "metrics": ["faithfulness_det"],
-                "use_llm_judge": True,
-                "skip_empty_contexts": True,
-                "max_cases": len(regression_case_ids),
+
+def document_pipeline_hash(summary: dict[str, Any], *, index: int) -> str:
+    documents = summary.get("documents") if isinstance(summary.get("documents"), list) else []
+    document = documents[index] if index < len(documents) and isinstance(documents[index], dict) else {}
+    return str(document.get("pipeline_hash") or "")
+
+
+def run_prompt_preview_check(
+    api: LiveApi,
+    *,
+    dataset_id: str,
+    steps: list[dict[str, Any]],
+    summary: dict[str, Any],
+    timeout: int,
+) -> None:
+    status, body, elapsed = api.json(
+        "POST",
+        "/api/v1/rag/prompt-preview",
+        payload={
+            "query": "What color flag does the Alpha rollout use?",
+            "dataset_id": dataset_id,
+            "prompt_template_key": PROMPT_KEYS["answer"],
+            "rag_config": {
                 "top_k": 4,
                 "score_threshold": 0.0,
                 "retrieval_mode": "hybrid",
                 "enable_reranker": False,
-                "prompt_template_key": PROMPT_KEYS["answer"],
-                "judge_prompt_template_key": PROMPT_KEYS["judge"],
+                "enable_multi_query": False,
+                "enable_hyde": False,
+                "enable_query_decomposition": False,
             },
-            timeout=args.timeout,
-        )
-        record_step(steps, "create_regression_run", status, body, elapsed)
-        if not ok_status(status):
-            raise RuntimeError(f"create regression run failed: {snippet(body)}")
-        run_id = str((body or {}).get("id") or "")
-        if not run_id:
-            raise RuntimeError(f"regression run response missing id: {snippet(body)}")
+        },
+        timeout=timeout,
+    )
+    record_step(steps, "prompt_preview", status, body, elapsed, citation_count=len((body or {}).get("citations") or []))
+    if not ok_status(status):
+        raise RuntimeError(f"prompt preview failed: {snippet(body)}")
+    prompt_text = str((body or {}).get("prompt_text") or "")
+    if str((body or {}).get("prompt_template_key") or "") != PROMPT_KEYS["answer"]:
+        raise RuntimeError(f"prompt preview did not select expected template: {snippet(body)}")
+    if "<context>" not in prompt_text or "Alpha rollout uses the blue flag" not in prompt_text:
+        raise RuntimeError("prompt preview text missing expected context markers/content")
+    summary["prompt_preview"] = {
+        "prompt_template_key": body.get("prompt_template_key"),
+        "citation_count": len((body or {}).get("citations") or []),
+        "prompt_chars": len(prompt_text),
+    }
 
-        run_detail = poll_regression_run(api, run_id=run_id, steps=steps, timeout=args.poll_timeout)
-        run = run_detail.get("run") if isinstance(run_detail.get("run"), dict) else {}
-        items = run_detail.get("items") if isinstance(run_detail.get("items"), list) else []
-        summary_data = run.get("summary") if isinstance(run.get("summary"), dict) else {}
-        if str(summary_data.get("llm_judge_prompt_template_key") or "") != PROMPT_KEYS["judge"]:
-            raise RuntimeError(f"regression summary missing judge prompt key: {snippet(run_detail)}")
-        first_item_meta = (
-            items[0].get("meta")
-            if items and isinstance(items[0], dict) and isinstance(items[0].get("meta"), dict)
-            else {}
-        )
-        llm_judge_meta = first_item_meta.get("llm_judge") if isinstance(first_item_meta.get("llm_judge"), dict) else {}
-        generation_meta = llm_judge_meta.get("generation") if isinstance(llm_judge_meta.get("generation"), dict) else {}
-        if str(generation_meta.get("prompt_template_key") or "") != PROMPT_KEYS["judge"]:
-            raise RuntimeError(f"regression item meta missing generation judge prompt key: {snippet(run_detail)}")
-        summary["regression_run"] = {
-            "run_id": run_id,
-            "status": run.get("status"),
-            "llm_judge_items": summary_data.get("llm_judge_items"),
-            "llm_judge_prompt_template_key": summary_data.get("llm_judge_prompt_template_key"),
-            "item_generation_prompt_template_key": generation_meta.get("prompt_template_key"),
-        }
 
-        summary["cleanup"] = delete_regression_cases(
+def run_chat_answer_check(
+    api: LiveApi,
+    *,
+    dataset_id: str,
+    steps: list[dict[str, Any]],
+    summary: dict[str, Any],
+    timeout: int,
+) -> None:
+    status, body, elapsed = api.json(
+        "POST",
+        "/api/v1/chat",
+        payload={
+            "message": "What color flag does the Alpha rollout use?",
+            "dataset_id": dataset_id,
+            "stream": False,
+            "prompt_template_key": PROMPT_KEYS["answer"],
+            "rag_config": {
+                "top_k": 4,
+                "score_threshold": 0.0,
+                "retrieval_mode": "hybrid",
+                "enable_reranker": False,
+                "enable_multi_query": False,
+                "enable_hyde": False,
+                "enable_query_decomposition": False,
+            },
+        },
+        timeout=timeout,
+    )
+    record_step(steps, "chat_answer_prompt", status, body, elapsed)
+    if not ok_status(status):
+        raise RuntimeError(f"chat failed: {snippet(body)}")
+    metrics = body.get("metrics") if isinstance(body, dict) and isinstance(body.get("metrics"), dict) else {}
+    if str(metrics.get("prompt_template_key") or "") != PROMPT_KEYS["answer"]:
+        raise RuntimeError(f"chat metrics missing expected prompt_template_key: {snippet(body)}")
+    if len((body.get("citations") or [])) <= 0:
+        raise RuntimeError("chat returned no citations")
+    summary["chat"] = {
+        "prompt_template_key": metrics.get("prompt_template_key"),
+        "citation_count": len(body.get("citations") or []),
+        "content_preview": str(body.get("content") or "")[:200],
+    }
+
+
+def run_kg_extract_check(
+    api: LiveApi,
+    *,
+    document_id: str,
+    pipeline_hash: str,
+    steps: list[dict[str, Any]],
+    summary: dict[str, Any],
+    timeout: int,
+) -> None:
+    status, body, elapsed = api.json(
+        "POST",
+        (
+            f"/api/v1/kg/documents/{document_id}/extract"
+            f"?replace_existing=true&extract_relations=false&extract_skills=false"
+            f"&extraction_backend=llm&prompt_template_key={PROMPT_KEYS['kg']}"
+        ),
+        payload={},
+        timeout=timeout,
+    )
+    record_step(steps, "kg_extract_prompt", status, body, elapsed)
+    if not ok_status(status):
+        raise RuntimeError(f"kg extract failed: {snippet(body)}")
+
+    status, body, elapsed = api.json(
+        "GET",
+        f"/api/v1/kg/graph?document_ids={document_id}&pipeline_hash={pipeline_hash}&max_events=10&max_entities=20&max_links=20",
+        timeout=timeout,
+    )
+    record_step(steps, "kg_graph", status, body, elapsed)
+    if not ok_status(status):
+        raise RuntimeError(f"kg graph failed: {snippet(body)}")
+    event_id = extract_first_event_id(body)
+    if not event_id:
+        raise RuntimeError(f"kg graph returned no event nodes: {snippet(body)}")
+
+    status, body, elapsed = api.json(
+        "GET",
+        f"/api/v1/kg/events/{event_id}?document_ids={document_id}&pipeline_hash={pipeline_hash}",
+        timeout=timeout,
+    )
+    record_step(steps, "kg_event_detail", status, body, elapsed)
+    if not ok_status(status):
+        raise RuntimeError(f"kg event detail failed: {snippet(body)}")
+    event = body.get("event") if isinstance(body, dict) and isinstance(body.get("event"), dict) else {}
+    event_extra = event.get("extra_data") if isinstance(event.get("extra_data"), dict) else {}
+    if str(event_extra.get("kg_prompt_template_key") or "") != PROMPT_KEYS["kg"]:
+        raise RuntimeError(f"kg event extra_data missing expected prompt key: {snippet(body)}")
+    summary["kg_extract"] = {
+        "event_id": event_id,
+        "kg_prompt_template_key": event_extra.get("kg_prompt_template_key"),
+    }
+
+
+def run_test_generation_check(
+    api: LiveApi,
+    *,
+    dataset_id: str,
+    document_id: str,
+    run_state: dict[str, Any],
+    steps: list[dict[str, Any]],
+    summary: dict[str, Any],
+    timeout: int,
+) -> list[str]:
+    status, body, elapsed = api.json(
+        "POST",
+        "/api/v1/evaluations/ragas/test-gen/from-documents",
+        payload={
+            "dataset_id": dataset_id,
+            "document_ids": [document_id],
+            "num_questions": 2,
+            "question_types": ["factual", "reasoning"],
+            "auto_save_as_cases": True,
+            "prompt_template_key": PROMPT_KEYS["testgen"],
+        },
+        timeout=timeout,
+    )
+    record_step(steps, "testgen_from_documents", status, body, elapsed)
+    if not ok_status(status):
+        raise RuntimeError(f"test generation failed: {snippet(body)}")
+    generated_questions = (
+        body.get("generated_questions")
+        if isinstance(body, dict) and isinstance(body.get("generated_questions"), list)
+        else []
+    )
+    regression_case_ids = [str(item) for item in (body.get("saved_case_ids") or []) if str(item).strip()]
+    run_state["regression_case_ids"] = regression_case_ids
+    if len(generated_questions) <= 0 or len(regression_case_ids) <= 0:
+        raise RuntimeError(f"test generation returned no questions/cases: {snippet(body)}")
+    if first_generated_question_metadata_value(body, "prompt_template_key") != PROMPT_KEYS["testgen"]:
+        raise RuntimeError(f"test generation metadata missing prompt_template_key: {snippet(body)}")
+    summary["testgen"] = {
+        "generated_questions": len(generated_questions),
+        "saved_case_ids": regression_case_ids,
+        "prompt_template_key": first_generated_question_metadata_value(body, "prompt_template_key"),
+    }
+    return regression_case_ids
+
+
+def run_regression_prompt_check(
+    api: LiveApi,
+    *,
+    dataset_id: str,
+    regression_case_ids: list[str],
+    steps: list[dict[str, Any]],
+    summary: dict[str, Any],
+    timeout: int,
+    poll_timeout: int,
+) -> None:
+    status, body, elapsed = api.json(
+        "POST",
+        "/api/v1/evaluations/ragas/regression/runs",
+        payload={
+            "case_ids": list(regression_case_ids),
+            "dataset_id": dataset_id,
+            "metrics": ["faithfulness_det"],
+            "use_llm_judge": True,
+            "skip_empty_contexts": True,
+            "max_cases": len(regression_case_ids),
+            "top_k": 4,
+            "score_threshold": 0.0,
+            "retrieval_mode": "hybrid",
+            "enable_reranker": False,
+            "prompt_template_key": PROMPT_KEYS["answer"],
+            "judge_prompt_template_key": PROMPT_KEYS["judge"],
+        },
+        timeout=timeout,
+    )
+    record_step(steps, "create_regression_run", status, body, elapsed)
+    if not ok_status(status):
+        raise RuntimeError(f"create regression run failed: {snippet(body)}")
+    run_id = str((body or {}).get("id") or "")
+    if not run_id:
+        raise RuntimeError(f"regression run response missing id: {snippet(body)}")
+
+    run_detail = poll_regression_run(api, run_id=run_id, steps=steps, timeout=poll_timeout)
+    run = run_detail.get("run") if isinstance(run_detail.get("run"), dict) else {}
+    items = run_detail.get("items") if isinstance(run_detail.get("items"), list) else []
+    summary_data = run.get("summary") if isinstance(run.get("summary"), dict) else {}
+    if str(summary_data.get("llm_judge_prompt_template_key") or "") != PROMPT_KEYS["judge"]:
+        raise RuntimeError(f"regression summary missing judge prompt key: {snippet(run_detail)}")
+    first_item_meta = (
+        items[0].get("meta") if items and isinstance(items[0], dict) and isinstance(items[0].get("meta"), dict) else {}
+    )
+    llm_judge_meta = first_item_meta.get("llm_judge") if isinstance(first_item_meta.get("llm_judge"), dict) else {}
+    generation_meta = llm_judge_meta.get("generation") if isinstance(llm_judge_meta.get("generation"), dict) else {}
+    if str(generation_meta.get("prompt_template_key") or "") != PROMPT_KEYS["judge"]:
+        raise RuntimeError(f"regression item meta missing generation judge prompt key: {snippet(run_detail)}")
+    summary["regression_run"] = {
+        "run_id": run_id,
+        "status": run.get("status"),
+        "llm_judge_items": summary_data.get("llm_judge_items"),
+        "llm_judge_prompt_template_key": summary_data.get("llm_judge_prompt_template_key"),
+        "item_generation_prompt_template_key": generation_meta.get("prompt_template_key"),
+    }
+
+
+def run_success_cleanup(
+    api: LiveApi,
+    *,
+    dataset_id: str,
+    document_ids: list[str],
+    regression_case_ids: list[str],
+    steps: list[dict[str, Any]],
+    summary: dict[str, Any],
+    timeout: int,
+    delete_dataset_after: bool,
+) -> None:
+    summary["cleanup"] = delete_regression_cases(
+        api,
+        case_ids=regression_case_ids,
+        steps=steps,
+        timeout=timeout,
+    )
+    cleanup_summary = perform_cleanup(
+        api=api,
+        steps=steps,
+        dataset_id=dataset_id,
+        document_id=document_ids[0],
+        cleanup_mode="purge_dataset",
+        delete_dataset_after=delete_dataset_after,
+        timeout=timeout,
+    )
+    summary["cleanup"].update(cleanup_summary)
+
+
+def finalize_cleanup(
+    api: LiveApi,
+    *,
+    dataset_id: str,
+    document_ids: list[str],
+    regression_case_ids: list[str],
+    steps: list[dict[str, Any]],
+    summary: dict[str, Any],
+    timeout: int,
+    delete_dataset_after: bool,
+) -> None:
+    if not dataset_id or not document_ids or summary.get("cleanup"):
+        return
+    cleanup: dict[str, Any] = {}
+    try:
+        if regression_case_ids:
+            cleanup.update(
+                delete_regression_cases(
+                    api,
+                    case_ids=regression_case_ids,
+                    steps=steps,
+                    timeout=timeout,
+                )
+            )
+        cleanup.update(
+            perform_cleanup(
+                api=api,
+                steps=steps,
+                dataset_id=dataset_id,
+                document_id=document_ids[0],
+                cleanup_mode="purge_dataset",
+                delete_dataset_after=delete_dataset_after,
+                timeout=timeout,
+            )
+        )
+    except Exception as cleanup_exc:  # noqa: BLE001
+        cleanup["error"] = str(cleanup_exc)
+    if cleanup:
+        summary["cleanup"] = cleanup
+
+
+def write_report(artifact_dir: Path, summary: dict[str, Any], steps: list[dict[str, Any]]) -> None:
+    summary["steps"] = steps
+    report_path = artifact_dir / "report.json"
+    report_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def print_result(summary: dict[str, Any], *, artifact_dir: Path) -> None:
+    print(
+        json.dumps(
+            {
+                "ok": summary.get("ok"),
+                "artifact_dir": str(artifact_dir),
+                "dataset_id": summary.get("dataset_id"),
+                "error": summary.get("error"),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+
+
+def execute_workflow(
+    api: LiveApi,
+    *,
+    args: argparse.Namespace,
+    artifact_dir: Path,
+    run_id: str,
+    steps: list[dict[str, Any]],
+    summary: dict[str, Any],
+    run_state: dict[str, Any],
+) -> tuple[str, list[str], list[str]]:
+    sync_builtin_prompt_templates(api, steps=steps, summary=summary, timeout=args.timeout)
+    dataset_id = create_dataset(api, steps=steps, summary=summary, run_id=run_id, timeout=args.timeout)
+    run_state["dataset_id"] = dataset_id
+    document_ids = upload_fixture_documents(
+        api,
+        artifact_dir=artifact_dir,
+        dataset_id=dataset_id,
+        run_state=run_state,
+        steps=steps,
+        summary=summary,
+        timeout=args.timeout,
+        poll_timeout=args.poll_timeout,
+    )
+    run_state["document_ids"] = document_ids
+    alpha_document_id = document_ids[0]
+    alpha_pipeline_hash = document_pipeline_hash(summary, index=0)
+    run_prompt_preview_check(api, dataset_id=dataset_id, steps=steps, summary=summary, timeout=args.timeout)
+    run_chat_answer_check(api, dataset_id=dataset_id, steps=steps, summary=summary, timeout=args.timeout)
+    run_kg_extract_check(
+        api,
+        document_id=alpha_document_id,
+        pipeline_hash=alpha_pipeline_hash,
+        steps=steps,
+        summary=summary,
+        timeout=args.timeout,
+    )
+    regression_case_ids = run_test_generation_check(
+        api,
+        dataset_id=dataset_id,
+        document_id=alpha_document_id,
+        run_state=run_state,
+        steps=steps,
+        summary=summary,
+        timeout=args.timeout,
+    )
+    run_state["regression_case_ids"] = regression_case_ids
+    run_regression_prompt_check(
+        api,
+        dataset_id=dataset_id,
+        regression_case_ids=regression_case_ids,
+        steps=steps,
+        summary=summary,
+        timeout=args.timeout,
+        poll_timeout=args.poll_timeout,
+    )
+    run_success_cleanup(
+        api,
+        dataset_id=dataset_id,
+        document_ids=document_ids,
+        regression_case_ids=regression_case_ids,
+        steps=steps,
+        summary=summary,
+        timeout=args.timeout,
+        delete_dataset_after=bool(args.delete_dataset_after),
+    )
+    return dataset_id, document_ids, regression_case_ids
+
+
+def main() -> int:
+    args = build_parser().parse_args()
+
+    run_id = time.strftime("%Y%m%d-%H%M%S")
+    artifact_dir = create_artifact_dir(args, run_id=run_id)
+    api = LiveApi(args.base_url, args.tenant_id, args.account_id, args.user_id, args.timeout)
+    steps: list[dict[str, Any]] = []
+    summary = create_summary(args, artifact_dir=artifact_dir)
+    run_state: dict[str, Any] = {"dataset_id": "", "document_ids": [], "regression_case_ids": []}
+
+    dataset_id = ""
+    document_ids: list[str] = []
+    regression_case_ids: list[str] = []
+    try:
+        dataset_id, document_ids, regression_case_ids = execute_workflow(
             api,
-            case_ids=regression_case_ids,
+            args=args,
+            artifact_dir=artifact_dir,
+            run_id=run_id,
             steps=steps,
-            timeout=args.timeout,
+            summary=summary,
+            run_state=run_state,
         )
-        cleanup_summary = perform_cleanup(
-            api=api,
-            steps=steps,
-            dataset_id=dataset_id,
-            document_id=alpha_document_id,
-            cleanup_mode="purge_dataset",
-            delete_dataset_after=bool(args.delete_dataset_after),
-            timeout=args.timeout,
-        )
-        summary["cleanup"].update(cleanup_summary)
         summary["ok"] = True
     except Exception as exc:  # noqa: BLE001
         summary["ok"] = False
         summary["error"] = str(exc)
     finally:
-        if dataset_id and document_ids and not summary.get("cleanup"):
-            cleanup: dict[str, Any] = {}
-            try:
-                if regression_case_ids:
-                    cleanup.update(
-                        delete_regression_cases(
-                            api,
-                            case_ids=regression_case_ids,
-                            steps=steps,
-                            timeout=args.timeout,
-                        )
-                    )
-                cleanup.update(
-                    perform_cleanup(
-                        api=api,
-                        steps=steps,
-                        dataset_id=dataset_id,
-                        document_id=document_ids[0],
-                        cleanup_mode="purge_dataset",
-                        delete_dataset_after=bool(args.delete_dataset_after),
-                        timeout=args.timeout,
-                    )
-                )
-            except Exception as cleanup_exc:  # noqa: BLE001
-                cleanup["error"] = str(cleanup_exc)
-            if cleanup:
-                summary["cleanup"] = cleanup
-        summary["steps"] = steps
-        report_path = artifact_dir / "report.json"
-        report_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
-        print(
-            json.dumps(
-                {
-                    "ok": summary.get("ok"),
-                    "artifact_dir": str(artifact_dir),
-                    "dataset_id": summary.get("dataset_id"),
-                    "error": summary.get("error"),
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
+        dataset_id = str(run_state.get("dataset_id") or dataset_id)
+        document_ids = list(run_state.get("document_ids") or document_ids)
+        regression_case_ids = list(run_state.get("regression_case_ids") or regression_case_ids)
+        finalize_cleanup(
+            api,
+            dataset_id=dataset_id,
+            document_ids=document_ids,
+            regression_case_ids=regression_case_ids,
+            steps=steps,
+            summary=summary,
+            timeout=args.timeout,
+            delete_dataset_after=bool(args.delete_dataset_after),
         )
+        write_report(artifact_dir, summary, steps)
+        print_result(summary, artifact_dir=artifact_dir)
     return 0 if summary.get("ok") else 1
 
 

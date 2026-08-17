@@ -159,6 +159,8 @@ _patch_asyncio_threadsafe_wakeup_for_sandbox()
 # Initialize application-level dependency compatibility hooks before services.
 import app  # noqa: F401,E402
 
+APP_COMPAT_PACKAGE = app
+
 
 def _integration_enabled() -> bool:
     return str(os.getenv("MIMIRQ_INTEGRATION_TESTS", "") or "").strip().lower() in {"1", "true", "yes", "y", "on"}
@@ -181,6 +183,7 @@ def pg_session():
     import app.models._all  # noqa: F401
     from app.core.database import SessionLocal, engine  # noqa: WPS433
 
+    _ = app.models._all.REGISTERED_MODEL_MODULES
     db = SessionLocal()
     try:
         yield db

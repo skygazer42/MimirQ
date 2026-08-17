@@ -2,7 +2,6 @@
 Process-document flow helpers extracted from the main processor module.
 """
 
-from __future__ import annotations
 
 import asyncio
 import contextlib

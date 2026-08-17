@@ -1,4 +1,3 @@
-
 import io
 import os
 import signal
@@ -24,42 +23,86 @@ def _make_zip(root: Path) -> bytes:
     return buffer.getvalue()
 
 
+def _wait_for_process_exit(proc: subprocess.Popen[str], *, grace_sec: float) -> bool:
+    try:
+        proc.wait(timeout=grace_sec)
+        return True
+    except subprocess.TimeoutExpired:
+        return False
+    except OSError:
+        return True
+
+
+def _signal_process_group(
+    proc: subprocess.Popen[str],
+    *,
+    sig: signal.Signals,
+    fallback_name: str,
+) -> bool:
+    try:
+        os.killpg(os.getpgid(proc.pid), sig)
+        return True
+    except ProcessLookupError:
+        return False
+    except OSError:
+        fallback = getattr(proc, fallback_name, None)
+        if not callable(fallback):
+            return False
+        try:
+            fallback()
+            return True
+        except OSError:
+            return False
+
+
 def _terminate_process_group(proc: subprocess.Popen[str], *, grace_sec: float = 3.0) -> None:
     if proc.poll() is not None:
         return
 
-    try:
-        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-    except ProcessLookupError:
-        return
-    except OSError:
-        try:
-            proc.terminate()
-        except OSError:
-            return
-
-    try:
-        proc.wait(timeout=grace_sec)
-        return
-    except subprocess.TimeoutExpired:
-        pass
-    except OSError:
+    if not _signal_process_group(proc, sig=signal.SIGTERM, fallback_name="terminate"):
         return
 
-    try:
-        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-    except ProcessLookupError:
+    if _wait_for_process_exit(proc, grace_sec=grace_sec):
         return
-    except OSError:
-        try:
-            proc.kill()
-        except OSError:
-            return
 
-    try:
-        proc.wait(timeout=grace_sec)
-    except (OSError, subprocess.TimeoutExpired):
+    if not _signal_process_group(proc, sig=signal.SIGKILL, fallback_name="kill"):
         return
+
+    _wait_for_process_exit(proc, grace_sec=grace_sec)
+
+
+def _build_doc_parser_command(
+    *,
+    pdf_path: Path,
+    out_dir: Path,
+    pipeline_version: str,
+    device: str,
+) -> list[str]:
+    return [
+        "paddleocr",
+        "doc_parser",
+        "-i",
+        str(pdf_path),
+        "--save_path",
+        str(out_dir),
+        "--pipeline_version",
+        str(pipeline_version or "v1.5"),
+        "--device",
+        str(device or "cpu"),
+    ]
+
+
+def _build_doc_parser_env() -> dict[str, str]:
+    env = os.environ.copy()
+    # Keep logs readable and avoid broken unicode in some terminals.
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    return env
+
+
+def _decode_subprocess_output(output: str | bytes | None) -> str:
+    if isinstance(output, bytes):
+        return output.decode("utf-8", errors="ignore")
+    return str(output or "")
 
 
 def _run_doc_parser(
@@ -75,22 +118,13 @@ def _run_doc_parser(
 
     Docs: https://www.paddleocr.ai/latest/en/version3.x/pipeline_usage/OCR.html#paddleocr-vl-document-level-parsing-pipeline
     """
-    cmd = [
-        "paddleocr",
-        "doc_parser",
-        "-i",
-        str(pdf_path),
-        "--save_path",
-        str(out_dir),
-        "--pipeline_version",
-        str(pipeline_version or "v1.5"),
-        "--device",
-        str(device or "cpu"),
-    ]
-
-    env = os.environ.copy()
-    # Keep logs readable and avoid broken unicode in some terminals.
-    env.setdefault("PYTHONIOENCODING", "utf-8")
+    cmd = _build_doc_parser_command(
+        pdf_path=pdf_path,
+        out_dir=out_dir,
+        pipeline_version=pipeline_version,
+        device=device,
+    )
+    env = _build_doc_parser_env()
 
     proc = subprocess.Popen(  # noqa: S603
         cmd,
@@ -105,16 +139,14 @@ def _run_doc_parser(
         stdout, _ = proc.communicate(timeout=max(30, int(timeout_sec or 0)))
     except subprocess.TimeoutExpired as exc:
         _terminate_process_group(proc)
-        out = (exc.stdout or "")
-        if isinstance(out, bytes):
-            out = out.decode("utf-8", errors="ignore")
-        raise TimeoutError(f"doc_parser timed out after {timeout_sec}s: {str(out)[-2000:]}") from exc
+        out = _decode_subprocess_output(exc.stdout)
+        raise TimeoutError(f"doc_parser timed out after {timeout_sec}s: {out[-2000:]}") from exc
     except Exception:
         _terminate_process_group(proc)
         raise
 
     if proc.returncode != 0:
-        out = (stdout or "").strip()
+        out = _decode_subprocess_output(stdout).strip()
         raise RuntimeError(f"doc_parser failed (exit={proc.returncode}): {out[-2000:]}")
 
 

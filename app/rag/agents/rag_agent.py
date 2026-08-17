@@ -1,7 +1,8 @@
 import re
 import threading
 import time
-from dataclasses import dataclass, replace
+from collections.abc import AsyncIterator
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
@@ -127,6 +128,39 @@ class AgenticStreamRequest:
     request_id: str | None = None
     db: Any | None = None
     state_overrides: dict[str, Any] | None = None
+
+
+@dataclass
+class _AgenticRetrievalState:
+    collected_docs: list[Document] = field(default_factory=list)
+    prior_findings: list[str] = field(default_factory=list)
+    retrieval_elapsed_total: float = 0.0
+    rounds_executed: int = 0
+    tool_context_blocks: list[str] = field(default_factory=list)
+    tool_metrics: list[dict[str, Any]] = field(default_factory=list)
+    final_result: dict[str, Any] = field(
+        default_factory=lambda: {
+            "docs": [],
+            "citations": [],
+            "metrics": {},
+            "abstain_triggered": True,
+            "abstain_reason": "no_rounds",
+        }
+    )
+    crag_used: bool = False
+    crag_provider: str | None = None
+    crag_web_results: int = 0
+
+
+@dataclass
+class _AgenticGenerationState:
+    full_response: str = ""
+    generation_elapsed: float = 0.0
+    answer_tokens: int = 0
+    answer_chars: int = 0
+    structured_data: dict[str, Any] | None = None
+    self_rag_reflection: dict[str, Any] | None = None
+    critic_review: dict[str, Any] | None = None
 
 
 _AGENTIC_STREAM_REQUEST_KEYS = {
@@ -399,6 +433,427 @@ class AgenticRAGRunner:
             return ""
         return f"[Tool: {tool_name}]\n{text}"
 
+    @staticmethod
+    def _build_base_state(
+        stream_request: AgenticStreamRequest,
+        *,
+        history: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        base_state_kwargs = {
+            key: value for key, value in (stream_request.state_overrides or {}).items() if key in _RAG_STATE_BUILD_KEYS
+        }
+        base_state_kwargs.update(
+            {
+                "question": stream_request.question,
+                "history": history,
+                "document_ids": stream_request.document_ids,
+                "dataset_ids": stream_request.dataset_ids,
+                "tenant_id": stream_request.tenant_id,
+                "account_id": stream_request.account_id,
+                "dataset_id": stream_request.dataset_id,
+                "top_k": stream_request.top_k,
+                "score_threshold": stream_request.score_threshold,
+                "retrieval_mode": stream_request.retrieval_mode,
+                "retrieval_profile": stream_request.retrieval_profile,
+                "structured_output": stream_request.structured_output,
+                "structured_preset": stream_request.structured_preset,
+                "prompt_template_id": stream_request.prompt_template_id,
+                "prompt_template_key": stream_request.prompt_template_key,
+                "prompt_ab_experiment_key": stream_request.prompt_ab_experiment_key,
+                "ab_user_key": stream_request.ab_user_key,
+                "db": stream_request.db,
+            }
+        )
+        return build_rag_state(**base_state_kwargs)
+
+    @staticmethod
+    def _build_route_event(
+        *,
+        llm: Any,
+        complexity_score: float,
+        threshold: float,
+        routing_reason: str,
+        model_route: str,
+        base_state: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            "type": "route",
+            "data": {
+                "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
+                "route": "agentic",
+                "reason": f"complexity {complexity_score:.1f} >= threshold {threshold}; {routing_reason}",
+                "model_route": model_route,
+                "prompt_template_id": base_state.get("prompt_template_id"),
+                "prompt_template_key": base_state.get("prompt_template_key"),
+                "prompt_ab_experiment_key": base_state.get("prompt_ab_experiment_key"),
+                "prompt_ab_variant": base_state.get("prompt_ab_variant"),
+            },
+        }
+
+    async def _stream_tool_phase(
+        self,
+        *,
+        question: str,
+        document_ids: list[UUID] | None,
+        dataset_id: UUID | None,
+        account_id: str | None,
+        state: _AgenticRetrievalState,
+    ) -> AsyncIterator[dict[str, Any]]:
+        tool_invocations = self._plan_tool_invocations(
+            question=question,
+            document_ids=document_ids,
+            dataset_id=dataset_id,
+            account_id=account_id,
+        )
+        if not tool_invocations:
+            return
+        try:
+            registry = get_agentic_tool_registry()
+            for invocation in tool_invocations:
+                yield {
+                    "type": "agentic_step",
+                    "data": {
+                        "step": "tool_call",
+                        "tool": invocation.name,
+                        "rationale": invocation.rationale,
+                    },
+                }
+                result = await registry.call_tool(invocation.name, invocation.arguments)
+                success = bool(getattr(result, "success", False))
+                data = getattr(result, "data", None)
+                error = getattr(result, "error", None)
+                metadata = dict(getattr(result, "metadata", None) or {})
+                state.tool_metrics.append(
+                    {
+                        "name": invocation.name,
+                        "success": success,
+                        "backend": metadata.get("backend"),
+                        "error": str(error)[:200] if error else None,
+                    }
+                )
+                if success:
+                    context_block = self._format_tool_context(invocation.name, data)
+                    if context_block:
+                        state.tool_context_blocks.append(context_block)
+                yield {
+                    "type": "agentic_step",
+                    "data": {
+                        "step": "tool_result",
+                        "tool": invocation.name,
+                        "success": success,
+                        "error": str(error)[:200] if error else None,
+                    },
+                }
+        except Exception:
+            state.tool_metrics.append(
+                {"name": "registry_init", "success": False, "backend": None, "error": "tool_registry_failed"}
+            )
+
+    async def _stream_retrieval_phase(
+        self,
+        *,
+        question: str,
+        plan_steps: list[AgenticPlanStep],
+        max_rounds: int,
+        base_state: dict[str, Any],
+        request_db: Any,
+        state: _AgenticRetrievalState,
+    ) -> AsyncIterator[dict[str, Any]]:
+        for round_idx, step in enumerate(plan_steps[:max_rounds], 1):
+            retrieval_query = build_chained_query(step.query, state.prior_findings) or step.query
+            yield {
+                "type": "agentic_step",
+                "data": {
+                    "step": "retrieving",
+                    "round": int(round_idx),
+                    "query": retrieval_query,
+                    "rationale": step.rationale,
+                },
+            }
+            round_state = dict(base_state)
+            round_state["question"] = retrieval_query
+            round_started = time.time()
+            result = await run_blocking_retrieval_call_with_managed_session(
+                lambda worker_db: run_retrieval({**round_state, "db": worker_db}),
+                request_db=request_db,
+            )
+            state.retrieval_elapsed_total += time.time() - round_started
+            state.rounds_executed = round_idx
+            state.final_result = result
+            state.collected_docs = self._merge_docs(state.collected_docs, list(result.get("docs") or []))
+            step_summary = summarize_chain_step(list(result.get("citations") or []))
+            if step_summary:
+                state.prior_findings.append(step_summary)
+            if self._is_sufficient(result):
+                break
+            crag_phase = await self._maybe_run_crag(
+                question=question,
+                retrieval_query=retrieval_query,
+                retrieval_result=result,
+                state=state,
+            )
+            if crag_phase:
+                crag_event, context_block = crag_phase
+                yield crag_event
+                state.tool_context_blocks.append(context_block)
+                break
+
+    async def _maybe_run_crag(
+        self,
+        *,
+        question: str,
+        retrieval_query: str,
+        retrieval_result: dict[str, Any],
+        state: _AgenticRetrievalState,
+    ) -> tuple[dict[str, Any], str] | None:
+        if not bool(getattr(settings, "RAG_CRAG_STREAMING_ENABLED", False)):
+            return None
+        crag_result = await run_crag_streaming(
+            question=question,
+            query_for_retrieval=retrieval_query,
+            retrieval_result=retrieval_result,
+        )
+        context_block = str(crag_result.get("context_block") or "")
+        if not bool(crag_result.get("used")) or not context_block.strip():
+            return None
+        state.crag_used = True
+        state.crag_provider = str(crag_result.get("provider") or "").strip() or None
+        state.crag_web_results = int(crag_result.get("web_result_count") or 0)
+        return (
+            {
+                "type": "agentic_step",
+                "data": {
+                    "step": "web_search",
+                    "provider": state.crag_provider,
+                    "result_count": state.crag_web_results,
+                },
+            },
+            context_block,
+        )
+
+    @staticmethod
+    def _build_citations(
+        *,
+        question: str,
+        retrieval_mode: str,
+        retrieval_state: _AgenticRetrievalState,
+    ) -> list[Any]:
+        citations = build_citations_from_docs(
+            retrieval_state.collected_docs,
+            retrieval_elapsed_sec=float(retrieval_state.retrieval_elapsed_total or 0.0),
+            retrieval_mode=str(
+                (retrieval_state.final_result.get("metrics") or {}).get("retrieval_mode") or retrieval_mode
+            ),
+            query=question,
+        )
+        if citations:
+            return citations
+        return list(retrieval_state.final_result.get("citations") or [])
+
+    async def _stream_generation_phase(
+        self,
+        *,
+        base_state: dict[str, Any],
+        history: list[dict[str, Any]],
+        question: str,
+        llm: Any,
+        citations: list[Any],
+        retrieval_state: _AgenticRetrievalState,
+        structured_output: bool,
+        state: _AgenticGenerationState,
+    ) -> AsyncIterator[dict[str, Any]]:
+        if not retrieval_state.collected_docs and not retrieval_state.tool_context_blocks:
+            self._apply_abstain_generation(state)
+            yield {"type": "token", "data": {"content": state.full_response}}
+            state.answer_tokens = num_tokens_from_string(state.full_response)
+            state.answer_chars = len(state.full_response)
+            return
+
+        yield {"type": "agentic_step", "data": {"step": "answering"}}
+        prompt_template_content = base_state.get("prompt_template_content")
+        prompt_template = (
+            ChatPromptTemplate.from_template(str(prompt_template_content))
+            if prompt_template_content
+            else self._engine.prompt_template
+        )
+        history_text = _build_history_text(history)
+        context = self._build_generation_context(
+            docs=retrieval_state.collected_docs,
+            question=question,
+            tool_context_blocks=retrieval_state.tool_context_blocks,
+        )
+        generation_inputs = {
+            "context": context,
+            "history": history_text,
+            "question": question,
+            "format_instructions": str(base_state.get("format_instructions") or ""),
+        }
+        gen_start = time.time()
+        chain = prompt_template | llm | StrOutputParser()
+        async for token in chain.astream(generation_inputs):
+            if not token:
+                continue
+            token_text = token if isinstance(token, str) else str(token)
+            state.full_response += token_text
+            yield {"type": "token", "data": {"content": token_text}}
+        state.generation_elapsed = time.time() - gen_start
+        state.answer_tokens = num_tokens_from_string(state.full_response)
+        state.answer_chars = len(state.full_response)
+        state.structured_data = self._parse_structured_data(
+            full_response=state.full_response,
+            structured_output=structured_output,
+        )
+        async for event in self._stream_review_phase(
+            question=question,
+            citations=citations,
+            collected_docs=retrieval_state.collected_docs,
+            generation_state=state,
+        ):
+            yield event
+
+    @staticmethod
+    def _apply_abstain_generation(state: _AgenticGenerationState) -> None:
+        state.full_response = _UNABLE_TO_ANSWER_MESSAGE
+        state.generation_elapsed = 0.0
+
+    @staticmethod
+    def _build_generation_context(
+        *,
+        docs: list[Document],
+        question: str,
+        tool_context_blocks: list[str],
+    ) -> str:
+        context = _build_context(docs, query=question)
+        if not tool_context_blocks:
+            return context
+        tool_context = "\n\n".join(tool_context_blocks)
+        if context and context != "No relevant reference materials found.":
+            return f"{tool_context}\n\n[Retrieved Materials]\n{context}"
+        return tool_context
+
+    @staticmethod
+    def _parse_structured_data(*, full_response: str, structured_output: bool) -> dict[str, Any] | None:
+        if not structured_output:
+            return None
+        structured_data, _meta = parse_json_from_text(full_response, expected="object")
+        return structured_data
+
+    async def _stream_review_phase(
+        self,
+        *,
+        question: str,
+        citations: list[Any],
+        collected_docs: list[Document],
+        generation_state: _AgenticGenerationState,
+    ) -> AsyncIterator[dict[str, Any]]:
+        if not (
+            bool(getattr(settings, "RAG_SELF_RAG_ENABLED", False))
+            or bool(getattr(settings, "RAG_CRITIC_ENABLED", False))
+        ):
+            return
+        evidence_text = "\n".join(
+            [
+                str(getattr(doc, "page_content", "") or "").strip()
+                for doc in (collected_docs or [])
+                if str(getattr(doc, "page_content", "") or "").strip()
+            ]
+        )
+        generation_state.self_rag_reflection = run_self_rag_reflection(
+            question=question,
+            answer=generation_state.full_response,
+            evidence_text=evidence_text,
+            citations=citations,
+        )
+        yield {
+            "type": "agentic_step",
+            "data": {
+                "step": "self_reflect",
+                "verdict": generation_state.self_rag_reflection.get("verdict"),
+                "need_retrieval": generation_state.self_rag_reflection.get("need_retrieval"),
+            },
+        }
+        if not bool(getattr(settings, "RAG_CRITIC_ENABLED", False)):
+            return
+        generation_state.critic_review = run_critic_review(
+            question=question,
+            answer=generation_state.full_response,
+            evidence_text=evidence_text,
+            citations=citations,
+        )
+        yield {
+            "type": "agentic_step",
+            "data": {
+                "step": "critic_review",
+                "verdict": generation_state.critic_review.get("verdict"),
+                "citation_missing": generation_state.critic_review.get("citation_missing"),
+            },
+        }
+
+    @staticmethod
+    def _build_metrics(
+        *,
+        t_start: float,
+        retrieval_mode: str,
+        complexity_score: float,
+        threshold: float,
+        model_route: str,
+        plan_steps: list[AgenticPlanStep],
+        max_rounds: int,
+        retrieval_state: _AgenticRetrievalState,
+        generation_state: _AgenticGenerationState,
+    ) -> dict[str, Any]:
+        critic_review = generation_state.critic_review or {}
+        self_rag_reflection = generation_state.self_rag_reflection or {}
+        return {
+            "elapsed_sec": round(time.time() - t_start, 3),
+            "retrieval_elapsed_sec": round(float(retrieval_state.retrieval_elapsed_total or 0.0), 3),
+            "generation_elapsed_sec": round(float(generation_state.generation_elapsed or 0.0), 3),
+            "retrieval_mode": str(
+                (retrieval_state.final_result.get("metrics") or {}).get("retrieval_mode") or retrieval_mode
+            ),
+            "complexity_score": round(float(complexity_score), 3),
+            "agentic_used": True,
+            "agentic_rounds": int(retrieval_state.rounds_executed),
+            "agentic_planned_steps": int(len(plan_steps)),
+            "agentic_queries": [step.query for step in plan_steps[:max_rounds]],
+            "agentic_route_reason": f"complexity {complexity_score:.1f} >= threshold {threshold}",
+            "model_route": model_route,
+            "abstain_triggered": bool(retrieval_state.final_result.get("abstain_triggered")),
+            "abstain_reason": retrieval_state.final_result.get("abstain_reason"),
+            "docs_returned": int(len(retrieval_state.collected_docs)),
+            "agentic_tools_used": int(sum(1 for item in retrieval_state.tool_metrics if item.get("success"))),
+            "agentic_tool_calls": retrieval_state.tool_metrics,
+            "agentic_crag_used": bool(retrieval_state.crag_used),
+            "agentic_crag_provider": retrieval_state.crag_provider,
+            "agentic_crag_web_results": int(retrieval_state.crag_web_results),
+            "agentic_self_rag_used": bool(generation_state.self_rag_reflection is not None),
+            "agentic_self_rag_verdict": self_rag_reflection.get("verdict")
+            if generation_state.self_rag_reflection
+            else None,
+            "agentic_self_rag_need_retrieval": (
+                bool(self_rag_reflection.get("need_retrieval"))
+                if generation_state.self_rag_reflection is not None
+                else None
+            ),
+            "agentic_critic_used": bool(generation_state.critic_review is not None),
+            "agentic_critic_verdict": critic_review.get("verdict") if generation_state.critic_review else None,
+            "agentic_critic_citation_missing": (
+                bool(critic_review.get("citation_missing")) if generation_state.critic_review is not None else None
+            ),
+            "agentic_critic_supported_claims": (
+                int(critic_review.get("supported_claims") or 0) if generation_state.critic_review is not None else None
+            ),
+            "agentic_critic_total_claims": (
+                int(critic_review.get("total_claims") or 0) if generation_state.critic_review is not None else None
+            ),
+            "agentic_critic_style_issue_count": (
+                len(critic_review.get("style_issues") or []) if generation_state.critic_review is not None else None
+            ),
+            "agentic_critic_reason_codes": (
+                list(critic_review.get("reason_codes") or []) if generation_state.critic_review is not None else []
+            ),
+        }
+
     async def stream(
         self,
         *,
@@ -414,21 +869,10 @@ class AgenticRAGRunner:
         history = list(stream_request.history or [])
         conversation_id = stream_request.conversation_id
         document_ids = stream_request.document_ids
-        tenant_id = stream_request.tenant_id
         account_id = stream_request.account_id
         dataset_id = stream_request.dataset_id
-        dataset_ids = stream_request.dataset_ids
-        top_k = stream_request.top_k
-        score_threshold = stream_request.score_threshold
         retrieval_mode = stream_request.retrieval_mode
-        retrieval_profile = stream_request.retrieval_profile
         structured_output = stream_request.structured_output
-        structured_preset = stream_request.structured_preset
-        prompt_template_id = stream_request.prompt_template_id
-        prompt_template_key = stream_request.prompt_template_key
-        prompt_ab_experiment_key = stream_request.prompt_ab_experiment_key
-        ab_user_key = stream_request.ab_user_key
-        db = stream_request.db
         complexity_score = self._engine._score_question_complexity(question, history)
         threshold = float(getattr(settings, "RAG_AGENTIC_COMPLEXITY_THRESHOLD", 250.0) or 250.0)
         llm, model_route, routing_reason = self._engine._select_llm(question, history)
@@ -441,320 +885,91 @@ class AgenticRAGRunner:
                 yield event
             return
 
-        base_state_kwargs = {
-            key: value for key, value in (stream_request.state_overrides or {}).items() if key in _RAG_STATE_BUILD_KEYS
-        }
-        base_state_kwargs.update(
-            {
-                "question": question,
-                "history": history,
-                "document_ids": document_ids,
-                "dataset_ids": dataset_ids,
-                "tenant_id": tenant_id,
-                "account_id": account_id,
-                "dataset_id": dataset_id,
-                "top_k": top_k,
-                "score_threshold": score_threshold,
-                "retrieval_mode": retrieval_mode,
-                "retrieval_profile": retrieval_profile,
-                "structured_output": structured_output,
-                "structured_preset": structured_preset,
-                "prompt_template_id": prompt_template_id,
-                "prompt_template_key": prompt_template_key,
-                "prompt_ab_experiment_key": prompt_ab_experiment_key,
-                "ab_user_key": ab_user_key,
-                "db": db,
-            }
+        base_state = self._build_base_state(stream_request, history=history)
+        yield self._build_route_event(
+            llm=llm,
+            complexity_score=complexity_score,
+            threshold=threshold,
+            routing_reason=routing_reason,
+            model_route=model_route,
+            base_state=base_state,
         )
-        base_state = build_rag_state(**base_state_kwargs)
-
-        yield {
-            "type": "route",
-            "data": {
-                "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
-                "route": "agentic",
-                "reason": f"complexity {complexity_score:.1f} >= threshold {threshold}; {routing_reason}",
-                "model_route": model_route,
-                "prompt_template_id": base_state.get("prompt_template_id"),
-                "prompt_template_key": base_state.get("prompt_template_key"),
-                "prompt_ab_experiment_key": base_state.get("prompt_ab_experiment_key"),
-                "prompt_ab_variant": base_state.get("prompt_ab_variant"),
-            },
-        }
-
         yield {"type": "agentic_step", "data": {"step": "planning"}}
 
-        collected_docs: list[Document] = []
-        prior_findings: list[str] = []
-        retrieval_elapsed_total = 0.0
-        rounds_executed = 0
-        tool_context_blocks: list[str] = []
-        tool_metrics: list[dict[str, Any]] = []
-        final_result: dict[str, Any] = {
-            "docs": [],
-            "citations": [],
-            "metrics": {"retrieval_mode": retrieval_mode},
-            "abstain_triggered": True,
-            "abstain_reason": "no_rounds",
-        }
-        crag_used = False
-        crag_provider: str | None = None
-        crag_web_results = 0
-        self_rag_reflection: dict[str, Any] | None = None
-        critic_review: dict[str, Any] | None = None
-
-        tool_invocations = self._plan_tool_invocations(
+        retrieval_state = _AgenticRetrievalState(
+            final_result={
+                "docs": [],
+                "citations": [],
+                "metrics": {"retrieval_mode": str(base_state.get("retrieval_mode") or "")},
+                "abstain_triggered": True,
+                "abstain_reason": "no_rounds",
+            }
+        )
+        async for event in self._stream_tool_phase(
             question=question,
             document_ids=document_ids,
             dataset_id=dataset_id,
             account_id=account_id,
-        )
-        if tool_invocations:
-            try:
-                registry = get_agentic_tool_registry()
-                for invocation in tool_invocations:
-                    yield {
-                        "type": "agentic_step",
-                        "data": {
-                            "step": "tool_call",
-                            "tool": invocation.name,
-                            "rationale": invocation.rationale,
-                        },
-                    }
-                    result = await registry.call_tool(invocation.name, invocation.arguments)
-                    success = bool(getattr(result, "success", False))
-                    data = getattr(result, "data", None)
-                    error = getattr(result, "error", None)
-                    metadata = dict(getattr(result, "metadata", None) or {})
-                    tool_metrics.append(
-                        {
-                            "name": invocation.name,
-                            "success": success,
-                            "backend": metadata.get("backend"),
-                            "error": str(error)[:200] if error else None,
-                        }
-                    )
-                    if success:
-                        context_block = self._format_tool_context(invocation.name, data)
-                        if context_block:
-                            tool_context_blocks.append(context_block)
-                    yield {
-                        "type": "agentic_step",
-                        "data": {
-                            "step": "tool_result",
-                            "tool": invocation.name,
-                            "success": success,
-                            "error": str(error)[:200] if error else None,
-                        },
-                    }
-            except Exception:
-                tool_metrics.append(
-                    {"name": "registry_init", "success": False, "backend": None, "error": "tool_registry_failed"}
-                )
+            state=retrieval_state,
+        ):
+            yield event
 
-        for round_idx, step in enumerate(plan_steps[:max_rounds], 1):
-            retrieval_query = build_chained_query(step.query, prior_findings) or step.query
-            yield {
-                "type": "agentic_step",
-                "data": {
-                    "step": "retrieving",
-                    "round": int(round_idx),
-                    "query": retrieval_query,
-                    "rationale": step.rationale,
-                },
-            }
-            round_state = dict(base_state)
-            round_state["question"] = retrieval_query
-            round_started = time.time()
-            result = await run_blocking_retrieval_call_with_managed_session(
-                lambda worker_db: run_retrieval({**round_state, "db": worker_db}),
-                request_db=db,
-            )
-            retrieval_elapsed_total += time.time() - round_started
-            rounds_executed = round_idx
-            final_result = result
-            collected_docs = self._merge_docs(collected_docs, list(result.get("docs") or []))
-            step_summary = summarize_chain_step(list(result.get("citations") or []))
-            if step_summary:
-                prior_findings.append(step_summary)
-            if self._is_sufficient(result):
-                break
-            if bool(getattr(settings, "RAG_CRAG_STREAMING_ENABLED", False)):
-                crag_result = await run_crag_streaming(
-                    question=question,
-                    query_for_retrieval=retrieval_query,
-                    retrieval_result=result,
-                )
-                if bool(crag_result.get("used")) and str(crag_result.get("context_block") or "").strip():
-                    crag_used = True
-                    crag_provider = str(crag_result.get("provider") or "").strip() or None
-                    crag_web_results = int(crag_result.get("web_result_count") or 0)
-                    yield {
-                        "type": "agentic_step",
-                        "data": {
-                            "step": "web_search",
-                            "provider": crag_provider,
-                            "result_count": crag_web_results,
-                        },
-                    }
-                    tool_context_blocks.append(str(crag_result.get("context_block") or ""))
-                    break
+        async for event in self._stream_retrieval_phase(
+            question=question,
+            plan_steps=plan_steps,
+            max_rounds=max_rounds,
+            base_state=base_state,
+            request_db=stream_request.db,
+            state=retrieval_state,
+        ):
+            yield event
 
-        citations = build_citations_from_docs(
-            collected_docs,
-            retrieval_elapsed_sec=float(retrieval_elapsed_total or 0.0),
-            retrieval_mode=str((final_result.get("metrics") or {}).get("retrieval_mode") or retrieval_mode),
-            query=question,
+        citations = self._build_citations(
+            question=question,
+            retrieval_mode=retrieval_mode,
+            retrieval_state=retrieval_state,
         )
-        if not citations:
-            citations = list(final_result.get("citations") or [])
         yield {"type": "citations", "data": citations}
 
-        if not collected_docs and not tool_context_blocks:
-            full_response = _UNABLE_TO_ANSWER_MESSAGE
-            yield {"type": "token", "data": {"content": full_response}}
-            generation_elapsed = 0.0
-            answer_tokens = num_tokens_from_string(full_response)
-            answer_chars = len(full_response)
-            structured_data = None
-        else:
-            yield {"type": "agentic_step", "data": {"step": "answering"}}
-            prompt_template_content = base_state.get("prompt_template_content")
-            prompt_template = (
-                ChatPromptTemplate.from_template(str(prompt_template_content))
-                if prompt_template_content
-                else self._engine.prompt_template
-            )
-            history_text = _build_history_text(history)
-            context = _build_context(collected_docs, query=question)
-            if tool_context_blocks:
-                tool_context = "\n\n".join(tool_context_blocks)
-                if context and context != "No relevant reference materials found.":
-                    context = f"{tool_context}\n\n[Retrieved Materials]\n{context}"
-                else:
-                    context = tool_context
-            format_instructions = str(base_state.get("format_instructions") or "")
-            generation_inputs = {
-                "context": context,
-                "history": history_text,
-                "question": question,
-                "format_instructions": format_instructions,
-            }
-            full_response = ""
-            gen_start = time.time()
-            chain = prompt_template | llm | StrOutputParser()
-            async for token in chain.astream(generation_inputs):
-                if not token:
-                    continue
-                token_text = token if isinstance(token, str) else str(token)
-                full_response += token_text
-                yield {"type": "token", "data": {"content": token_text}}
-            generation_elapsed = time.time() - gen_start
-            answer_tokens = num_tokens_from_string(full_response)
-            answer_chars = len(full_response)
-            structured_data = None
-            if structured_output:
-                structured_data, _meta = parse_json_from_text(full_response, expected="object")
+        generation_state = _AgenticGenerationState()
+        async for event in self._stream_generation_phase(
+            base_state=base_state,
+            history=history,
+            question=question,
+            llm=llm,
+            citations=citations,
+            retrieval_state=retrieval_state,
+            structured_output=structured_output,
+            state=generation_state,
+        ):
+            yield event
 
-            evidence_text = ""
-            if bool(getattr(settings, "RAG_SELF_RAG_ENABLED", False)) or bool(
-                getattr(settings, "RAG_CRITIC_ENABLED", False)
-            ):
-                evidence_text = "\n".join(
-                    [
-                        str(getattr(doc, "page_content", "") or "").strip()
-                        for doc in (collected_docs or [])
-                        if str(getattr(doc, "page_content", "") or "").strip()
-                    ]
-                )
-                self_rag_reflection = run_self_rag_reflection(
-                    question=question,
-                    answer=full_response,
-                    evidence_text=evidence_text,
-                    citations=citations,
-                )
-                yield {
-                    "type": "agentic_step",
-                    "data": {
-                        "step": "self_reflect",
-                        "verdict": self_rag_reflection.get("verdict"),
-                        "need_retrieval": self_rag_reflection.get("need_retrieval"),
-                    },
-                }
-            if bool(getattr(settings, "RAG_CRITIC_ENABLED", False)):
-                critic_review = run_critic_review(
-                    question=question,
-                    answer=full_response,
-                    evidence_text=evidence_text,
-                    citations=citations,
-                )
-                yield {
-                    "type": "agentic_step",
-                    "data": {
-                        "step": "critic_review",
-                        "verdict": critic_review.get("verdict"),
-                        "citation_missing": critic_review.get("citation_missing"),
-                    },
-                }
-
-        metrics = {
-            "elapsed_sec": round(time.time() - t_start, 3),
-            "retrieval_elapsed_sec": round(float(retrieval_elapsed_total or 0.0), 3),
-            "generation_elapsed_sec": round(float(generation_elapsed or 0.0), 3),
-            "retrieval_mode": str((final_result.get("metrics") or {}).get("retrieval_mode") or retrieval_mode),
-            "complexity_score": round(float(complexity_score), 3),
-            "agentic_used": True,
-            "agentic_rounds": int(rounds_executed),
-            "agentic_planned_steps": int(len(plan_steps)),
-            "agentic_queries": [step.query for step in plan_steps[:max_rounds]],
-            "agentic_route_reason": f"complexity {complexity_score:.1f} >= threshold {threshold}",
-            "model_route": model_route,
-            "abstain_triggered": bool(final_result.get("abstain_triggered")),
-            "abstain_reason": final_result.get("abstain_reason"),
-            "docs_returned": int(len(collected_docs)),
-            "agentic_tools_used": int(sum(1 for item in tool_metrics if item.get("success"))),
-            "agentic_tool_calls": tool_metrics,
-            "agentic_crag_used": bool(crag_used),
-            "agentic_crag_provider": crag_provider,
-            "agentic_crag_web_results": int(crag_web_results),
-            "agentic_self_rag_used": bool(self_rag_reflection is not None),
-            "agentic_self_rag_verdict": (self_rag_reflection or {}).get("verdict") if self_rag_reflection else None,
-            "agentic_self_rag_need_retrieval": (
-                bool((self_rag_reflection or {}).get("need_retrieval")) if self_rag_reflection is not None else None
-            ),
-            "agentic_critic_used": bool(critic_review is not None),
-            "agentic_critic_verdict": (critic_review or {}).get("verdict") if critic_review else None,
-            "agentic_critic_citation_missing": (
-                bool((critic_review or {}).get("citation_missing")) if critic_review is not None else None
-            ),
-            "agentic_critic_supported_claims": (
-                int((critic_review or {}).get("supported_claims") or 0) if critic_review is not None else None
-            ),
-            "agentic_critic_total_claims": (
-                int((critic_review or {}).get("total_claims") or 0) if critic_review is not None else None
-            ),
-            "agentic_critic_style_issue_count": (
-                len((critic_review or {}).get("style_issues") or []) if critic_review is not None else None
-            ),
-            "agentic_critic_reason_codes": list((critic_review or {}).get("reason_codes") or [])
-            if critic_review
-            else [],
-        }
+        metrics = self._build_metrics(
+            t_start=t_start,
+            retrieval_mode=retrieval_mode,
+            complexity_score=complexity_score,
+            threshold=threshold,
+            model_route=model_route,
+            plan_steps=plan_steps,
+            max_rounds=max_rounds,
+            retrieval_state=retrieval_state,
+            generation_state=generation_state,
+        )
 
         yield {
             "type": "done",
             "data": {
                 "conversation_id": str(conversation_id) if conversation_id else None,
-                "total_tokens": int(answer_tokens),
-                "total_chars": int(answer_chars),
+                "total_tokens": int(generation_state.answer_tokens),
+                "total_chars": int(generation_state.answer_chars),
                 "citations_count": len(citations),
                 "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
                 "route": "agentic",
                 "retrieval_mode": metrics["retrieval_mode"],
                 "vector_backend": settings.VECTOR_BACKEND,
                 "metrics": metrics,
-                "structured": bool(structured_data),
-                "structured_data": structured_data,
+                "structured": bool(generation_state.structured_data),
+                "structured_data": generation_state.structured_data,
             },
         }
 

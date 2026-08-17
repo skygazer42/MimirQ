@@ -9,7 +9,7 @@ import logging
 import threading
 from typing import Any
 
-import h2  # noqa: F401
+import h2 as h2
 import httpx
 
 from app.core.config import settings

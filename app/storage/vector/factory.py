@@ -40,7 +40,7 @@ def _get_faiss_cls():
         # which can make optional-dependency failures surface later (and break tests that
         # only probe `_get_faiss_cls`). Import `faiss` eagerly so callers can reliably
         # detect availability and skip gracefully when the binary is broken (e.g. numpy ABI mismatch).
-        import faiss  # noqa: F401
+        import faiss as faiss
         from langchain_community.vectorstores import FAISS
 
         _FAISS_CLS = FAISS
@@ -66,7 +66,7 @@ def _get_chroma_cls():
         # skip deep optional-dependency validation in that case so preference/fallback behavior
         # can still be tested independently from the host environment.
         if chromadb_file:
-            import pypika  # noqa: F401
+            import pypika as pypika
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError(
             "Chroma vector backend requires optional dependencies. "

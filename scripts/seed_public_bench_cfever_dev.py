@@ -46,6 +46,8 @@ from app.models.document import DocumentChunk
 from app.services.indexer import Indexer
 from app.types.indexing import ChunkInput
 
+MODEL_REGISTRY = app.models._all.REGISTERED_MODEL_MODULES
+
 BENCH_KEY = "public_bench.cfever_dev.v1"
 REPO_ID = "IKMLab-team/cfever"
 
@@ -343,6 +345,172 @@ def _iter_page_sentences(lines: str) -> Iterator[tuple[int, str]]:
         yield sid, str(text or "").strip()
 
 
+def _limit_required_pages(required: dict[str, set[int]], max_pages: int) -> dict[str, set[int]]:
+    if not max_pages or int(max_pages) <= 0:
+        return dict(required)
+
+    titles = sorted(required.keys())[: int(max_pages)]
+    return {title: required[title] for title in titles}
+
+
+def _seed_plan(
+    *,
+    wiki_files: list[str],
+    required: dict[str, set[int]],
+    max_pages: int,
+    dry_run: bool,
+    overwrite: bool,
+    revision: str | None,
+) -> dict[str, Any]:
+    return {
+        "repo_id": REPO_ID,
+        "repo_type": "dataset",
+        "revision": revision,
+        "wiki_files": list(wiki_files),
+        "required_pages": int(len(required)),
+        "max_pages": int(max_pages or 0),
+        "dry_run": bool(dry_run),
+        "overwrite": bool(overwrite),
+    }
+
+
+def _build_page_chunks(
+    *,
+    dataset_id: UUID,
+    title: str,
+    needed_sids: set[int],
+    raw_lines: object,
+) -> tuple[list[ChunkInput], int]:
+    chunks: list[ChunkInput] = []
+    total_chars = 0
+    for sid, sent in _iter_page_sentences(str(raw_lines or "")):
+        if not sent:
+            if sid not in needed_sids:
+                continue
+            sent = title
+        content = f"{title}\n{sent}"
+        total_chars += len(content)
+        chunk_id = _uuid_for_sentence(dataset_id=dataset_id, page_title=title, sentence_id=sid)
+        chunks.append(
+            ChunkInput(
+                content=content,
+                metadata={
+                    "chunk_id": str(chunk_id),
+                    "source": title,
+                    "language": LANG,
+                    "page_title": title,
+                    "sentence_id": int(sid),
+                    "public_bench": {"key": BENCH_KEY, "page_title": title, "sentence_id": int(sid)},
+                },
+                page_number=None,
+                start_char=None,
+                end_char=None,
+            )
+        )
+    return chunks, total_chars
+
+
+def _upsert_cfever_document(
+    *,
+    db: Any,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    doc_id: UUID,
+    title: str,
+    filename: str,
+    file_path: str,
+    chunks: list[ChunkInput],
+    total_chars: int,
+) -> None:
+    row = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id, DBDocument.id == doc_id).first()
+    if row is None:
+        row = DBDocument(
+            id=doc_id,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            filename=filename,
+            file_type="md",
+            file_size=int(total_chars),
+            file_path=file_path,
+            status="completed",
+            publication_status="published",
+            chunk_count=len(chunks),
+            total_characters=int(total_chars),
+            doc_metadata={
+                "public_bench": {"key": BENCH_KEY, "split": SPLIT, "lang": LANG},
+                "page_title": title,
+                "source": "cfever",
+            },
+        )
+        db.add(row)
+        db.commit()
+        return
+
+    row.dataset_id = dataset_id
+    row.filename = filename
+    row.file_type = "md"
+    row.file_size = int(total_chars)
+    row.file_path = file_path
+    row.status = "completed"
+    row.error_message = None
+    row.publication_status = "published"
+    row.chunk_count = len(chunks)
+    row.total_characters = int(total_chars)
+    meta0 = row.doc_metadata if isinstance(row.doc_metadata, dict) else {}
+    meta0["public_bench"] = {"key": BENCH_KEY, "split": SPLIT, "lang": LANG}
+    meta0["page_title"] = title
+    meta0.setdefault("source", "cfever")
+    row.doc_metadata = meta0
+    db.commit()
+
+
+def _seed_wiki_page(
+    *,
+    db: Any,
+    indexer: Indexer,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    obj: dict[str, Any],
+    required: dict[str, set[int]],
+) -> tuple[int, int] | None:
+    title = str(obj.get("id") or "").strip()
+    if not title or title not in required:
+        return None
+
+    filename = f"cfever_{_safe_filename(title)}.md"
+    doc_id = uuid5(dataset_id, f"page:{title}")
+    file_path = f"cfever://{SPLIT}/wiki/{title}"
+    chunks, total_chars = _build_page_chunks(
+        dataset_id=dataset_id,
+        title=title,
+        needed_sids=required.get(title) or set(),
+        raw_lines=obj.get("lines"),
+    )
+    if not chunks:
+        return 0, 0
+
+    _upsert_cfever_document(
+        db=db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        doc_id=doc_id,
+        title=title,
+        filename=filename,
+        file_path=file_path,
+        chunks=chunks,
+        total_chars=total_chars,
+    )
+    indexer.index_chunks(
+        document_id=doc_id,
+        tenant_id=tenant_id,
+        chunks=chunks,
+        default_source=title,
+        commit=True,
+        options=None,
+    )
+    return 1, len(chunks)
+
+
 def seed_wiki_subset(
     *,
     tenant_id: UUID,
@@ -357,21 +525,15 @@ def seed_wiki_subset(
     if not wiki_files:
         raise RuntimeError("CFEVER wiki files not found (repo layout may have changed)")
 
-    titles = sorted(required.keys())
-    if max_pages and int(max_pages) > 0:
-        titles = titles[: int(max_pages)]
-        required = {k: required[k] for k in titles if k in required}
-
-    plan = {
-        "repo_id": REPO_ID,
-        "repo_type": "dataset",
-        "revision": revision,
-        "wiki_files": list(wiki_files),
-        "required_pages": int(len(required)),
-        "max_pages": int(max_pages or 0),
-        "dry_run": bool(dry_run),
-        "overwrite": bool(overwrite),
-    }
+    required = _limit_required_pages(required, max_pages)
+    plan = _seed_plan(
+        wiki_files=wiki_files,
+        required=required,
+        max_pages=max_pages,
+        dry_run=dry_run,
+        overwrite=overwrite,
+        revision=revision,
+    )
 
     if dry_run:
         return {"ok": True, "plan": plan, "seeded": None}
@@ -392,102 +554,22 @@ def seed_wiki_subset(
         skipped_pages = 0
 
         for obj in _iter_wiki_pages(paths):
-            title = str(obj.get("id") or "").strip()
-            if not title:
+            seeded = _seed_wiki_page(
+                db=db,
+                indexer=indexer,
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                obj=obj,
+                required=required,
+            )
+            if seeded is None:
                 continue
-            if title not in required:
-                continue
-
-            needed_sids = required.get(title) or set()
-            filename = f"cfever_{_safe_filename(title)}.md"
-            doc_id = uuid5(dataset_id, f"page:{title}")
-            file_path = f"cfever://{SPLIT}/wiki/{title}"
-
-            # Parse sentences first so we can size the document row.
-            chunks: list[ChunkInput] = []
-            total_chars = 0
-            for sid, sent in _iter_page_sentences(obj.get("lines") or ""):
-                if not sent:
-                    # Keep only evidence-targeted empty lines (rare); avoid embedding empty text.
-                    if sid not in needed_sids:
-                        continue
-                    sent = title
-                content = f"{title}\n{sent}"
-                total_chars += len(content)
-                chunk_id = _uuid_for_sentence(dataset_id=dataset_id, page_title=title, sentence_id=sid)
-                chunks.append(
-                    ChunkInput(
-                        content=content,
-                        metadata={
-                            "chunk_id": str(chunk_id),
-                            "source": title,
-                            "language": LANG,
-                            "page_title": title,
-                            "sentence_id": int(sid),
-                            "public_bench": {"key": BENCH_KEY, "page_title": title, "sentence_id": int(sid)},
-                        },
-                        page_number=None,
-                        start_char=None,
-                        end_char=None,
-                    )
-                )
-
-            if not chunks:
+            seeded_page_count, seeded_chunk_count = seeded
+            if seeded_page_count == 0:
                 skipped_pages += 1
                 continue
-
-            # Upsert document row (idempotent).
-            row = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id, DBDocument.id == doc_id).first()
-            if row is None:
-                row = DBDocument(
-                    id=doc_id,
-                    tenant_id=tenant_id,
-                    dataset_id=dataset_id,
-                    filename=filename,
-                    file_type="md",
-                    file_size=int(total_chars),
-                    file_path=file_path,
-                    status="completed",
-                    publication_status="published",
-                    chunk_count=len(chunks),
-                    total_characters=int(total_chars),
-                    doc_metadata={
-                        "public_bench": {"key": BENCH_KEY, "split": SPLIT, "lang": LANG},
-                        "page_title": title,
-                        "source": "cfever",
-                    },
-                )
-                db.add(row)
-                db.commit()
-            else:
-                row.dataset_id = dataset_id
-                row.filename = filename
-                row.file_type = "md"
-                row.file_size = int(total_chars)
-                row.file_path = file_path
-                row.status = "completed"
-                row.error_message = None
-                row.publication_status = "published"
-                row.chunk_count = len(chunks)
-                row.total_characters = int(total_chars)
-                meta0 = row.doc_metadata if isinstance(row.doc_metadata, dict) else {}
-                meta0["public_bench"] = {"key": BENCH_KEY, "split": SPLIT, "lang": LANG}
-                meta0["page_title"] = title
-                meta0.setdefault("source", "cfever")
-                row.doc_metadata = meta0
-                db.commit()
-
-            indexer.index_chunks(
-                document_id=doc_id,
-                tenant_id=tenant_id,
-                chunks=chunks,
-                default_source=title,
-                commit=True,
-                options=None,
-            )
-
-            seeded_pages += 1
-            seeded_sentences += len(chunks)
+            seeded_pages += seeded_page_count
+            seeded_sentences += seeded_chunk_count
 
             if seeded_pages % 25 == 0:
                 db.commit()

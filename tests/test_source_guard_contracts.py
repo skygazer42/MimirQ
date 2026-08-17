@@ -157,42 +157,17 @@ def _uses_sync_session_dependency(function: ast.AsyncFunctionDef) -> bool:
 
 
 def _function_body_has_async_ops(function: ast.AsyncFunctionDef) -> bool:
-    class _Visitor(ast.NodeVisitor):
-        def __init__(self) -> None:
-            self.found = False
+    ignored_node_types = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+    async_node_types = (ast.Await, ast.AsyncFor, ast.AsyncWith, ast.Yield, ast.YieldFrom)
 
-        def visit_Await(self, node: ast.Await) -> None:  # noqa: N802
-            self.found = True
+    def _iter_body_nodes(node: ast.AST):
+        for child in ast.iter_child_nodes(node):
+            if child is not function and isinstance(child, ignored_node_types):
+                continue
+            yield child
+            yield from _iter_body_nodes(child)
 
-        def visit_AsyncFor(self, node: ast.AsyncFor) -> None:  # noqa: N802
-            self.found = True
-
-        def visit_AsyncWith(self, node: ast.AsyncWith) -> None:  # noqa: N802
-            self.found = True
-
-        def visit_Yield(self, node: ast.Yield) -> None:  # noqa: N802
-            self.found = True
-
-        def visit_YieldFrom(self, node: ast.YieldFrom) -> None:  # noqa: N802
-            self.found = True
-
-        def visit_FunctionDef(self, node: ast.FunctionDef) -> None:  # noqa: N802, ARG002
-            return None
-
-        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:  # noqa: N802
-            if node is function:
-                self.generic_visit(node)
-            return None
-
-        def visit_ClassDef(self, node: ast.ClassDef) -> None:  # noqa: N802, ARG002
-            return None
-
-        def visit_Lambda(self, node: ast.Lambda) -> None:  # noqa: N802, ARG002
-            return None
-
-    visitor = _Visitor()
-    visitor.visit(function)
-    return visitor.found
+    return any(isinstance(node, async_node_types) for node in _iter_body_nodes(function))
 
 
 def _iter_fake_async_sync_db_routes() -> list[tuple[str, int, str]]:

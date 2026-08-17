@@ -11,12 +11,10 @@ This module provides a *synchronous* retrieval runner that:
 It is intentionally usable without the LangGraph orchestration layer.
 """
 
-
 import asyncio
 import concurrent.futures
 import json
 import time
-from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -28,9 +26,7 @@ from app.query.normalize import normalize_query
 from app.rag.core.citations import build_citations_from_docs
 from app.rag.core.conversation import format_history_text
 from app.rag.core.evidence_expectations import (
-    DEFAULT_EVIDENCE_ANCHOR_FIELDS,
     evaluate_evidence_anchor_expectations,
-    normalize_anchor_fields,
 )
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
@@ -49,7 +45,6 @@ from app.rag.policy.must_recall import (
     MUST_RECALL_FAIL_REASON_TAXONOMY_V1,
     build_must_recall_fail_reasons,
     evaluate_required_source_keys,
-    normalize_source_keys,
 )
 from app.rag.policy.must_recall_auto import (
     infer_expected_source_keys,
@@ -371,12 +366,8 @@ from app.rag.retrieval.orchestration.out_of_scope_live_gate import (
     run_default_out_of_scope_live_guard as run_default_out_of_scope_live_guard,
 )
 from app.rag.retrieval.orchestration.query_contract import (
-    HierarchyContractSettings,
-    QueryContractDefaults,
-    QueryContractNormalizationInput,
     RetrievalConfigSnapshotInput,
     build_retrieval_config_snapshot,
-    normalize_query_contract,
 )
 from app.rag.retrieval.orchestration.query_invocation import (
     QueryInvocationRecordInput,
@@ -413,6 +404,46 @@ from app.rag.retrieval.orchestration.text_helpers import (
 )
 from app.rag.retrieval.orchestration.text_helpers import (
     should_rewrite_query as should_rewrite_query,
+)
+from app.rag.retrieval.orchestrator_support_contracts import (
+    apply_routing_phase as _apply_routing_phase_impl,
+)
+from app.rag.retrieval.orchestrator_support_contracts import (
+    resolve_contract_phase as _resolve_contract_phase_impl,
+)
+from app.rag.retrieval.orchestrator_support_hierarchy import (
+    build_desired_pipeline_by_doc as _build_desired_pipeline_by_doc_impl,
+)
+from app.rag.retrieval.orchestrator_support_hierarchy import (
+    chunk_document_from_row as _chunk_document_from_row_impl,
+)
+from app.rag.retrieval.orchestrator_support_hierarchy import (
+    fetch_hierarchy_expansion_docs as _fetch_hierarchy_expansion_docs_impl,
+)
+from app.rag.retrieval.orchestrator_support_hierarchy import (
+    hierarchy_fetch_pairs_by_doc as _hierarchy_fetch_pairs_by_doc_impl,
+)
+from app.rag.retrieval.orchestrator_support_hierarchy import (
+    safe_kg_path_provenance as _safe_kg_path_provenance_impl,
+)
+from app.rag.retrieval.orchestrator_support_post_rerank import (
+    build_reranked_prefix as _build_reranked_prefix_impl,
+)
+from app.rag.retrieval.orchestrator_support_post_rerank import (
+    post_rerank_settings as _post_rerank_settings_impl,
+)
+from app.rag.retrieval.orchestrator_support_post_rerank import (
+    run_post_rerank_pipeline_mode as _run_post_rerank_pipeline_mode_impl,
+)
+from app.rag.retrieval.orchestrator_support_post_rerank import (
+    run_post_rerank_single_mode as _run_post_rerank_single_mode_impl,
+)
+from app.rag.retrieval.orchestrator_support_post_rerank import (
+    run_post_rerank_stage as _run_post_rerank_stage_impl,
+)
+from app.rag.retrieval.orchestrator_support_runtime import (
+    RetrievalRuntimeState,
+    run_retrieval_runtime,
 )
 from app.services.hardcase_discovery_service import (
     build_parse_risk_hardcase_candidate,
@@ -490,12 +521,11 @@ def _query_decomposition_settings(enabled: bool | None) -> tuple[bool, int, int,
     return dq_enabled, dq_n, dq_min_chars, dq_max_chars, heuristic_enabled, llm_api_key
 
 
-def _query_decomposition_allowed(query: str, *, enabled: bool, max_questions: int, min_chars: int, max_chars: int) -> bool:
+def _query_decomposition_allowed(
+    query: str, *, enabled: bool, max_questions: int, min_chars: int, max_chars: int
+) -> bool:
     return bool(
-        enabled
-        and max_questions > 0
-        and len(query) >= min_chars
-        and (max_chars <= 0 or len(query) <= max_chars)
+        enabled and max_questions > 0 and len(query) >= min_chars and (max_chars <= 0 or len(query) <= max_chars)
     )
 
 
@@ -503,7 +533,11 @@ def _heuristic_decompose(query: str, *, max_questions: int) -> tuple[list[str], 
     from app.rag.core.text import heuristic_decompose_query
 
     sub_questions = heuristic_decompose_query(query, max_subquestions=max_questions)
-    meta = {"ok": True, "method": "heuristic", "error": None} if sub_questions else {"ok": False, "method": None, "error": None}
+    meta = (
+        {"ok": True, "method": "heuristic", "error": None}
+        if sub_questions
+        else {"ok": False, "method": None, "error": None}
+    )
     return sub_questions, meta
 
 
@@ -560,7 +594,7 @@ def _invoke_decomposition_chain(
         )
         return questions, elapsed, model_used, parse_meta
     except Exception as exc:  # noqa: BLE001
-        _log_orchestrator_fallback('_decompose_query', exc)
+        _log_orchestrator_fallback("_decompose_query", exc)
         return [], 0.0, model_used, {"ok": False, "method": None, "error": str(exc)[:200]}
 
 
@@ -570,9 +604,13 @@ def _decompose_query(
     *,
     enabled: bool | None = None,
 ) -> tuple[list[str], float, str | None, dict[str, Any]]:
-    dq_enabled, dq_n, dq_min_chars, dq_max_chars, heuristic_enabled, llm_api_key = _query_decomposition_settings(enabled)
+    dq_enabled, dq_n, dq_min_chars, dq_max_chars, heuristic_enabled, llm_api_key = _query_decomposition_settings(
+        enabled
+    )
     parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
-    if not _query_decomposition_allowed(query_for_retrieval, enabled=dq_enabled, max_questions=dq_n, min_chars=dq_min_chars, max_chars=dq_max_chars):
+    if not _query_decomposition_allowed(
+        query_for_retrieval, enabled=dq_enabled, max_questions=dq_n, min_chars=dq_min_chars, max_chars=dq_max_chars
+    ):
         return [], 0.0, None, parse_meta
 
     if heuristic_enabled and not llm_api_key:
@@ -593,6 +631,7 @@ def _decompose_query(
             return sub_questions, 0.0, None, heuristic_meta
 
     return sub_questions, elapsed, model_used, parse_meta
+
 
 def _resolve_post_rerank_corpus_cache_token(state: dict[str, Any]) -> str | None:
     db = state.get("db")
@@ -628,93 +667,549 @@ def _resolve_post_rerank_corpus_cache_token(state: dict[str, Any]) -> str | None
             document_ids=document_ids,
         )
     except Exception as exc:
-        _log_orchestrator_fallback('_resolve_post_rerank_corpus_cache_token', exc)
+        _log_orchestrator_fallback("_resolve_post_rerank_corpus_cache_token", exc)
         return None
 
 
-def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
-    """
-    Execute retrieval only and return an updated RAG-like state dict.
+def _build_no_retrieval_response(
+    state: dict[str, Any],
+    *,
+    question: str,
+    no_retrieval_intent: dict[str, Any],
+) -> dict[str, Any]:
+    requested_retrieval_mode = state.get("retrieval_mode", "hybrid") or "hybrid"
+    requested_retrieval_profile = state.get("retrieval_profile")
+    retrieval_mode = normalize_retrieval_mode(requested_retrieval_mode)
+    profile_norm = str(requested_retrieval_profile or "").strip().lower() or None
+    metrics = dict(state.get("metrics") or {})
+    metrics["retrieval_elapsed_sec"] = 0.0
+    metrics["retrieval_mode"] = retrieval_mode
+    metrics["retrieval_mode_requested"] = requested_retrieval_mode
+    metrics["retrieval_mode_auto_routed"] = False
+    metrics["retrieval_profile"] = profile_norm
+    metrics["retrieval_profile_requested"] = profile_norm
+    metrics["retrieval_bypassed"] = True
+    metrics["retrieval_bypass_reason"] = "no_retrieval_intent"
+    metrics["retrieval_bypass_intent"] = no_retrieval_intent.get("intent")
+    metrics["intent_router_enabled"] = False
+    metrics["intent_router_used"] = False
 
-    Expected input keys (best-effort; missing keys fall back to settings defaults):
-    - question: str (required)
-    - history: optional list[{role, content}]
-    - tenant_id/account_id/dataset_id/document_ids: scope
-    - rag params: top_k/score_threshold/retrieval_mode/retrieval_profile/...
+    query_debug: dict[str, Any] = {
+        "original": question,
+        "normalized": question,
+        "applied_rules": [],
+        "expansions": [],
+        "contributions": [],
+        "channels": None,
+        "query_for_retrieval": question,
+        "rewrite_used": False,
+        "retrieval_profile": profile_norm,
+        "retrieval_profile_requested": profile_norm,
+        "no_retrieval_intent": dict(no_retrieval_intent),
+    }
+    router_layers = build_router_layers(query=question, intent_meta=dict(no_retrieval_intent))
+    query_debug["router_layers"] = router_layers
+    observe_router_layers(router_layers)
+    retrieval_trace: dict[str, Any] = {
+        "schema": "mimirq.retrieval_trace_pass.v1",
+        "query_for_retrieval_hash": stable_hash(question),
+        "requested_retrieval_mode": str(requested_retrieval_mode or ""),
+        "retrieval_mode": str(retrieval_mode or ""),
+        "retrieval_mode_auto_routed": False,
+        "retrieval_profile": profile_norm,
+        "retrieval_profile_requested": profile_norm,
+        "intent_router": {"enabled": False, "used": False},
+        "adaptive_router": {"enabled": False, "used": False},
+        "channel_budget_policy": {"enabled": False, "used": False},
+        "router_layers": router_layers,
+        "no_retrieval_intent": dict(no_retrieval_intent),
+    }
+    return {
+        **state,
+        "query_for_retrieval": question,
+        "docs": [],
+        "citations": [],
+        "metrics": metrics,
+        "abstain_triggered": False,
+        "abstain_reason": None,
+        "query_debug": query_debug,
+        "retrieval_trace": retrieval_trace,
+    }
 
-    Returns keys (best-effort):
-    - query_for_retrieval, docs, citations, metrics, abstain_triggered, abstain_reason, query_debug
-    """
-    question = str(state.get("question") or "")
-    history_text = _build_history_text(state.get("history"))
-    no_retrieval_intent = route_intent(question)
-    if bool(no_retrieval_intent.get("skip_retrieval")):
-        requested_retrieval_mode = state.get("retrieval_mode", "hybrid") or "hybrid"
-        requested_retrieval_profile = state.get("retrieval_profile")
-        retrieval_mode = normalize_retrieval_mode(requested_retrieval_mode)
-        profile_norm = str(requested_retrieval_profile or "").strip().lower() or None
-        metrics = dict(state.get("metrics") or {})
-        metrics["retrieval_elapsed_sec"] = 0.0
-        metrics["retrieval_mode"] = retrieval_mode
-        metrics["retrieval_mode_requested"] = requested_retrieval_mode
-        metrics["retrieval_mode_auto_routed"] = False
-        metrics["retrieval_profile"] = profile_norm
-        metrics["retrieval_profile_requested"] = profile_norm
-        metrics["retrieval_bypassed"] = True
-        metrics["retrieval_bypass_reason"] = "no_retrieval_intent"
-        metrics["retrieval_bypass_intent"] = no_retrieval_intent.get("intent")
-        metrics["intent_router_enabled"] = False
-        metrics["intent_router_used"] = False
 
-        query_debug: dict[str, Any] = {
-            "original": question,
-            "normalized": question,
-            "applied_rules": [],
-            "expansions": [],
-            "contributions": [],
-            "channels": None,
-            "query_for_retrieval": question,
-            "rewrite_used": False,
-            "retrieval_profile": profile_norm,
-            "retrieval_profile_requested": profile_norm,
-            "no_retrieval_intent": dict(no_retrieval_intent),
+def _post_rerank_minmax(values: list[float]) -> list[float]:
+    if not values:
+        return []
+    lo = min(values)
+    hi = max(values)
+    rng = hi - lo
+    if rng <= 0.0:
+        return [0.0 for _ in values]
+    return [(float(value) - float(lo)) / float(rng) for value in values]
+
+
+def _post_rerank_row(idx: int, doc: Document) -> dict[str, Any]:
+    meta = dict(doc.metadata or {})
+    rid = _doc_key(doc) or str(idx)
+    base_raw = meta.get("retrieval_score")
+    if base_raw is None:
+        base_raw = meta.get("score", 0.0)
+    try:
+        retrieval_score = float(base_raw or 0.0)
+    except (TypeError, ValueError, AttributeError):
+        retrieval_score = 0.0
+
+    rerank_raw = meta.get("rerank_score")
+    try:
+        rerank_score = float(rerank_raw) if rerank_raw is not None else None
+    except (TypeError, ValueError, AttributeError):
+        rerank_score = None
+
+    return {
+        "idx": int(idx),
+        "rid": rid,
+        "doc": doc,
+        "meta": meta,
+        "retrieval_score": float(retrieval_score),
+        "rerank_score": rerank_score,
+    }
+
+
+def _calibrated_post_rerank_rows(
+    rows: list[dict[str, Any]],
+    *,
+    alpha: float,
+) -> list[dict[str, Any]]:
+    ranked_rows = [row for row in rows if row.get("rerank_score") is not None]
+    retrieval_norm = _post_rerank_minmax([float(row.get("retrieval_score") or 0.0) for row in rows])
+    rerank_norm_values = _post_rerank_minmax([float(row.get("rerank_score") or 0.0) for row in ranked_rows])
+    rerank_norm_by_id = {
+        str(ranked_rows[index].get("rid") or ""): float(rerank_norm_values[index])
+        for index in range(min(len(ranked_rows), len(rerank_norm_values)))
+    }
+
+    for index, row in enumerate(rows):
+        base_norm = float(retrieval_norm[index]) if index < len(retrieval_norm) else 0.0
+        rerank_norm = rerank_norm_by_id.get(str(row.get("rid") or ""))
+        calibrated = base_norm
+        if rerank_norm is not None:
+            calibrated = (alpha * float(rerank_norm)) + ((1.0 - alpha) * float(base_norm))
+        row["retrieval_score_norm"] = float(base_norm)
+        row["rerank_score_norm"] = float(rerank_norm) if rerank_norm is not None else None
+        row["calibrated_score"] = float(calibrated)
+
+    return sorted(
+        rows,
+        key=lambda row: (
+            -float(row.get("calibrated_score") or 0.0),
+            -float(row.get("rerank_score_norm") or -1.0),
+            -float(row.get("retrieval_score_norm") or 0.0),
+            int(row.get("idx") or 0),
+        ),
+    )
+
+
+def _calibrate_post_rerank_prefix(
+    prefix_docs: list[Document],
+    *,
+    enabled: bool,
+    alpha: float,
+    stats: dict[str, Any],
+) -> tuple[list[Document], bool]:
+    if not enabled:
+        return prefix_docs, False
+    if not prefix_docs:
+        stats["skip_reason"] = "no_candidates"
+        return prefix_docs, False
+
+    rows = [_post_rerank_row(index, doc) for index, doc in enumerate(prefix_docs)]
+    ranked_rows = [row for row in rows if row.get("rerank_score") is not None]
+    if len(ranked_rows) < 2:
+        stats["skip_reason"] = "insufficient_rerank_scores"
+        stats["eligible_docs"] = int(len(ranked_rows))
+        return prefix_docs, False
+
+    rows_sorted = _calibrated_post_rerank_rows(rows, alpha=alpha)
+    moved = sum(1 for index, row in enumerate(rows_sorted) if int(row.get("idx") or 0) != index)
+    top_changed = bool(rows_sorted) and int(rows_sorted[0].get("idx") or 0) != 0
+
+    out_docs: list[Document] = []
+    for row in rows_sorted:
+        meta = dict(row.get("meta") or {})
+        calibrated = float(row.get("calibrated_score") or 0.0)
+        meta["rerank_score_calibrated"] = round(calibrated, 6)
+        meta["score"] = float(calibrated)
+        doc = row.get("doc")
+        if isinstance(doc, Document):
+            out_docs.append(
+                Document(
+                    page_content=doc.page_content,
+                    metadata=meta,
+                    id=getattr(doc, "id", None) or meta.get("chunk_id"),
+                )
+            )
+
+    stats.update(
+        {
+            "used": True,
+            "applied_docs": int(len(rows)),
+            "eligible_docs": int(len(ranked_rows)),
+            "moved_positions": int(moved),
+            "top_changed": bool(top_changed),
         }
-        router_layers = build_router_layers(query=question, intent_meta=dict(no_retrieval_intent))
-        query_debug["router_layers"] = router_layers
-        observe_router_layers(router_layers)
-        retrieval_trace: dict[str, Any] = {
-            "schema": "mimirq.retrieval_trace_pass.v1",
-            "query_for_retrieval_hash": stable_hash(question),
-            "requested_retrieval_mode": str(requested_retrieval_mode or ""),
-            "retrieval_mode": str(retrieval_mode or ""),
-            "retrieval_mode_auto_routed": False,
-            "retrieval_profile": profile_norm,
-            "retrieval_profile_requested": profile_norm,
-            "intent_router": {"enabled": False, "used": False},
-            "adaptive_router": {"enabled": False, "used": False},
-            "channel_budget_policy": {"enabled": False, "used": False},
-            "router_layers": router_layers,
-            "no_retrieval_intent": dict(no_retrieval_intent),
-        }
-        return {
-            **state,
-            "query_for_retrieval": question,
-            "docs": [],
-            "citations": [],
-            "metrics": metrics,
-            "abstain_triggered": False,
-            "abstain_reason": None,
-            "query_debug": query_debug,
-            "retrieval_trace": retrieval_trace,
-        }
+    )
+    return out_docs, True
 
-    engine: Any | None = None
 
-    def _llm_engine() -> Any:
-        nonlocal engine
-        if engine is None:
-            engine = get_rag_engine()
-        return engine
+def _calibrate_post_rerank_prefix_docs(
+    prefix_docs: list[Document],
+    *,
+    enabled: bool,
+    alpha: float,
+    stats: dict[str, Any],
+) -> tuple[list[Document], bool]:
+    """Compatibility hook for callers that patch post-rerank calibration."""
+    return _calibrate_post_rerank_prefix(
+        prefix_docs,
+        enabled=enabled,
+        alpha=alpha,
+        stats=stats,
+    )
+
+
+def _build_post_rerank_candidates(
+    docs: list[Document],
+    *,
+    limit: int,
+) -> tuple[list[RerankCandidate], dict[str, Document]]:
+    candidates: list[RerankCandidate] = []
+    id_to_doc: dict[str, Document] = {}
+    for doc in docs[:limit]:
+        rid = _doc_key(doc)
+        text = (doc.page_content or "").strip()
+        if not rid or not text:
+            continue
+        meta = dict(doc.metadata or {})
+        candidates.append(RerankCandidate(id=rid, text=text, metadata=meta))
+        id_to_doc[rid] = doc
+    return candidates, id_to_doc
+
+
+def _get_cached_post_rerank_result(
+    *,
+    state: dict[str, Any],
+    provider: str,
+    top_n: int,
+    query_for_retrieval: str,
+    candidates: list[RerankCandidate],
+    cache_enabled: bool,
+    corpus_cache_token: str | None,
+) -> tuple[Any, str | None, bool, int, int]:
+    if not cache_enabled:
+        return None, None, False, 0, 0
+    try:
+        cand_fp = fingerprint_rerank_candidates(candidates)
+        cache_key = build_evidence_post_rerank_cache_key(
+            tenant_id=state.get("tenant_id"),
+            account_id=state.get("account_id"),
+            provider=provider,
+            top_n=top_n,
+            query=query_for_retrieval,
+            candidates_fingerprint=cand_fp,
+            corpus_cache_token=corpus_cache_token,
+        )
+        cached = get_cached_evidence_post_rerank_result(cache_key)
+        if cached is not None:
+            return cached, cache_key, True, 1, 0
+        return None, cache_key, False, 0, 1
+    except Exception as exc:
+        _log_orchestrator_fallback("_get_cached_post_rerank_result", exc)
+        return None, None, False, 0, 0
+
+
+def _execute_post_rerank(
+    *,
+    state: dict[str, Any],
+    provider: str,
+    top_n: int,
+    query_for_retrieval: str,
+    candidates: list[RerankCandidate],
+    cache_enabled: bool,
+    cache_key: str | None,
+    cached_result: Any,
+) -> tuple[Any, float]:
+    if cached_result is not None:
+        return cached_result, 0.0
+    reranker = get_reranker(provider)
+    rerank_start = time.time()
+    rerank_result = reranker.rerank(
+        query=query_for_retrieval,
+        candidates=candidates,
+        top_n=top_n,
+        tenant_id=str(state.get("tenant_id") or "").strip() or None,
+        query_type=str(state.get("query_type") or "").strip() or None,
+    )
+    if cache_enabled and cache_key:
+        try:
+            set_cached_evidence_post_rerank_result(cache_key, rerank_result)
+        except Exception as exc:
+            logger.debug(_RETRIEVAL_ORCHESTRATOR_FALLBACK_LOG_MESSAGE, exc)
+    return rerank_result, float(rerank_result.elapsed_sec or (time.time() - rerank_start))
+
+
+def _build_reranked_prefix(
+    *,
+    docs_prefix: list[Document],
+    id_to_doc: dict[str, Document],
+    rerank_result: Any,
+    provider: str,
+    elapsed_sec: float,
+    model_used: str | None,
+    annotate_scores: bool,
+) -> list[Document]:
+    return _build_reranked_prefix_impl(
+        docs_prefix=docs_prefix,
+        id_to_doc=id_to_doc,
+        rerank_result=rerank_result,
+        provider=provider,
+        elapsed_sec=elapsed_sec,
+        model_used=model_used,
+        annotate_scores=annotate_scores,
+        doc_key_fn=_doc_key,
+    )
+
+
+def _post_rerank_settings(state: dict[str, Any]) -> dict[str, Any]:
+    return _post_rerank_settings_impl(
+        state,
+        cache_backend_fn=get_evidence_post_rerank_cache_backend,
+        corpus_cache_token_fn=_resolve_post_rerank_corpus_cache_token,
+    )
+
+
+def _run_post_rerank_single_mode(
+    *,
+    state: dict[str, Any],
+    docs: list[Document],
+    query_for_retrieval: str,
+    top_k: int,
+    provider: str,
+    top_n: int,
+    cache_enabled: bool,
+    corpus_cache_token: str | None,
+    score_calibration_enabled: bool,
+    score_calibration_alpha: float,
+    score_calibration_stats: dict[str, Any],
+) -> dict[str, Any]:
+    return _run_post_rerank_single_mode_impl(
+        state=state,
+        docs=docs,
+        query_for_retrieval=query_for_retrieval,
+        top_k=top_k,
+        provider=provider,
+        top_n=top_n,
+        cache_enabled=cache_enabled,
+        corpus_cache_token=corpus_cache_token,
+        score_calibration_enabled=score_calibration_enabled,
+        score_calibration_alpha=score_calibration_alpha,
+        score_calibration_stats=score_calibration_stats,
+        build_candidates_fn=_build_post_rerank_candidates,
+        get_cached_result_fn=_get_cached_post_rerank_result,
+        execute_post_rerank_fn=_execute_post_rerank,
+        build_reranked_prefix_fn=_build_reranked_prefix,
+        calibrate_prefix_fn=_calibrate_post_rerank_prefix_docs,
+    )
+
+
+def _run_post_rerank_pipeline_mode(
+    *,
+    state: dict[str, Any],
+    docs: list[Document],
+    query_for_retrieval: str,
+    top_n: int,
+    pipeline: list[dict[str, Any]],
+    cache_enabled: bool,
+    corpus_cache_token: str | None,
+    score_calibration_enabled: bool,
+    score_calibration_alpha: float,
+    score_calibration_stats: dict[str, Any],
+) -> dict[str, Any]:
+    return _run_post_rerank_pipeline_mode_impl(
+        state=state,
+        docs=docs,
+        query_for_retrieval=query_for_retrieval,
+        top_n=top_n,
+        pipeline=pipeline,
+        cache_enabled=cache_enabled,
+        corpus_cache_token=corpus_cache_token,
+        score_calibration_enabled=score_calibration_enabled,
+        score_calibration_alpha=score_calibration_alpha,
+        score_calibration_stats=score_calibration_stats,
+        build_candidates_fn=_build_post_rerank_candidates,
+        get_cached_result_fn=_get_cached_post_rerank_result,
+        execute_post_rerank_fn=_execute_post_rerank,
+        build_reranked_prefix_fn=_build_reranked_prefix,
+        calibrate_prefix_fn=_calibrate_post_rerank_prefix_docs,
+    )
+
+
+def _run_post_rerank_stage(
+    *,
+    state: dict[str, Any],
+    docs: list[Document],
+    query_for_retrieval: str,
+    top_k: int,
+) -> dict[str, Any]:
+    settings_meta = _post_rerank_settings(state)
+    return _run_post_rerank_stage_impl(
+        state=state,
+        docs=docs,
+        query_for_retrieval=query_for_retrieval,
+        top_k=top_k,
+        settings_meta=settings_meta,
+        pipeline_summary_fn=_safe_post_rerank_pipeline_summary,
+        pipeline_mode_fn=_run_post_rerank_pipeline_mode,
+        single_mode_fn=_run_post_rerank_single_mode,
+        fallback_logger_fn=_log_orchestrator_fallback,
+    )
+
+
+def _safe_kg_path_provenance(raw: Any) -> dict[str, Any] | None:
+    return _safe_kg_path_provenance_impl(raw)
+
+
+def _build_desired_pipeline_by_doc(docs: list[Document]) -> dict[str, str]:
+    return _build_desired_pipeline_by_doc_impl(docs)
+
+
+def _hierarchy_fetch_pairs_by_doc(
+    pairs: set[tuple[str, str]],
+) -> dict[str, set[str]]:
+    return _hierarchy_fetch_pairs_by_doc_impl(pairs)
+
+
+def _chunk_document_from_row(ck: Any) -> Document | None:
+    return _chunk_document_from_row_impl(ck)
+
+
+def _fetch_hierarchy_expansion_docs(
+    pairs: set[tuple[str, str]],
+    *,
+    tenant_uuid: UUID | None,
+    desired_pipeline_by_doc: dict[str, str],
+) -> dict[tuple[str, str], Document]:
+    return _fetch_hierarchy_expansion_docs_impl(
+        pairs,
+        tenant_uuid=tenant_uuid,
+        desired_pipeline_by_doc=desired_pipeline_by_doc,
+    )
+
+
+def _run_hierarchy_expansion_stage(
+    *,
+    state: dict[str, Any],
+    docs: list[Document],
+    hierarchy_recall_enabled: bool,
+    hierarchy_parent_depth: int,
+    hierarchy_sibling_window: int,
+    top_k: int,
+) -> dict[str, Any]:
+    result = {
+        "docs": list(docs or []),
+        "hierarchy_expand_attempted": False,
+        "hierarchy_expand_used": False,
+        "hierarchy_expand_error": None,
+        "hierarchy_expand_elapsed": 0.0,
+        "hierarchy_expand_meta": {"enabled": False, "reason": "not_run"},
+    }
+    if not (
+        bool(hierarchy_recall_enabled)
+        and bool(docs)
+        and (int(hierarchy_parent_depth) > 0 or int(hierarchy_sibling_window) > 0)
+    ):
+        return result
+
+    result["hierarchy_expand_attempted"] = True
+    exp_start = time.time()
+    try:
+        tenant_uuid: UUID | None = None
+        try:
+            tenant_id_raw = state.get("tenant_id")
+            if tenant_id_raw is not None:
+                tenant_uuid = UUID(str(tenant_id_raw))
+        except (TypeError, ValueError, AttributeError):
+            tenant_uuid = None
+
+        from app.rag.retrieval.context_expansion import expand_hierarchy_documents  # noqa: WPS433
+
+        desired_pipeline_by_doc = _build_desired_pipeline_by_doc(docs)
+        max_added = max(
+            0,
+            int(top_k) * (int(hierarchy_parent_depth) + (2 * int(hierarchy_sibling_window))),
+        )
+        max_added = min(400, max_added or 120)
+        expanded_docs, meta = expand_hierarchy_documents(
+            [doc for doc in (docs or []) if doc is not None],
+            parent_depth=int(hierarchy_parent_depth),
+            sibling_window=int(hierarchy_sibling_window),
+            fetch_by_key=lambda pairs: _fetch_hierarchy_expansion_docs(
+                pairs,
+                tenant_uuid=tenant_uuid,
+                desired_pipeline_by_doc=desired_pipeline_by_doc,
+            ),
+            max_added_docs=int(max_added),
+        )
+        result["hierarchy_expand_elapsed"] = max(0.0, float(time.time() - exp_start))
+        if isinstance(meta, dict):
+            result["hierarchy_expand_meta"] = dict(meta)
+        else:
+            result["hierarchy_expand_meta"] = {"enabled": False, "reason": "invalid_meta"}
+        if expanded_docs and int((result["hierarchy_expand_meta"] or {}).get("added_docs") or 0) > 0:
+            result["docs"] = expanded_docs
+            result["hierarchy_expand_used"] = True
+        return result
+    except Exception as exc:  # noqa: BLE001
+        _log_orchestrator_fallback("_run_hierarchy_expansion_stage", exc)
+        result["hierarchy_expand_error"] = str(exc)[:200]
+        result["hierarchy_expand_meta"] = {"enabled": False, "reason": "exception"}
+        return result
+
+
+def _filter_strict_span_citations(
+    items: list[dict[str, Any]],
+    *,
+    enabled: bool,
+) -> tuple[list[dict[str, Any]], int]:
+    if not enabled or not items:
+        return items, 0
+    filtered_items: list[dict[str, Any]] = []
+    missing_count = 0
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        start = item.get("evidence_start_char")
+        end = item.get("evidence_end_char")
+        try:
+            start_i = int(start) if start is not None else None
+            end_i = int(end) if end is not None else None
+        except (TypeError, ValueError, AttributeError):
+            start_i = None
+            end_i = None
+        if start_i is None or end_i is None or end_i <= start_i:
+            missing_count += 1
+            continue
+        filtered_items.append(item)
+    return filtered_items, missing_count
+
+
+def _prepare_query_phase(
+    state: dict[str, Any],
+    *,
+    question: str,
+    history_text: str,
+    llm_engine_factory: Any,
+) -> dict[str, Any]:
+    from app.rag.retrieval.sparse import normalize_sparse_provider_name
 
     query_for_retrieval = question
     rewrite_elapsed = 0.0
@@ -724,7 +1219,6 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     rewrite_strategy_hash: str | None = None
     rewrite_temperature: float | None = None
     rewrite_max_chars: int | None = None
-    from app.rag.retrieval.sparse import normalize_sparse_provider_name
 
     sparse_enabled_override = state.get("sparse_retrieval_enabled")
     sparse_enabled = (
@@ -741,31 +1235,40 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         )
     )
 
-    # KG search output can be reused by multiple retrieval steps (query expansion / chunk injection).
-    kg_result_cached: dict[str, Any] | None = None
-    intent_router_meta: dict[str, Any] = {"enabled": False, "used": False}
     industry_rules_meta: dict[str, Any] = {"enabled": False, "used": False}
-    adaptive_router_meta: dict[str, Any] = {"enabled": False, "used": False}
-    channel_budget_policy_meta: dict[str, Any] = {"enabled": False, "used": False}
     temporal_intent_enabled = bool(getattr(settings, "RAG_TEMPORAL_INTENT_ENABLED", False))
     temporal_intent_meta: dict[str, Any] = {"detected": False, "reason_codes": []}
     temporal_recency_meta: dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
 
     rewrite_enabled_req = state.get("enable_query_rewrite")
-    rewrite_enabled = bool(rewrite_enabled_req) if rewrite_enabled_req is not None else bool(settings.ENABLE_QUERY_REWRITE)
+    rewrite_enabled = (
+        bool(rewrite_enabled_req) if rewrite_enabled_req is not None else bool(settings.ENABLE_QUERY_REWRITE)
+    )
     if rewrite_enabled:
-        spec = build_query_rewrite_strategy_spec(state.get("query_rewrite_strategy") or getattr(settings, "QUERY_REWRITE_STRATEGY", None))
+        spec = build_query_rewrite_strategy_spec(
+            state.get("query_rewrite_strategy") or getattr(settings, "QUERY_REWRITE_STRATEGY", None)
+        )
         rewrite_strategy_id = str(spec.get("strategy_id") or "").strip() or None
         rewrite_strategy_hash = str(spec.get("strategy_hash") or "").strip() or None
         try:
             rewrite_temperature = float(
-                (settings.QUERY_REWRITE_TEMPERATURE if state.get("query_rewrite_temperature") is None else state.get("query_rewrite_temperature")) or 0.0
+                (
+                    settings.QUERY_REWRITE_TEMPERATURE
+                    if state.get("query_rewrite_temperature") is None
+                    else state.get("query_rewrite_temperature")
+                )
+                or 0.0
             )
         except (TypeError, ValueError, AttributeError):
             rewrite_temperature = 0.0
         try:
             rewrite_max_chars = int(
-                (settings.QUERY_REWRITE_MAX_CHARS if state.get("query_rewrite_max_chars") is None else state.get("query_rewrite_max_chars")) or 0
+                (
+                    settings.QUERY_REWRITE_MAX_CHARS
+                    if state.get("query_rewrite_max_chars") is None
+                    else state.get("query_rewrite_max_chars")
+                )
+                or 0
             )
         except (TypeError, ValueError, AttributeError):
             rewrite_max_chars = 0
@@ -776,29 +1279,24 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         and len(question) <= int(rewrite_max_chars or 0)
         and should_rewrite_query(question)
     ):
-        rewrite_engine = _llm_engine()
+        rewrite_engine = llm_engine_factory()
         rewrite_llm = rewrite_engine.models.get("fast") or rewrite_engine.models.get("default")  # type: ignore[attr-defined]
         rewrite_model_used = getattr(rewrite_llm, "model_name", None) or getattr(rewrite_llm, "model", None)
         try:
             chat_prompt_template_cls, str_output_parser_cls = _get_langchain_text_pipeline_primitives()
             prompt_template = get_query_rewrite_prompt_template(rewrite_strategy_id)
             rewrite_prompt = chat_prompt_template_cls.from_template(prompt_template)
-            rewrite_chain = (
-                rewrite_prompt
-                | rewrite_llm.bind(temperature=rewrite_temperature)
-                | str_output_parser_cls()
-            )
-            rw_start = time.time()
+            rewrite_chain = rewrite_prompt | rewrite_llm.bind(temperature=rewrite_temperature) | str_output_parser_cls()
+            rewrite_start = time.time()
             rewritten = rewrite_chain.invoke({"history": history_text, "question": question})
-            rewrite_elapsed = time.time() - rw_start
+            rewrite_elapsed = time.time() - rewrite_start
             rewritten = (rewritten or "").strip().strip('"')
             if rewritten:
                 query_for_retrieval = rewritten
-        except Exception as exc:
-            _log_orchestrator_fallback('run_retrieval', exc)
+        except Exception as exc:  # noqa: BLE001
+            _log_orchestrator_fallback("_prepare_query_phase", exc)
             query_for_retrieval = question
             rewrite_elapsed = 0.0
-
         rewrite_used = query_for_retrieval != question
 
     industry_rules_enabled_req = state.get("industry_rules_enabled")
@@ -820,7 +1318,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             max_query_chars=int(getattr(settings, "RAG_INDUSTRY_RULES_MAX_QUERY_CHARS", 2000) or 2000),
         )
     except Exception as exc:  # noqa: BLE001
-        _log_orchestrator_fallback('run_retrieval', exc)
+        _log_orchestrator_fallback("_prepare_query_phase", exc)
         industry_rules_meta = {
             "enabled": bool(industry_rules_enabled),
             "used": False,
@@ -831,518 +1329,353 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         try:
             temporal_intent_meta = detect_temporal_intent(query_for_retrieval)
         except Exception as exc:  # noqa: BLE001
-            _log_orchestrator_fallback('run_retrieval', exc)
+            _log_orchestrator_fallback("_prepare_query_phase", exc)
             temporal_intent_meta = {"detected": False, "reason_codes": [], "error": str(exc)[:200]}
 
-    # Capture caller intent before any routing/presets apply (kept for trace/metrics).
-    requested_retrieval_mode = state.get("retrieval_mode", "hybrid") or "hybrid"
-    requested_retrieval_profile = state.get("retrieval_profile")
-    retrieval_contract_policy = resolve_retrieval_contract_policy(
-        mode=(
-            state.get("retrieval_contract_mode")
-            if state.get("retrieval_contract_mode") is not None
-            else getattr(settings, "RETRIEVAL_CONTRACT_MODE", "")
-        ),
-        requested_top_k=int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 5),
-        hard_fallback_enabled_setting=bool(getattr(settings, "RETRIEVAL_HARD_FALLBACK_ENABLED", False)),
-        hard_fallback_mode_setting=str(getattr(settings, "RETRIEVAL_HARD_FALLBACK_MODE", "keyword") or "keyword"),
-        hard_fallback_top_k_setting=int(getattr(settings, "RETRIEVAL_HARD_FALLBACK_TOP_K", 30) or 30),
-        visible_evidence_only_setting=bool(getattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False)),
-        evidence_span_strict_setting=bool(getattr(settings, "RAG_EVIDENCE_REQUIRE_SPANS_ENABLED", False)),
-    )
-    retrieval_contract_mode = str(retrieval_contract_policy.get("mode") or "").strip().lower()
-    contract_deterministic_recall = bool(retrieval_contract_policy.get("deterministic_recall"))
-    contract_must_recall_strict = bool(retrieval_contract_policy.get("must_recall_strict"))
+    return {
+        "query_for_retrieval": query_for_retrieval,
+        "rewrite_elapsed": rewrite_elapsed,
+        "rewrite_used": rewrite_used,
+        "rewrite_model_used": rewrite_model_used,
+        "rewrite_strategy_id": rewrite_strategy_id,
+        "rewrite_strategy_hash": rewrite_strategy_hash,
+        "rewrite_temperature": rewrite_temperature,
+        "rewrite_max_chars": rewrite_max_chars,
+        "rewrite_enabled": rewrite_enabled,
+        "sparse_enabled": sparse_enabled,
+        "sparse_provider": sparse_provider,
+        "industry_rules_meta": industry_rules_meta,
+        "temporal_intent_enabled": temporal_intent_enabled,
+        "temporal_intent_meta": temporal_intent_meta,
+        "temporal_recency_meta": temporal_recency_meta,
+    }
 
-    must_recall_requested = state.get("must_recall")
-    if must_recall_requested is None:
-        must_recall_enabled = bool(getattr(settings, "RETRIEVAL_MUST_RECALL_DEFAULT_ENABLED", False))
-    else:
-        must_recall_enabled = bool(must_recall_requested)
-    if contract_must_recall_strict:
-        must_recall_enabled = True
 
-    explicit_expected_source_keys = state.get("must_recall_expected_source_keys") is not None
-    raw_expected_source_keys = (
-        state.get("must_recall_expected_source_keys")
-        if explicit_expected_source_keys
-        else getattr(settings, "RETRIEVAL_MUST_RECALL_REQUIRED_SOURCE_KEYS", "")
-    )
-    must_recall_expected_source_keys = normalize_source_keys(raw_expected_source_keys)
-    must_recall_auto_expected_source_keys_enabled = bool(
-        state.get("must_recall_auto_expected_source_keys_enabled")
-        if state.get("must_recall_auto_expected_source_keys_enabled") is not None
-        else getattr(settings, "RETRIEVAL_MUST_RECALL_AUTO_EXPECTED_SOURCE_KEYS_ENABLED", True)
-    )
-    must_recall_auto_expected_source_keys: list[str] = []
-    must_recall_auto_expected_source_keys_reason_codes: list[str] = []
-    must_recall_auto_expected_source_keys_confidence = "none"
-    must_recall_auto_expected_source_keys_applied = False
-    if (
-        bool(must_recall_enabled)
-        and bool(must_recall_auto_expected_source_keys_enabled)
-        and not must_recall_expected_source_keys
-        and not explicit_expected_source_keys
-    ):
-        auto_max_keys = max(1, int(getattr(settings, "RETRIEVAL_MUST_RECALL_AUTO_EXPECTED_SOURCE_KEYS_MAX", 12) or 12))
-        allow_filter = bool(getattr(settings, "RETRIEVAL_MUST_RECALL_AUTO_INFER_FROM_METADATA_FILTER", True))
-        meta_filter = state.get("metadata_filter") if allow_filter else None
-        scope_payload: dict[str, Any] = {}
-        dataset_scope = str(state.get("dataset_id") or "").strip()
-        if dataset_scope:
-            scope_payload["dataset_id"] = dataset_scope
-        raw_doc_scope = state.get("document_ids")
-        if isinstance(raw_doc_scope, list):
-            scope_payload["document_ids"] = [str(v) for v in raw_doc_scope if str(v or "").strip()][:200]
-        raw_table_scope = state.get("table_ids")
-        if isinstance(raw_table_scope, list):
-            scope_payload["table_ids"] = [str(v) for v in raw_table_scope if str(v or "").strip()][:200]
-        inferred = infer_expected_source_keys(
-            query=query_for_retrieval,
-            metadata_filter=(meta_filter if isinstance(meta_filter, dict) else None),
-            scope=(scope_payload if scope_payload else None),
-            max_keys=auto_max_keys,
-        )
-        must_recall_auto_expected_source_keys = normalize_source_keys(list(inferred.get("expected_source_keys") or []))
-        must_recall_auto_expected_source_keys_reason_codes = [
-            str(v) for v in (inferred.get("reason_codes") or []) if str(v).strip()
-        ][:8]
-        must_recall_auto_expected_source_keys_confidence = str(inferred.get("confidence") or "none")
-        if must_recall_auto_expected_source_keys:
-            must_recall_expected_source_keys = must_recall_auto_expected_source_keys
-            must_recall_auto_expected_source_keys_applied = True
-
-    explicit_required_anchor_fields = state.get("must_recall_required_anchor_fields") is not None
-    raw_required_anchor_fields = (
-        state.get("must_recall_required_anchor_fields")
-        if explicit_required_anchor_fields
-        else getattr(settings, "RETRIEVAL_MUST_RECALL_REQUIRED_ANCHOR_FIELDS", "")
-    )
-    must_recall_required_anchor_fields = normalize_anchor_fields(raw_required_anchor_fields)
-    must_recall_auto_required_anchor_fields_enabled = bool(
-        state.get("must_recall_auto_required_anchor_fields_enabled")
-        if state.get("must_recall_auto_required_anchor_fields_enabled") is not None
-        else getattr(settings, "RETRIEVAL_MUST_RECALL_AUTO_REQUIRED_ANCHOR_FIELDS_ENABLED", True)
-    )
-    must_recall_auto_required_anchor_fields: list[str] = []
-    must_recall_auto_required_anchor_fields_reason_codes: list[str] = []
-    must_recall_auto_required_anchor_fields_applied = False
-    if bool(must_recall_enabled) and bool(must_recall_auto_required_anchor_fields_enabled):
-        inferred_anchor = infer_required_anchor_fields(
-            query=query_for_retrieval,
-            default_fields=(
-                must_recall_required_anchor_fields
-                if must_recall_required_anchor_fields
-                else list(DEFAULT_EVIDENCE_ANCHOR_FIELDS)
-            ),
-        )
-        must_recall_auto_required_anchor_fields = normalize_anchor_fields(
-            list(inferred_anchor.get("required_anchor_fields") or [])
-        )
-        must_recall_auto_required_anchor_fields_reason_codes = [
-            str(v) for v in (inferred_anchor.get("reason_codes") or []) if str(v).strip()
-        ][:8]
-        if must_recall_auto_required_anchor_fields and (
-            bool(inferred_anchor.get("applied")) or not must_recall_required_anchor_fields or not explicit_required_anchor_fields
-        ):
-            must_recall_required_anchor_fields = must_recall_auto_required_anchor_fields
-            must_recall_auto_required_anchor_fields_applied = True
-    if not must_recall_required_anchor_fields and must_recall_enabled:
-        must_recall_required_anchor_fields = list(DEFAULT_EVIDENCE_ANCHOR_FIELDS)
-
-    must_recall_second_pass_enabled = bool(
-        bool(retrieval_contract_policy.get("enable_partial_miss_second_pass"))
-        and bool(getattr(settings, "RETRIEVAL_MUST_RECALL_SECOND_PASS_ENABLED", True))
-    )
-    must_recall_second_pass_mode = str(
-        getattr(settings, "RETRIEVAL_MUST_RECALL_SECOND_PASS_MODE", "keyword") or "keyword"
-    ).strip().lower() or "keyword"
-    must_recall_second_pass_top_k = max(
-        int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 1),
-        int(getattr(settings, "RETRIEVAL_MUST_RECALL_SECOND_PASS_TOP_K", 80) or 80),
-    )
-    valid_retrieval_modes = {"hybrid", "vector", "keyword", "mmr"}
-    contextual_followup_req = state.get("contextual_followup_enabled")
-    contextual_followup_enabled = (
-        bool(contextual_followup_req)
-        if contextual_followup_req is not None
-        else bool(getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_ENABLED", False))
-    )
-    contextual_followup_mode = str(
-        state.get("contextual_followup_mode")
-        if state.get("contextual_followup_mode") is not None
-        else (getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MODE", "keyword") or "keyword")
-    ).strip().lower() or "keyword"
-    if contextual_followup_mode not in valid_retrieval_modes:
-        contextual_followup_mode = "keyword"
-    contextual_followup_top_k = max(
-        int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 1),
-        int(
-            state.get("contextual_followup_top_k")
-            if state.get("contextual_followup_top_k") is not None
-            else (getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_TOP_K", 40) or 40)
-        ),
-    )
-    contextual_followup_max_docs = max(
-        1,
-        int(
-            state.get("contextual_followup_max_docs")
-            if state.get("contextual_followup_max_docs") is not None
-            else (getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_DOCS", 4) or 4)
-        ),
-    )
-    contextual_followup_max_terms = max(
-        0,
-        int(
-            state.get("contextual_followup_max_terms")
-            if state.get("contextual_followup_max_terms") is not None
-            else (getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_TERMS", 4) or 4)
-        ),
-    )
-    contextual_followup_min_term_chars = max(
-        2,
-        int(
-            state.get("contextual_followup_min_term_chars")
-            if state.get("contextual_followup_min_term_chars") is not None
-            else (getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MIN_TERM_CHARS", 4) or 4)
-        ),
-    )
-    contextual_followup_max_query_chars = max(
-        32,
-        int(
-            state.get("contextual_followup_max_query_chars")
-            if state.get("contextual_followup_max_query_chars") is not None
-            else (getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_QUERY_CHARS", 500) or 500)
-        ),
-    )
-    contextual_followup_max_hops = max(
-        1,
-        int(
-            state.get("contextual_followup_max_hops")
-            if state.get("contextual_followup_max_hops") is not None
-            else (getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_HOPS", 1) or 1)
-        ),
-    )
-    contextual_followup_latency_budget_ms = max(
-        0.0,
-        float(
-            state.get("contextual_followup_latency_budget_ms")
-            if state.get("contextual_followup_latency_budget_ms") is not None
-            else (getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_LATENCY_BUDGET_MS", 500.0) or 500.0)
-        ),
-    )
-    hierarchy_recall_req = state.get("enable_hierarchy_recall")
-    hierarchy_recall_enabled = (
-        bool(hierarchy_recall_req)
-        if hierarchy_recall_req is not None
-        else bool(getattr(settings, "HIERARCHY_RECALL_ENABLED", False))
-    )
-    hierarchy_family_collapse_req = state.get("hierarchy_family_collapse")
-    hierarchy_family_collapse = (
-        bool(hierarchy_family_collapse_req)
-        if hierarchy_family_collapse_req is not None
-        else bool(getattr(settings, "HIERARCHY_RECALL_FAMILY_COLLAPSE", False))
-    )
-    hierarchy_family_aggregation = str(
-        state.get("hierarchy_family_aggregation")
-        if state.get("hierarchy_family_aggregation") is not None
-        else (getattr(settings, "HIERARCHY_RECALL_FAMILY_AGGREGATION", "combined") or "combined")
-    ).strip().lower() or "combined"
-    if hierarchy_family_aggregation not in {"frequency", "score", "combined"}:
-        hierarchy_family_aggregation = "combined"
-    hierarchy_tree_dedup_req = state.get("hierarchy_tree_dedup")
-    hierarchy_tree_dedup = (
-        bool(hierarchy_tree_dedup_req)
-        if hierarchy_tree_dedup_req is not None
-        else bool(getattr(settings, "HIERARCHY_RECALL_TREE_DEDUP", False))
-    )
-    hierarchy_parent_depth = max(
-        0,
-        int(
-            state.get("hierarchy_parent_depth")
-            if state.get("hierarchy_parent_depth") is not None
-            else (getattr(settings, "HIERARCHY_RECALL_PARENT_DEPTH", 0) or 0)
-        ),
-    )
-    hierarchy_sibling_window = max(
-        0,
-        int(
-            state.get("hierarchy_sibling_window")
-            if state.get("hierarchy_sibling_window") is not None
-            else (getattr(settings, "HIERARCHY_RECALL_SIBLING_WINDOW", 0) or 0)
-        ),
-    )
-    hierarchy_overfetch_factor = max(
-        1,
-        int(
-            state.get("hierarchy_overfetch_factor")
-            if state.get("hierarchy_overfetch_factor") is not None
-            else (getattr(settings, "HIERARCHY_RECALL_OVERFETCH_FACTOR", 4) or 4)
-        ),
+def _resolve_contract_phase(
+    state: dict[str, Any],
+    *,
+    query_for_retrieval: str,
+) -> dict[str, Any]:
+    return _resolve_contract_phase_impl(
+        state,
+        query_for_retrieval=query_for_retrieval,
+        resolve_retrieval_contract_policy_fn=resolve_retrieval_contract_policy,
+        infer_expected_source_keys_fn=infer_expected_source_keys,
+        infer_required_anchor_fields_fn=infer_required_anchor_fields,
     )
 
-    # Step 0.25: Deterministic intent router (optional).
-    #
-    # Goal: map query "shape" (log/api/howto/faq) to retrieval presets and safe toggles.
-    # Must be deterministic + PII-safe (no raw query in meta payloads).
-    intent_router_req = state.get("intent_router")
-    intent_router_enabled = (
-        bool(intent_router_req)
-        if intent_router_req is not None
-        else bool(getattr(settings, "RAG_INTENT_ROUTER_ENABLED", False))
+
+def _apply_routing_phase(
+    state: dict[str, Any],
+    *,
+    query_for_retrieval: str,
+    requested_retrieval_mode: Any,
+    requested_retrieval_profile: Any,
+    sparse_enabled: bool,
+    sparse_provider: str,
+    hierarchy_recall_enabled: bool,
+    hierarchy_family_collapse: bool,
+    hierarchy_family_aggregation: str,
+    hierarchy_tree_dedup: bool,
+    hierarchy_parent_depth: int,
+    hierarchy_sibling_window: int,
+    hierarchy_overfetch_factor: int,
+) -> dict[str, Any]:
+    return _apply_routing_phase_impl(
+        state,
+        query_for_retrieval=query_for_retrieval,
+        requested_retrieval_mode=requested_retrieval_mode,
+        requested_retrieval_profile=requested_retrieval_profile,
+        sparse_enabled=sparse_enabled,
+        sparse_provider=sparse_provider,
+        hierarchy_recall_enabled=hierarchy_recall_enabled,
+        hierarchy_family_collapse=hierarchy_family_collapse,
+        hierarchy_family_aggregation=hierarchy_family_aggregation,
+        hierarchy_tree_dedup=hierarchy_tree_dedup,
+        hierarchy_parent_depth=hierarchy_parent_depth,
+        hierarchy_sibling_window=hierarchy_sibling_window,
+        hierarchy_overfetch_factor=hierarchy_overfetch_factor,
+        hybrid_retriever_obj=hybrid_retriever,
+        route_retrieval_preset_fn=route_retrieval_preset,
+        route_adaptive_retrieval_overrides_fn=route_adaptive_retrieval_overrides,
     )
-    intent_router_meta = {"enabled": bool(intent_router_enabled), "used": False}
-    if bool(intent_router_enabled):
-        try:
-            overrides, intent_router_meta = route_retrieval_preset(
-                query=query_for_retrieval,
-                retrieval_mode=str(requested_retrieval_mode or ""),
-                retrieval_profile=(
-                    str(requested_retrieval_profile).strip()
-                    if requested_retrieval_profile is not None
-                    else None
-                ),
-                top_k=int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 5),
-                score_threshold=float(
-                    state.get("score_threshold", settings.SIMILARITY_THRESHOLD)
-                    if state.get("score_threshold", settings.SIMILARITY_THRESHOLD) is not None
-                    else (settings.SIMILARITY_THRESHOLD or 0.0)
-                ),
-                enable_reranker=bool(state.get("enable_reranker", settings.ENABLE_RERANKER)),
-                enable_weight_rerank=bool(state.get("enable_weight_rerank", True)),
-                enable_multi_query=(state.get("enable_multi_query") if "enable_multi_query" in state else None),
-                enable_query_alias_expansion=(
-                    state.get("enable_query_alias_expansion") if "enable_query_alias_expansion" in state else None
-                ),
-                intent_router_policy=(state.get("intent_router_policy") if "intent_router_policy" in state else None),
-                learned_router_model=(
-                    state.get("intent_router_model") if isinstance(state.get("intent_router_model"), dict) else None
-                ),
-                learned_router_model_path=(
-                    str(state.get("intent_router_model_path") or "").strip()
-                    if state.get("intent_router_model_path") is not None
-                    else str(getattr(settings, "RAG_INTENT_ROUTER_MODEL_PATH", "") or "").strip()
-                ),
-                learned_router_confidence_min=float(
-                    state.get("intent_router_model_confidence_min")
-                    if state.get("intent_router_model_confidence_min") is not None
-                    else (getattr(settings, "RAG_INTENT_ROUTER_MODEL_CONFIDENCE_MIN", 0.7) or 0.7)
-                ),
-            )
-            for k, v in (overrides or {}).items():
-                state[k] = v
-        except Exception as exc:  # noqa: BLE001
-            _log_orchestrator_fallback('run_retrieval', exc)
-            intent_router_meta = {
-                "enabled": True,
-                "used": False,
-                "error": f"intent_router_exception:{str(exc)[:160]}",
-            }
 
-    # Step 0.3: Adaptive retrieval router (optional, policy-driven).
-    #
-    # This layer lets operators rollout bounded routing overrides from offline artifacts
-    # without editing backend code. It is deterministic and uses only low-cardinality signals.
-    adaptive_router_req = state.get("adaptive_router")
-    adaptive_router_enabled = (
-        bool(adaptive_router_req)
-        if adaptive_router_req is not None
-        else bool(getattr(settings, "RAG_ADAPTIVE_ROUTER_ENABLED", False))
+
+def _run_retrieval_bootstrap_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
+    ctx.engine: Any | None = None
+
+    def _llm_engine() -> Any:
+        if ctx.engine is None:
+            ctx.engine = get_rag_engine()
+        return ctx.engine
+
+    ctx._llm_engine = _llm_engine
+
+    # KG search output can be reused by multiple retrieval steps (query expansion / chunk injection).
+    ctx.kg_result_cached: dict[str, Any] | None = None
+    ctx.intent_router_meta: dict[str, Any] = {"enabled": False, "used": False}
+    ctx.adaptive_router_meta: dict[str, Any] = {"enabled": False, "used": False}
+    ctx.channel_budget_policy_meta: dict[str, Any] = {"enabled": False, "used": False}
+    query_phase = _prepare_query_phase(
+        ctx.state,
+        question=ctx.question,
+        history_text=ctx.history_text,
+        llm_engine_factory=_llm_engine,
     )
-    adaptive_router_meta = {"enabled": bool(adaptive_router_enabled), "used": False}
-    if bool(adaptive_router_enabled):
-        adaptive_policy = state.get("adaptive_router_policy")
-        if not isinstance(adaptive_policy, dict):
-            policy_path = str(getattr(settings, "RAG_ADAPTIVE_ROUTER_POLICY_PATH", "") or "").strip()
-            if policy_path:
-                try:
-                    p = Path(policy_path)
-                    if p.exists():
-                        adaptive_policy = json.loads(p.read_text(encoding="utf-8"))
-                except Exception as exc:
-                    _log_orchestrator_fallback('run_retrieval', exc)
-                    adaptive_policy = None
-        try:
-            adaptive_overrides, adaptive_router_meta = route_adaptive_retrieval_overrides(
-                query=query_for_retrieval,
-                retrieval_mode=str(state.get("retrieval_mode", "hybrid") or "hybrid"),
-                intent_meta=(intent_router_meta if isinstance(intent_router_meta, dict) else None),
-                adaptive_router_policy=(adaptive_policy if isinstance(adaptive_policy, dict) else None),
-            )
-            for k, v in (adaptive_overrides or {}).items():
-                state[k] = v
-        except Exception as exc:  # noqa: BLE001
-            _log_orchestrator_fallback('run_retrieval', exc)
-            adaptive_router_meta = {
-                "enabled": True,
-                "used": False,
-                "error": f"adaptive_router_exception:{str(exc)[:160]}",
-            }
+    ctx.query_for_retrieval = str(query_phase["query_for_retrieval"])
+    ctx.rewrite_elapsed = float(query_phase["rewrite_elapsed"])
+    ctx.rewrite_used = bool(query_phase["rewrite_used"])
+    ctx.rewrite_model_used = query_phase["rewrite_model_used"]
+    ctx.rewrite_strategy_id = query_phase["rewrite_strategy_id"]
+    ctx.rewrite_strategy_hash = query_phase["rewrite_strategy_hash"]
+    ctx.rewrite_temperature = query_phase["rewrite_temperature"]
+    ctx.rewrite_max_chars = query_phase["rewrite_max_chars"]
+    ctx.rewrite_enabled = bool(query_phase["rewrite_enabled"])
+    ctx.sparse_enabled = bool(query_phase["sparse_enabled"])
+    ctx.sparse_provider = str(query_phase["sparse_provider"] or "")
+    ctx.industry_rules_meta = dict(query_phase["industry_rules_meta"])
+    ctx.temporal_intent_enabled = bool(query_phase["temporal_intent_enabled"])
+    ctx.temporal_intent_meta = dict(query_phase["temporal_intent_meta"])
+    ctx.temporal_recency_meta = dict(query_phase["temporal_recency_meta"])
 
-    query_contract = normalize_query_contract(
-        QueryContractNormalizationInput(
-            state=state,
-            query_for_retrieval=query_for_retrieval,
-            requested_retrieval_mode=requested_retrieval_mode,
-            requested_retrieval_profile=requested_retrieval_profile,
-            sparse_enabled=bool(sparse_enabled),
-            sparse_provider=str(sparse_provider or ""),
-            hierarchy=HierarchyContractSettings(
-                enabled=bool(hierarchy_recall_enabled),
-                family_collapse=bool(hierarchy_family_collapse),
-                family_aggregation=str(hierarchy_family_aggregation),
-                tree_dedup=bool(hierarchy_tree_dedup),
-                parent_depth=int(hierarchy_parent_depth),
-                sibling_window=int(hierarchy_sibling_window),
-                overfetch_factor=int(hierarchy_overfetch_factor),
-            ),
-            defaults=QueryContractDefaults(
-                retrieval_top_k=int(settings.RETRIEVAL_TOP_K or 5),
-                similarity_threshold=float(settings.SIMILARITY_THRESHOLD or 0.0),
-                enable_reranker=bool(settings.ENABLE_RERANKER),
-                reranker_provider=str(settings.RERANKER_PROVIDER or ""),
-                reranker_top_n=int(settings.RERANKER_TOP_N or 20),
-                retrieval_contract_mode=str(getattr(settings, "RETRIEVAL_CONTRACT_MODE", "") or ""),
-                hard_fallback_enabled_setting=bool(getattr(settings, "RETRIEVAL_HARD_FALLBACK_ENABLED", False)),
-                hard_fallback_mode_setting=str(
-                    getattr(settings, "RETRIEVAL_HARD_FALLBACK_MODE", "keyword") or "keyword"
-                ),
-                hard_fallback_top_k_setting=int(
-                    getattr(settings, "RETRIEVAL_HARD_FALLBACK_TOP_K", 30) or 30
-                ),
-                visible_evidence_only_setting=bool(
-                    getattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False)
-                ),
-                evidence_span_strict_setting=bool(
-                    getattr(settings, "RAG_EVIDENCE_REQUIRE_SPANS_ENABLED", False)
-                ),
-                retrieval_fusion_strategy=str(settings.RETRIEVAL_FUSION_STRATEGY or ""),
-                retrieval_mmr_lambda=float(settings.RETRIEVAL_MMR_LAMBDA or 0.0),
-            ),
-        )
+    contract_phase = _resolve_contract_phase(
+        ctx.state,
+        query_for_retrieval=ctx.query_for_retrieval,
     )
-    request_retrieval_mode = query_contract.request_retrieval_mode
-    retrieval_mode_routed = bool(query_contract.retrieval_mode_routed)
-    profile_applied = dict(query_contract.profile_applied)
-    profile_norm = query_contract.profile_norm or ""
-    sparse_enabled = bool(query_contract.sparse_enabled)
-    sparse_provider = normalize_sparse_provider_name(str(query_contract.sparse_provider or ""))
-    hierarchy_recall_enabled = bool(query_contract.hierarchy.enabled)
-    hierarchy_family_collapse = bool(query_contract.hierarchy.family_collapse)
-    hierarchy_family_aggregation = str(query_contract.hierarchy.family_aggregation or "combined")
-    hierarchy_tree_dedup = bool(query_contract.hierarchy.tree_dedup)
-    hierarchy_parent_depth = int(query_contract.hierarchy.parent_depth)
-    hierarchy_sibling_window = int(query_contract.hierarchy.sibling_window)
-    hierarchy_overfetch_factor = int(query_contract.hierarchy.overfetch_factor)
+    ctx.requested_retrieval_mode = contract_phase["requested_retrieval_mode"]
+    ctx.requested_retrieval_profile = contract_phase["requested_retrieval_profile"]
+    ctx.retrieval_contract_policy = dict(contract_phase["retrieval_contract_policy"])
+    ctx.retrieval_contract_mode = str(contract_phase["retrieval_contract_mode"])
+    ctx.contract_deterministic_recall = bool(contract_phase["contract_deterministic_recall"])
+    ctx.contract_must_recall_strict = bool(contract_phase["contract_must_recall_strict"])
+    ctx.must_recall_requested = contract_phase["must_recall_requested"]
+    ctx.must_recall_enabled = bool(contract_phase["must_recall_enabled"])
+    ctx.must_recall_expected_source_keys = list(contract_phase["must_recall_expected_source_keys"])
+    ctx.must_recall_auto_expected_source_keys_enabled = bool(
+        contract_phase["must_recall_auto_expected_source_keys_enabled"]
+    )
+    ctx.must_recall_auto_expected_source_keys = list(contract_phase["must_recall_auto_expected_source_keys"])
+    ctx.must_recall_auto_expected_source_keys_reason_codes = list(
+        contract_phase["must_recall_auto_expected_source_keys_reason_codes"]
+    )
+    ctx.must_recall_auto_expected_source_keys_confidence = str(
+        contract_phase["must_recall_auto_expected_source_keys_confidence"]
+    )
+    ctx.must_recall_auto_expected_source_keys_applied = bool(
+        contract_phase["must_recall_auto_expected_source_keys_applied"]
+    )
+    ctx.must_recall_required_anchor_fields = list(contract_phase["must_recall_required_anchor_fields"])
+    ctx.must_recall_auto_required_anchor_fields_enabled = bool(
+        contract_phase["must_recall_auto_required_anchor_fields_enabled"]
+    )
+    ctx.must_recall_auto_required_anchor_fields = list(contract_phase["must_recall_auto_required_anchor_fields"])
+    ctx.must_recall_auto_required_anchor_fields_reason_codes = list(
+        contract_phase["must_recall_auto_required_anchor_fields_reason_codes"]
+    )
+    ctx.must_recall_auto_required_anchor_fields_applied = bool(
+        contract_phase["must_recall_auto_required_anchor_fields_applied"]
+    )
+    ctx.must_recall_second_pass_enabled = bool(contract_phase["must_recall_second_pass_enabled"])
+    ctx.must_recall_second_pass_mode = str(contract_phase["must_recall_second_pass_mode"])
+    ctx.must_recall_second_pass_top_k = int(contract_phase["must_recall_second_pass_top_k"])
+    ctx.contextual_followup_enabled = bool(contract_phase["contextual_followup_enabled"])
+    ctx.contextual_followup_mode = str(contract_phase["contextual_followup_mode"])
+    ctx.contextual_followup_top_k = int(contract_phase["contextual_followup_top_k"])
+    ctx.contextual_followup_max_docs = int(contract_phase["contextual_followup_max_docs"])
+    ctx.contextual_followup_max_terms = int(contract_phase["contextual_followup_max_terms"])
+    ctx.contextual_followup_min_term_chars = int(contract_phase["contextual_followup_min_term_chars"])
+    ctx.contextual_followup_max_query_chars = int(contract_phase["contextual_followup_max_query_chars"])
+    ctx.contextual_followup_max_hops = int(contract_phase["contextual_followup_max_hops"])
+    ctx.contextual_followup_latency_budget_ms = float(contract_phase["contextual_followup_latency_budget_ms"])
+    ctx.hierarchy_recall_enabled = bool(contract_phase["hierarchy_recall_enabled"])
+    ctx.hierarchy_family_collapse = bool(contract_phase["hierarchy_family_collapse"])
+    ctx.hierarchy_family_aggregation = str(contract_phase["hierarchy_family_aggregation"])
+    ctx.hierarchy_tree_dedup = bool(contract_phase["hierarchy_tree_dedup"])
+    ctx.hierarchy_parent_depth = int(contract_phase["hierarchy_parent_depth"])
+    ctx.hierarchy_sibling_window = int(contract_phase["hierarchy_sibling_window"])
+    ctx.hierarchy_overfetch_factor = int(contract_phase["hierarchy_overfetch_factor"])
 
-    explicit_fusion_budgets = state.get("fusion_budgets") if isinstance(state.get("fusion_budgets"), dict) else None
-    explicit_fusion_weights = state.get("fusion_weights") if isinstance(state.get("fusion_weights"), dict) else None
-    if explicit_fusion_budgets:
-        channel_budget_policy_meta = {"enabled": False, "used": False, "reason": "request_fusion_budgets_override"}
-    elif explicit_fusion_weights:
-        channel_budget_policy_meta = {"enabled": False, "used": False, "reason": "request_fusion_weights_override"}
-    else:
-        channel_budget_policy = state.get("channel_budget_policy")
-        if not isinstance(channel_budget_policy, dict):
-            policy_path = str(
-                state.get("channel_budget_policy_path")
-                or getattr(settings, "RAG_CHANNEL_BUDGET_POLICY_PATH", "")
-                or ""
-            ).strip()
-            if policy_path:
-                channel_budget_policy_meta = {"enabled": True, "used": False, "policy_path": policy_path}
-                try:
-                    policy_file = Path(policy_path)
-                    if policy_file.exists():
-                        channel_budget_policy = json.loads(policy_file.read_text(encoding="utf-8"))
-                    else:
-                        channel_budget_policy_meta["reason"] = "policy_file_missing"
-                except Exception as exc:  # noqa: BLE001
-                    _log_orchestrator_fallback('run_retrieval', exc)
-                    channel_budget_policy = None
-                    channel_budget_policy_meta["reason"] = f"policy_file_error:{exc.__class__.__name__}"
-        if isinstance(channel_budget_policy, dict):
-            overrides, channel_budget_policy_meta = resolve_channel_budget_policy_overrides(
-                policy=channel_budget_policy,
-                retrieval_mode=str(profile_applied.get("retrieval_mode") or request_retrieval_mode),
-                retrieval_profile=(profile_norm or None),
-            )
-            if overrides:
-                for k, v in overrides.items():
-                    state[k] = v
-    retriever_update: dict[str, Any] = dict(query_contract.retriever_update)
-    for key, value in query_contract.state_updates.items():
-        state[key] = value
+    routing_phase = _apply_routing_phase(
+        ctx.state,
+        query_for_retrieval=ctx.query_for_retrieval,
+        requested_retrieval_mode=ctx.requested_retrieval_mode,
+        requested_retrieval_profile=ctx.requested_retrieval_profile,
+        sparse_enabled=bool(ctx.sparse_enabled),
+        sparse_provider=str(ctx.sparse_provider or ""),
+        hierarchy_recall_enabled=bool(ctx.hierarchy_recall_enabled),
+        hierarchy_family_collapse=bool(ctx.hierarchy_family_collapse),
+        hierarchy_family_aggregation=str(ctx.hierarchy_family_aggregation),
+        hierarchy_tree_dedup=bool(ctx.hierarchy_tree_dedup),
+        hierarchy_parent_depth=int(ctx.hierarchy_parent_depth),
+        hierarchy_sibling_window=int(ctx.hierarchy_sibling_window),
+        hierarchy_overfetch_factor=int(ctx.hierarchy_overfetch_factor),
+    )
+    ctx.intent_router_meta = dict(routing_phase["intent_router_meta"])
+    ctx.adaptive_router_meta = dict(routing_phase["adaptive_router_meta"])
+    ctx.channel_budget_policy_meta = dict(routing_phase["channel_budget_policy_meta"])
+    ctx.request_retrieval_mode = str(routing_phase["request_retrieval_mode"])
+    ctx.retrieval_mode_routed = bool(routing_phase["retrieval_mode_routed"])
+    ctx.profile_norm = str(routing_phase["profile_norm"] or "")
+    ctx.retrieval_contract_policy = dict(routing_phase["retrieval_contract_policy"])
+    ctx.retrieval_contract_mode = str(routing_phase["retrieval_contract_mode"])
+    ctx.contract_deterministic_recall = bool(routing_phase["contract_deterministic_recall"])
+    ctx.sparse_enabled = bool(routing_phase["sparse_enabled"])
+    ctx.sparse_provider = str(routing_phase["sparse_provider"] or "")
+    ctx.hierarchy_recall_enabled = bool(routing_phase["hierarchy_recall_enabled"])
+    ctx.hierarchy_family_collapse = bool(routing_phase["hierarchy_family_collapse"])
+    ctx.hierarchy_family_aggregation = str(routing_phase["hierarchy_family_aggregation"])
+    ctx.hierarchy_tree_dedup = bool(routing_phase["hierarchy_tree_dedup"])
+    ctx.hierarchy_parent_depth = int(routing_phase["hierarchy_parent_depth"])
+    ctx.hierarchy_sibling_window = int(routing_phase["hierarchy_sibling_window"])
+    ctx.hierarchy_overfetch_factor = int(routing_phase["hierarchy_overfetch_factor"])
+    ctx.retriever_update = dict(routing_phase["retriever_update"])
+    ctx.retriever = routing_phase["retriever"]
+    return None
 
-    retrieval_contract_policy = dict(query_contract.retrieval_contract_policy or {})
-    retrieval_contract_mode = str(query_contract.retrieval_contract_mode or "").strip().lower()
-    contract_deterministic_recall = bool(query_contract.contract_deterministic_recall)
 
-    retriever = hybrid_retriever.model_copy(update=retriever_update)
+def _run_retrieval_alias_dictionary_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
+    ctx.alias_elapsed = 0.0
+    ctx.alias_used = False
+    ctx.alias_meta: dict[str, Any] = {"enabled": False, "used": False}
+    ctx.alias_queries: list[str] = []
 
-    # Controlled query expansion (deterministic).
-    alias_elapsed = 0.0
-    alias_used = False
-    alias_meta: dict[str, Any] = {"enabled": False, "used": False}
-    alias_queries: list[str] = []
-
-    alias_enabled = state.get("enable_query_alias_expansion")
-    aliases = state.get("query_aliases")
-    if alias_enabled is None:
-        alias_enabled = bool(aliases)
-    if bool(alias_enabled):
+    ctx.alias_enabled = ctx.state.get("enable_query_alias_expansion")
+    aliases = ctx.state.get("query_aliases")
+    if ctx.alias_enabled is None:
+        ctx.alias_enabled = bool(aliases)
+    if bool(ctx.alias_enabled):
         t0 = time.time()
-        alias_queries, alias_meta = generate_alias_queries(
-            query=query_for_retrieval,
+        ctx.alias_queries, ctx.alias_meta = generate_alias_queries(
+            query=ctx.query_for_retrieval,
             aliases=aliases,
-            max_queries=(5 if state.get("query_alias_max_queries") is None else int(state.get("query_alias_max_queries") or 0)),
+            max_queries=(
+                5
+                if ctx.state.get("query_alias_max_queries") is None
+                else int(ctx.state.get("query_alias_max_queries") or 0)
+            ),
         )
-        alias_elapsed = time.time() - t0
-        alias_used = bool(alias_queries)
+        ctx.alias_elapsed = time.time() - t0
+        ctx.alias_used = bool(ctx.alias_queries)
 
     # Deterministic dictionary expansion (bounded, auditable).
-    dict_elapsed = 0.0
-    dict_used = False
-    dict_meta: dict[str, Any] = {"enabled": False, "used": False}
-    dict_expansions: list[dict[str, Any]] = []
+    ctx.dict_elapsed = 0.0
+    ctx.dict_used = False
+    ctx.dict_meta: dict[str, Any] = {"enabled": False, "used": False}
+    ctx.dict_expansions: list[dict[str, Any]] = []
     try:
         from app.query.expand import generate_dictionary_expansions, load_base_dictionary_rules
 
         t0 = time.time()
-        dict_expansions, dict_meta = generate_dictionary_expansions(
-            query=query_for_retrieval,
+        ctx.dict_expansions, ctx.dict_meta = generate_dictionary_expansions(
+            query=ctx.query_for_retrieval,
             rules=load_base_dictionary_rules(),
             max_expansions_total=5,
             max_expansions_per_rule=1,
         )
-        dict_elapsed = time.time() - t0
-        dict_used = bool(dict_expansions)
+        ctx.dict_elapsed = time.time() - t0
+        ctx.dict_used = bool(ctx.dict_expansions)
     except Exception as exc:  # noqa: BLE001
-        _log_orchestrator_fallback('run_retrieval', exc)
-        dict_elapsed = 0.0
-        dict_used = False
-        dict_expansions = []
-        dict_meta = {"enabled": False, "used": False, "error": str(exc)[:200]}
+        _log_orchestrator_fallback("run_retrieval", exc)
+        ctx.dict_elapsed = 0.0
+        ctx.dict_used = False
+        ctx.dict_expansions = []
+        ctx.dict_meta = {"enabled": False, "used": False, "error": str(exc)[:200]}
+    return None
 
-    # KG query expansion (entity names, optional).
-    kg_query_expansion_enabled = _coerce_optional_bool(
-        state.get("enable_kg_query_expansion"),
+
+def _run_kg_search_sync(kg_kwargs: dict[str, Any]) -> Any:
+    coro = kg_search(**kg_kwargs)
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = None
+    if loop is not None and loop.is_running():
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, coro).result()
+    if loop is not None:
+        return loop.run_until_complete(coro)
+    return asyncio.run(coro)
+
+
+def _score_kg_query_entities(
+    entities: list[Any],
+    *,
+    exclude_all: bool,
+    exclude_fold: set[str],
+    min_weight: float,
+) -> list[tuple[float, str]]:
+    scored: list[tuple[float, str]] = []
+    for entity in entities:
+        if not isinstance(entity, dict) or exclude_all:
+            continue
+        entity_type = str(entity.get("type") or "").strip()
+        if entity_type and entity_type.casefold() in exclude_fold:
+            continue
+        name = str(entity.get("name") or "").strip()
+        if not name:
+            continue
+        try:
+            weight = float(entity.get("weight", 0.0) or 0.0)
+        except (TypeError, ValueError, AttributeError):
+            weight = 0.0
+        if weight >= min_weight:
+            scored.append((weight, name))
+    return sorted(scored, key=lambda item: (-item[0], item[1]))
+
+
+def _select_kg_query_entity_names(
+    scored: list[tuple[float, str]],
+    *,
+    query: str,
+    max_entities: int,
+) -> list[str]:
+    seen_names: set[str] = set()
+    base_folded = query.casefold()
+    selected_names: list[str] = []
+    for _weight, name in scored:
+        key = name.casefold() if name.isascii() else name
+        if key in seen_names:
+            continue
+        seen_names.add(key)
+        if key and key in base_folded:
+            continue
+        selected_names.append(name)
+        if max_entities > 0 and len(selected_names) >= max_entities:
+            break
+    return selected_names
+
+
+def _build_kg_query_expansions(query: str, names: list[str], *, max_queries: int) -> list[str]:
+    queries: list[str] = []
+    for name in names:
+        expanded = f"{query} {name}".strip()
+        if len(expanded) > 500:
+            expanded = expanded[:500] + "..."
+        queries.append(expanded)
+        if max_queries > 0 and len(queries) >= max_queries:
+            break
+    return queries
+
+
+def _run_retrieval_kg_query_expansion_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
+    ctx.kg_query_expansion_enabled = _coerce_optional_bool(
+        ctx.state.get("enable_kg_query_expansion"),
         default=bool(getattr(settings, "RAG_KG_QUERY_EXPANSION_ENABLED", False)),
     )
-    kg_query_expansion_used = False
-    kg_query_expansion_elapsed = 0.0
-    kg_query_expansion_error: str | None = None
-    kg_query_expansion_entities_total = 0
-    kg_query_expansion_entities_selected = 0
-    kg_query_expansion_queries: list[str] = []
-    kg_query_expansion_entity_names: list[str] = []
+    ctx.kg_query_expansion_used = False
+    ctx.kg_query_expansion_elapsed = 0.0
+    ctx.kg_query_expansion_error: str | None = None
+    ctx.kg_query_expansion_entities_total = 0
+    ctx.kg_query_expansion_entities_selected = 0
+    ctx.kg_query_expansion_queries: list[str] = []
+    ctx.kg_query_expansion_entity_names: list[str] = []
     try:
-        tenant_id = state.get("tenant_id")
-        account_id = state.get("account_id")
-        kg_document_ids, kg_dataset_id, kg_dataset_ids = _resolve_kg_scope(state)
+        tenant_id = ctx.state.get("tenant_id")
+        account_id = ctx.state.get("account_id")
+        kg_document_ids, kg_dataset_id, kg_dataset_ids = _resolve_kg_scope(ctx.state)
 
         if (
-            kg_query_expansion_enabled
+            ctx.kg_query_expansion_enabled
             and bool(getattr(settings, "KG_ENABLED", False))
             and bool(getattr(settings, "KG_CHAT_ENABLED", False))
             and tenant_id is not None
@@ -1350,7 +1683,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             and (account_id is not None or (kg_dataset_id is None and not kg_dataset_ids))
         ):
             kg_kwargs = {
-                "query": query_for_retrieval,
+                "query": ctx.query_for_retrieval,
                 "tenant_id": tenant_id,
                 "document_ids": kg_document_ids or None,
                 "dataset_id": kg_dataset_id,
@@ -1358,182 +1691,175 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             }
             if kg_dataset_ids:
                 kg_kwargs["dataset_ids"] = kg_dataset_ids
-            coro = kg_search(**kg_kwargs)
-
             t0 = time.time()
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = None
+            kg_result = _run_kg_search_sync(kg_kwargs)
 
-            if loop is not None and loop.is_running():
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                    kg_result = pool.submit(asyncio.run, coro).result()
-            elif loop is not None:
-                kg_result = loop.run_until_complete(coro)
-            else:
-                kg_result = asyncio.run(coro)
-
-            kg_result_cached = kg_result if isinstance(kg_result, dict) else None
-            kg_query_expansion_elapsed = time.time() - t0
+            ctx.kg_result_cached = kg_result if isinstance(kg_result, dict) else None
+            ctx.kg_query_expansion_elapsed = time.time() - t0
 
             entities = (kg_result or {}).get("entities") or []
             entities = entities if isinstance(entities, list) else []
-            kg_query_expansion_entities_total = len(entities)
+            ctx.kg_query_expansion_entities_total = len(entities)
 
             max_entities = max(0, int(getattr(settings, "RAG_KG_QUERY_EXPANSION_MAX_ENTITIES", 5) or 5))
             max_queries = max(0, int(getattr(settings, "RAG_KG_QUERY_EXPANSION_MAX_QUERIES", 5) or 5))
             min_weight = float(getattr(settings, "RAG_KG_QUERY_EXPANSION_MIN_ENTITY_WEIGHT", 0.15) or 0.15)
-            exclude_types = parse_csv(
-                str(getattr(settings, "RAG_KG_QUERY_EXPANSION_EXCLUDE_ENTITY_TYPES", "") or "")
-            )
+            exclude_types = parse_csv(str(getattr(settings, "RAG_KG_QUERY_EXPANSION_EXCLUDE_ENTITY_TYPES", "") or ""))
             exclude_all = "*" in exclude_types
             exclude_fold = {t.casefold() for t in exclude_types if str(t or "").strip() and t != "*"}
 
-            scored: list[tuple[float, str]] = []
-            for ent in entities:
-                if not isinstance(ent, dict):
-                    continue
-                if exclude_all:
-                    continue
-                etype = str(ent.get("type") or "").strip()
-                if etype and etype.casefold() in exclude_fold:
-                    continue
-                name = (ent.get("name") or "").strip()
-                if not name:
-                    continue
-                try:
-                    w = float(ent.get("weight", 0.0) or 0.0)
-                except (TypeError, ValueError, AttributeError):
-                    w = 0.0
-                if w < min_weight:
-                    continue
-                scored.append((w, name))
+            scored = _score_kg_query_entities(
+                entities,
+                exclude_all=exclude_all,
+                exclude_fold=exclude_fold,
+                min_weight=min_weight,
+            )
+            selected_names = _select_kg_query_entity_names(
+                scored,
+                query=ctx.query_for_retrieval,
+                max_entities=max_entities,
+            )
 
-            scored.sort(key=lambda x: (-x[0], x[1]))
-            seen_names: set[str] = set()
-            base_folded = query_for_retrieval.casefold()
-            selected_names: list[str] = []
-            for _w, name in scored:
-                key = name.casefold() if name.isascii() else name
-                if key in seen_names:
-                    continue
-                seen_names.add(key)
-                if key and (key in base_folded):
-                    continue
-                selected_names.append(name)
-                if max_entities > 0 and len(selected_names) >= max_entities:
-                    break
+            ctx.kg_query_expansion_entities_selected = len(selected_names)
+            ctx.kg_query_expansion_entity_names = selected_names[
+                : max_queries if max_queries > 0 else len(selected_names)
+            ]
 
-            kg_query_expansion_entities_selected = len(selected_names)
-            kg_query_expansion_entity_names = selected_names[: max_queries if max_queries > 0 else len(selected_names)]
+            ctx.kg_query_expansion_queries = _build_kg_query_expansions(
+                ctx.query_for_retrieval,
+                ctx.kg_query_expansion_entity_names,
+                max_queries=max_queries,
+            )
 
-            for name in kg_query_expansion_entity_names:
-                q = f"{query_for_retrieval} {name}".strip()
-                if len(q) > 500:
-                    q = q[:500] + "..."
-                kg_query_expansion_queries.append(q)
-                if max_queries > 0 and len(kg_query_expansion_queries) >= max_queries:
-                    break
-
-            kg_query_expansion_used = bool(kg_query_expansion_queries)
+            ctx.kg_query_expansion_used = bool(ctx.kg_query_expansion_queries)
     except Exception as exc:  # noqa: BLE001
-        _log_orchestrator_fallback('run_retrieval', exc)
-        kg_query_expansion_used = False
-        kg_query_expansion_queries = []
-        kg_query_expansion_entity_names = []
-        kg_query_expansion_error = str(exc)[:200]
+        _log_orchestrator_fallback("run_retrieval", exc)
+        ctx.kg_query_expansion_used = False
+        ctx.kg_query_expansion_queries = []
+        ctx.kg_query_expansion_entity_names = []
+        ctx.kg_query_expansion_error = str(exc)[:200]
+    return None
 
-    # LLM-powered expansions (optional, bounded).
-    multi_query_elapsed = 0.0
-    multi_query_used = False
-    multi_query_model_used = None
-    multi_query_parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
-    multi_queries: list[str] = []
-    multi_query_ab_test_key = str(state.get("multi_query_ab_test_key") or "").strip() or None
-    multi_query_ab_variant = str(state.get("multi_query_ab_variant") or "").strip().lower() or None
-    multi_query_ab_seed = state.get("multi_query_ab_seed")
-    multi_query_ab_forced = bool(
-        state.get("enable_multi_query") is None
-        and multi_query_ab_variant in {"on", "enabled", "treatment", "mq"}
+
+def _normalize_multi_queries(raw: Any, *, query: str, limit: int) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    seen: set[str] = set()
+    queries: list[str] = []
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        candidate = item.strip().strip('"').strip()
+        if not candidate or candidate == query or candidate in seen:
+            continue
+        if len(candidate) > 400:
+            candidate = candidate[:400] + "..."
+        seen.add(candidate)
+        queries.append(candidate)
+        if len(queries) >= limit:
+            break
+    return queries
+
+
+def _run_retrieval_multi_query_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
+    ctx.multi_query_elapsed = 0.0
+    ctx.multi_query_used = False
+    ctx.multi_query_model_used = None
+    ctx.multi_query_parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
+    ctx.multi_queries: list[str] = []
+    ctx.multi_query_ab_test_key = str(ctx.state.get("multi_query_ab_test_key") or "").strip() or None
+    ctx.multi_query_ab_variant = str(ctx.state.get("multi_query_ab_variant") or "").strip().lower() or None
+    ctx.multi_query_ab_seed = ctx.state.get("multi_query_ab_seed")
+    ctx.multi_query_ab_forced = bool(
+        ctx.state.get("enable_multi_query") is None
+        and ctx.multi_query_ab_variant in {"on", "enabled", "treatment", "mq"}
     )
 
-    mq_enabled = (
-        bool(state.get("enable_multi_query"))
-        if state.get("enable_multi_query") is not None
-        else (bool(settings.ENABLE_MULTI_QUERY) or multi_query_ab_forced)
+    ctx.mq_enabled = (
+        bool(ctx.state.get("enable_multi_query"))
+        if ctx.state.get("enable_multi_query") is not None
+        else (bool(settings.ENABLE_MULTI_QUERY) or ctx.multi_query_ab_forced)
     )
-    mq_n = settings.MULTI_QUERY_COUNT if state.get("multi_query_count") is None else int(state.get("multi_query_count") or 0)
-    mq_temp = settings.MULTI_QUERY_TEMPERATURE if state.get("multi_query_temperature") is None else float(state.get("multi_query_temperature") or 0.0)
-    mq_max_chars = settings.MULTI_QUERY_MAX_CHARS if state.get("multi_query_max_chars") is None else int(state.get("multi_query_max_chars") or 0)
+    ctx.mq_n = (
+        settings.MULTI_QUERY_COUNT
+        if ctx.state.get("multi_query_count") is None
+        else int(ctx.state.get("multi_query_count") or 0)
+    )
+    ctx.mq_temp = (
+        settings.MULTI_QUERY_TEMPERATURE
+        if ctx.state.get("multi_query_temperature") is None
+        else float(ctx.state.get("multi_query_temperature") or 0.0)
+    )
+    ctx.mq_max_chars = (
+        settings.MULTI_QUERY_MAX_CHARS
+        if ctx.state.get("multi_query_max_chars") is None
+        else int(ctx.state.get("multi_query_max_chars") or 0)
+    )
 
     mq_cap = max(0, int(getattr(settings, "MULTI_QUERY_COUNT_CAP", 8) or 8))
-    mq_n = max(0, min(int(mq_n or 0), int(mq_cap)))
-    mq_temp = min(2.0, max(0.0, float(mq_temp or 0.0)))
-    mq_max_chars = max(0, int(mq_max_chars or 0))
+    ctx.mq_n = max(0, min(int(ctx.mq_n or 0), int(mq_cap)))
+    ctx.mq_temp = min(2.0, max(0.0, float(ctx.mq_temp or 0.0)))
+    ctx.mq_max_chars = max(0, int(ctx.mq_max_chars or 0))
 
-    if mq_enabled and mq_n > 0 and mq_max_chars > 0 and len(query_for_retrieval) <= mq_max_chars:
-        mq_engine = _llm_engine()
+    if ctx.mq_enabled and ctx.mq_n > 0 and ctx.mq_max_chars > 0 and len(ctx.query_for_retrieval) <= ctx.mq_max_chars:
+        mq_engine = ctx._llm_engine()
         mq_llm = mq_engine.models.get("fast") or mq_engine.models.get("default")  # type: ignore[attr-defined]
-        multi_query_model_used = getattr(mq_llm, "model_name", None) or getattr(mq_llm, "model", None)
+        ctx.multi_query_model_used = getattr(mq_llm, "model_name", None) or getattr(mq_llm, "model", None)
         try:
             _, str_output_parser_cls = _get_langchain_text_pipeline_primitives()
             mq_chain = (
                 mq_engine.multi_query_prompt  # type: ignore[attr-defined]
-                | mq_llm.bind(temperature=mq_temp)
+                | mq_llm.bind(temperature=ctx.mq_temp)
                 | str_output_parser_cls()
             )
             mq_start = time.time()
-            mq_raw = mq_chain.invoke({"query": query_for_retrieval, "n": mq_n})
-            multi_query_elapsed = time.time() - mq_start
-            mq_data, multi_query_parse_meta = parse_json_from_text(mq_raw, expected="array")
+            mq_raw = mq_chain.invoke({"query": ctx.query_for_retrieval, "n": ctx.mq_n})
+            ctx.multi_query_elapsed = time.time() - mq_start
+            mq_data, ctx.multi_query_parse_meta = parse_json_from_text(mq_raw, expected="array")
 
-            if isinstance(mq_data, list):
-                seen: set[str] = set()
-                for item in mq_data:
-                    if not isinstance(item, str):
-                        continue
-                    q = (item or "").strip().strip('"').strip()
-                    if not q:
-                        continue
-                    if q == query_for_retrieval:
-                        continue
-                    if q in seen:
-                        continue
-                    if len(q) > 400:
-                        q = q[:400] + "..."
-                    seen.add(q)
-                    multi_queries.append(q)
-                    if len(multi_queries) >= mq_n:
-                        break
-                if multi_query_ab_seed is not None and multi_queries:
-                    seed_prefix = str(multi_query_ab_seed)
-                    multi_queries = sorted(
-                        multi_queries,
-                        key=lambda item: (
-                            stable_hash(f"{seed_prefix}:{item}", length=16),
-                            item,
-                        ),
-                    )
+            ctx.multi_queries = _normalize_multi_queries(
+                mq_data,
+                query=ctx.query_for_retrieval,
+                limit=ctx.mq_n,
+            )
+            if ctx.multi_query_ab_seed is not None and ctx.multi_queries:
+                seed_prefix = str(ctx.multi_query_ab_seed)
+                ctx.multi_queries = sorted(
+                    ctx.multi_queries,
+                    key=lambda item: (
+                        stable_hash(f"{seed_prefix}:{item}", length=16),
+                        item,
+                    ),
+                )
         except Exception as exc:  # noqa: BLE001
-            _log_orchestrator_fallback('run_retrieval', exc)
-            multi_query_elapsed = 0.0
-            multi_query_parse_meta = {"ok": False, "method": None, "error": str(exc)[:200]}
-            multi_queries = []
+            _log_orchestrator_fallback("run_retrieval", exc)
+            ctx.multi_query_elapsed = 0.0
+            ctx.multi_query_parse_meta = {"ok": False, "method": None, "error": str(exc)[:200]}
+            ctx.multi_queries = []
 
-    multi_query_used = bool(multi_queries)
+    ctx.multi_query_used = bool(ctx.multi_queries)
+    return None
 
-    hyde_used = False
-    hyde_elapsed = 0.0
-    hyde_model_used = None
-    hyde_text = ""
+
+def _run_retrieval_hyde_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
+    ctx.hyde_used = False
+    ctx.hyde_elapsed = 0.0
+    ctx.hyde_model_used = None
+    ctx.hyde_text = ""
     hyde_max_chars = max(0, int(settings.HYDE_MAX_CHARS or 0))
-    retrieval_mode_norm = str(request_retrieval_mode or "hybrid").lower()
-    hyde_enabled = bool(settings.ENABLE_HYDE) if state.get("enable_hyde") is None else bool(state.get("enable_hyde"))
-    if hyde_enabled and retrieval_mode_norm not in ("keyword",) and hyde_max_chars > 0 and len(query_for_retrieval) <= hyde_max_chars:
-        hyde_engine = _llm_engine()
+    retrieval_mode_norm = str(ctx.request_retrieval_mode or "hybrid").lower()
+    ctx.hyde_enabled = (
+        bool(settings.ENABLE_HYDE) if ctx.state.get("enable_hyde") is None else bool(ctx.state.get("enable_hyde"))
+    )
+    if (
+        ctx.hyde_enabled
+        and retrieval_mode_norm not in ("keyword",)
+        and hyde_max_chars > 0
+        and len(ctx.query_for_retrieval) <= hyde_max_chars
+    ):
+        hyde_engine = ctx._llm_engine()
         hyde_llm = hyde_engine.models.get("fast") or hyde_engine.models.get("default")  # type: ignore[attr-defined]
-        hyde_model_used = getattr(hyde_llm, "model_name", None) or getattr(hyde_llm, "model", None)
+        ctx.hyde_model_used = getattr(hyde_llm, "model_name", None) or getattr(hyde_llm, "model", None)
         try:
             _, str_output_parser_cls = _get_langchain_text_pipeline_primitives()
             hyde_chain = (
@@ -1542,2023 +1868,1560 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 | str_output_parser_cls()
             )
             hyde_start = time.time()
-            hyde_text = hyde_chain.invoke({"query": query_for_retrieval})
-            hyde_elapsed = time.time() - hyde_start
-            hyde_text = (hyde_text or "").strip()
+            ctx.hyde_text = hyde_chain.invoke({"query": ctx.query_for_retrieval})
+            ctx.hyde_elapsed = time.time() - hyde_start
+            ctx.hyde_text = (ctx.hyde_text or "").strip()
             out_max = max(0, int(settings.HYDE_OUTPUT_MAX_CHARS or 0))
-            if out_max and len(hyde_text) > out_max:
-                hyde_text = hyde_text[:out_max] + "..."
-            hyde_used = bool(hyde_text)
+            if out_max and len(ctx.hyde_text) > out_max:
+                ctx.hyde_text = ctx.hyde_text[:out_max] + "..."
+            ctx.hyde_used = bool(ctx.hyde_text)
         except Exception as exc:
-            _log_orchestrator_fallback('run_retrieval', exc)
-            hyde_text = ""
-            hyde_elapsed = 0.0
-            hyde_used = False
+            _log_orchestrator_fallback("run_retrieval", exc)
+            ctx.hyde_text = ""
+            ctx.hyde_elapsed = 0.0
+            ctx.hyde_used = False
+    return None
 
-    step_back_enabled = bool(getattr(settings, "ENABLE_STEP_BACK_QUERY", False))
-    step_back_elapsed = 0.0
-    step_back_used = False
-    step_back_model_used = None
-    step_back_parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
-    step_back_query = ""
-    step_back_max_chars = max(0, int(getattr(settings, "STEP_BACK_MAX_CHARS", 0) or 0))
-    step_back_temp = min(2.0, max(0.0, float(getattr(settings, "STEP_BACK_TEMPERATURE", 0.2) or 0.0)))
-    step_back_output_max = max(0, int(getattr(settings, "STEP_BACK_OUTPUT_MAX_CHARS", 0) or 0))
-    if step_back_enabled and step_back_max_chars > 0 and len(query_for_retrieval) <= step_back_max_chars:
-        step_back_engine = _llm_engine()
+
+def _run_retrieval_step_back_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
+    ctx.step_back_enabled = bool(getattr(settings, "ENABLE_STEP_BACK_QUERY", False))
+    ctx.step_back_elapsed = 0.0
+    ctx.step_back_used = False
+    ctx.step_back_model_used = None
+    ctx.step_back_parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
+    ctx.step_back_query = ""
+    ctx.step_back_max_chars = max(0, int(getattr(settings, "STEP_BACK_MAX_CHARS", 0) or 0))
+    ctx.step_back_temp = min(2.0, max(0.0, float(getattr(settings, "STEP_BACK_TEMPERATURE", 0.2) or 0.0)))
+    ctx.step_back_output_max = max(0, int(getattr(settings, "STEP_BACK_OUTPUT_MAX_CHARS", 0) or 0))
+    if (
+        ctx.step_back_enabled
+        and ctx.step_back_max_chars > 0
+        and len(ctx.query_for_retrieval) <= ctx.step_back_max_chars
+    ):
+        step_back_engine = ctx._llm_engine()
         sb_llm = step_back_engine.models.get("fast") or step_back_engine.models.get("default")  # type: ignore[attr-defined]
-        step_back_model_used = getattr(sb_llm, "model_name", None) or getattr(sb_llm, "model", None)
+        ctx.step_back_model_used = getattr(sb_llm, "model_name", None) or getattr(sb_llm, "model", None)
         try:
             _, str_output_parser_cls = _get_langchain_text_pipeline_primitives()
             sb_chain = (
                 step_back_engine.step_back_prompt  # type: ignore[attr-defined]
-                | sb_llm.bind(temperature=step_back_temp)
+                | sb_llm.bind(temperature=ctx.step_back_temp)
                 | str_output_parser_cls()
             )
             sb_start = time.time()
-            sb_raw = sb_chain.invoke({"query": query_for_retrieval})
-            step_back_elapsed = time.time() - sb_start
-            step_back_query = (sb_raw or "").strip().strip('"').strip()
-            if step_back_output_max > 0 and len(step_back_query) > step_back_output_max:
-                step_back_query = step_back_query[:step_back_output_max] + "..."
-            if step_back_query and step_back_query != query_for_retrieval:
-                step_back_parse_meta = {"ok": True, "method": "text", "error": None}
+            sb_raw = sb_chain.invoke({"query": ctx.query_for_retrieval})
+            ctx.step_back_elapsed = time.time() - sb_start
+            ctx.step_back_query = (sb_raw or "").strip().strip('"').strip()
+            if ctx.step_back_output_max > 0 and len(ctx.step_back_query) > ctx.step_back_output_max:
+                ctx.step_back_query = ctx.step_back_query[: ctx.step_back_output_max] + "..."
+            if ctx.step_back_query and ctx.step_back_query != ctx.query_for_retrieval:
+                ctx.step_back_parse_meta = {"ok": True, "method": "text", "error": None}
             else:
-                step_back_query = ""
-                step_back_parse_meta = {"ok": False, "method": "text", "error": "empty_or_duplicate"}
+                ctx.step_back_query = ""
+                ctx.step_back_parse_meta = {"ok": False, "method": "text", "error": "empty_or_duplicate"}
         except Exception as exc:  # noqa: BLE001
-            _log_orchestrator_fallback('run_retrieval', exc)
-            step_back_query = ""
-            step_back_elapsed = 0.0
-            step_back_parse_meta = {"ok": False, "method": None, "error": str(exc)[:200]}
-    step_back_used = bool(step_back_query)
+            _log_orchestrator_fallback("run_retrieval", exc)
+            ctx.step_back_query = ""
+            ctx.step_back_elapsed = 0.0
+            ctx.step_back_parse_meta = {"ok": False, "method": None, "error": str(exc)[:200]}
+    ctx.step_back_used = bool(ctx.step_back_query)
+    return None
 
-    decompose_elapsed = 0.0
-    decompose_used = False
-    decompose_model_used = None
-    decompose_parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
-    sub_questions: list[str] = []
 
-    decompose_enabled = (
+def _run_retrieval_decomposition_variants_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
+    ctx.decompose_elapsed = 0.0
+    ctx.decompose_used = False
+    ctx.decompose_model_used = None
+    ctx.decompose_parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
+    ctx.sub_questions: list[str] = []
+
+    ctx.decompose_enabled = (
         bool(settings.ENABLE_QUERY_DECOMPOSITION)
-        if state.get("enable_query_decomposition") is None
-        else bool(state.get("enable_query_decomposition"))
+        if ctx.state.get("enable_query_decomposition") is None
+        else bool(ctx.state.get("enable_query_decomposition"))
     )
-    decompose_result = _decompose_query(query_for_retrieval, engine, enabled=decompose_enabled)
+    decompose_result = _decompose_query(ctx.query_for_retrieval, ctx.engine, enabled=ctx.decompose_enabled)
     if isinstance(decompose_result, tuple) and len(decompose_result) == 4:
-        sub_questions, decompose_elapsed, decompose_model_used, decompose_parse_meta = decompose_result
+        ctx.sub_questions, ctx.decompose_elapsed, ctx.decompose_model_used, ctx.decompose_parse_meta = decompose_result
     elif isinstance(decompose_result, list):
-        sub_questions = [str(item).strip() for item in decompose_result if str(item or "").strip()]
-        if sub_questions:
-            decompose_parse_meta = {"ok": True, "method": "patched", "error": None}
+        ctx.sub_questions = [str(item).strip() for item in decompose_result if str(item or "").strip()]
+        if ctx.sub_questions:
+            ctx.decompose_parse_meta = {"ok": True, "method": "patched", "error": None}
 
-    decompose_used = bool(sub_questions)
-    decompose_chain_enabled = bool(getattr(settings, "RAG_DECOMPOSITION_CHAIN_ENABLED", False))
-    decompose_chain_requested = bool(decompose_chain_enabled and sub_questions)
-    decompose_chain_used = False
-    decompose_chain_steps = 0
-    decompose_chain_elapsed = 0.0
-    decompose_chain_queries: list[str] = []
+    ctx.decompose_used = bool(ctx.sub_questions)
+    ctx.decompose_chain_enabled = bool(getattr(settings, "RAG_DECOMPOSITION_CHAIN_ENABLED", False))
+    ctx.decompose_chain_requested = bool(ctx.decompose_chain_enabled and ctx.sub_questions)
+    ctx.decompose_chain_used = False
+    ctx.decompose_chain_steps = 0
+    ctx.decompose_chain_elapsed = 0.0
+    ctx.decompose_chain_queries: list[str] = []
 
-    clause_fastlane_queries = build_clause_fastlane_queries(query_for_retrieval)
+    ctx.clause_fastlane_queries = build_clause_fastlane_queries(ctx.query_for_retrieval)
     if bool(getattr(settings, "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_ENABLED", False)):
-        lightweight_subqueries = build_lightweight_subquery_queries(
-            query_for_retrieval,
+        ctx.lightweight_subqueries = build_lightweight_subquery_queries(
+            ctx.query_for_retrieval,
             max_queries=int(getattr(settings, "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_MAX_QUERIES", 3) or 3),
             min_query_chars=int(getattr(settings, "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_MIN_QUERY_CHARS", 28) or 28),
         )
     else:
-        lightweight_subqueries = []
+        ctx.lightweight_subqueries = []
     query_expansion_elapsed_ms = float(
         (
-            alias_elapsed
-            + dict_elapsed
-            + kg_query_expansion_elapsed
-            + multi_query_elapsed
-            + step_back_elapsed
-            + hyde_elapsed
-            + decompose_elapsed
+            ctx.alias_elapsed
+            + ctx.dict_elapsed
+            + ctx.kg_query_expansion_elapsed
+            + ctx.multi_query_elapsed
+            + ctx.step_back_elapsed
+            + ctx.hyde_elapsed
+            + ctx.decompose_elapsed
         )
         * 1000.0
     )
     query_variant_stage = build_query_variant_stage(
         QueryVariantStageInput(
-            query_for_retrieval=query_for_retrieval,
-            alias_queries=list(alias_queries or []),
-            dict_expansions=list(dict_expansions or []),
-            kg_query_expansion_queries=list(kg_query_expansion_queries or []),
-            clause_fastlane_queries=list(clause_fastlane_queries or []),
-            lightweight_subqueries=list(lightweight_subqueries or []),
-            multi_queries=list(multi_queries or []),
-            step_back_used=bool(step_back_used),
-            step_back_query=str(step_back_query or ""),
-            sub_questions=list(sub_questions or []),
-            hyde_used=bool(hyde_used),
-            hyde_text=str(hyde_text or ""),
-            query_expansion_max_queries_raw=state.get("query_expansion_max_queries"),
-            query_expansion_max_candidates_raw=state.get("query_expansion_max_candidates"),
-            query_expansion_token_budget_raw=state.get("query_expansion_token_budget"),
-            query_expansion_latency_budget_ms_raw=state.get("query_expansion_latency_budget_ms"),
+            query_for_retrieval=ctx.query_for_retrieval,
+            alias_queries=list(ctx.alias_queries or []),
+            dict_expansions=list(ctx.dict_expansions or []),
+            kg_query_expansion_queries=list(ctx.kg_query_expansion_queries or []),
+            clause_fastlane_queries=list(ctx.clause_fastlane_queries or []),
+            lightweight_subqueries=list(ctx.lightweight_subqueries or []),
+            multi_queries=list(ctx.multi_queries or []),
+            step_back_used=bool(ctx.step_back_used),
+            step_back_query=str(ctx.step_back_query or ""),
+            sub_questions=list(ctx.sub_questions or []),
+            hyde_used=bool(ctx.hyde_used),
+            hyde_text=str(ctx.hyde_text or ""),
+            query_expansion_max_queries_raw=ctx.state.get("query_expansion_max_queries"),
+            query_expansion_max_candidates_raw=ctx.state.get("query_expansion_max_candidates"),
+            query_expansion_token_budget_raw=ctx.state.get("query_expansion_token_budget"),
+            query_expansion_latency_budget_ms_raw=ctx.state.get("query_expansion_latency_budget_ms"),
             query_expansion_elapsed_ms=query_expansion_elapsed_ms,
         )
     )
-    retrieval_queries = list(query_variant_stage.retrieval_queries or [])
-    query_expansion_budget_meta = dict(query_variant_stage.query_expansion_budget_meta or {})
-    query_expansion_budget_max_queries = int(query_variant_stage.query_expansion_budget_max_queries or 0)
-    query_expansion_budget_max_candidates = int(query_variant_stage.query_expansion_budget_max_candidates or 0)
-    query_expansion_budget_token_budget = int(query_variant_stage.query_expansion_budget_token_budget or 0)
-    query_expansion_budget_latency_ms = float(query_variant_stage.query_expansion_budget_latency_ms or 0.0)
+    ctx.retrieval_queries = list(query_variant_stage.retrieval_queries or [])
+    ctx.query_expansion_budget_meta = dict(query_variant_stage.query_expansion_budget_meta or {})
+    ctx.query_expansion_budget_max_queries = int(query_variant_stage.query_expansion_budget_max_queries or 0)
+    ctx.query_expansion_budget_max_candidates = int(query_variant_stage.query_expansion_budget_max_candidates or 0)
+    ctx.query_expansion_budget_token_budget = int(query_variant_stage.query_expansion_budget_token_budget or 0)
+    ctx.query_expansion_budget_latency_ms = float(query_variant_stage.query_expansion_budget_latency_ms or 0.0)
+    return None
 
-    docs_by_query: list[list[Document]] = []
-    docs_by_query_kinds: list[str] = []
-    retrieval_errors: list[str] = []
-    retrieval_per_query: list[dict[str, Any]] = []
-    retrieval_parallelism = max(1, int(getattr(settings, "RETRIEVAL_QUERY_PARALLELISM", 1) or 1))
-    retrieval_plan: list[tuple[str, str, Any]] = []
-    for kind, q in retrieval_queries:
-        r = retriever
-        if kind != "main":
-            if kind == "hyde":
-                r = retriever.model_copy(update={"enable_reranker": False, "retrieval_mode": "vector", "enable_weight_rerank": False})
-            else:
-                r = retriever.model_copy(update={"enable_reranker": False})
-        retrieval_plan.append((kind, q, r))
 
-    def _invoke_with_timing(kind: str, q: str, r: Any) -> tuple[str, list[Document], str | None, float, dict[str, Any] | None]:
-        t0 = time.time()
-        try:
-            docs_i = r.invoke(q)
-            docs_i = DocUtilsMixin._annotate_docs_with_role(docs_i or [], kind)
-            dbg = getattr(r, "_last_debug_metrics", None)
-            dbg = _sanitize_retriever_debug(dbg if isinstance(dbg, dict) else None)
-            if bool(hierarchy_recall_enabled) and docs_i:
-                family_keys: list[str] = []
-                for d in docs_i:
-                    meta = d.metadata or {}
-                    family_key = None
-                    for k in ("hierarchy_family_key", "parent_id", "parent_node_id"):
-                        v = meta.get(k)
-                        if v is None:
-                            continue
-                        s = str(v).strip()
-                        if s:
-                            family_key = s
-                            break
-                    if family_key:
-                        family_keys.append(family_key)
-                distinct_families = len(set(family_keys)) if family_keys else 0
-                duplicate_docs = max(0, len(family_keys) - distinct_families)
-                dbg2 = dict(dbg or {})
-                dbg2["hierarchy_family"] = {
-                    "docs": int(len(docs_i)),
-                    "docs_with_key": int(len(family_keys)),
-                    "distinct_families": int(distinct_families),
-                    "duplicate_docs": int(duplicate_docs),
-                }
-                dbg = dbg2
-            return kind, (docs_i or []), None, time.time() - t0, dbg
-        except Exception as exc:  # noqa: BLE001
-            _log_orchestrator_fallback('_invoke_with_timing', exc)
-            return kind, [], str(exc)[:200], time.time() - t0, None
+def _retriever_for_query_kind(ctx: RetrievalRuntimeState, kind: str) -> Any:
+    if kind == "main":
+        return ctx.retriever
+    if kind == "hyde":
+        return ctx.retriever.model_copy(
+            update={"enable_reranker": False, "retrieval_mode": "vector", "enable_weight_rerank": False}
+        )
+    return ctx.retriever.model_copy(update={"enable_reranker": False})
 
-    start = time.time()
-    if decompose_chain_requested:
-        try:
-            from app.rag.retrieval.decomposition_chain import build_chained_query, summarize_chain_step
 
-            chain_start = time.time()
-            prior_findings: list[str] = []
-            chain_retrieval_mode = str(retriever_update.get("retrieval_mode") or state.get("retrieval_mode") or "hybrid")
-            for sub_question in sub_questions:
-                chained_query = build_chained_query(sub_question, prior_findings)
-                if not chained_query:
-                    continue
-                decompose_chain_queries.append(chained_query)
-                chained_retriever = retriever.model_copy(update={"enable_reranker": False})
-                kind, docs_i, err, elapsed_i, dbg = _invoke_with_timing("subq", chained_query, chained_retriever)
-                query_record = build_query_invocation_record(
-                    QueryInvocationRecordInput(
-                        kind=kind,
-                        query=chained_query,
-                        docs=docs_i,
-                        error=err,
-                        elapsed_sec=elapsed_i,
-                        retriever_debug=dbg,
-                    )
-                )
-                retrieval_per_query.append(query_record.per_query_item)
-                if query_record.error_entry:
-                    retrieval_errors.append(query_record.error_entry)
-                docs_by_query_kinds.append(query_record.kind)
-                docs_by_query.append(query_record.docs)
+def _hierarchy_invocation_debug(docs: list[Document], debug: dict[str, Any] | None) -> dict[str, Any]:
+    family_keys: list[str] = []
+    for doc in docs:
+        metadata = doc.metadata or {}
+        family_key = next(
+            (
+                str(metadata.get(key)).strip()
+                for key in ("hierarchy_family_key", "parent_id", "parent_node_id")
+                if metadata.get(key)
+            ),
+            "",
+        )
+        if family_key:
+            family_keys.append(family_key)
+    distinct_families = len(set(family_keys)) if family_keys else 0
+    result = dict(debug or {})
+    result["hierarchy_family"] = {
+        "docs": len(docs),
+        "docs_with_key": len(family_keys),
+        "distinct_families": distinct_families,
+        "duplicate_docs": max(0, len(family_keys) - distinct_families),
+    }
+    return result
 
-                try:
-                    chain_citations = build_citations_from_docs(
-                        docs_i or [],
-                        retrieval_elapsed_sec=float(elapsed_i or 0.0),
-                        retrieval_mode=chain_retrieval_mode,
-                        query=chained_query,
-                    )
-                except Exception as exc:
-                    _log_orchestrator_fallback('run_retrieval', exc)
-                    chain_citations = []
-                step_summary = summarize_chain_step(chain_citations)
-                prior_findings.append(sub_question if not step_summary else f"{sub_question}: {step_summary}")
 
-            decompose_chain_steps = len(decompose_chain_queries)
-            decompose_chain_used = decompose_chain_steps > 0
-            decompose_chain_elapsed = time.time() - chain_start
-            if decompose_chain_used:
-                retrieval_plan = [item for item in retrieval_plan if item[0] != "subq"]
-        except Exception as exc:
-            _log_orchestrator_fallback('run_retrieval', exc)
-            decompose_chain_used = False
-            decompose_chain_steps = 0
-            decompose_chain_elapsed = 0.0
-            decompose_chain_queries = []
+def _invoke_retrieval_query(
+    ctx: RetrievalRuntimeState,
+    kind: str,
+    query: str,
+    retriever_obj: Any,
+) -> tuple[str, list[Document], str | None, float, dict[str, Any] | None]:
+    started = time.time()
+    try:
+        docs = DocUtilsMixin._annotate_docs_with_role(retriever_obj.invoke(query) or [], kind)
+        debug = getattr(retriever_obj, "_last_debug_metrics", None)
+        debug = _sanitize_retriever_debug(debug if isinstance(debug, dict) else None)
+        if bool(ctx.hierarchy_recall_enabled) and docs:
+            debug = _hierarchy_invocation_debug(docs, debug)
+        return kind, docs, None, time.time() - started, debug
+    except Exception as exc:  # noqa: BLE001
+        _log_orchestrator_fallback("_invoke_with_timing", exc)
+        return kind, [], str(exc)[:200], time.time() - started, None
 
-    if retrieval_parallelism <= 1 or len(retrieval_plan) <= 1:
-        for kind, q, r in retrieval_plan:
-            kind, docs_i, err, elapsed_i, dbg = _invoke_with_timing(kind, q, r)
-            query_record = build_query_invocation_record(
-                QueryInvocationRecordInput(
-                    kind=kind,
-                    query=q,
-                    docs=docs_i,
-                    error=err,
-                    elapsed_sec=elapsed_i,
-                    retriever_debug=dbg,
-                )
+
+def _record_retrieval_query(
+    ctx: RetrievalRuntimeState,
+    *,
+    query: str,
+    invocation: tuple[str, list[Document], str | None, float, dict[str, Any] | None],
+) -> Any:
+    kind, docs, error, elapsed, debug = invocation
+    record = build_query_invocation_record(
+        QueryInvocationRecordInput(
+            kind=kind,
+            query=query,
+            docs=docs,
+            error=error,
+            elapsed_sec=elapsed,
+            retriever_debug=debug,
+        )
+    )
+    ctx.retrieval_per_query.append(record.per_query_item)
+    if record.error_entry:
+        ctx.retrieval_errors.append(record.error_entry)
+    ctx.docs_by_query_kinds.append(record.kind)
+    ctx.docs_by_query.append(record.docs)
+    return record
+
+
+def _summarize_decomposition_step(
+    docs: list[Document],
+    *,
+    elapsed_sec: float,
+    retrieval_mode: str,
+    query: str,
+    summarize: Any,
+) -> str:
+    try:
+        citations = build_citations_from_docs(
+            docs,
+            retrieval_elapsed_sec=elapsed_sec,
+            retrieval_mode=retrieval_mode,
+            query=query,
+        )
+    except Exception as exc:
+        _log_orchestrator_fallback("run_retrieval", exc)
+        citations = []
+    return summarize(citations)
+
+
+def _run_decomposition_chain(ctx: RetrievalRuntimeState) -> None:
+    if not ctx.decompose_chain_requested:
+        return
+    try:
+        from app.rag.retrieval.decomposition_chain import build_chained_query, summarize_chain_step
+
+        chain_started = time.time()
+        prior_findings: list[str] = []
+        retrieval_mode = str(ctx.retriever_update.get("retrieval_mode") or ctx.state.get("retrieval_mode") or "hybrid")
+        for sub_question in ctx.sub_questions:
+            chained_query = build_chained_query(sub_question, prior_findings)
+            if not chained_query:
+                continue
+            ctx.decompose_chain_queries.append(chained_query)
+            retriever_obj = ctx.retriever.model_copy(update={"enable_reranker": False})
+            invocation = _invoke_retrieval_query(ctx, "subq", chained_query, retriever_obj)
+            record = _record_retrieval_query(ctx, query=chained_query, invocation=invocation)
+            summary = _summarize_decomposition_step(
+                record.docs,
+                elapsed_sec=float(invocation[3] or 0.0),
+                retrieval_mode=retrieval_mode,
+                query=chained_query,
+                summarize=summarize_chain_step,
             )
-            retrieval_per_query.append(query_record.per_query_item)
-            if query_record.error_entry:
-                retrieval_errors.append(query_record.error_entry)
-            docs_by_query_kinds.append(query_record.kind)
-            docs_by_query.append(query_record.docs)
-    else:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=retrieval_parallelism) as pool:
-            futures = [
-                (q, pool.submit(_invoke_with_timing, kind, q, r))
-                for kind, q, r in retrieval_plan
-            ]
-            for query, fut in futures:
-                kind, docs_i, err, elapsed_i, dbg = fut.result()
-                query_record = build_query_invocation_record(
-                    QueryInvocationRecordInput(
-                        kind=kind,
-                        query=query,
-                        docs=docs_i,
-                        error=err,
-                        elapsed_sec=elapsed_i,
-                        retriever_debug=dbg,
-                    )
-                )
-                retrieval_per_query.append(query_record.per_query_item)
-                if query_record.error_entry:
-                    retrieval_errors.append(query_record.error_entry)
-                docs_by_query_kinds.append(query_record.kind)
-                docs_by_query.append(query_record.docs)
-    retrieval_elapsed = time.time() - start
+            prior_findings.append(sub_question if not summary else f"{sub_question}: {summary}")
+        ctx.decompose_chain_steps = len(ctx.decompose_chain_queries)
+        ctx.decompose_chain_used = ctx.decompose_chain_steps > 0
+        ctx.decompose_chain_elapsed = time.time() - chain_started
+        if ctx.decompose_chain_used:
+            ctx.retrieval_plan = [item for item in ctx.retrieval_plan if item[0] != "subq"]
+    except Exception as exc:
+        _log_orchestrator_fallback("run_retrieval", exc)
+        ctx.decompose_chain_used = False
+        ctx.decompose_chain_steps = 0
+        ctx.decompose_chain_elapsed = 0.0
+        ctx.decompose_chain_queries = []
 
-    top_k = int(retriever_update.get("k") or state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 5)
-    mq_diversify_enabled = bool(getattr(settings, "MULTI_QUERY_DIVERSIFY_ENABLED", False)) and bool(mq_enabled)
+
+def _run_retrieval_plan(ctx: RetrievalRuntimeState) -> None:
+    if ctx.retrieval_parallelism <= 1 or len(ctx.retrieval_plan) <= 1:
+        for kind, query, retriever_obj in ctx.retrieval_plan:
+            invocation = _invoke_retrieval_query(ctx, kind, query, retriever_obj)
+            _record_retrieval_query(ctx, query=query, invocation=invocation)
+        return
+    with concurrent.futures.ThreadPoolExecutor(max_workers=ctx.retrieval_parallelism) as pool:
+        futures = [
+            (query, pool.submit(_invoke_retrieval_query, ctx, kind, query, retriever_obj))
+            for kind, query, retriever_obj in ctx.retrieval_plan
+        ]
+        for query, future in futures:
+            _record_retrieval_query(ctx, query=query, invocation=future.result())
+
+
+def _run_retrieval_retrieval_execution_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
+    ctx.docs_by_query = []
+    ctx.docs_by_query_kinds = []
+    ctx.retrieval_errors = []
+    ctx.retrieval_per_query = []
+    ctx.retrieval_parallelism = max(1, int(getattr(settings, "RETRIEVAL_QUERY_PARALLELISM", 1) or 1))
+    ctx.retrieval_plan = [(kind, query, _retriever_for_query_kind(ctx, kind)) for kind, query in ctx.retrieval_queries]
+    started = time.time()
+    _run_decomposition_chain(ctx)
+    _run_retrieval_plan(ctx)
+    ctx.retrieval_elapsed = time.time() - started
+    return None
+
+
+def _hierarchy_family_features(ctx: RetrievalRuntimeState) -> tuple[bool, dict[str, dict[str, Any]]]:
+    enabled = bool(ctx.hierarchy_recall_enabled and ctx.hierarchy_family_collapse and len(ctx.docs_by_query) > 1)
+    if not enabled:
+        return False, {}
+    try:
+        return True, _build_hierarchy_family_features(ctx.docs_by_query)
+    except Exception as exc:
+        _log_orchestrator_fallback("run_retrieval", exc)
+        return True, {}
+
+
+def _aggregate_hierarchy_families(
+    docs: list[Document],
+    *,
+    enabled: bool,
+    family_features: dict[str, dict[str, Any]],
+    strategy: str,
+) -> tuple[list[Document], dict[str, Any]]:
+    if not enabled:
+        return docs, {"enabled": False, "reason": "not_run"}
+    try:
+        return _apply_hierarchy_family_aggregation(
+            docs,
+            family_features=family_features,
+            strategy=strategy,
+        )
+    except Exception as exc:
+        _log_orchestrator_fallback("run_retrieval", exc)
+        return docs, {"enabled": False, "reason": "exception"}
+
+
+def _fuse_doc_lists(doc_lists: list[list[Document]]) -> list[Document]:
+    if len(doc_lists) <= 1:
+        return doc_lists[0] if doc_lists else []
+    return DocUtilsMixin.fuse_docs_rrf(
+        doc_lists,
+        rrf_k=settings.RETRIEVAL_RRF_K,
+        meta_prefix="query_expansion",
+    )
+
+
+def _append_unique_docs(
+    target: list[Document],
+    seen_keys: set[str],
+    candidates: list[Document],
+    *,
+    limit: int,
+) -> int:
+    added = 0
+    for doc in candidates:
+        if len(target) >= limit:
+            break
+        key = DocUtilsMixin._doc_key(doc)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        target.append(doc)
+        added += 1
+    return added
+
+
+def _aggregate_diversified_families(
+    docs_non_mq: list[Document],
+    docs_mq: list[Document],
+    *,
+    enabled: bool,
+    family_features: dict[str, dict[str, Any]],
+    strategy: str,
+) -> tuple[list[Document], list[Document]]:
+    if not enabled:
+        return docs_non_mq, docs_mq
+    try:
+        docs_non_mq, _ = _apply_hierarchy_family_aggregation(
+            docs_non_mq,
+            family_features=family_features,
+            strategy=strategy,
+        )
+        docs_mq, _ = _apply_hierarchy_family_aggregation(
+            docs_mq,
+            family_features=family_features,
+            strategy=strategy,
+        )
+    except Exception as exc:
+        logger.debug(_RETRIEVAL_ORCHESTRATOR_FALLBACK_LOG_MESSAGE, exc)
+    return docs_non_mq, docs_mq
+
+
+def _diversify_multi_query_docs(
+    ctx: RetrievalRuntimeState,
+    fused_docs: list[Document],
+    *,
+    family_aggregation_enabled: bool,
+    family_features: dict[str, dict[str, Any]],
+) -> list[Document]:
+    mq_lists = [
+        docs or [] for kind, docs in zip(ctx.docs_by_query_kinds, ctx.docs_by_query, strict=False) if kind == "mq"
+    ]
+    non_mq_lists = [
+        docs or [] for kind, docs in zip(ctx.docs_by_query_kinds, ctx.docs_by_query, strict=False) if kind != "mq"
+    ]
+    if not mq_lists or not non_mq_lists:
+        return fused_docs
+    ctx.mq_diversify_used = True
+    docs_non_mq = _fuse_doc_lists(non_mq_lists)
+    docs_mq = _fuse_doc_lists(mq_lists)
+    docs_non_mq, docs_mq = _aggregate_diversified_families(
+        docs_non_mq,
+        docs_mq,
+        enabled=family_aggregation_enabled,
+        family_features=family_features,
+        strategy=ctx.hierarchy_family_aggregation,
+    )
+    selected: list[Document] = []
+    selected_keys: set[str] = set()
+    non_mq_limit = max(1, int(ctx.top_k) - int(ctx.mq_diversify_budget))
+    ctx.mq_diversify_selected_non_mq = _append_unique_docs(
+        selected,
+        selected_keys,
+        docs_non_mq,
+        limit=non_mq_limit,
+    )
+    mq_limit = len(selected) + int(ctx.mq_diversify_budget)
+    ctx.mq_diversify_selected_mq = _append_unique_docs(
+        selected,
+        selected_keys,
+        docs_mq,
+        limit=mq_limit,
+    )
+    ctx.mq_diversify_fill_from_fused = _append_unique_docs(
+        selected,
+        selected_keys,
+        fused_docs,
+        limit=int(ctx.top_k),
+    )
+    return selected
+
+
+def _fuse_retrieval_docs(
+    ctx: RetrievalRuntimeState,
+    *,
+    family_aggregation_enabled: bool,
+    family_features: dict[str, dict[str, Any]],
+) -> tuple[list[Document], list[Document]]:
+    if len(ctx.docs_by_query) <= 1:
+        docs = ctx.docs_by_query[0] if ctx.docs_by_query else []
+        return docs, docs
+    fused_docs = _fuse_doc_lists(ctx.docs_by_query)
+    refill_pool = fused_docs
+    fused_docs, ctx.family_aggregation_meta = _aggregate_hierarchy_families(
+        fused_docs,
+        enabled=family_aggregation_enabled,
+        family_features=family_features,
+        strategy=ctx.hierarchy_family_aggregation,
+    )
+    if ctx.mq_diversify_enabled and ctx.mq_diversify_budget > 0:
+        fused_docs = _diversify_multi_query_docs(
+            ctx,
+            fused_docs,
+            family_aggregation_enabled=family_aggregation_enabled,
+            family_features=family_features,
+        )
+    return fused_docs, refill_pool
+
+
+def _temporal_document_ids(docs: list[Document], *, limit: int) -> list[str]:
+    document_ids: list[str] = []
+    seen: set[str] = set()
+    for doc in docs:
+        metadata = doc.metadata if isinstance(doc.metadata, dict) else {}
+        document_id = str(metadata.get("document_id") or "").strip()
+        if not document_id or document_id in seen:
+            continue
+        seen.add(document_id)
+        document_ids.append(document_id)
+        if limit and len(document_ids) >= limit:
+            break
+    return document_ids
+
+
+def _apply_temporal_recency(ctx: RetrievalRuntimeState) -> None:
+    if not ctx.temporal_intent_enabled or not ctx.docs:
+        return
+    boost_enabled = bool(getattr(settings, "RAG_TEMPORAL_INTENT_RECENCY_BOOST_ENABLED", True))
+    if not bool(ctx.temporal_intent_meta.get("detected")) or not boost_enabled:
+        ctx.temporal_recency_meta = {"enabled": boost_enabled, "used": False, "reason": "not_detected"}
+        return
+    try:
+        max_docs = max(0, int(getattr(settings, "RAG_TEMPORAL_INTENT_MAX_DOCS", 200) or 200))
+        updated_ts = fetch_document_updated_ts(
+            _temporal_document_ids(ctx.docs, limit=max_docs),
+            tenant_id=ctx.state.get("tenant_id"),
+            dataset_id=ctx.state.get("dataset_id"),
+            max_docs=max_docs,
+        )
+        ctx.docs, ctx.temporal_recency_meta = apply_recency_boost(
+            ctx.docs,
+            updated_ts_by_document_id=updated_ts,
+            boost_max=float(getattr(settings, "RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX", 0.0) or 0.0),
+            window_days=int(getattr(settings, "RETRIEVAL_GOVERNANCE_LATEST_WINDOW_DAYS", 180) or 180),
+        )
+    except Exception as exc:  # noqa: BLE001
+        _log_orchestrator_fallback("run_retrieval", exc)
+        ctx.temporal_recency_meta = {"enabled": True, "used": False, "reason": f"exception:{str(exc)[:160]}"}
+
+
+def _apply_hierarchy_tree_dedup_phase(ctx: RetrievalRuntimeState, refill_pool: list[Document]) -> None:
+    if not (ctx.hierarchy_recall_enabled and ctx.hierarchy_tree_dedup and ctx.docs):
+        return
+    try:
+        ctx.docs, ctx.tree_dedup_meta = _apply_hierarchy_tree_dedup(
+            ctx.docs,
+            refill=refill_pool,
+            top_k=int(ctx.top_k),
+            overfetch_factor=int(ctx.hierarchy_overfetch_factor),
+        )
+    except Exception as exc:
+        _log_orchestrator_fallback("run_retrieval", exc)
+        ctx.tree_dedup_meta = {"enabled": False, "reason": "exception"}
+
+
+def _run_retrieval_fusion_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
+    ctx.top_k = int(
+        ctx.retriever_update.get("k")
+        or ctx.state.get("top_k", settings.RETRIEVAL_TOP_K)
+        or settings.RETRIEVAL_TOP_K
+        or 5
+    )
+    ctx.mq_diversify_enabled = bool(getattr(settings, "MULTI_QUERY_DIVERSIFY_ENABLED", False)) and bool(ctx.mq_enabled)
     try:
         mq_budget_raw = int(getattr(settings, "MULTI_QUERY_DIVERSIFY_BUDGET", 0) or 0)
     except (TypeError, ValueError, AttributeError):
         mq_budget_raw = 0
-    mq_diversify_budget = max(0, min(int(mq_budget_raw or 0), int(top_k or 0)))
-    mq_diversify_used = False
-    mq_diversify_selected_mq = 0
-    mq_diversify_selected_non_mq = 0
-    mq_diversify_fill_from_fused = 0
-    family_aggregation_meta: dict[str, Any] = {"enabled": False, "reason": "not_run"}
-    family_features: dict[str, dict[str, Any]] = {}
-    tree_dedup_meta: dict[str, Any] = {"enabled": False, "reason": "not_run"}
-    family_aggregation_enabled = bool(
-        hierarchy_recall_enabled and hierarchy_family_collapse and len(docs_by_query) > 1
+    ctx.mq_diversify_budget = max(0, min(int(mq_budget_raw or 0), int(ctx.top_k or 0)))
+    ctx.mq_diversify_used = False
+    ctx.mq_diversify_selected_mq = 0
+    ctx.mq_diversify_selected_non_mq = 0
+    ctx.mq_diversify_fill_from_fused = 0
+    ctx.family_aggregation_meta: dict[str, Any] = {"enabled": False, "reason": "not_run"}
+    ctx.tree_dedup_meta: dict[str, Any] = {"enabled": False, "reason": "not_run"}
+    family_aggregation_enabled, family_features = _hierarchy_family_features(ctx)
+    ctx.docs, docs_refill_pool = _fuse_retrieval_docs(
+        ctx,
+        family_aggregation_enabled=family_aggregation_enabled,
+        family_features=family_features,
     )
-    if family_aggregation_enabled:
-        try:
-            family_features = _build_hierarchy_family_features(docs_by_query)
-        except Exception as exc:
-            _log_orchestrator_fallback('run_retrieval', exc)
-            family_features = {}
+    _apply_temporal_recency(ctx)
+    _apply_hierarchy_tree_dedup_phase(ctx, docs_refill_pool)
+    ctx.docs = (ctx.docs or [])[: max(0, ctx.top_k)]
+    return None
 
-    docs_refill_pool: list[Document] = docs_by_query[0] if docs_by_query else []
-    if len(docs_by_query) <= 1:
-        docs = docs_by_query[0] if docs_by_query else []
-    else:
-        docs_fused_all = DocUtilsMixin.fuse_docs_rrf(
-            docs_by_query,
-            rrf_k=settings.RETRIEVAL_RRF_K,
-            meta_prefix="query_expansion",
-        )
-        docs_refill_pool = docs_fused_all
-        if family_aggregation_enabled:
+
+def _kg_path_steps(raw_path: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw_path, list):
+        return []
+    path: list[dict[str, Any]] = []
+    for step in raw_path:
+        if not isinstance(step, dict):
+            continue
+        entity_id = str(step.get("entity_id") or "").strip()
+        if not entity_id:
+            continue
+        entry: dict[str, Any] = {"entity_id": entity_id}
+        entity_type = str(step.get("type") or "").strip()
+        if entity_type:
+            entry["type"] = entity_type[:100]
+        path.append(entry)
+        if len(path) >= 6:
+            break
+    return path
+
+
+def _kg_event_features(event: dict[str, Any]) -> dict[str, Any]:
+    features = {
+        key: event.get(key)
+        for key in ("kg_path_length", "kg_shared_events", "kg_evidence_anchored")
+        if event.get(key) is not None
+    }
+    path = _kg_path_steps(event.get("kg_path"))
+    if path:
+        features["kg_path"] = path
+    provenance = _safe_kg_path_provenance(event.get("kg_path_provenance"))
+    if provenance:
+        features["kg_path_provenance"] = provenance
+    return features
+
+
+def _kg_event_candidate(event: Any) -> tuple[UUID, float, dict[str, Any]] | None:
+    if not isinstance(event, dict) or event.get("chunk_id") is None:
+        return None
+    try:
+        chunk_id = UUID(str(event.get("chunk_id")))
+    except (TypeError, ValueError, AttributeError):
+        return None
+    try:
+        score = float(event.get("score", 0.0) or 0.0)
+    except (TypeError, ValueError, AttributeError):
+        score = 0.0
+    return chunk_id, score, _kg_event_features(event)
+
+
+def _collect_kg_injection_candidates(
+    events: Any,
+    *,
+    limit: int,
+) -> tuple[list[UUID], dict[str, float], dict[str, dict[str, Any]]]:
+    chunk_ids: list[UUID] = []
+    scores: dict[str, float] = {}
+    features: dict[str, dict[str, Any]] = {}
+    seen: set[UUID] = set()
+    for event in events if isinstance(events, list) else []:
+        candidate = _kg_event_candidate(event)
+        if candidate is None:
+            continue
+        chunk_id, score, chunk_features = candidate
+        if chunk_id in seen:
+            continue
+        seen.add(chunk_id)
+        chunk_ids.append(chunk_id)
+        scores[str(chunk_id)] = score
+        if chunk_features:
+            features[str(chunk_id)] = chunk_features
+        if len(chunk_ids) >= limit:
+            break
+    return chunk_ids, scores, features
+
+
+def _fetch_kg_injection_rows(
+    ctx: RetrievalRuntimeState,
+    *,
+    tenant_id: Any,
+    account_id: Any,
+    dataset_id: Any,
+    dataset_ids: Any,
+    document_ids: Any,
+    chunk_ids: list[UUID],
+) -> list[Any]:
+    db = ctx.state.get("db")
+    owns_db = False
+    if db is None:
+        try:
+            from app.core.database import SessionLocal
+
+            db = SessionLocal()
+            owns_db = True
+        except Exception as exc:
+            _log_orchestrator_fallback("run_retrieval", exc)
+            db = None
+    try:
+        fetch_kwargs = {
+            "db": db,
+            "tenant_id": tenant_id,
+            "account_id": account_id,
+            "dataset_id": dataset_id,
+            "document_ids": document_ids,
+            "chunk_ids": chunk_ids,
+        }
+        if dataset_ids:
+            fetch_kwargs["dataset_ids"] = dataset_ids
+        return list(_fetch_document_chunks_for_kg_injection(**fetch_kwargs) or [])
+    finally:
+        if owns_db and db is not None:
             try:
-                docs_fused_all, family_aggregation_meta = _apply_hierarchy_family_aggregation(
-                    docs_fused_all,
-                    family_features=family_features,
-                    strategy=hierarchy_family_aggregation,
-                )
+                db.close()
             except Exception as exc:
-                _log_orchestrator_fallback('run_retrieval', exc)
-                family_aggregation_meta = {"enabled": False, "reason": "exception"}
-        if mq_diversify_enabled and mq_diversify_budget > 0:
-            mq_lists: list[list[Document]] = []
-            non_mq_lists: list[list[Document]] = []
-            for kind, docs_i in zip(docs_by_query_kinds, docs_by_query, strict=False):
-                if kind == "mq":
-                    mq_lists.append(docs_i or [])
-                else:
-                    non_mq_lists.append(docs_i or [])
+                logger.debug(_RETRIEVAL_ORCHESTRATOR_FALLBACK_LOG_MESSAGE, exc)
 
-            if mq_lists and non_mq_lists:
-                mq_diversify_used = True
-                docs_non_mq = (
-                    DocUtilsMixin.fuse_docs_rrf(
-                        non_mq_lists,
-                        rrf_k=settings.RETRIEVAL_RRF_K,
-                        meta_prefix="query_expansion",
-                    )
-                    if len(non_mq_lists) > 1
-                    else (non_mq_lists[0] or [])
-                )
-                docs_mq = (
-                    DocUtilsMixin.fuse_docs_rrf(
-                        mq_lists,
-                        rrf_k=settings.RETRIEVAL_RRF_K,
-                        meta_prefix="query_expansion",
-                    )
-                    if len(mq_lists) > 1
-                    else (mq_lists[0] or [])
-                )
-                if family_aggregation_enabled:
-                    try:
-                        docs_non_mq, _ = _apply_hierarchy_family_aggregation(
-                            docs_non_mq,
-                            family_features=family_features,
-                            strategy=hierarchy_family_aggregation,
-                        )
-                        docs_mq, _ = _apply_hierarchy_family_aggregation(
-                            docs_mq,
-                            family_features=family_features,
-                            strategy=hierarchy_family_aggregation,
-                        )
-                    except Exception as exc:
-                        logger.debug(_RETRIEVAL_ORCHESTRATOR_FALLBACK_LOG_MESSAGE, exc)
 
-                want_non_mq = max(0, int(top_k) - int(mq_diversify_budget))
-                want_mq = int(mq_diversify_budget)
-
-                selected: list[Document] = []
-                selected_keys: set[str] = set()
-
-                for d in docs_non_mq:
-                    k = DocUtilsMixin._doc_key(d)
-                    if k in selected_keys:
-                        continue
-                    selected_keys.add(k)
-                    selected.append(d)
-                    if len(selected) >= want_non_mq:
-                        break
-
-                mq_added = 0
-                mq_diversify_selected_non_mq = int(len(selected))
-                for d in docs_mq:
-                    if mq_added >= want_mq:
-                        break
-                    k = DocUtilsMixin._doc_key(d)
-                    if k in selected_keys:
-                        continue
-                    selected_keys.add(k)
-                    selected.append(d)
-                    mq_added += 1
-                mq_diversify_selected_mq = int(mq_added)
-
-                # Fill any remaining slots from the full fused list (best-effort).
-                for d in docs_fused_all:
-                    if len(selected) >= int(top_k):
-                        break
-                    k = DocUtilsMixin._doc_key(d)
-                    if k in selected_keys:
-                        continue
-                    selected_keys.add(k)
-                    selected.append(d)
-                    mq_diversify_fill_from_fused += 1
-
-                docs = selected
-            else:
-                docs = docs_fused_all
-        else:
-            docs = docs_fused_all
-
-    # Optional: Temporal intent + recency-aware rerank (deterministic, feature-flagged).
-    if temporal_intent_enabled and docs:
+def _kg_chunk_row_map(rows: list[Any]) -> dict[UUID, Any]:
+    chunks: dict[UUID, Any] = {}
+    for chunk in rows:
         try:
-            temporal_boost_enabled = bool(
-                getattr(settings, "RAG_TEMPORAL_INTENT_RECENCY_BOOST_ENABLED", True)
-            )
-            if bool(temporal_intent_meta.get("detected")) and bool(temporal_boost_enabled):
-                max_docs = max(0, int(getattr(settings, "RAG_TEMPORAL_INTENT_MAX_DOCS", 200) or 200))
-                doc_ids: list[str] = []
-                seen_doc_ids: set[str] = set()
-                for d in docs:
-                    meta = getattr(d, "metadata", None)
-                    meta = meta if isinstance(meta, dict) else {}
-                    did = meta.get("document_id")
-                    did_s = str(did).strip() if did is not None else ""
-                    if not did_s:
-                        continue
-                    if did_s in seen_doc_ids:
-                        continue
-                    seen_doc_ids.add(did_s)
-                    doc_ids.append(did_s)
-                    if max_docs and len(doc_ids) >= max_docs:
-                        break
+            chunk_id = chunk.id
+            content = chunk.content
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if chunk_id is not None and content is not None:
+            chunks[chunk_id] = chunk
+    return chunks
 
-                updated_ts = fetch_document_updated_ts(
-                    doc_ids,
-                    tenant_id=state.get("tenant_id"),
-                    dataset_id=state.get("dataset_id"),
-                    max_docs=max_docs,
-                )
-                docs, temporal_recency_meta = apply_recency_boost(
-                    docs,
-                    updated_ts_by_document_id=updated_ts,
-                    boost_max=float(getattr(settings, "RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX", 0.0) or 0.0),
-                    window_days=int(getattr(settings, "RETRIEVAL_GOVERNANCE_LATEST_WINDOW_DAYS", 180) or 180),
-                )
-            else:
-                temporal_recency_meta = {
-                    "enabled": bool(temporal_boost_enabled),
-                    "used": False,
-                    "reason": "not_detected",
-                }
-        except Exception as exc:  # noqa: BLE001
-            _log_orchestrator_fallback('run_retrieval', exc)
-            temporal_recency_meta = {"enabled": True, "used": False, "reason": f"exception:{str(exc)[:160]}"}
 
-    if bool(hierarchy_recall_enabled) and bool(hierarchy_tree_dedup) and docs:
-        try:
-            docs, tree_dedup_meta = _apply_hierarchy_tree_dedup(
-                docs,
-                refill=docs_refill_pool,
-                top_k=int(top_k),
-                overfetch_factor=int(hierarchy_overfetch_factor),
-            )
-        except Exception as exc:
-            _log_orchestrator_fallback('run_retrieval', exc)
-            tree_dedup_meta = {"enabled": False, "reason": "exception"}
+def _kg_document_from_chunk(
+    chunk_id: UUID,
+    chunk: Any,
+    *,
+    scores: dict[str, float],
+    features: dict[str, dict[str, Any]],
+) -> Document:
+    metadata = dict(getattr(chunk, "doc_metadata", None) or {})
+    metadata["retrieval_role"] = "kg"
+    metadata.setdefault("document_id", str(getattr(chunk, "document_id", "") or ""))
+    metadata.setdefault("chunk_id", str(getattr(chunk, "id", "") or ""))
+    metadata.setdefault("chunk_index", getattr(chunk, "chunk_index", None))
+    page_number = getattr(chunk, "page_number", None)
+    if page_number is not None:
+        metadata.setdefault("page", int(page_number))
+        metadata.setdefault("page_number", int(page_number))
+    start_char = getattr(chunk, "start_char", None)
+    end_char = getattr(chunk, "end_char", None)
+    if start_char is not None:
+        metadata.setdefault("start_char", int(start_char))
+    if end_char is not None:
+        metadata.setdefault("end_char", int(end_char))
+    score = scores.get(str(chunk_id))
+    if score is not None:
+        metadata.setdefault("retrieval_score", float(score or 0.0))
+        metadata.setdefault("score", float(score or 0.0))
+    for key, value in features.get(str(chunk_id), {}).items():
+        if value is not None:
+            metadata[key] = value
+    return Document(
+        page_content=str(getattr(chunk, "content", None) or ""),
+        metadata=metadata,
+        id=str(chunk_id),
+    )
 
-    docs = (docs or [])[: max(0, top_k)]
 
-    # Optional: KG-assisted retrieval (inject KG-linked chunks as extra candidates).
-    kg_chunk_injection_enabled = _coerce_optional_bool(
-        state.get("enable_kg_chunk_injection"),
+def _build_kg_injection_docs(
+    chunk_ids: list[UUID],
+    rows: list[Any],
+    *,
+    scores: dict[str, float],
+    features: dict[str, dict[str, Any]],
+) -> list[Document]:
+    chunks = _kg_chunk_row_map(rows)
+    return [
+        _kg_document_from_chunk(chunk_id, chunks[chunk_id], scores=scores, features=features)
+        for chunk_id in chunk_ids
+        if chunk_id in chunks
+    ]
+
+
+def _run_kg_injection(ctx: RetrievalRuntimeState) -> list[Document]:
+    tenant_id = ctx.state.get("tenant_id")
+    account_id = ctx.state.get("account_id")
+    document_ids, dataset_id, dataset_ids = _resolve_kg_scope(ctx.state)
+    kg_result = ctx.kg_result_cached
+    if kg_result is None:
+        kg_kwargs = {
+            "query": ctx.query_for_retrieval,
+            "tenant_id": tenant_id,
+            "document_ids": document_ids or None,
+            "dataset_id": dataset_id,
+            "account_id": account_id if not document_ids else None,
+        }
+        if dataset_ids:
+            kg_kwargs["dataset_ids"] = dataset_ids
+        kg_result = _run_kg_search_sync(kg_kwargs)
+    chunk_ids, scores, features = _collect_kg_injection_candidates(
+        (kg_result or {}).get("events") or [],
+        limit=int(ctx.kg_chunk_injection_max_chunks or 0) or 5,
+    )
+    if not chunk_ids:
+        return []
+    rows = _fetch_kg_injection_rows(
+        ctx,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=dataset_id,
+        dataset_ids=dataset_ids,
+        document_ids=document_ids,
+        chunk_ids=chunk_ids,
+    )
+    return _build_kg_injection_docs(chunk_ids, rows, scores=scores, features=features)
+
+
+def _run_retrieval_kg_injection_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
+    ctx.kg_chunk_injection_enabled = _coerce_optional_bool(
+        ctx.state.get("enable_kg_chunk_injection"),
         default=bool(getattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False)),
     )
-    kg_chunk_injection_max_chunks = _coerce_optional_int(
-        state.get("kg_chunk_injection_max_chunks"),
+    ctx.kg_chunk_injection_max_chunks = _coerce_optional_int(
+        ctx.state.get("kg_chunk_injection_max_chunks"),
         default=int(getattr(settings, "RAG_KG_CHUNK_INJECTION_MAX_CHUNKS", 5) or 5),
         minimum=0,
         maximum=50,
     )
-    kg_chunks_injected = 0
-    kg_chunk_injection_error: str | None = None
+    ctx.kg_chunks_injected = 0
+    ctx.kg_chunk_injection_error: str | None = None
     try:
-        if (
-            bool(kg_chunk_injection_enabled)
+        enabled = (
+            bool(ctx.kg_chunk_injection_enabled)
             and bool(getattr(settings, "KG_ENABLED", False))
             and bool(getattr(settings, "KG_CHAT_ENABLED", False))
-            and state.get("tenant_id") is not None
-            and any(_resolve_kg_scope(state))
-        ):
-            tenant_id = state.get("tenant_id")
-            account_id = state.get("account_id")
-            document_ids, dataset_id, dataset_ids = _resolve_kg_scope(state)
-
-            kg_result = kg_result_cached
-            if kg_result is None:
-                kg_kwargs = {
-                    "query": query_for_retrieval,
-                    "tenant_id": tenant_id,
-                    "document_ids": document_ids or None,
-                    "dataset_id": dataset_id,
-                    "account_id": account_id if not document_ids else None,
-                }
-                if dataset_ids:
-                    kg_kwargs["dataset_ids"] = dataset_ids
-                coro = kg_search(**kg_kwargs)
-
-                try:
-                    loop = asyncio.get_event_loop()
-                except RuntimeError:
-                    loop = None
-
-                if loop is not None and loop.is_running():
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                        kg_result = pool.submit(asyncio.run, coro).result()
-                elif loop is not None:
-                    kg_result = loop.run_until_complete(coro)
-                else:
-                    kg_result = asyncio.run(coro)
-
-            kg_events = (kg_result or {}).get("events") or []
-            max_chunks = int(kg_chunk_injection_max_chunks or 0) or 5
-
-            score_by_chunk: dict[str, float] = {}
-            kg_features_by_chunk: dict[str, dict[str, Any]] = {}
-            chunk_ids: list[UUID] = []
-            seen_chunk_ids: set[UUID] = set()
-            for ev in kg_events if isinstance(kg_events, list) else []:
-                if not isinstance(ev, dict):
-                    continue
-                cid_raw = ev.get("chunk_id")
-                if cid_raw is None:
-                    continue
-                try:
-                    cid = UUID(str(cid_raw))
-                except (TypeError, ValueError, AttributeError):
-                    continue
-                if cid in seen_chunk_ids:
-                    continue
-                seen_chunk_ids.add(cid)
-                chunk_ids.append(cid)
-                cid_str = str(cid)
-                try:
-                    score_by_chunk[cid_str] = float(ev.get("score", 0.0) or 0.0)
-                except (TypeError, ValueError, AttributeError):
-                    score_by_chunk[cid_str] = 0.0
-
-                # Stable KG ranking features (optional). These are low-cardinality and do not
-                # include scope identifiers, so they are safe to propagate into citation metadata.
-                feats: dict[str, Any] = {}
-                if ev.get("kg_path_length") is not None:
-                    feats["kg_path_length"] = ev.get("kg_path_length")
-                if ev.get("kg_shared_events") is not None:
-                    feats["kg_shared_events"] = ev.get("kg_shared_events")
-                if ev.get("kg_evidence_anchored") is not None:
-                    feats["kg_evidence_anchored"] = ev.get("kg_evidence_anchored")
-                kg_path_raw = ev.get("kg_path")
-                if isinstance(kg_path_raw, list) and kg_path_raw:
-                    kg_path: list[dict[str, Any]] = []
-                    for step in kg_path_raw:
-                        if not isinstance(step, dict):
-                            continue
-                        ent_id = str(step.get("entity_id") or "").strip()
-                        if not ent_id:
-                            continue
-                        typ = str(step.get("type") or "").strip()
-                        entry: dict[str, Any] = {"entity_id": ent_id}
-                        if typ:
-                            entry["type"] = typ[:100]
-                        kg_path.append(entry)
-                        if len(kg_path) >= 6:
-                            break
-                    if kg_path:
-                        feats["kg_path"] = kg_path
-
-                def _safe_kg_path_provenance(raw: Any) -> dict[str, Any] | None:
-                    if not isinstance(raw, dict) or not raw:
-                        return None
-                    out: dict[str, Any] = {}
-                    schema = str(raw.get("schema") or "").strip()
-                    if schema:
-                        out["schema"] = schema[:80]
-                    kind = str(raw.get("kind") or "").strip()
-                    if kind:
-                        out["kind"] = kind[:50]
-                    try:
-                        if raw.get("hops") is not None:
-                            out["hops"] = int(raw.get("hops") or 0)
-                    except Exception as exc:
-                        logger.debug(_RETRIEVAL_ORCHESTRATOR_FALLBACK_LOG_MESSAGE, exc)
-
-                    nodes_raw = raw.get("nodes")
-                    if isinstance(nodes_raw, list) and nodes_raw:
-                        nodes: list[dict[str, Any]] = []
-                        for n in nodes_raw:
-                            if not isinstance(n, dict):
-                                continue
-                            node: dict[str, Any] = {}
-                            k = str(n.get("kind") or "").strip()
-                            if k:
-                                node["kind"] = k[:30]
-                            for key in ("entity_id", "type", "event_id", "document_id", "chunk_id"):
-                                v = n.get(key)
-                                if v is None:
-                                    continue
-                                s = str(v).strip()
-                                if not s:
-                                    continue
-                                node[key] = s[:200]
-                            if node:
-                                nodes.append(node)
-                            if len(nodes) >= 10:
-                                break
-                        if nodes:
-                            out["nodes"] = nodes
-
-                    edges_raw = raw.get("edges")
-                    if isinstance(edges_raw, list) and edges_raw:
-                        edges: list[dict[str, Any]] = []
-                        for e in edges_raw:
-                            if not isinstance(e, dict):
-                                continue
-                            edge: dict[str, Any] = {}
-                            k = str(e.get("kind") or "").strip()
-                            if k:
-                                edge["kind"] = k[:30]
-                            for key in (
-                                "entity_id",
-                                "event_id",
-                                "document_id",
-                                "chunk_id",
-                                "relation_id",
-                                "predicate",
-                                "confidence_bucket",
-                                "evidence_source",
-                            ):
-                                v = e.get(key)
-                                if v is None:
-                                    continue
-                                s = str(v).strip()
-                                if not s:
-                                    continue
-                                edge[key] = s[:200]
-                            if edge:
-                                edges.append(edge)
-                            if len(edges) >= 10:
-                                break
-                        if edges:
-                            out["edges"] = edges
-
-                    return out or None
-
-                prov = _safe_kg_path_provenance(ev.get("kg_path_provenance"))
-                if prov:
-                    feats["kg_path_provenance"] = prov
-                if feats:
-                    kg_features_by_chunk[cid_str] = feats
-                if len(chunk_ids) >= max_chunks:
-                    break
-
-            if chunk_ids:
-                db = state.get("db")
-                owns_db = False
-                if db is None:
-                    try:
-                        from app.core.database import SessionLocal  # noqa: WPS433
-
-                        db = SessionLocal()
-                        owns_db = True
-                    except Exception as exc:
-                        _log_orchestrator_fallback('run_retrieval', exc)
-                        db = None
-                        owns_db = False
-
-                try:
-                    fetch_kwargs = {
-                        "db": db,
-                        "tenant_id": tenant_id,
-                        "account_id": account_id,
-                        "dataset_id": dataset_id,
-                        "document_ids": document_ids,
-                        "chunk_ids": chunk_ids,
-                    }
-                    if dataset_ids:
-                        fetch_kwargs["dataset_ids"] = dataset_ids
-                    rows = _fetch_document_chunks_for_kg_injection(**fetch_kwargs)
-                finally:
-                    if owns_db and db is not None:
-                        try:
-                            db.close()
-                        except Exception as exc:
-                            logger.debug(_RETRIEVAL_ORCHESTRATOR_FALLBACK_LOG_MESSAGE, exc)
-
-                chunk_by_id: dict[UUID, Any] = {}
-                for ch in (rows or []):
-                    try:
-                        cid = ch.id
-                        content = ch.content
-                    except (TypeError, ValueError, AttributeError):
-                        continue
-                    if cid is None or content is None:
-                        continue
-                    chunk_by_id[cid] = ch
-
-                kg_docs: list[Document] = []
-                for cid in chunk_ids:
-                    ch = chunk_by_id.get(cid)
-                    if ch is None:
-                        continue
-                    meta = dict(getattr(ch, "doc_metadata", None) or {})
-                    meta["retrieval_role"] = "kg"
-                    meta.setdefault("document_id", str(getattr(ch, "document_id", "") or ""))
-                    meta.setdefault("chunk_id", str(getattr(ch, "id", "") or ""))
-                    meta.setdefault("chunk_index", getattr(ch, "chunk_index", None))
-                    page_number = getattr(ch, "page_number", None)
-                    if page_number is not None:
-                        meta.setdefault("page", int(page_number))
-                        meta.setdefault("page_number", int(page_number))
-                    start_char = getattr(ch, "start_char", None)
-                    end_char = getattr(ch, "end_char", None)
-                    if start_char is not None:
-                        meta.setdefault("start_char", int(start_char))
-                    if end_char is not None:
-                        meta.setdefault("end_char", int(end_char))
-                    if str(cid) in score_by_chunk:
-                        meta.setdefault("retrieval_score", float(score_by_chunk.get(str(cid), 0.0) or 0.0))
-                        meta.setdefault("score", float(score_by_chunk.get(str(cid), 0.0) or 0.0))
-                    feats = kg_features_by_chunk.get(str(cid))
-                    if isinstance(feats, dict) and feats:
-                        for k, v in feats.items():
-                            if v is None:
-                                continue
-                            meta[k] = v
-
-                    kg_docs.append(
-                        Document(
-                            page_content=str(getattr(ch, "content", None) or ""),
-                            metadata=meta,
-                            id=str(cid),
-                        )
-                    )
-
-                if kg_docs:
-                    # KG should enrich duplicate main hits, not replace their score or provenance.
-                    docs = _merge_kg_docs_preserving_main(docs, kg_docs)
-                    kg_chunks_injected = len(kg_docs)
+            and ctx.state.get("tenant_id") is not None
+            and any(_resolve_kg_scope(ctx.state))
+        )
+        if enabled:
+            kg_docs = _run_kg_injection(ctx)
+            if kg_docs:
+                ctx.docs = _merge_kg_docs_preserving_main(ctx.docs, kg_docs)
+                ctx.kg_chunks_injected = len(kg_docs)
     except Exception as exc:  # noqa: BLE001
-        _log_orchestrator_fallback('run_retrieval', exc)
-        kg_chunks_injected = 0
-        kg_chunk_injection_error = str(exc)[:200]
+        _log_orchestrator_fallback("run_retrieval", exc)
+        ctx.kg_chunks_injected = 0
+        ctx.kg_chunk_injection_error = str(exc)[:200]
+    return None
 
-    # Optional: TAG injection (table_store results) passed in by the API layer.
-    injected = state.get("tag_docs")
-    tag_docs: list[Document] = []
-    if isinstance(injected, list) and injected:
-        for obj in injected[:10]:
-            if isinstance(obj, Document):
-                tag_docs.append(obj)
-                continue
-            if isinstance(obj, dict):
-                content = obj.get("page_content")
-                if content is None:
-                    content = obj.get("content")
-                meta = obj.get("metadata")
-                meta = meta if isinstance(meta, dict) else {}
-                did = obj.get("id") or meta.get("chunk_id")
-                try:
-                    tag_docs.append(Document(page_content=str(content or ""), metadata=meta, id=did))
-                except Exception as exc:
-                    _log_orchestrator_fallback('run_retrieval', exc)
-                    continue
-    if tag_docs:
-        docs = tag_docs + (docs or [])
 
-    # Optional: attach stable KG ranking features to candidates so rerankers (LTR) can
-    # use KG as a signal source (not just as a candidate expander).
-    #
-    # These features are intentionally low-cardinality and avoid leaking scope identifiers.
+def _tag_document(raw: Any) -> Document | None:
+    if isinstance(raw, Document):
+        return raw
+    if not isinstance(raw, dict):
+        return None
+    content = raw.get("page_content")
+    if content is None:
+        content = raw.get("content")
+    metadata = raw.get("metadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
     try:
-        for doc in docs or []:
-            if doc is None:
-                continue
-            meta = doc.metadata or {}
-            role = str(meta.get("retrieval_role") or "main").strip().lower() or "main"
-            try:
-                has_kg_signal = float(meta.get("kg_pagerank") or 0.0) > 0.0
-            except (TypeError, ValueError, AttributeError):
-                has_kg_signal = False
-            if role != "kg" and not has_kg_signal:
-                continue
+        return Document(
+            page_content=str(content or ""),
+            metadata=metadata,
+            id=raw.get("id") or metadata.get("chunk_id"),
+        )
+    except Exception as exc:
+        _log_orchestrator_fallback("run_retrieval", exc)
+        return None
 
-            # For injected KG chunks, meta.score is the KG recall score (best-effort).
-            try:
-                kg_score = float(meta.get("kg_pagerank") if meta.get("kg_pagerank") is not None else meta.get("score") or 0.0)
-            except (TypeError, ValueError, AttributeError):
-                kg_score = 0.0
 
-            meta["kg_pagerank"] = float(kg_score)
+def _tag_documents(raw: Any) -> list[Document]:
+    if not isinstance(raw, list):
+        return []
+    return [document for item in raw[:10] if (document := _tag_document(item)) is not None]
 
-            # Prefer KG-provided features when available (e.g., from KG search rerank output).
-            try:
-                path_len = int(meta.get("kg_path_length")) if meta.get("kg_path_length") is not None else 1
-            except (TypeError, ValueError, AttributeError):
-                path_len = 1
-            path_len = max(1, min(int(path_len), 5))
-            meta["kg_path_length"] = int(path_len)
 
-            try:
-                shared = int(meta.get("kg_shared_events")) if meta.get("kg_shared_events") is not None else 1
-            except (TypeError, ValueError, AttributeError):
-                shared = 1
-            shared = max(0, min(int(shared), 5))
-            meta["kg_shared_events"] = int(shared)
+def _safe_metadata_float(metadata: dict[str, Any], key: str, *, fallback_key: str | None = None) -> float:
+    raw = metadata.get(key)
+    if raw is None and fallback_key is not None:
+        raw = metadata.get(fallback_key)
+    try:
+        return float(raw or 0.0)
+    except (TypeError, ValueError, AttributeError):
+        return 0.0
 
-            if "kg_evidence_anchored" in meta:
-                meta["kg_evidence_anchored"] = bool(meta.get("kg_evidence_anchored"))
-            else:
-                meta["kg_evidence_anchored"] = True
 
-            # Confidence buckets (low-cardinality one-hot). Thresholds are intentionally coarse.
-            low = 0.0
-            mid = 0.0
-            high = 0.0
-            if kg_score >= 0.75:
-                high = 1.0
-            elif kg_score >= 0.5:
-                mid = 1.0
-            elif kg_score > 0.0:
-                low = 1.0
-            meta["kg_edge_conf_low"] = low
-            meta["kg_edge_conf_mid"] = mid
-            meta["kg_edge_conf_high"] = high
+def _safe_metadata_int(metadata: dict[str, Any], key: str, *, default: int) -> int:
+    try:
+        return int(metadata.get(key)) if metadata.get(key) is not None else default
+    except (TypeError, ValueError, AttributeError):
+        return default
+
+
+def _kg_confidence_buckets(score: float) -> tuple[float, float, float]:
+    if score >= 0.75:
+        return 0.0, 0.0, 1.0
+    if score >= 0.5:
+        return 0.0, 1.0, 0.0
+    if score > 0.0:
+        return 1.0, 0.0, 0.0
+    return 0.0, 0.0, 0.0
+
+
+def _annotate_kg_ranking_features(doc: Document) -> None:
+    metadata = doc.metadata or {}
+    role = str(metadata.get("retrieval_role") or "main").strip().lower() or "main"
+    has_kg_signal = _safe_metadata_float(metadata, "kg_pagerank") > 0.0
+    if role != "kg" and not has_kg_signal:
+        return
+    kg_score = _safe_metadata_float(metadata, "kg_pagerank", fallback_key="score")
+    metadata["kg_pagerank"] = kg_score
+    metadata["kg_path_length"] = max(
+        1,
+        min(_safe_metadata_int(metadata, "kg_path_length", default=1), 5),
+    )
+    metadata["kg_shared_events"] = max(
+        0,
+        min(_safe_metadata_int(metadata, "kg_shared_events", default=1), 5),
+    )
+    metadata["kg_evidence_anchored"] = bool(metadata.get("kg_evidence_anchored", True))
+    low, mid, high = _kg_confidence_buckets(kg_score)
+    metadata["kg_edge_conf_low"] = low
+    metadata["kg_edge_conf_mid"] = mid
+    metadata["kg_edge_conf_high"] = high
+
+
+def _annotate_kg_ranking_docs(docs: list[Document]) -> None:
+    try:
+        for doc in docs:
+            if doc is not None:
+                _annotate_kg_ranking_features(doc)
     except Exception as exc:
         logger.debug(_RETRIEVAL_ORCHESTRATOR_FALLBACK_LOG_MESSAGE, exc)
 
+
+def _run_retrieval_tag_kg_boost_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
+    tag_docs = _tag_documents(ctx.state.get("tag_docs"))
+    if tag_docs:
+        ctx.docs = tag_docs + (ctx.docs or [])
+    _annotate_kg_ranking_docs(ctx.docs or [])
+
     kg_chunk_boost_enabled = _coerce_optional_bool(
-        state.get("enable_kg_chunk_boost"),
+        ctx.state.get("enable_kg_chunk_boost"),
         default=bool(getattr(settings, "RAG_KG_CHUNK_BOOST_ENABLED", False)),
     )
     kg_chunk_boost_weight = _coerce_optional_float(
-        state.get("kg_chunk_boost_weight"),
+        ctx.state.get("kg_chunk_boost_weight"),
         default=float(getattr(settings, "RAG_KG_CHUNK_BOOST_WEIGHT", 0.25) or 0.25),
         minimum=0.0,
         maximum=1.0,
     )
     kg_chunk_boost_max_promoted = _coerce_optional_int(
-        state.get("kg_chunk_boost_max_promoted"),
+        ctx.state.get("kg_chunk_boost_max_promoted"),
         default=int(getattr(settings, "RAG_KG_CHUNK_BOOST_MAX_PROMOTED", 3) or 3),
         minimum=0,
         maximum=20,
     )
-    docs, kg_chunk_boost_meta = _apply_kg_chunk_boost(
-        [d for d in (docs or []) if isinstance(d, Document)],
+    ctx.docs, ctx.kg_chunk_boost_meta = _apply_kg_chunk_boost(
+        [d for d in (ctx.docs or []) if isinstance(d, Document)],
         enabled=bool(kg_chunk_boost_enabled),
         weight=float(kg_chunk_boost_weight),
         max_promoted=int(kg_chunk_boost_max_promoted),
     )
+    return None
 
-    # Optional: post-fusion rerank (evidence-first) on the final candidate list.
-    post_rerank_enabled = bool(getattr(settings, "EVIDENCE_POST_RERANK_ENABLED", False))
-    post_rerank_pipeline_enabled = bool(getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE_ENABLED", False))
-    post_rerank_pipeline_raw = getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE", "")
-    post_rerank_pipeline: list[dict[str, Any]] = []
-    post_rerank_pipeline_used = False
-    post_rerank_pipeline_stages: list[dict[str, Any]] = []
-    post_rerank_used = False
-    post_rerank_provider: str | None = None
-    post_rerank_model_used: str | None = None
-    post_rerank_elapsed = 0.0
-    post_rerank_error: str | None = None
-    post_rerank_candidates_n = 0
-    post_rerank_skip_reason: str | None = None
-    post_rerank_cache_enabled = bool(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_ENABLED", False))
-    post_rerank_cache_backend = get_evidence_post_rerank_cache_backend()
-    post_rerank_cache_hits = 0
-    post_rerank_cache_misses = 0
-    post_rerank_corpus_cache_token = _resolve_post_rerank_corpus_cache_token(state)
-    post_rerank_score_calibration_enabled = bool(
-        getattr(settings, "EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ENABLED", False)
+
+def _run_retrieval_post_rerank_hierarchy_setup_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
+    post_rerank_result = _run_post_rerank_stage(
+        state=ctx.state,
+        docs=[d for d in (ctx.docs or []) if isinstance(d, Document)],
+        query_for_retrieval=ctx.query_for_retrieval,
+        top_k=int(ctx.top_k),
     )
+    ctx.docs = list(post_rerank_result.get("docs") or [])
+    ctx.post_rerank_enabled = bool(post_rerank_result.get("post_rerank_enabled"))
+    ctx.post_rerank_used = bool(post_rerank_result.get("post_rerank_used"))
+    ctx.post_rerank_provider = post_rerank_result.get("post_rerank_provider")
+    ctx.post_rerank_model_used = post_rerank_result.get("post_rerank_model_used")
+    ctx.post_rerank_elapsed = float(post_rerank_result.get("post_rerank_elapsed") or 0.0)
+    ctx.post_rerank_error = post_rerank_result.get("post_rerank_error")
+    ctx.post_rerank_candidates_n = int(post_rerank_result.get("post_rerank_candidates_n") or 0)
+    ctx.post_rerank_skip_reason = post_rerank_result.get("post_rerank_skip_reason")
+    ctx.post_rerank_cache_enabled = bool(post_rerank_result.get("post_rerank_cache_enabled"))
+    ctx.post_rerank_cache_backend = post_rerank_result.get("post_rerank_cache_backend")
+    ctx.post_rerank_cache_hits = int(post_rerank_result.get("post_rerank_cache_hits") or 0)
+    ctx.post_rerank_cache_misses = int(post_rerank_result.get("post_rerank_cache_misses") or 0)
+    ctx.post_rerank_pipeline_enabled = bool(post_rerank_result.get("post_rerank_pipeline_enabled"))
+    ctx.post_rerank_pipeline_used = bool(post_rerank_result.get("post_rerank_pipeline_used"))
+    ctx.post_rerank_pipeline = list(post_rerank_result.get("post_rerank_pipeline") or [])
+    ctx.post_rerank_pipeline_stages = list(post_rerank_result.get("post_rerank_pipeline_stages") or [])
+    ctx.post_rerank_score_calibration_stats = dict(post_rerank_result.get("post_rerank_score_calibration_stats") or {})
+    ctx.post_rerank_score_calibration_enabled = bool(ctx.post_rerank_score_calibration_stats.get("enabled"))
+    ctx.post_rerank_score_calibration_alpha = float(ctx.post_rerank_score_calibration_stats.get("alpha") or 0.0)
+    ctx.post_rerank_score_calibration_used = bool(ctx.post_rerank_score_calibration_stats.get("used"))
+
+    hierarchy_expand_result = _run_hierarchy_expansion_stage(
+        state=ctx.state,
+        docs=[d for d in (ctx.docs or []) if isinstance(d, Document)],
+        hierarchy_recall_enabled=bool(ctx.hierarchy_recall_enabled),
+        hierarchy_parent_depth=int(ctx.hierarchy_parent_depth),
+        hierarchy_sibling_window=int(ctx.hierarchy_sibling_window),
+        top_k=int(ctx.top_k),
+    )
+    ctx.docs = list(hierarchy_expand_result.get("docs") or [])
+    ctx.hierarchy_expand_attempted = bool(hierarchy_expand_result.get("hierarchy_expand_attempted"))
+    ctx.hierarchy_expand_used = bool(hierarchy_expand_result.get("hierarchy_expand_used"))
+    ctx.hierarchy_expand_error = hierarchy_expand_result.get("hierarchy_expand_error")
+    ctx.hierarchy_expand_elapsed = float(hierarchy_expand_result.get("hierarchy_expand_elapsed") or 0.0)
+    ctx.hierarchy_expand_meta = dict(hierarchy_expand_result.get("hierarchy_expand_meta") or {})
+    ctx.retrieval_elapsed += float(ctx.hierarchy_expand_elapsed)
+
+    ctx.hard_fallback_enabled = bool(ctx.retrieval_contract_policy.get("hard_fallback_enabled"))
+    ctx.hard_fallback_mode = (
+        str(ctx.retrieval_contract_policy.get("hard_fallback_mode") or "keyword").strip().lower() or "keyword"
+    )
+    ctx.hard_fallback_top_k = max(1, int(ctx.retrieval_contract_policy.get("hard_fallback_top_k") or 1))
+    ctx.hard_fallback_attempted = False
+    ctx.hard_fallback_used = False
+    ctx.hard_fallback_error: str | None = None
+    ctx.hard_fallback_elapsed = 0.0
+    ctx.hard_fallback_added_docs = 0
+    ctx.hard_fallback_added_citations = 0
+    ctx.hard_fallback_retriever_debug: dict[str, Any] | None = None
+    ctx.contextual_followup_attempted = False
+    ctx.contextual_followup_used = False
+    ctx.contextual_followup_error: str | None = None
+    ctx.contextual_followup_elapsed = 0.0
+    ctx.contextual_followup_added_docs = 0
+    ctx.contextual_followup_added_citations = 0
+    ctx.contextual_followup_retriever_debug: dict[str, Any] | None = None
+    ctx.contextual_followup_reason_codes: list[str] = []
+    ctx.contextual_followup_selected_terms: list[str] = []
+    ctx.contextual_followup_followup_query: str | None = None
+    ctx.contextual_followup_query_hash: str | None = None
+    ctx.iterative_pass_reason_codes: list[str] = []
+    ctx.iterative_pass_hops: list[dict[str, Any]] = []
+    ctx.iterative_pass_gap: dict[str, Any] | None = None
+    return None
+
+
+def _contextual_evidence_gap(ctx: RetrievalRuntimeState, citations: list[dict[str, Any]]) -> dict[str, Any]:
+    return detect_evidence_gap(
+        citations=[citation for citation in citations if isinstance(citation, dict)],
+        required_source_keys=(ctx.must_recall_expected_source_keys if ctx.must_recall_enabled else []),
+        required_anchor_fields=(ctx.must_recall_required_anchor_fields if ctx.must_recall_enabled else []),
+        min_citations=1,
+    )
+
+
+def _extend_unique(target: list[str], values: list[str], *, limit: int | None = None) -> None:
+    for value in values:
+        if value not in target:
+            target.append(value)
+            if limit is not None and len(target) >= limit:
+                break
+
+
+def _contextual_query_spec(
+    ctx: RetrievalRuntimeState,
+    spec: dict[str, Any],
+    hop_diag: dict[str, Any],
+) -> tuple[str, list[str]]:
+    reason_codes = [str(value) for value in (spec.get("reason_codes") or []) if str(value).strip()][:8]
+    hop_diag["reason_codes"] = reason_codes
+    _extend_unique(ctx.contextual_followup_reason_codes, reason_codes)
+    _extend_unique(ctx.iterative_pass_reason_codes, reason_codes)
+    selected_terms = [str(value) for value in (spec.get("selected_terms") or []) if str(value).strip()]
+    _extend_unique(ctx.contextual_followup_selected_terms, selected_terms, limit=10)
+    query = str(spec.get("query") or "").strip()
+    if query:
+        ctx.contextual_followup_followup_query = query
+        ctx.contextual_followup_query_hash = stable_hash(query)
+        hop_diag["query_hash"] = ctx.contextual_followup_query_hash
+    return query, reason_codes
+
+
+def _invoke_contextual_followup(
+    ctx: RetrievalRuntimeState,
+    *,
+    query: str,
+    hop: int,
+) -> list[Document]:
+    started = time.time()
+    docs: list[Document] = []
+    error: str | None = None
     try:
-        post_rerank_score_calibration_alpha = float(
-            getattr(settings, "EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ALPHA", 0.7) or 0.7
-        )
-    except (TypeError, ValueError, AttributeError):
-        post_rerank_score_calibration_alpha = 0.7
-    post_rerank_score_calibration_alpha = min(1.0, max(0.0, float(post_rerank_score_calibration_alpha)))
-    post_rerank_score_calibration_used = False
-    post_rerank_score_calibration_stats: dict[str, Any] = {
-        "enabled": bool(post_rerank_score_calibration_enabled),
-        "alpha": round(float(post_rerank_score_calibration_alpha), 4),
-        "used": False,
-    }
-
-    def _calibrate_post_rerank_prefix(prefix_docs: list[Document]) -> list[Document]:
-        nonlocal post_rerank_score_calibration_used
-        if not post_rerank_score_calibration_enabled:
-            return prefix_docs
-        if not prefix_docs:
-            post_rerank_score_calibration_stats["skip_reason"] = "no_candidates"
-            return prefix_docs
-
-        rows: list[dict[str, Any]] = []
-        for idx, doc in enumerate(prefix_docs):
-            meta = dict(doc.metadata or {})
-            rid = _doc_key(doc) or str(idx)
-
-            base_raw = meta.get("retrieval_score")
-            if base_raw is None:
-                base_raw = meta.get("score", 0.0)
-            try:
-                retrieval_score = float(base_raw or 0.0)
-            except (TypeError, ValueError, AttributeError):
-                retrieval_score = 0.0
-
-            rerank_raw = meta.get("rerank_score")
-            try:
-                rerank_score = float(rerank_raw) if rerank_raw is not None else None
-            except (TypeError, ValueError, AttributeError):
-                rerank_score = None
-
-            rows.append(
-                {
-                    "idx": int(idx),
-                    "rid": rid,
-                    "doc": doc,
-                    "meta": meta,
-                    "retrieval_score": float(retrieval_score),
-                    "rerank_score": rerank_score,
-                }
-            )
-
-        ranked_rows = [r for r in rows if r.get("rerank_score") is not None]
-        if len(ranked_rows) < 2:
-            post_rerank_score_calibration_stats["skip_reason"] = "insufficient_rerank_scores"
-            post_rerank_score_calibration_stats["eligible_docs"] = int(len(ranked_rows))
-            return prefix_docs
-
-        def _minmax(values: list[float]) -> list[float]:
-            if not values:
-                return []
-            lo = min(values)
-            hi = max(values)
-            rng = hi - lo
-            if rng <= 0.0:
-                return [0.0 for _ in values]
-            return [(float(v) - float(lo)) / float(rng) for v in values]
-
-        retrieval_norm = _minmax([float(r.get("retrieval_score") or 0.0) for r in rows])
-        rerank_norm_values = _minmax([float(r.get("rerank_score") or 0.0) for r in ranked_rows])
-        rerank_norm_by_id: dict[str, float] = {
-            str(ranked_rows[i].get("rid") or ""): float(rerank_norm_values[i])
-            for i in range(min(len(ranked_rows), len(rerank_norm_values)))
-        }
-
-        for i, r in enumerate(rows):
-            base_norm = float(retrieval_norm[i]) if i < len(retrieval_norm) else 0.0
-            rr_norm = rerank_norm_by_id.get(str(r.get("rid") or ""))
-            if rr_norm is None:
-                calibrated = base_norm
-            else:
-                calibrated = (post_rerank_score_calibration_alpha * float(rr_norm)) + (
-                    (1.0 - post_rerank_score_calibration_alpha) * float(base_norm)
-                )
-            r["retrieval_score_norm"] = float(base_norm)
-            r["rerank_score_norm"] = (float(rr_norm) if rr_norm is not None else None)
-            r["calibrated_score"] = float(calibrated)
-
-        rows_sorted = sorted(
-            rows,
-            key=lambda r: (
-                -float(r.get("calibrated_score") or 0.0),
-                -float(r.get("rerank_score_norm") or -1.0),
-                -float(r.get("retrieval_score_norm") or 0.0),
-                int(r.get("idx") or 0),
-            ),
-        )
-
-        moved = sum(1 for i, r in enumerate(rows_sorted) if int(r.get("idx") or 0) != i)
-        top_changed = bool(rows_sorted) and int(rows_sorted[0].get("idx") or 0) != 0
-
-        out_docs: list[Document] = []
-        for r in rows_sorted:
-            meta = dict(r.get("meta") or {})
-            calibrated = float(r.get("calibrated_score") or 0.0)
-            meta["rerank_score_calibrated"] = round(calibrated, 6)
-            meta["score"] = float(calibrated)
-            doc = r.get("doc")
-            if isinstance(doc, Document):
-                out_docs.append(
-                    Document(
-                        page_content=doc.page_content,
-                        metadata=meta,
-                        id=getattr(doc, "id", None) or meta.get("chunk_id"),
-                    )
-                )
-
-        post_rerank_score_calibration_used = True
-        post_rerank_score_calibration_stats.update(
+        retriever_update = dict(ctx.retriever_update)
+        retriever_update.update(
             {
-                "used": True,
-                "applied_docs": int(len(rows)),
-                "eligible_docs": int(len(ranked_rows)),
-                "moved_positions": int(moved),
-                "top_changed": bool(top_changed),
+                "retrieval_mode": str(ctx.contextual_followup_mode),
+                "k": int(ctx.contextual_followup_top_k),
+                "enable_reranker": False,
             }
         )
-        return out_docs
-
-    try:
-        if post_rerank_enabled and not (docs or []):
-            post_rerank_skip_reason = "no_candidates"
-        if post_rerank_enabled and (docs or []):
-            provider = str(getattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "") or "ltr").strip().lower()
-            post_rerank_provider = provider
-            if provider in ("none", "off", "false", "0"):
-                post_rerank_skip_reason = "provider_off"
-            else:
-                top_n = int(getattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 0) or 0)
-                if top_n <= 0:
-                    top_n = len(docs or [])
-                top_n = min(int(top_n), len(docs or []))
-
-                if post_rerank_pipeline_enabled:
-                    post_rerank_pipeline = _safe_post_rerank_pipeline_summary(post_rerank_pipeline_raw)
-
-                # Pipeline mode: sequential stages with per-stage top_n budgets.
-                if post_rerank_pipeline:
-                    post_rerank_pipeline_used = True
-                    docs_work: list[Document] = list(docs or [])
-                    total_elapsed = 0.0
-                    prev_n: int | None = None
-                    final_provider: str | None = None
-                    final_model_used: str | None = None
-                    final_n: int = 0
-
-                    for i, st in enumerate(post_rerank_pipeline):
-                        st_provider = str(st.get("provider") or "").strip().lower()
-                        if not st_provider or st_provider in ("none", "off", "false", "0"):
-                            continue
-
-                        st_top_n = st.get("top_n")
-                        try:
-                            st_n = int(st_top_n) if st_top_n is not None else 0
-                        except (TypeError, ValueError, AttributeError):
-                            st_n = 0
-                        if st_n <= 0:
-                            st_n = int(prev_n or top_n)
-                        if prev_n is not None:
-                            st_n = min(int(st_n), int(prev_n))
-                        st_n = min(int(st_n), len(docs_work))
-                        if st_n <= 0:
-                            continue
-
-                        candidates: list[RerankCandidate] = []
-                        id_to_doc: dict[str, Document] = {}
-                        for doc in docs_work[:st_n]:
-                            rid = _doc_key(doc)
-                            text = (doc.page_content or "").strip()
-                            if not rid or not text:
-                                continue
-                            meta = dict(doc.metadata or {})
-                            candidates.append(RerankCandidate(id=rid, text=text, metadata=meta))
-                            id_to_doc[rid] = doc
-
-                        if not candidates:
-                            continue
-
-                        cache_hit = False
-                        cache_key: str | None = None
-                        rr = None
-                        if post_rerank_cache_enabled:
-                            try:
-                                cand_fp = fingerprint_rerank_candidates(candidates)
-                                cache_key = build_evidence_post_rerank_cache_key(
-                                    tenant_id=state.get("tenant_id"),
-                                    account_id=state.get("account_id"),
-                                    provider=st_provider,
-                                    top_n=st_n,
-                                    query=query_for_retrieval,
-                                    candidates_fingerprint=cand_fp,
-                                    corpus_cache_token=post_rerank_corpus_cache_token,
-                                )
-                                rr = get_cached_evidence_post_rerank_result(cache_key)
-                                if rr is not None:
-                                    cache_hit = True
-                                    post_rerank_cache_hits += 1
-                                else:
-                                    post_rerank_cache_misses += 1
-                            except Exception as exc:
-                                _log_orchestrator_fallback('run_retrieval', exc)
-                                cache_key = None
-                                rr = None
-
-                        if rr is None:
-                            reranker = get_reranker(st_provider)
-                            rr_start = time.time()
-                            rr = reranker.rerank(
-                                query=query_for_retrieval,
-                                candidates=candidates,
-                                top_n=st_n,
-                                tenant_id=str(state.get("tenant_id") or "").strip() or None,
-                                query_type=str(state.get("query_type") or "").strip() or None,
-                            )
-                            if post_rerank_cache_enabled and cache_key:
-                                try:
-                                    set_cached_evidence_post_rerank_result(cache_key, rr)
-                                except Exception as exc:
-                                    logger.debug(_RETRIEVAL_ORCHESTRATOR_FALLBACK_LOG_MESSAGE, exc)
-                            elapsed_i = float(rr.elapsed_sec or (time.time() - rr_start))
-                        else:
-                            elapsed_i = 0.0
-                        total_elapsed += elapsed_i
-
-                        used_provider = (rr.provider or st_provider).strip().lower() or st_provider
-                        is_final = i == (len(post_rerank_pipeline) - 1)
-                        if is_final:
-                            final_provider = used_provider
-                            final_model_used = rr.model_used
-                            final_n = int(st_n)
-
-                        ordered_prefix: list[Document] = []
-                        used: set[str] = set()
-                        for rid in rr.ordered_ids:
-                            doc = id_to_doc.get(rid)
-                            if doc is None or rid in used:
-                                continue
-                            used.add(rid)
-                            meta = dict(doc.metadata or {})
-                            if is_final:
-                                base = meta.get("retrieval_score")
-                                if base is None:
-                                    base = meta.get("score", 0.0)
-                                try:
-                                    meta["retrieval_score"] = float(base or 0.0)
-                                except (TypeError, ValueError, AttributeError):
-                                    meta["retrieval_score"] = 0.0
-                                if rid in rr.score_map:
-                                    meta["rerank_score"] = float(rr.score_map[rid])
-                                    meta["score"] = float(rr.score_map[rid])
-                                meta["reranker_provider"] = final_provider
-                                meta["rerank_elapsed_sec"] = round(float(total_elapsed), 3)
-                                meta["rerank_model_used"] = final_model_used
-                            ordered_prefix.append(
-                                Document(
-                                    page_content=doc.page_content,
-                                    metadata=meta,
-                                    id=getattr(doc, "id", None) or meta.get("chunk_id"),
-                                )
-                            )
-
-                        # Append candidates not returned by reranker (keep original order).
-                        for doc in docs_work[:st_n]:
-                            rid = _doc_key(doc)
-                            if rid in used:
-                                continue
-                            meta = dict(doc.metadata or {})
-                            if is_final:
-                                base = meta.get("retrieval_score")
-                                if base is None:
-                                    base = meta.get("score", 0.0)
-                                try:
-                                    meta["retrieval_score"] = float(base or 0.0)
-                                except (TypeError, ValueError, AttributeError):
-                                    meta["retrieval_score"] = 0.0
-                                meta.setdefault("reranker_provider", final_provider)
-                                meta.setdefault("rerank_elapsed_sec", round(float(total_elapsed), 3))
-                                meta.setdefault("rerank_model_used", final_model_used)
-                            ordered_prefix.append(
-                                Document(
-                                    page_content=doc.page_content,
-                                    metadata=meta,
-                                    id=getattr(doc, "id", None) or meta.get("chunk_id"),
-                                )
-                            )
-
-                        if is_final:
-                            ordered_prefix = _calibrate_post_rerank_prefix(ordered_prefix)
-                        docs_work = ordered_prefix + list(docs_work[st_n:])
-                        prev_n = int(st_n)
-                        post_rerank_pipeline_stages.append(
-                            {
-                                "provider": used_provider,
-                                "top_n": int(st_n),
-                                "candidates": int(len(candidates)),
-                                "elapsed_sec": round(float(elapsed_i), 3),
-                                "model_used": rr.model_used,
-                                "cache_hit": bool(cache_hit),
-                            }
-                        )
-
-                    if final_provider is not None and final_n > 0:
-                        docs = docs_work
-                        post_rerank_used = True
-                        post_rerank_provider = final_provider
-                        post_rerank_model_used = final_model_used
-                        post_rerank_candidates_n = int(final_n)
-                        post_rerank_elapsed = float(total_elapsed)
-                    elif post_rerank_skip_reason is None:
-                        post_rerank_skip_reason = "pipeline_noop"
-
-                # Single-stage (legacy) behavior: one provider, one top_n.
-                if not post_rerank_used:
-                    # Budget governance: rerank at least the visible citation prefix (top_k) in
-                    # single-stage mode. Pipeline stages can intentionally use smaller prefixes.
-                    governed_n = min(int(top_n), len(docs or []))
-                    governed_n = max(governed_n, int(top_k or 0))
-                    governed_n = min(governed_n, len(docs or []))
-                    post_rerank_candidates_n = int(governed_n)
-
-                    candidates: list[RerankCandidate] = []
-                    id_to_doc: dict[str, Document] = {}
-                    for doc in (docs or [])[:post_rerank_candidates_n]:
-                        rid = _doc_key(doc)
-                        text = (doc.page_content or "").strip()
-                        if not rid or not text:
-                            continue
-                        meta = dict(doc.metadata or {})
-                        candidates.append(RerankCandidate(id=rid, text=text, metadata=meta))
-                        id_to_doc[rid] = doc
-
-                    if candidates:
-                        cache_hit = False
-                        cache_key: str | None = None
-                        rr = None
-                        if post_rerank_cache_enabled:
-                            try:
-                                cand_fp = fingerprint_rerank_candidates(candidates)
-                                cache_key = build_evidence_post_rerank_cache_key(
-                                    tenant_id=state.get("tenant_id"),
-                                    account_id=state.get("account_id"),
-                                    provider=provider,
-                                    top_n=post_rerank_candidates_n,
-                                    query=query_for_retrieval,
-                                    candidates_fingerprint=cand_fp,
-                                    corpus_cache_token=post_rerank_corpus_cache_token,
-                                )
-                                rr = get_cached_evidence_post_rerank_result(cache_key)
-                                if rr is not None:
-                                    cache_hit = True
-                                    post_rerank_cache_hits += 1
-                                else:
-                                    post_rerank_cache_misses += 1
-                            except Exception as exc:
-                                _log_orchestrator_fallback('run_retrieval', exc)
-                                cache_key = None
-                                rr = None
-
-                        if rr is None:
-                            reranker = get_reranker(provider)
-                            rr_start = time.time()
-                            rr = reranker.rerank(
-                                query=query_for_retrieval,
-                                candidates=candidates,
-                                top_n=post_rerank_candidates_n,
-                                tenant_id=str(state.get("tenant_id") or "").strip() or None,
-                                query_type=str(state.get("query_type") or "").strip() or None,
-                            )
-                            if post_rerank_cache_enabled and cache_key:
-                                try:
-                                    set_cached_evidence_post_rerank_result(cache_key, rr)
-                                except Exception as exc:
-                                    logger.debug(_RETRIEVAL_ORCHESTRATOR_FALLBACK_LOG_MESSAGE, exc)
-                            post_rerank_elapsed = float(rr.elapsed_sec or (time.time() - rr_start))
-                        else:
-                            post_rerank_elapsed = 0.0
-
-                        post_rerank_model_used = rr.model_used
-                        reranker_provider = rr.provider or provider
-
-                        ordered: list[Document] = []
-                        used: set[str] = set()
-                        for rid in rr.ordered_ids:
-                            doc = id_to_doc.get(rid)
-                            if doc is None or rid in used:
-                                continue
-                            used.add(rid)
-                            meta = dict(doc.metadata or {})
-                            meta["retrieval_score"] = float(meta.get("score", 0.0) or 0.0)
-                            if rid in rr.score_map:
-                                meta["rerank_score"] = float(rr.score_map[rid])
-                                meta["score"] = float(rr.score_map[rid])
-                            meta["reranker_provider"] = reranker_provider
-                            meta["rerank_elapsed_sec"] = round(float(post_rerank_elapsed), 3)
-                            meta["rerank_model_used"] = post_rerank_model_used
-                            ordered.append(Document(page_content=doc.page_content, metadata=meta, id=getattr(doc, "id", None) or meta.get("chunk_id")))
-
-                        # Append candidates not returned by reranker (keep original order).
-                        for doc in (docs or [])[:post_rerank_candidates_n]:
-                            rid = _doc_key(doc)
-                            if rid in used:
-                                continue
-                            meta = dict(doc.metadata or {})
-                            meta["retrieval_score"] = float(meta.get("score", 0.0) or 0.0)
-                            meta.setdefault("reranker_provider", reranker_provider)
-                            meta.setdefault("rerank_elapsed_sec", round(float(post_rerank_elapsed), 3))
-                            meta.setdefault("rerank_model_used", post_rerank_model_used)
-                            ordered.append(Document(page_content=doc.page_content, metadata=meta, id=getattr(doc, "id", None) or meta.get("chunk_id")))
-
-                        ordered = _calibrate_post_rerank_prefix(ordered)
-                        docs = ordered + list((docs or [])[post_rerank_candidates_n:])
-                        post_rerank_used = True
-                    elif post_rerank_skip_reason is None:
-                        post_rerank_skip_reason = "no_candidates"
-    except Exception as exc:  # noqa: BLE001
-        _log_orchestrator_fallback('run_retrieval', exc)
-        post_rerank_used = False
-        post_rerank_error = str(exc)[:200]
-        post_rerank_skip_reason = "error"
-
-    hierarchy_expand_attempted = False
-    hierarchy_expand_used = False
-    hierarchy_expand_error: str | None = None
-    hierarchy_expand_elapsed = 0.0
-    hierarchy_expand_meta: dict[str, Any] = {"enabled": False, "reason": "not_run"}
-    try:
-        if (
-            bool(hierarchy_recall_enabled)
-            and bool(docs)
-            and (int(hierarchy_parent_depth) > 0 or int(hierarchy_sibling_window) > 0)
-        ):
-            hierarchy_expand_attempted = True
-            exp_start = time.time()
-
-            tenant_uuid: UUID | None = None
-            try:
-                tenant_id_raw = state.get("tenant_id")
-                if tenant_id_raw is not None:
-                    tenant_uuid = UUID(str(tenant_id_raw))
-            except (TypeError, ValueError, AttributeError):
-                tenant_uuid = None
-
-            from app.rag.retrieval.context_expansion import expand_hierarchy_documents  # noqa: WPS433
-
-            # Version-aware expansion: only fetch hierarchy parents/siblings from the same
-            # active pipeline version as the retrieved anchors.
-            desired_pipeline_by_doc: dict[str, str] = {}
-            for d in docs or []:
-                if d is None:
-                    continue
-                meta = d.metadata or {}
-                doc_id = str(meta.get("document_id") or "").strip()
-                if not doc_id:
-                    continue
-                pipeline_key = str(meta.get("doc_pipeline_key") or "").strip()
-                if not pipeline_key:
-                    ph = str(meta.get("pipeline_hash") or "").strip()
-                    if ph:
-                        pipeline_key = f"{doc_id}:{ph}"
-                if pipeline_key:
-                    desired_pipeline_by_doc.setdefault(doc_id, pipeline_key)
-
-            def _fetch_by_key(pairs: set[tuple[str, str]]) -> dict[tuple[str, str], Document]:
-                if not pairs:
-                    return {}
-                from sqlalchemy import or_  # noqa: WPS433
-
-                from app.core.database import SessionLocal  # noqa: WPS433
-                from app.models.document import DocumentChunk  # noqa: WPS433
-
-                by_doc: dict[str, set[str]] = {}
-                for doc_id, node_key in pairs:
-                    doc_id_s = str(doc_id or "").strip()
-                    node_key_s = str(node_key or "").strip()
-                    if not doc_id_s or not node_key_s:
-                        continue
-                    by_doc.setdefault(doc_id_s, set()).add(node_key_s)
-
-                if not by_doc:
-                    return {}
-
-                db = SessionLocal()
-                try:
-                    out: dict[tuple[str, str], Document] = {}
-                    for doc_id_s, keys in by_doc.items():
-                        try:
-                            doc_uuid = UUID(doc_id_s)
-                        except (TypeError, ValueError, AttributeError):
-                            continue
-                        keys_list = [k for k in keys if k]
-                        if not keys_list:
-                            continue
-
-                        q = db.query(DocumentChunk).filter(DocumentChunk.document_id == doc_uuid)
-                        if tenant_uuid is not None:
-                            q = q.filter(DocumentChunk.tenant_id == tenant_uuid)
-                        q = q.filter(
-                            or_(
-                                DocumentChunk.doc_metadata["hierarchy_node_key"].astext.in_(keys_list),  # type: ignore[attr-defined]
-                                DocumentChunk.doc_metadata["chunk_key"].astext.in_(keys_list),  # type: ignore[attr-defined]
-                            )
-                        )
-
-                        for ck in q.all():
-                            meta = dict(getattr(ck, "doc_metadata", None) or {})
-                            desired = desired_pipeline_by_doc.get(str(ck.document_id))
-                            if desired:
-                                ck_key = str(meta.get("doc_pipeline_key") or "").strip()
-                                if not ck_key:
-                                    ph = str(meta.get("pipeline_hash") or "").strip()
-                                    if ph:
-                                        ck_key = f"{ck.document_id}:{ph}"
-                                if not ck_key or ck_key != desired:
-                                    continue
-
-                            cid = str(getattr(ck, "id", "") or "")
-                            meta.setdefault("tenant_id", str(getattr(ck, "tenant_id", "") or ""))
-                            meta.setdefault("document_id", str(getattr(ck, "document_id", "") or ""))
-                            meta.setdefault("chunk_id", cid)
-                            meta.setdefault("chunk_index", int(getattr(ck, "chunk_index", 0) or 0))
-                            page_number = getattr(ck, "page_number", None)
-                            if page_number is not None:
-                                meta.setdefault("page", int(page_number))
-                                meta.setdefault("page_number", int(page_number))
-                            start_char = getattr(ck, "start_char", None)
-                            end_char = getattr(ck, "end_char", None)
-                            if start_char is not None:
-                                meta.setdefault("start_char", int(start_char))
-                            if end_char is not None:
-                                meta.setdefault("end_char", int(end_char))
-                            if not meta.get("source"):
-                                meta["source"] = "unknown"
-
-                            node_key_s = str(meta.get("hierarchy_node_key") or meta.get("chunk_key") or "").strip()
-                            if not node_key_s:
-                                continue
-
-                            out[(str(ck.document_id), node_key_s)] = Document(
-                                page_content=str(getattr(ck, "content", None) or ""),
-                                metadata=meta,
-                                id=cid or meta.get("chunk_id"),
-                            )
-                    return out
-                finally:
-                    try:
-                        db.close()
-                    except Exception as exc:
-                        logger.debug(_RETRIEVAL_ORCHESTRATOR_FALLBACK_LOG_MESSAGE, exc)
-
-            max_added = max(0, int(top_k) * (int(hierarchy_parent_depth) + (2 * int(hierarchy_sibling_window))))
-            max_added = min(400, max_added or 120)
-
-            expanded_docs, hierarchy_expand_meta = expand_hierarchy_documents(
-                [d for d in (docs or []) if d is not None],
-                parent_depth=int(hierarchy_parent_depth),
-                sibling_window=int(hierarchy_sibling_window),
-                fetch_by_key=_fetch_by_key,
-                max_added_docs=int(max_added),
-            )
-            hierarchy_expand_elapsed = max(0.0, float(time.time() - exp_start))
-            retrieval_elapsed += float(hierarchy_expand_elapsed)
-
-            if isinstance(hierarchy_expand_meta, dict):
-                hierarchy_expand_meta = dict(hierarchy_expand_meta)
-            else:
-                hierarchy_expand_meta = {"enabled": False, "reason": "invalid_meta"}
-
-            if expanded_docs and int(hierarchy_expand_meta.get("added_docs") or 0) > 0:
-                docs = expanded_docs
-                hierarchy_expand_used = True
-            else:
-                hierarchy_expand_used = False
-    except Exception as exc:  # noqa: BLE001
-        _log_orchestrator_fallback('run_retrieval', exc)
-        hierarchy_expand_used = False
-        hierarchy_expand_error = str(exc)[:200]
-        hierarchy_expand_meta = {"enabled": False, "reason": "exception"}
-
-    hard_fallback_enabled = bool(retrieval_contract_policy.get("hard_fallback_enabled"))
-    hard_fallback_mode = str(retrieval_contract_policy.get("hard_fallback_mode") or "keyword").strip().lower() or "keyword"
-    hard_fallback_top_k = max(1, int(retrieval_contract_policy.get("hard_fallback_top_k") or 1))
-    hard_fallback_attempted = False
-    hard_fallback_used = False
-    hard_fallback_error: str | None = None
-    hard_fallback_elapsed = 0.0
-    hard_fallback_added_docs = 0
-    hard_fallback_added_citations = 0
-    hard_fallback_retriever_debug: dict[str, Any] | None = None
-    contextual_followup_attempted = False
-    contextual_followup_used = False
-    contextual_followup_error: str | None = None
-    contextual_followup_elapsed = 0.0
-    contextual_followup_added_docs = 0
-    contextual_followup_added_citations = 0
-    contextual_followup_retriever_debug: dict[str, Any] | None = None
-    contextual_followup_reason_codes: list[str] = []
-    contextual_followup_selected_terms: list[str] = []
-    contextual_followup_followup_query: str | None = None
-    contextual_followup_query_hash: str | None = None
-    iterative_pass_reason_codes: list[str] = []
-    iterative_pass_hops: list[dict[str, Any]] = []
-    iterative_pass_gap: dict[str, Any] | None = None
-
-    # Deterministic iterative follow-up controller:
-    # - gap-aware follow-up query planning
-    # - bounded by max_hops + latency budget
-    # - does not replace must-recall strict second-pass semantics
-    if bool(contextual_followup_enabled) and bool(docs):
-        iterative_start = time.time()
-        for hop in range(1, int(contextual_followup_max_hops) + 1):
-            elapsed_ms = (time.time() - iterative_start) * 1000.0
-            if float(contextual_followup_latency_budget_ms) > 0.0 and elapsed_ms >= float(
-                contextual_followup_latency_budget_ms
-            ):
-                iterative_pass_reason_codes.append("latency_budget_exhausted")
-                break
-
-            citations_before_contextual = build_citations_from_docs(
-                docs,
-                retrieval_elapsed_sec=retrieval_elapsed,
-                retrieval_mode=request_retrieval_mode,
-                query=query_for_retrieval,
-            )
-            iterative_pass_gap = detect_evidence_gap(
-                citations=[c for c in citations_before_contextual if isinstance(c, dict)],
-                required_source_keys=(must_recall_expected_source_keys if must_recall_enabled else []),
-                required_anchor_fields=(must_recall_required_anchor_fields if must_recall_enabled else []),
-                min_citations=1,
-            )
-            hop_diag: dict[str, Any] = {
-                "hop": int(hop),
-                "attempted": False,
-                "used": False,
-                "query_hash": None,
-                "added_docs": 0,
-                "added_citations": 0,
-                "reason_codes": [],
-                "gap_before": dict(iterative_pass_gap or {}),
-                "gap_after": None,
-            }
-
-            spec = build_contextual_followup_query(
-                query=query_for_retrieval,
-                docs=list(docs or []),
-                evidence_gap=iterative_pass_gap,
-                max_docs=int(contextual_followup_max_docs),
-                max_terms=int(contextual_followup_max_terms),
-                min_term_chars=int(contextual_followup_min_term_chars),
-                max_query_chars=int(contextual_followup_max_query_chars),
-            )
-            if not isinstance(spec, dict):
-                hop_diag["reason_codes"] = ["planner_spec_invalid"]
-                iterative_pass_hops.append(hop_diag)
-                iterative_pass_reason_codes.append("planner_spec_invalid")
-                break
-
-            hop_reason_codes = [str(v) for v in (spec.get("reason_codes") or []) if str(v).strip()][:8]
-            hop_diag["reason_codes"] = hop_reason_codes
-            for rc in hop_reason_codes:
-                if rc not in contextual_followup_reason_codes:
-                    contextual_followup_reason_codes.append(rc)
-                if rc not in iterative_pass_reason_codes:
-                    iterative_pass_reason_codes.append(rc)
-
-            for term in [str(v) for v in (spec.get("selected_terms") or []) if str(v).strip()]:
-                if term not in contextual_followup_selected_terms:
-                    contextual_followup_selected_terms.append(term)
-                    if len(contextual_followup_selected_terms) >= 10:
-                        break
-
-            q2 = str(spec.get("query") or "").strip()
-            if q2:
-                contextual_followup_followup_query = q2
-                contextual_followup_query_hash = stable_hash(q2)
-                hop_diag["query_hash"] = contextual_followup_query_hash
-
-            if not (bool(spec.get("used")) and q2):
-                hop_diag["reason_codes"] = hop_reason_codes or ["planner_not_used"]
-                iterative_pass_hops.append(hop_diag)
-                if "planner_not_used" not in iterative_pass_reason_codes:
-                    iterative_pass_reason_codes.append("planner_not_used")
-                break
-
-            contextual_followup_attempted = True
-            hop_diag["attempted"] = True
-
-            t_cf = time.time()
-            cf_docs: list[Document] = []
-            cf_err: str | None = None
-            try:
-                contextual_update = dict(retriever_update)
-                contextual_update.update(
-                    {
-                        "retrieval_mode": str(contextual_followup_mode),
-                        "k": int(contextual_followup_top_k),
-                        "enable_reranker": False,
-                    }
-                )
-                contextual_retriever = hybrid_retriever.model_copy(update=contextual_update)
-                cf_docs = contextual_retriever.invoke(q2) or []
-                cf_docs = DocUtilsMixin._annotate_docs_with_role(cf_docs, "contextual_followup")
-                dbg = getattr(contextual_retriever, "_last_debug_metrics", None)
-                contextual_followup_retriever_debug = _sanitize_retriever_debug(
-                    dbg if isinstance(dbg, dict) else None
-                )
-            except Exception as exc:  # noqa: BLE001
-                _log_orchestrator_fallback('run_retrieval', exc)
-                cf_docs = []
-                cf_err = str(exc)[:200]
-
-            hop_elapsed = max(0.0, float(time.time() - t_cf))
-            contextual_followup_elapsed += float(hop_elapsed)
-            retrieval_elapsed += float(hop_elapsed)
-            contextual_query_record = build_query_invocation_record(
-                QueryInvocationRecordInput(
-                    kind="contextual_followup",
-                    query=q2,
-                    docs=cf_docs,
-                    error=cf_err,
-                    elapsed_sec=float(hop_elapsed),
-                    retriever_debug=contextual_followup_retriever_debug,
-                    hop=int(hop),
-                )
-            )
-            retrieval_per_query.append(contextual_query_record.per_query_item)
-            if contextual_query_record.error_entry:
-                contextual_followup_error = cf_err
-                retrieval_errors.append(contextual_query_record.error_entry)
-
-            hop_added_docs = 0
-            hop_added_citations = 0
-            if cf_docs:
-                merged_docs = list(docs or [])
-                seen_keys: set[str] = set()
-                for d in merged_docs:
-                    if d is None:
-                        continue
-                    try:
-                        seen_keys.add(_doc_key(d))
-                    except Exception as exc:
-                        _log_orchestrator_fallback('run_retrieval', exc)
-                        continue
-
-                for d in cf_docs:
-                    if d is None:
-                        continue
-                    try:
-                        key = _doc_key(d)
-                    except Exception as exc:
-                        _log_orchestrator_fallback('run_retrieval', exc)
-                        key = None
-                    if key and key in seen_keys:
-                        continue
-                    if key:
-                        seen_keys.add(key)
-                    merged_docs.append(d)
-                    hop_added_docs += 1
-
-                if hop_added_docs > 0:
-                    docs = merged_docs
-                    citations_after_contextual = build_citations_from_docs(
-                        docs,
-                        retrieval_elapsed_sec=retrieval_elapsed,
-                        retrieval_mode=request_retrieval_mode,
-                        query=query_for_retrieval,
-                    )
-                    hop_added_citations = max(
-                        0,
-                        int(len(citations_after_contextual) - len(citations_before_contextual)),
-                    )
-                    contextual_followup_added_docs += int(hop_added_docs)
-                    contextual_followup_added_citations += int(hop_added_citations)
-                    contextual_followup_used = True
-
-                    iterative_pass_gap = detect_evidence_gap(
-                        citations=[c for c in citations_after_contextual if isinstance(c, dict)],
-                        required_source_keys=(must_recall_expected_source_keys if must_recall_enabled else []),
-                        required_anchor_fields=(must_recall_required_anchor_fields if must_recall_enabled else []),
-                        min_citations=1,
-                    )
-                    hop_diag["gap_after"] = dict(iterative_pass_gap or {})
-                    if not bool((iterative_pass_gap or {}).get("has_gap")):
-                        if "gap_closed" not in iterative_pass_reason_codes:
-                            iterative_pass_reason_codes.append("gap_closed")
-                else:
-                    hop_diag["reason_codes"] = hop_reason_codes + ["no_new_docs"]
-                    if "no_new_docs" not in iterative_pass_reason_codes:
-                        iterative_pass_reason_codes.append("no_new_docs")
-
-            hop_diag["used"] = bool(hop_added_docs > 0)
-            hop_diag["added_docs"] = int(hop_added_docs)
-            hop_diag["added_citations"] = int(hop_added_citations)
-            iterative_pass_hops.append(hop_diag)
-
-            if not bool(hop_diag.get("used")):
-                break
-            if isinstance(hop_diag.get("gap_after"), dict) and not bool((hop_diag.get("gap_after") or {}).get("has_gap")):
-                break
-
-    docs, metadata_exact_anchor_doc_order_meta = _apply_metadata_exact_anchor_doc_ordering(
-        query_for_retrieval,
-        [d for d in (docs or []) if isinstance(d, Document)],
-    )
-
-    evidence_span_strict_enabled = bool(retrieval_contract_policy.get("require_evidence_spans"))
-    evidence_span_missing_citations = 0
-
-    def _filter_strict_span_citations(items: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
-        if not evidence_span_strict_enabled or not items:
-            return items, 0
-        filtered_items: list[dict[str, Any]] = []
-        missing_count = 0
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            start = item.get("evidence_start_char")
-            end = item.get("evidence_end_char")
-            try:
-                start_i = int(start) if start is not None else None
-                end_i = int(end) if end is not None else None
-            except (TypeError, ValueError, AttributeError):
-                start_i = None
-                end_i = None
-            if start_i is None or end_i is None or end_i <= start_i:
-                missing_count += 1
-                continue
-            filtered_items.append(item)
-        return filtered_items, missing_count
-
-    citations = build_citations_from_docs(
-        docs,
-        retrieval_elapsed_sec=retrieval_elapsed,
-        retrieval_mode=request_retrieval_mode,
-        query=query_for_retrieval,
-    )
-    citations, missing_count = _filter_strict_span_citations(citations)
-    evidence_span_missing_citations += int(missing_count)
-    retrieval_fallback_reason: str | None = None
-    if evidence_span_strict_enabled and not citations and evidence_span_missing_citations > 0:
-        retrieval_fallback_reason = "strict_span_empty"
-
-    # Deterministic hard fallback (opt-in): when primary retrieval yields no citations,
-    # run one bounded fallback pass (typically keyword-first) to reduce false-empty cases.
-    if hard_fallback_enabled and not citations:
-        hard_fallback_attempted = True
-        if retrieval_fallback_reason is None:
-            retrieval_fallback_reason = "empty_retrieval"
-        fb_start = time.time()
-        fb_docs: list[Document] = []
-        fb_err: str | None = None
-        try:
-            fallback_update = dict(retriever_update)
-            fallback_update.update(
-                {
-                    "retrieval_mode": hard_fallback_mode,
-                    "k": int(hard_fallback_top_k),
-                    "enable_reranker": False,
-                }
-            )
-            fallback_retriever = hybrid_retriever.model_copy(update=fallback_update)
-            fb_docs = fallback_retriever.invoke(query_for_retrieval) or []
-            fb_docs = DocUtilsMixin._annotate_docs_with_role(fb_docs, "hard_fallback")
-            dbg = getattr(fallback_retriever, "_last_debug_metrics", None)
-            hard_fallback_retriever_debug = _sanitize_retriever_debug(dbg if isinstance(dbg, dict) else None)
-        except Exception as exc:  # noqa: BLE001
-            _log_orchestrator_fallback('run_retrieval', exc)
-            fb_docs = []
-            fb_err = str(exc)[:200]
-
-        hard_fallback_elapsed = max(0.0, float(time.time() - fb_start))
-        retrieval_elapsed += float(hard_fallback_elapsed)
-
-        hard_fallback_query_record = build_query_invocation_record(
-            QueryInvocationRecordInput(
-                kind="hard_fallback",
-                query=query_for_retrieval,
-                docs=fb_docs,
-                error=fb_err,
-                elapsed_sec=float(hard_fallback_elapsed),
-                retriever_debug=hard_fallback_retriever_debug,
-            )
+        retriever_obj = hybrid_retriever.model_copy(update=retriever_update)
+        docs = DocUtilsMixin._annotate_docs_with_role(
+            retriever_obj.invoke(query) or [],
+            "contextual_followup",
         )
-        retrieval_per_query.append(hard_fallback_query_record.per_query_item)
-        if hard_fallback_query_record.error_entry:
-            hard_fallback_error = fb_err
-            retrieval_errors.append(hard_fallback_query_record.error_entry)
-
-        if fb_docs:
-            seen_keys: set[str] = set()
-            merged_docs: list[Document] = []
-            for d in (docs or []):
-                if d is None:
-                    continue
-                merged_docs.append(d)
-                try:
-                    seen_keys.add(_doc_key(d))
-                except Exception as exc:
-                    _log_orchestrator_fallback('run_retrieval', exc)
-                    continue
-
-            for d in fb_docs:
-                if d is None:
-                    continue
-                try:
-                    key = _doc_key(d)
-                except Exception as exc:
-                    _log_orchestrator_fallback('run_retrieval', exc)
-                    key = None
-                if key and key in seen_keys:
-                    continue
-                if key:
-                    seen_keys.add(key)
-                merged_docs.append(d)
-                hard_fallback_added_docs += 1
-
-            docs = merged_docs
-            citations_after = build_citations_from_docs(
-                docs,
-                retrieval_elapsed_sec=retrieval_elapsed,
-                retrieval_mode=request_retrieval_mode,
-                query=query_for_retrieval,
-            )
-            citations_after, missing_count = _filter_strict_span_citations(citations_after)
-            evidence_span_missing_citations += int(missing_count)
-            hard_fallback_added_citations = max(0, int(len(citations_after) - len(citations)))
-            citations = citations_after
-            hard_fallback_used = bool(hard_fallback_added_docs > 0 and citations)
-
-    # Must-recall contract checks:
-    # 1) required source keys are represented in citations
-    # 2) required evidence anchor fields exist
-    must_recall_source_eval = evaluate_required_source_keys(
-        citations=[c for c in citations if isinstance(c, dict)],
-        required_source_keys=must_recall_expected_source_keys,
+        debug = getattr(retriever_obj, "_last_debug_metrics", None)
+        ctx.contextual_followup_retriever_debug = _sanitize_retriever_debug(debug if isinstance(debug, dict) else None)
+    except Exception as exc:  # noqa: BLE001
+        _log_orchestrator_fallback("run_retrieval", exc)
+        error = str(exc)[:200]
+    elapsed = max(0.0, float(time.time() - started))
+    ctx.contextual_followup_elapsed += elapsed
+    ctx.retrieval_elapsed += elapsed
+    record = build_query_invocation_record(
+        QueryInvocationRecordInput(
+            kind="contextual_followup",
+            query=query,
+            docs=docs,
+            error=error,
+            elapsed_sec=elapsed,
+            retriever_debug=ctx.contextual_followup_retriever_debug,
+            hop=hop,
+        )
     )
-    must_recall_anchor_eval = evaluate_evidence_anchor_expectations(
-        citations=[c for c in citations if isinstance(c, dict)],
-        required_fields=must_recall_required_anchor_fields,
-        exclude_retrieval_role_prefixes=["hierarchy_"],
+    ctx.retrieval_per_query.append(record.per_query_item)
+    if record.error_entry:
+        ctx.contextual_followup_error = error
+        ctx.retrieval_errors.append(record.error_entry)
+    return docs
+
+
+def _safe_retrieval_doc_key(doc: Document) -> str | None:
+    try:
+        return _doc_key(doc)
+    except Exception as exc:
+        _log_orchestrator_fallback("run_retrieval", exc)
+        return None
+
+
+def _merge_contextual_docs(current: list[Document], incoming: list[Document]) -> tuple[list[Document], int]:
+    merged = list(current)
+    seen_keys = {key for doc in merged if doc is not None and (key := _safe_retrieval_doc_key(doc)) is not None}
+    added = 0
+    for doc in incoming:
+        if doc is None:
+            continue
+        key = _safe_retrieval_doc_key(doc)
+        if key and key in seen_keys:
+            continue
+        if key:
+            seen_keys.add(key)
+        merged.append(doc)
+        added += 1
+    return merged, added
+
+
+def _apply_contextual_followup_docs(
+    ctx: RetrievalRuntimeState,
+    *,
+    docs: list[Document],
+    citations_before: list[dict[str, Any]],
+    hop_diag: dict[str, Any],
+    reason_codes: list[str],
+) -> tuple[int, int]:
+    if not docs:
+        return 0, 0
+    merged_docs, added_docs = _merge_contextual_docs(list(ctx.docs or []), docs)
+    if added_docs <= 0:
+        hop_diag["reason_codes"] = reason_codes + ["no_new_docs"]
+        _extend_unique(ctx.iterative_pass_reason_codes, ["no_new_docs"])
+        return 0, 0
+    ctx.docs = merged_docs
+    citations_after = build_citations_from_docs(
+        ctx.docs,
+        retrieval_elapsed_sec=ctx.retrieval_elapsed,
+        retrieval_mode=ctx.request_retrieval_mode,
+        query=ctx.query_for_retrieval,
     )
+    added_citations = max(0, len(citations_after) - len(citations_before))
+    ctx.contextual_followup_added_docs += added_docs
+    ctx.contextual_followup_added_citations += added_citations
+    ctx.contextual_followup_used = True
+    ctx.iterative_pass_gap = _contextual_evidence_gap(ctx, citations_after)
+    hop_diag["gap_after"] = dict(ctx.iterative_pass_gap or {})
+    if not bool(ctx.iterative_pass_gap.get("has_gap")):
+        _extend_unique(ctx.iterative_pass_reason_codes, ["gap_closed"])
+    return added_docs, added_citations
+
+
+def _run_contextual_followup_hop(ctx: RetrievalRuntimeState, hop: int) -> bool:
+    citations_before = build_citations_from_docs(
+        ctx.docs,
+        retrieval_elapsed_sec=ctx.retrieval_elapsed,
+        retrieval_mode=ctx.request_retrieval_mode,
+        query=ctx.query_for_retrieval,
+    )
+    ctx.iterative_pass_gap = _contextual_evidence_gap(ctx, citations_before)
+    hop_diag: dict[str, Any] = {
+        "hop": hop,
+        "attempted": False,
+        "used": False,
+        "query_hash": None,
+        "added_docs": 0,
+        "added_citations": 0,
+        "reason_codes": [],
+        "gap_before": dict(ctx.iterative_pass_gap or {}),
+        "gap_after": None,
+    }
+    spec = build_contextual_followup_query(
+        query=ctx.query_for_retrieval,
+        docs=list(ctx.docs or []),
+        evidence_gap=ctx.iterative_pass_gap,
+        max_docs=int(ctx.contextual_followup_max_docs),
+        max_terms=int(ctx.contextual_followup_max_terms),
+        min_term_chars=int(ctx.contextual_followup_min_term_chars),
+        max_query_chars=int(ctx.contextual_followup_max_query_chars),
+    )
+    if not isinstance(spec, dict):
+        hop_diag["reason_codes"] = ["planner_spec_invalid"]
+        ctx.iterative_pass_hops.append(hop_diag)
+        ctx.iterative_pass_reason_codes.append("planner_spec_invalid")
+        return False
+    query, reason_codes = _contextual_query_spec(ctx, spec, hop_diag)
+    if not (bool(spec.get("used")) and query):
+        hop_diag["reason_codes"] = reason_codes or ["planner_not_used"]
+        ctx.iterative_pass_hops.append(hop_diag)
+        _extend_unique(ctx.iterative_pass_reason_codes, ["planner_not_used"])
+        return False
+    ctx.contextual_followup_attempted = True
+    hop_diag["attempted"] = True
+    docs = _invoke_contextual_followup(ctx, query=query, hop=hop)
+    added_docs, added_citations = _apply_contextual_followup_docs(
+        ctx,
+        docs=docs,
+        citations_before=citations_before,
+        hop_diag=hop_diag,
+        reason_codes=reason_codes,
+    )
+    hop_diag["used"] = added_docs > 0
+    hop_diag["added_docs"] = added_docs
+    hop_diag["added_citations"] = added_citations
+    ctx.iterative_pass_hops.append(hop_diag)
+    return bool(added_docs and (hop_diag.get("gap_after") or {}).get("has_gap"))
+
+
+def _run_retrieval_contextual_followup_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
+    if not ctx.contextual_followup_enabled or not ctx.docs:
+        return None
+    iterative_start = time.time()
+    for hop in range(1, int(ctx.contextual_followup_max_hops) + 1):
+        elapsed_ms = (time.time() - iterative_start) * 1000.0
+        if ctx.contextual_followup_latency_budget_ms > 0.0 and elapsed_ms >= ctx.contextual_followup_latency_budget_ms:
+            ctx.iterative_pass_reason_codes.append("latency_budget_exhausted")
+            break
+        if not _run_contextual_followup_hop(ctx, hop):
+            break
+    return None
+
+
+def _invoke_hard_fallback(ctx: RetrievalRuntimeState) -> list[Document]:
+    started = time.time()
+    docs: list[Document] = []
+    error: str | None = None
+    try:
+        retriever_update = dict(ctx.retriever_update)
+        retriever_update.update(
+            {
+                "retrieval_mode": ctx.hard_fallback_mode,
+                "k": int(ctx.hard_fallback_top_k),
+                "enable_reranker": False,
+            }
+        )
+        retriever_obj = hybrid_retriever.model_copy(update=retriever_update)
+        docs = DocUtilsMixin._annotate_docs_with_role(
+            retriever_obj.invoke(ctx.query_for_retrieval) or [],
+            "hard_fallback",
+        )
+        debug = getattr(retriever_obj, "_last_debug_metrics", None)
+        ctx.hard_fallback_retriever_debug = _sanitize_retriever_debug(debug if isinstance(debug, dict) else None)
+    except Exception as exc:  # noqa: BLE001
+        _log_orchestrator_fallback("run_retrieval", exc)
+        error = str(exc)[:200]
+    ctx.hard_fallback_elapsed = max(0.0, float(time.time() - started))
+    ctx.retrieval_elapsed += ctx.hard_fallback_elapsed
+    record = build_query_invocation_record(
+        QueryInvocationRecordInput(
+            kind="hard_fallback",
+            query=ctx.query_for_retrieval,
+            docs=docs,
+            error=error,
+            elapsed_sec=ctx.hard_fallback_elapsed,
+            retriever_debug=ctx.hard_fallback_retriever_debug,
+        )
+    )
+    ctx.retrieval_per_query.append(record.per_query_item)
+    if record.error_entry:
+        ctx.hard_fallback_error = error
+        ctx.retrieval_errors.append(record.error_entry)
+    return docs
+
+
+def _merge_hard_fallback_docs(
+    current: list[Document],
+    incoming: list[Document],
+) -> tuple[list[Document], int]:
+    merged: list[Document] = []
+    seen_keys: set[str] = set()
+    for doc in current:
+        if doc is None:
+            continue
+        merged.append(doc)
+        key = _safe_retrieval_doc_key(doc)
+        if key:
+            seen_keys.add(key)
+    added = 0
+    for doc in incoming:
+        if doc is None:
+            continue
+        key = _safe_retrieval_doc_key(doc)
+        if key and key in seen_keys:
+            continue
+        if key:
+            seen_keys.add(key)
+        merged.append(doc)
+        added += 1
+    return merged, added
+
+
+def _run_hard_fallback(ctx: RetrievalRuntimeState) -> None:
+    ctx.hard_fallback_attempted = True
+    if ctx.retrieval_fallback_reason is None:
+        ctx.retrieval_fallback_reason = "empty_retrieval"
+    fallback_docs = _invoke_hard_fallback(ctx)
+    if not fallback_docs:
+        return
+    ctx.docs, ctx.hard_fallback_added_docs = _merge_hard_fallback_docs(
+        list(ctx.docs or []),
+        fallback_docs,
+    )
+    citations_after = build_citations_from_docs(
+        ctx.docs,
+        retrieval_elapsed_sec=ctx.retrieval_elapsed,
+        retrieval_mode=ctx.request_retrieval_mode,
+        query=ctx.query_for_retrieval,
+    )
+    citations_after, missing_count = _filter_strict_span_citations(
+        citations_after,
+        enabled=bool(ctx.evidence_span_strict_enabled),
+    )
+    ctx.evidence_span_missing_citations += int(missing_count)
+    ctx.hard_fallback_added_citations = max(0, len(citations_after) - len(ctx.citations))
+    ctx.citations = citations_after
+    ctx.hard_fallback_used = bool(ctx.hard_fallback_added_docs > 0 and ctx.citations)
+
+
+def _run_retrieval_citations_hard_fallback_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
+    ctx.docs, ctx.metadata_exact_anchor_doc_order_meta = _apply_metadata_exact_anchor_doc_ordering(
+        ctx.query_for_retrieval,
+        [d for d in (ctx.docs or []) if isinstance(d, Document)],
+    )
+
+    ctx.evidence_span_strict_enabled = bool(ctx.retrieval_contract_policy.get("require_evidence_spans"))
+    ctx.evidence_span_missing_citations = 0
+
+    ctx.citations = build_citations_from_docs(
+        ctx.docs,
+        retrieval_elapsed_sec=ctx.retrieval_elapsed,
+        retrieval_mode=ctx.request_retrieval_mode,
+        query=ctx.query_for_retrieval,
+    )
+    ctx.citations, missing_count = _filter_strict_span_citations(
+        ctx.citations,
+        enabled=bool(ctx.evidence_span_strict_enabled),
+    )
+    ctx.evidence_span_missing_citations += int(missing_count)
+    ctx.retrieval_fallback_reason: str | None = None
+    if ctx.evidence_span_strict_enabled and not ctx.citations and ctx.evidence_span_missing_citations > 0:
+        ctx.retrieval_fallback_reason = "strict_span_empty"
+
+    if ctx.hard_fallback_enabled and not ctx.citations:
+        _run_hard_fallback(ctx)
+    return None
+
+
+def _must_recall_doc_keys(docs: list[Document]) -> set[str]:
+    keys: set[str] = set()
+    for doc in docs:
+        if doc is None:
+            continue
+        key = _safe_retrieval_doc_key(doc)
+        if key:
+            keys.add(key)
+    return keys
+
+
+def _invoke_must_recall_second_pass(ctx: RetrievalRuntimeState) -> list[Document]:
+    try:
+        retriever_update = dict(ctx.retriever_update)
+        retriever_update.update(
+            {
+                "retrieval_mode": ctx.must_recall_second_pass_mode,
+                "k": int(ctx.must_recall_second_pass_top_k),
+                "enable_reranker": False,
+            }
+        )
+        retriever_obj = hybrid_retriever.model_copy(update=retriever_update)
+        return DocUtilsMixin._annotate_docs_with_role(
+            retriever_obj.invoke(ctx.query_for_retrieval) or [],
+            "must_recall_second_pass",
+        )
+    except Exception as exc:  # noqa: BLE001
+        _log_orchestrator_fallback("run_retrieval", exc)
+        ctx.must_recall_second_pass_error = str(exc)[:200]
+        return []
+
+
+def _merge_must_recall_second_pass_docs(
+    current: list[Document],
+    incoming: list[Document],
+    *,
+    seen_keys: set[str],
+) -> tuple[list[Document], int]:
+    merged = list(current)
+    added = 0
+    for doc in incoming:
+        if doc is None:
+            continue
+        key = _safe_retrieval_doc_key(doc)
+        if key and key in seen_keys:
+            continue
+        if key:
+            seen_keys.add(key)
+        merged.append(doc)
+        added += 1
+    return merged, added
+
+
+def _must_recall_evaluations(ctx: RetrievalRuntimeState) -> tuple[dict[str, Any], dict[str, Any]]:
+    citations = [citation for citation in ctx.citations if isinstance(citation, dict)]
+    return (
+        evaluate_required_source_keys(
+            citations=citations,
+            required_source_keys=ctx.must_recall_expected_source_keys,
+        ),
+        evaluate_evidence_anchor_expectations(
+            citations=citations,
+            required_fields=ctx.must_recall_required_anchor_fields,
+            exclude_retrieval_role_prefixes=["hierarchy_"],
+        ),
+    )
+
+
+def _run_must_recall_second_pass(
+    ctx: RetrievalRuntimeState,
+    *,
+    source_eval: dict[str, Any],
+    anchor_eval: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    ctx.must_recall_second_pass_attempted = True
+    before_doc_keys = _must_recall_doc_keys(list(ctx.docs or []))
+    citations_before = list(ctx.citations or [])
+    fallback_docs = _invoke_must_recall_second_pass(ctx)
+    if not fallback_docs:
+        return source_eval, anchor_eval
+    ctx.docs, ctx.must_recall_second_pass_added_docs = _merge_must_recall_second_pass_docs(
+        list(ctx.docs or []),
+        fallback_docs,
+        seen_keys=before_doc_keys,
+    )
+    citations_after = build_citations_from_docs(
+        ctx.docs,
+        retrieval_elapsed_sec=ctx.retrieval_elapsed,
+        retrieval_mode=ctx.request_retrieval_mode,
+        query=ctx.query_for_retrieval,
+    )
+    ctx.citations, missing_count = _filter_strict_span_citations(
+        citations_after,
+        enabled=bool(ctx.evidence_span_strict_enabled),
+    )
+    ctx.evidence_span_missing_citations += int(missing_count)
+    ctx.must_recall_second_pass_added_citations = max(0, len(ctx.citations) - len(citations_before))
+    after_source_eval, after_anchor_eval = _must_recall_evaluations(ctx)
+    after_missing_sources = list(after_source_eval.get("missing_source_keys") or [])
+    after_anchor_missing = int(after_anchor_eval.get("missing_any") or 0)
+    ctx.must_recall_second_pass_used = not after_missing_sources and after_anchor_missing <= 0
+    ctx.must_recall_second_pass_diff = {
+        "before_missing_source_keys": list(source_eval.get("missing_source_keys") or []),
+        "after_missing_source_keys": after_missing_sources,
+        "before_anchor_missing_any": int(anchor_eval.get("missing_any") or 0),
+        "after_anchor_missing_any": after_anchor_missing,
+        "before_citations": len(citations_before),
+        "after_citations": len(ctx.citations),
+        "added_docs": ctx.must_recall_second_pass_added_docs,
+        "added_citations": ctx.must_recall_second_pass_added_citations,
+    }
+    return after_source_eval, after_anchor_eval
+
+
+def _must_recall_status(ctx: RetrievalRuntimeState) -> str:
+    if not ctx.must_recall_enabled:
+        return "disabled"
+    if ctx.must_recall_passed and ctx.must_recall_second_pass_attempted:
+        return "partial_miss_recovered"
+    if ctx.must_recall_passed:
+        return "passed"
+    return "failed"
+
+
+def _run_retrieval_must_recall_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
+    must_recall_source_eval, ctx.must_recall_anchor_eval = _must_recall_evaluations(ctx)
     initial_missing_source_keys = list(must_recall_source_eval.get("missing_source_keys") or [])
-    initial_anchor_missing_any = int(must_recall_anchor_eval.get("missing_any") or 0)
+    initial_anchor_missing_any = int(ctx.must_recall_anchor_eval.get("missing_any") or 0)
     partial_miss_detected = bool(
-        must_recall_enabled
-        and (
-            bool(initial_missing_source_keys)
-            or int(initial_anchor_missing_any or 0) > 0
+        ctx.must_recall_enabled and (bool(initial_missing_source_keys) or int(initial_anchor_missing_any or 0) > 0)
+    )
+
+    ctx.must_recall_second_pass_attempted = False
+    ctx.must_recall_second_pass_used = False
+    ctx.must_recall_second_pass_error: str | None = None
+    ctx.must_recall_second_pass_added_docs = 0
+    ctx.must_recall_second_pass_added_citations = 0
+    ctx.must_recall_second_pass_diff: dict[str, Any] | None = None
+
+    if partial_miss_detected and ctx.must_recall_second_pass_enabled:
+        must_recall_source_eval, ctx.must_recall_anchor_eval = _run_must_recall_second_pass(
+            ctx,
+            source_eval=must_recall_source_eval,
+            anchor_eval=ctx.must_recall_anchor_eval,
         )
+
+    ctx.missing_source_keys = list(must_recall_source_eval.get("missing_source_keys") or [])
+    anchor_missing_any = int(ctx.must_recall_anchor_eval.get("missing_any") or 0)
+    ctx.must_recall_passed = bool(
+        (not ctx.must_recall_enabled) or (not ctx.missing_source_keys and int(anchor_missing_any or 0) <= 0)
     )
-
-    must_recall_second_pass_attempted = False
-    must_recall_second_pass_used = False
-    must_recall_second_pass_error: str | None = None
-    must_recall_second_pass_added_docs = 0
-    must_recall_second_pass_added_citations = 0
-    must_recall_second_pass_diff: dict[str, Any] | None = None
-
-    if partial_miss_detected and must_recall_second_pass_enabled:
-        must_recall_second_pass_attempted = True
-        before_doc_keys: set[str] = set()
-        for d in docs or []:
-            if d is None:
-                continue
-            try:
-                before_doc_keys.add(_doc_key(d))
-            except Exception as exc:
-                _log_orchestrator_fallback('run_retrieval', exc)
-                continue
-        citations_before = list(citations or [])
-
-        fb_docs: list[Document] = []
-        try:
-            second_pass_update = dict(retriever_update)
-            second_pass_update.update(
-                {
-                    "retrieval_mode": must_recall_second_pass_mode,
-                    "k": int(must_recall_second_pass_top_k),
-                    "enable_reranker": False,
-                }
-            )
-            second_pass_retriever = hybrid_retriever.model_copy(update=second_pass_update)
-            fb_docs = second_pass_retriever.invoke(query_for_retrieval) or []
-            fb_docs = DocUtilsMixin._annotate_docs_with_role(fb_docs, "must_recall_second_pass")
-        except Exception as exc:  # noqa: BLE001
-            _log_orchestrator_fallback('run_retrieval', exc)
-            fb_docs = []
-            must_recall_second_pass_error = str(exc)[:200]
-
-        if fb_docs:
-            merged_docs = list(docs or [])
-            seen_keys = set(before_doc_keys)
-            for d in fb_docs:
-                if d is None:
-                    continue
-                try:
-                    key = _doc_key(d)
-                except Exception as exc:
-                    _log_orchestrator_fallback('run_retrieval', exc)
-                    key = None
-                if key and key in seen_keys:
-                    continue
-                if key:
-                    seen_keys.add(key)
-                merged_docs.append(d)
-                must_recall_second_pass_added_docs += 1
-            docs = merged_docs
-
-            citations_after = build_citations_from_docs(
-                docs,
-                retrieval_elapsed_sec=retrieval_elapsed,
-                retrieval_mode=request_retrieval_mode,
-                query=query_for_retrieval,
-            )
-            citations_after, missing_count = _filter_strict_span_citations(citations_after)
-            evidence_span_missing_citations += int(missing_count)
-            must_recall_second_pass_added_citations = max(0, int(len(citations_after) - len(citations_before)))
-            citations = citations_after
-
-            after_source_eval = evaluate_required_source_keys(
-                citations=[c for c in citations if isinstance(c, dict)],
-                required_source_keys=must_recall_expected_source_keys,
-            )
-            after_anchor_eval = evaluate_evidence_anchor_expectations(
-                citations=[c for c in citations if isinstance(c, dict)],
-                required_fields=must_recall_required_anchor_fields,
-                exclude_retrieval_role_prefixes=["hierarchy_"],
-            )
-            after_missing_source_keys = list(after_source_eval.get("missing_source_keys") or [])
-            after_anchor_missing_any = int(after_anchor_eval.get("missing_any") or 0)
-
-            must_recall_second_pass_used = bool(
-                not after_missing_source_keys and int(after_anchor_missing_any) <= 0
-            )
-            must_recall_second_pass_diff = {
-                "before_missing_source_keys": initial_missing_source_keys,
-                "after_missing_source_keys": after_missing_source_keys,
-                "before_anchor_missing_any": int(initial_anchor_missing_any),
-                "after_anchor_missing_any": int(after_anchor_missing_any),
-                "before_citations": int(len(citations_before)),
-                "after_citations": int(len(citations)),
-                "added_docs": int(must_recall_second_pass_added_docs),
-                "added_citations": int(must_recall_second_pass_added_citations),
-            }
-
-            must_recall_source_eval = after_source_eval
-            must_recall_anchor_eval = after_anchor_eval
-
-    missing_source_keys = list(must_recall_source_eval.get("missing_source_keys") or [])
-    anchor_missing_any = int(must_recall_anchor_eval.get("missing_any") or 0)
-    must_recall_passed = bool(
-        (not must_recall_enabled) or (not missing_source_keys and int(anchor_missing_any or 0) <= 0)
-    )
-    must_recall_fail_reasons = build_must_recall_fail_reasons(
-        citations_count=len(citations or []),
-        missing_source_keys=missing_source_keys,
+    ctx.must_recall_fail_reasons = build_must_recall_fail_reasons(
+        citations_count=len(ctx.citations or []),
+        missing_source_keys=ctx.missing_source_keys,
         anchor_missing_any=anchor_missing_any,
-        second_pass_attempted=must_recall_second_pass_attempted,
-        second_pass_used=must_recall_second_pass_used,
+        second_pass_attempted=ctx.must_recall_second_pass_attempted,
+        second_pass_used=ctx.must_recall_second_pass_used,
     )
-    if not must_recall_enabled:
-        must_recall_status = "disabled"
-    elif must_recall_passed and must_recall_second_pass_attempted:
-        must_recall_status = "partial_miss_recovered"
-    elif must_recall_passed:
-        must_recall_status = "passed"
-    else:
-        must_recall_status = "failed"
-    must_recall_second_pass_payload = {
-        "enabled": bool(must_recall_second_pass_enabled),
-        "attempted": bool(must_recall_second_pass_attempted),
-        "used": bool(must_recall_second_pass_used),
-        "mode": str(must_recall_second_pass_mode),
-        "top_k": int(must_recall_second_pass_top_k),
-        "added_docs": int(must_recall_second_pass_added_docs),
-        "added_citations": int(must_recall_second_pass_added_citations),
-        "error": must_recall_second_pass_error,
+    ctx.must_recall_status = _must_recall_status(ctx)
+    ctx.must_recall_second_pass_payload = {
+        "enabled": bool(ctx.must_recall_second_pass_enabled),
+        "attempted": bool(ctx.must_recall_second_pass_attempted),
+        "used": bool(ctx.must_recall_second_pass_used),
+        "mode": str(ctx.must_recall_second_pass_mode),
+        "top_k": int(ctx.must_recall_second_pass_top_k),
+        "added_docs": int(ctx.must_recall_second_pass_added_docs),
+        "added_citations": int(ctx.must_recall_second_pass_added_citations),
+        "error": ctx.must_recall_second_pass_error,
         "diff": (
-            dict(must_recall_second_pass_diff)
-            if isinstance(must_recall_second_pass_diff, dict)
-            else None
+            dict(ctx.must_recall_second_pass_diff) if isinstance(ctx.must_recall_second_pass_diff, dict) else None
         ),
     }
-    must_recall_proof = build_must_recall_proof(
-        enabled=bool(must_recall_enabled),
-        status=str(must_recall_status),
-        passed=bool(must_recall_passed),
-        required_source_keys=must_recall_expected_source_keys,
-        required_anchor_fields=must_recall_required_anchor_fields,
+    ctx.must_recall_proof = build_must_recall_proof(
+        enabled=bool(ctx.must_recall_enabled),
+        status=str(ctx.must_recall_status),
+        passed=bool(ctx.must_recall_passed),
+        required_source_keys=ctx.must_recall_expected_source_keys,
+        required_anchor_fields=ctx.must_recall_required_anchor_fields,
         source_eval=must_recall_source_eval,
-        anchor_eval=must_recall_anchor_eval,
-        fail_reasons=must_recall_fail_reasons,
-        second_pass=must_recall_second_pass_payload,
+        anchor_eval=ctx.must_recall_anchor_eval,
+        fail_reasons=ctx.must_recall_fail_reasons,
+        second_pass=ctx.must_recall_second_pass_payload,
         contract_fail_reason_taxonomy=str(
-            retrieval_contract_policy.get("contract_fail_reason_taxonomy")
-            or MUST_RECALL_FAIL_REASON_TAXONOMY_V1
+            ctx.retrieval_contract_policy.get("contract_fail_reason_taxonomy") or MUST_RECALL_FAIL_REASON_TAXONOMY_V1
         ),
     )
 
-    coverage = _coverage_proxy_from_citations(citations)
+    ctx.coverage = _coverage_proxy_from_citations(ctx.citations)
+    return None
+
+
+def _run_retrieval_parse_quality_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
+    try:
+        ctx.parse_quality_low_threshold = float(
+            getattr(settings, "RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD", 0.35) or 0.35
+        )
+    except (TypeError, ValueError, AttributeError):
+        ctx.parse_quality_low_threshold = 0.35
+    ctx.parse_quality_low_threshold = min(1.0, max(0.0, float(ctx.parse_quality_low_threshold)))
 
     try:
-        parse_quality_low_threshold = float(getattr(settings, "RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD", 0.35) or 0.35)
+        ctx.parse_quality_alert_ratio = float(getattr(settings, "RETRIEVAL_PARSE_QUALITY_ALERT_RATIO", 0.5) or 0.5)
     except (TypeError, ValueError, AttributeError):
-        parse_quality_low_threshold = 0.35
-    parse_quality_low_threshold = min(1.0, max(0.0, float(parse_quality_low_threshold)))
+        ctx.parse_quality_alert_ratio = 0.5
+    ctx.parse_quality_alert_ratio = min(1.0, max(0.0, float(ctx.parse_quality_alert_ratio)))
 
-    try:
-        parse_quality_alert_ratio = float(getattr(settings, "RETRIEVAL_PARSE_QUALITY_ALERT_RATIO", 0.5) or 0.5)
-    except (TypeError, ValueError, AttributeError):
-        parse_quality_alert_ratio = 0.5
-    parse_quality_alert_ratio = min(1.0, max(0.0, float(parse_quality_alert_ratio)))
-
-    parse_quality_summary = _summarize_parse_quality_risk(
-        docs,
-        low_threshold=parse_quality_low_threshold,
-        alert_ratio=parse_quality_alert_ratio,
+    ctx.parse_quality_summary = _summarize_parse_quality_risk(
+        ctx.docs,
+        low_threshold=ctx.parse_quality_low_threshold,
+        alert_ratio=ctx.parse_quality_alert_ratio,
     )
-    parse_quality_gate_profile = str(
-        getattr(settings, "RETRIEVAL_PARSE_QUALITY_GATE_PROFILE", "warn") or "warn"
-    ).strip().lower() or "warn"
-    if parse_quality_gate_profile not in {"off", "warn", "strict"}:
-        parse_quality_gate_profile = "warn"
-    parse_quality_gate_violation = bool((parse_quality_summary or {}).get("alert"))
-    parse_quality_gate_blocked = bool(parse_quality_gate_profile == "strict" and parse_quality_gate_violation)
-    parse_quality_gate_reason = "parse_quality_alert" if parse_quality_gate_violation else None
+    ctx.parse_quality_gate_profile = (
+        str(getattr(settings, "RETRIEVAL_PARSE_QUALITY_GATE_PROFILE", "warn") or "warn").strip().lower() or "warn"
+    )
+    if ctx.parse_quality_gate_profile not in {"off", "warn", "strict"}:
+        ctx.parse_quality_gate_profile = "warn"
+    ctx.parse_quality_gate_violation = bool((ctx.parse_quality_summary or {}).get("alert"))
+    ctx.parse_quality_gate_blocked = bool(
+        ctx.parse_quality_gate_profile == "strict" and ctx.parse_quality_gate_violation
+    )
+    ctx.parse_quality_gate_reason = "parse_quality_alert" if ctx.parse_quality_gate_violation else None
     try:
         parse_risk_hardcase_min_low_ratio = float(
             getattr(settings, "RETRIEVAL_PARSE_RISK_HARDCASE_MIN_LOW_RATIO", 0.5) or 0.5
@@ -3575,525 +3438,584 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         parse_risk_hardcase_min_considered = 3
     parse_risk_hardcase_min_considered = max(1, int(parse_risk_hardcase_min_considered))
 
-    parse_risk = _classify_parse_risk(
-        summary=parse_quality_summary,
+    ctx.parse_risk = _classify_parse_risk(
+        summary=ctx.parse_quality_summary,
         hardcase_min_low_ratio=parse_risk_hardcase_min_low_ratio,
         hardcase_min_considered=parse_risk_hardcase_min_considered,
     )
-    parse_repair_actions_input = state.get("parse_repair_actions")
+    parse_repair_actions_input = ctx.state.get("parse_repair_actions")
     if parse_repair_actions_input is None:
-        alt = state.get("parse_repair_schedule")
+        alt = ctx.state.get("parse_repair_schedule")
         if isinstance(alt, (dict, list)):
             parse_repair_actions_input = alt
-    parse_repair_actions_meta = _sanitize_parse_repair_actions(parse_repair_actions_input)
+    ctx.parse_repair_actions_meta = _sanitize_parse_repair_actions(parse_repair_actions_input)
+    return None
 
-    metrics = dict(state.get("metrics") or {})
-    metrics["retrieval_elapsed_sec"] = round(retrieval_elapsed, 3)
-    metrics["retrieval_mode"] = request_retrieval_mode
-    metrics["retrieval_mode_requested"] = requested_retrieval_mode
-    metrics["retrieval_mode_auto_routed"] = bool(retrieval_mode_routed)
-    metrics["retrieval_profile"] = profile_norm or None
-    metrics["retrieval_profile_requested"] = (
-        str(requested_retrieval_profile).strip().lower() if requested_retrieval_profile is not None else None
+
+def _run_retrieval_metrics_core_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
+    ctx.metrics = dict(ctx.state.get("metrics") or {})
+    ctx.metrics["retrieval_elapsed_sec"] = round(ctx.retrieval_elapsed, 3)
+    ctx.metrics["retrieval_mode"] = ctx.request_retrieval_mode
+    ctx.metrics["retrieval_mode_requested"] = ctx.requested_retrieval_mode
+    ctx.metrics["retrieval_mode_auto_routed"] = bool(ctx.retrieval_mode_routed)
+    ctx.metrics["retrieval_profile"] = ctx.profile_norm or None
+    ctx.metrics["retrieval_profile_requested"] = (
+        str(ctx.requested_retrieval_profile).strip().lower() if ctx.requested_retrieval_profile is not None else None
     )
-    metrics["temporal_intent_enabled"] = bool(temporal_intent_enabled)
-    metrics["temporal_intent_detected"] = bool(temporal_intent_meta.get("detected"))
-    metrics["temporal_intent_reason_codes"] = list(temporal_intent_meta.get("reason_codes") or [])
-    metrics["temporal_recency_rerank"] = (
-        dict(temporal_recency_meta) if isinstance(temporal_recency_meta, dict) else None
+    ctx.metrics["temporal_intent_enabled"] = bool(ctx.temporal_intent_enabled)
+    ctx.metrics["temporal_intent_detected"] = bool(ctx.temporal_intent_meta.get("detected"))
+    ctx.metrics["temporal_intent_reason_codes"] = list(ctx.temporal_intent_meta.get("reason_codes") or [])
+    ctx.metrics["temporal_recency_rerank"] = (
+        dict(ctx.temporal_recency_meta) if isinstance(ctx.temporal_recency_meta, dict) else None
     )
-    metrics["retrieval_contract_mode"] = retrieval_contract_mode or None
-    metrics["retrieval_contract_policy"] = dict(retrieval_contract_policy or {})
-    metrics["retrieval_contract_deterministic_recall"] = bool(contract_deterministic_recall)
-    metrics["retrieval_contract_must_recall_strict"] = bool(contract_must_recall_strict)
-    metrics["contract_fail_reason_taxonomy"] = str(
-        retrieval_contract_policy.get("contract_fail_reason_taxonomy")
-        or MUST_RECALL_FAIL_REASON_TAXONOMY_V1
+    ctx.metrics["retrieval_contract_mode"] = ctx.retrieval_contract_mode or None
+    ctx.metrics["retrieval_contract_policy"] = dict(ctx.retrieval_contract_policy or {})
+    ctx.metrics["retrieval_contract_deterministic_recall"] = bool(ctx.contract_deterministic_recall)
+    ctx.metrics["retrieval_contract_must_recall_strict"] = bool(ctx.contract_must_recall_strict)
+    ctx.metrics["contract_fail_reason_taxonomy"] = str(
+        ctx.retrieval_contract_policy.get("contract_fail_reason_taxonomy") or MUST_RECALL_FAIL_REASON_TAXONOMY_V1
     )
-    metrics["must_recall_enabled"] = bool(must_recall_enabled)
-    metrics["must_recall_requested"] = (
-        bool(must_recall_requested) if must_recall_requested is not None else None
+    ctx.metrics["must_recall_enabled"] = bool(ctx.must_recall_enabled)
+    ctx.metrics["must_recall_requested"] = (
+        bool(ctx.must_recall_requested) if ctx.must_recall_requested is not None else None
     )
-    metrics["must_recall_expected_source_keys"] = list(must_recall_expected_source_keys or [])
-    metrics["must_recall_required_anchor_fields"] = list(must_recall_required_anchor_fields or [])
-    metrics["must_recall_auto_expected_source_keys_enabled"] = bool(
-        must_recall_auto_expected_source_keys_enabled
+    ctx.metrics["must_recall_expected_source_keys"] = list(ctx.must_recall_expected_source_keys or [])
+    ctx.metrics["must_recall_required_anchor_fields"] = list(ctx.must_recall_required_anchor_fields or [])
+    ctx.metrics["must_recall_auto_expected_source_keys_enabled"] = bool(
+        ctx.must_recall_auto_expected_source_keys_enabled
     )
-    metrics["must_recall_auto_expected_source_keys_applied"] = bool(
-        must_recall_auto_expected_source_keys_applied
+    ctx.metrics["must_recall_auto_expected_source_keys_applied"] = bool(
+        ctx.must_recall_auto_expected_source_keys_applied
     )
-    metrics["must_recall_auto_expected_source_keys"] = list(
-        must_recall_auto_expected_source_keys or []
+    ctx.metrics["must_recall_auto_expected_source_keys"] = list(ctx.must_recall_auto_expected_source_keys or [])
+    ctx.metrics["must_recall_auto_expected_source_keys_reason_codes"] = list(
+        ctx.must_recall_auto_expected_source_keys_reason_codes or []
     )
-    metrics["must_recall_auto_expected_source_keys_reason_codes"] = list(
-        must_recall_auto_expected_source_keys_reason_codes or []
+    ctx.metrics["must_recall_auto_expected_source_keys_confidence"] = str(
+        ctx.must_recall_auto_expected_source_keys_confidence or "none"
     )
-    metrics["must_recall_auto_expected_source_keys_confidence"] = str(
-        must_recall_auto_expected_source_keys_confidence or "none"
+    ctx.metrics["must_recall_auto_required_anchor_fields_enabled"] = bool(
+        ctx.must_recall_auto_required_anchor_fields_enabled
     )
-    metrics["must_recall_auto_required_anchor_fields_enabled"] = bool(
-        must_recall_auto_required_anchor_fields_enabled
+    ctx.metrics["must_recall_auto_required_anchor_fields_applied"] = bool(
+        ctx.must_recall_auto_required_anchor_fields_applied
     )
-    metrics["must_recall_auto_required_anchor_fields_applied"] = bool(
-        must_recall_auto_required_anchor_fields_applied
+    ctx.metrics["must_recall_auto_required_anchor_fields"] = list(ctx.must_recall_auto_required_anchor_fields or [])
+    ctx.metrics["must_recall_auto_required_anchor_fields_reason_codes"] = list(
+        ctx.must_recall_auto_required_anchor_fields_reason_codes or []
     )
-    metrics["must_recall_auto_required_anchor_fields"] = list(
-        must_recall_auto_required_anchor_fields or []
+    ctx.metrics["must_recall_status"] = str(ctx.must_recall_status)
+    ctx.metrics["must_recall_passed"] = bool(ctx.must_recall_passed)
+    ctx.metrics["must_recall_missing_source_keys"] = ctx.missing_source_keys[:40]
+    ctx.metrics["must_recall_anchor_missing_counts"] = dict(ctx.must_recall_anchor_eval.get("missing_counts") or {})
+    ctx.metrics["must_recall_anchor_considered_citations"] = int(
+        ctx.must_recall_anchor_eval.get("considered_citations") or 0
     )
-    metrics["must_recall_auto_required_anchor_fields_reason_codes"] = list(
-        must_recall_auto_required_anchor_fields_reason_codes or []
+    ctx.metrics["must_recall_anchor_skipped_citations"] = int(ctx.must_recall_anchor_eval.get("skipped_citations") or 0)
+    ctx.metrics["must_recall_anchor_skipped_by_role"] = dict(ctx.must_recall_anchor_eval.get("skipped_by_role") or {})
+    ctx.metrics["must_recall_fail_reasons"] = ctx.must_recall_fail_reasons[:12]
+    ctx.metrics["must_recall_second_pass_enabled"] = bool(ctx.must_recall_second_pass_enabled)
+    ctx.metrics["must_recall_second_pass_attempted"] = bool(ctx.must_recall_second_pass_attempted)
+    ctx.metrics["must_recall_second_pass_used"] = bool(ctx.must_recall_second_pass_used)
+    ctx.metrics["must_recall_second_pass_mode"] = str(ctx.must_recall_second_pass_mode)
+    ctx.metrics["must_recall_second_pass_top_k"] = int(ctx.must_recall_second_pass_top_k)
+    ctx.metrics["must_recall_second_pass_added_docs"] = int(ctx.must_recall_second_pass_added_docs)
+    ctx.metrics["must_recall_second_pass_added_citations"] = int(ctx.must_recall_second_pass_added_citations)
+    ctx.metrics["must_recall_second_pass_error"] = ctx.must_recall_second_pass_error
+    if isinstance(ctx.must_recall_second_pass_diff, dict):
+        ctx.metrics["must_recall_second_pass_diff"] = dict(ctx.must_recall_second_pass_diff)
+    ctx.metrics["must_recall_proof"] = dict(ctx.must_recall_proof)
+    ctx.metrics["contextual_followup_enabled"] = bool(ctx.contextual_followup_enabled)
+    ctx.metrics["contextual_followup_attempted"] = bool(ctx.contextual_followup_attempted)
+    ctx.metrics["contextual_followup_used"] = bool(ctx.contextual_followup_used)
+    ctx.metrics["contextual_followup_mode"] = str(ctx.contextual_followup_mode)
+    ctx.metrics["contextual_followup_top_k"] = int(ctx.contextual_followup_top_k)
+    ctx.metrics["contextual_followup_max_docs"] = int(ctx.contextual_followup_max_docs)
+    ctx.metrics["contextual_followup_max_terms"] = int(ctx.contextual_followup_max_terms)
+    ctx.metrics["contextual_followup_min_term_chars"] = int(ctx.contextual_followup_min_term_chars)
+    ctx.metrics["contextual_followup_added_docs"] = int(ctx.contextual_followup_added_docs)
+    ctx.metrics["contextual_followup_added_citations"] = int(ctx.contextual_followup_added_citations)
+    ctx.metrics["contextual_followup_reason_codes"] = list(ctx.contextual_followup_reason_codes or [])
+    ctx.metrics["contextual_followup_selected_terms"] = list(ctx.contextual_followup_selected_terms or [])
+    ctx.metrics["contextual_followup_query_hash"] = ctx.contextual_followup_query_hash
+    ctx.metrics["contextual_followup_elapsed_sec"] = round(float(ctx.contextual_followup_elapsed or 0.0), 3)
+    ctx.metrics["contextual_followup_error"] = ctx.contextual_followup_error
+    ctx.metrics["iterative_pass_enabled"] = bool(ctx.contextual_followup_enabled)
+    ctx.metrics["iterative_pass_max_hops"] = int(ctx.contextual_followup_max_hops)
+    ctx.metrics["iterative_pass_latency_budget_ms"] = round(float(ctx.contextual_followup_latency_budget_ms), 3)
+    ctx.metrics["iterative_pass_hops_attempted"] = int(
+        len([h for h in ctx.iterative_pass_hops if isinstance(h, dict) and bool(h.get("attempted"))])
     )
-    metrics["must_recall_status"] = str(must_recall_status)
-    metrics["must_recall_passed"] = bool(must_recall_passed)
-    metrics["must_recall_missing_source_keys"] = missing_source_keys[:40]
-    metrics["must_recall_anchor_missing_counts"] = dict(must_recall_anchor_eval.get("missing_counts") or {})
-    metrics["must_recall_anchor_considered_citations"] = int(must_recall_anchor_eval.get("considered_citations") or 0)
-    metrics["must_recall_anchor_skipped_citations"] = int(must_recall_anchor_eval.get("skipped_citations") or 0)
-    metrics["must_recall_anchor_skipped_by_role"] = dict(must_recall_anchor_eval.get("skipped_by_role") or {})
-    metrics["must_recall_fail_reasons"] = must_recall_fail_reasons[:12]
-    metrics["must_recall_second_pass_enabled"] = bool(must_recall_second_pass_enabled)
-    metrics["must_recall_second_pass_attempted"] = bool(must_recall_second_pass_attempted)
-    metrics["must_recall_second_pass_used"] = bool(must_recall_second_pass_used)
-    metrics["must_recall_second_pass_mode"] = str(must_recall_second_pass_mode)
-    metrics["must_recall_second_pass_top_k"] = int(must_recall_second_pass_top_k)
-    metrics["must_recall_second_pass_added_docs"] = int(must_recall_second_pass_added_docs)
-    metrics["must_recall_second_pass_added_citations"] = int(must_recall_second_pass_added_citations)
-    metrics["must_recall_second_pass_error"] = must_recall_second_pass_error
-    if isinstance(must_recall_second_pass_diff, dict):
-        metrics["must_recall_second_pass_diff"] = dict(must_recall_second_pass_diff)
-    metrics["must_recall_proof"] = dict(must_recall_proof)
-    metrics["contextual_followup_enabled"] = bool(contextual_followup_enabled)
-    metrics["contextual_followup_attempted"] = bool(contextual_followup_attempted)
-    metrics["contextual_followup_used"] = bool(contextual_followup_used)
-    metrics["contextual_followup_mode"] = str(contextual_followup_mode)
-    metrics["contextual_followup_top_k"] = int(contextual_followup_top_k)
-    metrics["contextual_followup_max_docs"] = int(contextual_followup_max_docs)
-    metrics["contextual_followup_max_terms"] = int(contextual_followup_max_terms)
-    metrics["contextual_followup_min_term_chars"] = int(contextual_followup_min_term_chars)
-    metrics["contextual_followup_added_docs"] = int(contextual_followup_added_docs)
-    metrics["contextual_followup_added_citations"] = int(contextual_followup_added_citations)
-    metrics["contextual_followup_reason_codes"] = list(contextual_followup_reason_codes or [])
-    metrics["contextual_followup_selected_terms"] = list(contextual_followup_selected_terms or [])
-    metrics["contextual_followup_query_hash"] = contextual_followup_query_hash
-    metrics["contextual_followup_elapsed_sec"] = round(float(contextual_followup_elapsed or 0.0), 3)
-    metrics["contextual_followup_error"] = contextual_followup_error
-    metrics["iterative_pass_enabled"] = bool(contextual_followup_enabled)
-    metrics["iterative_pass_max_hops"] = int(contextual_followup_max_hops)
-    metrics["iterative_pass_latency_budget_ms"] = round(float(contextual_followup_latency_budget_ms), 3)
-    metrics["iterative_pass_hops_attempted"] = int(
-        len([h for h in iterative_pass_hops if isinstance(h, dict) and bool(h.get("attempted"))])
+    ctx.metrics["iterative_pass_hops_used"] = int(
+        len([h for h in ctx.iterative_pass_hops if isinstance(h, dict) and bool(h.get("used"))])
     )
-    metrics["iterative_pass_hops_used"] = int(
-        len([h for h in iterative_pass_hops if isinstance(h, dict) and bool(h.get("used"))])
+    ctx.metrics["iterative_pass_reason_codes"] = list(ctx.iterative_pass_reason_codes or [])[:16]
+    ctx.metrics["iterative_pass_gap"] = (
+        dict(ctx.iterative_pass_gap or {}) if isinstance(ctx.iterative_pass_gap, dict) else None
     )
-    metrics["iterative_pass_reason_codes"] = list(iterative_pass_reason_codes or [])[:16]
-    metrics["iterative_pass_gap"] = (dict(iterative_pass_gap or {}) if isinstance(iterative_pass_gap, dict) else None)
-    metrics["iterative_pass_hops"] = [
-        h
-        for h in list(iterative_pass_hops or [])[:5]
-        if isinstance(h, dict)
-    ]
-    metrics["intent_router_enabled"] = bool(intent_router_meta.get("enabled"))
-    metrics["intent_router_used"] = bool(intent_router_meta.get("used"))
+    ctx.metrics["iterative_pass_hops"] = [h for h in list(ctx.iterative_pass_hops or [])[:5] if isinstance(h, dict)]
+    ctx.metrics["intent_router_enabled"] = bool(ctx.intent_router_meta.get("enabled"))
+    ctx.metrics["intent_router_used"] = bool(ctx.intent_router_meta.get("used"))
     intent_router_learned_meta = (
-        dict(intent_router_meta.get("learned_router") or {})
-        if isinstance(intent_router_meta.get("learned_router"), dict)
+        dict(ctx.intent_router_meta.get("learned_router") or {})
+        if isinstance(ctx.intent_router_meta.get("learned_router"), dict)
         else None
     )
-    metrics["intent_router_learned"] = intent_router_learned_meta
-    metrics["intent_router_learned_used"] = bool((intent_router_learned_meta or {}).get("used"))
-    metrics["intent_router_learned_confidence"] = float((intent_router_learned_meta or {}).get("confidence") or 0.0)
-    metrics["intent_router_learned_confidence_gate"] = float(
+    ctx.metrics["intent_router_learned"] = intent_router_learned_meta
+    ctx.metrics["intent_router_learned_used"] = bool((intent_router_learned_meta or {}).get("used"))
+    ctx.metrics["intent_router_learned_confidence"] = float((intent_router_learned_meta or {}).get("confidence") or 0.0)
+    ctx.metrics["intent_router_learned_confidence_gate"] = float(
         (intent_router_learned_meta or {}).get("confidence_gate") or 0.0
     )
-    metrics["intent_router_learned_rule_id"] = (intent_router_learned_meta or {}).get("rule_id")
-    metrics["intent_router"] = intent_router_meta
-    metrics["industry_rules_enabled"] = bool(industry_rules_meta.get("enabled"))
-    metrics["industry_rules_used"] = bool(industry_rules_meta.get("used"))
-    metrics["industry_rules"] = industry_rules_meta
-    metrics["adaptive_router_enabled"] = bool(adaptive_router_meta.get("enabled"))
-    metrics["adaptive_router_used"] = bool(adaptive_router_meta.get("used"))
-    metrics["adaptive_router"] = adaptive_router_meta
-    metrics["channel_budget_policy_enabled"] = bool(channel_budget_policy_meta.get("enabled"))
-    metrics["channel_budget_policy_used"] = bool(channel_budget_policy_meta.get("used"))
-    metrics["channel_budget_policy"] = channel_budget_policy_meta
-    metrics["retrieval_query_parallelism"] = retrieval_parallelism
-    metrics["retrieval_query_count"] = len(retrieval_plan)
-    metrics["retrieval_per_query"] = retrieval_per_query[:8]
-    channel_health_queries: list[dict[str, Any]] = []
-    retrieval_degraded_reason_codes: list[str] = []
-    for item in retrieval_per_query:
-        if not isinstance(item, dict):
+    ctx.metrics["intent_router_learned_rule_id"] = (intent_router_learned_meta or {}).get("rule_id")
+    ctx.metrics["intent_router"] = ctx.intent_router_meta
+    ctx.metrics["industry_rules_enabled"] = bool(ctx.industry_rules_meta.get("enabled"))
+    ctx.metrics["industry_rules_used"] = bool(ctx.industry_rules_meta.get("used"))
+    ctx.metrics["industry_rules"] = ctx.industry_rules_meta
+    ctx.metrics["adaptive_router_enabled"] = bool(ctx.adaptive_router_meta.get("enabled"))
+    ctx.metrics["adaptive_router_used"] = bool(ctx.adaptive_router_meta.get("used"))
+    ctx.metrics["adaptive_router"] = ctx.adaptive_router_meta
+    ctx.metrics["channel_budget_policy_enabled"] = bool(ctx.channel_budget_policy_meta.get("enabled"))
+    ctx.metrics["channel_budget_policy_used"] = bool(ctx.channel_budget_policy_meta.get("used"))
+    ctx.metrics["channel_budget_policy"] = ctx.channel_budget_policy_meta
+    ctx.metrics["retrieval_query_parallelism"] = ctx.retrieval_parallelism
+    ctx.metrics["retrieval_query_count"] = len(ctx.retrieval_plan)
+    ctx.metrics["retrieval_per_query"] = ctx.retrieval_per_query[:8]
+    ctx.channel_health_queries: list[dict[str, Any]] = []
+    ctx.retrieval_degraded_reason_codes: list[str] = []
+    return None
+
+
+def _retrieval_channel_health_item(item: Any) -> tuple[dict[str, Any] | None, list[str]]:
+    if not isinstance(item, dict):
+        return None, []
+    debug = item.get("retriever_debug")
+    debug = debug if isinstance(debug, dict) else {}
+    channels = debug.get("channels")
+    channels = channels if isinstance(channels, dict) else {}
+    if not channels:
+        return None, []
+    degraded_reasons = list(channels.get("degraded_reasons") or [])
+    health_item = {
+        "kind": str(item.get("kind") or "main"),
+        "attempted_channels": list(channels.get("attempted_channels") or []),
+        "successful_channels": list(channels.get("successful_channels") or []),
+        "retrieval_degraded": bool(channels.get("retrieval_degraded", False)),
+        "degraded_reasons": degraded_reasons,
+        "all_retrieval_channels_failed": bool(channels.get("all_retrieval_channels_failed", False)),
+    }
+    native_hybrid = channels.get("milvus_native_hybrid")
+    if isinstance(native_hybrid, dict):
+        health_item["milvus_native_hybrid"] = dict(native_hybrid)
+    reason_codes = [
+        f"{health_item['kind']}:{str(reason.get('channel') or '').strip() or 'unknown'}:"
+        f"{str(reason.get('error_type') or '').strip() or 'unknown'}"
+        for reason in degraded_reasons
+        if isinstance(reason, dict)
+    ]
+    return health_item, reason_codes
+
+
+def _run_retrieval_channel_health_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
+    for item in ctx.retrieval_per_query:
+        health_item, reason_codes = _retrieval_channel_health_item(item)
+        if health_item is None:
             continue
-        dbg = item.get("retriever_debug")
-        dbg = dbg if isinstance(dbg, dict) else {}
-        channels = dbg.get("channels")
-        channels = channels if isinstance(channels, dict) else {}
-        if not channels:
-            continue
-        degraded_reasons = list(channels.get("degraded_reasons") or [])
-        health_item = {
-            "kind": str(item.get("kind") or "main"),
-            "attempted_channels": list(channels.get("attempted_channels") or []),
-            "successful_channels": list(channels.get("successful_channels") or []),
-            "retrieval_degraded": bool(channels.get("retrieval_degraded", False)),
-            "degraded_reasons": degraded_reasons,
-            "all_retrieval_channels_failed": bool(channels.get("all_retrieval_channels_failed", False)),
-        }
-        native_hybrid = channels.get("milvus_native_hybrid")
-        if isinstance(native_hybrid, dict):
-            health_item["milvus_native_hybrid"] = dict(native_hybrid)
-        channel_health_queries.append(health_item)
-        for reason in degraded_reasons:
-            if not isinstance(reason, dict):
-                continue
-            channel = str(reason.get("channel") or "").strip() or "unknown"
-            error_type = str(reason.get("error_type") or "").strip() or "unknown"
-            retrieval_degraded_reason_codes.append(f"{health_item['kind']}:{channel}:{error_type}")
+        ctx.channel_health_queries.append(health_item)
+        ctx.retrieval_degraded_reason_codes.extend(reason_codes)
     channel_health_primary = next(
-        (item for item in channel_health_queries if str(item.get("kind") or "") == "main"),
-        (channel_health_queries[0] if channel_health_queries else None),
+        (item for item in ctx.channel_health_queries if str(item.get("kind") or "") == "main"),
+        (ctx.channel_health_queries[0] if ctx.channel_health_queries else None),
     )
-    retrieval_channel_health = {
-        "queries": channel_health_queries,
+    ctx.retrieval_channel_health = {
+        "queries": ctx.channel_health_queries,
         "attempted_channels": list((channel_health_primary or {}).get("attempted_channels") or []),
         "successful_channels": list((channel_health_primary or {}).get("successful_channels") or []),
-        "all_retrieval_channels_failed": bool((channel_health_primary or {}).get("all_retrieval_channels_failed", False)),
+        "all_retrieval_channels_failed": bool(
+            (channel_health_primary or {}).get("all_retrieval_channels_failed", False)
+        ),
     }
     if isinstance((channel_health_primary or {}).get("milvus_native_hybrid"), dict):
-        retrieval_channel_health["milvus_native_hybrid"] = dict(
+        ctx.retrieval_channel_health["milvus_native_hybrid"] = dict(
             (channel_health_primary or {}).get("milvus_native_hybrid") or {}
         )
-    retrieval_degraded = bool(
-        any(bool(item.get("retrieval_degraded")) for item in channel_health_queries)
-    )
-    retrieval_degraded_reason_codes = list(dict.fromkeys(retrieval_degraded_reason_codes))
-    metrics["retrieval_degraded"] = bool(retrieval_degraded)
-    metrics["retrieval_degraded_reasons"] = retrieval_degraded_reason_codes
-    metrics["retrieval_channel_health"] = retrieval_channel_health
-    metrics["retrieval_fallback_reason"] = retrieval_fallback_reason
-    metrics["query_expansion_budget"] = dict(query_expansion_budget_meta)
-    metrics["vector_backend"] = settings.VECTOR_BACKEND
-    metrics["hard_fallback_enabled"] = bool(hard_fallback_enabled)
-    metrics["hard_fallback_attempted"] = bool(hard_fallback_attempted)
-    metrics["hard_fallback_used"] = bool(hard_fallback_used)
-    metrics["hard_fallback_mode"] = hard_fallback_mode
-    metrics["hard_fallback_top_k"] = int(hard_fallback_top_k)
-    metrics["hard_fallback_elapsed_sec"] = round(float(hard_fallback_elapsed or 0.0), 3)
-    metrics["hard_fallback_added_docs"] = int(hard_fallback_added_docs or 0)
-    metrics["hard_fallback_added_citations"] = int(hard_fallback_added_citations or 0)
-    metrics["hard_fallback_error"] = hard_fallback_error
-    metrics["evidence_span_strict_enabled"] = bool(evidence_span_strict_enabled)
-    metrics["evidence_span_missing_citations"] = int(evidence_span_missing_citations or 0)
-    if coverage:
-        metrics["citation_coverage"] = coverage
-    if retrieval_errors:
-        metrics["retrieval_errors"] = retrieval_errors[:5]
-    empty_diag = _diagnose_empty_retrieval(metrics.get("retrieval_per_query")) if not citations else None
-    if not citations and hard_fallback_attempted:
-        empty_diag = dict(empty_diag or {})
-        reasons = list(empty_diag.get("reasons") or [])
+    ctx.retrieval_degraded = bool(any(bool(item.get("retrieval_degraded")) for item in ctx.channel_health_queries))
+    ctx.retrieval_degraded_reason_codes = list(dict.fromkeys(ctx.retrieval_degraded_reason_codes))
+    ctx.metrics["retrieval_degraded"] = bool(ctx.retrieval_degraded)
+    ctx.metrics["retrieval_degraded_reasons"] = ctx.retrieval_degraded_reason_codes
+    ctx.metrics["retrieval_channel_health"] = ctx.retrieval_channel_health
+    ctx.metrics["retrieval_fallback_reason"] = ctx.retrieval_fallback_reason
+    ctx.metrics["query_expansion_budget"] = dict(ctx.query_expansion_budget_meta)
+    ctx.metrics["vector_backend"] = settings.VECTOR_BACKEND
+    ctx.metrics["hard_fallback_enabled"] = bool(ctx.hard_fallback_enabled)
+    ctx.metrics["hard_fallback_attempted"] = bool(ctx.hard_fallback_attempted)
+    ctx.metrics["hard_fallback_used"] = bool(ctx.hard_fallback_used)
+    ctx.metrics["hard_fallback_mode"] = ctx.hard_fallback_mode
+    ctx.metrics["hard_fallback_top_k"] = int(ctx.hard_fallback_top_k)
+    ctx.metrics["hard_fallback_elapsed_sec"] = round(float(ctx.hard_fallback_elapsed or 0.0), 3)
+    ctx.metrics["hard_fallback_added_docs"] = int(ctx.hard_fallback_added_docs or 0)
+    ctx.metrics["hard_fallback_added_citations"] = int(ctx.hard_fallback_added_citations or 0)
+    ctx.metrics["hard_fallback_error"] = ctx.hard_fallback_error
+    ctx.metrics["evidence_span_strict_enabled"] = bool(ctx.evidence_span_strict_enabled)
+    ctx.metrics["evidence_span_missing_citations"] = int(ctx.evidence_span_missing_citations or 0)
+    if ctx.coverage:
+        ctx.metrics["citation_coverage"] = ctx.coverage
+    if ctx.retrieval_errors:
+        ctx.metrics["retrieval_errors"] = ctx.retrieval_errors[:5]
+    ctx.empty_diag = _diagnose_empty_retrieval(ctx.metrics.get("retrieval_per_query")) if not ctx.citations else None
+    if not ctx.citations and ctx.hard_fallback_attempted:
+        ctx.empty_diag = dict(ctx.empty_diag or {})
+        reasons = list(ctx.empty_diag.get("reasons") or [])
         if "hard_fallback_no_hit" not in reasons:
             reasons.append("hard_fallback_no_hit")
-        empty_diag["reasons"] = reasons
+        ctx.empty_diag["reasons"] = reasons
 
-        signals = dict(empty_diag.get("signals") or {})
+        signals = dict(ctx.empty_diag.get("signals") or {})
         signals["hard_fallback_attempted"] = 1
-        if hard_fallback_error:
+        if ctx.hard_fallback_error:
             signals["hard_fallback_error"] = 1
-        empty_diag["signals"] = signals
+        ctx.empty_diag["signals"] = signals
 
-        empty_diag["hard_fallback"] = {
-            "mode": hard_fallback_mode,
-            "top_k": int(hard_fallback_top_k),
-            "error": hard_fallback_error,
+        ctx.empty_diag["hard_fallback"] = {
+            "mode": ctx.hard_fallback_mode,
+            "top_k": int(ctx.hard_fallback_top_k),
+            "error": ctx.hard_fallback_error,
         }
-    if empty_diag:
-        metrics["empty_retrieval"] = empty_diag
+    if ctx.empty_diag:
+        ctx.metrics["empty_retrieval"] = ctx.empty_diag
+    return None
 
-    metrics["evidence_post_rerank_enabled"] = bool(post_rerank_enabled)
-    metrics["evidence_post_rerank_used"] = bool(post_rerank_used)
-    metrics["evidence_post_rerank_provider"] = post_rerank_provider
-    metrics["evidence_post_rerank_candidates_n"] = int(post_rerank_candidates_n or 0)
-    metrics["evidence_post_rerank_elapsed_sec"] = round(float(post_rerank_elapsed or 0.0), 3)
-    metrics["evidence_post_rerank_model_used"] = post_rerank_model_used
-    metrics["evidence_post_rerank_error"] = post_rerank_error
-    metrics["evidence_post_rerank_skip_reason"] = post_rerank_skip_reason
-    metrics["evidence_post_rerank_cache_enabled"] = bool(post_rerank_cache_enabled)
-    metrics["evidence_post_rerank_cache_backend"] = post_rerank_cache_backend
-    metrics["evidence_post_rerank_cache_hits"] = int(post_rerank_cache_hits or 0)
-    metrics["evidence_post_rerank_cache_misses"] = int(post_rerank_cache_misses or 0)
-    metrics["evidence_post_rerank_pipeline_enabled"] = bool(post_rerank_pipeline_enabled)
-    metrics["evidence_post_rerank_pipeline_used"] = bool(post_rerank_pipeline_used)
-    metrics["evidence_post_rerank_pipeline_stages"] = post_rerank_pipeline_stages[:4]
-    metrics["evidence_post_rerank_score_calibration_enabled"] = bool(post_rerank_score_calibration_enabled)
-    metrics["evidence_post_rerank_score_calibration_alpha"] = round(float(post_rerank_score_calibration_alpha), 4)
-    metrics["evidence_post_rerank_score_calibration_used"] = bool(post_rerank_score_calibration_used)
-    metrics["evidence_post_rerank_score_calibration"] = dict(post_rerank_score_calibration_stats or {})
 
-    metrics["query_rewrite_enabled"] = bool(rewrite_enabled)
-    metrics["query_rewrite_strategy_id"] = rewrite_strategy_id
-    metrics["query_rewrite_strategy_hash"] = rewrite_strategy_hash
-    metrics["rewrite_used"] = bool(rewrite_used)
-    metrics["rewrite_elapsed_sec"] = round(rewrite_elapsed, 3)
-    metrics["rewrite_model_used"] = rewrite_model_used
-
-    metrics["alias_enabled"] = bool(alias_enabled)
-    metrics["alias_used"] = bool(alias_used)
-    metrics["alias_count"] = len(alias_queries)
-    metrics["alias_elapsed_sec"] = round(alias_elapsed, 3)
-    metrics["alias_meta"] = alias_meta
-
-    metrics["dict_enabled"] = bool(dict_meta.get("enabled"))
-    metrics["dict_used"] = bool(dict_used)
-    metrics["dict_count"] = len(dict_expansions)
-    metrics["dict_elapsed_sec"] = round(dict_elapsed, 3)
-    metrics["dict_meta"] = dict_meta
-
-    metrics["kg_query_expansion_enabled"] = bool(kg_query_expansion_enabled)
-    metrics["kg_query_expansion_used"] = bool(kg_query_expansion_used)
-    metrics["kg_query_expansion_entities_total"] = int(kg_query_expansion_entities_total)
-    metrics["kg_query_expansion_entities_selected"] = int(kg_query_expansion_entities_selected)
-    metrics["kg_query_expansion_query_count"] = int(len(kg_query_expansion_queries))
-    metrics["kg_query_expansion_elapsed_sec"] = round(float(kg_query_expansion_elapsed), 3)
-    metrics["kg_query_expansion_error"] = kg_query_expansion_error
-    metrics["kg_chunk_injection_enabled"] = bool(kg_chunk_injection_enabled)
-    metrics["kg_chunk_injection_max_chunks"] = int(kg_chunk_injection_max_chunks)
-    metrics["kg_chunks_injected"] = int(kg_chunks_injected or 0)
-    metrics["kg_chunk_injection_error"] = kg_chunk_injection_error
-    metrics["kg_chunk_boost_enabled"] = bool(kg_chunk_boost_meta.get("enabled"))
-    metrics["kg_chunk_boost_weight"] = float(kg_chunk_boost_meta.get("weight") or 0.0)
-    metrics["kg_chunk_boost_max_promoted"] = int(kg_chunk_boost_meta.get("max_promoted") or 0)
-    metrics["kg_chunk_boost_eligible"] = int(kg_chunk_boost_meta.get("eligible") or 0)
-    metrics["kg_chunk_boost_promoted"] = int(kg_chunk_boost_meta.get("promoted") or 0)
-    metrics["kg_chunk_boost_top_changed"] = bool(kg_chunk_boost_meta.get("top_changed"))
-    metrics["kg_chunk_boost_reason"] = str(kg_chunk_boost_meta.get("reason") or "")
-    metrics["metadata_exact_anchor_doc_ordering"] = dict(metadata_exact_anchor_doc_order_meta or {})
-
-    metrics["multi_query_enabled"] = bool(mq_enabled)
-    metrics["multi_query_used"] = bool(multi_query_used)
-    metrics["multi_query_count"] = len(multi_queries)
-    metrics["multi_query_elapsed_sec"] = round(multi_query_elapsed, 3)
-    metrics["multi_query_model_used"] = multi_query_model_used
-    metrics["multi_query_parse_ok"] = bool(multi_query_parse_meta.get("ok"))
-    metrics["multi_query_parse_method"] = multi_query_parse_meta.get("method")
-    metrics["multi_query_parse_error"] = multi_query_parse_meta.get("error")
-    metrics["multi_query_diversify_enabled"] = bool(mq_diversify_enabled)
-    metrics["multi_query_diversify_budget"] = int(mq_diversify_budget or 0) if mq_diversify_enabled else 0
-    metrics["multi_query_diversify_used"] = bool(mq_diversify_used)
-    metrics["multi_query_diversify_selected_mq"] = int(mq_diversify_selected_mq or 0)
-    metrics["multi_query_diversify_selected_non_mq"] = int(mq_diversify_selected_non_mq or 0)
-    metrics["multi_query_diversify_fill_from_fused"] = int(mq_diversify_fill_from_fused or 0)
-    metrics["step_back_enabled"] = bool(step_back_enabled)
-    metrics["step_back_used"] = bool(step_back_used)
-    metrics["step_back_elapsed_sec"] = round(step_back_elapsed, 3)
-    metrics["step_back_model_used"] = step_back_model_used
-    metrics["step_back_parse_ok"] = bool(step_back_parse_meta.get("ok"))
-    metrics["step_back_parse_method"] = step_back_parse_meta.get("method")
-    metrics["step_back_parse_error"] = step_back_parse_meta.get("error")
-
-    metrics["hierarchy_recall_enabled"] = bool(hierarchy_recall_enabled)
-    metrics["hierarchy_family_collapse"] = bool(hierarchy_family_collapse)
-    metrics["hierarchy_family_aggregation"] = str(hierarchy_family_aggregation)
-    metrics["hierarchy_family_aggregation_meta"] = (
-        dict(family_aggregation_meta) if isinstance(family_aggregation_meta, dict) else None
+def _run_retrieval_metrics_features_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
+    ctx.metrics["evidence_post_rerank_enabled"] = bool(ctx.post_rerank_enabled)
+    ctx.metrics["evidence_post_rerank_used"] = bool(ctx.post_rerank_used)
+    ctx.metrics["evidence_post_rerank_provider"] = ctx.post_rerank_provider
+    ctx.metrics["evidence_post_rerank_candidates_n"] = int(ctx.post_rerank_candidates_n or 0)
+    ctx.metrics["evidence_post_rerank_elapsed_sec"] = round(float(ctx.post_rerank_elapsed or 0.0), 3)
+    ctx.metrics["evidence_post_rerank_model_used"] = ctx.post_rerank_model_used
+    ctx.metrics["evidence_post_rerank_error"] = ctx.post_rerank_error
+    ctx.metrics["evidence_post_rerank_skip_reason"] = ctx.post_rerank_skip_reason
+    ctx.metrics["evidence_post_rerank_cache_enabled"] = bool(ctx.post_rerank_cache_enabled)
+    ctx.metrics["evidence_post_rerank_cache_backend"] = ctx.post_rerank_cache_backend
+    ctx.metrics["evidence_post_rerank_cache_hits"] = int(ctx.post_rerank_cache_hits or 0)
+    ctx.metrics["evidence_post_rerank_cache_misses"] = int(ctx.post_rerank_cache_misses or 0)
+    ctx.metrics["evidence_post_rerank_pipeline_enabled"] = bool(ctx.post_rerank_pipeline_enabled)
+    ctx.metrics["evidence_post_rerank_pipeline_used"] = bool(ctx.post_rerank_pipeline_used)
+    ctx.metrics["evidence_post_rerank_pipeline_stages"] = ctx.post_rerank_pipeline_stages[:4]
+    ctx.metrics["evidence_post_rerank_score_calibration_enabled"] = bool(ctx.post_rerank_score_calibration_enabled)
+    ctx.metrics["evidence_post_rerank_score_calibration_alpha"] = round(
+        float(ctx.post_rerank_score_calibration_alpha), 4
     )
-    metrics["hierarchy_tree_dedup"] = bool(hierarchy_tree_dedup)
-    metrics["hierarchy_tree_dedup_meta"] = (dict(tree_dedup_meta) if isinstance(tree_dedup_meta, dict) else None)
-    metrics["hierarchy_parent_depth"] = int(hierarchy_parent_depth)
-    metrics["hierarchy_sibling_window"] = int(hierarchy_sibling_window)
-    metrics["hierarchy_overfetch_factor"] = int(hierarchy_overfetch_factor)
-    metrics["hierarchy_context_expansion_attempted"] = bool(hierarchy_expand_attempted)
-    metrics["hierarchy_context_expansion_used"] = bool(hierarchy_expand_used)
-    metrics["hierarchy_context_expansion_elapsed_sec"] = round(float(hierarchy_expand_elapsed or 0.0), 3)
-    metrics["hierarchy_context_expansion_error"] = hierarchy_expand_error
-    metrics["hierarchy_context_expansion_meta"] = (dict(hierarchy_expand_meta) if isinstance(hierarchy_expand_meta, dict) else None)
+    ctx.metrics["evidence_post_rerank_score_calibration_used"] = bool(ctx.post_rerank_score_calibration_used)
+    ctx.metrics["evidence_post_rerank_score_calibration"] = dict(ctx.post_rerank_score_calibration_stats or {})
 
-    metrics["hyde_enabled"] = bool(hyde_enabled)
-    metrics["hyde_used"] = bool(hyde_used)
-    metrics["hyde_elapsed_sec"] = round(hyde_elapsed, 3)
-    metrics["hyde_model_used"] = hyde_model_used
+    ctx.metrics["query_rewrite_enabled"] = bool(ctx.rewrite_enabled)
+    ctx.metrics["query_rewrite_strategy_id"] = ctx.rewrite_strategy_id
+    ctx.metrics["query_rewrite_strategy_hash"] = ctx.rewrite_strategy_hash
+    ctx.metrics["rewrite_used"] = bool(ctx.rewrite_used)
+    ctx.metrics["rewrite_elapsed_sec"] = round(ctx.rewrite_elapsed, 3)
+    ctx.metrics["rewrite_model_used"] = ctx.rewrite_model_used
 
-    metrics["decompose_enabled"] = bool(decompose_enabled)
-    metrics["decompose_used"] = bool(decompose_used)
-    metrics["decompose_count"] = len(sub_questions)
-    metrics["decompose_elapsed_sec"] = round(decompose_elapsed, 3)
-    metrics["decompose_model_used"] = decompose_model_used
-    metrics["decompose_parse_ok"] = bool(decompose_parse_meta.get("ok"))
-    metrics["decompose_parse_method"] = decompose_parse_meta.get("method")
-    metrics["decompose_parse_error"] = decompose_parse_meta.get("error")
-    metrics["decompose_chain_enabled"] = bool(decompose_chain_enabled)
-    metrics["decompose_chain_used"] = bool(decompose_chain_used)
-    metrics["decompose_chain_steps"] = int(decompose_chain_steps or 0)
-    metrics["decompose_chain_elapsed_sec"] = round(float(decompose_chain_elapsed or 0.0), 3)
-    metrics["parse_quality"] = dict(parse_quality_summary or {})
-    metrics["parse_quality_low_threshold"] = float(parse_quality_low_threshold)
-    metrics["parse_quality_alert_ratio"] = float(parse_quality_alert_ratio)
-    metrics["parse_quality_alert"] = bool((parse_quality_summary or {}).get("alert"))
-    metrics["parse_quality_low_ratio"] = float((parse_quality_summary or {}).get("low_ratio") or 0.0)
-    metrics["parse_quality_considered"] = int((parse_quality_summary or {}).get("considered") or 0)
-    metrics["parse_quality_recommendation"] = (parse_quality_summary or {}).get("recommendation")
-    metrics["parse_quality_gate_profile"] = str(parse_quality_gate_profile)
-    metrics["parse_quality_gate_violation"] = bool(parse_quality_gate_violation)
-    metrics["parse_quality_gate_blocked"] = bool(parse_quality_gate_blocked)
-    metrics["parse_quality_gate_reason"] = parse_quality_gate_reason
-    metrics["parse_risk"] = dict(parse_risk or {})
-    metrics["parse_risk_level"] = str(parse_risk.get("level") or "unknown")
-    metrics["parse_risk_score"] = float(parse_risk.get("score") or 0.0)
-    metrics["parse_risk_reason"] = str(parse_risk.get("reason") or "")
-    metrics["parse_risk_hardcase_eligible"] = bool(parse_risk.get("hardcase_eligible"))
-    metrics["parse_repair_actions"] = (
-        dict(parse_repair_actions_meta)
-        if isinstance(parse_repair_actions_meta, dict)
-        else None
+    ctx.metrics["alias_enabled"] = bool(ctx.alias_enabled)
+    ctx.metrics["alias_used"] = bool(ctx.alias_used)
+    ctx.metrics["alias_count"] = len(ctx.alias_queries)
+    ctx.metrics["alias_elapsed_sec"] = round(ctx.alias_elapsed, 3)
+    ctx.metrics["alias_meta"] = ctx.alias_meta
+
+    ctx.metrics["dict_enabled"] = bool(ctx.dict_meta.get("enabled"))
+    ctx.metrics["dict_used"] = bool(ctx.dict_used)
+    ctx.metrics["dict_count"] = len(ctx.dict_expansions)
+    ctx.metrics["dict_elapsed_sec"] = round(ctx.dict_elapsed, 3)
+    ctx.metrics["dict_meta"] = ctx.dict_meta
+
+    ctx.metrics["kg_query_expansion_enabled"] = bool(ctx.kg_query_expansion_enabled)
+    ctx.metrics["kg_query_expansion_used"] = bool(ctx.kg_query_expansion_used)
+    ctx.metrics["kg_query_expansion_entities_total"] = int(ctx.kg_query_expansion_entities_total)
+    ctx.metrics["kg_query_expansion_entities_selected"] = int(ctx.kg_query_expansion_entities_selected)
+    ctx.metrics["kg_query_expansion_query_count"] = int(len(ctx.kg_query_expansion_queries))
+    ctx.metrics["kg_query_expansion_elapsed_sec"] = round(float(ctx.kg_query_expansion_elapsed), 3)
+    ctx.metrics["kg_query_expansion_error"] = ctx.kg_query_expansion_error
+    ctx.metrics["kg_chunk_injection_enabled"] = bool(ctx.kg_chunk_injection_enabled)
+    ctx.metrics["kg_chunk_injection_max_chunks"] = int(ctx.kg_chunk_injection_max_chunks)
+    ctx.metrics["kg_chunks_injected"] = int(ctx.kg_chunks_injected or 0)
+    ctx.metrics["kg_chunk_injection_error"] = ctx.kg_chunk_injection_error
+    ctx.metrics["kg_chunk_boost_enabled"] = bool(ctx.kg_chunk_boost_meta.get("enabled"))
+    ctx.metrics["kg_chunk_boost_weight"] = float(ctx.kg_chunk_boost_meta.get("weight") or 0.0)
+    ctx.metrics["kg_chunk_boost_max_promoted"] = int(ctx.kg_chunk_boost_meta.get("max_promoted") or 0)
+    ctx.metrics["kg_chunk_boost_eligible"] = int(ctx.kg_chunk_boost_meta.get("eligible") or 0)
+    ctx.metrics["kg_chunk_boost_promoted"] = int(ctx.kg_chunk_boost_meta.get("promoted") or 0)
+    ctx.metrics["kg_chunk_boost_top_changed"] = bool(ctx.kg_chunk_boost_meta.get("top_changed"))
+    ctx.metrics["kg_chunk_boost_reason"] = str(ctx.kg_chunk_boost_meta.get("reason") or "")
+    ctx.metrics["metadata_exact_anchor_doc_ordering"] = dict(ctx.metadata_exact_anchor_doc_order_meta or {})
+
+    ctx.metrics["multi_query_enabled"] = bool(ctx.mq_enabled)
+    ctx.metrics["multi_query_used"] = bool(ctx.multi_query_used)
+    ctx.metrics["multi_query_count"] = len(ctx.multi_queries)
+    ctx.metrics["multi_query_elapsed_sec"] = round(ctx.multi_query_elapsed, 3)
+    ctx.metrics["multi_query_model_used"] = ctx.multi_query_model_used
+    ctx.metrics["multi_query_parse_ok"] = bool(ctx.multi_query_parse_meta.get("ok"))
+    ctx.metrics["multi_query_parse_method"] = ctx.multi_query_parse_meta.get("method")
+    ctx.metrics["multi_query_parse_error"] = ctx.multi_query_parse_meta.get("error")
+    ctx.metrics["multi_query_diversify_enabled"] = bool(ctx.mq_diversify_enabled)
+    ctx.metrics["multi_query_diversify_budget"] = int(ctx.mq_diversify_budget or 0) if ctx.mq_diversify_enabled else 0
+    ctx.metrics["multi_query_diversify_used"] = bool(ctx.mq_diversify_used)
+    ctx.metrics["multi_query_diversify_selected_mq"] = int(ctx.mq_diversify_selected_mq or 0)
+    ctx.metrics["multi_query_diversify_selected_non_mq"] = int(ctx.mq_diversify_selected_non_mq or 0)
+    ctx.metrics["multi_query_diversify_fill_from_fused"] = int(ctx.mq_diversify_fill_from_fused or 0)
+    ctx.metrics["step_back_enabled"] = bool(ctx.step_back_enabled)
+    ctx.metrics["step_back_used"] = bool(ctx.step_back_used)
+    ctx.metrics["step_back_elapsed_sec"] = round(ctx.step_back_elapsed, 3)
+    ctx.metrics["step_back_model_used"] = ctx.step_back_model_used
+    ctx.metrics["step_back_parse_ok"] = bool(ctx.step_back_parse_meta.get("ok"))
+    ctx.metrics["step_back_parse_method"] = ctx.step_back_parse_meta.get("method")
+    ctx.metrics["step_back_parse_error"] = ctx.step_back_parse_meta.get("error")
+
+    ctx.metrics["hierarchy_recall_enabled"] = bool(ctx.hierarchy_recall_enabled)
+    ctx.metrics["hierarchy_family_collapse"] = bool(ctx.hierarchy_family_collapse)
+    ctx.metrics["hierarchy_family_aggregation"] = str(ctx.hierarchy_family_aggregation)
+    ctx.metrics["hierarchy_family_aggregation_meta"] = (
+        dict(ctx.family_aggregation_meta) if isinstance(ctx.family_aggregation_meta, dict) else None
     )
-    metrics["parse_repair_actions_enabled"] = bool(isinstance(parse_repair_actions_meta, dict))
-    metrics["parse_repair_actions_run_id"] = (
-        str(parse_repair_actions_meta.get("run_id") or "")
-        if isinstance(parse_repair_actions_meta, dict)
+    ctx.metrics["hierarchy_tree_dedup"] = bool(ctx.hierarchy_tree_dedup)
+    ctx.metrics["hierarchy_tree_dedup_meta"] = (
+        dict(ctx.tree_dedup_meta) if isinstance(ctx.tree_dedup_meta, dict) else None
+    )
+    ctx.metrics["hierarchy_parent_depth"] = int(ctx.hierarchy_parent_depth)
+    ctx.metrics["hierarchy_sibling_window"] = int(ctx.hierarchy_sibling_window)
+    ctx.metrics["hierarchy_overfetch_factor"] = int(ctx.hierarchy_overfetch_factor)
+    ctx.metrics["hierarchy_context_expansion_attempted"] = bool(ctx.hierarchy_expand_attempted)
+    ctx.metrics["hierarchy_context_expansion_used"] = bool(ctx.hierarchy_expand_used)
+    ctx.metrics["hierarchy_context_expansion_elapsed_sec"] = round(float(ctx.hierarchy_expand_elapsed or 0.0), 3)
+    ctx.metrics["hierarchy_context_expansion_error"] = ctx.hierarchy_expand_error
+    ctx.metrics["hierarchy_context_expansion_meta"] = (
+        dict(ctx.hierarchy_expand_meta) if isinstance(ctx.hierarchy_expand_meta, dict) else None
+    )
+
+    ctx.metrics["hyde_enabled"] = bool(ctx.hyde_enabled)
+    ctx.metrics["hyde_used"] = bool(ctx.hyde_used)
+    ctx.metrics["hyde_elapsed_sec"] = round(ctx.hyde_elapsed, 3)
+    ctx.metrics["hyde_model_used"] = ctx.hyde_model_used
+
+    ctx.metrics["decompose_enabled"] = bool(ctx.decompose_enabled)
+    ctx.metrics["decompose_used"] = bool(ctx.decompose_used)
+    ctx.metrics["decompose_count"] = len(ctx.sub_questions)
+    ctx.metrics["decompose_elapsed_sec"] = round(ctx.decompose_elapsed, 3)
+    ctx.metrics["decompose_model_used"] = ctx.decompose_model_used
+    ctx.metrics["decompose_parse_ok"] = bool(ctx.decompose_parse_meta.get("ok"))
+    ctx.metrics["decompose_parse_method"] = ctx.decompose_parse_meta.get("method")
+    ctx.metrics["decompose_parse_error"] = ctx.decompose_parse_meta.get("error")
+    ctx.metrics["decompose_chain_enabled"] = bool(ctx.decompose_chain_enabled)
+    ctx.metrics["decompose_chain_used"] = bool(ctx.decompose_chain_used)
+    ctx.metrics["decompose_chain_steps"] = int(ctx.decompose_chain_steps or 0)
+    ctx.metrics["decompose_chain_elapsed_sec"] = round(float(ctx.decompose_chain_elapsed or 0.0), 3)
+    ctx.metrics["parse_quality"] = dict(ctx.parse_quality_summary or {})
+    ctx.metrics["parse_quality_low_threshold"] = float(ctx.parse_quality_low_threshold)
+    ctx.metrics["parse_quality_alert_ratio"] = float(ctx.parse_quality_alert_ratio)
+    ctx.metrics["parse_quality_alert"] = bool((ctx.parse_quality_summary or {}).get("alert"))
+    ctx.metrics["parse_quality_low_ratio"] = float((ctx.parse_quality_summary or {}).get("low_ratio") or 0.0)
+    ctx.metrics["parse_quality_considered"] = int((ctx.parse_quality_summary or {}).get("considered") or 0)
+    ctx.metrics["parse_quality_recommendation"] = (ctx.parse_quality_summary or {}).get("recommendation")
+    ctx.metrics["parse_quality_gate_profile"] = str(ctx.parse_quality_gate_profile)
+    ctx.metrics["parse_quality_gate_violation"] = bool(ctx.parse_quality_gate_violation)
+    ctx.metrics["parse_quality_gate_blocked"] = bool(ctx.parse_quality_gate_blocked)
+    ctx.metrics["parse_quality_gate_reason"] = ctx.parse_quality_gate_reason
+    ctx.metrics["parse_risk"] = dict(ctx.parse_risk or {})
+    ctx.metrics["parse_risk_level"] = str(ctx.parse_risk.get("level") or "unknown")
+    ctx.metrics["parse_risk_score"] = float(ctx.parse_risk.get("score") or 0.0)
+    ctx.metrics["parse_risk_reason"] = str(ctx.parse_risk.get("reason") or "")
+    ctx.metrics["parse_risk_hardcase_eligible"] = bool(ctx.parse_risk.get("hardcase_eligible"))
+    ctx.metrics["parse_repair_actions"] = (
+        dict(ctx.parse_repair_actions_meta) if isinstance(ctx.parse_repair_actions_meta, dict) else None
+    )
+    ctx.metrics["parse_repair_actions_enabled"] = bool(isinstance(ctx.parse_repair_actions_meta, dict))
+    ctx.metrics["parse_repair_actions_run_id"] = (
+        str(ctx.parse_repair_actions_meta.get("run_id") or "")
+        if isinstance(ctx.parse_repair_actions_meta, dict)
         else ""
     ) or None
+    return None
 
-    # Grounding guard: abstain when evidence is weak/empty.
-    strict_visible = bool(
-        bool(state.get("visible_evidence_only"))
-        or bool(retrieval_contract_policy.get("force_visible_evidence_only"))
-    )
-    abstain_enabled = bool(settings.RAG_ABSTAIN_ENABLED) or strict_visible or bool(evidence_span_strict_enabled)
-    abstain_triggered = False
-    abstain_reason: str | None = None
-    top_rel = 0.0
-    if citations:
-        try:
-            top_rel = max(float((c.get("relevance_score") if c.get("relevance_score") is not None else c.get("retrieval_score")) or 0.0) for c in citations)
-        except (TypeError, ValueError, AttributeError):
-            top_rel = 0.0
 
-    if abstain_enabled:
+def _top_relevance_score(citations: list[dict[str, Any]]) -> float:
+    if not citations:
+        return 0.0
+    try:
+        return max(
+            float(
+                (
+                    citation.get("relevance_score")
+                    if citation.get("relevance_score") is not None
+                    else citation.get("retrieval_score")
+                )
+                or 0.0
+            )
+            for citation in citations
+        )
+    except (TypeError, ValueError, AttributeError):
+        return 0.0
+
+
+def _apply_abstain_thresholds(ctx: RetrievalRuntimeState) -> None:
+    if ctx.abstain_enabled:
         min_citations = max(0, int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0))
         min_top_rel = float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0)
-        if min_citations > 0 and len(citations) < min_citations:
-            abstain_triggered = True
-            abstain_reason = "citations_lt_min"
-        elif min_top_rel > 0 and top_rel < min_top_rel:
-            abstain_triggered = True
-            abstain_reason = "top_relevance_lt_min"
-    if parse_quality_gate_blocked:
-        abstain_enabled = True
-        if not abstain_triggered:
-            abstain_triggered = True
-            abstain_reason = "parse_quality_gate_strict"
-    if bool(must_recall_enabled) and not bool(must_recall_passed):
-        abstain_enabled = True
-        if not abstain_triggered:
-            abstain_triggered = True
-            abstain_reason = "must_recall_failed"
+        if min_citations > 0 and len(ctx.citations) < min_citations:
+            ctx.abstain_triggered = True
+            ctx.abstain_reason = "citations_lt_min"
+        elif min_top_rel > 0 and ctx.top_rel < min_top_rel:
+            ctx.abstain_triggered = True
+            ctx.abstain_reason = "top_relevance_lt_min"
+    if ctx.parse_quality_gate_blocked:
+        ctx.abstain_enabled = True
+        if not ctx.abstain_triggered:
+            ctx.abstain_triggered = True
+            ctx.abstain_reason = "parse_quality_gate_strict"
+    if ctx.must_recall_enabled and not ctx.must_recall_passed:
+        ctx.abstain_enabled = True
+        if not ctx.abstain_triggered:
+            ctx.abstain_triggered = True
+            ctx.abstain_reason = "must_recall_failed"
 
-    out_of_scope_guard = maybe_apply_out_of_scope_live_guard(
-        query=query_for_retrieval,
+
+def _apply_out_of_scope_guard(ctx: RetrievalRuntimeState) -> dict[str, Any]:
+    result = maybe_apply_out_of_scope_live_guard(
+        query=ctx.query_for_retrieval,
         enabled=bool(getattr(settings, "RAG_OUT_OF_SCOPE_LIVE_GUARD_ENABLED", False)),
-        candidate=bool(abstain_triggered or not citations),
-        current_triggered=bool(abstain_triggered),
-        current_reason=abstain_reason,
-        tenant_id=(str(state.get("tenant_id") or "").strip() or None),
-        dataset_id=(str(state.get("dataset_id") or "").strip() or None),
+        candidate=bool(ctx.abstain_triggered or not ctx.citations),
+        current_triggered=bool(ctx.abstain_triggered),
+        current_reason=ctx.abstain_reason,
+        tenant_id=(str(ctx.state.get("tenant_id") or "").strip() or None),
+        dataset_id=(str(ctx.state.get("dataset_id") or "").strip() or None),
         verifier=lambda: run_default_out_of_scope_live_guard(
-            query=query_for_retrieval,
-            tenant_id=str(state.get("tenant_id") or ""),
-            dataset_id=str(state.get("dataset_id") or ""),
+            query=ctx.query_for_retrieval,
+            tenant_id=str(ctx.state.get("tenant_id") or ""),
+            dataset_id=str(ctx.state.get("dataset_id") or ""),
             ruleset_name=(str(getattr(settings, "RAG_OUT_OF_SCOPE_RULESET", "") or "").strip() or None),
-            hyde_query=hyde_text if bool(hyde_used and hyde_text) else None,
+            hyde_query=ctx.hyde_text if bool(ctx.hyde_used and ctx.hyde_text) else None,
             vector_similarity_threshold=float(getattr(settings, "RAG_OUT_OF_SCOPE_VECTOR_THRESHOLD", 0.35) or 0.35),
             hyde_similarity_threshold=float(getattr(settings, "RAG_OUT_OF_SCOPE_HYDE_THRESHOLD", 0.4) or 0.4),
         ),
     )
-    abstain_triggered = bool(out_of_scope_guard.get("abstain_triggered"))
-    abstain_reason = out_of_scope_guard.get("abstain_reason")
+    ctx.abstain_triggered = bool(result.get("abstain_triggered"))
+    ctx.abstain_reason = result.get("abstain_reason")
+    return result
 
-    metrics["abstain_enabled"] = bool(abstain_enabled)
-    metrics["abstain_triggered"] = bool(abstain_triggered)
-    metrics["abstain_reason"] = abstain_reason
-    metrics["out_of_scope_guard_enabled"] = bool(getattr(settings, "RAG_OUT_OF_SCOPE_LIVE_GUARD_ENABLED", False))
+
+def _record_abstain_metrics(ctx: RetrievalRuntimeState, out_of_scope_guard: dict[str, Any]) -> None:
+    ctx.metrics["abstain_enabled"] = bool(ctx.abstain_enabled)
+    ctx.metrics["abstain_triggered"] = bool(ctx.abstain_triggered)
+    ctx.metrics["abstain_reason"] = ctx.abstain_reason
+    ctx.metrics["out_of_scope_guard_enabled"] = bool(getattr(settings, "RAG_OUT_OF_SCOPE_LIVE_GUARD_ENABLED", False))
     if isinstance(out_of_scope_guard.get("verdict"), dict):
-        metrics["out_of_scope_guard"] = dict(out_of_scope_guard.get("verdict") or {})
-    metrics["abstain_min_citations"] = int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0)
-    metrics["abstain_min_top_relevance_score"] = float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0)
-    metrics["visible_evidence_only_enabled"] = bool(strict_visible)
-    metrics["visible_evidence_only_requested"] = bool(state.get("visible_evidence_only"))
-    metrics["top_relevance_score"] = round(float(top_rel or 0.0), 3)
-    if bool(abstain_triggered):
-        metrics["abstain_followup"] = build_abstain_followup(reason=abstain_reason, citations=citations)
+        ctx.metrics["out_of_scope_guard"] = dict(out_of_scope_guard.get("verdict") or {})
+    ctx.metrics["abstain_min_citations"] = int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0)
+    ctx.metrics["abstain_min_top_relevance_score"] = float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0)
+    ctx.metrics["visible_evidence_only_enabled"] = bool(ctx.strict_visible)
+    ctx.metrics["visible_evidence_only_requested"] = bool(ctx.state.get("visible_evidence_only"))
+    ctx.metrics["top_relevance_score"] = round(float(ctx.top_rel or 0.0), 3)
+    if ctx.abstain_triggered:
+        ctx.metrics["abstain_followup"] = build_abstain_followup(
+            reason=ctx.abstain_reason,
+            citations=ctx.citations,
+        )
 
-    hardcase_emit_enabled = bool(getattr(settings, "RETRIEVAL_HARDCASE_EMIT_ENABLED", False))
-    if hardcase_emit_enabled and (abstain_triggered or not citations):
-        reason = "abstain" if abstain_triggered else "no_citations"
-        dedupe_payload = {
-            "reason": reason,
-            "query_hash": stable_hash(query_for_retrieval),
-            "mode": str(request_retrieval_mode or ""),
-            "profile": profile_norm or None,
-            "cfg_hash": metrics.get("retrieval_config_hash"),
-        }
-        metrics["hardcase_candidate"] = {
-            "schema": "mimirq.hardcase_candidate.v1",
-            "reason": reason,
-            "query_hash": stable_hash(query_for_retrieval),
-            "retrieval_mode": str(request_retrieval_mode or ""),
-            "retrieval_profile": profile_norm or None,
-            "dedupe_key": stable_hash(json.dumps(dedupe_payload, ensure_ascii=False, sort_keys=True), length=32),
-            "ts_ms": int(time.time() * 1000),
-        }
-    parse_risk_auto_enqueue_levels = {
-        str(x).strip().lower()
-        for x in parse_csv(str(getattr(settings, "RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS", "high,medium") or "high,medium"))
-        if str(x).strip()
+
+def _emit_retrieval_hardcase(ctx: RetrievalRuntimeState) -> None:
+    enabled = bool(getattr(settings, "RETRIEVAL_HARDCASE_EMIT_ENABLED", False))
+    if not enabled or (not ctx.abstain_triggered and ctx.citations):
+        return
+    reason = "abstain" if ctx.abstain_triggered else "no_citations"
+    dedupe_payload = {
+        "reason": reason,
+        "query_hash": stable_hash(ctx.query_for_retrieval),
+        "mode": str(ctx.request_retrieval_mode or ""),
+        "profile": ctx.profile_norm or None,
+        "cfg_hash": ctx.metrics.get("retrieval_config_hash"),
     }
-    if not parse_risk_auto_enqueue_levels:
-        parse_risk_auto_enqueue_levels = {"high", "medium"}
+    ctx.metrics["hardcase_candidate"] = {
+        "schema": "mimirq.hardcase_candidate.v1",
+        "reason": reason,
+        "query_hash": stable_hash(ctx.query_for_retrieval),
+        "retrieval_mode": str(ctx.request_retrieval_mode or ""),
+        "retrieval_profile": ctx.profile_norm or None,
+        "dedupe_key": stable_hash(
+            json.dumps(dedupe_payload, ensure_ascii=False, sort_keys=True),
+            length=32,
+        ),
+        "ts_ms": int(time.time() * 1000),
+    }
+
+
+def _parse_risk_enqueue_policy(ctx: RetrievalRuntimeState) -> dict[str, Any]:
+    levels = {
+        str(value).strip().lower()
+        for value in parse_csv(
+            str(getattr(settings, "RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS", "high,medium") or "high,medium")
+        )
+        if str(value).strip()
+    }
+    if not levels:
+        levels = {"high", "medium"}
     try:
-        parse_risk_auto_enqueue_min_score = float(
-            getattr(settings, "RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_MIN_SCORE", 0.0) or 0.0
-        )
+        min_score = float(getattr(settings, "RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_MIN_SCORE", 0.0) or 0.0)
     except (TypeError, ValueError, AttributeError):
-        parse_risk_auto_enqueue_min_score = 0.0
-    parse_risk_auto_enqueue_min_score = min(1.0, max(0.0, float(parse_risk_auto_enqueue_min_score)))
-    parse_risk_auto_enqueue_policy = evaluate_parse_risk_auto_enqueue_policy(
-        parse_risk=parse_risk,
+        min_score = 0.0
+    return evaluate_parse_risk_auto_enqueue_policy(
+        parse_risk=ctx.parse_risk,
         enabled=bool(getattr(settings, "RETRIEVAL_PARSE_RISK_HARDCASE_EMIT_ENABLED", False)),
-        allowed_levels=parse_risk_auto_enqueue_levels,
-        min_score=parse_risk_auto_enqueue_min_score,
+        allowed_levels=levels,
+        min_score=min(1.0, max(0.0, min_score)),
     )
-    metrics["parse_risk_auto_enqueue_policy"] = dict(parse_risk_auto_enqueue_policy or {})
 
-    if (
-        not isinstance(metrics.get("hardcase_candidate"), dict)
-        and bool(parse_risk_auto_enqueue_policy.get("enqueue"))
-    ):
-        parse_risk_candidate = build_parse_risk_hardcase_candidate(
-            query_hash=stable_hash(query_for_retrieval),
-            retrieval_mode=str(request_retrieval_mode or ""),
-            retrieval_profile=(profile_norm or None),
-            retrieval_config_hash=(metrics.get("retrieval_config_hash") if isinstance(metrics, dict) else None),
-            parse_risk=parse_risk,
-            ts_ms=int(time.time() * 1000),
-        )
-        if isinstance(parse_risk_candidate, dict):
-            metrics["hardcase_candidate"] = parse_risk_candidate
 
-    # Best-effort query_debug payload (bounded, structured).
-    query_debug: dict[str, Any] = {"original": question, "normalized": None, "applied_rules": [], "expansions": [], "contributions": [], "channels": None}
+def _emit_parse_risk_hardcase(ctx: RetrievalRuntimeState, policy: dict[str, Any]) -> None:
+    if isinstance(ctx.metrics.get("hardcase_candidate"), dict) or not bool(policy.get("enqueue")):
+        return
+    candidate = build_parse_risk_hardcase_candidate(
+        query_hash=stable_hash(ctx.query_for_retrieval),
+        retrieval_mode=str(ctx.request_retrieval_mode or ""),
+        retrieval_profile=(ctx.profile_norm or None),
+        retrieval_config_hash=(ctx.metrics.get("retrieval_config_hash") if isinstance(ctx.metrics, dict) else None),
+        parse_risk=ctx.parse_risk,
+        ts_ms=int(time.time() * 1000),
+    )
+    if isinstance(candidate, dict):
+        ctx.metrics["hardcase_candidate"] = candidate
+
+
+def _run_retrieval_abstain_hardcase_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
+    ctx.strict_visible = bool(
+        bool(ctx.state.get("visible_evidence_only"))
+        or bool(ctx.retrieval_contract_policy.get("force_visible_evidence_only"))
+    )
+    ctx.abstain_enabled = (
+        bool(settings.RAG_ABSTAIN_ENABLED) or ctx.strict_visible or bool(ctx.evidence_span_strict_enabled)
+    )
+    ctx.abstain_triggered = False
+    ctx.abstain_reason: str | None = None
+    ctx.top_rel = _top_relevance_score(ctx.citations)
+    _apply_abstain_thresholds(ctx)
+    out_of_scope_guard = _apply_out_of_scope_guard(ctx)
+    _record_abstain_metrics(ctx, out_of_scope_guard)
+    _emit_retrieval_hardcase(ctx)
+    parse_risk_auto_enqueue_policy = _parse_risk_enqueue_policy(ctx)
+    ctx.metrics["parse_risk_auto_enqueue_policy"] = dict(parse_risk_auto_enqueue_policy or {})
+    _emit_parse_risk_hardcase(ctx, parse_risk_auto_enqueue_policy)
+    return None
+
+
+def _populate_query_normalization_debug(ctx: RetrievalRuntimeState) -> None:
     try:
         norm_text: str | None = None
         applied_rules: list[str] = []
-        # Prefer the actual retriever normalization captured for the main query.
-        for item in retrieval_per_query:
+        for item in ctx.retrieval_per_query:
             if item.get("kind") != "main":
                 continue
             dbg = item.get("retriever_debug")
             dbg = dbg if isinstance(dbg, dict) else {}
             ch = dbg.get("channels")
             if isinstance(ch, dict):
-                query_debug["channels"] = ch
+                ctx.query_debug["channels"] = ch
             qn = dbg.get("query_normalization")
             qn = qn if isinstance(qn, dict) else {}
             norm_text = qn.get("normalized") if isinstance(qn.get("normalized"), str) else None
@@ -4102,428 +4024,481 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 applied_rules = [str(x) for x in ar if x is not None]
             break
         if not norm_text:
-            nq = normalize_query(query_for_retrieval)
+            nq = normalize_query(ctx.query_for_retrieval)
             norm_text = nq.normalized_text
             applied_rules = list(nq.applied_rules or [])
-        query_debug["normalized"] = norm_text
-        query_debug["applied_rules"] = applied_rules[:20]
+        ctx.query_debug["normalized"] = norm_text
+        ctx.query_debug["applied_rules"] = applied_rules[:20]
     except Exception as exc:
-        _log_orchestrator_fallback('run_retrieval', exc)
-        query_debug["normalized"] = query_for_retrieval
-        query_debug["applied_rules"] = []
+        _log_orchestrator_fallback("run_retrieval", exc)
+        ctx.query_debug["normalized"] = ctx.query_for_retrieval
+        ctx.query_debug["applied_rules"] = []
 
-    expansions_dbg: list[dict[str, Any]] = []
-    for q in alias_queries:
-        expansions_dbg.append({"kind": "alias", "expanded_text": q, "source_rule_id": "alias", "weight": 1.0})
-    for e in dict_expansions:
-        if not isinstance(e, dict):
-            continue
-        item = dict(e)
-        item.setdefault("kind", "dict")
-        expansions_dbg.append(item)
-    for q in kg_query_expansion_queries:
-        expansions_dbg.append({"kind": "kgq", "expanded_text": q, "source_rule_id": "kg:entity_name", "weight": 1.0})
-    for q in clause_fastlane_queries:
-        expansions_dbg.append({"kind": "clause", "expanded_text": q, "source_rule_id": "policy:clause_ref", "weight": 1.0})
-    for q in multi_queries:
-        expansions_dbg.append({"kind": "mq", "expanded_text": q, "source_rule_id": "llm:multi_query", "weight": 1.0})
-    if step_back_used and step_back_query:
-        expansions_dbg.append(
-            {"kind": "step_back", "expanded_text": step_back_query, "source_rule_id": "llm:step_back", "weight": 1.0}
+
+def _dictionary_debug_expansions(expansions: list[Any]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for expansion in expansions:
+        if isinstance(expansion, dict):
+            item = dict(expansion)
+            item.setdefault("kind", "dict")
+            result.append(item)
+    return result
+
+
+def _query_debug_expansions(ctx: RetrievalRuntimeState) -> list[dict[str, Any]]:
+    expansions = [
+        {"kind": "alias", "expanded_text": query, "source_rule_id": "alias", "weight": 1.0}
+        for query in ctx.alias_queries
+    ]
+    expansions.extend(_dictionary_debug_expansions(ctx.dict_expansions))
+    expansions.extend(
+        {"kind": "kgq", "expanded_text": query, "source_rule_id": "kg:entity_name", "weight": 1.0}
+        for query in ctx.kg_query_expansion_queries
+    )
+    expansions.extend(
+        {"kind": "clause", "expanded_text": query, "source_rule_id": "policy:clause_ref", "weight": 1.0}
+        for query in ctx.clause_fastlane_queries
+    )
+    expansions.extend(
+        {"kind": "mq", "expanded_text": query, "source_rule_id": "llm:multi_query", "weight": 1.0}
+        for query in ctx.multi_queries
+    )
+    if ctx.step_back_used and ctx.step_back_query:
+        expansions.append(
+            {
+                "kind": "step_back",
+                "expanded_text": ctx.step_back_query,
+                "source_rule_id": "llm:step_back",
+                "weight": 1.0,
+            }
         )
-    for q in sub_questions:
-        expansions_dbg.append({"kind": "subq", "expanded_text": q, "source_rule_id": "llm:decompose", "weight": 1.0})
-    if hyde_used and hyde_text:
-        expansions_dbg.append({"kind": "hyde", "expanded_text": hyde_text, "source_rule_id": "llm:hyde", "weight": 1.0})
-    query_debug["expansions"] = expansions_dbg[:20]
-    query_debug["decompose_chain"] = {
-        "enabled": bool(decompose_chain_enabled),
-        "used": bool(decompose_chain_used),
-        "steps": int(decompose_chain_steps or 0),
-        "queries": decompose_chain_queries[:5],
-        "elapsed_sec": round(float(decompose_chain_elapsed or 0.0), 3),
-    }
-    if kg_query_expansion_entity_names:
-        query_debug["kg_entities"] = kg_query_expansion_entity_names[:10]
+    expansions.extend(
+        {"kind": "subq", "expanded_text": query, "source_rule_id": "llm:decompose", "weight": 1.0}
+        for query in ctx.sub_questions
+    )
+    if ctx.hyde_used and ctx.hyde_text:
+        expansions.append({"kind": "hyde", "expanded_text": ctx.hyde_text, "source_rule_id": "llm:hyde", "weight": 1.0})
+    return expansions[:20]
 
+
+def _query_debug_contributions(ctx: RetrievalRuntimeState) -> list[dict[str, Any]]:
     try:
         by_role: dict[str, int] = {}
-        for c in citations:
-            if not isinstance(c, dict):
+        for citation in ctx.citations:
+            if not isinstance(citation, dict):
                 continue
-            role = str(c.get("retrieval_role") or "main").strip() or "main"
+            role = str(citation.get("retrieval_role") or "main").strip() or "main"
             by_role[role] = by_role.get(role, 0) + 1
-        query_debug["contributions"] = [{"retrieval_role": k, "citations": v} for k, v in sorted(by_role.items(), key=lambda kv: (-kv[1], kv[0]))]
+        return [
+            {"retrieval_role": role, "citations": count}
+            for role, count in sorted(by_role.items(), key=lambda item: (-item[1], item[0]))
+        ]
     except Exception as exc:
-        _log_orchestrator_fallback('run_retrieval', exc)
-        query_debug["contributions"] = []
+        _log_orchestrator_fallback("run_retrieval", exc)
+        return []
 
-    query_debug["query_for_retrieval"] = query_for_retrieval
-    query_debug["rewrite_used"] = bool(rewrite_used)
-    query_debug["retrieval_profile"] = profile_norm or None
-    query_debug["retrieval_profile_requested"] = (
-        str(requested_retrieval_profile).strip().lower() if requested_retrieval_profile is not None else None
-    )
-    router_layers = build_router_layers(
-        query=query_for_retrieval,
-        entity_key=(str(state.get("entity_key") or "").strip() or None),
-        partition_keys=(list(state.get("partition_keys") or []) if isinstance(state.get("partition_keys"), list) else None),
-        entity_candidates=(list(state.get("entity_candidates") or []) if isinstance(state.get("entity_candidates"), list) else None),
-        intent_meta=(intent_router_meta if isinstance(intent_router_meta, dict) else None),
-    )
-    query_debug["router_layers"] = router_layers
-    query_debug["intent_router"] = intent_router_meta
-    query_debug["industry_rules"] = industry_rules_meta
-    query_debug["adaptive_router"] = adaptive_router_meta
-    query_debug["channel_budget_policy"] = channel_budget_policy_meta
-    query_debug["temporal_intent"] = {
-        "enabled": bool(temporal_intent_enabled),
-        "detected": bool(temporal_intent_meta.get("detected")),
-        "reason_codes": list(temporal_intent_meta.get("reason_codes") or []),
-        "recency_rerank": (
-            dict(temporal_recency_meta) if isinstance(temporal_recency_meta, dict) else None
-        ),
+
+def _run_retrieval_query_debug_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
+    ctx.query_debug = {
+        "original": ctx.question,
+        "normalized": None,
+        "applied_rules": [],
+        "expansions": [],
+        "contributions": [],
+        "channels": None,
     }
-    query_debug["hierarchy_recall"] = {
-        "enabled": bool(hierarchy_recall_enabled),
-        "family_collapse": bool(hierarchy_family_collapse),
-        "family_aggregation": str(hierarchy_family_aggregation),
+    _populate_query_normalization_debug(ctx)
+    ctx.query_debug["expansions"] = _query_debug_expansions(ctx)
+    ctx.query_debug["decompose_chain"] = {
+        "enabled": bool(ctx.decompose_chain_enabled),
+        "used": bool(ctx.decompose_chain_used),
+        "steps": int(ctx.decompose_chain_steps or 0),
+        "queries": ctx.decompose_chain_queries[:5],
+        "elapsed_sec": round(float(ctx.decompose_chain_elapsed or 0.0), 3),
+    }
+    if ctx.kg_query_expansion_entity_names:
+        ctx.query_debug["kg_entities"] = ctx.kg_query_expansion_entity_names[:10]
+    ctx.query_debug["contributions"] = _query_debug_contributions(ctx)
+
+    ctx.query_debug["query_for_retrieval"] = ctx.query_for_retrieval
+    ctx.query_debug["rewrite_used"] = bool(ctx.rewrite_used)
+    ctx.query_debug["retrieval_profile"] = ctx.profile_norm or None
+    ctx.query_debug["retrieval_profile_requested"] = (
+        str(ctx.requested_retrieval_profile).strip().lower() if ctx.requested_retrieval_profile is not None else None
+    )
+    ctx.router_layers = build_router_layers(
+        query=ctx.query_for_retrieval,
+        entity_key=(str(ctx.state.get("entity_key") or "").strip() or None),
+        partition_keys=(
+            list(ctx.state.get("partition_keys") or []) if isinstance(ctx.state.get("partition_keys"), list) else None
+        ),
+        entity_candidates=(
+            list(ctx.state.get("entity_candidates") or [])
+            if isinstance(ctx.state.get("entity_candidates"), list)
+            else None
+        ),
+        intent_meta=(ctx.intent_router_meta if isinstance(ctx.intent_router_meta, dict) else None),
+    )
+    ctx.query_debug["router_layers"] = ctx.router_layers
+    ctx.query_debug["intent_router"] = ctx.intent_router_meta
+    ctx.query_debug["industry_rules"] = ctx.industry_rules_meta
+    ctx.query_debug["adaptive_router"] = ctx.adaptive_router_meta
+    ctx.query_debug["channel_budget_policy"] = ctx.channel_budget_policy_meta
+    ctx.query_debug["temporal_intent"] = {
+        "enabled": bool(ctx.temporal_intent_enabled),
+        "detected": bool(ctx.temporal_intent_meta.get("detected")),
+        "reason_codes": list(ctx.temporal_intent_meta.get("reason_codes") or []),
+        "recency_rerank": (dict(ctx.temporal_recency_meta) if isinstance(ctx.temporal_recency_meta, dict) else None),
+    }
+    ctx.query_debug["hierarchy_recall"] = {
+        "enabled": bool(ctx.hierarchy_recall_enabled),
+        "family_collapse": bool(ctx.hierarchy_family_collapse),
+        "family_aggregation": str(ctx.hierarchy_family_aggregation),
         "family_aggregation_meta": (
-            dict(family_aggregation_meta) if isinstance(family_aggregation_meta, dict) else None
+            dict(ctx.family_aggregation_meta) if isinstance(ctx.family_aggregation_meta, dict) else None
         ),
-        "tree_dedup": bool(hierarchy_tree_dedup),
-        "parent_depth": int(hierarchy_parent_depth),
-        "sibling_window": int(hierarchy_sibling_window),
-        "overfetch_factor": int(hierarchy_overfetch_factor),
-        "tree_dedup_meta": (dict(tree_dedup_meta) if isinstance(tree_dedup_meta, dict) else None),
-        "context_expansion_attempted": bool(hierarchy_expand_attempted),
-        "context_expansion_used": bool(hierarchy_expand_used),
-        "context_expansion_elapsed_sec": round(float(hierarchy_expand_elapsed or 0.0), 3),
-        "context_expansion_error": hierarchy_expand_error,
-        "context_expansion_meta": (dict(hierarchy_expand_meta) if isinstance(hierarchy_expand_meta, dict) else None),
+        "tree_dedup": bool(ctx.hierarchy_tree_dedup),
+        "parent_depth": int(ctx.hierarchy_parent_depth),
+        "sibling_window": int(ctx.hierarchy_sibling_window),
+        "overfetch_factor": int(ctx.hierarchy_overfetch_factor),
+        "tree_dedup_meta": (dict(ctx.tree_dedup_meta) if isinstance(ctx.tree_dedup_meta, dict) else None),
+        "context_expansion_attempted": bool(ctx.hierarchy_expand_attempted),
+        "context_expansion_used": bool(ctx.hierarchy_expand_used),
+        "context_expansion_elapsed_sec": round(float(ctx.hierarchy_expand_elapsed or 0.0), 3),
+        "context_expansion_error": ctx.hierarchy_expand_error,
+        "context_expansion_meta": (
+            dict(ctx.hierarchy_expand_meta) if isinstance(ctx.hierarchy_expand_meta, dict) else None
+        ),
     }
-    query_debug["contextual_followup"] = {
-        "enabled": bool(contextual_followup_enabled),
-        "attempted": bool(contextual_followup_attempted),
-        "used": bool(contextual_followup_used),
-        "mode": str(contextual_followup_mode),
-        "top_k": int(contextual_followup_top_k),
-        "added_docs": int(contextual_followup_added_docs),
-        "added_citations": int(contextual_followup_added_citations),
-        "reason_codes": list(contextual_followup_reason_codes or []),
-        "selected_terms": list(contextual_followup_selected_terms or []),
-        "query": (str(contextual_followup_followup_query)[:220] if contextual_followup_followup_query else None),
-        "error": contextual_followup_error,
+    ctx.query_debug["contextual_followup"] = {
+        "enabled": bool(ctx.contextual_followup_enabled),
+        "attempted": bool(ctx.contextual_followup_attempted),
+        "used": bool(ctx.contextual_followup_used),
+        "mode": str(ctx.contextual_followup_mode),
+        "top_k": int(ctx.contextual_followup_top_k),
+        "added_docs": int(ctx.contextual_followup_added_docs),
+        "added_citations": int(ctx.contextual_followup_added_citations),
+        "reason_codes": list(ctx.contextual_followup_reason_codes or []),
+        "selected_terms": list(ctx.contextual_followup_selected_terms or []),
+        "query": (
+            str(ctx.contextual_followup_followup_query)[:220] if ctx.contextual_followup_followup_query else None
+        ),
+        "error": ctx.contextual_followup_error,
     }
-    query_debug["iterative_pass"] = {
-        "enabled": bool(contextual_followup_enabled),
-        "max_hops": int(contextual_followup_max_hops),
-        "latency_budget_ms": round(float(contextual_followup_latency_budget_ms), 3),
+    ctx.query_debug["iterative_pass"] = {
+        "enabled": bool(ctx.contextual_followup_enabled),
+        "max_hops": int(ctx.contextual_followup_max_hops),
+        "latency_budget_ms": round(float(ctx.contextual_followup_latency_budget_ms), 3),
         "hops_attempted": int(
-            len([h for h in iterative_pass_hops if isinstance(h, dict) and bool(h.get("attempted"))])
+            len([h for h in ctx.iterative_pass_hops if isinstance(h, dict) and bool(h.get("attempted"))])
         ),
-        "hops_used": int(
-            len([h for h in iterative_pass_hops if isinstance(h, dict) and bool(h.get("used"))])
-        ),
-        "reason_codes": list(iterative_pass_reason_codes or [])[:16],
-        "gap": (dict(iterative_pass_gap or {}) if isinstance(iterative_pass_gap, dict) else None),
-        "hops": [h for h in list(iterative_pass_hops or [])[:5] if isinstance(h, dict)],
+        "hops_used": int(len([h for h in ctx.iterative_pass_hops if isinstance(h, dict) and bool(h.get("used"))])),
+        "reason_codes": list(ctx.iterative_pass_reason_codes or [])[:16],
+        "gap": (dict(ctx.iterative_pass_gap or {}) if isinstance(ctx.iterative_pass_gap, dict) else None),
+        "hops": [h for h in list(ctx.iterative_pass_hops or [])[:5] if isinstance(h, dict)],
     }
-    query_debug["parse_quality"] = {
-        "considered": int((parse_quality_summary or {}).get("considered") or 0),
-        "low_ratio": float((parse_quality_summary or {}).get("low_ratio") or 0.0),
-        "alert": bool((parse_quality_summary or {}).get("alert")),
-        "recommendation": (parse_quality_summary or {}).get("recommendation"),
-        "gate_profile": str(parse_quality_gate_profile),
-        "gate_violation": bool(parse_quality_gate_violation),
-        "gate_blocked": bool(parse_quality_gate_blocked),
-        "gate_reason": parse_quality_gate_reason,
+    ctx.query_debug["parse_quality"] = {
+        "considered": int((ctx.parse_quality_summary or {}).get("considered") or 0),
+        "low_ratio": float((ctx.parse_quality_summary or {}).get("low_ratio") or 0.0),
+        "alert": bool((ctx.parse_quality_summary or {}).get("alert")),
+        "recommendation": (ctx.parse_quality_summary or {}).get("recommendation"),
+        "gate_profile": str(ctx.parse_quality_gate_profile),
+        "gate_violation": bool(ctx.parse_quality_gate_violation),
+        "gate_blocked": bool(ctx.parse_quality_gate_blocked),
+        "gate_reason": ctx.parse_quality_gate_reason,
     }
-    query_debug["parse_risk_auto_enqueue"] = (
-        dict(metrics.get("parse_risk_auto_enqueue_policy"))
-        if isinstance(metrics.get("parse_risk_auto_enqueue_policy"), dict)
+    ctx.query_debug["parse_risk_auto_enqueue"] = (
+        dict(ctx.metrics.get("parse_risk_auto_enqueue_policy"))
+        if isinstance(ctx.metrics.get("parse_risk_auto_enqueue_policy"), dict)
         else None
     )
-    query_debug["parse_repair_actions"] = (
-        dict(metrics.get("parse_repair_actions"))
-        if isinstance(metrics.get("parse_repair_actions"), dict)
+    ctx.query_debug["parse_repair_actions"] = (
+        dict(ctx.metrics.get("parse_repair_actions"))
+        if isinstance(ctx.metrics.get("parse_repair_actions"), dict)
         else None
     )
-    query_debug["query_expansion_budget"] = dict(query_expansion_budget_meta)
-    query_debug["retrieval_degraded"] = bool(retrieval_degraded)
-    query_debug["retrieval_degraded_reasons"] = list(retrieval_degraded_reason_codes or [])
-    query_debug["channel_health"] = dict(retrieval_channel_health)
-    query_debug["fallback_reason"] = retrieval_fallback_reason
-    query_debug["multi_query_ab"] = {
-        "test_key": multi_query_ab_test_key,
-        "variant": multi_query_ab_variant,
-        "seed": multi_query_ab_seed,
-        "forced_enable": bool(multi_query_ab_forced),
+    ctx.query_debug["query_expansion_budget"] = dict(ctx.query_expansion_budget_meta)
+    ctx.query_debug["retrieval_degraded"] = bool(ctx.retrieval_degraded)
+    ctx.query_debug["retrieval_degraded_reasons"] = list(ctx.retrieval_degraded_reason_codes or [])
+    ctx.query_debug["channel_health"] = dict(ctx.retrieval_channel_health)
+    ctx.query_debug["fallback_reason"] = ctx.retrieval_fallback_reason
+    ctx.query_debug["multi_query_ab"] = {
+        "test_key": ctx.multi_query_ab_test_key,
+        "variant": ctx.multi_query_ab_variant,
+        "seed": ctx.multi_query_ab_seed,
+        "forced_enable": bool(ctx.multi_query_ab_forced),
     }
-    query_debug["retrieval_contract"] = {
-        "mode": retrieval_contract_mode or None,
-        "deterministic_recall": bool(contract_deterministic_recall),
-        "must_recall_strict": bool(contract_must_recall_strict),
-        "must_recall_enabled": bool(must_recall_enabled),
-        "must_recall_status": str(must_recall_status),
-        "must_recall_passed": bool(must_recall_passed),
-        "must_recall_expected_source_keys": list(must_recall_expected_source_keys or []),
-        "must_recall_missing_source_keys": list(missing_source_keys or [])[:20],
-        "must_recall_required_anchor_fields": list(must_recall_required_anchor_fields or []),
+    ctx.query_debug["retrieval_contract"] = {
+        "mode": ctx.retrieval_contract_mode or None,
+        "deterministic_recall": bool(ctx.contract_deterministic_recall),
+        "must_recall_strict": bool(ctx.contract_must_recall_strict),
+        "must_recall_enabled": bool(ctx.must_recall_enabled),
+        "must_recall_status": str(ctx.must_recall_status),
+        "must_recall_passed": bool(ctx.must_recall_passed),
+        "must_recall_expected_source_keys": list(ctx.must_recall_expected_source_keys or []),
+        "must_recall_missing_source_keys": list(ctx.missing_source_keys or [])[:20],
+        "must_recall_required_anchor_fields": list(ctx.must_recall_required_anchor_fields or []),
         "must_recall_auto_expected_source_keys": {
-            "enabled": bool(must_recall_auto_expected_source_keys_enabled),
-            "applied": bool(must_recall_auto_expected_source_keys_applied),
-            "keys": list(must_recall_auto_expected_source_keys or []),
-            "reason_codes": list(must_recall_auto_expected_source_keys_reason_codes or []),
-            "confidence": str(must_recall_auto_expected_source_keys_confidence or "none"),
+            "enabled": bool(ctx.must_recall_auto_expected_source_keys_enabled),
+            "applied": bool(ctx.must_recall_auto_expected_source_keys_applied),
+            "keys": list(ctx.must_recall_auto_expected_source_keys or []),
+            "reason_codes": list(ctx.must_recall_auto_expected_source_keys_reason_codes or []),
+            "confidence": str(ctx.must_recall_auto_expected_source_keys_confidence or "none"),
         },
         "must_recall_auto_required_anchor_fields": {
-            "enabled": bool(must_recall_auto_required_anchor_fields_enabled),
-            "applied": bool(must_recall_auto_required_anchor_fields_applied),
-            "fields": list(must_recall_auto_required_anchor_fields or []),
-            "reason_codes": list(must_recall_auto_required_anchor_fields_reason_codes or []),
+            "enabled": bool(ctx.must_recall_auto_required_anchor_fields_enabled),
+            "applied": bool(ctx.must_recall_auto_required_anchor_fields_applied),
+            "fields": list(ctx.must_recall_auto_required_anchor_fields or []),
+            "reason_codes": list(ctx.must_recall_auto_required_anchor_fields_reason_codes or []),
         },
-        "must_recall_anchor_missing_counts": dict(must_recall_anchor_eval.get("missing_counts") or {}),
-        "must_recall_fail_reasons": list(must_recall_fail_reasons or [])[:12],
+        "must_recall_anchor_missing_counts": dict(ctx.must_recall_anchor_eval.get("missing_counts") or {}),
+        "must_recall_fail_reasons": list(ctx.must_recall_fail_reasons or [])[:12],
         "contract_fail_reason_taxonomy": str(
-            retrieval_contract_policy.get("contract_fail_reason_taxonomy") or MUST_RECALL_FAIL_REASON_TAXONOMY_V1
+            ctx.retrieval_contract_policy.get("contract_fail_reason_taxonomy") or MUST_RECALL_FAIL_REASON_TAXONOMY_V1
         ),
-        "second_pass": dict(must_recall_second_pass_payload),
-        "must_recall_proof": dict(must_recall_proof),
+        "second_pass": dict(ctx.must_recall_second_pass_payload),
+        "must_recall_proof": dict(ctx.must_recall_proof),
     }
-    if empty_diag:
-        query_debug["empty_retrieval"] = empty_diag
+    if ctx.empty_diag:
+        ctx.query_debug["empty_retrieval"] = ctx.empty_diag
+    return None
 
-    # Stable retrieval trace contract (versioned, parseable by downstream systems).
-    #
-    # Keep this separate from `metrics` (free-form counters) and `query_debug` (best-effort text payloads).
-    retrieval_trace = build_retrieval_trace_stage(
+
+def _run_retrieval_retrieval_trace_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
+    ctx.retrieval_trace = build_retrieval_trace_stage(
         RetrievalTraceStageInput(
-            query_for_retrieval=query_for_retrieval,
-            requested_retrieval_mode=requested_retrieval_mode,
-            request_retrieval_mode=request_retrieval_mode,
-            retrieval_mode_routed=bool(retrieval_mode_routed),
-            requested_retrieval_profile=requested_retrieval_profile,
-            profile_norm=profile_norm or None,
-            retrieval_contract_mode=retrieval_contract_mode or None,
-            retrieval_contract_policy=dict(retrieval_contract_policy or {}),
-            contract_deterministic_recall=bool(contract_deterministic_recall),
-            must_recall_enabled=bool(must_recall_enabled),
-            must_recall_status=str(must_recall_status),
-            must_recall_passed=bool(must_recall_passed),
-            must_recall_expected_source_keys=list(must_recall_expected_source_keys or []),
-            missing_source_keys=list(missing_source_keys or []),
-            must_recall_required_anchor_fields=list(must_recall_required_anchor_fields or []),
-            must_recall_auto_expected_source_keys_enabled=bool(must_recall_auto_expected_source_keys_enabled),
-            must_recall_auto_expected_source_keys_applied=bool(must_recall_auto_expected_source_keys_applied),
-            must_recall_auto_expected_source_keys=list(must_recall_auto_expected_source_keys or []),
+            query_for_retrieval=ctx.query_for_retrieval,
+            requested_retrieval_mode=ctx.requested_retrieval_mode,
+            request_retrieval_mode=ctx.request_retrieval_mode,
+            retrieval_mode_routed=bool(ctx.retrieval_mode_routed),
+            requested_retrieval_profile=ctx.requested_retrieval_profile,
+            profile_norm=ctx.profile_norm or None,
+            retrieval_contract_mode=ctx.retrieval_contract_mode or None,
+            retrieval_contract_policy=dict(ctx.retrieval_contract_policy or {}),
+            contract_deterministic_recall=bool(ctx.contract_deterministic_recall),
+            must_recall_enabled=bool(ctx.must_recall_enabled),
+            must_recall_status=str(ctx.must_recall_status),
+            must_recall_passed=bool(ctx.must_recall_passed),
+            must_recall_expected_source_keys=list(ctx.must_recall_expected_source_keys or []),
+            missing_source_keys=list(ctx.missing_source_keys or []),
+            must_recall_required_anchor_fields=list(ctx.must_recall_required_anchor_fields or []),
+            must_recall_auto_expected_source_keys_enabled=bool(ctx.must_recall_auto_expected_source_keys_enabled),
+            must_recall_auto_expected_source_keys_applied=bool(ctx.must_recall_auto_expected_source_keys_applied),
+            must_recall_auto_expected_source_keys=list(ctx.must_recall_auto_expected_source_keys or []),
             must_recall_auto_expected_source_keys_reason_codes=list(
-                must_recall_auto_expected_source_keys_reason_codes or []
+                ctx.must_recall_auto_expected_source_keys_reason_codes or []
             ),
             must_recall_auto_expected_source_keys_confidence=str(
-                must_recall_auto_expected_source_keys_confidence or "none"
+                ctx.must_recall_auto_expected_source_keys_confidence or "none"
             ),
-            must_recall_auto_required_anchor_fields_enabled=bool(
-                must_recall_auto_required_anchor_fields_enabled
-            ),
-            must_recall_auto_required_anchor_fields_applied=bool(
-                must_recall_auto_required_anchor_fields_applied
-            ),
-            must_recall_auto_required_anchor_fields=list(must_recall_auto_required_anchor_fields or []),
+            must_recall_auto_required_anchor_fields_enabled=bool(ctx.must_recall_auto_required_anchor_fields_enabled),
+            must_recall_auto_required_anchor_fields_applied=bool(ctx.must_recall_auto_required_anchor_fields_applied),
+            must_recall_auto_required_anchor_fields=list(ctx.must_recall_auto_required_anchor_fields or []),
             must_recall_auto_required_anchor_fields_reason_codes=list(
-                must_recall_auto_required_anchor_fields_reason_codes or []
+                ctx.must_recall_auto_required_anchor_fields_reason_codes or []
             ),
-            must_recall_anchor_eval=dict(must_recall_anchor_eval or {}),
-            must_recall_fail_reasons=list(must_recall_fail_reasons or []),
-            must_recall_second_pass_payload=dict(must_recall_second_pass_payload),
-            must_recall_proof=dict(must_recall_proof),
-            intent_router_meta=dict(intent_router_meta),
-            industry_rules_meta=dict(industry_rules_meta),
-            adaptive_router_meta=dict(adaptive_router_meta),
-            channel_budget_policy_meta=dict(channel_budget_policy_meta),
-            router_layers=dict(router_layers),
-            contextual_followup_enabled=bool(contextual_followup_enabled),
-            contextual_followup_attempted=bool(contextual_followup_attempted),
-            contextual_followup_used=bool(contextual_followup_used),
-            contextual_followup_mode=str(contextual_followup_mode),
-            contextual_followup_top_k=int(contextual_followup_top_k),
-            contextual_followup_max_docs=int(contextual_followup_max_docs),
-            contextual_followup_max_terms=int(contextual_followup_max_terms),
-            contextual_followup_min_term_chars=int(contextual_followup_min_term_chars),
-            contextual_followup_query_hash=contextual_followup_query_hash,
-            contextual_followup_added_docs=int(contextual_followup_added_docs),
-            contextual_followup_added_citations=int(contextual_followup_added_citations),
-            contextual_followup_reason_codes=list(contextual_followup_reason_codes or []),
-            contextual_followup_selected_terms=list(contextual_followup_selected_terms or []),
-            contextual_followup_elapsed=float(contextual_followup_elapsed or 0.0),
-            contextual_followup_error=contextual_followup_error,
-            contextual_followup_max_hops=int(contextual_followup_max_hops),
-            contextual_followup_latency_budget_ms=float(contextual_followup_latency_budget_ms),
-            iterative_pass_hops=list(iterative_pass_hops or []),
-            iterative_pass_reason_codes=list(iterative_pass_reason_codes or []),
-            iterative_pass_gap=(dict(iterative_pass_gap or {}) if isinstance(iterative_pass_gap, dict) else None),
-            hard_fallback_enabled=bool(hard_fallback_enabled),
-            hard_fallback_attempted=bool(hard_fallback_attempted),
-            hard_fallback_used=bool(hard_fallback_used),
-            retrieval_fallback_reason=retrieval_fallback_reason,
-            hard_fallback_mode=hard_fallback_mode,
-            hard_fallback_top_k=int(hard_fallback_top_k),
-            hard_fallback_elapsed=float(hard_fallback_elapsed or 0.0),
-            hard_fallback_added_docs=int(hard_fallback_added_docs or 0),
-            hard_fallback_added_citations=int(hard_fallback_added_citations or 0),
-            hard_fallback_error=hard_fallback_error,
-            rewrite_enabled=bool(rewrite_enabled),
-            rewrite_strategy_id=rewrite_strategy_id,
-            rewrite_strategy_hash=rewrite_strategy_hash,
-            rewrite_temperature=rewrite_temperature,
-            rewrite_max_chars=rewrite_max_chars,
-            rewrite_used=bool(rewrite_used),
-            rewrite_elapsed=float(rewrite_elapsed or 0.0),
-            rewrite_model_used=rewrite_model_used,
-            query_expansion_budget_meta=dict(query_expansion_budget_meta),
-            alias_enabled=bool(alias_enabled),
-            alias_used=bool(alias_used),
-            alias_queries=list(alias_queries or []),
-            alias_elapsed=float(alias_elapsed or 0.0),
-            dict_meta=dict(dict_meta or {}),
-            dict_used=bool(dict_used),
-            dict_expansions=list(dict_expansions or []),
-            dict_elapsed=float(dict_elapsed or 0.0),
-            kg_query_expansion_enabled=bool(kg_query_expansion_enabled),
-            kg_query_expansion_used=bool(kg_query_expansion_used),
-            kg_query_expansion_entities_total=int(kg_query_expansion_entities_total),
-            kg_query_expansion_entities_selected=int(kg_query_expansion_entities_selected),
-            kg_query_expansion_queries=list(kg_query_expansion_queries or []),
-            kg_query_expansion_elapsed=float(kg_query_expansion_elapsed or 0.0),
-            kg_query_expansion_error=kg_query_expansion_error,
-            clause_fastlane_queries=list(clause_fastlane_queries or []),
-            lightweight_subqueries=list(lightweight_subqueries or []),
-            mq_enabled=bool(mq_enabled),
-            multi_query_used=bool(multi_query_used),
-            multi_queries=list(multi_queries or []),
-            multi_query_elapsed=float(multi_query_elapsed or 0.0),
-            multi_query_model_used=multi_query_model_used,
-            multi_query_parse_meta=dict(multi_query_parse_meta or {}),
-            multi_query_ab_test_key=multi_query_ab_test_key,
-            multi_query_ab_variant=multi_query_ab_variant,
-            multi_query_ab_seed=multi_query_ab_seed,
-            multi_query_ab_forced=bool(multi_query_ab_forced),
-            step_back_enabled=bool(step_back_enabled),
-            step_back_used=bool(step_back_used),
-            step_back_elapsed=float(step_back_elapsed or 0.0),
-            step_back_model_used=step_back_model_used,
-            step_back_parse_meta=dict(step_back_parse_meta or {}),
-            hyde_enabled=bool(hyde_enabled),
-            hyde_used=bool(hyde_used),
-            hyde_elapsed=float(hyde_elapsed or 0.0),
-            hyde_model_used=hyde_model_used,
-            decompose_used=bool(decompose_used),
-            sub_questions=list(sub_questions or []),
-            decompose_elapsed=float(decompose_elapsed or 0.0),
-            decompose_model_used=decompose_model_used,
-            decompose_parse_meta=dict(decompose_parse_meta or {}),
-            top_k=int(top_k),
-            retriever_update=dict(retriever_update or {}),
-            retrieval_parallelism=int(retrieval_parallelism),
-            retrieval_plan=list(retrieval_plan or []),
-            retrieval_per_query=list(retrieval_per_query or []),
-            retrieval_errors=list(retrieval_errors or []),
-            retrieval_elapsed=float(retrieval_elapsed or 0.0),
-            retrieval_degraded=bool(retrieval_degraded),
-            retrieval_degraded_reason_codes=list(retrieval_degraded_reason_codes or []),
-            retrieval_channel_health=dict(retrieval_channel_health),
-            docs_by_query=docs_by_query,
-            mq_diversify_enabled=bool(mq_diversify_enabled),
-            mq_diversify_budget=int(mq_diversify_budget or 0),
-            mq_diversify_used=bool(mq_diversify_used),
-            mq_diversify_selected_mq=int(mq_diversify_selected_mq or 0),
-            mq_diversify_selected_non_mq=int(mq_diversify_selected_non_mq or 0),
-            mq_diversify_fill_from_fused=int(mq_diversify_fill_from_fused or 0),
-            hierarchy_recall_enabled=bool(hierarchy_recall_enabled),
-            hierarchy_family_collapse=bool(hierarchy_family_collapse),
-            hierarchy_family_aggregation=str(hierarchy_family_aggregation),
-            hierarchy_tree_dedup=bool(hierarchy_tree_dedup),
-            hierarchy_parent_depth=int(hierarchy_parent_depth),
-            hierarchy_sibling_window=int(hierarchy_sibling_window),
-            hierarchy_overfetch_factor=int(hierarchy_overfetch_factor),
-            kg_chunk_injection_enabled=bool(kg_chunk_injection_enabled),
-            kg_chunk_injection_max_chunks=int(kg_chunk_injection_max_chunks),
-            kg_chunks_injected=int(kg_chunks_injected or 0),
-            kg_chunk_boost_meta=dict(kg_chunk_boost_meta or {}),
-            kg_chunk_injection_error=kg_chunk_injection_error,
-            post_rerank_enabled=bool(post_rerank_enabled),
-            post_rerank_used=bool(post_rerank_used),
-            post_rerank_provider=post_rerank_provider,
-            post_rerank_skip_reason=post_rerank_skip_reason,
-            post_rerank_cache_enabled=bool(post_rerank_cache_enabled),
-            post_rerank_cache_backend=post_rerank_cache_backend,
-            post_rerank_cache_hits=int(post_rerank_cache_hits or 0),
-            post_rerank_cache_misses=int(post_rerank_cache_misses or 0),
-            post_rerank_pipeline_enabled=bool(post_rerank_pipeline_enabled),
-            post_rerank_pipeline_used=bool(post_rerank_pipeline_used),
-            post_rerank_pipeline=list(post_rerank_pipeline or []),
-            post_rerank_pipeline_stages=list(post_rerank_pipeline_stages or []),
-            post_rerank_candidates_n=int(post_rerank_candidates_n or 0),
-            post_rerank_elapsed=float(post_rerank_elapsed or 0.0),
-            post_rerank_model_used=post_rerank_model_used,
-            post_rerank_score_calibration_stats=dict(post_rerank_score_calibration_stats or {}),
-            post_rerank_error=post_rerank_error,
-            abstain_enabled=bool(abstain_enabled),
-            abstain_triggered=bool(abstain_triggered),
-            abstain_reason=abstain_reason,
-            evidence_span_strict_enabled=bool(evidence_span_strict_enabled),
-            evidence_span_missing_citations=int(evidence_span_missing_citations or 0),
-            top_rel=float(top_rel or 0.0),
-            citations=[citation for citation in citations if isinstance(citation, dict)],
-            docs=list(docs or []),
-            parse_quality_summary=dict(parse_quality_summary or {}),
-            parse_quality_gate_profile=str(parse_quality_gate_profile),
-            parse_quality_gate_violation=bool(parse_quality_gate_violation),
-            parse_quality_gate_blocked=bool(parse_quality_gate_blocked),
-            parse_quality_gate_reason=parse_quality_gate_reason,
-            parse_risk=dict(parse_risk or {}),
-            metrics=dict(metrics or {}),
+            must_recall_anchor_eval=dict(ctx.must_recall_anchor_eval or {}),
+            must_recall_fail_reasons=list(ctx.must_recall_fail_reasons or []),
+            must_recall_second_pass_payload=dict(ctx.must_recall_second_pass_payload),
+            must_recall_proof=dict(ctx.must_recall_proof),
+            intent_router_meta=dict(ctx.intent_router_meta),
+            industry_rules_meta=dict(ctx.industry_rules_meta),
+            adaptive_router_meta=dict(ctx.adaptive_router_meta),
+            channel_budget_policy_meta=dict(ctx.channel_budget_policy_meta),
+            router_layers=dict(ctx.router_layers),
+            contextual_followup_enabled=bool(ctx.contextual_followup_enabled),
+            contextual_followup_attempted=bool(ctx.contextual_followup_attempted),
+            contextual_followup_used=bool(ctx.contextual_followup_used),
+            contextual_followup_mode=str(ctx.contextual_followup_mode),
+            contextual_followup_top_k=int(ctx.contextual_followup_top_k),
+            contextual_followup_max_docs=int(ctx.contextual_followup_max_docs),
+            contextual_followup_max_terms=int(ctx.contextual_followup_max_terms),
+            contextual_followup_min_term_chars=int(ctx.contextual_followup_min_term_chars),
+            contextual_followup_query_hash=ctx.contextual_followup_query_hash,
+            contextual_followup_added_docs=int(ctx.contextual_followup_added_docs),
+            contextual_followup_added_citations=int(ctx.contextual_followup_added_citations),
+            contextual_followup_reason_codes=list(ctx.contextual_followup_reason_codes or []),
+            contextual_followup_selected_terms=list(ctx.contextual_followup_selected_terms or []),
+            contextual_followup_elapsed=float(ctx.contextual_followup_elapsed or 0.0),
+            contextual_followup_error=ctx.contextual_followup_error,
+            contextual_followup_max_hops=int(ctx.contextual_followup_max_hops),
+            contextual_followup_latency_budget_ms=float(ctx.contextual_followup_latency_budget_ms),
+            iterative_pass_hops=list(ctx.iterative_pass_hops or []),
+            iterative_pass_reason_codes=list(ctx.iterative_pass_reason_codes or []),
+            iterative_pass_gap=(
+                dict(ctx.iterative_pass_gap or {}) if isinstance(ctx.iterative_pass_gap, dict) else None
+            ),
+            hard_fallback_enabled=bool(ctx.hard_fallback_enabled),
+            hard_fallback_attempted=bool(ctx.hard_fallback_attempted),
+            hard_fallback_used=bool(ctx.hard_fallback_used),
+            retrieval_fallback_reason=ctx.retrieval_fallback_reason,
+            hard_fallback_mode=ctx.hard_fallback_mode,
+            hard_fallback_top_k=int(ctx.hard_fallback_top_k),
+            hard_fallback_elapsed=float(ctx.hard_fallback_elapsed or 0.0),
+            hard_fallback_added_docs=int(ctx.hard_fallback_added_docs or 0),
+            hard_fallback_added_citations=int(ctx.hard_fallback_added_citations or 0),
+            hard_fallback_error=ctx.hard_fallback_error,
+            rewrite_enabled=bool(ctx.rewrite_enabled),
+            rewrite_strategy_id=ctx.rewrite_strategy_id,
+            rewrite_strategy_hash=ctx.rewrite_strategy_hash,
+            rewrite_temperature=ctx.rewrite_temperature,
+            rewrite_max_chars=ctx.rewrite_max_chars,
+            rewrite_used=bool(ctx.rewrite_used),
+            rewrite_elapsed=float(ctx.rewrite_elapsed or 0.0),
+            rewrite_model_used=ctx.rewrite_model_used,
+            query_expansion_budget_meta=dict(ctx.query_expansion_budget_meta),
+            alias_enabled=bool(ctx.alias_enabled),
+            alias_used=bool(ctx.alias_used),
+            alias_queries=list(ctx.alias_queries or []),
+            alias_elapsed=float(ctx.alias_elapsed or 0.0),
+            dict_meta=dict(ctx.dict_meta or {}),
+            dict_used=bool(ctx.dict_used),
+            dict_expansions=list(ctx.dict_expansions or []),
+            dict_elapsed=float(ctx.dict_elapsed or 0.0),
+            kg_query_expansion_enabled=bool(ctx.kg_query_expansion_enabled),
+            kg_query_expansion_used=bool(ctx.kg_query_expansion_used),
+            kg_query_expansion_entities_total=int(ctx.kg_query_expansion_entities_total),
+            kg_query_expansion_entities_selected=int(ctx.kg_query_expansion_entities_selected),
+            kg_query_expansion_queries=list(ctx.kg_query_expansion_queries or []),
+            kg_query_expansion_elapsed=float(ctx.kg_query_expansion_elapsed or 0.0),
+            kg_query_expansion_error=ctx.kg_query_expansion_error,
+            clause_fastlane_queries=list(ctx.clause_fastlane_queries or []),
+            lightweight_subqueries=list(ctx.lightweight_subqueries or []),
+            mq_enabled=bool(ctx.mq_enabled),
+            multi_query_used=bool(ctx.multi_query_used),
+            multi_queries=list(ctx.multi_queries or []),
+            multi_query_elapsed=float(ctx.multi_query_elapsed or 0.0),
+            multi_query_model_used=ctx.multi_query_model_used,
+            multi_query_parse_meta=dict(ctx.multi_query_parse_meta or {}),
+            multi_query_ab_test_key=ctx.multi_query_ab_test_key,
+            multi_query_ab_variant=ctx.multi_query_ab_variant,
+            multi_query_ab_seed=ctx.multi_query_ab_seed,
+            multi_query_ab_forced=bool(ctx.multi_query_ab_forced),
+            step_back_enabled=bool(ctx.step_back_enabled),
+            step_back_used=bool(ctx.step_back_used),
+            step_back_elapsed=float(ctx.step_back_elapsed or 0.0),
+            step_back_model_used=ctx.step_back_model_used,
+            step_back_parse_meta=dict(ctx.step_back_parse_meta or {}),
+            hyde_enabled=bool(ctx.hyde_enabled),
+            hyde_used=bool(ctx.hyde_used),
+            hyde_elapsed=float(ctx.hyde_elapsed or 0.0),
+            hyde_model_used=ctx.hyde_model_used,
+            decompose_used=bool(ctx.decompose_used),
+            sub_questions=list(ctx.sub_questions or []),
+            decompose_elapsed=float(ctx.decompose_elapsed or 0.0),
+            decompose_model_used=ctx.decompose_model_used,
+            decompose_parse_meta=dict(ctx.decompose_parse_meta or {}),
+            top_k=int(ctx.top_k),
+            retriever_update=dict(ctx.retriever_update or {}),
+            retrieval_parallelism=int(ctx.retrieval_parallelism),
+            retrieval_plan=list(ctx.retrieval_plan or []),
+            retrieval_per_query=list(ctx.retrieval_per_query or []),
+            retrieval_errors=list(ctx.retrieval_errors or []),
+            retrieval_elapsed=float(ctx.retrieval_elapsed or 0.0),
+            retrieval_degraded=bool(ctx.retrieval_degraded),
+            retrieval_degraded_reason_codes=list(ctx.retrieval_degraded_reason_codes or []),
+            retrieval_channel_health=dict(ctx.retrieval_channel_health),
+            docs_by_query=ctx.docs_by_query,
+            mq_diversify_enabled=bool(ctx.mq_diversify_enabled),
+            mq_diversify_budget=int(ctx.mq_diversify_budget or 0),
+            mq_diversify_used=bool(ctx.mq_diversify_used),
+            mq_diversify_selected_mq=int(ctx.mq_diversify_selected_mq or 0),
+            mq_diversify_selected_non_mq=int(ctx.mq_diversify_selected_non_mq or 0),
+            mq_diversify_fill_from_fused=int(ctx.mq_diversify_fill_from_fused or 0),
+            hierarchy_recall_enabled=bool(ctx.hierarchy_recall_enabled),
+            hierarchy_family_collapse=bool(ctx.hierarchy_family_collapse),
+            hierarchy_family_aggregation=str(ctx.hierarchy_family_aggregation),
+            hierarchy_tree_dedup=bool(ctx.hierarchy_tree_dedup),
+            hierarchy_parent_depth=int(ctx.hierarchy_parent_depth),
+            hierarchy_sibling_window=int(ctx.hierarchy_sibling_window),
+            hierarchy_overfetch_factor=int(ctx.hierarchy_overfetch_factor),
+            kg_chunk_injection_enabled=bool(ctx.kg_chunk_injection_enabled),
+            kg_chunk_injection_max_chunks=int(ctx.kg_chunk_injection_max_chunks),
+            kg_chunks_injected=int(ctx.kg_chunks_injected or 0),
+            kg_chunk_boost_meta=dict(ctx.kg_chunk_boost_meta or {}),
+            kg_chunk_injection_error=ctx.kg_chunk_injection_error,
+            post_rerank_enabled=bool(ctx.post_rerank_enabled),
+            post_rerank_used=bool(ctx.post_rerank_used),
+            post_rerank_provider=ctx.post_rerank_provider,
+            post_rerank_skip_reason=ctx.post_rerank_skip_reason,
+            post_rerank_cache_enabled=bool(ctx.post_rerank_cache_enabled),
+            post_rerank_cache_backend=ctx.post_rerank_cache_backend,
+            post_rerank_cache_hits=int(ctx.post_rerank_cache_hits or 0),
+            post_rerank_cache_misses=int(ctx.post_rerank_cache_misses or 0),
+            post_rerank_pipeline_enabled=bool(ctx.post_rerank_pipeline_enabled),
+            post_rerank_pipeline_used=bool(ctx.post_rerank_pipeline_used),
+            post_rerank_pipeline=list(ctx.post_rerank_pipeline or []),
+            post_rerank_pipeline_stages=list(ctx.post_rerank_pipeline_stages or []),
+            post_rerank_candidates_n=int(ctx.post_rerank_candidates_n or 0),
+            post_rerank_elapsed=float(ctx.post_rerank_elapsed or 0.0),
+            post_rerank_model_used=ctx.post_rerank_model_used,
+            post_rerank_score_calibration_stats=dict(ctx.post_rerank_score_calibration_stats or {}),
+            post_rerank_error=ctx.post_rerank_error,
+            abstain_enabled=bool(ctx.abstain_enabled),
+            abstain_triggered=bool(ctx.abstain_triggered),
+            abstain_reason=ctx.abstain_reason,
+            evidence_span_strict_enabled=bool(ctx.evidence_span_strict_enabled),
+            evidence_span_missing_citations=int(ctx.evidence_span_missing_citations or 0),
+            top_rel=float(ctx.top_rel or 0.0),
+            citations=[citation for citation in ctx.citations if isinstance(citation, dict)],
+            docs=list(ctx.docs or []),
+            parse_quality_summary=dict(ctx.parse_quality_summary or {}),
+            parse_quality_gate_profile=str(ctx.parse_quality_gate_profile),
+            parse_quality_gate_violation=bool(ctx.parse_quality_gate_violation),
+            parse_quality_gate_blocked=bool(ctx.parse_quality_gate_blocked),
+            parse_quality_gate_reason=ctx.parse_quality_gate_reason,
+            parse_risk=dict(ctx.parse_risk or {}),
+            metrics=dict(ctx.metrics or {}),
         )
     ).retrieval_trace
-    observe_router_layers(router_layers)
+    observe_router_layers(ctx.router_layers)
+    return None
 
-    # Stable retrieval config fingerprint (PII-safe).
-    #
-    # Goal:
-    # - Provide downstream systems a compact way to compare runs across environments
-    #   without relying on brittle field-by-field comparisons.
-    # - Must not include raw query text, doc ids, dataset ids, or metadata filter contents.
+
+def _run_retrieval_config_and_result_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
     try:
         retrieval_cfg: dict[str, Any] = {
-            "requested_retrieval_mode": str(requested_retrieval_mode or ""),
-            "retrieval_mode": str(request_retrieval_mode or ""),
-            "retrieval_mode_auto_routed": bool(retrieval_mode_routed),
-            "retrieval_profile": profile_norm or None,
-            "top_k": int(top_k),
-            "score_threshold": float(retriever_update.get("score_threshold") or 0.0),
-            "alpha": float(retriever_update.get("alpha") or 0.0),
-            "fusion_strategy": str(retriever_update.get("fusion_strategy") or "linear"),
-            "fusion_budgets": (retriever_update.get("fusion_budgets") if isinstance(retriever_update.get("fusion_budgets"), dict) else None),
-            "fusion_min_scores": (retriever_update.get("fusion_min_scores") if isinstance(retriever_update.get("fusion_min_scores"), dict) else None),
-            "fusion_weights": (retriever_update.get("fusion_weights") if isinstance(retriever_update.get("fusion_weights"), dict) else None),
-            "enable_weight_rerank": bool(retriever_update.get("enable_weight_rerank", True)),
-            "vector_weight": float(retriever_update.get("vector_weight") or 0.0),
-            "keyword_weight": float(retriever_update.get("keyword_weight") or 0.0),
-            "mmr_lambda": float(retriever_update.get("mmr_lambda") or 0.0),
-            "enable_reranker": bool(retriever_update.get("enable_reranker", False)),
-            "reranker_provider": str(retriever_update.get("reranker_provider") or ""),
+            "requested_retrieval_mode": str(ctx.requested_retrieval_mode or ""),
+            "retrieval_mode": str(ctx.request_retrieval_mode or ""),
+            "retrieval_mode_auto_routed": bool(ctx.retrieval_mode_routed),
+            "retrieval_profile": ctx.profile_norm or None,
+            "top_k": int(ctx.top_k),
+            "score_threshold": float(ctx.retriever_update.get("score_threshold") or 0.0),
+            "alpha": float(ctx.retriever_update.get("alpha") or 0.0),
+            "fusion_strategy": str(ctx.retriever_update.get("fusion_strategy") or "linear"),
+            "fusion_budgets": (
+                ctx.retriever_update.get("fusion_budgets")
+                if isinstance(ctx.retriever_update.get("fusion_budgets"), dict)
+                else None
+            ),
+            "fusion_min_scores": (
+                ctx.retriever_update.get("fusion_min_scores")
+                if isinstance(ctx.retriever_update.get("fusion_min_scores"), dict)
+                else None
+            ),
+            "fusion_weights": (
+                ctx.retriever_update.get("fusion_weights")
+                if isinstance(ctx.retriever_update.get("fusion_weights"), dict)
+                else None
+            ),
+            "enable_weight_rerank": bool(ctx.retriever_update.get("enable_weight_rerank", True)),
+            "vector_weight": float(ctx.retriever_update.get("vector_weight") or 0.0),
+            "keyword_weight": float(ctx.retriever_update.get("keyword_weight") or 0.0),
+            "mmr_lambda": float(ctx.retriever_update.get("mmr_lambda") or 0.0),
+            "enable_reranker": bool(ctx.retriever_update.get("enable_reranker", False)),
+            "reranker_provider": str(ctx.retriever_update.get("reranker_provider") or ""),
             "reranker_tier": describe_reranker_provider(
-                str(retriever_update.get("reranker_provider") or ""),
+                str(ctx.retriever_update.get("reranker_provider") or ""),
                 provider_name=str(getattr(settings, "COLBERT_RERANK_PROVIDER", "deterministic") or "deterministic"),
             ).get("tier"),
-            "reranker_top_n": int(retriever_update.get("reranker_top_n") or 0),
-            "visible_evidence_only": bool(strict_visible),
+            "reranker_top_n": int(ctx.retriever_update.get("reranker_top_n") or 0),
+            "visible_evidence_only": bool(ctx.strict_visible),
             # Global retrieval channel toggles (low-cardinality).
             "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
             "bm25_enabled": bool(getattr(settings, "BM25_INDEX_ENABLED", False)),
             "lexical_enabled": bool(getattr(settings, "LEXICAL_DB_TRGM_ENABLED", False)),
-            "sparse_enabled": bool(sparse_enabled),
-            "sparse_provider": sparse_provider,
+            "sparse_enabled": bool(ctx.sparse_enabled),
+            "sparse_provider": ctx.sparse_provider,
             "sparse_index_persist_enabled": bool(getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", False)),
             "colbert_enabled": bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)),
             "colbert_provider": str(getattr(settings, "COLBERT_RETRIEVAL_PROVIDER", "") or ""),
@@ -4531,49 +4506,57 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             "colbert_max_docs": int(getattr(settings, "COLBERT_RETRIEVAL_MAX_DOCS", 0) or 0),
             "parent_child_auto_merge_enabled": bool(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_ENABLED", False)),
             "parent_child_auto_merge_mode": str(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_MODE", "") or ""),
-            "kg_query_expansion_enabled": bool(kg_query_expansion_enabled),
-            "kg_chunk_injection_enabled": bool(kg_chunk_injection_enabled),
-            "kg_chunk_boost_enabled": bool(kg_chunk_boost_meta.get("enabled")),
-            "retrieval_contract_mode": retrieval_contract_mode or None,
-            "retrieval_contract_policy": dict(retrieval_contract_policy or {}),
-            "retrieval_contract_deterministic_recall": bool(contract_deterministic_recall),
-            "retrieval_hard_fallback_enabled": bool(hard_fallback_enabled),
-            "retrieval_hard_fallback_mode": hard_fallback_mode,
-            "retrieval_hard_fallback_top_k": int(hard_fallback_top_k),
-            "adaptive_router": dict(adaptive_router_meta or {}),
-            "channel_budget_policy": dict(channel_budget_policy_meta or {}),
-            "must_recall_enabled": bool(must_recall_enabled),
-            "must_recall_expected_source_keys": list(must_recall_expected_source_keys or []),
-            "must_recall_required_anchor_fields": list(must_recall_required_anchor_fields or []),
-            "must_recall_second_pass_enabled": bool(must_recall_second_pass_enabled),
-            "must_recall_second_pass_mode": str(must_recall_second_pass_mode),
-            "must_recall_second_pass_top_k": int(must_recall_second_pass_top_k),
-            "contextual_followup_enabled": bool(contextual_followup_enabled),
-            "contextual_followup_mode": str(contextual_followup_mode),
-            "contextual_followup_top_k": int(contextual_followup_top_k),
-            "contextual_followup_max_docs": int(contextual_followup_max_docs),
-            "contextual_followup_max_terms": int(contextual_followup_max_terms),
-            "contextual_followup_min_term_chars": int(contextual_followup_min_term_chars),
-            "contextual_followup_max_query_chars": int(contextual_followup_max_query_chars),
-            "contextual_followup_max_hops": int(contextual_followup_max_hops),
-            "contextual_followup_latency_budget_ms": round(float(contextual_followup_latency_budget_ms), 3),
-            "hierarchy_recall_enabled": bool(hierarchy_recall_enabled),
-            "hierarchy_family_collapse": bool(hierarchy_family_collapse),
-            "hierarchy_family_aggregation": str(hierarchy_family_aggregation),
-            "hierarchy_tree_dedup": bool(hierarchy_tree_dedup),
-            "hierarchy_parent_depth": int(hierarchy_parent_depth),
-            "hierarchy_sibling_window": int(hierarchy_sibling_window),
-            "hierarchy_overfetch_factor": int(hierarchy_overfetch_factor),
+            "kg_query_expansion_enabled": bool(ctx.kg_query_expansion_enabled),
+            "kg_chunk_injection_enabled": bool(ctx.kg_chunk_injection_enabled),
+            "kg_chunk_boost_enabled": bool(ctx.kg_chunk_boost_meta.get("enabled")),
+            "retrieval_contract_mode": ctx.retrieval_contract_mode or None,
+            "retrieval_contract_policy": dict(ctx.retrieval_contract_policy or {}),
+            "retrieval_contract_deterministic_recall": bool(ctx.contract_deterministic_recall),
+            "retrieval_hard_fallback_enabled": bool(ctx.hard_fallback_enabled),
+            "retrieval_hard_fallback_mode": ctx.hard_fallback_mode,
+            "retrieval_hard_fallback_top_k": int(ctx.hard_fallback_top_k),
+            "adaptive_router": dict(ctx.adaptive_router_meta or {}),
+            "channel_budget_policy": dict(ctx.channel_budget_policy_meta or {}),
+            "must_recall_enabled": bool(ctx.must_recall_enabled),
+            "must_recall_expected_source_keys": list(ctx.must_recall_expected_source_keys or []),
+            "must_recall_required_anchor_fields": list(ctx.must_recall_required_anchor_fields or []),
+            "must_recall_second_pass_enabled": bool(ctx.must_recall_second_pass_enabled),
+            "must_recall_second_pass_mode": str(ctx.must_recall_second_pass_mode),
+            "must_recall_second_pass_top_k": int(ctx.must_recall_second_pass_top_k),
+            "contextual_followup_enabled": bool(ctx.contextual_followup_enabled),
+            "contextual_followup_mode": str(ctx.contextual_followup_mode),
+            "contextual_followup_top_k": int(ctx.contextual_followup_top_k),
+            "contextual_followup_max_docs": int(ctx.contextual_followup_max_docs),
+            "contextual_followup_max_terms": int(ctx.contextual_followup_max_terms),
+            "contextual_followup_min_term_chars": int(ctx.contextual_followup_min_term_chars),
+            "contextual_followup_max_query_chars": int(ctx.contextual_followup_max_query_chars),
+            "contextual_followup_max_hops": int(ctx.contextual_followup_max_hops),
+            "contextual_followup_latency_budget_ms": round(float(ctx.contextual_followup_latency_budget_ms), 3),
+            "hierarchy_recall_enabled": bool(ctx.hierarchy_recall_enabled),
+            "hierarchy_family_collapse": bool(ctx.hierarchy_family_collapse),
+            "hierarchy_family_aggregation": str(ctx.hierarchy_family_aggregation),
+            "hierarchy_tree_dedup": bool(ctx.hierarchy_tree_dedup),
+            "hierarchy_parent_depth": int(ctx.hierarchy_parent_depth),
+            "hierarchy_sibling_window": int(ctx.hierarchy_sibling_window),
+            "hierarchy_overfetch_factor": int(ctx.hierarchy_overfetch_factor),
             "retrieval_hardcase_emit_enabled": bool(getattr(settings, "RETRIEVAL_HARDCASE_EMIT_ENABLED", False)),
-            "rag_evidence_require_spans_enabled": bool(evidence_span_strict_enabled),
-            "retrieval_parse_quality_low_threshold": float(getattr(settings, "RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD", 0.35) or 0.35),
-            "retrieval_parse_quality_alert_ratio": float(getattr(settings, "RETRIEVAL_PARSE_QUALITY_ALERT_RATIO", 0.5) or 0.5),
-            "retrieval_parse_quality_gate_profile": str(parse_quality_gate_profile),
+            "rag_evidence_require_spans_enabled": bool(ctx.evidence_span_strict_enabled),
+            "retrieval_parse_quality_low_threshold": float(
+                getattr(settings, "RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD", 0.35) or 0.35
+            ),
+            "retrieval_parse_quality_alert_ratio": float(
+                getattr(settings, "RETRIEVAL_PARSE_QUALITY_ALERT_RATIO", 0.5) or 0.5
+            ),
+            "retrieval_parse_quality_gate_profile": str(ctx.parse_quality_gate_profile),
             "evidence_post_rerank_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_ENABLED", False)),
             "evidence_post_rerank_provider": str(getattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "") or ""),
             "evidence_post_rerank_top_n": int(getattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 0) or 0),
-            "evidence_post_rerank_pipeline_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE_ENABLED", False)),
-            "evidence_post_rerank_pipeline": _safe_post_rerank_pipeline_summary(getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE", "")),
+            "evidence_post_rerank_pipeline_enabled": bool(
+                getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE_ENABLED", False)
+            ),
+            "evidence_post_rerank_pipeline": _safe_post_rerank_pipeline_summary(
+                getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE", "")
+            ),
             "evidence_post_rerank_score_calibration_enabled": bool(
                 getattr(settings, "EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ENABLED", False)
             ),
@@ -4581,54 +4564,54 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 getattr(settings, "EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ALPHA", 0.0) or 0.0
             ),
             "multi_query": {
-                "enabled": bool(mq_enabled),
-                "count": int(mq_n or 0),
-                "temperature": float(mq_temp or 0.0),
-                "max_chars": int(mq_max_chars or 0),
-                "ab_test_key": multi_query_ab_test_key,
-                "ab_variant": multi_query_ab_variant,
-                "ab_seed": multi_query_ab_seed,
+                "enabled": bool(ctx.mq_enabled),
+                "count": int(ctx.mq_n or 0),
+                "temperature": float(ctx.mq_temp or 0.0),
+                "max_chars": int(ctx.mq_max_chars or 0),
+                "ab_test_key": ctx.multi_query_ab_test_key,
+                "ab_variant": ctx.multi_query_ab_variant,
+                "ab_seed": ctx.multi_query_ab_seed,
                 "diversify": {
-                    "enabled": bool(getattr(settings, "MULTI_QUERY_DIVERSIFY_ENABLED", False)) and bool(mq_enabled),
+                    "enabled": bool(getattr(settings, "MULTI_QUERY_DIVERSIFY_ENABLED", False)) and bool(ctx.mq_enabled),
                     "budget": max(
                         0,
                         min(
                             int(getattr(settings, "MULTI_QUERY_DIVERSIFY_BUDGET", 0) or 0),
-                            int(top_k or 0),
+                            int(ctx.top_k or 0),
                         ),
                     ),
                 },
             },
             "step_back": {
-                "enabled": bool(step_back_enabled),
-                "temperature": float(step_back_temp or 0.0),
-                "max_chars": int(step_back_max_chars or 0),
-                "output_max_chars": int(step_back_output_max or 0),
+                "enabled": bool(ctx.step_back_enabled),
+                "temperature": float(ctx.step_back_temp or 0.0),
+                "max_chars": int(ctx.step_back_max_chars or 0),
+                "output_max_chars": int(ctx.step_back_output_max or 0),
             },
             "query_rewrite": {
-                "enabled": bool(rewrite_enabled),
-                "strategy_id": rewrite_strategy_id if rewrite_enabled else None,
-                "strategy_hash": rewrite_strategy_hash if rewrite_enabled else None,
-                "temperature": rewrite_temperature if rewrite_enabled else None,
-                "max_chars": int(rewrite_max_chars or 0) if rewrite_enabled else None,
+                "enabled": bool(ctx.rewrite_enabled),
+                "strategy_id": ctx.rewrite_strategy_id if ctx.rewrite_enabled else None,
+                "strategy_hash": ctx.rewrite_strategy_hash if ctx.rewrite_enabled else None,
+                "temperature": ctx.rewrite_temperature if ctx.rewrite_enabled else None,
+                "max_chars": int(ctx.rewrite_max_chars or 0) if ctx.rewrite_enabled else None,
             },
             "query_expansion_budget": {
-                "max_queries": int(query_expansion_budget_max_queries or 0),
-                "max_candidates": int(query_expansion_budget_max_candidates or 0),
-                "token_budget": int(query_expansion_budget_token_budget or 0),
-                "latency_budget_ms": round(float(query_expansion_budget_latency_ms or 0.0), 3),
+                "max_queries": int(ctx.query_expansion_budget_max_queries or 0),
+                "max_candidates": int(ctx.query_expansion_budget_max_candidates or 0),
+                "token_budget": int(ctx.query_expansion_budget_token_budget or 0),
+                "latency_budget_ms": round(float(ctx.query_expansion_budget_latency_ms or 0.0), 3),
             },
         }
 
         fp = build_retrieval_config_snapshot(
             RetrievalConfigSnapshotInput(
                 retrieval_config=retrieval_cfg,
-                rag_config_template=state.get("rag_config_template"),
+                rag_config_template=ctx.state.get("rag_config_template"),
             )
         ).fingerprint
-        retrieval_trace["retrieval_config"] = fp
-        metrics["retrieval_config_hash"] = fp.get("hash")
-        hc = metrics.get("hardcase_candidate")
+        ctx.retrieval_trace["retrieval_config"] = fp
+        ctx.metrics["retrieval_config_hash"] = fp.get("hash")
+        hc = ctx.metrics.get("hardcase_candidate")
         if isinstance(hc, dict):
             hc["retrieval_config_hash"] = fp.get("hash")
             if not hc.get("dedupe_key"):
@@ -4643,24 +4626,67 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                     json.dumps(dedupe_payload, ensure_ascii=False, sort_keys=True),
                     length=32,
                 )
-            metrics["hardcase_candidate"] = hc
+            ctx.metrics["hardcase_candidate"] = hc
     except Exception as exc:
         logger.debug(_RETRIEVAL_ORCHESTRATOR_FALLBACK_LOG_MESSAGE, exc)
 
     return {
-        **state,
-        "query_for_retrieval": query_for_retrieval,
-        "docs": docs,
-        "citations": citations,
-        "metrics": metrics,
-        "retrieval_degraded": bool(retrieval_degraded),
-        "fallback_reason": retrieval_fallback_reason,
-        "channel_health": retrieval_channel_health,
-        "abstain_triggered": bool(abstain_triggered),
-        "abstain_reason": abstain_reason,
-        "query_debug": query_debug,
-        "retrieval_trace": retrieval_trace,
+        **ctx.state,
+        "query_for_retrieval": ctx.query_for_retrieval,
+        "docs": ctx.docs,
+        "citations": ctx.citations,
+        "metrics": ctx.metrics,
+        "retrieval_degraded": bool(ctx.retrieval_degraded),
+        "fallback_reason": ctx.retrieval_fallback_reason,
+        "channel_health": ctx.retrieval_channel_health,
+        "abstain_triggered": bool(ctx.abstain_triggered),
+        "abstain_reason": ctx.abstain_reason,
+        "query_debug": ctx.query_debug,
+        "retrieval_trace": ctx.retrieval_trace,
     }
+    return None
+
+
+_RETRIEVAL_RUNTIME_PHASES = (
+    _run_retrieval_bootstrap_phase,
+    _run_retrieval_alias_dictionary_phase,
+    _run_retrieval_kg_query_expansion_phase,
+    _run_retrieval_multi_query_phase,
+    _run_retrieval_hyde_phase,
+    _run_retrieval_step_back_phase,
+    _run_retrieval_decomposition_variants_phase,
+    _run_retrieval_retrieval_execution_phase,
+    _run_retrieval_fusion_phase,
+    _run_retrieval_kg_injection_phase,
+    _run_retrieval_tag_kg_boost_phase,
+    _run_retrieval_post_rerank_hierarchy_setup_phase,
+    _run_retrieval_contextual_followup_phase,
+    _run_retrieval_citations_hard_fallback_phase,
+    _run_retrieval_must_recall_phase,
+    _run_retrieval_parse_quality_phase,
+    _run_retrieval_metrics_core_phase,
+    _run_retrieval_channel_health_phase,
+    _run_retrieval_metrics_features_phase,
+    _run_retrieval_abstain_hardcase_phase,
+    _run_retrieval_query_debug_phase,
+    _run_retrieval_retrieval_trace_phase,
+    _run_retrieval_config_and_result_phase,
+)
+
+
+def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
+    """Execute retrieval only and return an updated RAG-like state dict."""
+    question = str(state.get("question") or "")
+    history_text = _build_history_text(state.get("history"))
+    no_retrieval_intent = route_intent(question)
+    if bool(no_retrieval_intent.get("skip_retrieval")):
+        return _build_no_retrieval_response(
+            state,
+            question=question,
+            no_retrieval_intent=dict(no_retrieval_intent),
+        )
+    runtime = RetrievalRuntimeState(state=state, question=question, history_text=history_text)
+    return run_retrieval_runtime(runtime, phases=_RETRIEVAL_RUNTIME_PHASES)
 
 
 __all__ = ["run_retrieval"]

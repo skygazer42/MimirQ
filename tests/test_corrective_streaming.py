@@ -1,4 +1,3 @@
-
 import threading
 import uuid
 
@@ -61,6 +60,7 @@ def _disable_optional_features(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "LLM_MOCK_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "LLM_MOCK_RESPONSE", "mock answer", raising=False)
     monkeypatch.setattr(settings, "LLM_API_KEY", "", raising=False)
+    monkeypatch.setattr(settings, "RAG_STREAM_RETRIEVAL_PROGRESS_ENABLED", True, raising=False)
 
 
 @pytest.mark.asyncio
@@ -90,6 +90,7 @@ async def test_stream_chat_retries_retrieval_when_corrective_abstain(
     engine = RAGEngine()
     loop_thread_id = threading.get_ident()
     done_metrics = None
+    retrieval_info_events: list[dict[str, object]] = []
 
     agen = engine.stream_chat(
         question="What does the evidence say?",
@@ -105,6 +106,8 @@ async def test_stream_chat_retries_retrieval_when_corrective_abstain(
 
     try:
         async for event in agen:
+            if event.get("type") == "retrieval_info":
+                retrieval_info_events.append(dict(event.get("data") or {}))
             if event.get("type") == "done":
                 done_metrics = (event.get("data") or {}).get("metrics") or {}
                 break
@@ -114,6 +117,24 @@ async def test_stream_chat_retries_retrieval_when_corrective_abstain(
     assert retriever._call_index >= 2
     assert len(retriever.invoke_thread_ids) >= 2
     assert all(thread_id != loop_thread_id for thread_id in retriever.invoke_thread_ids)
+    assert retrieval_info_events == [
+        {
+            "attempt": 1,
+            "query_count": 1,
+            "docs_count": 0,
+            "citations_count": 0,
+            "abstain_triggered": True,
+            "retrieval_profile": None,
+        },
+        {
+            "attempt": 2,
+            "query_count": 2,
+            "docs_count": 1,
+            "citations_count": 1,
+            "abstain_triggered": False,
+            "retrieval_profile": "recall50",
+        },
+    ]
     assert isinstance(done_metrics, dict)
     assert done_metrics.get("corrective_used") is True
     assert "abstain" in (done_metrics.get("corrective_reason_codes") or [])
@@ -268,8 +289,10 @@ async def test_stream_chat_does_not_split_redacted_pii_across_chunks(
         request_id="pii-stream-boundary-test",
     )
     token_text = ""
+    event_types: list[str] = []
     try:
         async for event in stream:
+            event_types.append(str(event.get("type")))
             if event.get("type") == "token":
                 token_text += str((event.get("data") or {}).get("content") or "")
             if event.get("type") == "done":
@@ -279,3 +302,4 @@ async def test_stream_chat_does_not_split_redacted_pii_across_chunks(
 
     assert token_text == ("A" * 140) + "[REDACTED]" + ("B" * 140)
     assert raw_id not in token_text
+    assert event_types[-2:] == ["token", "done"]

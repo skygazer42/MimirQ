@@ -3,7 +3,6 @@
 Build a deterministic parse-repair schedule from parse-risk artifacts.
 """
 
-
 import argparse
 import json
 from dataclasses import dataclass, field
@@ -71,6 +70,93 @@ def _record_candidate(
     row.merge(risk_score=float(max(0.0, min(1.0, risk_score))), reason=reason, source=source)
 
 
+def _collect_quality_documents(
+    items: Any,
+    *,
+    reason: str,
+    source_name: str,
+    bucket: dict[str, Candidate],
+) -> None:
+    if not isinstance(items, list):
+        return
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        _record_candidate(
+            bucket,
+            document_id=item.get("document_id"),
+            risk_score=_risk_from_parse_quality_score(item.get("score")),
+            reason=reason,
+            source=source_name,
+        )
+
+
+def _collect_parse_risk_summary(
+    value: Any,
+    *,
+    source_name: str,
+    bucket: dict[str, Candidate],
+) -> None:
+    if not isinstance(value, dict):
+        return
+    _collect_quality_documents(
+        value.get("top_low_quality_documents"),
+        reason="parse_risk_summary_low_quality",
+        source_name=source_name,
+        bucket=bucket,
+    )
+    _collect_quality_documents(
+        value.get("parse_risk_tail"),
+        reason="parse_risk_tail",
+        source_name=source_name,
+        bucket=bucket,
+    )
+
+
+def _collect_tail_drift(
+    value: Any,
+    *,
+    source_name: str,
+    bucket: dict[str, Candidate],
+) -> None:
+    if not isinstance(value, dict):
+        return
+    added = value.get("added_document_ids")
+    if not isinstance(added, list):
+        return
+    for document_id in added:
+        _record_candidate(
+            bucket,
+            document_id=document_id,
+            risk_score=1.0,
+            reason="parse_risk_tail_added",
+            source=source_name,
+        )
+
+
+def _collect_explicit_candidates(
+    value: Any,
+    *,
+    source_name: str,
+    bucket: dict[str, Candidate],
+) -> None:
+    if not isinstance(value, list):
+        return
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        risk = item.get("risk_score")
+        if risk is None:
+            risk = _risk_from_parse_quality_score(item.get("score"))
+        _record_candidate(
+            bucket,
+            document_id=item.get("document_id"),
+            risk_score=float(_coerce_float(risk, default=0.0)),
+            reason=str(item.get("reason") or "candidate"),
+            source=source_name,
+        )
+
+
 def _collect_from_object(
     obj: Any,
     *,
@@ -84,70 +170,9 @@ def _collect_from_object(
     if not isinstance(obj, dict):
         return
 
-    # 1) parse-risk summary top list (document-level low parse-quality scores).
-    prs = obj.get("parse_risk_summary")
-    if isinstance(prs, dict):
-        top_docs = prs.get("top_low_quality_documents")
-        if isinstance(top_docs, list):
-            for item in top_docs:
-                if not isinstance(item, dict):
-                    continue
-                doc_id = item.get("document_id")
-                risk = _risk_from_parse_quality_score(item.get("score"))
-                _record_candidate(
-                    bucket,
-                    document_id=doc_id,
-                    risk_score=risk,
-                    reason="parse_risk_summary_low_quality",
-                    source=source_name,
-                )
-
-        tail = prs.get("parse_risk_tail")
-        if isinstance(tail, list):
-            for item in tail:
-                if not isinstance(item, dict):
-                    continue
-                doc_id = item.get("document_id")
-                risk = _risk_from_parse_quality_score(item.get("score"))
-                _record_candidate(
-                    bucket,
-                    document_id=doc_id,
-                    risk_score=risk,
-                    reason="parse_risk_tail",
-                    source=source_name,
-                )
-
-    # 2) queryset health diff tail drift.
-    drift = obj.get("parse_risk_tail_drift")
-    if isinstance(drift, dict):
-        added = drift.get("added_document_ids")
-        if isinstance(added, list):
-            for doc_id in added:
-                _record_candidate(
-                    bucket,
-                    document_id=doc_id,
-                    risk_score=1.0,
-                    reason="parse_risk_tail_added",
-                    source=source_name,
-                )
-
-    # 3) Explicit candidate list (e.g. parse_quality_reparse_plan output).
-    candidates = obj.get("candidates")
-    if isinstance(candidates, list):
-        for item in candidates:
-            if not isinstance(item, dict):
-                continue
-            doc_id = item.get("document_id")
-            risk = item.get("risk_score")
-            if risk is None:
-                risk = _risk_from_parse_quality_score(item.get("score"))
-            _record_candidate(
-                bucket,
-                document_id=doc_id,
-                risk_score=float(_coerce_float(risk, default=0.0)),
-                reason=str(item.get("reason") or "candidate"),
-                source=source_name,
-            )
+    _collect_parse_risk_summary(obj.get("parse_risk_summary"), source_name=source_name, bucket=bucket)
+    _collect_tail_drift(obj.get("parse_risk_tail_drift"), source_name=source_name, bucket=bucket)
+    _collect_explicit_candidates(obj.get("candidates"), source_name=source_name, bucket=bucket)
 
 
 def build_parse_repair_schedule(

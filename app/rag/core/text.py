@@ -6,7 +6,7 @@ import json
 import re
 from typing import Any, Literal
 
-from app.core.token_utils import estimate_tokens  # noqa: F401
+from app.core.token_utils import estimate_tokens as estimate_tokens
 from app.rag.core.claim_nli_verifier import verify_claim_with_nli
 from app.rag.core.claim_verifier import verify_claim
 

@@ -5,31 +5,15 @@ This is a minimal v1 implementation focused on:
 - URL batch ingestion as the first connector
 - Run tracking (status/stats/error)
 """
-# ruff: noqa: F401
 
-import asyncio
-import contextlib
-import hashlib
-import html
 import importlib
-import json
-import re
 import sys
 from datetime import UTC, datetime
-from pathlib import Path
-from typing import Any
-from urllib.parse import parse_qs, quote, urlparse
 from uuid import UUID
 
-import httpx
-from fastapi import APIRouter, HTTPException
-from sqlalchemy import and_, func
-from sqlalchemy.orm import Session, selectinload
+from fastapi import APIRouter
+from sqlalchemy.orm import Session
 
-from app.api.schemas.connector import (
-    ConnectorConfigOut,
-    ConnectorRunOut,
-)
 from app.api.v1 import (
     connectors_acl,
     connectors_artifacts,
@@ -51,49 +35,37 @@ from app.api.v1 import (
 )
 from app.api.v1.connectors_validation import validate_connector_config as validate_connector_config
 from app.api.v1.documents import (
-    LocalHtmlIngestRequest,
-    UrlUploadRequest,
-    _ingest_local_html_request,
-    _ingest_url_upload_request,
-    _normalize_datetime_utc_iso,
+    _ingest_url_upload_request as _ingest_url_upload_request,
 )
 from app.api.v1.documents import (
     _resolve_writable_dataset as _resolve_writable_dataset,
 )
-from app.core.config import settings
-from app.core.database import SessionLocal
-from app.core.http_client import get_http_client_pool
+from app.core.config import settings as settings
+from app.core.database import SessionLocal as SessionLocal
 from app.core.secrets import (
-    decrypt_connector_config_secrets,
-    encrypt_connector_config_secrets,
-    redact_secrets,
+    decrypt_connector_config_secrets as decrypt_connector_config_secrets,
 )
-from app.models.connector import ConnectorRun, ConnectorRunDocument
-from app.models.connector_config import ConnectorConfig
-from app.models.document import Document as DBDocument
-from app.models.document import DocumentPermission
-from app.models.group_permissions import DocumentGroupPermission
-from app.models.tenant_group import TenantGroup
-from app.services.audit_log_service import audit_log_event
+from app.core.secrets import (
+    encrypt_connector_config_secrets as encrypt_connector_config_secrets,
+)
+from app.services.audit_log_service import audit_log_event as audit_log_event
 from app.services.connector_reconcile_service import (
-    plan_connector_reconcile,
-    resolve_connector_reconcile_source_refs,
+    plan_connector_reconcile as plan_connector_reconcile,
 )
-from app.services.connector_registry import get_connector_definition
+from app.services.connector_reconcile_service import (
+    resolve_connector_reconcile_source_refs as resolve_connector_reconcile_source_refs,
+)
+from app.services.connector_registry import get_connector_definition as get_connector_definition
 from app.services.connector_sync_state import (
     build_persisted_state as build_persisted_state,
 )
 from app.services.connector_sync_state import (
-    build_saved_state_snapshot,
-    get_resume_cursor,
-    normalize_boundary_ids,
-    normalize_source_manifest,
-    slice_items_from_cursor,
+    get_resume_cursor as get_resume_cursor,
 )
-from app.services.dataset_service import DatasetService
-from app.services.document_permission_service import DocumentGroupPermissionService, DocumentPermissionService
-from app.services.security_redaction import redact_connection_info
-from app.services.web_crawler import crawl_site
+from app.services.connector_sync_state import (
+    normalize_source_manifest as normalize_source_manifest,
+)
+from app.services.dataset_service import DatasetService as DatasetService
 from app.tasks.queue import enqueue_connector_run as enqueue_connector_run
 from app.tasks.queue import get_queue as get_queue
 

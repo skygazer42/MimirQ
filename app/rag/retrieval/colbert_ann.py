@@ -12,7 +12,6 @@ Important:
   without changing defaults.
 """
 
-
 import contextlib
 import hashlib
 import io
@@ -305,7 +304,7 @@ def resolve_colbert_ann_provider_capability(
         else:
             try:
                 import torch  # noqa: PLC0415
-                import transformers  # noqa: F401, PLC0415
+                import transformers as transformers  # noqa: PLC0415
             except Exception:
                 status = "fallback"
                 reason = "dependency_missing"

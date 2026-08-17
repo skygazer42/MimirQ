@@ -64,7 +64,6 @@ where the best chunking method depends on the content shape:
 - Otherwise -> semantic_sentence or langchain_recursive
 """
 
-
 import json
 import re
 
@@ -158,6 +157,9 @@ def _looks_like_json(text: str) -> bool:
         return True
     except Exception:
         return False
+
+
+Selection = tuple[BaseChunker, str]
 
 
 class ManuscriptChunker(BaseChunker):
@@ -410,11 +412,7 @@ class ManuscriptChunker(BaseChunker):
             chunk_overlap=self.chunk_overlap,
         )
 
-    def _select(self, doc: Document) -> tuple[BaseChunker, str]:
-        meta = doc.metadata or {}
-        file_type = str(meta.get("file_type", "") or "").strip().lower()
-        text = doc.page_content or ""
-
+    def _select_structured_payloads(self, *, file_type: str, text: str) -> Selection | None:
         if file_type in {"json"} or _looks_like_json(text):
             return JSONChunker(chunk_size=self.chunk_size, chunk_overlap=0), "json"
 
@@ -442,6 +440,9 @@ class ManuscriptChunker(BaseChunker):
         if file_type in {"tf", "hcl"} or looks_like_terraform_hcl(text):
             return self._terraform, "terraform_hcl"
 
+        return None
+
+    def _select_tabular_payloads(self, *, file_type: str, text: str) -> Selection | None:
         if file_type == "csv":
             if looks_like_csv_rows(text):
                 return self._csv_rows, "csv_rows"
@@ -454,6 +455,10 @@ class ManuscriptChunker(BaseChunker):
             if looks_like_markdown_table(text):
                 return self._markdown_table, "markdown_table"
 
+        return None
+
+    def _select_trace_and_spec_documents(self, *, file_type: str, text: str) -> Selection | None:
+        _ = file_type
         if looks_like_git_commit_log(text):
             return self._git_commit_log, "git_commit_log"
 
@@ -478,6 +483,9 @@ class ManuscriptChunker(BaseChunker):
         if looks_like_openapi_spec(text):
             return self._openapi, "openapi_spec"
 
+        return None
+
+    def _select_yaml_documents(self, *, file_type: str, text: str) -> Selection | None:
         if file_type in {"yaml", "yml"} and looks_like_github_actions_workflow(text):
             return self._github_actions, "github_actions"
 
@@ -493,6 +501,9 @@ class ManuscriptChunker(BaseChunker):
         if file_type in {"yaml", "yml"} or looks_like_yaml_manifest(text):
             return self._yaml, "yaml_manifest"
 
+        return None
+
+    def _select_config_documents(self, *, file_type: str, text: str) -> Selection | None:
         if file_type in {"toml"} or looks_like_toml_config(text):
             return self._toml, "toml_config"
 
@@ -511,6 +522,10 @@ class ManuscriptChunker(BaseChunker):
         if looks_like_kv_config(text):
             return self._kv_config, "kv_config"
 
+        return None
+
+    def _select_reference_and_ticket_documents(self, *, file_type: str, text: str) -> Selection | None:
+        _ = file_type
         if looks_like_api_reference(text):
             return self._api, "api_reference"
 
@@ -526,6 +541,10 @@ class ManuscriptChunker(BaseChunker):
         if looks_like_jira_ticket(text):
             return self._jira, "jira_ticket"
 
+        return None
+
+    def _select_process_documents(self, *, file_type: str, text: str) -> Selection | None:
+        _ = file_type
         if looks_like_postmortem_report(text):
             return self._postmortem, "postmortem_report"
 
@@ -550,6 +569,10 @@ class ManuscriptChunker(BaseChunker):
         if looks_like_prd_spec(text):
             return self._prd, "prd_spec"
 
+        return None
+
+    def _select_longform_documents(self, *, file_type: str, text: str) -> Selection | None:
+        _ = file_type
         if looks_like_resume(text):
             return self._resume, "resume_structured"
 
@@ -565,6 +588,9 @@ class ManuscriptChunker(BaseChunker):
         if looks_like_book(text):
             return self._book, "book_structured"
 
+        return None
+
+    def _select_sectioned_documents(self, *, file_type: str, text: str) -> Selection | None:
         if file_type in {"rst"} or looks_like_rst_sections(text):
             return self._rst, "rst_sections"
 
@@ -589,6 +615,9 @@ class ManuscriptChunker(BaseChunker):
         if looks_like_transcript(text):
             return self._transcript, "transcript"
 
+        return None
+
+    def _select_markdown_or_fallback(self, *, file_type: str, text: str) -> Selection:
         if looks_like_markdown_table(text):
             return self._markdown_table, "markdown_table"
 
@@ -602,6 +631,28 @@ class ManuscriptChunker(BaseChunker):
             return self._semantic, "semantic_sentence"
 
         return self._fallback_recursive, "langchain_recursive"
+
+    def _select(self, doc: Document) -> tuple[BaseChunker, str]:
+        meta = doc.metadata or {}
+        file_type = str(meta.get("file_type", "") or "").strip().lower()
+        text = doc.page_content or ""
+
+        for selector in (
+            self._select_structured_payloads,
+            self._select_tabular_payloads,
+            self._select_trace_and_spec_documents,
+            self._select_yaml_documents,
+            self._select_config_documents,
+            self._select_reference_and_ticket_documents,
+            self._select_process_documents,
+            self._select_longform_documents,
+            self._select_sectioned_documents,
+        ):
+            selected = selector(file_type=file_type, text=text)
+            if selected is not None:
+                return selected
+
+        return self._select_markdown_or_fallback(file_type=file_type, text=text)
 
     def split_documents(self, documents: list[Document]) -> list[Document]:
         chunks: list[Document] = []

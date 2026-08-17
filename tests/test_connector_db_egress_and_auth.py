@@ -69,10 +69,11 @@ def _build_validation_client(*, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
 
 def _build_runs_client(*, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    import app.api.v1.connectors  # noqa: F401
+    import app.api.v1.connectors as connectors_facade
     import app.api.v1.connectors_runs as runs_api
 
     tenant_id = uuid.uuid4()
+    assert runs_api.connectors_module is connectors_facade
 
     def _override_get_tenant_id() -> uuid.UUID:
         return tenant_id
@@ -89,10 +90,11 @@ def _build_runs_client(*, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
 
 def _build_configs_client(*, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    import app.api.v1.connectors  # noqa: F401
+    import app.api.v1.connectors as connectors_facade
     import app.api.v1.connectors_configs as configs_api
 
     tenant_id = uuid.uuid4()
+    assert configs_api.connectors_module is connectors_facade
 
     def _override_get_tenant_id() -> uuid.UUID:
         return tenant_id
@@ -190,7 +192,6 @@ def test_db_validate_rejects_private_destinations_before_connectivity_check(monk
 
 
 def test_db_run_creation_requires_admin_permission(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.connectors  # noqa: F401
     import app.api.v1.connectors_runs as runs_api
     import app.services.rbac_service as rbac_service
 
@@ -220,7 +221,6 @@ def test_db_run_creation_requires_admin_permission(monkeypatch: pytest.MonkeyPat
 def test_db_run_creation_reports_blocked_destination_as_client_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.connectors  # noqa: F401
     import app.api.v1.connectors_runs as runs_api
 
     client = _build_runs_client(monkeypatch=monkeypatch)
@@ -247,7 +247,6 @@ def test_db_run_creation_reports_blocked_destination_as_client_error(
 
 
 def test_db_saved_config_run_requires_admin_permission(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.connectors  # noqa: F401
     import app.api.v1.connectors_configs as configs_api
     import app.services.rbac_service as rbac_service
 

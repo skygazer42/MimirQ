@@ -529,6 +529,108 @@ def _primary_case(
     return _build_dimension_case(case, profiles[case_index % len(profiles)])
 
 
+def _add_dimension_case(
+    case: dict[str, Any],
+    *,
+    variant_index: int,
+    selected: list[dict[str, Any]],
+    used_global_dimensions: set[str],
+    used_dimensions_by_source: dict[str, set[str]],
+) -> bool:
+    source_id = _case_id(case)
+    used_dimensions = used_dimensions_by_source.setdefault(source_id, set())
+    profiles = [profile for profile in _available_dimension_profiles(case) if profile[0] not in used_dimensions]
+    globally_new = [profile for profile in profiles if profile[0] not in used_global_dimensions]
+    if not globally_new:
+        return False
+    next_case = _build_dimension_case(case, globally_new[0], variant_index=variant_index)
+    signature = _dimension_signature_from_case(next_case)
+    used_dimensions.add(signature)
+    used_global_dimensions.add(signature)
+    selected.append(next_case)
+    return True
+
+
+def _append_initial_dimension_cases(
+    cases: list[dict[str, Any]],
+    *,
+    total: int,
+    selected: list[dict[str, Any]],
+    used_global_dimensions: set[str],
+    used_dimensions_by_source: dict[str, set[str]],
+) -> None:
+    for case in cases:
+        if len(selected) >= total:
+            return
+        _add_dimension_case(
+            case,
+            variant_index=0,
+            selected=selected,
+            used_global_dimensions=used_global_dimensions,
+            used_dimensions_by_source=used_dimensions_by_source,
+        )
+
+
+def _append_fallback_cases(
+    cases: list[dict[str, Any]],
+    *,
+    total: int,
+    selected: list[dict[str, Any]],
+    used_global_dimensions: set[str],
+) -> None:
+    remaining = total - len(selected)
+    for index, case in enumerate(cases[:remaining]):
+        next_case = _primary_case(case, case_index=index, used_global_dimensions=used_global_dimensions)
+        used_global_dimensions.add(_dimension_signature_from_case(next_case))
+        selected.append(next_case)
+
+
+def _append_dimension_variants(
+    cases: list[dict[str, Any]],
+    *,
+    total: int,
+    selected: list[dict[str, Any]],
+    used_global_dimensions: set[str],
+    used_dimensions_by_source: dict[str, set[str]],
+) -> None:
+    variant_index = 1
+    while len(selected) < total and cases:
+        added_this_round = False
+        for case in cases:
+            if len(selected) >= total:
+                break
+            added_this_round = (
+                _add_dimension_case(
+                    case,
+                    variant_index=variant_index,
+                    selected=selected,
+                    used_global_dimensions=used_global_dimensions,
+                    used_dimensions_by_source=used_dimensions_by_source,
+                )
+                or added_this_round
+            )
+        if not added_this_round:
+            return
+        variant_index += 1
+
+
+def _append_qa_cases(
+    cases: list[dict[str, Any]],
+    *,
+    total: int,
+    qa_cap: int,
+    selected: list[dict[str, Any]],
+    used_global_dimensions: set[str],
+) -> None:
+    remaining = total - len(selected)
+    if remaining <= 0 or qa_cap <= 0:
+        return
+    for index, case in enumerate(cases[: min(remaining, qa_cap)]):
+        next_case = _primary_case(case, case_index=index, used_global_dimensions=used_global_dimensions)
+        used_global_dimensions.add(_dimension_signature_from_case(next_case))
+        selected.append(next_case)
+
+
 def build_human_mixed_cases(
     cases: list[dict[str, Any]],
     *,
@@ -547,52 +649,33 @@ def build_human_mixed_cases(
     selected: list[dict[str, Any]] = []
     used_global_dimensions: set[str] = set()
     used_dimensions_by_source: dict[str, set[str]] = {}
-
-    def add_dimension_case(case: dict[str, Any], *, variant_index: int) -> bool:
-        source_id = _case_id(case)
-        used_dimensions = used_dimensions_by_source.setdefault(source_id, set())
-        profiles = [profile for profile in _available_dimension_profiles(case) if profile[0] not in used_dimensions]
-        if not profiles:
-            return False
-        globally_new = [profile for profile in profiles if profile[0] not in used_global_dimensions]
-        if not globally_new:
-            return False
-        profile = globally_new[0]
-        next_case = _build_dimension_case(case, profile, variant_index=variant_index)
-        used_dimensions.add(_dimension_signature_from_case(next_case))
-        used_global_dimensions.add(_dimension_signature_from_case(next_case))
-        selected.append(next_case)
-        return True
-
-    for case in dimension_preferred:
-        if len(selected) >= total:
-            break
-        add_dimension_case(case, variant_index=0)
-
-    remaining = total - len(selected)
-    if remaining > 0:
-        for index, case in enumerate(fallback_preferred[:remaining]):
-            next_case = _primary_case(case, case_index=index, used_global_dimensions=used_global_dimensions)
-            used_global_dimensions.add(_dimension_signature_from_case(next_case))
-            selected.append(next_case)
-
-    variant_index = 1
-    while len(selected) < total and dimension_preferred:
-        added_this_round = False
-        for case in dimension_preferred:
-            if len(selected) >= total:
-                break
-            added_this_round = add_dimension_case(case, variant_index=variant_index) or added_this_round
-        if not added_this_round:
-            break
-        variant_index += 1
-
-    remaining = total - len(selected)
-    if remaining > 0 and qa_cap > 0:
-        for index, case in enumerate(qa_like[: min(remaining, qa_cap)]):
-            next_case = _primary_case(case, case_index=index, used_global_dimensions=used_global_dimensions)
-            used_global_dimensions.add(_dimension_signature_from_case(next_case))
-            selected.append(next_case)
+    _append_initial_dimension_cases(
+        dimension_preferred,
+        total=total,
+        selected=selected,
+        used_global_dimensions=used_global_dimensions,
+        used_dimensions_by_source=used_dimensions_by_source,
+    )
+    _append_fallback_cases(
+        fallback_preferred,
+        total=total,
+        selected=selected,
+        used_global_dimensions=used_global_dimensions,
+    )
+    _append_dimension_variants(
+        dimension_preferred,
+        total=total,
+        selected=selected,
+        used_global_dimensions=used_global_dimensions,
+        used_dimensions_by_source=used_dimensions_by_source,
+    )
+    _append_qa_cases(
+        qa_like,
+        total=total,
+        qa_cap=qa_cap,
+        selected=selected,
+        used_global_dimensions=used_global_dimensions,
+    )
     return selected[:total]
 
 

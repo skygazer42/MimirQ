@@ -10,7 +10,6 @@ It provides the plumbing/integration point. A production-grade ColBERT model
 can be wired in by implementing a TokenEmbedder that uses HF/torch.
 """
 
-
 import hashlib
 import re
 import threading
@@ -245,7 +244,7 @@ def check_colbert_provider_readiness(
 
     try:
         import torch  # noqa: PLC0415
-        import transformers  # noqa: F401, PLC0415
+        import transformers as transformers  # noqa: PLC0415
     except Exception:
         return {
             "provider": provider,
@@ -255,7 +254,6 @@ def check_colbert_provider_readiness(
             "model_name": resolved_model,
             "device": resolved_device,
         }
-
     if resolved_device == "cuda" and not bool(torch.cuda.is_available()):
         return {
             "provider": provider,

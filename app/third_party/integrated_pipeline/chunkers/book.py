@@ -70,112 +70,144 @@ class Pdf(PdfParser):
         return [(b["text"] + self._line_tag(b, zoomin), b.get("layoutno", "")) for b in self.boxes], tbls
 
 
+def _default_parser_config(kwargs):
+    return kwargs.get(
+        "parser_config",
+        {"chunk_token_num": 512, "delimiter": "\n!?。；！？", "layout_recognize": "DeepDOC"},
+    )
+
+
+def _build_doc(filename):
+    doc = {"docnm_kwd": filename, "title_tks": rag_tokenizer.tokenize(re.sub(r"\.[a-zA-Z]+$", "", filename))}
+    doc["title_sm_tks"] = rag_tokenizer.fine_grained_tokenize(doc["title_tks"])
+    return doc
+
+
+def _filter_docx_sections(sections):
+    return [
+        (item[0], item[1] if item[1] is not None else "") for item in sections if not isinstance(item[1], Image.Image)
+    ]
+
+
+def _parse_docx(filename, binary, from_page, to_page, callback, kwargs):
+    callback(0.1, "Start to parse.")
+    doc_parser = naive.Docx()
+    sections, tbls = doc_parser(filename, binary=binary, from_page=from_page, to_page=to_page)
+    remove_contents_table(sections, eng=is_english(random_choices([t for t, _ in sections], k=200)))
+    tbls = vision_figure_parser_docx_wrapper(sections=sections, tbls=tbls, callback=callback, **kwargs)
+    callback(0.8, "Finish parsing.")
+    return _filter_docx_sections(sections), tbls, None
+
+
+def _parse_pdf(filename, binary, from_page, to_page, lang, callback, parser_config, kwargs):
+    layout_recognizer = parser_config.get("layout_recognize", "DeepDOC")
+    if isinstance(layout_recognizer, bool):
+        layout_recognizer = "DeepDOC" if layout_recognizer else "Plain Text"
+
+    name = layout_recognizer.strip().lower()
+    parser = PARSERS.get(name, by_plaintext)
+    callback(0.1, "Start to parse.")
+    sections, tbls, pdf_parser = parser(
+        filename=filename,
+        binary=binary,
+        from_page=from_page,
+        to_page=to_page,
+        lang=lang,
+        callback=callback,
+        pdf_cls=Pdf,
+        layout_recognizer=layout_recognizer,
+        **kwargs,
+    )
+    if not sections and not tbls:
+        return [], [], None
+    if name in ["tcadp", "docling", "mineru"]:
+        parser_config["chunk_token_num"] = 0
+
+    sample_texts = [s if isinstance(s, str) else s[0] for s in sections]
+    remove_contents_table(sections, eng=is_english(random_choices(sample_texts, k=200)))
+    callback(0.8, "Finish parsing.")
+    return sections, tbls, pdf_parser
+
+
+def _parse_text_sections(filename, binary, callback):
+    callback(0.1, "Start to parse.")
+    txt = get_text(filename, binary)
+    sections = [(line, "") for line in txt.split("\n") if line]
+    remove_contents_table(sections, eng=is_english(random_choices([t for t, _ in sections], k=200)))
+    callback(0.8, "Finish parsing.")
+    return sections, [], None
+
+
+def _parse_html_sections(filename, binary, callback):
+    callback(0.1, "Start to parse.")
+    sections = [(line, "") for line in HtmlParser()(filename, binary) if line]
+    remove_contents_table(sections, eng=is_english(random_choices([t for t, _ in sections], k=200)))
+    callback(0.8, "Finish parsing.")
+    return sections, [], None
+
+
+def _parse_doc_sections(filename, binary, callback):
+    callback(0.1, "Start to parse.")
+    tika_parser = optional_import("tika.parser", feature="integrated_pipeline_book_doc_parser", pip_name="tika")
+    if tika_parser is None:
+        callback(0.8, "tika not available. Unsupported .doc parsing. (hint: pip install tika)")
+        logging.warning("tika not available. Unsupported .doc parsing for %s. (hint: pip install tika)", filename)
+        return None
+
+    doc_parsed = tika_parser.from_buffer(BytesIO(binary))
+    if doc_parsed.get("content", None) is None:
+        callback(0.8, f"tika.parser got empty content from {filename}.")
+        logging.warning(f"tika.parser got empty content from {filename}.")
+        return None
+
+    sections = [(line, "") for line in doc_parsed["content"].split("\n") if line]
+    remove_contents_table(sections, eng=is_english(random_choices([t for t, _ in sections], k=200)))
+    callback(0.8, "Finish parsing.")
+    return sections, [], None
+
+
+def _parse_sections(filename, binary, from_page, to_page, lang, callback, parser_config, kwargs):
+    if re.search(r"\.docx$", filename, re.IGNORECASE):
+        return _parse_docx(filename, binary, from_page, to_page, callback, kwargs)
+    if re.search(r"\.pdf$", filename, re.IGNORECASE):
+        return _parse_pdf(filename, binary, from_page, to_page, lang, callback, parser_config, kwargs)
+    if re.search(r"\.txt$", filename, re.IGNORECASE):
+        return _parse_text_sections(filename, binary, callback)
+    if re.search(r"\.(htm|html)$", filename, re.IGNORECASE):
+        return _parse_html_sections(filename, binary, callback)
+    if re.search(r"\.doc$", filename, re.IGNORECASE):
+        return _parse_doc_sections(filename, binary, callback)
+    raise NotImplementedError("file type not supported yet(doc, docx, pdf, txt supported)")
+
+
+def _merge_chunks(sections, kwargs):
+    make_colon_as_title(sections)
+    bull = bullets_category(list(random_choices([t for t, _ in sections], k=100)))
+    if bull >= 0:
+        return ["\n".join(ck) for ck in hierarchical_merge(bull, sections, 5)]
+
+    split_sections = [s.split("@") for s, _ in sections]
+    split_sections = [(pr[0], "@" + pr[1]) if len(pr) == 2 else (pr[0], "") for pr in split_sections]
+    return naive_merge(split_sections, kwargs.get("chunk_token_num", 256), kwargs.get("delimer", "\n。；！？"))
+
+
 def chunk(filename, binary=None, from_page=0, to_page=100000, lang="Chinese", callback=None, **kwargs):
     """
     Supported file formats are docx, pdf, txt.
     Since a book is long and not all the parts are useful, if it's a PDF,
     please setup the page ranges for every book in order eliminate negative effects and save elapsed computing time.
     """
-    parser_config = kwargs.get(
-        "parser_config", {"chunk_token_num": 512, "delimiter": "\n!?。；！？", "layout_recognize": "DeepDOC"}
-    )
-    doc = {"docnm_kwd": filename, "title_tks": rag_tokenizer.tokenize(re.sub(r"\.[a-zA-Z]+$", "", filename))}
-    doc["title_sm_tks"] = rag_tokenizer.fine_grained_tokenize(doc["title_tks"])
-    pdf_parser = None
-    sections, tbls = [], []
-    if re.search(r"\.docx$", filename, re.IGNORECASE):
-        callback(0.1, "Start to parse.")
-        doc_parser = naive.Docx()
-        sections, tbls = doc_parser(filename, binary=binary, from_page=from_page, to_page=to_page)
-        remove_contents_table(sections, eng=is_english(random_choices([t for t, _ in sections], k=200)))
-        tbls = vision_figure_parser_docx_wrapper(sections=sections, tbls=tbls, callback=callback, **kwargs)
-        # tbls = [((None, lns), None) for lns in tbls]
-        sections = [
-            (item[0], item[1] if item[1] is not None else "")
-            for item in sections
-            if not isinstance(item[1], Image.Image)
-        ]
-        callback(0.8, "Finish parsing.")
+    parser_config = _default_parser_config(kwargs)
+    doc = _build_doc(filename)
+    parsed = _parse_sections(filename, binary, from_page, to_page, lang, callback, parser_config, kwargs)
+    if parsed is None:
+        return []
 
-    elif re.search(r"\.pdf$", filename, re.IGNORECASE):
-        layout_recognizer = parser_config.get("layout_recognize", "DeepDOC")
+    sections, tbls, pdf_parser = parsed
+    if not sections and not tbls:
+        return []
 
-        if isinstance(layout_recognizer, bool):
-            layout_recognizer = "DeepDOC" if layout_recognizer else "Plain Text"
-
-        name = layout_recognizer.strip().lower()
-        parser = PARSERS.get(name, by_plaintext)
-        callback(0.1, "Start to parse.")
-
-        sections, tbls, pdf_parser = parser(
-            filename=filename,
-            binary=binary,
-            from_page=from_page,
-            to_page=to_page,
-            lang=lang,
-            callback=callback,
-            pdf_cls=Pdf,
-            layout_recognizer=layout_recognizer,
-            **kwargs,
-        )
-
-        if not sections and not tbls:
-            return []
-
-        if name in ["tcadp", "docling", "mineru"]:
-            parser_config["chunk_token_num"] = 0
-
-        sample_texts = [s if isinstance(s, str) else s[0] for s in sections]
-        remove_contents_table(sections, eng=is_english(random_choices(sample_texts, k=200)))
-
-        callback(0.8, "Finish parsing.")
-    elif re.search(r"\.txt$", filename, re.IGNORECASE):
-        callback(0.1, "Start to parse.")
-        txt = get_text(filename, binary)
-        sections = txt.split("\n")
-        sections = [(line, "") for line in sections if line]
-        remove_contents_table(sections, eng=is_english(random_choices([t for t, _ in sections], k=200)))
-        callback(0.8, "Finish parsing.")
-
-    elif re.search(r"\.(htm|html)$", filename, re.IGNORECASE):
-        callback(0.1, "Start to parse.")
-        sections = HtmlParser()(filename, binary)
-        sections = [(line, "") for line in sections if line]
-        remove_contents_table(sections, eng=is_english(random_choices([t for t, _ in sections], k=200)))
-        callback(0.8, "Finish parsing.")
-
-    elif re.search(r"\.doc$", filename, re.IGNORECASE):
-        callback(0.1, "Start to parse.")
-
-        tika_parser = optional_import("tika.parser", feature="integrated_pipeline_book_doc_parser", pip_name="tika")
-        if tika_parser is None:
-            callback(0.8, "tika not available. Unsupported .doc parsing. (hint: pip install tika)")
-            logging.warning("tika not available. Unsupported .doc parsing for %s. (hint: pip install tika)", filename)
-            return []
-
-        binary = BytesIO(binary)
-        doc_parsed = tika_parser.from_buffer(binary)
-        if doc_parsed.get("content", None) is not None:
-            sections = doc_parsed["content"].split("\n")
-            sections = [(line, "") for line in sections if line]
-        else:
-            callback(0.8, f"tika.parser got empty content from {filename}.")
-            logging.warning(f"tika.parser got empty content from {filename}.")
-            return []
-        remove_contents_table(sections, eng=is_english(random_choices([t for t, _ in sections], k=200)))
-        callback(0.8, "Finish parsing.")
-
-    else:
-        raise NotImplementedError("file type not supported yet(doc, docx, pdf, txt supported)")
-
-    make_colon_as_title(sections)
-    bull = bullets_category(list(random_choices([t for t, _ in sections], k=100)))
-    if bull >= 0:
-        chunks = ["\n".join(ck) for ck in hierarchical_merge(bull, sections, 5)]
-    else:
-        sections = [s.split("@") for s, _ in sections]
-        sections = [(pr[0], "@" + pr[1]) if len(pr) == 2 else (pr[0], "") for pr in sections]
-        chunks = naive_merge(sections, kwargs.get("chunk_token_num", 256), kwargs.get("delimer", "\n。；！？"))
+    chunks = _merge_chunks(sections, kwargs)
 
     # is it English
     # is_english(random_choices([t for t, _ in sections], k=218))

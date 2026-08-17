@@ -180,51 +180,62 @@ def _call_qianfan_ocr(*, image_bytes: bytes, layout_as_thought: bool) -> str:
     return _normalize_output(_extract_message_text(raw))
 
 
-def _convert_document(file_bytes: bytes, suffix: str, *, layout_as_thought: bool) -> tuple[str, int]:
+def _decode_document_pages(file_bytes: bytes, suffix: str) -> list[bytes]:
     suffix = (suffix or "").lower()
     try:
         if suffix == ".pdf":
-            pages = _render_pdf_pages(file_bytes, dpi=_PDF_DPI)
-        elif suffix in {".png", ".jpg", ".jpeg"}:
-            pages = [file_bytes]
-        else:
-            raise RuntimeError("unsupported_file_type")
+            return _render_pdf_pages(file_bytes, dpi=_PDF_DPI)
+        if suffix in {".png", ".jpg", ".jpeg"}:
+            return [file_bytes]
+        raise RuntimeError("unsupported_file_type")
     except RuntimeError:
         raise
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError(f"document_decode_failed: {str(exc)[:200]}") from exc
 
-    if not pages:
-        return "", 0
 
-    if len(pages) == 1 or _PAGE_CONCURRENCY <= 1:
-        results = [_call_qianfan_ocr(image_bytes=pages[0], layout_as_thought=layout_as_thought)]
-        if len(pages) > 1:
-            for page in pages[1:]:
-                results.append(_call_qianfan_ocr(image_bytes=page, layout_as_thought=layout_as_thought))
-    else:
-        results = [""] * len(pages)
-        with ThreadPoolExecutor(max_workers=min(_PAGE_CONCURRENCY, len(pages))) as pool:
-            future_map = {
-                pool.submit(_call_qianfan_ocr, image_bytes=img, layout_as_thought=layout_as_thought): idx
-                for idx, img in enumerate(pages)
-            }
-            for future, idx in future_map.items():
-                try:
-                    results[idx] = future.result()
-                except Exception as exc:
-                    raise RuntimeError(f"page_{idx + 1}_failed: {str(exc)[:300]}") from exc
+def _ocr_pages_serial(pages: list[bytes], *, layout_as_thought: bool) -> list[str]:
+    return [_call_qianfan_ocr(image_bytes=page, layout_as_thought=layout_as_thought) for page in pages]
 
+
+def _ocr_pages_parallel(pages: list[bytes], *, layout_as_thought: bool) -> list[str]:
+    results = [""] * len(pages)
+    with ThreadPoolExecutor(max_workers=min(_PAGE_CONCURRENCY, len(pages))) as pool:
+        future_map = {
+            pool.submit(_call_qianfan_ocr, image_bytes=img, layout_as_thought=layout_as_thought): idx
+            for idx, img in enumerate(pages)
+        }
+        for future, idx in future_map.items():
+            try:
+                results[idx] = future.result()
+            except Exception as exc:
+                raise RuntimeError(f"page_{idx + 1}_failed: {str(exc)[:300]}") from exc
+    return results
+
+
+def _render_page_markdown(results: list[str]) -> tuple[str, int]:
     if len(results) == 1:
         return (results[0] or "").strip(), 1
 
     blocks: list[str] = []
-    for i, text in enumerate(results, start=1):
+    for index, text in enumerate(results, start=1):
         text0 = (text or "").strip()
         if not text0:
             continue
-        blocks.append(f"<!-- page {i} -->\n{text0}")
+        blocks.append(f"<!-- page {index} -->\n{text0}")
     return "\n\n".join(blocks).strip(), len(results)
+
+
+def _convert_document(file_bytes: bytes, suffix: str, *, layout_as_thought: bool) -> tuple[str, int]:
+    pages = _decode_document_pages(file_bytes, suffix)
+    if not pages:
+        return "", 0
+
+    if len(pages) == 1 or _PAGE_CONCURRENCY <= 1:
+        results = _ocr_pages_serial(pages, layout_as_thought=layout_as_thought)
+    else:
+        results = _ocr_pages_parallel(pages, layout_as_thought=layout_as_thought)
+    return _render_page_markdown(results)
 
 
 @app.get("/health")

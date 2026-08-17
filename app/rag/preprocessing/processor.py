@@ -125,6 +125,543 @@ class GovernanceCleanOptions:
     common_lines_min_ratio: float = 0.35
 
 
+@dataclass
+class _GovernanceTotals:
+    changed: int = 0
+    applied_rules: int = 0
+    dropped: int = 0
+    drop_reasons: dict[str, int] = field(default_factory=dict)
+    pii_hits: dict[str, int] = field(default_factory=dict)
+    secrets_hits: dict[str, int] = field(default_factory=dict)
+    frontmatter_docs: int = 0
+    frontmatter_stripped_docs: int = 0
+    paragraphs_dropped: int = 0
+    references_removed_lines: int = 0
+    urls_changed: int = 0
+    boilerplate_removed_sections: int = 0
+    boilerplate_removed_lines: int = 0
+    images_removed: int = 0
+    tables_normalized: int = 0
+    table_rows_changed: int = 0
+    code_blocks_changed: int = 0
+    code_lines_stripped: int = 0
+    keywords_docs: int = 0
+    keywords_total: int = 0
+    languages: dict[str, int] = field(default_factory=dict)
+    titles_docs: int = 0
+    tags_docs: int = 0
+
+
+@dataclass
+class _DocumentState:
+    source: Document
+    original_text: str
+    text: str
+    changed: bool = False
+    applied_rules: int = 0
+    frontmatter_present: bool = False
+    frontmatter_end_char: int | None = None
+    frontmatter_data: dict[str, object] | None = None
+    frontmatter_changed: bool = False
+    title: str | None = None
+    tags: list[str] | None = None
+    table_count: int = 0
+    table_rows_changed: int = 0
+    code_blocks_changed: int = 0
+    code_lines_stripped: int = 0
+    boilerplate: Any | None = None
+    images_removed: int = 0
+    pii_hits: dict[str, int] = field(default_factory=dict)
+    secrets_hits: dict[str, int] = field(default_factory=dict)
+    paragraphs_dropped: int = 0
+    references_removed_lines: int = 0
+    urls_changed: int = 0
+    language: str | None = None
+    language_confidence: float | None = None
+    keywords: list[str] | None = None
+
+
+def _resolved_options(
+    options: GovernanceCleanOptions | None,
+    legacy_overrides: dict[str, Any],
+) -> GovernanceCleanOptions:
+    resolved = options or GovernanceCleanOptions()
+    return replace(resolved, **legacy_overrides) if legacy_overrides else resolved
+
+
+def _global_common_lines(
+    documents: Sequence[Document],
+    options: GovernanceCleanOptions,
+) -> set[str]:
+    if not options.remove_common_lines:
+        return set()
+    doc_count = len(documents)
+    min_docs = max(2, int(options.common_lines_min_docs or 0))
+    min_docs = min(min_docs, doc_count) if doc_count >= 2 else 0
+    if min_docs < 2:
+        return set()
+    return build_common_line_signatures(
+        [doc.page_content or "" for doc in documents],
+        min_docs=min_docs,
+        min_ratio=options.common_lines_min_ratio,
+        max_line_length=options.unwrap_max_line_length,
+    )
+
+
+def _normalize_frontmatter_tags(raw_tags: object) -> list[str] | None:
+    if isinstance(raw_tags, str) and raw_tags.strip():
+        parts = [part.strip() for part in raw_tags.replace(";", ",").split(",") if part.strip()]
+        return parts[:50] or None
+    if not isinstance(raw_tags, list):
+        return None
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in raw_tags:
+        value = str(item).strip() if item is not None else ""
+        key = value.casefold()
+        if not value or key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(value[:64])
+    return cleaned[:50] or None
+
+
+def _extract_frontmatter(
+    state: _DocumentState,
+    options: GovernanceCleanOptions,
+    totals: _GovernanceTotals,
+) -> None:
+    if not (options.extract_frontmatter or options.strip_frontmatter):
+        return
+    try:
+        frontmatter = extract_markdown_frontmatter_fn(state.original_text, strip=bool(options.strip_frontmatter))
+    except Exception:
+        frontmatter = None
+    if frontmatter is None:
+        return
+
+    state.frontmatter_present = True
+    state.frontmatter_end_char = int(getattr(frontmatter, "end_char", 0) or 0)
+    state.frontmatter_changed = bool(getattr(frontmatter, "changed", False))
+    if options.strip_frontmatter:
+        state.text = getattr(frontmatter, "stripped_text", state.original_text) or ""
+    data = getattr(frontmatter, "data", None)
+    if isinstance(data, dict) and data:
+        state.frontmatter_data = dict(data)
+        raw_title = state.frontmatter_data.get("title")
+        if isinstance(raw_title, str) and raw_title.strip():
+            state.title = raw_title.strip()[:200]
+        raw_tags = (
+            state.frontmatter_data.get("tags")
+            or state.frontmatter_data.get("tag")
+            or state.frontmatter_data.get("categories")
+            or state.frontmatter_data.get("category")
+            or state.frontmatter_data.get("keywords")
+        )
+        state.tags = _normalize_frontmatter_tags(raw_tags)
+    totals.frontmatter_docs += 1
+    if state.frontmatter_changed:
+        totals.frontmatter_stripped_docs += 1
+
+
+def _apply_base_cleanup(
+    state: _DocumentState,
+    *,
+    options: GovernanceCleanOptions,
+    active_rules: list[RegexRule],
+    global_common_lines: set[str],
+    totals: _GovernanceTotals,
+) -> None:
+    local_common_lines = (
+        build_repeated_line_signatures(
+            state.text or "",
+            min_occurrences=options.common_lines_min_docs,
+            max_line_length=options.unwrap_max_line_length,
+        )
+        if options.remove_common_lines
+        else set()
+    )
+    common_lines = (global_common_lines | local_common_lines) if options.remove_common_lines else None
+    result = clean_markdown(
+        state.text or "",
+        rules=active_rules,
+        regex_timeout_ms=int(getattr(settings, "GOVERNANCE_REGEX_TIMEOUT_MS", 100) or 100),
+        common_lines=common_lines,
+        remove_toc_lines=options.remove_toc_lines,
+        remove_noise_lines=options.remove_noise_lines,
+        unwrap_lines=options.unwrap_lines,
+        remove_common_lines=options.remove_common_lines,
+        collapse_blank_lines=options.collapse_blank_lines,
+        max_blank_lines=options.max_blank_lines,
+        unwrap_max_line_length=options.unwrap_max_line_length,
+        noise_min_chars=options.noise_min_chars,
+        noise_ratio_threshold=options.noise_ratio_threshold,
+    )
+    state.text = result.markdown
+    state.applied_rules = int(result.applied_rules or 0)
+    state.changed = bool(result.changed) or state.frontmatter_changed
+    totals.applied_rules += state.applied_rules
+
+
+def _apply_structural_transforms(
+    state: _DocumentState,
+    options: GovernanceCleanOptions,
+    totals: _GovernanceTotals,
+) -> None:
+    if options.normalize_tables:
+        table_result = normalize_markdown_tables(state.text)
+        state.text = table_result.text
+        state.table_count = int(table_result.tables or 0)
+        state.table_rows_changed = int(table_result.rows_changed or 0)
+        state.changed = state.changed or bool(table_result.changed)
+        totals.tables_normalized += state.table_count
+        totals.table_rows_changed += state.table_rows_changed
+    if options.strip_code_line_numbers:
+        code_result = strip_fenced_code_line_numbers(state.text)
+        state.text = code_result.text
+        state.code_blocks_changed = int(code_result.blocks_changed or 0)
+        state.code_lines_stripped = int(code_result.lines_stripped or 0)
+        state.changed = state.changed or bool(code_result.changed)
+        totals.code_blocks_changed += state.code_blocks_changed
+        totals.code_lines_stripped += state.code_lines_stripped
+    if options.remove_boilerplate:
+        state.boilerplate = remove_markdown_boilerplate(state.text)
+        state.text = state.boilerplate.text
+        state.changed = state.changed or bool(state.boilerplate.changed)
+        totals.boilerplate_removed_sections += int(getattr(state.boilerplate, "removed_sections", 0) or 0)
+        totals.boilerplate_removed_lines += int(getattr(state.boilerplate, "removed_lines", 0) or 0)
+    image_mode = str(options.remove_images or "none").strip().lower()
+    if image_mode in {"decorative", "all"}:
+        image_result = strip_images(state.text, mode=image_mode)  # type: ignore[arg-type]
+        state.text = image_result.text
+        state.images_removed = int(image_result.removed or 0)
+        state.changed = state.changed or bool(image_result.changed)
+        totals.images_removed += state.images_removed
+
+
+def _merge_hit_counts(target: dict[str, int], additions: dict[str, int]) -> None:
+    for key, value in additions.items():
+        target[key] = target.get(key, 0) + int(value)
+
+
+def _apply_sensitive_transforms(
+    state: _DocumentState,
+    options: GovernanceCleanOptions,
+    totals: _GovernanceTotals,
+) -> None:
+    if options.pii_anonymize:
+        pii_result = anonymize_pii(
+            state.text,
+            enabled=True,
+            mode=str(options.pii_mode or "mask"),
+            mask=str(options.pii_mask or "[REDACTED]"),
+        )  # type: ignore[arg-type]
+        state.text = pii_result.text
+        state.pii_hits = dict(pii_result.hits or {})
+        state.changed = state.changed or bool(pii_result.changed)
+        _merge_hit_counts(totals.pii_hits, state.pii_hits)
+    if options.secrets_redact:
+        secret_result = redact_secrets(
+            state.text,
+            enabled=True,
+            mode=str(options.secrets_mode or "mask"),
+            mask=str(options.secrets_mask or "[SECRET]"),
+        )  # type: ignore[arg-type]
+        state.text = secret_result.text
+        state.secrets_hits = dict(secret_result.hits or {})
+        state.changed = state.changed or bool(secret_result.changed)
+        _merge_hit_counts(totals.secrets_hits, state.secrets_hits)
+
+
+def _apply_best_effort_cleanup(
+    state: _DocumentState,
+    options: GovernanceCleanOptions,
+    totals: _GovernanceTotals,
+) -> None:
+    if options.drop_duplicate_paragraphs:
+        try:
+            result = drop_duplicate_paragraphs_fn(
+                state.text,
+                min_occurrences=int(options.drop_duplicate_paragraphs_min_occurrences or 0),
+                min_paragraph_chars=int(options.drop_duplicate_paragraphs_min_chars or 0),
+                max_paragraph_chars=int(options.drop_duplicate_paragraphs_max_chars or 0),
+            )
+            state.text = result.text
+            state.paragraphs_dropped = int(getattr(result, "paragraphs_dropped", 0) or 0)
+            state.changed = state.changed or bool(getattr(result, "changed", False))
+        except Exception as exc:
+            logger.debug(_MARKDOWN_GOVERNANCE_FALLBACK_LOG_MESSAGE, exc)
+    if options.trim_references:
+        try:
+            result = trim_references_section_fn(state.text)
+            state.text = result.text
+            state.references_removed_lines = int(getattr(result, "removed_lines", 0) or 0)
+            state.changed = state.changed or bool(getattr(result, "changed", False))
+        except Exception as exc:
+            logger.debug(_MARKDOWN_GOVERNANCE_FALLBACK_LOG_MESSAGE, exc)
+    if options.normalize_urls:
+        try:
+            result = normalize_urls_fn(state.text, strip_tracking=bool(options.normalize_urls_strip_tracking))
+            state.text = result.text
+            state.urls_changed = int(getattr(result, "urls_changed", 0) or 0)
+            state.changed = state.changed or bool(getattr(result, "changed", False))
+        except Exception as exc:
+            logger.debug(_MARKDOWN_GOVERNANCE_FALLBACK_LOG_MESSAGE, exc)
+    totals.paragraphs_dropped += state.paragraphs_dropped
+    totals.references_removed_lines += state.references_removed_lines
+    totals.urls_changed += state.urls_changed
+
+
+def _quality_drop_reason(state: _DocumentState, options: GovernanceCleanOptions) -> str | None:
+    if options.drop_outline_only:
+        decision = drop_if_outline_only(
+            state.text,
+            min_content_chars=int(options.drop_outline_min_content_chars or 0),
+            max_heading_ratio=float(options.drop_outline_max_heading_ratio or 0.0),
+        )
+        if decision.dropped:
+            return decision.reason or "outline_only"
+    if options.drop_low_density:
+        decision = drop_if_low_density(state.text, threshold=float(options.drop_low_density_threshold or 0.0))
+        if decision.dropped:
+            return decision.reason or "low_density"
+    if options.drop_high_perplexity:
+        decision = drop_if_high_perplexity_proxy(
+            state.text,
+            threshold=float(options.drop_high_perplexity_threshold or 0.0),
+            min_tokens=int(options.drop_high_perplexity_min_tokens or 0),
+        )
+        if decision.dropped:
+            return decision.reason or "perplexity_proxy_high"
+    return None
+
+
+def _extract_title(state: _DocumentState) -> None:
+    if state.title is not None:
+        return
+    try:
+        state.title = extract_markdown_title_fn(state.text)
+    except Exception:
+        state.title = None
+
+
+def _extract_language_and_keywords(state: _DocumentState, options: GovernanceCleanOptions) -> None:
+    if options.detect_language:
+        try:
+            result = detect_language_fn(state.text, min_chars=int(options.language_min_chars or 0))
+            state.language = str(getattr(result, "language", "") or "").strip() or None
+            state.language_confidence = float(getattr(result, "confidence", 0.0) or 0.0)
+        except Exception:
+            state.language = None
+            state.language_confidence = None
+    if options.extract_keywords:
+        try:
+            max_chars = max(0, int(options.keywords_max_chars or 0))
+            snippet = state.text[:max_chars] if max_chars > 0 else state.text
+            keywords = extract_keywords_fn(
+                snippet,
+                provider=str(options.keywords_provider or "auto"),
+                top_k=int(options.keywords_top_k or 10),
+            )
+            state.keywords = list(keywords) if keywords else None
+        except Exception:
+            state.keywords = None
+
+
+def _record_enrichment(state: _DocumentState, totals: _GovernanceTotals) -> None:
+    if state.title:
+        totals.titles_docs += 1
+    if state.tags:
+        totals.tags_docs += 1
+    if state.language:
+        totals.languages[state.language] = totals.languages.get(state.language, 0) + 1
+    if state.keywords:
+        totals.keywords_docs += 1
+        totals.keywords_total += len(state.keywords)
+    if state.changed:
+        totals.changed += 1
+
+
+def _add_frontmatter_metadata(meta: dict[str, Any], state: _DocumentState, options: GovernanceCleanOptions) -> None:
+    if not state.frontmatter_present:
+        return
+    meta["frontmatter_present"] = True
+    if state.frontmatter_end_char and state.frontmatter_end_char > 0:
+        meta["frontmatter_end_char"] = state.frontmatter_end_char
+    if options.strip_frontmatter:
+        meta["frontmatter_stripped"] = True
+    if state.frontmatter_data:
+        meta["document_frontmatter"] = state.frontmatter_data
+
+
+def _add_enrichment_metadata(
+    meta: dict[str, Any],
+    state: _DocumentState,
+    options: GovernanceCleanOptions,
+) -> None:
+    if state.title:
+        meta["document_title"] = str(state.title)
+    if state.tags:
+        meta["document_tags"] = state.tags
+    if state.language:
+        meta["document_language"] = state.language
+        meta["document_language_confidence"] = round(float(state.language_confidence or 0.0), 3)
+    if state.keywords:
+        meta["document_keywords"] = state.keywords
+        meta["document_keywords_provider"] = str(options.keywords_provider or "auto")
+
+
+def _add_cleanup_metadata(meta: dict[str, Any], state: _DocumentState) -> None:
+    if state.paragraphs_dropped:
+        meta["governance_paragraphs_dropped"] = state.paragraphs_dropped
+    if state.references_removed_lines:
+        meta["governance_references_removed_lines"] = state.references_removed_lines
+    if state.urls_changed:
+        meta["governance_urls_changed"] = state.urls_changed
+    if state.boilerplate is not None:
+        meta["governance_boilerplate_removed_sections"] = int(state.boilerplate.removed_sections or 0)
+        meta["governance_boilerplate_removed_lines"] = int(state.boilerplate.removed_lines or 0)
+    if state.images_removed:
+        meta["governance_images_removed"] = state.images_removed
+
+
+def _add_transform_metadata(meta: dict[str, Any], state: _DocumentState) -> None:
+    if state.pii_hits:
+        meta["governance_pii_hits"] = state.pii_hits
+    if state.secrets_hits:
+        meta["governance_secrets_hits"] = state.secrets_hits
+    if state.table_count:
+        meta["governance_tables_normalized"] = state.table_count
+        meta["governance_table_rows_changed"] = state.table_rows_changed
+    if state.code_lines_stripped:
+        meta["governance_code_blocks_changed"] = state.code_blocks_changed
+        meta["governance_code_lines_stripped"] = state.code_lines_stripped
+
+
+def _add_quality_metadata(meta: dict[str, Any], text: str) -> None:
+    try:
+        density = drop_if_low_density(text, threshold=-1.0).metrics or {}
+        outline = drop_if_outline_only(text, min_content_chars=0, max_heading_ratio=2.0).metrics or {}
+        perplexity = drop_if_high_perplexity_proxy(text, threshold=2.0, min_tokens=0).metrics or {}
+        meta["governance_quality"] = {
+            "density": float(density.get("density") or 0.0),
+            "chars_non_space": int(density.get("chars_non_space") or 0),
+            "chars_alnum_cjk": int(density.get("chars_alnum_cjk") or 0),
+            "heading_ratio": float(outline.get("heading_ratio") or 0.0),
+            "lines_total": int(outline.get("lines_total") or 0),
+            "lines_outline": int(outline.get("lines_outline") or 0),
+            "content_chars": int(outline.get("content_chars") or 0),
+            "perplexity_proxy": float(perplexity.get("perplexity_proxy") or 0.0),
+            "token_count": int(perplexity.get("token_count") or 0),
+        }
+    except Exception as exc:
+        logger.debug(_MARKDOWN_GOVERNANCE_FALLBACK_LOG_MESSAGE, exc)
+
+
+def _build_clean_document(state: _DocumentState, options: GovernanceCleanOptions) -> Document:
+    meta = dict(state.source.metadata or {})
+    meta.update(
+        {
+            "governance_version": GOVERNANCE_RULESET_VERSION,
+            "governance_applied": True,
+            "governance_rules_applied": state.applied_rules,
+            "governance_changed": state.changed,
+        }
+    )
+    _add_frontmatter_metadata(meta, state, options)
+    _add_enrichment_metadata(meta, state, options)
+    _add_cleanup_metadata(meta, state)
+    _add_transform_metadata(meta, state)
+    _add_quality_metadata(meta, state.text)
+    return Document(page_content=state.text, metadata=meta, id=getattr(state.source, "id", None))
+
+
+def _process_document(
+    document: Document,
+    *,
+    options: GovernanceCleanOptions,
+    active_rules: list[RegexRule],
+    global_common_lines: set[str],
+    totals: _GovernanceTotals,
+) -> Document | None:
+    original_text = document.page_content or ""
+    state = _DocumentState(source=document, original_text=original_text, text=original_text)
+    _extract_frontmatter(state, options, totals)
+    _apply_base_cleanup(
+        state,
+        options=options,
+        active_rules=active_rules,
+        global_common_lines=global_common_lines,
+        totals=totals,
+    )
+    _apply_structural_transforms(state, options, totals)
+    _apply_sensitive_transforms(state, options, totals)
+    _apply_best_effort_cleanup(state, options, totals)
+    drop_reason = _quality_drop_reason(state, options)
+    if drop_reason is not None:
+        totals.dropped += 1
+        totals.drop_reasons[drop_reason] = totals.drop_reasons.get(drop_reason, 0) + 1
+        return None
+    _extract_title(state)
+    _extract_language_and_keywords(state, options)
+    _record_enrichment(state, totals)
+    return _build_clean_document(state, options)
+
+
+def _gate_reasons(
+    options: GovernanceCleanOptions,
+    totals: _GovernanceTotals,
+    document_count: int,
+) -> dict[str, int]:
+    pii_gate = int(options.pii_max_hits) if isinstance(options.pii_max_hits, (int, float)) else -1
+    secrets_gate = int(options.secrets_max_hits) if isinstance(options.secrets_max_hits, (int, float)) else -1
+    pii_hits = sum(int(value or 0) for value in totals.pii_hits.values())
+    secrets_hits = sum(int(value or 0) for value in totals.secrets_hits.values())
+    reasons: dict[str, int] = {}
+    if pii_gate >= 0 and pii_hits > pii_gate:
+        reasons["pii_exceeded"] = document_count
+    if secrets_gate >= 0 and secrets_hits > secrets_gate:
+        reasons["secrets_exceeded"] = document_count
+    return reasons
+
+
+def _build_governance_stats(
+    totals: _GovernanceTotals,
+    *,
+    document_count: int,
+    gate_reasons: dict[str, int] | None = None,
+) -> GovernanceStats:
+    reasons = dict(totals.drop_reasons)
+    reasons.update(gate_reasons or {})
+    gated = bool(gate_reasons)
+    return GovernanceStats(
+        documents=document_count,
+        changed=0 if gated else totals.changed,
+        applied_rules=totals.applied_rules,
+        dropped=document_count if gated else totals.dropped,
+        drop_reasons=reasons,
+        pii_hits=totals.pii_hits,
+        secrets_hits=totals.secrets_hits,
+        frontmatter_docs=totals.frontmatter_docs,
+        frontmatter_stripped_docs=totals.frontmatter_stripped_docs,
+        paragraphs_dropped=totals.paragraphs_dropped,
+        references_removed_lines=totals.references_removed_lines,
+        urls_changed=totals.urls_changed,
+        boilerplate_removed_sections=totals.boilerplate_removed_sections,
+        boilerplate_removed_lines=totals.boilerplate_removed_lines,
+        images_removed=totals.images_removed,
+        tables_normalized=totals.tables_normalized,
+        table_rows_changed=totals.table_rows_changed,
+        code_blocks_changed=totals.code_blocks_changed,
+        code_lines_stripped=totals.code_lines_stripped,
+        keywords_docs=totals.keywords_docs,
+        keywords_total=totals.keywords_total,
+        languages=totals.languages,
+        titles_docs=totals.titles_docs,
+        tags_docs=totals.tags_docs,
+    )
+
+
 class GovernanceProcessor:
     """Apply conservative markdown cleanup rules before chunking."""
 
@@ -139,510 +676,33 @@ class GovernanceProcessor:
         options: GovernanceCleanOptions | None = None,
         **legacy_overrides: Any,
     ) -> tuple[list[Document], GovernanceStats]:
-        resolved = options or GovernanceCleanOptions()
-        if legacy_overrides:
-            # Backward compatible: older callsites pass many keyword args.
-            resolved = replace(resolved, **legacy_overrides)
-
-        extract_frontmatter = resolved.extract_frontmatter
-        strip_frontmatter = resolved.strip_frontmatter
-        detect_language = resolved.detect_language
-        language_min_chars = resolved.language_min_chars
-        normalize_urls = resolved.normalize_urls
-        normalize_urls_strip_tracking = resolved.normalize_urls_strip_tracking
-        drop_duplicate_paragraphs = resolved.drop_duplicate_paragraphs
-        drop_duplicate_paragraphs_min_occurrences = resolved.drop_duplicate_paragraphs_min_occurrences
-        drop_duplicate_paragraphs_min_chars = resolved.drop_duplicate_paragraphs_min_chars
-        drop_duplicate_paragraphs_max_chars = resolved.drop_duplicate_paragraphs_max_chars
-        trim_references = resolved.trim_references
-        extract_keywords = resolved.extract_keywords
-        keywords_provider = resolved.keywords_provider
-        keywords_top_k = resolved.keywords_top_k
-        keywords_max_chars = resolved.keywords_max_chars
-        remove_toc_lines = resolved.remove_toc_lines
-        remove_noise_lines = resolved.remove_noise_lines
-        unwrap_lines = resolved.unwrap_lines
-        remove_common_lines = resolved.remove_common_lines
-        remove_boilerplate = resolved.remove_boilerplate
-        remove_images = resolved.remove_images
-        normalize_tables = resolved.normalize_tables
-        strip_code_line_numbers = resolved.strip_code_line_numbers
-        pii_anonymize = resolved.pii_anonymize
-        pii_mode = resolved.pii_mode
-        pii_mask = resolved.pii_mask
-        pii_max_hits = resolved.pii_max_hits
-        secrets_redact = resolved.secrets_redact
-        secrets_mode = resolved.secrets_mode
-        secrets_mask = resolved.secrets_mask
-        secrets_max_hits = resolved.secrets_max_hits
-        max_blank_lines = resolved.max_blank_lines
-        drop_outline_only = resolved.drop_outline_only
-        drop_outline_min_content_chars = resolved.drop_outline_min_content_chars
-        drop_outline_max_heading_ratio = resolved.drop_outline_max_heading_ratio
-        drop_low_density = resolved.drop_low_density
-        drop_low_density_threshold = resolved.drop_low_density_threshold
-        drop_high_perplexity = resolved.drop_high_perplexity
-        drop_high_perplexity_threshold = resolved.drop_high_perplexity_threshold
-        drop_high_perplexity_min_tokens = resolved.drop_high_perplexity_min_tokens
-        collapse_blank_lines = resolved.collapse_blank_lines
-        unwrap_max_line_length = resolved.unwrap_max_line_length
-        noise_min_chars = resolved.noise_min_chars
-        noise_ratio_threshold = resolved.noise_ratio_threshold
-        common_lines_min_docs = resolved.common_lines_min_docs
-        common_lines_min_ratio = resolved.common_lines_min_ratio
-
+        resolved = _resolved_options(options, legacy_overrides)
         if not documents:
             return [], GovernanceStats(documents=0, changed=0, applied_rules=0, dropped=0, drop_reasons={})
 
         active_rules = list(rules) if rules is not None else self._rules
-        doc_count = len(documents)
-        min_docs_eff = max(2, int(common_lines_min_docs or 0))
-        if doc_count >= 2:
-            min_docs_eff = min(min_docs_eff, doc_count)
-        else:
-            min_docs_eff = 0
-        global_common_lines = (
-            build_common_line_signatures(
-                [doc.page_content or "" for doc in documents],
-                min_docs=min_docs_eff,
-                min_ratio=common_lines_min_ratio,
-                max_line_length=unwrap_max_line_length,
-            )
-            if remove_common_lines and min_docs_eff >= 2
-            else set()
-        )
+        document_count = len(documents)
+        common_lines = _global_common_lines(documents, resolved)
+        totals = _GovernanceTotals()
         cleaned: list[Document] = []
-        changed = 0
-        applied_total = 0
-        dropped = 0
-        drop_reasons: dict[str, int] = {}
-        pii_hits_total: dict[str, int] = {}
-        secrets_hits_total: dict[str, int] = {}
-        frontmatter_docs = 0
-        frontmatter_stripped_docs = 0
-        paragraphs_dropped_total = 0
-        references_removed_total = 0
-        urls_changed_total = 0
-        boilerplate_removed_sections_total = 0
-        boilerplate_removed_lines_total = 0
-        images_removed_total = 0
-        tables_normalized_total = 0
-        table_rows_changed_total = 0
-        code_blocks_changed_total = 0
-        code_lines_stripped_total = 0
-        keywords_docs = 0
-        keywords_total = 0
-        languages: dict[str, int] = {}
-        titles_docs = 0
-        tags_docs = 0
-
-        for doc in documents:
-            original_text = doc.page_content or ""
-            working_text = original_text
-
-            frontmatter_present = False
-            frontmatter_end_char: int | None = None
-            frontmatter_data: dict[str, object] | None = None
-            frontmatter_changed = False
-            title: str | None = None
-            tags: list[str] | None = None
-
-            if extract_frontmatter or strip_frontmatter:
-                try:
-                    fm = extract_markdown_frontmatter_fn(original_text, strip=bool(strip_frontmatter))
-                except Exception:
-                    fm = None
-                if fm is not None:
-                    frontmatter_present = True
-                    frontmatter_end_char = int(getattr(fm, "end_char", 0) or 0)
-                    frontmatter_changed = bool(getattr(fm, "changed", False))
-                    if strip_frontmatter:
-                        working_text = getattr(fm, "stripped_text", original_text) or ""
-
-                    data = getattr(fm, "data", None)
-                    if isinstance(data, dict) and data:
-                        frontmatter_data = dict(data)
-                        raw_title = frontmatter_data.get("title")
-                        if isinstance(raw_title, str) and raw_title.strip():
-                            title = raw_title.strip()[:200]
-
-                        raw_tags = (
-                            frontmatter_data.get("tags")
-                            or frontmatter_data.get("tag")
-                            or frontmatter_data.get("categories")
-                            or frontmatter_data.get("category")
-                            or frontmatter_data.get("keywords")
-                        )
-                        if isinstance(raw_tags, list):
-                            cleaned_tags: list[str] = []
-                            seen_tags: set[str] = set()
-                            for item in raw_tags:
-                                if item is None:
-                                    continue
-                                s = str(item).strip()
-                                if not s:
-                                    continue
-                                key = s.casefold()
-                                if key in seen_tags:
-                                    continue
-                                seen_tags.add(key)
-                                cleaned_tags.append(s[:64])
-                            if cleaned_tags:
-                                tags = cleaned_tags[:50]
-                        elif isinstance(raw_tags, str) and raw_tags.strip():
-                            parts = [p.strip() for p in raw_tags.replace(";", ",").split(",") if p.strip()]
-                            if parts:
-                                tags = parts[:50]
-
-            if frontmatter_present:
-                frontmatter_docs += 1
-            if frontmatter_changed:
-                frontmatter_stripped_docs += 1
-
-            local_common_lines = (
-                build_repeated_line_signatures(
-                    working_text or "",
-                    min_occurrences=common_lines_min_docs,
-                    max_line_length=unwrap_max_line_length,
-                )
-                if remove_common_lines
-                else set()
+        for document in documents:
+            result = _process_document(
+                document,
+                options=resolved,
+                active_rules=active_rules,
+                global_common_lines=common_lines,
+                totals=totals,
             )
-            common_lines = (global_common_lines | local_common_lines) if remove_common_lines else None
-            result = clean_markdown(
-                working_text or "",
-                rules=active_rules,
-                regex_timeout_ms=int(getattr(settings, "GOVERNANCE_REGEX_TIMEOUT_MS", 100) or 100),
-                common_lines=common_lines,
-                remove_toc_lines=remove_toc_lines,
-                remove_noise_lines=remove_noise_lines,
-                unwrap_lines=unwrap_lines,
-                remove_common_lines=remove_common_lines,
-                collapse_blank_lines=collapse_blank_lines,
-                max_blank_lines=max_blank_lines,
-                unwrap_max_line_length=unwrap_max_line_length,
-                noise_min_chars=noise_min_chars,
-                noise_ratio_threshold=noise_ratio_threshold,
-            )
-            applied_total += int(result.applied_rules or 0)
-            text = result.markdown
-            changed_any = bool(result.changed) or bool(frontmatter_changed)
+            if result is not None:
+                cleaned.append(result)
 
-            table_rows_changed = 0
-            table_count = 0
-            if normalize_tables:
-                tbl = normalize_markdown_tables(text)
-                text = tbl.text
-                table_count = int(tbl.tables or 0)
-                table_rows_changed = int(tbl.rows_changed or 0)
-                changed_any = changed_any or bool(tbl.changed)
-                tables_normalized_total += int(table_count or 0)
-                table_rows_changed_total += int(table_rows_changed or 0)
-
-            code_blocks_changed = 0
-            code_lines_stripped = 0
-            if strip_code_line_numbers:
-                code = strip_fenced_code_line_numbers(text)
-                text = code.text
-                code_blocks_changed = int(code.blocks_changed or 0)
-                code_lines_stripped = int(code.lines_stripped or 0)
-                changed_any = changed_any or bool(code.changed)
-                code_blocks_changed_total += int(code_blocks_changed or 0)
-                code_lines_stripped_total += int(code_lines_stripped or 0)
-
-            boilerplate = None
-            if remove_boilerplate:
-                boilerplate = remove_markdown_boilerplate(text)
-                text = boilerplate.text
-                changed_any = changed_any or bool(boilerplate.changed)
-                boilerplate_removed_sections_total += int(getattr(boilerplate, "removed_sections", 0) or 0)
-                boilerplate_removed_lines_total += int(getattr(boilerplate, "removed_lines", 0) or 0)
-
-            images_removed = 0
-            if str(remove_images or "none").strip().lower() in {"decorative", "all"}:
-                img = strip_images(text, mode=str(remove_images).strip().lower())  # type: ignore[arg-type]
-                text = img.text
-                images_removed = int(img.removed or 0)
-                changed_any = changed_any or bool(img.changed)
-                images_removed_total += int(images_removed or 0)
-
-            pii_hits: dict[str, int] = {}
-            if pii_anonymize:
-                pii = anonymize_pii(
-                    text, enabled=True, mode=str(pii_mode or "mask"), mask=str(pii_mask or "[REDACTED]")
-                )  # type: ignore[arg-type]
-                text = pii.text
-                pii_hits = dict(pii.hits or {})
-                changed_any = changed_any or bool(pii.changed)
-                for k, v in pii_hits.items():
-                    pii_hits_total[k] = pii_hits_total.get(k, 0) + int(v)
-
-            secrets_hits: dict[str, int] = {}
-            if secrets_redact:
-                sec = redact_secrets(
-                    text, enabled=True, mode=str(secrets_mode or "mask"), mask=str(secrets_mask or "[SECRET]")
-                )  # type: ignore[arg-type]
-                text = sec.text
-                secrets_hits = dict(sec.hits or {})
-                changed_any = changed_any or bool(sec.changed)
-                for k, v in secrets_hits.items():
-                    secrets_hits_total[k] = secrets_hits_total.get(k, 0) + int(v)
-
-            paragraphs_dropped = 0
-            references_removed_lines = 0
-            urls_changed = 0
-
-            if drop_duplicate_paragraphs:
-                try:
-                    para = drop_duplicate_paragraphs_fn(
-                        text,
-                        min_occurrences=int(drop_duplicate_paragraphs_min_occurrences or 0),
-                        min_paragraph_chars=int(drop_duplicate_paragraphs_min_chars or 0),
-                        max_paragraph_chars=int(drop_duplicate_paragraphs_max_chars or 0),
-                    )
-                    text = para.text
-                    paragraphs_dropped = int(getattr(para, "paragraphs_dropped", 0) or 0)
-                    changed_any = changed_any or bool(getattr(para, "changed", False))
-                except Exception as exc:
-                    logger.debug(_MARKDOWN_GOVERNANCE_FALLBACK_LOG_MESSAGE, exc)
-
-            if trim_references:
-                try:
-                    ref = trim_references_section_fn(text)
-                    text = ref.text
-                    references_removed_lines = int(getattr(ref, "removed_lines", 0) or 0)
-                    changed_any = changed_any or bool(getattr(ref, "changed", False))
-                except Exception as exc:
-                    logger.debug(_MARKDOWN_GOVERNANCE_FALLBACK_LOG_MESSAGE, exc)
-
-            if normalize_urls:
-                try:
-                    url = normalize_urls_fn(text, strip_tracking=bool(normalize_urls_strip_tracking))
-                    text = url.text
-                    urls_changed = int(getattr(url, "urls_changed", 0) or 0)
-                    changed_any = changed_any or bool(getattr(url, "changed", False))
-                except Exception as exc:
-                    logger.debug(_MARKDOWN_GOVERNANCE_FALLBACK_LOG_MESSAGE, exc)
-
-            paragraphs_dropped_total += int(paragraphs_dropped or 0)
-            references_removed_total += int(references_removed_lines or 0)
-            urls_changed_total += int(urls_changed or 0)
-
-            drop_reason: str | None = None
-            if drop_outline_only:
-                decision = drop_if_outline_only(
-                    text,
-                    min_content_chars=int(drop_outline_min_content_chars or 0),
-                    max_heading_ratio=float(drop_outline_max_heading_ratio or 0.0),
-                )
-                if decision.dropped:
-                    drop_reason = decision.reason or "outline_only"
-
-            if drop_reason is None and drop_low_density:
-                decision = drop_if_low_density(text, threshold=float(drop_low_density_threshold or 0.0))
-                if decision.dropped:
-                    drop_reason = decision.reason or "low_density"
-
-            if drop_reason is None and drop_high_perplexity:
-                decision = drop_if_high_perplexity_proxy(
-                    text,
-                    threshold=float(drop_high_perplexity_threshold or 0.0),
-                    min_tokens=int(drop_high_perplexity_min_tokens or 0),
-                )
-                if decision.dropped:
-                    drop_reason = decision.reason or "perplexity_proxy_high"
-
-            if drop_reason is not None:
-                dropped += 1
-                key = str(drop_reason or "dropped")
-                drop_reasons[key] = drop_reasons.get(key, 0) + 1
-                # Skip this document to avoid producing empty/noisy chunks.
-                continue
-
-            if title is None:
-                try:
-                    title = extract_markdown_title_fn(text)
-                except Exception:
-                    title = None
-
-            lang_val: str | None = None
-            lang_conf: float | None = None
-            if detect_language:
-                try:
-                    lang = detect_language_fn(text, min_chars=int(language_min_chars or 0))
-                    lang_val = str(getattr(lang, "language", "") or "").strip() or None
-                    lang_conf = float(getattr(lang, "confidence", 0.0) or 0.0)
-                except Exception:
-                    lang_val = None
-                    lang_conf = None
-
-            keywords: list[str] | None = None
-            if extract_keywords:
-                try:
-                    max_chars = max(0, int(keywords_max_chars or 0))
-                    snippet = text[:max_chars] if max_chars > 0 else text
-                    kws = extract_keywords_fn(
-                        snippet,
-                        provider=str(keywords_provider or "auto"),
-                        top_k=int(keywords_top_k or 10),
-                    )
-                    keywords = list(kws) if kws else None
-                except Exception:
-                    keywords = None
-
-            if title:
-                titles_docs += 1
-            if tags:
-                tags_docs += 1
-            if lang_val:
-                languages[lang_val] = languages.get(lang_val, 0) + 1
-            if keywords:
-                keywords_docs += 1
-                keywords_total += len(keywords)
-
-            if changed_any:
-                changed += 1
-            meta = dict(doc.metadata or {})
-            meta["governance_version"] = GOVERNANCE_RULESET_VERSION
-            meta["governance_applied"] = True
-            meta["governance_rules_applied"] = int(result.applied_rules or 0)
-            meta["governance_changed"] = bool(changed_any)
-            if frontmatter_present:
-                meta["frontmatter_present"] = True
-                if frontmatter_end_char and int(frontmatter_end_char) > 0:
-                    meta["frontmatter_end_char"] = int(frontmatter_end_char)
-                if strip_frontmatter:
-                    meta["frontmatter_stripped"] = True
-                if frontmatter_data:
-                    meta["document_frontmatter"] = frontmatter_data
-            if title:
-                meta["document_title"] = str(title)
-            if tags:
-                meta["document_tags"] = tags
-            if lang_val:
-                meta["document_language"] = lang_val
-                meta["document_language_confidence"] = round(float(lang_conf or 0.0), 3)
-            if keywords:
-                meta["document_keywords"] = keywords
-                meta["document_keywords_provider"] = str(keywords_provider or "auto")
-            if paragraphs_dropped:
-                meta["governance_paragraphs_dropped"] = int(paragraphs_dropped)
-            if references_removed_lines:
-                meta["governance_references_removed_lines"] = int(references_removed_lines)
-            if urls_changed:
-                meta["governance_urls_changed"] = int(urls_changed)
-            if boilerplate is not None:
-                meta["governance_boilerplate_removed_sections"] = int(boilerplate.removed_sections or 0)
-                meta["governance_boilerplate_removed_lines"] = int(boilerplate.removed_lines or 0)
-            if images_removed:
-                meta["governance_images_removed"] = int(images_removed)
-            if pii_hits:
-                meta["governance_pii_hits"] = pii_hits
-            if secrets_hits:
-                meta["governance_secrets_hits"] = secrets_hits
-            if table_count:
-                meta["governance_tables_normalized"] = int(table_count)
-                meta["governance_table_rows_changed"] = int(table_rows_changed)
-            if code_lines_stripped:
-                meta["governance_code_blocks_changed"] = int(code_blocks_changed)
-                meta["governance_code_lines_stripped"] = int(code_lines_stripped)
-
-            # Always attach lightweight quality metrics for observability/tuning.
-            try:
-                density_metrics = drop_if_low_density(text, threshold=-1.0).metrics or {}
-                outline_metrics = drop_if_outline_only(text, min_content_chars=0, max_heading_ratio=2.0).metrics or {}
-                perplexity_metrics = drop_if_high_perplexity_proxy(text, threshold=2.0, min_tokens=0).metrics or {}
-                meta["governance_quality"] = {
-                    "density": float(density_metrics.get("density") or 0.0),
-                    "chars_non_space": int(density_metrics.get("chars_non_space") or 0),
-                    "chars_alnum_cjk": int(density_metrics.get("chars_alnum_cjk") or 0),
-                    "heading_ratio": float(outline_metrics.get("heading_ratio") or 0.0),
-                    "lines_total": int(outline_metrics.get("lines_total") or 0),
-                    "lines_outline": int(outline_metrics.get("lines_outline") or 0),
-                    "content_chars": int(outline_metrics.get("content_chars") or 0),
-                    "perplexity_proxy": float(perplexity_metrics.get("perplexity_proxy") or 0.0),
-                    "token_count": int(perplexity_metrics.get("token_count") or 0),
-                }
-            except Exception as exc:
-                # Best-effort only; never fail ingestion due to metrics.
-                logger.debug(_MARKDOWN_GOVERNANCE_FALLBACK_LOG_MESSAGE, exc)
-            cleaned.append(Document(page_content=text, metadata=meta, id=getattr(doc, "id", None)))
-
-        # Compliance gates (PII/Secrets): if enabled (>=0), quarantine/drop the entire
-        # document when total hits exceed the threshold.
-        #
-        # This is intentionally applied at the aggregate level (across all parsed pages/items)
-        # to avoid partially indexing a sensitive document. The ingestion pipeline can route
-        # dropped docs to quarantine via governance_quarantine_on_drop.
-        pii_gate = int(pii_max_hits) if isinstance(pii_max_hits, (int, float)) else -1
-        secrets_gate = int(secrets_max_hits) if isinstance(secrets_max_hits, (int, float)) else -1
-
-        pii_total_hits = sum(int(v or 0) for v in (pii_hits_total or {}).values())
-        secrets_total_hits = sum(int(v or 0) for v in (secrets_hits_total or {}).values())
-
-        gate_reasons: dict[str, int] = {}
-        if pii_gate >= 0 and pii_total_hits > pii_gate:
-            gate_reasons["pii_exceeded"] = int(doc_count)
-        if secrets_gate >= 0 and secrets_total_hits > secrets_gate:
-            gate_reasons["secrets_exceeded"] = int(doc_count)
-
-        if gate_reasons:
-            # Replace dropped doc-level output entirely.
-            merged_reasons = dict(drop_reasons or {})
-            merged_reasons.update(gate_reasons)
-            return [], GovernanceStats(
-                documents=len(documents),
-                changed=0,
-                applied_rules=applied_total,
-                dropped=int(doc_count),
-                drop_reasons=merged_reasons,
-                pii_hits=pii_hits_total,
-                secrets_hits=secrets_hits_total,
-                frontmatter_docs=int(frontmatter_docs),
-                frontmatter_stripped_docs=int(frontmatter_stripped_docs),
-                paragraphs_dropped=int(paragraphs_dropped_total),
-                references_removed_lines=int(references_removed_total),
-                urls_changed=int(urls_changed_total),
-                boilerplate_removed_sections=int(boilerplate_removed_sections_total),
-                boilerplate_removed_lines=int(boilerplate_removed_lines_total),
-                images_removed=int(images_removed_total),
-                tables_normalized=int(tables_normalized_total),
-                table_rows_changed=int(table_rows_changed_total),
-                code_blocks_changed=int(code_blocks_changed_total),
-                code_lines_stripped=int(code_lines_stripped_total),
-                keywords_docs=int(keywords_docs),
-                keywords_total=int(keywords_total),
-                languages=languages,
-                titles_docs=int(titles_docs),
-                tags_docs=int(tags_docs),
-            )
-
-        return cleaned, GovernanceStats(
-            documents=len(documents),
-            changed=changed,
-            applied_rules=applied_total,
-            dropped=dropped,
-            drop_reasons=drop_reasons,
-            pii_hits=pii_hits_total,
-            secrets_hits=secrets_hits_total,
-            frontmatter_docs=int(frontmatter_docs),
-            frontmatter_stripped_docs=int(frontmatter_stripped_docs),
-            paragraphs_dropped=int(paragraphs_dropped_total),
-            references_removed_lines=int(references_removed_total),
-            urls_changed=int(urls_changed_total),
-            boilerplate_removed_sections=int(boilerplate_removed_sections_total),
-            boilerplate_removed_lines=int(boilerplate_removed_lines_total),
-            images_removed=int(images_removed_total),
-            tables_normalized=int(tables_normalized_total),
-            table_rows_changed=int(table_rows_changed_total),
-            code_blocks_changed=int(code_blocks_changed_total),
-            code_lines_stripped=int(code_lines_stripped_total),
-            keywords_docs=int(keywords_docs),
-            keywords_total=int(keywords_total),
-            languages=languages,
-            titles_docs=int(titles_docs),
-            tags_docs=int(tags_docs),
+        gate_reasons = _gate_reasons(resolved, totals, document_count)
+        stats = _build_governance_stats(
+            totals,
+            document_count=document_count,
+            gate_reasons=gate_reasons or None,
         )
+        return ([], stats) if gate_reasons else (cleaned, stats)
 
 
 governance_processor = GovernanceProcessor()

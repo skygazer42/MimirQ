@@ -26,7 +26,7 @@ from app.services.document_identity import (
     sync_pipeline_execution_identity,
 )
 from app.services.document_index_channel_service import reconcile_document_index_channels
-from app.storage.object.minio import minio_service  # noqa: F401
+from app.storage.object.minio import minio_service as minio_service
 from app.storage.object.runtime import (
     document_object_storage_enabled,
     document_object_store_metadata,

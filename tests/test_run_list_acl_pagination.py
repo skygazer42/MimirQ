@@ -8,7 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import BinaryExpression, BooleanClauseList
 
-import app.api.v1.connectors  # noqa: F401
+import app.api.v1.connectors as connectors_facade
 from app.api.v1 import connectors_configs as connectors_configs_module
 from app.api.v1 import connectors_runs as connectors_runs_module
 from app.api.v1 import ingestion_runs as ingestion_runs_module
@@ -205,6 +205,7 @@ def test_list_ingestion_runs_applies_acl_before_count_and_pagination(monkeypatch
 def test_list_connector_runs_applies_acl_before_count_and_pagination(monkeypatch: pytest.MonkeyPatch) -> None:
     tenant_id, runs, allowed_dataset_ids = _build_runs()
     db = _FakeSession(query=_FakeQuery(runs=runs))
+    assert connectors_runs_module.connectors_module is connectors_facade
     calls = _install_acl_guards(
         monkeypatch,
         dataset_service=connectors_runs_module.connectors_module.DatasetService,
@@ -249,6 +250,7 @@ def test_list_connector_configs_applies_acl_before_count_and_pagination(monkeypa
         if run.dataset_id is not None
     ]
     db = _FakeSession(query=_FakeQuery(runs=configs))
+    assert connectors_configs_module.connectors_module is connectors_facade
     calls = _install_acl_guards(
         monkeypatch,
         dataset_service=connectors_configs_module.connectors_module.DatasetService,

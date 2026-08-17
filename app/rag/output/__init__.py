@@ -14,7 +14,6 @@ Usage:
     result = await get_structured_output(llm, query, context, mode=OutputMode.FAQ)
 """
 
-
 import json
 from enum import Enum
 from typing import Any, Union
@@ -35,6 +34,7 @@ _DESC_SOURCE_REFERENCES = "Source references"
 
 class OutputMode(str, Enum):
     """Available output modes."""
+
     AUTO = "auto"
     FAQ = "faq"
     SUMMARY = "summary"
@@ -52,6 +52,7 @@ class OutputMode(str, Enum):
 
 class FAQOutput(BaseModel):
     """FAQ-style output with question and answer."""
+
     mode: str = Field(default="faq", description=_DESC_OUTPUT_MODE_IDENTIFIER)
     question: str = Field(description="The original question")
     answer: str = Field(description="Direct answer to the question")
@@ -62,6 +63,7 @@ class FAQOutput(BaseModel):
 
 class SummaryOutput(BaseModel):
     """Summary-style output for long content."""
+
     mode: str = Field(default="summary", description=_DESC_OUTPUT_MODE_IDENTIFIER)
     title: str = Field(description="Summary title")
     summary: str = Field(description="Main summary text")
@@ -72,6 +74,7 @@ class SummaryOutput(BaseModel):
 
 class ActionItem(BaseModel):
     """Single action item."""
+
     task: str = Field(description="Task description")
     priority: str = Field(default="medium", description="Priority level")
     assignee: str | None = Field(default=None, description="Assigned person")
@@ -81,6 +84,7 @@ class ActionItem(BaseModel):
 
 class ActionItemsOutput(BaseModel):
     """Action items extracted from content."""
+
     mode: str = Field(default="action_items", description=_DESC_OUTPUT_MODE_IDENTIFIER)
     title: str = Field(description="Action items title")
     items: list[ActionItem] = Field(default_factory=list, description="List of action items")
@@ -90,6 +94,7 @@ class ActionItemsOutput(BaseModel):
 
 class ComparisonItem(BaseModel):
     """Single comparison item."""
+
     aspect: str = Field(description="Comparison aspect")
     option_a: str = Field(description="First option value")
     option_b: str = Field(description="Second option value")
@@ -98,6 +103,7 @@ class ComparisonItem(BaseModel):
 
 class ComparisonOutput(BaseModel):
     """Comparison-style output."""
+
     mode: str = Field(default="comparison", description=_DESC_OUTPUT_MODE_IDENTIFIER)
     title: str = Field(description="Comparison title")
     option_a_name: str = Field(description="First option name")
@@ -109,6 +115,7 @@ class ComparisonOutput(BaseModel):
 
 class Step(BaseModel):
     """Single step in a process."""
+
     number: int = Field(description="Step number")
     title: str = Field(description="Step title")
     description: str = Field(description="Step description")
@@ -117,6 +124,7 @@ class Step(BaseModel):
 
 class StepByStepOutput(BaseModel):
     """Step-by-step guide output."""
+
     mode: str = Field(default="step_by_step", description=_DESC_OUTPUT_MODE_IDENTIFIER)
     title: str = Field(description="Guide title")
     introduction: str = Field(default="", description="Introduction text")
@@ -127,6 +135,7 @@ class StepByStepOutput(BaseModel):
 
 class AnalysisSection(BaseModel):
     """Analysis section."""
+
     title: str = Field(description="Section title")
     content: str = Field(description="Section content")
     findings: list[str] = Field(default_factory=list, description="Key findings")
@@ -134,6 +143,7 @@ class AnalysisSection(BaseModel):
 
 class AnalysisOutput(BaseModel):
     """Detailed analysis output."""
+
     mode: str = Field(default="analysis", description=_DESC_OUTPUT_MODE_IDENTIFIER)
     title: str = Field(description="Analysis title")
     overview: str = Field(description="Overview text")
@@ -145,6 +155,7 @@ class AnalysisOutput(BaseModel):
 
 class PlainOutput(BaseModel):
     """Plain text output."""
+
     mode: str = Field(default="plain", description=_DESC_OUTPUT_MODE_IDENTIFIER)
     content: str = Field(description="Plain text content")
     sources: list[str] = Field(default_factory=list, description=_DESC_SOURCE_REFERENCES)
@@ -380,18 +391,18 @@ class StructuredOutputGenerator:
 
         try:
             # Try using with_structured_output if available
-            if hasattr(self.llm, 'with_structured_output') and _shared_preset_for_mode(mode) is None:
+            if hasattr(self.llm, "with_structured_output") and _shared_preset_for_mode(mode) is None:
                 structured_llm = self.llm.with_structured_output(schema)
                 result = await structured_llm.ainvoke(prompt)
                 if isinstance(result, BaseModel):
                     # Add sources if not already present
-                    if hasattr(result, 'sources') and not result.sources:
+                    if hasattr(result, "sources") and not result.sources:
                         result.sources = sources
                     return result
 
             # Fallback: parse JSON from response
             response = await self.llm.ainvoke(prompt)
-            content = response.content if hasattr(response, 'content') else str(response)
+            content = response.content if hasattr(response, "content") else str(response)
             return self._parse_response(content, mode, schema, sources, query=query, context=context)
 
         except Exception as e:
@@ -563,6 +574,84 @@ def parse_structured_output(
         return PlainOutput(content=content)
 
 
+_ACTION_ITEM_PRIORITY_BADGES = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+
+
+def _render_faq_output(output: FAQOutput) -> str:
+    parts = [f"## {output.question}\n\n{output.answer}\n"]
+    if output.related_questions:
+        parts.append("\n### Related Questions\n")
+        parts.extend(f"- {question}\n" for question in output.related_questions)
+    return "".join(parts)
+
+
+def _render_summary_output(output: SummaryOutput) -> str:
+    parts = [f"## {output.title}\n\n{output.summary}\n"]
+    if output.key_points:
+        parts.append("\n### Key Points\n")
+        parts.extend(f"- {point}\n" for point in output.key_points)
+    return "".join(parts)
+
+
+def _render_action_items_output(output: ActionItemsOutput) -> str:
+    parts = [f"## {output.title}\n\n"]
+    for item in output.items:
+        badge = _ACTION_ITEM_PRIORITY_BADGES.get(item.priority, "⚪")
+        line = f"- {badge} **{item.task}**"
+        if item.assignee:
+            line += f" (@{item.assignee})"
+        if item.deadline:
+            line += f" - Due: {item.deadline}"
+        parts.append(f"{line}\n")
+    return "".join(parts)
+
+
+def _render_comparison_output(output: ComparisonOutput) -> str:
+    parts = [
+        f"## {output.title}\n\n",
+        f"| Aspect | {output.option_a_name} | {output.option_b_name} |\n",
+        "|--------|--------|--------|\n",
+    ]
+    parts.extend(
+        f"| {comparison.aspect} | {comparison.option_a} | {comparison.option_b} |\n"
+        for comparison in output.comparisons
+    )
+    parts.append(f"\n**Conclusion:** {output.conclusion}\n")
+    return "".join(parts)
+
+
+def _render_step_by_step_output(output: StepByStepOutput) -> str:
+    parts = [f"## {output.title}\n\n"]
+    if output.introduction:
+        parts.append(f"{output.introduction}\n\n")
+    for step in output.steps:
+        parts.append(f"### Step {step.number}: {step.title}\n\n{step.description}\n")
+        if step.tips:
+            parts.append("\n**Tips:**\n")
+            parts.extend(f"- {tip}\n" for tip in step.tips)
+        parts.append("\n")
+    if output.conclusion:
+        parts.append(f"**Conclusion:** {output.conclusion}\n")
+    return "".join(parts)
+
+
+def _render_analysis_output(output: AnalysisOutput) -> str:
+    parts = [f"## {output.title}\n\n{output.overview}\n\n"]
+    for section in output.sections:
+        parts.append(f"### {section.title}\n\n{section.content}\n")
+        if section.findings:
+            parts.append("\n**Findings:**\n")
+            parts.extend(f"- {finding}\n" for finding in section.findings)
+        parts.append("\n")
+    if output.conclusions:
+        parts.append("### Conclusions\n")
+        parts.extend(f"- {conclusion}\n" for conclusion in output.conclusions)
+    if output.recommendations:
+        parts.append("\n### Recommendations\n")
+        parts.extend(f"- {recommendation}\n" for recommendation in output.recommendations)
+    return "".join(parts)
+
+
 def structured_output_to_markdown(output: StructuredOutput) -> str:
     """
     Convert structured output to markdown format.
@@ -574,77 +663,18 @@ def structured_output_to_markdown(output: StructuredOutput) -> str:
         Markdown string
     """
     if isinstance(output, FAQOutput):
-        md = f"## {output.question}\n\n{output.answer}\n"
-        if output.related_questions:
-            md += "\n### Related Questions\n"
-            for q in output.related_questions:
-                md += f"- {q}\n"
-        return md
-
-    elif isinstance(output, SummaryOutput):
-        md = f"## {output.title}\n\n{output.summary}\n"
-        if output.key_points:
-            md += "\n### Key Points\n"
-            for point in output.key_points:
-                md += f"- {point}\n"
-        return md
-
-    elif isinstance(output, ActionItemsOutput):
-        md = f"## {output.title}\n\n"
-        for item in output.items:
-            priority_badge = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(item.priority, "⚪")
-            md += f"- {priority_badge} **{item.task}**"
-            if item.assignee:
-                md += f" (@{item.assignee})"
-            if item.deadline:
-                md += f" - Due: {item.deadline}"
-            md += "\n"
-        return md
-
-    elif isinstance(output, ComparisonOutput):
-        md = f"## {output.title}\n\n"
-        md += f"| Aspect | {output.option_a_name} | {output.option_b_name} |\n"
-        md += "|--------|--------|--------|\n"
-        for comp in output.comparisons:
-            md += f"| {comp.aspect} | {comp.option_a} | {comp.option_b} |\n"
-        md += f"\n**Conclusion:** {output.conclusion}\n"
-        return md
-
-    elif isinstance(output, StepByStepOutput):
-        md = f"## {output.title}\n\n"
-        if output.introduction:
-            md += f"{output.introduction}\n\n"
-        for step in output.steps:
-            md += f"### Step {step.number}: {step.title}\n\n{step.description}\n"
-            if step.tips:
-                md += "\n**Tips:**\n"
-                for tip in step.tips:
-                    md += f"- {tip}\n"
-            md += "\n"
-        if output.conclusion:
-            md += f"**Conclusion:** {output.conclusion}\n"
-        return md
-
-    elif isinstance(output, AnalysisOutput):
-        md = f"## {output.title}\n\n{output.overview}\n\n"
-        for section in output.sections:
-            md += f"### {section.title}\n\n{section.content}\n"
-            if section.findings:
-                md += "\n**Findings:**\n"
-                for finding in section.findings:
-                    md += f"- {finding}\n"
-            md += "\n"
-        if output.conclusions:
-            md += "### Conclusions\n"
-            for c in output.conclusions:
-                md += f"- {c}\n"
-        if output.recommendations:
-            md += "\n### Recommendations\n"
-            for r in output.recommendations:
-                md += f"- {r}\n"
-        return md
-
-    elif isinstance(output, PlainOutput):
+        return _render_faq_output(output)
+    if isinstance(output, SummaryOutput):
+        return _render_summary_output(output)
+    if isinstance(output, ActionItemsOutput):
+        return _render_action_items_output(output)
+    if isinstance(output, ComparisonOutput):
+        return _render_comparison_output(output)
+    if isinstance(output, StepByStepOutput):
+        return _render_step_by_step_output(output)
+    if isinstance(output, AnalysisOutput):
+        return _render_analysis_output(output)
+    if isinstance(output, PlainOutput):
         return output.content
 
     return str(output)

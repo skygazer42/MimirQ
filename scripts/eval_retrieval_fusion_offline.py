@@ -163,7 +163,7 @@ def _format_md_table(rows: list[dict[str, Any]]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def main(argv: list[str] | None = None) -> int:
+def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Offline evaluation: compare retrieval fusion variants via Evidence API.")
     p.add_argument("--cases", required=True, help="Path to regression cases JSON (bundle v1 or legacy array)")
     p.add_argument("--matrix", default="", help="Optional: JSON config defining base + variants")
@@ -201,7 +201,112 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--max-cases", type=int, default=0, help="Limit number of cases (default: all)")
     p.add_argument("--out-json", default="", help="Optional: write result JSON to this path")
     p.add_argument("--out-md", default="", help="Optional: write a Markdown report table to this path")
-    args = p.parse_args(argv)
+    return p
+
+
+def _global_base_rag_config(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "retrieval_profile": str(args.retrieval_profile),
+        "retrieval_mode": str(args.retrieval_mode),
+        "top_k": int(args.top_k),
+        "score_threshold": float(args.score_threshold),
+        "alpha": float(args.alpha),
+        "enable_weight_rerank": bool(args.enable_weight_rerank),
+        "enable_reranker": bool(args.enable_reranker),
+    }
+
+
+def _case_request(
+    item: Any,
+    *,
+    dataset_id: str,
+    rag_config: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    if not isinstance(item, dict):
+        return None
+    question = str(item.get("question") or item.get("query") or "").strip()
+    references = item.get("reference_sources") or []
+    if not question or not isinstance(references, list) or not references:
+        return None
+    body = {
+        "query": question,
+        "history": [],
+        "dataset_id": dataset_id,
+        "document_ids": [],
+        "rag_config": dict(rag_config),
+    }
+    return item, body
+
+
+def _retrieve_case(
+    client: httpx.Client,
+    *,
+    url: str,
+    args: argparse.Namespace,
+    case: dict[str, Any],
+    body: dict[str, Any],
+) -> tuple[dict[str, Any] | None, str | None]:
+    try:
+        response = client.post(url, headers=_headers(args), json=body)
+        response.raise_for_status()
+        payload = response.json() or {}
+    except Exception as exc:  # noqa: BLE001
+        return None, str(exc)[:200]
+    citations = payload.get("citations") or []
+    if not isinstance(citations, list):
+        citations = []
+    meta = compute_retrieval_item_meta(case=case, citations=list(citations))
+    meta["abstain_triggered"] = bool(payload.get("abstain_triggered"))
+    meta["abstain_reason"] = payload.get("abstain_reason")
+    return meta, None
+
+
+def _evaluate_variant(
+    client: httpx.Client,
+    *,
+    variant: dict[str, Any],
+    items: list[dict[str, Any]],
+    dataset_id: str,
+    url: str,
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    label = str(variant.get("label") or "").strip() or "variant"
+    rag_config = variant.get("rag_config") if isinstance(variant.get("rag_config"), dict) else {}
+    items_meta: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for item in items:
+        request = _case_request(item, dataset_id=dataset_id, rag_config=rag_config)
+        if request is None:
+            continue
+        case, body = request
+        meta, error = _retrieve_case(client, url=url, args=args, case=case, body=body)
+        if error is not None:
+            errors.append(error)
+            continue
+        if meta is not None:
+            items_meta.append(meta)
+    return {
+        "label": label,
+        "rag_config": rag_config,
+        "cases_used": len(items_meta),
+        "errors": errors[:50],
+        "summary": build_retrieval_gate_summary(items_meta),
+    }
+
+
+def _write_outputs(args: argparse.Namespace, result: dict[str, Any], rows: list[dict[str, Any]]) -> None:
+    if args.out_json:
+        _write_json(Path(args.out_json), result)
+    table = _format_md_table(rows)
+    print(table)
+    if args.out_md:
+        path = Path(args.out_md)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(table, encoding="utf-8")
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _build_parser().parse_args(argv)
 
     cases_path = Path(args.cases)
     if not cases_path.exists():
@@ -226,17 +331,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[fusion-eval] ERROR: failed to load matrix: {str(exc)[:200]}", file=sys.stderr)
         return 2
 
-    global_base_rag = {
-        "retrieval_profile": str(args.retrieval_profile),
-        "retrieval_mode": str(args.retrieval_mode),
-        "top_k": int(args.top_k),
-        "score_threshold": float(args.score_threshold),
-        "alpha": float(args.alpha),
-        "enable_weight_rerank": bool(args.enable_weight_rerank),
-        "enable_reranker": bool(args.enable_reranker),
-    }
-
-    variants = _build_variants(matrix=matrix, global_base=global_base_rag)
+    variants = _build_variants(matrix=matrix, global_base=_global_base_rag_config(args))
     if len(variants) < 2:
         print("[fusion-eval] ERROR: expected at least 2 variants (base + variant)", file=sys.stderr)
         return 2
@@ -248,59 +343,16 @@ def main(argv: list[str] | None = None) -> int:
     out_rows: list[dict[str, Any]] = []
 
     with httpx.Client(timeout=timeout) as client:
-        for v in variants:
-            label = str(v.get("label") or "").strip() or "variant"
-            rag_cfg = v.get("rag_config") if isinstance(v.get("rag_config"), dict) else {}
-
-            items_meta: list[dict[str, Any]] = []
-            errors: list[str] = []
-            used = 0
-
-            for item in items:
-                if not isinstance(item, dict):
-                    continue
-                question = str(item.get("question") or item.get("query") or "").strip()
-                if not question:
-                    continue
-                refs = item.get("reference_sources") or []
-                if not isinstance(refs, list) or not refs:
-                    continue
-
-                body = {
-                    "query": question,
-                    "history": [],
-                    "dataset_id": str(dataset_id),
-                    "document_ids": [],
-                    "rag_config": dict(rag_cfg),
-                }
-
-                try:
-                    r = client.post(url, headers=_headers(args), json=body)
-                    r.raise_for_status()
-                    payload = r.json() or {}
-                except Exception as exc:  # noqa: BLE001
-                    errors.append(str(exc)[:200])
-                    continue
-
-                citations = payload.get("citations") or []
-                if not isinstance(citations, list):
-                    citations = []
-
-                meta = compute_retrieval_item_meta(case=item, citations=list(citations))
-                meta["abstain_triggered"] = bool(payload.get("abstain_triggered"))
-                meta["abstain_reason"] = payload.get("abstain_reason")
-                items_meta.append(meta)
-                used += 1
-
-            summary = build_retrieval_gate_summary(items_meta)
+        for variant in variants:
             out_rows.append(
-                {
-                    "label": label,
-                    "rag_config": rag_cfg,
-                    "cases_used": used,
-                    "errors": errors[:50],
-                    "summary": summary,
-                }
+                _evaluate_variant(
+                    client,
+                    variant=variant,
+                    items=items,
+                    dataset_id=str(dataset_id),
+                    url=url,
+                    args=args,
+                )
             )
 
     result = {
@@ -313,16 +365,7 @@ def main(argv: list[str] | None = None) -> int:
         "variants": out_rows,
     }
 
-    if args.out_json:
-        _write_json(Path(args.out_json), result)
-
-    # Always print a compact table to stdout for quick comparisons.
-    print(_format_md_table(out_rows))
-
-    if args.out_md:
-        Path(args.out_md).parent.mkdir(parents=True, exist_ok=True)
-        Path(args.out_md).write_text(_format_md_table(out_rows), encoding="utf-8")
-
+    _write_outputs(args, result, out_rows)
     return 0
 
 

@@ -46,6 +46,8 @@ from app.models.document import DocumentChunk
 from app.services.indexer import Indexer
 from app.types.indexing import ChunkInput
 
+MODEL_REGISTRY = app.models._all.REGISTERED_MODEL_MODULES
+
 BENCH_KEY = "public_bench.miracl_zh_pool.v1"
 MIRACL_DATASET_REPO = "miracl/miracl"
 MIRACL_CORPUS_REPO = "miracl/miracl-corpus"

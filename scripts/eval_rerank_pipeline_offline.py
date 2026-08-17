@@ -21,6 +21,7 @@ import argparse
 import json
 import math
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -309,7 +310,28 @@ def apply_pipeline(
     return out
 
 
-def main(argv: list[str] | None = None) -> int:
+_METRIC_KEYS = ("hit", "mrr", "recall", "ndcg")
+
+
+class _CliError(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class _EvaluationConfig:
+    args: argparse.Namespace
+    pipeline: list[dict[str, Any]]
+    ltr: LTRReranker | None
+    colbert: ColBERTReranker | None
+    dataset_id: str
+    items: list[dict[str, Any]]
+    k: int
+    top_k: int
+    url: str
+    timeout: httpx.Timeout
+
+
+def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description="Offline evaluation: baseline vs local rerank pipeline (candidates via Evidence API)."
     )
@@ -356,149 +378,195 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--k", type=int, default=20, help="Compute metrics at K (default: %(default)s)")
     p.add_argument("--max-cases", type=int, default=0, help="Limit number of cases (default: all)")
     p.add_argument("--out-json", default="", help="Optional: write summary JSON to this path")
-    args = p.parse_args(argv)
+    return p
 
+
+def _pipeline_has_provider(pipeline: list[dict[str, Any]], providers: set[str]) -> bool:
+    return any(str(stage.get("provider") or "").strip().lower() in providers for stage in pipeline)
+
+
+def _build_ltr_reranker(args: argparse.Namespace, pipeline: list[dict[str, Any]]) -> LTRReranker | None:
+    if not _pipeline_has_provider(pipeline, {"ltr"}):
+        return None
+    model_path = Path(args.ltr_model) if str(args.ltr_model or "").strip() else None
+    if model_path is None or not model_path.exists():
+        raise _CliError("pipeline includes 'ltr' but --ltr-model is missing/not found")
+    spec = LTRFeatureSpec.from_version(int(args.ltr_feature_spec_version or 1))
+    return LTRReranker(model_path=str(model_path), spec=spec)
+
+
+def _build_optional_colbert(
+    args: argparse.Namespace,
+    pipeline: list[dict[str, Any]],
+) -> ColBERTReranker | None:
+    if not _pipeline_has_provider(pipeline, {"colbert", "late_interaction"}):
+        return None
+    return build_colbert_reranker(args)
+
+
+def _build_evaluation_config(args: argparse.Namespace) -> _EvaluationConfig:
     cases_path = Path(args.cases)
     if not cases_path.exists():
-        print(f"[pipeline-eval] ERROR: cases file not found: {cases_path}", file=sys.stderr)
-        return 2
+        raise _CliError(f"cases file not found: {cases_path}")
 
     try:
         pipeline = _parse_pipeline(str(args.pipeline))
     except Exception as exc:  # noqa: BLE001
-        print(f"[pipeline-eval] ERROR: failed to parse pipeline: {str(exc)[:200]}", file=sys.stderr)
-        return 2
+        raise _CliError(f"failed to parse pipeline: {str(exc)[:200]}") from exc
     if not pipeline:
-        print("[pipeline-eval] ERROR: pipeline is empty", file=sys.stderr)
-        return 2
+        raise _CliError("pipeline is empty")
 
-    ltr_model_path = Path(args.ltr_model) if str(args.ltr_model or "").strip() else None
-    ltr: LTRReranker | None = None
-    if any(str(st.get("provider") or "").strip().lower() == "ltr" for st in pipeline):
-        if ltr_model_path is None or not ltr_model_path.exists():
-            print(
-                "[pipeline-eval] ERROR: pipeline includes 'ltr' but --ltr-model is missing/not found", file=sys.stderr
-            )
-            return 2
-        spec = LTRFeatureSpec.from_version(int(args.ltr_feature_spec_version or 1))
-        ltr = LTRReranker(model_path=str(ltr_model_path), spec=spec)
-
-    colbert: ColBERTReranker | None = None
-    if any(str(st.get("provider") or "").strip().lower() in {"colbert", "late_interaction"} for st in pipeline):
-        colbert = build_colbert_reranker(args)
+    ltr = _build_ltr_reranker(args, pipeline)
+    colbert = _build_optional_colbert(args, pipeline)
 
     try:
         raw_cases = _load_json(cases_path)
         dataset_id, items = coerce_case_bundle(raw_cases)
     except Exception as exc:  # noqa: BLE001
-        print(f"[pipeline-eval] ERROR: failed to parse cases: {str(exc)[:200]}", file=sys.stderr)
-        return 2
+        raise _CliError(f"failed to parse cases: {str(exc)[:200]}") from exc
 
     if args.max_cases and int(args.max_cases) > 0:
         items = list(items)[: int(args.max_cases)]
 
     k = max(1, int(args.k or 0))
     top_k = max(k, int(args.top_k or 0))
-
     url = str(args.base_url).rstrip("/") + "/rag/retrieve"
     timeout = httpx.Timeout(float(args.timeout_sec or 30.0))
-
-    baseline_totals = {"hit": 0.0, "mrr": 0.0, "recall": 0.0, "ndcg": 0.0}
-    pipeline_totals = {"hit": 0.0, "mrr": 0.0, "recall": 0.0, "ndcg": 0.0}
-    case_metrics: list[dict[str, Any]] = []
-    cases_used = 0
-
-    with httpx.Client(timeout=timeout) as client:
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            question = str(item.get("question") or item.get("query") or "").strip()
-            if not question:
-                continue
-            relevant = _extract_reference_chunk_ids(item)
-            if not relevant:
-                continue
-
-            body = {
-                "query": question,
-                "history": [],
-                "dataset_id": str(dataset_id),
-                "document_ids": [],
-                "rag_config": {
-                    "retrieval_profile": str(args.retrieval_profile),
-                    "retrieval_mode": str(args.retrieval_mode),
-                    "top_k": int(top_k),
-                    "score_threshold": float(args.score_threshold),
-                    "alpha": float(args.alpha),
-                    # Always collect pre-rerank candidates from the backend.
-                    "enable_reranker": False,
-                    "reranker_provider": "none",
-                    "reranker_top_n": 0,
-                },
-            }
-
-            try:
-                resp = client.post(url, headers=_headers(args), json=body)
-                resp.raise_for_status()
-                payload = resp.json() or {}
-            except Exception as exc:  # noqa: BLE001
-                print(f"[pipeline-eval] WARN: retrieve failed: {str(exc)[:200]}", file=sys.stderr)
-                continue
-
-            citations = payload.get("citations") or []
-            if not isinstance(citations, list) or not citations:
-                continue
-
-            ranked_ids = [str(c.get("chunk_id") or "").strip() for c in citations if isinstance(c, dict)]
-            ranked_ids = [cid for cid in ranked_ids if cid]
-            if not ranked_ids:
-                continue
-
-            candidates: list[RerankCandidate] = []
-            for c in citations:
-                if not isinstance(c, dict):
-                    continue
-                cand = _build_candidate_from_citation(c)
-                if cand is None:
-                    continue
-                candidates.append(cand)
-
-            base_metrics = _hit_mrr_recall_ndcg_at_k(ranked_ids=ranked_ids, relevant=relevant, k=k)
-            piped = apply_pipeline(
-                query=question,
-                candidates=candidates,
-                ranked_ids=ranked_ids,
-                pipeline=pipeline,
-                ltr=ltr,
-                colbert=colbert,
-            )
-            pipe_metrics = _hit_mrr_recall_ndcg_at_k(ranked_ids=piped, relevant=relevant, k=k)
-
-            cases_used += 1
-            case_metrics.append({"baseline": base_metrics, "pipeline": pipe_metrics})
-            for key in ("hit", "mrr", "recall", "ndcg"):
-                baseline_totals[key] += float(base_metrics.get(key, 0.0) or 0.0)
-                pipeline_totals[key] += float(pipe_metrics.get(key, 0.0) or 0.0)
-
-    used = int(cases_used or 0)
-    baseline_avg = dict(baseline_totals)
-    pipeline_avg = dict(pipeline_totals)
-    if used > 0:
-        for key in ("hit", "mrr", "recall", "ndcg"):
-            baseline_avg[key] = round(float(baseline_totals[key]) / float(used), 4)
-            pipeline_avg[key] = round(float(pipeline_totals[key]) / float(used), 4)
-
-    summary = build_pipeline_summary(
-        cases_total=len(items),
-        cases_used=cases_used,
+    return _EvaluationConfig(
+        args=args,
+        pipeline=pipeline,
+        ltr=ltr,
+        colbert=colbert,
+        dataset_id=dataset_id,
+        items=items,
         k=k,
         top_k=top_k,
-        pipeline=pipeline,
-        baseline=baseline_avg,
-        pipeline_metrics=pipeline_avg,
-        case_metrics=case_metrics,
+        url=url,
+        timeout=timeout,
     )
 
+
+def _build_retrieve_body(config: _EvaluationConfig, question: str) -> dict[str, Any]:
+    args = config.args
+    return {
+        "query": question,
+        "history": [],
+        "dataset_id": str(config.dataset_id),
+        "document_ids": [],
+        "rag_config": {
+            "retrieval_profile": str(args.retrieval_profile),
+            "retrieval_mode": str(args.retrieval_mode),
+            "top_k": int(config.top_k),
+            "score_threshold": float(args.score_threshold),
+            "alpha": float(args.alpha),
+            "enable_reranker": False,
+            "reranker_provider": "none",
+            "reranker_top_n": 0,
+        },
+    }
+
+
+def _retrieve_citations(
+    client: httpx.Client,
+    config: _EvaluationConfig,
+    question: str,
+) -> list[Any]:
+    try:
+        response = client.post(
+            config.url,
+            headers=_headers(config.args),
+            json=_build_retrieve_body(config, question),
+        )
+        response.raise_for_status()
+        payload = response.json() or {}
+    except Exception as exc:  # noqa: BLE001
+        print(f"[pipeline-eval] WARN: retrieve failed: {str(exc)[:200]}", file=sys.stderr)
+        return []
+    citations = payload.get("citations") or []
+    return citations if isinstance(citations, list) else []
+
+
+def _ranked_chunk_ids(citations: list[Any]) -> list[str]:
+    ranked_ids = [str(citation.get("chunk_id") or "").strip() for citation in citations if isinstance(citation, dict)]
+    return [chunk_id for chunk_id in ranked_ids if chunk_id]
+
+
+def _build_candidates(citations: list[Any]) -> list[RerankCandidate]:
+    candidates: list[RerankCandidate] = []
+    for citation in citations:
+        if not isinstance(citation, dict):
+            continue
+        candidate = _build_candidate_from_citation(citation)
+        if candidate is not None:
+            candidates.append(candidate)
+    return candidates
+
+
+def _evaluate_case(
+    client: httpx.Client,
+    config: _EvaluationConfig,
+    item: dict[str, Any],
+) -> tuple[dict[str, float], dict[str, float]] | None:
+    question = str(item.get("question") or item.get("query") or "").strip()
+    if not question:
+        return None
+    relevant = _extract_reference_chunk_ids(item)
+    if not relevant:
+        return None
+    citations = _retrieve_citations(client, config, question)
+    if not citations:
+        return None
+    ranked_ids = _ranked_chunk_ids(citations)
+    if not ranked_ids:
+        return None
+
+    candidates = _build_candidates(citations)
+    baseline = _hit_mrr_recall_ndcg_at_k(ranked_ids=ranked_ids, relevant=relevant, k=config.k)
+    piped_ids = apply_pipeline(
+        query=question,
+        candidates=candidates,
+        ranked_ids=ranked_ids,
+        pipeline=config.pipeline,
+        ltr=config.ltr,
+        colbert=config.colbert,
+    )
+    piped = _hit_mrr_recall_ndcg_at_k(ranked_ids=piped_ids, relevant=relevant, k=config.k)
+    return baseline, piped
+
+
+def _evaluate_items(
+    client: httpx.Client,
+    config: _EvaluationConfig,
+) -> tuple[dict[str, float], dict[str, float], list[dict[str, Any]], int]:
+    baseline_totals = {key: 0.0 for key in _METRIC_KEYS}
+    pipeline_totals = {key: 0.0 for key in _METRIC_KEYS}
+    case_metrics: list[dict[str, Any]] = []
+    cases_used = 0
+    for item in config.items:
+        if not isinstance(item, dict):
+            continue
+        metrics = _evaluate_case(client, config, item)
+        if metrics is None:
+            continue
+        baseline, piped = metrics
+        cases_used += 1
+        case_metrics.append({"baseline": baseline, "pipeline": piped})
+        for key in _METRIC_KEYS:
+            baseline_totals[key] += float(baseline.get(key, 0.0) or 0.0)
+            pipeline_totals[key] += float(piped.get(key, 0.0) or 0.0)
+    return baseline_totals, pipeline_totals, case_metrics, cases_used
+
+
+def _average_metrics(totals: dict[str, float], cases_used: int) -> dict[str, float]:
+    averaged = dict(totals)
+    if cases_used <= 0:
+        return averaged
+    for key in _METRIC_KEYS:
+        averaged[key] = round(float(totals[key]) / float(cases_used), 4)
+    return averaged
+
+
+def _print_summary(summary: dict[str, Any], *, k: int) -> None:
     print(
         "[pipeline-eval] OK"
         f" cases_total={summary['cases_total']}"
@@ -514,11 +582,40 @@ def main(argv: list[str] | None = None) -> int:
         f" mrr_losses={summary['delta_counts']['mrr']['losses']}"
     )
 
-    if args.out_json:
-        out = Path(args.out_json)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
+def _write_summary(path_value: str, summary: dict[str, Any]) -> None:
+    if not path_value:
+        return
+    path = Path(path_value)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _build_parser().parse_args(argv)
+    try:
+        config = _build_evaluation_config(args)
+    except _CliError as exc:
+        print(f"[pipeline-eval] ERROR: {exc}", file=sys.stderr)
+        return 2
+
+    with httpx.Client(timeout=config.timeout) as client:
+        baseline_totals, pipeline_totals, case_metrics, cases_used = _evaluate_items(client, config)
+    baseline_avg = _average_metrics(baseline_totals, cases_used)
+    pipeline_avg = _average_metrics(pipeline_totals, cases_used)
+
+    summary = build_pipeline_summary(
+        cases_total=len(config.items),
+        cases_used=cases_used,
+        k=config.k,
+        top_k=config.top_k,
+        pipeline=config.pipeline,
+        baseline=baseline_avg,
+        pipeline_metrics=pipeline_avg,
+        case_metrics=case_metrics,
+    )
+    _print_summary(summary, k=config.k)
+    _write_summary(str(args.out_json or ""), summary)
     return 0
 
 

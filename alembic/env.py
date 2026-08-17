@@ -7,7 +7,6 @@ This file is intentionally kept lightweight:
 - Imports all model modules so `Base.metadata` is complete for autogeneration.
 """
 
-
 import os
 import sys
 from logging.config import fileConfig
@@ -57,9 +56,10 @@ def _get_database_url() -> str:
 def _load_target_metadata():
     # Ensure all model modules are imported so Base.metadata includes every table.
     # This is required for correct autogenerate output.
-    import app.models._all  # noqa: F401
+    import app.models._all as model_registry
     from app.core.database import Base
 
+    _ = model_registry.REGISTERED_MODEL_MODULES
     return Base.metadata
 
 

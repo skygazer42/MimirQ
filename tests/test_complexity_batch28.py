@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -400,7 +399,7 @@ def test_chat_tag_context_docs_match_quoted_source_keys_and_row_source_metadata(
         def __init__(self, rows: list[object]) -> None:
             self._rows = rows
 
-        def filter(self, *_args, **_kwargs) -> _FakeQuery:
+        def filter(self, *_args, **_kwargs) -> "_FakeQuery":
             return self
 
         def all(self) -> list[object]:

@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 import json
 import logging
@@ -162,7 +161,7 @@ def test_parse_pdf_success_keeps_callbacks_and_cleans_temp_artifacts(
     ]
 
     class _FakeClient:
-        instances: list[_FakeClient] = []
+        instances: "list[_FakeClient]" = []
 
         def __init__(self, secret_id: str, secret_key: str, region: str) -> None:
             self.secret_id = secret_id

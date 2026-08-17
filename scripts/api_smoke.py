@@ -6,45 +6,45 @@ import re
 import time
 import uuid
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import httpx
 
-API_SETTINGS = '/api/v1/settings'
-API_SETTINGS_LLM_TEST = '/api/v1/settings/llm/test'
-API_DATASETS = '/api/v1/datasets/'
-API_DATASET_BY_ID = '/api/v1/datasets/{dataset_id}'
-API_DATASET_INGESTION_POLICY = '/api/v1/datasets/{dataset_id}/ingestion-policy'
-API_DOCUMENT_BY_ID = '/api/v1/documents/{document_id}'
-API_DOCUMENTS_MANUAL = '/api/v1/documents/manual'
-API_DOCUMENTS_PREVIEW = '/api/v1/documents/preview'
-API_DOCUMENT_CHUNK_BY_ID = '/api/v1/documents/{document_id}/chunks/{chunk_id}'
-API_BATCH_UPLOAD_APPLY_URLS = '/api/v1/documents/batch-upload/apply-urls'
-API_BATCH_UPLOAD_STATUS = '/api/v1/documents/batch-upload/status/{batch_id}'
-API_PIPELINE_INGESTION_PREVIEW = '/api/v1/pipeline/ingestion-preview'
-API_PIPELINE_GOVERNANCE_PROFILES = '/api/v1/pipeline/governance-profiles'
-API_PIPELINE_GOVERNANCE_PROFILE_BY_REF = '/api/v1/pipeline/governance-profiles/{profile_ref}'
-API_PIPELINE_UPLOAD_ZIP_WITH_IMAGES = '/api/v1/pipeline/upload-zip-with-images'
-API_PARSING_DOCUMENTS = '/api/v1/parsing/documents'
-API_PARSING_DOCUMENT_CONTENT_BY_ID = '/api/v1/parsing/documents/{document_id}/content'
-API_CHAT_CONVERSATIONS = '/api/v1/chat/conversations'
-API_CHAT_STREAM = '/api/v1/chat/stream'
-API_CHAT_MESSAGES_BY_CONVERSATION = '/api/v1/chat/conversations/{conversation_id}/messages'
-API_CHAT_CHECKPOINTS_BY_CONVERSATION = '/api/v1/chat/conversations/{conversation_id}/checkpoints'
-API_PROMPT_TEMPLATES = '/api/v1/prompt-templates'
-API_PROMPT_TEMPLATE_BY_ID = '/api/v1/prompt-templates/{template_id}'
-API_RAG_RETRIEVE_PREVIEW = '/api/v1/rag/retrieve-preview'
-API_RAG_PROMPT_PREVIEW = '/api/v1/rag/prompt-preview'
-API_EVAL_RAGAS_RUNS = '/api/v1/evaluations/ragas/runs'
-API_EVAL_REGRESSION_CASES = '/api/v1/evaluations/ragas/regression/cases'
-API_EVAL_REGRESSION_RUNS = '/api/v1/evaluations/ragas/regression/runs'
-API_EVAL_TEST_GEN_FROM_DOCUMENTS = '/api/v1/evaluations/ragas/test-gen/from-documents'
-API_EVAL_TEST_GEN_FROM_CONVERSATIONS = '/api/v1/evaluations/ragas/test-gen/from-conversations'
-API_FEEDBACK_MESSAGES = '/api/v1/feedback/messages'
-API_KG_SEARCH = '/api/v1/kg/search'
-MEDIA_TYPE_TEXT_PLAIN = 'text/plain'
+API_SETTINGS = "/api/v1/settings"
+API_SETTINGS_LLM_TEST = "/api/v1/settings/llm/test"
+API_DATASETS = "/api/v1/datasets/"
+API_DATASET_BY_ID = "/api/v1/datasets/{dataset_id}"
+API_DATASET_INGESTION_POLICY = "/api/v1/datasets/{dataset_id}/ingestion-policy"
+API_DOCUMENT_BY_ID = "/api/v1/documents/{document_id}"
+API_DOCUMENTS_MANUAL = "/api/v1/documents/manual"
+API_DOCUMENTS_PREVIEW = "/api/v1/documents/preview"
+API_DOCUMENT_CHUNK_BY_ID = "/api/v1/documents/{document_id}/chunks/{chunk_id}"
+API_BATCH_UPLOAD_APPLY_URLS = "/api/v1/documents/batch-upload/apply-urls"
+API_BATCH_UPLOAD_STATUS = "/api/v1/documents/batch-upload/status/{batch_id}"
+API_PIPELINE_INGESTION_PREVIEW = "/api/v1/pipeline/ingestion-preview"
+API_PIPELINE_GOVERNANCE_PROFILES = "/api/v1/pipeline/governance-profiles"
+API_PIPELINE_GOVERNANCE_PROFILE_BY_REF = "/api/v1/pipeline/governance-profiles/{profile_ref}"
+API_PIPELINE_UPLOAD_ZIP_WITH_IMAGES = "/api/v1/pipeline/upload-zip-with-images"
+API_PARSING_DOCUMENTS = "/api/v1/parsing/documents"
+API_PARSING_DOCUMENT_CONTENT_BY_ID = "/api/v1/parsing/documents/{document_id}/content"
+API_CHAT_CONVERSATIONS = "/api/v1/chat/conversations"
+API_CHAT_STREAM = "/api/v1/chat/stream"
+API_CHAT_MESSAGES_BY_CONVERSATION = "/api/v1/chat/conversations/{conversation_id}/messages"
+API_CHAT_CHECKPOINTS_BY_CONVERSATION = "/api/v1/chat/conversations/{conversation_id}/checkpoints"
+API_PROMPT_TEMPLATES = "/api/v1/prompt-templates"
+API_PROMPT_TEMPLATE_BY_ID = "/api/v1/prompt-templates/{template_id}"
+API_RAG_RETRIEVE_PREVIEW = "/api/v1/rag/retrieve-preview"
+API_RAG_PROMPT_PREVIEW = "/api/v1/rag/prompt-preview"
+API_EVAL_RAGAS_RUNS = "/api/v1/evaluations/ragas/runs"
+API_EVAL_REGRESSION_CASES = "/api/v1/evaluations/ragas/regression/cases"
+API_EVAL_REGRESSION_RUNS = "/api/v1/evaluations/ragas/regression/runs"
+API_EVAL_TEST_GEN_FROM_DOCUMENTS = "/api/v1/evaluations/ragas/test-gen/from-documents"
+API_EVAL_TEST_GEN_FROM_CONVERSATIONS = "/api/v1/evaluations/ragas/test-gen/from-conversations"
+API_FEEDBACK_MESSAGES = "/api/v1/feedback/messages"
+API_KG_SEARCH = "/api/v1/kg/search"
+MEDIA_TYPE_TEXT_PLAIN = "text/plain"
 
 
 def load_dotenv(path: Path) -> dict[str, str]:
@@ -120,9 +120,7 @@ class SmokeRunner:
             try:
                 resp = self.client.request(method, url, headers=headers, **kwargs)
             except Exception as exc:
-                self.results.append(
-                    CallResult(method.upper(), path_template, None, False, f"request failed: {exc}")
-                )
+                self.results.append(CallResult(method.upper(), path_template, None, False, f"request failed: {exc}"))
                 return None
             if resp.status_code != 429 or attempt == 2:
                 break
@@ -133,9 +131,7 @@ class SmokeRunner:
                 retry_after = None
             time.sleep(retry_after or 0.25)
         if resp is None:
-            self.results.append(
-                CallResult(method.upper(), path_template, None, False, "request failed: no response")
-            )
+            self.results.append(CallResult(method.upper(), path_template, None, False, "request failed: no response"))
             return None
         ok = is_expected(resp.status_code, expected)
         note = "" if ok else f"unexpected status {resp.status_code}: {resp.text[:400]}"
@@ -395,11 +391,23 @@ def probe_uncovered_openapi_endpoints(runner: SmokeRunner, openapi_paths: set[tu
 
     expected = [
         # Success
-        200, 201, 202, 204,
+        200,
+        201,
+        202,
+        204,
         # Common "reachable but not allowed" outcomes
-        400, 401, 403, 404, 405, 409, 410, 415, 422,
+        400,
+        401,
+        403,
+        404,
+        405,
+        409,
+        410,
+        415,
+        422,
         # Rate limiting / optional subsystems
-        429, 503,
+        429,
+        503,
     ]
 
     for method, path_template in remaining:
@@ -429,6 +437,1361 @@ def create_zip_with_image(tmp_dir: Path) -> Path:
         zf.writestr("doc.md", md_content)
         zf.writestr("images/demo.png", png_bytes)
     return zip_path
+
+
+@dataclass
+class SmokeContext:
+    args: argparse.Namespace
+    repo_root: Path
+    dotenv: dict[str, str]
+    runner: SmokeRunner
+    openapi_paths: set[tuple[str, str]]
+    tenant_id: str
+    system_tenant_id: str
+    auth_mode: str
+    reuse_jwt_account: bool
+    user_email: str
+    login_identifier: str
+    user_name: str
+    user_password: str
+    llm_api_key: str
+    llm_api_base: str
+    llm_model: str
+    live_parser_backends: list[str]
+    live_parser_fixture: Path | None
+    smoke_rag_config: dict[str, Any]
+    ds_id: str | None = None
+    doc_id: str | None = None
+    manual_doc_id: str | None = None
+    first_chunk_id: str | None = None
+    batch_doc_ids: list[str] = field(default_factory=list)
+    conversation_id: str | None = None
+    tmpl_id: str | None = None
+
+
+def mark_routes(runner: SmokeRunner, *routes: tuple[str, str]) -> None:
+    for method, path_template in routes:
+        runner.mark(method, path_template)
+
+
+def build_smoke_rag_config() -> dict[str, Any]:
+    # Keep smoke requests offline-friendly and fast: avoid default chat retrieval
+    # profile (hybrid_ce) which can trigger local cross-encoder model downloads.
+    return {
+        "max_tokens": 256,
+        "top_k": 3,
+        "score_threshold": 0.0,
+        "retrieval_mode": "keyword",
+        "enable_multi_query": False,
+        "enable_hyde": False,
+        "enable_reranker": False,
+        "reranker_provider": "none",
+        "enable_weight_rerank": False,
+    }
+
+
+def build_smoke_context(
+    *,
+    args: argparse.Namespace,
+    repo_root: Path,
+    dotenv: dict[str, str],
+    client: httpx.Client,
+    live_parser_backends: list[str],
+    live_parser_fixture: Path | None,
+) -> SmokeContext:
+    base_url = args.base_url or env_or(dotenv, "NEXT_PUBLIC_API_URL", "http://localhost:8000")
+    tenant_id = args.tenant_id or env_or(dotenv, "NEXT_PUBLIC_TENANT_ID", "00000000-0000-0000-0000-000000000000")
+    system_tenant_id = env_or(dotenv, "DEFAULT_TENANT_ID", "00000000-0000-0000-0000-000000000000")
+    auth_mode = (args.auth_mode or env_or(dotenv, "AUTH_MODE", "header")).lower()
+    reuse_jwt_account = bool(args.jwt_identifier)
+    user_email = f"smoke_{uuid.uuid4().hex[:8]}@example.com"
+    login_identifier = args.jwt_identifier or user_email
+    user_name = f"smoke_{uuid.uuid4().hex[:8]}"
+    user_password = args.jwt_password or "smoke-pass-123"
+    openapi_paths = load_openapi_paths(client, base_url, args.openapi)
+    headers = build_headers(tenant_id, None, None)
+    llm_api_key = env_or(dotenv, "LLM_API_KEY", "")
+    llm_api_base = env_or(dotenv, "LLM_API_BASE", "https://api.openai.com/v1")
+    llm_model = env_or(dotenv, "LLM_MODEL", "gpt-4o-mini")
+    return SmokeContext(
+        args=args,
+        repo_root=repo_root,
+        dotenv=dotenv,
+        runner=SmokeRunner(client, base_url, headers),
+        openapi_paths=openapi_paths,
+        tenant_id=tenant_id,
+        system_tenant_id=system_tenant_id,
+        auth_mode=auth_mode,
+        reuse_jwt_account=reuse_jwt_account,
+        user_email=user_email,
+        login_identifier=login_identifier,
+        user_name=user_name,
+        user_password=user_password,
+        llm_api_key=llm_api_key,
+        llm_api_base=llm_api_base,
+        llm_model=llm_model,
+        live_parser_backends=live_parser_backends,
+        live_parser_fixture=live_parser_fixture,
+        smoke_rag_config=build_smoke_rag_config(),
+    )
+
+
+def run_health_smokes(ctx: SmokeContext) -> None:
+    ctx.runner.call("GET", "/", "/", expected=[200])
+    ctx.runner.call("GET", "/health", "/health", expected=[200])
+    ctx.runner.call("GET", "/api/v1/health", "/api/v1/health", expected=[200])
+    ctx.runner.call("GET", "/api/v1/health/ready", "/api/v1/health/ready", expected=[200])
+    ctx.runner.call("GET", "/api/v1/meta", "/api/v1/meta", expected=[200])
+
+
+def configure_auth(ctx: SmokeContext) -> None:
+    if ctx.auth_mode == "jwt":
+        register_payload = {"email": ctx.user_email, "username": ctx.user_name, "password": ctx.user_password}
+        reg_resp = ctx.runner.call(
+            "POST",
+            "/api/v1/auth/register",
+            "/api/v1/auth/register",
+            expected=[201, 400, 409] if ctx.reuse_jwt_account else [201, 400],
+            json=register_payload,
+        )
+        reg_data = parse_json(reg_resp)
+        token = (reg_data.get("token") or {}).get("access_token")
+        login_payload = {"identifier": ctx.login_identifier, "password": ctx.user_password}
+        login_resp = ctx.runner.call(
+            "POST",
+            "/api/v1/auth/login",
+            "/api/v1/auth/login",
+            expected=[200],
+            json=login_payload,
+        )
+        login_data = parse_json(login_resp)
+        token = token or (login_data.get("token") or {}).get("access_token")
+        ctx.runner.headers = build_headers(ctx.tenant_id, None, token)
+        ctx.runner.call("GET", "/api/v1/auth/me", "/api/v1/auth/me", expected=[200])
+        return
+
+    mark_routes(
+        ctx.runner,
+        ("POST", "/api/v1/auth/register"),
+        ("POST", "/api/v1/auth/login"),
+        ("GET", "/api/v1/auth/me"),
+    )
+    ctx.runner.headers = build_headers(
+        ctx.tenant_id,
+        env_or(ctx.dotenv, "NEXT_PUBLIC_USER_ID", "demo"),
+        None,
+    )
+    # Header auth does not create a local user record. In clean CI databases,
+    # listing datasets bootstraps the owner membership before settings writes.
+    ctx.runner.call("GET", API_DATASETS, API_DATASETS, expected=[200])
+
+
+def run_settings_smokes(ctx: SmokeContext) -> None:
+    ctx.runner.call("GET", API_SETTINGS, API_SETTINGS, expected=[200])
+    ctx.runner.call("GET", "/api/v1/settings/status", "/api/v1/settings/status", expected=[200])
+    ctx.runner.call(
+        "PUT",
+        API_SETTINGS,
+        API_SETTINGS,
+        expected=settings_write_expected_statuses(
+            tenant_id=ctx.tenant_id,
+            system_tenant_id=ctx.system_tenant_id,
+        ),
+        json={},
+    )
+    if ctx.args.skip_llm_test:
+        ctx.runner.mark("POST", API_SETTINGS_LLM_TEST)
+        return
+
+    ctx.runner.call(
+        "POST",
+        API_SETTINGS_LLM_TEST,
+        API_SETTINGS_LLM_TEST,
+        expected=[200, 400],
+        json={
+            "api_key": ctx.llm_api_key,
+            "api_base": ctx.llm_api_base,
+            "model": ctx.llm_model,
+            "temperature": 0.0,
+            "timeout": 10,
+            "max_retries": 1,
+        },
+    )
+
+
+def run_dataset_smokes(ctx: SmokeContext) -> None:
+    dataset_payload = {"name": f"Smoke Dataset {uuid.uuid4().hex[:6]}", "description": "smoke"}
+    ds_resp = ctx.runner.call("POST", API_DATASETS, API_DATASETS, expected=[201], json=dataset_payload)
+    ctx.ds_id = parse_json(ds_resp).get("id")
+    ctx.runner.call("GET", API_DATASETS, API_DATASETS, expected=[200])
+    if not ctx.ds_id:
+        return
+
+    ctx.runner.call("GET", API_DATASET_BY_ID, f"/api/v1/datasets/{ctx.ds_id}", expected=[200])
+    ctx.runner.call(
+        "PATCH",
+        API_DATASET_BY_ID,
+        f"/api/v1/datasets/{ctx.ds_id}",
+        expected=[200],
+        json={"description": "smoke-updated"},
+    )
+
+
+def run_dataset_ingestion_policy_smokes(ctx: SmokeContext) -> None:
+    if not ctx.ds_id:
+        mark_routes(
+            ctx.runner,
+            ("GET", API_DATASET_INGESTION_POLICY),
+            ("PUT", API_DATASET_INGESTION_POLICY),
+            ("POST", "/api/v1/datasets/{dataset_id}/ingestion-policy/import"),
+            ("GET", "/api/v1/datasets/{dataset_id}/ingestion-policy/export"),
+        )
+        return
+
+    policy_payload = {
+        "version": "1",
+        "rules": [
+            {
+                "id": "txt-default",
+                "name": "TXT Default",
+                "enabled": True,
+                "match": {"extensions": [".txt"]},
+                "preprocess": {"enabled": False, "steps": []},
+                "parser_backend": "auto",
+                "governance_profile_ref": "builtin:kb_default",
+                "pipeline_patch": {"governance_enabled": True},
+            }
+        ],
+    }
+    ctx.runner.call(
+        "PUT",
+        API_DATASET_INGESTION_POLICY,
+        f"/api/v1/datasets/{ctx.ds_id}/ingestion-policy",
+        expected=[200],
+        json=policy_payload,
+    )
+    ctx.runner.call(
+        "GET",
+        API_DATASET_INGESTION_POLICY,
+        f"/api/v1/datasets/{ctx.ds_id}/ingestion-policy",
+        expected=[200],
+    )
+    ctx.runner.call(
+        "GET",
+        "/api/v1/datasets/{dataset_id}/ingestion-policy/export",
+        f"/api/v1/datasets/{ctx.ds_id}/ingestion-policy/export",
+        expected=[200],
+    )
+    policy_bytes = json.dumps(policy_payload, ensure_ascii=False).encode("utf-8")
+    ctx.runner.call(
+        "POST",
+        "/api/v1/datasets/{dataset_id}/ingestion-policy/import",
+        f"/api/v1/datasets/{ctx.ds_id}/ingestion-policy/import",
+        expected=[200, 409],
+        files={"file": ("policy.json", policy_bytes, "application/json")},
+        data={"replace": "true"},
+    )
+
+
+def run_document_upload_smokes(ctx: SmokeContext) -> None:
+    sample_text = "Smoke test document.\nSecond line."
+    files = {"file": ("smoke.txt", sample_text.encode("utf-8"), MEDIA_TYPE_TEXT_PLAIN)}
+    data = {"chunk_vector_enabled": "false"}
+    if ctx.ds_id:
+        data["dataset_id"] = ctx.ds_id
+    doc_resp = ctx.runner.call(
+        "POST",
+        "/api/v1/documents/upload",
+        "/api/v1/documents/upload",
+        expected=[201],
+        files=files,
+        data=data,
+    )
+    ctx.doc_id = parse_json(doc_resp).get("id")
+    ctx.first_chunk_id = None
+    ctx.batch_doc_ids = []
+
+    files_batch = [
+        ("files", ("batch1.txt", b"batch-one", MEDIA_TYPE_TEXT_PLAIN)),
+        ("files", ("batch2.txt", b"batch-two", MEDIA_TYPE_TEXT_PLAIN)),
+    ]
+    data_batch = {"chunk_vector_enabled": "false"}
+    if ctx.ds_id:
+        data_batch["dataset_id"] = ctx.ds_id
+    batch_resp = ctx.runner.call(
+        "POST",
+        "/api/v1/documents/upload-batch",
+        "/api/v1/documents/upload-batch",
+        expected=[201],
+        files=files_batch,
+        data=data_batch,
+    )
+    batch_payload = parse_json(batch_resp)
+    for item in batch_payload.get("successful") or []:
+        if not isinstance(item, dict):
+            continue
+        did = item.get("document_id") or item.get("id")
+        if did:
+            ctx.batch_doc_ids.append(str(did))
+
+    ctx.runner.call("GET", "/api/v1/documents/", "/api/v1/documents/?limit=5", expected=[200])
+    ctx.runner.call("GET", "/api/v1/documents/stats", "/api/v1/documents/stats", expected=[200])
+    if not ctx.doc_id:
+        mark_routes(
+            ctx.runner,
+            ("PATCH", "/api/v1/documents/{document_id}/metadata"),
+            ("GET", "/api/v1/documents/{document_id}/download"),
+        )
+        return
+
+    ctx.runner.call("GET", API_DOCUMENT_BY_ID, f"/api/v1/documents/{ctx.doc_id}", expected=[200])
+    ctx.runner.call(
+        "GET",
+        "/api/v1/documents/{document_id}/status",
+        f"/api/v1/documents/{ctx.doc_id}/status",
+        expected=[200],
+    )
+    ctx.runner.call(
+        "PATCH",
+        "/api/v1/documents/{document_id}/metadata",
+        f"/api/v1/documents/{ctx.doc_id}/metadata",
+        expected=[200, 403, 404],
+        json={"patch": {"source": "smoke"}, "replace": False},
+    )
+    ctx.runner.call(
+        "GET",
+        "/api/v1/documents/{document_id}/download",
+        f"/api/v1/documents/{ctx.doc_id}/download?inline=true",
+        expected=[200, 403, 404],
+    )
+
+
+def run_document_preview_smokes(ctx: SmokeContext) -> None:
+    ctx.runner.call(
+        "POST",
+        API_DOCUMENTS_PREVIEW,
+        API_DOCUMENTS_PREVIEW,
+        expected=[200],
+        timeout=120.0,
+        files={"file": ("preview.txt", b"preview", MEDIA_TYPE_TEXT_PLAIN)},
+    )
+    if ctx.live_parser_backends and ctx.live_parser_fixture is not None:
+        run_live_parser_preview_smokes(
+            runner=ctx.runner,
+            fixture_path=ctx.live_parser_fixture,
+            parser_backends=ctx.live_parser_backends,
+            timeout=ctx.args.live_parser_timeout,
+        )
+    ctx.runner.call(
+        "POST",
+        "/api/v1/documents/chunk-preview",
+        "/api/v1/documents/chunk-preview",
+        expected=[200],
+        files={"file": ("chunk.txt", b"chunk preview text", MEDIA_TYPE_TEXT_PLAIN)},
+        data={"chunk_size": 200, "chunk_overlap": 20},
+    )
+
+
+def build_batch_patch_ids(ctx: SmokeContext) -> list[str]:
+    batch_patch_ids: list[str] = []
+    if ctx.doc_id:
+        batch_patch_ids.append(str(ctx.doc_id))
+    if ctx.manual_doc_id:
+        batch_patch_ids.append(str(ctx.manual_doc_id))
+    if not batch_patch_ids:
+        batch_patch_ids.append(str(uuid.uuid4()))
+    return batch_patch_ids
+
+
+def run_manual_and_batch_document_smokes(ctx: SmokeContext) -> None:
+    if ctx.ds_id:
+        manual_payload = {
+            "dataset_id": ctx.ds_id,
+            "filename": "manual.txt",
+            "file_type": "txt",
+            "file_size": 12,
+            "chunks": [{"content": "manual chunk"}],
+        }
+        manual_resp = ctx.runner.call(
+            "POST",
+            API_DOCUMENTS_MANUAL,
+            API_DOCUMENTS_MANUAL,
+            expected=[201],
+            json=manual_payload,
+        )
+        ctx.manual_doc_id = parse_json(manual_resp).get("id")
+    else:
+        ctx.runner.mark("POST", API_DOCUMENTS_MANUAL)
+        ctx.manual_doc_id = None
+
+    ctx.runner.call(
+        "POST",
+        "/api/v1/documents/batch/metadata",
+        "/api/v1/documents/batch/metadata",
+        expected=[200],
+        json={
+            "document_ids": build_batch_patch_ids(ctx),
+            "patch": {"batch": True, "source": "smoke"},
+            "replace": False,
+        },
+    )
+    ctx.runner.call(
+        "POST",
+        "/api/v1/documents/batch-delete",
+        "/api/v1/documents/batch-delete",
+        expected=[200],
+        json={"document_ids": [str(uuid.uuid4())]},
+    )
+    cancel_target = str(ctx.manual_doc_id or uuid.uuid4())
+    ctx.runner.call(
+        "POST",
+        "/api/v1/documents/{document_id}/cancel",
+        f"/api/v1/documents/{cancel_target}/cancel",
+        expected=[200, 404, 409],
+    )
+    retry_target = str(ctx.manual_doc_id or uuid.uuid4())
+    ctx.runner.call(
+        "POST",
+        "/api/v1/documents/{document_id}/retry",
+        f"/api/v1/documents/{retry_target}/retry",
+        expected=[200, 404, 409],
+    )
+
+
+def run_batch_upload_apply_smokes(ctx: SmokeContext) -> None:
+    if ctx.args.skip_mineru:
+        mark_routes(
+            ctx.runner,
+            ("POST", API_BATCH_UPLOAD_APPLY_URLS),
+            ("GET", API_BATCH_UPLOAD_STATUS),
+        )
+        return
+
+    apply_resp = ctx.runner.call(
+        "POST",
+        API_BATCH_UPLOAD_APPLY_URLS,
+        API_BATCH_UPLOAD_APPLY_URLS,
+        expected=[200, 400, 500, 503],
+        json={"files": [{"name": "a.pdf", "data_id": "smoke-a"}]},
+    )
+    batch_id = parse_json(apply_resp).get("batch_id")
+    if batch_id:
+        ctx.runner.call(
+            "GET",
+            API_BATCH_UPLOAD_STATUS,
+            API_BATCH_UPLOAD_STATUS.format(batch_id=batch_id),
+            expected=[200, 400, 404, 500, 503],
+        )
+        return
+
+    ctx.runner.call(
+        "GET",
+        API_BATCH_UPLOAD_STATUS,
+        "/api/v1/documents/batch-upload/status/invalid",
+        expected=[200, 400, 404, 500, 503],
+    )
+
+
+def run_image_smokes(ctx: SmokeContext) -> None:
+    ctx.runner.call(
+        "GET",
+        "/api/v1/documents/image-url/{img_id}",
+        "/api/v1/documents/image-url/invalid",
+        expected=[404, 503],
+    )
+    ctx.runner.call(
+        "GET",
+        "/api/v1/documents/image/{image_id}",
+        "/api/v1/documents/image/invalid",
+        expected=[404],
+    )
+
+
+def run_pipeline_preview_smokes(ctx: SmokeContext) -> None:
+    ctx.runner.call("GET", "/api/v1/pipeline/capabilities", "/api/v1/pipeline/capabilities", expected=[200])
+    ctx.runner.call(
+        "POST",
+        "/api/v1/pipeline/parse-preview",
+        "/api/v1/pipeline/parse-preview",
+        expected=[200],
+        files={"file": ("pipe.txt", b"pipeline preview", MEDIA_TYPE_TEXT_PLAIN)},
+    )
+    ctx.runner.call(
+        "POST",
+        "/api/v1/pipeline/chunk-preview",
+        "/api/v1/pipeline/chunk-preview",
+        expected=[200],
+        json={"markdown": "# Title\n\nContent"},
+    )
+    ctx.runner.call(
+        "POST",
+        "/api/v1/pipeline/clean-preview",
+        "/api/v1/pipeline/clean-preview",
+        expected=[200],
+        json={"markdown": "A  \n\nB", "use_default_rules": True},
+    )
+    ctx.runner.call("GET", "/api/v1/pipeline/clean-rules", "/api/v1/pipeline/clean-rules", expected=[200])
+    ctx.runner.call(
+        "POST",
+        "/api/v1/pipeline/governance-analyze",
+        "/api/v1/pipeline/governance-analyze",
+        expected=[200],
+        json={"markdown": "<p>hello</p>\n\nA  \n\nB"},
+    )
+    if ctx.ds_id:
+        ctx.runner.call(
+            "POST",
+            API_PIPELINE_INGESTION_PREVIEW,
+            API_PIPELINE_INGESTION_PREVIEW,
+            expected=[200, 400, 500],
+            files={"file": ("ingest.txt", b"ingestion preview", MEDIA_TYPE_TEXT_PLAIN)},
+            data={"dataset_id": ctx.ds_id},
+        )
+        return
+
+    ctx.runner.mark("POST", API_PIPELINE_INGESTION_PREVIEW)
+
+
+def run_governance_profile_smokes(ctx: SmokeContext) -> None:
+    ctx.runner.call(
+        "GET",
+        API_PIPELINE_GOVERNANCE_PROFILES,
+        "/api/v1/pipeline/governance-profiles?limit=5",
+        expected=[200],
+    )
+    gov_key = f"smoke_profile_{uuid.uuid4().hex[:6]}"
+    gov_resp = ctx.runner.call(
+        "POST",
+        API_PIPELINE_GOVERNANCE_PROFILES,
+        API_PIPELINE_GOVERNANCE_PROFILES,
+        expected=[201],
+        json={
+            "name": f"Smoke Governance {uuid.uuid4().hex[:6]}",
+            "description": "smoke",
+            "key": gov_key,
+            "payload": {
+                "version": "1",
+                "input_formats": ["markdown"],
+                "pipeline_patch": {"governance_enabled": True},
+                "regex_rules": [],
+            },
+        },
+    )
+    gov_id = parse_json(gov_resp).get("id") or gov_key
+    ctx.runner.call(
+        "GET",
+        API_PIPELINE_GOVERNANCE_PROFILE_BY_REF,
+        f"/api/v1/pipeline/governance-profiles/{gov_id}",
+        expected=[200],
+    )
+    ctx.runner.call(
+        "PATCH",
+        API_PIPELINE_GOVERNANCE_PROFILE_BY_REF,
+        f"/api/v1/pipeline/governance-profiles/{gov_id}",
+        expected=[200],
+        json={"description": "smoke-updated"},
+    )
+    ctx.runner.call(
+        "GET",
+        "/api/v1/pipeline/governance-profiles/{profile_ref}/export",
+        f"/api/v1/pipeline/governance-profiles/{gov_id}/export",
+        expected=[200],
+    )
+
+    import_key = f"smoke_import_{uuid.uuid4().hex[:6]}"
+    import_bytes = json.dumps(
+        {
+            "name": f"Smoke Imported {uuid.uuid4().hex[:6]}",
+            "description": "smoke",
+            "key": import_key,
+            "payload": {
+                "version": "1",
+                "input_formats": ["markdown"],
+                "pipeline_patch": {"governance_enabled": True},
+                "regex_rules": [],
+            },
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
+    ctx.runner.call(
+        "POST",
+        "/api/v1/pipeline/governance-profiles/import",
+        "/api/v1/pipeline/governance-profiles/import",
+        expected=[200, 409],
+        files={"file": ("profile.json", import_bytes, "application/json")},
+        data={"overwrite": "true"},
+    )
+    ctx.runner.call(
+        "GET",
+        API_PIPELINE_GOVERNANCE_PROFILE_BY_REF,
+        f"/api/v1/pipeline/governance-profiles/{import_key}",
+        expected=[200, 404],
+    )
+    ctx.runner.call(
+        "DELETE",
+        API_PIPELINE_GOVERNANCE_PROFILE_BY_REF,
+        f"/api/v1/pipeline/governance-profiles/{import_key}",
+        expected=[204, 404],
+    )
+    ctx.runner.call(
+        "DELETE",
+        API_PIPELINE_GOVERNANCE_PROFILE_BY_REF,
+        f"/api/v1/pipeline/governance-profiles/{gov_id}",
+        expected=[204, 404],
+    )
+    ctx.runner.call(
+        "POST",
+        "/api/v1/pipeline/extract-keywords",
+        "/api/v1/pipeline/extract-keywords",
+        expected=[200],
+        json={"text": "keyword extraction smoke", "provider": "jieba", "top_k": 3},
+    )
+    ctx.runner.call(
+        "POST",
+        "/api/v1/pipeline/llm-clean-preview",
+        "/api/v1/pipeline/llm-clean-preview",
+        expected=[200, 502, 503],
+        json={"markdown": "LLM clean preview", "max_chars": 2000},
+    )
+
+
+def run_pipeline_zip_upload_smokes(ctx: SmokeContext) -> None:
+    if not ctx.ds_id:
+        ctx.runner.mark("POST", API_PIPELINE_UPLOAD_ZIP_WITH_IMAGES)
+        return
+
+    zip_path = create_zip_with_image(ctx.repo_root / "uploads" / "smoke_zip")
+    with zip_path.open("rb") as fh:
+        ctx.runner.call(
+            "POST",
+            API_PIPELINE_UPLOAD_ZIP_WITH_IMAGES,
+            API_PIPELINE_UPLOAD_ZIP_WITH_IMAGES,
+            expected=[200, 503],
+            files={"file": (zip_path.name, fh, "application/zip")},
+            data={"dataset_id": ctx.ds_id},
+        )
+
+
+def run_parsing_workspace_smokes(ctx: SmokeContext) -> None:
+    ctx.runner.call(
+        "GET",
+        API_PARSING_DOCUMENTS,
+        "/api/v1/parsing/documents?limit=5",
+        expected=[200],
+    )
+    parsing_upload = ctx.runner.call(
+        "POST",
+        API_PARSING_DOCUMENTS,
+        API_PARSING_DOCUMENTS,
+        expected=[201],
+        files={"file": ("parsing.txt", b"parsing workspace", MEDIA_TYPE_TEXT_PLAIN)},
+        data={"parser_backend": "auto"},
+    )
+    parsing_doc_id = parse_json(parsing_upload).get("id")
+    if not parsing_doc_id:
+        mark_routes(
+            ctx.runner,
+            ("POST", "/api/v1/parsing/documents/{document_id}/parse"),
+            ("GET", API_PARSING_DOCUMENT_CONTENT_BY_ID),
+            ("PATCH", API_PARSING_DOCUMENT_CONTENT_BY_ID),
+            ("DELETE", "/api/v1/parsing/documents/{document_id}"),
+        )
+        return
+
+    ctx.runner.call(
+        "POST",
+        "/api/v1/parsing/documents/{document_id}/parse",
+        f"/api/v1/parsing/documents/{parsing_doc_id}/parse",
+        expected=[200, 400, 500],
+    )
+    ctx.runner.call(
+        "GET",
+        API_PARSING_DOCUMENT_CONTENT_BY_ID,
+        f"/api/v1/parsing/documents/{parsing_doc_id}/content",
+        expected=[200],
+    )
+    ctx.runner.call(
+        "PATCH",
+        API_PARSING_DOCUMENT_CONTENT_BY_ID,
+        f"/api/v1/parsing/documents/{parsing_doc_id}/content",
+        expected=[200],
+        json={"markdown_content": "# Edited\n\nok", "original_markdown_content": "# Edited\n\nok"},
+    )
+    ctx.runner.call(
+        "DELETE",
+        "/api/v1/parsing/documents/{document_id}",
+        f"/api/v1/parsing/documents/{parsing_doc_id}",
+        expected=[204],
+    )
+
+
+def poll_document_status(ctx: SmokeContext) -> None:
+    if not ctx.doc_id:
+        return
+
+    status_url = f"/api/v1/documents/{ctx.doc_id}/status"
+    for _ in range(30):
+        resp = ctx.runner.call(
+            "GET",
+            "/api/v1/documents/{document_id}/status",
+            status_url,
+            expected=[200],
+        )
+        status = parse_json(resp).get("status")
+        if status in {"completed", "failed"}:
+            break
+        time.sleep(1)
+
+
+def run_document_pipeline_and_chunk_smokes(ctx: SmokeContext) -> None:
+    if not ctx.doc_id:
+        mark_routes(
+            ctx.runner,
+            ("PATCH", "/api/v1/documents/{document_id}/pipeline"),
+            ("GET", "/api/v1/documents/{document_id}/chunks"),
+            ("GET", "/api/v1/documents/{document_id}/chunks/matches"),
+            ("GET", API_DOCUMENT_CHUNK_BY_ID),
+        )
+        return
+
+    ctx.runner.call(
+        "PATCH",
+        "/api/v1/documents/{document_id}/pipeline",
+        f"/api/v1/documents/{ctx.doc_id}/pipeline",
+        expected=[200, 404, 409],
+        json={"patch": {"governance_enabled": True}, "replace": False},
+    )
+    chunks_resp = ctx.runner.call(
+        "GET",
+        "/api/v1/documents/{document_id}/chunks",
+        f"/api/v1/documents/{ctx.doc_id}/chunks?limit=5",
+        expected=[200],
+    )
+    items = parse_json(chunks_resp).get("items") or []
+    ctx.first_chunk_id = items[0].get("id") if items else None
+    ctx.runner.call(
+        "GET",
+        "/api/v1/documents/{document_id}/chunks/matches",
+        f"/api/v1/documents/{ctx.doc_id}/chunks/matches?q=Smoke&limit=20",
+        expected=[200],
+    )
+    if ctx.first_chunk_id:
+        ctx.runner.call(
+            "GET",
+            API_DOCUMENT_CHUNK_BY_ID,
+            f"/api/v1/documents/{ctx.doc_id}/chunks/{ctx.first_chunk_id}",
+            expected=[200, 404],
+        )
+        return
+
+    ctx.runner.call(
+        "GET",
+        API_DOCUMENT_CHUNK_BY_ID,
+        f"/api/v1/documents/{ctx.doc_id}/chunks/{uuid.uuid4()}",
+        expected=[404],
+    )
+
+
+def run_ragviz_smokes(ctx: SmokeContext) -> None:
+    col_resp = ctx.runner.call(
+        "GET",
+        "/api/v1/ragviz/similarity/collections",
+        "/api/v1/ragviz/similarity/collections",
+        expected=[200],
+    )
+    collections = parse_json(col_resp).get("collections") or []
+    x_collection = collections[0].get("id") if collections else "invalid"
+    y_collection = collections[0].get("id") if collections else "invalid"
+    ctx.runner.call(
+        "POST",
+        "/api/v1/ragviz/similarity/calculate",
+        "/api/v1/ragviz/similarity/calculate",
+        expected=[200],
+        json={"x_collection": x_collection, "y_collection": y_collection, "max_items": 10},
+    )
+
+
+def create_conversation(ctx: SmokeContext) -> None:
+    ctx.conversation_id = None
+    if not ctx.doc_id:
+        ctx.runner.mark("POST", API_CHAT_CONVERSATIONS)
+        return
+
+    conv_resp = ctx.runner.call(
+        "POST",
+        API_CHAT_CONVERSATIONS,
+        API_CHAT_CONVERSATIONS,
+        expected=[201],
+        json={"title": "Smoke conversation", "document_ids": [ctx.doc_id]},
+    )
+    ctx.conversation_id = parse_json(conv_resp).get("id")
+
+
+def run_non_stream_chat_smoke(ctx: SmokeContext) -> None:
+    chat_path = "/api/v1/chat/" if ("POST", "/api/v1/chat/") in ctx.openapi_paths else "/api/v1/chat"
+    if not ctx.doc_id:
+        ctx.runner.mark("POST", chat_path)
+        return
+    if ctx.args.skip_llm_test:
+        return
+
+    ctx.runner.call(
+        "POST",
+        chat_path,
+        chat_path,
+        expected=[200, 500, 502, 503],
+        timeout=90.0,
+        json={
+            "message": "smoke non-stream",
+            "document_ids": [ctx.doc_id],
+            "stream": False,
+            "rag_config": dict(ctx.smoke_rag_config),
+        },
+    )
+
+
+def run_stream_chat_smoke(ctx: SmokeContext) -> None:
+    if not ctx.doc_id:
+        mark_routes(
+            ctx.runner,
+            ("POST", API_CHAT_STREAM),
+            ("GET", API_CHAT_CONVERSATIONS),
+        )
+        return
+    if ctx.args.skip_llm_test:
+        return
+
+    ok, _ = ctx.runner.stream(
+        "POST",
+        API_CHAT_STREAM,
+        API_CHAT_STREAM,
+        expected=[200],
+        timeout=90.0,
+        json={
+            "message": "smoke test",
+            "document_ids": [ctx.doc_id],
+            "rag_config": dict(ctx.smoke_rag_config),
+        },
+    )
+    if not ok or ctx.conversation_id:
+        return
+
+    conv_list = ctx.runner.call(
+        "GET",
+        API_CHAT_CONVERSATIONS,
+        "/api/v1/chat/conversations?limit=5",
+        expected=[200],
+    )
+    items = parse_json(conv_list).get("items") or []
+    if items:
+        ctx.conversation_id = items[0].get("id")
+
+
+def run_conversation_endpoint_smokes(ctx: SmokeContext) -> None:
+    if not ctx.conversation_id:
+        mark_routes(
+            ctx.runner,
+            ("GET", API_CHAT_MESSAGES_BY_CONVERSATION),
+            ("GET", API_CHAT_CHECKPOINTS_BY_CONVERSATION),
+            ("GET", "/api/v1/chat/conversations/{conversation_id}/checkpoints/{checkpoint_id}"),
+            ("DELETE", API_CHAT_CHECKPOINTS_BY_CONVERSATION),
+        )
+        return
+
+    ctx.runner.call(
+        "GET",
+        API_CHAT_MESSAGES_BY_CONVERSATION,
+        API_CHAT_MESSAGES_BY_CONVERSATION.format(conversation_id=ctx.conversation_id),
+        expected=[200],
+    )
+    ctx.runner.call(
+        "GET",
+        API_CHAT_CONVERSATIONS,
+        "/api/v1/chat/conversations?limit=5",
+        expected=[200],
+    )
+    ctx.runner.call(
+        "GET",
+        API_CHAT_CHECKPOINTS_BY_CONVERSATION,
+        f"/api/v1/chat/conversations/{ctx.conversation_id}/checkpoints?limit=5",
+        expected=[200],
+    )
+    ctx.runner.call(
+        "GET",
+        "/api/v1/chat/conversations/{conversation_id}/checkpoints/{checkpoint_id}",
+        f"/api/v1/chat/conversations/{ctx.conversation_id}/checkpoints/invalid",
+        expected=[404],
+    )
+    ctx.runner.call(
+        "DELETE",
+        API_CHAT_CHECKPOINTS_BY_CONVERSATION,
+        API_CHAT_CHECKPOINTS_BY_CONVERSATION.format(conversation_id=ctx.conversation_id),
+        expected=[204],
+    )
+
+
+def run_chat_smokes(ctx: SmokeContext) -> None:
+    create_conversation(ctx)
+    run_non_stream_chat_smoke(ctx)
+    run_stream_chat_smoke(ctx)
+    run_conversation_endpoint_smokes(ctx)
+
+
+def run_prompt_template_smokes(ctx: SmokeContext) -> None:
+    tmpl_payload = {
+        "name": f"Smoke Template {uuid.uuid4().hex[:6]}",
+        "content": "Answer the question: {question}",
+        "variables": ["question"],
+        "is_active": True,
+    }
+    tmpl_resp = ctx.runner.call(
+        "POST",
+        API_PROMPT_TEMPLATES,
+        API_PROMPT_TEMPLATES,
+        expected=[201],
+        json=tmpl_payload,
+    )
+    ctx.tmpl_id = parse_json(tmpl_resp).get("id")
+    ctx.runner.call("GET", API_PROMPT_TEMPLATES, "/api/v1/prompt-templates?limit=5", expected=[200])
+    if not ctx.tmpl_id:
+        return
+
+    ctx.runner.call(
+        "GET",
+        API_PROMPT_TEMPLATE_BY_ID,
+        f"/api/v1/prompt-templates/{ctx.tmpl_id}",
+        expected=[200],
+    )
+    ctx.runner.call(
+        "POST",
+        "/api/v1/prompt-templates/{template_id}/duplicate",
+        f"/api/v1/prompt-templates/{ctx.tmpl_id}/duplicate",
+        expected=[201],
+    )
+    ctx.runner.call(
+        "POST",
+        "/api/v1/prompt-templates/{template_id}/versions",
+        f"/api/v1/prompt-templates/{ctx.tmpl_id}/versions",
+        expected=[201],
+        json={"content": "New version {question}", "is_active": True},
+    )
+    ctx.runner.call(
+        "PUT",
+        API_PROMPT_TEMPLATE_BY_ID,
+        f"/api/v1/prompt-templates/{ctx.tmpl_id}",
+        expected=[200],
+        json={"description": "smoke-updated"},
+    )
+
+
+def run_rag_smokes(ctx: SmokeContext) -> None:
+    if not ctx.doc_id:
+        mark_routes(
+            ctx.runner,
+            ("POST", API_RAG_RETRIEVE_PREVIEW),
+            ("POST", API_RAG_PROMPT_PREVIEW),
+        )
+        return
+
+    rag_payload = {"query": "smoke retrieval", "document_ids": [ctx.doc_id], "rag_config": dict(ctx.smoke_rag_config)}
+    ctx.runner.call(
+        "POST",
+        API_RAG_RETRIEVE_PREVIEW,
+        API_RAG_RETRIEVE_PREVIEW,
+        expected=[200],
+        json=rag_payload,
+    )
+    ctx.runner.call(
+        "POST",
+        API_RAG_PROMPT_PREVIEW,
+        API_RAG_PROMPT_PREVIEW,
+        expected=[200],
+        json=rag_payload,
+    )
+
+
+def run_ragas_smokes(ctx: SmokeContext) -> None:
+    if not ctx.conversation_id:
+        mark_routes(
+            ctx.runner,
+            ("POST", API_EVAL_RAGAS_RUNS),
+            ("GET", API_EVAL_RAGAS_RUNS),
+            ("GET", "/api/v1/evaluations/ragas/runs/{run_id}"),
+        )
+        return
+
+    eval_payload = {"conversation_id": ctx.conversation_id, "metrics": ["faithfulness"]}
+    run_resp = ctx.runner.call(
+        "POST",
+        API_EVAL_RAGAS_RUNS,
+        API_EVAL_RAGAS_RUNS,
+        expected=[201],
+        json=eval_payload,
+    )
+    run_id = parse_json(run_resp).get("id")
+    ctx.runner.call(
+        "GET",
+        API_EVAL_RAGAS_RUNS,
+        "/api/v1/evaluations/ragas/runs?limit=5",
+        expected=[200],
+    )
+    if run_id:
+        ctx.runner.call(
+            "GET",
+            "/api/v1/evaluations/ragas/runs/{run_id}",
+            f"/api/v1/evaluations/ragas/runs/{run_id}",
+            expected=[200],
+        )
+
+
+def run_regression_eval_smokes(ctx: SmokeContext) -> None:
+    if not ctx.ds_id:
+        mark_routes(
+            ctx.runner,
+            ("POST", API_EVAL_REGRESSION_CASES),
+            ("GET", API_EVAL_REGRESSION_CASES),
+            ("POST", API_EVAL_REGRESSION_RUNS),
+            ("GET", API_EVAL_REGRESSION_RUNS),
+            ("GET", "/api/v1/evaluations/ragas/regression/runs/{run_id}"),
+            ("POST", API_EVAL_TEST_GEN_FROM_DOCUMENTS),
+        )
+        return
+
+    case_id = None
+    if ctx.doc_id and ctx.first_chunk_id:
+        case_payload = {
+            "dataset_id": ctx.ds_id,
+            "document_ids": [ctx.doc_id],
+            "question": "smoke question",
+            "expected_answer": "smoke answer",
+            "reference_sources": [{"document_id": ctx.doc_id, "chunk_id": ctx.first_chunk_id}],
+        }
+        case_resp = ctx.runner.call(
+            "POST",
+            API_EVAL_REGRESSION_CASES,
+            API_EVAL_REGRESSION_CASES,
+            expected=[201],
+            json=case_payload,
+        )
+        case_id = parse_json(case_resp).get("id")
+    else:
+        ctx.runner.mark("POST", API_EVAL_REGRESSION_CASES)
+
+    ctx.runner.call(
+        "GET",
+        API_EVAL_REGRESSION_CASES,
+        "/api/v1/evaluations/ragas/regression/cases?limit=5",
+        expected=[200],
+    )
+    reg_run_resp = ctx.runner.call(
+        "POST",
+        API_EVAL_REGRESSION_RUNS,
+        API_EVAL_REGRESSION_RUNS,
+        expected=[201, 400, 422],
+        json={"case_ids": [case_id] if case_id else [], "metrics": ["faithfulness"]},
+    )
+    reg_run_id = parse_json(reg_run_resp).get("id")
+    ctx.runner.call(
+        "GET",
+        API_EVAL_REGRESSION_RUNS,
+        "/api/v1/evaluations/ragas/regression/runs?limit=5",
+        expected=[200],
+    )
+    if reg_run_id:
+        ctx.runner.call(
+            "GET",
+            "/api/v1/evaluations/ragas/regression/runs/{run_id}",
+            f"/api/v1/evaluations/ragas/regression/runs/{reg_run_id}",
+            expected=[200],
+        )
+    if case_id:
+        ctx.runner.call(
+            "DELETE",
+            "/api/v1/evaluations/ragas/regression/cases/{case_id}",
+            f"/api/v1/evaluations/ragas/regression/cases/{case_id}",
+            expected=[204],
+        )
+    else:
+        ctx.runner.mark("DELETE", "/api/v1/evaluations/ragas/regression/cases/{case_id}")
+
+    test_gen_docs = {
+        "document_ids": [ctx.doc_id] if ctx.doc_id else [],
+        "num_questions": 1,
+        "auto_save_as_cases": False,
+    }
+    ctx.runner.call(
+        "POST",
+        API_EVAL_TEST_GEN_FROM_DOCUMENTS,
+        API_EVAL_TEST_GEN_FROM_DOCUMENTS,
+        expected=[200, 400, 422, 500],
+        json=test_gen_docs,
+    )
+
+
+def run_conversation_test_generation_smoke(ctx: SmokeContext) -> None:
+    if not ctx.conversation_id:
+        ctx.runner.mark("POST", API_EVAL_TEST_GEN_FROM_CONVERSATIONS)
+        return
+
+    test_gen_conv = {
+        "conversation_ids": [ctx.conversation_id],
+        "num_questions": 1,
+        "auto_save_as_cases": False,
+    }
+    ctx.runner.call(
+        "POST",
+        API_EVAL_TEST_GEN_FROM_CONVERSATIONS,
+        API_EVAL_TEST_GEN_FROM_CONVERSATIONS,
+        expected=[200, 400, 500],
+        json=test_gen_conv,
+    )
+
+
+def run_eval_smokes(ctx: SmokeContext) -> None:
+    run_ragas_smokes(ctx)
+    run_regression_eval_smokes(ctx)
+    run_conversation_test_generation_smoke(ctx)
+
+
+def run_feedback_smokes(ctx: SmokeContext) -> None:
+    assistant_message_id = None
+    if ctx.conversation_id:
+        msg_resp = ctx.runner.call(
+            "GET",
+            API_CHAT_MESSAGES_BY_CONVERSATION,
+            API_CHAT_MESSAGES_BY_CONVERSATION.format(conversation_id=ctx.conversation_id),
+            expected=[200],
+        )
+        messages = parse_json(msg_resp).get("messages") or []
+        for msg in reversed(messages):
+            if (msg.get("role") or "").lower() == "assistant":
+                assistant_message_id = msg.get("id")
+                break
+    if assistant_message_id:
+        feedback_payload = {
+            "message_id": assistant_message_id,
+            "rating": 4,
+            "reason": "smoke",
+        }
+        ctx.runner.call(
+            "POST",
+            API_FEEDBACK_MESSAGES,
+            API_FEEDBACK_MESSAGES,
+            expected=[201],
+            json=feedback_payload,
+        )
+        ctx.runner.call(
+            "GET",
+            API_FEEDBACK_MESSAGES,
+            "/api/v1/feedback/messages?limit=5",
+            expected=[200],
+        )
+    else:
+        mark_routes(
+            ctx.runner,
+            ("POST", API_FEEDBACK_MESSAGES),
+            ("GET", API_FEEDBACK_MESSAGES),
+        )
+
+    ctx.runner.call(
+        "GET",
+        "/api/v1/feedback/messages/enriched",
+        "/api/v1/feedback/messages/enriched?limit=5",
+        expected=[200],
+    )
+
+
+def run_observability_smokes(ctx: SmokeContext) -> None:
+    call_embedding_drift_snapshot(ctx.runner, timeout=ctx.args.timeout)
+
+
+def run_kg_smokes(ctx: SmokeContext) -> None:
+    ctx.runner.call(
+        "GET",
+        "/api/v1/kg/graph",
+        "/api/v1/kg/graph",
+        expected=[200, 400, 503],
+    )
+    kg_node_id = ctx.doc_id or ctx.tenant_id or str(uuid.uuid4())
+    ctx.runner.call(
+        "GET",
+        "/api/v1/kg/graph/expand",
+        f"/api/v1/kg/graph/expand?node_id={kg_node_id}",
+        expected=[200, 400, 404, 503],
+    )
+    ctx.runner.call(
+        "GET",
+        "/api/v1/kg/graph/search",
+        "/api/v1/kg/graph/search?q=smoke",
+        expected=[200, 400, 503],
+    )
+    ctx.runner.call(
+        "GET",
+        "/api/v1/kg/stats",
+        "/api/v1/kg/stats",
+        expected=[200, 503],
+    )
+    ctx.runner.call(
+        "GET",
+        "/api/v1/kg/graph/export",
+        "/api/v1/kg/graph/export?download=false",
+        expected=[200, 503],
+    )
+    probe_uuid = uuid.uuid4()
+    ctx.runner.call(
+        "GET",
+        "/api/v1/kg/events/{event_id}",
+        f"/api/v1/kg/events/{probe_uuid}",
+        expected=[200, 404, 503],
+    )
+    ctx.runner.call(
+        "GET",
+        "/api/v1/kg/entities/{entity_id}",
+        f"/api/v1/kg/entities/{probe_uuid}",
+        expected=[200, 404, 503],
+    )
+    if ctx.doc_id:
+        ctx.runner.call(
+            "POST",
+            "/api/v1/kg/documents/{document_id}/extract",
+            f"/api/v1/kg/documents/{ctx.doc_id}/extract",
+            expected=[200, 400, 502, 503],
+        )
+        ctx.runner.call(
+            "POST",
+            API_KG_SEARCH,
+            API_KG_SEARCH,
+            expected=[200, 400, 503],
+            json={"query": "smoke"},
+        )
+    else:
+        mark_routes(
+            ctx.runner,
+            ("POST", "/api/v1/kg/documents/{document_id}/extract"),
+            ("POST", API_KG_SEARCH),
+        )
+
+    kg_delete_target = str(ctx.doc_id or uuid.uuid4())
+    ctx.runner.call(
+        "DELETE",
+        "/api/v1/kg/documents/{document_id}",
+        f"/api/v1/kg/documents/{kg_delete_target}",
+        expected=[200, 403, 404, 503],
+    )
+
+
+def iter_batch_cleanup_ids(ctx: SmokeContext) -> list[str]:
+    out: list[str] = []
+    for bid in sorted({str(x) for x in (ctx.batch_doc_ids or []) if str(x).strip()}):
+        if bid == str(ctx.doc_id) or bid == str(ctx.manual_doc_id):
+            continue
+        out.append(bid)
+    return out
+
+
+def run_cleanup_smokes(ctx: SmokeContext) -> None:
+    if ctx.conversation_id:
+        ctx.runner.call(
+            "DELETE",
+            "/api/v1/chat/conversations/{conversation_id}",
+            f"/api/v1/chat/conversations/{ctx.conversation_id}",
+            expected=[204],
+        )
+    else:
+        ctx.runner.mark("DELETE", "/api/v1/chat/conversations/{conversation_id}")
+
+    if ctx.tmpl_id:
+        ctx.runner.call(
+            "DELETE",
+            API_PROMPT_TEMPLATE_BY_ID,
+            f"/api/v1/prompt-templates/{ctx.tmpl_id}",
+            expected=[204],
+        )
+    else:
+        ctx.runner.mark("DELETE", API_PROMPT_TEMPLATE_BY_ID)
+
+    if ctx.doc_id:
+        ctx.runner.call(
+            "DELETE",
+            API_DOCUMENT_BY_ID,
+            f"/api/v1/documents/{ctx.doc_id}",
+            expected=[204],
+        )
+    else:
+        ctx.runner.mark("DELETE", API_DOCUMENT_BY_ID)
+
+    if ctx.manual_doc_id:
+        ctx.runner.call(
+            "DELETE",
+            API_DOCUMENT_BY_ID,
+            f"/api/v1/documents/{ctx.manual_doc_id}",
+            expected=[204],
+        )
+
+    for bid in iter_batch_cleanup_ids(ctx):
+        ctx.runner.call(
+            "DELETE",
+            API_DOCUMENT_BY_ID,
+            f"/api/v1/documents/{bid}",
+            expected=[204, 404],
+        )
+
+    if ctx.ds_id:
+        ctx.runner.call(
+            "DELETE",
+            API_DATASET_BY_ID,
+            f"/api/v1/datasets/{ctx.ds_id}",
+            expected=[204],
+        )
+        return
+
+    ctx.runner.mark("DELETE", API_DATASET_BY_ID)
+
+
+def run_smoke_scenario(ctx: SmokeContext) -> None:
+    run_health_smokes(ctx)
+    configure_auth(ctx)
+    run_settings_smokes(ctx)
+    run_dataset_smokes(ctx)
+    run_dataset_ingestion_policy_smokes(ctx)
+    run_document_upload_smokes(ctx)
+    run_document_preview_smokes(ctx)
+    run_manual_and_batch_document_smokes(ctx)
+    run_batch_upload_apply_smokes(ctx)
+    run_image_smokes(ctx)
+    run_pipeline_preview_smokes(ctx)
+    run_governance_profile_smokes(ctx)
+    run_pipeline_zip_upload_smokes(ctx)
+    run_parsing_workspace_smokes(ctx)
+    poll_document_status(ctx)
+    run_document_pipeline_and_chunk_smokes(ctx)
+    run_ragviz_smokes(ctx)
+    run_chat_smokes(ctx)
+    run_prompt_template_smokes(ctx)
+    run_rag_smokes(ctx)
+    run_eval_smokes(ctx)
+    run_feedback_smokes(ctx)
+    run_observability_smokes(ctx)
+    run_kg_smokes(ctx)
+    run_cleanup_smokes(ctx)
+    probe_uncovered_openapi_endpoints(ctx.runner, ctx.openapi_paths)
+
+
+def report_smoke_results(ctx: SmokeContext) -> int:
+    missing = sorted(ctx.openapi_paths - ctx.runner.covered)
+    failures = [result for result in ctx.runner.results if not result.ok]
+
+    print(f"Calls: {len(ctx.runner.results)} | Failures: {len(failures)} | Missing: {len(missing)}")
+    if failures:
+        print("\nFailures:")
+        for result in failures:
+            print(f"- {result.method} {result.path}: {result.note}")
+    if missing:
+        print("\nMissing endpoints:")
+        for method, path in missing:
+            print(f"- {method} {path}")
+
+    return 1 if failures or missing else 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -479,1154 +1842,17 @@ def main(argv: list[str] | None = None) -> int:
     if live_parser_backends and live_parser_fixture is not None and not live_parser_fixture.exists():
         parser.error(f"--live-parser-fixture not found: {live_parser_fixture}")
 
-    base_url = args.base_url or env_or(dotenv, "NEXT_PUBLIC_API_URL", "http://localhost:8000")
-    tenant_id = args.tenant_id or env_or(dotenv, "NEXT_PUBLIC_TENANT_ID", "00000000-0000-0000-0000-000000000000")
-    system_tenant_id = env_or(dotenv, "DEFAULT_TENANT_ID", "00000000-0000-0000-0000-000000000000")
-    auth_mode = (args.auth_mode or env_or(dotenv, "AUTH_MODE", "header")).lower()
-
-    reuse_jwt_account = bool(args.jwt_identifier)
-    user_email = f"smoke_{uuid.uuid4().hex[:8]}@example.com"
-    login_identifier = args.jwt_identifier or user_email
-    user_name = f"smoke_{uuid.uuid4().hex[:8]}"
-    user_password = args.jwt_password or "smoke-pass-123"
-
-    llm_api_key = env_or(dotenv, "LLM_API_KEY", "")
-    llm_api_base = env_or(dotenv, "LLM_API_BASE", "https://api.openai.com/v1")
-    llm_model = env_or(dotenv, "LLM_MODEL", "gpt-4o-mini")
-
     with httpx.Client(timeout=args.timeout, follow_redirects=False, trust_env=False) as client:
-        openapi_paths = load_openapi_paths(client, base_url, args.openapi)
-        headers: dict[str, str] = build_headers(tenant_id, None, None)
-        runner = SmokeRunner(client, base_url, headers)
-        # Keep smoke requests offline-friendly and fast: avoid default chat retrieval
-        # profile (hybrid_ce) which can trigger local cross-encoder model downloads.
-        smoke_rag_config = {
-            "max_tokens": 256,
-            "top_k": 3,
-            "score_threshold": 0.0,
-            "retrieval_mode": "keyword",
-            "enable_multi_query": False,
-            "enable_hyde": False,
-            "enable_reranker": False,
-            "reranker_provider": "none",
-            "enable_weight_rerank": False,
-        }
-
-        # Untagged and health endpoints.
-        runner.call("GET", "/", "/", expected=[200])
-        runner.call("GET", "/health", "/health", expected=[200])
-        runner.call("GET", "/api/v1/health", "/api/v1/health", expected=[200])
-        runner.call("GET", "/api/v1/health/ready", "/api/v1/health/ready", expected=[200])
-
-        # Meta endpoint.
-        runner.call("GET", "/api/v1/meta", "/api/v1/meta", expected=[200])
-
-        # Registration/login/me are JWT flows. Header auth trusts the upstream
-        # identity and does not require a local user record.
-        if auth_mode == "jwt":
-            register_payload = {"email": user_email, "username": user_name, "password": user_password}
-            reg_resp = runner.call(
-                "POST",
-                "/api/v1/auth/register",
-                "/api/v1/auth/register",
-                expected=[201, 400, 409] if reuse_jwt_account else [201, 400],
-                json=register_payload,
-            )
-            reg_data = parse_json(reg_resp)
-            token = (reg_data.get("token") or {}).get("access_token")
-
-            login_payload = {"identifier": login_identifier, "password": user_password}
-            login_resp = runner.call(
-                "POST",
-                "/api/v1/auth/login",
-                "/api/v1/auth/login",
-                expected=[200],
-                json=login_payload,
-            )
-            login_data = parse_json(login_resp)
-            token = token or (login_data.get("token") or {}).get("access_token")
-            runner.headers = build_headers(tenant_id, None, token)
-            runner.call("GET", "/api/v1/auth/me", "/api/v1/auth/me", expected=[200])
-        else:
-            runner.mark("POST", "/api/v1/auth/register")
-            runner.mark("POST", "/api/v1/auth/login")
-            runner.mark("GET", "/api/v1/auth/me")
-            runner.headers = build_headers(
-                tenant_id,
-                env_or(dotenv, "NEXT_PUBLIC_USER_ID", "demo"),
-                None,
-            )
-            # Header auth does not create a local user record. In clean CI databases,
-            # listing datasets bootstraps the owner membership before settings writes.
-            runner.call("GET", API_DATASETS, API_DATASETS, expected=[200])
-
-        # Settings endpoints.
-        runner.call("GET", API_SETTINGS, API_SETTINGS, expected=[200])
-        runner.call("GET", "/api/v1/settings/status", "/api/v1/settings/status", expected=[200])
-        runner.call(
-            "PUT",
-            API_SETTINGS,
-            API_SETTINGS,
-            expected=settings_write_expected_statuses(
-                tenant_id=tenant_id,
-                system_tenant_id=system_tenant_id,
-            ),
-            json={},
+        ctx = build_smoke_context(
+            args=args,
+            repo_root=repo_root,
+            dotenv=dotenv,
+            client=client,
+            live_parser_backends=live_parser_backends,
+            live_parser_fixture=live_parser_fixture,
         )
-        if not args.skip_llm_test:
-            runner.call(
-                "POST",
-                API_SETTINGS_LLM_TEST,
-                API_SETTINGS_LLM_TEST,
-                expected=[200, 400],
-                json={
-                    "api_key": llm_api_key,
-                    "api_base": llm_api_base,
-                    "model": llm_model,
-                    "temperature": 0.0,
-                    "timeout": 10,
-                    "max_retries": 1,
-                },
-            )
-        else:
-            runner.mark("POST", API_SETTINGS_LLM_TEST)
-
-        # Dataset endpoints.
-        dataset_payload = {"name": f"Smoke Dataset {uuid.uuid4().hex[:6]}", "description": "smoke"}
-        ds_resp = runner.call("POST", API_DATASETS, API_DATASETS, expected=[201], json=dataset_payload)
-        ds_id = parse_json(ds_resp).get("id")
-        runner.call("GET", API_DATASETS, API_DATASETS, expected=[200])
-        if ds_id:
-            runner.call("GET", API_DATASET_BY_ID, f"/api/v1/datasets/{ds_id}", expected=[200])
-            runner.call(
-                "PATCH",
-                API_DATASET_BY_ID,
-                f"/api/v1/datasets/{ds_id}",
-                expected=[200],
-                json={"description": "smoke-updated"},
-            )
-
-        # Dataset ingestion policy endpoints.
-        if ds_id:
-            policy_payload = {
-                "version": "1",
-                "rules": [
-                    {
-                        "id": "txt-default",
-                        "name": "TXT Default",
-                        "enabled": True,
-                        "match": {"extensions": [".txt"]},
-                        "preprocess": {"enabled": False, "steps": []},
-                        "parser_backend": "auto",
-                        "governance_profile_ref": "builtin:kb_default",
-                        "pipeline_patch": {"governance_enabled": True},
-                    }
-                ],
-            }
-            runner.call(
-                "PUT",
-                API_DATASET_INGESTION_POLICY,
-                f"/api/v1/datasets/{ds_id}/ingestion-policy",
-                expected=[200],
-                json=policy_payload,
-            )
-            runner.call(
-                "GET",
-                API_DATASET_INGESTION_POLICY,
-                f"/api/v1/datasets/{ds_id}/ingestion-policy",
-                expected=[200],
-            )
-            runner.call(
-                "GET",
-                "/api/v1/datasets/{dataset_id}/ingestion-policy/export",
-                f"/api/v1/datasets/{ds_id}/ingestion-policy/export",
-                expected=[200],
-            )
-            policy_bytes = json.dumps(policy_payload, ensure_ascii=False).encode("utf-8")
-            runner.call(
-                "POST",
-                "/api/v1/datasets/{dataset_id}/ingestion-policy/import",
-                f"/api/v1/datasets/{ds_id}/ingestion-policy/import",
-                expected=[200, 409],
-                files={"file": ("policy.json", policy_bytes, "application/json")},
-                data={"replace": "true"},
-            )
-        else:
-            runner.mark("GET", API_DATASET_INGESTION_POLICY)
-            runner.mark("PUT", API_DATASET_INGESTION_POLICY)
-            runner.mark("POST", "/api/v1/datasets/{dataset_id}/ingestion-policy/import")
-            runner.mark("GET", "/api/v1/datasets/{dataset_id}/ingestion-policy/export")
-
-        # Documents endpoints: upload a small text file.
-        sample_text = "Smoke test document.\nSecond line."
-        files = {"file": ("smoke.txt", sample_text.encode("utf-8"), MEDIA_TYPE_TEXT_PLAIN)}
-        data = {"chunk_vector_enabled": "false"}
-        if ds_id:
-            data["dataset_id"] = ds_id
-        doc_resp = runner.call(
-            "POST",
-            "/api/v1/documents/upload",
-            "/api/v1/documents/upload",
-            expected=[201],
-            files=files,
-            data=data,
-        )
-        doc_id = parse_json(doc_resp).get("id")
-        first_chunk_id = None
-        batch_doc_ids: list[str] = []
-
-        # Batch upload (multi-file).
-        files_batch = [
-            ("files", ("batch1.txt", b"batch-one", MEDIA_TYPE_TEXT_PLAIN)),
-            ("files", ("batch2.txt", b"batch-two", MEDIA_TYPE_TEXT_PLAIN)),
-        ]
-        data_batch = {"chunk_vector_enabled": "false"}
-        if ds_id:
-            data_batch["dataset_id"] = ds_id
-        batch_resp = runner.call(
-            "POST",
-            "/api/v1/documents/upload-batch",
-            "/api/v1/documents/upload-batch",
-            expected=[201],
-            files=files_batch,
-            data=data_batch,
-        )
-        batch_payload = parse_json(batch_resp)
-        for item in batch_payload.get("successful") or []:
-            if not isinstance(item, dict):
-                continue
-            did = item.get("document_id") or item.get("id")
-            if did:
-                batch_doc_ids.append(str(did))
-
-        runner.call("GET", "/api/v1/documents/", "/api/v1/documents/?limit=5", expected=[200])
-        runner.call("GET", "/api/v1/documents/stats", "/api/v1/documents/stats", expected=[200])
-
-        if doc_id:
-            runner.call("GET", API_DOCUMENT_BY_ID, f"/api/v1/documents/{doc_id}", expected=[200])
-            runner.call(
-                "GET",
-                "/api/v1/documents/{document_id}/status",
-                f"/api/v1/documents/{doc_id}/status",
-                expected=[200],
-            )
-            runner.call(
-                "PATCH",
-                "/api/v1/documents/{document_id}/metadata",
-                f"/api/v1/documents/{doc_id}/metadata",
-                expected=[200, 403, 404],
-                json={"patch": {"source": "smoke"}, "replace": False},
-            )
-            runner.call(
-                "GET",
-                "/api/v1/documents/{document_id}/download",
-                f"/api/v1/documents/{doc_id}/download?inline=true",
-                expected=[200, 403, 404],
-            )
-        else:
-            runner.mark("PATCH", "/api/v1/documents/{document_id}/metadata")
-            runner.mark("GET", "/api/v1/documents/{document_id}/download")
-
-        # Preview endpoints.
-        runner.call(
-            "POST",
-            API_DOCUMENTS_PREVIEW,
-            API_DOCUMENTS_PREVIEW,
-            expected=[200],
-            timeout=120.0,
-            files={"file": ("preview.txt", b"preview", MEDIA_TYPE_TEXT_PLAIN)},
-        )
-        if live_parser_backends and live_parser_fixture is not None:
-            run_live_parser_preview_smokes(
-                runner=runner,
-                fixture_path=live_parser_fixture,
-                parser_backends=live_parser_backends,
-                timeout=args.live_parser_timeout,
-            )
-        runner.call(
-            "POST",
-            "/api/v1/documents/chunk-preview",
-            "/api/v1/documents/chunk-preview",
-            expected=[200],
-            files={"file": ("chunk.txt", b"chunk preview text", MEDIA_TYPE_TEXT_PLAIN)},
-            data={"chunk_size": 200, "chunk_overlap": 20},
-        )
-
-        # Manual document creation.
-        if ds_id:
-            manual_payload = {
-                "dataset_id": ds_id,
-                "filename": "manual.txt",
-                "file_type": "txt",
-                "file_size": 12,
-                "chunks": [{"content": "manual chunk"}],
-            }
-            manual_resp = runner.call(
-                "POST",
-                API_DOCUMENTS_MANUAL,
-                API_DOCUMENTS_MANUAL,
-                expected=[201],
-                json=manual_payload,
-            )
-            manual_doc_id = parse_json(manual_resp).get("id")
-        else:
-            runner.mark("POST", API_DOCUMENTS_MANUAL)
-            manual_doc_id = None
-
-        batch_patch_ids: list[str] = []
-        if doc_id:
-            batch_patch_ids.append(str(doc_id))
-        if manual_doc_id:
-            batch_patch_ids.append(str(manual_doc_id))
-        if not batch_patch_ids:
-            batch_patch_ids.append(str(uuid.uuid4()))
-
-        runner.call(
-            "POST",
-            "/api/v1/documents/batch/metadata",
-            "/api/v1/documents/batch/metadata",
-            expected=[200],
-            json={
-                "document_ids": batch_patch_ids,
-                "patch": {"batch": True, "source": "smoke"},
-                "replace": False,
-            },
-        )
-        runner.call(
-            "POST",
-            "/api/v1/documents/batch-delete",
-            "/api/v1/documents/batch-delete",
-            expected=[200],
-            json={"document_ids": [str(uuid.uuid4())]},
-        )
-
-        cancel_target = str(manual_doc_id or uuid.uuid4())
-        runner.call(
-            "POST",
-            "/api/v1/documents/{document_id}/cancel",
-            f"/api/v1/documents/{cancel_target}/cancel",
-            expected=[200, 404, 409],
-        )
-
-        retry_target = str(manual_doc_id or uuid.uuid4())
-        runner.call(
-            "POST",
-            "/api/v1/documents/{document_id}/retry",
-            f"/api/v1/documents/{retry_target}/retry",
-            expected=[200, 404, 409],
-        )
-
-        # Batch upload URL apply (MinerU).
-        if args.skip_mineru:
-            runner.mark("POST", API_BATCH_UPLOAD_APPLY_URLS)
-            runner.mark("GET", API_BATCH_UPLOAD_STATUS)
-        else:
-            apply_resp = runner.call(
-                "POST",
-                API_BATCH_UPLOAD_APPLY_URLS,
-                API_BATCH_UPLOAD_APPLY_URLS,
-                expected=[200, 400, 500, 503],
-                json={"files": [{"name": "a.pdf", "data_id": "smoke-a"}]},
-            )
-            apply_data = parse_json(apply_resp)
-            batch_id = apply_data.get("batch_id")
-            if batch_id:
-                runner.call(
-                    "GET",
-                    API_BATCH_UPLOAD_STATUS,
-                    API_BATCH_UPLOAD_STATUS.format(batch_id=batch_id),
-                    expected=[200, 400, 404, 500, 503],
-                )
-            else:
-                runner.call(
-                    "GET",
-                    API_BATCH_UPLOAD_STATUS,
-                    "/api/v1/documents/batch-upload/status/invalid",
-                    expected=[200, 400, 404, 500, 503],
-                )
-
-        # Image endpoints: expect not found for missing ids.
-        runner.call(
-            "GET",
-            "/api/v1/documents/image-url/{img_id}",
-            "/api/v1/documents/image-url/invalid",
-            expected=[404, 503],
-        )
-        runner.call(
-            "GET",
-            "/api/v1/documents/image/{image_id}",
-            "/api/v1/documents/image/invalid",
-            expected=[404],
-        )
-
-        # Pipeline endpoints.
-        runner.call("GET", "/api/v1/pipeline/capabilities", "/api/v1/pipeline/capabilities", expected=[200])
-        runner.call(
-            "POST",
-            "/api/v1/pipeline/parse-preview",
-            "/api/v1/pipeline/parse-preview",
-            expected=[200],
-            files={"file": ("pipe.txt", b"pipeline preview", MEDIA_TYPE_TEXT_PLAIN)},
-        )
-        runner.call(
-            "POST",
-            "/api/v1/pipeline/chunk-preview",
-            "/api/v1/pipeline/chunk-preview",
-            expected=[200],
-            json={"markdown": "# Title\n\nContent"},
-        )
-        runner.call(
-            "POST",
-            "/api/v1/pipeline/clean-preview",
-            "/api/v1/pipeline/clean-preview",
-            expected=[200],
-            json={"markdown": "A  \n\nB", "use_default_rules": True},
-        )
-        runner.call("GET", "/api/v1/pipeline/clean-rules", "/api/v1/pipeline/clean-rules", expected=[200])
-        runner.call(
-            "POST",
-            "/api/v1/pipeline/governance-analyze",
-            "/api/v1/pipeline/governance-analyze",
-            expected=[200],
-            json={"markdown": "<p>hello</p>\n\nA  \n\nB"},
-        )
-        if ds_id:
-            runner.call(
-                "POST",
-                API_PIPELINE_INGESTION_PREVIEW,
-                API_PIPELINE_INGESTION_PREVIEW,
-                expected=[200, 400, 500],
-                files={"file": ("ingest.txt", b"ingestion preview", MEDIA_TYPE_TEXT_PLAIN)},
-                data={"dataset_id": ds_id},
-            )
-        else:
-            runner.mark("POST", API_PIPELINE_INGESTION_PREVIEW)
-
-        # Governance profile endpoints (custom CRUD + import/export).
-        runner.call(
-            "GET",
-            API_PIPELINE_GOVERNANCE_PROFILES,
-            "/api/v1/pipeline/governance-profiles?limit=5",
-            expected=[200],
-        )
-        gov_key = f"smoke_profile_{uuid.uuid4().hex[:6]}"
-        gov_resp = runner.call(
-            "POST",
-            API_PIPELINE_GOVERNANCE_PROFILES,
-            API_PIPELINE_GOVERNANCE_PROFILES,
-            expected=[201],
-            json={
-                "name": f"Smoke Governance {uuid.uuid4().hex[:6]}",
-                "description": "smoke",
-                "key": gov_key,
-                "payload": {
-                    "version": "1",
-                    "input_formats": ["markdown"],
-                    "pipeline_patch": {"governance_enabled": True},
-                    "regex_rules": [],
-                },
-            },
-        )
-        gov_id = parse_json(gov_resp).get("id") or gov_key
-        runner.call(
-            "GET",
-            API_PIPELINE_GOVERNANCE_PROFILE_BY_REF,
-            f"/api/v1/pipeline/governance-profiles/{gov_id}",
-            expected=[200],
-        )
-        runner.call(
-            "PATCH",
-            API_PIPELINE_GOVERNANCE_PROFILE_BY_REF,
-            f"/api/v1/pipeline/governance-profiles/{gov_id}",
-            expected=[200],
-            json={"description": "smoke-updated"},
-        )
-        runner.call(
-            "GET",
-            "/api/v1/pipeline/governance-profiles/{profile_ref}/export",
-            f"/api/v1/pipeline/governance-profiles/{gov_id}/export",
-            expected=[200],
-        )
-
-        import_key = f"smoke_import_{uuid.uuid4().hex[:6]}"
-        import_bytes = json.dumps(
-            {
-                "name": f"Smoke Imported {uuid.uuid4().hex[:6]}",
-                "description": "smoke",
-                "key": import_key,
-                "payload": {
-                    "version": "1",
-                    "input_formats": ["markdown"],
-                    "pipeline_patch": {"governance_enabled": True},
-                    "regex_rules": [],
-                },
-            },
-            ensure_ascii=False,
-        ).encode("utf-8")
-        runner.call(
-            "POST",
-            "/api/v1/pipeline/governance-profiles/import",
-            "/api/v1/pipeline/governance-profiles/import",
-            expected=[200, 409],
-            files={"file": ("profile.json", import_bytes, "application/json")},
-            data={"overwrite": "true"},
-        )
-        runner.call(
-            "GET",
-            API_PIPELINE_GOVERNANCE_PROFILE_BY_REF,
-            f"/api/v1/pipeline/governance-profiles/{import_key}",
-            expected=[200, 404],
-        )
-        runner.call(
-            "DELETE",
-            API_PIPELINE_GOVERNANCE_PROFILE_BY_REF,
-            f"/api/v1/pipeline/governance-profiles/{import_key}",
-            expected=[204, 404],
-        )
-        runner.call(
-            "DELETE",
-            API_PIPELINE_GOVERNANCE_PROFILE_BY_REF,
-            f"/api/v1/pipeline/governance-profiles/{gov_id}",
-            expected=[204, 404],
-        )
-        runner.call(
-            "POST",
-            "/api/v1/pipeline/extract-keywords",
-            "/api/v1/pipeline/extract-keywords",
-            expected=[200],
-            json={"text": "keyword extraction smoke", "provider": "jieba", "top_k": 3},
-        )
-        runner.call(
-            "POST",
-            "/api/v1/pipeline/llm-clean-preview",
-            "/api/v1/pipeline/llm-clean-preview",
-            expected=[200, 502, 503],
-            json={"markdown": "LLM clean preview", "max_chars": 2000},
-        )
-        if ds_id:
-            zip_path = create_zip_with_image(repo_root / "uploads" / "smoke_zip")
-            with zip_path.open("rb") as fh:
-                runner.call(
-                    "POST",
-                    API_PIPELINE_UPLOAD_ZIP_WITH_IMAGES,
-                    API_PIPELINE_UPLOAD_ZIP_WITH_IMAGES,
-                    expected=[200, 503],
-                    files={"file": (zip_path.name, fh, "application/zip")},
-                    data={"dataset_id": ds_id},
-                )
-        else:
-            runner.mark("POST", API_PIPELINE_UPLOAD_ZIP_WITH_IMAGES)
-
-        # Parsing workspace endpoints (persistent drafts for /parsing UI).
-        runner.call(
-            "GET",
-            API_PARSING_DOCUMENTS,
-            "/api/v1/parsing/documents?limit=5",
-            expected=[200],
-        )
-        parsing_doc_id = None
-        parsing_upload = runner.call(
-            "POST",
-            API_PARSING_DOCUMENTS,
-            API_PARSING_DOCUMENTS,
-            expected=[201],
-            files={"file": ("parsing.txt", b"parsing workspace", MEDIA_TYPE_TEXT_PLAIN)},
-            data={"parser_backend": "auto"},
-        )
-        parsing_doc_id = parse_json(parsing_upload).get("id")
-        if parsing_doc_id:
-            runner.call(
-                "POST",
-                "/api/v1/parsing/documents/{document_id}/parse",
-                f"/api/v1/parsing/documents/{parsing_doc_id}/parse",
-                expected=[200, 400, 500],
-            )
-            runner.call(
-                "GET",
-                API_PARSING_DOCUMENT_CONTENT_BY_ID,
-                f"/api/v1/parsing/documents/{parsing_doc_id}/content",
-                expected=[200],
-            )
-            runner.call(
-                "PATCH",
-                API_PARSING_DOCUMENT_CONTENT_BY_ID,
-                f"/api/v1/parsing/documents/{parsing_doc_id}/content",
-                expected=[200],
-                json={"markdown_content": "# Edited\n\nok", "original_markdown_content": "# Edited\n\nok"},
-            )
-            runner.call(
-                "DELETE",
-                "/api/v1/parsing/documents/{document_id}",
-                f"/api/v1/parsing/documents/{parsing_doc_id}",
-                expected=[204],
-            )
-        else:
-            runner.mark("POST", "/api/v1/parsing/documents/{document_id}/parse")
-            runner.mark("GET", API_PARSING_DOCUMENT_CONTENT_BY_ID)
-            runner.mark("PATCH", API_PARSING_DOCUMENT_CONTENT_BY_ID)
-            runner.mark("DELETE", "/api/v1/parsing/documents/{document_id}")
-
-        # Poll document status until ready (best effort).
-        if doc_id:
-            status_url = f"/api/v1/documents/{doc_id}/status"
-            for _ in range(30):
-                resp = runner.call(
-                    "GET",
-                    "/api/v1/documents/{document_id}/status",
-                    status_url,
-                    expected=[200],
-                )
-                status = parse_json(resp).get("status")
-                if status in {"completed", "failed"}:
-                    break
-                time.sleep(1)
-
-        # Document pipeline + chunk browsing endpoints.
-        if doc_id:
-            runner.call(
-                "PATCH",
-                "/api/v1/documents/{document_id}/pipeline",
-                f"/api/v1/documents/{doc_id}/pipeline",
-                expected=[200, 404, 409],
-                json={"patch": {"governance_enabled": True}, "replace": False},
-            )
-            chunks_resp = runner.call(
-                "GET",
-                "/api/v1/documents/{document_id}/chunks",
-                f"/api/v1/documents/{doc_id}/chunks?limit=5",
-                expected=[200],
-            )
-            items = parse_json(chunks_resp).get("items") or []
-            first_chunk_id = items[0].get("id") if items else None
-            runner.call(
-                "GET",
-                "/api/v1/documents/{document_id}/chunks/matches",
-                f"/api/v1/documents/{doc_id}/chunks/matches?q=Smoke&limit=20",
-                expected=[200],
-            )
-            if first_chunk_id:
-                runner.call(
-                    "GET",
-                    API_DOCUMENT_CHUNK_BY_ID,
-                    f"/api/v1/documents/{doc_id}/chunks/{first_chunk_id}",
-                    expected=[200, 404],
-                )
-            else:
-                runner.call(
-                    "GET",
-                    API_DOCUMENT_CHUNK_BY_ID,
-                    f"/api/v1/documents/{doc_id}/chunks/{uuid.uuid4()}",
-                    expected=[404],
-                )
-        else:
-            runner.mark("PATCH", "/api/v1/documents/{document_id}/pipeline")
-            runner.mark("GET", "/api/v1/documents/{document_id}/chunks")
-            runner.mark("GET", "/api/v1/documents/{document_id}/chunks/matches")
-            runner.mark("GET", API_DOCUMENT_CHUNK_BY_ID)
-
-        # RAG visualization endpoints (similarity matrix UI).
-        col_resp = runner.call(
-            "GET",
-            "/api/v1/ragviz/similarity/collections",
-            "/api/v1/ragviz/similarity/collections",
-            expected=[200],
-        )
-        collections = parse_json(col_resp).get("collections") or []
-        x_collection = collections[0].get("id") if collections else "invalid"
-        y_collection = collections[0].get("id") if collections else "invalid"
-        runner.call(
-            "POST",
-            "/api/v1/ragviz/similarity/calculate",
-            "/api/v1/ragviz/similarity/calculate",
-            expected=[200],
-            json={"x_collection": x_collection, "y_collection": y_collection, "max_items": 10},
-        )
-
-        # Chat endpoints (stream -> conversation).
-        conversation_id = None
-        if doc_id:
-            conv_resp = runner.call(
-                "POST",
-                API_CHAT_CONVERSATIONS,
-                API_CHAT_CONVERSATIONS,
-                expected=[201],
-                json={"title": "Smoke conversation", "document_ids": [doc_id]},
-            )
-            conversation_id = parse_json(conv_resp).get("id")
-        else:
-            runner.mark("POST", API_CHAT_CONVERSATIONS)
-
-        # Non-streaming chat endpoint (best-effort; may fail without a valid LLM key).
-        chat_path = "/api/v1/chat/" if ("POST", "/api/v1/chat/") in openapi_paths else "/api/v1/chat"
-        if doc_id:
-            # When --skip-llm-test is on, avoid executing any request that would call an LLM.
-            # We'll still "cover" the route via the final OpenAPI probe (422/400 expected).
-            if not args.skip_llm_test:
-                runner.call(
-                    "POST",
-                    chat_path,
-                    chat_path,
-                    expected=[200, 500, 502, 503],
-                    timeout=90.0,
-                    json={
-                        "message": "smoke non-stream",
-                        "document_ids": [doc_id],
-                        "stream": False,
-                        "rag_config": dict(smoke_rag_config),
-                    },
-                )
-        else:
-            runner.mark("POST", chat_path)
-        if doc_id:
-            if not args.skip_llm_test:
-                ok, _ = runner.stream(
-                    "POST",
-                    API_CHAT_STREAM,
-                    API_CHAT_STREAM,
-                    expected=[200],
-                    timeout=90.0,
-                    json={
-                        "message": "smoke test",
-                        "document_ids": [doc_id],
-                        "rag_config": dict(smoke_rag_config),
-                    },
-                )
-                if ok and not conversation_id:
-                    # Fetch conversations and pick the latest.
-                    conv_list = runner.call(
-                        "GET",
-                        API_CHAT_CONVERSATIONS,
-                        "/api/v1/chat/conversations?limit=5",
-                        expected=[200],
-                    )
-                    items = parse_json(conv_list).get("items") or []
-                    if items:
-                        conversation_id = items[0].get("id")
-        else:
-            runner.mark("POST", API_CHAT_STREAM)
-            runner.mark("GET", API_CHAT_CONVERSATIONS)
-
-        if conversation_id:
-            runner.call(
-                "GET",
-                API_CHAT_MESSAGES_BY_CONVERSATION,
-                API_CHAT_MESSAGES_BY_CONVERSATION.format(conversation_id=conversation_id),
-                expected=[200],
-            )
-            runner.call(
-                "GET",
-                API_CHAT_CONVERSATIONS,
-                "/api/v1/chat/conversations?limit=5",
-                expected=[200],
-            )
-            runner.call(
-                "GET",
-                API_CHAT_CHECKPOINTS_BY_CONVERSATION,
-                f"/api/v1/chat/conversations/{conversation_id}/checkpoints?limit=5",
-                expected=[200],
-            )
-            runner.call(
-                "GET",
-                "/api/v1/chat/conversations/{conversation_id}/checkpoints/{checkpoint_id}",
-                f"/api/v1/chat/conversations/{conversation_id}/checkpoints/invalid",
-                expected=[404],
-            )
-            runner.call(
-                "DELETE",
-                API_CHAT_CHECKPOINTS_BY_CONVERSATION,
-                API_CHAT_CHECKPOINTS_BY_CONVERSATION.format(conversation_id=conversation_id),
-                expected=[204],
-            )
-        else:
-            runner.mark("GET", API_CHAT_MESSAGES_BY_CONVERSATION)
-            runner.mark("GET", API_CHAT_CHECKPOINTS_BY_CONVERSATION)
-            runner.mark("GET", "/api/v1/chat/conversations/{conversation_id}/checkpoints/{checkpoint_id}")
-            runner.mark("DELETE", API_CHAT_CHECKPOINTS_BY_CONVERSATION)
-
-        # Prompt templates.
-        tmpl_payload = {
-            "name": f"Smoke Template {uuid.uuid4().hex[:6]}",
-            "content": "Answer the question: {question}",
-            "variables": ["question"],
-            "is_active": True,
-        }
-        tmpl_resp = runner.call(
-            "POST",
-            API_PROMPT_TEMPLATES,
-            API_PROMPT_TEMPLATES,
-            expected=[201],
-            json=tmpl_payload,
-        )
-        tmpl_id = parse_json(tmpl_resp).get("id")
-        runner.call("GET", API_PROMPT_TEMPLATES, "/api/v1/prompt-templates?limit=5", expected=[200])
-        if tmpl_id:
-            runner.call(
-                "GET",
-                API_PROMPT_TEMPLATE_BY_ID,
-                f"/api/v1/prompt-templates/{tmpl_id}",
-                expected=[200],
-            )
-            runner.call(
-                "POST",
-                "/api/v1/prompt-templates/{template_id}/duplicate",
-                f"/api/v1/prompt-templates/{tmpl_id}/duplicate",
-                expected=[201],
-            )
-            runner.call(
-                "POST",
-                "/api/v1/prompt-templates/{template_id}/versions",
-                f"/api/v1/prompt-templates/{tmpl_id}/versions",
-                expected=[201],
-                json={"content": "New version {question}", "is_active": True},
-            )
-            runner.call(
-                "PUT",
-                API_PROMPT_TEMPLATE_BY_ID,
-                f"/api/v1/prompt-templates/{tmpl_id}",
-                expected=[200],
-                json={"description": "smoke-updated"},
-            )
-
-        # RAG endpoints (require documents).
-        if doc_id:
-            rag_payload = {"query": "smoke retrieval", "document_ids": [doc_id], "rag_config": dict(smoke_rag_config)}
-            runner.call(
-                "POST",
-                API_RAG_RETRIEVE_PREVIEW,
-                API_RAG_RETRIEVE_PREVIEW,
-                expected=[200],
-                json=rag_payload,
-            )
-            runner.call(
-                "POST",
-                API_RAG_PROMPT_PREVIEW,
-                API_RAG_PROMPT_PREVIEW,
-                expected=[200],
-                json=rag_payload,
-            )
-        else:
-            runner.mark("POST", API_RAG_RETRIEVE_PREVIEW)
-            runner.mark("POST", API_RAG_PROMPT_PREVIEW)
-
-        # Evaluation endpoints (require conversation).
-        if conversation_id:
-            eval_payload = {"conversation_id": conversation_id, "metrics": ["faithfulness"]}
-            run_resp = runner.call(
-                "POST",
-                API_EVAL_RAGAS_RUNS,
-                API_EVAL_RAGAS_RUNS,
-                expected=[201],
-                json=eval_payload,
-            )
-            run_id = parse_json(run_resp).get("id")
-            runner.call(
-                "GET",
-                API_EVAL_RAGAS_RUNS,
-                "/api/v1/evaluations/ragas/runs?limit=5",
-                expected=[200],
-            )
-            if run_id:
-                runner.call(
-                    "GET",
-                    "/api/v1/evaluations/ragas/runs/{run_id}",
-                    f"/api/v1/evaluations/ragas/runs/{run_id}",
-                    expected=[200],
-                )
-        else:
-            runner.mark("POST", API_EVAL_RAGAS_RUNS)
-            runner.mark("GET", API_EVAL_RAGAS_RUNS)
-            runner.mark("GET", "/api/v1/evaluations/ragas/runs/{run_id}")
-
-        if ds_id:
-            case_id = None
-            if doc_id and first_chunk_id:
-                case_payload = {
-                    "dataset_id": ds_id,
-                    "document_ids": [doc_id],
-                    "question": "smoke question",
-                    "expected_answer": "smoke answer",
-                    "reference_sources": [{"document_id": doc_id, "chunk_id": first_chunk_id}],
-                }
-                case_resp = runner.call(
-                    "POST",
-                    API_EVAL_REGRESSION_CASES,
-                    API_EVAL_REGRESSION_CASES,
-                    expected=[201],
-                    json=case_payload,
-                )
-                case_id = parse_json(case_resp).get("id")
-            else:
-                runner.mark("POST", API_EVAL_REGRESSION_CASES)
-
-            runner.call(
-                "GET",
-                API_EVAL_REGRESSION_CASES,
-                "/api/v1/evaluations/ragas/regression/cases?limit=5",
-                expected=[200],
-            )
-            reg_run_resp = runner.call(
-                "POST",
-                API_EVAL_REGRESSION_RUNS,
-                API_EVAL_REGRESSION_RUNS,
-                expected=[201, 400, 422],
-                json={"case_ids": [case_id] if case_id else [], "metrics": ["faithfulness"]},
-            )
-            reg_run_id = parse_json(reg_run_resp).get("id")
-            runner.call(
-                "GET",
-                API_EVAL_REGRESSION_RUNS,
-                "/api/v1/evaluations/ragas/regression/runs?limit=5",
-                expected=[200],
-            )
-            if reg_run_id:
-                runner.call(
-                    "GET",
-                    "/api/v1/evaluations/ragas/regression/runs/{run_id}",
-                    f"/api/v1/evaluations/ragas/regression/runs/{reg_run_id}",
-                    expected=[200],
-                )
-            if case_id:
-                runner.call(
-                    "DELETE",
-                    "/api/v1/evaluations/ragas/regression/cases/{case_id}",
-                    f"/api/v1/evaluations/ragas/regression/cases/{case_id}",
-                    expected=[204],
-                )
-            else:
-                runner.mark("DELETE", "/api/v1/evaluations/ragas/regression/cases/{case_id}")
-            test_gen_docs = {
-                "document_ids": [doc_id] if doc_id else [],
-                "num_questions": 1,
-                "auto_save_as_cases": False,
-            }
-            runner.call(
-                "POST",
-                API_EVAL_TEST_GEN_FROM_DOCUMENTS,
-                API_EVAL_TEST_GEN_FROM_DOCUMENTS,
-                expected=[200, 400, 422, 500],
-                json=test_gen_docs,
-            )
-        else:
-            runner.mark("POST", API_EVAL_REGRESSION_CASES)
-            runner.mark("GET", API_EVAL_REGRESSION_CASES)
-            runner.mark("POST", API_EVAL_REGRESSION_RUNS)
-            runner.mark("GET", API_EVAL_REGRESSION_RUNS)
-            runner.mark("GET", "/api/v1/evaluations/ragas/regression/runs/{run_id}")
-            runner.mark("POST", API_EVAL_TEST_GEN_FROM_DOCUMENTS)
-
-        if conversation_id:
-            test_gen_conv = {
-                "conversation_ids": [conversation_id],
-                "num_questions": 1,
-                "auto_save_as_cases": False,
-            }
-            runner.call(
-                "POST",
-                API_EVAL_TEST_GEN_FROM_CONVERSATIONS,
-                API_EVAL_TEST_GEN_FROM_CONVERSATIONS,
-                expected=[200, 400, 500],
-                json=test_gen_conv,
-            )
-        else:
-            runner.mark("POST", API_EVAL_TEST_GEN_FROM_CONVERSATIONS)
-
-        # Feedback endpoints.
-        assistant_message_id = None
-        if conversation_id:
-            msg_resp = runner.call(
-                "GET",
-                API_CHAT_MESSAGES_BY_CONVERSATION,
-                API_CHAT_MESSAGES_BY_CONVERSATION.format(conversation_id=conversation_id),
-                expected=[200],
-            )
-            messages = parse_json(msg_resp).get("messages") or []
-            for msg in reversed(messages):
-                if (msg.get("role") or "").lower() == "assistant":
-                    assistant_message_id = msg.get("id")
-                    break
-        if assistant_message_id:
-            feedback_payload = {
-                "message_id": assistant_message_id,
-                "rating": 4,
-                "reason": "smoke",
-            }
-            runner.call(
-                "POST",
-                API_FEEDBACK_MESSAGES,
-                API_FEEDBACK_MESSAGES,
-                expected=[201],
-                json=feedback_payload,
-            )
-            runner.call(
-                "GET",
-                API_FEEDBACK_MESSAGES,
-                "/api/v1/feedback/messages?limit=5",
-                expected=[200],
-            )
-        else:
-            runner.mark("POST", API_FEEDBACK_MESSAGES)
-            runner.mark("GET", API_FEEDBACK_MESSAGES)
-
-        runner.call(
-            "GET",
-            "/api/v1/feedback/messages/enriched",
-            "/api/v1/feedback/messages/enriched?limit=5",
-            expected=[200],
-        )
-
-        # Observability endpoints can touch vector stores or embedding providers; keep
-        # them explicit so the final catch-all probe does not use a 2s timeout.
-        call_embedding_drift_snapshot(runner, timeout=args.timeout)
-
-        # KG endpoints (may be disabled).
-        runner.call(
-            "GET",
-            "/api/v1/kg/graph",
-            "/api/v1/kg/graph",
-            expected=[200, 400, 503],
-        )
-        kg_node_id = doc_id or tenant_id or str(uuid.uuid4())
-        runner.call(
-            "GET",
-            "/api/v1/kg/graph/expand",
-            f"/api/v1/kg/graph/expand?node_id={kg_node_id}",
-            expected=[200, 400, 404, 503],
-        )
-        runner.call(
-            "GET",
-            "/api/v1/kg/graph/search",
-            "/api/v1/kg/graph/search?q=smoke",
-            expected=[200, 400, 503],
-        )
-        runner.call(
-            "GET",
-            "/api/v1/kg/stats",
-            "/api/v1/kg/stats",
-            expected=[200, 503],
-        )
-        runner.call(
-            "GET",
-            "/api/v1/kg/graph/export",
-            "/api/v1/kg/graph/export?download=false",
-            expected=[200, 503],
-        )
-        probe_uuid = uuid.uuid4()
-        runner.call(
-            "GET",
-            "/api/v1/kg/events/{event_id}",
-            f"/api/v1/kg/events/{probe_uuid}",
-            expected=[200, 404, 503],
-        )
-        runner.call(
-            "GET",
-            "/api/v1/kg/entities/{entity_id}",
-            f"/api/v1/kg/entities/{probe_uuid}",
-            expected=[200, 404, 503],
-        )
-        if doc_id:
-            runner.call(
-                "POST",
-                "/api/v1/kg/documents/{document_id}/extract",
-                f"/api/v1/kg/documents/{doc_id}/extract",
-                expected=[200, 400, 502, 503],
-            )
-            runner.call(
-                "POST",
-                API_KG_SEARCH,
-                API_KG_SEARCH,
-                expected=[200, 400, 503],
-                json={"query": "smoke"},
-            )
-        else:
-            runner.mark("POST", "/api/v1/kg/documents/{document_id}/extract")
-            runner.mark("POST", API_KG_SEARCH)
-
-        kg_delete_target = str(doc_id or uuid.uuid4())
-        runner.call(
-            "DELETE",
-            "/api/v1/kg/documents/{document_id}",
-            f"/api/v1/kg/documents/{kg_delete_target}",
-            expected=[200, 403, 404, 503],
-        )
-
-        # Cleanup endpoints.
-        if conversation_id:
-            runner.call(
-                "DELETE",
-                "/api/v1/chat/conversations/{conversation_id}",
-                f"/api/v1/chat/conversations/{conversation_id}",
-                expected=[204],
-            )
-        else:
-            runner.mark("DELETE", "/api/v1/chat/conversations/{conversation_id}")
-
-        if tmpl_id:
-            runner.call(
-                "DELETE",
-                API_PROMPT_TEMPLATE_BY_ID,
-                f"/api/v1/prompt-templates/{tmpl_id}",
-                expected=[204],
-            )
-        else:
-            runner.mark("DELETE", API_PROMPT_TEMPLATE_BY_ID)
-
-        if doc_id:
-            runner.call(
-                "DELETE",
-                API_DOCUMENT_BY_ID,
-                f"/api/v1/documents/{doc_id}",
-                expected=[204],
-            )
-        else:
-            runner.mark("DELETE", API_DOCUMENT_BY_ID)
-
-        if manual_doc_id:
-            runner.call(
-                "DELETE",
-                API_DOCUMENT_BY_ID,
-                f"/api/v1/documents/{manual_doc_id}",
-                expected=[204],
-            )
-
-        # Batch-uploaded docs: delete them before dataset deletion.
-        for bid in sorted({str(x) for x in (batch_doc_ids or []) if str(x).strip()}):
-            if bid == str(doc_id) or bid == str(manual_doc_id):
-                continue
-            runner.call(
-                "DELETE",
-                API_DOCUMENT_BY_ID,
-                f"/api/v1/documents/{bid}",
-                expected=[204, 404],
-            )
-
-        if ds_id:
-            runner.call(
-                "DELETE",
-                API_DATASET_BY_ID,
-                f"/api/v1/datasets/{ds_id}",
-                expected=[204],
-            )
-        else:
-            runner.mark("DELETE", API_DATASET_BY_ID)
-
-        # Final sweep: probe any OpenAPI operations not exercised above.
-        probe_uncovered_openapi_endpoints(runner, openapi_paths)
-
-        # Coverage report.
-        missing = sorted(openapi_paths - runner.covered)
-        failures = [r for r in runner.results if not r.ok]
-
-        print(f"Calls: {len(runner.results)} | Failures: {len(failures)} | Missing: {len(missing)}")
-        if failures:
-            print("\nFailures:")
-            for r in failures:
-                print(f"- {r.method} {r.path}: {r.note}")
-        if missing:
-            print("\nMissing endpoints:")
-            for method, path in missing:
-                print(f"- {method} {path}")
-
-        return 1 if failures or missing else 0
+        run_smoke_scenario(ctx)
+        return report_smoke_results(ctx)
 
 
 if __name__ == "__main__":

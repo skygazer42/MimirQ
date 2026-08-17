@@ -9,7 +9,6 @@ from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy.exc import IntegrityError
 from starlette.datastructures import UploadFile
 
-import app  # noqa: F401
 from app.api.v1 import documents as documents_module
 
 document_upload = documents_module.document_upload

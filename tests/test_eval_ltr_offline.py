@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 import datetime
 import hashlib
@@ -39,7 +38,7 @@ class _FakeClient:
         self._payloads = list(payloads or [])
         self._error = error
 
-    def __enter__(self) -> _FakeClient:
+    def __enter__(self) -> "_FakeClient":
         return self
 
     def __exit__(self, *_args: object) -> None:

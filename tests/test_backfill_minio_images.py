@@ -109,6 +109,51 @@ def test_main_dry_run_warns_and_lists_only_first_ten_candidates(monkeypatch, cap
     assert "  ... (+2 more)" in output
 
 
+def test_main_ignores_ambient_jwt_auth_mode_for_header_flow(monkeypatch, capsys) -> None:
+    headers_seen: list[dict[str, str]] = []
+
+    monkeypatch.setenv("AUTH_MODE", "jwt")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "backfill_minio_images.py",
+            "--dataset-id",
+            "dataset",
+            "--tenant-id",
+            "tenant",
+            "--user-id",
+            "user",
+            "--dry-run",
+        ],
+    )
+
+    def readiness(**kwargs: object) -> dict[str, dict[str, object]]:
+        headers = kwargs.get("headers")
+        assert isinstance(headers, dict)
+        headers_seen.append({str(key): str(value) for key, value in headers.items()})
+        return {"minio": {"enabled": False, "status": "disabled"}}
+
+    def list_ids(**kwargs: object) -> list[str]:
+        headers = kwargs.get("headers")
+        assert isinstance(headers, dict)
+        headers_seen.append({str(key): str(value) for key, value in headers.items()})
+        return []
+
+    monkeypatch.setattr(backfill_minio_images, "_read_storage_readiness", readiness)
+    monkeypatch.setattr(backfill_minio_images, "_iter_dataset_document_ids", list_ids)
+
+    assert backfill_minio_images.main() == 0
+
+    expected_headers = {
+        "Accept": "application/json",
+        "X-Tenant-ID": "tenant",
+        "X-User-ID": "user",
+    }
+    assert headers_seen == [expected_headers, expected_headers]
+    assert "Candidate documents: 0" in capsys.readouterr().out
+
+
 def test_main_batches_retry_payloads_and_totals(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,

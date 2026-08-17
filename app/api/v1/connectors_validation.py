@@ -225,7 +225,9 @@ async def _check_db_connectivity_best_effort(
     """
 
     # Ensure DB catalog connector classes are imported so registration side-effects run.
-    from app.connectors import db as _db_connectors  # noqa: F401
+    from app.connectors import db as db_connectors_module
+
+    _ = db_connectors_module
 
     cid = str(connector_id or "").strip()
     try:

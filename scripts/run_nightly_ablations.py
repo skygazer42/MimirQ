@@ -27,6 +27,7 @@ Examples:
 import argparse
 import json
 import sys
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -237,7 +238,23 @@ def _default_ablations(*, reranker_top_n: int = 20) -> list[dict]:
     ]
 
 
-def main(argv: list[str] | None = None) -> int:
+@dataclass(frozen=True)
+class _Runtime:
+    settings: Any
+    session_factory: Any
+    dataset_model: Any
+    case_model: Any
+    run_model: Any
+    evaluator: Any
+
+
+class _CliError(RuntimeError):
+    def __init__(self, payload: dict[str, Any]) -> None:
+        super().__init__(str(payload.get("error") or "nightly ablation failed"))
+        self.payload = payload
+
+
+def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Run nightly retrieval ablations (create regression runs + execute).")
     p.add_argument(
         "--tenant-id", type=_parse_uuid, default=None, help="Tenant UUID (default: settings.DEFAULT_TENANT_ID)"
@@ -267,228 +284,355 @@ def main(argv: list[str] | None = None) -> int:
         default="",
         help='Comma-separated metric names. Empty means retrieval-only (default: "").',
     )
+    return p
 
-    args = p.parse_args(argv)
 
+def _load_runtime() -> _Runtime:
     from app.core.config import settings
     from app.core.database import SessionLocal
     from app.models.dataset import Dataset
     from app.models.evaluation import RagasRegressionCase, RagasRegressionRun
     from app.rag.evaluation.ragas import run_regression_ragas_evaluation
 
-    tenant_id = args.tenant_id or UUID(str(settings.DEFAULT_TENANT_ID))
-    execute = bool(args.execute)
-    dry_run = not execute
+    return _Runtime(
+        settings=settings,
+        session_factory=SessionLocal,
+        dataset_model=Dataset,
+        case_model=RagasRegressionCase,
+        run_model=RagasRegressionRun,
+        evaluator=run_regression_ragas_evaluation,
+    )
 
-    metric_names = [m.strip() for m in str(args.metrics or "").split(",") if m.strip()]
-    ablations = _default_ablations(reranker_top_n=int(settings.RERANKER_TOP_N or 20))
 
-    cases_path: Path | None = None
-    bundle_dataset_id: UUID | None = None
-    bundle_questions: list[str] = []
-    if str(args.cases or "").strip():
-        if bool(args.all_datasets):
-            print(json.dumps({"ok": False, "error": "--cases is only supported with --dataset-id"}, ensure_ascii=False))
-            return 2
-        cases_path = Path(str(args.cases)).expanduser()
-        if not cases_path.exists():
-            print(json.dumps({"ok": False, "error": f"cases file not found: {cases_path}"}, ensure_ascii=False))
-            return 2
-        try:
-            bundle_dataset_id, items = coerce_case_bundle(_load_json(cases_path))
-            bundle_questions = _normalized_unique_questions(items)
-        except Exception as exc:  # noqa: BLE001
-            print(json.dumps({"ok": False, "error": f"invalid cases bundle: {exc}"}, ensure_ascii=False))
-            return 2
+def _resolve_case_selection(args: argparse.Namespace) -> tuple[Path | None, list[str]]:
+    raw_cases = str(args.cases or "").strip()
+    if not raw_cases:
+        return None, []
+    if bool(args.all_datasets):
+        raise _CliError({"ok": False, "error": "--cases is only supported with --dataset-id"})
 
-        if args.dataset_id is not None and bundle_dataset_id != args.dataset_id:
-            print(
-                json.dumps(
-                    {
-                        "ok": False,
-                        "error": "cases dataset_id mismatch",
-                        "expected": str(args.dataset_id),
-                        "got": str(bundle_dataset_id),
-                    },
-                    ensure_ascii=False,
-                )
-            )
-            return 2
+    cases_path = Path(raw_cases).expanduser()
+    if not cases_path.exists():
+        raise _CliError({"ok": False, "error": f"cases file not found: {cases_path}"})
 
-        if not bundle_questions:
-            print(json.dumps({"ok": False, "error": "cases bundle contains no questions"}, ensure_ascii=False))
-            return 2
+    try:
+        bundle_dataset_id, items = coerce_case_bundle(_load_json(cases_path))
+        bundle_questions = _normalized_unique_questions(items)
+    except Exception as exc:  # noqa: BLE001
+        raise _CliError({"ok": False, "error": f"invalid cases bundle: {exc}"}) from exc
 
-    ds_ids: list[UUID] = []
+    if args.dataset_id is not None and bundle_dataset_id != args.dataset_id:
+        raise _CliError(
+            {
+                "ok": False,
+                "error": "cases dataset_id mismatch",
+                "expected": str(args.dataset_id),
+                "got": str(bundle_dataset_id),
+            }
+        )
+    if not bundle_questions:
+        raise _CliError({"ok": False, "error": "cases bundle contains no questions"})
+    return cases_path, bundle_questions
+
+
+def _resolve_dataset_ids(
+    args: argparse.Namespace,
+    *,
+    tenant_id: UUID,
+    runtime: _Runtime,
+) -> list[UUID]:
     if args.dataset_id is not None:
-        ds_ids = [args.dataset_id]
-    elif bool(args.all_datasets):
-        db = SessionLocal()
-        try:
-            q = db.query(Dataset.id).filter(Dataset.tenant_id == tenant_id).order_by(Dataset.created_at.asc())
-            limit = max(1, int(args.max_datasets or 0))
-            q = q.limit(limit)
-            rows = q.all()
-            ds_ids = [r[0] for r in rows if isinstance(r, tuple) and r and isinstance(r[0], UUID)]
-        finally:
-            db.close()
+        return [args.dataset_id]
+    if not bool(args.all_datasets):
+        return []
 
-    if not ds_ids:
-        print(json.dumps({"ok": False, "error": "No datasets found"}, ensure_ascii=False))
-        return 2
+    db = runtime.session_factory()
+    try:
+        query = (
+            db.query(runtime.dataset_model.id)
+            .filter(runtime.dataset_model.tenant_id == tenant_id)
+            .order_by(runtime.dataset_model.created_at.asc())
+        )
+        rows = query.limit(max(1, int(args.max_datasets or 0))).all()
+        return [row[0] for row in rows if isinstance(row, tuple) and row and isinstance(row[0], UUID)]
+    finally:
+        db.close()
 
-    job_run_id = _now().strftime("%Y%m%dT%H%M%SZ")
-    planned: list[dict] = []
-    executed: list[dict] = []
 
-    for ds_id in ds_ids:
-        # Load dataset to pick an actor id for ACL-safe evaluation.
-        db = SessionLocal()
-        try:
-            ds = db.query(Dataset).filter(Dataset.tenant_id == tenant_id, Dataset.id == ds_id).first()
-            if ds is None:
-                if cases_path is not None:
-                    print(
-                        json.dumps(
-                            {"ok": False, "error": "dataset_not_found", "dataset_id": str(ds_id)}, ensure_ascii=False
-                        )
-                    )
-                    return 2
-                planned.append({"dataset_id": str(ds_id), "skipped": True, "reason": "dataset_not_found"})
-                continue
-            owner_id = str(getattr(ds, "owner_id", "") or "").strip()
-            if not owner_id:
-                if cases_path is not None:
-                    print(
-                        json.dumps(
-                            {"ok": False, "error": "dataset_missing_owner_id", "dataset_id": str(ds_id)},
-                            ensure_ascii=False,
-                        )
-                    )
-                    return 2
-                planned.append({"dataset_id": str(ds_id), "skipped": True, "reason": "dataset_missing_owner_id"})
-                continue
+def _resolve_dataset_owner(
+    *,
+    db: Any,
+    runtime: _Runtime,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    cases_path: Path | None,
+    planned: list[dict[str, Any]],
+) -> str | None:
+    dataset = (
+        db.query(runtime.dataset_model)
+        .filter(runtime.dataset_model.tenant_id == tenant_id, runtime.dataset_model.id == dataset_id)
+        .first()
+    )
+    if dataset is None:
+        if cases_path is not None:
+            raise _CliError({"ok": False, "error": "dataset_not_found", "dataset_id": str(dataset_id)})
+        planned.append({"dataset_id": str(dataset_id), "skipped": True, "reason": "dataset_not_found"})
+        return None
 
-            explicit_case_ids: list[UUID] = []
-            cases_total: int | None = None
-            if cases_path is not None:
-                try:
-                    full_ids = _resolve_case_ids_from_questions(
-                        db=db,
-                        tenant_id=tenant_id,
-                        dataset_id=ds_id,
-                        questions=bundle_questions,
-                        case_model=RagasRegressionCase,
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    print(
-                        json.dumps(
-                            {
-                                "ok": False,
-                                "error": f"cases_resolve_failed: {exc}",
-                                "dataset_id": str(ds_id),
-                                "cases_file": str(cases_path),
-                            },
-                            ensure_ascii=False,
-                        )
-                    )
-                    return 2
+    owner_id = str(getattr(dataset, "owner_id", "") or "").strip()
+    if owner_id:
+        return owner_id
+    if cases_path is not None:
+        raise _CliError({"ok": False, "error": "dataset_missing_owner_id", "dataset_id": str(dataset_id)})
+    planned.append({"dataset_id": str(dataset_id), "skipped": True, "reason": "dataset_missing_owner_id"})
+    return None
 
-                cases_total = int(len(full_ids))
-                cap = max(1, int(args.max_cases or 0))
-                if len(full_ids) > cap:
-                    explicit_case_ids = list(full_ids[:cap])
-                    print(
-                        json.dumps(
-                            {
-                                "warn": "cases bundle truncated by --max-cases",
-                                "dataset_id": str(ds_id),
-                                "cases_total": int(len(full_ids)),
-                                "cases_used": int(len(explicit_case_ids)),
-                                "cases_file": str(cases_path.name),
-                            },
-                            ensure_ascii=False,
-                        )
-                    )
-                else:
-                    explicit_case_ids = list(full_ids)
-                if not explicit_case_ids:
-                    print(
-                        json.dumps(
-                            {
-                                "ok": False,
-                                "error": "cases bundle resolved to empty case_ids",
-                                "dataset_id": str(ds_id),
-                                "cases_file": str(cases_path),
-                            },
-                            ensure_ascii=False,
-                        )
-                    )
-                    return 2
 
-            for ab in ablations:
-                key = str(ab.get("ablation_key") or "").strip() or "ablation"
-                rag_params = dict(ab.get("rag_params") or {})
-                if dry_run:
-                    planned.append(
-                        {
-                            "dataset_id": str(ds_id),
-                            "account_id": owner_id,
-                            "ablation_key": key,
-                            "metrics": metric_names,
-                            "max_cases": int(args.max_cases or 0),
-                            "cases_file": str(cases_path.name) if cases_path is not None else None,
-                            "cases_count": int(len(explicit_case_ids)) if cases_path is not None else None,
-                            "rag_params": rag_params,
-                        }
-                    )
-                    continue
+def _resolve_dataset_cases(
+    *,
+    db: Any,
+    runtime: _Runtime,
+    args: argparse.Namespace,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    cases_path: Path | None,
+    bundle_questions: list[str],
+) -> tuple[list[UUID], int | None]:
+    if cases_path is None:
+        return [], None
+    try:
+        full_ids = _resolve_case_ids_from_questions(
+            db=db,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            questions=bundle_questions,
+            case_model=runtime.case_model,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _CliError(
+            {
+                "ok": False,
+                "error": f"cases_resolve_failed: {exc}",
+                "dataset_id": str(dataset_id),
+                "cases_file": str(cases_path),
+            }
+        ) from exc
 
-                run = RagasRegressionRun(
-                    tenant_id=tenant_id,
-                    account_id=owner_id,
-                    dataset_id=ds_id,
-                    status="pending",
-                    metrics=list(metric_names),
-                    params={
-                        "nightly": True,
-                        "job_run_id": job_run_id,
-                        "ablation_key": key,
-                        "requested_metrics": list(metric_names),
-                        "skip_empty_contexts": bool(args.skip_empty_contexts),
-                        "max_cases": int(args.max_cases or 0),
-                        "cases_file": str(cases_path.name) if cases_path is not None else None,
-                        "cases_total": cases_total,
-                        "cases_count": int(len(explicit_case_ids)) if cases_path is not None else None,
-                        "rag_params": rag_params,
-                    },
-                )
-                db.add(run)
-                db.commit()
-                db.refresh(run)
+    case_ids = list(full_ids[: max(1, int(args.max_cases or 0))])
+    if len(case_ids) < len(full_ids):
+        print(
+            json.dumps(
+                {
+                    "warn": "cases bundle truncated by --max-cases",
+                    "dataset_id": str(dataset_id),
+                    "cases_total": len(full_ids),
+                    "cases_used": len(case_ids),
+                    "cases_file": str(cases_path.name),
+                },
+                ensure_ascii=False,
+            )
+        )
+    if not case_ids:
+        raise _CliError(
+            {
+                "ok": False,
+                "error": "cases bundle resolved to empty case_ids",
+                "dataset_id": str(dataset_id),
+                "cases_file": str(cases_path),
+            }
+        )
+    return case_ids, len(full_ids)
 
-                # Execute synchronously so the cron job has deterministic completion semantics.
-                run_regression_ragas_evaluation(
-                    run_id=run.id,
-                    tenant_id=tenant_id,
-                    account_id=owner_id,
-                    case_ids=list(explicit_case_ids) if explicit_case_ids else [],
-                    dataset_id=ds_id,
-                    metric_names=list(metric_names),
-                    skip_empty_contexts=bool(args.skip_empty_contexts),
-                    max_cases=max(1, int(args.max_cases or 0)),
+
+def _append_planned_ablation(
+    *,
+    planned: list[dict[str, Any]],
+    args: argparse.Namespace,
+    dataset_id: UUID,
+    owner_id: str,
+    key: str,
+    metric_names: list[str],
+    rag_params: dict[str, Any],
+    cases_path: Path | None,
+    case_ids: list[UUID],
+) -> None:
+    planned.append(
+        {
+            "dataset_id": str(dataset_id),
+            "account_id": owner_id,
+            "ablation_key": key,
+            "metrics": metric_names,
+            "max_cases": int(args.max_cases or 0),
+            "cases_file": str(cases_path.name) if cases_path is not None else None,
+            "cases_count": len(case_ids) if cases_path is not None else None,
+            "rag_params": rag_params,
+        }
+    )
+
+
+def _execute_ablation(
+    *,
+    db: Any,
+    runtime: _Runtime,
+    args: argparse.Namespace,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    owner_id: str,
+    key: str,
+    metric_names: list[str],
+    rag_params: dict[str, Any],
+    cases_path: Path | None,
+    case_ids: list[UUID],
+    cases_total: int | None,
+    job_run_id: str,
+    executed: list[dict[str, Any]],
+) -> None:
+    run = runtime.run_model(
+        tenant_id=tenant_id,
+        account_id=owner_id,
+        dataset_id=dataset_id,
+        status="pending",
+        metrics=list(metric_names),
+        params={
+            "nightly": True,
+            "job_run_id": job_run_id,
+            "ablation_key": key,
+            "requested_metrics": list(metric_names),
+            "skip_empty_contexts": bool(args.skip_empty_contexts),
+            "max_cases": int(args.max_cases or 0),
+            "cases_file": str(cases_path.name) if cases_path is not None else None,
+            "cases_total": cases_total,
+            "cases_count": len(case_ids) if cases_path is not None else None,
+            "rag_params": rag_params,
+        },
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    runtime.evaluator(
+        run_id=run.id,
+        tenant_id=tenant_id,
+        account_id=owner_id,
+        case_ids=list(case_ids) if case_ids else [],
+        dataset_id=dataset_id,
+        metric_names=list(metric_names),
+        skip_empty_contexts=bool(args.skip_empty_contexts),
+        max_cases=max(1, int(args.max_cases or 0)),
+        rag_params=rag_params,
+    )
+    executed.append(
+        {
+            "dataset_id": str(dataset_id),
+            "account_id": owner_id,
+            "ablation_key": key,
+            "run_id": str(run.id),
+        }
+    )
+
+
+def _process_dataset(
+    *,
+    runtime: _Runtime,
+    args: argparse.Namespace,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    metric_names: list[str],
+    ablations: list[dict[str, Any]],
+    cases_path: Path | None,
+    bundle_questions: list[str],
+    job_run_id: str,
+    planned: list[dict[str, Any]],
+    executed: list[dict[str, Any]],
+) -> None:
+    db = runtime.session_factory()
+    try:
+        owner_id = _resolve_dataset_owner(
+            db=db,
+            runtime=runtime,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            cases_path=cases_path,
+            planned=planned,
+        )
+        if owner_id is None:
+            return
+        case_ids, cases_total = _resolve_dataset_cases(
+            db=db,
+            runtime=runtime,
+            args=args,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            cases_path=cases_path,
+            bundle_questions=bundle_questions,
+        )
+        for ablation in ablations:
+            key = str(ablation.get("ablation_key") or "").strip() or "ablation"
+            rag_params = dict(ablation.get("rag_params") or {})
+            if not bool(args.execute):
+                _append_planned_ablation(
+                    planned=planned,
+                    args=args,
+                    dataset_id=dataset_id,
+                    owner_id=owner_id,
+                    key=key,
+                    metric_names=metric_names,
                     rag_params=rag_params,
+                    cases_path=cases_path,
+                    case_ids=case_ids,
                 )
-                executed.append(
-                    {
-                        "dataset_id": str(ds_id),
-                        "account_id": owner_id,
-                        "ablation_key": key,
-                        "run_id": str(run.id),
-                    }
-                )
-        finally:
-            db.close()
+                continue
+            _execute_ablation(
+                db=db,
+                runtime=runtime,
+                args=args,
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                owner_id=owner_id,
+                key=key,
+                metric_names=metric_names,
+                rag_params=rag_params,
+                cases_path=cases_path,
+                case_ids=case_ids,
+                cases_total=cases_total,
+                job_run_id=job_run_id,
+                executed=executed,
+            )
+    finally:
+        db.close()
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _build_parser().parse_args(argv)
+    runtime = _load_runtime()
+    tenant_id = args.tenant_id or UUID(str(runtime.settings.DEFAULT_TENANT_ID))
+    metric_names = [metric.strip() for metric in str(args.metrics or "").split(",") if metric.strip()]
+    ablations = _default_ablations(reranker_top_n=int(runtime.settings.RERANKER_TOP_N or 20))
+    planned: list[dict[str, Any]] = []
+    executed: list[dict[str, Any]] = []
+    job_run_id = _now().strftime("%Y%m%dT%H%M%SZ")
+
+    try:
+        cases_path, bundle_questions = _resolve_case_selection(args)
+        dataset_ids = _resolve_dataset_ids(args, tenant_id=tenant_id, runtime=runtime)
+        if not dataset_ids:
+            raise _CliError({"ok": False, "error": "No datasets found"})
+        for dataset_id in dataset_ids:
+            _process_dataset(
+                runtime=runtime,
+                args=args,
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                metric_names=metric_names,
+                ablations=ablations,
+                cases_path=cases_path,
+                bundle_questions=bundle_questions,
+                job_run_id=job_run_id,
+                planned=planned,
+                executed=executed,
+            )
+    except _CliError as exc:
+        print(json.dumps(exc.payload, ensure_ascii=False))
+        return 2
 
     print(
         json.dumps(
@@ -496,7 +640,7 @@ def main(argv: list[str] | None = None) -> int:
                 "ok": True,
                 "tenant_id": str(tenant_id),
                 "job_run_id": job_run_id,
-                "dry_run": bool(dry_run),
+                "dry_run": not bool(args.execute),
                 "planned": planned,
                 "executed": executed,
             },

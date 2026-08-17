@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 import asyncio
 import datetime as dt
@@ -24,10 +23,10 @@ class _FakeQuery:
     def __init__(self, rows: list[object] | None = None) -> None:
         self._rows = list(rows or [])
 
-    def filter(self, *_args, **_kwargs) -> _FakeQuery:
+    def filter(self, *_args, **_kwargs) -> "_FakeQuery":
         return self
 
-    def order_by(self, *_args, **_kwargs) -> _FakeQuery:
+    def order_by(self, *_args, **_kwargs) -> "_FakeQuery":
         return self
 
     def all(self) -> list[object]:
@@ -93,7 +92,7 @@ class _FakeEmbedder:
 
 
 class _IndexerFactory:
-    last_instance: _IndexerFactory | None = None
+    last_instance: "_IndexerFactory | None" = None
 
     def __init__(self, _session: _FakeSession) -> None:
         self.records: list[object] = []
@@ -142,7 +141,7 @@ class _NoOpRelationRepository:
 
 
 class _TrackingRelationRepository:
-    last_instance: _TrackingRelationRepository | None = None
+    last_instance: "_TrackingRelationRepository | None" = None
 
     def __init__(self, _session: _FakeSession) -> None:
         self.delete_calls: list[dict[str, object]] = []

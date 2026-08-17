@@ -137,11 +137,14 @@ def _write_json(path: Path, obj: dict[str, Any]) -> None:
     _atomic_write_text(path, json.dumps(obj, ensure_ascii=False, indent=2) + "\n")
 
 
-def _validate_manifest_obj(*, manifest: dict[str, Any], model_sha256: str) -> tuple[int, dict[str, Any]]:
+def _validate_manifest_schema(manifest: dict[str, Any]) -> str:
     schema = str(manifest.get("schema") or "").strip()
     if schema != _MANIFEST_SCHEMA_V1:
         raise ValueError(f"manifest schema mismatch: {schema or '<missing>'}")
+    return schema
 
+
+def _resolve_manifest_feature_spec(manifest: dict[str, Any]) -> tuple[str, int, LTRFeatureSpec]:
     feature_schema = str(manifest.get("feature_schema") or "").strip()
     if feature_schema not in {"mimirq.ltr_features.v1", "mimirq.ltr_features.v2", "mimirq.ltr_features.v3"}:
         raise ValueError("manifest feature_schema must be mimirq.ltr_features.v1, .v2, or .v3")
@@ -152,158 +155,173 @@ def _validate_manifest_obj(*, manifest: dict[str, Any], model_sha256: str) -> tu
         version = 2
     else:
         version = 1
-    spec = LTRFeatureSpec.from_version(version)
+    return feature_schema, version, LTRFeatureSpec.from_version(version)
 
+
+def _validate_manifest_feature_names(manifest: dict[str, Any], spec: LTRFeatureSpec) -> list[str]:
     names = manifest.get("feature_names")
     if not isinstance(names, list):
         raise ValueError("manifest feature_names must be a list")
     names_norm = [str(x) for x in names if x is not None]
     if names_norm != list(spec.feature_names):
         raise ValueError("manifest feature_names mismatch (feature order/count must match spec)")
+    return names_norm
 
+
+def _resolve_manifest_model_sha(manifest: dict[str, Any], model_sha256: str) -> str:
     sha = str(manifest.get("model_sha256") or "").strip()
     if sha and sha != model_sha256:
         raise ValueError("manifest model_sha256 mismatch")
+    return sha or model_sha256
 
-    def _safe_str(value: Any, *, max_len: int = 200) -> str | None:
-        s = str(value or "").strip()
+
+def _safe_manifest_str(value: Any, *, max_len: int = 200) -> str | None:
+    s = str(value or "").strip()
+    if not s:
+        return None
+    lim = max(0, int(max_len or 0))
+    if lim <= 0:
+        return s
+    return s[:lim]
+
+
+def _safe_manifest_int(value: Any) -> int | None:
+    try:
+        return int(value) if value is not None else None
+    except Exception:
+        return None
+
+
+def _safe_manifest_list_str(value: Any, *, max_items: int = 20, max_len: int = 80) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    out: list[str] = []
+    for raw in value:
+        s = _safe_manifest_str(raw, max_len=max_len)
         if not s:
-            return None
-        lim = max(0, int(max_len or 0))
-        if lim <= 0:
-            return s
-        return s[:lim]
+            continue
+        out.append(s)
+        if len(out) >= max(0, int(max_items or 0)):
+            break
+    return out
 
-    def _safe_int(value: Any) -> int | None:
-        try:
-            return int(value) if value is not None else None
-        except Exception:
-            return None
 
-    def _safe_list_str(value: Any, *, max_items: int = 20, max_len: int = 80) -> list[str]:
-        if not isinstance(value, list):
-            return []
-        out: list[str] = []
-        for raw in value:
-            s = _safe_str(raw, max_len=max_len)
-            if not s:
-                continue
-            out.append(s)
-            if len(out) >= max(0, int(max_items or 0)):
-                break
-        return out
+def _clean_manifest_training(training_raw: Any) -> dict[str, Any] | None:
+    if not isinstance(training_raw, dict):
+        return None
 
-    # Base validated fields (required for safe activation).
+    training_out: dict[str, Any] = {}
+    for key in (
+        "cases_total",
+        "cases_used",
+        "cases_missed",
+        "rows_total",
+        "rows_pos",
+        "rows_neg",
+        "rows_hard_neg",
+        "group_count",
+        "data_hash",
+    ):
+        if key not in training_raw:
+            continue
+        if key == "data_hash":
+            value = _safe_manifest_str(training_raw.get(key), max_len=64)
+            if value:
+                training_out[key] = value
+            continue
+        value = _safe_manifest_int(training_raw.get(key))
+        if value is not None:
+            training_out[key] = max(0, int(value))
+    return training_out or None
+
+
+def _clean_manifest_lineage_retrieval_config(retrieval_cfg_raw: Any) -> dict[str, Any] | None:
+    if not isinstance(retrieval_cfg_raw, dict):
+        return None
+    cfg_obj = (
+        retrieval_cfg_raw.get("config") if isinstance(retrieval_cfg_raw.get("config"), dict) else retrieval_cfg_raw
+    )
+    if not isinstance(cfg_obj, dict):
+        return None
+    return build_retrieval_config_fingerprint(config=cfg_obj)
+
+
+def _clean_manifest_lineage(lineage_raw: Any) -> dict[str, Any] | None:
+    if not isinstance(lineage_raw, dict):
+        return None
+    if _safe_manifest_str(lineage_raw.get("schema"), max_len=80) != "mimirq.ltr_run_lineage.v1":
+        return None
+
+    lineage_out: dict[str, Any] = {"schema": "mimirq.ltr_run_lineage.v1"}
+    for key, max_len in (
+        ("kind", 16),
+        ("dataset_id", 64),
+        ("cases_sha256", 64),
+        ("cases_schema", 80),
+    ):
+        value = _safe_manifest_str(lineage_raw.get(key), max_len=max_len)
+        if value:
+            lineage_out[key] = value
+
+    pipeline_hashes = _safe_manifest_list_str(lineage_raw.get("pipeline_hashes"), max_items=20, max_len=64)
+    if pipeline_hashes:
+        lineage_out["pipeline_hashes"] = pipeline_hashes
+
+    hard_neg_sha = _safe_manifest_str(lineage_raw.get("hard_negatives_sha256"), max_len=64)
+    if hard_neg_sha:
+        lineage_out["hard_negatives_sha256"] = hard_neg_sha
+
+    retrieval_cfg_out = _clean_manifest_lineage_retrieval_config(lineage_raw.get("retrieval_config"))
+    if retrieval_cfg_out:
+        lineage_out["retrieval_config"] = retrieval_cfg_out
+        retrieval_hash = retrieval_cfg_out.get("hash")
+        if isinstance(retrieval_hash, str) and retrieval_hash:
+            lineage_out["retrieval_config_hash"] = retrieval_hash
+
+    return lineage_out if len(lineage_out) > 1 else None
+
+
+def _validate_manifest_obj(*, manifest: dict[str, Any], model_sha256: str) -> tuple[int, dict[str, Any]]:
+    schema = _validate_manifest_schema(manifest)
+    feature_schema, version, spec = _resolve_manifest_feature_spec(manifest)
+    names_norm = _validate_manifest_feature_names(manifest, spec)
     cleaned: dict[str, Any] = {
         "schema": schema,
         "feature_schema": feature_schema,
         "feature_names": list(names_norm),
-        "model_sha256": (sha or model_sha256),
+        "model_sha256": _resolve_manifest_model_sha(manifest, model_sha256),
     }
 
-    # Optional, PII-safe training metadata (best-effort).
-    created_at = _safe_str(manifest.get("created_at"), max_len=40)
+    created_at = _safe_manifest_str(manifest.get("created_at"), max_len=40)
     if created_at:
         cleaned["created_at"] = created_at
 
-    model_file = _safe_str(manifest.get("model_file"), max_len=200)
+    model_file = _safe_manifest_str(manifest.get("model_file"), max_len=200)
     if model_file:
         cleaned["model_file"] = model_file
 
-    objective = _safe_str(manifest.get("objective"), max_len=80)
+    objective = _safe_manifest_str(manifest.get("objective"), max_len=80)
     if objective:
         cleaned["objective"] = objective
 
-    num_boost_round = _safe_int(manifest.get("num_boost_round"))
+    num_boost_round = _safe_manifest_int(manifest.get("num_boost_round"))
     if num_boost_round is not None:
         cleaned["num_boost_round"] = max(0, int(num_boost_round))
 
-    seed = _safe_int(manifest.get("seed"))
+    seed = _safe_manifest_int(manifest.get("seed"))
     if seed is not None:
         cleaned["seed"] = int(seed)
 
-    # Explicit feature spec fingerprint (stable + versioned).
     cleaned["feature_spec_version"] = int(version)
     cleaned["feature_spec"] = build_ltr_feature_spec_fingerprint(spec=spec, version=version)
 
-    training_raw = manifest.get("training")
-    if isinstance(training_raw, dict):
-        allow = {
-            "cases_total",
-            "cases_used",
-            "cases_missed",
-            "rows_total",
-            "rows_pos",
-            "rows_neg",
-            "rows_hard_neg",
-            "group_count",
-            "data_hash",
-        }
-        training_out: dict[str, Any] = {}
-        for k in allow:
-            if k not in training_raw:
-                continue
-            if k == "data_hash":
-                v = _safe_str(training_raw.get(k), max_len=64)
-                if v:
-                    training_out[k] = v
-                continue
-            iv = _safe_int(training_raw.get(k))
-            if iv is None:
-                continue
-            training_out[k] = max(0, int(iv))
-        if training_out:
-            cleaned["training"] = training_out
+    training = _clean_manifest_training(manifest.get("training"))
+    if training:
+        cleaned["training"] = training
 
-    # Optional run lineage (PII-safe by construction: hashes + low-cardinality config).
-    lineage_raw = manifest.get("lineage")
-    if (
-        isinstance(lineage_raw, dict)
-        and _safe_str(lineage_raw.get("schema"), max_len=80) == "mimirq.ltr_run_lineage.v1"
-    ):
-        lineage_out: dict[str, Any] = {"schema": "mimirq.ltr_run_lineage.v1"}
-        kind = _safe_str(lineage_raw.get("kind"), max_len=16)
-        if kind:
-            lineage_out["kind"] = kind
-
-        dataset_id = _safe_str(lineage_raw.get("dataset_id"), max_len=64)
-        if dataset_id:
-            lineage_out["dataset_id"] = dataset_id
-
-        cases_sha256 = _safe_str(lineage_raw.get("cases_sha256"), max_len=64)
-        if cases_sha256:
-            lineage_out["cases_sha256"] = cases_sha256
-
-        cases_schema = _safe_str(lineage_raw.get("cases_schema"), max_len=80)
-        if cases_schema:
-            lineage_out["cases_schema"] = cases_schema
-
-        pipeline_hashes = _safe_list_str(lineage_raw.get("pipeline_hashes"), max_items=20, max_len=64)
-        if pipeline_hashes:
-            lineage_out["pipeline_hashes"] = pipeline_hashes
-
-        hard_neg_sha = _safe_str(lineage_raw.get("hard_negatives_sha256"), max_len=64)
-        if hard_neg_sha:
-            lineage_out["hard_negatives_sha256"] = hard_neg_sha
-
-        retrieval_cfg_raw = lineage_raw.get("retrieval_config")
-        retrieval_cfg_out: dict[str, Any] | None = None
-        if isinstance(retrieval_cfg_raw, dict):
-            # Accept either a full fingerprint or a bare config; normalize via the canonical helper.
-            cfg_obj = (
-                retrieval_cfg_raw.get("config")
-                if isinstance(retrieval_cfg_raw.get("config"), dict)
-                else retrieval_cfg_raw
-            )
-            if isinstance(cfg_obj, dict):
-                retrieval_cfg_out = build_retrieval_config_fingerprint(config=cfg_obj)
-        if retrieval_cfg_out:
-            lineage_out["retrieval_config"] = retrieval_cfg_out
-            if isinstance(retrieval_cfg_out.get("hash"), str) and retrieval_cfg_out.get("hash"):
-                lineage_out["retrieval_config_hash"] = retrieval_cfg_out.get("hash")
-
-        if len(lineage_out.keys()) > 1:
-            cleaned["lineage"] = lineage_out
+    lineage = _clean_manifest_lineage(manifest.get("lineage"))
+    if lineage:
+        cleaned["lineage"] = lineage
 
     return version, cleaned
 

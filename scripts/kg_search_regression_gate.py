@@ -157,7 +157,7 @@ def _check_thresholds(*, summary: dict[str, Any], thresholds: dict[str, dict[str
     return failures
 
 
-def main() -> int:
+def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="KG search regression gate (diagnostics-based).")
     p.add_argument("--base-url", required=True, help="API base URL, e.g. http://localhost:8000/api/v1")
     p.add_argument("--tenant-id", default="", help="Tenant UUID (X-Tenant-ID)")
@@ -170,24 +170,137 @@ def main() -> int:
     p.add_argument("--overwrite", action="store_true", help="Overwrite existing cases during import")
     p.add_argument("--skip-import", action="store_true", help="Skip importing cases (assumes they already exist)")
     p.add_argument("--out-run-json", default="", help="Write diagnostics response JSON to this path (optional)")
-    args = p.parse_args()
+    return p
 
+
+def _load_gate_inputs(args: argparse.Namespace) -> tuple[str, list[dict[str, Any]], dict[str, dict[str, float]]]:
     cases_path = Path(args.cases)
     _require(cases_path.exists(), f"cases file not found: {cases_path}")
     dataset_id, items = coerce_case_bundle(_load_json(cases_path))
     _require(bool(dataset_id), "missing dataset_id in cases bundle")
     _require(bool(items), "cases bundle contains zero items")
 
-    th_path = Path(args.thresholds)
-    _require(th_path.exists(), f"thresholds file not found: {th_path}")
-    th_raw = _load_json(th_path)
-    thresholds = parse_thresholds_config(th_raw)
+    thresholds_path = Path(args.thresholds)
+    _require(thresholds_path.exists(), f"thresholds file not found: {thresholds_path}")
+    raw_thresholds = _load_json(thresholds_path)
+    thresholds = parse_thresholds_config(raw_thresholds)
     _require(bool(thresholds), "thresholds is empty")
+    configured_dataset = str(raw_thresholds.get("dataset_id") or "").strip() if isinstance(raw_thresholds, dict) else ""
+    if configured_dataset and configured_dataset != dataset_id:
+        _require(False, f"thresholds dataset_id mismatch (expected {dataset_id}, got {configured_dataset})")
+    return dataset_id, items, thresholds
 
-    th_ds = str(th_raw.get("dataset_id") or "").strip() if isinstance(th_raw, dict) else ""
-    if th_ds and th_ds != dataset_id:
-        _require(False, f"thresholds dataset_id mismatch (expected {dataset_id}, got {th_ds})")
 
+def _import_cases(
+    client: httpx.Client,
+    *,
+    base_url: str,
+    dataset_id: str,
+    items: list[dict[str, Any]],
+    overwrite: bool,
+) -> None:
+    response = client.post(
+        f"{base_url}/evaluations/ragas/regression/cases/import",
+        json={
+            "dataset_id": dataset_id,
+            "overwrite": overwrite,
+            "max_items": min(2000, len(items)),
+            "items": items,
+        },
+    )
+    response.raise_for_status()
+    result = response.json() or {}
+    print(
+        f"[kg_search_regression_gate] import: created={result.get('created')} "
+        f"updated={result.get('updated')} skipped={result.get('skipped')}"
+    )
+    if result.get("errors"):
+        print(f"[kg_search_regression_gate] import warnings: {len(result.get('errors') or [])} errors")
+
+
+def _wanted_case_keys(items: list[dict[str, Any]], *, dataset_id: str) -> set[str]:
+    return {f"{question}\n{dataset_id}" for item in items if (question := str(item.get("question") or "").strip())}
+
+
+def _matched_case_ids(
+    client: httpx.Client,
+    *,
+    base_url: str,
+    dataset_id: str,
+    wanted_keys: set[str],
+) -> list[str]:
+    matched_ids: list[str] = []
+    skip = 0
+    while True:
+        response = client.get(
+            f"{base_url}/evaluations/ragas/regression/cases",
+            params={"skip": skip, "limit": 200, "dataset_id": dataset_id},
+        )
+        response.raise_for_status()
+        data = response.json() or {}
+        rows = data.get("items") or []
+        if not rows:
+            break
+        for row in rows:
+            question = str(row.get("question") or "").strip()
+            key = f"{question}\n{row.get('dataset_id') or ''}"
+            if key in wanted_keys and row.get("id"):
+                matched_ids.append(str(row["id"]))
+        skip += len(rows)
+        if skip >= int(data.get("total") or 0):
+            break
+    return matched_ids
+
+
+def _run_diagnostics(
+    client: httpx.Client,
+    *,
+    base_url: str,
+    dataset_id: str,
+    case_ids: list[str],
+    k: int,
+    auto_extract_kg: bool,
+) -> dict[str, Any]:
+    payload = {
+        "dataset_id": dataset_id,
+        "case_ids": case_ids,
+        "max_cases": min(200, len(case_ids)),
+        "k": max(1, min(k, 50)),
+        "auto_extract_kg": auto_extract_kg,
+        "hardcase_mode": "off",
+        "hardcases_per_failed_case": 0,
+        "max_failed_cases_for_hardcase": 0,
+        "persist_run": False,
+    }
+    response = client.post(f"{base_url}/evaluations/kg/search/diagnostics", json=payload)
+    response.raise_for_status()
+    result = response.json() or {}
+    return result if isinstance(result, dict) else {}
+
+
+def _write_diagnostics(path_value: str, response: dict[str, Any]) -> None:
+    if not path_value:
+        return
+    path = Path(path_value.strip())
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_json_file(path, response)
+    print(f"[kg_search_regression_gate] wrote diagnostics response: {path}")
+
+
+def _report_failures(failures: list[str], summary: dict[str, Any]) -> None:
+    print("[kg_search_regression_gate] FAIL", file=sys.stderr)
+    for failure in failures:
+        print(f"  - {failure}", file=sys.stderr)
+    print(
+        f"[kg_search_regression_gate] summary={json.dumps(summary, ensure_ascii=False, sort_keys=True)}",
+        file=sys.stderr,
+    )
+
+
+def main() -> int:
+    args = _build_parser().parse_args()
+
+    dataset_id, items, thresholds = _load_gate_inputs(args)
     headers = _headers(args)
     _require(
         bool(headers.get("X-User-ID") or headers.get("Authorization")),
@@ -199,90 +312,39 @@ def main() -> int:
 
     with httpx.Client(headers=headers, timeout=timeout) as client:
         if not args.skip_import:
-            r = client.post(
-                f"{base}/evaluations/ragas/regression/cases/import",
-                json={
-                    "dataset_id": dataset_id,
-                    "overwrite": bool(args.overwrite),
-                    "max_items": min(2000, len(items)),
-                    "items": items,
-                },
+            _import_cases(
+                client,
+                base_url=base,
+                dataset_id=dataset_id,
+                items=items,
+                overwrite=bool(args.overwrite),
             )
-            r.raise_for_status()
-            imp = r.json() or {}
-            print(
-                f"[kg_search_regression_gate] import: created={imp.get('created')} "
-                f"updated={imp.get('updated')} skipped={imp.get('skipped')}"
-            )
-            if imp.get("errors"):
-                print(f"[kg_search_regression_gate] import warnings: {len(imp.get('errors') or [])} errors")
-
-        # Resolve case ids (question + dataset_id match).
-        want_keys = set()
-        for it in items:
-            q = (str(it.get("question") or "")).strip()
-            if q:
-                want_keys.add(f"{q}\n{dataset_id}")
-
-        matched_ids: list[str] = []
-        skip = 0
-        while True:
-            r = client.get(
-                f"{base}/evaluations/ragas/regression/cases",
-                params={"skip": skip, "limit": 200, "dataset_id": dataset_id},
-            )
-            r.raise_for_status()
-            data = r.json() or {}
-            rows = data.get("items") or []
-            if not rows:
-                break
-            for row in rows:
-                q = (str(row.get("question") or "")).strip()
-                dsid = row.get("dataset_id") or ""
-                key = f"{q}\n{dsid}"
-                if key in want_keys and row.get("id"):
-                    matched_ids.append(str(row["id"]))
-            skip += len(rows)
-            if skip >= int(data.get("total") or 0):
-                break
+        wanted_keys = _wanted_case_keys(items, dataset_id=dataset_id)
+        matched_ids = _matched_case_ids(
+            client,
+            base_url=base,
+            dataset_id=dataset_id,
+            wanted_keys=wanted_keys,
+        )
 
         _require(len(matched_ids) > 0, "no matching cases found after import/list")
-        print(f"[kg_search_regression_gate] matched cases: {len(matched_ids)}/{len(want_keys)}")
-
-        # Run diagnostics (baseline only; deterministic).
-        diag_payload = {
-            "dataset_id": dataset_id,
-            "case_ids": matched_ids,
-            "max_cases": min(200, len(matched_ids)),
-            "k": max(1, min(int(args.k), 50)),
-            "auto_extract_kg": bool(args.auto_extract_kg),
-            "hardcase_mode": "off",
-            "hardcases_per_failed_case": 0,
-            "max_failed_cases_for_hardcase": 0,
-            "persist_run": False,
-        }
-        r = client.post(f"{base}/evaluations/kg/search/diagnostics", json=diag_payload)
-        r.raise_for_status()
-        resp = r.json() or {}
-        summary = resp.get("summary") or {}
+        print(f"[kg_search_regression_gate] matched cases: {len(matched_ids)}/{len(wanted_keys)}")
+        response = _run_diagnostics(
+            client,
+            base_url=base,
+            dataset_id=dataset_id,
+            case_ids=matched_ids,
+            k=int(args.k),
+            auto_extract_kg=bool(args.auto_extract_kg),
+        )
+        summary = response.get("summary") or {}
         if not isinstance(summary, dict):
             summary = {}
 
-        if args.out_run_json:
-            out_path = Path(str(args.out_run_json).strip())
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-            write_json_file(out_path, resp)
-            print(f"[kg_search_regression_gate] wrote diagnostics response: {out_path}")
-
+        _write_diagnostics(str(args.out_run_json or ""), response)
         failures = _check_thresholds(summary=summary, thresholds=thresholds)
         if failures:
-            print("[kg_search_regression_gate] FAIL", file=sys.stderr)
-            for f in failures:
-                print(f"  - {f}", file=sys.stderr)
-            print(
-                f"[kg_search_regression_gate] summary={json.dumps(summary, ensure_ascii=False, sort_keys=True)}",
-                file=sys.stderr,
-            )
+            _report_failures(failures, summary)
             return 1
 
         print("[kg_search_regression_gate] PASS")

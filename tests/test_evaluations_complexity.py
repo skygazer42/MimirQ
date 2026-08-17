@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 from types import SimpleNamespace
 from uuid import uuid4
@@ -23,10 +22,10 @@ class _ReferenceQuery:
     def __init__(self, rows: list[tuple[object, ...]]) -> None:
         self._rows = rows
 
-    def join(self, *_args: object, **_kwargs: object) -> _ReferenceQuery:
+    def join(self, *_args: object, **_kwargs: object) -> "_ReferenceQuery":
         return self
 
-    def filter(self, *_args: object, **_kwargs: object) -> _ReferenceQuery:
+    def filter(self, *_args: object, **_kwargs: object) -> "_ReferenceQuery":
         return self
 
     def all(self) -> list[tuple[object, ...]]:
@@ -45,7 +44,7 @@ class _SingleRowQuery:
     def __init__(self, row: object) -> None:
         self._row = row
 
-    def filter(self, *_args: object, **_kwargs: object) -> _SingleRowQuery:
+    def filter(self, *_args: object, **_kwargs: object) -> "_SingleRowQuery":
         return self
 
     def first(self) -> object:
@@ -95,13 +94,13 @@ class _SyntheticQuery:
     def __init__(self, rows: list[object]) -> None:
         self._rows = rows
 
-    def filter(self, *_args: object, **_kwargs: object) -> _SyntheticQuery:
+    def filter(self, *_args: object, **_kwargs: object) -> "_SyntheticQuery":
         return self
 
-    def order_by(self, *_args: object, **_kwargs: object) -> _SyntheticQuery:
+    def order_by(self, *_args: object, **_kwargs: object) -> "_SyntheticQuery":
         return self
 
-    def limit(self, _limit: int) -> _SyntheticQuery:
+    def limit(self, _limit: int) -> "_SyntheticQuery":
         return self
 
     def count(self) -> int:

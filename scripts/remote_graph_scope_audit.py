@@ -3,11 +3,28 @@
 
 import argparse
 import json
+import sys
 import time
 from pathlib import Path
 from typing import Any
 
-try:
+
+def ensure_repo_root_on_sys_path(script_path: str | Path) -> str:
+    repo_root = Path(script_path).resolve().parents[1]
+    for entry in sys.path:
+        try:
+            if Path(entry or ".").resolve() == repo_root:
+                return str(repo_root)
+        except (OSError, RuntimeError):
+            continue
+    sys.path.insert(0, str(repo_root))
+    return str(repo_root)
+
+
+ensure_repo_root_on_sys_path(__file__)
+
+
+def _load_remote_real_pdf_chain() -> tuple[Any, ...]:
     from scripts.remote_real_pdf_chain import (
         DEFAULT_TENANT_ID,
         LiveApi,
@@ -16,15 +33,18 @@ try:
         record_step,
         snippet,
     )
-except ModuleNotFoundError:
-    from remote_real_pdf_chain import (  # type: ignore[no-redef]
-        DEFAULT_TENANT_ID,
-        LiveApi,
-        ok_status,
-        perform_cleanup,
-        record_step,
-        snippet,
-    )
+
+    return DEFAULT_TENANT_ID, LiveApi, ok_status, perform_cleanup, record_step, snippet
+
+
+(
+    DEFAULT_TENANT_ID,
+    LiveApi,
+    ok_status,
+    perform_cleanup,
+    record_step,
+    snippet,
+) = _load_remote_real_pdf_chain()
 
 
 def build_repeated_query(key: str, values: list[str]) -> str:
