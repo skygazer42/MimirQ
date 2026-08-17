@@ -25,7 +25,9 @@ def _to_markdown(results: list[dict[str, object]]) -> str:
     ]
     for row in results:
         lines.append(
-            f"| {row.get('strategy')} | {row.get('status')} | {row.get('chunk_count')} | {row.get('elapsed_ms')} | {row.get('fixture')} |"
+            f"| {row.get('strategy')} | {row.get('status')} | "
+            f"{row.get('chunk_count')} | {row.get('elapsed_ms')} | "
+            f"{row.get('fixture')} |"
         )
     return "\n".join(lines) + "\n"
 

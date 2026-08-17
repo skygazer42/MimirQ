@@ -15,56 +15,88 @@ def _load_json(path: Path) -> dict[str, Any]:
     return obj
 
 
-def validate_governance(payload: dict[str, Any]) -> dict[str, Any]:
-    if str(payload.get("schema") or "").strip() != _SCHEMA:
+def _strip_text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _require_schema(payload: dict[str, Any]) -> None:
+    if _strip_text(payload.get("schema")) != _SCHEMA:
         raise ValueError(f"invalid_schema: expected {_SCHEMA}")
 
-    mode = str(payload.get("mode") or "").strip().lower()
+
+def _require_mode(payload: dict[str, Any]) -> str:
+    mode = _strip_text(payload.get("mode")).lower()
     if mode not in {"informational", "warn", "fail"}:
         raise ValueError("invalid_mode")
+    return mode
 
-    owner_roles = payload.get("owner_roles")
-    if not isinstance(owner_roles, list) or not [str(v).strip() for v in owner_roles if str(v).strip()]:
-        raise ValueError("owner_roles_required")
 
-    sample_runner = str(payload.get("sample_runner") or "").strip()
-    if not sample_runner:
-        raise ValueError("sample_runner_required")
+def _require_existing_path(payload: dict[str, Any], key: str) -> str:
+    raw_value = payload.get(key)
+    path_text = _strip_text(raw_value)
+    if not path_text:
+        raise ValueError(f"{key}_required")
+    if not Path(path_text).exists():
+        raise ValueError(f"{key}_not_found:{path_text}")
+    return str(raw_value)
 
-    for key in ("baseline_summary_path", "thresholds_path", "policy_doc_path", "workflow_doc_path"):
-        path_text = str(payload.get(key) or "").strip()
-        if not path_text:
-            raise ValueError(f"{key}_required")
-        if not Path(path_text).exists():
-            raise ValueError(f"{key}_not_found:{path_text}")
 
-    workflows = payload.get("workflows")
-    if not isinstance(workflows, list) or not workflows:
+def _normalize_required_list(payload: dict[str, Any], key: str, *, error: str) -> list[str]:
+    raw = payload.get(key)
+    if not isinstance(raw, list):
+        raise ValueError(error)
+    values = [_strip_text(item) for item in raw]
+    out = [item for item in values if item]
+    if not out:
+        raise ValueError(error)
+    return out
+
+
+def _validate_workflows(payload: dict[str, Any]) -> list[str]:
+    raw = payload.get("workflows")
+    if not isinstance(raw, list) or not raw:
         raise ValueError("workflows_required")
-    for item in workflows:
-        path_text = str(item or "").strip()
+    out: list[str] = []
+    for item in raw:
+        path_text = _strip_text(item)
         if not path_text:
             raise ValueError("workflow_path_empty")
         if not Path(path_text).exists():
             raise ValueError(f"workflow_not_found:{path_text}")
+        out.append(path_text)
+    return out
 
-    promotion_requirements = payload.get("promotion_requirements")
-    if not isinstance(promotion_requirements, list) or not [
-        str(v).strip() for v in promotion_requirements if str(v).strip()
-    ]:
-        raise ValueError("promotion_requirements_required")
+
+def validate_governance(payload: dict[str, Any]) -> dict[str, Any]:
+    _require_schema(payload)
+    mode = _require_mode(payload)
+    owner_roles = _normalize_required_list(payload, "owner_roles", error="owner_roles_required")
+    sample_runner = _strip_text(payload.get("sample_runner"))
+    if not sample_runner:
+        raise ValueError("sample_runner_required")
+
+    baseline_summary_path = _require_existing_path(payload, "baseline_summary_path")
+    thresholds_path = _require_existing_path(payload, "thresholds_path")
+    policy_doc_path = _require_existing_path(payload, "policy_doc_path")
+    workflow_doc_path = _require_existing_path(payload, "workflow_doc_path")
+    workflows = _validate_workflows(payload)
+    promotion_requirements = _normalize_required_list(
+        payload,
+        "promotion_requirements",
+        error="promotion_requirements_required",
+    )
 
     return {
         "schema": _SCHEMA,
         "mode": mode,
-        "owner_roles": [str(v).strip() for v in owner_roles if str(v).strip()],
+        "owner_roles": owner_roles,
         "sample_runner": sample_runner,
-        "baseline_summary_path": str(payload.get("baseline_summary_path")),
-        "thresholds_path": str(payload.get("thresholds_path")),
-        "policy_doc_path": str(payload.get("policy_doc_path")),
-        "workflow_doc_path": str(payload.get("workflow_doc_path")),
-        "workflows": [str(v).strip() for v in workflows if str(v).strip()],
-        "promotion_requirements": [str(v).strip() for v in promotion_requirements if str(v).strip()],
+        "baseline_summary_path": baseline_summary_path,
+        "thresholds_path": thresholds_path,
+        "policy_doc_path": policy_doc_path,
+        "workflow_doc_path": workflow_doc_path,
+        "workflows": workflows,
+        "promotion_requirements": promotion_requirements,
     }
 
 

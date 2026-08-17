@@ -463,7 +463,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--regression-top-k",
         type=int,
         default=20,
-        help="Retrieval-only regression top_k/citation evaluation window. Default keeps recall-friendly backend behavior.",
+        help=(
+            "Retrieval-only regression top_k/citation evaluation window. Default keeps "
+            "recall-friendly backend behavior."
+        ),
     )
     parser.add_argument(
         "--regression-reranker-top-n",

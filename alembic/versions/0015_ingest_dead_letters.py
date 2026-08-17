@@ -39,8 +39,14 @@ UPGRADE_SQL = [
     "CREATE INDEX IF NOT EXISTS ix_ingest_dead_letters_dataset_id ON ingest_dead_letters (dataset_id)",
     "CREATE INDEX IF NOT EXISTS ix_ingest_dead_letters_document_id ON ingest_dead_letters (document_id)",
     "CREATE INDEX IF NOT EXISTS ix_ingest_dead_letters_tenant_status ON ingest_dead_letters (tenant_id, status)",
-    "CREATE INDEX IF NOT EXISTS ix_ingest_dead_letters_tenant_document_status ON ingest_dead_letters (tenant_id, document_id, status)",
-    "CREATE INDEX IF NOT EXISTS ix_ingest_dead_letters_tenant_error_code ON ingest_dead_letters (tenant_id, error_code)",
+    (
+        "CREATE INDEX IF NOT EXISTS ix_ingest_dead_letters_tenant_document_status "
+        "ON ingest_dead_letters (tenant_id, document_id, status)"
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS ix_ingest_dead_letters_tenant_error_code "
+        "ON ingest_dead_letters (tenant_id, error_code)"
+    ),
 ]
 
 

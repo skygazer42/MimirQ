@@ -107,3 +107,44 @@ def test_npm_audit_policy_rejects_unrooted_propagation() -> None:
     errors = audit_policy_errors(report, _PACKAGE_JSON, _PACKAGE_LOCK)
 
     assert any("unexpected high/critical advisory path" in error for error in errors)
+
+
+def test_npm_audit_policy_reports_malformed_inputs_without_hiding_lock_errors() -> None:
+    errors = audit_policy_errors(
+        {"metadata": [], "vulnerabilities": None},
+        {"dependencies": {"image-size": "2.0.2"}, "devDependencies": []},
+        {"packages": []},
+    )
+
+    assert errors == [
+        "image-size must not be a direct docs dependency: dependencies",
+        "invalid docs package section: devDependencies",
+        "invalid docs package-lock packages",
+        "invalid or incomplete npm audit response",
+    ]
+
+
+def test_npm_audit_policy_reports_invalid_severe_entries_and_summary() -> None:
+    report = _report()
+    report["metadata"]["vulnerabilities"] = {"high": "3", "critical": 0}
+    report["vulnerabilities"][42] = "broken"
+
+    errors = audit_policy_errors(report, _PACKAGE_JSON, _PACKAGE_LOCK)
+
+    assert "invalid npm audit vulnerability: 42='broken'" in errors
+    assert any("npm audit severe count mismatch" in error for error in errors)
+
+
+def test_npm_audit_policy_preserves_direct_advisory_validation_errors() -> None:
+    report = _report()
+    image_size = report["vulnerabilities"]["image-size"]
+    image_size["nodes"] = ["node_modules/unexpected"]
+    image_size["fixAvailable"] = {"name": "image-size"}
+    image_size["via"][0]["dependency"] = "unexpected"
+
+    errors = audit_policy_errors(report, _PACKAGE_JSON, _PACKAGE_LOCK)
+
+    assert any("unexpected npm audit nodes for image-size" in error for error in errors)
+    assert any("image-size unexpectedly has a fix" in error for error in errors)
+    assert any("unexpected image-size advisory" in error for error in errors)
+    assert any("unexpected allowed image-size advisories" in error for error in errors)

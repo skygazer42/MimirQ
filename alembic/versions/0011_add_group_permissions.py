@@ -29,8 +29,14 @@ UPGRADE_SQL = [
     "\t\tREFERENCES tenant_groups (tenant_id, id) ON DELETE CASCADE\n"
     ");",
     "CREATE INDEX IF NOT EXISTS ix_dataset_group_permissions_tenant_id ON dataset_group_permissions (tenant_id);",
-    "CREATE INDEX IF NOT EXISTS ix_dataset_group_permissions_tenant_dataset ON dataset_group_permissions (tenant_id, dataset_id);",
-    "CREATE INDEX IF NOT EXISTS ix_dataset_group_permissions_tenant_group ON dataset_group_permissions (tenant_id, group_id);",
+    (
+        "CREATE INDEX IF NOT EXISTS ix_dataset_group_permissions_tenant_dataset "
+        "ON dataset_group_permissions (tenant_id, dataset_id);"
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS ix_dataset_group_permissions_tenant_group "
+        "ON dataset_group_permissions (tenant_id, group_id);"
+    ),
     # Document group allowlist.
     "CREATE TABLE IF NOT EXISTS document_group_permissions (\n"
     "\tid UUID NOT NULL,\n"
@@ -46,8 +52,14 @@ UPGRADE_SQL = [
     "\t\tREFERENCES tenant_groups (tenant_id, id) ON DELETE CASCADE\n"
     ");",
     "CREATE INDEX IF NOT EXISTS ix_document_group_permissions_tenant_id ON document_group_permissions (tenant_id);",
-    "CREATE INDEX IF NOT EXISTS ix_document_group_permissions_tenant_document ON document_group_permissions (tenant_id, document_id);",
-    "CREATE INDEX IF NOT EXISTS ix_document_group_permissions_tenant_group ON document_group_permissions (tenant_id, group_id);",
+    (
+        "CREATE INDEX IF NOT EXISTS ix_document_group_permissions_tenant_document "
+        "ON document_group_permissions (tenant_id, document_id);"
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS ix_document_group_permissions_tenant_group "
+        "ON document_group_permissions (tenant_id, group_id);"
+    ),
 ]
 
 

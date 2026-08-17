@@ -32,7 +32,7 @@ def test_index_drift_items_migration_applies_table_and_indexes(monkeypatch) -> N
     monkeypatch.setattr(
         migration.op,
         "create_table",
-        lambda name, *cols, **kwargs: operations.append(("create_table", name, [c for c in cols])),
+        lambda name, *cols, **kwargs: operations.append(("create_table", name, list(cols))),
         raising=False,
     )
     monkeypatch.setattr(

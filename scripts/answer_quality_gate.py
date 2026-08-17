@@ -31,12 +31,36 @@ def extract_summary(payload: Any) -> dict[str, Any]:
     return dict(payload)
 
 
+def _validate_threshold_schema(obj: dict[str, Any]) -> None:
+    schema = str(obj.get("schema") or "").strip()
+    if schema not in {"", _THRESHOLDS_SCHEMA_V1}:
+        raise ValueError(f"invalid_threshold_schema: expected {_THRESHOLDS_SCHEMA_V1}, got {schema}")
+
+
+def _coerce_rule_bound(row: dict[str, Any], cfg_raw: dict[str, Any], key: str) -> None:
+    if key not in cfg_raw:
+        return
+    try:
+        row[key] = float(cfg_raw.get(key))
+    except Exception:
+        return
+
+
+def _normalize_threshold_rule(cfg_raw: Any) -> dict[str, Any] | None:
+    if isinstance(cfg_raw, (int, float)) and not isinstance(cfg_raw, bool):
+        return {"min": float(cfg_raw), "required": True}
+    if not isinstance(cfg_raw, dict):
+        return None
+    row: dict[str, Any] = {}
+    _coerce_rule_bound(row, cfg_raw, "min")
+    _coerce_rule_bound(row, cfg_raw, "max")
+    row["required"] = bool(cfg_raw.get("required", True))
+    return row if row else None
+
+
 def normalize_thresholds(payload: Any) -> dict[str, dict[str, Any]]:
     obj = payload if isinstance(payload, dict) else {}
-    if str(obj.get("schema") or "").strip() not in {"", _THRESHOLDS_SCHEMA_V1}:
-        raise ValueError(
-            f"invalid_threshold_schema: expected {_THRESHOLDS_SCHEMA_V1}, got {str(obj.get('schema') or '').strip()}"
-        )
+    _validate_threshold_schema(obj)
     raw = obj.get("metrics")
     raw = raw if isinstance(raw, dict) else obj
     out: dict[str, dict[str, Any]] = {}
@@ -44,25 +68,10 @@ def normalize_thresholds(payload: Any) -> dict[str, dict[str, Any]]:
         key = str(metric or "").strip()
         if not key:
             continue
-        if isinstance(cfg_raw, (int, float)) and not isinstance(cfg_raw, bool):
-            out[key] = {"min": float(cfg_raw), "required": True}
+        row = _normalize_threshold_rule(cfg_raw)
+        if row is None:
             continue
-        if not isinstance(cfg_raw, dict):
-            continue
-        row: dict[str, Any] = {}
-        if "min" in cfg_raw:
-            try:
-                row["min"] = float(cfg_raw.get("min"))
-            except Exception:
-                pass
-        if "max" in cfg_raw:
-            try:
-                row["max"] = float(cfg_raw.get("max"))
-            except Exception:
-                pass
-        row["required"] = bool(cfg_raw.get("required", True))
-        if row:
-            out[key] = row
+        out[key] = row
     return out
 
 

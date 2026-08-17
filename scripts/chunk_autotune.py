@@ -13,7 +13,6 @@ This script is intentionally deterministic and CI-friendly:
 - no interactive prompts
 """
 
-
 import argparse
 import itertools
 import json
@@ -175,6 +174,57 @@ def _extract_metrics(body: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _score_token_p50(metrics: dict[str, Any], targets: dict[str, int]) -> tuple[int, list[str]]:
+    p50 = int(metrics.get("token_p50") or 0)
+    p50_min = int(targets["token_p50_min"])
+    p50_max = int(targets["token_p50_max"])
+    if p50 <= 0:
+        return 5000, ["token_p50_missing"]
+    if p50 < p50_min:
+        return (p50_min - p50) * 2, ["token_p50_too_small"]
+    if p50 > p50_max:
+        return (p50 - p50_max) * 2, ["token_p50_too_large"]
+    return 0, []
+
+
+def _score_high_pct(
+    value: int,
+    *,
+    warn_threshold: int,
+    fail_threshold: int,
+    warn_multiplier: int,
+    fail_penalty: int,
+    warn_reason: str,
+    fail_reason: str,
+) -> tuple[int, list[str]]:
+    if value >= fail_threshold:
+        return fail_penalty, [fail_reason]
+    if value >= warn_threshold:
+        return (value - warn_threshold) * warn_multiplier, [warn_reason]
+    return 0, []
+
+
+def _score_coverage(metrics: dict[str, Any], targets: dict[str, int]) -> tuple[int, list[str]]:
+    cov_pct = int(metrics.get("coverage_pct") or 0)
+    if cov_pct <= 0:
+        return 0, []
+
+    fail_threshold = int(targets["coverage_p50_fail"])
+    warn_threshold = int(targets["coverage_p50_warn"])
+    if cov_pct < fail_threshold:
+        return 2000, ["coverage_fail"]
+    if cov_pct < warn_threshold:
+        return (warn_threshold - cov_pct) * 20, ["coverage_warn"]
+    return 0, []
+
+
+def _score_chunk_count(metrics: dict[str, Any]) -> tuple[int, list[str]]:
+    chunks = int(metrics.get("total_chunks") or 0)
+    if chunks > 10_000:
+        return 250, ["too_many_chunks"]
+    return 0, []
+
+
 def _score(metrics: dict[str, Any], targets: dict[str, int]) -> tuple[int, list[str]]:
     """
     Lower score is better.
@@ -183,59 +233,41 @@ def _score(metrics: dict[str, Any], targets: dict[str, int]) -> tuple[int, list[
     """
     reasons: list[str] = []
     score = 0
-
-    p50 = int(metrics.get("token_p50") or 0)
-    p50_min = int(targets["token_p50_min"])
-    p50_max = int(targets["token_p50_max"])
-    if p50 <= 0:
-        score += 5000
-        reasons.append("token_p50_missing")
-    elif p50 < p50_min:
-        score += (p50_min - p50) * 2
-        reasons.append("token_p50_too_small")
-    elif p50 > p50_max:
-        score += (p50 - p50_max) * 2
-        reasons.append("token_p50_too_large")
-
-    short_pct = int(metrics.get("short_pct") or 0)
-    if short_pct >= int(targets["short_pct_fail"]):
-        score += 3000
-        reasons.append("short_pct_fail")
-    elif short_pct >= int(targets["short_pct_warn"]):
-        score += (short_pct - int(targets["short_pct_warn"])) * 10
-        reasons.append("short_pct_warn")
-
-    long_pct = int(metrics.get("long_pct") or 0)
-    if long_pct >= int(targets["long_pct_fail"]):
-        score += 3000
-        reasons.append("long_pct_fail")
-    elif long_pct >= int(targets["long_pct_warn"]):
-        score += (long_pct - int(targets["long_pct_warn"])) * 10
-        reasons.append("long_pct_warn")
-
-    waste_pct = int(metrics.get("overlap_waste_pct") or 0)
-    if waste_pct >= int(targets["overlap_waste_p50_fail"]):
-        score += 2000
-        reasons.append("overlap_waste_fail")
-    elif waste_pct >= int(targets["overlap_waste_p50_warn"]):
-        score += (waste_pct - int(targets["overlap_waste_p50_warn"])) * 5
-        reasons.append("overlap_waste_warn")
-
-    cov_pct = int(metrics.get("coverage_pct") or 0)
-    if cov_pct > 0:
-        if cov_pct < int(targets["coverage_p50_fail"]):
-            score += 2000
-            reasons.append("coverage_fail")
-        elif cov_pct < int(targets["coverage_p50_warn"]):
-            score += (int(targets["coverage_p50_warn"]) - cov_pct) * 20
-            reasons.append("coverage_warn")
-
-    # Gentle cost bias: prefer fewer chunks, all else equal.
-    chunks = int(metrics.get("total_chunks") or 0)
-    if chunks > 10_000:
-        score += 250
-        reasons.append("too_many_chunks")
-
+    scoring_steps = (
+        _score_token_p50(metrics, targets),
+        _score_high_pct(
+            int(metrics.get("short_pct") or 0),
+            warn_threshold=int(targets["short_pct_warn"]),
+            fail_threshold=int(targets["short_pct_fail"]),
+            warn_multiplier=10,
+            fail_penalty=3000,
+            warn_reason="short_pct_warn",
+            fail_reason="short_pct_fail",
+        ),
+        _score_high_pct(
+            int(metrics.get("long_pct") or 0),
+            warn_threshold=int(targets["long_pct_warn"]),
+            fail_threshold=int(targets["long_pct_fail"]),
+            warn_multiplier=10,
+            fail_penalty=3000,
+            warn_reason="long_pct_warn",
+            fail_reason="long_pct_fail",
+        ),
+        _score_high_pct(
+            int(metrics.get("overlap_waste_pct") or 0),
+            warn_threshold=int(targets["overlap_waste_p50_warn"]),
+            fail_threshold=int(targets["overlap_waste_p50_fail"]),
+            warn_multiplier=5,
+            fail_penalty=2000,
+            warn_reason="overlap_waste_warn",
+            fail_reason="overlap_waste_fail",
+        ),
+        _score_coverage(metrics, targets),
+        _score_chunk_count(metrics),
+    )
+    for delta, step_reasons in scoring_steps:
+        score += delta
+        reasons.extend(step_reasons)
     return int(score), reasons
 
 
@@ -281,24 +313,316 @@ def _candidate_grid(
     return uniq
 
 
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Auto-tune chunking params to match per-dataset chunk target spec (v2)."
+    )
+    parser.add_argument(
+        "--base-url",
+        type=str,
+        default="http://localhost:8000",
+        help="API base URL (default: %(default)s)",
+    )
+    parser.add_argument("--tenant-id", type=str, default="", help="X-Tenant-ID header value (optional)")
+    parser.add_argument("--user-id", type=str, default="", help="X-User-ID header value (optional)")
+    parser.add_argument("--bearer", type=str, default="", help="Authorization Bearer token (optional)")
+    parser.add_argument(
+        "--dataset-id",
+        type=str,
+        default="",
+        help="Dataset UUID (optional; used to fetch chunk_targets_v2)",
+    )
+    parser.add_argument(
+        "--file",
+        type=str,
+        required=True,
+        help="Path to a local file to upload once (warms parse cache)",
+    )
+    parser.add_argument(
+        "--parser-backend",
+        type=str,
+        default="auto",
+        help="parser_backend form field (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--strategies",
+        type=str,
+        default="markdown_aware,markdown_header,outline,langchain_recursive,semantic_sentence",
+        help="Comma-separated chunk_strategy candidates",
+    )
+    parser.add_argument(
+        "--chunk-sizes",
+        type=str,
+        default="800,1000,1200,1600",
+        help="Comma-separated chunk_size candidates (chars for most strategies)",
+    )
+    parser.add_argument(
+        "--overlap-ratios",
+        type=str,
+        default="0.1,0.2,0.3",
+        help="Comma-separated overlap ratios (chunk_overlap = chunk_size * ratio)",
+    )
+    parser.add_argument(
+        "--out-dir",
+        type=str,
+        default="chunk_autotune_out",
+        help="Output directory (default: %(default)s)",
+    )
+    return parser
+
+
+def _resolve_targets(
+    client: httpx.Client,
+    *,
+    base_url: str,
+    dataset_id: str,
+) -> dict[str, int]:
+    targets = _default_targets()
+    if not dataset_id:
+        return targets
+
+    try:
+        response = client.get(f"{base_url}/api/v1/datasets/{dataset_id}")
+        if response.status_code == 200:
+            dataset_payload = response.json()
+            raw = dataset_payload.get("chunk_targets_v2")
+            return _merge_targets(targets, raw if isinstance(raw, dict) else None)
+        print(
+            f"[chunk_autotune] WARN: failed to fetch dataset: {response.status_code} {response.text[:200]}",
+            file=sys.stderr,
+        )
+    except Exception as exc:
+        print(
+            f"[chunk_autotune] WARN: failed to fetch dataset: {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
+    return targets
+
+
+def _upload_base_preview(
+    client: httpx.Client,
+    *,
+    base_url: str,
+    file_path: Path,
+    dataset_id: str,
+    parser_backend: str,
+) -> tuple[dict[str, Any], str, str, int, int]:
+    start = time.perf_counter()
+    files = {"file": (file_path.name, file_path.read_bytes(), "application/octet-stream")}
+    data: dict[str, Any] = {
+        "parser_backend": parser_backend,
+        "chunk_strategy": "langchain_recursive",
+    }
+    if dataset_id:
+        data["dataset_id"] = dataset_id
+
+    response = client.post(
+        f"{base_url}/api/v1/documents/chunk-preview?"
+        "chunk_size=1000&chunk_overlap=200&include_chunks=false&include_original_text=false",
+        data=data,
+        files=files,
+    )
+    _require(
+        response.status_code == 200,
+        f"chunk-preview upload failed: {response.status_code} {response.text[:200]}",
+    )
+    body = response.json()
+    sha = str(body.get("file_sha256") or "").strip().lower()
+    _require(len(sha) == 64, "chunk-preview did not return file_sha256")
+
+    file_type = (file_path.suffix or "").lstrip(".").lower() or "txt"
+    try:
+        file_size = int(file_path.stat().st_size)
+    except Exception:
+        file_size = 0
+
+    elapsed_ms = int((time.perf_counter() - start) * 1000)
+    return body, sha, file_type, file_size, elapsed_ms
+
+
+def _parse_int_values(raw: str) -> list[int]:
+    values: list[int] = []
+    for item in str(raw or "").split(","):
+        try:
+            values.append(int(float(item.strip())))
+        except Exception:
+            continue
+    return values
+
+
+def _parse_float_values(raw: str) -> list[float]:
+    values: list[float] = []
+    for item in str(raw or "").split(","):
+        try:
+            values.append(float(item.strip()))
+        except Exception:
+            continue
+    return values
+
+
+def _build_candidates(args: argparse.Namespace) -> list[dict[str, Any]]:
+    strategies = [s.strip() for s in str(args.strategies or "").split(",") if s.strip()]
+    chunk_sizes = _parse_int_values(str(args.chunk_sizes or ""))
+    overlap_ratios = _parse_float_values(str(args.overlap_ratios or ""))
+    _require(bool(strategies), "No strategies provided")
+    _require(bool(chunk_sizes), "No chunk sizes provided")
+    _require(bool(overlap_ratios), "No overlap ratios provided")
+
+    candidates = _candidate_grid(
+        strategies=strategies,
+        chunk_sizes=chunk_sizes,
+        overlap_ratios=overlap_ratios,
+    )
+    _require(bool(candidates), "No candidates generated")
+    return candidates
+
+
+def _build_candidate_row(
+    response: httpx.Response,
+    *,
+    candidate: dict[str, Any],
+    targets: dict[str, int],
+) -> dict[str, Any]:
+    if response.status_code != 200:
+        return {
+            "rank": None,
+            "candidate": candidate,
+            "score": 9_999_999,
+            "score_reasons": ["http_error"],
+            "metrics": {},
+            "http_status": int(response.status_code),
+            "http_error": (response.text or "")[:200],
+        }
+
+    body = response.json()
+    metrics = _extract_metrics(body if isinstance(body, dict) else {})
+    score, reasons = _score(metrics, targets)
+    return {
+        "rank": None,
+        "candidate": candidate,
+        "score": int(score),
+        "score_reasons": reasons,
+        "metrics": metrics,
+        "http_status": int(response.status_code),
+    }
+
+
+def _candidate_sort_key(row: dict[str, Any]) -> tuple[int, str]:
+    return int(row.get("score") or 9_999_999), str(row.get("candidate") or "")
+
+
+def _evaluate_candidates(
+    client: httpx.Client,
+    *,
+    base_url: str,
+    candidates: list[dict[str, Any]],
+    sha: str,
+    file_path: Path,
+    file_type: str,
+    file_size: int,
+    parser_backend: str,
+    dataset_id: str,
+    targets: dict[str, int],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for idx, candidate in enumerate(candidates, start=1):
+        query = (
+            "chunk_size="
+            + str(candidate["chunk_size"])
+            + "&chunk_overlap="
+            + str(candidate["chunk_overlap"])
+            + "&include_chunks=false&include_original_text=false"
+        )
+        form: dict[str, Any] = {
+            "file_sha256": sha,
+            "file_type": file_type,
+            "filename": file_path.name,
+            "file_size": file_size,
+            "parser_backend": parser_backend,
+            "chunk_strategy": str(candidate["chunk_strategy"]),
+        }
+        if dataset_id:
+            form["dataset_id"] = dataset_id
+
+        response = client.post(
+            f"{base_url}/api/v1/documents/chunk-preview/by-sha?{query}",
+            data=form,
+        )
+        rows.append(
+            _build_candidate_row(
+                response,
+                candidate=candidate,
+                targets=targets,
+            )
+        )
+
+        if idx % 10 == 0:
+            print(f"[chunk_autotune] progress {idx}/{len(candidates)}")
+
+    rows.sort(key=_candidate_sort_key)
+    for rank, row in enumerate(rows, start=1):
+        row["rank"] = rank
+    return rows
+
+
+def _build_preset_patch(best: dict[str, Any], targets: dict[str, int]) -> dict[str, Any]:
+    return {
+        "default_chunk_strategy": str(best.get("candidate", {}).get("chunk_strategy") or ""),
+        "pipeline": {
+            "chunk_size": int(best.get("candidate", {}).get("chunk_size") or 0),
+            "chunk_overlap": int(best.get("candidate", {}).get("chunk_overlap") or 0),
+        },
+        "chunk_targets_v2": targets,
+    }
+
+
+def _build_diff(
+    *,
+    base_body: dict[str, Any],
+    best: dict[str, Any],
+    targets: dict[str, int],
+) -> dict[str, Any]:
+    base_metrics = _extract_metrics(base_body if isinstance(base_body, dict) else {})
+    best_metrics = best.get("metrics") if isinstance(best.get("metrics"), dict) else {}
+    return {
+        "base": {
+            "candidate": {
+                "chunk_strategy": "langchain_recursive",
+                "chunk_size": 1000,
+                "chunk_overlap": 200,
+            },
+            "metrics": base_metrics,
+        },
+        "best": {
+            "candidate": best.get("candidate"),
+            "metrics": best_metrics,
+            "score": best.get("score"),
+            "score_reasons": best.get("score_reasons"),
+        },
+        "targets": targets,
+    }
+
+
+def _write_outputs(
+    *,
+    out_dir: Path,
+    targets: dict[str, int],
+    rows: list[dict[str, Any]],
+    best: dict[str, Any],
+    base_body: dict[str, Any],
+) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    _write_json(out_dir / "targets.json", targets)
+    _write_json(out_dir / "leaderboard.json", {"targets": targets, "rows": rows})
+    _write_json(out_dir / "preset_patch.json", _build_preset_patch(best, targets))
+    _write_json(
+        out_dir / "diff.json",
+        _build_diff(base_body=base_body, best=best, targets=targets),
+    )
+
+
 def main() -> None:
-    p = argparse.ArgumentParser(description="Auto-tune chunking params to match per-dataset chunk target spec (v2).")
-    p.add_argument("--base-url", type=str, default="http://localhost:8000", help="API base URL (default: %(default)s)")
-    p.add_argument("--tenant-id", type=str, default="", help="X-Tenant-ID header value (optional)")
-    p.add_argument("--user-id", type=str, default="", help="X-User-ID header value (optional)")
-    p.add_argument("--bearer", type=str, default="", help="Authorization Bearer token (optional)")
-
-    p.add_argument("--dataset-id", type=str, default="", help="Dataset UUID (optional; used to fetch chunk_targets_v2)")
-    p.add_argument("--file", type=str, required=True, help="Path to a local file to upload once (warms parse cache)")
-    p.add_argument("--parser-backend", type=str, default="auto", help="parser_backend form field (default: %(default)s)")
-
-    p.add_argument("--strategies", type=str, default="markdown_aware,markdown_header,outline,langchain_recursive,semantic_sentence", help="Comma-separated chunk_strategy candidates")
-    p.add_argument("--chunk-sizes", type=str, default="800,1000,1200,1600", help="Comma-separated chunk_size candidates (chars for most strategies)")
-    p.add_argument("--overlap-ratios", type=str, default="0.1,0.2,0.3", help="Comma-separated overlap ratios (chunk_overlap = chunk_size * ratio)")
-
-    p.add_argument("--out-dir", type=str, default="chunk_autotune_out", help="Output directory (default: %(default)s)")
-
-    args = p.parse_args()
+    args = _build_parser().parse_args()
     base_url = str(args.base_url or "").rstrip("/")
     _require(bool(base_url), "--base-url is required")
 
@@ -308,153 +632,39 @@ def main() -> None:
     dataset_id = str(args.dataset_id or "").strip()
     out_dir = Path(str(args.out_dir or "chunk_autotune_out"))
 
-    # Resolve per-dataset chunk targets (best-effort).
-    targets = _default_targets()
-
     with httpx.Client(timeout=60.0, headers=_headers(args)) as client:
-        dataset_payload: dict[str, Any] | None = None
-        if dataset_id:
-            try:
-                r = client.get(f"{base_url}/api/v1/datasets/{dataset_id}")
-                if r.status_code == 200:
-                    dataset_payload = r.json()
-                    raw = dataset_payload.get("chunk_targets_v2")
-                    targets = _merge_targets(targets, raw if isinstance(raw, dict) else None)
-                else:
-                    print(f"[chunk_autotune] WARN: failed to fetch dataset: {r.status_code} {r.text[:200]}", file=sys.stderr)
-            except Exception as exc:
-                print(f"[chunk_autotune] WARN: failed to fetch dataset: {type(exc).__name__}: {exc}", file=sys.stderr)
-
-        # Warm parse cache + get SHA by uploading once (include_chunks=false for smaller payload).
-        t0 = time.perf_counter()
-        files = {"file": (file_path.name, file_path.read_bytes(), "application/octet-stream")}
-        data: dict[str, Any] = {"parser_backend": str(args.parser_backend), "chunk_strategy": "langchain_recursive"}
-        if dataset_id:
-            data["dataset_id"] = dataset_id
-
-        base_preview = client.post(
-            f"{base_url}/api/v1/documents/chunk-preview?chunk_size=1000&chunk_overlap=200&include_chunks=false&include_original_text=false",
-            data=data,
-            files=files,
+        targets = _resolve_targets(client, base_url=base_url, dataset_id=dataset_id)
+        base_body, sha, file_type, file_size, elapsed_ms = _upload_base_preview(
+            client,
+            base_url=base_url,
+            file_path=file_path,
+            dataset_id=dataset_id,
+            parser_backend=str(args.parser_backend),
         )
-        _require(base_preview.status_code == 200, f"chunk-preview upload failed: {base_preview.status_code} {base_preview.text[:200]}")
-        base_body = base_preview.json()
-        sha = str(base_body.get("file_sha256") or "").strip().lower()
-        _require(len(sha) == 64, "chunk-preview did not return file_sha256")
+        print(f"[chunk_autotune] upload ok sha={sha[:10]}… elapsed_ms={elapsed_ms}")
 
-        file_type = (file_path.suffix or "").lstrip(".").lower() or "txt"
-        try:
-            file_size = int(file_path.stat().st_size)
-        except Exception:
-            file_size = 0
-
-        print(f"[chunk_autotune] upload ok sha={sha[:10]}… elapsed_ms={int((time.perf_counter()-t0)*1000)}")
-
-        # Candidate grid.
-        strategies = [s.strip() for s in str(args.strategies or "").split(",") if s.strip()]
-        chunk_sizes: list[int] = []
-        for s in str(args.chunk_sizes or "").split(","):
-            try:
-                chunk_sizes.append(int(float(s.strip())))
-            except Exception:
-                continue
-        overlap_ratios: list[float] = []
-        for r in str(args.overlap_ratios or "").split(","):
-            try:
-                overlap_ratios.append(float(r.strip()))
-            except Exception:
-                continue
-        _require(bool(strategies), "No strategies provided")
-        _require(bool(chunk_sizes), "No chunk sizes provided")
-        _require(bool(overlap_ratios), "No overlap ratios provided")
-
-        candidates = _candidate_grid(strategies=strategies, chunk_sizes=chunk_sizes, overlap_ratios=overlap_ratios)
-        _require(bool(candidates), "No candidates generated")
-
-        rows: list[dict[str, Any]] = []
-        for idx, cand in enumerate(candidates, start=1):
-            qs = (
-                "chunk_size="
-                + str(cand["chunk_size"])
-                + "&chunk_overlap="
-                + str(cand["chunk_overlap"])
-                + "&include_chunks=false&include_original_text=false"
-            )
-            form = {
-                "file_sha256": sha,
-                "file_type": file_type,
-                "filename": file_path.name,
-                "file_size": file_size,
-                "parser_backend": str(args.parser_backend),
-                "chunk_strategy": str(cand["chunk_strategy"]),
-            }
-            if dataset_id:
-                form["dataset_id"] = dataset_id
-
-            r = client.post(f"{base_url}/api/v1/documents/chunk-preview/by-sha?{qs}", data=form)
-            if r.status_code != 200:
-                rows.append(
-                    {
-                        "rank": None,
-                        "candidate": cand,
-                        "score": 9_999_999,
-                        "score_reasons": ["http_error"],
-                        "metrics": {},
-                        "http_status": int(r.status_code),
-                        "http_error": (r.text or "")[:200],
-                    }
-                )
-                continue
-
-            body = r.json()
-            metrics = _extract_metrics(body if isinstance(body, dict) else {})
-            score, reasons = _score(metrics, targets)
-            rows.append(
-                {
-                    "rank": None,
-                    "candidate": cand,
-                    "score": int(score),
-                    "score_reasons": reasons,
-                    "metrics": metrics,
-                    "http_status": int(r.status_code),
-                }
-            )
-
-            if idx % 10 == 0:
-                print(f"[chunk_autotune] progress {idx}/{len(candidates)}")
-
-        rows.sort(key=lambda x: (int(x.get("score") or 9_999_999), str(x.get("candidate") or "")))
-        for i, row in enumerate(rows, start=1):
-            row["rank"] = i
-
+        candidates = _build_candidates(args)
+        rows = _evaluate_candidates(
+            client,
+            base_url=base_url,
+            candidates=candidates,
+            sha=sha,
+            file_path=file_path,
+            file_type=file_type,
+            file_size=file_size,
+            parser_backend=str(args.parser_backend),
+            dataset_id=dataset_id,
+            targets=targets,
+        )
         best = rows[0] if rows else None
         _require(best is not None, "No candidates evaluated")
-
-        # Build a dataset patch payload (compatible with PATCH /api/v1/datasets/{id}).
-        preset_patch: dict[str, Any] = {
-            "default_chunk_strategy": str(best.get("candidate", {}).get("chunk_strategy") or ""),
-            "pipeline": {
-                "chunk_size": int(best.get("candidate", {}).get("chunk_size") or 0),
-                "chunk_overlap": int(best.get("candidate", {}).get("chunk_overlap") or 0),
-            },
-            "chunk_targets_v2": targets,
-        }
-
-        out_dir.mkdir(parents=True, exist_ok=True)
-        _write_json(out_dir / "targets.json", targets)
-        _write_json(out_dir / "leaderboard.json", {"targets": targets, "rows": rows})
-        _write_json(out_dir / "preset_patch.json", preset_patch)
-
-        # Base-vs-best diff (best-effort): treat the first upload preview as "base".
-        base_metrics = _extract_metrics(base_body if isinstance(base_body, dict) else {})
-        best_metrics = best.get("metrics") if isinstance(best.get("metrics"), dict) else {}
-        diff = {
-            "base": {"candidate": {"chunk_strategy": "langchain_recursive", "chunk_size": 1000, "chunk_overlap": 200}, "metrics": base_metrics},
-            "best": {"candidate": best.get("candidate"), "metrics": best_metrics, "score": best.get("score"), "score_reasons": best.get("score_reasons")},
-            "targets": targets,
-        }
-        _write_json(out_dir / "diff.json", diff)
-
+        _write_outputs(
+            out_dir=out_dir,
+            targets=targets,
+            rows=rows,
+            best=best,
+            base_body=base_body,
+        )
         print(f"[chunk_autotune] done. candidates={len(rows)} best_score={best.get('score')} out_dir={out_dir}")
 
 

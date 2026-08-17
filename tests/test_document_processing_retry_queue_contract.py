@@ -51,6 +51,112 @@ class _DB:
         self.rollbacks += 1
 
 
+class _ScopedCleanupQuery:
+    def __init__(
+        self,
+        db,
+        *,
+        model,
+        document_chunk_model,
+        parsed_content_model,
+        target_key: str,
+        target_chunk_ids: list[uuid.UUID],
+    ) -> None:  # noqa: ANN001
+        self._db = db
+        self._model = model
+        self._document_chunk_model = document_chunk_model
+        self._parsed_content_model = parsed_content_model
+        self._target_key = target_key
+        self._target_chunk_ids = target_chunk_ids
+
+    def filter(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
+        return self
+
+    def all(self) -> list[tuple]:
+        if (
+            getattr(self._model, "class_", None) is self._document_chunk_model
+            and getattr(self._model, "key", None) == "id"
+        ):
+            return [(chunk["id"],) for chunk in self._db.chunks if chunk["doc_pipeline_key"] == self._target_key]
+        return []
+
+    def delete(self, **_kwargs) -> int:  # noqa: ANN003
+        if self._model is self._parsed_content_model:
+            self._db.deleted_parsed_content += 1
+            return 1
+        if self._model is self._document_chunk_model:
+            doomed = [chunk for chunk in self._db.chunks if chunk["doc_pipeline_key"] == self._target_key]
+            self._db.deleted_chunk_ids.extend(chunk["id"] for chunk in doomed)
+            self._db.chunks = [chunk for chunk in self._db.chunks if chunk["doc_pipeline_key"] != self._target_key]
+            return len(doomed)
+        if self._model.__name__ == "KgRelation":
+            doomed = [chunk_id for chunk_id in self._db.relation_chunk_ids if chunk_id in self._target_chunk_ids]
+            self._db.deleted_relation_chunk_ids.extend(doomed)
+            self._db.relation_chunk_ids = [
+                chunk_id for chunk_id in self._db.relation_chunk_ids if chunk_id not in self._target_chunk_ids
+            ]
+            return len(doomed)
+        return 0
+
+
+class _ScopedCleanupDB:
+    def __init__(
+        self,
+        *,
+        document_chunk_model,
+        parsed_content_model,
+        target_key: str,
+        active_key: str,
+        target_chunk_ids: list[uuid.UUID],
+        active_chunk_id: uuid.UUID,
+    ) -> None:
+        self._document_chunk_model = document_chunk_model
+        self._parsed_content_model = parsed_content_model
+        self._target_key = target_key
+        self._target_chunk_ids = target_chunk_ids
+        self.chunks = [
+            {"id": target_chunk_ids[0], "doc_pipeline_key": target_key},
+            {"id": target_chunk_ids[1], "doc_pipeline_key": target_key},
+            {"id": active_chunk_id, "doc_pipeline_key": active_key},
+        ]
+        self.relation_chunk_ids = [target_chunk_ids[0], target_chunk_ids[1], active_chunk_id]
+        self.deleted_parsed_content = 0
+        self.deleted_chunk_ids: list[uuid.UUID] = []
+        self.deleted_relation_chunk_ids: list[uuid.UUID] = []
+        self.commits = 0
+        self.rollbacks = 0
+
+    def query(self, model):  # noqa: ANN001, ANN201
+        return _ScopedCleanupQuery(
+            self,
+            model=model,
+            document_chunk_model=self._document_chunk_model,
+            parsed_content_model=self._parsed_content_model,
+            target_key=self._target_key,
+            target_chunk_ids=self._target_chunk_ids,
+        )
+
+    def commit(self) -> None:
+        self.commits += 1
+
+    def refresh(self, _obj) -> None:  # noqa: ANN001
+        return None
+
+    def rollback(self) -> None:
+        self.rollbacks += 1
+
+
+class _ScopedCleanupIndexer:
+    def __init__(self, index_calls: list[tuple[str, object]]) -> None:
+        self._index_calls = index_calls
+
+    def delete_chunk_indexes_for_doc_pipeline_key(self, **kwargs) -> None:  # noqa: ANN003
+        self._index_calls.append(("chunk", kwargs["doc_pipeline_key"]))
+
+    def delete_event_indexes_for_chunks(self, **kwargs) -> None:  # noqa: ANN003
+        self._index_calls.append(("event", tuple(kwargs["chunk_ids"])))
+
+
 @pytest.mark.asyncio
 async def test_retry_document_processing_fails_closed_when_queue_handoff_fails(
     monkeypatch: pytest.MonkeyPatch,
@@ -456,79 +562,15 @@ def test_document_worker_scoped_retry_cleanup_only_deletes_target_version(
         total_characters=34,
     )
     index_calls: list[tuple[str, object]] = []
-
-    class _ScopedQuery:
-        def __init__(self, db, model) -> None:  # noqa: ANN001
-            self._db = db
-            self._model = model
-
-        def filter(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
-            return self
-
-        def all(self) -> list[tuple]:
-            if (
-                getattr(self._model, "class_", None) is processor.DocumentChunk
-                and getattr(self._model, "key", None) == "id"
-            ):
-                return [(chunk["id"],) for chunk in self._db.chunks if chunk["doc_pipeline_key"] == target_key]
-            return []
-
-        def delete(self, **_kwargs) -> int:  # noqa: ANN003
-            if self._model is processor.DocumentParsedContent:
-                self._db.deleted_parsed_content += 1
-                return 1
-            if self._model is processor.DocumentChunk:
-                doomed = [chunk for chunk in self._db.chunks if chunk["doc_pipeline_key"] == target_key]
-                self._db.deleted_chunk_ids.extend(chunk["id"] for chunk in doomed)
-                self._db.chunks = [chunk for chunk in self._db.chunks if chunk["doc_pipeline_key"] != target_key]
-                return len(doomed)
-            if self._model.__name__ == "KgRelation":
-                doomed = [chunk_id for chunk_id in self._db.relation_chunk_ids if chunk_id in target_chunk_ids]
-                self._db.deleted_relation_chunk_ids.extend(doomed)
-                self._db.relation_chunk_ids = [
-                    chunk_id for chunk_id in self._db.relation_chunk_ids if chunk_id not in target_chunk_ids
-                ]
-                return len(doomed)
-            return 0
-
-    class _ScopedDB:
-        def __init__(self) -> None:
-            self.chunks = [
-                {"id": target_chunk_ids[0], "doc_pipeline_key": target_key},
-                {"id": target_chunk_ids[1], "doc_pipeline_key": target_key},
-                {"id": active_chunk_id, "doc_pipeline_key": active_key},
-            ]
-            self.relation_chunk_ids = [target_chunk_ids[0], target_chunk_ids[1], active_chunk_id]
-            self.deleted_parsed_content = 0
-            self.deleted_chunk_ids: list[uuid.UUID] = []
-            self.deleted_relation_chunk_ids: list[uuid.UUID] = []
-            self.commits = 0
-            self.rollbacks = 0
-
-        def query(self, model):  # noqa: ANN001, ANN201
-            return _ScopedQuery(self, model)
-
-        def commit(self) -> None:
-            self.commits += 1
-
-        def refresh(self, _obj) -> None:  # noqa: ANN001
-            return None
-
-        def rollback(self) -> None:
-            self.rollbacks += 1
-
-    class _Indexer:
-        def __init__(self, _db) -> None:  # noqa: ANN001
-            pass
-
-        def delete_chunk_indexes_for_doc_pipeline_key(self, **kwargs) -> None:  # noqa: ANN003
-            index_calls.append(("chunk", kwargs["doc_pipeline_key"]))
-
-        def delete_event_indexes_for_chunks(self, **kwargs) -> None:  # noqa: ANN003
-            index_calls.append(("event", tuple(kwargs["chunk_ids"])))
-
-    db = _ScopedDB()
-    monkeypatch.setattr(processor, "Indexer", _Indexer)
+    db = _ScopedCleanupDB(
+        document_chunk_model=processor.DocumentChunk,
+        parsed_content_model=processor.DocumentParsedContent,
+        target_key=target_key,
+        active_key=active_key,
+        target_chunk_ids=target_chunk_ids,
+        active_chunk_id=active_chunk_id,
+    )
+    monkeypatch.setattr(processor, "Indexer", lambda _db: _ScopedCleanupIndexer(index_calls))
 
     assert processor.DocumentProcessorService()._apply_pending_retry_cleanup(
         db,

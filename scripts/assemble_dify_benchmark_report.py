@@ -104,7 +104,9 @@ def collect_merged_runs(source_dirs: list[str]) -> dict[str, dict[str, Any]]:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Collect run_*.json files from multiple benchmark directories and rebuild a single comparison report."
+        description=(
+            "Collect run_*.json files from multiple benchmark directories and rebuild a single comparison report."
+        )
     )
     parser.add_argument("--cases", required=True, help="Path to the shared benchmark cases JSON")
     parser.add_argument("--out-dir", required=True, help="Destination directory for the assembled report")

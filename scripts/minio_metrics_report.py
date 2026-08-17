@@ -172,7 +172,8 @@ def _maybe_bucket_stats(*, enabled: bool, prefix: str, max_objects: int) -> None
 
     if not endpoint or not access_key or not secret_key or not bucket:
         print(
-            "[minio-metrics] bucket stats skipped: set MINIO_ENDPOINT/MINIO_ACCESS_KEY/MINIO_SECRET_KEY/MINIO_BUCKET_NAME"
+            "[minio-metrics] bucket stats skipped: set MINIO_ENDPOINT/"
+            "MINIO_ACCESS_KEY/MINIO_SECRET_KEY/MINIO_BUCKET_NAME"
         )
         return
 
@@ -195,7 +196,8 @@ def _maybe_bucket_stats(*, enabled: bool, prefix: str, max_objects: int) -> None
     truncated = bool(max_objects and count >= max_objects)
     trunc_note = " (truncated)" if truncated else ""
     print(
-        f"[minio-metrics] bucket stats{trunc_note}: prefix={prefix!r} objects={count} bytes={total_bytes} elapsed_ms={elapsed_ms}"
+        f"[minio-metrics] bucket stats{trunc_note}: prefix={prefix!r} "
+        f"objects={count} bytes={total_bytes} elapsed_ms={elapsed_ms}"
     )
 
 

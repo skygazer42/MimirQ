@@ -46,7 +46,8 @@ def _append_group_table(lines: list[str], *, title: str, groups: Any) -> None:
                 continue
             failed = ", ".join(row.get("failed_case_ids") or [])
             lines.append(
-                f"| {row.get('name') or ''} | {row.get('cases_total')} | {row.get('hit_at_k_mean')} | {row.get('mrr_mean')} | {failed} |"
+                f"| {row.get('name') or ''} | {row.get('cases_total')} | "
+                f"{row.get('hit_at_k_mean')} | {row.get('mrr_mean')} | {failed} |"
             )
     else:
         lines.append("- None")
@@ -123,7 +124,8 @@ def build_review_markdown(
             if not isinstance(item, dict):
                 continue
             lines.append(
-                f"- `{item.get('metric')}`: value=`{item.get('value')}` min=`{item.get('min')}` passed=`{item.get('passed')}`"
+                f"- `{item.get('metric')}`: value=`{item.get('value')}` "
+                f"min=`{item.get('min')}` passed=`{item.get('passed')}`"
             )
     else:
         lines.append("- None")

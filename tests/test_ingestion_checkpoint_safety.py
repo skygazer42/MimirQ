@@ -77,6 +77,78 @@ class _QuestionDB:
         return None
 
 
+class _IndexedCheckpointQuery:
+    def __init__(self, *, db_document, indexed_chunks, name: str) -> None:  # noqa: ANN001
+        self._db_document = db_document
+        self._indexed_chunks = indexed_chunks
+        self._name = name
+
+    def filter(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
+        return self
+
+    def first(self):  # noqa: ANN201
+        return self._db_document
+
+    def order_by(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
+        return self
+
+    def all(self):  # noqa: ANN201
+        if self._name == "DocumentChunk":
+            return list(self._indexed_chunks)
+        return self._db_document
+
+
+class _IndexedCheckpointDB:
+    def __init__(self, *, db_document, indexed_chunks) -> None:  # noqa: ANN001
+        self._db_document = db_document
+        self._indexed_chunks = indexed_chunks
+
+    def query(self, model):  # noqa: ANN001, ANN201
+        name = getattr(getattr(model, "class_", model), "__name__", "")
+        if name not in {"Document", "DocumentChunk"}:
+            raise AssertionError(name)
+        return _IndexedCheckpointQuery(
+            db_document=self._db_document,
+            indexed_chunks=self._indexed_chunks,
+            name=name,
+        )
+
+    def commit(self) -> None:
+        return None
+
+    def refresh(self, _obj) -> None:  # noqa: ANN001
+        return None
+
+
+def _build_indexed_checkpoint_document(*, document_id: uuid.UUID, tenant_id: uuid.UUID, target_key: str):
+    return type(
+        "_Doc",
+        (),
+        {
+            "id": document_id,
+            "tenant_id": tenant_id,
+            "dataset_id": None,
+            "filename": "resume.txt",
+            "file_type": "txt",
+            "status": "failed",
+            "doc_metadata": {
+                "pipeline_hash": "pipe-1",
+                "file_sha256": "sha-1",
+                "parser_backend": "basic",
+                "chunk_strategy": "langchain_recursive",
+                "ingest_checkpoint": {
+                    "version": "1",
+                    "stage": "indexed",
+                    "pipeline_hash": "pipe-1",
+                    "file_sha256": "sha-1",
+                    "doc_pipeline_key": target_key,
+                    "total_characters": 11,
+                },
+            },
+        },
+    )()
+
+
 def test_document_questions_generation_is_opt_in_and_writes_metadata() -> None:
     db = _QuestionDB()
     db_document = type(
@@ -259,66 +331,14 @@ async def test_process_document_resumes_from_indexed_checkpoint_without_reindex(
     target_key = f"{document_id}:pipe-1"
     file_path = tmp_path / "resume.txt"
     file_path.write_text("resume", encoding="utf-8")
-    db_document = type(
-        "_Doc",
-        (),
-        {
-            "id": document_id,
-            "tenant_id": tenant_id,
-            "dataset_id": None,
-            "filename": "resume.txt",
-            "file_type": "txt",
-            "status": "failed",
-            "doc_metadata": {
-                "pipeline_hash": "pipe-1",
-                "file_sha256": "sha-1",
-                "parser_backend": "basic",
-                "chunk_strategy": "langchain_recursive",
-                "ingest_checkpoint": {
-                    "version": "1",
-                    "stage": "indexed",
-                    "pipeline_hash": "pipe-1",
-                    "file_sha256": "sha-1",
-                    "doc_pipeline_key": target_key,
-                    "total_characters": 11,
-                },
-            },
-        },
-    )()
+    db_document = _build_indexed_checkpoint_document(
+        document_id=document_id,
+        tenant_id=tenant_id,
+        target_key=target_key,
+    )
     indexed_chunks = [
         type("_Chunk", (), {"id": uuid.uuid4(), "chunk_index": 0, "content": "hello world"})(),
     ]
-
-    class _Query:
-        def __init__(self, result):  # noqa: ANN001
-            self._result = result
-
-        def filter(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
-            return self
-
-        def first(self):  # noqa: ANN201
-            return self._result
-
-        def order_by(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
-            return self
-
-        def all(self):  # noqa: ANN201
-            return list(self._result)
-
-    class _DB:
-        def query(self, model):  # noqa: ANN001, ANN201
-            name = getattr(getattr(model, "class_", model), "__name__", "")
-            if name == "Document":
-                return _Query(db_document)
-            if name == "DocumentChunk":
-                return _Query(indexed_chunks)
-            raise AssertionError(name)
-
-        def commit(self) -> None:
-            return None
-
-        def refresh(self, _obj) -> None:  # noqa: ANN001
-            return None
 
     service = processor.DocumentProcessorService()
     status_updates: list[tuple[str, str]] = []
@@ -350,7 +370,7 @@ async def test_process_document_resumes_from_indexed_checkpoint_without_reindex(
         file_path=file_path,
         document_id=document_id,
         tenant_id=tenant_id,
-        db=_DB(),
+        db=_IndexedCheckpointDB(db_document=db_document, indexed_chunks=indexed_chunks),
     )
 
     assert result["reason"] == "indexed_checkpoint_resume"

@@ -130,7 +130,8 @@ def main(argv: list[str] | None = None) -> int:
         and (not bool(args.semantic_cache))
     ):
         print(
-            "No job selected. Use --audit-logs, --regression-runs, --knowledge-assets, --dataset-retention, and/or --semantic-cache.",
+            "No job selected. Use --audit-logs, --regression-runs, "
+            "--knowledge-assets, --dataset-retention, and/or --semantic-cache.",
             file=sys.stderr,
         )
         return 2

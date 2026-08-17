@@ -37,53 +37,60 @@ def traversal_files(base):
             yield fullname
 
 
+def _render_pdf_pages(fnm, zoomin=3):
+    pdf = None
+    try:
+        with sys.modules[LOCK_KEY_pdfplumber]:
+            pdf = pdfplumber.open(fnm)
+            return [page.to_image(resolution=72 * zoomin).annotated for page in pdf.pages]
+    finally:
+        if pdf is not None:
+            pdf.close()
+
+
+def _read_image(fnm, image_module, traceback_module):
+    try:
+        with open(fnm, "rb") as fp:
+            binary = fp.read()
+        return image_module.open(io.BytesIO(binary)).convert("RGB")
+    except Exception:
+        traceback_module.print_exc()
+        return None
+
+
+def _append_input(fnm, images, outputs, image_module, traceback_module):
+    if fnm.split(".")[-1].lower() == "pdf":
+        images = _render_pdf_pages(fnm)
+        outputs.extend(os.path.split(fnm)[-1] + f"_{index}.jpg" for index in range(len(images)))
+        return images
+
+    image = _read_image(fnm, image_module, traceback_module)
+    if image is not None:
+        images.append(image)
+        outputs.append(os.path.split(fnm)[-1])
+    return images
+
+
 def init_in_out(args):
-    import os
     import traceback
 
     from PIL import Image
+
     images = []
     outputs = []
 
     if not os.path.exists(args.output_dir):
         os.mkdir(args.output_dir)
 
-    def pdf_pages(fnm, zoomin=3):
-        nonlocal outputs, images
-        pdf = None
-        try:
-            with sys.modules[LOCK_KEY_pdfplumber]:
-                pdf = pdfplumber.open(fnm)
-                images = [p.to_image(resolution=72 * zoomin).annotated for i, p in
-                          enumerate(pdf.pages)]
-
-            for i, page in enumerate(images):
-                outputs.append(os.path.split(fnm)[-1] + f"_{i}.jpg")
-        finally:
-            if pdf is not None:
-                pdf.close()
-
-    def images_and_outputs(fnm):
-        nonlocal outputs, images
-        if fnm.split(".")[-1].lower() == "pdf":
-            pdf_pages(fnm)
-            return
-        try:
-            with open(fnm, 'rb') as fp:
-                binary = fp.read()
-            images.append(Image.open(io.BytesIO(binary)).convert('RGB'))
-            outputs.append(os.path.split(fnm)[-1])
-        except Exception:
-            traceback.print_exc()
-
     if os.path.isdir(args.inputs):
-        for fnm in traversal_files(args.inputs):
-            images_and_outputs(fnm)
+        input_files = traversal_files(args.inputs)
     else:
-        images_and_outputs(args.inputs)
+        input_files = (args.inputs,)
 
-    for i in range(len(outputs)):
-        outputs[i] = os.path.join(args.output_dir, outputs[i])
+    for fnm in input_files:
+        images = _append_input(fnm, images, outputs, Image, traceback)
+
+    outputs = [os.path.join(args.output_dir, output) for output in outputs]
 
     return images, outputs
 

@@ -341,7 +341,10 @@ def format_markdown(evidence: dict[str, Any]) -> str:
         "",
         "## Safety",
         "",
-        "This evidence file intentionally omits source directories, document ids, source filenames, case ids, raw questions, and chunk content.",
+        (
+            "This evidence file intentionally omits source directories, document ids, "
+            "source filenames, case ids, raw questions, and chunk content."
+        ),
     ]
     failed = evidence.get("failed_checks")
     if isinstance(failed, list) and failed:

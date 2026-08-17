@@ -211,7 +211,8 @@ def main() -> int:
             r.raise_for_status()
             imp = r.json() or {}
             print(
-                f"[kg_search_regression_gate] import: created={imp.get('created')} updated={imp.get('updated')} skipped={imp.get('skipped')}"
+                f"[kg_search_regression_gate] import: created={imp.get('created')} "
+                f"updated={imp.get('updated')} skipped={imp.get('skipped')}"
             )
             if imp.get("errors"):
                 print(f"[kg_search_regression_gate] import warnings: {len(imp.get('errors') or [])} errors")

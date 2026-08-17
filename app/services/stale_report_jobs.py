@@ -154,6 +154,150 @@ def _list_connector_document_rows(
     return out
 
 
+def _normalize_stale_report_limits(
+    *,
+    stale_after_days: int,
+    max_documents: int,
+) -> tuple[int, int]:
+    try:
+        days_i = max(1, int(stale_after_days or 0))
+    except Exception:
+        days_i = 30
+    try:
+        max_docs_i = max(1, int(max_documents or 0))
+    except Exception:
+        max_docs_i = 5000
+    return days_i, min(max_docs_i, 50_000)
+
+
+def _skip_summary(
+    *,
+    tenant_id: UUID,
+    report_date: str,
+    now: datetime,
+    stale_after_days: int,
+    max_documents: int,
+) -> dict[str, Any]:
+    return {
+        "tenant_id": str(tenant_id),
+        "report_date": report_date,
+        "ran_at": _dt_to_json(now),
+        "stale_after_days": int(stale_after_days),
+        "max_documents": int(max_documents),
+        "ok": True,
+        "skipped": True,
+        "skip_reason": "already_written",
+    }
+
+
+def _bucket_age_days(age_days: int) -> str:
+    if age_days < 7:
+        return "<7d"
+    if age_days < 30:
+        return "7-29d"
+    if age_days < 90:
+        return "30-89d"
+    if age_days < 180:
+        return "90-179d"
+    return ">=180d"
+
+
+def _effective_timestamp_and_reason(
+    *,
+    row: dict[str, Any],
+    now: datetime,
+) -> tuple[datetime, str]:
+    meta = row.get("doc_metadata") if isinstance(row.get("doc_metadata"), dict) else {}
+
+    eff_dt = _parse_datetime_best_effort(meta.get("source_last_modified_at"))
+    reason = "meta:source_last_modified_at"
+    if eff_dt is None:
+        eff_dt = _parse_datetime_best_effort(meta.get("source_fetched_at"))
+        reason = "meta:source_fetched_at"
+    if eff_dt is None:
+        eff_dt = row.get("processed_at") or row.get("updated_at") or row.get("created_at") or row.get("linked_at")
+        reason = "fallback:document_timestamps"
+
+    if isinstance(eff_dt, datetime):
+        if eff_dt.tzinfo is None:
+            eff_dt = eff_dt.replace(tzinfo=UTC)
+        return eff_dt.astimezone(UTC), reason
+    return now, "fallback:unknown"
+
+
+def _summarize_stale_rows(
+    *,
+    rows: list[dict[str, Any]],
+    tenant_id: UUID,
+    report_date: str,
+    now: datetime,
+    stale_after_days: int,
+    max_documents: int,
+    cutoff: datetime,
+) -> dict[str, Any]:
+    seen_doc_ids: set[str] = set()
+    scanned = 0
+    stale = 0
+    stale_sample_ids: list[str] = []
+    by_connector_scanned: Counter[str] = Counter()
+    by_connector_stale: Counter[str] = Counter()
+    by_dataset_stale: Counter[str] = Counter()
+    by_source_kind: Counter[str] = Counter()
+    by_reason: Counter[str] = Counter()
+    age_buckets: Counter[str] = Counter()
+
+    for row in rows:
+        doc_id_raw = row.get("document_id")
+        doc_id = str(doc_id_raw) if doc_id_raw is not None else ""
+        if not doc_id or doc_id in seen_doc_ids:
+            continue
+        seen_doc_ids.add(doc_id)
+
+        connector_id = str(row.get("connector_id") or "unknown").strip() or "unknown"
+        by_connector_scanned[connector_id] += 1
+        scanned += 1
+
+        meta = row.get("doc_metadata") if isinstance(row.get("doc_metadata"), dict) else {}
+        src_kind = str(meta.get("source_last_modified_source") or "").strip() or "unknown"
+        by_source_kind[src_kind] += 1
+
+        eff_dt, reason = _effective_timestamp_and_reason(row=row, now=now)
+        by_reason[reason] += 1
+
+        age_days = int(max(0, (now - eff_dt).total_seconds() // 86400))
+        age_buckets[_bucket_age_days(age_days)] += 1
+        if eff_dt > cutoff:
+            continue
+
+        stale += 1
+        by_connector_stale[connector_id] += 1
+
+        dataset_id = row.get("document_dataset_id") or row.get("run_dataset_id")
+        if dataset_id is not None:
+            by_dataset_stale[str(dataset_id)] += 1
+        if len(stale_sample_ids) < 20:
+            stale_sample_ids.append(doc_id)
+
+    return {
+        "tenant_id": str(tenant_id),
+        "report_date": report_date,
+        "ran_at": _dt_to_json(now),
+        "stale_after_days": int(stale_after_days),
+        "max_documents": int(max_documents),
+        "scanned": int(scanned),
+        "stale": int(stale),
+        "by_connector_scanned": _bounded_top_counts(by_connector_scanned, max_items=50),
+        "by_connector_stale": _bounded_top_counts(by_connector_stale, max_items=50),
+        "by_dataset_stale": _bounded_top_counts(by_dataset_stale, max_items=50),
+        "by_source_kind": _bounded_top_counts(by_source_kind, max_items=20),
+        "by_reason": _bounded_top_counts(by_reason, max_items=20),
+        "age_buckets": dict(age_buckets),
+        "stale_sample_document_ids": list(stale_sample_ids),
+        "ok": True,
+        "skipped": False,
+    }
+
+
 def run_daily_stale_report(
     db: Session,
     *,
@@ -176,16 +320,10 @@ def run_daily_stale_report(
     - If effective timestamp is older than (now - stale_after_days), classify as stale.
     """
     now0 = now or datetime.now(UTC)
-    try:
-        days_i = max(1, int(stale_after_days or 0))
-    except Exception:
-        days_i = 30
-    try:
-        max_docs_i = max(1, int(max_documents or 0))
-    except Exception:
-        max_docs_i = 5000
-    max_docs_i = min(max_docs_i, 50_000)
-
+    days_i, max_docs_i = _normalize_stale_report_limits(
+        stale_after_days=stale_after_days,
+        max_documents=max_documents,
+    )
     report_date = now0.date().isoformat()
     cutoff = now0 - timedelta(days=int(days_i))
 
@@ -196,111 +334,24 @@ def run_daily_stale_report(
             db, tenant_id=tenant_id, action="connectors.stale_report.daily", report_date=report_date
         )
     ):
-        return {
-            "tenant_id": str(tenant_id),
-            "report_date": report_date,
-            "ran_at": _dt_to_json(now0),
-            "stale_after_days": int(days_i),
-            "max_documents": int(max_docs_i),
-            "ok": True,
-            "skipped": True,
-            "skip_reason": "already_written",
-        }
+        return _skip_summary(
+            tenant_id=tenant_id,
+            report_date=report_date,
+            now=now0,
+            stale_after_days=days_i,
+            max_documents=max_docs_i,
+        )
 
     rows = _list_connector_document_rows(db, tenant_id=tenant_id, cutoff=cutoff, max_documents=max_docs_i)
-
-    # Deduplicate by document_id (best-effort) in case a document appears in multiple connector runs.
-    seen_doc_ids: set[str] = set()
-    scanned = 0
-    stale = 0
-
-    stale_sample_ids: list[str] = []
-    by_connector_scanned: Counter[str] = Counter()
-    by_connector_stale: Counter[str] = Counter()
-    by_dataset_stale: Counter[str] = Counter()
-    by_source_kind: Counter[str] = Counter()
-    by_reason: Counter[str] = Counter()
-    age_buckets: Counter[str] = Counter()
-
-    def _bucket_age_days(age_days: int) -> str:
-        if age_days < 7:
-            return "<7d"
-        if age_days < 30:
-            return "7-29d"
-        if age_days < 90:
-            return "30-89d"
-        if age_days < 180:
-            return "90-179d"
-        return ">=180d"
-
-    for row in rows:
-        doc_id_raw = row.get("document_id")
-        doc_id = str(doc_id_raw) if doc_id_raw is not None else ""
-        if not doc_id or doc_id in seen_doc_ids:
-            continue
-        seen_doc_ids.add(doc_id)
-
-        connector_id = str(row.get("connector_id") or "unknown").strip() or "unknown"
-        by_connector_scanned[connector_id] += 1
-        scanned += 1
-
-        meta = row.get("doc_metadata") if isinstance(row.get("doc_metadata"), dict) else {}
-        src_kind = str(meta.get("source_last_modified_source") or "").strip() or "unknown"
-        by_source_kind[src_kind] += 1
-
-        eff_dt = _parse_datetime_best_effort(meta.get("source_last_modified_at"))
-        reason = "meta:source_last_modified_at"
-        if eff_dt is None:
-            eff_dt = _parse_datetime_best_effort(meta.get("source_fetched_at"))
-            reason = "meta:source_fetched_at"
-        if eff_dt is None:
-            eff_dt = row.get("processed_at") or row.get("updated_at") or row.get("created_at") or row.get("linked_at")
-            reason = "fallback:document_timestamps"
-        if isinstance(eff_dt, datetime):
-            if eff_dt.tzinfo is None:
-                eff_dt = eff_dt.replace(tzinfo=UTC)
-            eff_dt = eff_dt.astimezone(UTC)
-        else:
-            # Should be rare; treat as now to avoid false stale inflation.
-            eff_dt = now0
-            reason = "fallback:unknown"
-        by_reason[reason] += 1
-
-        age_days = int(max(0, (now0 - eff_dt).total_seconds() // 86400))
-        age_buckets[_bucket_age_days(age_days)] += 1
-
-        is_stale = eff_dt <= cutoff
-        if not is_stale:
-            continue
-
-        stale += 1
-        by_connector_stale[connector_id] += 1
-
-        dataset_id = row.get("document_dataset_id") or row.get("run_dataset_id")
-        if dataset_id is not None:
-            by_dataset_stale[str(dataset_id)] += 1
-
-        if len(stale_sample_ids) < 20:
-            stale_sample_ids.append(doc_id)
-
-    summary = {
-        "tenant_id": str(tenant_id),
-        "report_date": report_date,
-        "ran_at": _dt_to_json(now0),
-        "stale_after_days": int(days_i),
-        "max_documents": int(max_docs_i),
-        "scanned": int(scanned),
-        "stale": int(stale),
-        "by_connector_scanned": _bounded_top_counts(by_connector_scanned, max_items=50),
-        "by_connector_stale": _bounded_top_counts(by_connector_stale, max_items=50),
-        "by_dataset_stale": _bounded_top_counts(by_dataset_stale, max_items=50),
-        "by_source_kind": _bounded_top_counts(by_source_kind, max_items=20),
-        "by_reason": _bounded_top_counts(by_reason, max_items=20),
-        "age_buckets": dict(age_buckets),
-        "stale_sample_document_ids": list(stale_sample_ids),
-        "ok": True,
-        "skipped": False,
-    }
+    summary = _summarize_stale_rows(
+        rows=rows,
+        tenant_id=tenant_id,
+        report_date=report_date,
+        now=now0,
+        stale_after_days=days_i,
+        max_documents=max_docs_i,
+        cutoff=cutoff,
+    )
 
     if not bool(execute):
         summary["dry_run"] = True

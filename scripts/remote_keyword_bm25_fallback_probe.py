@@ -111,7 +111,8 @@ def prepare_fixture_files(fixtures_dir: Path) -> dict[str, Path]:
     fixtures_dir.mkdir(parents=True, exist_ok=True)
     html_path = fixtures_dir / "kb-page.html"
     html_path.write_text(
-        "<!doctype html><html><body><p>Token HTML-CASCADE belongs only to the HTML page.</p><p>Owner: Hugo Cascade.</p></body></html>",
+        "<!doctype html><html><body><p>Token HTML-CASCADE belongs only to the "
+        "HTML page.</p><p>Owner: Hugo Cascade.</p></body></html>",
         encoding="utf-8",
     )
     csv_path = fixtures_dir / "kb-metrics.csv"

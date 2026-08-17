@@ -7,7 +7,6 @@ This is intended as an operator workflow helper:
   Evidence Pack → Regression bundle → API import → Regression gate
 """
 
-
 import argparse
 import json
 import sys
@@ -130,6 +129,78 @@ def _build_reference_sources_from_citations(pack: dict[str, Any]) -> list[dict[s
     return _normalize_reference_sources(refs)
 
 
+def _resolve_bundle_tags(tags: list[str] | None) -> list[str]:
+    return _coerce_tags(tags) if tags is not None else ["evidence_pack"]
+
+
+def _resolve_reference_sources(pack: dict[str, Any]) -> list[dict[str, Any]]:
+    refs = _normalize_reference_sources(list(_iter_dicts(pack.get("reference_sources"))))
+    if refs:
+        return refs
+    return _build_reference_sources_from_citations(pack)
+
+
+def _convert_one_pack(
+    obj: dict[str, Any],
+    *,
+    dataset_id: str | None,
+    question: str | None,
+    tags: list[str] | None,
+) -> tuple[str, dict[str, Any]]:
+    ds = str(dataset_id or obj.get("dataset_id") or "").strip()
+    if not ds:
+        raise ValueError("dataset_id is required")
+
+    query = str(question or obj.get("query") or "").strip()
+    if not query:
+        raise ValueError("query is required")
+
+    refs = _resolve_reference_sources(obj)
+    if not refs:
+        raise ValueError("reference_sources is empty (select at least one citation before exporting)")
+
+    item = {
+        "question": query,
+        "expected_answer": None,
+        "reference_sources": refs,
+        "tags": _resolve_bundle_tags(tags),
+    }
+    return ds, item
+
+
+def _bundle_from_list(
+    pack: list[Any],
+    *,
+    dataset_id: str | None,
+    question: str | None,
+    tags: list[str] | None,
+) -> dict[str, Any]:
+    if question:
+        raise ValueError("question override is not supported for list input")
+    packs = [item for item in pack if isinstance(item, dict)]
+    if not packs:
+        raise ValueError("evidence pack list is empty")
+
+    ds, item = _convert_one_pack(
+        packs[0],
+        dataset_id=dataset_id,
+        question=None,
+        tags=tags,
+    )
+    items = [item]
+    for obj in packs[1:]:
+        ds_i, item_i = _convert_one_pack(
+            obj,
+            dataset_id=dataset_id,
+            question=None,
+            tags=tags,
+        )
+        if ds_i != ds:
+            raise ValueError("mixed dataset_id in evidence pack list (use --dataset-id to override)")
+        items.append(item_i)
+    return {"schema": REGRESSION_CASE_BUNDLE_SCHEMA_V1, "dataset_id": ds, "items": items}
+
+
 def convert_evidence_pack_to_regression_bundle(
     pack: Any,
     *,
@@ -140,56 +211,23 @@ def convert_evidence_pack_to_regression_bundle(
     """
     Convert an Evidence Pack payload into `mimirq.regression_cases.v1`.
     """
-    def _convert_one_pack(obj: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-        ds = str(dataset_id or obj.get("dataset_id") or "").strip()
-        if not ds:
-            raise ValueError("dataset_id is required")
-
-        q = str(question or obj.get("query") or "").strip()
-        if not q:
-            raise ValueError("query is required")
-
-        # Prefer explicit reference_sources exported from the UI; fall back to building them from
-        # (selected_chunk_ids + citations).
-        refs = _normalize_reference_sources(list(_iter_dicts(obj.get("reference_sources"))))
-        if not refs:
-            refs = _build_reference_sources_from_citations(obj)
-
-        if not refs:
-            raise ValueError("reference_sources is empty (select at least one citation before exporting)")
-
-        bundle_tags = _coerce_tags(tags) if tags is not None else ["evidence_pack"]
-
-        item = {
-            "question": q,
-            "expected_answer": None,
-            "reference_sources": refs,
-            "tags": bundle_tags,
-        }
-        return ds, item
-
     if isinstance(pack, list):
-        if question:
-            raise ValueError("question override is not supported for list input")
-        packs = [p for p in pack if isinstance(p, dict)]
-        if not packs:
-            raise ValueError("evidence pack list is empty")
-
-        ds_first, first_item = _convert_one_pack(packs[0])
-        ds = ds_first
-        items = [first_item]
-        for obj in packs[1:]:
-            ds_i, item_i = _convert_one_pack(obj)
-            if ds_i != ds:
-                raise ValueError("mixed dataset_id in evidence pack list (use --dataset-id to override)")
-            items.append(item_i)
-
-        return {"schema": REGRESSION_CASE_BUNDLE_SCHEMA_V1, "dataset_id": ds, "items": items}
+        return _bundle_from_list(
+            pack,
+            dataset_id=dataset_id,
+            question=question,
+            tags=tags,
+        )
 
     if not isinstance(pack, dict):
         raise ValueError("evidence pack must be an object or list of objects")
 
-    ds, item = _convert_one_pack(pack)
+    ds, item = _convert_one_pack(
+        pack,
+        dataset_id=dataset_id,
+        question=question,
+        tags=tags,
+    )
     return {"schema": REGRESSION_CASE_BUNDLE_SCHEMA_V1, "dataset_id": ds, "items": [item]}
 
 

@@ -32,15 +32,10 @@ __all__ = [
     "TCADPParser",
 ]
 
+_MISSING = object()
 
-def __getattr__(name: str) -> Any:  # pragma: no cover
-    """
-    Lazy exports.
 
-    DeepDoc supports multiple formats, but some optional parsers pull in extra
-    dependencies. Import them on-demand so PDF parsing can work even if other
-    format dependencies are missing.
-    """
+def _integrated_parser_export(name: str) -> Any:
     if name == "PdfParser":
         from .pdf_parser import IntegratedPipelinePdfParser as PdfParser
 
@@ -65,6 +60,10 @@ def __getattr__(name: str) -> Any:  # pragma: no cover
         from .html_parser import IntegratedPipelineHtmlParser as HtmlParser
 
         return HtmlParser
+    return _MISSING
+
+
+def _additional_parser_export(name: str) -> Any:
     if name == "JsonParser":
         from .json_parser import IntegratedPipelineJsonParser as JsonParser
 
@@ -89,5 +88,21 @@ def __getattr__(name: str) -> Any:  # pragma: no cover
         from .tcadp_parser import TCADPParser
 
         return TCADPParser
+    return _MISSING
+
+
+def __getattr__(name: str) -> Any:  # pragma: no cover
+    """
+    Lazy exports.
+
+    DeepDoc supports multiple formats, but some optional parsers pull in extra
+    dependencies. Import them on-demand so PDF parsing can work even if other
+    format dependencies are missing.
+    """
+    export = _integrated_parser_export(name)
+    if export is _MISSING:
+        export = _additional_parser_export(name)
+    if export is not _MISSING:
+        return export
 
     raise AttributeError(f"module 'app.deepdoc.parser' has no attribute {name!r}")

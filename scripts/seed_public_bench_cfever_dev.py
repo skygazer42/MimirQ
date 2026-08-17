@@ -581,7 +581,10 @@ def main(argv: list[str] | None = None) -> int:
         "--hf-revision",
         type=str,
         default="",
-        help="Pin HuggingFace dataset revision/tag/commit for IKMLab-team/cfever (optional; recommended for reproducibility).",
+        help=(
+            "Pin HuggingFace dataset revision/tag/commit for IKMLab-team/cfever "
+            "(optional; recommended for reproducibility)."
+        ),
     )
 
     p.add_argument("--include-nei", action="store_true", help="Include NOT ENOUGH INFO cases in exported cases bundle")
@@ -719,7 +722,8 @@ def main(argv: list[str] | None = None) -> int:
     if integrity and not bool(integrity.get("ok")):
         sample = ", ".join((integrity.get("missing_sample") or [])[:5])
         print(
-            f"[cfever_seed] ERROR: reference integrity check failed: missing={integrity.get('missing')} (e.g. {sample})",
+            "[cfever_seed] ERROR: reference integrity check failed: "
+            f"missing={integrity.get('missing')} (e.g. {sample})",
             file=sys.stderr,
         )
         return 2

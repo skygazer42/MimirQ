@@ -11,6 +11,39 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
 
 
+class _DummyQuery:
+    def __init__(self, *, doc, model, document_model) -> None:  # noqa: ANN001
+        self._doc = doc
+        self._model = model
+        self._document_model = document_model
+
+    def filter(self, *_a, **_k):  # noqa: ANN001
+        return self
+
+    def first(self):  # noqa: ANN001
+        if self._model is self._document_model:
+            return self._doc
+        return None
+
+
+class _DummyDB:
+    def __init__(self, *, doc, document_model) -> None:  # noqa: ANN001
+        self._doc = doc
+        self._document_model = document_model
+
+    def query(self, model):  # noqa: ANN001
+        return _DummyQuery(doc=self._doc, model=model, document_model=self._document_model)
+
+    def commit(self):  # noqa: ANN001
+        return None
+
+    def refresh(self, _obj):  # noqa: ANN001
+        return None
+
+    def rollback(self):  # noqa: ANN001
+        return None
+
+
 def _build_client(monkeypatch, *, doc):  # noqa: ANN001
     import app.api.v1.document_lifecycle as lifecycle_module
     import app.api.v1.documents as documents_module
@@ -18,33 +51,8 @@ def _build_client(monkeypatch, *, doc):  # noqa: ANN001
 
     tenant_id = doc.tenant_id
 
-    class _DummyQuery:
-        def __init__(self, model):  # noqa: ANN001
-            self.model = model
-
-        def filter(self, *_a, **_k):  # noqa: ANN001
-            return self
-
-        def first(self):  # noqa: ANN001
-            if self.model is DBDocument:
-                return doc
-            return None
-
-    class _DummyDB:
-        def query(self, model):  # noqa: ANN001
-            return _DummyQuery(model)
-
-        def commit(self):  # noqa: ANN001
-            return None
-
-        def refresh(self, _obj):  # noqa: ANN001
-            return None
-
-        def rollback(self):  # noqa: ANN001
-            return None
-
     def _override_get_db():  # noqa: ANN202
-        yield _DummyDB()
+        yield _DummyDB(doc=doc, document_model=DBDocument)
 
     def _override_get_tenant_id() -> uuid.UUID:
         return tenant_id

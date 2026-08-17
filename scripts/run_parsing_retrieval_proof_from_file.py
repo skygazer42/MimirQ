@@ -134,7 +134,10 @@ def run_parsing_retrieval_proof_from_file(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Parse a real source file, build a retrieval fixture from the parser output, and immediately run the deterministic retrieval benchmark."
+        description=(
+            "Parse a real source file, build a retrieval fixture from the parser output, "
+            "and immediately run the deterministic retrieval benchmark."
+        )
     )
     parser.add_argument("--input-file", required=True, help="Source file to parse.")
     parser.add_argument("--queries-json", required=True, help="Path to query specs JSON.")

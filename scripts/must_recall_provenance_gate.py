@@ -125,14 +125,18 @@ def _compute_must_recall_pass_rate(run: dict[str, Any]) -> tuple[float | None, i
     for row in rows:
         metrics = _row_metrics(row)
         meta = _row_meta(row)
-        status = str(
-            _first_non_none(
-                row.get("must_recall_status"),
-                metrics.get("must_recall_status"),
-                meta.get("must_recall_status"),
-                "",
+        status = (
+            str(
+                _first_non_none(
+                    row.get("must_recall_status"),
+                    metrics.get("must_recall_status"),
+                    meta.get("must_recall_status"),
+                    "",
+                )
             )
-        ).strip().lower()
+            .strip()
+            .lower()
+        )
         passed_flag = _coerce_bool_flag(
             _first_non_none(
                 row.get("must_recall_passed"),
@@ -175,6 +179,57 @@ def _capsule_is_valid(
     return True
 
 
+def _row_provenance_flag(
+    row: dict[str, Any],
+    metrics: dict[str, Any],
+    meta: dict[str, Any],
+) -> bool | None:
+    return _coerce_bool_flag(
+        _first_non_none(
+            row.get("provenance_integrity_passed"),
+            metrics.get("provenance_integrity_passed"),
+            meta.get("provenance_integrity_passed"),
+        )
+    )
+
+
+def _row_evidence_capsule(
+    row: dict[str, Any],
+    metrics: dict[str, Any],
+    meta: dict[str, Any],
+) -> dict[str, Any] | None:
+    capsule = row.get("evidence_capsule")
+    if not isinstance(capsule, dict):
+        capsule = metrics.get("evidence_capsule")
+    if not isinstance(capsule, dict):
+        capsule = meta.get("evidence_capsule")
+    return capsule if isinstance(capsule, dict) else None
+
+
+def _row_has_valid_provenance(
+    row: dict[str, Any],
+    *,
+    strict_integrity: bool,
+    require_signature: bool,
+) -> bool:
+    metrics = _row_metrics(row)
+    meta = _row_meta(row)
+    passed_flag = _row_provenance_flag(row, metrics, meta)
+    if passed_flag is False:
+        return False
+
+    capsule = _row_evidence_capsule(row, metrics, meta)
+    if capsule is not None:
+        return _capsule_is_valid(
+            capsule,
+            strict_integrity=bool(strict_integrity),
+            require_signature=bool(require_signature),
+        )
+    if strict_integrity or require_signature:
+        return False
+    return bool(passed_flag)
+
+
 def _compute_provenance_integrity_rate(
     run: dict[str, Any],
     *,
@@ -195,33 +250,11 @@ def _compute_provenance_integrity_rate(
     total = len(rows)
     passed = 0
     for row in rows:
-        metrics = _row_metrics(row)
-        meta = _row_meta(row)
-        passed_flag = _coerce_bool_flag(
-            _first_non_none(
-                row.get("provenance_integrity_passed"),
-                metrics.get("provenance_integrity_passed"),
-                meta.get("provenance_integrity_passed"),
-            )
-        )
-        if passed_flag is False:
-            continue
-        capsule = row.get("evidence_capsule")
-        if not isinstance(capsule, dict):
-            capsule = metrics.get("evidence_capsule")
-        if not isinstance(capsule, dict):
-            capsule = meta.get("evidence_capsule")
-        if isinstance(capsule, dict):
-            if _capsule_is_valid(
-                capsule,
-                strict_integrity=bool(strict_integrity),
-                require_signature=bool(require_signature),
-            ):
-                passed += 1
-            continue
-        if strict_integrity or require_signature:
-            continue
-        if passed_flag:
+        if _row_has_valid_provenance(
+            row,
+            strict_integrity=bool(strict_integrity),
+            require_signature=bool(require_signature),
+        ):
             passed += 1
     return float(passed) / float(total), int(passed), int(total)
 

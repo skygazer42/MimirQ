@@ -11,7 +11,6 @@ tests, and offline jobs without requiring an LLM. A future LLM-backed path can
 layer on top of the same output schema.
 """
 
-
 import re
 from typing import Any
 
@@ -139,6 +138,138 @@ def _build_questions(
     return out
 
 
+def _frontmatter_data(frontmatter: object) -> dict[str, Any]:
+    data = getattr(frontmatter, "data", None)
+    return data if isinstance(data, dict) else {}
+
+
+def _resolve_title(meta: dict[str, Any], frontmatter: object, working: str) -> str | None:
+    title = _safe_text(meta.get("document_title"), max_len=200)
+    data = _frontmatter_data(frontmatter)
+    if not title:
+        title = _safe_text(data.get("title"), max_len=200)
+    if not title:
+        title = _safe_text(extract_markdown_title(working), max_len=200)
+    return title
+
+
+def _resolve_tags(meta: dict[str, Any], frontmatter: object) -> list[str]:
+    tags = _safe_str_list(meta.get("document_tags"), max_items=20, max_len=64)
+    if tags:
+        return tags
+    return _safe_str_list(_frontmatter_data(frontmatter).get("tags"), max_items=20, max_len=64)
+
+
+def _resolve_summary(meta: dict[str, Any], working: str, title: str | None, max_chars: int) -> str | None:
+    summary = _safe_text(meta.get("document_summary"), max_len=max_chars)
+    if summary:
+        return summary
+    return _summary_from_text(_strip_leading_title(working, title=title), max_chars=max_chars)
+
+
+def _resolve_language(meta: dict[str, Any], working: str) -> tuple[str | None, Any]:
+    language = _safe_text(meta.get("document_language"), max_len=20)
+    language_confidence = meta.get("document_language_confidence")
+    if language:
+        return language, language_confidence
+    try:
+        detected = detect_language(working, min_chars=20)
+        language = _safe_text(getattr(detected, "language", None), max_len=20)
+        language_confidence = round(float(getattr(detected, "confidence", 0.0) or 0.0), 3)
+    except Exception:
+        language = None
+        language_confidence = None
+    return language, language_confidence
+
+
+def _resolve_keywords(
+    meta: dict[str, Any],
+    working: str,
+    *,
+    provider: str,
+    top_k: int,
+    max_chars: int,
+) -> tuple[list[str], str | None]:
+    item_limit = max(1, int(top_k or 1))
+    keywords = _safe_str_list(meta.get("document_keywords"), max_items=item_limit, max_len=64)
+    provider_out = _safe_text(meta.get("document_keywords_provider"), max_len=50)
+    if keywords:
+        return keywords, provider_out
+    try:
+        snippet = working[: max(0, int(max_chars or 0))] if int(max_chars or 0) > 0 else working
+        keywords = _safe_str_list(
+            extract_keywords(
+                snippet,
+                provider=str(provider or "auto"),
+                top_k=item_limit,
+            ),
+            max_items=item_limit,
+            max_len=64,
+        )
+        if keywords:
+            provider_out = str(provider or "auto")[:50]
+    except Exception:
+        keywords = []
+    return keywords, provider_out
+
+
+def _resolve_questions(
+    meta: dict[str, Any],
+    *,
+    title: str | None,
+    summary: str | None,
+    keywords: list[str],
+    language: str | None,
+    count: int,
+    generate: bool,
+) -> list[str]:
+    item_limit = max(1, int(count or 1))
+    questions = _safe_str_list(meta.get("document_questions"), max_items=item_limit, max_len=200)
+    if questions or not bool(generate):
+        return questions
+    return _build_questions(
+        title=title,
+        summary=summary,
+        keywords=keywords,
+        language=language,
+        count=item_limit,
+    )
+
+
+def _build_enrichment_output(
+    *,
+    title: str | None,
+    tags: list[str],
+    summary: str | None,
+    keywords: list[str],
+    keywords_provider_out: str | None,
+    keywords_provider: str,
+    questions: list[str],
+    language: str | None,
+    language_confidence: Any,
+    frontmatter: object,
+) -> dict[str, Any]:
+    out: dict[str, Any] = {"metadata_enrichment_schema": _SCHEMA}
+    if title:
+        out["document_title"] = title
+    if tags:
+        out["document_tags"] = tags
+    if summary:
+        out["document_summary"] = summary
+    if keywords:
+        out["document_keywords"] = keywords
+        out["document_keywords_provider"] = keywords_provider_out or str(keywords_provider or "auto")[:50]
+    if questions:
+        out["document_questions"] = questions
+    if language:
+        out["document_language"] = language
+        if isinstance(language_confidence, (int, float)):
+            out["document_language_confidence"] = round(float(language_confidence), 3)
+    if frontmatter and isinstance(frontmatter.data, dict) and frontmatter.data:
+        out["document_frontmatter"] = dict(frontmatter.data)
+    return out
+
+
 def build_document_metadata_enrichment(
     text: str,
     *,
@@ -171,79 +302,39 @@ def build_document_metadata_enrichment(
     frontmatter = extract_markdown_frontmatter(raw, strip=True)
     working = str(frontmatter.stripped_text if frontmatter else raw).strip()
 
-    title = _safe_text(meta.get("document_title"), max_len=200)
-    if not title and isinstance(frontmatter, object) and isinstance(getattr(frontmatter, "data", None), dict):
-        title = _safe_text(frontmatter.data.get("title"), max_len=200)
-    if not title:
-        title = _safe_text(extract_markdown_title(working), max_len=200)
+    title = _resolve_title(meta, frontmatter, working)
+    tags = _resolve_tags(meta, frontmatter)
+    summary = _resolve_summary(meta, working, title, summary_max_chars)
+    language, language_confidence = _resolve_language(meta, working)
 
-    tags = _safe_str_list(meta.get("document_tags"), max_items=20, max_len=64)
-    if not tags and isinstance(frontmatter, object) and isinstance(getattr(frontmatter, "data", None), dict):
-        tags = _safe_str_list(frontmatter.data.get("tags"), max_items=20, max_len=64)
-
-    summary = _safe_text(meta.get("document_summary"), max_len=summary_max_chars)
-    if not summary:
-        summary = _summary_from_text(_strip_leading_title(working, title=title), max_chars=summary_max_chars)
-
-    language = _safe_text(meta.get("document_language"), max_len=20)
-    language_confidence = meta.get("document_language_confidence")
-    if not language:
-        try:
-            detected = detect_language(working, min_chars=20)
-            language = _safe_text(getattr(detected, "language", None), max_len=20)
-            language_confidence = round(float(getattr(detected, "confidence", 0.0) or 0.0), 3)
-        except Exception:
-            language = None
-            language_confidence = None
-
-    keywords = _safe_str_list(meta.get("document_keywords"), max_items=max(1, int(keyword_top_k or 1)), max_len=64)
-    keywords_provider_out = _safe_text(meta.get("document_keywords_provider"), max_len=50)
-    if not keywords:
-        try:
-            snippet = working[: max(0, int(keyword_max_chars or 0))] if int(keyword_max_chars or 0) > 0 else working
-            keywords = _safe_str_list(
-                extract_keywords(
-                    snippet,
-                    provider=str(keywords_provider or "auto"),
-                    top_k=max(1, int(keyword_top_k or 1)),
-                ),
-                max_items=max(1, int(keyword_top_k or 1)),
-                max_len=64,
-            )
-            if keywords:
-                keywords_provider_out = str(keywords_provider or "auto")[:50]
-        except Exception:
-            keywords = []
-
-    questions = _safe_str_list(meta.get("document_questions"), max_items=max(1, int(question_count or 1)), max_len=200)
-    if not questions and bool(generate_questions):
-        questions = _build_questions(
-            title=title,
-            summary=summary,
-            keywords=keywords,
-            language=language,
-            count=max(1, int(question_count or 1)),
-        )
-
-    out: dict[str, Any] = {"metadata_enrichment_schema": _SCHEMA}
-    if title:
-        out["document_title"] = title
-    if tags:
-        out["document_tags"] = tags
-    if summary:
-        out["document_summary"] = summary
-    if keywords:
-        out["document_keywords"] = keywords
-        out["document_keywords_provider"] = keywords_provider_out or str(keywords_provider or "auto")[:50]
-    if questions:
-        out["document_questions"] = questions
-    if language:
-        out["document_language"] = language
-        if isinstance(language_confidence, (int, float)):
-            out["document_language_confidence"] = round(float(language_confidence), 3)
-    if frontmatter and isinstance(frontmatter.data, dict) and frontmatter.data:
-        out["document_frontmatter"] = dict(frontmatter.data)
-    return out
+    keywords, keywords_provider_out = _resolve_keywords(
+        meta,
+        working,
+        provider=keywords_provider,
+        top_k=keyword_top_k,
+        max_chars=keyword_max_chars,
+    )
+    questions = _resolve_questions(
+        meta,
+        title=title,
+        summary=summary,
+        keywords=keywords,
+        language=language,
+        count=question_count,
+        generate=generate_questions,
+    )
+    return _build_enrichment_output(
+        title=title,
+        tags=tags,
+        summary=summary,
+        keywords=keywords,
+        keywords_provider_out=keywords_provider_out,
+        keywords_provider=keywords_provider,
+        questions=questions,
+        language=language,
+        language_confidence=language_confidence,
+        frontmatter=frontmatter,
+    )
 
 
 def build_rich_metadata_header(

@@ -70,6 +70,63 @@ def _load_report(*, concurrency: int, throughput_rps: float, overlap: bool) -> d
     }
 
 
+def _cleanup_failure_upload_response(request: httpx.Request) -> httpx.Response | None:
+    if request.url.path == "/api/v1/datasets/" and request.method == "POST":
+        tenant = request.headers.get("X-Tenant-ID", "")
+        return httpx.Response(201, json={"id": f"dataset-{tenant}"})
+    if request.url.path == "/api/v1/documents/upload" and request.method == "POST":
+        tenant = request.headers.get("X-Tenant-ID", "")
+        return httpx.Response(201, json={"id": "doc-a" if tenant == "tenant-a" else "doc-b"})
+    return None
+
+
+def _cleanup_failure_retrieve_response(request: httpx.Request) -> httpx.Response | None:
+    if request.url.path != "/api/v1/rag/retrieve" or request.method != "POST":
+        return None
+    payload = gate.json.loads(request.read().decode("utf-8"))
+    dataset_id = str(payload.get("dataset_id") or "")
+    query = str(payload.get("query") or "")
+    tenant = request.headers.get("X-Tenant-ID", "")
+    if tenant == "tenant-a" and dataset_id == "dataset-tenant-a":
+        return httpx.Response(
+            200,
+            json={"has_evidence": True, "citations": [{"document_id": "doc-a", "chunk_content": query}]},
+        )
+    if tenant == "tenant-b" and dataset_id == "dataset-tenant-b":
+        return httpx.Response(
+            200,
+            json={"has_evidence": True, "citations": [{"document_id": "doc-b", "chunk_content": query}]},
+        )
+    return httpx.Response(404, json={"detail": "Dataset not found"})
+
+
+def _cleanup_failure_handler(purge_calls: list[str], delete_calls: list[str]):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v1/health/ready":
+            return httpx.Response(200, json={"ok": True})
+        upload_response = _cleanup_failure_upload_response(request)
+        if upload_response is not None:
+            return upload_response
+        if request.url.path in {
+            "/api/v1/documents/doc-a/status",
+            "/api/v1/documents/doc-a-retry/status",
+            "/api/v1/documents/doc-b/status",
+        }:
+            return httpx.Response(200, json={"status": "completed"})
+        if request.url.path.endswith("/purge") and request.method == "POST":
+            purge_calls.append(request.url.path)
+            return httpx.Response(200, json={"deleted": 1})
+        if request.url.path.startswith("/api/v1/datasets/") and request.method == "DELETE":
+            delete_calls.append(request.url.path)
+            return httpx.Response(204)
+        retrieve_response = _cleanup_failure_retrieve_response(request)
+        if retrieve_response is not None:
+            return retrieve_response
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    return handler
+
+
 def test_live_core_release_gate_passes_for_header_auth_happy_path(monkeypatch) -> None:
     waited_document_ids: list[str] = []
 
@@ -560,47 +617,7 @@ def test_live_core_release_gate_cleans_up_created_datasets_after_failure(monkeyp
 
     purge_calls: list[str] = []
     delete_calls: list[str] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/api/v1/health/ready":
-            return httpx.Response(200, json={"ok": True})
-        if request.url.path == "/api/v1/datasets/" and request.method == "POST":
-            tenant = request.headers.get("X-Tenant-ID", "")
-            return httpx.Response(201, json={"id": f"dataset-{tenant}"})
-        if request.url.path == "/api/v1/documents/upload" and request.method == "POST":
-            tenant = request.headers.get("X-Tenant-ID", "")
-            return httpx.Response(201, json={"id": "doc-a" if tenant == "tenant-a" else "doc-b"})
-        if request.url.path in {
-            "/api/v1/documents/doc-a/status",
-            "/api/v1/documents/doc-a-retry/status",
-            "/api/v1/documents/doc-b/status",
-        }:
-            return httpx.Response(200, json={"status": "completed"})
-        if request.url.path.endswith("/purge") and request.method == "POST":
-            purge_calls.append(request.url.path)
-            return httpx.Response(200, json={"deleted": 1})
-        if request.url.path.startswith("/api/v1/datasets/") and request.method == "DELETE":
-            delete_calls.append(request.url.path)
-            return httpx.Response(204)
-        if request.url.path == "/api/v1/rag/retrieve" and request.method == "POST":
-            payload = gate.json.loads(request.read().decode("utf-8"))
-            dataset_id = str(payload.get("dataset_id") or "")
-            query = str(payload.get("query") or "")
-            tenant = request.headers.get("X-Tenant-ID", "")
-            if tenant == "tenant-a" and dataset_id == "dataset-tenant-a":
-                return httpx.Response(
-                    200,
-                    json={"has_evidence": True, "citations": [{"document_id": "doc-a", "chunk_content": query}]},
-                )
-            if tenant == "tenant-b" and dataset_id == "dataset-tenant-b":
-                return httpx.Response(
-                    200,
-                    json={"has_evidence": True, "citations": [{"document_id": "doc-b", "chunk_content": query}]},
-                )
-            return httpx.Response(404, json={"detail": "Dataset not found"})
-        raise AssertionError(f"unexpected request: {request.method} {request.url}")
-
-    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+    with httpx.Client(transport=httpx.MockTransport(_cleanup_failure_handler(purge_calls, delete_calls))) as client:
         report = gate.run_live_core_release_gate(_config(), client=client)
 
     assert report["passed"] is False

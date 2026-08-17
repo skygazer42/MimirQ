@@ -15,12 +15,12 @@ Notes:
 - By default it disables the built-in reranker so the collected candidates are pre-rerank.
 """
 
-
 import argparse
 import hashlib
 import json
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -293,7 +293,9 @@ def build_ltr_manifest(
         "cases_sha256": _safe_str(cases_sha256, max_len=64),
         "cases_schema": _safe_str(cases_schema, max_len=80),
         "pipeline_hashes": _safe_list_str(pipeline_hashes or [], max_items=20, max_len=64) or None,
-        "retrieval_config_hash": (_safe_str(retrieval_config.get("hash"), max_len=64) if isinstance(retrieval_config, dict) else None),
+        "retrieval_config_hash": (
+            _safe_str(retrieval_config.get("hash"), max_len=64) if isinstance(retrieval_config, dict) else None
+        ),
         "retrieval_config": (dict(retrieval_config) if isinstance(retrieval_config, dict) else None),
         "hard_negatives_sha256": _safe_str(hard_negatives_sha256, max_len=64),
     }
@@ -317,117 +319,202 @@ def build_ltr_manifest(
     return {k: v for k, v in manifest.items() if v is not None}
 
 
-def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description="Train an LTR reranker model from regression cases via Evidence API.")
-    p.add_argument("--cases", required=True, help="Path to regression cases JSON (bundle v1 or legacy array)")
-    p.add_argument("--out-model", required=True, help="Write model bytes to this path (xgboost JSON)")
-    p.add_argument("--out-manifest", default="", help="Optional: write model manifest JSON to this path (default: <out-model>.manifest.json)")
-    p.add_argument("--no-manifest", action="store_true", help="Do not write a manifest JSON file")
-    p.add_argument("--out-rows-jsonl", default="", help="Optional: write training rows as JSONL for inspection")
+@dataclass
+class CaseProcessingResult:
+    rows: list[dict[str, Any]]
+    group_size: int
+    used: bool
+    missed: bool
+    retrieval_config: dict[str, Any] | None
+    rows_hard_neg: int
 
-    p.add_argument("--base-url", default="http://localhost:8000/api/v1", help="API base URL (default: %(default)s)")
-    p.add_argument("--tenant-id", default="", help="Tenant id (X-Tenant-ID header)")
-    p.add_argument("--user-id", default="", help="User id (X-User-ID header, for AUTH_MODE=header)")
-    p.add_argument("--bearer", default="", help="Bearer token (Authorization: Bearer ...)")
-    p.add_argument("--timeout-sec", type=float, default=30.0, help="HTTP timeout seconds (default: %(default)s)")
 
-    p.add_argument("--top-k", type=int, default=50, help="Evidence API top_k (default: %(default)s)")
-    p.add_argument("--score-threshold", type=float, default=0.0, help="Evidence API score_threshold (default: %(default)s)")
-    p.add_argument("--retrieval-mode", default="hybrid", help="hybrid|vector|keyword|mmr (default: %(default)s)")
-    p.add_argument("--retrieval-profile", default="recall50", help="recall20|recall50|coverage80 (default: %(default)s)")
-    p.add_argument("--alpha", type=float, default=0.6, help="Fusion alpha (default: %(default)s)")
-    p.add_argument(
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Train an LTR reranker model from regression cases via Evidence API.")
+    parser.add_argument(
+        "--cases",
+        required=True,
+        help="Path to regression cases JSON (bundle v1 or legacy array)",
+    )
+    parser.add_argument(
+        "--out-model",
+        required=True,
+        help="Write model bytes to this path (xgboost JSON)",
+    )
+    parser.add_argument(
+        "--out-manifest",
+        default="",
+        help="Optional: write model manifest JSON to this path (default: <out-model>.manifest.json)",
+    )
+    parser.add_argument(
+        "--no-manifest",
+        action="store_true",
+        help="Do not write a manifest JSON file",
+    )
+    parser.add_argument(
+        "--out-rows-jsonl",
+        default="",
+        help="Optional: write training rows as JSONL for inspection",
+    )
+    parser.add_argument(
+        "--base-url",
+        default="http://localhost:8000/api/v1",
+        help="API base URL (default: %(default)s)",
+    )
+    parser.add_argument("--tenant-id", default="", help="Tenant id (X-Tenant-ID header)")
+    parser.add_argument(
+        "--user-id",
+        default="",
+        help="User id (X-User-ID header, for AUTH_MODE=header)",
+    )
+    parser.add_argument(
+        "--bearer",
+        default="",
+        help="Bearer token (Authorization: Bearer ...)",
+    )
+    parser.add_argument(
+        "--timeout-sec",
+        type=float,
+        default=30.0,
+        help="HTTP timeout seconds (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--top-k",
+        type=int,
+        default=50,
+        help="Evidence API top_k (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--score-threshold",
+        type=float,
+        default=0.0,
+        help="Evidence API score_threshold (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--retrieval-mode",
+        default="hybrid",
+        help="hybrid|vector|keyword|mmr (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--retrieval-profile",
+        default="recall50",
+        help="recall20|recall50|coverage80 (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--alpha",
+        type=float,
+        default=0.6,
+        help="Fusion alpha (default: %(default)s)",
+    )
+    parser.add_argument(
         "--enable-weight-rerank",
         action="store_true",
         help="Enable heuristic weight rerank before collecting candidates (default: off)",
     )
-
-    p.add_argument("--max-cases", type=int, default=0, help="Limit number of cases (default: all)")
-    p.add_argument(
+    parser.add_argument(
+        "--max-cases",
+        type=int,
+        default=0,
+        help="Limit number of cases (default: all)",
+    )
+    parser.add_argument(
         "--max-negatives-per-case",
         type=int,
         default=30,
         help="Cap negatives per query (default: %(default)s)",
     )
-    p.add_argument(
+    parser.add_argument(
         "--skip-missed-cases",
         action="store_true",
-        help="Skip cases where none of the reference chunks were retrieved (default: include only positives+sampled negatives from hits)",
+        help=(
+            "Skip cases where none of the reference chunks were retrieved "
+            "(default: include only positives+sampled negatives from hits)"
+        ),
     )
-
-    p.add_argument("--num-boost-round", type=int, default=50, help="xgboost num_boost_round (default: %(default)s)")
-    p.add_argument("--seed", type=int, default=42, help="Training seed (default: %(default)s)")
-    p.add_argument(
+    parser.add_argument(
+        "--num-boost-round",
+        type=int,
+        default=50,
+        help="xgboost num_boost_round (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Training seed (default: %(default)s)",
+    )
+    parser.add_argument(
         "--feature-spec-version",
         type=int,
         default=1,
         help="LTR feature spec version (1=base, 2=KG features) (default: %(default)s)",
     )
-    p.add_argument(
+    parser.add_argument(
         "--objective",
         default="rank:pairwise",
         help="xgboost objective: rank:pairwise|rank:ndcg|binary:logistic (default: %(default)s)",
     )
-    p.add_argument(
+    parser.add_argument(
         "--hard-negatives-per-case",
         type=int,
         default=10,
-        help="Hard negatives per query group (negatives ranked above the first positive) (default: %(default)s)",
+        help=("Hard negatives per query group (negatives ranked above the first positive) (default: %(default)s)"),
     )
-    p.add_argument(
+    parser.add_argument(
         "--hard-negatives-jsonl",
         default="",
-        help="Optional: PII-safe hard negatives JSONL (mimirq.hard_negatives.v1) keyed by query_hash; used to prefer mined hard negatives without storing raw queries.",
+        help=(
+            "Optional: PII-safe hard negatives JSONL (mimirq.hard_negatives.v1) "
+            "keyed by query_hash; used to prefer mined hard negatives without "
+            "storing raw queries."
+        ),
     )
-    args = p.parse_args(argv)
+    return parser
 
-    cases_path = Path(args.cases)
-    if not cases_path.exists():
-        print(f"[train_ltr] ERROR: cases file not found: {cases_path}", file=sys.stderr)
-        return 2
 
+def _hash_file(path: Path) -> str:
     try:
-        try:
-            cases_sha256 = hashlib.sha256(cases_path.read_bytes()).hexdigest()
-        except Exception:
-            cases_sha256 = ""
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except Exception:
+        return ""
 
-        raw_cases = _load_json(cases_path)
-        cases_schema = str(raw_cases.get("schema") or "").strip() if isinstance(raw_cases, dict) else ""
-        cases_schema = cases_schema or None
-        dataset_id, items = coerce_case_bundle(raw_cases)
-    except Exception as exc:  # noqa: BLE001
-        print(f"[train_ltr] ERROR: failed to parse cases: {str(exc)[:200]}", file=sys.stderr)
-        return 2
 
-    if args.max_cases and int(args.max_cases) > 0:
-        items = list(items)[: _coerce_nonneg_int(args.max_cases)]
+def _load_cases_bundle_inputs(
+    cases_path: Path,
+) -> tuple[str, list[dict[str, Any]], str, str | None]:
+    cases_sha256 = _hash_file(cases_path)
+    raw_cases = _load_json(cases_path)
+    cases_schema = str(raw_cases.get("schema") or "").strip() if isinstance(raw_cases, dict) else ""
+    dataset_id, items = coerce_case_bundle(raw_cases)
+    return dataset_id, items, cases_sha256, cases_schema or None
 
-    pipeline_hashes = _extract_pipeline_hashes(items)
 
-    spec = LTRFeatureSpec.from_version(int(args.feature_spec_version or 1))
-    training_rows: list[dict[str, Any]] = []
-    group_sizes: list[int] = []
-    objective = str(args.objective or "rank:pairwise").strip() or "rank:pairwise"
-    hard_lookup: dict[str, list[str]] = {}
-    hard_negatives_sha256: str | None = None
-    if str(args.hard_negatives_jsonl or "").strip():
-        try:
-            hn_path = Path(args.hard_negatives_jsonl)
-            if hn_path.exists():
-                hard_negatives_sha256 = hashlib.sha256(hn_path.read_bytes()).hexdigest()
-        except Exception:
-            hard_negatives_sha256 = None
-    if str(args.hard_negatives_jsonl or "").strip():
-        try:
-            from app.rag.evaluation.hard_negative_mining import load_hard_negatives_jsonl  # noqa: WPS433
+def _apply_case_limit(items: list[dict[str, Any]], max_cases: Any) -> list[dict[str, Any]]:
+    if max_cases and int(max_cases) > 0:
+        return list(items)[: _coerce_nonneg_int(max_cases)]
+    return list(items)
 
-            hard_lookup = load_hard_negatives_jsonl(Path(args.hard_negatives_jsonl))
-        except Exception as exc:  # noqa: BLE001
-            print(f"[train_ltr] WARN: failed to load hard negatives: {str(exc)[:200]}", file=sys.stderr)
-            hard_lookup = {}
-    stats = {
-        "cases_total": len(items),
+
+def _load_hard_negative_lookup(
+    hard_negatives_jsonl: str,
+) -> tuple[dict[str, list[str]], str | None]:
+    path_text = str(hard_negatives_jsonl or "").strip()
+    if not path_text:
+        return {}, None
+    hn_path = Path(path_text)
+    hard_negatives_sha256 = _hash_file(hn_path) or None if hn_path.exists() else None
+    try:
+        from app.rag.evaluation.hard_negative_mining import load_hard_negatives_jsonl
+
+        return load_hard_negatives_jsonl(hn_path), hard_negatives_sha256
+    except Exception as exc:
+        print(f"[train_ltr] WARN: failed to load hard negatives: {str(exc)[:200]}", file=sys.stderr)
+        return {}, hard_negatives_sha256
+
+
+def _init_stats(case_count: int) -> dict[str, int]:
+    return {
+        "cases_total": int(case_count),
         "cases_used": 0,
         "cases_missed": 0,
         "rows_total": 0,
@@ -436,199 +523,415 @@ def main(argv: list[str] | None = None) -> int:
         "rows_hard_neg": 0,
     }
 
+
+def _build_retrieval_body(
+    *,
+    question: str,
+    dataset_id: str,
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    return {
+        "query": question,
+        "history": [],
+        "dataset_id": str(dataset_id),
+        "document_ids": [],
+        "rag_config": {
+            "retrieval_profile": str(args.retrieval_profile),
+            "retrieval_mode": str(args.retrieval_mode),
+            "top_k": int(args.top_k),
+            "score_threshold": float(args.score_threshold),
+            "alpha": float(args.alpha),
+            "enable_weight_rerank": bool(args.enable_weight_rerank),
+            "enable_reranker": False,
+            "reranker_provider": "none",
+            "reranker_top_n": 0,
+        },
+    }
+
+
+def _retrieve_case_payload(
+    *,
+    client: httpx.Client,
+    url: str,
+    headers: dict[str, str],
+    body: dict[str, Any],
+) -> dict[str, Any] | None:
+    try:
+        resp = client.post(url, headers=headers, json=body)
+        resp.raise_for_status()
+        payload = resp.json()
+    except Exception as exc:
+        print(f"[train_ltr] WARN: retrieve failed: {str(exc)[:200]}", file=sys.stderr)
+        return None
+    return payload if isinstance(payload, dict) else {}
+
+
+def _extract_retrieval_config(payload: dict[str, Any]) -> dict[str, Any] | None:
+    retrieval_trace = payload.get("retrieval_trace")
+    if not isinstance(retrieval_trace, dict):
+        return None
+    retrieval_config = retrieval_trace.get("retrieval_config")
+    if not isinstance(retrieval_config, dict):
+        return None
+    schema = str(retrieval_config.get("schema") or "").strip()
+    config_hash = str(retrieval_config.get("hash") or "").strip()
+    if not schema or not config_hash:
+        return None
+    return dict(retrieval_config)
+
+
+def _build_case_rows(
+    *,
+    citations: list[Any],
+    ref_chunk_ids: set[str],
+    question: str,
+    spec: LTRFeatureSpec,
+) -> tuple[list[dict[str, Any]], int]:
+    rows_this_case: list[dict[str, Any]] = []
+    positives = 0
+    for idx, citation in enumerate(citations, 1):
+        if not isinstance(citation, dict):
+            continue
+        chunk_id = str(citation.get("chunk_id") or "").strip()
+        if not chunk_id:
+            continue
+        label = 1 if chunk_id in ref_chunk_ids else 0
+        rows_this_case.append(
+            {
+                "features": build_ltr_feature_map(citation=citation, query=question, spec=spec),
+                "label": int(label),
+                "rank": int(idx),
+                "case_question": question,
+                "chunk_id": chunk_id,
+                "retrieval_role": citation.get("retrieval_role"),
+            }
+        )
+        if label:
+            positives += 1
+    return rows_this_case, positives
+
+
+def _has_positive(rows: list[dict[str, Any]]) -> bool:
+    return any(int(row.get("label") or 0) == 1 for row in rows)
+
+
+def _partition_case_rows(
+    rows_this_case: list[dict[str, Any]],
+) -> tuple[list[int], list[int], list[int], list[int]]:
+    first_positive = next(
+        (i for i, row in enumerate(rows_this_case) if int(row.get("label") or 0) == 1),
+        None,
+    )
+    pos_idx: list[int] = []
+    neg_idx: list[int] = []
+    hard_idx: list[int] = []
+    easy_idx: list[int] = []
+    for i, row in enumerate(rows_this_case):
+        label = int(row.get("label") or 0)
+        if label == 1:
+            pos_idx.append(i)
+            continue
+        neg_idx.append(i)
+        if first_positive is not None and i < first_positive:
+            hard_idx.append(i)
+        else:
+            easy_idx.append(i)
+    return pos_idx, neg_idx, hard_idx, easy_idx
+
+
+def _lookup_external_hard_negatives(
+    question: str,
+    hard_lookup: dict[str, list[str]],
+) -> list[str]:
+    try:
+        query_hash = stable_hash(question, length=16)
+    except Exception:
+        return []
+    external = hard_lookup.get(query_hash) if query_hash else None
+    return list(external) if isinstance(external, list) else []
+
+
+def _build_negative_index_by_chunk(
+    rows_this_case: list[dict[str, Any]],
+    neg_idx: list[int],
+) -> dict[str, int]:
+    idx_by_chunk: dict[str, int] = {}
+    for i in neg_idx:
+        chunk_id = str(rows_this_case[i].get("chunk_id") or "").strip()
+        if chunk_id:
+            idx_by_chunk.setdefault(chunk_id, i)
+    return idx_by_chunk
+
+
+def _select_hard_negative_indices(
+    *,
+    rows_this_case: list[dict[str, Any]],
+    question: str,
+    hard_lookup: dict[str, list[str]],
+    neg_idx: list[int],
+    hard_idx: list[int],
+    hard_max: int,
+) -> list[int]:
+    if not hard_max:
+        return []
+    hard_selected: list[int] = []
+    external = _lookup_external_hard_negatives(question, hard_lookup)
+    if external:
+        idx_by_chunk = _build_negative_index_by_chunk(rows_this_case, neg_idx)
+        for chunk_id in external:
+            index = idx_by_chunk.get(str(chunk_id))
+            if index is None or index in hard_selected:
+                continue
+            hard_selected.append(index)
+            if len(hard_selected) >= hard_max:
+                return hard_selected
+    for i in hard_idx:
+        if len(hard_selected) >= hard_max:
+            break
+        if i not in hard_selected:
+            hard_selected.append(i)
+    return hard_selected
+
+
+def _select_case_rows(
+    *,
+    rows_this_case: list[dict[str, Any]],
+    question: str,
+    hard_lookup: dict[str, list[str]],
+    max_negatives_per_case: int,
+    hard_negatives_per_case: int,
+) -> tuple[list[dict[str, Any]], int]:
+    pos_idx, neg_idx, hard_idx, easy_idx = _partition_case_rows(rows_this_case)
+    hard_selected = _select_hard_negative_indices(
+        rows_this_case=rows_this_case,
+        question=question,
+        hard_lookup=hard_lookup,
+        neg_idx=neg_idx,
+        hard_idx=hard_idx,
+        hard_max=hard_negatives_per_case,
+    )
+    if max_negatives_per_case:
+        remaining = max(0, int(max_negatives_per_case) - int(len(hard_selected)))
+        easy_selected = [i for i in easy_idx if i not in hard_selected][:remaining]
+    else:
+        easy_selected = [i for i in easy_idx if i not in hard_selected]
+    keep_idx = sorted(set(pos_idx + list(hard_selected) + list(easy_selected)))
+    hard_set = set(hard_selected)
+    rows_hard_neg = 0
+    for i in keep_idx:
+        row = rows_this_case[i]
+        if int(row.get("label") or 0) == 0 and i in hard_set:
+            row["hard_negative"] = True
+            rows_hard_neg += 1
+    return [rows_this_case[i] for i in keep_idx], rows_hard_neg
+
+
+def _is_valid_training_group(
+    kept_rows: list[dict[str, Any]],
+    objective: str,
+) -> bool:
+    if not objective.startswith("rank:"):
+        return True
+    return len(kept_rows) >= 2 and _has_positive(kept_rows)
+
+
+def _process_case_item(
+    *,
+    item: dict[str, Any],
+    client: httpx.Client,
+    url: str,
+    headers: dict[str, str],
+    dataset_id: str,
+    args: argparse.Namespace,
+    spec: LTRFeatureSpec,
+    objective: str,
+    hard_lookup: dict[str, list[str]],
+) -> CaseProcessingResult:
+    question = str(item.get("question") or item.get("query") or "").strip()
+    if not question:
+        return CaseProcessingResult([], 0, False, False, None, 0)
+    ref_chunk_ids = _extract_reference_chunk_ids(item)
+    if not ref_chunk_ids:
+        return CaseProcessingResult([], 0, False, False, None, 0)
+    payload = _retrieve_case_payload(
+        client=client,
+        url=url,
+        headers=headers,
+        body=_build_retrieval_body(question=question, dataset_id=dataset_id, args=args),
+    )
+    if payload is None:
+        return CaseProcessingResult([], 0, False, False, None, 0)
+    retrieval_config = _extract_retrieval_config(payload)
+    citations = payload.get("citations") or []
+    if not isinstance(citations, list) or not citations:
+        return CaseProcessingResult([], 0, False, True, retrieval_config, 0)
+    rows_this_case, positives = _build_case_rows(
+        citations=citations,
+        ref_chunk_ids=ref_chunk_ids,
+        question=question,
+        spec=spec,
+    )
+    missed = positives <= 0
+    if missed and (objective.startswith("rank:") or bool(args.skip_missed_cases)):
+        return CaseProcessingResult([], 0, False, True, retrieval_config, 0)
+    max_negatives = _coerce_nonneg_int(args.max_negatives_per_case)
+    hard_negatives = _coerce_nonneg_int(args.hard_negatives_per_case)
+    if max_negatives and hard_negatives > max_negatives:
+        hard_negatives = max_negatives
+    kept_rows, rows_hard_neg = _select_case_rows(
+        rows_this_case=rows_this_case,
+        question=question,
+        hard_lookup=hard_lookup,
+        max_negatives_per_case=max_negatives,
+        hard_negatives_per_case=hard_negatives,
+    )
+    if not _is_valid_training_group(kept_rows, objective):
+        return CaseProcessingResult([], 0, False, True, retrieval_config, rows_hard_neg)
+    return CaseProcessingResult(
+        rows=kept_rows,
+        group_size=int(len(kept_rows)) if objective.startswith("rank:") else 0,
+        used=_has_positive(kept_rows),
+        missed=missed,
+        retrieval_config=retrieval_config,
+        rows_hard_neg=rows_hard_neg,
+    )
+
+
+def _finalize_stats(
+    *,
+    stats: dict[str, int],
+    training_rows: list[dict[str, Any]],
+) -> None:
+    stats["rows_total"] = len(training_rows)
+    stats["rows_pos"] = sum(1 for row in training_rows if int(row.get("label") or 0) == 1)
+    stats["rows_neg"] = sum(1 for row in training_rows if int(row.get("label") or 0) == 0)
+
+
+def _build_training_meta(
+    *,
+    stats: dict[str, int],
+    training_rows: list[dict[str, Any]],
+    group_sizes: list[int],
+    objective: str,
+) -> dict[str, Any]:
+    return {
+        "cases_total": int(stats.get("cases_total") or 0),
+        "cases_used": int(stats.get("cases_used") or 0),
+        "cases_missed": int(stats.get("cases_missed") or 0),
+        "rows_total": int(stats.get("rows_total") or 0),
+        "rows_pos": int(stats.get("rows_pos") or 0),
+        "rows_neg": int(stats.get("rows_neg") or 0),
+        "rows_hard_neg": int(stats.get("rows_hard_neg") or 0),
+        "group_count": int(len(group_sizes) if objective.startswith("rank:") else 0),
+        "data_hash": _training_data_hash(training_rows),
+    }
+
+
+def _write_manifest(
+    *,
+    args: argparse.Namespace,
+    out_model_path: Path,
+    model_bytes: bytes,
+    spec: LTRFeatureSpec,
+    objective: str,
+    stats: dict[str, int],
+    training_rows: list[dict[str, Any]],
+    group_sizes: list[int],
+    dataset_id: str,
+    cases_sha256: str,
+    cases_schema: str | None,
+    pipeline_hashes: list[str],
+    retrieval_config: dict[str, Any] | None,
+    hard_negatives_sha256: str | None,
+) -> None:
+    if bool(args.no_manifest):
+        return
+    try:
+        manifest_path = (
+            Path(args.out_manifest)
+            if str(args.out_manifest or "").strip()
+            else out_model_path.with_suffix(".manifest.json")
+        )
+        manifest = build_ltr_manifest(
+            model_bytes=model_bytes,
+            created_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            model_file=out_model_path.name,
+            spec=spec,
+            feature_spec_version=int(args.feature_spec_version or 1),
+            objective=objective,
+            num_boost_round=int(args.num_boost_round or 0),
+            seed=int(args.seed or 0),
+            training=_build_training_meta(
+                stats=stats,
+                training_rows=training_rows,
+                group_sizes=group_sizes,
+                objective=objective,
+            ),
+            dataset_id=str(dataset_id),
+            cases_sha256=cases_sha256,
+            cases_schema=cases_schema,
+            pipeline_hashes=pipeline_hashes,
+            retrieval_config=retrieval_config,
+            hard_negatives_sha256=hard_negatives_sha256,
+        )
+        _write_json(manifest_path, manifest)
+    except Exception as exc:
+        print(f"[train_ltr] WARN: failed to write manifest: {str(exc)[:200]}", file=sys.stderr)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_arg_parser().parse_args(argv)
+    cases_path = Path(args.cases)
+    if not cases_path.exists():
+        print(f"[train_ltr] ERROR: cases file not found: {cases_path}", file=sys.stderr)
+        return 2
+    try:
+        dataset_id, items, cases_sha256, cases_schema = _load_cases_bundle_inputs(cases_path)
+    except Exception as exc:
+        print(f"[train_ltr] ERROR: failed to parse cases: {str(exc)[:200]}", file=sys.stderr)
+        return 2
+    items = _apply_case_limit(items, args.max_cases)
+    pipeline_hashes = _extract_pipeline_hashes(items)
+    spec = LTRFeatureSpec.from_version(int(args.feature_spec_version or 1))
+    objective = str(args.objective or "rank:pairwise").strip() or "rank:pairwise"
+    hard_lookup, hard_negatives_sha256 = _load_hard_negative_lookup(args.hard_negatives_jsonl)
+    stats = _init_stats(len(items))
+    training_rows: list[dict[str, Any]] = []
+    group_sizes: list[int] = []
+    retrieval_config: dict[str, Any] | None = None
     url = str(args.base_url).rstrip("/") + "/rag/retrieve"
     timeout = httpx.Timeout(float(args.timeout_sec or 30.0))
-    retrieval_config: dict[str, Any] | None = None
-
+    headers = _headers(args)
     with httpx.Client(timeout=timeout) as client:
         for item in items:
             if not isinstance(item, dict):
                 continue
-
-            question = str(item.get("question") or item.get("query") or "").strip()
-            if not question:
-                continue
-
-            ref_chunk_ids = _extract_reference_chunk_ids(item)
-            if not ref_chunk_ids:
-                continue
-
-            body = {
-                "query": question,
-                "history": [],
-                "dataset_id": str(dataset_id),
-                "document_ids": [],
-                "rag_config": {
-                    "retrieval_profile": str(args.retrieval_profile),
-                    "retrieval_mode": str(args.retrieval_mode),
-                    "top_k": int(args.top_k),
-                    "score_threshold": float(args.score_threshold),
-                    "alpha": float(args.alpha),
-                    "enable_weight_rerank": bool(args.enable_weight_rerank),
-                    # Collect pre-rerank candidates by default.
-                    "enable_reranker": False,
-                    "reranker_provider": "none",
-                    "reranker_top_n": 0,
-                },
-            }
-
-            try:
-                resp = client.post(url, headers=_headers(args), json=body)
-                resp.raise_for_status()
-                payload = resp.json()
-            except Exception as exc:  # noqa: BLE001
-                print(f"[train_ltr] WARN: retrieve failed: {str(exc)[:200]}", file=sys.stderr)
-                continue
-
-            # Best-effort capture of the backend's versioned, PII-safe retrieval config fingerprint.
-            if retrieval_config is None and isinstance(payload, dict):
-                rt = payload.get("retrieval_trace") if isinstance(payload.get("retrieval_trace"), dict) else None
-                if isinstance(rt, dict):
-                    rcfg = rt.get("retrieval_config")
-                    if isinstance(rcfg, dict) and str(rcfg.get("schema") or "").strip() and str(rcfg.get("hash") or "").strip():
-                        retrieval_config = dict(rcfg)
-
-            citations = payload.get("citations") or []
-            if not isinstance(citations, list) or not citations:
-                stats["cases_missed"] += 1
-                continue
-
-            rows_this_case: list[dict[str, Any]] = []
-            pos = 0
-            neg = 0
-            for idx, c in enumerate(citations, 1):
-                if not isinstance(c, dict):
-                    continue
-                cid = str(c.get("chunk_id") or "").strip()
-                if not cid:
-                    continue
-                label = 1 if cid in ref_chunk_ids else 0
-                feats = build_ltr_feature_map(citation=c, query=question, spec=spec)
-                rows_this_case.append(
-                    {
-                        "features": feats,
-                        "label": int(label),
-                        "rank": int(idx),
-                        "case_question": question,
-                        "chunk_id": cid,
-                        "retrieval_role": c.get("retrieval_role"),
-                    }
-                )
-                if label:
-                    pos += 1
-                else:
-                    neg += 1
-
-            max_neg = _coerce_nonneg_int(args.max_negatives_per_case)
-            hard_max = _coerce_nonneg_int(args.hard_negatives_per_case)
-            if max_neg and hard_max > max_neg:
-                hard_max = max_neg
-
-            # Ranking objectives require at least one positive per query group.
-            if pos <= 0:
-                stats["cases_missed"] += 1
-                if objective.startswith("rank:"):
-                    continue
-                if bool(args.skip_missed_cases):
-                    continue
-
-            # Hard negatives: "near-miss" candidates ranked above the first positive.
-            first_pos_idx: int | None = None
-            for i, row in enumerate(rows_this_case):
-                if int(row.get("label") or 0) == 1:
-                    first_pos_idx = i
-                    break
-
-            pos_idx = [i for i, r in enumerate(rows_this_case) if int(r.get("label") or 0) == 1]
-            neg_idx = [i for i, r in enumerate(rows_this_case) if int(r.get("label") or 0) == 0]
-
-            hard_idx: list[int] = []
-            easy_idx: list[int] = []
-            for i in neg_idx:
-                if first_pos_idx is not None and i < first_pos_idx:
-                    hard_idx.append(i)
-                else:
-                    easy_idx.append(i)
-
-            hard_selected: list[int] = []
-            if hard_max:
-                # Optional: prefer mined hard negatives (PII-safe; keyed by stable query_hash).
-                try:
-                    qh = stable_hash(question, length=16)
-                except Exception:
-                    qh = ""
-                external = hard_lookup.get(qh) if qh else None
-                if isinstance(external, list) and external:
-                    # Preserve external order; only keep chunk_ids that are present in this retrieval candidate set.
-                    idx_by_chunk: dict[str, int] = {}
-                    for i in neg_idx:
-                        try:
-                            cid = str(rows_this_case[i].get("chunk_id") or "").strip()
-                        except Exception:
-                            cid = ""
-                        if cid:
-                            idx_by_chunk.setdefault(cid, i)
-                    for cid in external:
-                        i = idx_by_chunk.get(str(cid))
-                        if i is None:
-                            continue
-                        if i not in hard_selected:
-                            hard_selected.append(i)
-                        if len(hard_selected) >= hard_max:
-                            break
-
-                # Fill remaining hard negatives using the "near-miss before first positive" heuristic.
-                for i in hard_idx:
-                    if len(hard_selected) >= hard_max:
-                        break
-                    if i in hard_selected:
-                        continue
-                    hard_selected.append(i)
-            if max_neg:
-                remaining = max(0, int(max_neg) - int(len(hard_selected)))
-                easy_selected = [i for i in easy_idx if i not in hard_selected][:remaining]
-            else:
-                # max_neg=0 => keep all negatives
-                easy_selected = [i for i in easy_idx if i not in hard_selected]
-
-            neg_selected = list(hard_selected) + list(easy_selected)
-            keep_idx = sorted(set(pos_idx + neg_selected))
-            kept = [rows_this_case[i] for i in keep_idx]
-
-            # Mark hard negatives (useful for debugging/inspection outputs).
-            hard_set = set(hard_selected)
-            for i, row in enumerate(rows_this_case):
-                if i not in keep_idx:
-                    continue
-                if int(row.get("label") or 0) == 0 and i in hard_set:
-                    row["hard_negative"] = True
-                    stats["rows_hard_neg"] += 1
-
-            # Ranking objective requires group size >= 2 (at least one pos + one neg).
-            if objective.startswith("rank:") and (len(kept) < 2 or not any(int(r.get("label") or 0) == 1 for r in kept)):
-                stats["cases_missed"] += 1
-                continue
-
-            if any(int(r.get("label") or 0) == 1 for r in kept):
+            result = _process_case_item(
+                item=item,
+                client=client,
+                url=url,
+                headers=headers,
+                dataset_id=dataset_id,
+                args=args,
+                spec=spec,
+                objective=objective,
+                hard_lookup=hard_lookup,
+            )
+            if retrieval_config is None and result.retrieval_config is not None:
+                retrieval_config = result.retrieval_config
+            stats["cases_missed"] += int(result.missed)
+            stats["rows_hard_neg"] += int(result.rows_hard_neg)
+            if result.used:
                 stats["cases_used"] += 1
-
-            training_rows.extend(kept)
-            if objective.startswith("rank:"):
-                group_sizes.append(int(len(kept)))
-
-    # Final stats
-    stats["rows_total"] = len(training_rows)
-    stats["rows_pos"] = sum(1 for r in training_rows if int(r.get("label") or 0) == 1)
-    stats["rows_neg"] = sum(1 for r in training_rows if int(r.get("label") or 0) == 0)
-
+            training_rows.extend(result.rows)
+            if objective.startswith("rank:") and result.group_size:
+                group_sizes.append(result.group_size)
+    _finalize_stats(stats=stats, training_rows=training_rows)
     if not training_rows:
         print("[train_ltr] ERROR: produced zero training rows", file=sys.stderr)
         return 2
-
     if args.out_rows_jsonl:
         _write_jsonl(Path(args.out_rows_jsonl), training_rows)
-
-    # Train model (xgboost JSON bytes)
     model_bytes = train_ltr_xgboost_model(
         training_rows=training_rows,
         spec=spec,
@@ -640,42 +943,22 @@ def main(argv: list[str] | None = None) -> int:
     out_model_path = Path(args.out_model)
     out_model_path.parent.mkdir(parents=True, exist_ok=True)
     out_model_path.write_bytes(model_bytes)
-
-    if not bool(args.no_manifest):
-        try:
-            manifest_path = Path(args.out_manifest) if str(args.out_manifest or "").strip() else out_model_path.with_suffix(".manifest.json")
-            training_meta = {
-                "cases_total": int(stats.get("cases_total") or 0),
-                "cases_used": int(stats.get("cases_used") or 0),
-                "cases_missed": int(stats.get("cases_missed") or 0),
-                "rows_total": int(stats.get("rows_total") or 0),
-                "rows_pos": int(stats.get("rows_pos") or 0),
-                "rows_neg": int(stats.get("rows_neg") or 0),
-                "rows_hard_neg": int(stats.get("rows_hard_neg") or 0),
-                "group_count": int(len(group_sizes) if objective.startswith("rank:") else 0),
-                "data_hash": _training_data_hash(training_rows),
-            }
-            manifest = build_ltr_manifest(
-                model_bytes=model_bytes,
-                created_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                model_file=out_model_path.name,
-                spec=spec,
-                feature_spec_version=int(args.feature_spec_version or 1),
-                objective=objective,
-                num_boost_round=int(args.num_boost_round or 0),
-                seed=int(args.seed or 0),
-                training=training_meta,
-                dataset_id=str(dataset_id),
-                cases_sha256=cases_sha256,
-                cases_schema=cases_schema,
-                pipeline_hashes=pipeline_hashes,
-                retrieval_config=retrieval_config,
-                hard_negatives_sha256=hard_negatives_sha256,
-            )
-            _write_json(manifest_path, manifest)
-        except Exception as exc:  # noqa: BLE001
-            print(f"[train_ltr] WARN: failed to write manifest: {str(exc)[:200]}", file=sys.stderr)
-
+    _write_manifest(
+        args=args,
+        out_model_path=out_model_path,
+        model_bytes=model_bytes,
+        spec=spec,
+        objective=objective,
+        stats=stats,
+        training_rows=training_rows,
+        group_sizes=group_sizes,
+        dataset_id=dataset_id,
+        cases_sha256=cases_sha256,
+        cases_schema=cases_schema,
+        pipeline_hashes=pipeline_hashes,
+        retrieval_config=retrieval_config,
+        hard_negatives_sha256=hard_negatives_sha256,
+    )
     print(
         "[train_ltr] OK"
         f" cases_total={stats['cases_total']}"

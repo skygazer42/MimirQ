@@ -78,15 +78,15 @@ def _get_collection_adapter(collection_name: str) -> Any:
 
 
 def _document_model() -> Any:
-    from app.models.document import Document as document_model
+    from app.models.document import Document as DocumentModel
 
-    return document_model
+    return DocumentModel
 
 
 def _document_chunk_model() -> Any:
-    from app.models.document import DocumentChunk as document_chunk_model
+    from app.models.document import DocumentChunk as DocumentChunkModel
 
-    return document_chunk_model
+    return DocumentChunkModel
 
 
 @dataclass

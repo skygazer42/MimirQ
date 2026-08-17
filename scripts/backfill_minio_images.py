@@ -329,7 +329,9 @@ def main() -> int:
         queued_total += int(data.get("queued") or 0)
         skipped_total += int(data.get("skipped") or 0)
         print(
-            f"[backfill] batch_retry: queued={data.get('queued')} skipped={data.get('skipped')} conflicts={len(data.get('conflicts') or [])}"
+            f"[backfill] batch_retry: queued={data.get('queued')} "
+            f"skipped={data.get('skipped')} "
+            f"conflicts={len(data.get('conflicts') or [])}"
         )
 
     print(f"[backfill] Done: queued={queued_total} skipped={skipped_total}")

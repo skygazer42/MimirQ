@@ -31,31 +31,49 @@ def _mean(values: list[float]) -> float:
     return round(sum(values) / len(values), 4) if values else 0.0
 
 
-def export_diagnostics(*, metrics_rows: list[dict[str, Any]], feedback_rows: list[dict[str, Any]]) -> dict[str, Any]:
-    rag_done = [row for row in metrics_rows if str(row.get("event") or "") == "rag_done"]
-    rag_trace = [row for row in metrics_rows if str(row.get("event") or "") == "rag_trace"]
+def _event_rows(metrics_rows: list[dict[str, Any]], event: str) -> list[dict[str, Any]]:
+    return [row for row in metrics_rows if str(row.get("event") or "") == event]
 
-    elapsed_values = []
-    retrieval_elapsed_values = []
+
+def _append_float(values: list[float], value: Any) -> None:
+    try:
+        values.append(float(value or 0.0))
+    except Exception:
+        return
+
+
+def _summarize_metric_rows(
+    metrics_rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[float], list[float], Counter[str], Counter[str]]:
+    rag_done = _event_rows(metrics_rows, "rag_done")
+    rag_trace = _event_rows(metrics_rows, "rag_trace")
+    elapsed_values: list[float] = []
+    retrieval_elapsed_values: list[float] = []
     retrieval_mode_counts: Counter[str] = Counter()
     route_counts: Counter[str] = Counter()
     for row in rag_done:
         metrics = row.get("metrics") if isinstance(row.get("metrics"), dict) else {}
-        try:
-            elapsed_values.append(float(metrics.get("elapsed_sec") or 0.0))
-        except Exception:
-            pass
-        try:
-            retrieval_elapsed_values.append(float(metrics.get("retrieval_elapsed_sec") or 0.0))
-        except Exception:
-            pass
+        _append_float(elapsed_values, metrics.get("elapsed_sec"))
+        _append_float(retrieval_elapsed_values, metrics.get("retrieval_elapsed_sec"))
         retrieval_mode = str(row.get("retrieval_mode") or metrics.get("retrieval_mode") or "").strip().lower()
         if retrieval_mode:
             retrieval_mode_counts[retrieval_mode] += 1
         route = str(row.get("route") or "").strip().lower()
         if route:
             route_counts[route] += 1
+    return (
+        rag_done,
+        rag_trace,
+        elapsed_values,
+        retrieval_elapsed_values,
+        retrieval_mode_counts,
+        route_counts,
+    )
 
+
+def _summarize_feedback_rows(
+    feedback_rows: list[dict[str, Any]],
+) -> tuple[Counter[str], Counter[str], int]:
     rating_counts: Counter[str] = Counter()
     tag_counts: Counter[str] = Counter()
     reason_present_count = 0
@@ -69,6 +87,19 @@ def export_diagnostics(*, metrics_rows: list[dict[str, Any]], feedback_rows: lis
             tag_s = str(tag or "").strip()
             if tag_s:
                 tag_counts[tag_s] += 1
+    return rating_counts, tag_counts, reason_present_count
+
+
+def export_diagnostics(*, metrics_rows: list[dict[str, Any]], feedback_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    (
+        rag_done,
+        rag_trace,
+        elapsed_values,
+        retrieval_elapsed_values,
+        retrieval_mode_counts,
+        route_counts,
+    ) = _summarize_metric_rows(metrics_rows)
+    rating_counts, tag_counts, reason_present_count = _summarize_feedback_rows(feedback_rows)
 
     return {
         "schema": "mimirq.export_diagnostics.v1",

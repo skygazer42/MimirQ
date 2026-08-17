@@ -89,7 +89,8 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"[ltr-online-rollback] wrote {out_path}")
     print(
-        f"[ltr-online-rollback] triggered={bool(trigger.get('triggered'))} applied={bool(rollback_payload.get('applied'))}"
+        f"[ltr-online-rollback] triggered={bool(trigger.get('triggered'))} "
+        f"applied={bool(rollback_payload.get('applied'))}"
     )
     return int(exit_code)
 

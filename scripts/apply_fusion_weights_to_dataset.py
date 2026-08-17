@@ -14,7 +14,8 @@ Examples:
   python scripts/apply_fusion_weights_to_dataset.py --dataset-id <uuid> --weights runs/fusion_weights/best.json
 
   # Execute + enable weighted fusion by default
-  python scripts/apply_fusion_weights_to_dataset.py --dataset-id <uuid> --weights runs/fusion_weights/best.json --execute
+  python scripts/apply_fusion_weights_to_dataset.py --dataset-id <uuid> \
+    --weights runs/fusion_weights/best.json --execute
 
   # Roll back to defaults (remove dataset override)
   python scripts/apply_fusion_weights_to_dataset.py --dataset-id <uuid> --clear --execute
@@ -44,15 +45,19 @@ def _load_json(path: str) -> object:
     return json.loads(open(p, "r", encoding="utf-8-sig").read())
 
 
-def _extract_weights(obj: object) -> dict[str, float]:
+def _unwrap_weights(obj: object) -> dict[object, object]:
     if isinstance(obj, dict):
-        if isinstance(obj.get("fusion_weights"), dict):
-            obj = obj.get("fusion_weights")  # type: ignore[assignment]
-        elif isinstance(obj.get("weights"), dict):
-            obj = obj.get("weights")  # type: ignore[assignment]
-    if not isinstance(obj, dict):
-        raise ValueError("weights JSON must be an object (or {weights: {...}})")
+        fusion_weights = obj.get("fusion_weights")
+        if isinstance(fusion_weights, dict):
+            return fusion_weights
+        weights = obj.get("weights")
+        if isinstance(weights, dict):
+            return weights
+        return obj
+    raise ValueError("weights JSON must be an object (or {weights: {...}})")
 
+
+def _positive_allowed_weights(obj: dict[object, object]) -> dict[str, float]:
     allowed = {"vector", "bm25", "lexical", "sparse"}
     out: dict[str, float] = {}
     for k, v in obj.items():
@@ -68,6 +73,11 @@ def _extract_weights(obj: object) -> dict[str, float]:
         if w <= 0.0:
             continue
         out[key] = float(w)
+    return out
+
+
+def _extract_weights(obj: object) -> dict[str, float]:
+    out = _positive_allowed_weights(_unwrap_weights(obj))
 
     if not out:
         raise ValueError("weights must have at least one positive entry")

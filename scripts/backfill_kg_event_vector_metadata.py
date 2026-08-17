@@ -22,7 +22,8 @@ Examples:
   python scripts/backfill_kg_event_vector_metadata.py --dataset-id <uuid> --execute
 
   # Execute for specific documents
-  python scripts/backfill_kg_event_vector_metadata.py --tenant-id <uuid> --document-id <uuid> --document-id <uuid> --execute
+  python scripts/backfill_kg_event_vector_metadata.py --tenant-id <uuid> \
+    --document-id <uuid> --document-id <uuid> --execute
 """
 
 import argparse
@@ -181,7 +182,8 @@ def main(argv: list[str] | None = None) -> int:
             if total_batches == 1 or total_batches % 10 == 0:
                 elapsed = time.time() - started
                 print(
-                    f"[kg_events.backfill] batches={total_batches} events={total_events} vectors={total_vectors} elapsed={elapsed:.1f}s",
+                    f"[kg_events.backfill] batches={total_batches} events={total_events} "
+                    f"vectors={total_vectors} elapsed={elapsed:.1f}s",
                     file=sys.stderr,
                 )
 

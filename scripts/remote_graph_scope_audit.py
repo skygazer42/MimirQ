@@ -140,11 +140,17 @@ def main() -> int:
         fixtures = [
             {
                 "filename": "atlas-acquisition.md",
-                "content": "# Atlas Acquisition\n\nAtlas Systems acquired Beacon Labs. Mira Chen led the integration workstream.\n",
+                "content": (
+                    "# Atlas Acquisition\n\nAtlas Systems acquired Beacon Labs. "
+                    "Mira Chen led the integration workstream.\n"
+                ),
             },
             {
                 "filename": "orion-migration.md",
-                "content": "# Orion Migration\n\nMira Chen coordinated the Orion billing service migration with Beacon Labs engineers.\n",
+                "content": (
+                    "# Orion Migration\n\nMira Chen coordinated the Orion billing service "
+                    "migration with Beacon Labs engineers.\n"
+                ),
             },
         ]
         for fixture in fixtures:

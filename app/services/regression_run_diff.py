@@ -52,6 +52,16 @@ _RETRIEVAL_DIFF_KEYS = (
     "abstain_rate",
 )
 
+_SLICE_DIFF_DIMS = (
+    "file_type",
+    "language",
+    "directory",
+    "access_mode",
+    "hit_type",
+    "quality",
+    "pipeline_hash",
+)
+
 
 _DIFF_SCORE_WEIGHTS_V1: dict[str, float] = {
     # Answer-level deterministic gate signals (when present).
@@ -124,6 +134,121 @@ def _coerce_slices(summary: dict[str, Any]) -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
+def _metric_diff_keys(*summaries: dict[str, Any]) -> list[str]:
+    keys: set[str] = set()
+    for src in summaries:
+        if not isinstance(src, dict):
+            continue
+        for key in src:
+            if key != "retrieval_slices":
+                keys.add(str(key))
+    return sorted(keys)
+
+
+def _build_metric_diffs(
+    *,
+    base_summary: dict[str, Any],
+    target_summary: dict[str, Any],
+) -> list[dict[str, Any]]:
+    metric_diffs: list[dict[str, Any]] = []
+    for key in _metric_diff_keys(base_summary, target_summary):
+        before = base_summary.get(key) if isinstance(base_summary, dict) else None
+        after = target_summary.get(key) if isinstance(target_summary, dict) else None
+        if _as_float(before) is None and _as_float(after) is None:
+            continue
+        metric_diffs.append(_diff_metric(key=key, before=before, after=after))
+
+    metric_diffs.sort(key=lambda d: (-abs(float(d.get("delta") or 0.0)), str(d.get("key") or "")))
+    return metric_diffs
+
+
+def _slice_bucket_map(obj: Any) -> tuple[dict[str, dict[str, Any]], bool]:
+    if not isinstance(obj, dict):
+        return {}, False
+    truncated = bool(obj.get("truncated"))
+    raw = obj.get("buckets")
+    if not isinstance(raw, list):
+        return {}, truncated
+    out: dict[str, dict[str, Any]] = {}
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("key") or "").strip().lower()
+        if key:
+            out[key] = item
+    return out, truncated
+
+
+def _coerce_bucket_items(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except Exception:
+        return 0
+
+
+def _build_slice_metric_diffs(*, before_obj: dict[str, Any], after_obj: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        _diff_metric(key=metric_key, before=before_obj.get(metric_key), after=after_obj.get(metric_key))
+        for metric_key in _RETRIEVAL_DIFF_KEYS
+    ]
+
+
+def _build_slice_rows(
+    *,
+    base_map: dict[str, dict[str, Any]],
+    target_map: dict[str, dict[str, Any]],
+    max_slice_buckets: int,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for bucket_key in sorted(set(base_map) | set(target_map)):
+        before_obj = base_map.get(bucket_key) or {}
+        after_obj = target_map.get(bucket_key) or {}
+        rows.append(
+            {
+                "key": bucket_key,
+                "items_before": _coerce_bucket_items(before_obj.get("items")),
+                "items_after": _coerce_bucket_items(after_obj.get("items")),
+                "metrics": _build_slice_metric_diffs(before_obj=before_obj, after_obj=after_obj),
+            }
+        )
+
+    rows.sort(
+        key=lambda row: (
+            -max(int(row.get("items_before") or 0), int(row.get("items_after") or 0)),
+            str(row.get("key") or ""),
+        )
+    )
+    if max_slice_buckets > 0 and len(rows) > max_slice_buckets:
+        return rows[:max_slice_buckets]
+    return rows
+
+
+def _build_slice_diffs(
+    *,
+    base_summary: dict[str, Any],
+    target_summary: dict[str, Any],
+    max_slice_buckets: int,
+) -> dict[str, Any]:
+    base_slices = _coerce_slices(base_summary)
+    target_slices = _coerce_slices(target_summary)
+    slice_diffs: dict[str, Any] = {}
+
+    for dim in _SLICE_DIFF_DIMS:
+        base_map, base_trunc = _slice_bucket_map(base_slices.get(dim))
+        target_map, target_trunc = _slice_bucket_map(target_slices.get(dim))
+        slice_diffs[dim] = {
+            "truncated_before": bool(base_trunc),
+            "truncated_after": bool(target_trunc),
+            "buckets": _build_slice_rows(
+                base_map=base_map,
+                target_map=target_map,
+                max_slice_buckets=max_slice_buckets,
+            ),
+        }
+
+    return slice_diffs
+
+
 def diff_regression_run_summaries(
     *,
     base_run_id: UUID,
@@ -138,107 +263,13 @@ def diff_regression_run_summaries(
     Input summaries are raw JSONB blobs (best-effort).
     """
     max_slice_buckets = max(0, min(int(max_slice_buckets or 0), 200))
-
-    # ---- Top-level metric diffs (numeric/bool only) ----
-    ignore_keys = {"retrieval_slices"}
-    keys: set[str] = set()
-    for src in (base_summary, target_summary):
-        if not isinstance(src, dict):
-            continue
-        for k in src.keys():
-            if k in ignore_keys:
-                continue
-            keys.add(str(k))
-
-    metric_diffs: list[dict[str, Any]] = []
-    for k in sorted(keys):
-        before = base_summary.get(k) if isinstance(base_summary, dict) else None
-        after = target_summary.get(k) if isinstance(target_summary, dict) else None
-        if _as_float(before) is None and _as_float(after) is None:
-            continue
-        metric_diffs.append(_diff_metric(key=k, before=before, after=after))
-
-    metric_diffs.sort(key=lambda d: (-abs(float(d.get("delta") or 0.0)), str(d.get("key") or "")))
-
+    metric_diffs = _build_metric_diffs(base_summary=base_summary, target_summary=target_summary)
     diff_score = _build_diff_score(base_summary=base_summary, target_summary=target_summary)
-
-    # ---- Slice diffs ----
-    base_slices = _coerce_slices(base_summary)
-    target_slices = _coerce_slices(target_summary)
-
-    def _slice_bucket_map(obj: Any) -> tuple[dict[str, dict[str, Any]], bool]:
-        if not isinstance(obj, dict):
-            return {}, False
-        truncated = bool(obj.get("truncated"))
-        raw = obj.get("buckets")
-        if not isinstance(raw, list):
-            return {}, truncated
-        out: dict[str, dict[str, Any]] = {}
-        for it in raw:
-            if not isinstance(it, dict):
-                continue
-            key = str(it.get("key") or "").strip().lower()
-            if not key:
-                continue
-            out[key] = it
-        return out, truncated
-
-    slice_diffs: dict[str, Any] = {}
-    for dim in (
-        "file_type",
-        "language",
-        "directory",
-        # v3 slice taxonomy additions (stable + actionable):
-        "access_mode",
-        "hit_type",
-        "quality",
-        "pipeline_hash",
-    ):
-        base_map, base_trunc = _slice_bucket_map(base_slices.get(dim))
-        target_map, target_trunc = _slice_bucket_map(target_slices.get(dim))
-        bucket_keys = sorted(set(base_map.keys()) | set(target_map.keys()))
-
-        rows: list[dict[str, Any]] = []
-        for bkey in bucket_keys:
-            before_obj = base_map.get(bkey) or {}
-            after_obj = target_map.get(bkey) or {}
-            try:
-                items_before = int(before_obj.get("items") or 0)
-            except Exception:
-                items_before = 0
-            try:
-                items_after = int(after_obj.get("items") or 0)
-            except Exception:
-                items_after = 0
-
-            diffs = []
-            for mk in _RETRIEVAL_DIFF_KEYS:
-                diffs.append(_diff_metric(key=mk, before=before_obj.get(mk), after=after_obj.get(mk)))
-
-            rows.append(
-                {
-                    "key": bkey,
-                    "items_before": int(items_before),
-                    "items_after": int(items_after),
-                    "metrics": diffs,
-                }
-            )
-
-        # Sort by bucket size, then key.
-        rows.sort(
-            key=lambda r: (
-                -max(int(r.get("items_before") or 0), int(r.get("items_after") or 0)),
-                str(r.get("key") or ""),
-            )
-        )
-        if max_slice_buckets > 0 and len(rows) > max_slice_buckets:
-            rows = rows[:max_slice_buckets]
-
-        slice_diffs[dim] = {
-            "truncated_before": bool(base_trunc),
-            "truncated_after": bool(target_trunc),
-            "buckets": rows,
-        }
+    slice_diffs = _build_slice_diffs(
+        base_summary=base_summary,
+        target_summary=target_summary,
+        max_slice_buckets=max_slice_buckets,
+    )
 
     return {
         "base_run_id": str(base_run_id),

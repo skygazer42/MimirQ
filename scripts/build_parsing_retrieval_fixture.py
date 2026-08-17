@@ -43,47 +43,62 @@ def _normalize_documents(documents: list[dict[str, Any]] | None) -> list[dict[st
     return out
 
 
+def _explicit_expected_ids(raw_ids: object) -> list[str]:
+    expected_ids: list[str] = []
+    if not isinstance(raw_ids, list):
+        return expected_ids
+    for item in raw_ids:
+        chunk_id = str(item or "").strip()
+        if chunk_id and chunk_id not in expected_ids:
+            expected_ids.append(chunk_id)
+    return expected_ids
+
+
+def _indexed_expected_ids(raw_indexes: object, chunk_ids: list[str]) -> list[str]:
+    expected_ids: list[str] = []
+    if not isinstance(raw_indexes, list):
+        return expected_ids
+    for item in raw_indexes:
+        try:
+            index = int(item)
+        except Exception:
+            continue
+        if 0 <= index < len(chunk_ids):
+            chunk_id = chunk_ids[index]
+            if chunk_id and chunk_id not in expected_ids:
+                expected_ids.append(chunk_id)
+    return expected_ids
+
+
+def _normalize_query(row: dict[str, Any], *, index: int, chunk_ids: list[str]) -> dict[str, Any] | None:
+    question = str(row.get("question") or "").strip()
+    if not question:
+        return None
+
+    expected_ids = _explicit_expected_ids(row.get("expected_chunk_ids"))
+    if not expected_ids:
+        expected_ids = _indexed_expected_ids(row.get("expected_chunk_indexes"), chunk_ids)
+    if not expected_ids:
+        return None
+
+    default_id = f"q-{index + 1}"
+    return {
+        "id": str(row.get("id") or default_id).strip() or default_id,
+        "question": question,
+        "expected_chunk_ids": expected_ids,
+    }
+
+
 def _normalize_queries(
     *, queries: list[dict[str, Any]] | None, documents: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
     chunk_ids = [str(item.get("chunk_id") or "").strip() for item in documents]
+    out: list[dict[str, Any]] = []
     for index, raw in enumerate(queries or []):
         row = raw if isinstance(raw, dict) else {}
-        question = str(row.get("question") or "").strip()
-        if not question:
-            continue
-
-        expected_ids: list[str] = []
-        raw_ids = row.get("expected_chunk_ids")
-        if isinstance(raw_ids, list):
-            for item in raw_ids:
-                chunk_id = str(item or "").strip()
-                if chunk_id and chunk_id not in expected_ids:
-                    expected_ids.append(chunk_id)
-
-        raw_indexes = row.get("expected_chunk_indexes")
-        if not expected_ids and isinstance(raw_indexes, list):
-            for item in raw_indexes:
-                try:
-                    idx_i = int(item)
-                except Exception:
-                    continue
-                if 0 <= idx_i < len(chunk_ids):
-                    chunk_id = chunk_ids[idx_i]
-                    if chunk_id and chunk_id not in expected_ids:
-                        expected_ids.append(chunk_id)
-
-        if not expected_ids:
-            continue
-
-        out.append(
-            {
-                "id": str(row.get("id") or f"q-{index + 1}").strip() or f"q-{index + 1}",
-                "question": question,
-                "expected_chunk_ids": expected_ids,
-            }
-        )
+        normalized = _normalize_query(row, index=index, chunk_ids=chunk_ids)
+        if normalized is not None:
+            out.append(normalized)
     return out
 
 

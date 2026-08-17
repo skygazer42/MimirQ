@@ -52,7 +52,10 @@ def run_parsing_retrieval_proof(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Build a retrieval fixture from parser-like outputs and immediately run the deterministic retrieval benchmark."
+        description=(
+            "Build a retrieval fixture from parser-like outputs and immediately run "
+            "the deterministic retrieval benchmark."
+        )
     )
     parser.add_argument("--documents-json", required=True, help="Path to parser-like document rows JSON.")
     parser.add_argument("--queries-json", required=True, help="Path to query specs JSON.")

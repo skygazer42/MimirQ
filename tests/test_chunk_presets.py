@@ -32,35 +32,118 @@ def _override_get_db():  # noqa: ANN202
     yield _DummyDB()
 
 
-def test_chunk_presets_crud(monkeypatch):  # noqa: ANN001
-    import app.api.v1.chunk_presets as chunk_presets_module
+class _DummyMember:
+    def __init__(self, role: str) -> None:
+        self.role = role
 
-    tenant_id = uuid.uuid4()
-    dataset_id = uuid.uuid4()
 
+class _Row:
+    def __init__(
+        self,
+        *,
+        id: str,
+        tenant_id: uuid.UUID,
+        dataset_id: uuid.UUID | None,
+        name: str,
+        description: str | None,
+        payload: dict,
+    ) -> None:
+        self.id = uuid.UUID(id)
+        self.tenant_id = tenant_id
+        self.dataset_id = dataset_id
+        self.name = name
+        self.description = description
+        self.payload = payload
+
+
+class _ChunkPresetStore:
+    def __init__(self) -> None:
+        self.rows: dict[str, _Row] = {}
+
+    def list_rows(
+        self,
+        *,
+        db,
+        tenant_id: uuid.UUID,
+        q: str | None,
+        limit: int,
+        dataset_id: uuid.UUID | None,
+        include_global: bool,
+        readable_dataset_ids: set[uuid.UUID] | None,
+    ):  # noqa: ANN001, ARG002
+        rows = list(self.rows.values())
+        if dataset_id is None and readable_dataset_ids is not None:
+            allowed_dataset_ids = {None} | set(readable_dataset_ids)
+            rows = [row for row in rows if getattr(row, "dataset_id", None) in allowed_dataset_ids]
+        if dataset_id is None:
+            return rows
+        if include_global:
+            return [row for row in rows if getattr(row, "dataset_id", None) in {None, dataset_id}]
+        return [row for row in rows if getattr(row, "dataset_id", None) == dataset_id]
+
+    def get_row(self, *, db, tenant_id: uuid.UUID, preset_id: str):  # noqa: ANN001, ARG002
+        return self.rows.get(preset_id)
+
+    def create_row(
+        self,
+        *,
+        db,
+        tenant_id: uuid.UUID,
+        dataset_id: uuid.UUID | None,
+        name: str,
+        description: str | None,
+        payload: dict,
+    ):  # noqa: ANN001, ARG002
+        preset_id = str(uuid.uuid4())
+        row = _Row(
+            id=preset_id,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            name=name,
+            description=description,
+            payload=payload,
+        )
+        self.rows[preset_id] = row
+        return row
+
+    def update_row(
+        self,
+        *,
+        db,
+        tenant_id: uuid.UUID,
+        preset_id: str,
+        dataset_id: uuid.UUID | None,
+        name: str,
+        description: str | None,
+        payload: dict,
+    ):  # noqa: ANN001, ARG002
+        row = self.rows.get(preset_id)
+        if row is None:
+            return None
+        row.dataset_id = dataset_id
+        row.name = name
+        row.description = description
+        row.payload = payload
+        return row
+
+    def delete_row(self, *, db, tenant_id: uuid.UUID, preset_id: str) -> bool:  # noqa: ANN001, ARG002
+        return self.rows.pop(preset_id, None) is not None
+
+
+def _build_chunk_presets_client(  # noqa: ANN202
+    monkeypatch,
+    *,
+    chunk_presets_module,
+    tenant_id: uuid.UUID,
+    dataset_access: dict[str, dict[str, bool]],
+    current_role: dict[str, str],
+    store: _ChunkPresetStore,
+):
     def _override_get_tenant_id() -> uuid.UUID:
         return tenant_id
 
     def _override_get_current_account_id() -> str:
         return "test-account"
-
-    # Bypass tenant membership DB checks (and ensure we can pass governance checks).
-    current_role = {"role": "owner"}
-
-    class _DummyMember:
-        def __init__(self, role: str):
-            self.role = role
-
-    monkeypatch.setattr(
-        chunk_presets_module.DatasetService,
-        "ensure_member",
-        lambda *_a, **_k: _DummyMember(str(current_role.get("role") or "")),
-        raising=True,
-    )
-    dataset_access = {
-        str(dataset_id): {"readable": True, "writable": True},
-        str(uuid.uuid4()): {"readable": False, "writable": False},
-    }
 
     def _get_dataset(_db, _tenant_id, requested_dataset_id):  # noqa: ANN001
         key = str(requested_dataset_id)
@@ -76,6 +159,12 @@ def test_chunk_presets_crud(monkeypatch):  # noqa: ANN001
         if not dataset_access[str(dataset["id"])]["writable"]:
             raise chunk_presets_module.HTTPException(status_code=403, detail="No dataset write permission")
 
+    monkeypatch.setattr(
+        chunk_presets_module.DatasetService,
+        "ensure_member",
+        lambda *_a, **_k: _DummyMember(str(current_role.get("role") or "")),
+        raising=True,
+    )
     monkeypatch.setattr(chunk_presets_module.DatasetService, "get_dataset", _get_dataset, raising=True)
     monkeypatch.setattr(
         chunk_presets_module.DatasetService,
@@ -89,101 +178,43 @@ def test_chunk_presets_crud(monkeypatch):  # noqa: ANN001
         _assert_dataset_writable,
         raising=True,
     )
+    monkeypatch.setattr(chunk_presets_module, "_list_chunk_preset_rows", store.list_rows, raising=True)
+    monkeypatch.setattr(chunk_presets_module, "_get_chunk_preset_row", store.get_row, raising=True)
+    monkeypatch.setattr(chunk_presets_module, "_create_chunk_preset_row", store.create_row, raising=True)
+    monkeypatch.setattr(chunk_presets_module, "_update_chunk_preset_row", store.update_row, raising=True)
+    monkeypatch.setattr(chunk_presets_module, "_delete_chunk_preset_row", store.delete_row, raising=True)
+
     _DummyDB.readable_dataset_ids = [uuid.UUID(key) for key, acl in dataset_access.items() if acl["readable"]]
-
-    store: dict[str, object] = {}
-
-    class _Row:
-        def __init__(
-            self,
-            *,
-            id: str,
-            tenant_id: uuid.UUID,
-            dataset_id: uuid.UUID | None,
-            name: str,
-            description: str | None,
-            payload: dict,
-        ) -> None:
-            self.id = uuid.UUID(id)
-            self.tenant_id = tenant_id
-            self.dataset_id = dataset_id
-            self.name = name
-            self.description = description
-            self.payload = payload
-
-    def _list_rows(
-        *,
-        db,
-        tenant_id: uuid.UUID,
-        q: str | None,
-        limit: int,
-        dataset_id: uuid.UUID | None,
-        include_global: bool,
-        readable_dataset_ids: set[uuid.UUID] | None,
-    ):  # noqa: ANN001
-        rows = list(store.values())
-        if dataset_id is None and readable_dataset_ids is not None:
-            rows = [r for r in rows if getattr(r, "dataset_id", None) in ({None} | set(readable_dataset_ids))]
-        if dataset_id is None:
-            return rows
-        if include_global:
-            return [r for r in rows if getattr(r, "dataset_id", None) in {None, dataset_id}]
-        return [r for r in rows if getattr(r, "dataset_id", None) == dataset_id]
-
-    def _get_row(*, db, tenant_id: uuid.UUID, preset_id: str):  # noqa: ANN001
-        return store.get(preset_id)
-
-    def _create_row(
-        *,
-        db,
-        tenant_id: uuid.UUID,
-        dataset_id: uuid.UUID | None,
-        name: str,
-        description: str | None,
-        payload: dict,
-    ):  # noqa: ANN001
-        pid = str(uuid.uuid4())
-        row = _Row(
-            id=pid, tenant_id=tenant_id, dataset_id=dataset_id, name=name, description=description, payload=payload
-        )
-        store[pid] = row
-        return row
-
-    def _update_row(
-        *,
-        db,
-        tenant_id: uuid.UUID,
-        preset_id: str,
-        dataset_id: uuid.UUID | None,
-        name: str,
-        description: str | None,
-        payload: dict,
-    ):  # noqa: ANN001
-        row = store.get(preset_id)
-        if not row:
-            return None
-        row.dataset_id = dataset_id
-        row.name = name
-        row.description = description
-        row.payload = payload
-        return row
-
-    def _delete_row(*, db, tenant_id: uuid.UUID, preset_id: str) -> bool:  # noqa: ANN001
-        return store.pop(preset_id, None) is not None
-
-    monkeypatch.setattr(chunk_presets_module, "_list_chunk_preset_rows", _list_rows, raising=True)
-    monkeypatch.setattr(chunk_presets_module, "_get_chunk_preset_row", _get_row, raising=True)
-    monkeypatch.setattr(chunk_presets_module, "_create_chunk_preset_row", _create_row, raising=True)
-    monkeypatch.setattr(chunk_presets_module, "_update_chunk_preset_row", _update_row, raising=True)
-    monkeypatch.setattr(chunk_presets_module, "_delete_chunk_preset_row", _delete_row, raising=True)
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db
     app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
     app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
     app.include_router(chunk_presets_module.router, prefix="/api/v1/chunk-presets")
+    return TestClient(app)
 
-    client = TestClient(app)
+
+def test_chunk_presets_crud(monkeypatch):  # noqa: ANN001
+    import app.api.v1.chunk_presets as chunk_presets_module
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+
+    # Bypass tenant membership DB checks (and ensure we can pass governance checks).
+    current_role = {"role": "owner"}
+    dataset_access = {
+        str(dataset_id): {"readable": True, "writable": True},
+        str(uuid.uuid4()): {"readable": False, "writable": False},
+    }
+    store = _ChunkPresetStore()
+    client = _build_chunk_presets_client(
+        monkeypatch,
+        chunk_presets_module=chunk_presets_module,
+        tenant_id=tenant_id,
+        dataset_access=dataset_access,
+        current_role=current_role,
+        store=store,
+    )
 
     payload = {
         "name": "Default",
@@ -236,7 +267,7 @@ def test_chunk_presets_crud(monkeypatch):  # noqa: ANN001
     )
     assert res.status_code == 403, res.text
 
-    hidden_preset = _create_row(
+    hidden_preset = store.create_row(
         db=None,
         tenant_id=tenant_id,
         dataset_id=hidden_dataset_id,

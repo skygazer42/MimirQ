@@ -13,7 +13,6 @@ Metrics (binary relevance, chunk_id match):
 - NDCG@K
 """
 
-
 import argparse
 import hashlib
 import json
@@ -27,6 +26,8 @@ import httpx
 
 from app.rag.reranker.ltr import LTRFeatureSpec, LTRReranker, build_ltr_feature_spec_fingerprint
 from app.rag.reranker.types import RerankCandidate
+
+METRIC_KEYS = ("hit", "mrr", "recall", "ndcg")
 
 
 def _load_json(path: Path) -> Any:
@@ -143,6 +144,13 @@ def build_eval_summary(
     baseline: dict[str, float],
     ltr: dict[str, float],
 ) -> dict[str, Any]:
+    retrieval_hash = None
+    retrieval_payload = None
+    if isinstance(retrieval_config, dict):
+        hash_value = str(retrieval_config.get("hash") or "").strip()
+        retrieval_hash = hash_value or None
+        retrieval_payload = dict(retrieval_config)
+
     lineage: dict[str, Any] = {
         "schema": "mimirq.ltr_run_lineage.v1",
         "kind": "eval",
@@ -150,8 +158,8 @@ def build_eval_summary(
         "cases_sha256": str(cases_sha256),
         "cases_schema": (str(cases_schema) if cases_schema else None),
         "pipeline_hashes": list(pipeline_hashes or []),
-        "retrieval_config_hash": (str(retrieval_config.get("hash")) if isinstance(retrieval_config, dict) and retrieval_config.get("hash") else None),
-        "retrieval_config": (dict(retrieval_config) if isinstance(retrieval_config, dict) else None),
+        "retrieval_config_hash": retrieval_hash,
+        "retrieval_config": retrieval_payload,
         "model_path": str(model_path),
         "model_sha256": str(model_sha256),
         "feature_spec_version": int(feature_spec_version or 1),
@@ -257,41 +265,87 @@ def _build_candidate_from_citation(c: dict[str, Any]) -> RerankCandidate | None:
     )
 
 
-def main(argv: list[str] | None = None) -> int:
-    t0 = time.monotonic()
-    p = argparse.ArgumentParser(description="Offline evaluation: baseline vs local LTR rerank (via Evidence API candidates).")
-    p.add_argument("--cases", required=True, help="Path to regression cases JSON (bundle v1 or legacy array)")
-    p.add_argument("--model", required=True, help="Path to LTR model artifact (xgboost JSON/UBJ)")
-    p.add_argument("--feature-spec-version", type=int, default=1, help="LTR feature spec version (default: %(default)s)")
+def _build_argument_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description=("Offline evaluation: baseline vs local LTR rerank (via Evidence API candidates).")
+    )
+    parser.add_argument(
+        "--cases",
+        required=True,
+        help="Path to regression cases JSON (bundle v1 or legacy array)",
+    )
+    parser.add_argument(
+        "--model",
+        required=True,
+        help="Path to LTR model artifact (xgboost JSON/UBJ)",
+    )
+    parser.add_argument(
+        "--feature-spec-version",
+        type=int,
+        default=1,
+        help="LTR feature spec version (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--base-url",
+        default="http://localhost:8000/api/v1",
+        help="API base URL (default: %(default)s)",
+    )
+    parser.add_argument("--tenant-id", default="", help="Tenant id (X-Tenant-ID header)")
+    parser.add_argument(
+        "--user-id",
+        default="",
+        help="User id (X-User-ID header, for AUTH_MODE=header)",
+    )
+    parser.add_argument("--bearer", default="", help="Bearer token (Authorization: Bearer ...)")
+    parser.add_argument(
+        "--timeout-sec",
+        type=float,
+        default=30.0,
+        help="HTTP timeout seconds (default: %(default)s)",
+    )
+    parser.add_argument("--top-k", type=int, default=50, help="Evidence API top_k (default: %(default)s)")
+    parser.add_argument(
+        "--score-threshold",
+        type=float,
+        default=0.0,
+        help="Evidence API score_threshold (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--retrieval-mode",
+        default="hybrid",
+        help="hybrid|vector|keyword|mmr (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--retrieval-profile",
+        default="recall50",
+        help="recall20|recall50|coverage80 (default: %(default)s)",
+    )
+    parser.add_argument("--alpha", type=float, default=0.6, help="Fusion alpha (default: %(default)s)")
+    parser.add_argument("--k", type=int, default=20, help="Compute metrics at K (default: %(default)s)")
+    parser.add_argument(
+        "--rerank-top-n",
+        type=int,
+        default=30,
+        help="Rerank the top-N candidates locally (default: %(default)s)",
+    )
+    parser.add_argument("--max-cases", type=int, default=0, help="Limit number of cases (default: all)")
+    parser.add_argument("--out-json", default="", help="Optional: write summary JSON to this path")
+    return parser
 
-    p.add_argument("--base-url", default="http://localhost:8000/api/v1", help="API base URL (default: %(default)s)")
-    p.add_argument("--tenant-id", default="", help="Tenant id (X-Tenant-ID header)")
-    p.add_argument("--user-id", default="", help="User id (X-User-ID header, for AUTH_MODE=header)")
-    p.add_argument("--bearer", default="", help="Bearer token (Authorization: Bearer ...)")
-    p.add_argument("--timeout-sec", type=float, default=30.0, help="HTTP timeout seconds (default: %(default)s)")
 
-    p.add_argument("--top-k", type=int, default=50, help="Evidence API top_k (default: %(default)s)")
-    p.add_argument("--score-threshold", type=float, default=0.0, help="Evidence API score_threshold (default: %(default)s)")
-    p.add_argument("--retrieval-mode", default="hybrid", help="hybrid|vector|keyword|mmr (default: %(default)s)")
-    p.add_argument("--retrieval-profile", default="recall50", help="recall20|recall50|coverage80 (default: %(default)s)")
-    p.add_argument("--alpha", type=float, default=0.6, help="Fusion alpha (default: %(default)s)")
+def _existing_path(path_value: str, *, label: str) -> Path | None:
+    path = Path(path_value)
+    if path.exists():
+        return path
+    print(f"[eval_ltr] ERROR: {label} file not found: {path}", file=sys.stderr)
+    return None
 
-    p.add_argument("--k", type=int, default=20, help="Compute metrics at K (default: %(default)s)")
-    p.add_argument("--rerank-top-n", type=int, default=30, help="Rerank the top-N candidates locally (default: %(default)s)")
-    p.add_argument("--max-cases", type=int, default=0, help="Limit number of cases (default: all)")
-    p.add_argument("--out-json", default="", help="Optional: write summary JSON to this path")
-    args = p.parse_args(argv)
 
-    cases_path = Path(args.cases)
-    if not cases_path.exists():
-        print(f"[eval_ltr] ERROR: cases file not found: {cases_path}", file=sys.stderr)
-        return 2
-
-    model_path = Path(args.model)
-    if not model_path.exists():
-        print(f"[eval_ltr] ERROR: model file not found: {model_path}", file=sys.stderr)
-        return 2
-
+def _load_cases_bundle_from_path(
+    cases_path: Path,
+    *,
+    max_cases: int,
+) -> tuple[str, list[dict[str, Any]], str, str | None]:
     try:
         try:
             cases_sha256 = hashlib.sha256(cases_path.read_bytes()).hexdigest()
@@ -300,37 +354,115 @@ def main(argv: list[str] | None = None) -> int:
 
         raw_cases = _load_json(cases_path)
         cases_schema = str(raw_cases.get("schema") or "").strip() if isinstance(raw_cases, dict) else ""
-        cases_schema = cases_schema or None
         dataset_id, items = coerce_case_bundle(raw_cases)
     except Exception as exc:  # noqa: BLE001
-        print(f"[eval_ltr] ERROR: failed to parse cases: {str(exc)[:200]}", file=sys.stderr)
-        return 2
+        raise ValueError(str(exc)[:200]) from exc
 
-    if args.max_cases and int(args.max_cases) > 0:
-        items = list(items)[: int(args.max_cases)]
+    if max_cases > 0:
+        items = list(items)[:max_cases]
+    return dataset_id, items, cases_sha256, (cases_schema or None)
 
+
+def _resolve_eval_window(args: argparse.Namespace) -> tuple[int, int, int]:
     k = max(1, int(args.k or 0))
     top_k = max(k, int(args.top_k or 0))
     rerank_top_n = max(0, int(args.rerank_top_n or 0))
     rerank_top_n = min(rerank_top_n, top_k) if rerank_top_n else top_k
+    return k, top_k, rerank_top_n
 
-    pipeline_hashes = _extract_pipeline_hashes(items)
 
-    try:
-        model_sha256 = hashlib.sha256(model_path.read_bytes()).hexdigest()
-    except Exception:
-        model_sha256 = ""
+def _build_retrieve_request(
+    *,
+    args: argparse.Namespace,
+    dataset_id: str,
+    question: str,
+    top_k: int,
+) -> dict[str, Any]:
+    return {
+        "query": question,
+        "history": [],
+        "dataset_id": str(dataset_id),
+        "document_ids": [],
+        "rag_config": {
+            "retrieval_profile": str(args.retrieval_profile),
+            "retrieval_mode": str(args.retrieval_mode),
+            "top_k": int(top_k),
+            "score_threshold": float(args.score_threshold),
+            "alpha": float(args.alpha),
+            # Always collect pre-rerank candidates from the backend.
+            "enable_reranker": False,
+            "reranker_provider": "none",
+            "reranker_top_n": 0,
+        },
+    }
 
-    feature_spec_version = int(args.feature_spec_version or 1)
-    spec = LTRFeatureSpec.from_version(feature_spec_version)
-    reranker = LTRReranker(model_path=str(model_path), spec=spec)
 
+def _extract_retrieval_config(payload: Any) -> dict[str, Any] | None:
+    if not isinstance(payload, dict):
+        return None
+    retrieval_trace = payload.get("retrieval_trace")
+    if not isinstance(retrieval_trace, dict):
+        return None
+    retrieval_config = retrieval_trace.get("retrieval_config")
+    if not isinstance(retrieval_config, dict):
+        return None
+    has_schema = str(retrieval_config.get("schema") or "").strip()
+    has_hash = str(retrieval_config.get("hash") or "").strip()
+    if not has_schema or not has_hash:
+        return None
+    return dict(retrieval_config)
+
+
+def _collect_ranked_ids(citations: Any) -> list[str]:
+    if not isinstance(citations, list) or not citations:
+        return []
+    ranked_ids = [str(c.get("chunk_id") or "").strip() for c in citations if isinstance(c, dict)]
+    return [chunk_id for chunk_id in ranked_ids if chunk_id]
+
+
+def _build_reranked_ids(
+    *,
+    citations: list[Any],
+    reranker: LTRReranker,
+    question: str,
+    ranked_ids: list[str],
+    rerank_top_n: int,
+) -> list[str]:
+    candidates: list[RerankCandidate] = []
+    for citation in citations[:rerank_top_n]:
+        if not isinstance(citation, dict):
+            continue
+        candidate = _build_candidate_from_citation(citation)
+        if candidate is not None:
+            candidates.append(candidate)
+
+    rerank_result = reranker.rerank(query=question, candidates=candidates, top_n=len(candidates))
+    ordered_ids = list(rerank_result.ordered_ids or [])
+    used = set(ordered_ids)
+    return ordered_ids + [chunk_id for chunk_id in ranked_ids if chunk_id not in used]
+
+
+def _average_metrics(metric_sum: dict[str, float], *, cases_used: int) -> dict[str, float]:
+    if cases_used <= 0:
+        return metric_sum
+    return {key: round(float(metric_sum[key]) / float(cases_used), 4) for key in METRIC_KEYS}
+
+
+def _evaluate_items(
+    *,
+    args: argparse.Namespace,
+    dataset_id: str,
+    items: list[dict[str, Any]],
+    reranker: LTRReranker,
+    top_k: int,
+    k: int,
+    rerank_top_n: int,
+) -> tuple[dict[str, float], dict[str, float], int, dict[str, Any] | None]:
     url = str(args.base_url).rstrip("/") + "/rag/retrieve"
     timeout = httpx.Timeout(float(args.timeout_sec or 30.0))
     retrieval_config: dict[str, Any] | None = None
-
-    baseline_sum = {"hit": 0.0, "mrr": 0.0, "recall": 0.0, "ndcg": 0.0}
-    ltr_sum = {"hit": 0.0, "mrr": 0.0, "recall": 0.0, "ndcg": 0.0}
+    baseline_sum = {key: 0.0 for key in METRIC_KEYS}
+    ltr_sum = {key: 0.0 for key in METRIC_KEYS}
     cases_used = 0
 
     with httpx.Client(timeout=timeout) as client:
@@ -344,78 +476,96 @@ def main(argv: list[str] | None = None) -> int:
             if not relevant:
                 continue
 
-            body = {
-                "query": question,
-                "history": [],
-                "dataset_id": str(dataset_id),
-                "document_ids": [],
-                "rag_config": {
-                    "retrieval_profile": str(args.retrieval_profile),
-                    "retrieval_mode": str(args.retrieval_mode),
-                    "top_k": int(top_k),
-                    "score_threshold": float(args.score_threshold),
-                    "alpha": float(args.alpha),
-                    # Always collect pre-rerank candidates from the backend.
-                    "enable_reranker": False,
-                    "reranker_provider": "none",
-                    "reranker_top_n": 0,
-                },
-            }
-
+            request_body = _build_retrieve_request(
+                args=args,
+                dataset_id=dataset_id,
+                question=question,
+                top_k=top_k,
+            )
             try:
-                resp = client.post(url, headers=_headers(args), json=body)
-                resp.raise_for_status()
-                payload = resp.json() or {}
+                response = client.post(url, headers=_headers(args), json=request_body)
+                response.raise_for_status()
+                payload = response.json() or {}
             except Exception as exc:  # noqa: BLE001
                 print(f"[eval_ltr] WARN: retrieve failed: {str(exc)[:200]}", file=sys.stderr)
                 continue
 
-            # Best-effort capture of the backend's versioned, PII-safe retrieval config fingerprint.
-            if retrieval_config is None and isinstance(payload, dict):
-                rt = payload.get("retrieval_trace") if isinstance(payload.get("retrieval_trace"), dict) else None
-                if isinstance(rt, dict):
-                    rcfg = rt.get("retrieval_config")
-                    if isinstance(rcfg, dict) and str(rcfg.get("schema") or "").strip() and str(rcfg.get("hash") or "").strip():
-                        retrieval_config = dict(rcfg)
+            if retrieval_config is None:
+                retrieval_config = _extract_retrieval_config(payload)
 
             citations = payload.get("citations") or []
-            if not isinstance(citations, list) or not citations:
-                continue
-
-            ranked_ids = [str(c.get("chunk_id") or "").strip() for c in citations if isinstance(c, dict)]
-            ranked_ids = [cid for cid in ranked_ids if cid]
+            ranked_ids = _collect_ranked_ids(citations)
             if not ranked_ids:
                 continue
 
             base_metrics = _hit_mrr_recall_ndcg_at_k(ranked_ids=ranked_ids, relevant=relevant, k=k)
-
-            candidates: list[RerankCandidate] = []
-            id_to_citation: dict[str, dict[str, Any]] = {}
-            for c in citations[:rerank_top_n]:
-                if not isinstance(c, dict):
-                    continue
-                cand = _build_candidate_from_citation(c)
-                if cand is None:
-                    continue
-                candidates.append(cand)
-                id_to_citation[str(cand.id)] = c
-
-            rr = reranker.rerank(query=question, candidates=candidates, top_n=len(candidates))
-            ordered_ids = list(rr.ordered_ids or [])
-            used = set(ordered_ids)
-            reranked = ordered_ids + [cid for cid in ranked_ids if cid not in used]
-
+            reranked = _build_reranked_ids(
+                citations=citations,
+                reranker=reranker,
+                question=question,
+                ranked_ids=ranked_ids,
+                rerank_top_n=rerank_top_n,
+            )
             ltr_metrics = _hit_mrr_recall_ndcg_at_k(ranked_ids=reranked, relevant=relevant, k=k)
-
             cases_used += 1
-            for key in ("hit", "mrr", "recall", "ndcg"):
+            for key in METRIC_KEYS:
                 baseline_sum[key] += float(base_metrics.get(key, 0.0) or 0.0)
                 ltr_sum[key] += float(ltr_metrics.get(key, 0.0) or 0.0)
 
-    if cases_used > 0:
-        for key in ("hit", "mrr", "recall", "ndcg"):
-            baseline_sum[key] = round(float(baseline_sum[key]) / float(cases_used), 4)
-            ltr_sum[key] = round(float(ltr_sum[key]) / float(cases_used), 4)
+    return baseline_sum, ltr_sum, cases_used, retrieval_config
+
+
+def _write_summary_json(out_json: str, *, summary: dict[str, Any]) -> None:
+    if not out_json:
+        return
+    out = Path(out_json)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def main(argv: list[str] | None = None) -> int:
+    t0 = time.monotonic()
+    args = _build_argument_parser().parse_args(argv)
+
+    cases_path = _existing_path(args.cases, label="cases")
+    if cases_path is None:
+        return 2
+
+    model_path = _existing_path(args.model, label="model")
+    if model_path is None:
+        return 2
+
+    try:
+        dataset_id, items, cases_sha256, cases_schema = _load_cases_bundle_from_path(
+            cases_path,
+            max_cases=int(args.max_cases or 0),
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[eval_ltr] ERROR: failed to parse cases: {str(exc)[:200]}", file=sys.stderr)
+        return 2
+
+    k, top_k, rerank_top_n = _resolve_eval_window(args)
+    pipeline_hashes = _extract_pipeline_hashes(items)
+
+    try:
+        model_sha256 = hashlib.sha256(model_path.read_bytes()).hexdigest()
+    except Exception:
+        model_sha256 = ""
+
+    feature_spec_version = int(args.feature_spec_version or 1)
+    spec = LTRFeatureSpec.from_version(feature_spec_version)
+    reranker = LTRReranker(model_path=str(model_path), spec=spec)
+    baseline_sum, ltr_sum, cases_used, retrieval_config = _evaluate_items(
+        args=args,
+        dataset_id=str(dataset_id),
+        items=items,
+        reranker=reranker,
+        top_k=top_k,
+        k=k,
+        rerank_top_n=rerank_top_n,
+    )
+    baseline_sum = _average_metrics(baseline_sum, cases_used=cases_used)
+    ltr_sum = _average_metrics(ltr_sum, cases_used=cases_used)
 
     summary = build_eval_summary(
         generated_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -452,12 +602,7 @@ def main(argv: list[str] | None = None) -> int:
         f" model={summary['model']}"
         f" spec={summary['spec']}"
     )
-
-    if args.out_json:
-        out = Path(args.out_json)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
+    _write_summary_json(args.out_json, summary=summary)
     return 0
 
 

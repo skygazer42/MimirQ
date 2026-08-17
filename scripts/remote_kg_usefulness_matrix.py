@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-# ruff: noqa: E402, I001
 """Run a remote KG usefulness matrix against a live MimirQ API."""
-
 
 import argparse
 import json
@@ -21,37 +19,51 @@ def ensure_repo_root_on_sys_path(script_path: str | Path) -> str:
 
 ensure_repo_root_on_sys_path(__file__)
 
-from scripts.remote_real_pdf_chain import (
+
+def load_runtime_deps() -> tuple[Any, Any, Any, Any, Any, Any]:
+    from scripts.remote_real_pdf_chain import (
+        DEFAULT_TENANT_ID,
+        LiveApi,
+        ok_status,
+        perform_cleanup,
+        record_step,
+        snippet,
+    )
+
+    return (
+        DEFAULT_TENANT_ID,
+        LiveApi,
+        ok_status,
+        perform_cleanup,
+        record_step,
+        snippet,
+    )
+
+
+(
     DEFAULT_TENANT_ID,
     LiveApi,
     ok_status,
     perform_cleanup,
     record_step,
     snippet,
-)
+) = load_runtime_deps()
 
 
 FIXTURES: list[dict[str, str]] = [
     {
         "filename": "atlas-acquisition.md",
-        "content": (
-            "# Atlas Acquisition\n\n"
-            "Project Atlas acquired Blue Harbor on 2026-01-10.\n"
-        ),
+        "content": ("# Atlas Acquisition\n\nProject Atlas acquired Blue Harbor on 2026-01-10.\n"),
     },
     {
         "filename": "integration-lead.md",
         "content": (
-            "# Integration Lead\n\n"
-            "After the acquisition, Mira Chen led the Blue Harbor integration program.\n"
+            "# Integration Lead\n\nAfter the acquisition, Mira Chen led the Blue Harbor integration program.\n"
         ),
     },
     {
         "filename": "orion-migration.md",
-        "content": (
-            "# Migration Outcome\n\n"
-            "The Blue Harbor integration program migrated the Orion billing service.\n"
-        ),
+        "content": ("# Migration Outcome\n\nThe Blue Harbor integration program migrated the Orion billing service.\n"),
     },
 ]
 
@@ -195,7 +207,7 @@ def chunk_list(body: Any) -> list[dict[str, Any]]:
 
 
 def delete_regression_cases(
-    api: LiveApi,
+    api: Any,
     *,
     case_ids: list[str],
     steps: list[dict[str, Any]],
@@ -203,8 +215,19 @@ def delete_regression_cases(
 ) -> dict[str, Any]:
     deleted = 0
     for case_id in case_ids:
-        status, body, elapsed = api.json("DELETE", f"/api/v1/evaluations/ragas/regression/cases/{case_id}", timeout=timeout)
-        record_step(steps, "cleanup:delete_regression_case", status, body, elapsed, case_id=case_id)
+        status, body, elapsed = api.json(
+            "DELETE",
+            f"/api/v1/evaluations/ragas/regression/cases/{case_id}",
+            timeout=timeout,
+        )
+        record_step(
+            steps,
+            "cleanup:delete_regression_case",
+            status,
+            body,
+            elapsed,
+            case_id=case_id,
+        )
         if ok_status(status) or int(status) == 204:
             deleted += 1
             continue
@@ -213,7 +236,7 @@ def delete_regression_cases(
 
 
 def poll_document_until_completed(
-    api: LiveApi,
+    api: Any,
     *,
     document_id: str,
     steps: list[dict[str, Any]],
@@ -221,7 +244,11 @@ def poll_document_until_completed(
 ) -> None:
     deadline = time.time() + int(timeout)
     while time.time() < deadline:
-        status, body, elapsed = api.json("GET", f"/api/v1/documents/{document_id}", timeout=timeout)
+        status, body, elapsed = api.json(
+            "GET",
+            f"/api/v1/documents/{document_id}",
+            timeout=timeout,
+        )
         doc_status = str((body or {}).get("status") or "")
         record_step(steps, "poll_document", status, body, elapsed, doc_status=doc_status)
         if not ok_status(status):
@@ -235,7 +262,7 @@ def poll_document_until_completed(
 
 
 def poll_kg_diagnostics_run(
-    api: LiveApi,
+    api: Any,
     *,
     run_id: str,
     steps: list[dict[str, Any]],
@@ -261,7 +288,7 @@ def poll_kg_diagnostics_run(
     raise RuntimeError(f"kg diagnostics run did not complete: {run_id}")
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run a remote KG usefulness matrix on a live MimirQ API.")
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--tenant-id", default=DEFAULT_TENANT_ID)
@@ -271,11 +298,539 @@ def main() -> int:
     parser.add_argument("--timeout", type=int, default=1800)
     parser.add_argument("--poll-timeout", type=int, default=1800)
     parser.add_argument("--delete-dataset-after", action="store_true")
-    args = parser.parse_args()
+    return parser
 
-    run_id = time.strftime("%Y%m%d-%H%M%S")
-    artifact_dir = Path(args.artifact_dir or f"artifacts/kg-usefulness-matrix/{run_id}").resolve()
+
+def build_artifact_dir(*, artifact_dir_arg: str, run_id: str) -> Path:
+    artifact_dir = Path(artifact_dir_arg or f"artifacts/kg-usefulness-matrix/{run_id}").resolve()
     artifact_dir.mkdir(parents=True, exist_ok=True)
+    return artifact_dir
+
+
+def create_dataset(
+    api: Any,
+    *,
+    run_id: str,
+    steps: list[dict[str, Any]],
+    timeout: int,
+) -> str:
+    status, body, elapsed = api.json(
+        "POST",
+        "/api/v1/datasets/",
+        payload={
+            "name": f"KG Usefulness Matrix {run_id}",
+            "description": "Remote KG usefulness verification dataset",
+            "default_parser_backend": "basic",
+            "default_chunk_strategy": "langchain_recursive",
+        },
+        timeout=timeout,
+    )
+    record_step(steps, "create_dataset", status, body, elapsed)
+    if not ok_status(status):
+        raise RuntimeError(f"create_dataset failed: {snippet(body)}")
+
+    dataset_id = str((body or {}).get("id") or (body or {}).get("dataset_id") or "")
+    if not dataset_id:
+        raise RuntimeError(f"create_dataset missing id: {snippet(body)}")
+    return dataset_id
+
+
+def upload_fixture_documents(
+    api: Any,
+    *,
+    artifact_dir: Path,
+    dataset_id: str,
+    steps: list[dict[str, Any]],
+    timeout: int,
+    poll_timeout: int,
+) -> list[dict[str, str]]:
+    document_rows: list[dict[str, str]] = []
+    fixture_dir = artifact_dir / "fixtures"
+    for fixture in FIXTURES:
+        file_path = fixture_dir / fixture["filename"]
+        write_fixture(file_path, fixture["content"])
+        status, body, elapsed = api.multipart(
+            "POST",
+            "/api/v1/documents/upload",
+            fields={
+                "dataset_id": dataset_id,
+                "parser_backend": "basic",
+                "chunk_strategy": "langchain_recursive",
+                "governance_enabled": "true",
+                "chunk_vector_enabled": "true",
+                "bm25_index_enabled": "true",
+                "kg_enabled": "false",
+                "event_vector_enabled": "false",
+                "entity_vector_enabled": "false",
+            },
+            file_path=file_path,
+            timeout=timeout,
+        )
+        record_step(
+            steps,
+            "upload_document",
+            status,
+            body,
+            elapsed,
+            filename=fixture["filename"],
+        )
+        if not ok_status(status):
+            raise RuntimeError(f"upload failed for {fixture['filename']}: {snippet(body)}")
+
+        document_id = str((body or {}).get("id") or (body or {}).get("document_id") or "")
+        if not document_id:
+            raise RuntimeError(f"upload missing document_id for {fixture['filename']}")
+
+        poll_document_until_completed(
+            api,
+            document_id=document_id,
+            steps=steps,
+            timeout=poll_timeout,
+        )
+
+        status, body, elapsed = api.json(
+            "GET",
+            f"/api/v1/documents/{document_id}/chunks?limit=2000",
+            timeout=timeout,
+        )
+        record_step(steps, "list_chunks", status, body, elapsed, document_id=document_id)
+        if not ok_status(status):
+            raise RuntimeError(f"chunk listing failed for {fixture['filename']}: {snippet(body)}")
+
+        rows = chunk_list(body)
+        if not rows:
+            raise RuntimeError(f"no chunks returned for {fixture['filename']}")
+
+        chunk_id = str(rows[0].get("id") or "")
+        if not chunk_id:
+            raise RuntimeError(f"first chunk missing id for {fixture['filename']}")
+
+        document_rows.append(
+            {
+                "filename": fixture["filename"],
+                "document_id": document_id,
+                "chunk_id": chunk_id,
+            }
+        )
+
+    return document_rows
+
+
+def extract_kg_documents(
+    api: Any,
+    *,
+    document_rows: list[dict[str, str]],
+    steps: list[dict[str, Any]],
+    timeout: int,
+) -> None:
+    for row in document_rows:
+        status, body, elapsed = api.json(
+            "POST",
+            (
+                f"/api/v1/kg/documents/{row['document_id']}/extract"
+                "?replace_existing=true&extract_relations=false"
+                "&extract_skills=false&extraction_backend=heuristic"
+            ),
+            payload={},
+            timeout=timeout,
+        )
+        record_step(steps, "kg_extract", status, body, elapsed, document_id=row["document_id"])
+        if not ok_status(status):
+            raise RuntimeError(f"kg extract failed for {row['filename']}: {snippet(body)}")
+
+
+def create_regression_cases(
+    api: Any,
+    *,
+    dataset_id: str,
+    document_rows: list[dict[str, str]],
+    steps: list[dict[str, Any]],
+    timeout: int,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    case_rows: list[dict[str, Any]] = []
+    regression_case_ids: list[str] = []
+    filename_to_row = {row["filename"]: row for row in document_rows}
+
+    for item in QUESTIONS:
+        reference_sources = []
+        document_ids = []
+        for filename in item["evidence_filenames"]:
+            row = filename_to_row[filename]
+            reference_sources.append({"document_id": row["document_id"], "chunk_id": row["chunk_id"]})
+            document_ids.append(row["document_id"])
+
+        status, body, elapsed = api.json(
+            "POST",
+            "/api/v1/evaluations/ragas/regression/cases",
+            payload={
+                "dataset_id": dataset_id,
+                "question": item["question"],
+                "expected_answer": item["expected_answer"],
+                "reference_sources": reference_sources,
+                "tags": ["kg_usefulness", "multi_hop"],
+                "document_ids": document_ids,
+            },
+            timeout=timeout,
+        )
+        record_step(
+            steps,
+            "create_regression_case",
+            status,
+            body,
+            elapsed,
+            question=item["question"],
+        )
+        if not ok_status(status):
+            raise RuntimeError(f"create regression case failed: {snippet(body)}")
+
+        case_id = str((body or {}).get("id") or "")
+        if not case_id:
+            raise RuntimeError(f"regression case missing id: {snippet(body)}")
+
+        regression_case_ids.append(case_id)
+        case_rows.append(
+            {
+                "question": item["question"],
+                "expected_answer": item["expected_answer"],
+                "case_id": case_id,
+            }
+        )
+
+    return case_rows, regression_case_ids
+
+
+def build_chat_payload(*, dataset_id: str, question: str, use_graph: bool) -> dict[str, Any]:
+    return {
+        "message": question,
+        "dataset_id": dataset_id,
+        "stream": False,
+        "rag_config": {
+            "top_k": 4,
+            "score_threshold": 0.0,
+            "retrieval_mode": "hybrid",
+            "enable_reranker": False,
+            "enable_multi_query": False,
+            "enable_hyde": False,
+            "enable_query_decomposition": False,
+            "use_graph": use_graph,
+            "answer_mode": "extractive",
+        },
+    }
+
+
+def run_chat_variant(
+    api: Any,
+    *,
+    dataset_id: str,
+    item: dict[str, Any],
+    question: str,
+    label: str,
+    use_graph: bool,
+    steps: list[dict[str, Any]],
+    timeout: int,
+) -> dict[str, Any]:
+    status, body, elapsed = api.json(
+        "POST",
+        "/api/v1/chat",
+        payload=build_chat_payload(
+            dataset_id=dataset_id,
+            question=question,
+            use_graph=use_graph,
+        ),
+        timeout=timeout,
+    )
+    answer = str((body or {}).get("content") or (body or {}).get("answer") or "")
+    citation_count = len((body or {}).get("citations") or []) if isinstance(body, dict) else 0
+    record_step(
+        steps,
+        label,
+        status,
+        body,
+        elapsed,
+        question=question,
+        citation_count=citation_count,
+        answer_preview=answer[:200],
+    )
+    if not ok_status(status):
+        raise RuntimeError(f"{label} failed: {snippet(body)}")
+
+    chat_expectation = chat_expectation_summary(item, answer, citation_count=citation_count)
+    if not bool(chat_expectation["passes_gate"]):
+        raise RuntimeError(f"{label} answer did not satisfy expectation for question: {question} :: {answer[:300]}")
+
+    return {
+        "answer_preview": answer[:200],
+        "citation_count": citation_count,
+        "matches_expected": bool(chat_expectation["matches_expectation"]),
+        "matched_terms": list(chat_expectation["matched_terms"]),
+        "matched_term_count": int(chat_expectation["matched_term_count"]),
+        "expected_terms": list(chat_expectation["expected_terms"]),
+        "min_expected_terms": int(chat_expectation["min_expected_terms"]),
+        "min_citations": int(chat_expectation["min_citations"]),
+        "require_expected_match": bool(chat_expectation["require_expected_match"]),
+        "passes_gate": bool(chat_expectation["passes_gate"]),
+        "elapsed_sec": round(elapsed, 3),
+    }
+
+
+def run_question_matrix(
+    api: Any,
+    *,
+    dataset_id: str,
+    steps: list[dict[str, Any]],
+    timeout: int,
+) -> list[dict[str, Any]]:
+    question_results: list[dict[str, Any]] = []
+    for item in [*QUESTIONS, *SUMMARY_QUESTIONS]:
+        question = item["question"]
+        status, body, elapsed = api.json(
+            "POST",
+            "/api/v1/kg/search",
+            payload={"query": question, "dataset_id": dataset_id},
+            timeout=timeout,
+        )
+        clue_count = kg_search_clue_count(body)
+        result_payload = body.get("result") if isinstance(body, dict) else {}
+        if not isinstance(result_payload, dict):
+            result_payload = {}
+        event_count = len(result_payload.get("events") or [])
+        record_step(
+            steps,
+            "kg_search",
+            status,
+            body,
+            elapsed,
+            question=question,
+            clue_count=clue_count,
+            event_count=event_count,
+        )
+        if not ok_status(status):
+            raise RuntimeError(f"kg search failed: {snippet(body)}")
+        if clue_count <= 0:
+            raise RuntimeError(f"kg search returned no clues for usefulness question: {question}")
+
+        question_results.append(
+            {
+                "question": question,
+                "expected_answer": item["expected_answer"],
+                "expected_terms": list(item.get("expected_terms") or []),
+                "kg_search_clues": clue_count,
+                "kg_search_events": event_count,
+                "chat_baseline": run_chat_variant(
+                    api,
+                    dataset_id=dataset_id,
+                    item=item,
+                    question=question,
+                    label="chat_baseline",
+                    use_graph=False,
+                    steps=steps,
+                    timeout=timeout,
+                ),
+                "chat_graph": run_chat_variant(
+                    api,
+                    dataset_id=dataset_id,
+                    item=item,
+                    question=question,
+                    label="chat_graph",
+                    use_graph=True,
+                    steps=steps,
+                    timeout=timeout,
+                ),
+            }
+        )
+
+    return question_results
+
+
+def parse_kg_diagnostics_body(body: Any) -> tuple[dict[str, Any], list[Any], str]:
+    summary_obj = body.get("summary") if isinstance(body, dict) else {}
+    if not isinstance(summary_obj, dict):
+        summary_obj = {}
+    items = body.get("items") if isinstance(body, dict) else []
+    if not isinstance(items, list):
+        items = []
+    run_id = str(body.get("run_id") or "") if isinstance(body, dict) else ""
+    return summary_obj, items, run_id
+
+
+def validate_kg_diagnostics(
+    *,
+    body: Any,
+    summary_obj: dict[str, Any],
+    items: list[Any],
+) -> None:
+    if float(summary_obj.get("baseline_hit_rate") or 0.0) < 1.0:
+        raise RuntimeError(f"kg diagnostics baseline_hit_rate too low: {snippet(body)}")
+    if float(summary_obj.get("baseline_recall") or 0.0) < 1.0:
+        raise RuntimeError(f"kg diagnostics baseline_recall too low: {snippet(body)}")
+
+    for item in QUESTIONS:
+        diag_item = diagnostics_item_for_question({"items": items}, item["question"])
+        if diag_item is None:
+            raise RuntimeError(f"diagnostics missing item for question: {item['question']}")
+        baseline = diag_item.get("baseline") if isinstance(diag_item.get("baseline"), dict) else {}
+        metrics = baseline.get("metrics") if isinstance(baseline.get("metrics"), dict) else {}
+        if bool(metrics.get("hit_at_k")) is not True:
+            raise RuntimeError(f"diagnostics hit_at_k false for question: {item['question']}")
+        if len(baseline.get("clues") or []) <= 0:
+            raise RuntimeError(f"diagnostics baseline clues empty for question: {item['question']}")
+
+
+def run_kg_diagnostics(
+    api: Any,
+    *,
+    dataset_id: str,
+    regression_case_ids: list[str],
+    steps: list[dict[str, Any]],
+    timeout: int,
+    poll_timeout: int,
+) -> dict[str, Any]:
+    status, body, elapsed = api.json(
+        "POST",
+        "/api/v1/evaluations/kg/search/diagnostics",
+        payload={
+            "dataset_id": dataset_id,
+            "case_ids": regression_case_ids,
+            "max_cases": len(regression_case_ids),
+            "k": 5,
+            "auto_extract_kg": False,
+            "hardcase_mode": "off",
+            "hardcases_per_failed_case": 0,
+            "max_failed_cases_for_hardcase": 0,
+            "persist_run": True,
+        },
+        timeout=timeout,
+    )
+    record_step(steps, "kg_search_diagnostics", status, body, elapsed)
+    if not ok_status(status):
+        raise RuntimeError(f"kg search diagnostics failed: {snippet(body)}")
+
+    summary_obj, items, run_id = parse_kg_diagnostics_body(body)
+    validate_kg_diagnostics(body=body, summary_obj=summary_obj, items=items)
+
+    result = {
+        "kg_diagnostics": {
+            "run_id": run_id or None,
+            "baseline_hit_rate": summary_obj.get("baseline_hit_rate"),
+            "baseline_recall": summary_obj.get("baseline_recall"),
+            "failure_breakdown": summary_obj.get("failure_breakdown"),
+        },
+        "kg_diagnostics_run": None,
+    }
+    if run_id:
+        run_detail = poll_kg_diagnostics_run(
+            api,
+            run_id=run_id,
+            steps=steps,
+            timeout=poll_timeout,
+        )
+        run_body = run_detail.get("run") if isinstance(run_detail.get("run"), dict) else {}
+        run_status = run_body.get("status") if isinstance(run_body, dict) else None
+        result["kg_diagnostics_run"] = {"run_id": run_id, "status": run_status}
+
+    return result
+
+
+def run_cleanup(
+    api: Any,
+    *,
+    dataset_id: str,
+    document_rows: list[dict[str, str]],
+    regression_case_ids: list[str],
+    steps: list[dict[str, Any]],
+    delete_dataset_after: bool,
+    timeout: int,
+) -> dict[str, Any]:
+    cleanup = delete_regression_cases(
+        api,
+        case_ids=regression_case_ids,
+        steps=steps,
+        timeout=timeout,
+    )
+    cleanup.update(
+        perform_cleanup(
+            api=api,
+            steps=steps,
+            dataset_id=dataset_id,
+            document_id=document_rows[0]["document_id"],
+            cleanup_mode="purge_dataset",
+            delete_dataset_after=delete_dataset_after,
+            timeout=timeout,
+        )
+    )
+    return cleanup
+
+
+def maybe_cleanup(
+    api: Any,
+    *,
+    summary: dict[str, Any],
+    dataset_id: str,
+    document_rows: list[dict[str, str]],
+    regression_case_ids: list[str],
+    steps: list[dict[str, Any]],
+    delete_dataset_after: bool,
+    timeout: int,
+) -> None:
+    if not dataset_id or not document_rows or summary.get("cleanup"):
+        return
+
+    cleanup: dict[str, Any] = {}
+    try:
+        if regression_case_ids:
+            cleanup.update(
+                delete_regression_cases(
+                    api,
+                    case_ids=regression_case_ids,
+                    steps=steps,
+                    timeout=timeout,
+                )
+            )
+        cleanup.update(
+            perform_cleanup(
+                api=api,
+                steps=steps,
+                dataset_id=dataset_id,
+                document_id=document_rows[0]["document_id"],
+                cleanup_mode="purge_dataset",
+                delete_dataset_after=delete_dataset_after,
+                timeout=timeout,
+            )
+        )
+    except Exception as cleanup_exc:
+        cleanup["error"] = str(cleanup_exc)
+
+    if cleanup:
+        summary["cleanup"] = cleanup
+
+
+def write_summary_report(
+    *,
+    artifact_dir: Path,
+    summary: dict[str, Any],
+    steps: list[dict[str, Any]],
+) -> None:
+    summary["steps"] = steps
+    report_path = artifact_dir / "report.json"
+    report_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(
+        json.dumps(
+            {
+                "ok": summary.get("ok"),
+                "artifact_dir": str(artifact_dir),
+                "dataset_id": summary.get("dataset_id"),
+                "error": summary.get("error"),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+
+
+def main() -> int:
+    args = build_parser().parse_args()
+    run_id = time.strftime("%Y%m%d-%H%M%S")
+    artifact_dir = build_artifact_dir(artifact_dir_arg=args.artifact_dir, run_id=run_id)
     api = LiveApi(args.base_url, args.tenant_id, args.account_id, args.user_id, args.timeout)
     steps: list[dict[str, Any]] = []
     summary: dict[str, Any] = {
@@ -288,293 +843,83 @@ def main() -> int:
     document_rows: list[dict[str, str]] = []
     regression_case_ids: list[str] = []
     try:
-        status, body, elapsed = api.json(
-            "POST",
-            "/api/v1/datasets/",
-            payload={
-                "name": f"KG Usefulness Matrix {run_id}",
-                "description": "Remote KG usefulness verification dataset",
-                "default_parser_backend": "basic",
-                "default_chunk_strategy": "langchain_recursive",
-            },
+        dataset_id = create_dataset(
+            api,
+            run_id=run_id,
+            steps=steps,
             timeout=args.timeout,
         )
-        record_step(steps, "create_dataset", status, body, elapsed)
-        if not ok_status(status):
-            raise RuntimeError(f"create_dataset failed: {snippet(body)}")
-        dataset_id = str((body or {}).get("id") or (body or {}).get("dataset_id") or "")
-        if not dataset_id:
-            raise RuntimeError(f"create_dataset missing id: {snippet(body)}")
         summary["dataset_id"] = dataset_id
 
-        fixture_dir = artifact_dir / "fixtures"
-        for fixture in FIXTURES:
-            file_path = fixture_dir / fixture["filename"]
-            write_fixture(file_path, fixture["content"])
-            status, body, elapsed = api.multipart(
-                "POST",
-                "/api/v1/documents/upload",
-                fields={
-                    "dataset_id": dataset_id,
-                    "parser_backend": "basic",
-                    "chunk_strategy": "langchain_recursive",
-                    "governance_enabled": "true",
-                    "chunk_vector_enabled": "true",
-                    "bm25_index_enabled": "true",
-                    "kg_enabled": "false",
-                    "event_vector_enabled": "false",
-                    "entity_vector_enabled": "false",
-                },
-                file_path=file_path,
-                timeout=args.timeout,
-            )
-            record_step(steps, "upload_document", status, body, elapsed, filename=fixture["filename"])
-            if not ok_status(status):
-                raise RuntimeError(f"upload failed for {fixture['filename']}: {snippet(body)}")
-            document_id = str((body or {}).get("id") or (body or {}).get("document_id") or "")
-            if not document_id:
-                raise RuntimeError(f"upload missing document_id for {fixture['filename']}")
-            poll_document_until_completed(api, document_id=document_id, steps=steps, timeout=args.poll_timeout)
+        document_rows = upload_fixture_documents(
+            api,
+            artifact_dir=artifact_dir,
+            dataset_id=dataset_id,
+            steps=steps,
+            timeout=args.timeout,
+            poll_timeout=args.poll_timeout,
+        )
+        summary["documents"] = document_rows
 
-            status, body, elapsed = api.json("GET", f"/api/v1/documents/{document_id}/chunks?limit=2000", timeout=args.timeout)
-            record_step(steps, "list_chunks", status, body, elapsed, document_id=document_id)
-            if not ok_status(status):
-                raise RuntimeError(f"chunk listing failed for {fixture['filename']}: {snippet(body)}")
-            rows = chunk_list(body)
-            if not rows:
-                raise RuntimeError(f"no chunks returned for {fixture['filename']}")
-            chunk_id = str(rows[0].get("id") or "")
-            if not chunk_id:
-                raise RuntimeError(f"first chunk missing id for {fixture['filename']}")
-            document_rows.append({"filename": fixture["filename"], "document_id": document_id, "chunk_id": chunk_id})
-
-        filename_to_row = {row["filename"]: row for row in document_rows}
-        summary["documents"] = list(document_rows)
-
-        # Extract KG up front for all documents to remove extraction work from diagnostics timing.
-        for row in document_rows:
-            status, body, elapsed = api.json(
-                "POST",
-                f"/api/v1/kg/documents/{row['document_id']}/extract?replace_existing=true&extract_relations=false&extract_skills=false&extraction_backend=heuristic",
-                payload={},
-                timeout=args.timeout,
-            )
-            record_step(steps, "kg_extract", status, body, elapsed, document_id=row["document_id"])
-            if not ok_status(status):
-                raise RuntimeError(f"kg extract failed for {row['filename']}: {snippet(body)}")
-
-        case_rows: list[dict[str, Any]] = []
-        for item in QUESTIONS:
-            reference_sources = []
-            for filename in item["evidence_filenames"]:
-                row = filename_to_row[filename]
-                reference_sources.append({"document_id": row["document_id"], "chunk_id": row["chunk_id"]})
-            status, body, elapsed = api.json(
-                "POST",
-                "/api/v1/evaluations/ragas/regression/cases",
-                payload={
-                    "dataset_id": dataset_id,
-                    "question": item["question"],
-                    "expected_answer": item["expected_answer"],
-                    "reference_sources": reference_sources,
-                    "tags": ["kg_usefulness", "multi_hop"],
-                    "document_ids": [filename_to_row[filename]["document_id"] for filename in item["evidence_filenames"]],
-                },
-                timeout=args.timeout,
-            )
-            record_step(steps, "create_regression_case", status, body, elapsed, question=item["question"])
-            if not ok_status(status):
-                raise RuntimeError(f"create regression case failed: {snippet(body)}")
-            case_id = str((body or {}).get("id") or "")
-            if not case_id:
-                raise RuntimeError(f"regression case missing id: {snippet(body)}")
-            regression_case_ids.append(case_id)
-            case_rows.append({"question": item["question"], "expected_answer": item["expected_answer"], "case_id": case_id})
-        summary["cases"] = list(case_rows)
-
-        # Direct KG search + baseline/graph chat for each question.
-        question_results: list[dict[str, Any]] = []
-        all_questions = list(QUESTIONS) + list(SUMMARY_QUESTIONS)
-        for item in all_questions:
-            question = item["question"]
-            expected_answer = item["expected_answer"]
-
-            status, body, elapsed = api.json(
-                "POST",
-                "/api/v1/kg/search",
-                payload={"query": question, "dataset_id": dataset_id},
-                timeout=args.timeout,
-            )
-            clue_count = kg_search_clue_count(body)
-            result_payload = body.get("result") if isinstance(body, dict) and isinstance(body.get("result"), dict) else {}
-            event_count = len(result_payload.get("events") or []) if isinstance(result_payload, dict) else 0
-            record_step(steps, "kg_search", status, body, elapsed, question=question, clue_count=clue_count, event_count=event_count)
-            if not ok_status(status):
-                raise RuntimeError(f"kg search failed: {snippet(body)}")
-            if clue_count <= 0:
-                raise RuntimeError(f"kg search returned no clues for usefulness question: {question}")
-
-            chat_rows: dict[str, Any] = {}
-            for label, use_graph in (("chat_baseline", False), ("chat_graph", True)):
-                status, body, elapsed = api.json(
-                    "POST",
-                    "/api/v1/chat",
-                    payload={
-                        "message": question,
-                        "dataset_id": dataset_id,
-                        "stream": False,
-                        "rag_config": {
-                            "top_k": 4,
-                            "score_threshold": 0.0,
-                            "retrieval_mode": "hybrid",
-                            "enable_reranker": False,
-                            "enable_multi_query": False,
-                            "enable_hyde": False,
-                            "enable_query_decomposition": False,
-                            "use_graph": use_graph,
-                            "answer_mode": "extractive",
-                        },
-                    },
-                    timeout=args.timeout,
-                )
-                answer = str((body or {}).get("content") or (body or {}).get("answer") or "")
-                citation_count = len((body or {}).get("citations") or []) if isinstance(body, dict) else 0
-                record_step(steps, label, status, body, elapsed, question=question, citation_count=citation_count, answer_preview=answer[:200])
-                if not ok_status(status):
-                    raise RuntimeError(f"{label} failed: {snippet(body)}")
-                chat_expectation = chat_expectation_summary(item, answer, citation_count=citation_count)
-                chat_rows[label] = {
-                    "answer_preview": answer[:200],
-                    "citation_count": citation_count,
-                    "matches_expected": bool(chat_expectation["matches_expectation"]),
-                    "matched_terms": list(chat_expectation["matched_terms"]),
-                    "matched_term_count": int(chat_expectation["matched_term_count"]),
-                    "expected_terms": list(chat_expectation["expected_terms"]),
-                    "min_expected_terms": int(chat_expectation["min_expected_terms"]),
-                    "min_citations": int(chat_expectation["min_citations"]),
-                    "require_expected_match": bool(chat_expectation["require_expected_match"]),
-                    "passes_gate": bool(chat_expectation["passes_gate"]),
-                    "elapsed_sec": round(elapsed, 3),
-                }
-                if not bool(chat_expectation["passes_gate"]):
-                    raise RuntimeError(
-                        f"{label} answer did not satisfy expectation for question: {question} :: {answer[:300]}"
-                    )
-
-            question_results.append(
-                {
-                    "question": question,
-                    "expected_answer": expected_answer,
-                    "expected_terms": list(item.get("expected_terms") or []),
-                    "kg_search_clues": clue_count,
-                    "kg_search_events": event_count,
-                    **chat_rows,
-                }
-            )
-        summary["question_results"] = question_results
-
-        status, body, elapsed = api.json(
-            "POST",
-            "/api/v1/evaluations/kg/search/diagnostics",
-            payload={
-                "dataset_id": dataset_id,
-                "case_ids": list(regression_case_ids),
-                "max_cases": len(regression_case_ids),
-                "k": 5,
-                "auto_extract_kg": False,
-                "hardcase_mode": "off",
-                "hardcases_per_failed_case": 0,
-                "max_failed_cases_for_hardcase": 0,
-                "persist_run": True,
-            },
+        extract_kg_documents(
+            api,
+            document_rows=document_rows,
+            steps=steps,
             timeout=args.timeout,
         )
-        record_step(steps, "kg_search_diagnostics", status, body, elapsed)
-        if not ok_status(status):
-            raise RuntimeError(f"kg search diagnostics failed: {snippet(body)}")
-        summary_obj = body.get("summary") if isinstance(body, dict) and isinstance(body.get("summary"), dict) else {}
-        items = body.get("items") if isinstance(body, dict) and isinstance(body.get("items"), list) else []
-        run_id = str(body.get("run_id") or "") if isinstance(body, dict) else ""
-        if float(summary_obj.get("baseline_hit_rate") or 0.0) < 1.0:
-            raise RuntimeError(f"kg diagnostics baseline_hit_rate too low: {snippet(body)}")
-        if float(summary_obj.get("baseline_recall") or 0.0) < 1.0:
-            raise RuntimeError(f"kg diagnostics baseline_recall too low: {snippet(body)}")
-        for item in QUESTIONS:
-            diag_item = diagnostics_item_for_question({"items": items}, item["question"])
-            if diag_item is None:
-                raise RuntimeError(f"diagnostics missing item for question: {item['question']}")
-            baseline = diag_item.get("baseline") if isinstance(diag_item.get("baseline"), dict) else {}
-            metrics = baseline.get("metrics") if isinstance(baseline.get("metrics"), dict) else {}
-            if bool(metrics.get("hit_at_k")) is not True:
-                raise RuntimeError(f"diagnostics hit_at_k false for question: {item['question']}")
-            if len(baseline.get("clues") or []) <= 0:
-                raise RuntimeError(f"diagnostics baseline clues empty for question: {item['question']}")
-        if run_id:
-            run_detail = poll_kg_diagnostics_run(api, run_id=run_id, steps=steps, timeout=args.poll_timeout)
-            summary["kg_diagnostics_run"] = {
-                "run_id": run_id,
-                "status": ((run_detail.get("run") or {}).get("status") if isinstance(run_detail.get("run"), dict) else None),
-            }
-        summary["kg_diagnostics"] = {
-            "run_id": run_id or None,
-            "baseline_hit_rate": summary_obj.get("baseline_hit_rate"),
-            "baseline_recall": summary_obj.get("baseline_recall"),
-            "failure_breakdown": summary_obj.get("failure_breakdown"),
-        }
 
-        cleanup = delete_regression_cases(api, case_ids=regression_case_ids, steps=steps, timeout=args.timeout)
-        cleanup.update(
-            perform_cleanup(
-                api=api,
-                steps=steps,
-                dataset_id=dataset_id,
-                document_id=document_rows[0]["document_id"],
-                cleanup_mode="purge_dataset",
-                delete_dataset_after=bool(args.delete_dataset_after),
-                timeout=args.timeout,
-            )
+        case_rows, regression_case_ids = create_regression_cases(
+            api,
+            dataset_id=dataset_id,
+            document_rows=document_rows,
+            steps=steps,
+            timeout=args.timeout,
         )
-        summary["cleanup"] = cleanup
+        summary["cases"] = case_rows
+        summary["question_results"] = run_question_matrix(
+            api,
+            dataset_id=dataset_id,
+            steps=steps,
+            timeout=args.timeout,
+        )
+
+        diagnostics = run_kg_diagnostics(
+            api,
+            dataset_id=dataset_id,
+            regression_case_ids=regression_case_ids,
+            steps=steps,
+            timeout=args.timeout,
+            poll_timeout=args.poll_timeout,
+        )
+        summary["kg_diagnostics"] = diagnostics["kg_diagnostics"]
+        if diagnostics["kg_diagnostics_run"] is not None:
+            summary["kg_diagnostics_run"] = diagnostics["kg_diagnostics_run"]
+
+        summary["cleanup"] = run_cleanup(
+            api,
+            dataset_id=dataset_id,
+            document_rows=document_rows,
+            regression_case_ids=regression_case_ids,
+            steps=steps,
+            delete_dataset_after=bool(args.delete_dataset_after),
+            timeout=args.timeout,
+        )
         summary["ok"] = True
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         summary["ok"] = False
         summary["error"] = str(exc)
     finally:
-        if dataset_id and document_rows and not summary.get("cleanup"):
-            cleanup: dict[str, Any] = {}
-            try:
-                if regression_case_ids:
-                    cleanup.update(delete_regression_cases(api, case_ids=regression_case_ids, steps=steps, timeout=args.timeout))
-                cleanup.update(
-                    perform_cleanup(
-                        api=api,
-                        steps=steps,
-                        dataset_id=dataset_id,
-                        document_id=document_rows[0]["document_id"],
-                        cleanup_mode="purge_dataset",
-                        delete_dataset_after=bool(args.delete_dataset_after),
-                        timeout=args.timeout,
-                    )
-                )
-            except Exception as cleanup_exc:  # noqa: BLE001
-                cleanup["error"] = str(cleanup_exc)
-            if cleanup:
-                summary["cleanup"] = cleanup
-        summary["steps"] = steps
-        report_path = artifact_dir / "report.json"
-        report_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
-        print(
-            json.dumps(
-                {
-                    "ok": summary.get("ok"),
-                    "artifact_dir": str(artifact_dir),
-                    "dataset_id": summary.get("dataset_id"),
-                    "error": summary.get("error"),
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
+        maybe_cleanup(
+            api,
+            summary=summary,
+            dataset_id=dataset_id,
+            document_rows=document_rows,
+            regression_case_ids=regression_case_ids,
+            steps=steps,
+            delete_dataset_after=bool(args.delete_dataset_after),
+            timeout=args.timeout,
         )
+        write_summary_report(artifact_dir=artifact_dir, summary=summary, steps=steps)
     return 0 if summary.get("ok") else 1
 
 

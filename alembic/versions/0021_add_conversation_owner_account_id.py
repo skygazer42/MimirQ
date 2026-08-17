@@ -16,7 +16,10 @@ depends_on = None
 UPGRADE_SQL = [
     "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS owner_account_id VARCHAR(255)",
     "UPDATE conversations SET owner_account_id = user_id::text WHERE owner_account_id IS NULL AND user_id IS NOT NULL",
-    "CREATE INDEX IF NOT EXISTS ix_conversations_tenant_owner_account_id ON conversations (tenant_id, owner_account_id)",
+    (
+        "CREATE INDEX IF NOT EXISTS ix_conversations_tenant_owner_account_id "
+        "ON conversations (tenant_id, owner_account_id)"
+    ),
 ]
 
 

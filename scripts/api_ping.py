@@ -137,7 +137,8 @@ def main() -> int:
         extra_part = f"  {extra}" if extra else ""
         err_part = f"  ({result.error})" if result.error else ""
         print(
-            f"[api-ping] {status}: {label}  {code if code is not None else '-'}  {result.elapsed_ms}ms  {url}{err_part}{extra_part}"
+            f"[api-ping] {status}: {label}  {code if code is not None else '-'}  "
+            f"{result.elapsed_ms}ms  {url}{err_part}{extra_part}"
         )
 
     return 0 if ok else 1

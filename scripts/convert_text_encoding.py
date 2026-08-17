@@ -41,20 +41,38 @@ def _is_under(path: Path, root: Path) -> bool:
         return False
 
 
-def convert_encoding(
-    *, source_dir: Path, target_dir: Path, extensions: set[str], clean_target: bool, dry_run: bool
-) -> int:
-    source_dir = source_dir.resolve()
-    target_dir = target_dir.resolve()
-
+def _prepare_target(target_dir: Path, *, clean_target: bool, dry_run: bool) -> None:
     if clean_target and target_dir.exists() and target_dir.is_dir():
         if dry_run:
             print(f"[dry-run] rm -rf {target_dir}")
         else:
             shutil.rmtree(target_dir)
-
     if not dry_run:
         target_dir.mkdir(parents=True, exist_ok=True)
+
+
+def _convert_file(src_path: Path, dest_path: Path, *, dry_run: bool) -> tuple[int, int]:
+    if dry_run:
+        decoded = read_text_file(src_path)
+        print(f"[dry-run] {src_path} ({decoded.encoding}) -> {dest_path}")
+        return 1, 0
+
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    decoded = read_text_file(src_path)
+    try:
+        dest_path.write_text(decoded.text, encoding="utf-8")
+    except Exception:
+        return 0, 1
+    print(f"Converted: {src_path} ({decoded.encoding}) -> {dest_path}")
+    return 1, 0
+
+
+def convert_encoding(
+    *, source_dir: Path, target_dir: Path, extensions: set[str], clean_target: bool, dry_run: bool
+) -> int:
+    source_dir = source_dir.resolve()
+    target_dir = target_dir.resolve()
+    _prepare_target(target_dir, clean_target=clean_target, dry_run=dry_run)
 
     converted = 0
     skipped = 0
@@ -76,21 +94,9 @@ def convert_encoding(
 
             rel = src_path.relative_to(source_dir)
             dest_path = target_dir / rel
-            if dry_run:
-                decoded = read_text_file(src_path)
-                print(f"[dry-run] {src_path} ({decoded.encoding}) -> {dest_path}")
-                converted += 1
-                continue
-
-            dest_path.parent.mkdir(parents=True, exist_ok=True)
-            decoded = read_text_file(src_path)
-            try:
-                dest_path.write_text(decoded.text, encoding="utf-8")
-            except Exception:
-                skipped += 1
-                continue
-            print(f"Converted: {src_path} ({decoded.encoding}) -> {dest_path}")
-            converted += 1
+            converted_delta, skipped_delta = _convert_file(src_path, dest_path, dry_run=dry_run)
+            converted += converted_delta
+            skipped += skipped_delta
 
     print(f"\nDone. converted={converted} skipped={skipped} target={target_dir}")
     return 0 if skipped == 0 else 1

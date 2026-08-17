@@ -3,7 +3,6 @@
 Verify parse-repair effectiveness by checking parse-risk tail shrinkage.
 """
 
-
 import argparse
 import json
 from datetime import UTC, datetime
@@ -24,6 +23,43 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return float(default)
 
 
+def _maybe_add_document_id(ids: set[str], value: Any) -> None:
+    doc = str(value or "").strip()
+    if doc:
+        ids.add(doc)
+
+
+def _collect_action_ids(actions: Any, ids: set[str]) -> None:
+    if not isinstance(actions, list):
+        return
+    for item in actions:
+        if isinstance(item, dict):
+            _maybe_add_document_id(ids, item.get("document_id"))
+
+
+def _collect_parse_risk_summary_ids(summary: Any, ids: set[str]) -> None:
+    if not isinstance(summary, dict):
+        return
+    for key in ("parse_risk_tail", "top_low_quality_documents"):
+        rows = summary.get(key)
+        if not isinstance(rows, list):
+            continue
+        for item in rows:
+            if isinstance(item, dict):
+                _maybe_add_document_id(ids, item.get("document_id"))
+
+
+def _collect_drift_ids(drift: Any, ids: set[str]) -> None:
+    if not isinstance(drift, dict):
+        return
+    for key in ("retained_document_ids", "added_document_ids"):
+        rows = drift.get(key)
+        if not isinstance(rows, list):
+            continue
+        for raw in rows:
+            _maybe_add_document_id(ids, raw)
+
+
 def _extract_tail_from_payload(obj: Any) -> set[str]:
     ids: set[str] = set()
     if isinstance(obj, list):
@@ -33,43 +69,9 @@ def _extract_tail_from_payload(obj: Any) -> set[str]:
     if not isinstance(obj, dict):
         return ids
 
-    # schedule artifact
-    actions = obj.get("actions")
-    if isinstance(actions, list):
-        for item in actions:
-            if not isinstance(item, dict):
-                continue
-            doc = str(item.get("document_id") or "").strip()
-            if doc:
-                ids.add(doc)
-
-    # snapshot summary
-    prs = obj.get("parse_risk_summary")
-    if isinstance(prs, dict):
-        for key in ("parse_risk_tail", "top_low_quality_documents"):
-            rows = prs.get(key)
-            if not isinstance(rows, list):
-                continue
-            for item in rows:
-                if not isinstance(item, dict):
-                    continue
-                doc = str(item.get("document_id") or "").strip()
-                if doc:
-                    ids.add(doc)
-
-    # queryset diff
-    drift = obj.get("parse_risk_tail_drift")
-    if isinstance(drift, dict):
-        for key in ("retained_document_ids", "added_document_ids"):
-            rows = drift.get(key)
-            if not isinstance(rows, list):
-                continue
-            for raw in rows:
-                doc = str(raw or "").strip()
-                if doc:
-                    ids.add(doc)
-
-    # recursive descent for nested payloads
+    _collect_action_ids(obj.get("actions"), ids)
+    _collect_parse_risk_summary_ids(obj.get("parse_risk_summary"), ids)
+    _collect_drift_ids(obj.get("parse_risk_tail_drift"), ids)
     for value in obj.values():
         if isinstance(value, (dict, list)):
             ids.update(_extract_tail_from_payload(value))

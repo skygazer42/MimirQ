@@ -1,4 +1,3 @@
-
 import math
 from collections import Counter
 from dataclasses import dataclass
@@ -117,6 +116,83 @@ class _DriftSampleItem:
     stored_space: str | None
 
 
+def _bounded_content(content: str, *, max_content_chars: int) -> str:
+    if int(max_content_chars or 0) > 0 and len(content) > int(max_content_chars or 0):
+        return content[: int(max_content_chars or 0)]
+    return content
+
+
+def _collect_drift_sample_items(
+    rows: list[tuple[object, object, object]],
+    *,
+    max_content_chars: int,
+) -> tuple[list[_DriftSampleItem], Counter[str]]:
+    items: list[_DriftSampleItem] = []
+    stored_space_counts: Counter[str] = Counter()
+    for row in rows:
+        if not row or len(row) < 3:
+            continue
+        vector_id_raw, content_raw, meta_raw = row
+        vector_id = str(vector_id_raw or "").strip()
+        if not vector_id:
+            continue
+        content = str(content_raw or "")
+        if not content.strip():
+            continue
+        meta = meta_raw if isinstance(meta_raw, dict) else {}
+        stored_space = str(meta.get("embedding_space_hash") or "").strip() or None
+        if stored_space:
+            stored_space_counts[stored_space] += 1
+        items.append(
+            _DriftSampleItem(
+                vector_id=vector_id,
+                content=_bounded_content(content, max_content_chars=max_content_chars),
+                stored_space=stored_space,
+            )
+        )
+    return items, stored_space_counts
+
+
+def _attach_empty_drift_stats(payload: dict[str, Any]) -> dict[str, Any]:
+    payload["drift"] = _summarize_distances([])
+    payload["dim_mismatch"] = 0
+    payload["above_threshold"] = {"count": 0, "ratio": 0.0}
+    return payload
+
+
+def _partition_items_with_vectors(
+    *,
+    items: list[_DriftSampleItem],
+    stored_vectors: dict[str, list[float]],
+) -> tuple[list[_DriftSampleItem], int]:
+    items_with_vectors = [item for item in items if item.vector_id in stored_vectors]
+    missing_vectors = int(len(items) - len(items_with_vectors))
+    return items_with_vectors, missing_vectors
+
+
+def _collect_drift_distances(
+    *,
+    items_with_vectors: list[_DriftSampleItem],
+    stored_vectors: dict[str, list[float]],
+    reembedded: list[list[float]],
+) -> tuple[list[float], int]:
+    distances: list[float] = []
+    dim_mismatch = 0
+    for item, new_vec in zip(items_with_vectors, reembedded, strict=False):
+        stored_vec = stored_vectors.get(item.vector_id)
+        if not stored_vec:
+            continue
+        if not isinstance(new_vec, list) or not new_vec:
+            continue
+        if len(stored_vec) != len(new_vec):
+            dim_mismatch += 1
+            continue
+        distance = _cosine_distance(stored_vec, [float(x) for x in new_vec])
+        if distance is not None:
+            distances.append(float(distance))
+    return distances, dim_mismatch
+
+
 def run_embedding_drift_monitor(
     *,
     db: Session,
@@ -222,34 +298,16 @@ def run_embedding_drift_monitor(
         .all()
     )
 
-    items: list[_DriftSampleItem] = []
-    stored_space_counts: Counter[str] = Counter()
-    for row in rows:
-        if not row or len(row) < 3:
-            continue
-        vector_id_raw, content_raw, meta_raw = row
-        vector_id = str(vector_id_raw or "").strip()
-        if not vector_id:
-            continue
-        content = str(content_raw or "")
-        if not content.strip():
-            continue
-        if int(max_content_chars or 0) > 0 and len(content) > int(max_content_chars or 0):
-            content = content[: int(max_content_chars or 0)]
-        meta = meta_raw if isinstance(meta_raw, dict) else {}
-        stored_space = str(meta.get("embedding_space_hash") or "").strip() or None
-        if stored_space:
-            stored_space_counts[stored_space] += 1
-        items.append(_DriftSampleItem(vector_id=vector_id, content=content, stored_space=stored_space))
-
+    items, stored_space_counts = _collect_drift_sample_items(
+        rows=rows,
+        max_content_chars=max_content_chars,
+    )
     payload["sampled_items"] = int(len(items))
     payload["stored_embedding_space_hash_counts"] = dict(stored_space_counts.most_common(10))
 
     if not items:
-        payload["drift"] = _summarize_distances([])
         payload["missing_vectors"] = 0
-        payload["dim_mismatch"] = 0
-        payload["above_threshold"] = {"count": 0, "ratio": 0.0}
+        _attach_empty_drift_stats(payload)
         return payload
 
     from app.storage.vector.milvus import milvus_store
@@ -258,14 +316,14 @@ def run_embedding_drift_monitor(
     stored_vectors = milvus_store.fetch_vectors_by_ids(vector_ids, max_ids_per_query=max_ids_per_query)
     payload["stored_vectors_fetched"] = int(len(stored_vectors))
 
-    items_with_vectors: list[_DriftSampleItem] = [x for x in items if x.vector_id in stored_vectors]
-    missing_vectors = int(len(items) - len(items_with_vectors))
-    payload["missing_vectors"] = int(missing_vectors)
+    items_with_vectors, missing_vectors = _partition_items_with_vectors(
+        items=items,
+        stored_vectors=stored_vectors,
+    )
+    payload["missing_vectors"] = missing_vectors
 
     if not items_with_vectors:
-        payload["drift"] = _summarize_distances([])
-        payload["dim_mismatch"] = 0
-        payload["above_threshold"] = {"count": 0, "ratio": 0.0}
+        _attach_empty_drift_stats(payload)
         return payload
 
     emb = _init_embedding_model_for_drift()
@@ -276,22 +334,11 @@ def run_embedding_drift_monitor(
         payload["error"] = f"embed_failed:{type(exc).__name__}"
         return payload
 
-    distances: list[float] = []
-    dim_mismatch = 0
-    for item, new_vec in zip(items_with_vectors, reembedded, strict=False):
-        stored_vec = stored_vectors.get(item.vector_id)
-        if not stored_vec:
-            continue
-        if not isinstance(new_vec, list) or not new_vec:
-            continue
-        if len(stored_vec) != len(new_vec):
-            dim_mismatch += 1
-            continue
-        d = _cosine_distance(stored_vec, [float(x) for x in new_vec])
-        if d is None:
-            continue
-        distances.append(float(d))
-
+    distances, dim_mismatch = _collect_drift_distances(
+        items_with_vectors=items_with_vectors,
+        stored_vectors=stored_vectors,
+        reembedded=reembedded,
+    )
     payload["dim_mismatch"] = int(dim_mismatch)
     payload["drift"] = _summarize_distances(distances)
     above = [d for d in distances if d >= threshold]
@@ -303,4 +350,3 @@ def run_embedding_drift_monitor(
 __all__ = [
     "run_embedding_drift_monitor",
 ]
-

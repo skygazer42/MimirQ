@@ -17,7 +17,6 @@ We therefore implement a minimal, safe version here:
 Note: This is *not* a drop-in replacement for full LOTUS. It is intentionally scoped.
 """
 
-
 import json
 from dataclasses import dataclass
 from typing import Any
@@ -140,6 +139,80 @@ def _build_row_payload(
     return cols, rows
 
 
+def _normalized_sem_filter_instruction(user_instruction: str) -> str:
+    return " ".join(str(user_instruction or "").strip().split())
+
+
+def _sem_filter_limits() -> tuple[int, int, int, int]:
+    max_in_rows = int(getattr(settings, "TABLE_SEM_FILTER_MAX_IN_ROWS", 2000) or 2000)
+    max_cols = int(getattr(settings, "TABLE_SEM_FILTER_MAX_COLS", 30) or 30)
+    max_cell_chars = int(getattr(settings, "TABLE_SEM_FILTER_MAX_CELL_CHARS", 200) or 200)
+    batch_size = int(getattr(settings, "TABLE_SEM_FILTER_BATCH_SIZE", 25) or 25)
+    return max_in_rows, max_cols, max_cell_chars, batch_size
+
+
+def _coerce_bool_list(obj: list[Any], *, expected: int) -> list[bool]:
+    out: list[bool] = []
+    for x in obj:
+        if isinstance(x, bool):
+            out.append(bool(x))
+        elif isinstance(x, (int, float)) and x in (0, 1):
+            out.append(bool(int(x)))
+        elif isinstance(x, str):
+            s = x.strip().lower()
+            if s in {"true", "t", "yes", "y", "1"}:
+                out.append(True)
+            elif s in {"false", "f", "no", "n", "0"}:
+                out.append(False)
+            else:
+                out.append(False)
+        else:
+            out.append(False)
+        if len(out) >= expected:
+            break
+
+    while len(out) < expected:
+        out.append(False)
+    return out[:expected]
+
+
+def _sem_filter_batch_prompt(
+    *,
+    instr: str,
+    cols: list[str],
+    chunk: list[dict[str, Any]],
+) -> HumanMessage:
+    payload = json.dumps(chunk, ensure_ascii=False, separators=(",", ":"))
+    if len(payload) > 80_000:
+        chunk = chunk[: max(1, len(chunk) // 2)]
+        payload = json.dumps(chunk, ensure_ascii=False, separators=(",", ":"))
+    return HumanMessage(
+        content=(
+            f"Instruction: {instr}\n"
+            f"Columns: {', '.join(cols) if cols else '(unknown)'}\n"
+            f"Rows(JSON): {payload}\n"
+            "Return JSON array:"
+        )
+    )
+
+
+def _invoke_sem_filter_batch(
+    *,
+    llm: ChatOpenAI,
+    system: SystemMessage,
+    instr: str,
+    cols: list[str],
+    chunk: list[dict[str, Any]],
+) -> list[bool]:
+    user = _sem_filter_batch_prompt(instr=instr, cols=cols, chunk=chunk)
+    resp = llm.invoke([system, user])
+    raw = str(getattr(resp, "content", "") or "").strip()
+    arr = _extract_json_array(raw)
+    if arr is None:
+        return [False] * len(chunk)
+    return _coerce_bool_list(arr, expected=len(chunk))
+
+
 def sem_filter(
     df: "pd.DataFrame",
     *,
@@ -156,18 +229,13 @@ def sem_filter(
     - `strategy` is accepted for API compatibility; currently it only toggles prompting style.
     """
     _ = strategy
-    instr = " ".join(str(user_instruction or "").strip().split())
+    instr = _normalized_sem_filter_instruction(user_instruction)
     if not instr:
         raise ValueError("user_instruction is required")
     if not bool(getattr(settings, "TABLE_LLM_ALLOW_ROW_EGRESS", False)):
         raise RuntimeError("TABLE_LLM_ALLOW_ROW_EGRESS=false")
 
-    # Apply conservative caps before serializing rows to the LLM.
-    max_in_rows = int(getattr(settings, "TABLE_SEM_FILTER_MAX_IN_ROWS", 2000) or 2000)
-    max_cols = int(getattr(settings, "TABLE_SEM_FILTER_MAX_COLS", 30) or 30)
-    max_cell_chars = int(getattr(settings, "TABLE_SEM_FILTER_MAX_CELL_CHARS", 200) or 200)
-    batch_size = int(getattr(settings, "TABLE_SEM_FILTER_BATCH_SIZE", 25) or 25)
-
+    max_in_rows, max_cols, max_cell_chars, batch_size = _sem_filter_limits()
     if max_in_rows > 0 and len(df) > max_in_rows:
         df = df.head(max_in_rows)
 
@@ -189,55 +257,18 @@ def sem_filter(
     )
 
     flags: list[bool] = []
-
-    def _coerce_bool_list(obj: list[Any], *, expected: int) -> list[bool]:
-        out: list[bool] = []
-        for x in obj:
-            if isinstance(x, bool):
-                out.append(bool(x))
-            elif isinstance(x, (int, float)) and x in (0, 1):
-                out.append(bool(int(x)))
-            elif isinstance(x, str):
-                s = x.strip().lower()
-                if s in {"true", "t", "yes", "y", "1"}:
-                    out.append(True)
-                elif s in {"false", "f", "no", "n", "0"}:
-                    out.append(False)
-                else:
-                    out.append(False)
-            else:
-                out.append(False)
-            if len(out) >= expected:
-                break
-        # Pad to expected with False (fail-closed).
-        while len(out) < expected:
-            out.append(False)
-        return out[:expected]
-
-    for i in range(0, len(rows), max(1, batch_size)):
-        chunk = rows[i : i + max(1, batch_size)]
-        payload = json.dumps(chunk, ensure_ascii=False, separators=(",", ":"))
-        if len(payload) > 80_000:
-            # Defensive truncation: if rows are wide even after caps, shrink the batch.
-            chunk = chunk[: max(1, len(chunk) // 2)]
-            payload = json.dumps(chunk, ensure_ascii=False, separators=(",", ":"))
-
-        user = HumanMessage(
-            content=(
-                f"Instruction: {instr}\n"
-                f"Columns: {', '.join(cols) if cols else '(unknown)'}\n"
-                f"Rows(JSON): {payload}\n"
-                "Return JSON array:"
+    step = max(1, batch_size)
+    for i in range(0, len(rows), step):
+        chunk = rows[i : i + step]
+        flags.extend(
+            _invoke_sem_filter_batch(
+                llm=llm,
+                system=system,
+                instr=instr,
+                cols=cols,
+                chunk=chunk,
             )
         )
-        resp = llm.invoke([system, user])
-        raw = str(getattr(resp, "content", "") or "").strip()
-        arr = _extract_json_array(raw)
-        if arr is None:
-            # Fail closed for the whole batch.
-            flags.extend([False] * len(chunk))
-            continue
-        flags.extend(_coerce_bool_list(arr, expected=len(chunk)))
 
     if not flags:
         return df.head(0)
