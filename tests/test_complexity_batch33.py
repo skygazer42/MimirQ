@@ -172,6 +172,7 @@ def test_build_pdf_fallback_candidates_preserves_order_and_basic_fallback(
     monkeypatch.setattr(parsing_module.settings, "ETL4LLM_API_URL", "https://etl.example", raising=False)
     monkeypatch.setattr(parsing_module.settings, "DEEPDOC_ENABLED", True, raising=False)
     monkeypatch.setattr(parsing_module.settings, "DOCLING_ENABLED", True, raising=False)
+    monkeypatch.setattr(parsing_module.settings, "DOCLING_API_URL", "https://docling.example", raising=False)
     monkeypatch.setattr(parsing_module.settings, "MAGIC_PDF_ENABLED", True, raising=False)
     monkeypatch.setattr(parsing_module.settings, "MARKITDOWN_ENABLED", True, raising=False)
     monkeypatch.setattr(parsing_module, "magicpdf_service_configured", lambda _url: True, raising=True)

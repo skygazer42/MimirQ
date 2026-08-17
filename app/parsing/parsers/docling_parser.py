@@ -1,8 +1,9 @@
 """
-Docling document parser (business layer wrapper)
+Docling document parser (external-service wrapper)
 
-Wraps the underlying implementation in deepdoc/parser/docling_parser.py,
-providing LangChain Document format output.
+Calls a separately deployed Docling Serve instance and provides LangChain
+Document format output. Docling itself and its model weights are deliberately
+not installed in the MimirQ API/worker image.
 
 Supports:
 - Structure-aware PDF parsing
@@ -22,8 +23,8 @@ from typing import Any
 from langchain_core.documents import Document
 
 from app.core.config import settings
-from app.deepdoc.parser.docling_parser import DoclingParser as DeepDocDoclingParser
 from app.rag.core.logging import get_logger
+from app.services.docling_service import DoclingServiceParser
 
 from .base_parser import BaseAdvancedParser
 
@@ -184,8 +185,8 @@ class DoclingParser(BaseAdvancedParser):
     """
     Docling document parser (business layer wrapper)
 
-    Calls the underlying implementation in deepdoc/parser/docling_parser.py,
-    converting sections/tables to LangChain Document format.
+    Calls Docling Serve over HTTP and converts the stable response into
+    LangChain Document format.
     """
 
     SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".html", ".md", ".asciidoc"}
@@ -216,12 +217,12 @@ class DoclingParser(BaseAdvancedParser):
         return "docling"
 
     def _create_parser(self) -> Any:
-
-        return DeepDocDoclingParser()
+        return DoclingServiceParser(ocr_enabled=self.ocr_enabled)
 
     def _check_parser_installation(self, parser: Any) -> tuple[bool, str]:
         ok = parser.check_installation()
-        return (ok, "" if ok else "Docling not installed")
+        reason = str(getattr(parser, "unavailable_reason", "") or "Docling service unavailable")
+        return (ok, "" if ok else reason)
 
     def _call_parse_method(
         self,
@@ -235,7 +236,6 @@ class DoclingParser(BaseAdvancedParser):
             filepath=str(file_path),
             binary=binary,
             callback=callback,
-            delete_output=True,
             **kwargs
         )
 
@@ -260,56 +260,10 @@ class DoclingParser(BaseAdvancedParser):
                 ]
         return [Document(page_content=content, metadata=meta, id=getattr(doc, "id", None))]
 
-    def _page_image_documents(self, file_path: Path, processed: list[Document]) -> list[Document]:
-        include_page_images = bool(getattr(settings, "DOCLING_INCLUDE_PAGE_IMAGES_IF_EMPTY", True))
-        if not self.extract_images or not include_page_images:
-            return []
-        has_image_segment = any(
-            str((doc.metadata or {}).get("doc_type_kwd") or "").lower() == "image"
-            for doc in processed
-        )
-        if has_image_segment:
-            return []
-        try:
-            parser = self._get_parser()
-            page_images = getattr(parser, "page_images", None)
-            page_from = int(getattr(parser, "page_from", 0) or 0)
-        except Exception:
-            return []
-        if not isinstance(page_images, list) or not page_images:
-            return []
-        max_pages = int(getattr(settings, "DOCLING_PAGE_IMAGE_MAX_PAGES", 20) or 20)
-        if max_pages <= 0:
-            return []
-        page_images = page_images[:max_pages]
-        base_meta = {
-            "source": file_path.name,
-            "filename": file_path.name,
-            "file_type": file_path.suffix.lstrip(".").lower(),
-            "parser": self._get_parser_name(),
-            "doc_type_kwd": "image",
-            "element_kind": "image",
-            "content_type": "image",
-            "image_source": "page",
-        }
-        page_docs: list[Document] = []
-        for idx, img in enumerate(page_images):
-            page_no = page_from + idx + 1
-            meta = dict(base_meta)
-            meta["page"] = page_no
-            meta["element_page"] = page_no
-            meta["image"] = img
-            meta["element_text"] = f"Page {page_no}"
-            page_docs.append(Document(page_content=f"Page {page_no}", metadata=meta))
-        return page_docs
-
     def parse(self, file_path: Path, **kwargs) -> list[Document]:
         documents = super().parse(file_path, **kwargs)
 
         processed: list[Document] = []
         for doc in documents:
             processed.extend(self._process_document(doc))
-        page_docs = self._page_image_documents(file_path, processed)
-        if page_docs:
-            processed = page_docs + processed
         return processed

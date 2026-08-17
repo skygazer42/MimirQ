@@ -555,7 +555,8 @@ def _build_pdf_fallback_candidates() -> list[str]:
     _append_pdf_fallback_candidate(
         candidates,
         name="docling",
-        enabled=bool(getattr(settings, "DOCLING_ENABLED", False)),
+        enabled=bool(getattr(settings, "DOCLING_ENABLED", False))
+        and bool((getattr(settings, "DOCLING_API_URL", "") or "").strip()),
     )
 
     # MagicPDF prefers service mode; local CLI remains a fallback.

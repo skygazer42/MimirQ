@@ -393,6 +393,16 @@ def test_parser_factory_rejects_disabled_docling_backend_with_current_message(mo
     assert str(exc_info.value) == "Docling parser is not enabled. Please set DOCLING_ENABLED=True."
 
 
+def test_parser_factory_requires_external_docling_service_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.parsing import factory as factory_module
+
+    monkeypatch.setattr(factory_module.settings, "DOCLING_ENABLED", True, raising=False)
+    monkeypatch.setattr(factory_module.settings, "DOCLING_API_URL", "", raising=False)
+
+    with pytest.raises(ValueError, match="requires DOCLING_API_URL"):
+        ParserFactory().resolve_backend(".pdf", "docling")
+
+
 def test_parser_factory_rejects_disabled_mineru_backend_with_current_message(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.parsing import factory as factory_module
 

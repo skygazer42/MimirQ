@@ -755,12 +755,14 @@ function SettingsContent({
             mineru={state.mineruMerged}
             etl4llm={state.etl4llmMerged}
             marker={state.markerMerged}
+            docling={state.doclingMerged}
             paddleVl={state.paddleVlMerged}
             textIn={state.textInMerged}
             magicPdf={state.magicPdfMerged}
             updateMinerU={state.updateMinerU}
             updateEtl4Llm={state.updateEtl4Llm}
             updateMarker={state.updateMarker}
+            updateDocling={state.updateDocling}
             updatePaddleVL={state.updatePaddleVL}
             updateTextIn={state.updateTextIn}
             updateMagicPDF={state.updateMagicPDF}

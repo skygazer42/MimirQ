@@ -56,7 +56,6 @@ markitdown==0.1.5
 numpy==2.4.4
 pdfplumber==0.11.9
 pypdf==6.15.0
-# NOTE: docling 2.80.0 resolves with pandas 3.0.x; keep on this tested line.
 pandas==3.0.2
 openpyxl==3.1.5
 python-docx==1.2.0
@@ -68,7 +67,6 @@ trio==0.33.0
 # XGBoost publishes this smaller CPU distribution with the same `xgboost` module.
 xgboost-cpu==3.2.0; platform_system == "Linux" or platform_system == "Windows"
 xgboost==3.2.0; platform_system != "Linux" and platform_system != "Windows"
-# NOTE: docling 2.81.0 still requires huggingface-hub<1.
 huggingface-hub==1.9.2
 Pillow==12.3.0
 # NOTE: opencv-python 4.13.x is compatible with the current numpy 2.4.x pin.
@@ -81,8 +79,6 @@ tqdm==4.67.3
 beartype==0.22.9
 hanziconv==0.3.2
 nltk==3.10.0
-docling==2.94.0
-docling-ibm-models==3.13.0
 accelerate==1.13.0
 tencentcloud-sdk-python==3.1.72
 html-text==0.7.1

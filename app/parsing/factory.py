@@ -281,7 +281,10 @@ class ParserFactory:
                 "[pdf] ETL4LLM parser available (requires selection)",
             ),
             (bool(settings.MARKITDOWN_ENABLED), "[pdf] MarkItDown parser available (requires selection)"),
-            (bool(getattr(settings, "DOCLING_ENABLED", False)), "[pdf] Docling parser available (requires selection)"),
+            (
+                self._settings_enabled("DOCLING_ENABLED", "DOCLING_API_URL"),
+                "[pdf] Docling service available (requires selection)",
+            ),
             (
                 bool(getattr(settings, "MAGIC_PDF_ENABLED", False)),
                 "[pdf] MagicPDF parser available (requires selection)",
@@ -410,8 +413,8 @@ class ParserFactory:
                 f"Supported: {sorted(self.SUPPORTED_NON_PDF_BACKENDS)}"
             )
         self._validate_non_pdf_extension_rule(backend=backend, file_ext=file_ext)
-        if backend == "docling" and not getattr(settings, "DOCLING_ENABLED", False):
-            raise ValueError("Docling parser is not enabled. Please set DOCLING_ENABLED=True.")
+        if backend == "docling":
+            self._validate_docling_backend()
 
     def _validate_non_pdf_extension_rule(self, *, backend: str, file_ext: str) -> None:
         rule = self.NON_PDF_BACKEND_EXTENSION_RULES.get(backend)
@@ -439,7 +442,7 @@ class ParserFactory:
         return backend
 
     def _resolve_auto_pdf_backend(self) -> str:
-        if getattr(settings, "DOCLING_ENABLED", False):
+        if self._settings_enabled("DOCLING_ENABLED", "DOCLING_API_URL"):
             return "docling"
         if self._settings_enabled("ETL4LLM_ENABLED", "ETL4LLM_API_URL"):
             return "etl4llm"
@@ -489,9 +492,10 @@ class ParserFactory:
 
     @staticmethod
     def _validate_docling_backend() -> None:
-        if getattr(settings, "DOCLING_ENABLED", False):
-            return
-        raise ValueError("Docling parser is not enabled. Please set DOCLING_ENABLED=True.")
+        if not getattr(settings, "DOCLING_ENABLED", False):
+            raise ValueError("Docling parser is not enabled. Please set DOCLING_ENABLED=True.")
+        if not (getattr(settings, "DOCLING_API_URL", "") or "").strip():
+            raise ValueError("Docling parser requires DOCLING_API_URL for the external service.")
 
     def _validate_magicpdf_backend(self) -> None:
         if not getattr(settings, "MAGIC_PDF_ENABLED", False):

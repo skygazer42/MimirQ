@@ -2,6 +2,7 @@
 #
 # Usage examples (from repo root):
 #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile marker up -d --build
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile docling up -d
 #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile paddlevl up -d --build
 #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile mineru up -d --build
 #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile mineru --profile mineru-vlm up -d --build
@@ -13,6 +14,46 @@
 #   docker compose -f docker/docker-compose.infra.yml -f docker/docker-compose.parsers.yml --profile mineru up -d --build
 
 services:
+  # Official Docling Serve CPU image (optional; heavyweight but isolated from
+  # the MimirQ API/worker image). The non-slim image includes the default model
+  # weights, so no empty cache volume is mounted over them.
+  # MimirQ config: DOCLING_ENABLED=true, DOCLING_API_URL=http://mimirq-docling:5001
+  mimirq-docling:
+    profiles: ["docling"]
+    image: quay.io/docling-project/docling-serve-cpu:v1.28.0
+    restart: unless-stopped
+    hostname: mimirq-docling
+    ports:
+      - "127.0.0.1:${DOCLING_PORT:-5001}:5001"
+    environment:
+      TZ: Asia/Shanghai
+      DOCLING_SERVE_ENABLE_UI: "false"
+      DOCLING_SERVE_LOAD_MODELS_AT_BOOT: "true"
+      DOCLING_SERVE_MAX_SYNC_WAIT: ${DOCLING_REQUEST_TIMEOUT_SEC:-600}
+      DOCLING_SERVE_MAX_DOCUMENT_TIMEOUT: ${DOCLING_REQUEST_TIMEOUT_SEC:-600}
+      UVICORN_WORKERS: ${DOCLING_UVICORN_WORKERS:-1}
+      OMP_NUM_THREADS: ${DOCLING_CPU_THREADS:-4}
+      MKL_NUM_THREADS: ${DOCLING_CPU_THREADS:-4}
+    networks:
+      default:
+        aliases:
+          - mimirq-docling
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS http://localhost:5001/health >/dev/null || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 180s
+    deploy:
+      resources:
+        limits:
+          cpus: "${DOCLING_CPU_LIMIT:-4}"
+          memory: ${DOCLING_MEMORY_LIMIT:-12G}
+
   # ETL4LLM (Bisheng Unstructured) parser service (optional).
   # Then set `ETL4LLM_ENABLED=true` and `ETL4LLM_API_URL=http://mimirq-etl4llm:10001/v1/etl4llm/predict` in the root .env.
   mimirq-etl4llm:

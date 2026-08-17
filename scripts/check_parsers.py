@@ -194,8 +194,15 @@ def main() -> int:
         )
     )
 
-    ok, msg = _check_import("docling")
-    rows.append(("docling", "on" if getattr(settings, "DOCLING_ENABLED", False) else "off", "installed" if ok else msg))
+    docling_enabled = bool(getattr(settings, "DOCLING_ENABLED", False))
+    docling_api_url = (getattr(settings, "DOCLING_API_URL", "") or "").strip()
+    if not docling_enabled:
+        docling_status = "disabled"
+    elif docling_api_url:
+        docling_status = f"configured (service: {docling_api_url})"
+    else:
+        docling_status = "missing api_url"
+    rows.append(("docling", "on" if docling_enabled else "off", docling_status))
 
     mineru_enabled = bool(getattr(settings, "MINERU_ENABLED", False))
     mineru_token = (getattr(settings, "MINERU_API_TOKEN", "") or "").strip()

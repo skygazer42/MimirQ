@@ -1042,7 +1042,11 @@ def _parse_fallback_candidates(*, current_backend: str) -> list[str]:
             ),
         ),
         ("deepdoc", lambda: settings.DEEPDOC_ENABLED),
-        ("docling", lambda: getattr(settings, "DOCLING_ENABLED", False)),
+        (
+            "docling",
+            lambda: bool(getattr(settings, "DOCLING_ENABLED", False))
+            and bool((getattr(settings, "DOCLING_API_URL", "") or "").strip()),
+        ),
         ("magicpdf", _magicpdf_available),
         ("markitdown", lambda: settings.MARKITDOWN_ENABLED),
         ("basic", lambda: True),

@@ -45,6 +45,14 @@ x-backend-env: &backend_env
   # the deterministic test embedding space without rewriting the env file.
   EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER_DOCKER:-${EMBEDDING_PROVIDER}}
   EMBEDDING_MODEL: ${EMBEDDING_MODEL_DOCKER:-${EMBEDDING_MODEL}}
+  # Optional Docling Serve sidecar. `make up-docling` supplies Docker-network
+  # overrides without requiring host-development URLs in .env.
+  DOCLING_ENABLED: ${DOCLING_ENABLED_DOCKER:-${DOCLING_ENABLED:-false}}
+  DOCLING_API_URL: ${DOCLING_API_URL_DOCKER:-${DOCLING_API_URL:-}}
+  DOCLING_API_KEY: ${DOCLING_API_KEY:-}
+  DOCLING_REQUEST_TIMEOUT_SEC: ${DOCLING_REQUEST_TIMEOUT_SEC:-600}
+  DOCLING_HEALTH_TIMEOUT_SEC: ${DOCLING_HEALTH_TIMEOUT_SEC:-5}
+  DOCLING_HTTP_TRUST_ENV: ${DOCLING_HTTP_TRUST_ENV:-false}
 
 x-docker-logging: &docker_logging
   driver: "json-file"

@@ -15,6 +15,8 @@
 #
 
 import contextlib
+import importlib
+import importlib.util
 import logging
 import re
 from collections.abc import Callable, Iterable
@@ -27,7 +29,6 @@ from typing import Any
 
 import fitz  # PyMuPDF
 import pdfplumber
-from docling.document_converter import DocumentConverter
 from PIL import Image
 
 from app.deepdoc.parser.pdf_parser import IntegratedPipelinePdfParser
@@ -37,6 +38,18 @@ logger = get_logger("deepdoc.parser.docling")
 _DOCLING_PARSER_FALLBACK_LOG_MESSAGE = "Ignoring non-critical docling parser fallback failure: %s"
 _ExtractedPosition = tuple[list[int], float, float, float, float]
 _CropPosition = tuple[int, int, int, int, int]
+DocumentConverter: Any = None
+
+
+def _document_converter_class() -> Any:
+    """Load the legacy local converter only when it is explicitly used."""
+
+    if DocumentConverter is not None:
+        return DocumentConverter
+    if importlib.util.find_spec("docling") is None:
+        return None
+    module = importlib.import_module("docling.document_converter")
+    return getattr(module, "DocumentConverter", None)
 
 
 class DoclingContentType(str, Enum):
@@ -203,8 +216,12 @@ class DoclingParser(IntegratedPipelinePdfParser):
         self.outlines = []
 
     def check_installation(self) -> bool:
+        converter_cls = _document_converter_class()
+        if converter_cls is None:
+            self.logger.error("[Docling] local package not installed; configure the external Docling service")
+            return False
         try:
-            _ = DocumentConverter()
+            _ = converter_cls()
             return True
         except Exception as e:
             self.logger.error(f"[Docling] init DocumentConverter failed: {e}")
@@ -555,7 +572,10 @@ class DoclingParser(IntegratedPipelinePdfParser):
         self._emit_callback(callback, 0.1, f"[Docling] Converting: {src_path}")
         self._render_page_images(src_path)
 
-        conv = DocumentConverter()
+        converter_cls = _document_converter_class()
+        if converter_cls is None:
+            raise RuntimeError("Docling local package is not installed")
+        conv = converter_cls()
         conv_res = conv.convert(str(src_path))
         doc = conv_res.document
         self._emit_callback(

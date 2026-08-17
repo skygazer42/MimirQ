@@ -2148,15 +2148,15 @@ class Settings(BaseSettings):
     MARKITDOWN_DOCINTEL_ENDPOINT: str = ""
     MARKITDOWN_DOCINTEL_KEY: str = ""
     LLAMA_INDEX_ENABLED: bool = False
-    # Docling advanced document parser
+    # External Docling Serve parser. The Docling package/models are intentionally
+    # excluded from the MimirQ API/worker runtime.
     DOCLING_ENABLED: bool = False
+    DOCLING_API_URL: str = ""
+    DOCLING_API_KEY: str = ""
+    DOCLING_REQUEST_TIMEOUT_SEC: int = 600
+    DOCLING_HEALTH_TIMEOUT_SEC: int = 5
+    DOCLING_HTTP_TRUST_ENV: bool = False
     DOCLING_OCR_ENABLED: bool = True
-    DOCLING_TABLE_MODE: str = "markdown"  # markdown | html | plain
-    DOCLING_EXTRACT_IMAGES: bool = True
-    # Fallback: when Docling yields no image segments, include rendered page images.
-    DOCLING_INCLUDE_PAGE_IMAGES_IF_EMPTY: bool = True
-    # 0 = unlimited.
-    DOCLING_PAGE_IMAGE_MAX_PAGES: int = 20
     # Knowledge Graph (KG) feature flags.
     # Canonical env names: KG_ENABLED / KG_CHAT_ENABLED
     KG_ENABLED: bool = False

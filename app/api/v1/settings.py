@@ -167,7 +167,11 @@ def _convert_service_url_to_health_url(api_url: str) -> str:
         return ""
 
     path = (parsed.path or "").strip()
-    if path.endswith("/convert"):
+    if path.endswith("/v1/convert/file"):
+        path = path[: -len("/v1/convert/file")] + "/health"
+    elif path.endswith("/v1/convert/source"):
+        path = path[: -len("/v1/convert/source")] + "/health"
+    elif path.endswith("/convert"):
         path = path[: -len("/convert")] + "/health"
     else:
         base = path.rstrip("/")
@@ -176,7 +180,13 @@ def _convert_service_url_to_health_url(api_url: str) -> str:
     return urlunparse(parsed._replace(path=path, params="", query="", fragment=""))
 
 
-async def _probe_http_json(url: str, *, timeout_sec: float = 0.6) -> tuple[dict[str, Any] | None, str | None]:
+async def _probe_http_json(
+    url: str,
+    *,
+    timeout_sec: float = 0.6,
+    headers: dict[str, str] | None = None,
+    trust_env: bool = True,
+) -> tuple[dict[str, Any] | None, str | None]:
     """
     Best-effort GET+JSON probe with short timeout.
 
@@ -187,8 +197,8 @@ async def _probe_http_json(url: str, *, timeout_sec: float = 0.6) -> tuple[dict[
         return None, "empty url"
 
     try:
-        async with httpx.AsyncClient(timeout=float(timeout_sec or 0.6)) as client:
-            resp = await client.get(url)
+        async with httpx.AsyncClient(timeout=float(timeout_sec or 0.6), trust_env=trust_env) as client:
+            resp = await client.get(url, headers=headers)
     except Exception as exc:  # noqa: BLE001
         return None, f"request_failed: {str(exc)[:160]}"
 
@@ -504,6 +514,17 @@ class MarkerConfig(BaseModel):
     timeout_sec: int = 600
 
 
+class DoclingConfig(BaseModel):
+    """External Docling Serve config."""
+
+    api_url: str = ""
+    api_key: str = ""
+    request_timeout_sec: int = Field(default=600, ge=1, le=86_400)
+    health_timeout_sec: int = Field(default=5, ge=1, le=120)
+    http_trust_env: bool = False
+    ocr_enabled: bool = True
+
+
 class PaddleVLConfig(BaseModel):
     """PaddleOCR-VL external PDF->Markdown service config."""
 
@@ -569,6 +590,7 @@ class SystemSettings(BaseModel):
     mineru: MinerUConfig
     etl4llm: Etl4LlmConfig
     marker: MarkerConfig
+    docling: DoclingConfig
     paddle_vl: PaddleVLConfig
     textin: TextInConfig
     magicpdf: MagicPDFConfig
@@ -596,6 +618,7 @@ class UpdateSettingsRequest(BaseModel):
     mineru: MinerUConfig | None = None
     etl4llm: Etl4LlmConfig | None = None
     marker: MarkerConfig | None = None
+    docling: DoclingConfig | None = None
     paddle_vl: PaddleVLConfig | None = None
     textin: TextInConfig | None = None
     magicpdf: MagicPDFConfig | None = None
@@ -899,6 +922,27 @@ def _apply_marker_runtime_settings(env_vars: dict[str, str], updated_keys: set[s
     )
 
 
+def _apply_docling_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
+    _apply_runtime_specs(
+        env_vars,
+        updated_keys,
+        (
+            ("DOCLING_API_URL", str),
+            ("DOCLING_API_KEY", str),
+            (
+                "DOCLING_REQUEST_TIMEOUT_SEC",
+                lambda value: _parse_int(value, default=settings.DOCLING_REQUEST_TIMEOUT_SEC),
+            ),
+            (
+                "DOCLING_HEALTH_TIMEOUT_SEC",
+                lambda value: _parse_int(value, default=settings.DOCLING_HEALTH_TIMEOUT_SEC),
+            ),
+            ("DOCLING_HTTP_TRUST_ENV", _parse_bool),
+            ("DOCLING_OCR_ENABLED", _parse_bool),
+        ),
+    )
+
+
 def _apply_paddle_vl_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
     _apply_runtime_specs(
         env_vars,
@@ -1038,6 +1082,7 @@ def _apply_runtime_settings(env_vars: dict[str, str], updated_keys: list[str]) -
     _apply_mineru_runtime_settings(env_vars, updated_key_set)
     _apply_etl4llm_runtime_settings(env_vars, updated_key_set)
     _apply_marker_runtime_settings(env_vars, updated_key_set)
+    _apply_docling_runtime_settings(env_vars, updated_key_set)
     _apply_paddle_vl_runtime_settings(env_vars, updated_key_set)
     _apply_magicpdf_runtime_settings(env_vars, updated_key_set)
     _apply_observability_runtime_settings(env_vars, updated_key_set)
@@ -1245,6 +1290,14 @@ def get_settings(
         marker=MarkerConfig(
             api_url=str(getattr(settings, "MARKER_API_URL", "") or ""),
             timeout_sec=int(getattr(settings, "MARKER_TIMEOUT_SEC", 600) or 600),
+        ),
+        docling=DoclingConfig(
+            api_url=str(getattr(settings, "DOCLING_API_URL", "") or ""),
+            api_key=mask_secret(str(getattr(settings, "DOCLING_API_KEY", "") or "")),
+            request_timeout_sec=int(getattr(settings, "DOCLING_REQUEST_TIMEOUT_SEC", 600) or 600),
+            health_timeout_sec=int(getattr(settings, "DOCLING_HEALTH_TIMEOUT_SEC", 5) or 5),
+            http_trust_env=bool(getattr(settings, "DOCLING_HTTP_TRUST_ENV", False)),
+            ocr_enabled=bool(getattr(settings, "DOCLING_OCR_ENABLED", True)),
         ),
         paddle_vl=PaddleVLConfig(
             api_url=str(getattr(settings, "PADDLE_VL_API_URL", "") or ""),
@@ -1607,6 +1660,24 @@ def _update_marker_env(env_vars: dict[str, str], updated_keys: list[str], marker
     updated_keys.extend(["MARKER_API_URL", "MARKER_TIMEOUT_SEC"])
 
 
+def _update_docling_env(env_vars: dict[str, str], updated_keys: list[str], docling: DoclingConfig) -> None:
+    _set_sanitized_env(env_vars, "DOCLING_API_URL", docling.api_url or "")
+    _set_maskable_secret_env(env_vars, updated_keys, "DOCLING_API_KEY", docling.api_key or "")
+    env_vars["DOCLING_REQUEST_TIMEOUT_SEC"] = str(max(1, int(docling.request_timeout_sec or 0)))
+    env_vars["DOCLING_HEALTH_TIMEOUT_SEC"] = str(max(1, int(docling.health_timeout_sec or 0)))
+    _set_bool_env(env_vars, "DOCLING_HTTP_TRUST_ENV", docling.http_trust_env)
+    _set_bool_env(env_vars, "DOCLING_OCR_ENABLED", docling.ocr_enabled)
+    updated_keys.extend(
+        [
+            "DOCLING_API_URL",
+            "DOCLING_REQUEST_TIMEOUT_SEC",
+            "DOCLING_HEALTH_TIMEOUT_SEC",
+            "DOCLING_HTTP_TRUST_ENV",
+            "DOCLING_OCR_ENABLED",
+        ]
+    )
+
+
 def _update_paddle_vl_env(env_vars: dict[str, str], updated_keys: list[str], paddle_vl: PaddleVLConfig) -> None:
     _set_sanitized_env(env_vars, "PADDLE_VL_API_URL", paddle_vl.api_url or "")
     env_vars["PADDLE_VL_TIMEOUT_SEC"] = str(int(paddle_vl.timeout_sec or 0))
@@ -1806,6 +1877,7 @@ def _apply_request_settings_updates(
         ("mineru", _update_mineru_env),
         ("etl4llm", _update_etl4llm_env),
         ("marker", _update_marker_env),
+        ("docling", _update_docling_env),
         ("paddle_vl", _update_paddle_vl_env),
         ("textin", _update_textin_env),
         ("magicpdf", _update_magicpdf_env),
@@ -1961,6 +2033,8 @@ async def _build_probed_parser_status(
     enabled: bool,
     api_url: str,
     success_message_builder: Callable[[dict[str, Any]], str | None] | None = None,
+    headers: dict[str, str] | None = None,
+    trust_env: bool = True,
 ) -> dict[str, object]:
     url_ok = bool(api_url)
     entry: dict[str, object] = _build_configured_parser_status(enabled, url_ok, _MISSING_API_URL_MESSAGE)
@@ -1968,7 +2042,15 @@ async def _build_probed_parser_status(
         return entry
 
     health_url = _convert_service_url_to_health_url(api_url)
-    data, err = await _probe_http_json(health_url, timeout_sec=0.6)
+    if headers is None and trust_env:
+        data, err = await _probe_http_json(health_url, timeout_sec=0.6)
+    else:
+        data, err = await _probe_http_json(
+            health_url,
+            timeout_sec=0.6,
+            headers=headers,
+            trust_env=trust_env,
+        )
     if data is None:
         entry["health"] = {"ok": False, "error": err}
         entry["available"] = False
@@ -2108,10 +2190,15 @@ async def _build_parser_statuses(
             _MISSING_API_URL_MESSAGE,
         ),
         "textin": _build_textin_parser_status(),
-        "docling": _build_import_parser_status(
-            "docling",
+        "docling": await _build_probed_parser_status(
             enabled=bool(getattr(settings, "DOCLING_ENABLED", False)),
-            available_message="installed",
+            api_url=(getattr(settings, "DOCLING_API_URL", "") or "").strip(),
+            headers=(
+                {"X-Api-Key": str(getattr(settings, "DOCLING_API_KEY", "") or "").strip()}
+                if str(getattr(settings, "DOCLING_API_KEY", "") or "").strip()
+                else None
+            ),
+            trust_env=bool(getattr(settings, "DOCLING_HTTP_TRUST_ENV", False)),
         ),
         "mineru": _build_mineru_parser_status(),
         "magicpdf": _build_magicpdf_parser_status(

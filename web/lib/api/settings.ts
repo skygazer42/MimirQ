@@ -218,6 +218,14 @@ export interface SystemSettings {
   mineru: MinerUConfig
   etl4llm: Etl4LlmConfig
   marker: MarkerConfig
+  docling: {
+    api_url: string
+    api_key: string
+    request_timeout_sec: number
+    health_timeout_sec: number
+    http_trust_env: boolean
+    ocr_enabled: boolean
+  }
   paddle_vl: PaddleVLConfig
   textin: TextInConfig
   magicpdf: MagicPDFConfig

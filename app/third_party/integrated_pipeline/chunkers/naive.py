@@ -428,13 +428,14 @@ def by_docling(
     pdf_cls=None,
     **kwargs,
 ):
-    from app.deepdoc.parser.docling_parser import DoclingParser
+    from app.services.docling_service import DoclingServiceParser
 
-    pdf_parser = DoclingParser()
+    pdf_parser = DoclingServiceParser()
     parse_method = kwargs.get("parse_method", "raw")
 
     if not pdf_parser.check_installation():
-        callback(-1, "Docling not found.")
+        if callback:
+            callback(-1, f"Docling service unavailable: {pdf_parser.unavailable_reason}")
         return None, None, pdf_parser
 
     sections, tables = pdf_parser.parse_pdf(

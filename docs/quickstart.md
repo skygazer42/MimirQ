@@ -117,6 +117,30 @@ NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 make web-api-ping
 
 以下解析器都是可选 profile，默认不会启动。请按文档类型选择一个；完整选择矩阵、资源要求和最小 `.env` 配置见根目录 [README](../README.md#可选按文档类型启用解析器)。
 
+### (可选) 启用 Docling Serve（独立 CPU 容器）
+
+Docling 的 Python 依赖、PyTorch 和模型权重不安装进 MimirQ API / worker 镜像。MimirQ
+只保留轻量 HTTP 适配器，通过 Docling Serve 的稳定 v1 API 获取结构化 Markdown：
+
+```bash
+make up-docling
+```
+
+`make up-docling` 会为 Docker 内的 API / worker 自动注入服务地址。若后端在宿主机运行、
+仅用 Docker 启动解析服务，则执行 `make infra-up-docling`，并在 `.env` 中配置：
+
+```env
+DOCLING_ENABLED=true
+DOCLING_API_URL=http://127.0.0.1:5001
+DOCLING_REQUEST_TIMEOUT_SEC=600
+```
+
+全 Docker 部署也可显式写为 `DOCLING_API_URL=http://mimirq-docling:5001`。内置 profile
+仅绑定宿主机 `127.0.0.1`，默认不启用 API Key；连接另行部署且已启用鉴权的服务时，
+配置 `DOCLING_API_KEY`，MimirQ 会使用官方 `X-Api-Key` 请求头。该 profile 固定官方
+CPU 镜像版本，并在启动时预热默认模型；镜像较大，但不会增加 MimirQ 主镜像及本地
+Python venv 的依赖体积。
+
 ### (可选) 启用 ETL4LLM（Bisheng Unstructured）版面解析
 
 MimirQ 已内置 `etl4llm` 解析器（并兼容 `bisheng` / `bisheng-unstructured` 别名），你只需要把服务跑起来并配置好 API URL：
@@ -272,6 +296,7 @@ LIBREOFFICE_ENABLED=true
 |---|---|---:|---|
 | `marker` | CPU-only 本地服务 | ~0 GiB | 无需 GPU；建议独立容器运行 |
 | `etl4llm` | CPU / 无本地 GPU 分配 | ~0 GiB | 无需 GPU；建议独立容器运行 |
+| `docling` | 官方 Docling Serve CPU 镜像 | ~0 GiB GPU；默认限制 4 CPU / 12 GiB 内存 | 重依赖与模型完全隔离；建议独立容器运行 |
 | `textin` | 外部 TextIn xParse API | ~0 GiB | 本地无模型；必须配置 `TEXTIN_APP_ID` / `TEXTIN_SECRET_CODE` 后才可真实解析 |
 | `qianfan_ocr` | 本地轻量 wrapper，实际推理在上游视觉服务 | ~0 GiB | 本地容器无需 GPU；上游服务显存单独评估 |
 | `mineru`（`backend=pipeline` / `file_parse`） | 本地 `mineru-api` + 本地缓存模型 | 当前验证流未观测到独立 GPU 峰值 | 建议单独部署；若切换不同 backend / 模型链路，需重新量测 |

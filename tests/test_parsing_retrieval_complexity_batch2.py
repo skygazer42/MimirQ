@@ -109,7 +109,7 @@ def test_small_model_runtime_resolve_preserves_local_and_download_disabled_paths
     assert disabled.repo_id == "demo/repo"
 
 
-def test_docling_parser_parse_converts_tables_and_prepends_page_images(
+def test_docling_parser_parse_converts_tables_without_local_page_images(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -121,24 +121,15 @@ def test_docling_parser_parse_converts_tables_and_prepends_page_images(
         Document(page_content="Body", metadata={"content_type": "text", "doc_type_kwd": "text"}),
     ]
     parser = DoclingParser(extract_images=True, table_mode="markdown")
-    fake_parser = SimpleNamespace(page_images=["img-a", "img-b"], page_from=2)
-
     monkeypatch.setattr(
         "app.parsing.parsers.docling_parser.BaseAdvancedParser.parse", lambda self, path, **kwargs: list(base_docs)
     )
-    monkeypatch.setattr(
-        "app.parsing.parsers.docling_parser.settings.DOCLING_INCLUDE_PAGE_IMAGES_IF_EMPTY", True, raising=False
-    )
-    monkeypatch.setattr("app.parsing.parsers.docling_parser.settings.DOCLING_PAGE_IMAGE_MAX_PAGES", 1, raising=False)
-    monkeypatch.setattr(parser, "_get_parser", lambda: fake_parser)
 
     parsed = parser.parse(tmp_path / "demo.pdf")
 
-    assert parsed[0].page_content == "Page 3"
-    assert parsed[0].metadata["image_source"] == "page"
-    assert parsed[1].page_content == "| Col |\n| --- |\n| Value |"
-    assert parsed[1].metadata["element_kind"] == "table"
-    assert parsed[2].page_content == "Body"
+    assert parsed[0].page_content == "| Col |\n| --- |\n| Value |"
+    assert parsed[0].metadata["element_kind"] == "table"
+    assert parsed[1].page_content == "Body"
 
 
 def test_preprocess_with_paddle_doc_uses_model_settings_and_writes_output(

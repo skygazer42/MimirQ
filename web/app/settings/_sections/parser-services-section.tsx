@@ -8,6 +8,7 @@ import type {
   MarkerConfig,
   MinerUConfig,
   PaddleVLConfig,
+  SystemSettings,
   TextInConfig,
 } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -17,16 +18,20 @@ import {
   systemWorkbenchTokens,
 } from '@/components/ui/system-page-tokens'
 
+type DoclingConfig = NonNullable<SystemSettings['docling']>
+
 type ParserServicesSectionProps = {
   mineru: MinerUConfig
   etl4llm: Etl4LlmConfig
   marker: MarkerConfig
+  docling: DoclingConfig
   paddleVl: PaddleVLConfig
   textIn: TextInConfig
   magicPdf: MagicPDFConfig
   updateMinerU: (patch: Partial<MinerUConfig>) => void
   updateEtl4Llm: (patch: Partial<Etl4LlmConfig>) => void
   updateMarker: (patch: Partial<MarkerConfig>) => void
+  updateDocling: (patch: Partial<DoclingConfig>) => void
   updatePaddleVL: (patch: Partial<PaddleVLConfig>) => void
   updateTextIn: (patch: Partial<TextInConfig>) => void
   updateMagicPDF: (patch: Partial<MagicPDFConfig>) => void
@@ -68,12 +73,14 @@ export function ParserServicesSection({
   mineru,
   etl4llm,
   marker,
+  docling,
   paddleVl,
   textIn,
   magicPdf,
   updateMinerU,
   updateEtl4Llm,
   updateMarker,
+  updateDocling,
   updatePaddleVL,
   updateTextIn,
   updateMagicPDF,
@@ -325,6 +332,102 @@ export function ParserServicesSection({
                 })
               }
               label="切换过滤页眉页脚"
+            />
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2 className={SECTION_TITLE}>
+          <LayoutGrid className="h-4 w-4 text-primary" />
+          Docling Serve 配置
+        </h2>
+
+        <div className={CARD}>
+          <div className="rounded-[14px] border border-primary/20 bg-primary/8 px-3 py-2.5">
+            <div className="text-[12px] font-semibold text-foreground">独立服务模式</div>
+            <div className={cn(FIELD_HINT, 'mt-0.5')}>
+              Docling 依赖与模型只运行在独立容器中，不会增加 MimirQ API / worker 镜像体积
+            </div>
+          </div>
+
+          <div className={GRID}>
+            <div className="space-y-2 lg:col-span-2">
+              <div className={FIELD_LABEL}>服务基础地址</div>
+              <Input
+                className={DENSE_INPUT}
+                value={docling.api_url}
+                onChange={(event) => updateDocling({ api_url: event.target.value })}
+                placeholder="http://mimirq-docling:5001"
+              />
+              <div className={FIELD_HINT}>可填写基础地址或 /v1/convert/file 完整地址</div>
+            </div>
+
+            <div className="space-y-2">
+              <div className={FIELD_LABEL}>转换超时（秒）</div>
+              <Input
+                className={DENSE_INPUT}
+                type="number"
+                min={30}
+                value={docling.request_timeout_sec}
+                onChange={(event) =>
+                  updateDocling({
+                    request_timeout_sec:
+                      Number.parseInt(event.target.value || '0', 10) || 600,
+                  })
+                }
+              />
+            </div>
+
+            <div className="space-y-2 lg:col-span-2">
+              <div className={FIELD_LABEL}>API Key（可选）</div>
+              <Input
+                className={DENSE_INPUT}
+                type="password"
+                value={docling.api_key}
+                onChange={(event) => updateDocling({ api_key: event.target.value })}
+                placeholder="未启用 Docling Serve 鉴权时留空"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className={FIELD_LABEL}>健康检查超时（秒）</div>
+              <Input
+                className={DENSE_INPUT}
+                type="number"
+                min={1}
+                value={docling.health_timeout_sec}
+                onChange={(event) =>
+                  updateDocling({
+                    health_timeout_sec:
+                      Number.parseInt(event.target.value || '0', 10) || 5,
+                  })
+                }
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between border-t border-border/70 pt-3">
+            <div>
+              <div className="text-[12px] font-medium text-foreground/80">启用 OCR</div>
+              <div className={FIELD_HINT}>扫描件建议开启；数字原生文档可关闭以降低耗时</div>
+            </div>
+            <TogglePill
+              enabled={docling.ocr_enabled}
+              onClick={() => updateDocling({ ocr_enabled: !docling.ocr_enabled })}
+              label="切换 Docling OCR"
+            />
+          </div>
+
+          <div className="flex items-center justify-between border-t border-border/70 pt-3">
+            <div>
+              <div className="text-[12px] font-medium text-foreground/80">继承系统代理</div>
+              <div className={FIELD_HINT}>内网容器保持关闭；只有远程服务必须走代理时才开启</div>
+            </div>
+            <TogglePill
+              enabled={docling.http_trust_env}
+              onClick={() => updateDocling({ http_trust_env: !docling.http_trust_env })}
+              label="切换 Docling 系统代理"
             />
           </div>
         </div>

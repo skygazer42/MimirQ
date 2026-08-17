@@ -35,6 +35,7 @@ def test_parser_uploads_have_a_hard_streamed_limit(module: object, monkeypatch: 
 def test_parser_host_ports_bind_to_loopback() -> None:
     compose = yaml.safe_load(Path("docker/docker-compose.parsers.yml").read_text(encoding="utf-8"))
 
+    assert compose["services"]["mimirq-docling"]["ports"] == ["127.0.0.1:${DOCLING_PORT:-5001}:5001"]
     assert compose["services"]["mimirq-marker"]["ports"] == ["127.0.0.1:2080:2080"]
     assert compose["services"]["mimirq-magicpdf"]["ports"] == ["127.0.0.1:2095:2095"]
     assert compose["services"]["mimirq-qianfanocr"]["ports"] == ["127.0.0.1:2090:2090"]
@@ -55,3 +56,15 @@ def test_gpu_parsers_use_compose_compatible_device_reservations() -> None:
         service = compose["services"][service_name]
         assert "gpus" not in service
         assert service["deploy"]["resources"]["reservations"]["devices"] == expected
+
+
+def test_docling_is_a_pinned_external_service_not_a_main_runtime_dependency() -> None:
+    compose = yaml.safe_load(Path("docker/docker-compose.parsers.yml").read_text(encoding="utf-8"))
+    service = compose["services"]["mimirq-docling"]
+    requirements = Path("requirements.txt").read_text(encoding="utf-8").splitlines()
+
+    assert service["profiles"] == ["docling"]
+    assert service["image"] == "quay.io/docling-project/docling-serve-cpu:v1.28.0"
+    assert service["environment"]["DOCLING_SERVE_LOAD_MODELS_AT_BOOT"] == "true"
+    assert service["healthcheck"]["start_period"] == "180s"
+    assert not any(line.strip().lower().startswith(("docling==", "docling-ibm-models==")) for line in requirements)

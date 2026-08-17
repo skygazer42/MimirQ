@@ -57,6 +57,7 @@ type UrlIngestSettings = NonNullable<SystemSettings['url_ingest']>
 type GovernanceSettings = NonNullable<SystemSettings['governance']>
 type DifyExternalKnowledgeSettings = NonNullable<SystemSettings['dify_external_knowledge']>
 type MinIOSettings = NonNullable<SystemSettings['minio']>
+type DoclingConfig = NonNullable<SystemSettings['docling']>
 
 function mergeConfig<T extends object>(current: T, patch: Partial<T>): T {
   return {
@@ -214,6 +215,15 @@ const DEFAULT_ETL4LLM: Etl4LlmConfig = {
 const DEFAULT_MARKER: MarkerConfig = {
   api_url: '',
   timeout_sec: 600,
+}
+
+const DEFAULT_DOCLING: DoclingConfig = {
+  api_url: '',
+  api_key: '',
+  request_timeout_sec: 600,
+  health_timeout_sec: 5,
+  http_trust_env: false,
+  ocr_enabled: true,
 }
 
 const DEFAULT_PADDLE_VL: PaddleVLConfig = {
@@ -477,6 +487,10 @@ export function useSettingsPageState() {
   const markerMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_MARKER, settings?.marker, editedSettings.marker),
     [settings?.marker, editedSettings.marker]
+  )
+  const doclingMerged = useMemo(
+    () => mergeWithDefaults(DEFAULT_DOCLING, settings?.docling, editedSettings.docling),
+    [settings?.docling, editedSettings.docling]
   )
   const paddleVlMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_PADDLE_VL, settings?.paddle_vl, editedSettings.paddle_vl),
@@ -749,6 +763,16 @@ export function useSettingsPageState() {
     }))
   }
 
+  const updateDocling = (patch: Partial<DoclingConfig>) => {
+    setEditedSettings((prev) => ({
+      ...prev,
+      docling: mergeConfig(
+        mergeWithDefaults(DEFAULT_DOCLING, settings?.docling, prev.docling),
+        patch
+      ),
+    }))
+  }
+
   const updatePaddleVL = (patch: Partial<PaddleVLConfig>) => {
     setEditedSettings((prev) => ({
       ...prev,
@@ -882,6 +906,7 @@ export function useSettingsPageState() {
     chatMerged,
     dialogOpen,
     difyExternalKnowledgeMerged,
+    doclingMerged,
     editedFeatureFlags: editedSettings.feature_flags,
     etl4llmMerged,
     formatBytes,
@@ -934,6 +959,7 @@ export function useSettingsPageState() {
     updateCache,
     updateChat,
     updateDifyExternalKnowledge,
+    updateDocling,
     updateEtl4Llm,
     updateGovernance,
     updateLangGraph,

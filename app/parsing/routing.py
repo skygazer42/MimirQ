@@ -127,6 +127,12 @@ def _mineru_available() -> bool:
     return bool(settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL))
 
 
+def _docling_available() -> bool:
+    return bool(getattr(settings, "DOCLING_ENABLED", False)) and bool(
+        (getattr(settings, "DOCLING_API_URL", "") or "").strip()
+    )
+
+
 def _should_use_basic_for_scanned_pdf(*, is_scanned: bool, score: float, text_quality_score: float) -> bool:
     return bool(is_scanned and score > 0.5 and text_quality_score >= 0.1)
 
@@ -142,7 +148,7 @@ def _should_use_basic_for_small_text_pdf(
 
 
 def _choose_high_quality_backend(availability: dict[str, bool]) -> str:
-    if getattr(settings, "DOCLING_ENABLED", False):
+    if _docling_available():
         return "docling"
     if availability["etl4llm"]:
         return "etl4llm"
@@ -164,7 +170,7 @@ def _choose_low_quality_backend(availability: dict[str, bool]) -> str:
         return "etl4llm"
     if settings.DEEPDOC_ENABLED:
         return "deepdoc"
-    if getattr(settings, "DOCLING_ENABLED", False):
+    if _docling_available():
         return "docling"
     if availability["magicpdf"]:
         return "magicpdf"
@@ -174,7 +180,7 @@ def _choose_low_quality_backend(availability: dict[str, bool]) -> str:
 
 
 def _choose_mid_quality_backend(availability: dict[str, bool]) -> str:
-    if getattr(settings, "DOCLING_ENABLED", False):
+    if _docling_available():
         return "docling"
     if availability["etl4llm"]:
         return "etl4llm"

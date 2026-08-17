@@ -13135,6 +13135,42 @@ export interface components {
             kg_chunk_boost_max_promoted?: number | null;
         };
         /**
+         * DoclingConfig
+         * @description External Docling Serve config.
+         */
+        DoclingConfig: {
+            /**
+             * Api Url
+             * @default
+             */
+            api_url: string;
+            /**
+             * Api Key
+             * @default
+             */
+            api_key: string;
+            /**
+             * Request Timeout Sec
+             * @default 600
+             */
+            request_timeout_sec: number;
+            /**
+             * Health Timeout Sec
+             * @default 5
+             */
+            health_timeout_sec: number;
+            /**
+             * Http Trust Env
+             * @default false
+             */
+            http_trust_env: boolean;
+            /**
+             * Ocr Enabled
+             * @default true
+             */
+            ocr_enabled: boolean;
+        };
+        /**
          * DocumentAccessInfo
          * @description Document-level ACL (additional restriction on top of dataset permissions).
          */
@@ -23844,6 +23880,7 @@ export interface components {
             mineru: components["schemas"]["MinerUConfig"];
             etl4llm: components["schemas"]["Etl4LlmConfig"];
             marker: components["schemas"]["MarkerConfig"];
+            docling: components["schemas"]["DoclingConfig"];
             paddle_vl: components["schemas"]["PaddleVLConfig"];
             textin: components["schemas"]["TextInConfig"];
             magicpdf: components["schemas"]["MagicPDFConfig"];
@@ -24559,6 +24596,7 @@ export interface components {
             mineru?: components["schemas"]["MinerUConfig"] | null;
             etl4llm?: components["schemas"]["Etl4LlmConfig"] | null;
             marker?: components["schemas"]["MarkerConfig"] | null;
+            docling?: components["schemas"]["DoclingConfig"] | null;
             paddle_vl?: components["schemas"]["PaddleVLConfig"] | null;
             textin?: components["schemas"]["TextInConfig"] | null;
             magicpdf?: components["schemas"]["MagicPDFConfig"] | null;

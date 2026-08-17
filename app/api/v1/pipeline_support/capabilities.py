@@ -128,6 +128,15 @@ def _olmocr_backend_availability() -> tuple[bool, str | None]:
     )
 
 
+def _docling_backend_availability() -> tuple[bool, str | None]:
+    return _enabled_api_backend_availability(
+        enabled_setting="DOCLING_ENABLED",
+        api_url_setting="DOCLING_API_URL",
+        enable_note="Set DOCLING_ENABLED=true.",
+        api_url_note="Configure DOCLING_API_URL for the external Docling service.",
+    )
+
+
 def _magicpdf_backend_availability() -> tuple[bool, str | None]:
     if not bool(getattr(settings, "MAGIC_PDF_ENABLED", False)):
         return False, "MAGIC_PDF_ENABLED=false"
@@ -157,13 +166,7 @@ _PARSER_BACKEND_CHECKS: dict[str, Callable[[], tuple[bool, str | None]]] = {
         attr="MarkItDown",
         package_name="markitdown",
     ),
-    "docling": lambda: _dependency_backend_availability(
-        enabled_setting="DOCLING_ENABLED",
-        enable_note="Set DOCLING_ENABLED=true.",
-        module="docling.document_converter",
-        attr="DocumentConverter",
-        package_name="docling",
-    ),
+    "docling": _docling_backend_availability,
     "etl4llm": _etl4llm_backend_availability,
     "marker": _marker_backend_availability,
     "paddle_vl": _paddle_vl_backend_availability,
