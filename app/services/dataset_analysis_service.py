@@ -1,4 +1,3 @@
-
 import json
 import threading
 from datetime import UTC, datetime
@@ -154,47 +153,53 @@ def _scope_summary(rows: list[dict[str, Any]]) -> dict[str, int]:
     }
 
 
-def _load_dataset_scope_rows(
+def _load_scope_entities(
     *,
     db: Session,
     tenant_id: UUID,
     dataset_id: UUID,
-    from_ts: str | None,
-    to_ts: str | None,
-    feedback_polarity: str | None,
-) -> list[dict[str, Any]]:
+) -> tuple[list[Any], list[Any], list[Any]]:
     conversations = (
-        db.query(Conversation)
-        .filter(Conversation.tenant_id == tenant_id, Conversation.dataset_id == dataset_id)
-        .all()
+        db.query(Conversation).filter(Conversation.tenant_id == tenant_id, Conversation.dataset_id == dataset_id).all()
     )
     if not conversations:
-        return []
+        return [], [], []
 
     conversation_ids = [conv.id for conv in conversations]
     messages = (
-        db.query(Message)
-        .filter(Message.tenant_id == tenant_id, Message.conversation_id.in_(conversation_ids))
-        .all()
+        db.query(Message).filter(Message.tenant_id == tenant_id, Message.conversation_id.in_(conversation_ids)).all()
     )
     feedback_rows = (
         db.query(MessageFeedback)
         .filter(MessageFeedback.tenant_id == tenant_id, MessageFeedback.conversation_id.in_(conversation_ids))
         .all()
     )
+    return conversations, messages, feedback_rows
 
+
+def _resolve_trace_window(
+    *,
+    from_ts: str | None,
+    to_ts: str | None,
+) -> tuple[datetime | None, datetime, int]:
     from_dt = _coerce_datetime(from_ts)
-    to_dt = _coerce_datetime(to_ts)
-    if to_dt is None:
-        to_dt = datetime.now(UTC)
+    to_dt = _coerce_datetime(to_ts) or datetime.now(UTC)
     if from_dt is None:
-        window_minutes = 30 * 24 * 60
-    else:
-        delta = to_dt - from_dt
-        window_minutes = max(60, int(delta.total_seconds() // 60) + 60)
+        return None, to_dt, 30 * 24 * 60
+    delta = to_dt - from_dt
+    return from_dt, to_dt, max(60, int(delta.total_seconds() // 60) + 60)
 
+
+def _collect_scope_traces(
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    conversations: list[Any],
+    window_minutes: int,
+) -> list[dict[str, Any]]:
     traces: list[dict[str, Any]] = []
     trace_failures: list[str] = []
+    logger_ = get_logger(__name__)
     for conv in conversations:
         try:
             response = list_rag_traces(
@@ -206,7 +211,7 @@ def _load_dataset_scope_rows(
             )
         except Exception:
             trace_failures.append(str(conv.id))
-            get_logger(__name__).warning(
+            logger_.warning(
                 "Dataset analysis trace load failed for conversation_id=%s dataset_id=%s",
                 str(conv.id),
                 str(dataset_id),
@@ -215,21 +220,21 @@ def _load_dataset_scope_rows(
             continue
         for item in getattr(response, "items", []) or []:
             traces.append(_coerce_mapping(item))
-
     if trace_failures:
         raise DatasetAnalysisSourceIncompleteError(
             dataset_id=str(dataset_id),
             failed_conversation_ids=trace_failures,
         )
+    return traces
 
-    built = build_dataset_analysis_sources(
-        traces=traces,
-        feedback_rows=[_coerce_mapping(item) for item in feedback_rows],
-        conversations=[_coerce_mapping(item) for item in conversations],
-        messages=[_coerce_mapping(item) for item in messages],
-    )
-    rows = build_poc_interaction_rows(built["rows"])
 
+def _filter_scope_rows(
+    rows: list[dict[str, Any]],
+    *,
+    from_dt: datetime | None,
+    to_dt: datetime | None,
+    feedback_polarity: str | None,
+) -> list[dict[str, Any]]:
     filtered: list[dict[str, Any]] = []
     wanted_polarity = str(feedback_polarity or "").strip().lower() or None
     for row in rows:
@@ -242,6 +247,45 @@ def _load_dataset_scope_rows(
             continue
         filtered.append(row)
     return filtered
+
+
+def _load_dataset_scope_rows(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    from_ts: str | None,
+    to_ts: str | None,
+    feedback_polarity: str | None,
+) -> list[dict[str, Any]]:
+    conversations, messages, feedback_rows = _load_scope_entities(
+        db=db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+    )
+    if not conversations:
+        return []
+    from_dt, to_dt, window_minutes = _resolve_trace_window(from_ts=from_ts, to_ts=to_ts)
+    traces = _collect_scope_traces(
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        conversations=conversations,
+        window_minutes=window_minutes,
+    )
+
+    built = build_dataset_analysis_sources(
+        traces=traces,
+        feedback_rows=[_coerce_mapping(item) for item in feedback_rows],
+        conversations=[_coerce_mapping(item) for item in conversations],
+        messages=[_coerce_mapping(item) for item in messages],
+    )
+    rows = build_poc_interaction_rows(built["rows"])
+    return _filter_scope_rows(
+        rows,
+        from_dt=from_dt,
+        to_dt=to_dt,
+        feedback_polarity=feedback_polarity,
+    )
 
 
 def _build_full_bundle(
@@ -414,12 +458,7 @@ def build_tenant_dataset_analysis_dashboard(
     limit: int = 20,
 ) -> dict[str, Any]:
     DatasetService.ensure_member(db, tenant_id, account_id)
-    rows = (
-        db.query(Dataset)
-        .filter(Dataset.tenant_id == tenant_id)
-        .order_by(Dataset.name.asc())
-        .all()
-    )
+    rows = db.query(Dataset).filter(Dataset.tenant_id == tenant_id).order_by(Dataset.name.asc()).all()
 
     cards: list[dict[str, Any]] = []
     summary = {
@@ -451,7 +490,9 @@ def build_tenant_dataset_analysis_dashboard(
 
         summary["all_interactions"] += int(scope_summary.get("all_interactions") or 0)
         summary["feedback_interactions"] += int(scope_summary.get("feedback_interactions") or 0)
-        summary["attributable_feedback_interactions"] += int(scope_summary.get("attributable_feedback_interactions") or 0)
+        summary["attributable_feedback_interactions"] += int(
+            scope_summary.get("attributable_feedback_interactions") or 0
+        )
         summary["retrieval_miss"] += int(counts.get("retrieval_miss") or 0)
         summary["generation_error"] += int(counts.get("generation_error") or 0)
         summary["out_of_scope"] += int(counts.get("out_of_scope") or 0)
@@ -558,22 +599,24 @@ def export_dataset_analysis_html(
         category=category,
         limit=20,
     )
-    report = build_dataset_analysis_report(DatasetAnalysisReportPayload(
-        dataset_id=str(dataset_id),
-        dataset_name=dataset_name,
-        filters=bundle["meta"]["filters"],
-        scope_summary=bundle["meta"]["scope_summary"],
-        metrics=bundle["metrics"],
-        counts=bundle["counts"],
-        ratios=bundle["ratios"],
-        top_examples=bundle["top_examples"],
-        manual_review_candidates=bundle["manual_review_candidates"],
-        glossary_candidates=bundle["glossary_candidates"],
-        keyword_scores=bundle["keyword_scores"],
-        coverage_heatmap=bundle["coverage_heatmap"],
-        umap_scatter=bundle["umap_scatter"],
-        latency_breakdown=bundle["latency_breakdown"],
-    ))
+    report = build_dataset_analysis_report(
+        DatasetAnalysisReportPayload(
+            dataset_id=str(dataset_id),
+            dataset_name=dataset_name,
+            filters=bundle["meta"]["filters"],
+            scope_summary=bundle["meta"]["scope_summary"],
+            metrics=bundle["metrics"],
+            counts=bundle["counts"],
+            ratios=bundle["ratios"],
+            top_examples=bundle["top_examples"],
+            manual_review_candidates=bundle["manual_review_candidates"],
+            glossary_candidates=bundle["glossary_candidates"],
+            keyword_scores=bundle["keyword_scores"],
+            coverage_heatmap=bundle["coverage_heatmap"],
+            umap_scatter=bundle["umap_scatter"],
+            latency_breakdown=bundle["latency_breakdown"],
+        )
+    )
     report["meta"]["definitions"] = bundle["meta"]["definitions"]
     return render_dataset_analysis_html(report)
 
@@ -619,6 +662,277 @@ def writeback_dataset_analysis_glossary_candidates(
     }
 
 
+def _build_dataset_analysis_report_payload(
+    *,
+    dataset_id: UUID,
+    dataset_name: str,
+    bundle: dict[str, Any],
+) -> dict[str, Any]:
+    report = build_dataset_analysis_report(
+        DatasetAnalysisReportPayload(
+            dataset_id=str(dataset_id),
+            dataset_name=dataset_name,
+            filters=bundle["meta"]["filters"],
+            scope_summary=bundle["meta"]["scope_summary"],
+            metrics=bundle["metrics"],
+            counts=bundle["counts"],
+            ratios=bundle["ratios"],
+            top_examples=bundle["top_examples"],
+            manual_review_candidates=bundle["manual_review_candidates"],
+            glossary_candidates=bundle["glossary_candidates"],
+            keyword_scores=bundle["keyword_scores"],
+            coverage_heatmap=bundle["coverage_heatmap"],
+            umap_scatter=bundle["umap_scatter"],
+            latency_breakdown=bundle["latency_breakdown"],
+        )
+    )
+    report["meta"]["definitions"] = bundle["meta"]["definitions"]
+    return report
+
+
+def _heartbeat_loop(
+    *,
+    task_id: str,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    owner_token: str,
+    heartbeat_stop: threading.Event,
+    heartbeat_state: dict[str, Any],
+) -> None:
+    interval_sec = get_png_export_task_heartbeat_interval_sec()
+    while not heartbeat_stop.wait(interval_sec):
+        try:
+            renewed = heartbeat_png_export_task(
+                task_id,
+                tenant_id=str(tenant_id),
+                dataset_id=str(dataset_id),
+                owner_token=owner_token,
+            )
+        except Exception as exc:  # noqa: BLE001
+            heartbeat_state["reason"] = "shared_state_unavailable"
+            heartbeat_state["error"] = str(exc)
+            heartbeat_stop.set()
+            return
+        if renewed:
+            continue
+        heartbeat_state["reason"] = "ownership_lost"
+        heartbeat_stop.set()
+        return
+
+
+def _start_dataset_analysis_png_heartbeat(
+    *,
+    task_id: str,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    owner_token: str,
+    heartbeat_stop: threading.Event,
+    heartbeat_state: dict[str, Any],
+) -> threading.Thread:
+    heartbeat_thread = threading.Thread(
+        target=_heartbeat_loop,
+        kwargs={
+            "task_id": task_id,
+            "tenant_id": tenant_id,
+            "dataset_id": dataset_id,
+            "owner_token": owner_token,
+            "heartbeat_stop": heartbeat_stop,
+            "heartbeat_state": heartbeat_state,
+        },
+        name=f"dataset-analysis-png-heartbeat-{task_id[:8]}",
+        daemon=True,
+    )
+    heartbeat_thread.start()
+    return heartbeat_thread
+
+
+def _fail_dataset_analysis_png_task(
+    *,
+    task_id: str,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    owner_token: str,
+    error: str,
+    error_code: str,
+) -> None:
+    fail_png_export_task(
+        task_id,
+        tenant_id=str(tenant_id),
+        dataset_id=str(dataset_id),
+        owner_token=owner_token,
+        error=error,
+        error_code=error_code,
+    )
+
+
+def _complete_dataset_analysis_png_task(
+    *,
+    task_id: str,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    owner_token: str,
+    payload: bytes,
+    heartbeat_state: dict[str, Any],
+) -> None:
+    reason = str(heartbeat_state.get("reason") or "")
+    if reason == "shared_state_unavailable":
+        _fail_dataset_analysis_png_task(
+            task_id=task_id,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            owner_token=owner_token,
+            error=str(heartbeat_state.get("error") or "PNG export shared state unavailable"),
+            error_code="shared_state_unavailable",
+        )
+        return
+    if reason == "ownership_lost":
+        return
+    complete_png_export_task(
+        task_id,
+        tenant_id=str(tenant_id),
+        dataset_id=str(dataset_id),
+        owner_token=owner_token,
+        png_bytes=payload,
+    )
+
+
+def _handle_dataset_analysis_png_exception(
+    *,
+    task_id: str,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    owner_token: str,
+    heartbeat_state: dict[str, Any],
+    exc: Exception,
+) -> None:
+    reason = str(heartbeat_state.get("reason") or "")
+    if reason == "shared_state_unavailable":
+        _fail_dataset_analysis_png_task(
+            task_id=task_id,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            owner_token=owner_token,
+            error=str(heartbeat_state.get("error") or exc),
+            error_code="shared_state_unavailable",
+        )
+        return
+    _fail_dataset_analysis_png_task(
+        task_id=task_id,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        owner_token=owner_token,
+        error=str(exc),
+        error_code="render_failed",
+    )
+
+
+def _render_dataset_analysis_png_payload(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    dataset_name: str,
+    from_ts: str | None,
+    to_ts: str | None,
+    feedback_polarity: str | None,
+    category: str | None,
+) -> bytes:
+    bundle = _build_full_bundle(
+        db=db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        dataset_name=dataset_name,
+        from_ts=from_ts,
+        to_ts=to_ts,
+        feedback_polarity=feedback_polarity,
+        category=category,
+        limit=20,
+    )
+    report = _build_dataset_analysis_report_payload(
+        dataset_id=dataset_id,
+        dataset_name=dataset_name,
+        bundle=bundle,
+    )
+    return render_dataset_analysis_png(report)
+
+
+def _run_dataset_analysis_png_task(
+    *,
+    task_id: str,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    dataset_name: str,
+    from_ts: str | None,
+    to_ts: str | None,
+    feedback_polarity: str | None,
+    category: str | None,
+) -> None:
+    bg_db = SessionLocal()
+    owner_token: str | None = None
+    heartbeat_stop = threading.Event()
+    heartbeat_state: dict[str, Any] = {"reason": None, "error": None}
+    heartbeat_thread: threading.Thread | None = None
+    try:
+        started = begin_png_export_task(
+            task_id,
+            tenant_id=str(tenant_id),
+            dataset_id=str(dataset_id),
+        )
+        owner_token = str(started.get("owner_token") or "")
+        heartbeat_thread = _start_dataset_analysis_png_heartbeat(
+            task_id=task_id,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            owner_token=owner_token,
+            heartbeat_stop=heartbeat_stop,
+            heartbeat_state=heartbeat_state,
+        )
+        payload = _render_dataset_analysis_png_payload(
+            db=bg_db,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            dataset_name=dataset_name,
+            from_ts=from_ts,
+            to_ts=to_ts,
+            feedback_polarity=feedback_polarity,
+            category=category,
+        )
+        _complete_dataset_analysis_png_task(
+            task_id=task_id,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            owner_token=owner_token,
+            payload=payload,
+            heartbeat_state=heartbeat_state,
+        )
+    except DatasetAnalysisSourceIncompleteError as exc:
+        if owner_token:
+            _fail_dataset_analysis_png_task(
+                task_id=task_id,
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                owner_token=owner_token,
+                error=str(exc.message),
+                error_code="source_incomplete",
+            )
+    except Exception as exc:  # noqa: BLE001
+        if owner_token:
+            _handle_dataset_analysis_png_exception(
+                task_id=task_id,
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                owner_token=owner_token,
+                heartbeat_state=heartbeat_state,
+                exc=exc,
+            )
+    finally:
+        heartbeat_stop.set()
+        if heartbeat_thread is not None:
+            timeout = max(1.0, get_png_export_task_heartbeat_interval_sec() * 2.0)
+            heartbeat_thread.join(timeout=timeout)
+        bg_db.close()
+
+
 def create_dataset_analysis_png_task(
     *,
     db: Session,
@@ -649,136 +963,28 @@ def create_dataset_analysis_png_task(
     )
 
     def _run() -> None:
-        bg_db = SessionLocal()
-        owner_token: str | None = None
-        heartbeat_stop = threading.Event()
-        heartbeat_state: dict[str, Any] = {"reason": None, "error": None}
-        heartbeat_thread: threading.Thread | None = None
-
-        def _heartbeat_loop() -> None:
-            if not owner_token:
-                return
-            interval_sec = get_png_export_task_heartbeat_interval_sec()
-            while not heartbeat_stop.wait(interval_sec):
-                try:
-                    renewed = heartbeat_png_export_task(
-                        task["task_id"],
-                        tenant_id=str(tenant_id),
-                        dataset_id=str(dataset_id),
-                        owner_token=owner_token,
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    heartbeat_state["reason"] = "shared_state_unavailable"
-                    heartbeat_state["error"] = str(exc)
-                    heartbeat_stop.set()
-                    return
-                if not renewed:
-                    heartbeat_state["reason"] = "ownership_lost"
-                    heartbeat_stop.set()
-                    return
-
-        try:
-            started = begin_png_export_task(
-                task["task_id"],
-                tenant_id=str(tenant_id),
-                dataset_id=str(dataset_id),
-            )
-            owner_token = str(started.get("owner_token") or "")
-            heartbeat_thread = threading.Thread(
-                target=_heartbeat_loop,
-                name=f"dataset-analysis-png-heartbeat-{task['task_id'][:8]}",
-                daemon=True,
-            )
-            heartbeat_thread.start()
-            bundle = _build_full_bundle(
-                db=bg_db,
-                tenant_id=tenant_id,
-                dataset_id=dataset_id,
-                dataset_name=dataset_name,
-                from_ts=from_ts,
-                to_ts=to_ts,
-                feedback_polarity=feedback_polarity,
-                category=category,
-                limit=20,
-            )
-            report = build_dataset_analysis_report(DatasetAnalysisReportPayload(
-                dataset_id=str(dataset_id),
-                dataset_name=dataset_name,
-                filters=bundle["meta"]["filters"],
-                scope_summary=bundle["meta"]["scope_summary"],
-                metrics=bundle["metrics"],
-                counts=bundle["counts"],
-                ratios=bundle["ratios"],
-                top_examples=bundle["top_examples"],
-                manual_review_candidates=bundle["manual_review_candidates"],
-                glossary_candidates=bundle["glossary_candidates"],
-                keyword_scores=bundle["keyword_scores"],
-                coverage_heatmap=bundle["coverage_heatmap"],
-                umap_scatter=bundle["umap_scatter"],
-                latency_breakdown=bundle["latency_breakdown"],
-            ))
-            report["meta"]["definitions"] = bundle["meta"]["definitions"]
-            payload = render_dataset_analysis_png(report)
-            if heartbeat_state.get("reason") == "shared_state_unavailable":
-                fail_png_export_task(
-                    task["task_id"],
-                    tenant_id=str(tenant_id),
-                    dataset_id=str(dataset_id),
-                    owner_token=owner_token,
-                    error=str(heartbeat_state.get("error") or "PNG export shared state unavailable"),
-                    error_code="shared_state_unavailable",
-                )
-                return
-            if heartbeat_state.get("reason") == "ownership_lost":
-                return
-            complete_png_export_task(
-                task["task_id"],
-                tenant_id=str(tenant_id),
-                dataset_id=str(dataset_id),
-                owner_token=owner_token,
-                png_bytes=payload,
-            )
-        except DatasetAnalysisSourceIncompleteError as exc:
-            if owner_token:
-                fail_png_export_task(
-                    task["task_id"],
-                    tenant_id=str(tenant_id),
-                    dataset_id=str(dataset_id),
-                    owner_token=owner_token,
-                    error=str(exc.message),
-                    error_code="source_incomplete",
-                )
-        except Exception as exc:  # noqa: BLE001
-            if owner_token:
-                if heartbeat_state.get("reason") == "shared_state_unavailable":
-                    fail_png_export_task(
-                        task["task_id"],
-                        tenant_id=str(tenant_id),
-                        dataset_id=str(dataset_id),
-                        owner_token=owner_token,
-                        error=str(heartbeat_state.get("error") or exc),
-                        error_code="shared_state_unavailable",
-                    )
-                else:
-                    fail_png_export_task(
-                        task["task_id"],
-                        tenant_id=str(tenant_id),
-                        dataset_id=str(dataset_id),
-                        owner_token=owner_token,
-                        error=str(exc),
-                        error_code="render_failed",
-                    )
-        finally:
-            heartbeat_stop.set()
-            if heartbeat_thread is not None:
-                heartbeat_thread.join(timeout=max(1.0, get_png_export_task_heartbeat_interval_sec() * 2.0))
-            bg_db.close()
+        _run_dataset_analysis_png_task(
+            task_id=task["task_id"],
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            dataset_name=dataset_name,
+            from_ts=from_ts,
+            to_ts=to_ts,
+            feedback_polarity=feedback_polarity,
+            category=category,
+        )
 
     background_tasks.add_task(_run)
     return task
 
 
-def get_dataset_analysis_png_task_status(*, task_id: str, tenant_id: UUID, dataset_id: UUID, account_id: str) -> dict[str, Any]:
+def get_dataset_analysis_png_task_status(
+    *,
+    task_id: str,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    account_id: str,
+) -> dict[str, Any]:
     return get_png_export_task(
         task_id,
         tenant_id=str(tenant_id),
@@ -787,7 +993,13 @@ def get_dataset_analysis_png_task_status(*, task_id: str, tenant_id: UUID, datas
     )
 
 
-def get_dataset_analysis_png_result(*, task_id: str, tenant_id: UUID, dataset_id: UUID, account_id: str) -> bytes:
+def get_dataset_analysis_png_result(
+    *,
+    task_id: str,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    account_id: str,
+) -> bytes:
     return get_png_export_task_result(
         task_id,
         tenant_id=str(tenant_id),

@@ -16,7 +16,6 @@ Important safety notes:
 - Conservative PII filtering: we avoid storing email/URLs/long numeric strings.
 """
 
-
 import re
 from typing import Any
 
@@ -85,6 +84,41 @@ def _clean_token(tok: str) -> str:
     return t.strip(" \t\r\n\"'“”‘’`()[]{}<>.,;:!?，。；：！？")
 
 
+def _iter_raw_entity_candidates(raw: str) -> list[str]:
+    candidates: list[str] = []
+    candidates.extend(_VERSION_RE.findall(raw))
+    candidates.extend(_ASCII_ENTITY_RE.findall(raw))
+    candidates.extend(_CJK_RE.findall(raw))
+    return candidates
+
+
+def _normalize_entity_candidate(candidate: str) -> tuple[str, str] | None:
+    tok = _clean_token(candidate)
+    if not tok or len(tok) < 2 or len(tok) > 64 or _is_pii_like(tok):
+        return None
+    if tok.isascii():
+        low = tok.casefold()
+        if low in _STOPWORDS_EN or (len(low) <= 2 and low.isalpha()):
+            return None
+        return low, tok
+    if tok in _STOPWORDS_ZH:
+        return None
+    return tok, tok
+
+
+def _collect_entity_token_counts(raw: str) -> tuple[dict[str, int], dict[str, str]]:
+    counts: dict[str, int] = {}
+    display: dict[str, str] = {}
+    for candidate in _iter_raw_entity_candidates(raw):
+        normalized = _normalize_entity_candidate(candidate)
+        if normalized is None:
+            continue
+        sig, tok = normalized
+        counts[sig] = int(counts.get(sig, 0) or 0) + 1
+        display.setdefault(sig, tok)
+    return counts, display
+
+
 def extract_entity_tokens(*, text: str, max_entities: int) -> list[str]:
     """
     Extract lightweight entity tokens from text (deterministic heuristic).
@@ -102,43 +136,7 @@ def extract_entity_tokens(*, text: str, max_entities: int) -> list[str]:
     if not raw.strip():
         return []
 
-    # Very conservative skip when obvious PII is present.
-    if _EMAIL_RE.search(raw) or _URL_RE.search(raw):
-        # We still allow extracting non-PII entities from the text, but we filter tokens aggressively below.
-        pass
-
-    candidates: list[str] = []
-    candidates.extend(_VERSION_RE.findall(raw))
-    candidates.extend(_ASCII_ENTITY_RE.findall(raw))
-    candidates.extend(_CJK_RE.findall(raw))
-
-    counts: dict[str, int] = {}
-    display: dict[str, str] = {}
-    for c in candidates:
-        tok = _clean_token(c)
-        if not tok:
-            continue
-        if len(tok) < 2 or len(tok) > 64:
-            continue
-        if _is_pii_like(tok):
-            continue
-        if tok.isascii():
-            low = tok.casefold()
-            if low in _STOPWORDS_EN:
-                continue
-            # Drop common 1-2 letter noise.
-            if len(low) <= 2 and low.isalpha():
-                continue
-            sig = low
-        else:
-            if tok in _STOPWORDS_ZH:
-                continue
-            sig = tok
-
-        counts[sig] = int(counts.get(sig, 0) or 0) + 1
-        # Preserve a representative surface form.
-        display.setdefault(sig, tok)
-
+    counts, display = _collect_entity_token_counts(raw)
     ranked = sorted(counts.items(), key=lambda t: (-int(t[1]), _stable_sig(t[0]), t[0]))
     out: list[str] = []
     for sig, _cnt in ranked:
@@ -224,6 +222,83 @@ def extract_structured_memory_for_turn(
     }
 
 
+def _record_memory_entity(
+    *,
+    entity: Any,
+    ent_counts: dict[str, int],
+    ent_surface: dict[str, str],
+) -> None:
+    tok = _clean_token(str(entity or ""))
+    if not tok or _is_pii_like(tok):
+        return
+    sig = _stable_sig(tok)
+    ent_counts[sig] = int(ent_counts.get(sig, 0) or 0) + 1
+    ent_surface.setdefault(sig, tok)
+
+
+def _record_memory_fact(
+    *,
+    fact: Any,
+    facts: list[str],
+    seen_fact: set[str],
+) -> None:
+    text = str(fact or "").strip()
+    if not text or _is_pii_like(text):
+        return
+    sig = _stable_sig(text)
+    if sig in seen_fact:
+        return
+    seen_fact.add(sig)
+    facts.append(text)
+
+
+def _collect_structured_memory_records(
+    records: list[dict[str, Any]],
+) -> tuple[dict[str, int], dict[str, str], list[str]]:
+    ent_counts: dict[str, int] = {}
+    ent_surface: dict[str, str] = {}
+    facts: list[str] = []
+    seen_fact: set[str] = set()
+
+    for rec in records or []:
+        if not isinstance(rec, dict):
+            continue
+        if str(rec.get("schema") or "") != "mimirq.structured_memory.v1":
+            continue
+        ents = rec.get("entities")
+        if isinstance(ents, list):
+            for entity in ents:
+                _record_memory_entity(
+                    entity=entity,
+                    ent_counts=ent_counts,
+                    ent_surface=ent_surface,
+                )
+        raw_facts = rec.get("facts")
+        if isinstance(raw_facts, list):
+            for fact in raw_facts:
+                _record_memory_fact(
+                    fact=fact,
+                    facts=facts,
+                    seen_fact=seen_fact,
+                )
+    return ent_counts, ent_surface, facts
+
+
+def _render_structured_memory_context(*, entities: list[str], facts: list[str]) -> str:
+    parts: list[str] = []
+    if entities:
+        parts.append("Entities mentioned recently:")
+        parts.extend(f"- {entity}" for entity in entities)
+    if facts:
+        if parts:
+            parts.append("")
+        parts.append("Facts/preferences (user-provided):")
+        parts.extend(f"- {fact}" for fact in facts)
+    if not parts:
+        return ""
+    return "[Structured Memory]\n" + "\n".join(parts).strip()
+
+
 def build_structured_memory_context(
     *,
     records: list[dict[str, Any]],
@@ -238,58 +313,13 @@ def build_structured_memory_context(
     max_f = max(0, int(max_facts or 0))
     max_c = max(0, int(max_chars or 0))
 
-    ent_counts: dict[str, int] = {}
-    ent_surface: dict[str, str] = {}
-    facts: list[str] = []
-    seen_fact: set[str] = set()
-
-    for rec in records or []:
-        if not isinstance(rec, dict):
-            continue
-        if str(rec.get("schema") or "") != "mimirq.structured_memory.v1":
-            continue
-        ents = rec.get("entities")
-        if isinstance(ents, list):
-            for e in ents:
-                tok = _clean_token(str(e or ""))
-                if not tok:
-                    continue
-                if _is_pii_like(tok):
-                    continue
-                sig = _stable_sig(tok)
-                ent_counts[sig] = int(ent_counts.get(sig, 0) or 0) + 1
-                ent_surface.setdefault(sig, tok)
-
-        fs = rec.get("facts")
-        if isinstance(fs, list):
-            for f in fs:
-                s = str(f or "").strip()
-                if not s or _is_pii_like(s):
-                    continue
-                sig = _stable_sig(s)
-                if sig in seen_fact:
-                    continue
-                seen_fact.add(sig)
-                facts.append(s)
+    ent_counts, ent_surface, facts = _collect_structured_memory_records(records)
 
     ranked_entities = sorted(ent_counts.items(), key=lambda t: (-int(t[1]), _stable_sig(t[0]), t[0]))
     entities_out = [(ent_surface.get(sig) or sig) for sig, _cnt in ranked_entities][:max_e]
     facts_out = facts[:max_f]
 
-    parts: list[str] = []
-    if entities_out:
-        parts.append("Entities mentioned recently:")
-        parts.extend([f"- {e}" for e in entities_out])
-    if facts_out:
-        if parts:
-            parts.append("")
-        parts.append("Facts/preferences (user-provided):")
-        parts.extend([f"- {f}" for f in facts_out])
-
-    if not parts:
-        return ""
-
-    text = "[Structured Memory]\n" + "\n".join(parts).strip()
+    text = _render_structured_memory_context(entities=entities_out, facts=facts_out)
     if max_c and len(text) > max_c:
         text = text[:max_c].rstrip() + "..."
     return text

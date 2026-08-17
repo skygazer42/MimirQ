@@ -10,7 +10,6 @@ The chunker keeps whole key-value entries together and can split by INI
 sections when present. Offsets are preserved.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -45,6 +44,22 @@ class _KV:
 _SECTION_RE = re.compile(r"^\s*\[(?P<name>[^\]]{1,80})\]\s*$")
 
 
+def _strip_export_prefix(value: str) -> str:
+    if not value.casefold().startswith("export"):
+        return value
+    remainder = value[len("export") :]
+    return remainder.lstrip() if remainder[:1].isspace() else value
+
+
+def _is_valid_kv_key(key: str) -> bool:
+    if not key or len(key) > 64:
+        return False
+    first = key[0]
+    if not (first == "_" or (first.isascii() and first.isalpha())):
+        return False
+    return all(ch.isascii() and (ch.isalnum() or ch in "_.-") for ch in key[1:])
+
+
 def _parse_kv_line(line: str) -> str | None:
     """
     Parse a key-value assignment line like:
@@ -62,30 +77,13 @@ def _parse_kv_line(line: str) -> str | None:
     if not s:
         return None
 
-    low = s.casefold()
-    if low.startswith("export"):
-        rest = s[len("export") :]
-        if rest[:1].isspace():
-            s = rest.lstrip()
+    s = _strip_export_prefix(s)
 
     eq = s.find("=")
     if eq <= 0:
         return None
     key = s[:eq].strip()
-    if not key or len(key) > 64:
-        return None
-    first = key[0]
-    if not (first == "_" or (first.isascii() and first.isalpha())):
-        return None
-    for ch in key[1:]:
-        if not ch.isascii():
-            return None
-        if ch.isalnum():
-            continue
-        if ch in "_.-":
-            continue
-        return None
-    return key
+    return key if _is_valid_kv_key(key) else None
 
 
 def _iter_lines(text: str) -> list[_Line]:
@@ -151,6 +149,63 @@ def looks_like_kv_config(text: str) -> bool:
     return ratio >= 0.2
 
 
+def _short_tail_end(text: str, *, current_end: int, section_end: int) -> int:
+    tail = text[current_end:section_end]
+    return section_end if tail.strip() and len(tail) <= 400 else current_end
+
+
+def _kv_window_end(
+    text: str,
+    *,
+    section: _Section,
+    kvs: list[_KV],
+    start_idx: int,
+    first: bool,
+    chunk_size: int,
+) -> int:
+    end_idx = start_idx
+    while end_idx < len(kvs):
+        candidate_start = section.start if first else kvs[start_idx].start
+        candidate_end = kvs[end_idx].end
+        if end_idx == len(kvs) - 1:
+            candidate_end = _short_tail_end(
+                text,
+                current_end=candidate_end,
+                section_end=section.end,
+            )
+        if end_idx != start_idx and candidate_end - candidate_start > chunk_size:
+            break
+        end_idx += 1
+    return max(start_idx + 1, end_idx)
+
+
+def _unique_kv_keys(kvs: list[_KV], *, start_idx: int, end_idx: int) -> list[str]:
+    unique: list[str] = []
+    for item in kvs[start_idx:end_idx]:
+        if item.key and item.key not in unique:
+            unique.append(item.key)
+    return unique[:25]
+
+
+def _next_kv_start(
+    kvs: list[_KV],
+    *,
+    start_idx: int,
+    end_idx: int,
+    chunk_overlap: int,
+) -> int:
+    next_start = end_idx
+    if chunk_overlap > 0 and end_idx - start_idx > 1:
+        desired = end_idx - 1
+        while desired > start_idx:
+            overlap_len = kvs[end_idx - 1].end - kvs[desired - 1].start
+            if overlap_len > chunk_overlap:
+                break
+            desired -= 1
+        next_start = desired if desired > start_idx else end_idx - 1
+    return end_idx if next_start <= start_idx else next_start
+
+
 class KVConfigChunker(BaseChunker):
     def __init__(self, chunk_size: int, chunk_overlap: int):
         self.chunk_size = int(chunk_size)
@@ -164,126 +219,138 @@ class KVConfigChunker(BaseChunker):
             add_start_index=True,
         )
 
+    def _append_fallback_chunks(
+        self,
+        out: list[Document],
+        *,
+        text: str,
+        start: int,
+        end: int,
+        base_meta: dict[str, Any],
+        section_name: str | None = None,
+    ) -> None:
+        split_docs = self._fallback_splitter.create_documents(
+            texts=[text[start:end]],
+            metadatas=[base_meta],
+        )
+        for split_doc in split_docs:
+            local_start = split_doc.metadata.pop("start_index", None) or 0
+            absolute_start = start + int(local_start)
+            meta: dict[str, Any] = dict(base_meta)
+            meta.update(split_doc.metadata or {})
+            meta.update(
+                {
+                    "chunk_strategy": "kv_config",
+                    "start_char": absolute_start,
+                    "end_char": absolute_start + len(split_doc.page_content),
+                    "kv_fallback": True,
+                }
+            )
+            meta.setdefault("doc_type_kwd", "config")
+            if section_name:
+                meta["config_section"] = section_name
+            out.append(Document(page_content=split_doc.page_content, metadata=meta))
+
+    def _append_kv_section_chunks(
+        self,
+        out: list[Document],
+        *,
+        text: str,
+        section: _Section,
+        kvs: list[_KV],
+        base_meta: dict[str, Any],
+    ) -> None:
+        start_idx = 0
+        first = True
+        while start_idx < len(kvs):
+            end_idx = _kv_window_end(
+                text,
+                section=section,
+                kvs=kvs,
+                start_idx=start_idx,
+                first=first,
+                chunk_size=self.chunk_size,
+            )
+            chunk_start = section.start if first else kvs[start_idx].start
+            chunk_end = kvs[end_idx - 1].end
+            if end_idx == len(kvs):
+                chunk_end = _short_tail_end(
+                    text,
+                    current_end=chunk_end,
+                    section_end=section.end,
+                )
+
+            meta: dict[str, Any] = dict(base_meta)
+            meta.update(
+                {
+                    "chunk_strategy": "kv_config",
+                    "start_char": chunk_start,
+                    "end_char": chunk_end,
+                    "kv_count": int(end_idx - start_idx),
+                }
+            )
+            meta.setdefault("doc_type_kwd", "config")
+            if section.name:
+                meta["config_section"] = section.name
+            unique_keys = _unique_kv_keys(kvs, start_idx=start_idx, end_idx=end_idx)
+            if unique_keys:
+                meta["kv_keys"] = unique_keys
+            out.append(Document(page_content=text[chunk_start:chunk_end], metadata=meta))
+
+            start_idx = _next_kv_start(
+                kvs,
+                start_idx=start_idx,
+                end_idx=end_idx,
+                chunk_overlap=self.chunk_overlap,
+            )
+            first = False
+
+    def _split_document(self, doc: Document, out: list[Document]) -> None:
+        text = doc.page_content or ""
+        base_meta = dict(doc.metadata or {})
+        if not text.strip():
+            return
+
+        any_kv = False
+        for section in _build_sections(text):
+            if not text[section.start : section.end].strip():
+                continue
+            kvs = _iter_kv(text, start=section.start, end=section.end)
+            if kvs:
+                any_kv = True
+                self._append_kv_section_chunks(
+                    out,
+                    text=text,
+                    section=section,
+                    kvs=kvs,
+                    base_meta=base_meta,
+                )
+                continue
+            self._append_fallback_chunks(
+                out,
+                text=text,
+                start=section.start,
+                end=section.end,
+                base_meta=base_meta,
+                section_name=section.name,
+            )
+
+        if not any_kv:
+            self._append_fallback_chunks(
+                out,
+                text=text,
+                start=0,
+                end=len(text),
+                base_meta=base_meta,
+            )
+
     def split_documents(self, documents: list[Document]) -> list[Document]:
         out: list[Document] = []
-
         for doc in documents:
-            text = doc.page_content or ""
-            base_meta = dict(doc.metadata or {})
-            if not text.strip():
-                continue
-
-            sections = _build_sections(text)
-            any_kv = False
-
-            for section in sections:
-                sec_text = text[section.start : section.end]
-                if not sec_text.strip():
-                    continue
-
-                kvs = _iter_kv(text, start=section.start, end=section.end)
-                if not kvs:
-                    split_docs = self._fallback_splitter.create_documents(texts=[sec_text], metadatas=[base_meta])
-                    for sd in split_docs:
-                        local_start = sd.metadata.pop("start_index", None) or 0
-                        abs_start = section.start + int(local_start)
-                        abs_end = abs_start + len(sd.page_content)
-                        meta: dict[str, Any] = dict(base_meta)
-                        meta.update(sd.metadata or {})
-                        meta["chunk_strategy"] = "kv_config"
-                        meta["start_char"] = abs_start
-                        meta["end_char"] = abs_end
-                        meta["kv_fallback"] = True
-                        meta.setdefault("doc_type_kwd", "config")
-                        if section.name:
-                            meta["config_section"] = section.name
-                        out.append(Document(page_content=sd.page_content, metadata=meta))
-                    continue
-
-                any_kv = True
-                start_idx = 0
-                first = True
-                while start_idx < len(kvs):
-                    end_idx = start_idx
-                    while end_idx < len(kvs):
-                        cand_start = section.start if first else kvs[start_idx].start
-                        cand_end = kvs[end_idx].end
-                        # Include a small tail on the last chunk (comments after last key).
-                        if end_idx == len(kvs) - 1:
-                            tail = text[kvs[end_idx].end : section.end]
-                            if tail.strip() and len(tail) <= 400:
-                                cand_end = section.end
-                        cand_len = cand_end - cand_start
-                        if end_idx == start_idx or cand_len <= self.chunk_size:
-                            end_idx += 1
-                            continue
-                        break
-
-                    if end_idx == start_idx:
-                        end_idx = start_idx + 1
-
-                    chunk_start = section.start if first else kvs[start_idx].start
-                    chunk_end = kvs[end_idx - 1].end
-                    if end_idx == len(kvs):
-                        tail = text[chunk_end : section.end]
-                        if tail.strip() and len(tail) <= 400:
-                            chunk_end = section.end
-                    content = text[chunk_start:chunk_end]
-
-                    keys = [kv.key for kv in kvs[start_idx:end_idx] if kv.key]
-                    uniq: list[str] = []
-                    for k in keys:
-                        if k not in uniq:
-                            uniq.append(k)
-                    uniq = uniq[:25]
-
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta["chunk_strategy"] = "kv_config"
-                    meta["start_char"] = chunk_start
-                    meta["end_char"] = chunk_end
-                    meta.setdefault("doc_type_kwd", "config")
-                    meta["kv_count"] = int(end_idx - start_idx)
-                    if section.name:
-                        meta["config_section"] = section.name
-                    if uniq:
-                        meta["kv_keys"] = uniq
-                    out.append(Document(page_content=content, metadata=meta))
-
-                    next_start = end_idx
-                    if self.chunk_overlap > 0 and (end_idx - start_idx) > 1:
-                        desired = end_idx - 1
-                        while desired > start_idx:
-                            overlap_len = kvs[end_idx - 1].end - kvs[desired - 1].start
-                            if overlap_len <= self.chunk_overlap:
-                                desired -= 1
-                                continue
-                            break
-                        next_start = desired if desired > start_idx else (end_idx - 1)
-
-                    if next_start <= start_idx:
-                        next_start = end_idx
-                    start_idx = next_start
-                    first = False
-
-            if not any_kv:
-                # If nothing looked like kv config, still emit something.
-                split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "kv_config"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta["kv_fallback"] = True
-                    meta.setdefault("doc_type_kwd", "config")
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+            self._split_document(doc, out)
 
         for idx, chunk in enumerate(out):
             meta = dict(chunk.metadata or {})
             meta["chunk_index"] = idx
             chunk.metadata = meta
-
         return out

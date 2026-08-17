@@ -5,7 +5,6 @@ Targets pom.xml-like Maven project files and chunks by <dependency> / <plugin>
 records while preserving character offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -101,6 +100,51 @@ def looks_like_maven_pom(text: str) -> bool:
     return len(records) >= 2
 
 
+def _record_window_end(records: list[_Record], *, start_idx: int, chunk_size: int) -> int:
+    end_idx = start_idx
+    while end_idx < len(records):
+        length = records[end_idx].end - records[start_idx].start
+        if end_idx != start_idx and length > chunk_size:
+            break
+        end_idx += 1
+    return max(start_idx + 1, end_idx)
+
+
+def _record_labels(
+    records: list[_Record],
+    *,
+    start_idx: int,
+    end_idx: int,
+) -> tuple[list[str], list[str]]:
+    kinds: list[str] = []
+    artifacts: list[str] = []
+    for record in records[start_idx:end_idx]:
+        if record.kind not in kinds:
+            kinds.append(record.kind)
+        if record.ga and record.ga not in artifacts:
+            artifacts.append(record.ga)
+    return kinds, artifacts[:20]
+
+
+def _next_record_start(
+    records: list[_Record],
+    *,
+    start_idx: int,
+    end_idx: int,
+    chunk_overlap: int,
+) -> int:
+    next_start = end_idx
+    if chunk_overlap > 0 and end_idx - start_idx > 1:
+        desired = end_idx - 1
+        while desired > start_idx:
+            overlap_length = records[end_idx - 1].end - records[desired - 1].start
+            if overlap_length > chunk_overlap:
+                break
+            desired -= 1
+        next_start = desired if desired > start_idx else end_idx - 1
+    return end_idx if next_start <= start_idx else next_start
+
+
 class MavenPOMChunker(BaseChunker):
     def __init__(self, chunk_size: int, chunk_overlap: int):
         self.chunk_size = int(chunk_size)
@@ -114,108 +158,133 @@ class MavenPOMChunker(BaseChunker):
             add_start_index=True,
         )
 
+    def _append_fallback_chunks(
+        self,
+        out: list[Document],
+        *,
+        text: str,
+        end: int,
+        base_meta: dict[str, Any],
+        flag: str,
+    ) -> None:
+        split_docs = self._fallback_splitter.create_documents(
+            texts=[text[:end]],
+            metadatas=[base_meta],
+        )
+        for split_doc in split_docs:
+            start = int(split_doc.metadata.pop("start_index", None) or 0)
+            meta: dict[str, Any] = dict(base_meta)
+            meta.update(split_doc.metadata or {})
+            meta.update(
+                {
+                    "chunk_strategy": "maven_pom",
+                    "start_char": start,
+                    "end_char": start + len(split_doc.page_content),
+                    flag: True,
+                }
+            )
+            meta.setdefault("doc_type_kwd", "maven")
+            out.append(Document(page_content=split_doc.page_content, metadata=meta))
+
+    @staticmethod
+    def _record_metadata(
+        *,
+        base_meta: dict[str, Any],
+        records: list[_Record],
+        start_idx: int,
+        end_idx: int,
+    ) -> dict[str, Any]:
+        first = records[start_idx]
+        last = records[end_idx - 1]
+        kinds, artifacts = _record_labels(records, start_idx=start_idx, end_idx=end_idx)
+        meta: dict[str, Any] = dict(base_meta)
+        meta.update(
+            {
+                "chunk_strategy": "maven_pom",
+                "start_char": first.start,
+                "end_char": last.end,
+                "maven_record_count": int(end_idx - start_idx),
+                "maven_first_index": int(first.index),
+                "maven_last_index": int(last.index),
+            }
+        )
+        meta.setdefault("doc_type_kwd", "maven")
+        if kinds:
+            meta["maven_kinds"] = kinds
+        if artifacts:
+            meta["maven_artifacts"] = artifacts
+        return meta
+
+    def _append_record_chunks(
+        self,
+        out: list[Document],
+        *,
+        text: str,
+        records: list[_Record],
+        base_meta: dict[str, Any],
+    ) -> None:
+        start_idx = 0
+        while start_idx < len(records):
+            end_idx = _record_window_end(
+                records,
+                start_idx=start_idx,
+                chunk_size=self.chunk_size,
+            )
+            meta = self._record_metadata(
+                base_meta=base_meta,
+                records=records,
+                start_idx=start_idx,
+                end_idx=end_idx,
+            )
+            out.append(
+                Document(
+                    page_content=text[meta["start_char"] : meta["end_char"]],
+                    metadata=meta,
+                )
+            )
+            start_idx = _next_record_start(
+                records,
+                start_idx=start_idx,
+                end_idx=end_idx,
+                chunk_overlap=self.chunk_overlap,
+            )
+
+    def _split_document(self, doc: Document, out: list[Document]) -> None:
+        text = doc.page_content or ""
+        if not text.strip():
+            return
+        base_meta = dict(doc.metadata or {})
+        records = _iter_records(text)
+        if not records:
+            self._append_fallback_chunks(
+                out,
+                text=text,
+                end=len(text),
+                base_meta=base_meta,
+                flag="maven_pom_fallback",
+            )
+            return
+        if records[0].start > 0 and text[: records[0].start].strip():
+            self._append_fallback_chunks(
+                out,
+                text=text,
+                end=records[0].start,
+                base_meta=base_meta,
+                flag="maven_pom_preamble",
+            )
+        self._append_record_chunks(
+            out,
+            text=text,
+            records=records,
+            base_meta=base_meta,
+        )
+
     def split_documents(self, documents: list[Document]) -> list[Document]:
         out: list[Document] = []
-
         for doc in documents:
-            text = doc.page_content or ""
-            base_meta = dict(doc.metadata or {})
-            if not text.strip():
-                continue
-
-            records = _iter_records(text)
-            if not records:
-                split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "maven_pom"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta["maven_pom_fallback"] = True
-                    meta.setdefault("doc_type_kwd", "maven")
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
-                continue
-
-            first = records[0]
-            if first.start > 0:
-                pre = text[: first.start]
-                if pre.strip():
-                    split_docs = self._fallback_splitter.create_documents(texts=[pre], metadatas=[base_meta])
-                    for sd in split_docs:
-                        local_start = sd.metadata.pop("start_index", None) or 0
-                        abs_start = int(local_start)
-                        abs_end = abs_start + len(sd.page_content)
-                        meta: dict[str, Any] = dict(base_meta)
-                        meta.update(sd.metadata or {})
-                        meta["chunk_strategy"] = "maven_pom"
-                        meta["start_char"] = abs_start
-                        meta["end_char"] = abs_end
-                        meta["maven_pom_preamble"] = True
-                        meta.setdefault("doc_type_kwd", "maven")
-                        out.append(Document(page_content=sd.page_content, metadata=meta))
-
-            start_idx = 0
-            while start_idx < len(records):
-                end_idx = start_idx
-                while end_idx < len(records):
-                    cand_start = records[start_idx].start
-                    cand_end = records[end_idx].end
-                    cand_len = cand_end - cand_start
-                    if end_idx == start_idx or cand_len <= self.chunk_size:
-                        end_idx += 1
-                        continue
-                    break
-                if end_idx == start_idx:
-                    end_idx = start_idx + 1
-
-                chunk_start = records[start_idx].start
-                chunk_end = records[end_idx - 1].end
-                content = text[chunk_start:chunk_end]
-
-                gas: list[str] = []
-                kinds: list[str] = []
-                for r in records[start_idx:end_idx]:
-                    if r.kind not in kinds:
-                        kinds.append(r.kind)
-                    if r.ga and r.ga not in gas:
-                        gas.append(r.ga)
-                gas = gas[:20]
-
-                meta: dict[str, Any] = dict(base_meta)
-                meta["chunk_strategy"] = "maven_pom"
-                meta["start_char"] = chunk_start
-                meta["end_char"] = chunk_end
-                meta.setdefault("doc_type_kwd", "maven")
-                meta["maven_record_count"] = int(end_idx - start_idx)
-                meta["maven_first_index"] = int(records[start_idx].index)
-                meta["maven_last_index"] = int(records[end_idx - 1].index)
-                if kinds:
-                    meta["maven_kinds"] = kinds
-                if gas:
-                    meta["maven_artifacts"] = gas
-                out.append(Document(page_content=content, metadata=meta))
-
-                next_start = end_idx
-                if self.chunk_overlap > 0 and (end_idx - start_idx) > 1:
-                    desired = end_idx - 1
-                    while desired > start_idx:
-                        overlap_len = records[end_idx - 1].end - records[desired - 1].start
-                        if overlap_len <= self.chunk_overlap:
-                            desired -= 1
-                            continue
-                        break
-                    next_start = desired if desired > start_idx else (end_idx - 1)
-                if next_start <= start_idx:
-                    next_start = end_idx
-                start_idx = next_start
-
+            self._split_document(doc, out)
         for idx, chunk in enumerate(out):
             meta = dict(chunk.metadata or {})
             meta["chunk_index"] = idx
             chunk.metadata = meta
-
         return out

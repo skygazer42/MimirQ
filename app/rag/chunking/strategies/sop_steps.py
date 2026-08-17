@@ -10,7 +10,6 @@ RecursiveCharacterTextSplitter inside each step to respect chunk_size and
 chunk_overlap while preserving offsets.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -39,6 +38,107 @@ class _Section:
 _CN_STEP_NUM_CHARS = frozenset("0123456789一二三四五六七八九十百千")
 
 
+def _split_step_tail(num: str, tail: str) -> tuple[str, str | None]:
+    title = tail.strip() or None
+    return num, title
+
+
+def _parse_en_step_heading(line: str) -> tuple[str, str | None] | None:
+    low = line.casefold()
+    if not low.startswith("step"):
+        return None
+
+    rest = line[len("step") :].strip()
+    if not rest:
+        return None
+
+    i = 0
+    while i < len(rest) and i < 3 and rest[i].isdigit():
+        i += 1
+    if i == 0:
+        return None
+
+    num = rest[:i]
+    tail = rest[i:].lstrip()
+    if tail[:1] in (":", "：", ".", "-"):
+        tail = tail[1:].lstrip()
+    return _split_step_tail(num, tail)
+
+
+def _parse_cn_step_heading(line: str) -> tuple[str, str | None] | None:
+    if not line.startswith("步骤"):
+        return None
+
+    rest = line[len("步骤") :].strip()
+    if not rest:
+        return None
+
+    i = 0
+    while i < len(rest) and i < 4 and rest[i] in _CN_STEP_NUM_CHARS:
+        i += 1
+    if i == 0:
+        return None
+
+    num = rest[:i]
+    tail = rest[i:].lstrip()
+    if tail[:1] in (":", "：", ".", "-"):
+        tail = tail[1:].lstrip()
+    return _split_step_tail(num, tail)
+
+
+def _build_sop_chunk(
+    *,
+    page_content: str,
+    base_meta: dict[str, Any],
+    split_meta: dict[str, Any],
+    abs_start: int,
+    abs_end: int,
+    heading: StepHeading | None,
+    fallback: bool = False,
+) -> Document:
+    meta: dict[str, Any] = dict(base_meta)
+    meta.update(split_meta)
+    meta["chunk_strategy"] = "sop_steps"
+    meta["start_char"] = abs_start
+    meta["end_char"] = abs_end
+    if fallback:
+        meta["sop_fallback"] = True
+    if heading is not None:
+        meta["sop_step_heading"] = heading.text
+        meta["sop_step_no"] = heading.step_no
+        if heading.title:
+            meta["sop_step_title"] = heading.title
+    return Document(page_content=page_content, metadata=meta)
+
+
+def _append_split_chunks(
+    *,
+    out: list[Document],
+    splitter: RecursiveCharacterTextSplitter,
+    text: str,
+    base_meta: dict[str, Any],
+    base_start: int,
+    heading: StepHeading | None,
+    fallback: bool = False,
+) -> None:
+    split_docs = splitter.create_documents(texts=[text], metadatas=[base_meta])
+    for sd in split_docs:
+        local_start = sd.metadata.pop("start_index", None) or 0
+        abs_start = base_start + int(local_start)
+        abs_end = abs_start + len(sd.page_content)
+        out.append(
+            _build_sop_chunk(
+                page_content=sd.page_content,
+                base_meta=base_meta,
+                split_meta=sd.metadata or {},
+                abs_start=abs_start,
+                abs_end=abs_end,
+                heading=heading,
+                fallback=fallback,
+            )
+        )
+
+
 def _parse_step_heading(line: str) -> tuple[str, str | None] | None:
     """
     Parse a step heading line like:
@@ -53,40 +153,7 @@ def _parse_step_heading(line: str) -> tuple[str, str | None] | None:
     if not s:
         return None
 
-    low = s.casefold()
-    if low.startswith("step"):
-        rest = s[len("step") :].strip()
-        if not rest:
-            return None
-        i = 0
-        while i < len(rest) and i < 3 and rest[i].isdigit():
-            i += 1
-        if i == 0:
-            return None
-        num = rest[:i]
-        tail = rest[i:].lstrip()
-        if tail[:1] in (":", "：", ".", "-"):
-            tail = tail[1:].lstrip()
-        title = tail.strip() or None
-        return num, title
-
-    if s.startswith("步骤"):
-        rest = s[len("步骤") :].strip()
-        if not rest:
-            return None
-        i = 0
-        while i < len(rest) and i < 4 and rest[i] in _CN_STEP_NUM_CHARS:
-            i += 1
-        if i == 0:
-            return None
-        num = rest[:i]
-        tail = rest[i:].lstrip()
-        if tail[:1] in (":", "：", ".", "-"):
-            tail = tail[1:].lstrip()
-        title = tail.strip() or None
-        return num, title
-
-    return None
+    return _parse_en_step_heading(s) or _parse_cn_step_heading(s)
 
 
 def _iter_steps(text: str) -> list[StepHeading]:
@@ -178,18 +245,15 @@ class SOPStepsChunker(BaseChunker):
             steps = _iter_steps(text)
             sections = _build_sections(text, steps)
             if not steps:
-                split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "sop_steps"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta["sop_fallback"] = True
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                _append_split_chunks(
+                    out=out,
+                    splitter=self._fallback_splitter,
+                    text=text,
+                    base_meta=base_meta,
+                    base_start=0,
+                    heading=None,
+                    fallback=True,
+                )
                 continue
 
             for section in sections:
@@ -197,24 +261,14 @@ class SOPStepsChunker(BaseChunker):
                 if not sec_text.strip():
                     continue
 
-                heading = section.heading
-                split_docs = self._fallback_splitter.create_documents(texts=[sec_text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = section.start + int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "sop_steps"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    if heading is not None:
-                        meta["sop_step_heading"] = heading.text
-                        meta["sop_step_no"] = heading.step_no
-                        if heading.title:
-                            meta["sop_step_title"] = heading.title
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                _append_split_chunks(
+                    out=out,
+                    splitter=self._fallback_splitter,
+                    text=sec_text,
+                    base_meta=base_meta,
+                    base_start=section.start,
+                    heading=section.heading,
+                )
 
         for idx, chunk in enumerate(out):
             meta = dict(chunk.metadata or {})

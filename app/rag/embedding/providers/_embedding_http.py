@@ -109,6 +109,55 @@ def _max_retries() -> int:
     return max(0, int(getattr(settings, "EMBEDDING_API_MAX_RETRIES", 0) or 0))
 
 
+def _next_retry_delay(*, attempt: int, max_retries: int) -> float | None:
+    if attempt >= max_retries:
+        return None
+    return _sleep_seconds_for_attempt(attempt=attempt, retry_after_sec=None)
+
+
+def _retry_delay_for_status_error(
+    exc: httpx.HTTPStatusError,
+    *,
+    attempt: int,
+    max_retries: int,
+) -> float | None:
+    status = int(getattr(exc.response, "status_code", 0) or 0)
+    if status not in _RETRYABLE_HTTP_CODES or attempt >= max_retries:
+        return None
+    retry_after = None
+    if status == 429:
+        retry_after = _parse_retry_after_seconds(getattr(exc.response, "headers", {}).get("Retry-After"))
+    return _sleep_seconds_for_attempt(attempt=attempt, retry_after_sec=retry_after)
+
+
+def _sleep_sync(delay: float | None) -> bool:
+    if delay is None:
+        return False
+    if delay > 0:
+        time.sleep(delay)
+    return True
+
+
+async def _sleep_async(delay: float | None) -> bool:
+    if delay is None:
+        return False
+    if delay > 0:
+        await asyncio.sleep(delay)
+    return True
+
+
+def _close_response_sync(response: httpx.Response | None) -> None:
+    if response is not None:
+        with contextlib.suppress(Exception):
+            response.close()
+
+
+async def _close_response_async(response: httpx.Response | None) -> None:
+    if response is not None:
+        with contextlib.suppress(Exception):
+            await response.aclose()
+
+
 def post_with_retries_sync(
     *,
     client: _SyncHTTPClient,
@@ -131,43 +180,22 @@ def post_with_retries_sync(
             return parse_response(response)
         except httpx.HTTPStatusError as exc:
             last_exc = exc
-            status = int(getattr(exc.response, "status_code", 0) or 0)
-            if status in _RETRYABLE_HTTP_CODES and attempt < max_retries:
-                retry_after = _parse_retry_after_seconds(
-                    getattr(exc.response, "headers", {}).get("Retry-After")
-                )
-                delay = _sleep_seconds_for_attempt(
-                    attempt=attempt,
-                    retry_after_sec=retry_after if status == 429 else None,
-                )
-                with contextlib.suppress(Exception):
-                    exc.response.close()
-                if delay > 0:
-                    time.sleep(delay)
+            _close_response_sync(exc.response)
+            if _sleep_sync(_retry_delay_for_status_error(exc, attempt=attempt, max_retries=max_retries)):
                 continue
-            with contextlib.suppress(Exception):
-                exc.response.close()
             break
         except httpx.RequestError as exc:
             last_exc = exc
-            if attempt < max_retries:
-                delay = _sleep_seconds_for_attempt(attempt=attempt, retry_after_sec=None)
-                if delay > 0:
-                    time.sleep(delay)
+            if _sleep_sync(_next_retry_delay(attempt=attempt, max_retries=max_retries)):
                 continue
             break
         except schema_errors as exc:
             last_exc = exc
-            if attempt < max_retries:
-                delay = _sleep_seconds_for_attempt(attempt=attempt, retry_after_sec=None)
-                if delay > 0:
-                    time.sleep(delay)
+            if _sleep_sync(_next_retry_delay(attempt=attempt, max_retries=max_retries)):
                 continue
             break
         finally:
-            if response is not None:
-                with contextlib.suppress(Exception):
-                    response.close()
+            _close_response_sync(response)
 
     if last_exc is None:
         raise RuntimeError("Embedding request failed without an exception")
@@ -197,43 +225,22 @@ async def post_with_retries_async(
             return parse_response(response)
         except httpx.HTTPStatusError as exc:
             last_exc = exc
-            status = int(getattr(exc.response, "status_code", 0) or 0)
-            if status in _RETRYABLE_HTTP_CODES and attempt < max_retries:
-                retry_after = _parse_retry_after_seconds(
-                    getattr(exc.response, "headers", {}).get("Retry-After")
-                )
-                delay = _sleep_seconds_for_attempt(
-                    attempt=attempt,
-                    retry_after_sec=retry_after if status == 429 else None,
-                )
-                with contextlib.suppress(Exception):
-                    await exc.response.aclose()
-                if delay > 0:
-                    await asyncio.sleep(delay)
+            await _close_response_async(exc.response)
+            if await _sleep_async(_retry_delay_for_status_error(exc, attempt=attempt, max_retries=max_retries)):
                 continue
-            with contextlib.suppress(Exception):
-                await exc.response.aclose()
             break
         except httpx.RequestError as exc:
             last_exc = exc
-            if attempt < max_retries:
-                delay = _sleep_seconds_for_attempt(attempt=attempt, retry_after_sec=None)
-                if delay > 0:
-                    await asyncio.sleep(delay)
+            if await _sleep_async(_next_retry_delay(attempt=attempt, max_retries=max_retries)):
                 continue
             break
         except schema_errors as exc:
             last_exc = exc
-            if attempt < max_retries:
-                delay = _sleep_seconds_for_attempt(attempt=attempt, retry_after_sec=None)
-                if delay > 0:
-                    await asyncio.sleep(delay)
+            if await _sleep_async(_next_retry_delay(attempt=attempt, max_retries=max_retries)):
                 continue
             break
         finally:
-            if response is not None:
-                with contextlib.suppress(Exception):
-                    await response.aclose()
+            await _close_response_async(response)
 
     if last_exc is None:
         raise RuntimeError("Embedding request failed without an exception")

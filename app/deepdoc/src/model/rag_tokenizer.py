@@ -35,6 +35,12 @@ _NLTK_DATA_DIR = Path(__file__).resolve().parents[2] / "resources" / "nltk_data"
 if str(_NLTK_DATA_DIR) not in nltk.data.path:
     nltk.data.path.insert(0, str(_NLTK_DATA_DIR))
 
+_SPLIT_CHAR_PATTERN = (
+    r"([ ,\.<>/?;:'\[\]\\`!@#$%^&*\(\)\{\}\|_+=《》，。？、；‘’：“”【】~！￥%……（）——-]+"
+    r"|[a-zA-Z0-9,\.-]+)"
+)
+
+
 class _JsonTrie:
     def __init__(self, _alphabet: str = ""):
         self._data: dict[str, object] = {}
@@ -120,9 +126,7 @@ def get_default_resource_dir():
     except Exception:
         logging.debug("Tokenizer settings not available, falling back to default", exc_info=True)
 
-    resource_dir = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "../../resources/data_parser/qieci")
-    )
+    resource_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../resources/data_parser/qieci"))
     return resource_dir
 
 
@@ -136,7 +140,7 @@ class RagTokenizer:
     def load_dict_(self, fnm):
         logging.info(f"[HUQIE]:Build trie from {fnm}")
         try:
-            with open(fnm, "r", encoding='utf-8') as of:
+            with open(fnm, "r", encoding="utf-8") as of:
                 while True:
                     line = of.readline()
                     if not line:
@@ -144,7 +148,7 @@ class RagTokenizer:
                     line = re.sub(r"[\r\n]+", "", line)
                     line = re.split(r"[ \t]", line)
                     k = self.key_(line[0])
-                    F = int(math.log(float(line[1]) / self.DENOMINATOR) + .5)
+                    F = int(math.log(float(line[1]) / self.DENOMINATOR) + 0.5)
                     if k not in self.trie_ or self.trie_[k][0] < F:
                         self.trie_[self.key_(line[0])] = (F, line[2])
                     self.trie_[self.rkey_(line[0])] = 1
@@ -163,7 +167,7 @@ class RagTokenizer:
         self.stemmer = PorterStemmer()
         self.lemmatizer = WordNetLemmatizer()
 
-        self.SPLIT_CHAR = r"([ ,\.<>/?;:'\[\]\\`!@#$%^&*\(\)\{\}\|_+=《》，。？、；‘’：“”【】~！￥%……（）——-]+|[a-zA-Z0-9,\.-]+)"
+        self.SPLIT_CHAR = _SPLIT_CHAR_PATTERN
 
         trie_file_name = self.DIR_ + ".txt.trie"
         # check if trie file existence
@@ -176,9 +180,7 @@ class RagTokenizer:
                 # Fail to load trie from file, rebuild from source dictionary.
                 # Legacy or partial cache files are discarded and rebuilt from the source dictionary.
                 if self.DEBUG:
-                    logging.exception(
-                        f"[HUQIE]:Fail to load trie file {trie_file_name}, rebuild the default trie file"
-                    )
+                    logging.exception(f"[HUQIE]:Fail to load trie file {trie_file_name}, rebuild the default trie file")
                 else:
                     logging.warning(
                         "[HUQIE]:Fail to load trie file %s (%s), rebuild the default trie file",
@@ -217,8 +219,8 @@ class RagTokenizer:
             if inside_code == 0x3000:
                 inside_code = 0x0020
             else:
-                inside_code -= 0xfee0
-            if inside_code < 0x0020 or inside_code > 0x7e:  # After the conversion, if it's not a half-width character, return the original character.
+                inside_code -= 0xFEE0
+            if inside_code < 0x0020 or inside_code > 0x7E:
                 rstring += uchar
             else:
                 rstring += chr(inside_code)
@@ -227,84 +229,111 @@ class RagTokenizer:
     def _tradi2simp(self, line):
         return HanziConv.toSimplified(line)
 
+    @staticmethod
+    def _unknown_token(token):
+        return token, (-12, "")
+
+    def _token_entry(self, token):
+        k = self.key_(token)
+        if k in self.trie_:
+            return token, self.trie_[k]
+        return self._unknown_token(token)
+
+    @staticmethod
+    def _dfs_state_key(s, pre_tks):
+        if pre_tks:
+            return s, tuple(tk[0] for tk in pre_tks)
+        return s, None
+
+    @staticmethod
+    def _repetitive_span(chars, s):
+        if s >= len(chars) - 4:
+            return None
+        char_to_check = chars[s]
+        for i in range(1, 5):
+            if s + i >= len(chars) or chars[s + i] != char_to_check:
+                return None
+        end = s
+        while end < len(chars) and chars[end] == char_to_check:
+            end += 1
+        return end
+
+    @staticmethod
+    def _copy_with_entry(pre_tks, entry):
+        copied = copy.deepcopy(pre_tks)
+        copied.append(entry)
+        return copied
+
+    def _dfs_depth_limit(self, chars, s, pre_tks, tkslist):
+        if s < len(chars):
+            remaining = "".join(chars[s:])
+            tkslist.append(self._copy_with_entry(pre_tks, self._unknown_token(remaining)))
+        return s
+
+    def _dfs_repetitive_branch(self, chars, s, pre_tks, tkslist, _depth, _memo):
+        end = self._repetitive_span(chars, s)
+        if end is None:
+            return None
+        mid = s + min(10, end - s)
+        token = "".join(chars[s:mid])
+        pretks = self._copy_with_entry(pre_tks, self._token_entry(token))
+        return self.dfs_(chars, mid, pretks, tkslist, _depth + 1, _memo)
+
+    def _dfs_start_bound(self, chars, s, pre_tks):
+        start = s + 1
+        if s + 2 <= len(chars):
+            token_1 = "".join(chars[s : s + 1])
+            token_2 = "".join(chars[s : s + 2])
+            if self.trie_.has_keys_with_prefix(self.key_(token_1)) and not self.trie_.has_keys_with_prefix(
+                self.key_(token_2)
+            ):
+                start = s + 2
+        if len(pre_tks) > 2 and all(len(pre_tks[-idx][0]) == 1 for idx in range(1, 4)):
+            token = pre_tks[-1][0] + "".join(chars[s : s + 1])
+            if self.trie_.has_keys_with_prefix(self.key_(token)):
+                start = s + 2
+        return start
+
+    def _dfs_known_tokens(self, chars, s, pre_tks, tkslist, _depth, _memo):
+        result = s
+        for e in range(self._dfs_start_bound(chars, s, pre_tks), len(chars) + 1):
+            token = "".join(chars[s:e])
+            key = self.key_(token)
+            if e > s + 1 and not self.trie_.has_keys_with_prefix(key):
+                break
+            if key not in self.trie_:
+                continue
+            pretks = self._copy_with_entry(pre_tks, (token, self.trie_[key]))
+            result = max(result, self.dfs_(chars, e, pretks, tkslist, _depth + 1, _memo))
+        return result
+
     def dfs_(self, chars, s, pre_tks, tkslist, _depth=0, _memo=None):
         if _memo is None:
             _memo = {}
         MAX_DEPTH = 10
         if _depth > MAX_DEPTH:
-            if s < len(chars):
-                copy_pretks = copy.deepcopy(pre_tks)
-                remaining = "".join(chars[s:])
-                copy_pretks.append((remaining, (-12, '')))
-                tkslist.append(copy_pretks)
-            return s
+            return self._dfs_depth_limit(chars, s, pre_tks, tkslist)
 
-        state_key = (s, tuple(tk[0] for tk in pre_tks)) if pre_tks else (s, None)
+        state_key = self._dfs_state_key(s, pre_tks)
         if state_key in _memo:
             return _memo[state_key]
 
-        res = s
         if s >= len(chars):
             tkslist.append(pre_tks)
             _memo[state_key] = s
             return s
-        if s < len(chars) - 4:
-            is_repetitive = True
-            char_to_check = chars[s]
-            for i in range(1, 5):
-                if s + i >= len(chars) or chars[s + i] != char_to_check:
-                    is_repetitive = False
-                    break
-            if is_repetitive:
-                end = s
-                while end < len(chars) and chars[end] == char_to_check:
-                    end += 1
-                mid = s + min(10, end - s)
-                t = "".join(chars[s:mid])
-                k = self.key_(t)
-                copy_pretks = copy.deepcopy(pre_tks)
-                if k in self.trie_:
-                    copy_pretks.append((t, self.trie_[k]))
-                else:
-                    copy_pretks.append((t, (-12, '')))
-                next_res = self.dfs_(chars, mid, copy_pretks, tkslist, _depth + 1, _memo)
-                res = max(res, next_res)
-                _memo[state_key] = res
-                return res
+        repetitive_result = self._dfs_repetitive_branch(chars, s, pre_tks, tkslist, _depth, _memo)
+        if repetitive_result is not None:
+            _memo[state_key] = repetitive_result
+            return repetitive_result
 
-        S = s + 1
-        if s + 2 <= len(chars):
-            t1 = "".join(chars[s:s + 1])
-            t2 = "".join(chars[s:s + 2])
-            if self.trie_.has_keys_with_prefix(self.key_(t1)) and not self.trie_.has_keys_with_prefix(self.key_(t2)):
-                S = s + 2
-        if len(pre_tks) > 2 and len(pre_tks[-1][0]) == 1 and len(pre_tks[-2][0]) == 1 and len(pre_tks[-3][0]) == 1:
-            t1 = pre_tks[-1][0] + "".join(chars[s:s + 1])
-            if self.trie_.has_keys_with_prefix(self.key_(t1)):
-                S = s + 2
+        result = self._dfs_known_tokens(chars, s, pre_tks, tkslist, _depth, _memo)
+        if result > s:
+            _memo[state_key] = result
+            return result
 
-        for e in range(S, len(chars) + 1):
-            t = "".join(chars[s:e])
-            k = self.key_(t)
-            if e > s + 1 and not self.trie_.has_keys_with_prefix(k):
-                break
-            if k in self.trie_:
-                pretks = copy.deepcopy(pre_tks)
-                pretks.append((t, self.trie_[k]))
-                res = max(res, self.dfs_(chars, e, pretks, tkslist, _depth + 1, _memo))
-
-        if res > s:
-            _memo[state_key] = res
-            return res
-
-        t = "".join(chars[s:s + 1])
-        k = self.key_(t)
-        copy_pretks = copy.deepcopy(pre_tks)
-        if k in self.trie_:
-            copy_pretks.append((t, self.trie_[k]))
-        else:
-            copy_pretks.append((t, (-12, '')))
-        result = self.dfs_(chars, s + 1, copy_pretks, tkslist, _depth + 1, _memo)
+        pretks = self._copy_with_entry(pre_tks, self._token_entry("".join(chars[s : s + 1])))
+        result = self.dfs_(chars, s + 1, pretks, tkslist, _depth + 1, _memo)
         _memo[state_key] = result
         return result
 
@@ -362,8 +391,7 @@ class RagTokenizer:
         while s < len(line):
             e = s + 1
             t = line[s:e]
-            while e < len(line) and self.trie_.has_keys_with_prefix(
-                    self.key_(t)):
+            while e < len(line) and self.trie_.has_keys_with_prefix(self.key_(t)):
                 e += 1
                 t = line[s:e]
 
@@ -374,7 +402,7 @@ class RagTokenizer:
             if self.key_(t) in self.trie_:
                 res.append((t, self.trie_[self.key_(t)]))
             else:
-                res.append((t, (0, '')))
+                res.append((t, (0, "")))
 
             s = e
 
@@ -397,7 +425,7 @@ class RagTokenizer:
             if self.key_(t) in self.trie_:
                 res.append((t, self.trie_[self.key_(t)]))
             else:
-                res.append((t, (0, '')))
+                res.append((t, (0, "")))
 
             s -= 1
 
@@ -420,147 +448,164 @@ class RagTokenizer:
                 if _zh == zh:
                     e += 1
                     continue
-                txt_lang_pairs.append((a[s: e], zh))
+                txt_lang_pairs.append((a[s:e], zh))
                 s = e
                 e = s + 1
                 zh = _zh
             if s >= len(a):
                 continue
-            txt_lang_pairs.append((a[s: e], zh))
+            txt_lang_pairs.append((a[s:e], zh))
         return txt_lang_pairs
 
+    @staticmethod
+    def _normalized_line(line):
+        return re.sub(r"\W+", " ", line)
+
+    def _tokenize_non_chinese(self, text):
+        return [self.stemmer.stem(self.lemmatizer.lemmatize(t)) for t in word_tokenize(text)]
+
+    @staticmethod
+    def _keep_whole_segment(text):
+        return len(text) < 2 or re.match(r"[a-z\.-]+$", text) or re.match(r"[0-9\.-]+$", text)
+
+    @staticmethod
+    def _shared_prefix_length(left, right, left_start=0, right_start=0):
+        same = 0
+        while left_start + same < len(left) and right_start + same < len(right):
+            if left[left_start + same] != right[right_start + same]:
+                break
+            same += 1
+        return same
+
+    @staticmethod
+    def _join_tokens(tokens, start, stop):
+        return "".join(tokens[start:stop])
+
+    def _segment_with_dfs(self, text):
+        tkslist = []
+        self.dfs_(text, 0, [], tkslist)
+        return " ".join(self.sort_tks_(tkslist)[0][0])
+
+    def _resolve_bidirectional_tokens(self, tks, tks1):
+        res = []
+        prefix = self._shared_prefix_length(tks1, tks)
+        if prefix > 0:
+            res.append(" ".join(tks[:prefix]))
+
+        _i = prefix
+        _j = prefix
+        i = _i + 1
+        j = _j + 1
+        while i < len(tks1) and j < len(tks):
+            tk1 = self._join_tokens(tks1, _i, i)
+            tk = self._join_tokens(tks, _j, j)
+            if tk1 != tk:
+                if len(tk1) > len(tk):
+                    j += 1
+                else:
+                    i += 1
+                continue
+
+            if tks1[i] != tks[j]:
+                i += 1
+                j += 1
+                continue
+
+            res.append(self._segment_with_dfs(self._join_tokens(tks, _j, j)))
+            same = self._shared_prefix_length(tks1, tks, i, j)
+            res.append(" ".join(tks[j : j + same]))
+            _i = i + same
+            _j = j + same
+            i = _i + 1
+            j = _j + 1
+
+        if _i < len(tks1):
+            if _j >= len(tks):
+                raise RuntimeError("Token alignment index exceeded source tokens")
+            if self._join_tokens(tks1, _i, len(tks1)) != self._join_tokens(tks, _j, len(tks)):
+                raise RuntimeError("Token alignment suffix mismatch")
+            res.append(self._segment_with_dfs(self._join_tokens(tks, _j, len(tks))))
+        return res
+
+    def _tokenize_cjk_segment(self, text):
+        tks, forward_score = self.max_forward_(text)
+        tks1, backward_score = self.max_backward_(text)
+        if self.DEBUG:
+            logging.debug("[FW] {} {}".format(tks, forward_score))
+            logging.debug("[BW] {} {}".format(tks1, backward_score))
+        return self._resolve_bidirectional_tokens(tks, tks1)
+
+    def _tokenize_segment(self, text, is_chinese_text):
+        if not is_chinese_text:
+            return self._tokenize_non_chinese(text)
+        if self._keep_whole_segment(text):
+            return [text]
+        return self._tokenize_cjk_segment(text)
+
     def tokenize(self, line):
-        line = re.sub(r"\W+", " ", line)
+        line = self._normalized_line(line)
         line = self._str_q2b(line).lower()
         line = self._tradi2simp(line)
 
         arr = self._split_by_lang(line)
         res = []
-        for L, lang in arr:
-            if not lang:
-                res.extend([self.stemmer.stem(self.lemmatizer.lemmatize(t)) for t in word_tokenize(L)])
-                continue
-            if len(L) < 2 or re.match(
-                    r"[a-z\.-]+$", L) or re.match(r"[0-9\.-]+$", L):
-                res.append(L)
-                continue
-
-            # use maxforward for the first time
-            tks, s = self.max_forward_(L)
-            tks1, s1 = self.max_backward_(L)
-            if self.DEBUG:
-                logging.debug("[FW] {} {}".format(tks, s))
-                logging.debug("[BW] {} {}".format(tks1, s1))
-
-            i, j, _i, _j = 0, 0, 0, 0
-            same = 0
-            while i + same < len(tks1) and j + same < len(tks) and tks1[i + same] == tks[j + same]:
-                same += 1
-            if same > 0:
-                res.append(" ".join(tks[j: j + same]))
-            _i = i + same
-            _j = j + same
-            j = _j + 1
-            i = _i + 1
-
-            while i < len(tks1) and j < len(tks):
-                tk1, tk = "".join(tks1[_i:i]), "".join(tks[_j:j])
-                if tk1 != tk:
-                    if len(tk1) > len(tk):
-                        j += 1
-                    else:
-                        i += 1
-                    continue
-
-                if tks1[i] != tks[j]:
-                    i += 1
-                    j += 1
-                    continue
-                # backward tokens from_i to i are different from forward tokens from _j to j.
-                tkslist = []
-                self.dfs_("".join(tks[_j:j]), 0, [], tkslist)
-                res.append(" ".join(self.sort_tks_(tkslist)[0][0]))
-
-                same = 1
-                while i + same < len(tks1) and j + same < len(tks) and tks1[i + same] == tks[j + same]:
-                    same += 1
-                res.append(" ".join(tks[j: j + same]))
-                _i = i + same
-                _j = j + same
-                j = _j + 1
-                i = _i + 1
-
-            if _i < len(tks1):
-                if _j >= len(tks):
-                    raise RuntimeError("Token alignment index exceeded source tokens")
-                if "".join(tks1[_i:]) != "".join(tks[_j:]):
-                    raise RuntimeError("Token alignment suffix mismatch")
-                tkslist = []
-                self.dfs_("".join(tks[_j:]), 0, [], tkslist)
-                res.append(" ".join(self.sort_tks_(tkslist)[0][0]))
+        for text, is_chinese_text in arr:
+            res.extend(self._tokenize_segment(text, is_chinese_text))
 
         res = " ".join(res)
         logging.debug("[TKS] {}".format(self.merge_(res)))
         return self.merge_(res)
 
+    @staticmethod
+    def _mostly_non_chinese(tks):
+        zh_num = len([1 for c in tks if c and is_chinese(c[0])])
+        return zh_num < len(tks) * 0.2
+
+    def _fine_grained_token(self, tk):
+        if len(tk) < 3 or re.match(r"[0-9,\.-]+$", tk):
+            return tk
+        tkslist = [tk] if len(tk) > 10 else []
+        if len(tk) <= 10:
+            self.dfs_(tk, 0, [], tkslist)
+        if len(tkslist) < 2:
+            return tk
+        stk = self.sort_tks_(tkslist)[1][0]
+        if len(stk) == len(tk):
+            return tk
+        if re.match(r"[a-z\.-]+$", tk):
+            for token in stk:
+                if len(token) < 3:
+                    return tk
+        return " ".join(stk) if isinstance(stk, list) else stk
+
     def fine_grained_tokenize(self, tks):
         tks = tks.split()
-        zh_num = len([1 for c in tks if c and is_chinese(c[0])])
-        if zh_num < len(tks) * 0.2:
+        if self._mostly_non_chinese(tks):
             res = []
             for tk in tks:
                 res.extend(tk.split("/"))
             return " ".join(res)
 
-        res = []
-        for tk in tks:
-            if len(tk) < 3 or re.match(r"[0-9,\.-]+$", tk):
-                res.append(tk)
-                continue
-            tkslist = []
-            if len(tk) > 10:
-                tkslist.append(tk)
-            else:
-                self.dfs_(tk, 0, [], tkslist)
-            if len(tkslist) < 2:
-                res.append(tk)
-                continue
-            stk = self.sort_tks_(tkslist)[1][0]
-            if len(stk) == len(tk):
-                stk = tk
-            else:
-                if re.match(r"[a-z\.-]+$", tk):
-                    for t in stk:
-                        if len(t) < 3:
-                            stk = tk
-                            break
-                    else:
-                        stk = " ".join(stk)
-                else:
-                    stk = " ".join(stk)
-
-            res.append(stk)
-
+        res = [self._fine_grained_token(tk) for tk in tks]
         return " ".join(self.english_normalize_(res))
 
 
 def is_chinese(s):
-    if s >= u'\u4e00' and s <= u'\u9fa5':
+    if s >= "\u4e00" and s <= "\u9fa5":
         return True
     else:
         return False
 
 
 def is_number(s):
-    if s >= u'\u0030' and s <= u'\u0039':
+    if s >= "\u0030" and s <= "\u0039":
         return True
     else:
         return False
 
 
 def is_alphabet(s):
-    if (s >= u'\u0041' and s <= u'\u005a') or (
-            s >= u'\u0061' and s <= u'\u007a'):
+    if (s >= "\u0041" and s <= "\u005a") or (s >= "\u0061" and s <= "\u007a"):
         return True
     else:
         return False
@@ -569,8 +614,7 @@ def is_alphabet(s):
 def naive_qie(txt):
     tks = []
     for t in txt.split():
-        if tks and re.match(r".*[a-zA-Z]$", tks[-1]
-                            ) and re.match(r".*[a-zA-Z]$", t):
+        if tks and re.match(r".*[a-zA-Z]$", tks[-1]) and re.match(r".*[a-zA-Z]$", t):
             tks.append(" ")
         tks.append(t)
     return tks
@@ -597,34 +641,40 @@ addUserDict = tokenizer.add_user_dict
 tradi2simp = tokenizer._tradi2simp
 strQ2B = tokenizer._str_q2b
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     tknzr = RagTokenizer(debug=True)
     # huqie.addUserDict("/tmp/tmp.new.tks.dict")
     tks = tknzr.tokenize(
-        "哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈")
+        "哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈哈"
+    )
     logging.info(tknzr.fine_grained_tokenize(tks))
     tks = tknzr.tokenize(
-        "公开征求意见稿提出，境外投资者可使用自有人民币或外汇投资。使用外汇投资的，可通过债券持有人在香港人民币业务清算行及香港地区经批准可进入境内银行间外汇市场进行交易的境外人民币业务参加行（以下统称香港结算行）办理外汇资金兑换。香港结算行由此所产生的头寸可到境内银行间外汇市场平盘。使用外汇投资的，在其投资的债券到期或卖出后，原则上应兑换回外汇。")
+        "公开征求意见稿提出，境外投资者可使用自有人民币或外汇投资。使用外汇投资的，可通过债券持有人在香港人民币业务清算行及香港地区经批准可进入境内银行间外汇市场进行交易的境外人民币业务参加行（以下统称香港结算行）办理外汇资金兑换。香港结算行由此所产生的头寸可到境内银行间外汇市场平盘。使用外汇投资的，在其投资的债券到期或卖出后，原则上应兑换回外汇。"
+    )
     logging.info(tknzr.fine_grained_tokenize(tks))
     tks = tknzr.tokenize(
-        "多校划片就是一个小区对应多个小学初中，让买了学区房的家庭也不确定到底能上哪个学校。目的是通过这种方式为学区房降温，把就近入学落到实处。南京市长江大桥")
+        "多校划片就是一个小区对应多个小学初中，让买了学区房的家庭也不确定到底能上哪个学校。目的是通过这种方式为学区房降温，把就近入学落到实处。南京市长江大桥"
+    )
     logging.info(tknzr.fine_grained_tokenize(tks))
     tks = tknzr.tokenize(
-        "实际上当时他们已经将业务中心偏移到安全部门和针对政府企业的部门 Scripts are compiled and cached aaaaaaaaa")
+        "实际上当时他们已经将业务中心偏移到安全部门和针对政府企业的部门 Scripts are compiled and cached aaaaaaaaa"
+    )
     logging.info(tknzr.fine_grained_tokenize(tks))
     tks = tknzr.tokenize("虽然我不怎么玩")
     logging.info(tknzr.fine_grained_tokenize(tks))
     tks = tknzr.tokenize("蓝月亮如何在外资夹击中生存,那是全宇宙最有意思的")
     logging.info(tknzr.fine_grained_tokenize(tks))
     tks = tknzr.tokenize(
-        "涡轮增压发动机num最大功率,不像别的共享买车锁电子化的手段,我们接过来是否有意义,黄黄爱美食,不过，今天阿奇要讲到的这家农贸市场，说实话，还真蛮有特色的！不仅环境好，还打出了")
+        "涡轮增压发动机num最大功率,不像别的共享买车锁电子化的手段,我们接过来是否有意义,黄黄爱美食,不过，今天阿奇要讲到的这家农贸市场，说实话，还真蛮有特色的！不仅环境好，还打出了"
+    )
     logging.info(tknzr.fine_grained_tokenize(tks))
     tks = tknzr.tokenize("这周日你去吗？这周日你有空吗？")
     logging.info(tknzr.fine_grained_tokenize(tks))
     tks = tknzr.tokenize("Unity3D开发经验 测试开发工程师 c++双11双11 985 211 ")
     logging.info(tknzr.fine_grained_tokenize(tks))
     tks = tknzr.tokenize(
-        "数据分析项目经理|数据分析挖掘|数据分析方向|商品数据分析|搜索数据分析 sql python hive tableau Cocos2d-")
+        "数据分析项目经理|数据分析挖掘|数据分析方向|商品数据分析|搜索数据分析 sql python hive tableau Cocos2d-"
+    )
     logging.info(tknzr.fine_grained_tokenize(tks))
     if len(sys.argv) < 2:
         sys.exit()

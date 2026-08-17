@@ -5,7 +5,6 @@ Splits markdown documents by header hierarchy while preserving
 header context in chunk metadata.
 """
 
-
 import re
 from typing import Any
 
@@ -21,6 +20,45 @@ from app.rag.chunking.base import BaseChunker
 from app.rag.core.logging import get_logger
 
 logger = get_logger("rag.chunking.strategies.markdown")
+
+
+def _find_chunk_position(text: str, chunk_text: str, *, search_pos: int) -> tuple[int, int]:
+    start = text.find(chunk_text, max(0, int(search_pos)))
+    if start < 0:
+        start = max(0, min(int(search_pos), len(text)))
+    return start, min(len(text), start + len(chunk_text))
+
+
+def _is_list_item_start(pattern: re.Pattern[str], line: str) -> bool:
+    return bool(pattern.match(line or ""))
+
+
+def _is_list_continuation(line: str) -> bool:
+    if not line:
+        return False
+    if not line.strip():
+        return True
+    return bool(re.match(r"^\s{2,}\S", line))
+
+
+def _list_item_end(lines: list[str], *, start: int, pattern: re.Pattern[str]) -> int:
+    index = start + 1
+    while index < len(lines):
+        line = lines[index]
+        if _is_list_item_start(pattern, line):
+            break
+        if not line.strip():
+            next_nonempty = index + 1
+            while next_nonempty < len(lines) and not lines[next_nonempty].strip():
+                next_nonempty += 1
+            if next_nonempty < len(lines) and _is_list_continuation(lines[next_nonempty]):
+                index += 1
+                continue
+            break
+        if not _is_list_continuation(line):
+            break
+        index += 1
+    return index
 
 
 class MarkdownHeaderChunker(BaseChunker):
@@ -84,111 +122,134 @@ class MarkdownHeaderChunker(BaseChunker):
             keep_separator="end",
         )
 
+    def _header_chunk_metadata(
+        self,
+        *,
+        original_metadata: dict[str, Any],
+        markdown_metadata: dict[str, Any],
+        chunk_index: int,
+        start: int,
+        end: int,
+    ) -> dict[str, Any]:
+        metadata: dict[str, Any] = {
+            **original_metadata,
+            **markdown_metadata,
+            "chunk_strategy": "markdown_header",
+            "chunk_index": chunk_index,
+            "start_char": start,
+            "end_char": end,
+        }
+        header_path = self._build_header_path(markdown_metadata)
+        if header_path:
+            metadata["header_path"] = header_path
+        return metadata
+
+    def _append_header_subchunks(
+        self,
+        all_chunks: list[Document],
+        *,
+        text: str,
+        chunk_text: str,
+        chunk_metadata: dict[str, Any],
+        start_pos: int,
+    ) -> None:
+        sub_search_pos = 0
+        for sub_idx, sub_text in enumerate(self._fallback_splitter.split_text(chunk_text)):
+            relative_start, _ = _find_chunk_position(
+                chunk_text,
+                sub_text,
+                search_pos=sub_search_pos,
+            )
+            sub_start = start_pos + relative_start
+            sub_end = min(len(text), sub_start + len(sub_text))
+            sub_metadata = {
+                **chunk_metadata,
+                "chunk_index": len(all_chunks),
+                "sub_chunk_index": sub_idx,
+                "start_char": sub_start,
+                "end_char": sub_end,
+            }
+            all_chunks.append(Document(page_content=sub_text, metadata=sub_metadata))
+            sub_search_pos = max(
+                sub_end - self.chunk_overlap - start_pos,
+                relative_start + 1,
+            )
+
+    def _append_markdown_chunk(
+        self,
+        all_chunks: list[Document],
+        *,
+        text: str,
+        markdown_doc: Document,
+        original_metadata: dict[str, Any],
+        search_pos: int,
+    ) -> int:
+        chunk_text = markdown_doc.page_content
+        start_pos, end_pos = _find_chunk_position(
+            text,
+            chunk_text,
+            search_pos=search_pos,
+        )
+        metadata = self._header_chunk_metadata(
+            original_metadata=original_metadata,
+            markdown_metadata=dict(markdown_doc.metadata or {}),
+            chunk_index=len(all_chunks),
+            start=start_pos,
+            end=end_pos,
+        )
+        if len(chunk_text) > self.chunk_size * 1.5:
+            self._append_header_subchunks(
+                all_chunks,
+                text=text,
+                chunk_text=chunk_text,
+                chunk_metadata=metadata,
+                start_pos=start_pos,
+            )
+        else:
+            all_chunks.append(Document(page_content=chunk_text, metadata=metadata))
+        return max(end_pos - self.chunk_overlap, start_pos + 1)
+
+    def _split_markdown_document(self, doc: Document, all_chunks: list[Document]) -> None:
+        text = doc.page_content or ""
+        if not text.strip():
+            return
+        if not self._is_markdown(text):
+            all_chunks.extend(self._fallback_split(doc))
+            return
+
+        original_metadata = dict(doc.metadata or {})
+        try:
+            search_pos = 0
+            for markdown_doc in self._md_splitter.split_text(text):
+                search_pos = self._append_markdown_chunk(
+                    all_chunks,
+                    text=text,
+                    markdown_doc=markdown_doc,
+                    original_metadata=original_metadata,
+                    search_pos=search_pos,
+                )
+        except Exception as exc:
+            logger.warning(f"Markdown splitting failed, using fallback: {exc}")
+            all_chunks.extend(self._fallback_split(doc))
+
     def split_documents(self, documents: list[Document]) -> list[Document]:
-        """
-        Split documents by markdown headers.
-
-        Args:
-            documents: List of Document objects to split
-
-        Returns:
-            List of chunked Document objects with header metadata
-        """
+        """Split documents by markdown headers."""
         all_chunks: list[Document] = []
-
         for doc in documents:
-            text = doc.page_content or ""
-            original_metadata = dict(doc.metadata or {})
-
-            if not text.strip():
-                continue
-
-            # Check if document appears to be markdown
-            if not self._is_markdown(text):
-                # Fall back to recursive splitting
-                chunks = self._fallback_split(doc)
-                all_chunks.extend(chunks)
-                continue
-
-            try:
-                # Split by markdown headers
-                md_chunks = self._md_splitter.split_text(text)
-                search_pos = 0
-
-                for md_doc in md_chunks:
-                    # Calculate character positions
-                    chunk_text = md_doc.page_content
-                    start_pos = text.find(chunk_text, max(0, int(search_pos)))
-                    if start_pos < 0:
-                        start_pos = max(0, min(int(search_pos), len(text)))
-                    end_pos = min(len(text), start_pos + len(chunk_text))
-
-                    # Build metadata
-                    chunk_metadata = {
-                        **original_metadata,
-                        **(md_doc.metadata or {}),
-                        "chunk_strategy": "markdown_header",
-                        "chunk_index": len(all_chunks),
-                        # IMPORTANT: positions are local to `doc.page_content`
-                        # (the caller may rebase with page_start_map later).
-                        "start_char": start_pos,
-                        "end_char": end_pos,
-                    }
-
-                    # Build header path for better context
-                    header_path = self._build_header_path(md_doc.metadata or {})
-                    if header_path:
-                        chunk_metadata["header_path"] = header_path
-
-                    # Check if chunk needs further splitting
-                    if len(chunk_text) > self.chunk_size * 1.5:
-                        # Split large chunks with fallback splitter
-                        sub_chunks = self._fallback_splitter.split_text(chunk_text)
-                        sub_search_pos = 0
-                        for sub_idx, sub_text in enumerate(sub_chunks):
-                            rel = chunk_text.find(sub_text, max(0, int(sub_search_pos)))
-                            if rel < 0:
-                                rel = max(0, min(int(sub_search_pos), len(chunk_text)))
-                            sub_start = start_pos + rel
-                            sub_end = min(len(text), sub_start + len(sub_text))
-                            sub_metadata = {
-                                **chunk_metadata,
-                                "chunk_index": len(all_chunks),
-                                "sub_chunk_index": sub_idx,
-                                "start_char": sub_start,
-                                "end_char": sub_end,
-                            }
-                            all_chunks.append(Document(
-                                page_content=sub_text,
-                                metadata=sub_metadata,
-                            ))
-                            sub_search_pos = max(sub_end - self.chunk_overlap - start_pos, rel + 1)
-                    else:
-                        all_chunks.append(Document(
-                            page_content=chunk_text,
-                            metadata=chunk_metadata,
-                        ))
-
-                    search_pos = max(end_pos - self.chunk_overlap, start_pos + 1)
-
-            except Exception as e:
-                logger.warning(f"Markdown splitting failed, using fallback: {e}")
-                chunks = self._fallback_split(doc)
-                all_chunks.extend(chunks)
-
+            self._split_markdown_document(doc, all_chunks)
         return all_chunks
 
     def _is_markdown(self, text: str) -> bool:
         """Check if text appears to be markdown."""
         md_patterns = [
-            r'^#{1,6}\s+',  # Headers
-            r'\[.*\]\(.*\)',  # Links
-            r'\*\*.*\*\*',  # Bold
-            r'\*.*\*',  # Italic
-            r'^[-*+]\s+',  # Lists
-            r'^\d+\.\s+',  # Numbered lists
-            r'^```',  # Code blocks
-            r'`[^`]+`',  # Inline code
+            r"^#{1,6}\s+",  # Headers
+            r"\[.*\]\(.*\)",  # Links
+            r"\*\*.*\*\*",  # Bold
+            r"\*.*\*",  # Italic
+            r"^[-*+]\s+",  # Lists
+            r"^\d+\.\s+",  # Numbered lists
+            r"^```",  # Code blocks
+            r"`[^`]+`",  # Inline code
         ]
 
         for pattern in md_patterns:
@@ -196,8 +257,8 @@ class MarkdownHeaderChunker(BaseChunker):
                 return True
 
         # Check header ratio
-        lines = text.split('\n')
-        header_count = sum(1 for line in lines if line.strip().startswith('#'))
+        lines = text.split("\n")
+        header_count = sum(1 for line in lines if line.strip().startswith("#"))
         if len(lines) > 5 and header_count / len(lines) > 0.05:
             return True
 
@@ -234,10 +295,12 @@ class MarkdownHeaderChunker(BaseChunker):
                 "end_char": pos + len(chunk_text),
             }
 
-            result.append(Document(
-                page_content=chunk_text,
-                metadata=chunk_metadata,
-            ))
+            result.append(
+                Document(
+                    page_content=chunk_text,
+                    metadata=chunk_metadata,
+                )
+            )
 
             current_pos = pos + len(chunk_text) - self.chunk_overlap
 
@@ -282,17 +345,19 @@ class MarkdownAwareChunker(BaseChunker):
             separators.append("\n" + "#" * i + " ")
 
         # Add structure separators
-        separators.extend([
-            "\n\n",  # Paragraph break
-            "\n",    # Line break
-            "。",    # CN sentence end
-            "！",
-            "？",
-            "；",
-            ". ",    # Sentence
-            " ",     # Word
-            "",      # Character
-        ])
+        separators.extend(
+            [
+                "\n\n",  # Paragraph break
+                "\n",  # Line break
+                "。",  # CN sentence end
+                "！",
+                "？",
+                "；",
+                ". ",  # Sentence
+                " ",  # Word
+                "",  # Character
+            ]
+        )
 
         self._splitter = RecursiveCharacterTextSplitter(
             chunk_size=self.chunk_size,
@@ -350,10 +415,12 @@ class MarkdownAwareChunker(BaseChunker):
                     chunk_metadata["header_context"] = header_context
                     chunk_metadata.setdefault("header_path", header_context)
 
-                all_chunks.append(Document(
-                    page_content=restored_text,
-                    metadata=chunk_metadata,
-                ))
+                all_chunks.append(
+                    Document(
+                        page_content=restored_text,
+                        metadata=chunk_metadata,
+                    )
+                )
 
                 search_pos = max(end_pos - self.chunk_overlap, pos + 1)
 
@@ -373,14 +440,14 @@ class MarkdownAwareChunker(BaseChunker):
 
         # Protect fenced code blocks
         protected = re.sub(
-            r'```[\s\S]*?```',
+            r"```[\s\S]*?```",
             replace_block,
             text,
         )
 
         # Protect indented code blocks (4 spaces)
         protected = re.sub(
-            r'(?m)^(?: {4}.+\n)+',
+            r"(?m)^(?: {4}.+\n)+",
             replace_block,
             protected,
         )
@@ -410,44 +477,15 @@ class MarkdownAwareChunker(BaseChunker):
         placeholder_idx = 0
         max_preserve_len = int(max(0, self.chunk_size) * 1.5) if self.chunk_size else 0
 
-        def is_item_start(line: str) -> bool:
-            return bool(self._LIST_ITEM_RE.match(line or ""))
-
-        def is_continuation(line: str) -> bool:
-            if not line:
-                return False
-            if (line.strip() == ""):
-                return True
-            return bool(re.match(r"^\s{2,}\S", line))
-
         while idx < len(lines):
             line = lines[idx]
-            if not is_item_start(line):
+            if not _is_list_item_start(self._LIST_ITEM_RE, line):
                 out.append(line)
                 idx += 1
                 continue
 
             start = idx
-            idx += 1
-
-            # Include indented continuations (and some blank lines) until next list item or a new block.
-            while idx < len(lines):
-                nxt = lines[idx]
-                if is_item_start(nxt):
-                    break
-                if nxt.strip() == "":
-                    # Keep blank line only if the next non-empty line is indented (still part of item).
-                    j = idx + 1
-                    while j < len(lines) and lines[j].strip() == "":
-                        j += 1
-                    if j < len(lines) and is_continuation(lines[j]):
-                        idx += 1
-                        continue
-                    break
-                if is_continuation(nxt):
-                    idx += 1
-                    continue
-                break
+            idx = _list_item_end(lines, start=start, pattern=self._LIST_ITEM_RE)
 
             block = "".join(lines[start:idx])
             if max_preserve_len > 0 and len(block) > max_preserve_len:

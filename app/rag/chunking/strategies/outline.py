@@ -11,7 +11,6 @@ fallback RecursiveCharacterTextSplitter inside each section to respect the
 configured chunk size/overlap while preserving positions.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -39,6 +38,60 @@ class _Section:
 
 _CN_NUMERAL_CHARS = set("一二三四五六七八九十百千")
 _CN_PAREN_NUM_CHARS = set("0123456789一二三四五六七八九十")
+
+
+def _classify_outline_heading(line: str) -> int | None:
+    if (lv := _parse_numeric_heading_level(line)) is not None:
+        return int(lv)
+    if parse_cn_prefixed_heading(line, suffixes="章节篇回") is not None:
+        return 1
+    if _looks_like_cn_num_heading(line):
+        return 1
+    if _looks_like_cn_paren_heading(line):
+        return 2
+    if _looks_like_en_chapter_heading(line):
+        return 1
+    return None
+
+
+def _append_outline_chunks(
+    *,
+    out: list[Document],
+    splitter: RecursiveCharacterTextSplitter,
+    section_text: str,
+    section_start: int,
+    base_meta: dict[str, Any],
+    heading: OutlineHeading | None,
+    header_path: list[str],
+    header_path_str: str | None,
+) -> None:
+    split_docs = splitter.create_documents(
+        texts=[section_text],
+        metadatas=[base_meta],
+    )
+    for sd in split_docs:
+        local_start = sd.metadata.pop("start_index", None)
+        if local_start is None:
+            local_start = 0
+        abs_start = section_start + int(local_start)
+        abs_end = abs_start + len(sd.page_content)
+
+        meta: dict[str, Any] = dict(base_meta)
+        meta.update(sd.metadata or {})
+        meta["chunk_strategy"] = "outline"
+        meta["start_char"] = abs_start
+        meta["end_char"] = abs_end
+
+        if heading is not None:
+            meta["outline_heading"] = heading.text
+            meta["outline_level"] = int(heading.level)
+        if header_path:
+            meta["outline_path"] = header_path
+        if header_path_str:
+            meta["outline_path_str"] = header_path_str
+            meta.setdefault("header_path", header_path_str)
+
+        out.append(Document(page_content=sd.page_content, metadata=meta))
 
 
 def _parse_numeric_heading_level(line: str) -> int | None:
@@ -169,18 +222,7 @@ def _iter_headings(text: str) -> list[OutlineHeading]:
         if len(line) > 160:
             continue
 
-        level: int | None = None
-        if (lv := _parse_numeric_heading_level(line)) is not None:
-            level = int(lv)
-        elif parse_cn_prefixed_heading(line, suffixes="章节篇回") is not None:
-            level = 1
-        elif _looks_like_cn_num_heading(line):
-            level = 1
-        elif _looks_like_cn_paren_heading(line):
-            level = 2
-        elif _looks_like_en_chapter_heading(line):
-            level = 1
-
+        level = _classify_outline_heading(line)
         if level is None:
             continue
 
@@ -273,34 +315,16 @@ class OutlineChunker(BaseChunker):
                 header_path = list(heading_stack)
                 header_path_str = " / ".join(header_path) if header_path else None
 
-                # Always go through the fallback splitter so chunk_size/overlap are respected.
-                split_docs = self._fallback_splitter.create_documents(
-                    texts=[sec_text],
-                    metadatas=[base_meta],
+                _append_outline_chunks(
+                    out=out,
+                    splitter=self._fallback_splitter,
+                    section_text=sec_text,
+                    section_start=section.start,
+                    base_meta=base_meta,
+                    heading=sec_heading,
+                    header_path=header_path,
+                    header_path_str=header_path_str,
                 )
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None)
-                    if local_start is None:
-                        local_start = 0
-                    abs_start = section.start + int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "outline"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-
-                    if sec_heading is not None:
-                        meta["outline_heading"] = sec_heading.text
-                        meta["outline_level"] = int(sec_heading.level)
-                    if header_path:
-                        meta["outline_path"] = header_path
-                    if header_path_str:
-                        meta["outline_path_str"] = header_path_str
-                        meta.setdefault("header_path", header_path_str)
-
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
 
         # Re-index chunks (stable order).
         for idx, chunk in enumerate(out):

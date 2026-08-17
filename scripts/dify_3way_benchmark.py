@@ -11,7 +11,6 @@ The benchmark is intentionally evidence-first:
 No App API key is written to output artifacts.
 """
 
-
 import argparse
 import csv
 import hashlib
@@ -148,7 +147,9 @@ def _dimension_text(case: dict[str, Any]) -> str:
     return "办理层级、时间、材料和咨询方式"
 
 
-def _with_query(case: dict[str, Any], *, case_id: str, query: str, case_type: str, source_case_id: str) -> dict[str, Any]:
+def _with_query(
+    case: dict[str, Any], *, case_id: str, query: str, case_type: str, source_case_id: str
+) -> dict[str, Any]:
     out = dict(case)
     out["id"] = case_id
     out["query"] = query
@@ -187,7 +188,9 @@ def build_benchmark_cases(
             query = template.format(question=_case_question(source), title=title, dims=dims)
         query = " ".join(query.split())
         case_id = f"bench-{len(cases) + 1:04d}-{variant_name}-{source_id}"
-        cases.append(_with_query(source, case_id=case_id, query=query, case_type=variant_name, source_case_id=source_id))
+        cases.append(
+            _with_query(source, case_id=case_id, query=query, case_type=variant_name, source_case_id=source_id)
+        )
         variant_index += 1
     return cases
 
@@ -228,7 +231,9 @@ def summarize_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def select_cases_to_run(cases: list[dict[str, Any]], *, limit: int = 0, sample_per_type: int = 0) -> list[dict[str, Any]]:
+def select_cases_to_run(
+    cases: list[dict[str, Any]], *, limit: int = 0, sample_per_type: int = 0
+) -> list[dict[str, Any]]:
     per_type = int(sample_per_type or 0)
     if per_type > 0:
         grouped: dict[str, list[dict[str, Any]]] = {}
@@ -259,7 +264,9 @@ def build_truth_manifest(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "source_file": _text(case.get("source_file")),
                 "source_section": _text(case.get("source_section")),
                 "source_record_title": _text(case.get("source_record_title")),
-                "dimension_fields": case.get("dimension_fields") if isinstance(case.get("dimension_fields"), list) else [],
+                "dimension_fields": case.get("dimension_fields")
+                if isinstance(case.get("dimension_fields"), list)
+                else [],
                 "subquestion_ids": [
                     _text(item.get("id")) if isinstance(item, dict) else _text(item)
                     for item in subquestions
@@ -273,7 +280,9 @@ def build_truth_manifest(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "evidence_clause_terms": [
                     {
                         "id": _text(item.get("id")),
-                        "required_terms": item.get("required_terms") if isinstance(item.get("required_terms"), list) else [],
+                        "required_terms": item.get("required_terms")
+                        if isinstance(item.get("required_terms"), list)
+                        else [],
                     }
                     for item in clauses
                     if isinstance(item, dict)
@@ -338,52 +347,98 @@ def _stream_payload_to_response(payloads: list[dict[str, Any]]) -> dict[str, Any
     outputs: dict[str, Any] = {}
 
     for payload in payloads:
-        event = _text(payload.get("event"))
-        if event == "error":
-            message = _text(payload.get("message") or payload.get("code") or "Dify streaming error")
-            raise RuntimeError(message)
-
-        answer = _text(payload.get("answer"))
-        if answer:
-            answer_parts.append(answer)
-
+        event = _stream_payload_event(payload)
+        _raise_stream_payload_error(payload, event)
+        _append_stream_answer(answer_parts, payload)
         data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
-        data_outputs = data.get("outputs") if isinstance(data.get("outputs"), dict) else {}
-        if data_outputs:
-            outputs.update(data_outputs)
+        _merge_stream_outputs(outputs, data)
+        _merge_stream_metadata(metadata, payload, data)
+        _merge_stream_identifiers(response, payload, data)
+        _merge_stream_message_id(response, payload, data, event)
+    return _finalize_stream_response(response, answer_parts, outputs, metadata)
 
-        payload_metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
-        if payload_metadata:
-            metadata.update(payload_metadata)
 
-        data_metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
-        if data_metadata:
-            metadata.update(data_metadata)
+def _stream_payload_event(payload: dict[str, Any]) -> str:
+    return _text(payload.get("event"))
 
-        for key in ("conversation_id", "task_id", "workflow_run_id"):
-            value = _text(payload.get(key) or data.get(key))
-            if value and key not in response:
-                response[key] = value
 
-        message_id = _text(payload.get("message_id") or data.get("message_id"))
-        if not message_id and event in {"message", "agent_message", "message_end"}:
-            message_id = _text(payload.get("id"))
-        if message_id and "message_id" not in response:
-            response["message_id"] = message_id
+def _raise_stream_payload_error(payload: dict[str, Any], event: str) -> None:
+    if event != "error":
+        return
+    message = _text(payload.get("message") or payload.get("code") or "Dify streaming error")
+    raise RuntimeError(message)
 
+
+def _append_stream_answer(answer_parts: list[str], payload: dict[str, Any]) -> None:
+    answer = _text(payload.get("answer"))
+    if answer:
+        answer_parts.append(answer)
+
+
+def _merge_stream_outputs(outputs: dict[str, Any], data: dict[str, Any]) -> None:
+    data_outputs = data.get("outputs") if isinstance(data.get("outputs"), dict) else {}
+    if data_outputs:
+        outputs.update(data_outputs)
+
+
+def _merge_stream_metadata(
+    metadata: dict[str, Any],
+    payload: dict[str, Any],
+    data: dict[str, Any],
+) -> None:
+    for item in (payload.get("metadata"), data.get("metadata")):
+        if isinstance(item, dict):
+            metadata.update(item)
+
+
+def _merge_stream_identifiers(
+    response: dict[str, Any],
+    payload: dict[str, Any],
+    data: dict[str, Any],
+) -> None:
+    for key in ("conversation_id", "task_id", "workflow_run_id"):
+        value = _text(payload.get(key) or data.get(key))
+        if value and key not in response:
+            response[key] = value
+
+
+def _merge_stream_message_id(
+    response: dict[str, Any],
+    payload: dict[str, Any],
+    data: dict[str, Any],
+    event: str,
+) -> None:
+    message_id = _text(payload.get("message_id") or data.get("message_id"))
+    if not message_id and event in {"message", "agent_message", "message_end"}:
+        message_id = _text(payload.get("id"))
+    if message_id and "message_id" not in response:
+        response["message_id"] = message_id
+
+
+def _finalize_stream_response(
+    response: dict[str, Any],
+    answer_parts: list[str],
+    outputs: dict[str, Any],
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
     if answer_parts:
         response["answer"] = "".join(answer_parts)
     if outputs:
         response["data"] = {"outputs": outputs}
-        if not response.get("answer"):
-            for key in ("answer", "text", "content", "result", "output"):
-                value = _text(outputs.get(key))
-                if value:
-                    response["answer"] = value
-                    break
+        _populate_answer_from_outputs(response, outputs)
     if metadata:
         response["metadata"] = metadata
     return response
+
+
+def _populate_answer_from_outputs(response: dict[str, Any], outputs: dict[str, Any]) -> None:
+    if response.get("answer"):
+        return
+    for key in ("answer", "text", "content", "result", "output"):
+        value = _text(outputs.get(key))
+        if value:
+            response["answer"] = value
+            return
 
 
 def _request_dify_json(*, url: str, payload: dict[str, Any], api_key: str, timeout: float) -> dict[str, Any]:
@@ -863,8 +918,17 @@ def build_key_requirements(apps: list[AppSpec]) -> dict[str, Any]:
         "template": template,
         "usage": {
             "path_example": "/tmp/dify_3way_app_keys.json",
-            "preflight_command": "python scripts/dify_3way_benchmark.py --out-dir artifacts/dify_3way_benchmark_remote_preflight --target-count 800 --limit 1 --app-key-file /tmp/dify_3way_app_keys.json --auto-mode --timeout 60 --preflight",
-            "full_command": "python scripts/dify_3way_benchmark.py --out-dir artifacts/dify_3way_benchmark_remote_full --target-count 800 --app-key-file /tmp/dify_3way_app_keys.json --auto-mode --concurrency 3 --timeout 180 --resume --write-bundle --strict-complete",
+            "preflight_command": (
+                "python scripts/dify_3way_benchmark.py --out-dir "
+                "artifacts/dify_3way_benchmark_remote_preflight --target-count 800 --limit 1 "
+                "--app-key-file /tmp/dify_3way_app_keys.json --auto-mode --timeout 60 --preflight"
+            ),
+            "full_command": (
+                "python scripts/dify_3way_benchmark.py --out-dir "
+                "artifacts/dify_3way_benchmark_remote_full --target-count 800 "
+                "--app-key-file /tmp/dify_3way_app_keys.json --auto-mode --concurrency 3 "
+                "--timeout 180 --resume --write-bundle --strict-complete"
+            ),
         },
     }
 
@@ -904,7 +968,13 @@ def resolve_app_modes(
             continue
         if not app.api_key:
             selected = replace(app, mode="chat" if app.mode == "auto" else _fixed_mode(app.mode))
-            item.update({"selected_mode": selected.mode, "selected_endpoint": _endpoint_url(base_url, selected.mode), "status": "missing_api_key"})
+            item.update(
+                {
+                    "selected_mode": selected.mode,
+                    "selected_endpoint": _endpoint_url(base_url, selected.mode),
+                    "status": "missing_api_key",
+                }
+            )
             resolved.append(selected)
             items.append(item)
             continue
@@ -992,7 +1062,9 @@ def _call_case(
             workflow_query_key=workflow_query_key,
         )
         request_json = request_json_fn or _request_dify_json
-        response = request_json(url=_endpoint_url(base_url, app.mode), payload=payload, api_key=app.api_key, timeout=timeout)
+        response = request_json(
+            url=_endpoint_url(base_url, app.mode), payload=payload, api_key=app.api_key, timeout=timeout
+        )
         item["answer"] = extract_dify_answer(response)
         item["records"] = _extract_records_from_response(response)
         item.update(extract_dify_response_refs(response))
@@ -1080,9 +1152,7 @@ def _call_mimirq_case(
             "dify_workflow_run_id": "dify-3way-direct-run",
         }
         if isinstance(retrieval_overrides, dict):
-            payload["retrieval_setting"].update(
-                {str(key): value for key, value in retrieval_overrides.items()}
-            )
+            payload["retrieval_setting"].update({str(key): value for key, value in retrieval_overrides.items()})
         response = _post_json_no_proxy(
             f"{base_url.rstrip('/')}/api/v1/integrations/dify/retrieval",
             token,
@@ -1091,7 +1161,9 @@ def _call_mimirq_case(
         )
         records = [_normalize_record(record, index) for index, record in enumerate(response.get("records") or [], 1)]
         item["records"] = records
-        item["answer"] = "\n".join(_text(record.get("content")) for record in records[:3] if _text(record.get("content")))
+        item["answer"] = "\n".join(
+            _text(record.get("content")) for record in records[:3] if _text(record.get("content"))
+        )
         item["ok"] = bool(records)
     except Exception as exc:  # noqa: BLE001
         item["error"] = str(exc)[:1200]
@@ -1160,7 +1232,11 @@ def _execution_stats(
 
 
 def _merge_items_by_case_id(items: list[dict[str, Any]], replacements: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    merged = {_text(item.get("case_id") or item.get("id")): dict(item) for item in items if _text(item.get("case_id") or item.get("id"))}
+    merged = {
+        _text(item.get("case_id") or item.get("id")): dict(item)
+        for item in items
+        if _text(item.get("case_id") or item.get("id"))
+    }
     for item in replacements:
         key = _text(item.get("case_id") or item.get("id"))
         if key:
@@ -1352,23 +1428,27 @@ def run_preflight(
             workflow_query_key=workflow_query_key,
             user_prefix=f"{user_prefix}-preflight",
             history_records_fn=(
-                (lambda *, app, item, **_kwargs: lookup_mimirq_history_records(
-                    app=app,
-                    item=item,
-                    wait_sec=history_backfill_wait_sec,
-                    poll_sec=history_backfill_poll_sec,
-                ))
+                (
+                    lambda *, app, item, **_kwargs: lookup_mimirq_history_records(
+                        app=app,
+                        item=item,
+                        wait_sec=history_backfill_wait_sec,
+                        poll_sec=history_backfill_poll_sec,
+                    )
+                )
                 if http_history_backfill and app.kind == "http_to_mimirq"
                 else None
             ),
             console_records_fn=(
-                (lambda *, app, item, timeout, **_kwargs: lookup_dify_console_mimirq_records(
-                    app=app,
-                    item=item,
-                    console_base_url=console_base_url,
-                    console_token=console_token,
-                    timeout=timeout,
-                ))
+                (
+                    lambda *, app, item, timeout, **_kwargs: lookup_dify_console_mimirq_records(
+                        app=app,
+                        item=item,
+                        console_base_url=console_base_url,
+                        console_token=console_token,
+                        timeout=timeout,
+                    )
+                )
                 if console_backfill and _text(console_token) and app.kind == "http_to_mimirq"
                 else None
             ),
@@ -1406,6 +1486,215 @@ def run_preflight(
     }
 
 
+def _dify_app_payload(app: AppSpec) -> dict[str, Any]:
+    return {key: getattr(app, key) for key in ("label", "app_id", "kind", "description", "mode")}
+
+
+def _dify_run_source(app: AppSpec, base_url: str) -> dict[str, Any]:
+    return {
+        "provider": "dify",
+        "base_url": base_url.rstrip("/"),
+        "endpoint": _endpoint_url(base_url, app.mode),
+    }
+
+
+def _direct_app_payload() -> dict[str, Any]:
+    return {
+        "label": "mimirq_direct",
+        "app_id": "local",
+        "kind": "direct_external_knowledge",
+        "mode": "retrieval",
+    }
+
+
+def _direct_run_source(base_url: str) -> dict[str, Any]:
+    clean_base_url = base_url.rstrip("/")
+    return {
+        "provider": "mimirq",
+        "base_url": clean_base_url,
+        "endpoint": f"{clean_base_url}/api/v1/integrations/dify/retrieval",
+    }
+
+
+def _snapshot_run(
+    *,
+    run_path: Path | None,
+    items: list[dict[str, Any]],
+    system: str,
+    app_payload: dict[str, Any],
+    source: dict[str, Any],
+    executed_case_ids: set[str],
+    concurrency: int,
+    run_started: float,
+    cases: list[dict[str, Any]],
+    reusable: list[dict[str, Any]],
+) -> None:
+    if run_path is None:
+        return
+    ordered_items = sorted(items, key=_run_item_sort_key)
+    succeeded = sum(1 for item in ordered_items if item.get("ok") is True)
+    _write_json(
+        run_path,
+        {
+            "schema": "mimirq.dify_3way_benchmark.run.v1",
+            "generated_at": _utc_now_text(),
+            "system": system,
+            "app": app_payload,
+            "source": source,
+            "execution": _execution_stats(
+                ordered_items,
+                executed_case_ids=executed_case_ids,
+                concurrency=concurrency,
+                elapsed_ms=int((time.perf_counter() - run_started) * 1000),
+            ),
+            "summary": {
+                "cases": len(cases),
+                "succeeded": succeeded,
+                "failed": len(ordered_items) - succeeded,
+                "resumed": len(reusable),
+                "executed": len(ordered_items) - len(reusable),
+                "pending": max(0, len(cases) - len(ordered_items)),
+                "partial": len(ordered_items) < len(cases),
+                "failure_reasons": _failure_reasons(ordered_items),
+            },
+            "items": ordered_items,
+        },
+    )
+
+
+def _execute_case_futures(
+    *,
+    pending: list[dict[str, Any]],
+    items: list[dict[str, Any]],
+    worker: Any,
+    max_workers: int,
+    total_cases: int,
+    label: str,
+    run_path: Path | None,
+    flush_every: int,
+    snapshot: Any,
+) -> None:
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(worker, case) for case in pending]
+        for future in as_completed(futures):
+            items.append(future.result())
+            _emit_run_progress(items, total_cases=total_cases, label=label)
+            if run_path is not None and int(flush_every or 0) > 0 and len(items) % int(flush_every) == 0:
+                snapshot()
+
+
+def _emit_run_progress(items: list[dict[str, Any]], *, total_cases: int, label: str) -> None:
+    if len(items) % 50 != 0:
+        return
+    ok = sum(1 for item in items if item.get("ok") is True)
+    print(f"[{label}] progress={len(items)}/{total_cases} ok={ok}", flush=True)
+
+
+def _timed_out_case_ids(items: list[dict[str, Any]]) -> set[str]:
+    return {
+        _text(item.get("case_id") or item.get("id"))
+        for item in items
+        if item.get("ok") is not True and _is_timeout_error_text(item.get("error"))
+    }
+
+
+def _retry_timed_out_cases(
+    *,
+    pending: list[dict[str, Any]],
+    timeout_case_ids: set[str],
+    label: str,
+    retry_timeout: float,
+    concurrency: int,
+    worker: Any,
+) -> list[dict[str, Any]]:
+    retry_cases = [case for case in pending if _case_id(case) in timeout_case_ids]
+    if not retry_cases:
+        return []
+    print(
+        f"[{label}] retrying {len(retry_cases)} timed out cases with timeout={retry_timeout:.1f}s",
+        flush=True,
+    )
+    retry_results: list[dict[str, Any]] = []
+    with ThreadPoolExecutor(max_workers=max(1, min(concurrency, len(retry_cases)))) as executor:
+        futures = [executor.submit(worker, case) for case in retry_cases]
+        for future in as_completed(futures):
+            retry_results.append(future.result())
+    return retry_results
+
+
+def _finalize_run_report(
+    *,
+    system: str,
+    app_payload: dict[str, Any],
+    source: dict[str, Any],
+    items: list[dict[str, Any]],
+    executed_case_ids: set[str],
+    concurrency: int,
+    run_started: float,
+    cases: list[dict[str, Any]],
+    reusable: list[dict[str, Any]],
+) -> dict[str, Any]:
+    items.sort(key=_run_item_sort_key)
+    succeeded = sum(1 for item in items if item.get("ok") is True)
+    return {
+        "schema": "mimirq.dify_3way_benchmark.run.v1",
+        "generated_at": _utc_now_text(),
+        "system": system,
+        "app": app_payload,
+        "source": source,
+        "execution": _execution_stats(
+            items,
+            executed_case_ids=executed_case_ids,
+            concurrency=concurrency,
+            elapsed_ms=int((time.perf_counter() - run_started) * 1000),
+        ),
+        "summary": {
+            "cases": len(cases),
+            "succeeded": succeeded,
+            "failed": len(cases) - succeeded,
+            "resumed": len(reusable),
+            "executed": len(cases) - len(reusable),
+            "failure_reasons": _failure_reasons(items),
+        },
+        "items": items,
+    }
+
+
+def _history_records_lookup(
+    *,
+    app: AppSpec,
+    enabled: bool,
+    wait_sec: float,
+    poll_sec: float,
+) -> Any:
+    if not enabled or app.kind != "http_to_mimirq":
+        return None
+    return lambda *, app, item, **_kwargs: lookup_mimirq_history_records(
+        app=app,
+        item=item,
+        wait_sec=wait_sec,
+        poll_sec=poll_sec,
+    )
+
+
+def _console_records_lookup(
+    *,
+    app: AppSpec,
+    enabled: bool,
+    console_base_url: str,
+    console_token: str,
+) -> Any:
+    if not enabled or not _text(console_token) or app.kind != "http_to_mimirq":
+        return None
+    return lambda *, app, item, timeout, **_kwargs: lookup_dify_console_mimirq_records(
+        app=app,
+        item=item,
+        console_base_url=console_base_url,
+        console_token=console_token,
+        timeout=timeout,
+    )
+
+
 def run_app(
     *,
     app: AppSpec,
@@ -1427,160 +1716,110 @@ def run_app(
     console_token: str = "",
     console_backfill: bool = True,
 ) -> dict[str, Any]:
+    app_payload = _dify_app_payload(app)
+    source = _dify_run_source(app, base_url)
     if not app.api_key:
         return _missing_key_run_from_existing(
             system=app.label,
-            app_payload={k: getattr(app, k) for k in ("label", "app_id", "kind", "description", "mode")},
+            app_payload=app_payload,
             cases=cases,
             existing_items=existing_items,
             retry_failures=retry_failures,
             reason="missing_api_key",
-            source={"provider": "dify", "base_url": base_url.rstrip("/"), "endpoint": _endpoint_url(base_url, app.mode)},
+            source=source,
         )
 
     pending, reusable = _pending_cases(cases, existing_items, retry_failures=retry_failures)
     items: list[dict[str, Any]] = list(reusable)
     executed_case_ids = {_case_id(case) for case in pending}
     run_started = time.perf_counter()
-    history_records_fn = (
-        (lambda *, app, item, **_kwargs: lookup_mimirq_history_records(
-            app=app,
-            item=item,
-            wait_sec=history_backfill_wait_sec,
-            poll_sec=history_backfill_poll_sec,
-        ))
-        if http_history_backfill and app.kind == "http_to_mimirq"
-        else None
+    history_records_fn = _history_records_lookup(
+        app=app,
+        enabled=http_history_backfill,
+        wait_sec=history_backfill_wait_sec,
+        poll_sec=history_backfill_poll_sec,
     )
-    console_records_fn = (
-        (lambda *, app, item, timeout, **_kwargs: lookup_dify_console_mimirq_records(
-            app=app,
-            item=item,
-            console_base_url=console_base_url,
-            console_token=console_token,
-            timeout=timeout,
-        ))
-        if console_backfill and _text(console_token) and app.kind == "http_to_mimirq"
-        else None
+    console_records_fn = _console_records_lookup(
+        app=app,
+        enabled=console_backfill,
+        console_base_url=console_base_url,
+        console_token=console_token,
     )
 
     def snapshot() -> None:
-        if run_path is None:
-            return
-        ordered_items = sorted(items, key=_run_item_sort_key)
-        succeeded = sum(1 for item in ordered_items if item.get("ok") is True)
-        _write_json(
-            run_path,
-            {
-                "schema": "mimirq.dify_3way_benchmark.run.v1",
-                "generated_at": _utc_now_text(),
-                "system": app.label,
-                "app": {k: getattr(app, k) for k in ("label", "app_id", "kind", "description", "mode")},
-                "source": {"provider": "dify", "base_url": base_url.rstrip("/"), "endpoint": _endpoint_url(base_url, app.mode)},
-                "execution": _execution_stats(
-                    ordered_items,
-                    executed_case_ids=executed_case_ids,
-                    concurrency=concurrency,
-                    elapsed_ms=int((time.perf_counter() - run_started) * 1000),
-                ),
-                "summary": {
-                    "cases": len(cases),
-                    "succeeded": succeeded,
-                    "failed": len(ordered_items) - succeeded,
-                    "resumed": len(reusable),
-                    "executed": len(ordered_items) - len(reusable),
-                    "pending": max(0, len(cases) - len(ordered_items)),
-                    "partial": len(ordered_items) < len(cases),
-                    "failure_reasons": _failure_reasons(ordered_items),
-                },
-                "items": ordered_items,
-            },
+        _snapshot_run(
+            run_path=run_path,
+            items=items,
+            system=app.label,
+            app_payload=app_payload,
+            source=source,
+            executed_case_ids=executed_case_ids,
+            concurrency=concurrency,
+            run_started=run_started,
+            cases=cases,
+            reusable=reusable,
         )
 
-    with ThreadPoolExecutor(max_workers=max(1, concurrency)) as executor:
-        futures = [
-            executor.submit(
-                _call_case,
+    def worker(case: dict[str, Any]) -> dict[str, Any]:
+        return _call_case(
+            app=app,
+            case=case,
+            base_url=base_url,
+            timeout=timeout,
+            response_mode=response_mode,
+            workflow_query_key=workflow_query_key,
+            user_prefix=user_prefix,
+            history_records_fn=history_records_fn,
+            console_records_fn=console_records_fn,
+        )
+
+    _execute_case_futures(
+        pending=pending,
+        items=items,
+        worker=worker,
+        max_workers=max(1, concurrency),
+        total_cases=len(cases),
+        label=app.label,
+        run_path=run_path,
+        flush_every=flush_every,
+        snapshot=snapshot,
+    )
+    timeout_case_ids = _timed_out_case_ids(items)
+    if timeout_case_ids:
+        retry_timeout = _retry_timeout_seconds(timeout)
+        retry_results = _retry_timed_out_cases(
+            pending=pending,
+            timeout_case_ids=timeout_case_ids,
+            label=app.label,
+            retry_timeout=retry_timeout,
+            concurrency=concurrency,
+            worker=lambda case: _call_case(
                 app=app,
                 case=case,
                 base_url=base_url,
-                timeout=timeout,
+                timeout=retry_timeout,
                 response_mode=response_mode,
                 workflow_query_key=workflow_query_key,
                 user_prefix=user_prefix,
                 history_records_fn=history_records_fn,
                 console_records_fn=console_records_fn,
-            )
-            for case in pending
-        ]
-        for future in as_completed(futures):
-            items.append(future.result())
-            if len(items) % 50 == 0:
-                ok = sum(1 for item in items if item.get("ok") is True)
-                print(f"[{app.label}] progress={len(items)}/{len(cases)} ok={ok}", flush=True)
-            if run_path is not None and int(flush_every or 0) > 0 and len(items) % int(flush_every) == 0:
-                snapshot()
-
-    timeout_case_ids = {
-        _text(item.get("case_id") or item.get("id"))
-        for item in items
-        if item.get("ok") is not True and _is_timeout_error_text(item.get("error"))
-    }
-    if timeout_case_ids:
-        retry_cases = [case for case in pending if _case_id(case) in timeout_case_ids]
-        retry_timeout = _retry_timeout_seconds(timeout)
-        if retry_cases:
-            print(
-                f"[{app.label}] retrying {len(retry_cases)} timed out cases with timeout={retry_timeout:.1f}s",
-                flush=True,
-            )
-            retry_results: list[dict[str, Any]] = []
-            with ThreadPoolExecutor(max_workers=max(1, min(concurrency, len(retry_cases)))) as executor:
-                futures = [
-                    executor.submit(
-                        _call_case,
-                        app=app,
-                        case=case,
-                        base_url=base_url,
-                        timeout=retry_timeout,
-                        response_mode=response_mode,
-                        workflow_query_key=workflow_query_key,
-                        user_prefix=user_prefix,
-                        history_records_fn=history_records_fn,
-                        console_records_fn=console_records_fn,
-                    )
-                    for case in retry_cases
-                ]
-                for future in as_completed(futures):
-                    retry_results.append(future.result())
+            ),
+        )
+        if retry_results:
             items = _merge_retry_results(items, retry_results)
             if run_path is not None:
                 snapshot()
-
-    items.sort(key=_run_item_sort_key)
-    succeeded = sum(1 for item in items if item.get("ok") is True)
-    return {
-        "schema": "mimirq.dify_3way_benchmark.run.v1",
-        "generated_at": _utc_now_text(),
-        "system": app.label,
-        "app": {k: getattr(app, k) for k in ("label", "app_id", "kind", "description", "mode")},
-        "source": {"provider": "dify", "base_url": base_url.rstrip("/"), "endpoint": _endpoint_url(base_url, app.mode)},
-        "execution": _execution_stats(
-            items,
-            executed_case_ids=executed_case_ids,
-            concurrency=concurrency,
-            elapsed_ms=int((time.perf_counter() - run_started) * 1000),
-        ),
-        "summary": {
-            "cases": len(cases),
-            "succeeded": succeeded,
-            "failed": len(cases) - succeeded,
-            "resumed": len(reusable),
-            "executed": len(pending),
-            "failure_reasons": _failure_reasons(items),
-        },
-        "items": items,
-    }
+    return _finalize_run_report(
+        system=app.label,
+        app_payload=app_payload,
+        source=source,
+        items=items,
+        executed_case_ids=executed_case_ids,
+        concurrency=concurrency,
+        run_started=run_started,
+        cases=cases,
+        reusable=reusable,
+    )
 
 
 def run_mimirq_direct(
@@ -1596,15 +1835,17 @@ def run_mimirq_direct(
     run_path: Path | None = None,
     flush_every: int = 50,
 ) -> dict[str, Any]:
+    app_payload = _direct_app_payload()
+    source = _direct_run_source(base_url)
     if not token:
         return _missing_key_run_from_existing(
             system="mimirq_direct",
-            app_payload={"label": "mimirq_direct", "app_id": "local", "kind": "direct_external_knowledge", "mode": "retrieval"},
+            app_payload=app_payload,
             cases=cases,
             existing_items=existing_items,
             retry_failures=retry_failures,
             reason="missing_mimirq_token",
-            source={"provider": "mimirq", "base_url": base_url.rstrip("/"), "endpoint": f"{base_url.rstrip('/')}/api/v1/integrations/dify/retrieval"},
+            source=source,
         )
 
     pending, reusable = _pending_cases(cases, existing_items, retry_failures=retry_failures)
@@ -1613,114 +1854,71 @@ def run_mimirq_direct(
     run_started = time.perf_counter()
 
     def snapshot() -> None:
-        if run_path is None:
-            return
-        ordered_items = sorted(items, key=_run_item_sort_key)
-        succeeded = sum(1 for item in ordered_items if item.get("ok") is True)
-        _write_json(
-            run_path,
-            {
-                "schema": "mimirq.dify_3way_benchmark.run.v1",
-                "generated_at": _utc_now_text(),
-                "system": "mimirq_direct",
-                "app": {"label": "mimirq_direct", "app_id": "local", "kind": "direct_external_knowledge", "mode": "retrieval"},
-                "source": {"provider": "mimirq", "base_url": base_url.rstrip("/"), "endpoint": f"{base_url.rstrip('/')}/api/v1/integrations/dify/retrieval"},
-                "execution": _execution_stats(
-                    ordered_items,
-                    executed_case_ids=executed_case_ids,
-                    concurrency=concurrency,
-                    elapsed_ms=int((time.perf_counter() - run_started) * 1000),
-                ),
-                "summary": {
-                    "cases": len(cases),
-                    "succeeded": succeeded,
-                    "failed": len(ordered_items) - succeeded,
-                    "resumed": len(reusable),
-                    "executed": len(ordered_items) - len(reusable),
-                    "pending": max(0, len(cases) - len(ordered_items)),
-                    "partial": len(ordered_items) < len(cases),
-                    "failure_reasons": _failure_reasons(ordered_items),
-                },
-                "items": ordered_items,
-            },
+        _snapshot_run(
+            run_path=run_path,
+            items=items,
+            system="mimirq_direct",
+            app_payload=app_payload,
+            source=source,
+            executed_case_ids=executed_case_ids,
+            concurrency=concurrency,
+            run_started=run_started,
+            cases=cases,
+            reusable=reusable,
         )
 
-    with ThreadPoolExecutor(max_workers=max(1, concurrency)) as executor:
-        futures = [
-            executor.submit(
-                _call_mimirq_case,
+    def worker(case: dict[str, Any]) -> dict[str, Any]:
+        return _call_mimirq_case(
+            case=case,
+            base_url=base_url,
+            token=token,
+            timeout=timeout,
+            retrieval_overrides=retrieval_overrides,
+        )
+
+    _execute_case_futures(
+        pending=pending,
+        items=items,
+        worker=worker,
+        max_workers=max(1, concurrency),
+        total_cases=len(cases),
+        label="mimirq_direct",
+        run_path=run_path,
+        flush_every=flush_every,
+        snapshot=snapshot,
+    )
+    timeout_case_ids = _timed_out_case_ids(items)
+    if timeout_case_ids:
+        retry_timeout = _retry_timeout_seconds(timeout)
+        retry_results = _retry_timed_out_cases(
+            pending=pending,
+            timeout_case_ids=timeout_case_ids,
+            label="mimirq_direct",
+            retry_timeout=retry_timeout,
+            concurrency=concurrency,
+            worker=lambda case: _call_mimirq_case(
                 case=case,
                 base_url=base_url,
                 token=token,
-                timeout=timeout,
+                timeout=retry_timeout,
                 retrieval_overrides=retrieval_overrides,
-            )
-            for case in pending
-        ]
-        for future in as_completed(futures):
-            items.append(future.result())
-            if len(items) % 50 == 0:
-                ok = sum(1 for item in items if item.get("ok") is True)
-                print(f"[mimirq_direct] progress={len(items)}/{len(cases)} ok={ok}", flush=True)
-            if run_path is not None and int(flush_every or 0) > 0 and len(items) % int(flush_every) == 0:
-                snapshot()
-
-    timeout_case_ids = {
-        _text(item.get("case_id") or item.get("id"))
-        for item in items
-        if item.get("ok") is not True and _is_timeout_error_text(item.get("error"))
-    }
-    if timeout_case_ids:
-        retry_cases = [case for case in pending if _case_id(case) in timeout_case_ids]
-        retry_timeout = _retry_timeout_seconds(timeout)
-        if retry_cases:
-            print(
-                f"[mimirq_direct] retrying {len(retry_cases)} timed out cases with timeout={retry_timeout:.1f}s",
-                flush=True,
-            )
-            retry_results: list[dict[str, Any]] = []
-            with ThreadPoolExecutor(max_workers=max(1, min(concurrency, len(retry_cases)))) as executor:
-                futures = [
-                    executor.submit(
-                        _call_mimirq_case,
-                        case=case,
-                        base_url=base_url,
-                        token=token,
-                        timeout=retry_timeout,
-                        retrieval_overrides=retrieval_overrides,
-                    )
-                    for case in retry_cases
-                ]
-                for future in as_completed(futures):
-                    retry_results.append(future.result())
+            ),
+        )
+        if retry_results:
             items = _merge_retry_results(items, retry_results)
             if run_path is not None:
                 snapshot()
-
-    items.sort(key=_run_item_sort_key)
-    succeeded = sum(1 for item in items if item.get("ok") is True)
-    return {
-        "schema": "mimirq.dify_3way_benchmark.run.v1",
-        "generated_at": _utc_now_text(),
-        "system": "mimirq_direct",
-        "app": {"label": "mimirq_direct", "app_id": "local", "kind": "direct_external_knowledge", "mode": "retrieval"},
-        "source": {"provider": "mimirq", "base_url": base_url.rstrip("/"), "endpoint": f"{base_url.rstrip('/')}/api/v1/integrations/dify/retrieval"},
-        "execution": _execution_stats(
-            items,
-            executed_case_ids=executed_case_ids,
-            concurrency=concurrency,
-            elapsed_ms=int((time.perf_counter() - run_started) * 1000),
-        ),
-        "summary": {
-            "cases": len(cases),
-            "succeeded": succeeded,
-            "failed": len(cases) - succeeded,
-            "resumed": len(reusable),
-            "executed": len(pending),
-            "failure_reasons": _failure_reasons(items),
-        },
-        "items": items,
-    }
+    return _finalize_run_report(
+        system="mimirq_direct",
+        app_payload=app_payload,
+        source=source,
+        items=items,
+        executed_case_ids=executed_case_ids,
+        concurrency=concurrency,
+        run_started=run_started,
+        cases=cases,
+        reusable=reusable,
+    )
 
 
 def _write_json(path: Path, payload: Any) -> None:
@@ -1759,7 +1957,9 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def build_artifact_manifest(*, out_dir: Path, report: dict[str, Any], apps: list[AppSpec], include_mimirq_direct: bool) -> dict[str, Any]:
+def build_artifact_manifest(
+    *, out_dir: Path, report: dict[str, Any], apps: list[AppSpec], include_mimirq_direct: bool
+) -> dict[str, Any]:
     filenames = [
         "cases_800.json",
         "truth_manifest.json",
@@ -1797,7 +1997,9 @@ def build_artifact_manifest(*, out_dir: Path, report: dict[str, Any], apps: list
     }
 
 
-def write_artifact_bundle(*, out_dir: Path, manifest: dict[str, Any], bundle_name: str = "dify_3way_benchmark_bundle.zip") -> Path:
+def write_artifact_bundle(
+    *, out_dir: Path, manifest: dict[str, Any], bundle_name: str = "dify_3way_benchmark_bundle.zip"
+) -> Path:
     out_dir = out_dir.resolve()
     bundle_path = out_dir / bundle_name
     files = manifest.get("files") if isinstance(manifest.get("files"), list) else []
@@ -1905,7 +2107,9 @@ def _evidence_terms_for_audit(case: dict[str, Any]) -> list[dict[str, Any]]:
         rows.append(
             {
                 "id": _text(clause.get("id")),
-                "required_terms": clause.get("required_terms") if isinstance(clause.get("required_terms"), list) else [],
+                "required_terms": clause.get("required_terms")
+                if isinstance(clause.get("required_terms"), list)
+                else [],
             }
         )
     return rows
@@ -1961,8 +2165,14 @@ def _native_evidence_preview(case: dict[str, Any]) -> str:
 
 def _score_reason(score_item: dict[str, Any], raw_item: dict[str, Any]) -> str:
     verdict = _audit_verdict(score_item, raw_item)
-    missing_evidence = score_item.get("missing_evidence_clause_ids") if isinstance(score_item.get("missing_evidence_clause_ids"), list) else []
-    missing_subquestions = score_item.get("missing_subquestion_ids") if isinstance(score_item.get("missing_subquestion_ids"), list) else []
+    missing_evidence = (
+        score_item.get("missing_evidence_clause_ids")
+        if isinstance(score_item.get("missing_evidence_clause_ids"), list)
+        else []
+    )
+    missing_subquestions = (
+        score_item.get("missing_subquestion_ids") if isinstance(score_item.get("missing_subquestion_ids"), list) else []
+    )
     wrong_rate = _metric_float(score_item, "wrong_evidence_rate")
     evidence_coverage = _metric_float(score_item, "evidence_coverage")
 
@@ -1996,7 +2206,9 @@ def _top_record_preview(raw_item: dict[str, Any]) -> str:
     return _preview(f"{title} {content}".strip(), limit=360)
 
 
-def build_audit_rows(report: dict[str, Any], cases: list[dict[str, Any]], runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def build_audit_rows(
+    report: dict[str, Any], cases: list[dict[str, Any]], runs: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
     case_by_id = {_case_id(case): case for case in cases if _case_id(case)}
     raw_items = _run_items_by_system_case(runs)
     rows: list[dict[str, Any]] = []
@@ -2026,7 +2238,9 @@ def build_audit_rows(report: dict[str, Any], cases: list[dict[str, Any]], runs: 
                 "source_section": _text(case.get("source_section")),
                 "source_record_title": _text(case.get("source_record_title")),
                 "query": _case_question(case),
-                "dimension_fields": case.get("dimension_fields") if isinstance(case.get("dimension_fields"), list) else [],
+                "dimension_fields": case.get("dimension_fields")
+                if isinstance(case.get("dimension_fields"), list)
+                else [],
                 "expected_answer_basis": _expected_answer_basis(case),
                 "native_evidence_preview": _native_evidence_preview(case),
                 "required_evidence_terms": _evidence_terms_for_audit(case),
@@ -2082,7 +2296,11 @@ def build_top_issue_cases(audit_rows: list[dict[str, Any]], *, per_system: int =
                 severity.get(_text(row.get("verdict")), 3),
                 -_metric_float(row, "business_score"),
                 _metric_float(row, "wrong_evidence_rate"),
-                len(row.get("missing_evidence_clause_ids") if isinstance(row.get("missing_evidence_clause_ids"), list) else []),
+                len(
+                    row.get("missing_evidence_clause_ids")
+                    if isinstance(row.get("missing_evidence_clause_ids"), list)
+                    else []
+                ),
             ),
             reverse=True,
         )
@@ -2234,7 +2452,9 @@ def _winner_by_dimension(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def _increment_system(summary: dict[str, Any], system: str, key: str, label: str) -> None:
     if not system:
         return
-    row = summary.setdefault(system, {"case_type_wins": 0, "dimension_wins": 0, "winning_case_types": [], "winning_dimensions": []})
+    row = summary.setdefault(
+        system, {"case_type_wins": 0, "dimension_wins": 0, "winning_case_types": [], "winning_dimensions": []}
+    )
     row[key] = int(row.get(key) or 0) + 1
     list_key = "winning_case_types" if key == "case_type_wins" else "winning_dimensions"
     if label:
@@ -2258,18 +2478,30 @@ def build_advantage_summary(report: dict[str, Any]) -> dict[str, Any]:
 
     strongest = sorted(
         (
-            {"system": system, **values, "total_wins": int(values.get("case_type_wins") or 0) + int(values.get("dimension_wins") or 0)}
+            {
+                "system": system,
+                **values,
+                "total_wins": int(values.get("case_type_wins") or 0) + int(values.get("dimension_wins") or 0),
+            }
             for system, values in system_summary.items()
         ),
-        key=lambda item: (int(item.get("total_wins") or 0), int(item.get("dimension_wins") or 0), _text(item.get("system"))),
+        key=lambda item: (
+            int(item.get("total_wins") or 0),
+            int(item.get("dimension_wins") or 0),
+            _text(item.get("system")),
+        ),
         reverse=True,
     )
     return {
         "overall_best_system": best_system,
         "systems": dict(sorted(system_summary.items())),
         "strongest_by_win_count": strongest,
-        "case_type_winner_count": len(_winner_by_case_type([item for item in case_type_rows if isinstance(item, dict)])),
-        "dimension_winner_count": len(_winner_by_dimension([item for item in dimension_rows if isinstance(item, dict)])),
+        "case_type_winner_count": len(
+            _winner_by_case_type([item for item in case_type_rows if isinstance(item, dict)])
+        ),
+        "dimension_winner_count": len(
+            _winner_by_dimension([item for item in dimension_rows if isinstance(item, dict)])
+        ),
     }
 
 
@@ -2344,15 +2576,44 @@ def build_completion_status(
 def build_comparison_markdown(report: dict[str, Any], *, apps: list[AppSpec], cases: list[dict[str, Any]]) -> str:
     skipped_systems = (report.get("summary") or {}).get("skipped_systems") or []
     completion = report.get("completion_status") if isinstance(report.get("completion_status"), dict) else {}
-    verdict_summary = report.get("audit_verdict_summary") if isinstance(report.get("audit_verdict_summary"), list) else []
+    verdict_summary = (
+        report.get("audit_verdict_summary") if isinstance(report.get("audit_verdict_summary"), list) else []
+    )
     top_issue_cases = report.get("top_issue_cases") if isinstance(report.get("top_issue_cases"), list) else []
     leaderboard = report.get("leaderboard") if isinstance(report.get("leaderboard"), list) else []
     case_type_rows = build_case_type_advantage(report, cases)
     case_type_winners = _winner_by_case_type(case_type_rows)
-    dimension_rows = report.get("dimension_advantage") if isinstance(report.get("dimension_advantage"), list) else build_dimension_advantage(report, cases)
+    dimension_rows = (
+        report.get("dimension_advantage")
+        if isinstance(report.get("dimension_advantage"), list)
+        else build_dimension_advantage(report, cases)
+    )
     dimension_winners = _winner_by_dimension([row for row in dimension_rows if isinstance(row, dict)])
-    advantage_summary = report.get("advantage_summary") if isinstance(report.get("advantage_summary"), dict) else build_advantage_summary(report | {"dimension_advantage": dimension_rows})
+    advantage_summary = (
+        report.get("advantage_summary")
+        if isinstance(report.get("advantage_summary"), dict)
+        else build_advantage_summary(report | {"dimension_advantage": dimension_rows})
+    )
     best_system = leaderboard[0] if leaderboard and isinstance(leaderboard[0], dict) else None
+    lines = _comparison_intro_lines(report, completion, skipped_systems, best_system)
+    lines.extend(_comparison_apps_lines(apps))
+    lines.extend(_comparison_advantage_lines(advantage_summary))
+    lines.extend(_comparison_verdict_lines(verdict_summary))
+    lines.extend(_comparison_case_type_lines(case_type_winners))
+    lines.extend(_comparison_dimension_lines(dimension_winners))
+    lines.extend(_comparison_top_issue_lines(top_issue_cases))
+    lines.extend(["", "## Leaderboard", ""])
+    lines.append(build_markdown_report(report).split("## Leaderboard", 1)[1].split("## Missing Evidence", 1)[0].strip())
+    lines.extend(_comparison_notes_lines(skipped_systems))
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _comparison_intro_lines(
+    report: dict[str, Any],
+    completion: dict[str, Any],
+    skipped_systems: list[Any],
+    best_system: dict[str, Any] | None,
+) -> list[str]:
     lines = [
         "# Dify 3-Way Benchmark",
         "",
@@ -2365,7 +2626,8 @@ def build_comparison_markdown(report: dict[str, Any], *, apps: list[AppSpec], ca
     ]
     if completion:
         lines.append(
-            f"- 完整性：`complete_3way_800={str(completion.get('complete_3way_800')).lower()}`；已执行 `{completion.get('executed_cases')}` / 目标 `{completion.get('expected_cases')}` 题。"
+            f"- 完整性：`complete_3way_800={str(completion.get('complete_3way_800')).lower()}`；"
+            f"已执行 `{completion.get('executed_cases')}` / 目标 `{completion.get('expected_cases')}` 题。"
         )
     if skipped_systems:
         lines.append(
@@ -2373,149 +2635,193 @@ def build_comparison_markdown(report: dict[str, Any], *, apps: list[AppSpec], ca
         )
     if best_system:
         lines.append(
-            f"- 当前已执行系统中综合排名第一：`{best_system.get('system')}`，业务综合分 `{_business_score_system(best_system):.3f}`。"
+            f"- 当前已执行系统中综合排名第一：`{best_system.get('system')}`，"
+            f"业务综合分 `{_business_score_system(best_system):.3f}`。"
         )
     else:
         lines.append("- 当前还没有可评分系统；先完成 `--preflight` 和远程 run 后再看优势结论。")
-    lines.append("- 业务综合分权重：回答证据覆盖 35%、回答子问题覆盖 25%、检索证据覆盖 20%、回答有证据支撑 15%、少错证据 5%。")
-    lines.extend([
-        "",
-        "## Apps",
-        "",
-        "| Label | App ID | Type | Description |",
-        "| --- | --- | --- | --- |",
-    ])
+    lines.append(
+        "- 业务综合分权重：回答证据覆盖 35%、回答子问题覆盖 25%、检索证据覆盖 20%、回答有证据支撑 15%、少错证据 5%。"
+    )
+    return lines
+
+
+def _comparison_apps_lines(apps: list[AppSpec]) -> list[str]:
+    lines = ["", "## Apps", "", "| Label | App ID | Type | Description |", "| --- | --- | --- | --- |"]
     for app in apps:
         lines.append(f"| {app.label} | `{app.app_id}` | {app.kind} | {app.description} |")
-    strongest = advantage_summary.get("strongest_by_win_count") if isinstance(advantage_summary.get("strongest_by_win_count"), list) else []
-    if advantage_summary or strongest:
-        lines.extend(
-            [
-                "",
-                "## 优势汇总",
-                "",
-                f"- 总体排名第一：`{advantage_summary.get('overall_best_system') or '-'}`。",
-                f"- 已统计问题类型胜出项：`{advantage_summary.get('case_type_winner_count', 0)}`；业务维度胜出项：`{advantage_summary.get('dimension_winner_count', 0)}`。",
-            ]
-        )
-        if strongest:
-            lines.extend(["", "| 系统 | 总胜出项 | 问题类型胜出 | 业务维度胜出 |", "| --- | ---: | ---: | ---: |"])
-            for row in strongest:
-                lines.append(
-                    "| `{system}` | {total} | {case_types} | {dimensions} |".format(
-                        system=row.get("system"),
-                        total=int(row.get("total_wins") or 0),
-                        case_types=int(row.get("case_type_wins") or 0),
-                        dimensions=int(row.get("dimension_wins") or 0),
-                    )
-                )
-    if verdict_summary:
-        lines.extend(
-            [
-                "",
-                "## 审计判定分布",
-                "",
-                "| 系统 | 题数 | 准确 | 部分准确 | 证据不足 | 无答案 | 准确率 | 可用率 |",
-                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
-            ]
-        )
-        for row in verdict_summary:
+    return lines
+
+
+def _comparison_advantage_lines(advantage_summary: dict[str, Any]) -> list[str]:
+    strongest = (
+        advantage_summary.get("strongest_by_win_count")
+        if isinstance(advantage_summary.get("strongest_by_win_count"), list)
+        else []
+    )
+    if not advantage_summary and not strongest:
+        return []
+    lines = [
+        "",
+        "## 优势汇总",
+        "",
+        f"- 总体排名第一：`{advantage_summary.get('overall_best_system') or '-'}`。",
+        f"- 已统计问题类型胜出项：`{advantage_summary.get('case_type_winner_count', 0)}`；"
+        f"业务维度胜出项：`{advantage_summary.get('dimension_winner_count', 0)}`。",
+    ]
+    if strongest:
+        lines.extend(["", "| 系统 | 总胜出项 | 问题类型胜出 | 业务维度胜出 |", "| --- | ---: | ---: | ---: |"])
+        for row in strongest:
             lines.append(
-                "| `{system}` | {cases} | {accurate} | {partially} | {insufficient} | {no_answer} | {accurate_rate:.3f} | {usable_rate:.3f} |".format(
+                "| `{system}` | {total} | {case_types} | {dimensions} |".format(
                     system=row.get("system"),
-                    cases=int(row.get("cases") or 0),
-                    accurate=int(row.get("accurate") or 0),
-                    partially=int(row.get("partially_accurate") or 0),
-                    insufficient=int(row.get("insufficient_evidence") or 0),
-                    no_answer=int(row.get("no_answer") or 0),
-                    accurate_rate=_metric_float(row, "accurate_rate"),
-                    usable_rate=_metric_float(row, "usable_rate"),
+                    total=int(row.get("total_wins") or 0),
+                    case_types=int(row.get("case_type_wins") or 0),
+                    dimensions=int(row.get("dimension_wins") or 0),
                 )
             )
-    if case_type_winners:
-        lines.extend(
-            [
-                "",
-                "## 按问题类型看优势",
-                "",
-                "| 问题类型 | 当前胜出系统 | 题数 | 业务综合分 | 回答证据覆盖 | 回答子问题覆盖 | 错证据率 |",
-                "| --- | --- | ---: | ---: | ---: | ---: | ---: |",
-            ]
-        )
-        for row in case_type_winners:
-            lines.append(
-                "| {case_type} | `{system}` | {cases} | {score:.3f} | {answer_clause:.3f} | {answer_subq:.3f} | {wrong:.3f} |".format(
-                    case_type=row.get("case_type"),
-                    system=row.get("system"),
-                    cases=int(row.get("cases") or 0),
-                    score=_metric_float(row, "business_score"),
-                    answer_clause=_metric_float(row, "answer_clause_coverage"),
-                    answer_subq=_metric_float(row, "answer_subquestion_coverage"),
-                    wrong=_metric_float(row, "wrong_evidence_rate"),
-                )
+    return lines
+
+
+def _comparison_verdict_lines(verdict_summary: list[Any]) -> list[str]:
+    if not verdict_summary:
+        return []
+    lines = [
+        "",
+        "## 审计判定分布",
+        "",
+        "| 系统 | 题数 | 准确 | 部分准确 | 证据不足 | 无答案 | 准确率 | 可用率 |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for row in verdict_summary:
+        lines.append(
+            (
+                "| `{system}` | {cases} | {accurate} | {partially} | {insufficient} | "
+                "{no_answer} | {accurate_rate:.3f} | {usable_rate:.3f} |"
+            ).format(
+                system=row.get("system"),
+                cases=int(row.get("cases") or 0),
+                accurate=int(row.get("accurate") or 0),
+                partially=int(row.get("partially_accurate") or 0),
+                insufficient=int(row.get("insufficient_evidence") or 0),
+                no_answer=int(row.get("no_answer") or 0),
+                accurate_rate=_metric_float(row, "accurate_rate"),
+                usable_rate=_metric_float(row, "usable_rate"),
             )
-    if dimension_winners:
-        lines.extend(
-            [
-                "",
-                "## 按业务维度看优势",
-                "",
-                "| 业务维度 | 当前胜出系统 | 题数 | 业务综合分 | 回答证据覆盖 | 回答子问题覆盖 | 错证据率 |",
-                "| --- | --- | ---: | ---: | ---: | ---: | ---: |",
-            ]
         )
-        for row in dimension_winners:
-            lines.append(
-                "| {dimension} | `{system}` | {cases} | {score:.3f} | {answer_clause:.3f} | {answer_subq:.3f} | {wrong:.3f} |".format(
-                    dimension=row.get("dimension"),
-                    system=row.get("system"),
-                    cases=int(row.get("cases") or 0),
-                    score=_metric_float(row, "business_score"),
-                    answer_clause=_metric_float(row, "answer_clause_coverage"),
-                    answer_subq=_metric_float(row, "answer_subquestion_coverage"),
-                    wrong=_metric_float(row, "wrong_evidence_rate"),
-                )
+    return lines
+
+
+def _comparison_case_type_lines(case_type_winners: list[dict[str, Any]]) -> list[str]:
+    if not case_type_winners:
+        return []
+    lines = [
+        "",
+        "## 按问题类型看优势",
+        "",
+        "| 问题类型 | 当前胜出系统 | 题数 | 业务综合分 | 回答证据覆盖 | 回答子问题覆盖 | 错证据率 |",
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for row in case_type_winners:
+        lines.append(
+            (
+                "| {case_type} | `{system}` | {cases} | {score:.3f} | {answer_clause:.3f} | "
+                "{answer_subq:.3f} | {wrong:.3f} |"
+            ).format(
+                case_type=row.get("case_type"),
+                system=row.get("system"),
+                cases=int(row.get("cases") or 0),
+                score=_metric_float(row, "business_score"),
+                answer_clause=_metric_float(row, "answer_clause_coverage"),
+                answer_subq=_metric_float(row, "answer_subquestion_coverage"),
+                wrong=_metric_float(row, "wrong_evidence_rate"),
             )
-    if top_issue_cases:
-        lines.extend(
-            [
-                "",
-                "## Top 问题样本",
-                "",
-                "| 系统 | 判定 | 分数 | 问题类型 | 事项 | 问题 | 缺失证据 |",
-                "| --- | --- | ---: | --- | --- | --- | --- |",
-            ]
         )
-        for row in top_issue_cases[:30]:
-            lines.append(
-                "| `{system}` | {verdict} | {score:.3f} | {case_type} | {title} | {query} | {missing} |".format(
-                    system=row.get("system"),
-                    verdict=row.get("verdict"),
-                    score=_metric_float(row, "business_score"),
-                    case_type=row.get("case_type"),
-                    title=_preview(row.get("source_record_title"), limit=42),
-                    query=_preview(row.get("query"), limit=72),
-                    missing=_preview(row.get("missing_evidence_clause_ids"), limit=60),
-                )
+    return lines
+
+
+def _comparison_dimension_lines(dimension_winners: list[dict[str, Any]]) -> list[str]:
+    if not dimension_winners:
+        return []
+    lines = [
+        "",
+        "## 按业务维度看优势",
+        "",
+        "| 业务维度 | 当前胜出系统 | 题数 | 业务综合分 | 回答证据覆盖 | 回答子问题覆盖 | 错证据率 |",
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for row in dimension_winners:
+        lines.append(
+            (
+                "| {dimension} | `{system}` | {cases} | {score:.3f} | {answer_clause:.3f} | "
+                "{answer_subq:.3f} | {wrong:.3f} |"
+            ).format(
+                dimension=row.get("dimension"),
+                system=row.get("system"),
+                cases=int(row.get("cases") or 0),
+                score=_metric_float(row, "business_score"),
+                answer_clause=_metric_float(row, "answer_clause_coverage"),
+                answer_subq=_metric_float(row, "answer_subquestion_coverage"),
+                wrong=_metric_float(row, "wrong_evidence_rate"),
             )
-    lines.extend(["", "## Leaderboard", ""])
-    lines.append(build_markdown_report(report).split("## Leaderboard", 1)[1].split("## Missing Evidence", 1)[0].strip())
-    lines.extend(["", "## Notes", ""])
-    lines.append("- Secrets are not written to benchmark artifacts.")
+        )
+    return lines
+
+
+def _comparison_top_issue_lines(top_issue_cases: list[Any]) -> list[str]:
+    if not top_issue_cases:
+        return []
+    lines = [
+        "",
+        "## Top 问题样本",
+        "",
+        "| 系统 | 判定 | 分数 | 问题类型 | 事项 | 问题 | 缺失证据 |",
+        "| --- | --- | ---: | --- | --- | --- | --- |",
+    ]
+    for row in top_issue_cases[:30]:
+        lines.append(
+            "| `{system}` | {verdict} | {score:.3f} | {case_type} | {title} | {query} | {missing} |".format(
+                system=row.get("system"),
+                verdict=row.get("verdict"),
+                score=_metric_float(row, "business_score"),
+                case_type=row.get("case_type"),
+                title=_preview(row.get("source_record_title"), limit=42),
+                query=_preview(row.get("query"), limit=72),
+                missing=_preview(row.get("missing_evidence_clause_ids"), limit=60),
+            )
+        )
+    return lines
+
+
+def _comparison_notes_lines(skipped_systems: list[Any]) -> list[str]:
+    lines = ["", "## Notes", "", "- Secrets are not written to benchmark artifacts."]
     if skipped_systems:
         lines.append(f"- Skipped systems because API keys were missing: `{', '.join(skipped_systems)}`.")
-    lines.append("- Missing API keys produce skipped run files; provide `--app-key-file` or explicit `--app` values to execute remote Dify calls.")
-    return "\n".join(lines).rstrip() + "\n"
+    lines.append(
+        "- Missing API keys produce skipped run files; provide `--app-key-file` or explicit "
+        "`--app` values to execute remote Dify calls."
+    )
+    return lines
 
 
 def build_sharing_markdown(report: dict[str, Any]) -> str:
     summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
     completion = report.get("completion_status") if isinstance(report.get("completion_status"), dict) else {}
     leaderboard = report.get("leaderboard") if isinstance(report.get("leaderboard"), list) else []
-    verdict_summary = report.get("audit_verdict_summary") if isinstance(report.get("audit_verdict_summary"), list) else []
-    case_type_advantage = report.get("case_type_advantage") if isinstance(report.get("case_type_advantage"), list) else []
-    dimension_advantage = report.get("dimension_advantage") if isinstance(report.get("dimension_advantage"), list) else []
-    advantage_summary = report.get("advantage_summary") if isinstance(report.get("advantage_summary"), dict) else build_advantage_summary(report)
+    verdict_summary = (
+        report.get("audit_verdict_summary") if isinstance(report.get("audit_verdict_summary"), list) else []
+    )
+    case_type_advantage = (
+        report.get("case_type_advantage") if isinstance(report.get("case_type_advantage"), list) else []
+    )
+    dimension_advantage = (
+        report.get("dimension_advantage") if isinstance(report.get("dimension_advantage"), list) else []
+    )
+    advantage_summary = (
+        report.get("advantage_summary")
+        if isinstance(report.get("advantage_summary"), dict)
+        else build_advantage_summary(report)
+    )
     top_issue_cases = report.get("top_issue_cases") if isinstance(report.get("top_issue_cases"), list) else []
     audit_review = report.get("audit_review") if isinstance(report.get("audit_review"), dict) else {}
     skipped_systems = summary.get("skipped_systems") if isinstance(summary.get("skipped_systems"), list) else []
@@ -2523,7 +2829,39 @@ def build_sharing_markdown(report: dict[str, Any]) -> str:
     expected_cases = int(completion.get("expected_cases") or DEFAULT_TARGET_COUNT)
     completion_key = _text(completion.get("completion_key")) or f"complete_{expected_systems}way_{expected_cases}"
     title = f"Dify {expected_systems}路评测摘要" if expected_systems > 0 else "Dify 评测摘要"
+    lines = _sharing_header_lines(
+        report=report,
+        summary=summary,
+        completion=completion,
+        title=title,
+        completion_key=completion_key,
+        expected_cases=expected_cases,
+        skipped_systems=skipped_systems,
+    )
+    lines.extend(_sharing_advantage_lines(advantage_summary))
+    lines.extend(_sharing_leaderboard_lines(leaderboard))
+    lines.extend(_sharing_verdict_lines(verdict_summary))
+    lines.extend(
+        _sharing_winner_lines(
+            case_type_advantage=case_type_advantage,
+            dimension_advantage=dimension_advantage,
+        )
+    )
+    lines.extend(_sharing_top_issue_lines(top_issue_cases))
+    lines.extend(_sharing_attachment_lines(audit_review))
+    return "\n".join(lines).rstrip() + "\n"
 
+
+def _sharing_header_lines(
+    *,
+    report: dict[str, Any],
+    summary: dict[str, Any],
+    completion: dict[str, Any],
+    title: str,
+    completion_key: str,
+    expected_cases: int,
+    skipped_systems: list[Any],
+) -> list[str]:
     lines = [
         f"# {title}",
         "",
@@ -2533,27 +2871,51 @@ def build_sharing_markdown(report: dict[str, Any]) -> str:
     ]
     if skipped_systems:
         lines.append(f"- 未纳入完整结论的系统：`{', '.join(_text(item) for item in skipped_systems)}`")
-    strongest = advantage_summary.get("strongest_by_win_count") if isinstance(advantage_summary.get("strongest_by_win_count"), list) else []
-    if advantage_summary:
-        lines.extend(["", "## 优势汇总", ""])
-        lines.append(f"- 总体排名第一：`{advantage_summary.get('overall_best_system') or '-'}`")
-        if strongest:
-            top = strongest[0]
-            lines.append(
-                "- 类型/维度胜出最多：`{system}`，总胜出 `{total}` 项（问题类型 `{case_types}`，业务维度 `{dimensions}`）。".format(
-                    system=top.get("system"),
-                    total=int(top.get("total_wins") or 0),
-                    case_types=int(top.get("case_type_wins") or 0),
-                    dimensions=int(top.get("dimension_wins") or 0),
-                )
+    return lines
+
+
+def _sharing_advantage_lines(advantage_summary: dict[str, Any]) -> list[str]:
+    if not advantage_summary:
+        return []
+    strongest = (
+        advantage_summary.get("strongest_by_win_count")
+        if isinstance(advantage_summary.get("strongest_by_win_count"), list)
+        else []
+    )
+    lines = ["", "## 优势汇总", ""]
+    lines.append(f"- 总体排名第一：`{advantage_summary.get('overall_best_system') or '-'}`")
+    if strongest:
+        top = strongest[0]
+        lines.append(
+            (
+                "- 类型/维度胜出最多：`{system}`，总胜出 `{total}` 项（问题类型 "
+                "`{case_types}`，业务维度 `{dimensions}`）。"
+            ).format(
+                system=top.get("system"),
+                total=int(top.get("total_wins") or 0),
+                case_types=int(top.get("case_type_wins") or 0),
+                dimensions=int(top.get("dimension_wins") or 0),
             )
-    lines.extend(["", "## 排行榜", "", "| 排名 | 系统 | 题数 | 回答证据覆盖 | 回答子问题覆盖 | 错证据率 | 延迟 ms |", "| ---: | --- | ---: | ---: | ---: | ---: | ---: |"])
+        )
+    return lines
+
+
+def _sharing_leaderboard_lines(leaderboard: list[Any]) -> list[str]:
+    lines = [
+        "",
+        "## 排行榜",
+        "",
+        "| 排名 | 系统 | 题数 | 回答证据覆盖 | 回答子问题覆盖 | 错证据率 | 延迟 ms |",
+        "| ---: | --- | ---: | ---: | ---: | ---: | ---: |",
+    ]
     for row in leaderboard:
         if not isinstance(row, dict):
             continue
         latency = row.get("mean_latency_ms")
         lines.append(
-            "| {rank} | `{system}` | {cases} | {answer_clause:.3f} | {answer_subq:.3f} | {wrong:.3f} | {latency} |".format(
+            (
+                "| {rank} | `{system}` | {cases} | {answer_clause:.3f} | {answer_subq:.3f} | {wrong:.3f} | {latency} |"
+            ).format(
                 rank=int(row.get("rank") or 0),
                 system=row.get("system"),
                 cases=int(row.get("cases") or 0),
@@ -2563,22 +2925,45 @@ def build_sharing_markdown(report: dict[str, Any]) -> str:
                 latency="-" if latency is None else f"{float(latency):.1f}",
             )
         )
-    if verdict_summary:
-        lines.extend(["", "## 准确率结构", "", "| 系统 | 准确 | 部分准确 | 证据不足 | 无答案 | 准确率 | 可用率 |", "| --- | ---: | ---: | ---: | ---: | ---: | ---: |"])
-        for row in verdict_summary:
-            if not isinstance(row, dict):
-                continue
-            lines.append(
-                "| `{system}` | {accurate} | {partial} | {insufficient} | {no_answer} | {accurate_rate:.3f} | {usable_rate:.3f} |".format(
-                    system=row.get("system"),
-                    accurate=int(row.get("accurate") or 0),
-                    partial=int(row.get("partially_accurate") or 0),
-                    insufficient=int(row.get("insufficient_evidence") or 0),
-                    no_answer=int(row.get("no_answer") or 0),
-                    accurate_rate=_metric_float(row, "accurate_rate"),
-                    usable_rate=_metric_float(row, "usable_rate"),
-                )
+    return lines
+
+
+def _sharing_verdict_lines(verdict_summary: list[Any]) -> list[str]:
+    if not verdict_summary:
+        return []
+    lines = [
+        "",
+        "## 准确率结构",
+        "",
+        "| 系统 | 准确 | 部分准确 | 证据不足 | 无答案 | 准确率 | 可用率 |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for row in verdict_summary:
+        if not isinstance(row, dict):
+            continue
+        lines.append(
+            (
+                "| `{system}` | {accurate} | {partial} | {insufficient} | {no_answer} | "
+                "{accurate_rate:.3f} | {usable_rate:.3f} |"
+            ).format(
+                system=row.get("system"),
+                accurate=int(row.get("accurate") or 0),
+                partial=int(row.get("partially_accurate") or 0),
+                insufficient=int(row.get("insufficient_evidence") or 0),
+                no_answer=int(row.get("no_answer") or 0),
+                accurate_rate=_metric_float(row, "accurate_rate"),
+                usable_rate=_metric_float(row, "usable_rate"),
             )
+        )
+    return lines
+
+
+def _sharing_winner_lines(
+    *,
+    case_type_advantage: list[Any],
+    dimension_advantage: list[Any],
+) -> list[str]:
+    lines: list[str] = []
     if case_type_advantage:
         winners = _winner_by_case_type([row for row in case_type_advantage if isinstance(row, dict)])
         lines.extend(["", "## 类型优势", "", "| 问题类型 | 当前胜出系统 | 业务综合分 |", "| --- | --- | ---: |"])
@@ -2601,39 +2986,55 @@ def build_sharing_markdown(report: dict[str, Any]) -> str:
                     score=_metric_float(row, "business_score"),
                 )
             )
-    if top_issue_cases:
-        lines.extend(["", "## 优先排查样本", "", "| 系统 | 判定 | 分数 | 事项 | 问题 |", "| --- | --- | ---: | --- | --- |"])
-        for row in top_issue_cases[:10]:
-            if not isinstance(row, dict):
-                continue
-            lines.append(
-                "| `{system}` | {verdict} | {score:.3f} | {title} | {query} |".format(
-                    system=row.get("system"),
-                    verdict=row.get("verdict"),
-                    score=_metric_float(row, "business_score"),
-                    title=_preview(row.get("source_record_title"), limit=42),
-                    query=_preview(row.get("query"), limit=72),
-                )
+    return lines
+
+
+def _sharing_top_issue_lines(top_issue_cases: list[Any]) -> list[str]:
+    if not top_issue_cases:
+        return []
+    lines = [
+        "",
+        "## 优先排查样本",
+        "",
+        "| 系统 | 判定 | 分数 | 事项 | 问题 |",
+        "| --- | --- | ---: | --- | --- |",
+    ]
+    for row in top_issue_cases[:10]:
+        if not isinstance(row, dict):
+            continue
+        lines.append(
+            "| `{system}` | {verdict} | {score:.3f} | {title} | {query} |".format(
+                system=row.get("system"),
+                verdict=row.get("verdict"),
+                score=_metric_float(row, "business_score"),
+                title=_preview(row.get("source_record_title"), limit=42),
+                query=_preview(row.get("query"), limit=72),
             )
-    lines.extend(
-        [
-            "",
-            "## 附件",
-            "",
-            "- 详细报告：`comparison_report.md`",
-            "- 机器可读报告：`comparison_report.json`",
-            f"- 逐题审计 JSONL：`{audit_review.get('jsonl_path', 'audit_review.jsonl')}`",
-            f"- 逐题审计 CSV：`{audit_review.get('csv_path', 'audit_review.csv')}`",
-        ]
-    )
-    return "\n".join(lines).rstrip() + "\n"
+        )
+    return lines
+
+
+def _sharing_attachment_lines(audit_review: dict[str, Any]) -> list[str]:
+    return [
+        "",
+        "## 附件",
+        "",
+        "- 详细报告：`comparison_report.md`",
+        "- 机器可读报告：`comparison_report.json`",
+        f"- 逐题审计 JSONL：`{audit_review.get('jsonl_path', 'audit_review.jsonl')}`",
+        f"- 逐题审计 CSV：`{audit_review.get('csv_path', 'audit_review.csv')}`",
+    ]
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Generate and run an evidence-first Dify/MimirQ benchmark.")
     parser.add_argument("--cases", default=DEFAULT_CASES)
     parser.add_argument("--golden-cases", default=DEFAULT_GOLDEN_CASES)
-    parser.add_argument("--prebuilt-cases", default="", help="Use a prebuilt benchmark cases JSON (list or {cases:[...]}) and skip internal 800-case expansion.")
+    parser.add_argument(
+        "--prebuilt-cases",
+        default="",
+        help="Use a prebuilt benchmark cases JSON (list or {cases:[...]}) and skip internal 800-case expansion.",
+    )
     parser.add_argument("--target-count", type=int, default=DEFAULT_TARGET_COUNT)
     parser.add_argument("--seed", type=int, default=20260704)
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
@@ -2646,7 +3047,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--out-dir", default=DEFAULT_OUT_DIR)
     parser.add_argument("--limit", type=int, default=0, help="Run only first N generated cases; 0 means all.")
-    parser.add_argument("--sample-per-type", type=int, default=0, help="Run N cases per generated case_type; overrides --limit when > 0.")
+    parser.add_argument(
+        "--sample-per-type",
+        type=int,
+        default=0,
+        help="Run N cases per generated case_type; overrides --limit when > 0.",
+    )
     parser.add_argument("--concurrency", type=int, default=3)
     parser.add_argument("--timeout", type=float, default=180.0)
     parser.add_argument("--response-mode", choices=["blocking", "streaming"], default="blocking")
@@ -2656,14 +3062,50 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--mimirq-base-url", default=DEFAULT_MIMIRQ_BASE_URL)
     parser.add_argument("--mimirq-token", default="")
     parser.add_argument("--env-file", default=".env")
-    parser.add_argument("--resume", action="store_true", help="Reuse existing run_*.json items in --out-dir and only call missing cases.")
-    parser.add_argument("--retry-failures", action="store_true", help="With --resume, re-run existing failed cases instead of reusing them.")
-    parser.add_argument("--flush-every", type=int, default=50, help="Write partial run_*.json checkpoints every N completed cases; 0 disables incremental flush.")
-    parser.add_argument("--preflight", action="store_true", help="Probe each Dify app with one generated case, without running the full benchmark.")
-    parser.add_argument("--report-only", action="store_true", help="Only read existing run_*.json files and regenerate comparison/audit reports; no API calls or run-file rewrites.")
-    parser.add_argument("--strict-complete", action="store_true", help="Exit non-zero unless all three Dify apps ran the full 800-case benchmark.")
-    parser.add_argument("--write-bundle", action="store_true", help="Write a zip bundle with reports, audit files, manifests, and run files.")
-    parser.add_argument("--auto-mode", action="store_true", help="Probe chat/workflow endpoints first and use the working Dify App mode.")
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Reuse existing run_*.json items in --out-dir and only call missing cases.",
+    )
+    parser.add_argument(
+        "--retry-failures",
+        action="store_true",
+        help="With --resume, re-run existing failed cases instead of reusing them.",
+    )
+    parser.add_argument(
+        "--flush-every",
+        type=int,
+        default=50,
+        help="Write partial run_*.json checkpoints every N completed cases; 0 disables incremental flush.",
+    )
+    parser.add_argument(
+        "--preflight",
+        action="store_true",
+        help="Probe each Dify app with one generated case, without running the full benchmark.",
+    )
+    parser.add_argument(
+        "--report-only",
+        action="store_true",
+        help=(
+            "Only read existing run_*.json files and regenerate comparison/audit reports; "
+            "no API calls or run-file rewrites."
+        ),
+    )
+    parser.add_argument(
+        "--strict-complete",
+        action="store_true",
+        help="Exit non-zero unless all three Dify apps ran the full 800-case benchmark.",
+    )
+    parser.add_argument(
+        "--write-bundle",
+        action="store_true",
+        help="Write a zip bundle with reports, audit files, manifests, and run files.",
+    )
+    parser.add_argument(
+        "--auto-mode",
+        action="store_true",
+        help="Probe chat/workflow endpoints first and use the working Dify App mode.",
+    )
     parser.add_argument(
         "--no-http-history-backfill",
         action="store_true",
@@ -2696,10 +3138,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = build_arg_parser().parse_args(argv)
-    out_dir = Path(args.out_dir)
-    apps = load_app_specs(list(args.app or []), str(args.app_key_file))
+def _redacted_apps(apps: list[AppSpec]) -> list[dict[str, Any]]:
+    return [app.__dict__ | {"api_key": "<redacted>"} for app in apps]
+
+
+def _apps_manifest(apps: list[AppSpec]) -> dict[str, Any]:
+    return {"schema": "mimirq.dify_3way_benchmark.apps.v1", "apps": _redacted_apps(apps)}
+
+
+def _load_main_cases(args: argparse.Namespace) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int]:
     if _text(args.prebuilt_cases):
         cases = load_prebuilt_cases(str(args.prebuilt_cases))
     else:
@@ -2719,10 +3166,23 @@ def main(argv: list[str] | None = None) -> int:
         target_count=int(args.target_count),
         cases=cases,
     )
+    return cases, cases_to_run, expected_case_count
+
+
+def _write_main_inputs(
+    *,
+    out_dir: Path,
+    apps: list[AppSpec],
+    cases: list[dict[str, Any]],
+) -> None:
     _write_json(out_dir / "key_requirements.json", build_key_requirements(apps))
     _write_json(
         out_dir / "cases_800.json",
-        {"schema": "mimirq.dify_3way_benchmark.cases.v1", "summary": summarize_cases(cases), "cases": cases},
+        {
+            "schema": "mimirq.dify_3way_benchmark.cases.v1",
+            "summary": summarize_cases(cases),
+            "cases": cases,
+        },
     )
     _write_json(
         out_dir / "truth_manifest.json",
@@ -2732,121 +3192,184 @@ def main(argv: list[str] | None = None) -> int:
             "items": build_truth_manifest(cases),
         },
     )
-    if args.generate_only:
-        _write_json(out_dir / "apps.json", {"schema": "mimirq.dify_3way_benchmark.apps.v1", "apps": [app.__dict__ | {"api_key": "<redacted>"} for app in apps]})
-        print(json.dumps({"cases": len(cases), "cases_path": str(out_dir / "cases_800.json"), "apps": len(apps)}, ensure_ascii=False))
-        return 0
 
-    console_token = ""
-    if not bool(args.no_dify_console_backfill):
-        try:
-            from scripts.changzhou_gov_dify_trace_report import load_console_token
 
-            console_token = load_console_token(
-                str(args.dify_console_token),
-                str(args.dify_console_storage_state),
-            )
-        except Exception:
-            console_token = ""
-
-    if not args.report_only and (args.auto_mode or any(app.mode == "auto" for app in apps)):
-        apps, mode_report = resolve_app_modes(
-            apps=apps,
-            probe_case=cases_to_run[0] if cases_to_run else {},
-            base_url=str(args.base_url),
-            timeout=float(args.timeout),
-            response_mode=_fixed_response_mode(str(args.response_mode)),
-            workflow_query_key=str(args.workflow_query_key),
-            user_prefix=str(args.user_prefix),
-            force=bool(args.auto_mode),
+def _handle_generate_only(
+    *,
+    args: argparse.Namespace,
+    out_dir: Path,
+    apps: list[AppSpec],
+    cases: list[dict[str, Any]],
+) -> int | None:
+    if not args.generate_only:
+        return None
+    _write_json(out_dir / "apps.json", _apps_manifest(apps))
+    print(
+        json.dumps(
+            {
+                "cases": len(cases),
+                "cases_path": str(out_dir / "cases_800.json"),
+                "apps": len(apps),
+            },
+            ensure_ascii=False,
         )
-        _write_json(out_dir / "mode_resolution_report.json", mode_report)
-    _write_json(out_dir / "apps.json", {"schema": "mimirq.dify_3way_benchmark.apps.v1", "apps": [app.__dict__ | {"api_key": "<redacted>"} for app in apps]})
+    )
+    return 0
 
-    if args.preflight:
-        report = run_preflight(
-            apps=apps,
-            cases=cases_to_run,
-            base_url=str(args.base_url),
-            timeout=float(args.timeout),
-            response_mode=_fixed_response_mode(str(args.response_mode)),
-            workflow_query_key=str(args.workflow_query_key),
-            user_prefix=str(args.user_prefix),
-            http_history_backfill=not bool(args.no_http_history_backfill),
-            history_backfill_wait_sec=float(args.http_history_backfill_wait_sec),
-            history_backfill_poll_sec=float(args.http_history_backfill_poll_sec),
-            console_base_url=str(args.dify_console_base_url),
-            console_token=console_token,
-            console_backfill=not bool(args.no_dify_console_backfill),
-        )
-        _write_json(out_dir / "preflight_report.json", report)
-        print(
-            json.dumps(
-                {
-                    "out_dir": str(out_dir),
-                    "preflight": (report.get("summary") or {}),
-                },
-                ensure_ascii=False,
-            )
-        )
-        return 0
 
+def _load_console_token_safe(args: argparse.Namespace) -> str:
+    if bool(args.no_dify_console_backfill):
+        return ""
+    try:
+        from scripts.changzhou_gov_dify_trace_report import load_console_token
+
+        return load_console_token(
+            str(args.dify_console_token),
+            str(args.dify_console_storage_state),
+        )
+    except Exception:
+        return ""
+
+
+def _resolve_main_app_modes(
+    *,
+    args: argparse.Namespace,
+    apps: list[AppSpec],
+    cases_to_run: list[dict[str, Any]],
+    out_dir: Path,
+) -> list[AppSpec]:
+    if args.report_only or not (args.auto_mode or any(app.mode == "auto" for app in apps)):
+        return apps
+    apps, mode_report = resolve_app_modes(
+        apps=apps,
+        probe_case=cases_to_run[0] if cases_to_run else {},
+        base_url=str(args.base_url),
+        timeout=float(args.timeout),
+        response_mode=_fixed_response_mode(str(args.response_mode)),
+        workflow_query_key=str(args.workflow_query_key),
+        user_prefix=str(args.user_prefix),
+        force=bool(args.auto_mode),
+    )
+    _write_json(out_dir / "mode_resolution_report.json", mode_report)
+    return apps
+
+
+def _run_main_preflight(
+    *,
+    args: argparse.Namespace,
+    apps: list[AppSpec],
+    cases_to_run: list[dict[str, Any]],
+    out_dir: Path,
+    console_token: str,
+) -> int:
+    report = run_preflight(
+        apps=apps,
+        cases=cases_to_run,
+        base_url=str(args.base_url),
+        timeout=float(args.timeout),
+        response_mode=_fixed_response_mode(str(args.response_mode)),
+        workflow_query_key=str(args.workflow_query_key),
+        user_prefix=str(args.user_prefix),
+        http_history_backfill=not bool(args.no_http_history_backfill),
+        history_backfill_wait_sec=float(args.http_history_backfill_wait_sec),
+        history_backfill_poll_sec=float(args.http_history_backfill_poll_sec),
+        console_base_url=str(args.dify_console_base_url),
+        console_token=console_token,
+        console_backfill=not bool(args.no_dify_console_backfill),
+    )
+    _write_json(out_dir / "preflight_report.json", report)
+    print(json.dumps({"out_dir": str(out_dir), "preflight": (report.get("summary") or {})}, ensure_ascii=False))
+    return 0
+
+
+def _load_main_runs(
+    *,
+    args: argparse.Namespace,
+    apps: list[AppSpec],
+    cases_to_run: list[dict[str, Any]],
+    out_dir: Path,
+    console_token: str,
+) -> list[dict[str, Any]]:
     runs: list[dict[str, Any]] = []
     if args.report_only:
-        runs = load_report_only_runs(out_dir=out_dir, apps=apps, include_mimirq_direct=bool(args.include_mimirq_direct))
-    elif args.include_mimirq_direct:
-        direct_run_path = out_dir / "run_mimirq_direct.json"
-        run = run_mimirq_direct(
-            cases=cases_to_run,
-            base_url=str(args.mimirq_base_url),
-            token=load_mimirq_token(str(args.mimirq_token), env_file=str(args.env_file)),
-            timeout=float(args.timeout),
-            concurrency=int(args.concurrency),
-            existing_items=_load_existing_run_items(direct_run_path) if args.resume else None,
-            retry_failures=bool(args.retry_failures),
-            run_path=direct_run_path,
-            flush_every=int(args.flush_every),
+        return load_report_only_runs(
+            out_dir=out_dir,
+            apps=apps,
+            include_mimirq_direct=bool(args.include_mimirq_direct),
         )
-        runs.append(run)
-        _write_json(direct_run_path, run)
+    if args.include_mimirq_direct:
+        _append_main_direct_run(args=args, cases_to_run=cases_to_run, out_dir=out_dir, runs=runs)
+    for app in apps:
+        _append_main_app_run(
+            args=args,
+            app=app,
+            cases_to_run=cases_to_run,
+            out_dir=out_dir,
+            console_token=console_token,
+            runs=runs,
+        )
+    return runs
 
-    if not args.report_only:
-        for app in apps:
-            run_path = out_dir / f"run_{app.label}.json"
-            run = run_app(
-                app=app,
-                cases=cases_to_run,
-                base_url=str(args.base_url),
-                timeout=float(args.timeout),
-                response_mode=_fixed_response_mode(str(args.response_mode)),
-                concurrency=int(args.concurrency),
-                workflow_query_key=str(args.workflow_query_key),
-                user_prefix=str(args.user_prefix),
-                existing_items=_load_existing_run_items(run_path) if args.resume else None,
-                retry_failures=bool(args.retry_failures),
-                run_path=run_path,
-                flush_every=int(args.flush_every),
-                http_history_backfill=not bool(args.no_http_history_backfill),
-                history_backfill_wait_sec=float(args.http_history_backfill_wait_sec),
-                history_backfill_poll_sec=float(args.http_history_backfill_poll_sec),
-                console_base_url=str(args.dify_console_base_url),
-                console_token=console_token,
-                console_backfill=not bool(args.no_dify_console_backfill),
-            )
-            runs.append(run)
-            _write_json(run_path, run)
 
-    skipped_systems = [
-        _text(run.get("system"))
-        for run in runs
-        if isinstance(run.get("summary"), dict) and run["summary"].get("skipped") is True
-    ]
-    executed_runs = [
-        run
-        for run in runs
-        if not (isinstance(run.get("summary"), dict) and run["summary"].get("skipped") is True)
-    ]
-    report = evaluate_mixed_rag_quality(cases=cases_to_run, runs=executed_runs) if executed_runs else {
+def _append_main_direct_run(
+    *,
+    args: argparse.Namespace,
+    cases_to_run: list[dict[str, Any]],
+    out_dir: Path,
+    runs: list[dict[str, Any]],
+) -> None:
+    direct_run_path = out_dir / "run_mimirq_direct.json"
+    run = run_mimirq_direct(
+        cases=cases_to_run,
+        base_url=str(args.mimirq_base_url),
+        token=load_mimirq_token(str(args.mimirq_token), env_file=str(args.env_file)),
+        timeout=float(args.timeout),
+        concurrency=int(args.concurrency),
+        existing_items=_load_existing_run_items(direct_run_path) if args.resume else None,
+        retry_failures=bool(args.retry_failures),
+        run_path=direct_run_path,
+        flush_every=int(args.flush_every),
+    )
+    runs.append(run)
+    _write_json(direct_run_path, run)
+
+
+def _append_main_app_run(
+    *,
+    args: argparse.Namespace,
+    app: AppSpec,
+    cases_to_run: list[dict[str, Any]],
+    out_dir: Path,
+    console_token: str,
+    runs: list[dict[str, Any]],
+) -> None:
+    run_path = out_dir / f"run_{app.label}.json"
+    run = run_app(
+        app=app,
+        cases=cases_to_run,
+        base_url=str(args.base_url),
+        timeout=float(args.timeout),
+        response_mode=_fixed_response_mode(str(args.response_mode)),
+        concurrency=int(args.concurrency),
+        workflow_query_key=str(args.workflow_query_key),
+        user_prefix=str(args.user_prefix),
+        existing_items=_load_existing_run_items(run_path) if args.resume else None,
+        retry_failures=bool(args.retry_failures),
+        run_path=run_path,
+        flush_every=int(args.flush_every),
+        http_history_backfill=not bool(args.no_http_history_backfill),
+        history_backfill_wait_sec=float(args.http_history_backfill_wait_sec),
+        history_backfill_poll_sec=float(args.http_history_backfill_poll_sec),
+        console_base_url=str(args.dify_console_base_url),
+        console_token=console_token,
+        console_backfill=not bool(args.no_dify_console_backfill),
+    )
+    runs.append(run)
+    _write_json(run_path, run)
+
+
+def _empty_quality_report(cases_to_run: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
         "schema": "mimirq.mixed_rag_quality_report.v1",
         "generated_at": _utc_now_text(),
         "method": {"judge": "deterministic_term_and_metadata_matching", "llm_judge": False},
@@ -2856,7 +3379,32 @@ def main(argv: list[str] | None = None) -> int:
         "pairwise": [],
         "items": [],
     }
-    report["apps"] = [app.__dict__ | {"api_key": "<redacted>"} for app in apps]
+
+
+def _build_main_report(
+    *,
+    args: argparse.Namespace,
+    apps: list[AppSpec],
+    cases: list[dict[str, Any]],
+    cases_to_run: list[dict[str, Any]],
+    expected_case_count: int,
+    out_dir: Path,
+    runs: list[dict[str, Any]],
+) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]], list[str]]:
+    skipped_systems = [
+        _text(run.get("system"))
+        for run in runs
+        if isinstance(run.get("summary"), dict) and run["summary"].get("skipped") is True
+    ]
+    executed_runs = [
+        run for run in runs if not (isinstance(run.get("summary"), dict) and run["summary"].get("skipped") is True)
+    ]
+    report = (
+        evaluate_mixed_rag_quality(cases=cases_to_run, runs=executed_runs)
+        if executed_runs
+        else _empty_quality_report(cases_to_run)
+    )
+    report["apps"] = _redacted_apps(apps)
     report["summary"]["requested_cases"] = len(cases)
     report["summary"]["executed_cases"] = len(cases_to_run)
     report["summary"]["base_url"] = str(args.base_url).rstrip("/")
@@ -2891,6 +3439,18 @@ def main(argv: list[str] | None = None) -> int:
     report["artifact_manifest_path"] = str(out_dir / "artifact_manifest.json")
     report["audit_verdict_summary"] = build_verdict_summary(audit_rows)
     report["top_issue_cases"] = build_top_issue_cases(audit_rows, per_system=10)
+    return report, completion_status, audit_rows, skipped_systems
+
+
+def _write_main_report_outputs(
+    *,
+    args: argparse.Namespace,
+    out_dir: Path,
+    apps: list[AppSpec],
+    cases_to_run: list[dict[str, Any]],
+    report: dict[str, Any],
+    audit_rows: list[dict[str, Any]],
+) -> dict[str, Any]:
     _write_json(out_dir / "comparison_report.json", report)
     _write_jsonl(out_dir / "audit_review.jsonl", audit_rows)
     _write_csv(
@@ -2932,6 +3492,56 @@ def main(argv: list[str] | None = None) -> int:
         include_mimirq_direct=bool(args.include_mimirq_direct),
     )
     _write_json(out_dir / "artifact_manifest.json", artifact_manifest)
+    return artifact_manifest
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_arg_parser().parse_args(argv)
+    out_dir = Path(args.out_dir)
+    apps = load_app_specs(list(args.app or []), str(args.app_key_file))
+    cases, cases_to_run, expected_case_count = _load_main_cases(args)
+    _write_main_inputs(out_dir=out_dir, apps=apps, cases=cases)
+    generate_only_result = _handle_generate_only(args=args, out_dir=out_dir, apps=apps, cases=cases)
+    if generate_only_result is not None:
+        return generate_only_result
+
+    console_token = _load_console_token_safe(args)
+    apps = _resolve_main_app_modes(args=args, apps=apps, cases_to_run=cases_to_run, out_dir=out_dir)
+    _write_json(out_dir / "apps.json", _apps_manifest(apps))
+
+    if args.preflight:
+        return _run_main_preflight(
+            args=args,
+            apps=apps,
+            cases_to_run=cases_to_run,
+            out_dir=out_dir,
+            console_token=console_token,
+        )
+
+    runs = _load_main_runs(
+        args=args,
+        apps=apps,
+        cases_to_run=cases_to_run,
+        out_dir=out_dir,
+        console_token=console_token,
+    )
+    report, completion_status, audit_rows, skipped_systems = _build_main_report(
+        args=args,
+        apps=apps,
+        cases=cases,
+        cases_to_run=cases_to_run,
+        expected_case_count=expected_case_count,
+        out_dir=out_dir,
+        runs=runs,
+    )
+    artifact_manifest = _write_main_report_outputs(
+        args=args,
+        out_dir=out_dir,
+        apps=apps,
+        cases_to_run=cases_to_run,
+        report=report,
+        audit_rows=audit_rows,
+    )
     bundle_path = write_artifact_bundle(out_dir=out_dir, manifest=artifact_manifest) if args.write_bundle else None
     print(
         json.dumps(

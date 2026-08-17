@@ -1,4 +1,3 @@
-
 from typing import Any
 
 FAST_RETRIEVAL_PROFILE = "fast"
@@ -81,6 +80,170 @@ def _configured_reranker_provider(out: dict[str, Any]) -> str:
     return "cross_encoder"
 
 
+def _initial_profile_options(
+    *,
+    normalized: str | None,
+    top_k: int,
+    score_threshold: float,
+    retrieval_mode: str | None,
+    enable_reranker: bool | None,
+    reranker_provider: str | None,
+    reranker_top_n: int | None,
+    enable_weight_rerank: bool | None,
+    retrieval_contract_mode: str | None,
+    visible_evidence_only: bool | None,
+) -> dict[str, Any]:
+    return {
+        "retrieval_profile": normalized,
+        "top_k": int(top_k or 0),
+        "score_threshold": float(score_threshold or 0.0),
+        "retrieval_mode": str(retrieval_mode or "").strip().lower() or None,
+        "enable_reranker": None if enable_reranker is None else bool(enable_reranker),
+        "reranker_provider": str(reranker_provider or "").strip().lower() or None,
+        "reranker_top_n": None if reranker_top_n is None else int(reranker_top_n or 0),
+        "enable_weight_rerank": None if enable_weight_rerank is None else bool(enable_weight_rerank),
+        "retrieval_contract_mode": str(retrieval_contract_mode or "").strip().lower() or None,
+        "visible_evidence_only": None if visible_evidence_only is None else bool(visible_evidence_only),
+    }
+
+
+def _apply_fast_profile(out: dict[str, Any]) -> dict[str, Any]:
+    out.update(
+        retrieval_mode="vector",
+        top_k=10,
+        score_threshold=0.0,
+        enable_reranker=False,
+        reranker_provider="none",
+        reranker_top_n=1,
+        enable_weight_rerank=False,
+        sparse_retrieval_enabled=False,
+    )
+    return out
+
+
+def _apply_balanced_profile(out: dict[str, Any]) -> dict[str, Any]:
+    out.update(retrieval_mode="hybrid", top_k=10, score_threshold=0.0, enable_weight_rerank=False)
+    if out.get("enable_reranker") is False:
+        out.update(reranker_provider="none", reranker_top_n=1)
+        return out
+    out.update(
+        enable_reranker=True,
+        reranker_provider=_configured_reranker_provider(out),
+        reranker_top_n=20,
+    )
+    return out
+
+
+def _apply_quality_profile(out: dict[str, Any]) -> dict[str, Any]:
+    _apply_default_expansion_defaults(out)
+    out.update(retrieval_mode="hybrid", enable_weight_rerank=False)
+    if out.get("enable_reranker") is False:
+        out.update(reranker_provider="none", reranker_top_n=1)
+        return out
+    out.update(
+        enable_reranker=True,
+        reranker_provider=_configured_reranker_provider(out),
+        reranker_top_n=max(40, int(out["top_k"] or 0)),
+    )
+    return out
+
+
+def _apply_recall_profile(out: dict[str, Any], *, minimum_top_k: int) -> dict[str, Any]:
+    out["top_k"] = max(int(out["top_k"] or 0), minimum_top_k)
+    out["score_threshold"] = 0.0
+    return out
+
+
+def _apply_hierarchy_recall_profile(out: dict[str, Any]) -> dict[str, Any]:
+    _apply_recall_profile(out, minimum_top_k=20)
+    return _apply_hierarchy_overlay_defaults(out)
+
+
+def _apply_sparse_profile(out: dict[str, Any]) -> dict[str, Any]:
+    out.update(
+        retrieval_mode="hybrid",
+        top_k=max(int(out["top_k"] or 0), 20),
+        score_threshold=0.0,
+        sparse_retrieval_enabled=True,
+        sparse_retrieval_provider="splade",
+    )
+    return out
+
+
+def _apply_production_profile(out: dict[str, Any], *, hierarchy: bool = False) -> dict[str, Any]:
+    out.update(
+        retrieval_mode="hybrid",
+        top_k=max(int(out["top_k"] or 0), 20),
+        score_threshold=0.0,
+        enable_weight_rerank=False,
+    )
+    if out.get("enable_reranker") is False:
+        out["reranker_provider"] = "none"
+    else:
+        out.update(
+            enable_reranker=True,
+            reranker_provider=_configured_reranker_provider(out),
+            reranker_top_n=max(int(out["reranker_top_n"] or 0), int(out["top_k"] or 0), 20),
+        )
+    return _apply_hierarchy_overlay_defaults(out) if hierarchy else out
+
+
+def _apply_hierarchy_production_profile(out: dict[str, Any]) -> dict[str, Any]:
+    return _apply_production_profile(out, hierarchy=True)
+
+
+def _apply_long_context_profile(out: dict[str, Any]) -> dict[str, Any]:
+    out.update(
+        retrieval_mode="hybrid",
+        top_k=8,
+        score_threshold=0.0,
+        enable_reranker=True,
+        reranker_provider="long_context",
+        reranker_top_n=4,
+        enable_weight_rerank=False,
+    )
+    return out
+
+
+def _apply_strict_profile(out: dict[str, Any], *, hierarchy: bool = False) -> dict[str, Any]:
+    out.update(
+        retrieval_mode="hybrid",
+        top_k=max(int(out["top_k"] or 0), 20),
+        score_threshold=0.0,
+        enable_reranker=True,
+        reranker_provider=_configured_reranker_provider(out),
+        reranker_top_n=max(int(out["reranker_top_n"] or 0), int(out["top_k"] or 0), 20),
+        enable_weight_rerank=False,
+        retrieval_contract_mode="evidence_strict",
+        visible_evidence_only=True,
+    )
+    return _apply_hierarchy_overlay_defaults(out) if hierarchy else out
+
+
+def _apply_hierarchy_strict_profile(out: dict[str, Any]) -> dict[str, Any]:
+    return _apply_strict_profile(out, hierarchy=True)
+
+
+_RECALL_PROFILE_MINIMUMS = {"recall20": 20, "recall50": 50, "coverage80": 80}
+_EXPANSION_PROFILES = {EXPANDED_RETRIEVAL_PROFILE, HIERARCHY_EXPANDED_RECALL_RETRIEVAL_PROFILE}
+_PROFILE_APPLIERS = {
+    FAST_RETRIEVAL_PROFILE: _apply_fast_profile,
+    BALANCED_RETRIEVAL_PROFILE: _apply_balanced_profile,
+    QUALITY_RETRIEVAL_PROFILE: _apply_quality_profile,
+    SPARSE_SPLADE_RETRIEVAL_PROFILE: _apply_sparse_profile,
+    PRODUCTION_RETRIEVAL_PROFILE: _apply_production_profile,
+    LONG_CONTEXT_RETRIEVAL_PROFILE: _apply_long_context_profile,
+    HIERARCHY_PRODUCTION_RETRIEVAL_PROFILE: _apply_hierarchy_production_profile,
+    STRICT_GROUNDED_RETRIEVAL_PROFILE: _apply_strict_profile,
+    HIERARCHY_STRICT_GROUNDED_RETRIEVAL_PROFILE: _apply_hierarchy_strict_profile,
+}
+_INVALID_PROFILE_MESSAGE = (
+    "retrieval_profile must be one of: fast, balanced, quality, recall20, recall50, coverage80, expanded, "
+    "sparse_splade, hybrid_ce, grounded_strict, long_context, hierarchy_recall20, hierarchy_recall20_expand, "
+    "hierarchy_hybrid_ce, hierarchy_grounded_strict"
+)
+
+
 def apply_retrieval_profile_overrides(
     *,
     profile: Any,
@@ -95,161 +258,30 @@ def apply_retrieval_profile_overrides(
     visible_evidence_only: bool | None = None,
 ) -> dict[str, Any]:
     normalized = normalize_retrieval_profile(profile)
-
-    out: dict[str, Any] = {
-        "retrieval_profile": normalized,
-        "top_k": int(top_k or 0),
-        "score_threshold": float(score_threshold or 0.0),
-        "retrieval_mode": str(retrieval_mode or "").strip().lower() or None,
-        "enable_reranker": None if enable_reranker is None else bool(enable_reranker),
-        "reranker_provider": str(reranker_provider or "").strip().lower() or None,
-        "reranker_top_n": None if reranker_top_n is None else int(reranker_top_n or 0),
-        "enable_weight_rerank": None if enable_weight_rerank is None else bool(enable_weight_rerank),
-        "retrieval_contract_mode": str(retrieval_contract_mode or "").strip().lower() or None,
-        "visible_evidence_only": None if visible_evidence_only is None else bool(visible_evidence_only),
-    }
-
-    if normalized is None:
-        out["retrieval_profile"] = None
-        return out
-
-    if normalized == FAST_RETRIEVAL_PROFILE:
-        out["retrieval_mode"] = "vector"
-        out["top_k"] = 10
-        out["score_threshold"] = 0.0
-        out["enable_reranker"] = False
-        out["reranker_provider"] = "none"
-        out["reranker_top_n"] = 1
-        out["enable_weight_rerank"] = False
-        out["sparse_retrieval_enabled"] = False
-        return out
-
-    if normalized == BALANCED_RETRIEVAL_PROFILE:
-        out["retrieval_mode"] = "hybrid"
-        out["top_k"] = 10
-        out["score_threshold"] = 0.0
-        out["enable_weight_rerank"] = False
-        if out.get("enable_reranker") is False:
-            out["reranker_provider"] = "none"
-            out["reranker_top_n"] = 1
-            return out
-        out["enable_reranker"] = True
-        out["reranker_provider"] = _configured_reranker_provider(out)
-        out["reranker_top_n"] = 20
-        return out
-
-    if normalized == QUALITY_RETRIEVAL_PROFILE:
-        out = _apply_default_expansion_defaults(out)
-        out["retrieval_mode"] = "hybrid"
-        out["enable_weight_rerank"] = False
-        if out.get("enable_reranker") is False:
-            out["reranker_provider"] = "none"
-            out["reranker_top_n"] = 1
-            return out
-        out["enable_reranker"] = True
-        out["reranker_provider"] = _configured_reranker_provider(out)
-        out["reranker_top_n"] = max(40, int(out["top_k"] or 0))
-        return out
-
-    if normalized == "recall20":
-        out["top_k"] = max(int(out["top_k"] or 0), 20)
-        out["score_threshold"] = 0.0
-        return out
-
-    if normalized == "recall50":
-        out["top_k"] = max(int(out["top_k"] or 0), 50)
-        out["score_threshold"] = 0.0
-        return out
-
-    if normalized == "coverage80":
-        out["top_k"] = max(int(out["top_k"] or 0), 80)
-        out["score_threshold"] = 0.0
-        return out
-
-    if normalized == "hierarchy_recall20":
-        out["top_k"] = max(int(out["top_k"] or 0), 20)
-        out["score_threshold"] = 0.0
-        return _apply_hierarchy_overlay_defaults(out)
-
-    if normalized == HIERARCHY_EXPANDED_RECALL_RETRIEVAL_PROFILE:
-        return _apply_default_expansion_defaults(out)
-
-    if normalized == EXPANDED_RETRIEVAL_PROFILE:
-        return _apply_default_expansion_defaults(out)
-
-    if normalized == SPARSE_SPLADE_RETRIEVAL_PROFILE:
-        out["retrieval_mode"] = "hybrid"
-        out["top_k"] = max(int(out["top_k"] or 0), 20)
-        out["score_threshold"] = 0.0
-        out["sparse_retrieval_enabled"] = True
-        out["sparse_retrieval_provider"] = "splade"
-        return out
-
-    if normalized == PRODUCTION_RETRIEVAL_PROFILE:
-        out["retrieval_mode"] = "hybrid"
-        out["top_k"] = max(int(out["top_k"] or 0), 20)
-        out["score_threshold"] = 0.0
-        out["enable_weight_rerank"] = False
-        if out.get("enable_reranker") is False:
-            out["reranker_provider"] = "none"
-            return out
-        out["enable_reranker"] = True
-        out["reranker_provider"] = _configured_reranker_provider(out)
-        out["reranker_top_n"] = max(int(out["reranker_top_n"] or 0), int(out["top_k"] or 0), 20)
-        return out
-
-    if normalized == LONG_CONTEXT_RETRIEVAL_PROFILE:
-        out["retrieval_mode"] = "hybrid"
-        out["top_k"] = 8
-        out["score_threshold"] = 0.0
-        out["enable_reranker"] = True
-        out["reranker_provider"] = "long_context"
-        out["reranker_top_n"] = 4
-        out["enable_weight_rerank"] = False
-        return out
-
-    if normalized == HIERARCHY_PRODUCTION_RETRIEVAL_PROFILE:
-        out["retrieval_mode"] = "hybrid"
-        out["top_k"] = max(int(out["top_k"] or 0), 20)
-        out["score_threshold"] = 0.0
-        out["enable_weight_rerank"] = False
-        if out.get("enable_reranker") is False:
-            out["reranker_provider"] = "none"
-            return _apply_hierarchy_overlay_defaults(out)
-        out["enable_reranker"] = True
-        out["reranker_provider"] = _configured_reranker_provider(out)
-        out["reranker_top_n"] = max(int(out["reranker_top_n"] or 0), int(out["top_k"] or 0), 20)
-        return _apply_hierarchy_overlay_defaults(out)
-
-    if normalized == STRICT_GROUNDED_RETRIEVAL_PROFILE:
-        out["retrieval_mode"] = "hybrid"
-        out["top_k"] = max(int(out["top_k"] or 0), 20)
-        out["score_threshold"] = 0.0
-        out["enable_reranker"] = True
-        out["reranker_provider"] = _configured_reranker_provider(out)
-        out["reranker_top_n"] = max(int(out["reranker_top_n"] or 0), int(out["top_k"] or 0), 20)
-        out["enable_weight_rerank"] = False
-        out["retrieval_contract_mode"] = "evidence_strict"
-        out["visible_evidence_only"] = True
-        return out
-
-    if normalized == HIERARCHY_STRICT_GROUNDED_RETRIEVAL_PROFILE:
-        out["retrieval_mode"] = "hybrid"
-        out["top_k"] = max(int(out["top_k"] or 0), 20)
-        out["score_threshold"] = 0.0
-        out["enable_reranker"] = True
-        out["reranker_provider"] = _configured_reranker_provider(out)
-        out["reranker_top_n"] = max(int(out["reranker_top_n"] or 0), int(out["top_k"] or 0), 20)
-        out["enable_weight_rerank"] = False
-        out["retrieval_contract_mode"] = "evidence_strict"
-        out["visible_evidence_only"] = True
-        return _apply_hierarchy_overlay_defaults(out)
-
-    raise ValueError(
-        "retrieval_profile must be one of: "
-        "fast, balanced, quality, recall20, recall50, coverage80, expanded, sparse_splade, hybrid_ce, grounded_strict, long_context, "
-        "hierarchy_recall20, hierarchy_recall20_expand, hierarchy_hybrid_ce, hierarchy_grounded_strict"
+    out = _initial_profile_options(
+        normalized=normalized,
+        top_k=top_k,
+        score_threshold=score_threshold,
+        retrieval_mode=retrieval_mode,
+        enable_reranker=enable_reranker,
+        reranker_provider=reranker_provider,
+        reranker_top_n=reranker_top_n,
+        enable_weight_rerank=enable_weight_rerank,
+        retrieval_contract_mode=retrieval_contract_mode,
+        visible_evidence_only=visible_evidence_only,
     )
+    if normalized is None:
+        return out
+    if normalized not in SUPPORTED_RETRIEVAL_PROFILES:
+        raise ValueError(_INVALID_PROFILE_MESSAGE)
+    minimum_top_k = _RECALL_PROFILE_MINIMUMS.get(normalized)
+    if minimum_top_k is not None:
+        return _apply_recall_profile(out, minimum_top_k=minimum_top_k)
+    if normalized == "hierarchy_recall20":
+        return _apply_hierarchy_recall_profile(out)
+    if normalized in _EXPANSION_PROFILES:
+        return _apply_default_expansion_defaults(out)
+    return _PROFILE_APPLIERS[normalized](out)
 
 
 __all__ = [

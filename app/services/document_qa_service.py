@@ -11,7 +11,6 @@ Design notes:
   include/exclude them via metadata_filter.
 """
 
-
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -31,9 +30,7 @@ from app.storage.vector.factory import get_vector_store
 
 logger = get_logger("services.document_qa")
 
-_DOCUMENT_QA_DEGRADED_LOG_MSG = (
-    "Document QA degraded: feature=%s dependency=%s reason=%s remediation=%s error=%s"
-)
+_DOCUMENT_QA_DEGRADED_LOG_MSG = "Document QA degraded: feature=%s dependency=%s reason=%s remediation=%s error=%s"
 
 
 @dataclass(frozen=True)
@@ -49,6 +46,14 @@ class DocumentQAGenerateResult:
     created: int
     chunk_ids: list[UUID]
     preview: list[dict[str, str]]
+
+
+@dataclass
+class _QAPairParseState:
+    pairs: list[QAPair]
+    question: str | None = None
+    answer_lines: list[str] | None = None
+    saw_answer_prefix: bool = False
 
 
 _Q_PREFIXES: tuple[str, ...] = ("question", "q", "问题", "問題", "问")
@@ -106,49 +111,50 @@ def extract_qa_pairs_from_text(text: str, *, max_pairs: int) -> list[QAPair]:
     if not raw or max_pairs <= 0:
         return []
 
-    pairs: list[QAPair] = []
-    question: str | None = None
-    answer_lines: list[str] = []
-    saw_answer_prefix = False
+    state = _QAPairParseState(pairs=[], answer_lines=[])
 
     for line in raw.splitlines():
-        if len(pairs) >= max_pairs:
+        if len(state.pairs) >= max_pairs:
             break
 
         q_val = _split_prefixed_field(line, prefixes=_Q_PREFIXES, require_value=True)
         if q_val is not None:
-            # Flush previous.
-            if question and saw_answer_prefix:
-                answer = "\n".join([a for a in answer_lines if a is not None]).strip()
-                if answer:
-                    pairs.append(QAPair(question=question.strip(), answer=answer))
-            # Start new.
-            question = q_val
-            answer_lines = []
-            saw_answer_prefix = False
+            _flush_current_pair(state)
+            state.question = q_val
+            state.answer_lines = []
+            state.saw_answer_prefix = False
             continue
 
-        if question is None:
+        if state.question is None:
             continue
 
         a_val = _split_prefixed_field(line, prefixes=_A_PREFIXES, require_value=False)
         if a_val is not None:
-            saw_answer_prefix = True
+            state.saw_answer_prefix = True
             rest = a_val.strip()
             if rest:
-                answer_lines.append(rest)
+                state.answer_lines.append(rest)
             continue
 
-        if saw_answer_prefix:
-            # Continue answer until next Q: ... line.
-            answer_lines.append(line.rstrip())
+        _append_answer_continuation(state, line)
 
-    if question and saw_answer_prefix and len(pairs) < max_pairs:
-        answer = "\n".join([a for a in answer_lines if a is not None]).strip()
-        if answer:
-            pairs.append(QAPair(question=question.strip(), answer=answer))
+    if len(state.pairs) < max_pairs:
+        _flush_current_pair(state)
 
-    return pairs[:max_pairs]
+    return state.pairs[:max_pairs]
+
+
+def _append_answer_continuation(state: _QAPairParseState, line: str) -> None:
+    if state.saw_answer_prefix and state.answer_lines is not None:
+        state.answer_lines.append(line.rstrip())
+
+
+def _flush_current_pair(state: _QAPairParseState) -> None:
+    if not state.question or not state.saw_answer_prefix or state.answer_lines is None:
+        return
+    answer = "\n".join(state.answer_lines).strip()
+    if answer:
+        state.pairs.append(QAPair(question=state.question.strip(), answer=answer))
 
 
 def _llm_enabled() -> bool:
@@ -324,84 +330,15 @@ def generate_and_index_document_qa(
     active_hash = _active_pipeline_hash(doc_meta)
     active_key = _active_doc_pipeline_key(document_id, doc_meta)
 
-    # 1) Delete existing QA chunks (best-effort).
     deleted = 0
     if replace_existing:
-        rows = (
-            db.query(DocumentChunk.id, DocumentChunk.doc_metadata)
-            .filter(DocumentChunk.tenant_id == tenant_id, DocumentChunk.document_id == document_id)
-            .all()
+        qa_ids = _collect_active_qa_chunk_ids(db, tenant_id=tenant_id, document_id=document_id, active_key=active_key)
+        deleted = _delete_existing_qa_chunks(
+            db,
+            tenant_id=tenant_id,
+            document_id=document_id,
+            qa_ids=qa_ids,
         )
-        qa_ids: list[UUID] = []
-        for cid, meta in rows:
-            m = meta if isinstance(meta, dict) else {}
-            if str(m.get("doc_pipeline_key") or "").strip() != active_key:
-                continue
-            if str(m.get("file_type") or "").strip().lower() != "qa":
-                continue
-            qa_ids.append(UUID(str(cid)))
-
-        if qa_ids:
-            vector_store = get_vector_store()
-
-            vector_delete_errors = 0
-            vector_delete_first_error: str | None = None
-            bm25_delete_errors = 0
-            bm25_delete_first_error: str | None = None
-
-            for cid in qa_ids:
-                try:
-                    vector_store.delete_by_document_id_and_filter(
-                        document_id=document_id,
-                        tenant_id=tenant_id,
-                        metadata_filter={"chunk_id": {"$eq": str(cid)}},
-                    )
-                except NotImplementedError:
-                    # If vector backend can't selectively delete, leave vectors as-is.
-                    pass
-                except Exception as exc:  # noqa: BLE001
-                    vector_delete_errors += 1
-                    if vector_delete_first_error is None:
-                        vector_delete_first_error = str(exc)[:200]
-
-                try:
-                    hybrid_retriever.remove_from_bm25_index_by_metadata_filter(
-                        tenant_id=tenant_id,
-                        metadata_filter={"chunk_id": {"$eq": str(cid)}},
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    bm25_delete_errors += 1
-                    if bm25_delete_first_error is None:
-                        bm25_delete_first_error = str(exc)[:200]
-
-            if vector_delete_errors:
-                logger.warning(
-                    "Document QA degraded: feature=%s dependency=%s reason=%s remediation=%s errors=%s first_error=%s",
-                    "qa_vector_delete",
-                    str(getattr(settings, "VECTOR_BACKEND", "") or "vector_store"),
-                    "delete_failed",
-                    "check vector backend health/permissions; stale vectors may remain",
-                    int(vector_delete_errors),
-                    vector_delete_first_error or "",
-                )
-            if bm25_delete_errors:
-                logger.warning(
-                    "Document QA degraded: feature=%s dependency=%s reason=%s remediation=%s errors=%s first_error=%s",
-                    "qa_bm25_delete",
-                    "bm25",
-                    "delete_failed",
-                    "check BM25 index backend; stale keywords may remain",
-                    int(bm25_delete_errors),
-                    bm25_delete_first_error or "",
-                )
-
-            db.query(DocumentChunk).filter(
-                DocumentChunk.tenant_id == tenant_id,
-                DocumentChunk.document_id == document_id,
-                DocumentChunk.id.in_(qa_ids),
-            ).delete(synchronize_session=False)
-            db.commit()
-            deleted = len(qa_ids)
 
     # 2) Build source text.
     source_text = _get_source_text(db, tenant_id=tenant_id, document_id=document_id, max_chars=max_source_chars)
@@ -414,87 +351,28 @@ def generate_and_index_document_qa(
     if not pairs:
         return DocumentQAGenerateResult(mode=mode, deleted=deleted, created=0, chunk_ids=[], preview=[])
 
-    # 4) Determine next chunk_index in active pipeline version.
-    q = db.query(func.max(DocumentChunk.chunk_index)).filter(
-        DocumentChunk.tenant_id == tenant_id,
-        DocumentChunk.document_id == document_id,
+    next_index = _next_active_chunk_index(db, tenant_id=tenant_id, document_id=document_id, active_key=active_key)
+    records, chunk_ids, chunk_metas = _build_qa_chunk_payloads(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        filename=getattr(document, "filename", ""),
+        pairs=pairs,
+        mode=mode,
+        active_hash=active_hash,
+        active_key=active_key,
+        next_index=next_index,
     )
-    if active_key:
-        q = q.filter(DocumentChunk.doc_metadata["doc_pipeline_key"].astext == active_key)  # type: ignore[attr-defined]
-    max_idx = q.scalar()
-    next_index = int(max_idx or -1) + 1
-
-    # 5) Prepare chunk payloads.
     source_label = str(getattr(document, "filename", "") or "document").strip()[:500] or "document"
-    records: list[dict[str, Any]] = []
-    chunk_ids: list[UUID] = []
-    chunk_metas: list[dict[str, Any]] = []
-
-    for pair in pairs:
-        cid = uuid.uuid4()
-        content = f"Q: {pair.question.strip()}\nA: {pair.answer.strip()}".strip()
-
-        meta: dict[str, Any] = {
-            "tenant_id": str(tenant_id),
-            "document_id": str(document_id),
-            "chunk_id": str(cid),
-            "chunk_index": int(next_index),
-            "file_type": "qa",
-            "source": source_label,
-            "chunk_role": "qa",
-            "qa_question": pair.question.strip(),
-            "qa_answer": pair.answer.strip(),
-            "qa_mode": mode,
-            "qa_generated": True,
-        }
-        if active_hash:
-            meta["pipeline_hash"] = active_hash[:64]
-            meta["doc_pipeline_key"] = active_key
-
-        records.append({"content": content, "metadata": meta})
-        chunk_ids.append(cid)
-        chunk_metas.append(meta)
-        next_index += 1
-
-    # 6) Vector indexing (best-effort).
-    vector_ids: list[str | None] = [None] * len(records)
-    try:
-        ids = list(get_vector_store().add_documents(records, document_id, tenant_id))
-        for i, vid in enumerate(ids):
-            if i >= len(vector_ids):
-                break
-            if vid:
-                vector_ids[i] = str(vid)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            _DOCUMENT_QA_DEGRADED_LOG_MSG,
-            "qa_vector_index",
-            str(getattr(settings, "VECTOR_BACKEND", "") or "vector_store"),
-            "index_failed",
-            "check vector backend health/config; chunks saved but may not be retrievable via vectors",
-            str(exc)[:200],
-        )
-        vector_ids = [None] * len(records)
-
-    # 7) Persist chunks.
-    db_chunks: list[DocumentChunk] = []
-    for i, cid in enumerate(chunk_ids):
-        chunk = DocumentChunk(
-            id=cid,
-            tenant_id=tenant_id,
-            document_id=document_id,
-            chunk_index=int(chunk_metas[i].get("chunk_index") or i),
-            content=str(records[i].get("content") or ""),
-            page_number=None,
-            start_char=None,
-            end_char=None,
-            doc_metadata=chunk_metas[i],
-            vector_id=vector_ids[i],
-        )
-        db_chunks.append(chunk)
-        db.add(chunk)
-
-    db.commit()
+    vector_ids = _index_qa_records(records, tenant_id=tenant_id, document_id=document_id)
+    db_chunks = _persist_qa_chunks(
+        db,
+        tenant_id=tenant_id,
+        document_id=document_id,
+        records=records,
+        chunk_ids=chunk_ids,
+        chunk_metas=chunk_metas,
+        vector_ids=vector_ids,
+    )
 
     # 8) BM25 upsert (best-effort).
     try:
@@ -515,20 +393,13 @@ def generate_and_index_document_qa(
             str(exc)[:200],
         )
 
-    # 9) Update document stats (best-effort).
-    try:
-        stat_q = db.query(func.count(DocumentChunk.id), func.sum(func.length(DocumentChunk.content))).filter(
-            DocumentChunk.tenant_id == tenant_id,
-            DocumentChunk.document_id == document_id,
-        )
-        if active_key:
-            stat_q = stat_q.filter(DocumentChunk.doc_metadata["doc_pipeline_key"].astext == active_key)  # type: ignore[attr-defined]
-        cnt, total_chars = stat_q.first() or (None, None)
-        document.chunk_count = int(cnt or 0)
-        document.total_characters = int(total_chars or 0)
-        db.commit()
-    except Exception:
-        db.rollback()
+    _update_document_chunk_stats(
+        db,
+        tenant_id=tenant_id,
+        document_id=document_id,
+        document=document,
+        active_key=active_key,
+    )
 
     preview: list[dict[str, str]] = []
     for pair in pairs[: max(0, min(int(preview_pairs or 0), 20))]:
@@ -541,6 +412,294 @@ def generate_and_index_document_qa(
         chunk_ids=list(chunk_ids),
         preview=preview,
     )
+
+
+def _collect_active_qa_chunk_ids(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    active_key: str,
+) -> list[UUID]:
+    rows = (
+        db.query(DocumentChunk.id, DocumentChunk.doc_metadata)
+        .filter(DocumentChunk.tenant_id == tenant_id, DocumentChunk.document_id == document_id)
+        .all()
+    )
+    qa_ids: list[UUID] = []
+    for chunk_id, meta in rows:
+        data = meta if isinstance(meta, dict) else {}
+        if str(data.get("doc_pipeline_key") or "").strip() != active_key:
+            continue
+        if str(data.get("file_type") or "").strip().lower() != "qa":
+            continue
+        qa_ids.append(UUID(str(chunk_id)))
+    return qa_ids
+
+
+def _delete_existing_qa_chunks(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    qa_ids: list[UUID],
+) -> int:
+    if not qa_ids:
+        return 0
+
+    vector_store = get_vector_store()
+    vector_errors = _delete_qa_vectors(
+        vector_store,
+        tenant_id=tenant_id,
+        document_id=document_id,
+        qa_ids=qa_ids,
+    )
+    bm25_errors = _delete_qa_bm25(tenant_id=tenant_id, qa_ids=qa_ids)
+    _log_delete_errors(vector_errors=vector_errors, bm25_errors=bm25_errors)
+
+    db.query(DocumentChunk).filter(
+        DocumentChunk.tenant_id == tenant_id,
+        DocumentChunk.document_id == document_id,
+        DocumentChunk.id.in_(qa_ids),
+    ).delete(synchronize_session=False)
+    db.commit()
+    return len(qa_ids)
+
+
+def _delete_qa_vectors(
+    vector_store: Any,
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    qa_ids: list[UUID],
+) -> tuple[int, str | None]:
+    error_count = 0
+    first_error: str | None = None
+    for chunk_id in qa_ids:
+        try:
+            vector_store.delete_by_document_id_and_filter(
+                document_id=document_id,
+                tenant_id=tenant_id,
+                metadata_filter={"chunk_id": {"$eq": str(chunk_id)}},
+            )
+        except NotImplementedError:
+            continue
+        except Exception as exc:  # noqa: BLE001
+            error_count += 1
+            if first_error is None:
+                first_error = str(exc)[:200]
+    return error_count, first_error
+
+
+def _delete_qa_bm25(*, tenant_id: UUID, qa_ids: list[UUID]) -> tuple[int, str | None]:
+    error_count = 0
+    first_error: str | None = None
+    for chunk_id in qa_ids:
+        try:
+            hybrid_retriever.remove_from_bm25_index_by_metadata_filter(
+                tenant_id=tenant_id,
+                metadata_filter={"chunk_id": {"$eq": str(chunk_id)}},
+            )
+        except Exception as exc:  # noqa: BLE001
+            error_count += 1
+            if first_error is None:
+                first_error = str(exc)[:200]
+    return error_count, first_error
+
+
+def _log_delete_errors(
+    *,
+    vector_errors: tuple[int, str | None],
+    bm25_errors: tuple[int, str | None],
+) -> None:
+    vector_delete_errors, vector_delete_first_error = vector_errors
+    if vector_delete_errors:
+        logger.warning(
+            "Document QA degraded: feature=%s dependency=%s reason=%s remediation=%s errors=%s first_error=%s",
+            "qa_vector_delete",
+            str(getattr(settings, "VECTOR_BACKEND", "") or "vector_store"),
+            "delete_failed",
+            "check vector backend health/permissions; stale vectors may remain",
+            int(vector_delete_errors),
+            vector_delete_first_error or "",
+        )
+
+    bm25_delete_errors, bm25_delete_first_error = bm25_errors
+    if bm25_delete_errors:
+        logger.warning(
+            "Document QA degraded: feature=%s dependency=%s reason=%s remediation=%s errors=%s first_error=%s",
+            "qa_bm25_delete",
+            "bm25",
+            "delete_failed",
+            "check BM25 index backend; stale keywords may remain",
+            int(bm25_delete_errors),
+            bm25_delete_first_error or "",
+        )
+
+
+def _next_active_chunk_index(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    active_key: str,
+) -> int:
+    query = db.query(func.max(DocumentChunk.chunk_index)).filter(
+        DocumentChunk.tenant_id == tenant_id,
+        DocumentChunk.document_id == document_id,
+    )
+    if active_key:
+        query = query.filter(DocumentChunk.doc_metadata["doc_pipeline_key"].astext == active_key)  # type: ignore[attr-defined]
+    max_idx = query.scalar()
+    return int(max_idx or -1) + 1
+
+
+def _build_qa_chunk_payloads(
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    filename: object,
+    pairs: list[QAPair],
+    mode: str,
+    active_hash: str,
+    active_key: str,
+    next_index: int,
+) -> tuple[list[dict[str, Any]], list[UUID], list[dict[str, Any]]]:
+    source_label = str(filename or "document").strip()[:500] or "document"
+    records: list[dict[str, Any]] = []
+    chunk_ids: list[UUID] = []
+    chunk_metas: list[dict[str, Any]] = []
+
+    for pair in pairs:
+        chunk_id = uuid.uuid4()
+        meta = _build_qa_chunk_meta(
+            tenant_id=tenant_id,
+            document_id=document_id,
+            chunk_id=chunk_id,
+            chunk_index=next_index,
+            source_label=source_label,
+            pair=pair,
+            mode=mode,
+            active_hash=active_hash,
+            active_key=active_key,
+        )
+        content = f"Q: {pair.question.strip()}\nA: {pair.answer.strip()}".strip()
+        records.append({"content": content, "metadata": meta})
+        chunk_ids.append(chunk_id)
+        chunk_metas.append(meta)
+        next_index += 1
+
+    return records, chunk_ids, chunk_metas
+
+
+def _build_qa_chunk_meta(
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    chunk_id: UUID,
+    chunk_index: int,
+    source_label: str,
+    pair: QAPair,
+    mode: str,
+    active_hash: str,
+    active_key: str,
+) -> dict[str, Any]:
+    meta: dict[str, Any] = {
+        "tenant_id": str(tenant_id),
+        "document_id": str(document_id),
+        "chunk_id": str(chunk_id),
+        "chunk_index": int(chunk_index),
+        "file_type": "qa",
+        "source": source_label,
+        "chunk_role": "qa",
+        "qa_question": pair.question.strip(),
+        "qa_answer": pair.answer.strip(),
+        "qa_mode": mode,
+        "qa_generated": True,
+    }
+    if active_hash:
+        meta["pipeline_hash"] = active_hash[:64]
+        meta["doc_pipeline_key"] = active_key
+    return meta
+
+
+def _index_qa_records(
+    records: list[dict[str, Any]],
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+) -> list[str | None]:
+    vector_ids: list[str | None] = [None] * len(records)
+    try:
+        ids = list(get_vector_store().add_documents(records, document_id, tenant_id))
+        for index, vector_id in enumerate(ids):
+            if index >= len(vector_ids):
+                break
+            if vector_id:
+                vector_ids[index] = str(vector_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            _DOCUMENT_QA_DEGRADED_LOG_MSG,
+            "qa_vector_index",
+            str(getattr(settings, "VECTOR_BACKEND", "") or "vector_store"),
+            "index_failed",
+            "check vector backend health/config; chunks saved but may not be retrievable via vectors",
+            str(exc)[:200],
+        )
+    return vector_ids
+
+
+def _persist_qa_chunks(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    records: list[dict[str, Any]],
+    chunk_ids: list[UUID],
+    chunk_metas: list[dict[str, Any]],
+    vector_ids: list[str | None],
+) -> list[DocumentChunk]:
+    db_chunks: list[DocumentChunk] = []
+    for index, chunk_id in enumerate(chunk_ids):
+        chunk = DocumentChunk(
+            id=chunk_id,
+            tenant_id=tenant_id,
+            document_id=document_id,
+            chunk_index=int(chunk_metas[index].get("chunk_index") or index),
+            content=str(records[index].get("content") or ""),
+            page_number=None,
+            start_char=None,
+            end_char=None,
+            doc_metadata=chunk_metas[index],
+            vector_id=vector_ids[index],
+        )
+        db_chunks.append(chunk)
+        db.add(chunk)
+    db.commit()
+    return db_chunks
+
+
+def _update_document_chunk_stats(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    document: DBDocument,
+    active_key: str,
+) -> None:
+    try:
+        stat_query = db.query(func.count(DocumentChunk.id), func.sum(func.length(DocumentChunk.content))).filter(
+            DocumentChunk.tenant_id == tenant_id,
+            DocumentChunk.document_id == document_id,
+        )
+        if active_key:
+            stat_query = stat_query.filter(DocumentChunk.doc_metadata["doc_pipeline_key"].astext == active_key)  # type: ignore[attr-defined]
+        count, total_chars = stat_query.first() or (None, None)
+        document.chunk_count = int(count or 0)
+        document.total_characters = int(total_chars or 0)
+        db.commit()
+    except Exception:
+        db.rollback()
 
 
 __all__ = [

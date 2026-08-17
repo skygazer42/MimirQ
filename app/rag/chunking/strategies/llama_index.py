@@ -4,6 +4,8 @@ LlamaIndex-based chunking strategies.
 Provides intelligent chunking strategies based on LlamaIndex.
 """
 
+from collections.abc import Callable
+from typing import Any
 
 from langchain_core.documents import Document
 
@@ -23,6 +25,106 @@ def _estimate_tokens_from_chars(chars: int, *, min_tokens: int = 0) -> int:
     return max(int(min_tokens or 0), value // 4)
 
 
+def _node_id(node: Any) -> str | None:
+    value = getattr(node, "node_id", None) or getattr(node, "id_", None)
+    return str(value) if value else None
+
+
+def _relationship_node_id(node: Any, relationship_key: Any) -> Any | None:
+    try:
+        relationship = (getattr(node, "relationships", {}) or {}).get(relationship_key)
+        return getattr(relationship, "node_id", None) if relationship else None
+    except Exception as exc:
+        logger.debug(_LLAMA_INDEX_CHUNKING_FALLBACK_LOG_MESSAGE, exc)
+        return None
+
+
+def _relationship_child_count(node: Any, relationship_key: Any) -> int:
+    try:
+        relationship = (getattr(node, "relationships", {}) or {}).get(relationship_key)
+        if not relationship:
+            return 0
+        return len(relationship) if hasattr(relationship, "__len__") else 1
+    except Exception as exc:
+        logger.debug(_LLAMA_INDEX_CHUNKING_FALLBACK_LOG_MESSAGE, exc)
+        return 0
+
+
+def _collect_hierarchy_relationships(
+    nodes: list[Any],
+    *,
+    parent_key: Any,
+    child_key: Any,
+) -> tuple[set[str], dict[str, str], dict[str, int]]:
+    node_ids: set[str] = set()
+    parent_by_id: dict[str, str] = {}
+    child_counts: dict[str, int] = {}
+    for node in nodes:
+        node_id = _node_id(node)
+        if node_id is None:
+            continue
+        node_ids.add(node_id)
+        parent_id = _relationship_node_id(node, parent_key)
+        if parent_id:
+            parent_by_id[node_id] = str(parent_id)
+        child_count = _relationship_child_count(node, child_key)
+        if child_count:
+            child_counts[node_id] = child_count
+    return node_ids, parent_by_id, child_counts
+
+
+def _build_level_resolver(
+    *,
+    node_ids: set[str],
+    parent_by_id: dict[str, str],
+) -> Callable[[str], int]:
+    level_cache: dict[str, int] = {}
+
+    def resolve(node_id: str) -> int:
+        cached = level_cache.get(node_id)
+        if cached is not None:
+            return cached
+        parent_id = parent_by_id.get(node_id)
+        if not parent_id:
+            level_cache[node_id] = 0
+        elif parent_id not in node_ids:
+            level_cache[node_id] = 1
+        else:
+            level_cache[node_id] = resolve(parent_id) + 1
+        return level_cache[node_id]
+
+    return resolve
+
+
+def _hierarchical_node_metadata(
+    node: Any,
+    *,
+    base_metadata: dict[str, Any],
+    child_counts: dict[str, int],
+    resolve_level: Callable[[str], int],
+    parent_key: Any,
+) -> dict[str, Any]:
+    metadata = dict(base_metadata)
+    metadata.update(getattr(node, "metadata", {}) or {})
+    node_id = _node_id(node)
+    if node_id is not None:
+        metadata["node_id"] = node_id
+        metadata["chunk_level"] = resolve_level(node_id)
+        if child_counts.get(node_id):
+            metadata["has_children"] = True
+    start = getattr(node, "start_char_idx", None)
+    end = getattr(node, "end_char_idx", None)
+    if start is not None:
+        metadata["start_char"] = int(start)
+    if end is not None:
+        metadata["end_char"] = int(end)
+    metadata["chunk_strategy"] = "llama_index_hierarchical"
+    parent_id = _relationship_node_id(node, parent_key)
+    if parent_id:
+        metadata["parent_node_id"] = parent_id
+    return metadata
+
+
 class LlamaIndexChunker(BaseChunker):
     """
     LlamaIndex SentenceSplitter-based chunking.
@@ -32,9 +134,7 @@ class LlamaIndexChunker(BaseChunker):
 
     def __init__(self, chunk_size: int, chunk_overlap: int):
         if not settings.LLAMA_INDEX_ENABLED:
-            raise RuntimeError(
-                "LlamaIndexChunker is disabled. Set LLAMA_INDEX_ENABLED=true in your .env file."
-            )
+            raise RuntimeError("LlamaIndexChunker is disabled. Set LLAMA_INDEX_ENABLED=true in your .env file.")
 
         from llama_index.core.node_parser import SentenceSplitter
 
@@ -125,82 +225,28 @@ class LlamaIndexHierarchicalChunker(BaseChunker):
 
         chunks: list[Document] = []
         for doc in documents:
-            # See LlamaIndexChunker above: keep metadata out of LlamaIndex's
-            # splitting budget, then restore MimirQ metadata on emitted chunks.
             li_doc = LlamaDocument(text=doc.page_content, metadata={})
             nodes = self.parser.get_nodes_from_documents([li_doc])
-
-            node_ids: set[str] = set()
-            parent_by_id: dict[str, str] = {}
-            child_counts: dict[str, int] = {}
-
-            # First pass: record relationships so we can derive a stable level.
+            node_ids, parent_by_id, child_counts = _collect_hierarchy_relationships(
+                nodes,
+                parent_key=NodeRelationship.PARENT,
+                child_key=NodeRelationship.CHILD,
+            )
+            resolve_level = _build_level_resolver(
+                node_ids=node_ids,
+                parent_by_id=parent_by_id,
+            )
             for node in nodes:
-                node_id = getattr(node, "node_id", None) or getattr(node, "id_", None)
-                if not node_id:
-                    continue
-                node_id_str = str(node_id)
-                node_ids.add(node_id_str)
-
-                rels = getattr(node, "relationships", {}) or {}
-                try:
-                    parent_rel = rels.get(NodeRelationship.PARENT)
-                    parent_id = getattr(parent_rel, "node_id", None) if parent_rel else None
-                    if parent_id:
-                        parent_by_id[node_id_str] = str(parent_id)
-                except Exception as exc:
-                    logger.debug(_LLAMA_INDEX_CHUNKING_FALLBACK_LOG_MESSAGE, exc)
-
-                try:
-                    children_rel = rels.get(NodeRelationship.CHILD)
-                    if children_rel:
-                        child_counts[node_id_str] = len(children_rel) if hasattr(children_rel, "__len__") else 1
-                except Exception as exc:
-                    logger.debug(_LLAMA_INDEX_CHUNKING_FALLBACK_LOG_MESSAGE, exc)
-
-            level_cache: dict[str, int] = {}
-
-            def _get_level(node_id_str: str) -> int:
-                cached = level_cache.get(node_id_str)
-                if cached is not None:
-                    return cached
-                parent_id = parent_by_id.get(node_id_str)
-                if not parent_id:
-                    level_cache[node_id_str] = 0
-                    return 0
-                if parent_id not in node_ids:
-                    level_cache[node_id_str] = 1
-                    return 1
-                level = _get_level(parent_id) + 1
-                level_cache[node_id_str] = level
-                return level
-
-            for node in nodes:
-                metadata = dict(doc.metadata or {})
-                metadata.update(getattr(node, "metadata", {}) or {})
-
-                node_id = getattr(node, "node_id", None) or getattr(node, "id_", None)
-                node_id_str = str(node_id) if node_id else None
-                if node_id_str:
-                    metadata["node_id"] = node_id_str
-                    metadata["chunk_level"] = _get_level(node_id_str)
-                    if child_counts.get(node_id_str):
-                        metadata["has_children"] = True
-                start_idx = getattr(node, "start_char_idx", None)
-                end_idx = getattr(node, "end_char_idx", None)
-                if start_idx is not None:
-                    metadata["start_char"] = int(start_idx)
-                if end_idx is not None:
-                    metadata["end_char"] = int(end_idx)
-                metadata["chunk_strategy"] = "llama_index_hierarchical"
-
-                # Get parent node relationship
-                try:
-                    parent_rel = getattr(node, "relationships", {}).get(NodeRelationship.PARENT)
-                    if parent_rel and getattr(parent_rel, "node_id", None):
-                        metadata["parent_node_id"] = parent_rel.node_id
-                except Exception as exc:
-                    logger.debug(_LLAMA_INDEX_CHUNKING_FALLBACK_LOG_MESSAGE, exc)
-
-                chunks.append(Document(page_content=node.get_content(), metadata=metadata))
+                chunks.append(
+                    Document(
+                        page_content=node.get_content(),
+                        metadata=_hierarchical_node_metadata(
+                            node,
+                            base_metadata=dict(doc.metadata or {}),
+                            child_counts=child_counts,
+                            resolve_level=resolve_level,
+                            parent_key=NodeRelationship.PARENT,
+                        ),
+                    )
+                )
         return chunks

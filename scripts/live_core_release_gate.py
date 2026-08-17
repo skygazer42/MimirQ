@@ -282,9 +282,9 @@ def _probe_png_worker_lost(
         headers=headers,
     )
     shared_state_payload = _parse_json(shared_state_response)
-    shared_state_status = str(
-        shared_state_payload.get("status") if isinstance(shared_state_payload, dict) else ""
-    ).strip().lower()
+    shared_state_status = (
+        str(shared_state_payload.get("status") if isinstance(shared_state_payload, dict) else "").strip().lower()
+    )
     if shared_state_status != "running":
         return {
             "task_id": task_id,
@@ -418,6 +418,7 @@ def _same_key_dual_instance_probe(
             trust_env=False,
             transport=_shared_async_transport(client),
         ) as async_client:
+
             async def _post_retrieve(
                 target_base: str,
                 *,
@@ -546,8 +547,12 @@ def _run_retrieve_only_load_pair(
             message="unused",
             enable_reranker=False,
         )
-        limits = httpx.Limits(max_connections=max(2, concurrency * 2), max_keepalive_connections=max(2, concurrency * 2))
-        async with httpx.AsyncClient(timeout=httpx.Timeout(config.timeout_sec), limits=limits, trust_env=False) as client:
+        limits = httpx.Limits(
+            max_connections=max(2, concurrency * 2), max_keepalive_connections=max(2, concurrency * 2)
+        )
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(config.timeout_sec), limits=limits, trust_env=False
+        ) as client:
             return await run_e2e_load_test(cfg, client=client)
 
     candidate_base_urls = tuple(
@@ -572,12 +577,8 @@ def _run_retrieve_only_load_pair(
     return baseline, candidate
 
 
-def run_live_core_release_gate(
-    config: LiveCoreReleaseGateConfig,
-    *,
-    client: httpx.Client | None = None,
-) -> dict[str, Any]:
-    report: dict[str, Any] = {
+def _build_live_core_report(config: LiveCoreReleaseGateConfig) -> dict[str, Any]:
+    return {
         "schema": "mimirq.live_core_release_gate.v1",
         "api_base": config.api_base,
         "secondary_api_base": config.secondary_api_base,
@@ -588,6 +589,262 @@ def run_live_core_release_gate(
         },
         "failures": [],
     }
+
+
+def _build_gate_headers(
+    config: LiveCoreReleaseGateConfig,
+) -> tuple[dict[str, str], dict[str, str]]:
+    primary_headers = build_headers(
+        tenant_id=config.primary_tenant_id,
+        user_id=(config.user_id or None),
+        token=None,
+    )
+    secondary_headers = build_headers(
+        tenant_id=config.secondary_tenant_id,
+        user_id=(config.user_id or None),
+        token=None,
+    )
+    return primary_headers, secondary_headers
+
+
+def _run_png_checks(
+    client: httpx.Client,
+    *,
+    config: LiveCoreReleaseGateConfig,
+    report: dict[str, Any],
+    created_datasets: list[tuple[str, dict[str, str]]],
+    primary_headers: dict[str, str],
+) -> None:
+    if not config.png_probe_enabled:
+        return
+    png_dataset_id = _create_dataset(
+        client,
+        api_base=config.api_base,
+        headers=primary_headers,
+        label="png",
+    )
+    created_datasets.append((png_dataset_id, primary_headers))
+    png_cross_instance = _probe_png_cross_instance(
+        client,
+        config=config,
+        headers=primary_headers,
+        dataset_id=png_dataset_id,
+    )
+    report["png_cross_instance"] = png_cross_instance
+    if not bool(png_cross_instance.get("passed")):
+        _failures_extend(report, "PNG export did not complete across API instances")
+
+    png_worker_lost = _probe_png_worker_lost(
+        client,
+        config=config,
+        headers=primary_headers,
+        dataset_id=png_dataset_id,
+    )
+    report["png_worker_lost"] = png_worker_lost
+    if not bool(png_worker_lost.get("passed")):
+        _failures_extend(report, "abandoned PNG task did not reach failed/worker_lost")
+
+
+def _prepare_primary_dataset(
+    client: httpx.Client,
+    *,
+    config: LiveCoreReleaseGateConfig,
+    created_datasets: list[tuple[str, dict[str, str]]],
+    primary_headers: dict[str, str],
+) -> tuple[str, str, str]:
+    primary_dataset_id = _create_dataset(
+        client,
+        api_base=config.api_base,
+        headers=primary_headers,
+        label="primary",
+    )
+    created_datasets.append((primary_dataset_id, primary_headers))
+    primary_marker = _make_marker("primary")
+    primary_document_id = _upload_and_wait_for_evidence(
+        client,
+        api_base=config.api_base,
+        headers=primary_headers,
+        dataset_id=primary_dataset_id,
+        parser_backend=config.parser_backend,
+        marker=primary_marker,
+        ingest_timeout_sec=config.ingest_timeout_sec,
+        poll_interval_sec=config.poll_interval_sec,
+    )
+    return primary_dataset_id, primary_marker, primary_document_id
+
+
+def _run_duplicate_upload_check(
+    client: httpx.Client,
+    *,
+    config: LiveCoreReleaseGateConfig,
+    report: dict[str, Any],
+    primary_headers: dict[str, str],
+    primary_dataset_id: str,
+    primary_document_id: str,
+) -> None:
+    duplicate_marker = _make_marker("duplicate")
+    duplicate_text = f"MimirQ live core release gate synthetic document.\n\nLIVE_GATE_DUPLICATE: {duplicate_marker}\n"
+    duplicate_document_ids = _concurrent_duplicate_upload_ids(
+        config=config,
+        headers=primary_headers,
+        dataset_id=primary_dataset_id,
+        text=duplicate_text,
+        client=client,
+    )
+    for duplicate_document_id in sorted(set(duplicate_document_ids)):
+        _wait_for_document_completion(
+            client,
+            api_base=config.api_base,
+            headers=primary_headers,
+            document_id=duplicate_document_id,
+            timeout_sec=config.ingest_timeout_sec,
+            poll_interval_sec=config.poll_interval_sec,
+            verbose=False,
+        )
+    duplicate_passed = bool(duplicate_document_ids) and len(set(duplicate_document_ids)) == 1
+    duplicate_passed = duplicate_passed and duplicate_document_ids[0] != primary_document_id
+    report["duplicate_upload"] = {
+        "first_document_id": primary_document_id,
+        "concurrent_document_ids": duplicate_document_ids,
+        "marker": duplicate_marker,
+        "passed": duplicate_passed,
+    }
+    if not duplicate_passed:
+        _failures_extend(report, "concurrent duplicate upload returned different document ids")
+
+
+def _run_same_key_probe(
+    client: httpx.Client,
+    *,
+    config: LiveCoreReleaseGateConfig,
+    report: dict[str, Any],
+    primary_headers: dict[str, str],
+    primary_dataset_id: str,
+    primary_marker: str,
+) -> None:
+    singleflight_query = f"{primary_marker} {_make_marker('singleflight')}"
+    same_key_probe = _same_key_dual_instance_probe(
+        config=config,
+        headers=primary_headers,
+        dataset_id=primary_dataset_id,
+        query=singleflight_query,
+        client=client,
+    )
+    same_key_probe["query"] = singleflight_query
+    report["same_key_dual_instance"] = same_key_probe
+    if not bool(same_key_probe.get("skipped")) and not bool(same_key_probe.get("passed")):
+        _failures_extend(
+            report,
+            "same-key dual-instance probe did not prove distributed singleflight follower reuse",
+        )
+
+
+def _run_concurrency_check(
+    *,
+    config: LiveCoreReleaseGateConfig,
+    report: dict[str, Any],
+    primary_dataset_id: str,
+    primary_marker: str,
+) -> None:
+    throughput_query = f"{primary_marker} varied-throughput"
+    baseline, candidate = _run_retrieve_only_load_pair(
+        config=config,
+        dataset_id=primary_dataset_id,
+        query=throughput_query,
+    )
+    concurrency_gate = evaluate_concurrency_gate(
+        baseline,
+        candidate,
+        min_retrieve_throughput_ratio=float(config.min_retrieve_throughput_ratio),
+        min_chat_throughput_ratio=0.0,
+    )
+    report["concurrency"] = {
+        "query": throughput_query,
+        "baseline": baseline,
+        "candidate": candidate,
+        "gate": concurrency_gate,
+    }
+    if not bool(concurrency_gate.get("passed")):
+        _failures_extend(
+            report,
+            *(f"concurrency: {failure}" for failure in (concurrency_gate.get("failures") or [])),
+        )
+
+
+def _run_secondary_isolation_check(
+    client: httpx.Client,
+    *,
+    config: LiveCoreReleaseGateConfig,
+    report: dict[str, Any],
+    created_datasets: list[tuple[str, dict[str, str]]],
+    primary_headers: dict[str, str],
+    secondary_headers: dict[str, str],
+    primary_dataset_id: str,
+    primary_marker: str,
+) -> None:
+    secondary_dataset_id = _create_dataset(
+        client,
+        api_base=config.api_base,
+        headers=secondary_headers,
+        label="secondary",
+    )
+    created_datasets.append((secondary_dataset_id, secondary_headers))
+    secondary_marker = _make_marker("secondary")
+    secondary_document_id = _upload_and_wait_for_evidence(
+        client,
+        api_base=config.api_base,
+        headers=secondary_headers,
+        dataset_id=secondary_dataset_id,
+        parser_backend=config.parser_backend,
+        marker=secondary_marker,
+        ingest_timeout_sec=config.ingest_timeout_sec,
+        poll_interval_sec=config.poll_interval_sec,
+    )
+    cross_checks = [
+        _probe_cross_tenant_denial(
+            client,
+            api_base=config.api_base,
+            headers=secondary_headers,
+            dataset_id=primary_dataset_id,
+            marker=primary_marker,
+            label="secondary_to_primary",
+        ),
+        _probe_cross_tenant_denial(
+            client,
+            api_base=config.api_base,
+            headers=primary_headers,
+            dataset_id=secondary_dataset_id,
+            marker=secondary_marker,
+            label="primary_to_secondary",
+        ),
+    ]
+    tenant_isolation_passed = all(bool(item.get("passed")) for item in cross_checks)
+    report["secondary"] = {
+        "dataset_id": secondary_dataset_id,
+        "document_id": secondary_document_id,
+        "marker": secondary_marker,
+    }
+    report["tenant_isolation"] = {
+        "passed": tenant_isolation_passed,
+        "checks": cross_checks,
+    }
+    if not tenant_isolation_passed:
+        _failures_extend(
+            report,
+            *(
+                f"tenant isolation failed for {item.get('label')} (status={item.get('status_code')})"
+                for item in cross_checks
+                if not bool(item.get("passed"))
+            ),
+        )
+
+
+def run_live_core_release_gate(
+    config: LiveCoreReleaseGateConfig,
+    *,
+    client: httpx.Client | None = None,
+) -> dict[str, Any]:
+    report = _build_live_core_report(config)
 
     close_client = False
     created_datasets: list[tuple[str, dict[str, str]]] = []
@@ -616,183 +873,57 @@ def run_live_core_release_gate(
                 poll_interval_sec=config.poll_interval_sec,
             )
 
-        primary_headers = build_headers(
-            tenant_id=config.primary_tenant_id,
-            user_id=(config.user_id or None),
-            token=None,
-        )
-        secondary_headers = build_headers(
-            tenant_id=config.secondary_tenant_id,
-            user_id=(config.user_id or None),
-            token=None,
-        )
-
-        if config.png_probe_enabled:
-            png_dataset_id = _create_dataset(
-                client,
-                api_base=config.api_base,
-                headers=primary_headers,
-                label="png",
-            )
-            created_datasets.append((png_dataset_id, primary_headers))
-            png_cross_instance = _probe_png_cross_instance(
-                client,
-                config=config,
-                headers=primary_headers,
-                dataset_id=png_dataset_id,
-            )
-            report["png_cross_instance"] = png_cross_instance
-            if not bool(png_cross_instance.get("passed")):
-                _failures_extend(report, "PNG export did not complete across API instances")
-
-            png_worker_lost = _probe_png_worker_lost(
-                client,
-                config=config,
-                headers=primary_headers,
-                dataset_id=png_dataset_id,
-            )
-            report["png_worker_lost"] = png_worker_lost
-            if not bool(png_worker_lost.get("passed")):
-                _failures_extend(report, "abandoned PNG task did not reach failed/worker_lost")
-
-        primary_dataset_id = _create_dataset(client, api_base=config.api_base, headers=primary_headers, label="primary")
-        created_datasets.append((primary_dataset_id, primary_headers))
-        primary_marker = _make_marker("primary")
-        primary_document_id = _upload_and_wait_for_evidence(
+        primary_headers, secondary_headers = _build_gate_headers(config)
+        _run_png_checks(
             client,
-            api_base=config.api_base,
-            headers=primary_headers,
-            dataset_id=primary_dataset_id,
-            parser_backend=config.parser_backend,
-            marker=primary_marker,
-            ingest_timeout_sec=config.ingest_timeout_sec,
-            poll_interval_sec=config.poll_interval_sec,
-        )
-
-        duplicate_marker = _make_marker("duplicate")
-        duplicate_text = (
-            "MimirQ live core release gate synthetic document.\n\n"
-            f"LIVE_GATE_DUPLICATE: {duplicate_marker}\n"
-        )
-        duplicate_document_ids = _concurrent_duplicate_upload_ids(
             config=config,
-            headers=primary_headers,
-            dataset_id=primary_dataset_id,
-            text=duplicate_text,
-            client=client,
+            report=report,
+            created_datasets=created_datasets,
+            primary_headers=primary_headers,
         )
-        for duplicate_document_id in sorted(set(duplicate_document_ids)):
-            _wait_for_document_completion(
-                client,
-                api_base=config.api_base,
-                headers=primary_headers,
-                document_id=duplicate_document_id,
-                timeout_sec=config.ingest_timeout_sec,
-                poll_interval_sec=config.poll_interval_sec,
-                verbose=False,
-            )
-        duplicate_passed = bool(duplicate_document_ids) and len(set(duplicate_document_ids)) == 1 and duplicate_document_ids[0] != primary_document_id
+        primary_dataset_id, primary_marker, primary_document_id = _prepare_primary_dataset(
+            client,
+            config=config,
+            created_datasets=created_datasets,
+            primary_headers=primary_headers,
+        )
         report["primary"] = {
             "dataset_id": primary_dataset_id,
             "document_id": primary_document_id,
             "marker": primary_marker,
         }
-        report["duplicate_upload"] = {
-            "first_document_id": primary_document_id,
-            "concurrent_document_ids": duplicate_document_ids,
-            "marker": duplicate_marker,
-            "passed": duplicate_passed,
-        }
-        if not duplicate_passed:
-            _failures_extend(report, "concurrent duplicate upload returned different document ids")
-
-        singleflight_query = f"{primary_marker} {_make_marker('singleflight')}"
-        same_key_probe = _same_key_dual_instance_probe(
-            config=config,
-            headers=primary_headers,
-            dataset_id=primary_dataset_id,
-            query=singleflight_query,
-            client=client,
-        )
-        same_key_probe["query"] = singleflight_query
-        report["same_key_dual_instance"] = same_key_probe
-        if not bool(same_key_probe.get("skipped")) and not bool(same_key_probe.get("passed")):
-            _failures_extend(report, "same-key dual-instance probe did not prove distributed singleflight follower reuse")
-
-        throughput_query = f"{primary_marker} varied-throughput"
-        baseline, candidate = _run_retrieve_only_load_pair(
-            config=config,
-            dataset_id=primary_dataset_id,
-            query=throughput_query,
-        )
-        concurrency_gate = evaluate_concurrency_gate(
-            baseline,
-            candidate,
-            min_retrieve_throughput_ratio=float(config.min_retrieve_throughput_ratio),
-            min_chat_throughput_ratio=0.0,
-        )
-        report["concurrency"] = {
-            "query": throughput_query,
-            "baseline": baseline,
-            "candidate": candidate,
-            "gate": concurrency_gate,
-        }
-        if not bool(concurrency_gate.get("passed")):
-            _failures_extend(
-                report,
-                *(f"concurrency: {failure}" for failure in (concurrency_gate.get("failures") or [])),
-            )
-
-        secondary_dataset_id = _create_dataset(client, api_base=config.api_base, headers=secondary_headers, label="secondary")
-        created_datasets.append((secondary_dataset_id, secondary_headers))
-        secondary_marker = _make_marker("secondary")
-        secondary_document_id = _upload_and_wait_for_evidence(
+        _run_duplicate_upload_check(
             client,
-            api_base=config.api_base,
-            headers=secondary_headers,
-            dataset_id=secondary_dataset_id,
-            parser_backend=config.parser_backend,
-            marker=secondary_marker,
-            ingest_timeout_sec=config.ingest_timeout_sec,
-            poll_interval_sec=config.poll_interval_sec,
+            config=config,
+            report=report,
+            primary_headers=primary_headers,
+            primary_dataset_id=primary_dataset_id,
+            primary_document_id=primary_document_id,
         )
-        cross_checks = [
-            _probe_cross_tenant_denial(
-                client,
-                api_base=config.api_base,
-                headers=secondary_headers,
-                dataset_id=primary_dataset_id,
-                marker=primary_marker,
-                label="secondary_to_primary",
-            ),
-            _probe_cross_tenant_denial(
-                client,
-                api_base=config.api_base,
-                headers=primary_headers,
-                dataset_id=secondary_dataset_id,
-                marker=secondary_marker,
-                label="primary_to_secondary",
-            ),
-        ]
-        tenant_isolation_passed = all(bool(item.get("passed")) for item in cross_checks)
-        report["secondary"] = {
-            "dataset_id": secondary_dataset_id,
-            "document_id": secondary_document_id,
-            "marker": secondary_marker,
-        }
-        report["tenant_isolation"] = {
-            "passed": tenant_isolation_passed,
-            "checks": cross_checks,
-        }
-        if not tenant_isolation_passed:
-            _failures_extend(
-                report,
-                *(
-                    f"tenant isolation failed for {item.get('label')} (status={item.get('status_code')})"
-                    for item in cross_checks
-                    if not bool(item.get("passed"))
-                ),
-            )
+        _run_same_key_probe(
+            client,
+            config=config,
+            report=report,
+            primary_headers=primary_headers,
+            primary_dataset_id=primary_dataset_id,
+            primary_marker=primary_marker,
+        )
+        _run_concurrency_check(
+            config=config,
+            report=report,
+            primary_dataset_id=primary_dataset_id,
+            primary_marker=primary_marker,
+        )
+        _run_secondary_isolation_check(
+            client,
+            config=config,
+            report=report,
+            created_datasets=created_datasets,
+            primary_headers=primary_headers,
+            secondary_headers=secondary_headers,
+            primary_dataset_id=primary_dataset_id,
+            primary_marker=primary_marker,
+        )
 
         run_completed = True
     finally:
@@ -855,9 +986,7 @@ def _resolve_runtime_config(args: argparse.Namespace) -> LiveCoreReleaseGateConf
         png_probe_enabled=not bool(args.skip_png_probe),
         png_timeout_sec=max(1.0, float(args.png_timeout_sec or 120.0)),
         png_worker_lost_wait_sec=(
-            None
-            if args.png_worker_lost_wait_sec is None
-            else max(0.0, float(args.png_worker_lost_wait_sec))
+            None if args.png_worker_lost_wait_sec is None else max(0.0, float(args.png_worker_lost_wait_sec))
         ),
     )
 
@@ -870,7 +999,9 @@ def main(argv: list[str] | None = None) -> int:
         )
     )
     parser.add_argument("--base-url", default="", help="API host (http://host:8000) or API base (/api/v1).")
-    parser.add_argument("--secondary-base-url", default="", help="Optional second API host/base for dual-instance checks.")
+    parser.add_argument(
+        "--secondary-base-url", default="", help="Optional second API host/base for dual-instance checks."
+    )
     parser.add_argument("--tenant-id", default="", help="Primary tenant id/header.")
     parser.add_argument("--secondary-tenant-id", default="", help="Secondary tenant id/header.")
     parser.add_argument("--user-id", default="", help="Header auth user id.")

@@ -6,7 +6,6 @@ directly. In that shape the public App API may return a runtime 400 before the
 request reaches MimirQ retrieval. This script keeps that boundary diagnosable.
 """
 
-
 import argparse
 import copy
 import json
@@ -50,25 +49,27 @@ _ANSWER_COVERAGE_TARGET_TITLE_TERMS = (
     "LLM综合回复",
     "LLM回复一件事",
 )
-_ANSWER_COVERAGE_PROMPT_APPENDIX = f"""
-
-# {_ANSWER_COVERAGE_PROMPT_MARKER}
-为避免复合问题漏答，回答前先从用户问题中识别所有并列问题点，再逐项覆盖。
-
-1. 用户同时询问多个事项字段时，例如材料、地点、时间、条件、费用、电话、线上入口、承诺办结时限等，必须逐项回答；不得只在摘要中带过。
-2. 证据中已经出现原始字段标签时，优先保留字段标签和值，例如：事项名称：、办理材料：、办理地点：、办理时间：、受理条件：、收费情况：、咨询方式：、在线办理地址：、承诺办结时限：。
-3. 如果证据包含“答案要点”或“原始证据”，按用户问到的字段复制或压缩对应字段值；不要改写到丢失字段标签。
-4. 每个输出的问题点必须能在检索结果中找到依据。检索结果没有提供某个问题点时，明确说明“知识库未提供该项信息”，不要猜测补全。
-5. 最终答案允许保留现有模板样式，但复合问题的每个字段都要有清晰小标题或“字段名：字段值”。
-
-必答字段清单：
-- 用户问“需要哪些材料/材料/申请材料”时，必须输出“办理材料：”或“申请材料：”字段行。
-- 用户问“在哪里办理/办理地点/线下渠道”时，必须输出“办理地点：”字段行。
-- 用户问“是否收费/费用/收费”时，必须输出“收费情况：”字段行；如果证据是不收费，不得只在摘要里写“免费/无需收费”，正文也要写“收费情况：不收费”。
-- 用户问“多长时间/多久办结/承诺办结”时，必须输出“承诺办结时限：”或“办理时限：”字段行。
-- 用户问“咨询电话/联系电话/联系方式”时，必须输出“咨询方式：”字段行。
-- 用户问“线上办理/在线入口/渠道”时，必须输出“在线办理地址：”或“办理渠道：”字段行。
-"""
+_ANSWER_COVERAGE_PROMPT_APPENDIX = (
+    f"\n\n# {_ANSWER_COVERAGE_PROMPT_MARKER}\n"
+    "为避免复合问题漏答，回答前先从用户问题中识别所有并列问题点，再逐项覆盖。\n\n"
+    "1. 用户同时询问多个事项字段时，例如材料、地点、时间、条件、费用、电话、线上入口、"
+    "承诺办结时限等，必须逐项回答；不得只在摘要中带过。\n"
+    "2. 证据中已经出现原始字段标签时，优先保留字段标签和值，例如：事项名称：、办理材料：、"
+    "办理地点：、办理时间：、受理条件：、收费情况：、咨询方式：、在线办理地址：、承诺办结时限：。\n"
+    "3. 如果证据包含“答案要点”或“原始证据”，按用户问到的字段复制或压缩对应字段值；"
+    "不要改写到丢失字段标签。\n"
+    "4. 每个输出的问题点必须能在检索结果中找到依据。检索结果没有提供某个问题点时，"
+    "明确说明“知识库未提供该项信息”，不要猜测补全。\n"
+    "5. 最终答案允许保留现有模板样式，但复合问题的每个字段都要有清晰小标题或“字段名：字段值”。\n\n"
+    "必答字段清单：\n"
+    "- 用户问“需要哪些材料/材料/申请材料”时，必须输出“办理材料：”或“申请材料：”字段行。\n"
+    "- 用户问“在哪里办理/办理地点/线下渠道”时，必须输出“办理地点：”字段行。\n"
+    "- 用户问“是否收费/费用/收费”时，必须输出“收费情况：”字段行；"
+    "如果证据是不收费，不得只在摘要里写“免费/无需收费”，正文也要写“收费情况：不收费”。\n"
+    "- 用户问“多长时间/多久办结/承诺办结”时，必须输出“承诺办结时限：”或“办理时限：”字段行。\n"
+    "- 用户问“咨询电话/联系电话/联系方式”时，必须输出“咨询方式：”字段行。\n"
+    "- 用户问“线上办理/在线入口/渠道”时，必须输出“在线办理地址：”或“办理渠道：”字段行。\n"
+)
 
 
 def _text(value: Any) -> str:
@@ -83,12 +84,7 @@ def _has_default(variable: dict[str, Any]) -> bool:
 
 
 def _is_selector(value: Any) -> bool:
-    return (
-        isinstance(value, list)
-        and len(value) >= 2
-        and isinstance(value[0], str)
-        and isinstance(value[1], str)
-    )
+    return isinstance(value, list) and len(value) >= 2 and isinstance(value[0], str) and isinstance(value[1], str)
 
 
 def _node_data(node: dict[str, Any]) -> dict[str, Any]:
@@ -168,7 +164,9 @@ def _condition_values_for_selector(cases: list[Any], selector: str) -> list[str]
     return values
 
 
-def _area_route_warnings(nodes: list[dict[str, Any]], start_variables: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+def _area_route_warnings(
+    nodes: list[dict[str, Any]], start_variables: dict[str, dict[str, Any]]
+) -> list[dict[str, Any]]:
     expected_selector = ""
     for selector, variable in start_variables.items():
         if _text(variable.get("variable")) == "areaName":
@@ -227,7 +225,18 @@ def patch_area_route_selectors(workflow: dict[str, Any]) -> tuple[dict[str, Any]
     warnings = _area_route_warnings(original_nodes, start_variables)
     if not warnings:
         return patched_workflow, []
+    selectors_by_route = _route_selector_replacements(warnings)
+    patches: list[dict[str, Any]] = []
+    for node in _graph_nodes(patched_workflow):
+        node_id = _text(node.get("id"))
+        replacements = selectors_by_route.get(node_id)
+        if not replacements:
+            continue
+        patches.extend(_patch_area_route_node(node, replacements))
+    return patched_workflow, patches
 
+
+def _route_selector_replacements(warnings: list[dict[str, Any]]) -> dict[str, dict[str, str]]:
     selectors_by_route: dict[str, dict[str, str]] = {}
     for warning in warnings:
         routing_node_id = _text(warning.get("routing_node_id"))
@@ -236,41 +245,60 @@ def patch_area_route_selectors(workflow: dict[str, Any]) -> tuple[dict[str, Any]
         if not routing_node_id or not selector or not expected_selector:
             continue
         selectors_by_route.setdefault(routing_node_id, {})[selector] = expected_selector
+    return selectors_by_route
 
-    patches: list[dict[str, Any]] = []
-    for node in _graph_nodes(patched_workflow):
-        node_id = _text(node.get("id"))
-        replacements = selectors_by_route.get(node_id)
-        if not replacements:
+
+def _patch_area_route_node(
+    node: dict[str, Any],
+    replacements: dict[str, str],
+) -> list[dict[str, Any]]:
+    data = _node_data(node)
+    cases = data.get("cases") if isinstance(data.get("cases"), list) else []
+    patched_counts = {selector: 0 for selector in replacements}
+    for case in cases:
+        _patch_area_route_case(case, replacements, patched_counts)
+    return _area_route_patch_items(node, replacements, patched_counts)
+
+
+def _patch_area_route_case(
+    case: Any,
+    replacements: dict[str, str],
+    patched_counts: dict[str, int],
+) -> None:
+    if not isinstance(case, dict):
+        return
+    for condition in case.get("conditions") or []:
+        if not isinstance(condition, dict):
             continue
-        data = _node_data(node)
-        cases = data.get("cases") if isinstance(data.get("cases"), list) else []
-        patched_counts = {selector: 0 for selector in replacements}
-        for case in cases:
-            if not isinstance(case, dict):
-                continue
-            for condition in case.get("conditions") or []:
-                if not isinstance(condition, dict):
-                    continue
-                selector = _selector_text(condition.get("variable_selector"))
-                expected_selector = replacements.get(selector)
-                if not expected_selector:
-                    continue
-                condition["variable_selector"] = expected_selector.split(".", 1)
-                patched_counts[selector] += 1
-        for selector, count in patched_counts.items():
-            if count <= 0:
-                continue
-            patches.append(
-                {
-                    "routing_node_id": node_id,
-                    "routing_node_title": _text(data.get("title")),
-                    "from_selector": selector,
-                    "to_selector": replacements[selector],
-                    "conditions_patched": count,
-                }
-            )
-    return patched_workflow, patches
+        selector = _selector_text(condition.get("variable_selector"))
+        expected_selector = replacements.get(selector)
+        if not expected_selector:
+            continue
+        condition["variable_selector"] = expected_selector.split(".", 1)
+        patched_counts[selector] += 1
+
+
+def _area_route_patch_items(
+    node: dict[str, Any],
+    replacements: dict[str, str],
+    patched_counts: dict[str, int],
+) -> list[dict[str, Any]]:
+    node_id = _text(node.get("id"))
+    data = _node_data(node)
+    patches: list[dict[str, Any]] = []
+    for selector, count in patched_counts.items():
+        if count <= 0:
+            continue
+        patches.append(
+            {
+                "routing_node_id": node_id,
+                "routing_node_title": _text(data.get("title")),
+                "from_selector": selector,
+                "to_selector": replacements[selector],
+                "conditions_patched": count,
+            }
+        )
+    return patches
 
 
 def _prompt_template_texts(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -468,29 +496,30 @@ def _retrieval_payload_code(
         f"_METADATA_DEFAULTS = {metadata_defaults_json}\n\n"
         "def _text(value: Any) -> str:\n"
         "    if value is None:\n"
-        "        return \"\"\n"
+        '        return ""\n'
         "    if isinstance(value, (dict, list)):\n"
         "        return json.dumps(value, ensure_ascii=False)\n"
         "    return str(value)\n\n"
-        "def _with_default(value: Any, default: Any = \"\") -> str:\n"
+        'def _with_default(value: Any, default: Any = "") -> str:\n'
         "    text = _text(value).strip()\n"
         "    return text if text else _text(default).strip()\n\n"
         "def main(query=None, area_name=None, normalized_area=None, polished_query=None) -> dict:\n"
-        "    query_text = _with_default(query, _METADATA_DEFAULTS.get(\"query\"))\n"
+        '    query_text = _with_default(query, _METADATA_DEFAULTS.get("query"))\n'
         "    metadata = {\n"
-        "        \"app_id\": _APP_ID,\n"
-        "        \"workflow_source\": _METADATA_DEFAULTS.get(\"workflow_source\", \"dify-http-rag-retrieval\"),\n"
-        "        \"areaName\": _with_default(area_name, _METADATA_DEFAULTS.get(\"areaName\")),\n"
-        "        \"normalized_area\": _with_default(normalized_area, _METADATA_DEFAULTS.get(\"normalized_area\")),\n"
-        "        \"polished_query\": _with_default(polished_query, _METADATA_DEFAULTS.get(\"polished_query\") or query_text),\n"
+        '        "app_id": _APP_ID,\n'
+        '        "workflow_source": _METADATA_DEFAULTS.get("workflow_source", "dify-http-rag-retrieval"),\n'
+        '        "areaName": _with_default(area_name, _METADATA_DEFAULTS.get("areaName")),\n'
+        '        "normalized_area": _with_default(normalized_area, _METADATA_DEFAULTS.get("normalized_area")),\n'
+        '        "polished_query": _with_default(polished_query, '
+        '_METADATA_DEFAULTS.get("polished_query") or query_text),\n'
         "    }\n"
         "    payload = {\n"
-        "        \"knowledge_id\": _KNOWLEDGE_ID,\n"
-        "        \"query\": query_text,\n"
-        "        \"retrieval_setting\": _RETRIEVAL_SETTING,\n"
-        "        \"metadata_condition\": metadata,\n"
+        '        "knowledge_id": _KNOWLEDGE_ID,\n'
+        '        "query": query_text,\n'
+        '        "retrieval_setting": _RETRIEVAL_SETTING,\n'
+        '        "metadata_condition": metadata,\n'
         "    }\n"
-        "    return {\"payload_json\": json.dumps(payload, ensure_ascii=False)}\n"
+        '    return {"payload_json": json.dumps(payload, ensure_ascii=False)}\n'
     )
 
 
@@ -545,7 +574,9 @@ def _build_retrieval_payload_node(node: dict[str, Any], payload: dict[str, Any])
     code = _retrieval_payload_code(
         app_id=app_id,
         knowledge_id=knowledge_id,
-        retrieval_setting=payload.get("retrieval_setting") if isinstance(payload.get("retrieval_setting"), dict) else {},
+        retrieval_setting=payload.get("retrieval_setting")
+        if isinstance(payload.get("retrieval_setting"), dict)
+        else {},
         metadata_defaults=metadata_defaults,
     )
     title = _text(data.get("title")).replace("MimirQ HTTP检索", "安全构造 MimirQ 检索请求", 1)
@@ -620,67 +651,99 @@ def patch_http_json_template_bodies(workflow: dict[str, Any]) -> tuple[dict[str,
     target_http_ids: set[str] = set()
 
     for node in nodes:
-        if not isinstance(node, dict):
-            continue
-        node_id = _text(node.get("id"))
-        data = _node_data(node)
-        if data.get("type") != "http-request":
-            continue
-        url = _text(data.get("url"))
-        if "/api/v1/integrations/dify/retrieval" not in url:
-            continue
-        entries = _http_json_body_entries(data)
-        if len(entries) != 1:
-            continue
-        value = entries[0].get("value")
-        if not isinstance(value, str) or "{{#" not in value or _selector_from_template_ref(value):
-            continue
-        try:
-            payload = json.loads(value)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(payload, dict):
-            continue
-        payload_node = _build_retrieval_payload_node(node, payload)
-        if payload_node is None:
-            continue
-        payload_node_id = _text(payload_node.get("id"))
-        if not payload_node_id or payload_node_id in existing_ids:
-            continue
-        entries[0]["value"] = f"{{{{#{payload_node_id}.payload_json#}}}}"
-        nodes_to_append.append(payload_node)
-        existing_ids.add(payload_node_id)
-        target_http_ids.add(node_id)
-        patches.append(
-            {
-                "http_node_id": node_id,
-                "http_node_title": _text(data.get("title")),
-                "payload_node_id": payload_node_id,
-                "payload_node_title": _text(payload_node["data"].get("title")),
-                "knowledge_id": _text(payload.get("knowledge_id")),
-            }
+        _patch_http_json_template_node(
+            node,
+            existing_ids=existing_ids,
+            nodes_to_append=nodes_to_append,
+            target_http_ids=target_http_ids,
+            patches=patches,
         )
 
     if not target_http_ids:
         return patched_workflow, []
+    patched_edges = _patched_http_json_template_edges(edges, target_http_ids)
+    graph["nodes"] = nodes + nodes_to_append
+    graph["edges"] = patched_edges
+    return patched_workflow, patches
 
+
+def _patch_http_json_template_node(
+    node: Any,
+    *,
+    existing_ids: set[str],
+    nodes_to_append: list[dict[str, Any]],
+    target_http_ids: set[str],
+    patches: list[dict[str, Any]],
+) -> None:
+    if not isinstance(node, dict):
+        return
+    payload_data = _patchable_http_json_template_node(node)
+    if payload_data is None:
+        return
+    entries, payload = payload_data
+    payload_node = _build_retrieval_payload_node(node, payload)
+    if payload_node is None:
+        return
+    payload_node_id = _text(payload_node.get("id"))
+    if not payload_node_id or payload_node_id in existing_ids:
+        return
+    entries[0]["value"] = f"{{{{#{payload_node_id}.payload_json#}}}}"
+    nodes_to_append.append(payload_node)
+    existing_ids.add(payload_node_id)
+    node_id = _text(node.get("id"))
+    target_http_ids.add(node_id)
+    patches.append(
+        {
+            "http_node_id": node_id,
+            "http_node_title": _text(_node_data(node).get("title")),
+            "payload_node_id": payload_node_id,
+            "payload_node_title": _text(payload_node["data"].get("title")),
+            "knowledge_id": _text(payload.get("knowledge_id")),
+        }
+    )
+
+
+def _patchable_http_json_template_node(
+    node: dict[str, Any],
+) -> tuple[list[dict[str, Any]], dict[str, Any]] | None:
+    data = _node_data(node)
+    if data.get("type") != "http-request":
+        return None
+    url = _text(data.get("url"))
+    if "/api/v1/integrations/dify/retrieval" not in url:
+        return None
+    entries = _http_json_body_entries(data)
+    if len(entries) != 1:
+        return None
+    value = entries[0].get("value")
+    if not isinstance(value, str) or "{{#" not in value or _selector_from_template_ref(value):
+        return None
+    try:
+        payload = json.loads(value)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return entries, payload
+
+
+def _patched_http_json_template_edges(
+    edges: list[Any],
+    target_http_ids: set[str],
+) -> list[dict[str, Any]]:
     patched_edges: list[dict[str, Any]] = []
     for edge in edges:
         if not isinstance(edge, dict):
             patched_edges.append(edge)
             continue
         target = _text(edge.get("target"))
-        if target not in target_http_ids:
-            patched_edges.append(edge)
+        if target in target_http_ids:
+            patched_edges.append(_edge_to_code(edge, _retrieval_patch_node_id(target)))
             continue
-        code_node_id = _retrieval_patch_node_id(target)
-        patched_edges.append(_edge_to_code(edge, code_node_id))
+        patched_edges.append(edge)
     for http_node_id in sorted(target_http_ids):
         patched_edges.append(_edge_from_code(_retrieval_patch_node_id(http_node_id), http_node_id))
-
-    graph["nodes"] = nodes + nodes_to_append
-    graph["edges"] = patched_edges
-    return patched_workflow, patches
+    return patched_edges
 
 
 def _iter_references(value: Any, *, path: str) -> list[tuple[str, str]]:
@@ -730,7 +793,11 @@ def _case_input_violations(
     violations: list[dict[str, Any]] = []
     for index, case in enumerate(cases):
         inputs = _case_dify_inputs(case)
-        missing = [item for item in required_inputs if item["variable"] not in inputs or _text(inputs.get(item["variable"])) == ""]
+        missing = [
+            item
+            for item in required_inputs
+            if item["variable"] not in inputs or _text(inputs.get(item["variable"])) == ""
+        ]
         if not missing:
             continue
         case_id = _text(case.get("id") or case.get("case_id")) or f"case-{index + 1}"
@@ -753,49 +820,9 @@ def lint_workflow(workflow: dict[str, Any], *, cases: list[dict[str, Any]] | Non
     area_route_warnings = _area_route_warnings(nodes, start_variables)
     prompt_template_leak_warnings = _prompt_template_leak_warnings(nodes)
     http_json_template_warnings = _http_json_template_warnings(nodes)
-    references_by_selector: dict[str, list[dict[str, Any]]] = {selector: [] for selector in start_variables}
-
-    for node_index, node in enumerate(nodes):
-        data = _node_data(node)
-        if data.get("type") == "start":
-            continue
-        node_id = _text(node.get("id"))
-        context = {
-            "node_id": node_id,
-            "node_title": _text(data.get("title")),
-            "node_type": _text(data.get("type")),
-        }
-        for selector, path in _iter_references(data, path=f"graph.nodes[{node_index}].data"):
-            if selector not in references_by_selector:
-                continue
-            reference = {**context, "path": path}
-            if reference not in references_by_selector[selector]:
-                references_by_selector[selector].append(reference)
-
-    hidden_required: list[dict[str, Any]] = []
-    for selector, variable in start_variables.items():
-        references = references_by_selector.get(selector) or []
-        if not references:
-            continue
-        if variable["required"] or variable["has_default"]:
-            continue
-        hidden_required.append(
-            {
-                **variable,
-                "reference_count": len(references),
-                "references": references,
-                "recommendation": (
-                    f"Pass inputs.{variable['variable']} or add a Dify workflow "
-                    "default/fallback before referencing this variable."
-                ),
-            }
-        )
-
-    summary: dict[str, Any] = {
-        "start_variables": len(start_variables),
-        "referenced_start_variables": sum(1 for refs in references_by_selector.values() if refs),
-        "hidden_required_start_variables": len(hidden_required),
-    }
+    references_by_selector = _references_by_selector(nodes, start_variables)
+    hidden_required = _hidden_required_start_variables(start_variables, references_by_selector)
+    summary = _workflow_lint_summary(start_variables, references_by_selector, hidden_required)
     report: dict[str, Any] = {
         "schema": "mimirq.changzhou_gov_service_knowledge.dify_workflow_lint.v1",
         "summary": summary,
@@ -816,6 +843,64 @@ def lint_workflow(workflow: dict[str, Any], *, cases: list[dict[str, Any]] | Non
         summary["case_input_violations"] = len(case_violations)
         report["case_input_violations"] = case_violations
     return report
+
+
+def _references_by_selector(
+    nodes: list[dict[str, Any]],
+    start_variables: dict[str, dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    references_by_selector: dict[str, list[dict[str, Any]]] = {selector: [] for selector in start_variables}
+    for node_index, node in enumerate(nodes):
+        data = _node_data(node)
+        if data.get("type") == "start":
+            continue
+        context = {
+            "node_id": _text(node.get("id")),
+            "node_title": _text(data.get("title")),
+            "node_type": _text(data.get("type")),
+        }
+        for selector, path in _iter_references(data, path=f"graph.nodes[{node_index}].data"):
+            if selector not in references_by_selector:
+                continue
+            reference = {**context, "path": path}
+            if reference not in references_by_selector[selector]:
+                references_by_selector[selector].append(reference)
+    return references_by_selector
+
+
+def _hidden_required_start_variables(
+    start_variables: dict[str, dict[str, Any]],
+    references_by_selector: dict[str, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    hidden_required: list[dict[str, Any]] = []
+    for selector, variable in start_variables.items():
+        references = references_by_selector.get(selector) or []
+        if not references or variable["required"] or variable["has_default"]:
+            continue
+        hidden_required.append(
+            {
+                **variable,
+                "reference_count": len(references),
+                "references": references,
+                "recommendation": (
+                    f"Pass inputs.{variable['variable']} or add a Dify workflow "
+                    "default/fallback before referencing this variable."
+                ),
+            }
+        )
+    return hidden_required
+
+
+def _workflow_lint_summary(
+    start_variables: dict[str, dict[str, Any]],
+    references_by_selector: dict[str, list[dict[str, Any]]],
+    hidden_required: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "start_variables": len(start_variables),
+        "referenced_start_variables": sum(1 for refs in references_by_selector.values() if refs),
+        "hidden_required_start_variables": len(hidden_required),
+    }
 
 
 def _load_workflow_json(path: str) -> dict[str, Any]:
@@ -863,7 +948,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Exit non-zero for the same workflow issues that block changzhou-dify-full-gate preflight.",
     )
     parser.add_argument("--app-id", default="")
-    parser.add_argument("--console-base-url", default=os.getenv("DIFY_CONSOLE_API_BASE_URL") or DEFAULT_CONSOLE_BASE_URL)
+    parser.add_argument(
+        "--console-base-url", default=os.getenv("DIFY_CONSOLE_API_BASE_URL") or DEFAULT_CONSOLE_BASE_URL
+    )
     parser.add_argument("--console-token", default=os.getenv("DIFY_CONSOLE_TOKEN") or "")
     parser.add_argument("--storage-state", default=DEFAULT_STORAGE_STATE)
     parser.add_argument("--timeout", type=float, default=30.0)
@@ -888,7 +975,10 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
             console_token = load_console_token(str(args.console_token), str(args.storage_state))
             if not console_token:
-                print("DIFY_CONSOLE_TOKEN, --console-token, or --storage-state with console_token is required", file=sys.stderr)
+                print(
+                    "DIFY_CONSOLE_TOKEN, --console-token, or --storage-state with console_token is required",
+                    file=sys.stderr,
+                )
                 return 2
             workflow = _fetch_draft_workflow(
                 app_id=app_id,
@@ -925,20 +1015,19 @@ def main(argv: list[str] | None = None) -> int:
     print(text)
     summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
     if bool(args.preflight_gate):
-        issue_count = int(summary.get("case_input_violations") or 0) + int(
-            summary.get("prompt_template_leak_warnings") or 0
-        ) + int(
-            summary.get("http_json_template_warnings") or 0
+        issue_count = (
+            int(summary.get("case_input_violations") or 0)
+            + int(summary.get("prompt_template_leak_warnings") or 0)
+            + int(summary.get("http_json_template_warnings") or 0)
         )
     elif bool(args.case_inputs_only):
         issue_count = int(summary.get("case_input_violations") or 0)
     else:
-        issue_count = int(summary.get("hidden_required_start_variables") or 0) + int(
-            summary.get("case_input_violations") or 0
-        ) + int(
-            summary.get("prompt_template_leak_warnings") or 0
-        ) + int(
-            summary.get("http_json_template_warnings") or 0
+        issue_count = (
+            int(summary.get("hidden_required_start_variables") or 0)
+            + int(summary.get("case_input_violations") or 0)
+            + int(summary.get("prompt_template_leak_warnings") or 0)
+            + int(summary.get("http_json_template_warnings") or 0)
         )
     return 0 if issue_count == 0 else 1
 

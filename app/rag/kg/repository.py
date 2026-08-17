@@ -4,6 +4,7 @@ Entity and Event repositories.
 Provides data access for entities and events with both PostgreSQL storage
 and Milvus vector similarity search capabilities.
 """
+
 import re
 import unicodedata
 from collections.abc import Iterable
@@ -230,16 +231,21 @@ def _entity_lexical_clauses(terms: list[str]):
 def _join_active_document_scope(stmt):
     from app.models.document import Document as DBDocument  # noqa: WPS433
 
-    return stmt.join(KgEventEntity, KgEventEntity.entity_id == KgEntity.id).join(
-        KgSourceEvent,
-        KgSourceEvent.id == KgEventEntity.event_id,
-    ).join(
-        DBDocument,
-        and_(
-            DBDocument.id == KgSourceEvent.document_id,
-            DBDocument.tenant_id == KgSourceEvent.tenant_id,
-        ),
-    ).where(KgSourceEvent.pipeline_hash == _active_pipeline_hash_expr(DBDocument))
+    return (
+        stmt.join(KgEventEntity, KgEventEntity.entity_id == KgEntity.id)
+        .join(
+            KgSourceEvent,
+            KgSourceEvent.id == KgEventEntity.event_id,
+        )
+        .join(
+            DBDocument,
+            and_(
+                DBDocument.id == KgSourceEvent.document_id,
+                DBDocument.tenant_id == KgSourceEvent.tenant_id,
+            ),
+        )
+        .where(KgSourceEvent.pipeline_hash == _active_pipeline_hash_expr(DBDocument))
+    )
 
 
 def _apply_entity_lexical_scope(
@@ -603,6 +609,108 @@ class AliasRepository:
             .all()
         )
 
+    def _redirect_map_for_ids(self, ids: list[UUID], *, tenant_id: UUID, max_depth: int) -> dict[UUID, UUID]:
+        redirect_map: dict[UUID, UUID] = {}
+        frontier = set(ids)
+        hops = 0
+        while frontier and hops < max_depth:
+            hops += 1
+            rows = self._redirect_rows(tenant_id=tenant_id, from_entity_ids=frontier)
+            frontier = self._update_redirect_map(redirect_map, rows)
+        return redirect_map
+
+    def _update_redirect_map(
+        self,
+        redirect_map: dict[UUID, UUID],
+        rows: list[KgEntityRedirect],
+    ) -> set[UUID]:
+        next_frontier: set[UUID] = set()
+        for row in rows:
+            frm = getattr(row, "from_entity_id", None)
+            to = getattr(row, "to_entity_id", None)
+            if frm is None or to is None or frm == to or redirect_map.get(frm) == to:
+                continue
+            redirect_map[frm] = to
+            if to not in redirect_map:
+                next_frontier.add(to)
+        return {candidate for candidate in next_frontier if candidate not in redirect_map}
+
+    def _resolve_redirect_origin(
+        self,
+        origin: UUID,
+        *,
+        resolved: dict[UUID, UUID],
+        redirect_map: dict[UUID, UUID],
+        max_depth: int,
+    ) -> None:
+        cur = origin
+        path: list[UUID] = []
+        path_index: dict[UUID, int] = {}
+        steps = 0
+        while steps < max_depth:
+            if self._resolve_known_redirect(cur, path=path, resolved=resolved):
+                return
+            if self._resolve_redirect_cycle(cur, path=path, path_index=path_index, resolved=resolved):
+                return
+            path_index[cur] = len(path)
+            path.append(cur)
+            nxt = redirect_map.get(cur)
+            if self._resolve_terminal_redirect(cur, nxt=nxt, path=path, resolved=resolved):
+                return
+            cur = nxt
+            steps += 1
+        canonical = resolved.get(cur, cur)
+        for node in path:
+            resolved[node] = canonical
+
+    def _resolve_known_redirect(
+        self,
+        cur: UUID,
+        *,
+        path: list[UUID],
+        resolved: dict[UUID, UUID],
+    ) -> bool:
+        if cur not in resolved:
+            return False
+        canonical = resolved[cur]
+        for node in path:
+            resolved[node] = canonical
+        return True
+
+    def _resolve_redirect_cycle(
+        self,
+        cur: UUID,
+        *,
+        path: list[UUID],
+        path_index: dict[UUID, int],
+        resolved: dict[UUID, UUID],
+    ) -> bool:
+        if cur not in path_index:
+            return False
+        cycle_start = path_index[cur]
+        cycle_nodes = path[cycle_start:]
+        for node in cycle_nodes:
+            resolved[node] = node
+        if cycle_start > 0:
+            cycle_entry = path[cycle_start]
+            for node in path[:cycle_start]:
+                resolved[node] = cycle_entry
+        return True
+
+    def _resolve_terminal_redirect(
+        self,
+        cur: UUID,
+        *,
+        nxt: UUID | None,
+        path: list[UUID],
+        resolved: dict[UUID, UUID],
+    ) -> bool:
+        if nxt is not None and nxt != cur:
+            return False
+        for node in path:
+            resolved[node] = cur
+        return True
+
     def _resolve_redirects(self, entity_ids: Iterable[UUID], *, tenant_id: UUID, max_hops: int = 6) -> dict[UUID, UUID]:
         """
         Resolve entity ids via KgEntityRedirect (best-effort, bounded).
@@ -614,62 +722,12 @@ class AliasRepository:
             return {}
 
         max_depth = max(1, int(max_hops or 0))
-        redirect_map: dict[UUID, UUID] = {}
-        frontier = set(ids)
-        hops = 0
-        while frontier and hops < max_depth:
-            hops += 1
-            rows = self._redirect_rows(tenant_id=tenant_id, from_entity_ids=frontier)
-            next_frontier: set[UUID] = set()
-            for row in rows:
-                frm = getattr(row, "from_entity_id", None)
-                to = getattr(row, "to_entity_id", None)
-                if frm is None or to is None or frm == to:
-                    continue
-                if redirect_map.get(frm) == to:
-                    continue
-                redirect_map[frm] = to
-                if to not in redirect_map:
-                    next_frontier.add(to)
-            frontier = {candidate for candidate in next_frontier if candidate not in redirect_map}
-
+        redirect_map = self._redirect_map_for_ids(ids, tenant_id=tenant_id, max_depth=max_depth)
         resolved: dict[UUID, UUID] = {}
         for origin in ids:
             if origin in resolved:
                 continue
-            cur = origin
-            path: list[UUID] = []
-            path_index: dict[UUID, int] = {}
-            steps = 0
-            while steps < max_depth:
-                if cur in resolved:
-                    canonical = resolved[cur]
-                    for node in path:
-                        resolved[node] = canonical
-                    break
-                if cur in path_index:
-                    cycle_start = path_index[cur]
-                    cycle_nodes = path[cycle_start:]
-                    for node in cycle_nodes:
-                        resolved[node] = node
-                    if cycle_start > 0:
-                        cycle_entry = path[cycle_start]
-                        for node in path[:cycle_start]:
-                            resolved[node] = cycle_entry
-                    break
-                path_index[cur] = len(path)
-                path.append(cur)
-                nxt = redirect_map.get(cur)
-                if nxt is None or nxt == cur:
-                    for node in path:
-                        resolved[node] = cur
-                    break
-                cur = nxt
-                steps += 1
-            else:
-                canonical = resolved.get(cur, cur)
-                for node in path:
-                    resolved[node] = canonical
+            self._resolve_redirect_origin(origin, resolved=resolved, redirect_map=redirect_map, max_depth=max_depth)
         return {eid: resolved.get(eid, eid) for eid in ids}
 
     def match_aliases(
@@ -720,7 +778,9 @@ class AliasRepository:
         )
         ent_by_id = {e.id: e for e in ents if getattr(e, "id", None) is not None}
 
-        return _alias_match_results(rows, resolved_map=resolved_map, ent_by_id=ent_by_id, tenant_id=tenant_id, limit=lim)
+        return _alias_match_results(
+            rows, resolved_map=resolved_map, ent_by_id=ent_by_id, tenant_id=tenant_id, limit=lim
+        )
 
 
 class EventRepository:
@@ -791,7 +851,7 @@ class EventRepository:
         expr_parts = [f"tenant_id == {_quote_milvus_str(str(tenant_id))}"]
         formatted_batches: list[list[dict]] = []
         for start in range(0, len(document_ids), 500):
-            batch = document_ids[start:start + 500]
+            batch = document_ids[start : start + 500]
             if not batch:
                 continue
             doc_id_strs = [_quote_milvus_str(str(doc_id)) for doc_id in batch]
@@ -970,7 +1030,9 @@ class EventRepository:
             ).where(KgSourceEvent.pipeline_hash == _active_pipeline_hash_expr(DBDocument))
         return self.session.execute(stmt).scalars().all()
 
-    def get_events_with_entities(self, ids: Iterable[str | UUID], *, tenant_id: UUID | None = None) -> list[KgSourceEvent]:
+    def get_events_with_entities(
+        self, ids: Iterable[str | UUID], *, tenant_id: UUID | None = None
+    ) -> list[KgSourceEvent]:
         id_list = _as_uuid_list(ids)
         if not id_list:
             return []
@@ -979,9 +1041,7 @@ class EventRepository:
         stmt = (
             select(KgSourceEvent)
             .where(KgSourceEvent.id.in_(id_list))
-            .options(
-                joinedload(KgSourceEvent.associations).joinedload(KgEventEntity.entity)
-            )
+            .options(joinedload(KgSourceEvent.associations).joinedload(KgEventEntity.entity))
         )
         if tenant_id is not None:
             stmt = stmt.where(KgSourceEvent.tenant_id == tenant_id)
@@ -1355,6 +1415,65 @@ class RelationRepository:
         )
         return q.with_entities(DBDocument.id).subquery()
 
+    def _relation_query_for_entities(self, *, ids: list[UUID], tenant_id: UUID):
+        return (
+            self.session.query(KgRelation)
+            .filter(KgRelation.tenant_id == tenant_id)
+            .filter(or_(KgRelation.subject_entity_id.in_(ids), KgRelation.object_entity_id.in_(ids)))
+        )
+
+    def _apply_relation_optional_filters(
+        self,
+        query,
+        *,
+        min_confidence: float | None,
+        allowed_predicates: Iterable[str] | None,
+    ):
+        if min_confidence is not None:
+            query = query.filter(KgRelation.confidence >= float(min_confidence))
+        if not allowed_predicates:
+            return query
+        predicates = [str(predicate).strip() for predicate in allowed_predicates if str(predicate).strip()]
+        return query.filter(KgRelation.predicate.in_(predicates)) if predicates else query
+
+    def _apply_relation_document_scope(
+        self,
+        query,
+        *,
+        tenant_id: UUID,
+        document_ids: list[UUID] | None,
+        dataset_id: UUID | None,
+        account_id: str | None,
+    ):
+        if document_ids is not None:
+            doc_ids = _as_uuid_list(document_ids)
+            if not doc_ids:
+                return None
+            return query.filter(KgRelation.document_id.in_(doc_ids))
+        if dataset_id is None:
+            return query
+        if not account_id:
+            raise ValueError(ACCOUNT_ID_REQUIRED_WHEN_DATASET_ID_PROVIDED_ERROR)
+        allowed_docs = self._allowed_document_ids_subquery_for_dataset(
+            tenant_id=UUID(str(tenant_id)),
+            dataset_id=dataset_id,
+            account_id=account_id,
+        )
+        return query.filter(KgRelation.document_id.in_(select(allowed_docs.c.id)))
+
+    def _apply_relation_active_pipeline_scope(self, query):
+        from sqlalchemy import and_  # noqa: WPS433
+
+        from app.models.document import Document as DBDocument  # noqa: WPS433
+
+        return query.join(
+            DBDocument,
+            and_(
+                DBDocument.id == KgRelation.document_id,
+                DBDocument.tenant_id == KgRelation.tenant_id,
+            ),
+        ).filter(KgRelation.pipeline_hash == _active_pipeline_hash_expr(DBDocument))
+
     def list_relations_for_entities(
         self,
         entity_ids: Iterable[str | UUID],
@@ -1380,48 +1499,24 @@ class RelationRepository:
             return []
 
         lim = max(0, int(limit))
-        q = (
-            self.session.query(KgRelation)
-            .filter(KgRelation.tenant_id == tenant_id)
-            .filter(or_(KgRelation.subject_entity_id.in_(ids), KgRelation.object_entity_id.in_(ids)))
+        q = self._relation_query_for_entities(ids=ids, tenant_id=tenant_id)
+        q = self._apply_relation_optional_filters(
+            q,
+            min_confidence=min_confidence,
+            allowed_predicates=allowed_predicates,
         )
-
-        if min_confidence is not None:
-            q = q.filter(KgRelation.confidence >= float(min_confidence))
-
-        if allowed_predicates:
-            preds = [str(p).strip() for p in allowed_predicates if str(p).strip()]
-            if preds:
-                q = q.filter(KgRelation.predicate.in_(preds))
-
-        if document_ids is not None:
-            doc_ids = _as_uuid_list(document_ids)
-            if not doc_ids:
-                # Explicit empty scope must never broaden to tenant-wide reads.
-                return []
-            q = q.filter(KgRelation.document_id.in_(doc_ids))
-        elif dataset_id is not None:
-            if not account_id:
-                raise ValueError(ACCOUNT_ID_REQUIRED_WHEN_DATASET_ID_PROVIDED_ERROR)
-            allowed_docs = self._allowed_document_ids_subquery_for_dataset(
-                tenant_id=UUID(str(tenant_id)),
-                dataset_id=dataset_id,
-                account_id=account_id,
-            )
-            q = q.filter(KgRelation.document_id.in_(select(allowed_docs.c.id)))
-
+        q = self._apply_relation_document_scope(
+            q,
+            tenant_id=tenant_id,
+            document_ids=document_ids,
+            dataset_id=dataset_id,
+            account_id=account_id,
+        )
+        if q is None:
+            # Explicit empty scope must never broaden to tenant-wide reads.
+            return []
         if document_ids is not None or dataset_id is not None:
-            from sqlalchemy import and_  # noqa: WPS433
-
-            from app.models.document import Document as DBDocument  # noqa: WPS433
-
-            q = q.join(
-                DBDocument,
-                and_(
-                    DBDocument.id == KgRelation.document_id,
-                    DBDocument.tenant_id == KgRelation.tenant_id,
-                ),
-            ).filter(KgRelation.pipeline_hash == _active_pipeline_hash_expr(DBDocument))
+            q = self._apply_relation_active_pipeline_scope(q)
 
         q = q.order_by(KgRelation.updated_at.desc())
         if lim:

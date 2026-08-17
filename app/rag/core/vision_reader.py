@@ -14,7 +14,6 @@ Design principles:
 - OpenAI-compatible API: uses /chat/completions with image_url data URLs.
 """
 
-
 import asyncio
 import base64
 import io
@@ -217,15 +216,85 @@ def _build_prompt(*, question: str, meta: dict[str, Any]) -> str:
     )
 
 
+def _setting_with_fallback(primary: str, fallback: str) -> str:
+    primary_value = (getattr(settings, primary, "") or "").strip()
+    if primary_value:
+        return primary_value
+    return (getattr(settings, fallback, "") or "").strip()
+
+
+def _vision_llm_config() -> tuple[str, str, str]:
+    return (
+        _setting_with_fallback("VISION_LLM_API_KEY", "LLM_API_KEY"),
+        _setting_with_fallback("VISION_LLM_API_BASE", "LLM_API_BASE"),
+        (getattr(settings, "VISION_LLM_MODEL", "") or "").strip(),
+    )
+
+
+def _resolve_max_tokens(max_tokens: int | None) -> int:
+    if max_tokens is not None:
+        return int(max_tokens)
+    return int(getattr(settings, "VISION_LLM_MAX_TOKENS", 4096) or 4096)
+
+
+def _resolve_temperature(temperature: float | None) -> float:
+    if temperature is not None:
+        return float(temperature)
+    return float(getattr(settings, "VISION_LLM_TEMPERATURE", 0.0) or 0.0)
+
+
+def _vision_llm_payload(
+    *,
+    model: str,
+    messages: list[dict[str, Any]],
+    max_tokens: int | None,
+    temperature: float | None,
+    stream: bool,
+) -> dict[str, Any]:
+    return {
+        "model": model,
+        "messages": messages,
+        "max_tokens": _resolve_max_tokens(max_tokens),
+        "temperature": _resolve_temperature(temperature),
+        "stream": stream,
+    }
+
+
+def _extract_stream_token(line: str) -> str | None:
+    stripped = line.strip()
+    if not stripped or not stripped.startswith("data:"):
+        return None
+    payload = stripped[5:].strip()
+    if not payload:
+        return None
+    if payload == "[DONE]":
+        return ""
+    try:
+        event = json.loads(payload)
+    except Exception:
+        get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+        return None
+    if not isinstance(event, dict):
+        return None
+    choices = event.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return None
+    first_choice = choices[0] if isinstance(choices[0], dict) else {}
+    delta = first_choice.get("delta") if isinstance(first_choice.get("delta"), dict) else {}
+    token = delta.get("content")
+    if token is None:
+        return None
+    token_s = token if isinstance(token, str) else str(token)
+    return token_s or None
+
+
 async def _describe_with_vision_llm(
     *,
     http_client: httpx.AsyncClient,
     image_bytes: bytes,
     prompt: str,
 ) -> str:
-    api_key = (getattr(settings, "VISION_LLM_API_KEY", "") or "").strip() or (getattr(settings, "LLM_API_KEY", "") or "").strip()
-    api_base = (getattr(settings, "VISION_LLM_API_BASE", "") or "").strip() or (getattr(settings, "LLM_API_BASE", "") or "").strip()
-    model = (getattr(settings, "VISION_LLM_MODEL", "") or "").strip()
+    api_key, api_base, model = _vision_llm_config()
     if not api_key or not api_base or not model:
         raise RuntimeError("vision_llm_not_configured")
 
@@ -237,9 +306,9 @@ async def _describe_with_vision_llm(
     encoded = base64.b64encode(image_bytes).decode("utf-8")
     data_url = f"data:{mime_type};base64,{encoded}"
 
-    payload: dict[str, Any] = {
-        "model": model,
-        "messages": [
+    payload = _vision_llm_payload(
+        model=model,
+        messages=[
             {
                 "role": "user",
                 "content": [
@@ -248,10 +317,10 @@ async def _describe_with_vision_llm(
                 ],
             }
         ],
-        "max_tokens": int(getattr(settings, "VISION_LLM_MAX_TOKENS", 4096) or 4096),
-        "temperature": float(getattr(settings, "VISION_LLM_TEMPERATURE", 0.0) or 0.0),
-        "stream": False,
-    }
+        max_tokens=None,
+        temperature=None,
+        stream=False,
+    )
 
     timeout = float(getattr(settings, "VISION_LLM_TIMEOUT_SEC", 120) or 120)
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
@@ -344,9 +413,7 @@ async def stream_vision_chat_completions_tokens(
     This is used by the RAG engine when generating an answer directly with a VLM,
     so we can keep the rest of the RAG pipeline (citations, claim-check, etc.) intact.
     """
-    api_key = (getattr(settings, "VISION_LLM_API_KEY", "") or "").strip() or (getattr(settings, "LLM_API_KEY", "") or "").strip()
-    api_base = (getattr(settings, "VISION_LLM_API_BASE", "") or "").strip() or (getattr(settings, "LLM_API_BASE", "") or "").strip()
-    model = (getattr(settings, "VISION_LLM_MODEL", "") or "").strip()
+    api_key, api_base, model = _vision_llm_config()
     if not api_key or not api_base or not model:
         raise RuntimeError("vision_llm_not_configured")
 
@@ -354,13 +421,13 @@ async def stream_vision_chat_completions_tokens(
     if not url:
         raise RuntimeError("vision_llm_missing_api_base")
 
-    payload: dict[str, Any] = {
-        "model": model,
-        "messages": messages,
-        "max_tokens": int(max_tokens) if max_tokens is not None else int(getattr(settings, "VISION_LLM_MAX_TOKENS", 4096) or 4096),
-        "temperature": float(temperature) if temperature is not None else float(getattr(settings, "VISION_LLM_TEMPERATURE", 0.0) or 0.0),
-        "stream": True,
-    }
+    payload = _vision_llm_payload(
+        model=model,
+        messages=messages,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        stream=True,
+    )
 
     timeout = float(getattr(settings, "VISION_LLM_TIMEOUT_SEC", 120) or 120)
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
@@ -368,39 +435,148 @@ async def stream_vision_chat_completions_tokens(
     async with http_client.stream("POST", url, json=payload, headers=headers, timeout=timeout) as resp:
         if int(resp.status_code or 0) != 200:
             body = await resp.aread()
-            raise RuntimeError(f"vision_llm_http_{resp.status_code}:{(body or b'')[:200].decode('utf-8','ignore')}")
+            raise RuntimeError(f"vision_llm_http_{resp.status_code}:{(body or b'')[:200].decode('utf-8', 'ignore')}")
 
         async for line in resp.aiter_lines():
-            if not line:
-                continue
-            s = line.strip()
-            if not s:
-                continue
-            if not s.startswith("data:"):
-                continue
-            data_s = s[5:].strip()
-            if not data_s:
-                continue
-            if data_s == "[DONE]":
-                break
-            try:
-                evt = json.loads(data_s)
-            except Exception:
-                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-                continue
-            if not isinstance(evt, dict):
-                continue
-            choices = evt.get("choices") if isinstance(evt.get("choices"), list) else []
-            if not choices:
-                continue
-            c0 = choices[0] if isinstance(choices[0], dict) else {}
-            delta = c0.get("delta") if isinstance(c0.get("delta"), dict) else {}
-            token = delta.get("content")
+            token = _extract_stream_token(line)
             if token is None:
                 continue
-            token_s = token if isinstance(token, str) else str(token)
-            if token_s:
-                yield token_s
+            if token == "":
+                break
+            yield token
+
+
+def _vision_reader_limits() -> tuple[int, int, int]:
+    return (
+        max(0, int(getattr(settings, "VISION_RAG_READER_MAX_IMAGES", 2) or 2)),
+        max(1, int(getattr(settings, "VISION_RAG_READER_MAX_IMAGE_BYTES", 3_000_000) or 3_000_000)),
+        max(0, int(getattr(settings, "VISION_RAG_READER_MAX_OUTPUT_CHARS", 1500) or 1500)),
+    )
+
+
+def _vision_reader_skip_meta(*, errors: list[str], skipped: int, reason: str) -> int:
+    if len(errors) < 5:
+        errors.append(f"skip:{reason}")
+    return skipped + 1
+
+
+def _truncate_vision_reader_text(*, text: str, max_output_chars: int) -> str:
+    if max_output_chars and len(text) > max_output_chars:
+        return text[:max_output_chars].rstrip() + "\n\n(truncated)"
+    return text
+
+
+def _build_vision_reader_doc(*, doc: Document, meta: dict[str, Any], text: str) -> Document:
+    origin_chunk_id = str(getattr(doc, "id", None) or meta.get("chunk_id") or "").strip() or None
+    vision_chunk_id = _stable_vision_reader_chunk_id(origin_chunk_id or str(uuid.uuid4()))
+    new_meta: dict[str, Any] = dict(meta)
+    new_meta.update(
+        {
+            "retrieval_role": "vision_reader",
+            "doc_type_kwd": "image",
+            "origin_chunk_id": origin_chunk_id,
+            "neighbor_of": origin_chunk_id,
+        }
+    )
+    return Document(page_content=text, metadata=new_meta, id=vision_chunk_id)
+
+
+def _vision_reader_preflight(
+    *,
+    image_docs: list[Document],
+) -> tuple[dict[str, Any], tuple[int, int, int] | None]:
+    enabled = bool(getattr(settings, "VISION_RAG_READER_ENABLED", False))
+    meta: dict[str, Any] = {"enabled": enabled, "used": False, "reason": "not_run"}
+    if not enabled:
+        meta["reason"] = "VISION_RAG_READER_ENABLED=false"
+        return meta, None
+    if not bool(getattr(settings, "VISION_LLM_ENABLED", False)):
+        meta["reason"] = "VISION_LLM_ENABLED=false"
+        return meta, None
+    if not image_docs:
+        meta["reason"] = "no_image_docs"
+        return meta, None
+    limits = _vision_reader_limits()
+    if limits[0] <= 0:
+        meta["reason"] = "max_images=0"
+        return meta, None
+    return meta, limits
+
+
+def _append_vision_reader_error(*, errors: list[str], error: str | None) -> None:
+    if not error:
+        return
+    if error.startswith("skip:"):
+        _vision_reader_skip_meta(errors=errors, skipped=0, reason=error[5:])
+        return
+    if len(errors) < 5:
+        errors.append(error)
+
+
+async def _build_vision_reader_docs(
+    *,
+    image_docs: list[Document],
+    question: str,
+    tenant_id: UUID | None,
+    http_client: httpx.AsyncClient,
+    max_images: int,
+    max_image_bytes: int,
+    max_output_chars: int,
+) -> tuple[list[Document], int, int, int, list[str]]:
+    attempted = 0
+    succeeded = 0
+    skipped = 0
+    errors: list[str] = []
+    out: list[Document] = []
+    for doc in image_docs[:max_images]:
+        attempted += 1
+        vision_doc, error = await _vision_reader_context_doc(
+            doc=doc,
+            question=question,
+            tenant_id=tenant_id,
+            http_client=http_client,
+            max_image_bytes=max_image_bytes,
+            max_output_chars=max_output_chars,
+        )
+        if vision_doc is None:
+            skipped += 1
+            _append_vision_reader_error(errors=errors, error=error)
+            continue
+        out.append(vision_doc)
+        succeeded += 1
+    return out, attempted, succeeded, skipped, errors
+
+
+async def _vision_reader_context_doc(
+    *,
+    doc: Document,
+    question: str,
+    tenant_id: UUID | None,
+    http_client: httpx.AsyncClient,
+    max_image_bytes: int,
+    max_output_chars: int,
+) -> tuple[Document | None, str | None]:
+    meta = getattr(doc, "metadata", None)
+    meta = meta if isinstance(meta, dict) else {}
+    raw_bytes, loader_reason = await _load_image_bytes(meta=meta, tenant_id=tenant_id, max_bytes=max_image_bytes)
+    if not raw_bytes:
+        return None, f"skip:{loader_reason}"
+
+    prompt = _build_prompt(question=question, meta=meta)
+    try:
+        extracted = await _describe_with_vision_llm(
+            http_client=http_client,
+            image_bytes=raw_bytes,
+            prompt=prompt,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return None, f"vision_exception:{str(exc)[:120]}"
+
+    text = (extracted or "").strip()
+    if not text or text == "NO_RELEVANT_INFO":
+        return None, None
+    text = _truncate_vision_reader_text(text=text, max_output_chars=max_output_chars)
+    return _build_vision_reader_doc(doc=doc, meta=meta, text=text), None
 
 
 async def build_vision_reader_context_docs(
@@ -415,80 +591,19 @@ async def build_vision_reader_context_docs(
 
     Returns: (vision_docs, meta)
     """
-    enabled = bool(getattr(settings, "VISION_RAG_READER_ENABLED", False))
-    meta: dict[str, Any] = {"enabled": bool(enabled), "used": False, "reason": "not_run"}
-    if not enabled:
-        meta["reason"] = "VISION_RAG_READER_ENABLED=false"
+    meta, limits = _vision_reader_preflight(image_docs=image_docs)
+    if limits is None:
         return [], meta
-
-    if not bool(getattr(settings, "VISION_LLM_ENABLED", False)):
-        meta["reason"] = "VISION_LLM_ENABLED=false"
-        return [], meta
-
-    if not image_docs:
-        meta["reason"] = "no_image_docs"
-        return [], meta
-
-    max_images = max(0, int(getattr(settings, "VISION_RAG_READER_MAX_IMAGES", 2) or 2))
-    if max_images <= 0:
-        meta["reason"] = "max_images=0"
-        return [], meta
-
-    max_image_bytes = max(1, int(getattr(settings, "VISION_RAG_READER_MAX_IMAGE_BYTES", 3_000_000) or 3_000_000))
-    max_output_chars = max(0, int(getattr(settings, "VISION_RAG_READER_MAX_OUTPUT_CHARS", 1500) or 1500))
-
-    attempted = 0
-    succeeded = 0
-    skipped = 0
-    errors: list[str] = []
-
-    out: list[Document] = []
-    for doc in image_docs[:max_images]:
-        attempted += 1
-        meta0 = getattr(doc, "metadata", None)
-        meta0 = meta0 if isinstance(meta0, dict) else {}
-
-        # Load bytes (best-effort).
-        raw_bytes, loader_reason = await _load_image_bytes(meta=meta0, tenant_id=tenant_id, max_bytes=max_image_bytes)
-        if not raw_bytes:
-            skipped += 1
-            if len(errors) < 5:
-                errors.append(f"skip:{loader_reason}")
-            continue
-
-        prompt = _build_prompt(question=question, meta=meta0)
-        try:
-            extracted = await _describe_with_vision_llm(http_client=http_client, image_bytes=raw_bytes, prompt=prompt)
-        except Exception as exc:  # noqa: BLE001
-            skipped += 1
-            if len(errors) < 5:
-                errors.append(f"vision_exception:{str(exc)[:120]}")
-            continue
-
-        text = (extracted or "").strip()
-        if not text or text == "NO_RELEVANT_INFO":
-            skipped += 1
-            continue
-
-        if max_output_chars and len(text) > max_output_chars:
-            text = text[:max_output_chars].rstrip() + "\n\n(truncated)"
-
-        origin_chunk_id = str(getattr(doc, "id", None) or meta0.get("chunk_id") or "").strip() or None
-        vision_chunk_id = _stable_vision_reader_chunk_id(origin_chunk_id or str(uuid.uuid4()))
-
-        # Keep the image metadata so citations can still render thumbnails via img_id/img_url.
-        new_meta: dict[str, Any] = dict(meta0)
-        new_meta.update(
-            {
-                "retrieval_role": "vision_reader",
-                "doc_type_kwd": "image",
-                "origin_chunk_id": origin_chunk_id,
-                "neighbor_of": origin_chunk_id,
-            }
-        )
-
-        out.append(Document(page_content=text, metadata=new_meta, id=vision_chunk_id))
-        succeeded += 1
+    max_images, max_image_bytes, max_output_chars = limits
+    out, attempted, succeeded, skipped, errors = await _build_vision_reader_docs(
+        image_docs=image_docs,
+        question=question,
+        tenant_id=tenant_id,
+        http_client=http_client,
+        max_images=max_images,
+        max_image_bytes=max_image_bytes,
+        max_output_chars=max_output_chars,
+    )
 
     if out:
         reason = "ok"

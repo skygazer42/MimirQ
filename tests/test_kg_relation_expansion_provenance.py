@@ -1,9 +1,229 @@
-
+from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
 
 from tests.helpers.async_utils import yield_control
+
+_SEED_ENTITY_ID = UUID(int=10)
+_NEIGHBOR_ENTITY_ID = UUID(int=11)
+_SEED_EVENT_ID = UUID(int=100)
+_NEIGHBOR_EVENT_ID = UUID(int=101)
+
+
+async def _fake_generate_embedding(_self: object, _text: str) -> list[float]:
+    await yield_control()
+    return [0.0]
+
+
+def _patch_recall_relation_settings(monkeypatch: pytest.MonkeyPatch, settings: object) -> None:
+    monkeypatch.setattr(settings, "KG_RELATION_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "KG_SEARCH_RELATION_EXPANSION_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "KG_SEARCH_RELATION_MAX_NEIGHBORS", 10, raising=False)
+    monkeypatch.setattr(settings, "KG_SEARCH_RELATION_MAX_EDGES", 2, raising=False)
+    monkeypatch.setattr(settings, "KG_SEARCH_RELATION_MIN_CONFIDENCE", 0.0, raising=False)
+    monkeypatch.setattr(settings, "KG_SEARCH_RELATION_NEIGHBOR_WEIGHT_FACTOR", 1.0, raising=False)
+    monkeypatch.setattr(settings, "KG_SEARCH_RELATION_CONF_BUCKET_LOW_MAX", 0.2, raising=False)
+    monkeypatch.setattr(settings, "KG_SEARCH_RELATION_CONF_BUCKET_MID_MAX", 0.85, raising=False)
+
+
+def _patch_expand_relation_settings(monkeypatch: pytest.MonkeyPatch, settings: object) -> None:
+    monkeypatch.setattr(settings, "KG_SEARCH_RELATION_MAX_NEIGHBORS", 1, raising=False)
+    monkeypatch.setattr(settings, "KG_SEARCH_RELATION_MAX_EDGES", 2, raising=False)
+    monkeypatch.setattr(settings, "KG_SEARCH_RELATION_MIN_CONFIDENCE", 0.0, raising=False)
+    monkeypatch.setattr(settings, "KG_SEARCH_RELATION_NEIGHBOR_WEIGHT_FACTOR", 1.0, raising=False)
+    monkeypatch.setattr(settings, "KG_SEARCH_RELATION_CONF_BUCKET_LOW_MAX", 0.2, raising=False)
+    monkeypatch.setattr(settings, "KG_SEARCH_RELATION_CONF_BUCKET_MID_MAX", 0.85, raising=False)
+
+
+class _FakeKGSession:
+    def close(self) -> None:
+        return
+
+
+class _RecallEntityRepository:
+    def search_similar(
+        self,
+        *,
+        query_vector: object,
+        tenant_id: object,
+        k: object,
+        entity_type: object = None,
+    ) -> list[dict[str, object]]:
+        assert query_vector
+        assert tenant_id
+        assert k
+        assert entity_type is None
+        return [{"entity_id": str(_SEED_ENTITY_ID), "name": "A", "type": "t", "similarity": 0.9}]
+
+
+class _RecallEventRepository:
+    def filter_entity_ids_in_documents(
+        self,
+        entity_ids: object,
+        *,
+        tenant_id: object,
+        document_ids: object,
+    ) -> set[UUID]:
+        assert entity_ids
+        assert tenant_id
+        assert document_ids
+        return {_SEED_ENTITY_ID}
+
+    def search_events_by_entities(
+        self,
+        entity_ids: object,
+        tenant_id: object,
+        limit: int = 50,
+        document_ids: object = None,
+        dataset_id: object = None,
+        account_id: object = None,
+    ) -> list[UUID]:
+        assert tenant_id
+        assert limit > 0
+        assert dataset_id is None
+        assert account_id is None
+        ids = {str(entity_id) for entity_id in (entity_ids or [])}
+        if str(_SEED_ENTITY_ID) in ids:
+            return [_SEED_EVENT_ID]
+        if str(_NEIGHBOR_ENTITY_ID) in ids:
+            return [_NEIGHBOR_EVENT_ID]
+        return []
+
+    def search_similar_by_content(self, *_args: object, **_kwargs: object) -> list[object]:
+        return []
+
+    def get_events_by_ids(
+        self,
+        event_ids: object,
+        *_args: object,
+        **_kwargs: object,
+    ) -> list[SimpleNamespace]:
+        want = {str(event_id) for event_id in (event_ids or [])}
+        events = []
+        if str(_SEED_EVENT_ID) in want:
+            events.append(SimpleNamespace(id=_SEED_EVENT_ID, content_vector=None))
+        if str(_NEIGHBOR_EVENT_ID) in want:
+            events.append(SimpleNamespace(id=_NEIGHBOR_EVENT_ID, content_vector=None))
+        return events
+
+    def get_event_entities(self, *_args: object, **_kwargs: object) -> dict[str, list[SimpleNamespace]]:
+        return {
+            str(_SEED_EVENT_ID): [SimpleNamespace(entity_id=_SEED_ENTITY_ID)],
+            str(_NEIGHBOR_EVENT_ID): [SimpleNamespace(entity_id=_NEIGHBOR_ENTITY_ID)],
+        }
+
+
+class _RecallRelationRepository:
+    def __init__(self, relation: SimpleNamespace) -> None:
+        self.relation = relation
+
+    def list_relations_for_entities(
+        self,
+        entity_ids: object,
+        *,
+        tenant_id: object,
+        document_ids: object = None,
+        dataset_id: object = None,
+        account_id: object = None,
+        min_confidence: object = None,
+        allowed_predicates: object = None,
+        limit: int = 2000,
+    ) -> list[SimpleNamespace]:
+        assert entity_ids == [str(_SEED_ENTITY_ID)]
+        assert tenant_id == UUID(int=1)
+        assert document_ids == [UUID(int=2)]
+        assert dataset_id is None
+        assert account_id is None
+        assert min_confidence is None
+        assert allowed_predicates is None
+        assert limit == 2
+        return [self.relation]
+
+
+class _ExpandEntityRepository:
+    def get_entities_by_ids(self, ids: object, *, tenant_id: object = None) -> list[SimpleNamespace]:
+        want = {str(entity_id) for entity_id in (ids or [])}
+        entities = [
+            SimpleNamespace(id=_SEED_ENTITY_ID, name="Seed", type="Tool"),
+            SimpleNamespace(id=_NEIGHBOR_ENTITY_ID, name="Neighbor", type="Tool"),
+        ]
+        return [entity for entity in entities if str(entity.id) in want]
+
+
+class _ExpandEventRepository:
+    def find_events_by_entities(
+        self,
+        entity_ids: object,
+        *,
+        tenant_id: object = None,
+        limit: int = 50,
+        **_kwargs: object,
+    ) -> list[SimpleNamespace]:
+        ids = {str(entity_id) for entity_id in (entity_ids or [])}
+        events = []
+        if str(_SEED_ENTITY_ID) in ids:
+            events.append(SimpleNamespace(id=_SEED_EVENT_ID, title="", summary="", content=""))
+        if str(_NEIGHBOR_ENTITY_ID) in ids:
+            events.append(SimpleNamespace(id=_NEIGHBOR_EVENT_ID, title="", summary="", content=""))
+        return events[: int(limit)]
+
+    def get_entities_for_events(
+        self,
+        event_ids: object,
+        *,
+        tenant_id: object = None,
+    ) -> dict[str, list[SimpleNamespace]]:
+        want = {str(event_id) for event_id in (event_ids or [])}
+        entities: dict[str, list[SimpleNamespace]] = {}
+        if str(_SEED_EVENT_ID) in want:
+            entities[str(_SEED_EVENT_ID)] = [SimpleNamespace(id=_SEED_ENTITY_ID, name="Seed", type="Tool")]
+        if str(_NEIGHBOR_EVENT_ID) in want:
+            entities[str(_NEIGHBOR_EVENT_ID)] = [SimpleNamespace(id=_NEIGHBOR_ENTITY_ID, name="Neighbor", type="Tool")]
+        return entities
+
+
+class _ExpandRelationRepository:
+    def __init__(self, relation: SimpleNamespace) -> None:
+        self.relation = relation
+
+    def list_relations_for_entities(
+        self,
+        entity_ids: object,
+        *,
+        tenant_id: object,
+        limit: int = 2000,
+        **_kwargs: object,
+    ) -> list[SimpleNamespace]:
+        assert entity_ids == [str(_SEED_ENTITY_ID)]
+        assert tenant_id == UUID(int=1)
+        assert limit == 2
+        return [self.relation]
+
+
+def _assert_relation_clue_metadata(
+    clue_container: object,
+    *,
+    evidence_source: str,
+    relation_id: UUID,
+    document_id: UUID,
+    chunk_id: UUID,
+    event_id: UUID,
+) -> None:
+    rel_clues = [
+        clue
+        for clue in (clue_container.clues or [])
+        if (clue.get("metadata") or {}).get("method") == "relation_expansion"
+    ]
+    assert rel_clues, "expected at least one relation_expansion clue"
+
+    metadata = rel_clues[0].get("metadata") or {}
+    assert metadata.get("evidence_source") == evidence_source
+    assert metadata.get("confidence_bucket") == "mid"
+    assert metadata.get("relation_id") == str(relation_id)
+    assert metadata.get("relation_document_id") == str(document_id)
+    assert metadata.get("relation_chunk_id") == str(chunk_id)
+    assert metadata.get("relation_event_id") == str(event_id)
 
 
 @pytest.mark.asyncio
@@ -14,158 +234,41 @@ async def test_kg_recall_relation_expansion_clues_include_provenance_and_confide
     from app.rag.kg.search.config import SearchConfig
     from app.rag.kg.search.recall import RecallSearcher
 
-    # Enable relation expansion (safe opt-in feature).
-    monkeypatch.setattr(recall_mod.settings, "KG_RELATION_ENABLED", True, raising=False)
-    monkeypatch.setattr(recall_mod.settings, "KG_SEARCH_RELATION_EXPANSION_ENABLED", True, raising=False)
-    monkeypatch.setattr(recall_mod.settings, "KG_SEARCH_RELATION_MAX_NEIGHBORS", 10, raising=False)
-
-    # Cap settings should flow into repository call.
-    monkeypatch.setattr(recall_mod.settings, "KG_SEARCH_RELATION_MAX_EDGES", 2, raising=False)
-    monkeypatch.setattr(recall_mod.settings, "KG_SEARCH_RELATION_MIN_CONFIDENCE", 0.0, raising=False)
-    monkeypatch.setattr(recall_mod.settings, "KG_SEARCH_RELATION_NEIGHBOR_WEIGHT_FACTOR", 1.0, raising=False)
-
-    # Non-default thresholds: if the implementation ignores settings and uses defaults,
-    # confidence=0.7 would bucket to "high". With mid_max=0.85, it should be "mid".
-    monkeypatch.setattr(recall_mod.settings, "KG_SEARCH_RELATION_CONF_BUCKET_LOW_MAX", 0.2, raising=False)
-    monkeypatch.setattr(recall_mod.settings, "KG_SEARCH_RELATION_CONF_BUCKET_MID_MAX", 0.85, raising=False)
-
-    class _FakeSession:
-        def close(self) -> None:
-            return
-
-    monkeypatch.setattr(recall_mod, "get_session", lambda: _FakeSession(), raising=True)
-
-    async def _fake_generate_embedding(self, _text: str):  # noqa: ANN001
-        await yield_control()
-        return [0.0]
-
+    _patch_recall_relation_settings(monkeypatch, recall_mod.settings)
+    monkeypatch.setattr(recall_mod, "get_session", lambda: _FakeKGSession(), raising=True)
     monkeypatch.setattr(recall_mod.DocumentProcessor, "generate_embedding", _fake_generate_embedding, raising=True)
+    monkeypatch.setattr(recall_mod, "EntityRepository", lambda _session: _RecallEntityRepository(), raising=True)
+    monkeypatch.setattr(recall_mod, "EventRepository", lambda _session: _RecallEventRepository(), raising=True)
 
-    class _FakeEntityRepository:
-        def __init__(self, _session):  # noqa: ANN001
-            return
-
-        def search_similar(self, *, query_vector, tenant_id, k, entity_type=None):  # noqa: ANN001
-            assert query_vector
-            assert tenant_id
-            assert k
-            return [{"entity_id": str(UUID(int=10)), "name": "A", "type": "t", "similarity": 0.9}]
-
-    class _Ev:
-        def __init__(self, ev_id: UUID):
-            self.id = ev_id
-            self.content_vector = None
-
-    class _Link:
-        def __init__(self, entity_id: UUID):
-            self.entity_id = entity_id
-
-    class _FakeEventRepository:
-        def __init__(self, _session):  # noqa: ANN001
-            return
-
-        def filter_entity_ids_in_documents(self, entity_ids, *, tenant_id, document_ids):  # noqa: ANN001
-            assert entity_ids
-            assert tenant_id
-            assert document_ids
-            return {UUID(int=10)}
-
-        def search_events_by_entities(  # noqa: ANN001
-            self,
-            entity_ids,
-            tenant_id,
-            limit=50,
-            document_ids=None,
-            dataset_id=None,
-            account_id=None,
-        ):
-            assert tenant_id
-            assert limit > 0
-            ids = {str(e) for e in (entity_ids or [])}
-            if str(UUID(int=10)) in ids:
-                return [UUID(int=100)]
-            if str(UUID(int=11)) in ids:
-                return [UUID(int=101)]
-            return []
-
-        def search_similar_by_content(self, *_a, **_k):  # noqa: ANN001
-            return []
-
-        def get_events_by_ids(self, event_ids, *_a, **_k):  # noqa: ANN001
-            want = {str(x) for x in (event_ids or [])}
-            out = []
-            if str(UUID(int=100)) in want:
-                out.append(_Ev(UUID(int=100)))
-            if str(UUID(int=101)) in want:
-                out.append(_Ev(UUID(int=101)))
-            return out
-
-        def get_event_entities(self, *_a, **_k):  # noqa: ANN001
-            return {
-                str(UUID(int=100)): [_Link(UUID(int=10))],
-                str(UUID(int=101)): [_Link(UUID(int=11))],
-            }
-
-    rel_id = UUID(int=500)
-    rel_doc_id = UUID(int=2)
-    rel_chunk_id = UUID(int=600)
-    rel_event_id = UUID(int=700)
-
-    class _Rel:
-        def __init__(self):
-            self.id = rel_id
-            self.subject_entity_id = UUID(int=10)
-            self.object_entity_id = UUID(int=11)
-            self.predicate = "related_to"
-            self.confidence = 0.7
-            self.references = {"evidence_source": "Mention"}  # should be normalized to "mention"
-            self.document_id = rel_doc_id
-            self.chunk_id = rel_chunk_id
-            self.event_id = rel_event_id
-
-    class _FakeRelationRepository:
-        def __init__(self, _session):  # noqa: ANN001
-            return
-
-        def list_relations_for_entities(  # noqa: ANN001
-            self,
-            entity_ids,
-            *,
-            tenant_id,
-            document_ids=None,
-            dataset_id=None,
-            account_id=None,
-            min_confidence=None,
-            allowed_predicates=None,
-            limit=2000,
-        ):
-            assert entity_ids == [str(UUID(int=10))]
-            assert tenant_id == UUID(int=1)
-            assert document_ids == [UUID(int=2)]
-            assert dataset_id is None
-            assert account_id is None
-            assert min_confidence is None
-            assert allowed_predicates is None
-            assert limit == 2
-            return [_Rel()]
-
-    monkeypatch.setattr(recall_mod, "EntityRepository", _FakeEntityRepository, raising=True)
-    monkeypatch.setattr(recall_mod, "EventRepository", _FakeEventRepository, raising=True)
-    monkeypatch.setattr(recall_mod, "RelationRepository", _FakeRelationRepository, raising=True)
+    relation = SimpleNamespace(
+        id=UUID(int=500),
+        subject_entity_id=_SEED_ENTITY_ID,
+        object_entity_id=_NEIGHBOR_ENTITY_ID,
+        predicate="related_to",
+        confidence=0.7,
+        references={"evidence_source": "Mention"},
+        document_id=UUID(int=2),
+        chunk_id=UUID(int=600),
+        event_id=UUID(int=700),
+    )
+    monkeypatch.setattr(
+        recall_mod,
+        "RelationRepository",
+        lambda _session: _RecallRelationRepository(relation),
+        raising=True,
+    )
 
     config = SearchConfig(query="q", tenant_id=UUID(int=1), document_ids=[UUID(int=2)])
     result = await RecallSearcher().search(config)
 
-    rel_clues = [c for c in (result.clues or []) if (c.get("metadata") or {}).get("method") == "relation_expansion"]
-    assert rel_clues, "expected at least one relation_expansion clue"
-
-    md = rel_clues[0].get("metadata") or {}
-    assert md.get("evidence_source") == "mention"
-    assert md.get("confidence_bucket") == "mid"
-    assert md.get("relation_id") == str(rel_id)
-    assert md.get("relation_document_id") == str(rel_doc_id)
-    assert md.get("relation_chunk_id") == str(rel_chunk_id)
-    assert md.get("relation_event_id") == str(rel_event_id)
+    _assert_relation_clue_metadata(
+        result,
+        evidence_source="mention",
+        relation_id=relation.id,
+        document_id=relation.document_id,
+        chunk_id=relation.chunk_id,
+        event_id=relation.event_id,
+    )
 
     dbg = result.relation_debug or {}
     assert dbg.get("enabled") is True
@@ -183,103 +286,35 @@ async def test_kg_expand_relation_expansion_clues_include_provenance_and_confide
     from app.rag.kg.search.expand import ExpandSearcher
     from app.rag.kg.search.recall import RecallResult
 
-    monkeypatch.setattr(expand_mod.settings, "KG_SEARCH_RELATION_MAX_NEIGHBORS", 1, raising=False)
-    monkeypatch.setattr(expand_mod.settings, "KG_SEARCH_RELATION_MAX_EDGES", 2, raising=False)
-    monkeypatch.setattr(expand_mod.settings, "KG_SEARCH_RELATION_MIN_CONFIDENCE", 0.0, raising=False)
-    monkeypatch.setattr(expand_mod.settings, "KG_SEARCH_RELATION_NEIGHBOR_WEIGHT_FACTOR", 1.0, raising=False)
-    monkeypatch.setattr(expand_mod.settings, "KG_SEARCH_RELATION_CONF_BUCKET_LOW_MAX", 0.2, raising=False)
-    monkeypatch.setattr(expand_mod.settings, "KG_SEARCH_RELATION_CONF_BUCKET_MID_MAX", 0.85, raising=False)
+    _patch_expand_relation_settings(monkeypatch, expand_mod.settings)
+    monkeypatch.setattr(expand_mod, "get_session", lambda: _FakeKGSession(), raising=True)
+    monkeypatch.setattr(expand_mod, "EntityRepository", lambda _session: _ExpandEntityRepository(), raising=True)
+    monkeypatch.setattr(expand_mod, "EventRepository", lambda _session: _ExpandEventRepository(), raising=True)
 
-    class _FakeSession:
-        def close(self) -> None:
-            return
-
-    monkeypatch.setattr(expand_mod, "get_session", lambda: _FakeSession(), raising=True)
-
-    class _Ent:
-        def __init__(self, ent_id: UUID, name: str, type_: str):
-            self.id = ent_id
-            self.name = name
-            self.type = type_
-
-    class _Ev:
-        def __init__(self, ev_id: UUID):
-            self.id = ev_id
-            self.title = ""
-            self.summary = ""
-            self.content = ""
-
-    class _FakeEntityRepository:
-        def __init__(self, _session):  # noqa: ANN001
-            return
-
-        def get_entities_by_ids(self, ids, *, tenant_id=None):  # noqa: ANN001
-            want = {str(x) for x in (ids or [])}
-            ents = [
-                _Ent(UUID(int=10), "Seed", "Tool"),
-                _Ent(UUID(int=11), "Neighbor", "Tool"),
-            ]
-            return [e for e in ents if str(e.id) in want]
-
-    class _FakeEventRepository:
-        def __init__(self, _session):  # noqa: ANN001
-            return
-
-        def find_events_by_entities(self, entity_ids, *, tenant_id=None, limit=50, **_k):  # noqa: ANN001
-            ids = {str(x) for x in (entity_ids or [])}
-            out = []
-            if str(UUID(int=10)) in ids:
-                out.append(_Ev(UUID(int=100)))
-            if str(UUID(int=11)) in ids:
-                out.append(_Ev(UUID(int=101)))
-            return out[: int(limit)]
-
-        def get_entities_for_events(self, event_ids, *, tenant_id=None):  # noqa: ANN001
-            want = {str(x) for x in (event_ids or [])}
-            out: dict[str, list[_Ent]] = {}
-            if str(UUID(int=100)) in want:
-                out[str(UUID(int=100))] = [_Ent(UUID(int=10), "Seed", "Tool")]
-            if str(UUID(int=101)) in want:
-                out[str(UUID(int=101))] = [_Ent(UUID(int=11), "Neighbor", "Tool")]
-            return out
-
-    rel_id = UUID(int=501)
-    rel_doc_id = UUID(int=2)
-    rel_chunk_id = UUID(int=601)
-    rel_event_id = UUID(int=701)
-
-    class _Rel:
-        def __init__(self):
-            self.id = rel_id
-            self.subject_entity_id = UUID(int=10)
-            self.object_entity_id = UUID(int=11)
-            self.predicate = "related_to"
-            self.confidence = 0.7
-            self.references = {"evidence_source": "Quote"}
-            self.document_id = rel_doc_id
-            self.chunk_id = rel_chunk_id
-            self.event_id = rel_event_id
-
-    class _FakeRelationRepository:
-        def __init__(self, _session):  # noqa: ANN001
-            return
-
-        def list_relations_for_entities(self, entity_ids, *, tenant_id, limit=2000, **_k):  # noqa: ANN001
-            assert entity_ids == [str(UUID(int=10))]
-            assert tenant_id == UUID(int=1)
-            assert limit == 2
-            return [_Rel()]
-
-    monkeypatch.setattr(expand_mod, "EntityRepository", _FakeEntityRepository, raising=True)
-    monkeypatch.setattr(expand_mod, "EventRepository", _FakeEventRepository, raising=True)
-    monkeypatch.setattr(expand_mod, "RelationRepository", _FakeRelationRepository, raising=True)
+    relation = SimpleNamespace(
+        id=UUID(int=501),
+        subject_entity_id=_SEED_ENTITY_ID,
+        object_entity_id=_NEIGHBOR_ENTITY_ID,
+        predicate="related_to",
+        confidence=0.7,
+        references={"evidence_source": "Quote"},
+        document_id=UUID(int=2),
+        chunk_id=UUID(int=601),
+        event_id=UUID(int=701),
+    )
+    monkeypatch.setattr(
+        expand_mod,
+        "RelationRepository",
+        lambda _session: _ExpandRelationRepository(relation),
+        raising=True,
+    )
 
     recall_result = RecallResult(
         query_vector=[0.0],
-        key_final=[{"entity_id": str(UUID(int=10)), "name": "Seed", "type": "Tool", "weight": 1.0}],
+        key_final=[{"entity_id": str(_SEED_ENTITY_ID), "name": "Seed", "type": "Tool", "weight": 1.0}],
         event_ids=[],
         clues=[],
-        key_weights={str(UUID(int=10)): 1.0},
+        key_weights={str(_SEED_ENTITY_ID): 1.0},
         event_scores={},
         relation_debug={"enabled": True},
     )
@@ -296,14 +331,11 @@ async def test_kg_expand_relation_expansion_clues_include_provenance_and_confide
 
     out = await ExpandSearcher().expand(cfg, recall_result)
 
-    rel_clues = [c for c in (out.clues or []) if (c.get("metadata") or {}).get("method") == "relation_expansion"]
-    assert rel_clues, "expected at least one relation_expansion clue"
-
-    md = rel_clues[0].get("metadata") or {}
-    assert md.get("evidence_source") == "quote"
-    assert md.get("confidence_bucket") == "mid"
-    assert md.get("relation_id") == str(rel_id)
-    assert md.get("relation_document_id") == str(rel_doc_id)
-    assert md.get("relation_chunk_id") == str(rel_chunk_id)
-    assert md.get("relation_event_id") == str(rel_event_id)
-
+    _assert_relation_clue_metadata(
+        out,
+        evidence_source="quote",
+        relation_id=relation.id,
+        document_id=relation.document_id,
+        chunk_id=relation.chunk_id,
+        event_id=relation.event_id,
+    )

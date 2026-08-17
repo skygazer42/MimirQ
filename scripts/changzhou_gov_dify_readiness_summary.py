@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Build a compact readiness summary from Changzhou Dify gate artifacts."""
 
-
 import argparse
 import json
 from datetime import datetime, timezone
@@ -89,7 +88,9 @@ def _knowledge_map_section(report: dict[str, Any]) -> dict[str, Any]:
     summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
     return {
         "passed": bool(summary.get("passed")),
-        "failed_conditions": summary.get("failed_conditions") if isinstance(summary.get("failed_conditions"), list) else [],
+        "failed_conditions": summary.get("failed_conditions")
+        if isinstance(summary.get("failed_conditions"), list)
+        else [],
         "summary": summary,
     }
 
@@ -301,7 +302,9 @@ def _audit_gate(
     failed_conditions = section.get("failed_conditions")
     summary = section.get("summary") if isinstance(section.get("summary"), dict) else {}
     if not isinstance(failed_conditions, list):
-        failed_conditions = summary.get("failed_conditions") if isinstance(summary.get("failed_conditions"), list) else []
+        failed_conditions = (
+            summary.get("failed_conditions") if isinstance(summary.get("failed_conditions"), list) else []
+        )
     return {
         "name": name,
         "status": _audit_status(section),
@@ -367,39 +370,57 @@ def _first_metric(gates: list[dict[str, Any]], *keys: str) -> Any:
 
 def _audit_failure_categories(gates: list[dict[str, Any]]) -> dict[str, int]:
     categories: dict[str, int] = {}
+    for key, failed in (
+        ("scope", _scope_category_failed(gates)),
+        ("chunking", _chunking_category_failed(gates)),
+        ("ranking", _ranking_category_failed(gates)),
+        ("absence", _absence_category_failed(gates)),
+        ("kg_noise", _kg_noise_category_failed(gates)),
+        ("adapter", _adapter_category_failed(gates)),
+    ):
+        if failed:
+            categories[key] = 1
+    return categories
 
+
+def _scope_category_failed(gates: list[dict[str, Any]]) -> bool:
     expected_hit = _first_metric(gates, "expected_metadata_hit_rate", "expected_metadata_recall")
-    if (
+    return (
         _metric_failed(gates, "expected_metadata_hit_rate")
         or _metric_failed(gates, "expected_metadata_recall")
         or (isinstance(expected_hit, int | float) and float(expected_hit) < 1.0)
-    ):
-        categories["scope"] = 1
+    )
 
+
+def _chunking_category_failed(gates: list[dict[str, Any]]) -> bool:
     effective = _first_metric(gates, "retrieval_effective_context_rate")
-    if _metric_failed(gates, "retrieval_effective_context_rate") or (
+    return _metric_failed(gates, "retrieval_effective_context_rate") or (
         isinstance(effective, int | float) and float(effective) < 0.8
-    ):
-        categories["chunking"] = 1
+    )
 
+
+def _ranking_category_failed(gates: list[dict[str, Any]]) -> bool:
     hit_at_1 = _first_metric(gates, "hit_at_1", "retrieval_hit_at_1")
     hit_at_3 = _first_metric(gates, "hit_at_3", "retrieval_hit_at_3")
-    if _metric_failed(gates, "hit_at_1") or (
+    return _metric_failed(gates, "hit_at_1") or (
         isinstance(hit_at_1, int | float)
         and float(hit_at_1) < 1.0
         and isinstance(hit_at_3, int | float)
         and float(hit_at_3) >= 1.0
-    ):
-        categories["ranking"] = 1
+    )
 
+
+def _absence_category_failed(gates: list[dict[str, Any]]) -> bool:
     recall = _first_metric(gates, "retrieval_recall")
-    if _metric_failed(gates, "retrieval_recall") or (isinstance(recall, int | float) and float(recall) < 1.0):
-        categories["absence"] = 1
+    return _metric_failed(gates, "retrieval_recall") or (isinstance(recall, int | float) and float(recall) < 1.0)
 
+
+def _kg_noise_category_failed(gates: list[dict[str, Any]]) -> bool:
     kg_noise = _first_metric(gates, "kg_noise_rate")
-    if _metric_failed(gates, "kg_noise_rate") or (isinstance(kg_noise, int | float) and float(kg_noise) > 0.1):
-        categories["kg_noise"] = 1
+    return _metric_failed(gates, "kg_noise_rate") or (isinstance(kg_noise, int | float) and float(kg_noise) > 0.1)
 
+
+def _adapter_category_failed(gates: list[dict[str, Any]]) -> bool:
     direct_nonempty = _first_metric(gates, "mimirq_direct_nonempty")
     external_nonempty = _first_metric(gates, "dify_hit_nonempty")
     schema_valid = _first_metric(gates, "mimirq_direct_schema_valid")
@@ -410,21 +431,30 @@ def _audit_failure_categories(gates: list[dict[str, Any]]) -> dict[str, int]:
         or isinstance(direct_hit_at_1, int | float)
         and float(direct_hit_at_1) >= 1.0
     )
-    if direct_has_evidence:
-        if isinstance(external_nonempty, int | float) and float(external_nonempty) <= 0:
-            categories["adapter"] = 1
-        if isinstance(schema_valid, int | float) and float(schema_valid) <= 0:
-            categories["adapter"] = 1
-        adapter_markers = ("adapter", "boundary", "endpoint", "external_probe", "dify_external")
-        for gate in gates:
-            failed_conditions = gate.get("failed_conditions") if isinstance(gate.get("failed_conditions"), list) else []
-            if any(
-                any(marker in _text(condition).lower() for marker in adapter_markers)
-                for condition in failed_conditions
-            ):
-                categories["adapter"] = 1
+    return direct_has_evidence and (
+        _adapter_missing_external_hits(external_nonempty)
+        or _adapter_schema_invalid(schema_valid)
+        or _adapter_failed_conditions_present(gates)
+    )
 
-    return categories
+
+def _adapter_missing_external_hits(value: Any) -> bool:
+    return isinstance(value, int | float) and float(value) <= 0
+
+
+def _adapter_schema_invalid(value: Any) -> bool:
+    return isinstance(value, int | float) and float(value) <= 0
+
+
+def _adapter_failed_conditions_present(gates: list[dict[str, Any]]) -> bool:
+    adapter_markers = ("adapter", "boundary", "endpoint", "external_probe", "dify_external")
+    for gate in gates:
+        failed_conditions = gate.get("failed_conditions") if isinstance(gate.get("failed_conditions"), list) else []
+        if any(
+            any(marker in _text(condition).lower() for marker in adapter_markers) for condition in failed_conditions
+        ):
+            return True
+    return False
 
 
 def _audit_next_action(categories: dict[str, int]) -> str | None:
@@ -438,7 +468,9 @@ def _audit_next_action(categories: dict[str, int]) -> str | None:
         "kg_noise": "KG noise",
         "adapter": "Dify binding",
     }
-    ordered = [labels[key] for key in ("scope", "chunking", "ranking", "absence", "kg_noise", "adapter") if key in categories]
+    ordered = [
+        labels[key] for key in ("scope", "chunking", "ranking", "absence", "kg_noise", "adapter") if key in categories
+    ]
     if not ordered:
         return "Inspect failed retrieval gates before enabling production retrieval."
     if len(ordered) == 1:
@@ -456,7 +488,9 @@ def _kg_recommendation_from_gates(gates: list[dict[str, Any]]) -> str | None:
         source = _text(gate.get("source"))
         metrics = gate.get("metrics") if isinstance(gate.get("metrics"), dict) else {}
         is_kg_gate = name == "kg_compare" or "kg_compare" in source
-        if not is_kg_gate and not any(key in metrics for key in ("candidate_gate_passed", "compared_metrics", "kg_noise_rate")):
+        if not is_kg_gate and not any(
+            key in metrics for key in ("candidate_gate_passed", "compared_metrics", "kg_noise_rate")
+        ):
             continue
         candidate_passed = metrics.get("candidate_gate_passed")
         compared_metrics = metrics.get("compared_metrics")
@@ -495,7 +529,9 @@ def _build_retrieval_audit(
             continue
         gates.append(_audit_gate(name=stage, section=section, source=f"changzhou_dify_readiness:{stage}"))
 
-    kg_section = _kg_compare_section(kg_compare_raw) if kg_compare_raw is not None else sections_by_stage.get("kg_compare")
+    kg_section = (
+        _kg_compare_section(kg_compare_raw) if kg_compare_raw is not None else sections_by_stage.get("kg_compare")
+    )
     if isinstance(kg_section, dict):
         metrics = dict(kg_section.get("summary") or {})
         candidate_gate = kg_section.get("candidate_gate") if isinstance(kg_section.get("candidate_gate"), dict) else {}
@@ -526,7 +562,9 @@ def _build_retrieval_audit(
 
     categories = _audit_failure_categories(gates)
     kg_recommendation = _kg_recommendation_from_gates(gates)
-    raw_sections = [section for section in (knowledge_map_raw or {}, mimirq_direct_raw or {}) if isinstance(section, dict)]
+    raw_sections = [
+        section for section in (knowledge_map_raw or {}, mimirq_direct_raw or {}) if isinstance(section, dict)
+    ]
     audit = {
         "status": "failed" if summary.get("passed") is not True or categories else "passed",
         "plugin_refs": _audit_plugin_refs(*raw_sections),
@@ -547,6 +585,14 @@ def _empty_marker(value: Any) -> str:
 
 def _region_extractor_detail_texts(item: dict[str, Any]) -> list[str]:
     details: list[str] = []
+    _append_region_extractor_details(details, item)
+    if details:
+        return details
+    _append_region_details(details, item)
+    return details
+
+
+def _append_region_extractor_details(details: list[str], item: dict[str, Any]) -> None:
     extractors = item.get("region_extractors") if isinstance(item.get("region_extractors"), list) else []
     for extractor in extractors:
         if not isinstance(extractor, dict):
@@ -561,9 +607,9 @@ def _region_extractor_detail_texts(item: dict[str, Any]) -> list[str]:
             _append_unique(details, f"{title}: {reason}")
         if "area" in extractor and not _text(extractor.get("area")):
             _append_unique(details, f"{title}: area=<empty>")
-    if details:
-        return details
 
+
+def _append_region_details(details: list[str], item: dict[str, Any]) -> None:
     regions = item.get("regions") if isinstance(item.get("regions"), list) else []
     for region in regions:
         if isinstance(region, dict):
@@ -578,7 +624,6 @@ def _region_extractor_detail_texts(item: dict[str, Any]) -> list[str]:
             continue
         if _text(region) == "未知":
             _append_unique(details, "区域提取器: region=未知")
-    return details
 
 
 def _trace_warning_diagnoses(report: dict[str, Any]) -> dict[str, list[str]]:
@@ -634,20 +679,20 @@ def _eval_warning_diagnosis_details(report: dict[str, Any]) -> dict[str, dict[st
             continue
         if quality.get("grounded") is False:
             case_details = ["grounded=false"]
-            missing_key_points = [
-                _text(value)
-                for value in quality.get("missing_key_points", [])
-                if _text(value)
-            ] if isinstance(quality.get("missing_key_points"), list) else []
+            missing_key_points = (
+                [_text(value) for value in quality.get("missing_key_points", []) if _text(value)]
+                if isinstance(quality.get("missing_key_points"), list)
+                else []
+            )
             if missing_key_points:
                 case_details.append(f"missing_key_points={','.join(missing_key_points)}")
             details.setdefault("eval.generated_answer_missing", {})[case_id] = case_details
         if quality.get("policy_clean") is False:
-            forbidden_phrases = [
-                _text(value)
-                for value in quality.get("forbidden_phrases", [])
-                if _text(value)
-            ] if isinstance(quality.get("forbidden_phrases"), list) else []
+            forbidden_phrases = (
+                [_text(value) for value in quality.get("forbidden_phrases", []) if _text(value)]
+                if isinstance(quality.get("forbidden_phrases"), list)
+                else []
+            )
             case_details = ["policy_clean=false"]
             if forbidden_phrases:
                 case_details = [f"forbidden_phrases={','.join(forbidden_phrases)}"]
@@ -706,34 +751,170 @@ def _root_cause_reason(stage: str, section: dict[str, Any]) -> str:
 def _next_action(stage: str, reason: str) -> str:
     if not stage:
         return ""
-    if stage == "console_auth":
-        return (
-            "Refresh Dify console login with DIFY_CONSOLE_EMAIL and DIFY_CONSOLE_PASSWORD_FILE, "
-            "then run make dify-console-login."
-        )
     if stage == "knowledge_map":
-        if reason.startswith("plugin_ref_invalid:"):
-            return (
-                "Fix DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON plugin_refs to registered plugin:<name>@<version> refs, "
-                "then run make changzhou-dify-knowledge-map-check."
-            )
-        if reason.startswith("plugin_retrieval_policy_missing:"):
-            return (
-                "Add a mimirq.retrieval_policy.v1 retrieval_policy to the referenced plugin manifest, "
-                "then run make changzhou-dify-knowledge-map-check."
-            )
-        return "Run make changzhou-dify-knowledge-map-check and fix DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON."
-    if stage == "mimirq_direct":
-        return "Run make changzhou-dify-mimirq-direct-gate and inspect /tmp/changzhou_gov_dify_mimirq_direct_gate.json."
-    if stage == "kg_compare":
-        return "Run the KG-off/KG-on golden comparison and inspect /tmp/changzhou_gov_dify_kg_compare.json."
+        return _knowledge_map_next_action(reason)
     if stage == "external_probe":
-        if reason in {"endpoint_missing", "endpoint_host_is_loopback"}:
-            return "Set Dify external knowledge endpoint to a MimirQ URL reachable from the Dify server, not localhost."
-        return "Run make changzhou-dify-external-probe and inspect /tmp/changzhou_gov_dify_external_probe.json."
-    if stage == "full_gate":
-        return "Run make changzhou-dify-full-gate and inspect the failed stage artifact under CHANGZHOU_DIFY_OUT_PREFIX."
-    return "Inspect the readiness artifact for the failed stage."
+        return _external_probe_next_action(reason)
+    return _STATIC_NEXT_ACTIONS.get(stage, "Inspect the readiness artifact for the failed stage.")
+
+
+_STATIC_NEXT_ACTIONS = {
+    "console_auth": (
+        "Refresh Dify console login with DIFY_CONSOLE_EMAIL and DIFY_CONSOLE_PASSWORD_FILE, "
+        "then run make dify-console-login."
+    ),
+    "mimirq_direct": (
+        "Run make changzhou-dify-mimirq-direct-gate and inspect /tmp/changzhou_gov_dify_mimirq_direct_gate.json."
+    ),
+    "kg_compare": ("Run the KG-off/KG-on golden comparison and inspect /tmp/changzhou_gov_dify_kg_compare.json."),
+    "full_gate": (
+        "Run make changzhou-dify-full-gate and inspect the failed stage artifact under CHANGZHOU_DIFY_OUT_PREFIX."
+    ),
+}
+
+
+def _knowledge_map_next_action(reason: str) -> str:
+    if reason.startswith("plugin_ref_invalid:"):
+        return (
+            "Fix DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON plugin_refs to registered plugin:<name>@<version> refs, "
+            "then run make changzhou-dify-knowledge-map-check."
+        )
+    if reason.startswith("plugin_retrieval_policy_missing:"):
+        return (
+            "Add a mimirq.retrieval_policy.v1 retrieval_policy to the referenced plugin manifest, "
+            "then run make changzhou-dify-knowledge-map-check."
+        )
+    return "Run make changzhou-dify-knowledge-map-check and fix DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON."
+
+
+def _external_probe_next_action(reason: str) -> str:
+    if reason in {"endpoint_missing", "endpoint_host_is_loopback"}:
+        return "Set Dify external knowledge endpoint to a MimirQ URL reachable from the Dify server, not localhost."
+    return "Run make changzhou-dify-external-probe and inspect /tmp/changzhou_gov_dify_external_probe.json."
+
+
+def _section_or_none(builder: Any, payload: dict[str, Any] | None) -> dict[str, Any] | None:
+    if payload is None:
+        return None
+    return builder(payload or {})
+
+
+def _build_stage_sections(
+    *,
+    knowledge_map: dict[str, Any] | None,
+    mimirq_direct: dict[str, Any] | None,
+    kg_compare: dict[str, Any] | None,
+    console_auth: dict[str, Any] | None,
+    external_probe: dict[str, Any],
+    full_gate_summary: dict[str, Any],
+) -> tuple[
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+    dict[str, Any],
+    dict[str, Any],
+]:
+    return (
+        _section_or_none(_knowledge_map_section, knowledge_map),
+        _section_or_none(_mimirq_direct_section, mimirq_direct),
+        _section_or_none(_kg_compare_section, kg_compare),
+        _section_or_none(_console_auth_section, console_auth),
+        _external_probe_section(external_probe),
+        _full_gate_section(full_gate_summary),
+    )
+
+
+def _enrich_full_gate_section(
+    full_section: dict[str, Any],
+    artifact_reports: dict[str, dict[str, Any]],
+) -> None:
+    eval_report = artifact_reports.get("eval", {})
+    trace_report = artifact_reports.get("trace", {})
+    if isinstance(eval_report, dict):
+        _overlay_stage_summary(full_section, "eval", eval_report)
+        failed_conditions = _quality_gate_failed_conditions(eval_report)
+        if failed_conditions:
+            full_section["failed_conditions"] = failed_conditions
+    if isinstance(trace_report, dict):
+        warning_diagnoses = _trace_warning_diagnoses(trace_report)
+        if warning_diagnoses:
+            full_section["warning_diagnoses"] = warning_diagnoses
+    warning_cases = _merge_case_map(
+        _eval_warning_cases(eval_report) if isinstance(eval_report, dict) else {},
+        _trace_warning_cases(trace_report) if isinstance(trace_report, dict) else {},
+    )
+    if warning_cases:
+        full_section["warning_cases"] = warning_cases
+    warning_diagnosis_details = _merge_detail_map(
+        _eval_warning_diagnosis_details(eval_report) if isinstance(eval_report, dict) else {},
+        _trace_warning_diagnosis_details(trace_report) if isinstance(trace_report, dict) else {},
+    )
+    if warning_diagnosis_details:
+        full_section["warning_diagnosis_details"] = warning_diagnosis_details
+
+
+def _staged_sections(
+    *,
+    knowledge_section: dict[str, Any] | None,
+    mimirq_section: dict[str, Any] | None,
+    kg_compare_section: dict[str, Any] | None,
+    console_section: dict[str, Any] | None,
+    external_section: dict[str, Any],
+    full_section: dict[str, Any],
+) -> list[tuple[str, dict[str, Any]]]:
+    staged_sections: list[tuple[str, dict[str, Any]]] = []
+    for stage, section in (
+        ("knowledge_map", knowledge_section),
+        ("mimirq_direct", mimirq_section),
+        ("kg_compare", kg_compare_section),
+        ("console_auth", console_section),
+    ):
+        if section is not None:
+            staged_sections.append((stage, section))
+    staged_sections.extend((("external_probe", external_section), ("full_gate", full_section)))
+    return staged_sections
+
+
+def _sections_by_stage_with_status(
+    staged_sections: list[tuple[str, dict[str, Any]]],
+) -> tuple[dict[str, dict[str, Any]], list[str], list[str]]:
+    blocker = ""
+    failed_stages: list[str] = []
+    skipped_stages: list[str] = []
+    sections_by_stage: dict[str, dict[str, Any]] = {}
+    for stage, section in staged_sections:
+        with_status = _with_status(section, blocker=blocker)
+        sections_by_stage[stage] = with_status
+        if with_status["status"] == "skipped":
+            skipped_stages.append(stage)
+            continue
+        if with_status["status"] == "failed":
+            failed_stages.append(stage)
+            blocker = stage
+    return sections_by_stage, failed_stages, skipped_stages
+
+
+def _artifact_report_sources(
+    *,
+    artifact_reports: dict[str, dict[str, Any]] | None,
+    knowledge_map: dict[str, Any] | None,
+    mimirq_direct: dict[str, Any] | None,
+    kg_compare: dict[str, Any] | None,
+    console_auth: dict[str, Any] | None,
+    external_probe: dict[str, Any],
+    full_gate_summary: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    if artifact_reports:
+        return artifact_reports
+    return {
+        "knowledge_map": knowledge_map or {},
+        "mimirq_direct": mimirq_direct or {},
+        "kg_compare": kg_compare or {},
+        "console_auth": console_auth or {},
+        "external_probe": external_probe,
+        "full_gate": full_gate_summary,
+    }
 
 
 def build_readiness_summary(
@@ -748,63 +929,36 @@ def build_readiness_summary(
     generated_at: str = "",
     artifact_reports: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    knowledge_section = _knowledge_map_section(knowledge_map or {}) if knowledge_map is not None else None
-    mimirq_section = _mimirq_direct_section(mimirq_direct or {}) if mimirq_direct is not None else None
-    kg_compare_section = _kg_compare_section(kg_compare or {}) if kg_compare is not None else None
-    console_section = _console_auth_section(console_auth or {}) if console_auth is not None else None
-    external_section = _external_probe_section(external_probe)
-    full_section = _full_gate_section(full_gate_summary)
-    eval_report = (artifact_reports or {}).get("eval", {})
-    trace_report = (artifact_reports or {}).get("trace", {})
-    if isinstance(eval_report, dict):
-        _overlay_stage_summary(full_section, "eval", eval_report)
-        failed_conditions = _quality_gate_failed_conditions(eval_report)
-        if failed_conditions:
-            full_section["failed_conditions"] = failed_conditions
-    if isinstance(trace_report, dict):
-        warning_diagnoses = _trace_warning_diagnoses(trace_report)
-        if warning_diagnoses:
-            full_section["warning_diagnoses"] = warning_diagnoses
-    warning_case_maps: list[dict[str, list[str]]] = []
-    warning_detail_maps: list[dict[str, dict[str, list[str]]]] = []
-    if isinstance(eval_report, dict):
-        warning_case_maps.append(_eval_warning_cases(eval_report))
-        warning_detail_maps.append(_eval_warning_diagnosis_details(eval_report))
-    if isinstance(trace_report, dict):
-        warning_case_maps.append(_trace_warning_cases(trace_report))
-        warning_detail_maps.append(_trace_warning_diagnosis_details(trace_report))
-    warning_cases = _merge_case_map(*warning_case_maps)
-    if warning_cases:
-        full_section["warning_cases"] = warning_cases
-    warning_diagnosis_details = _merge_detail_map(*warning_detail_maps)
-    if warning_diagnosis_details:
-        full_section["warning_diagnosis_details"] = warning_diagnosis_details
-    staged_sections: list[tuple[str, dict[str, Any]]] = []
-    if knowledge_section is not None:
-        staged_sections.append(("knowledge_map", knowledge_section))
-    if mimirq_section is not None:
-        staged_sections.append(("mimirq_direct", mimirq_section))
-    if kg_compare_section is not None:
-        staged_sections.append(("kg_compare", kg_compare_section))
-    if console_section is not None:
-        staged_sections.append(("console_auth", console_section))
-    staged_sections.extend((("external_probe", external_section), ("full_gate", full_section)))
-
-    blocker = ""
-    failed_stages: list[str] = []
-    skipped_stages: list[str] = []
-    sections_by_stage: dict[str, dict[str, Any]] = {}
-    for stage, section in staged_sections:
-        with_status = _with_status(section, blocker=blocker)
-        sections_by_stage[stage] = with_status
-        if with_status["status"] == "skipped":
-            skipped_stages.append(stage)
-            continue
-        if with_status["status"] == "failed":
-            failed_stages.append(stage)
-            blocker = stage
+    artifact_reports = artifact_reports or {}
+    (
+        knowledge_section,
+        mimirq_section,
+        kg_compare_section,
+        console_section,
+        external_section,
+        full_section,
+    ) = _build_stage_sections(
+        knowledge_map=knowledge_map,
+        mimirq_direct=mimirq_direct,
+        kg_compare=kg_compare,
+        console_auth=console_auth,
+        external_probe=external_probe,
+        full_gate_summary=full_gate_summary,
+    )
+    _enrich_full_gate_section(full_section, artifact_reports)
+    staged_sections = _staged_sections(
+        knowledge_section=knowledge_section,
+        mimirq_section=mimirq_section,
+        kg_compare_section=kg_compare_section,
+        console_section=console_section,
+        external_section=external_section,
+        full_section=full_section,
+    )
+    sections_by_stage, failed_stages, skipped_stages = _sections_by_stage_with_status(staged_sections)
     root_cause_stage = failed_stages[0] if failed_stages else ""
-    root_cause_reason = _root_cause_reason(root_cause_stage, sections_by_stage[root_cause_stage]) if root_cause_stage else ""
+    root_cause_reason = (
+        _root_cause_reason(root_cause_stage, sections_by_stage[root_cause_stage]) if root_cause_stage else ""
+    )
     next_action = _next_action(root_cause_stage, root_cause_reason)
     report = {
         "schema": SCHEMA,
@@ -838,15 +992,15 @@ def build_readiness_summary(
     report["external_probe"] = sections_by_stage["external_probe"]
     report["full_gate"] = sections_by_stage["full_gate"]
     generated_by_artifact = _artifact_generated_at(
-        artifact_reports
-        or {
-            "knowledge_map": knowledge_map or {},
-            "mimirq_direct": mimirq_direct or {},
-            "kg_compare": kg_compare or {},
-            "console_auth": console_auth or {},
-            "external_probe": external_probe,
-            "full_gate": full_gate_summary,
-        }
+        _artifact_report_sources(
+            artifact_reports=artifact_reports,
+            knowledge_map=knowledge_map,
+            mimirq_direct=mimirq_direct,
+            kg_compare=kg_compare,
+            console_auth=console_auth,
+            external_probe=external_probe,
+            full_gate_summary=full_gate_summary,
+        )
     )
     if generated_by_artifact:
         report["artifact_generated_at"] = generated_by_artifact

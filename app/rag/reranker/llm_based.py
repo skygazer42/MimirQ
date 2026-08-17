@@ -11,7 +11,6 @@ Strategy:
 Note: this module is a reranker implementation; do not confuse it with app.rag.llm (LLM client).
 """
 
-
 import json
 import time
 from dataclasses import dataclass
@@ -29,6 +28,7 @@ from app.rag.reranker.base import DocumentReranker
 @dataclass
 class LLMRerankResult:
     """LLM rerank result."""
+
     ordered_ids: list[str]
     score_map: dict[str, float]
     elapsed_sec: float
@@ -73,43 +73,122 @@ def _clamp_score(value: Any, *, default: float = 0.0) -> float:
     return max(0.0, min(score, 1.0))
 
 
+def _sanitize_list_structure(list_info: Any) -> dict[str, Any] | None:
+    if not isinstance(list_info, dict):
+        return None
+    list_out: dict[str, Any] = {}
+    for key, maximum in (("item_count", 10_000), ("min_level", 50), ("max_level", 50)):
+        value = _clamp_int(list_info.get(key), min_value=0, max_value=maximum)
+        if value is not None:
+            list_out[key] = value
+    return list_out or None
+
+
+def _sanitize_table_structure(table_info: Any) -> dict[str, Any] | None:
+    if not isinstance(table_info, dict):
+        return None
+    table_out: dict[str, Any] = {}
+    for key in ("title", "sheet_name"):
+        value = table_info.get(key)
+        if isinstance(value, str) and value.strip():
+            table_out[key] = value.strip()[:200]
+    return table_out or None
+
+
 def _sanitize_structure(structure: Any) -> dict[str, Any] | None:
     if not isinstance(structure, dict):
         return None
 
     out: dict[str, Any] = {}
-
-    list_info = structure.get("list")
-    if isinstance(list_info, dict):
-        item_count = _clamp_int(list_info.get("item_count"), min_value=0, max_value=10_000)
-        min_level = _clamp_int(list_info.get("min_level"), min_value=0, max_value=50)
-        max_level = _clamp_int(list_info.get("max_level"), min_value=0, max_value=50)
-        list_out: dict[str, Any] = {}
-        if item_count is not None:
-            list_out["item_count"] = item_count
-        if min_level is not None:
-            list_out["min_level"] = min_level
-        if max_level is not None:
-            list_out["max_level"] = max_level
-        if list_out:
-            out["list"] = list_out
-
-    table_info = structure.get("table")
-    if isinstance(table_info, dict):
-        table_out: dict[str, Any] = {}
-        title = table_info.get("title")
-        if isinstance(title, str) and title.strip():
-            table_out["title"] = title.strip()[:200]
-        sheet_name = table_info.get("sheet_name")
-        if isinstance(sheet_name, str) and sheet_name.strip():
-            table_out["sheet_name"] = sheet_name.strip()[:200]
-        if table_out:
-            out["table"] = table_out
+    list_out = _sanitize_list_structure(structure.get("list"))
+    table_out = _sanitize_table_structure(structure.get("table"))
+    if list_out:
+        out["list"] = list_out
+    if table_out:
+        out["table"] = table_out
 
     return out or None
 
 
-def _build_candidate_payload(*, cid: str, text: str, meta: dict[str, Any] | None, max_chars: int) -> dict[str, Any] | None:
+def _prepare_llm_candidates(
+    reranker: "LLMReranker", documents: list[Document]
+) -> tuple[list[dict[str, Any]], dict[str, Document]]:
+    candidates: list[dict[str, Any]] = []
+    id_to_doc: dict[str, Document] = {}
+    for idx, doc in enumerate(documents):
+        text = (doc.page_content or "").strip()
+        if not text:
+            continue
+        cid = reranker._candidate_id(doc, idx)
+        meta = doc.metadata or {}
+        candidates.append(
+            {
+                "id": cid,
+                "text": text,
+                "header_path": meta.get("header_path"),
+                "structure": meta.get("structure"),
+            }
+        )
+        id_to_doc[cid] = doc
+    return candidates, id_to_doc
+
+
+def _document_meets_threshold(doc: Document, score_threshold: float | None) -> bool:
+    if score_threshold is None:
+        return True
+    score = (doc.metadata or {}).get("score")
+    return score is None or float(score) >= score_threshold
+
+
+def _append_ranked_documents(
+    *,
+    ordered: list[Document],
+    used: set[str],
+    ordered_ids: list[str],
+    id_to_doc: dict[str, Document],
+    score_map: dict[str, float],
+    score_threshold: float | None,
+    top_n: int | None,
+) -> list[Document] | None:
+    for cid in ordered_ids:
+        doc = id_to_doc.get(cid)
+        if not doc or cid in used:
+            continue
+        used.add(cid)
+        if doc.metadata is None:
+            doc.metadata = {}
+        if cid in score_map:
+            doc.metadata["score"] = float(score_map[cid])
+        if not _document_meets_threshold(doc, score_threshold):
+            continue
+        ordered.append(doc)
+        if top_n and len(ordered) >= top_n:
+            return ordered
+    return None
+
+
+def _append_unreranked_documents(
+    *,
+    ordered: list[Document],
+    used: set[str],
+    documents: list[Document],
+    reranker: "LLMReranker",
+    score_threshold: float | None,
+    top_n: int | None,
+) -> list[Document]:
+    for idx, doc in enumerate(documents):
+        cid = reranker._candidate_id(doc, idx)
+        if cid in used or not _document_meets_threshold(doc, score_threshold):
+            continue
+        ordered.append(doc)
+        if top_n and len(ordered) >= top_n:
+            break
+    return ordered
+
+
+def _build_candidate_payload(
+    *, cid: str, text: str, meta: dict[str, Any] | None, max_chars: int
+) -> dict[str, Any] | None:
     cid_norm = str(cid or "").strip()
     text_norm = str(text or "").strip()
     if not cid_norm or not text_norm:
@@ -301,24 +380,7 @@ candidates(JSON): {candidates}
         if not documents:
             return []
 
-        candidates: list[dict[str, Any]] = []
-        id_to_doc: dict[str, Document] = {}
-        for idx, doc in enumerate(documents):
-            text = (doc.page_content or "").strip()
-            if not text:
-                continue
-            cid = self._candidate_id(doc, idx)
-            meta = doc.metadata or {}
-            candidates.append(
-                {
-                    "id": cid,
-                    "text": text,
-                    "header_path": meta.get("header_path"),
-                    "structure": meta.get("structure"),
-                }
-            )
-            id_to_doc[cid] = doc
-
+        candidates, id_to_doc = _prepare_llm_candidates(self, documents)
         if not candidates:
             return documents[:top_n] if top_n else documents
 
@@ -335,37 +397,25 @@ candidates(JSON): {candidates}
 
         ordered: list[Document] = []
         used: set[str] = set()
-        for cid in result.ordered_ids:
-            doc = id_to_doc.get(cid)
-            if not doc or cid in used:
-                continue
-            used.add(cid)
-            if doc.metadata is None:
-                doc.metadata = {}
-            if cid in result.score_map:
-                doc.metadata["score"] = float(result.score_map[cid])
-            if score_threshold is not None:
-                score = doc.metadata.get("score")
-                if score is not None and float(score) < score_threshold:
-                    continue
-            ordered.append(doc)
-            if top_n and len(ordered) >= top_n:
-                return ordered
-
-        # Append documents that were not reranked.
-        for idx, doc in enumerate(documents):
-            cid = self._candidate_id(doc, idx)
-            if cid in used:
-                continue
-            if score_threshold is not None:
-                score = (doc.metadata or {}).get("score")
-                if score is not None and float(score) < score_threshold:
-                    continue
-            ordered.append(doc)
-            if top_n and len(ordered) >= top_n:
-                break
-
-        return ordered
+        ranked = _append_ranked_documents(
+            ordered=ordered,
+            used=used,
+            ordered_ids=result.ordered_ids,
+            id_to_doc=id_to_doc,
+            score_map=result.score_map,
+            score_threshold=score_threshold,
+            top_n=top_n,
+        )
+        if ranked is not None:
+            return ranked
+        return _append_unreranked_documents(
+            ordered=ordered,
+            used=used,
+            documents=documents,
+            reranker=self,
+            score_threshold=score_threshold,
+            top_n=top_n,
+        )
 
     def rerank_raw(
         self,
@@ -397,7 +447,9 @@ candidates(JSON): {candidates}
         effective_fallback = (
             _clamp_score(fallback_score, default=0.5)
             if fallback_score is not None
-            else _clamp_score(getattr(self, "fallback_score", getattr(settings, "RERANKER_LLM_FALLBACK_SCORE", 0.5)), default=0.5)
+            else _clamp_score(
+                getattr(self, "fallback_score", getattr(settings, "RERANKER_LLM_FALLBACK_SCORE", 0.5)), default=0.5
+            )
         )
         max_chars = int(settings.RERANKER_MAX_CHARS or 800)
         for c in candidates:
@@ -430,7 +482,9 @@ candidates(JSON): {candidates}
                 llm_weight=effective_weight,
                 fallback_score=0.0,
             )
-            return LLMRerankResult(ordered_ids=ordered, score_map=score_map, elapsed_sec=elapsed, model_used=self.model_used)
+            return LLMRerankResult(
+                ordered_ids=ordered, score_map=score_map, elapsed_sec=elapsed, model_used=self.model_used
+            )
 
         try:
             data = json.loads(json_text)
@@ -441,7 +495,9 @@ candidates(JSON): {candidates}
                 llm_weight=effective_weight,
                 fallback_score=0.0,
             )
-            return LLMRerankResult(ordered_ids=ordered, score_map=score_map, elapsed_sec=elapsed, model_used=self.model_used)
+            return LLMRerankResult(
+                ordered_ids=ordered, score_map=score_map, elapsed_sec=elapsed, model_used=self.model_used
+            )
 
         llm_scores: dict[str, float] = {}
         for item in data if isinstance(data, list) else []:
@@ -458,7 +514,9 @@ candidates(JSON): {candidates}
             llm_weight=effective_weight,
             fallback_score=effective_fallback,
         )
-        return LLMRerankResult(ordered_ids=ordered, score_map=score_map, elapsed_sec=elapsed, model_used=self.model_used)
+        return LLMRerankResult(
+            ordered_ids=ordered, score_map=score_map, elapsed_sec=elapsed, model_used=self.model_used
+        )
 
 
 _llm_reranker: LLMReranker | None = None

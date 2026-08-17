@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -142,14 +141,18 @@ def _metadata_terms(value: Any) -> tuple[str, ...]:
     return tuple(out)
 
 
-def retrieval_policy_query_terms(
-    retrieval_policy: dict[str, Any] | None,
-    *,
+def _append_unique_text(out: list[str], seen: set[str], value: Any) -> None:
+    text = str(value or "").strip()
+    if not text or text in seen:
+        return
+    seen.add(text)
+    out.append(text)
+
+
+def _iter_policy_metadata_terms(
     metadata_layers: list[dict[str, Any]] | tuple[dict[str, Any], ...],
+    fields: tuple[str, ...],
 ) -> tuple[str, ...]:
-    if not isinstance(retrieval_policy, dict) or retrieval_policy.get("schema") != "mimirq.retrieval_policy.v1":
-        return ()
-    fields = _policy_string_list(retrieval_policy.get("query_expansion_fields"))
     out: list[str] = []
     seen: set[str] = set()
     for layer in metadata_layers or ():
@@ -158,21 +161,55 @@ def retrieval_policy_query_terms(
             continue
         for field in fields:
             for term in _metadata_terms(_metadata_value(meta, field)):
-                if term in seen:
-                    continue
-                seen.add(term)
-                out.append(term)
-        for mapping in _policy_value_query_term_mappings(retrieval_policy.get("query_expansion_values")):
-            field = mapping["metadata"]
-            actual_values = {_normalize_policy_match_text(value) for value in _metadata_terms(_metadata_value(meta, field))}
-            if not actual_values or not actual_values.intersection(mapping["values"]):
-                continue
-            for term in mapping["terms"]:
-                if term in seen:
-                    continue
-                seen.add(term)
-                out.append(term)
+                _append_unique_text(out, seen, term)
     return tuple(out)
+
+
+def _append_policy_mapping_terms(
+    out: list[str],
+    seen: set[str],
+    *,
+    meta: dict[str, Any],
+    mappings: tuple[dict[str, Any], ...],
+) -> None:
+    for mapping in mappings:
+        field = mapping["metadata"]
+        actual_values = {_normalize_policy_match_text(value) for value in _metadata_terms(_metadata_value(meta, field))}
+        if not actual_values or not actual_values.intersection(mapping["values"]):
+            continue
+        for term in mapping["terms"]:
+            _append_unique_text(out, seen, term)
+
+
+def _iter_policy_query_terms(
+    metadata_layers: list[dict[str, Any]] | tuple[dict[str, Any], ...],
+    *,
+    fields: tuple[str, ...],
+    mappings: tuple[dict[str, Any], ...],
+) -> tuple[str, ...]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for layer in metadata_layers or ():
+        meta = _as_dict(layer)
+        if not meta:
+            continue
+        for field in fields:
+            for term in _metadata_terms(_metadata_value(meta, field)):
+                _append_unique_text(out, seen, term)
+        _append_policy_mapping_terms(out, seen, meta=meta, mappings=mappings)
+    return tuple(out)
+
+
+def retrieval_policy_query_terms(
+    retrieval_policy: dict[str, Any] | None,
+    *,
+    metadata_layers: list[dict[str, Any]] | tuple[dict[str, Any], ...],
+) -> tuple[str, ...]:
+    if not isinstance(retrieval_policy, dict) or retrieval_policy.get("schema") != "mimirq.retrieval_policy.v1":
+        return ()
+    fields = _policy_string_list(retrieval_policy.get("query_expansion_fields"))
+    mappings = _policy_value_query_term_mappings(retrieval_policy.get("query_expansion_values"))
+    return _iter_policy_query_terms(metadata_layers, fields=fields, mappings=mappings)
 
 
 def retrieval_policy_service_anchor_noise_terms(retrieval_policy: dict[str, Any] | None) -> tuple[str, ...]:
@@ -229,20 +266,8 @@ def retrieval_policy_service_anchor_query_rewrite_terms(
     out: list[str] = []
     seen: set[str] = set()
     for raw in raw_rules:
-        rule = _as_dict(raw)
-        when_terms = _metadata_terms(rule.get("when_terms") or rule.get("when"))
-        rewrite_terms = _metadata_terms(rule.get("terms") or rule.get("rewrite_terms"))
-        if not when_terms or not rewrite_terms:
-            continue
-        match_mode = str(rule.get("match") or "all").strip().lower()
-        normalized_when = tuple(term for term in (_normalize_policy_match_text(term) for term in when_terms) if term)
-        if not normalized_when:
-            continue
-        if match_mode == "any":
-            matched = any(term in query_text for term in normalized_when)
-        else:
-            matched = all(term in query_text for term in normalized_when)
-        if not matched:
+        rewrite_terms = _policy_rule_rewrite_terms(raw)
+        if not rewrite_terms or not _policy_rule_matches_query(raw, query_text):
             continue
         for term in rewrite_terms:
             text = str(term or "").strip()
@@ -252,6 +277,25 @@ def retrieval_policy_service_anchor_query_rewrite_terms(
             seen.add(normalized)
             out.append(text)
     return tuple(out)
+
+
+def _policy_rule_rewrite_terms(raw_rule: Any) -> tuple[str, ...]:
+    rule = _as_dict(raw_rule)
+    return _metadata_terms(rule.get("terms") or rule.get("rewrite_terms"))
+
+
+def _policy_rule_matches_query(raw_rule: Any, query_text: str) -> bool:
+    rule = _as_dict(raw_rule)
+    when_terms = _metadata_terms(rule.get("when_terms") or rule.get("when"))
+    normalized_when = tuple(term for term in (_normalize_policy_match_text(term) for term in when_terms) if term)
+    if not normalized_when:
+        return False
+    match_mode = str(rule.get("match") or "all").strip().lower()
+    return (
+        any(term in query_text for term in normalized_when)
+        if match_mode == "any"
+        else all(term in query_text for term in normalized_when)
+    )
 
 
 def _policy_value_query_term_mappings(raw_mappings: Any) -> tuple[dict[str, Any], ...]:
@@ -265,9 +309,7 @@ def _policy_value_query_term_mappings(raw_mappings: Any) -> tuple[dict[str, Any]
             continue
         raw_values = mapping.get("values") if "values" in mapping else mapping.get("value")
         values = frozenset(
-            normalized
-            for value in _metadata_terms(raw_values)
-            if (normalized := _normalize_policy_match_text(value))
+            normalized for value in _metadata_terms(raw_values) if (normalized := _normalize_policy_match_text(value))
         )
         terms = _metadata_terms(mapping.get("terms"))
         if values and terms:
@@ -289,15 +331,8 @@ def _policy_value_fuzzy_overlaps_query(query_text: str, value_text: str) -> bool
     if shortest < 4:
         return False
     required = max(4, (72 * shortest + 99) // 100)
-    shorter, longer = (
-        (query_text, value_text)
-        if len(query_text) <= len(value_text)
-        else (value_text, query_text)
-    )
-    return any(
-        shorter[start : start + required] in longer
-        for start in range(len(shorter) - required + 1)
-    )
+    shorter, longer = (query_text, value_text) if len(query_text) <= len(value_text) else (value_text, query_text)
+    return any(shorter[start : start + required] in longer for start in range(len(shorter) - required + 1))
 
 
 def _policy_value_matches_query(query: str, value: str, *, match_mode: str) -> bool:
@@ -338,26 +373,46 @@ def retrieval_policy_boost_score(
 
     score = 0.0
     for raw in raw_boosts:
-        boost = _as_dict(raw)
-        field = str(boost.get("metadata") or "").strip()
-        if not field:
-            continue
-        weight = _policy_weight(boost.get("weight"), default=1.0)
-        match_mode = str(boost.get("match") or "contains").strip()
-        if match_mode not in {"exact", "contains", "overlap", "fuzzy_overlap"}:
-            match_mode = "contains"
-        matched = False
-        for layer in metadata_layers or ():
-            meta = _as_dict(layer)
-            for term in _metadata_terms(_metadata_value(meta, field)):
-                if _policy_value_matches_query(query, term, match_mode=match_mode):
-                    matched = True
-                    break
-            if matched:
-                break
-        if matched:
-            score += float(base_bonus) * weight
+        score += _policy_boost_bonus(raw, metadata_layers=metadata_layers, query=query, base_bonus=base_bonus)
     return min(float(max_bonus), score)
+
+
+def _policy_boost_bonus(
+    raw_boost: Any,
+    *,
+    metadata_layers: list[dict[str, Any]] | tuple[dict[str, Any], ...],
+    query: str,
+    base_bonus: float,
+) -> float:
+    boost = _as_dict(raw_boost)
+    field = str(boost.get("metadata") or "").strip()
+    if not field:
+        return 0.0
+    match_mode = _policy_boost_match_mode(boost.get("match"))
+    if not _policy_metadata_matches_query(metadata_layers, field=field, query=query, match_mode=match_mode):
+        return 0.0
+    weight = _policy_weight(boost.get("weight"), default=1.0)
+    return float(base_bonus) * weight
+
+
+def _policy_boost_match_mode(value: Any) -> str:
+    match_mode = str(value or "contains").strip()
+    return match_mode if match_mode in {"exact", "contains", "overlap", "fuzzy_overlap"} else "contains"
+
+
+def _policy_metadata_matches_query(
+    metadata_layers: list[dict[str, Any]] | tuple[dict[str, Any], ...],
+    *,
+    field: str,
+    query: str,
+    match_mode: str,
+) -> bool:
+    for layer in metadata_layers or ():
+        meta = _as_dict(layer)
+        for term in _metadata_terms(_metadata_value(meta, field)):
+            if _policy_value_matches_query(query, term, match_mode=match_mode):
+                return True
+    return False
 
 
 def _policy_anchor_aliases(raw_aliases: Any) -> dict[str, tuple[str, ...]]:
@@ -656,7 +711,9 @@ def _record_metadata_matches(
     if not expected_metadata:
         return False
     for layer in _record_metadata_layers(record, metadata_view_keys):
-        if all(_metadata_expected_value_matches(layer.get(key), expected) for key, expected in expected_metadata.items()):
+        if all(
+            _metadata_expected_value_matches(layer.get(key), expected) for key, expected in expected_metadata.items()
+        ):
             return True
     return False
 
@@ -672,9 +729,7 @@ def summarize_kg_hint_diagnostics(
     """Summarize optional KG retrieval hints without changing ranking behavior."""
 
     expected_chunks = {str(item or "").strip() for item in expected_chunk_ids or () if str(item or "").strip()}
-    expected_documents = {
-        str(item or "").strip() for item in expected_document_ids or () if str(item or "").strip()
-    }
+    expected_documents = {str(item or "").strip() for item in expected_document_ids or () if str(item or "").strip()}
     expected_meta = dict(expected_metadata) if isinstance(expected_metadata, dict) else {}
     view_keys = tuple(str(item or "").strip() for item in metadata_view_keys or () if str(item or "").strip())
     noise_evaluated = bool(expected_chunks or expected_documents or expected_meta)
@@ -773,27 +828,45 @@ def _matched_terms(route: DatasetRouteHint, query: str) -> tuple[str, ...]:
     return tuple(out)
 
 
-def plan_dataset_scope(
+def _initial_dataset_scope(
+    base_ids: tuple[UUID, ...],
     *,
-    base_dataset_ids: list[UUID] | tuple[UUID, ...],
-    route_hints: list[DatasetRouteHint] | tuple[DatasetRouteHint, ...] = (),
+    hint_ids: tuple[UUID, ...],
+    strict_routes: bool,
+    include_unmatched_hint_datasets: bool,
+) -> tuple[UUID, ...]:
+    if strict_routes or not include_unmatched_hint_datasets:
+        return base_ids
+    return _dedupe_dataset_ids([*base_ids, *hint_ids])
+
+
+def _apply_dataset_route(
+    current: tuple[UUID, ...],
+    *,
+    route_dataset_ids: tuple[UUID, ...],
+    mode: str,
+    strict_routes: bool,
+    strict_scope: bool,
+) -> tuple[tuple[UUID, ...], bool]:
+    if strict_routes and mode == "replace":
+        return route_dataset_ids, True
+    if mode == "append":
+        return _dedupe_dataset_ids([*current, *route_dataset_ids]), strict_scope
+    return _dedupe_dataset_ids([*route_dataset_ids, *current]), strict_scope
+
+
+def _apply_dataset_route_hints(
+    hints: tuple[DatasetRouteHint, ...],
+    *,
     query: str,
-    strict_routes: bool = False,
-    include_unmatched_hint_datasets: bool = True,
-    matched_replace_routes_as_primary_scope: bool = False,
-) -> DatasetScopePlan:
-    base_ids = _dedupe_dataset_ids(tuple(base_dataset_ids or ()))
-    hints = tuple(route_hints or ())
-    current: tuple[UUID, ...] = base_ids
+    strict_routes: bool,
+    current: tuple[UUID, ...],
+) -> dict[str, Any]:
     matched_dataset_ids: list[UUID] = []
     matched_replace_dataset_ids: list[UUID] = []
     matched_terms: list[str] = []
     matched_route_count = 0
     strict_scope = False
-
-    hint_ids = _hint_dataset_ids(hints)
-    if not strict_routes and include_unmatched_hint_datasets:
-        current = _dedupe_dataset_ids([*current, *hint_ids])
 
     for route in hints:
         terms = _matched_terms(route, query)
@@ -806,36 +879,84 @@ def plan_dataset_scope(
         matched_dataset_ids.extend(route_dataset_ids)
         matched_terms.extend(terms)
         mode = normalize_route_mode(route.mode)
+        current, strict_scope = _apply_dataset_route(
+            current,
+            route_dataset_ids=route_dataset_ids,
+            mode=mode,
+            strict_routes=strict_routes,
+            strict_scope=strict_scope,
+        )
         if mode == "replace":
             matched_replace_dataset_ids.extend(route_dataset_ids)
-        if strict_routes and mode == "replace":
-            current = route_dataset_ids
-            strict_scope = True
-        elif mode == "append":
-            current = _dedupe_dataset_ids([*current, *route_dataset_ids])
-        else:
-            current = _dedupe_dataset_ids([*route_dataset_ids, *current])
+    return {
+        "current": current,
+        "strict_scope": strict_scope,
+        "matched_dataset_ids": matched_dataset_ids,
+        "matched_replace_dataset_ids": matched_replace_dataset_ids,
+        "matched_terms": matched_terms,
+        "matched_route_count": matched_route_count,
+    }
 
-    matched_ids = _dedupe_dataset_ids(matched_dataset_ids)
-    matched_replace_ids = _dedupe_dataset_ids(matched_replace_dataset_ids)
+
+def _plan_primary_and_expansion_scope(
+    *,
+    base_ids: tuple[UUID, ...],
+    current: tuple[UUID, ...],
+    hint_ids: tuple[UUID, ...],
+    matched_ids: tuple[UUID, ...],
+    matched_replace_ids: tuple[UUID, ...],
+    strict_scope: bool,
+    strict_routes: bool,
+    include_unmatched_hint_datasets: bool,
+    matched_replace_routes_as_primary_scope: bool,
+) -> tuple[tuple[UUID, ...], tuple[UUID, ...]]:
     if strict_scope:
-        primary_ids = current
-        expansion_ids: tuple[UUID, ...] = ()
-    elif matched_replace_routes_as_primary_scope and matched_replace_ids:
-        primary_ids = matched_replace_ids
-        expansion_ids = _without_dataset_ids(current, primary_ids)
-    elif matched_ids:
-        primary_ids = current
-        expansion_ids = ()
-    elif hint_ids and not strict_routes and include_unmatched_hint_datasets:
-        primary_ids = current
-        expansion_ids = ()
-    elif base_ids:
-        primary_ids = base_ids
-        expansion_ids = _without_dataset_ids(current, primary_ids)
-    else:
-        primary_ids = current
-        expansion_ids = ()
+        return current, ()
+    if matched_replace_routes_as_primary_scope and matched_replace_ids:
+        return matched_replace_ids, _without_dataset_ids(current, matched_replace_ids)
+    if matched_ids:
+        return current, ()
+    if hint_ids and not strict_routes and include_unmatched_hint_datasets:
+        return current, ()
+    if base_ids:
+        return base_ids, _without_dataset_ids(current, base_ids)
+    return current, ()
+
+
+def plan_dataset_scope(
+    *,
+    base_dataset_ids: list[UUID] | tuple[UUID, ...],
+    route_hints: list[DatasetRouteHint] | tuple[DatasetRouteHint, ...] = (),
+    query: str,
+    strict_routes: bool = False,
+    include_unmatched_hint_datasets: bool = True,
+    matched_replace_routes_as_primary_scope: bool = False,
+) -> DatasetScopePlan:
+    base_ids = _dedupe_dataset_ids(tuple(base_dataset_ids or ()))
+    hints = tuple(route_hints or ())
+    hint_ids = _hint_dataset_ids(hints)
+    current = _initial_dataset_scope(
+        base_ids,
+        hint_ids=hint_ids,
+        strict_routes=strict_routes,
+        include_unmatched_hint_datasets=include_unmatched_hint_datasets,
+    )
+    route_state = _apply_dataset_route_hints(hints, query=query, strict_routes=strict_routes, current=current)
+    current = route_state["current"]
+    strict_scope = bool(route_state["strict_scope"])
+    matched_ids = _dedupe_dataset_ids(route_state["matched_dataset_ids"])
+    matched_replace_ids = _dedupe_dataset_ids(route_state["matched_replace_dataset_ids"])
+    primary_ids, expansion_ids = _plan_primary_and_expansion_scope(
+        base_ids=base_ids,
+        current=current,
+        hint_ids=hint_ids,
+        matched_ids=matched_ids,
+        matched_replace_ids=matched_replace_ids,
+        strict_scope=strict_scope,
+        strict_routes=strict_routes,
+        include_unmatched_hint_datasets=include_unmatched_hint_datasets,
+        matched_replace_routes_as_primary_scope=matched_replace_routes_as_primary_scope,
+    )
 
     return DatasetScopePlan(
         dataset_ids=current,
@@ -843,10 +964,10 @@ def plan_dataset_scope(
         expansion_dataset_ids=expansion_ids,
         base_dataset_ids=base_ids,
         matched_dataset_ids=matched_ids,
-        matched_terms=tuple(dict.fromkeys(matched_terms)),
+        matched_terms=tuple(dict.fromkeys(route_state["matched_terms"])),
         strict_scope=strict_scope,
         route_count=len(hints),
-        matched_route_count=matched_route_count,
+        matched_route_count=int(route_state["matched_route_count"]),
         included_hint_dataset_count=len(hint_ids),
     )
 

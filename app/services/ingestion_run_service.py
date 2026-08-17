@@ -6,7 +6,6 @@ Design goals:
 - Bounded stats: keep JSON payloads small and stable for UI/report exports.
 """
 
-
 from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import UUID
@@ -112,10 +111,14 @@ def _complete_transaction_quietly(db: Session) -> None:
     try:
         db.commit()
     except Exception:
-        try:
-            db.rollback()
-        except Exception as rollback_exc:
-            logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, rollback_exc)
+        _rollback_quietly(db)
+
+
+def _rollback_quietly(db: Session) -> None:
+    try:
+        db.rollback()
+    except Exception as rollback_exc:
+        logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, rollback_exc)
 
 
 def _normalize_criticality(value: object) -> IngestionRunCriticality:
@@ -135,6 +138,77 @@ def _handle_ingestion_run_failure(
         logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, rollback_exc)
     if criticality == "required":
         raise exc
+
+
+def _lock_run_best_effort(db: Session, *, tenant_id: UUID, run_id: UUID) -> IngestionRun | None:
+    try:
+        return _lock_run_for_update(db, tenant_id=tenant_id, run_id=run_id)
+    except Exception:
+        _rollback_quietly(db)
+        return None
+
+
+def _find_run_document_attachment(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    run_id: UUID,
+    document_id: UUID,
+    lock: bool = False,
+) -> IngestionRunDocument | None:
+    try:
+        query = db.query(IngestionRunDocument).filter(
+            IngestionRunDocument.tenant_id == tenant_id,
+            IngestionRunDocument.run_id == run_id,
+            IngestionRunDocument.document_id == document_id,
+        )
+        if lock:
+            query = query.with_for_update()
+        return query.first()
+    except Exception:
+        return None
+
+
+def _flush_run_document_insert(db: Session) -> bool:
+    try:
+        flush = getattr(db, "flush", None)
+        if callable(flush):
+            flush()
+        return True
+    except IntegrityError as exc:
+        _rollback_quietly(db)
+        return not _is_duplicate_run_document_integrity_error(exc)
+    except Exception:
+        _rollback_quietly(db)
+        return False
+
+
+def _commit_run_document_insert(db: Session) -> bool:
+    try:
+        db.commit()
+        return True
+    except IntegrityError as exc:
+        _rollback_quietly(db)
+        if _is_duplicate_run_document_integrity_error(exc):
+            return False
+        return False
+    except Exception:
+        _rollback_quietly(db)
+        return False
+
+
+def _observe_finished_ingestion_run(
+    finished_meta: tuple[str | None, str | None, float | None] | None,
+) -> None:
+    if finished_meta is None:
+        return
+    try:
+        from app.services.ingestion_prometheus_metrics import observe_ingestion_run_finished
+
+        kind, status, dur = finished_meta
+        observe_ingestion_run_finished(kind=kind, status=status, duration_sec=dur)
+    except Exception as exc:
+        logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, exc)
 
 
 def _update_progress_and_finalize_run(
@@ -193,6 +267,351 @@ def _counts_by_normalized_status(statuses: list[object] | tuple[object, ...] | N
     return counts
 
 
+def _update_run_stats_for_new_document(
+    run: IngestionRun | Any,
+    *,
+    initial_status: str,
+    doc_meta: dict[str, Any] | None,
+) -> tuple[str | None, str | None, float | None] | None:
+    finished_meta: tuple[str | None, str | None, float | None] | None = None
+    try:
+        stats = _init_run_stats(dict(getattr(run, "stats", None) or {}))
+        stats["total_documents"] = _safe_int(stats.get("total_documents"), default=0) + 1
+        sc = stats.get("status_counts")
+        sc = sc if isinstance(sc, dict) else {}
+        _bump_counter(sc, _normalize_status(initial_status), +1)
+        stats["status_counts"] = sc
+        finished_meta = _update_progress_and_finalize_run(run, stats=stats, finished_at=_now_utc())
+
+        meta = doc_meta if isinstance(doc_meta, dict) else {}
+        ph = str(meta.get("pipeline_hash") or "").strip()
+        if ph:
+            dist = stats.get("pipeline_hash_docs")
+            dist = dist if isinstance(dist, dict) else {}
+            _bump_counter(dist, ph[:64], +1)
+            stats["pipeline_hash_docs"] = dist
+        run.stats = stats
+    except Exception as exc:
+        logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, exc)
+    return finished_meta
+
+
+def _target_run_id_from_doc_meta(doc_meta: dict[str, Any] | None) -> UUID | None:
+    if not isinstance(doc_meta, dict):
+        return None
+    raw = doc_meta.get("last_ingestion_run_id") or doc_meta.get("created_by_run_id")
+    if not raw:
+        return None
+    try:
+        return UUID(str(raw))
+    except Exception:
+        return None
+
+
+def _candidate_rows_for_document(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    run_filter: UUID | None,
+) -> list[IngestionRunDocument]:
+    query = db.query(IngestionRunDocument).filter(
+        IngestionRunDocument.tenant_id == tenant_id,
+        IngestionRunDocument.document_id == document_id,
+    )
+    if run_filter is not None:
+        query = query.filter(IngestionRunDocument.run_id == run_filter)
+    return query.order_by(IngestionRunDocument.run_id, IngestionRunDocument.id).all()
+
+
+def _lock_candidate_runs(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    run_ids: list[UUID],
+) -> dict[UUID, IngestionRun]:
+    locked_runs: dict[UUID, IngestionRun] = {}
+    for run_id in run_ids:
+        run = _lock_run_for_update(db, tenant_id=tenant_id, run_id=run_id)
+        if run is not None:
+            locked_runs[run_id] = run
+    return locked_runs
+
+
+def _locked_rows_for_document(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    run_ids: list[UUID],
+) -> list[IngestionRunDocument]:
+    return (
+        db.query(IngestionRunDocument)
+        .filter(
+            IngestionRunDocument.tenant_id == tenant_id,
+            IngestionRunDocument.document_id == document_id,
+            IngestionRunDocument.run_id.in_(run_ids),
+        )
+        .order_by(IngestionRunDocument.run_id, IngestionRunDocument.id)
+        .with_for_update()
+        .all()
+    )
+
+
+def _prepare_status_update_rows(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    rows: list[IngestionRunDocument],
+) -> tuple[list[IngestionRunDocument], dict[UUID, IngestionRun]] | None:
+    candidate_run_ids = sorted({row.run_id for row in rows}, key=str)
+    locked_runs = _lock_candidate_runs(
+        db,
+        tenant_id=tenant_id,
+        run_ids=candidate_run_ids,
+    )
+    if not locked_runs:
+        _complete_transaction_quietly(db)
+        return None
+    locked_rows = _locked_rows_for_document(
+        db,
+        tenant_id=tenant_id,
+        document_id=document_id,
+        run_ids=candidate_run_ids,
+    )
+    return locked_rows, locked_runs
+
+
+def _load_candidate_rows_for_status_update(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    target_run_id: UUID | None,
+) -> list[IngestionRunDocument]:
+    rows = _candidate_rows_for_document(
+        db,
+        tenant_id=tenant_id,
+        document_id=document_id,
+        run_filter=target_run_id,
+    )
+    if rows or target_run_id is None:
+        return rows
+    return _candidate_rows_for_document(
+        db,
+        tenant_id=tenant_id,
+        document_id=document_id,
+        run_filter=None,
+    )
+
+
+def _record_failure_reason(
+    stats: dict[str, Any],
+    *,
+    status_norm: str,
+    error_message: str | None,
+) -> None:
+    if status_norm not in {"failed", "quarantined"} or not error_message:
+        return
+    fr = stats.get("failure_reasons_top")
+    fr = fr if isinstance(fr, dict) else {}
+    _bump_counter(fr, _failure_reason(error_message), +1)
+    if len(fr) > 25:
+        ranked = sorted(((k, _safe_int(v)) for k, v in fr.items()), key=lambda kv: (-kv[1], kv[0]))
+        fr = {k: int(v) for k, v in ranked[:20] if v > 0}
+    stats["failure_reasons_top"] = fr
+
+
+def _record_stage_durations(
+    stats: dict[str, Any],
+    *,
+    status_norm: str,
+    doc_meta: dict[str, Any] | None,
+) -> None:
+    meta = doc_meta if isinstance(doc_meta, dict) else {}
+    durations = meta.get("ingest_stage_durations_ms")
+    if status_norm not in {"completed", "failed", "quarantined", "cancelled"}:
+        return
+    if not isinstance(durations, dict):
+        return
+    sums = stats.get("stage_durations_ms_sum")
+    sums = sums if isinstance(sums, dict) else {}
+    for key, value in durations.items():
+        if not isinstance(key, str) or not key.strip():
+            continue
+        sums[key[:64]] = _safe_int(sums.get(key), default=0) + _safe_int(value, default=0)
+    stats["stage_durations_ms_sum"] = sums
+    stats["stage_durations_docs"] = _safe_int(stats.get("stage_durations_docs"), default=0) + 1
+
+
+def _touch_run_dataset_updated_at(db: Session, *, tenant_id: UUID, run: IngestionRun | Any, now: datetime) -> None:
+    ds_id = getattr(run, "dataset_id", None)
+    if ds_id is None:
+        return
+    try:
+        from app.models.dataset import Dataset  # noqa: WPS433
+
+        dataset = db.query(Dataset).filter(Dataset.tenant_id == tenant_id, Dataset.id == ds_id).first()
+        if dataset is not None:
+            dataset.updated_at = now
+    except Exception as exc:
+        logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, exc)
+
+
+def _apply_status_update_to_run(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    run: IngestionRun | Any,
+    row: IngestionRunDocument,
+    status_norm: str,
+    error_message: str | None,
+    doc_meta: dict[str, Any] | None,
+    now: datetime,
+) -> tuple[str | None, str | None, float | None] | None:
+    if getattr(run, "finished_at", None) is not None:
+        return None
+
+    prev = _normalize_status(getattr(row, "status", None))
+    if prev == status_norm:
+        return None
+
+    row.status = status_norm
+    stats = _init_run_stats(dict(getattr(run, "stats", None) or {}))
+    sc = stats.get("status_counts")
+    sc = sc if isinstance(sc, dict) else {}
+    _bump_counter(sc, prev, -1)
+    _bump_counter(sc, status_norm, +1)
+    stats["status_counts"] = sc
+    _record_failure_reason(stats, status_norm=status_norm, error_message=error_message)
+    _record_stage_durations(stats, status_norm=status_norm, doc_meta=doc_meta)
+
+    finished_meta = _update_progress_and_finalize_run(run, stats=stats, finished_at=now)
+    if finished_meta is not None and run.finished_at is not None:
+        _touch_run_dataset_updated_at(db, tenant_id=tenant_id, run=run, now=now)
+    run.stats = stats
+    return finished_meta
+
+
+def _apply_status_updates_to_rows(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    rows: list[IngestionRunDocument],
+    locked_runs: dict[UUID, IngestionRun],
+    status_norm: str,
+    error_message: str | None,
+    doc_meta: dict[str, Any] | None,
+    now: datetime,
+) -> list[tuple[str | None, str | None, float | None]]:
+    finished_runs: list[tuple[str | None, str | None, float | None]] = []
+    for row in rows:
+        run = locked_runs.get(row.run_id)
+        if run is None:
+            continue
+        finished_meta = _apply_status_update_to_run(
+            db,
+            tenant_id=tenant_id,
+            run=run,
+            row=row,
+            status_norm=status_norm,
+            error_message=error_message,
+            doc_meta=doc_meta,
+            now=now,
+        )
+        if finished_meta is not None:
+            finished_runs.append(finished_meta)
+    return finished_runs
+
+
+def _observe_finished_ingestion_runs(
+    finished_runs: list[tuple[str | None, str | None, float | None]],
+) -> None:
+    if not finished_runs:
+        return
+    try:
+        from app.services.ingestion_prometheus_metrics import observe_ingestion_run_finished
+
+        for kind, status, dur in finished_runs:
+            observe_ingestion_run_finished(kind=kind, status=status, duration_sec=dur)
+    except Exception as exc:
+        logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, exc)
+
+
+def _load_run_documents(db: Session, *, tenant_id: UUID, run_id: UUID) -> list[IngestionRunDocument]:
+    return (
+        db.query(IngestionRunDocument)
+        .filter(
+            IngestionRunDocument.tenant_id == tenant_id,
+            IngestionRunDocument.run_id == run_id,
+        )
+        .order_by(IngestionRunDocument.id)
+        .all()
+    )
+
+
+def _finished_meta_for_empty_run(
+    run: IngestionRun | Any,
+    *,
+    stats: dict[str, Any],
+    now: datetime,
+) -> tuple[str | None, str | None, float | None] | None:
+    attempted_total = _safe_int(stats.get("attempted_inputs"), default=0)
+    rejected_total = _safe_int(stats.get("rejected_inputs"), default=0)
+    if attempted_total <= 0 or rejected_total < attempted_total:
+        return None
+    run.status = "failed"
+    stats["progress"] = 100
+    if run.finished_at is not None:
+        return None
+    run.finished_at = now
+    try:
+        dur = None
+        if run.started_at is not None and run.finished_at is not None:
+            dur = float((run.finished_at - run.started_at).total_seconds())
+        return getattr(run, "kind", None), getattr(run, "status", None), dur
+    except Exception:
+        return getattr(run, "kind", None), getattr(run, "status", None), None
+
+
+def _reconcile_close_intake_stats(
+    run: IngestionRun | Any,
+    *,
+    rows: list[IngestionRunDocument],
+    attempted_inputs: int | None,
+    rejected_inputs: int,
+    rejection_reasons: list[object] | tuple[object, ...] | None,
+) -> tuple[str | None, str | None, float | None] | None:
+    finished_meta: tuple[str | None, str | None, float | None] | None = None
+    try:
+        stats = _init_run_stats(dict(getattr(run, "stats", None) or {}))
+        config = dict(getattr(run, "config", None) or {})
+        statuses = {
+            str(document_id): _normalize_status(getattr(row, "status", None))
+            for row in rows
+            if (document_id := getattr(row, "document_id", None)) is not None
+        }
+        actual_total = len(statuses)
+        stats["total_documents"] = actual_total
+        stats["status_counts"] = _counts_by_normalized_status(list(statuses.values()))
+        if attempted_inputs is not None:
+            stats["attempted_inputs"] = max(0, int(attempted_inputs))
+        stats["rejected_inputs"] = max(0, int(rejected_inputs))
+        stats["rejected_reasons_top"] = _bounded_reason_counts(rejection_reasons)
+        config["expected_documents"] = actual_total
+        run.config = config
+
+        now = _now_utc()
+        finished_meta = _update_progress_and_finalize_run(run, stats=stats, finished_at=now)
+        if finished_meta is None and actual_total == 0:
+            finished_meta = _finished_meta_for_empty_run(run, stats=stats, now=now)
+        run.stats = stats
+    except Exception as exc:
+        logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, exc)
+    return finished_meta
+
+
 class IngestionRunService:
     @staticmethod
     def create_run(
@@ -243,30 +662,17 @@ class IngestionRunService:
         """
         Attach a document to a run and update bounded run stats.
         """
-        try:
-            run = _lock_run_for_update(db, tenant_id=tenant_id, run_id=run_id)
-        except Exception:
-            try:
-                db.rollback()
-            except Exception as exc:
-                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, exc)
-            run = None
+        run = _lock_run_best_effort(db, tenant_id=tenant_id, run_id=run_id)
         if run is None:
             return
 
-        try:
-            existing = (
-                db.query(IngestionRunDocument)
-                .filter(
-                    IngestionRunDocument.tenant_id == tenant_id,
-                    IngestionRunDocument.run_id == run_id,
-                    IngestionRunDocument.document_id == document_id,
-                )
-                .with_for_update()
-                .first()
-            )
-        except Exception:
-            existing = None
+        existing = _find_run_document_attachment(
+            db,
+            tenant_id=tenant_id,
+            run_id=run_id,
+            document_id=document_id,
+            lock=True,
+        )
         if existing is not None:
             _complete_transaction_quietly(db)
             return
@@ -279,76 +685,16 @@ class IngestionRunService:
             status=_normalize_status(initial_status),
         )
         db.add(row)
-
-        finished_meta: tuple[str | None, str | None, float | None] | None = None
-        try:
-            flush = getattr(db, "flush", None)
-            if callable(flush):
-                flush()
-        except IntegrityError as exc:
-            try:
-                db.rollback()
-            except Exception as rollback_exc:
-                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, rollback_exc)
-            if _is_duplicate_run_document_integrity_error(exc):
-                return
+        if not _flush_run_document_insert(db):
             return
-        except Exception:
-            try:
-                db.rollback()
-            except Exception as rollback_exc:
-                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, rollback_exc)
+        finished_meta = _update_run_stats_for_new_document(
+            run,
+            initial_status=initial_status,
+            doc_meta=doc_meta,
+        )
+        if not _commit_run_document_insert(db):
             return
-
-        try:
-            stats = _init_run_stats(dict(getattr(run, "stats", None) or {}))
-            stats["total_documents"] = _safe_int(stats.get("total_documents"), default=0) + 1
-            sc = stats.get("status_counts")
-            sc = sc if isinstance(sc, dict) else {}
-            _bump_counter(sc, _normalize_status(initial_status), +1)
-            stats["status_counts"] = sc
-
-            finished_meta = _update_progress_and_finalize_run(run, stats=stats, finished_at=_now_utc())
-
-            # Track pipeline version distribution (best-effort) to support run compare/audit.
-            meta = doc_meta if isinstance(doc_meta, dict) else {}
-            ph = str(meta.get("pipeline_hash") or "").strip()
-            if ph:
-                dist = stats.get("pipeline_hash_docs")
-                dist = dist if isinstance(dist, dict) else {}
-                _bump_counter(dist, ph[:64], +1)
-                stats["pipeline_hash_docs"] = dist
-
-            run.stats = stats
-        except Exception as exc:
-            # Stats update is best-effort; keep the mapping row.
-            logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, exc)
-
-        try:
-            db.commit()
-        except IntegrityError as exc:
-            try:
-                db.rollback()
-            except Exception as rollback_exc:
-                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, rollback_exc)
-            if _is_duplicate_run_document_integrity_error(exc):
-                return
-            return
-        except Exception:
-            try:
-                db.rollback()
-            except Exception as rollback_exc:
-                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, rollback_exc)
-            # Best-effort only; callers should not fail ingestion because of manifest.
-            return
-        if finished_meta is not None:
-            try:
-                from app.services.ingestion_prometheus_metrics import observe_ingestion_run_finished
-
-                kind, status, dur = finished_meta
-                observe_ingestion_run_finished(kind=kind, status=status, duration_sec=dur)
-            except Exception as exc:
-                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, exc)
+        _observe_finished_ingestion_run(finished_meta)
 
     @staticmethod
     def on_document_status_update(
@@ -366,153 +712,56 @@ class IngestionRunService:
         """
         status_norm = _normalize_status(new_status)
         criticality_norm = _normalize_criticality(criticality)
-
-        target_run_id: UUID | None = None
-        if isinstance(doc_meta, dict):
-            raw = doc_meta.get("last_ingestion_run_id") or doc_meta.get("created_by_run_id")
-            if raw:
-                try:
-                    target_run_id = UUID(str(raw))
-                except Exception:
-                    target_run_id = None
-
-        def _candidate_rows_for_run_ids(*, run_filter: UUID | None) -> list[IngestionRunDocument]:
-            q = db.query(IngestionRunDocument).filter(
-                IngestionRunDocument.tenant_id == tenant_id,
-                IngestionRunDocument.document_id == document_id,
-            )
-            if run_filter is not None:
-                q = q.filter(IngestionRunDocument.run_id == run_filter)
-            return q.order_by(IngestionRunDocument.run_id, IngestionRunDocument.id).all()
+        target_run_id = _target_run_id_from_doc_meta(doc_meta)
 
         try:
-            rows = _candidate_rows_for_run_ids(run_filter=target_run_id)
+            rows = _load_candidate_rows_for_status_update(
+                db,
+                tenant_id=tenant_id,
+                document_id=document_id,
+                target_run_id=target_run_id,
+            )
         except Exception as exc:
             _handle_ingestion_run_failure(db, exc=exc, criticality=criticality_norm)
             return
-        if not rows and target_run_id is not None:
-            # Backward-compatible fallback: if metadata was missing/malformed, update any active run attachments.
-            try:
-                rows = _candidate_rows_for_run_ids(run_filter=None)
-            except Exception as exc:
-                _handle_ingestion_run_failure(db, exc=exc, criticality=criticality_norm)
-                return
         if not rows:
             return
 
-        candidate_run_ids = sorted({row.run_id for row in rows}, key=str)
-        locked_runs: dict[UUID, IngestionRun] = {}
-        for run_id in candidate_run_ids:
-            try:
-                run = _lock_run_for_update(db, tenant_id=tenant_id, run_id=run_id)
-            except Exception as exc:
-                _handle_ingestion_run_failure(db, exc=exc, criticality=criticality_norm)
-                run = None
-            if run is not None:
-                locked_runs[run_id] = run
-        if not locked_runs:
-            _complete_transaction_quietly(db)
-            return
-
         try:
-            rows = (
-                db.query(IngestionRunDocument)
-                .filter(
-                    IngestionRunDocument.tenant_id == tenant_id,
-                    IngestionRunDocument.document_id == document_id,
-                    IngestionRunDocument.run_id.in_(candidate_run_ids),
-                )
-                .order_by(IngestionRunDocument.run_id, IngestionRunDocument.id)
-                .with_for_update()
-                .all()
+            prepared = _prepare_status_update_rows(
+                db,
+                tenant_id=tenant_id,
+                document_id=document_id,
+                rows=rows,
             )
         except Exception as exc:
             _handle_ingestion_run_failure(db, exc=exc, criticality=criticality_norm)
             return
+        if prepared is None:
+            return
+        rows, locked_runs = prepared
 
         # Update each run attachment (a doc may belong to multiple runs, e.g. replays).
-        now = _now_utc()
-        finished_runs: list[tuple[str | None, str | None, float | None]] = []
-        for row in rows:
-            run = locked_runs.get(row.run_id)
-            if run is None:
-                continue
-            # Freeze completed runs: a document can be reprocessed later and should not mutate old manifests.
-            if getattr(run, "finished_at", None) is not None:
-                continue
-
-            prev = _normalize_status(getattr(row, "status", None))
-            if prev == status_norm:
-                continue
-            row.status = status_norm
-
-            stats = _init_run_stats(dict(getattr(run, "stats", None) or {}))
-            sc = stats.get("status_counts")
-            sc = sc if isinstance(sc, dict) else {}
-            _bump_counter(sc, prev, -1)
-            _bump_counter(sc, status_norm, +1)
-            stats["status_counts"] = sc
-
-            # Failure reasons topN (bounded).
-            if status_norm in {"failed", "quarantined"} and error_message:
-                fr = stats.get("failure_reasons_top")
-                fr = fr if isinstance(fr, dict) else {}
-                key = _failure_reason(error_message)
-                _bump_counter(fr, key, +1)
-                # Cap to top 20 keys by count (best-effort).
-                if len(fr) > 25:
-                    ranked = sorted(((k, _safe_int(v)) for k, v in fr.items()), key=lambda kv: (-kv[1], kv[0]))
-                    fr = {k: int(v) for k, v in ranked[:20] if v > 0}
-                stats["failure_reasons_top"] = fr
-
-            # Stage durations aggregation (only when we have terminal status).
-            meta = doc_meta if isinstance(doc_meta, dict) else {}
-            durations = meta.get("ingest_stage_durations_ms")
-            if status_norm in {"completed", "failed", "quarantined", "cancelled"} and isinstance(durations, dict):
-                sums = stats.get("stage_durations_ms_sum")
-                sums = sums if isinstance(sums, dict) else {}
-                for k, v in durations.items():
-                    if not isinstance(k, str) or not k.strip():
-                        continue
-                    sums[k[:64]] = _safe_int(sums.get(k), default=0) + _safe_int(v, default=0)
-                stats["stage_durations_ms_sum"] = sums
-                stats["stage_durations_docs"] = _safe_int(stats.get("stage_durations_docs"), default=0) + 1
-
-            finished_meta = _update_progress_and_finalize_run(run, stats=stats, finished_at=now)
-            if finished_meta is not None:
-                finished_runs.append(finished_meta)
-                if run.finished_at is not None:
-                    # Touch dataset.updated_at so API instances can invalidate dataset-scoped caches
-                    # (e.g., in-memory BM25 indices) after ingestion completes.
-                    try:
-                        ds_id = getattr(run, "dataset_id", None)
-                        if ds_id is not None:
-                            from app.models.dataset import Dataset  # noqa: WPS433
-
-                            ds = (
-                                db.query(Dataset)
-                                .filter(Dataset.tenant_id == tenant_id, Dataset.id == ds_id)
-                                .first()
-                            )
-                            if ds is not None:
-                                ds.updated_at = now
-                    except Exception as exc:
-                        logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, exc)
-
-            run.stats = stats
+        try:
+            finished_runs = _apply_status_updates_to_rows(
+                db,
+                tenant_id=tenant_id,
+                rows=rows,
+                locked_runs=locked_runs,
+                status_norm=status_norm,
+                error_message=error_message,
+                doc_meta=doc_meta,
+                now=_now_utc(),
+            )
+        except Exception as exc:
+            _handle_ingestion_run_failure(db, exc=exc, criticality=criticality_norm)
+            return
         try:
             db.commit()
         except Exception as exc:
             _handle_ingestion_run_failure(db, exc=exc, criticality=criticality_norm)
             return
-        if finished_runs:
-            try:
-                from app.services.ingestion_prometheus_metrics import observe_ingestion_run_finished
-
-                for kind, status, dur in finished_runs:
-                    observe_ingestion_run_finished(kind=kind, status=status, duration_sec=dur)
-            except Exception as exc:
-                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, exc)
+        _observe_finished_ingestion_runs(finished_runs)
 
     @staticmethod
     def close_intake(
@@ -527,98 +776,29 @@ class IngestionRunService:
         """
         Reconcile the batch intake target with actual attached documents and finalize if possible.
         """
-        try:
-            run = _lock_run_for_update(db, tenant_id=tenant_id, run_id=run_id)
-        except Exception:
-            try:
-                db.rollback()
-            except Exception as rollback_exc:
-                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, rollback_exc)
-            return
+        run = _lock_run_best_effort(db, tenant_id=tenant_id, run_id=run_id)
         if run is None:
             return
 
         try:
-            rows = (
-                db.query(IngestionRunDocument)
-                .filter(
-                    IngestionRunDocument.tenant_id == tenant_id,
-                    IngestionRunDocument.run_id == run_id,
-                )
-                .order_by(IngestionRunDocument.id)
-                .all()
-            )
+            rows = _load_run_documents(db, tenant_id=tenant_id, run_id=run_id)
         except Exception:
-            try:
-                db.rollback()
-            except Exception as rollback_exc:
-                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, rollback_exc)
+            _rollback_quietly(db)
             return
 
-        finished_meta: tuple[str | None, str | None, float | None] | None = None
-        try:
-            stats = _init_run_stats(dict(getattr(run, "stats", None) or {}))
-            config = dict(getattr(run, "config", None) or {})
-
-            statuses: dict[str, str] = {}
-            for row in rows:
-                document_id = getattr(row, "document_id", None)
-                if document_id is None:
-                    continue
-                statuses[str(document_id)] = _normalize_status(getattr(row, "status", None))
-
-            actual_total = len(statuses)
-            stats["total_documents"] = actual_total
-            stats["status_counts"] = _counts_by_normalized_status(list(statuses.values()))
-            if attempted_inputs is not None:
-                stats["attempted_inputs"] = max(0, int(attempted_inputs))
-            stats["rejected_inputs"] = max(0, int(rejected_inputs))
-            stats["rejected_reasons_top"] = _bounded_reason_counts(rejection_reasons)
-            config["expected_documents"] = actual_total
-            run.config = config
-
-            now = _now_utc()
-            finished_meta = _update_progress_and_finalize_run(run, stats=stats, finished_at=now)
-            attempted_total = _safe_int(stats.get("attempted_inputs"), default=0)
-            rejected_total = _safe_int(stats.get("rejected_inputs"), default=0)
-            if (
-                finished_meta is None
-                and actual_total == 0
-                and attempted_total > 0
-                and rejected_total >= attempted_total
-            ):
-                run.status = "failed"
-                stats["progress"] = 100
-                if run.finished_at is None:
-                    run.finished_at = now
-                    try:
-                        dur = None
-                        if run.started_at is not None and run.finished_at is not None:
-                            dur = float((run.finished_at - run.started_at).total_seconds())
-                        finished_meta = (getattr(run, "kind", None), getattr(run, "status", None), dur)
-                    except Exception:
-                        finished_meta = (getattr(run, "kind", None), getattr(run, "status", None), None)
-
-            run.stats = stats
-        except Exception as exc:
-            logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, exc)
-
+        finished_meta = _reconcile_close_intake_stats(
+            run,
+            rows=rows,
+            attempted_inputs=attempted_inputs,
+            rejected_inputs=rejected_inputs,
+            rejection_reasons=rejection_reasons,
+        )
         try:
             db.commit()
         except Exception:
-            try:
-                db.rollback()
-            except Exception as rollback_exc:
-                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, rollback_exc)
+            _rollback_quietly(db)
             return
-        if finished_meta is not None:
-            try:
-                from app.services.ingestion_prometheus_metrics import observe_ingestion_run_finished
-
-                kind, status, dur = finished_meta
-                observe_ingestion_run_finished(kind=kind, status=status, duration_sec=dur)
-            except Exception as exc:
-                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, exc)
+        _observe_finished_ingestion_run(finished_meta)
 
     @staticmethod
     def compare_runs(*, run_a: IngestionRun, run_b: IngestionRun) -> dict[str, Any]:
@@ -657,5 +837,8 @@ class IngestionRunService:
             "changed_config_keys": changed_cfg,
             "status_count_delta": _delta_dict(a_stats.get("status_counts"), b_stats.get("status_counts")),
             "failure_reason_delta": _delta_dict(a_stats.get("failure_reasons_top"), b_stats.get("failure_reasons_top")),
-            "pipeline_hash_docs_delta": _delta_dict(a_stats.get("pipeline_hash_docs"), b_stats.get("pipeline_hash_docs")),
+            "pipeline_hash_docs_delta": _delta_dict(
+                a_stats.get("pipeline_hash_docs"),
+                b_stats.get("pipeline_hash_docs"),
+            ),
         }

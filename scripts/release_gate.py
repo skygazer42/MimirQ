@@ -18,7 +18,6 @@ Exit codes:
   1: unexpected error (network/parse/etc)
 """
 
-
 import argparse
 import json
 import math
@@ -27,7 +26,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 
@@ -111,6 +110,20 @@ def _safe_float(v: object) -> float | None:
     return f
 
 
+def _normalize_threshold_entry(value: Any) -> dict[str, float]:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return {"min": float(value)}
+    if not isinstance(value, dict):
+        return {}
+
+    entry: dict[str, float] = {}
+    for bound in ("min", "max"):
+        numeric = _safe_float(value.get(bound))
+        if numeric is not None:
+            entry[bound] = float(numeric)
+    return entry
+
+
 def normalize_thresholds(raw: Any) -> dict[str, dict[str, float]]:
     """
     Normalize thresholds into: { metric: { min?: float, max?: float } }.
@@ -125,21 +138,9 @@ def normalize_thresholds(raw: Any) -> dict[str, dict[str, float]]:
         metric = str(k).strip()
         if not metric:
             continue
-        if isinstance(v, (int, float)) and not isinstance(v, bool):
-            out[metric] = {"min": float(v)}
-            continue
-        if isinstance(v, dict):
-            entry: dict[str, float] = {}
-            if "min" in v:
-                fv = _safe_float(v.get("min"))
-                if fv is not None:
-                    entry["min"] = float(fv)
-            if "max" in v:
-                fv = _safe_float(v.get("max"))
-                if fv is not None:
-                    entry["max"] = float(fv)
-            if entry:
-                out[metric] = entry
+        entry = _normalize_threshold_entry(v)
+        if entry:
+            out[metric] = entry
     return out
 
 
@@ -161,7 +162,13 @@ class GateViolation:
     message: str
 
 
-def _check_threshold(*, area: str, metric: str, value: float | None, threshold: dict[str, float]) -> GateViolation | None:
+def _check_threshold(
+    *,
+    area: str,
+    metric: str,
+    value: float | None,
+    threshold: dict[str, float],
+) -> GateViolation | None:
     if value is None:
         return GateViolation(
             area=area,
@@ -212,7 +219,13 @@ def _check_threshold(*, area: str, metric: str, value: float | None, threshold: 
     return None
 
 
-def _http_get_json(client: httpx.Client, url: str, *, headers: dict[str, str], params: dict[str, Any] | None = None) -> Any:
+def _http_get_json(
+    client: httpx.Client,
+    url: str,
+    *,
+    headers: dict[str, str],
+    params: dict[str, Any] | None = None,
+) -> Any:
     resp = client.get(url, headers=headers, params=params)
     resp.raise_for_status()
     return resp.json() if resp.content else {}
@@ -351,7 +364,123 @@ def _poll_rag_trace_count(
         time.sleep(max(0.05, float(poll_sec)))
 
 
-def _gate_slo_snapshot(*, snapshot: dict[str, Any], budgets: dict[str, Any]) -> tuple[list[GateViolation], list[str]]:
+def _warn_note(message: str) -> str:
+    return f"[release_gate] WARN: {message}"
+
+
+def _snapshot_windows_by_minute(snapshot: dict[str, Any]) -> dict[int, dict[str, Any]]:
+    windows = snapshot.get("windows") if isinstance(snapshot.get("windows"), list) else []
+    by_minute: dict[int, dict[str, Any]] = {}
+    for window in windows:
+        if not isinstance(window, dict):
+            continue
+        try:
+            window_minutes = int(window.get("window_minutes") or 0)
+        except Exception:
+            continue
+        if window_minutes > 0:
+            by_minute[window_minutes] = window
+    return by_minute
+
+
+def _handle_optional_violation(
+    *,
+    violations: list[GateViolation],
+    notes: list[str],
+    violation: GateViolation,
+    policy: str,
+) -> None:
+    if violation.value is None and policy != "fail":
+        notes.append(_warn_note(f"{violation.area}.{violation.metric}: {violation.message}"))
+        return
+    violations.append(violation)
+
+
+def _handle_missing_snapshot(
+    *,
+    area: str,
+    metric: str,
+    message: str,
+    policy: str,
+    notes: list[str],
+    violations: list[GateViolation],
+    threshold: dict[str, float] | None = None,
+    value: float | None = None,
+) -> None:
+    if policy == "fail":
+        violations.append(
+            GateViolation(
+                area=area,
+                metric=metric,
+                value=value,
+                threshold=threshold or {},
+                message=message,
+            )
+        )
+        return
+    notes.append(_warn_note(message))
+
+
+def _gate_slo_window(
+    *,
+    area: str,
+    snapshot: dict[str, Any] | None,
+    threshold_config: dict[str, Any],
+    min_count: int,
+    policy: str,
+    violations: list[GateViolation],
+    notes: list[str],
+) -> None:
+    if not isinstance(snapshot, dict):
+        _handle_missing_snapshot(
+            area="slo",
+            metric=area.replace("slo:", "window:").replace("m", ""),
+            message=f"missing slo window snapshot: {area.split(':', 1)[1]}",
+            policy=policy,
+            notes=notes,
+            violations=violations,
+        )
+        return
+
+    rag_trace_count = snapshot.get("rag_trace_count")
+    try:
+        count = int(rag_trace_count) if rag_trace_count is not None else 0
+    except Exception:
+        count = 0
+    if min_count > 0 and count < min_count:
+        _handle_missing_snapshot(
+            area="slo",
+            metric="rag_trace_count",
+            message=f"insufficient rag_trace_count for {area.split(':', 1)[1]}: {count} < {min_count}",
+            policy=policy,
+            notes=notes,
+            violations=violations,
+            threshold={"min": float(min_count)},
+            value=float(count),
+        )
+        return
+
+    for metric, threshold in normalize_thresholds(threshold_config).items():
+        violation = _check_threshold(
+            area=area,
+            metric=metric,
+            value=_safe_float(snapshot.get(metric)),
+            threshold=threshold,
+        )
+        if violation is not None:
+            _handle_optional_violation(
+                violations=violations,
+                notes=notes,
+                violation=violation,
+                policy=policy,
+            )
+
+
+def _gate_slo_snapshot(
+    *,
+    snapshot: dict[str, Any],
+    budgets: dict[str, Any],
+) -> tuple[list[GateViolation], list[str]]:
     slo_raw = budgets.get("slo") if isinstance(budgets.get("slo"), dict) else {}
     windows_cfg = slo_raw.get("windows") if isinstance(slo_raw.get("windows"), dict) else {}
     min_count = int(slo_raw.get("min_rag_trace_count") or 0)
@@ -359,74 +488,31 @@ def _gate_slo_snapshot(*, snapshot: dict[str, Any], budgets: dict[str, Any]) -> 
 
     notes: list[str] = []
     violations: list[GateViolation] = []
-
-    windows = snapshot.get("windows") if isinstance(snapshot.get("windows"), list) else []
-    windows_by_min: dict[int, dict[str, Any]] = {}
-    for w in windows:
-        if not isinstance(w, dict):
-            continue
-        try:
-            wmin = int(w.get("window_minutes") or 0)
-        except Exception:
-            continue
-        if wmin > 0:
-            windows_by_min[wmin] = w
+    windows_by_min = _snapshot_windows_by_minute(snapshot)
 
     for wkey, th_raw in windows_cfg.items():
         try:
             wmin = int(str(wkey).strip())
         except Exception:
             continue
-        th = normalize_thresholds(th_raw)
-        if not th:
+        if not normalize_thresholds(th_raw):
             continue
-
-        snap = windows_by_min.get(wmin)
-        if not isinstance(snap, dict):
-            msg = f"missing slo window snapshot: {wmin}m"
-            if on_insufficient == "fail":
-                violations.append(
-                    GateViolation(area="slo", metric=f"window:{wmin}", value=None, threshold={}, message=msg)
-                )
-            else:
-                notes.append(f"[release_gate] WARN: {msg}")
-            continue
-
-        rag_trace_count = snap.get("rag_trace_count")
-        try:
-            cnt = int(rag_trace_count) if rag_trace_count is not None else 0
-        except Exception:
-            cnt = 0
-        if min_count > 0 and cnt < min_count:
-            msg = f"insufficient rag_trace_count for {wmin}m window: {cnt} < {min_count}"
-            if on_insufficient == "fail":
-                violations.append(
-                    GateViolation(
-                        area="slo",
-                        metric="rag_trace_count",
-                        value=float(cnt),
-                        threshold={"min": float(min_count)},
-                        message=msg,
-                    )
-                )
-            else:
-                notes.append(f"[release_gate] WARN: {msg}")
-            continue
-
-        for metric, threshold in th.items():
-            v = _safe_float(snap.get(metric))
-            viol = _check_threshold(area=f"slo:{wmin}m", metric=metric, value=v, threshold=threshold)
-            if viol is None:
-                continue
-            if viol.value is None and on_insufficient != "fail":
-                notes.append(f"[release_gate] WARN: {viol.area}.{viol.metric}: {viol.message}")
-                continue
-            violations.append(viol)
+        _gate_slo_window(
+            area=f"slo:{wmin}m",
+            snapshot=windows_by_min.get(wmin),
+            threshold_config=th_raw,
+            min_count=min_count,
+            policy=on_insufficient,
+            violations=violations,
+            notes=notes,
+        )
 
     return violations, notes
 
 
-def _gate_cost(*, summary: dict[str, Any], budgets: dict[str, Any]) -> tuple[list[GateViolation], list[str], dict[str, float]]:
+def _gate_cost(
+    *, summary: dict[str, Any], budgets: dict[str, Any]
+) -> tuple[list[GateViolation], list[str], dict[str, float]]:
     cost_raw = budgets.get("cost") if isinstance(budgets.get("cost"), dict) else {}
     on_insufficient = _policy(cost_raw.get("on_insufficient_data"), default="fail")
     min_count = int(cost_raw.get("min_rag_trace_count") or 0)
@@ -470,7 +556,13 @@ def _gate_cost(*, summary: dict[str, Any], budgets: dict[str, Any]) -> tuple[lis
     thresholds = normalize_thresholds(cost_raw.get("thresholds"))
     if not thresholds:
         # Back-compat: allow thresholds at top-level of "cost" object.
-        thresholds = normalize_thresholds({k: v for k, v in cost_raw.items() if k not in {"window_minutes", "min_rag_trace_count", "on_insufficient_data"}})
+        thresholds = normalize_thresholds(
+            {
+                k: v
+                for k, v in cost_raw.items()
+                if k not in {"window_minutes", "min_rag_trace_count", "on_insufficient_data"}
+            }
+        )
 
     for metric, threshold in thresholds.items():
         v = computed.get(metric)
@@ -564,7 +656,9 @@ def _gate_retrieval_leaderboard(
         violations.append(viol)
         if policy == "warn":
             notes.append(
-                f"[release_gate] WARN: retrieval_leaderboard.{metric}: value={viol.value} threshold={threshold} msg={viol.message}"
+                "[release_gate] WARN: "
+                f"retrieval_leaderboard.{metric}: "
+                f"value={viol.value} threshold={threshold} msg={viol.message}"
             )
 
     return violations, notes, observed
@@ -627,7 +721,9 @@ def _gate_queryset_health_diff(
     policy = _policy((cfg or {}).get("policy"), default="fail")
     thresholds = normalize_thresholds((cfg or {}).get("thresholds"))
 
-    hard = diff.get("hard_case_drift") if isinstance(diff, dict) and isinstance(diff.get("hard_case_drift"), dict) else {}
+    hard = (
+        diff.get("hard_case_drift") if isinstance(diff, dict) and isinstance(diff.get("hard_case_drift"), dict) else {}
+    )
     flags = (
         diff.get("degradation_flags_drift")
         if isinstance(diff, dict) and isinstance(diff.get("degradation_flags_drift"), dict)
@@ -692,7 +788,9 @@ def _gate_parsing_proof_summary(
             continue
         violations.append(viol)
         if policy == "warn":
-            notes.append(f"[release_gate] WARN: {area}.{metric}: value={viol.value} threshold={threshold} msg={viol.message}")
+            notes.append(
+                f"[release_gate] WARN: {area}.{metric}: value={viol.value} threshold={threshold} msg={viol.message}"
+            )
     return violations, notes, observed
 
 
@@ -705,7 +803,9 @@ def _gate_parsing_proof_diff(
     policy = _policy((cfg or {}).get("policy"), default="warn")
     thresholds = normalize_thresholds((cfg or {}).get("thresholds"))
 
-    metric_deltas = (diff.get("metric_deltas") if isinstance(diff, dict) and isinstance(diff.get("metric_deltas"), dict) else {})
+    metric_deltas = (
+        diff.get("metric_deltas") if isinstance(diff, dict) and isinstance(diff.get("metric_deltas"), dict) else {}
+    )
     failed_drift = (
         diff.get("failed_case_drift")
         if isinstance(diff, dict) and isinstance(diff.get("failed_case_drift"), dict)
@@ -727,7 +827,9 @@ def _gate_parsing_proof_diff(
             continue
         violations.append(viol)
         if policy == "warn":
-            notes.append(f"[release_gate] WARN: {area}.{metric}: value={viol.value} threshold={threshold} msg={viol.message}")
+            notes.append(
+                f"[release_gate] WARN: {area}.{metric}: value={viol.value} threshold={threshold} msg={viol.message}"
+            )
     return violations, notes, observed
 
 
@@ -759,7 +861,9 @@ def _normalize_parsing_proof_rollout(rollout: Any) -> dict[str, Any]:
         next_stage = "fail"
         requirements_key = "warn_to_fail"
 
-    requirements_obj = payload.get("promotion_requirements") if isinstance(payload.get("promotion_requirements"), dict) else {}
+    requirements_obj = (
+        payload.get("promotion_requirements") if isinstance(payload.get("promotion_requirements"), dict) else {}
+    )
     return {
         "current_stage": current_stage,
         "next_stage": next_stage,
@@ -783,7 +887,9 @@ def _load_parsing_proof_rollout_details(artifact_path: Path | None) -> dict[str,
 def _extract_parsing_proof_summary_details(summary: Any, *, artifact_path: Path | None = None) -> dict[str, Any]:
     payload = summary if isinstance(summary, dict) else {}
     failed_case_ids = _coerce_str_list(payload.get("failed_case_ids"))
-    sample_composition_obj = payload.get("sample_composition") if isinstance(payload.get("sample_composition"), dict) else {}
+    sample_composition_obj = (
+        payload.get("sample_composition") if isinstance(payload.get("sample_composition"), dict) else {}
+    )
     details = {
         "failed_case_ids": failed_case_ids,
         "sample_composition": {
@@ -818,7 +924,9 @@ def _render_parsing_proof_section(name: str, payload: dict[str, Any], lines: lis
     observed = payload.get("observed") if isinstance(payload.get("observed"), dict) else {}
     details = payload.get("details") if isinstance(payload.get("details"), dict) else {}
     failed_case_ids = _coerce_str_list(details.get("failed_case_ids"))
-    sample_composition = details.get("sample_composition") if isinstance(details.get("sample_composition"), dict) else {}
+    sample_composition = (
+        details.get("sample_composition") if isinstance(details.get("sample_composition"), dict) else {}
+    )
     rollout = details.get("rollout") if isinstance(details.get("rollout"), dict) else {}
     failed_case_count = int(observed.get("failed_case_count") or len(failed_case_ids))
     lines.append(f"## {name}")
@@ -839,8 +947,16 @@ def _render_parsing_proof_section(name: str, payload: dict[str, Any], lines: lis
     else:
         lines.append("- Failed case IDs: `none`")
         lines.append("- Callout: `no parsing-proof failures in current sample`")
-    family_counts = sample_composition.get("case_family_counts") if isinstance(sample_composition.get("case_family_counts"), dict) else {}
-    category_counts = sample_composition.get("case_category_counts") if isinstance(sample_composition.get("case_category_counts"), dict) else {}
+    family_counts = (
+        sample_composition.get("case_family_counts")
+        if isinstance(sample_composition.get("case_family_counts"), dict)
+        else {}
+    )
+    category_counts = (
+        sample_composition.get("case_category_counts")
+        if isinstance(sample_composition.get("case_category_counts"), dict)
+        else {}
+    )
     family_text = ", ".join(f"{key}={family_counts[key]}" for key in sorted(family_counts)) or "none"
     category_text = ", ".join(f"{key}={category_counts[key]}" for key in sorted(category_counts)) or "none"
     lines.append(f"- Sample composition: `families={family_text}` `categories={category_text}`")
@@ -889,29 +1005,54 @@ def _render_parsing_proof_diff_section(name: str, payload: dict[str, Any], lines
     lines.append("")
 
 
+def _render_standard_section(name: str, payload: dict[str, Any], lines: list[str]) -> None:
+    lines.append(f"## {name}")
+    lines.append("")
+    lines.append(f"- Policy: `{str(payload.get('policy') or '')}`")
+    lines.append(f"- Path: `{str(payload.get('path') or '')}`")
+    observed = payload.get("observed") if isinstance(payload.get("observed"), dict) else {}
+    for key, value in observed.items():
+        lines.append(f"- `{key}`: `{value}`")
+    lines.append("")
+
+
+def _render_section(name: str, report: dict[str, Any], lines: list[str]) -> None:
+    payload = report.get(name) if isinstance(report.get(name), dict) else {}
+    if name == "parsing_proof":
+        _render_parsing_proof_section(name, payload, lines)
+        return
+    if name == "parsing_proof_diff":
+        _render_parsing_proof_diff_section(name, payload, lines)
+        return
+    _render_standard_section(name, payload, lines)
+
+
+def _append_optional_list_section(
+    lines: list[str],
+    *,
+    title: str,
+    values: list[Any],
+    render_item: Callable[[Any], str | None],
+) -> None:
+    lines.extend([title, ""])
+    rendered = False
+    for value in values:
+        item = render_item(value)
+        if item is None:
+            continue
+        lines.append(item)
+        rendered = True
+    if not rendered:
+        lines.append("- None")
+    lines.append("")
+
+
 def _render_markdown(report: dict[str, Any]) -> str:
     lines: list[str] = []
     lines.append("# Release Gate Report")
     lines.append("")
     lines.append(f"- Passed: `{bool(report.get('passed'))}`")
     lines.append("")
-
-    def _emit_section(name: str) -> None:
-        payload = report.get(name) if isinstance(report.get(name), dict) else {}
-        if name == "parsing_proof":
-            _render_parsing_proof_section(name, payload, lines)
-            return
-        if name == "parsing_proof_diff":
-            _render_parsing_proof_diff_section(name, payload, lines)
-            return
-        lines.append(f"## {name}")
-        lines.append("")
-        lines.append(f"- Policy: `{str(payload.get('policy') or '')}`")
-        lines.append(f"- Path: `{str(payload.get('path') or '')}`")
-        observed = payload.get("observed") if isinstance(payload.get("observed"), dict) else {}
-        for key, value in observed.items():
-            lines.append(f"- `{key}`: `{value}`")
-        lines.append("")
 
     for section in (
         "queryset_health",
@@ -922,76 +1063,146 @@ def _render_markdown(report: dict[str, Any]) -> str:
         "parsing_proof_diff",
         "retrieval_leaderboard",
     ):
-        _emit_section(section)
+        _render_section(section, report, lines)
 
-    notes = list(report.get("notes") or [])
-    lines.append("## Notes")
-    lines.append("")
-    if notes:
-        for item in notes:
-            lines.append(f"- {item}")
-    else:
-        lines.append("- None")
-    lines.append("")
-
-    violations = list(report.get("violations") or [])
-    lines.append("## Violations")
-    lines.append("")
-    if violations:
-        for item in violations:
-            if not isinstance(item, dict):
-                continue
-            lines.append(
-                f"- `{item.get('area')}.{item.get('metric')}` value=`{item.get('value')}` threshold=`{item.get('threshold')}` message=`{item.get('message')}`"
-            )
-    else:
-        lines.append("- None")
-    lines.append("")
+    _append_optional_list_section(
+        lines,
+        title="## Notes",
+        values=list(report.get("notes") or []),
+        render_item=lambda item: f"- {item}",
+    )
+    _append_optional_list_section(
+        lines,
+        title="## Violations",
+        values=list(report.get("violations") or []),
+        render_item=lambda item: (
+            f"- `{item.get('area')}.{item.get('metric')}` "
+            f"value=`{item.get('value')}` "
+            f"threshold=`{item.get('threshold')}` "
+            f"message=`{item.get('message')}`"
+            if isinstance(item, dict)
+            else None
+        ),
+    )
     return "\n".join(lines)
 
 
-def main() -> int:
+def _build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Release gate: regression + SLO + cost budgets.")
     p.add_argument("--base-url", default="http://localhost:8000/api/v1", help="API base url (default: %(default)s)")
     p.add_argument("--tenant-id", default="", help="X-Tenant-ID header (optional in non-prod)")
     p.add_argument("--user-id", default="", help="X-User-ID header (AUTH_MODE=header)")
     p.add_argument("--bearer", default="", help="Bearer token (AUTH_MODE=jwt)")
-
-    p.add_argument("--budgets", type=str, required=True, help="Budgets JSON (schema: mimirq.release_gate_budgets.v1)")
-
-    # Regression gate integration (delegates to scripts/regression_gate.py).
-    p.add_argument("--cases", type=str, default="", help="Path to regression cases JSON (optional; used for regression and probe)")
-    p.add_argument("--thresholds", type=str, default="", help="Thresholds JSON for scripts/regression_gate.py (optional)")
+    p.add_argument(
+        "--budgets",
+        type=str,
+        required=True,
+        help="Budgets JSON (schema: mimirq.release_gate_budgets.v1)",
+    )
+    p.add_argument(
+        "--cases",
+        type=str,
+        default="",
+        help="Path to regression cases JSON (optional; used for regression and probe)",
+    )
+    p.add_argument(
+        "--thresholds",
+        type=str,
+        default="",
+        help="Thresholds JSON for scripts/regression_gate.py (optional)",
+    )
     p.add_argument("--skip-regression", action="store_true", help="Skip regression gate step")
-    p.add_argument("--regression-metrics", default="", help='Comma-separated metrics; use "" for retrieval-only (default: empty)')
-    p.add_argument("--regression-retrieval-mode", default="", help="Override retrieval_mode for regression gate run (optional)")
-    p.add_argument("--regression-out-run-json", default="", help="Write regression run detail JSON (optional)")
-    p.add_argument("--regression-skip-import", action="store_true", help="Pass --skip-import to regression gate")
-    p.add_argument("--regression-overwrite", action="store_true", help="Pass --overwrite to regression gate")
-
-    # Probe traffic to ensure metrics exist for SLO/cost budgets.
-    p.add_argument("--probe-chat-requests", type=int, default=0, help="Send N chat requests to generate metrics (default: 0)")
-    p.add_argument("--probe-retrieval-mode", default="keyword", help="Probe retrieval_mode for chat (default: %(default)s)")
-    p.add_argument("--probe-top-k", type=int, default=20, help="Probe top_k (default: %(default)s)")
-    p.add_argument("--probe-score-threshold", type=float, default=0.0, help="Probe score_threshold (default: %(default)s)")
-    p.add_argument("--probe-window-minutes", type=int, default=60, help="Metrics window to poll for probe (default: %(default)s)")
-    p.add_argument("--probe-poll-sec", type=float, default=0.25, help="Poll interval while waiting for metrics flush (default: %(default)s)")
-    p.add_argument("--probe-timeout-sec", type=float, default=15.0, help="Timeout waiting for metrics flush (default: %(default)s)")
-
-    # Optional retrieval leaderboard drift gate.
-    p.add_argument("--retrieval-leaderboard", default="", help="Leaderboard JSON artifact path (optional)")
+    p.add_argument(
+        "--regression-metrics",
+        default="",
+        help='Comma-separated metrics; use "" for retrieval-only (default: empty)',
+    )
+    p.add_argument(
+        "--regression-retrieval-mode",
+        default="",
+        help="Override retrieval_mode for regression gate run (optional)",
+    )
+    p.add_argument(
+        "--regression-out-run-json",
+        default="",
+        help="Write regression run detail JSON (optional)",
+    )
+    p.add_argument(
+        "--regression-skip-import",
+        action="store_true",
+        help="Pass --skip-import to regression gate",
+    )
+    p.add_argument(
+        "--regression-overwrite",
+        action="store_true",
+        help="Pass --overwrite to regression gate",
+    )
+    p.add_argument(
+        "--probe-chat-requests",
+        type=int,
+        default=0,
+        help="Send N chat requests to generate metrics (default: 0)",
+    )
+    p.add_argument(
+        "--probe-retrieval-mode",
+        default="keyword",
+        help="Probe retrieval_mode for chat (default: %(default)s)",
+    )
+    p.add_argument(
+        "--probe-top-k",
+        type=int,
+        default=20,
+        help="Probe top_k (default: %(default)s)",
+    )
+    p.add_argument(
+        "--probe-score-threshold",
+        type=float,
+        default=0.0,
+        help="Probe score_threshold (default: %(default)s)",
+    )
+    p.add_argument(
+        "--probe-window-minutes",
+        type=int,
+        default=60,
+        help="Metrics window to poll for probe (default: %(default)s)",
+    )
+    p.add_argument(
+        "--probe-poll-sec",
+        type=float,
+        default=0.25,
+        help="Poll interval while waiting for metrics flush (default: %(default)s)",
+    )
+    p.add_argument(
+        "--probe-timeout-sec",
+        type=float,
+        default=15.0,
+        help="Timeout waiting for metrics flush (default: %(default)s)",
+    )
+    p.add_argument(
+        "--retrieval-leaderboard",
+        default="",
+        help="Leaderboard JSON artifact path (optional)",
+    )
     p.add_argument(
         "--retrieval-leaderboard-policy",
         default="",
         help="Override retrieval leaderboard policy (warn|fail). Empty uses budgets file.",
     )
-    p.add_argument("--queryset-health-snapshot", default="", help="Query-set health snapshot JSON path (optional)")
+    p.add_argument(
+        "--queryset-health-snapshot",
+        default="",
+        help="Query-set health snapshot JSON path (optional)",
+    )
     p.add_argument(
         "--queryset-health-snapshot-hybrid",
         default="",
         help="Hybrid query-set health snapshot JSON path (optional)",
     )
-    p.add_argument("--queryset-health-diff", default="", help="Query-set health diff JSON path (optional)")
+    p.add_argument(
+        "--queryset-health-diff",
+        default="",
+        help="Query-set health diff JSON path (optional)",
+    )
     p.add_argument(
         "--queryset-health-diff-hybrid",
         default="",
@@ -1002,32 +1213,46 @@ def main() -> int:
         default="",
         help="Override queryset health policy drift gate behavior (warn|fail). Empty uses budgets file.",
     )
-    p.add_argument("--parsing-proof-summary", default="", help="Broader parsing-proof summary JSON path (optional)")
-    p.add_argument("--parsing-proof-diff", default="", help="Broader parsing-proof diff JSON path (optional)")
-
+    p.add_argument(
+        "--parsing-proof-summary",
+        default="",
+        help="Broader parsing-proof summary JSON path (optional)",
+    )
+    p.add_argument(
+        "--parsing-proof-diff",
+        default="",
+        help="Broader parsing-proof diff JSON path (optional)",
+    )
     p.add_argument("--out-report", default="", help="Write a JSON report to a file (optional)")
     p.add_argument("--out-report-md", default="", help="Write a Markdown summary to a file (optional)")
+    return p
 
-    args = p.parse_args()
 
+def _load_budgets(args: argparse.Namespace) -> dict[str, Any] | None:
     budgets_path = Path(args.budgets)
     if not budgets_path.exists():
         print(f"[release_gate] ERROR: budgets file not found: {budgets_path}", file=sys.stderr)
-        return 1
+        return None
     budgets = _load_json(budgets_path)
     if not isinstance(budgets, dict):
         print("[release_gate] ERROR: budgets must be a JSON object", file=sys.stderr)
+        return None
+    return budgets
+
+
+def _run_regression_step(args: argparse.Namespace) -> int:
+    if args.skip_regression:
+        return 0
+    if not args.cases:
+        print("[release_gate] ERROR: --cases is required when running regression gate", file=sys.stderr)
         return 1
+    rc = _run_regression_gate_subprocess(args=args)
+    if rc != 0:
+        print(f"[release_gate] ERROR: regression gate failed (exit={rc})", file=sys.stderr)
+    return int(rc)
 
-    if not args.skip_regression:
-        if not args.cases:
-            print("[release_gate] ERROR: --cases is required when running regression gate", file=sys.stderr)
-            return 1
-        rc = _run_regression_gate_subprocess(args=args)
-        if rc != 0:
-            print(f"[release_gate] ERROR: regression gate failed (exit={rc})", file=sys.stderr)
-            return int(rc)
 
+def _load_case_bundle_for_probe(args: argparse.Namespace) -> tuple[str, list[dict[str, Any]], Path | None]:
     cases_path: Path | None = Path(args.cases) if args.cases else None
     dataset_id = ""
     case_items: list[dict[str, Any]] = []
@@ -1036,14 +1261,14 @@ def main() -> int:
             dataset_id, case_items = coerce_case_bundle(_load_json(cases_path))
         except Exception:
             dataset_id, case_items = "", []
+    return dataset_id, case_items, cases_path
 
-    headers = _headers(tenant_id=str(args.tenant_id), user_id=str(args.user_id), bearer=str(args.bearer))
-    base_url = str(args.base_url)
 
-    report: dict[str, Any] = {
+def _build_release_report(args: argparse.Namespace) -> dict[str, Any]:
+    return {
         "schema": "mimirq.release_gate_report.v1",
         "generated_at_ts": time.time(),
-        "base_url": base_url,
+        "base_url": str(args.base_url),
         "tenant_id": str(args.tenant_id or ""),
         "user_id": str(args.user_id or ""),
         "probe": {},
@@ -1060,67 +1285,108 @@ def main() -> int:
         "notes": [],
     }
 
+
+def _collect_probe_signal(
+    client: httpx.Client,
+    *,
+    args: argparse.Namespace,
+    base_url: str,
+    headers: dict[str, str],
+    dataset_id: str,
+    case_items: list[dict[str, Any]],
+    cases_path: Path | None,
+) -> dict[str, Any] | int:
+    if int(args.probe_chat_requests or 0) <= 0:
+        return {}
+    if not cases_path or not cases_path.exists():
+        print("[release_gate] ERROR: --cases is required for --probe-chat-requests", file=sys.stderr)
+        return 1
+    questions = _extract_questions(case_items)
+    if not questions:
+        print("[release_gate] ERROR: probe requires question fields in cases items", file=sys.stderr)
+        return 1
+    try:
+        request_ids = _probe_chat_traffic(
+            client=client,
+            base_url=base_url,
+            headers=headers,
+            dataset_id=dataset_id,
+            questions=questions,
+            count=int(args.probe_chat_requests),
+            retrieval_mode=str(args.probe_retrieval_mode),
+            top_k=int(args.probe_top_k),
+            score_threshold=float(args.probe_score_threshold),
+        )
+    except Exception as exc:
+        print(
+            f"[release_gate] ERROR: probe chat traffic failed: {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
+        return 1
+
+    snapshot = _poll_rag_trace_count(
+        client=client,
+        base_url=base_url,
+        headers=headers,
+        window_minutes=int(args.probe_window_minutes),
+        want_increase_by=int(args.probe_chat_requests),
+        poll_sec=float(args.probe_poll_sec),
+        timeout_sec=float(args.probe_timeout_sec),
+    )
+    return {
+        "chat_requests": int(args.probe_chat_requests),
+        "request_ids": request_ids[:20],
+        "metrics_summary": snapshot,
+    }
+
+
+def _collect_observability_results(
+    *,
+    args: argparse.Namespace,
+    budgets: dict[str, Any],
+    report: dict[str, Any],
+    headers: dict[str, str],
+    base_url: str,
+    dataset_id: str,
+    case_items: list[dict[str, Any]],
+    cases_path: Path | None,
+) -> tuple[int, list[GateViolation], list[str]]:
     violations: list[GateViolation] = []
     notes: list[str] = []
+    with httpx.Client(
+        timeout=httpx.Timeout(30.0),
+        follow_redirects=False,
+        trust_env=False,
+    ) as client:
+        probe = _collect_probe_signal(
+            client,
+            args=args,
+            base_url=base_url,
+            headers=headers,
+            dataset_id=dataset_id,
+            case_items=case_items,
+            cases_path=cases_path,
+        )
+        if isinstance(probe, int):
+            return probe, violations, notes
+        report["probe"] = probe
 
-    timeout = httpx.Timeout(30.0)
-    with httpx.Client(timeout=timeout, follow_redirects=False, trust_env=False) as client:
-        # Optional probe traffic: generate rag_trace events, then wait until summaries see them.
-        if int(args.probe_chat_requests or 0) > 0:
-            if not cases_path or not cases_path.exists():
-                print("[release_gate] ERROR: --cases is required for --probe-chat-requests", file=sys.stderr)
-                return 1
-            questions = _extract_questions(case_items)
-            if not questions:
-                print("[release_gate] ERROR: probe requires question fields in cases items", file=sys.stderr)
-                return 1
-
-            try:
-                rids = _probe_chat_traffic(
-                    client=client,
-                    base_url=base_url,
-                    headers=headers,
-                    dataset_id=dataset_id,
-                    questions=questions,
-                    count=int(args.probe_chat_requests),
-                    retrieval_mode=str(args.probe_retrieval_mode),
-                    top_k=int(args.probe_top_k),
-                    score_threshold=float(args.probe_score_threshold),
-                )
-            except Exception as exc:
-                print(f"[release_gate] ERROR: probe chat traffic failed: {type(exc).__name__}: {exc}", file=sys.stderr)
-                return 1
-
-            snap = _poll_rag_trace_count(
-                client=client,
-                base_url=base_url,
-                headers=headers,
-                window_minutes=int(args.probe_window_minutes),
-                want_increase_by=int(args.probe_chat_requests),
-                poll_sec=float(args.probe_poll_sec),
-                timeout_sec=float(args.probe_timeout_sec),
-            )
-            report["probe"] = {
-                "chat_requests": int(args.probe_chat_requests),
-                "request_ids": rids[:20],
-                "metrics_summary": snap,
-            }
-
-        # SLO gate.
-        slo_url = _join_url(base_url, "/observability/slo/snapshot")
-        slo_snapshot = _http_get_json(client, slo_url, headers=headers, params=None)
+        slo_snapshot = _http_get_json(
+            client,
+            _join_url(base_url, "/observability/slo/snapshot"),
+            headers=headers,
+            params=None,
+        )
         slo_violations, slo_notes = _gate_slo_snapshot(snapshot=slo_snapshot, budgets=budgets)
         violations.extend(slo_violations)
         notes.extend(slo_notes)
         report["slo"] = {"snapshot": slo_snapshot}
 
-        # Cost gate.
         cost_cfg = budgets.get("cost") if isinstance(budgets.get("cost"), dict) else {}
         window_minutes = int(cost_cfg.get("window_minutes") or 60)
-        cost_url = _join_url(base_url, "/observability/rag-metrics/cost-attribution")
         cost_summary = _http_get_json(
             client,
-            cost_url,
+            _join_url(base_url, "/observability/rag-metrics/cost-attribution"),
             headers=headers,
             params={"window_minutes": window_minutes, "max_bytes": 5_000_000},
         )
@@ -1129,333 +1395,101 @@ def main() -> int:
         notes.extend(cost_notes)
         report["cost"] = {"summary": cost_summary, "computed": computed}
 
-    # Optional queryset health snapshot / policy-drift gate.
-    qs_cfg = budgets.get("queryset_health") if isinstance(budgets.get("queryset_health"), dict) else {}
-    if args.queryset_health_snapshot:
-        qs_cfg = dict(qs_cfg or {})
-        qs_cfg["path"] = str(args.queryset_health_snapshot)
-    if args.queryset_health_policy:
-        qs_cfg = dict(qs_cfg or {})
-        qs_cfg["policy"] = str(args.queryset_health_policy)
+    return 0, violations, notes
 
-    if isinstance(qs_cfg, dict) and qs_cfg:
-        qs_path_text = str(qs_cfg.get("path") or "").strip()
-        qs_policy = _policy(qs_cfg.get("policy"), default="warn")
-        if qs_path_text:
-            qs_path = Path(qs_path_text)
-            if not qs_path.exists():
-                msg = f"queryset health snapshot not found: {qs_path}"
-                if qs_policy == "fail":
-                    violations.append(
-                        GateViolation(
-                            area="queryset_health",
-                            metric="artifact_path",
-                            value=None,
-                            threshold={},
-                            message=msg,
-                        )
-                    )
-                else:
-                    notes.append(f"[release_gate] WARN: {msg}")
-                report["queryset_health"] = {"path": str(qs_path), "policy": qs_policy, "observed": {}}
-            else:
-                qs_obj = _load_json(qs_path)
-                qs_violations, qs_notes, qs_observed = _gate_queryset_policy_snapshot(
-                    snapshot=qs_obj,
-                    cfg=qs_cfg,
-                )
-                report["queryset_health"] = {
-                    "path": str(qs_path),
-                    "policy": qs_policy,
-                    "observed": qs_observed,
-                }
-                if qs_policy == "warn":
-                    notes.extend(qs_notes)
-                else:
-                    violations.extend(qs_violations)
-        else:
-            report["queryset_health"] = {"policy": qs_policy, "observed": {}}
 
-    qs_hybrid_cfg = budgets.get("queryset_health_hybrid") if isinstance(budgets.get("queryset_health_hybrid"), dict) else {}
-    if args.queryset_health_snapshot_hybrid:
-        qs_hybrid_cfg = dict(qs_hybrid_cfg or {})
-        qs_hybrid_cfg["path"] = str(args.queryset_health_snapshot_hybrid)
+def _merge_gate_cfg(
+    raw_cfg: Any,
+    *,
+    path_override: str = "",
+    policy_override: str = "",
+) -> dict[str, Any]:
+    cfg = dict(raw_cfg) if isinstance(raw_cfg, dict) else {}
+    if path_override:
+        cfg["path"] = path_override
+    if policy_override:
+        cfg["policy"] = policy_override
+    return cfg
 
-    if isinstance(qs_hybrid_cfg, dict) and qs_hybrid_cfg:
-        qs_path_text = str(qs_hybrid_cfg.get("path") or "").strip()
-        qs_policy = _policy(qs_hybrid_cfg.get("policy"), default="warn")
-        if qs_path_text:
-            qs_path = Path(qs_path_text)
-            if not qs_path.exists():
-                msg = f"hybrid queryset health snapshot not found: {qs_path}"
-                if qs_policy == "fail":
-                    violations.append(
-                        GateViolation(
-                            area="queryset_health_hybrid",
-                            metric="artifact_path",
-                            value=None,
-                            threshold={},
-                            message=msg,
-                        )
-                    )
-                else:
-                    notes.append(f"[release_gate] WARN: {msg}")
-                report["queryset_health_hybrid"] = {"path": str(qs_path), "policy": qs_policy, "observed": {}}
-            else:
-                qs_obj = _load_json(qs_path)
-                qs_violations, qs_notes, qs_observed = _gate_queryset_policy_snapshot(
-                    snapshot=qs_obj,
-                    cfg=qs_hybrid_cfg,
-                )
-                report["queryset_health_hybrid"] = {
-                    "path": str(qs_path),
-                    "policy": qs_policy,
-                    "observed": qs_observed,
-                }
-                if qs_policy == "warn":
-                    notes.extend(qs_notes)
-                else:
-                    violations.extend(qs_violations)
-        else:
-            report["queryset_health_hybrid"] = {"policy": qs_policy, "observed": {}}
 
-    qs_diff_cfg = budgets.get("queryset_health_diff") if isinstance(budgets.get("queryset_health_diff"), dict) else {}
-    if args.queryset_health_diff:
-        qs_diff_cfg = dict(qs_diff_cfg or {})
-        qs_diff_cfg["path"] = str(args.queryset_health_diff)
+def _record_missing_artifact(
+    *,
+    section_name: str,
+    artifact_path: Path,
+    policy: str,
+    message: str,
+    report: dict[str, Any],
+    notes: list[str],
+    violations: list[GateViolation],
+    missing_respects_policy: bool,
+) -> None:
+    should_fail = policy == "fail" or not missing_respects_policy
+    if should_fail:
+        violations.append(
+            GateViolation(
+                area=section_name,
+                metric="artifact_path",
+                value=None,
+                threshold={},
+                message=message,
+            )
+        )
+    else:
+        notes.append(_warn_note(message))
+    report[section_name] = {"path": str(artifact_path), "policy": policy, "observed": {}}
 
-    if isinstance(qs_diff_cfg, dict) and qs_diff_cfg:
-        qs_path_text = str(qs_diff_cfg.get("path") or "").strip()
-        qs_policy = _policy(qs_diff_cfg.get("policy"), default="fail")
-        if qs_path_text:
-            qs_path = Path(qs_path_text)
-            if not qs_path.exists():
-                msg = f"queryset health diff not found: {qs_path}"
-                if qs_policy == "fail":
-                    violations.append(
-                        GateViolation(
-                            area="queryset_health_diff",
-                            metric="artifact_path",
-                            value=None,
-                            threshold={},
-                            message=msg,
-                        )
-                    )
-                else:
-                    notes.append(f"[release_gate] WARN: {msg}")
-                report["queryset_health_diff"] = {"path": str(qs_path), "policy": qs_policy, "observed": {}}
-            else:
-                qs_obj = _load_json(qs_path)
-                qs_violations, qs_notes, qs_observed = _gate_queryset_health_diff(
-                    diff=qs_obj,
-                    cfg=qs_diff_cfg,
-                    area="queryset_health_diff",
-                )
-                report["queryset_health_diff"] = {
-                    "path": str(qs_path),
-                    "policy": qs_policy,
-                    "observed": qs_observed,
-                }
-                if qs_policy == "warn":
-                    notes.extend(qs_notes)
-                else:
-                    violations.extend(qs_violations)
-        else:
-            report["queryset_health_diff"] = {"policy": qs_policy, "observed": {}}
 
-    qs_diff_hybrid_cfg = (
-        budgets.get("queryset_health_diff_hybrid")
-        if isinstance(budgets.get("queryset_health_diff_hybrid"), dict)
-        else {}
-    )
-    if args.queryset_health_diff_hybrid:
-        qs_diff_hybrid_cfg = dict(qs_diff_hybrid_cfg or {})
-        qs_diff_hybrid_cfg["path"] = str(args.queryset_health_diff_hybrid)
+def _process_optional_artifact_gate(
+    *,
+    report: dict[str, Any],
+    notes: list[str],
+    violations: list[GateViolation],
+    section_name: str,
+    cfg: dict[str, Any],
+    default_policy: str,
+    missing_message_prefix: str,
+    gate_runner: Callable[[Any, dict[str, Any]], tuple[list[GateViolation], list[str], dict[str, Any]]],
+    details_builder: Callable[[Any, Path], dict[str, Any]] | None = None,
+    missing_respects_policy: bool = True,
+) -> None:
+    if not cfg:
+        return
+    path_text = str(cfg.get("path") or "").strip()
+    policy = _policy(cfg.get("policy"), default=default_policy)
+    if not path_text:
+        report[section_name] = {"policy": policy, "observed": {}}
+        return
 
-    if isinstance(qs_diff_hybrid_cfg, dict) and qs_diff_hybrid_cfg:
-        qs_path_text = str(qs_diff_hybrid_cfg.get("path") or "").strip()
-        qs_policy = _policy(qs_diff_hybrid_cfg.get("policy"), default="fail")
-        if qs_path_text:
-            qs_path = Path(qs_path_text)
-            if not qs_path.exists():
-                msg = f"hybrid queryset health diff not found: {qs_path}"
-                if qs_policy == "fail":
-                    violations.append(
-                        GateViolation(
-                            area="queryset_health_diff_hybrid",
-                            metric="artifact_path",
-                            value=None,
-                            threshold={},
-                            message=msg,
-                        )
-                    )
-                else:
-                    notes.append(f"[release_gate] WARN: {msg}")
-                report["queryset_health_diff_hybrid"] = {"path": str(qs_path), "policy": qs_policy, "observed": {}}
-            else:
-                qs_obj = _load_json(qs_path)
-                qs_violations, qs_notes, qs_observed = _gate_queryset_health_diff(
-                    diff=qs_obj,
-                    cfg=qs_diff_hybrid_cfg,
-                    area="queryset_health_diff_hybrid",
-                )
-                report["queryset_health_diff_hybrid"] = {
-                    "path": str(qs_path),
-                    "policy": qs_policy,
-                    "observed": qs_observed,
-                }
-                if qs_policy == "warn":
-                    notes.extend(qs_notes)
-                else:
-                    violations.extend(qs_violations)
-        else:
-            report["queryset_health_diff_hybrid"] = {"policy": qs_policy, "observed": {}}
+    artifact_path = Path(path_text)
+    if not artifact_path.exists():
+        _record_missing_artifact(
+            section_name=section_name,
+            artifact_path=artifact_path,
+            policy=policy,
+            message=f"{missing_message_prefix}: {artifact_path}",
+            report=report,
+            notes=notes,
+            violations=violations,
+            missing_respects_policy=missing_respects_policy,
+        )
+        return
 
-    parsing_proof_cfg = budgets.get("parsing_proof") if isinstance(budgets.get("parsing_proof"), dict) else {}
-    if args.parsing_proof_summary:
-        parsing_proof_cfg = dict(parsing_proof_cfg or {})
-        parsing_proof_cfg["path"] = str(args.parsing_proof_summary)
+    payload = _load_json(artifact_path)
+    gate_violations, gate_notes, observed = gate_runner(payload, cfg)
+    report[section_name] = {
+        "path": str(artifact_path),
+        "policy": policy,
+        "observed": observed,
+    }
+    if details_builder is not None:
+        report[section_name]["details"] = details_builder(payload, artifact_path)
+    if policy == "warn":
+        notes.extend(gate_notes)
+    else:
+        violations.extend(gate_violations)
 
-    if isinstance(parsing_proof_cfg, dict) and parsing_proof_cfg:
-        proof_path_text = str(parsing_proof_cfg.get("path") or "").strip()
-        proof_policy = _policy(parsing_proof_cfg.get("policy"), default="warn")
-        if proof_path_text:
-            proof_path = Path(proof_path_text)
-            if not proof_path.exists():
-                msg = f"parsing proof summary not found: {proof_path}"
-                if proof_policy == "fail":
-                    violations.append(
-                        GateViolation(
-                            area="parsing_proof",
-                            metric="artifact_path",
-                            value=None,
-                            threshold={},
-                            message=msg,
-                        )
-                    )
-                else:
-                    notes.append(f"[release_gate] WARN: {msg}")
-                report["parsing_proof"] = {"path": str(proof_path), "policy": proof_policy, "observed": {}}
-            else:
-                proof_obj = _load_json(proof_path)
-                proof_violations, proof_notes, proof_observed = _gate_parsing_proof_summary(
-                    summary=proof_obj,
-                    cfg=parsing_proof_cfg,
-                    area="parsing_proof",
-                )
-                report["parsing_proof"] = {
-                    "path": str(proof_path),
-                    "policy": proof_policy,
-                    "observed": proof_observed,
-                    "details": _extract_parsing_proof_summary_details(proof_obj, artifact_path=proof_path),
-                }
-                if proof_policy == "warn":
-                    notes.extend(proof_notes)
-                else:
-                    violations.extend(proof_violations)
-        else:
-            report["parsing_proof"] = {"policy": proof_policy, "observed": {}}
 
-    parsing_proof_diff_cfg = budgets.get("parsing_proof_diff") if isinstance(budgets.get("parsing_proof_diff"), dict) else {}
-    if args.parsing_proof_diff:
-        parsing_proof_diff_cfg = dict(parsing_proof_diff_cfg or {})
-        parsing_proof_diff_cfg["path"] = str(args.parsing_proof_diff)
-
-    if isinstance(parsing_proof_diff_cfg, dict) and parsing_proof_diff_cfg:
-        proof_diff_path_text = str(parsing_proof_diff_cfg.get("path") or "").strip()
-        proof_diff_policy = _policy(parsing_proof_diff_cfg.get("policy"), default="warn")
-        if proof_diff_path_text:
-            proof_diff_path = Path(proof_diff_path_text)
-            if not proof_diff_path.exists():
-                msg = f"parsing proof diff not found: {proof_diff_path}"
-                if proof_diff_policy == "fail":
-                    violations.append(
-                        GateViolation(
-                            area="parsing_proof_diff",
-                            metric="artifact_path",
-                            value=None,
-                            threshold={},
-                            message=msg,
-                        )
-                    )
-                else:
-                    notes.append(f"[release_gate] WARN: {msg}")
-                report["parsing_proof_diff"] = {"path": str(proof_diff_path), "policy": proof_diff_policy, "observed": {}}
-            else:
-                proof_diff_obj = _load_json(proof_diff_path)
-                diff_violations, diff_notes, diff_observed = _gate_parsing_proof_diff(
-                    diff=proof_diff_obj,
-                    cfg=parsing_proof_diff_cfg,
-                    area="parsing_proof_diff",
-                )
-                report["parsing_proof_diff"] = {
-                    "path": str(proof_diff_path),
-                    "policy": proof_diff_policy,
-                    "observed": diff_observed,
-                    "details": _extract_parsing_proof_diff_details(proof_diff_obj),
-                }
-                if proof_diff_policy == "warn":
-                    notes.extend(diff_notes)
-                else:
-                    violations.extend(diff_violations)
-        else:
-            report["parsing_proof_diff"] = {"policy": proof_diff_policy, "observed": {}}
-
-    # Optional retrieval leaderboard drift gate.
-    lb_cfg = budgets.get("retrieval_leaderboard") if isinstance(budgets.get("retrieval_leaderboard"), dict) else {}
-    if args.retrieval_leaderboard:
-        lb_cfg = dict(lb_cfg or {})
-        lb_cfg["path"] = str(args.retrieval_leaderboard)
-    if args.retrieval_leaderboard_policy:
-        lb_cfg = dict(lb_cfg or {})
-        lb_cfg["policy"] = str(args.retrieval_leaderboard_policy)
-
-    if isinstance(lb_cfg, dict) and lb_cfg:
-        lb_path_text = str(lb_cfg.get("path") or "").strip()
-        if lb_path_text:
-            lb_path = Path(lb_path_text)
-            if not lb_path.exists():
-                violations.append(
-                    GateViolation(
-                        area="retrieval_leaderboard",
-                        metric="artifact_path",
-                        value=None,
-                        threshold={},
-                        message=f"leaderboard artifact not found: {lb_path}",
-                    )
-                )
-            else:
-                lb_obj = _load_json(lb_path)
-                lb_violations, lb_notes, lb_observed = _gate_retrieval_leaderboard(
-                    leaderboard=lb_obj,
-                    cfg=lb_cfg,
-                )
-                policy = _policy(lb_cfg.get("policy"), default="fail")
-                report["retrieval_leaderboard"] = {
-                    "path": str(lb_path),
-                    "policy": policy,
-                    "observed": lb_observed,
-                }
-                if policy == "warn":
-                    notes.extend(lb_notes)
-                else:
-                    violations.extend(lb_violations)
-        else:
-            report["retrieval_leaderboard"] = {"policy": _policy(lb_cfg.get("policy"), default="fail"), "observed": {}}
-
-    report["notes"] = notes
-    report["violations"] = [
-        {
-            "area": v.area,
-            "metric": v.metric,
-            "value": v.value,
-            "threshold": v.threshold,
-            "message": v.message,
-        }
-        for v in violations
-    ]
-    report["passed"] = not bool(violations)
-
+def _write_release_report(args: argparse.Namespace, report: dict[str, Any]) -> None:
     if args.out_report:
         out_path = Path(args.out_report)
         out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1465,22 +1499,201 @@ def main() -> int:
         out_md.parent.mkdir(parents=True, exist_ok=True)
         out_md.write_text(_render_markdown(report), encoding="utf-8")
 
-    for n in notes:
-        print(str(n), file=sys.stderr)
 
+def _finalize_release_gate(
+    *,
+    args: argparse.Namespace,
+    report: dict[str, Any],
+    notes: list[str],
+    violations: list[GateViolation],
+) -> int:
+    report["notes"] = notes
+    report["violations"] = [
+        {
+            "area": violation.area,
+            "metric": violation.metric,
+            "value": violation.value,
+            "threshold": violation.threshold,
+            "message": violation.message,
+        }
+        for violation in violations
+    ]
+    report["passed"] = not bool(violations)
+    _write_release_report(args, report)
+
+    for note in notes:
+        print(str(note), file=sys.stderr)
     if not violations:
         print("[release_gate] PASS")
         return 0
 
     print("[release_gate] FAIL: budget violations detected", file=sys.stderr)
-    for v in violations[:40]:
-        thr = v.threshold
-        thr_s = ",".join([f"{k}={thr[k]}" for k in sorted(thr.keys())]) if thr else ""
+    for violation in violations[:40]:
+        threshold = violation.threshold
+        threshold_text = ",".join(f"{key}={threshold[key]}" for key in sorted(threshold)) if threshold else ""
         print(
-            f"[release_gate] VIOLATION: {v.area}.{v.metric} value={v.value} threshold=({thr_s}) msg={v.message}",
+            f"[release_gate] VIOLATION: {violation.area}.{violation.metric} "
+            f"value={violation.value} threshold=({threshold_text}) msg={violation.message}",
             file=sys.stderr,
         )
     return 2
+
+
+def main() -> int:
+    args = _build_arg_parser().parse_args()
+    budgets = _load_budgets(args)
+    if budgets is None:
+        return 1
+
+    regression_rc = _run_regression_step(args)
+    if regression_rc != 0:
+        return regression_rc
+
+    dataset_id, case_items, cases_path = _load_case_bundle_for_probe(args)
+    headers = _headers(
+        tenant_id=str(args.tenant_id),
+        user_id=str(args.user_id),
+        bearer=str(args.bearer),
+    )
+    base_url = str(args.base_url)
+    report = _build_release_report(args)
+    obs_rc, violations, notes = _collect_observability_results(
+        args=args,
+        budgets=budgets,
+        report=report,
+        headers=headers,
+        base_url=base_url,
+        dataset_id=dataset_id,
+        case_items=case_items,
+        cases_path=cases_path,
+    )
+    if obs_rc != 0:
+        return obs_rc
+
+    _process_optional_artifact_gate(
+        report=report,
+        notes=notes,
+        violations=violations,
+        section_name="queryset_health",
+        cfg=_merge_gate_cfg(
+            budgets.get("queryset_health"),
+            path_override=str(args.queryset_health_snapshot or ""),
+            policy_override=str(args.queryset_health_policy or ""),
+        ),
+        default_policy="warn",
+        missing_message_prefix="queryset health snapshot not found",
+        gate_runner=lambda payload, cfg: _gate_queryset_policy_snapshot(snapshot=payload, cfg=cfg),
+    )
+    _process_optional_artifact_gate(
+        report=report,
+        notes=notes,
+        violations=violations,
+        section_name="queryset_health_hybrid",
+        cfg=_merge_gate_cfg(
+            budgets.get("queryset_health_hybrid"),
+            path_override=str(args.queryset_health_snapshot_hybrid or ""),
+        ),
+        default_policy="warn",
+        missing_message_prefix="hybrid queryset health snapshot not found",
+        gate_runner=lambda payload, cfg: _gate_queryset_policy_snapshot(snapshot=payload, cfg=cfg),
+    )
+    _process_optional_artifact_gate(
+        report=report,
+        notes=notes,
+        violations=violations,
+        section_name="queryset_health_diff",
+        cfg=_merge_gate_cfg(
+            budgets.get("queryset_health_diff"),
+            path_override=str(args.queryset_health_diff or ""),
+        ),
+        default_policy="fail",
+        missing_message_prefix="queryset health diff not found",
+        gate_runner=lambda payload, cfg: _gate_queryset_health_diff(
+            diff=payload,
+            cfg=cfg,
+            area="queryset_health_diff",
+        ),
+    )
+    _process_optional_artifact_gate(
+        report=report,
+        notes=notes,
+        violations=violations,
+        section_name="queryset_health_diff_hybrid",
+        cfg=_merge_gate_cfg(
+            budgets.get("queryset_health_diff_hybrid"),
+            path_override=str(args.queryset_health_diff_hybrid or ""),
+        ),
+        default_policy="fail",
+        missing_message_prefix="hybrid queryset health diff not found",
+        gate_runner=lambda payload, cfg: _gate_queryset_health_diff(
+            diff=payload,
+            cfg=cfg,
+            area="queryset_health_diff_hybrid",
+        ),
+    )
+    _process_optional_artifact_gate(
+        report=report,
+        notes=notes,
+        violations=violations,
+        section_name="parsing_proof",
+        cfg=_merge_gate_cfg(
+            budgets.get("parsing_proof"),
+            path_override=str(args.parsing_proof_summary or ""),
+        ),
+        default_policy="warn",
+        missing_message_prefix="parsing proof summary not found",
+        gate_runner=lambda payload, cfg: _gate_parsing_proof_summary(
+            summary=payload,
+            cfg=cfg,
+            area="parsing_proof",
+        ),
+        details_builder=lambda payload, artifact_path: _extract_parsing_proof_summary_details(
+            payload,
+            artifact_path=artifact_path,
+        ),
+    )
+    _process_optional_artifact_gate(
+        report=report,
+        notes=notes,
+        violations=violations,
+        section_name="parsing_proof_diff",
+        cfg=_merge_gate_cfg(
+            budgets.get("parsing_proof_diff"),
+            path_override=str(args.parsing_proof_diff or ""),
+        ),
+        default_policy="warn",
+        missing_message_prefix="parsing proof diff not found",
+        gate_runner=lambda payload, cfg: _gate_parsing_proof_diff(
+            diff=payload,
+            cfg=cfg,
+            area="parsing_proof_diff",
+        ),
+        details_builder=lambda payload, _artifact_path: _extract_parsing_proof_diff_details(payload),
+    )
+    _process_optional_artifact_gate(
+        report=report,
+        notes=notes,
+        violations=violations,
+        section_name="retrieval_leaderboard",
+        cfg=_merge_gate_cfg(
+            budgets.get("retrieval_leaderboard"),
+            path_override=str(args.retrieval_leaderboard or ""),
+            policy_override=str(args.retrieval_leaderboard_policy or ""),
+        ),
+        default_policy="fail",
+        missing_message_prefix="leaderboard artifact not found",
+        gate_runner=lambda payload, cfg: _gate_retrieval_leaderboard(
+            leaderboard=payload,
+            cfg=cfg,
+        ),
+        missing_respects_policy=False,
+    )
+    return _finalize_release_gate(
+        args=args,
+        report=report,
+        notes=notes,
+        violations=violations,
+    )
 
 
 if __name__ == "__main__":

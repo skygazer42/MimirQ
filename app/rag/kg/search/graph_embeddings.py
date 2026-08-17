@@ -14,7 +14,6 @@ Implementation notes:
   while remaining fast and reproducible for small/medium subgraphs.
 """
 
-
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
@@ -46,6 +45,77 @@ def _mix32(x: int) -> int:
     return x & 0xFFFFFFFF
 
 
+def _walkhash_config(*, node_count: int, params: WalkHashParams) -> tuple[int, int, int, int, int]:
+    return (
+        max(1, int(params.dim or 0)),
+        max(0, int(params.num_walks or 0)),
+        max(0, int(params.walk_length or 0)),
+        max(1, int(params.window_size or 0)),
+        int(params.seed or 0),
+    )
+
+
+def _init_hash_buckets(*, node_count: int, dim: int, seed: int) -> tuple[np.ndarray, np.ndarray]:
+    bucket = np.zeros((node_count,), dtype=np.int32)
+    sign = np.ones((node_count,), dtype=np.float32)
+    base = _mix32(seed ^ 0x9E3779B9)
+    for idx in range(node_count):
+        mixed = _mix32(int(idx) ^ int(base))
+        bucket[idx] = int(mixed % dim)
+        sign[idx] = -1.0 if (mixed & 0x80000000) else 1.0
+    return bucket, sign
+
+
+def _generate_walk(
+    *,
+    start: int,
+    walk_idx: int,
+    neighbors: Sequence[Sequence[int]],
+    walk_length: int,
+    seed: int,
+) -> list[int]:
+    walk: list[int] = [start]
+    cur = start
+    for step in range(walk_length):
+        nbrs = neighbors[cur]
+        if not nbrs:
+            break
+        mixed = _mix32(seed ^ (start * 0x9E3779B9) ^ (walk_idx * 0x85EBCA6B) ^ (step * 0xC2B2AE35) ^ cur)
+        cur = nbrs[int(mixed % len(nbrs))]
+        walk.append(cur)
+    return walk
+
+
+def _accumulate_walk_context(
+    *,
+    emb: np.ndarray,
+    walk: Sequence[int],
+    bucket: np.ndarray,
+    sign: np.ndarray,
+    window_size: int,
+) -> None:
+    walk_len = len(walk)
+    if walk_len <= 1:
+        return
+    for index, center in enumerate(walk):
+        left = max(0, index - window_size)
+        right = min(walk_len, index + window_size + 1)
+        for ctx_index in range(left, right):
+            if ctx_index == index:
+                continue
+            ctx = walk[ctx_index]
+            dist = abs(ctx_index - index)
+            weight = 1.0 / float(dist)
+            emb[center, bucket[ctx]] += float(sign[ctx]) * float(weight)
+
+
+def _normalize_embeddings(emb: np.ndarray) -> np.ndarray:
+    norms = np.linalg.norm(emb, axis=1)
+    nonzero = norms > 0
+    emb[nonzero] = emb[nonzero] / norms[nonzero, None]
+    return emb
+
+
 def compute_walkhash_embeddings(
     *,
     neighbors: Sequence[Sequence[int]],
@@ -61,63 +131,40 @@ def compute_walkhash_embeddings(
     Returns:
         np.ndarray shape (N, dim), L2-normalized rows (rows may be all zeros if isolated).
     """
-    n = int(len(neighbors))
-    dim = max(1, int(params.dim or 0))
-    num_walks = max(0, int(params.num_walks or 0))
-    walk_length = max(0, int(params.walk_length or 0))
-    window_size = max(1, int(params.window_size or 0))
-    seed = int(params.seed or 0)
+    node_count = int(len(neighbors))
+    dim, num_walks, walk_length, window_size, seed = _walkhash_config(
+        node_count=node_count,
+        params=params,
+    )
 
-    emb = np.zeros((n, dim), dtype=np.float32)
-    if n == 0 or num_walks <= 0 or walk_length <= 0:
+    emb = np.zeros((node_count, dim), dtype=np.float32)
+    if node_count == 0 or num_walks <= 0 or walk_length <= 0:
         return emb
 
-    # Precompute stable hashing buckets/signs for context nodes.
-    bucket = np.zeros((n,), dtype=np.int32)
-    sign = np.ones((n,), dtype=np.float32)
-    base = _mix32(seed ^ 0x9E3779B9)
-    for idx in range(n):
-        h = _mix32(int(idx) ^ int(base))
-        bucket[idx] = int(h % dim)
-        sign[idx] = -1.0 if (h & 0x80000000) else 1.0
+    bucket, sign = _init_hash_buckets(node_count=node_count, dim=dim, seed=seed)
 
     # Walk generation + co-occurrence updates.
     # Complexity ~ O(N * num_walks * walk_length * window_size).
-    for start in range(n):
+    for start in range(node_count):
         if not neighbors[start]:
             continue
         for walk_idx in range(num_walks):
-            walk: list[int] = [start]
-            cur = start
-            for step in range(walk_length):
-                nbrs = neighbors[cur]
-                if not nbrs:
-                    break
-                # Deterministic pseudo-random neighbor choice without relying on `random` (PRNG hotspot).
-                h = _mix32(seed ^ (start * 0x9E3779B9) ^ (walk_idx * 0x85EBCA6B) ^ (step * 0xC2B2AE35) ^ cur)
-                cur = nbrs[int(h % len(nbrs))]
-                walk.append(cur)
+            walk = _generate_walk(
+                start=start,
+                walk_idx=walk_idx,
+                neighbors=neighbors,
+                walk_length=walk_length,
+                seed=seed,
+            )
+            _accumulate_walk_context(
+                emb=emb,
+                walk=walk,
+                bucket=bucket,
+                sign=sign,
+                window_size=window_size,
+            )
 
-            walk_len = len(walk)
-            if walk_len <= 1:
-                continue
-            for i, center in enumerate(walk):
-                left = max(0, i - window_size)
-                right = min(walk_len, i + window_size + 1)
-                # Update hashed co-occurrence features for center node.
-                for j in range(left, right):
-                    if j == i:
-                        continue
-                    ctx = walk[j]
-                    dist = abs(j - i)
-                    w = 1.0 / float(dist)
-                    emb[center, bucket[ctx]] += float(sign[ctx]) * float(w)
-
-    # Normalize (avoid div-by-zero).
-    norms = np.linalg.norm(emb, axis=1)
-    nonzero = norms > 0
-    emb[nonzero] = emb[nonzero] / norms[nonzero, None]
-    return emb
+    return _normalize_embeddings(emb)
 
 
 def _normalize_adj(adjacency: dict[str, Iterable[str]]) -> dict[str, list[str]]:
@@ -241,44 +288,90 @@ def build_entity_event_adjacency(
     This helper is intentionally decoupled from SQLAlchemy so it can be unit-tested easily.
     """
     adj: dict[str, set[str]] = {}
+    _add_seed_entity_nodes(adj=adj, seed_entity_ids=seed_entity_ids)
+    _add_event_entity_edges(
+        adj=adj,
+        event_ids=event_ids,
+        event_entity_links=event_entity_links,
+        kept_entity_ids=kept_entity_ids,
+    )
+    _add_relation_entity_edges(
+        adj=adj,
+        relation_edges=relation_edges,
+        kept_entity_ids=kept_entity_ids,
+    )
+    return _freeze_sorted_adjacency(adj)
 
-    def _add(a: str, b: str) -> None:
-        if not a or not b or a == b:
-            return
-        adj.setdefault(a, set()).add(b)
-        adj.setdefault(b, set()).add(a)
 
-    # Always include seeds as nodes even if isolated.
-    for eid in seed_entity_ids or []:
-        s = str(eid or "").strip()
-        if not s:
+def _add_undirected_edge(adj: dict[str, set[str]], *, left: str, right: str) -> None:
+    if not left or not right or left == right:
+        return
+    adj.setdefault(left, set()).add(right)
+    adj.setdefault(right, set()).add(left)
+
+
+def _add_seed_entity_nodes(*, adj: dict[str, set[str]], seed_entity_ids: Sequence[str]) -> None:
+    for entity_id in seed_entity_ids or []:
+        normalized = str(entity_id or "").strip()
+        if normalized:
+            adj.setdefault(f"ent:{normalized}", set())
+
+
+def _event_links_for_id(
+    *,
+    event_entity_links: dict[str, Sequence[object]],
+    event_id: object,
+    event_node: str,
+) -> Sequence[object]:
+    raw_event_id = str(event_id)
+    return (
+        event_entity_links.get(event_node.removeprefix("ev:"))
+        or event_entity_links.get(event_node)
+        or event_entity_links.get(raw_event_id)
+        or []
+    )
+
+
+def _add_event_entity_edges(
+    *,
+    adj: dict[str, set[str]],
+    event_ids: Sequence[str],
+    event_entity_links: dict[str, Sequence[object]],
+    kept_entity_ids: set[str],
+) -> None:
+    for event_id in event_ids or []:
+        normalized_event = str(event_id or "").strip()
+        if not normalized_event:
             continue
-        adj.setdefault(f"ent:{s}", set())
+        event_node = f"ev:{normalized_event}"
+        for link in _event_links_for_id(
+            event_entity_links=event_entity_links,
+            event_id=event_id,
+            event_node=event_node,
+        ):
+            entity_id = str(getattr(link, "entity_id", "") or "").strip()
+            if entity_id and entity_id in kept_entity_ids:
+                _add_undirected_edge(adj, left=event_node, right=f"ent:{entity_id}")
 
-    for ev_id in event_ids or []:
-        ev = str(ev_id or "").strip()
-        if not ev:
-            continue
-        ev_node = f"ev:{ev}"
-        links = event_entity_links.get(ev) or event_entity_links.get(ev_node) or event_entity_links.get(str(ev_id)) or []
-        for link in links:
-            # link is expected to have `.entity_id` attribute (KgEventEntity).
-            ent_id = str(getattr(link, "entity_id", "") or "").strip()
-            if not ent_id or ent_id not in kept_entity_ids:
-                continue
-            _add(ev_node, f"ent:{ent_id}")
 
-    for a, b in relation_edges or []:
-        aa = str(a or "").strip()
-        bb = str(b or "").strip()
-        if not aa or not bb:
+def _add_relation_entity_edges(
+    *,
+    adj: dict[str, set[str]],
+    relation_edges: Sequence[tuple[str, str]] | None,
+    kept_entity_ids: set[str],
+) -> None:
+    for left, right in relation_edges or []:
+        left_id = str(left or "").strip()
+        right_id = str(right or "").strip()
+        if not left_id or not right_id:
             continue
-        if aa not in kept_entity_ids or bb not in kept_entity_ids:
+        if left_id not in kept_entity_ids or right_id not in kept_entity_ids:
             continue
-        _add(f"ent:{aa}", f"ent:{bb}")
+        _add_undirected_edge(adj, left=f"ent:{left_id}", right=f"ent:{right_id}")
 
-    # Convert to list adjacency (sorted for determinism).
+
+def _freeze_sorted_adjacency(adj: dict[str, set[str]]) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
-    for k, v in adj.items():
-        out[str(k)] = sorted(str(x) for x in v if str(x))
+    for key, values in adj.items():
+        out[str(key)] = sorted(str(value) for value in values if str(value))
     return out

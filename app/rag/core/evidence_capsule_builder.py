@@ -1,4 +1,3 @@
-
 from datetime import UTC, datetime
 from typing import Any
 
@@ -97,7 +96,9 @@ def _capsule_payload_without_hash(
     request_context: dict[str, Any] | None,
 ) -> dict[str, Any]:
     sanitized_citations = [_sanitize_citation(c) for c in citations if isinstance(c, dict)]
-    citation_hashes = [str(c.get("citation_hash") or "") for c in sanitized_citations if str(c.get("citation_hash") or "").strip()]
+    citation_hashes = [
+        str(c.get("citation_hash") or "") for c in sanitized_citations if str(c.get("citation_hash") or "").strip()
+    ]
     must_recall = {
         "status": str(metrics.get("must_recall_status") or ""),
         "passed": _coerce_bool(metrics.get("must_recall_passed")),
@@ -235,13 +236,76 @@ def build_evidence_capsule(
 
         if bool(getattr(settings, "EVIDENCE_CAPSULE_SIGNING_ENABLED", False)):
             secret = str(getattr(settings, "EVIDENCE_CAPSULE_SIGNING_SECRET", "") or "").strip()
-            key_id = str(getattr(settings, "EVIDENCE_CAPSULE_SIGNING_KEY_ID", "default") or "default").strip() or "default"
+            key_id = (
+                str(getattr(settings, "EVIDENCE_CAPSULE_SIGNING_KEY_ID", "default") or "default").strip() or "default"
+            )
             sig = sign_evidence_capsule(payload, secret=secret, key_id=key_id)
             if isinstance(sig, dict):
                 payload["signature"] = sig
     except Exception as exc:
         logger.debug("Ignoring evidence capsule signature attachment failure: %s", exc)
     return payload
+
+
+def _resolve_validation_options(
+    strict: bool | None,
+    verify_signature: bool | None,
+) -> tuple[bool, bool]:
+    if strict is not None and verify_signature is not None:
+        return bool(strict), bool(verify_signature)
+    try:
+        from app.core.config import settings  # noqa: WPS433
+
+        resolved_strict = (
+            bool(strict)
+            if strict is not None
+            else bool(getattr(settings, "EVIDENCE_CAPSULE_STRICT_VALIDATION_ENABLED", True))
+        )
+        resolved_signature = (
+            bool(verify_signature)
+            if verify_signature is not None
+            else bool(getattr(settings, "EVIDENCE_CAPSULE_SIGNING_ENABLED", False))
+        )
+        return resolved_strict, resolved_signature
+    except Exception:
+        return bool(strict) if strict is not None else False, bool(
+            verify_signature
+        ) if verify_signature is not None else False
+
+
+def _validate_citation_hashes(citations: list[Any]) -> tuple[bool, str, list[str]]:
+    actual_hashes: list[str] = []
+    for row in citations:
+        if not isinstance(row, dict):
+            continue
+        if not str(row.get("evidence_anchor_hash") or "").strip():
+            return False, "missing_evidence_anchor_hash", []
+        actual = str(row.get("citation_hash") or "").strip()
+        if not actual:
+            return False, "missing_citation_hash", []
+        record = dict(row)
+        record.pop("citation_hash", None)
+        if stable_json_hash(record, length=len(actual)) != actual:
+            return False, "citation_hash_mismatch", []
+        actual_hashes.append(actual)
+    return True, "ok", actual_hashes
+
+
+def _validate_strict_capsule(
+    capsule: dict[str, Any],
+    *,
+    capsule_hash: str,
+    citations: list[Any],
+) -> tuple[bool, str]:
+    if recompute_capsule_hash(capsule) != capsule_hash:
+        return False, "capsule_hash_mismatch"
+    hashes_ok, reason, actual_hashes = _validate_citation_hashes(citations)
+    if not hashes_ok:
+        return False, reason
+    declared_hashes = [str(value).strip() for value in (capsule.get("citation_hashes") or []) if str(value).strip()]
+    if declared_hashes and declared_hashes != actual_hashes:
+        return False, "citation_hashes_mismatch"
+    return True, "ok"
 
 
 def validate_evidence_capsule(
@@ -261,51 +325,19 @@ def validate_evidence_capsule(
     if not isinstance(citations, list):
         return False, "citations_not_list"
 
-    if strict is None or verify_signature is None:
-        try:
-            from app.core.config import settings  # noqa: WPS433
-
-            if strict is None:
-                strict = bool(getattr(settings, "EVIDENCE_CAPSULE_STRICT_VALIDATION_ENABLED", True))
-            if verify_signature is None:
-                verify_signature = bool(getattr(settings, "EVIDENCE_CAPSULE_SIGNING_ENABLED", False))
-        except Exception:
-            if strict is None:
-                strict = False
-            if verify_signature is None:
-                verify_signature = False
-
-    if bool(strict):
-        recomputed = recompute_capsule_hash(capsule)
-        if recomputed != capsule_hash:
-            return False, "capsule_hash_mismatch"
-
-        actual_hashes: list[str] = []
-        for row in citations:
-            if not isinstance(row, dict):
-                continue
-            anchor_hash = str(row.get("evidence_anchor_hash") or "").strip()
-            if not anchor_hash:
-                return False, "missing_evidence_anchor_hash"
-            actual = str(row.get("citation_hash") or "").strip()
-            if not actual:
-                return False, "missing_citation_hash"
-            rec = dict(row)
-            rec.pop("citation_hash", None)
-            expected = stable_json_hash(rec, length=len(actual))
-            if expected != actual:
-                return False, "citation_hash_mismatch"
-            actual_hashes.append(actual)
-
-        declared_hashes = [str(v).strip() for v in (capsule.get("citation_hashes") or []) if str(v).strip()]
-        if declared_hashes and declared_hashes != actual_hashes:
-            return False, "citation_hashes_mismatch"
-
-    if bool(verify_signature):
-        sig_ok, sig_reason = verify_evidence_capsule_signature(capsule)
-        if not sig_ok:
-            return False, sig_reason
-
+    use_strict, use_signature = _resolve_validation_options(strict, verify_signature)
+    if use_strict:
+        strict_ok, strict_reason = _validate_strict_capsule(
+            capsule,
+            capsule_hash=capsule_hash,
+            citations=citations,
+        )
+        if not strict_ok:
+            return False, strict_reason
+    if use_signature:
+        signature_ok, signature_reason = verify_evidence_capsule_signature(capsule)
+        if not signature_ok:
+            return False, signature_reason
     return True, "ok"
 
 

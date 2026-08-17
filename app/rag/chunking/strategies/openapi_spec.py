@@ -5,7 +5,6 @@ Targets OpenAPI YAML with a `paths:` section and splits the spec into per-path
 blocks to keep endpoint documentation together while preserving offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -71,6 +70,110 @@ def _extract_version(text: str) -> str | None:
     return None
 
 
+def _find_line_index(lines: list[_Line], anchor_pos: int) -> int:
+    for i, ln in enumerate(lines):
+        if ln.start <= anchor_pos < ln.end:
+            return i
+    return 0
+
+
+def _extract_path_entries(lines: list[_Line], anchor_idx: int, base_indent: int) -> list[tuple[int, str]]:
+    entries: list[tuple[int, str]] = []
+    for i in range(anchor_idx + 1, len(lines)):
+        plain = lines[i].plain
+        if not plain.strip() or plain.lstrip().startswith("#"):
+            continue
+
+        indent = len(plain) - len(plain.lstrip(" "))
+        if indent <= base_indent:
+            break
+        if not _PATH_KEY_RE.match(plain):
+            continue
+
+        path = plain.strip().split("#", 1)[0].strip()
+        path = path[:-1].strip()
+        if path:
+            entries.append((i, path))
+    return entries
+
+
+def _extract_methods(block_text: str) -> list[str]:
+    methods: list[str] = []
+    for ln in block_text.splitlines()[:200]:
+        m = _METHOD_RE.match(ln.strip())
+        if not m:
+            continue
+        meth = (m.group(1) or "").upper()
+        if meth and meth not in methods:
+            methods.append(meth)
+    return methods
+
+
+def _build_openapi_chunk_metadata(
+    *,
+    base_meta: dict[str, Any],
+    split_meta: dict[str, Any],
+    abs_start: int,
+    abs_end: int,
+    version: str | None,
+    preamble: bool = False,
+    block: _PathBlock | None = None,
+    block_count: int = 0,
+    fallback: bool = False,
+) -> dict[str, Any]:
+    meta: dict[str, Any] = dict(base_meta)
+    meta.update(split_meta)
+    meta["chunk_strategy"] = "openapi_spec"
+    meta["start_char"] = abs_start
+    meta["end_char"] = abs_end
+    meta.setdefault("doc_type_kwd", "openapi")
+    if fallback:
+        meta["openapi_fallback"] = True
+    if preamble:
+        meta["openapi_preamble"] = True
+    if version:
+        meta["openapi_version"] = version
+    if block is not None:
+        meta["openapi_path"] = block.path
+        meta["openapi_path_index"] = int(block.index)
+        meta["openapi_path_count"] = int(block_count)
+        if block.methods:
+            meta["openapi_methods"] = block.methods[:10]
+    return meta
+
+
+def _append_openapi_chunks(
+    *,
+    out: list[Document],
+    splitter: RecursiveCharacterTextSplitter,
+    text: str,
+    base_meta: dict[str, Any],
+    base_start: int,
+    version: str | None,
+    preamble: bool = False,
+    block: _PathBlock | None = None,
+    block_count: int = 0,
+    fallback: bool = False,
+) -> None:
+    split_docs = splitter.create_documents(texts=[text], metadatas=[base_meta])
+    for sd in split_docs:
+        local_start = sd.metadata.pop("start_index", None) or 0
+        abs_start = base_start + int(local_start)
+        abs_end = abs_start + len(sd.page_content)
+        meta = _build_openapi_chunk_metadata(
+            base_meta=base_meta,
+            split_meta=sd.metadata or {},
+            abs_start=abs_start,
+            abs_end=abs_end,
+            version=version,
+            preamble=preamble,
+            block=block,
+            block_count=block_count,
+            fallback=fallback,
+        )
+        out.append(Document(page_content=sd.page_content, metadata=meta))
+
+
 def _build_path_blocks(text: str) -> list[_PathBlock]:
     anchor = _find_paths_anchor(text)
     if not anchor:
@@ -78,54 +181,23 @@ def _build_path_blocks(text: str) -> list[_PathBlock]:
     anchor_pos, base_indent = anchor
 
     lines = _iter_lines(text)
-    # Find the anchor line index.
-    anchor_idx = 0
-    for i, ln in enumerate(lines):
-        if ln.start <= anchor_pos < ln.end:
-            anchor_idx = i
-            break
-
-    # Collect path keys inside the `paths:` block.
-    path_idxs: list[int] = []
-    paths: list[str] = []
-    for i in range(anchor_idx + 1, len(lines)):
-        plain = lines[i].plain
-        if not plain.strip() or plain.lstrip().startswith("#"):
-            continue
-        indent = len(plain) - len(plain.lstrip(" "))
-        if indent <= base_indent:
-            break
-        if _PATH_KEY_RE.match(plain):
-            path = plain.strip()
-            path = path.split("#", 1)[0].strip()
-            path = path[:-1].strip()  # drop trailing ':'
-            if path:
-                path_idxs.append(i)
-                paths.append(path)
-
-    if not path_idxs:
+    anchor_idx = _find_line_index(lines, anchor_pos)
+    entries = _extract_path_entries(lines, anchor_idx, base_indent)
+    if not entries:
         return []
 
     blocks: list[_PathBlock] = []
-    for idx, i in enumerate(path_idxs):
-        start = lines[i].start
-        end = lines[path_idxs[idx + 1]].start if idx + 1 < len(path_idxs) else len(text)
+    for idx, (line_idx, path) in enumerate(entries):
+        start = lines[line_idx].start
+        end = lines[entries[idx + 1][0]].start if idx + 1 < len(entries) else len(text)
         blk_text = text[start:end]
-        methods: list[str] = []
-        for ln in blk_text.splitlines()[:200]:
-            m = _METHOD_RE.match(ln.strip())
-            if not m:
-                continue
-            meth = (m.group(1) or "").upper()
-            if meth and meth not in methods:
-                methods.append(meth)
         blocks.append(
             _PathBlock(
                 start=start,
                 end=end,
-                path=paths[idx],
+                path=path,
                 index=int(idx),
-                methods=methods,
+                methods=_extract_methods(blk_text),
             )
         )
 
@@ -170,21 +242,15 @@ class OpenAPISpecChunker(BaseChunker):
             blocks = _build_path_blocks(text)
 
             if not blocks:
-                split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "openapi_spec"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta["openapi_fallback"] = True
-                    if version:
-                        meta["openapi_version"] = version
-                    meta.setdefault("doc_type_kwd", "openapi")
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                _append_openapi_chunks(
+                    out=out,
+                    splitter=self._fallback_splitter,
+                    text=text,
+                    base_meta=base_meta,
+                    base_start=0,
+                    version=version,
+                    fallback=True,
+                )
                 continue
 
             # Keep any preamble before first path.
@@ -192,47 +258,31 @@ class OpenAPISpecChunker(BaseChunker):
             if first.start > 0:
                 pre = text[: first.start]
                 if pre.strip():
-                    split_docs = self._fallback_splitter.create_documents(texts=[pre], metadatas=[base_meta])
-                    for sd in split_docs:
-                        local_start = sd.metadata.pop("start_index", None) or 0
-                        abs_start = int(local_start)
-                        abs_end = abs_start + len(sd.page_content)
-                        meta: dict[str, Any] = dict(base_meta)
-                        meta.update(sd.metadata or {})
-                        meta["chunk_strategy"] = "openapi_spec"
-                        meta["start_char"] = abs_start
-                        meta["end_char"] = abs_end
-                        meta["openapi_preamble"] = True
-                        if version:
-                            meta["openapi_version"] = version
-                        meta.setdefault("doc_type_kwd", "openapi")
-                        out.append(Document(page_content=sd.page_content, metadata=meta))
+                    _append_openapi_chunks(
+                        out=out,
+                        splitter=self._fallback_splitter,
+                        text=pre,
+                        base_meta=base_meta,
+                        base_start=0,
+                        version=version,
+                        preamble=True,
+                    )
 
+            block_count = len(blocks)
             for blk in blocks:
                 blk_text = text[blk.start : blk.end]
                 if not blk_text.strip():
                     continue
-                split_docs = self._fallback_splitter.create_documents(texts=[blk_text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = blk.start + int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "openapi_spec"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta.setdefault("doc_type_kwd", "openapi")
-                    if version:
-                        meta["openapi_version"] = version
-                    meta["openapi_path"] = blk.path
-                    meta["openapi_path_index"] = int(blk.index)
-                    meta["openapi_path_count"] = int(len(blocks))
-                    if blk.methods:
-                        meta["openapi_methods"] = blk.methods[:10]
-
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                _append_openapi_chunks(
+                    out=out,
+                    splitter=self._fallback_splitter,
+                    text=blk_text,
+                    base_meta=base_meta,
+                    base_start=blk.start,
+                    version=version,
+                    block=blk,
+                    block_count=block_count,
+                )
 
         for idx, chunk in enumerate(out):
             meta = dict(chunk.metadata or {})

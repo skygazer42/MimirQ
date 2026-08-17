@@ -1,5 +1,6 @@
 import os
 import socket
+from collections.abc import Callable
 
 import pytest
 from sqlalchemy import text
@@ -42,7 +43,7 @@ def _patch_asyncio_threadsafe_wakeup_for_sandbox() -> None:
         # If detection fails for any reason, do not risk patching asyncio globally.
         return
 
-    def _write_to_self_via_os_write(self) -> None:  # type: ignore[no-untyped-def]
+    def _write_to_self_via_os_write(self: object) -> None:
         csock = getattr(self, "_csock", None)
         if csock is None:
             return
@@ -56,7 +57,7 @@ def _patch_asyncio_threadsafe_wakeup_for_sandbox() -> None:
                 except Exception:
                     pass
 
-    se.BaseSelectorEventLoop._write_to_self = _write_to_self_via_os_write  # type: ignore[assignment]
+    se.BaseSelectorEventLoop._write_to_self = _write_to_self_via_os_write
 
 
 def _disable_proxy_env_for_tests() -> None:
@@ -87,6 +88,56 @@ def _disable_proxy_env_for_tests() -> None:
     os.environ["no_proxy"] = merged
 
 
+def _host_allowed_for_tests(host: object) -> bool:
+    if isinstance(host, bytes):
+        host = host.decode(errors="ignore")
+    raw = str(host or "").strip().lower()
+    if not raw:
+        return False
+    return raw in {"localhost", "::1"} or raw.startswith("127.")
+
+
+def _guard_test_network_address(kind: str, address: object) -> None:
+    if not isinstance(address, tuple) or not address:
+        return
+    if _host_allowed_for_tests(address[0]):
+        return
+    raise RuntimeError(f"Outbound network is disabled during pytest ({kind}): {address!r}")
+
+
+def _guarded_connect(orig_connect: Callable[..., object]) -> Callable[..., object]:
+    def guarded_connect(sock: socket.socket, address: object) -> object:
+        _guard_test_network_address("connect", address)
+        return orig_connect(sock, address)
+
+    return guarded_connect
+
+
+def _guarded_connect_ex(orig_connect_ex: Callable[..., object]) -> Callable[..., object]:
+    def guarded_connect_ex(sock: socket.socket, address: object) -> object:
+        _guard_test_network_address("connect_ex", address)
+        return orig_connect_ex(sock, address)
+
+    return guarded_connect_ex
+
+
+def _guarded_create_connection(orig_create_connection: Callable[..., object]) -> Callable[..., object]:
+    def guarded_create_connection(address: object, *args: object, **kwargs: object) -> object:
+        _guard_test_network_address("create_connection", address)
+        return orig_create_connection(address, *args, **kwargs)
+
+    return guarded_create_connection
+
+
+def _guarded_getaddrinfo(orig_getaddrinfo: Callable[..., object]) -> Callable[..., object]:
+    def guarded_getaddrinfo(host: object, *args: object, **kwargs: object) -> object:
+        if not _host_allowed_for_tests(host):
+            raise RuntimeError(f"Outbound network is disabled during pytest (getaddrinfo): {host!r}")
+        return orig_getaddrinfo(host, *args, **kwargs)
+
+    return guarded_getaddrinfo
+
+
 def _block_outbound_network_for_tests() -> None:
     """
     Keep pytest hermetic by rejecting outbound non-local network access.
@@ -95,52 +146,10 @@ def _block_outbound_network_for_tests() -> None:
     long hangs caused by blocked TLS/proxy egress in sandboxed environments.
     """
 
-    orig_connect = socket.socket.connect
-    orig_connect_ex = socket.socket.connect_ex
-    orig_create_connection = socket.create_connection
-    orig_getaddrinfo = socket.getaddrinfo
-
-    def _host_allowed(host: object) -> bool:
-        if isinstance(host, bytes):
-            host = host.decode(errors="ignore")
-        raw = str(host or "").strip().lower()
-        if not raw:
-            return False
-        if raw in {"localhost", "::1"}:
-            return True
-        if raw.startswith("127."):
-            return True
-        return False
-
-    def _guard(kind: str, address: object) -> None:
-        if not isinstance(address, tuple) or not address:
-            return
-        host = address[0]
-        if _host_allowed(host):
-            return
-        raise RuntimeError(f"Outbound network is disabled during pytest ({kind}): {address!r}")
-
-    def guarded_connect(self, address):  # type: ignore[no-untyped-def]
-        _guard("connect", address)
-        return orig_connect(self, address)
-
-    def guarded_connect_ex(self, address):  # type: ignore[no-untyped-def]
-        _guard("connect_ex", address)
-        return orig_connect_ex(self, address)
-
-    def guarded_create_connection(address, *args, **kwargs):  # type: ignore[no-untyped-def]
-        _guard("create_connection", address)
-        return orig_create_connection(address, *args, **kwargs)
-
-    def guarded_getaddrinfo(host, *args, **kwargs):  # type: ignore[no-untyped-def]
-        if not _host_allowed(host):
-            raise RuntimeError(f"Outbound network is disabled during pytest (getaddrinfo): {host!r}")
-        return orig_getaddrinfo(host, *args, **kwargs)
-
-    socket.socket.connect = guarded_connect
-    socket.socket.connect_ex = guarded_connect_ex
-    socket.create_connection = guarded_create_connection
-    socket.getaddrinfo = guarded_getaddrinfo
+    socket.socket.connect = _guarded_connect(socket.socket.connect)
+    socket.socket.connect_ex = _guarded_connect_ex(socket.socket.connect_ex)
+    socket.create_connection = _guarded_create_connection(socket.create_connection)
+    socket.getaddrinfo = _guarded_getaddrinfo(socket.getaddrinfo)
 
 
 _disable_proxy_env_for_tests()

@@ -1,4 +1,3 @@
-
 import math
 import re
 from typing import Any
@@ -502,6 +501,503 @@ def _quote_verifiability(answer: str, contexts: list[Any], *, max_quotes: int = 
     return round(float(verified) / float(len(quotes)), 4)
 
 
+def _citation_eval_limit(item: dict[str, Any]) -> int | None:
+    raw_citation_eval_limit = item.get("citation_eval_limit")
+    if raw_citation_eval_limit is None:
+        return None
+    try:
+        parsed_limit = int(raw_citation_eval_limit)
+    except (TypeError, ValueError):
+        parsed_limit = 0
+    return parsed_limit if parsed_limit > 0 else None
+
+
+def _ranked_citations(
+    citations: list[Any], *, citation_eval_limit: int | None
+) -> tuple[list[Any], list[str], list[Any]]:
+    citations_ranked_all: list[Any] = []
+    seen_cids: set[str] = set()
+    for citation in citations or []:
+        data = _coerce_dict(citation)
+        cid = str(data.get("chunk_id") or "").strip()
+        if not cid or cid in seen_cids:
+            continue
+        seen_cids.add(cid)
+        citations_ranked_all.append(citation)
+    citations_ranked = (
+        citations_ranked_all[:citation_eval_limit] if citation_eval_limit is not None else citations_ranked_all
+    )
+    return citations_ranked_all, _dedup_ids(citations_ranked, key="chunk_id"), citations_ranked
+
+
+def _reference_match_state(
+    *,
+    reference_sources: list[Any],
+    citations_ranked: list[Any],
+    reference_context_ids: list[str],
+    retrieved_context_ids: list[str],
+    expected_semantic_keys: set[str],
+) -> dict[str, Any]:
+    ref_semantic_key_sets: list[set[str]] = []
+    ref_quotes: list[str] = []
+    ref_keys = [key for src in reference_sources if (key := _stable_ref_key(src))]
+    ref_record_keys = [key for src in reference_sources if (key := _record_identity_key(src))]
+    for src in reference_sources:
+        semantic_keys = _semantic_key_set(src)
+        if semantic_keys:
+            ref_semantic_key_sets.append(semantic_keys)
+        qsig = _quote_signature(_coerce_dict(src).get("quote"))
+        if qsig:
+            ref_quotes.append(qsig)
+    fallback_semantic_key_set = (
+        expected_semantic_keys if expected_semantic_keys and not ref_semantic_key_sets else set()
+    )
+    if fallback_semantic_key_set:
+        ref_semantic_key_sets.append(fallback_semantic_key_set)
+
+    cit_semantic_key_sets = [_semantic_key_set(citation) for citation in citations_ranked]
+    cit_texts = [_citation_text_for_quote_match(citation) for citation in citations_ranked]
+    return {
+        "ref_set": set(reference_context_ids or []),
+        "ret_set": set(retrieved_context_ids or []),
+        "ref_key_set": set(ref_keys),
+        "ref_record_key_set": set(ref_record_keys),
+        "ref_semantic_key_sets": ref_semantic_key_sets,
+        "ref_quotes": ref_quotes,
+        "fallback_semantic_key_set": fallback_semantic_key_set,
+        "cit_key_set": {key for citation in citations_ranked if (key := _stable_citation_key(citation))},
+        "cit_record_key_set": {key for citation in citations_ranked if (key := _record_identity_key(citation))},
+        "cit_semantic_key_sets": cit_semantic_key_sets,
+        "cit_semantic_key_union": {key for keys in cit_semantic_key_sets for key in keys},
+        "cit_text_joined": "\n".join([text for text in cit_texts if text]) if cit_texts else "",
+    }
+
+
+def _quote_matches_any_reference(citation: Any, ref_quotes: list[str]) -> bool:
+    if not ref_quotes:
+        return False
+    text = _citation_text_for_quote_match(citation)
+    return bool(text and any(qsig and qsig in text for qsig in ref_quotes))
+
+
+def _citation_matches_reference(citation: Any, *, semantic_keys: set[str], state: dict[str, Any]) -> bool:
+    data = _coerce_dict(citation)
+    cid = str(data.get("chunk_id") or "").strip()
+    if cid and cid in state["ref_set"]:
+        return True
+    citation_key = _stable_citation_key(data)
+    if citation_key and citation_key in state["ref_key_set"]:
+        return True
+    record_key = _record_identity_key(data)
+    if record_key and record_key in state["ref_record_key_set"]:
+        return True
+    if semantic_keys and any(semantic_keys & ref_keys for ref_keys in state["ref_semantic_key_sets"]):
+        return True
+    return _quote_matches_any_reference(data, state["ref_quotes"])
+
+
+def _reference_source_matched(src: Any, *, state: dict[str, Any]) -> bool:
+    data = _coerce_dict(src)
+    cid = str(data.get("chunk_id") or "").strip()
+    if cid and cid in state["ret_set"]:
+        return True
+    source_key = _stable_ref_key(src)
+    if source_key and source_key in state["cit_key_set"]:
+        return True
+    record_key = _record_identity_key(src)
+    if record_key and record_key in state["cit_record_key_set"]:
+        return True
+    src_semantic_keys = _semantic_key_set(src) or state["fallback_semantic_key_set"]
+    if src_semantic_keys and state["cit_semantic_key_union"] and src_semantic_keys & state["cit_semantic_key_union"]:
+        return True
+    qsig = _quote_signature(data.get("quote"))
+    return bool(qsig and state["cit_text_joined"] and qsig in state["cit_text_joined"])
+
+
+def _ranked_relevance_flags(citations_ranked: list[Any], *, state: dict[str, Any]) -> list[bool]:
+    semantic_key_sets = state["cit_semantic_key_sets"]
+    flags: list[bool] = []
+    for index, citation in enumerate(citations_ranked):
+        semantic_keys = semantic_key_sets[index] if index < len(semantic_key_sets) else _semantic_key_set(citation)
+        flags.append(_citation_matches_reference(citation, semantic_keys=semantic_keys, state=state))
+    return flags
+
+
+def _ndcg_at(relevance_flags: list[bool], *, ref_total: int, k: int) -> float:
+    kk = max(1, int(k or 0))
+    dcg = 0.0
+    for idx, rel in enumerate(relevance_flags[:kk], 1):
+        if rel:
+            dcg += 1.0 / math.log2(idx + 1)
+    idcg = 0.0
+    ideal_relevant = max(int(ref_total or 0), sum(1 for rel in relevance_flags[:kk] if rel))
+    for idx in range(1, min(kk, ideal_relevant) + 1):
+        idcg += 1.0 / math.log2(idx + 1)
+    return round(dcg / idcg, 4) if idcg > 0.0 else 0.0
+
+
+def _hit_at(relevance_flags: list[bool], *, k: int) -> bool:
+    kk = max(0, int(k or 0))
+    return any(relevance_flags[:kk]) if kk > 0 else False
+
+
+def _document_recall_metrics(
+    reference_sources: list[Any], citations_ranked: list[Any]
+) -> tuple[float | None, bool | None]:
+    ref_doc_set = {str(_coerce_dict(src).get("document_id") or "").strip() for src in reference_sources}
+    ref_doc_set = {doc_id for doc_id in ref_doc_set if doc_id}
+    if not ref_doc_set:
+        return None, None
+    cit_doc_set = {str(_coerce_dict(citation).get("document_id") or "").strip() for citation in citations_ranked}
+    cit_doc_set = {doc_id for doc_id in cit_doc_set if doc_id}
+    matched_docs = int(len(ref_doc_set & cit_doc_set))
+    return round(float(matched_docs) / max(1, int(len(ref_doc_set))), 4), bool(matched_docs > 0)
+
+
+def _family_recall_metrics(
+    reference_sources: list[Any], citations_ranked: list[Any]
+) -> tuple[float | None, bool | None]:
+    ref_fam_set = {family for family in (_family_key(src) for src in reference_sources) if family}
+    if not ref_fam_set:
+        return None, None
+    cit_fam_set = {family for family in (_family_key(citation) for citation in citations_ranked) if family}
+    matched_fams = int(len(ref_fam_set & cit_fam_set))
+    return round(float(matched_fams) / max(1, int(len(ref_fam_set))), 4), bool(matched_fams > 0)
+
+
+def _missed_reference_ids(reference_sources: list[Any], *, state: dict[str, Any]) -> list[str]:
+    missed: list[str] = []
+    for src in reference_sources:
+        if _reference_source_matched(src, state=state):
+            continue
+        stable_key = _stable_ref_key(src)
+        fallback = str(_coerce_dict(src).get("chunk_id") or "").strip()
+        raw_id = stable_key or fallback
+        if not raw_id:
+            continue
+        missed.append(stable_hash(raw_id, length=16))
+        if len(missed) >= 6:
+            break
+    return missed
+
+
+def _retrieval_metrics(
+    *,
+    reference_sources: list[Any],
+    citations_ranked: list[Any],
+    state: dict[str, Any],
+) -> dict[str, Any]:
+    metrics: dict[str, Any] = {
+        "retrieval_recall": None,
+        "retrieval_hit": None,
+        "retrieval_mrr": None,
+        "retrieval_ndcg_at_10": None,
+        "retrieval_ndcg_at_20": None,
+        "retrieval_hit_at_1": None,
+        "retrieval_hit_at_3": None,
+        "retrieval_hit_at_5": None,
+        "retrieval_hit_at_10": None,
+        "retrieval_hit_at_20": None,
+        "retrieval_doc_recall": None,
+        "retrieval_doc_hit": None,
+        "retrieval_family_recall": None,
+        "retrieval_family_hit": None,
+        "relevance_flags": [],
+        "ref_total": None,
+        "matched_refs": None,
+        "missed_ref_ids": [],
+    }
+    if not reference_sources:
+        return metrics
+    ref_total = len(reference_sources)
+    matched_refs = sum(1 for src in reference_sources if _reference_source_matched(src, state=state))
+    relevance_flags = _ranked_relevance_flags(citations_ranked, state=state)
+    rank_first = next((index + 1 for index, rel in enumerate(relevance_flags) if rel), None)
+    retrieval_doc_recall, retrieval_doc_hit = _document_recall_metrics(reference_sources, citations_ranked)
+    retrieval_family_recall, retrieval_family_hit = _family_recall_metrics(reference_sources, citations_ranked)
+    metrics.update(
+        {
+            "retrieval_recall": round(float(matched_refs) / max(1, int(ref_total)), 4),
+            "retrieval_hit": bool(matched_refs > 0),
+            "retrieval_mrr": round(1.0 / float(rank_first), 4) if rank_first else 0.0,
+            "retrieval_ndcg_at_10": _ndcg_at(relevance_flags, ref_total=ref_total, k=10),
+            "retrieval_ndcg_at_20": _ndcg_at(relevance_flags, ref_total=ref_total, k=20),
+            "retrieval_hit_at_1": _hit_at(relevance_flags, k=1),
+            "retrieval_hit_at_3": _hit_at(relevance_flags, k=3),
+            "retrieval_hit_at_5": _hit_at(relevance_flags, k=5),
+            "retrieval_hit_at_10": _hit_at(relevance_flags, k=10),
+            "retrieval_hit_at_20": _hit_at(relevance_flags, k=20),
+            "retrieval_doc_recall": retrieval_doc_recall,
+            "retrieval_doc_hit": retrieval_doc_hit,
+            "retrieval_family_recall": retrieval_family_recall,
+            "retrieval_family_hit": retrieval_family_hit,
+            "relevance_flags": relevance_flags,
+            "ref_total": ref_total,
+            "matched_refs": matched_refs,
+            "missed_ref_ids": _missed_reference_ids(reference_sources, state=state),
+        }
+    )
+    return metrics
+
+
+def _effective_context_metrics(
+    *,
+    answer_key_points: list[str],
+    answer_key_point_aliases: dict[str, list[str]],
+    citations_ranked: list[Any],
+    retrieved_contexts: list[Any],
+) -> dict[str, Any]:
+    metrics = {
+        "retrieval_effective_context_rate": None,
+        "retrieval_noise_rate": None,
+        "retrieval_effective_records": None,
+        "retrieval_evaluated_records": None,
+    }
+    if not answer_key_points or not citations_ranked:
+        return metrics
+    effective_flags: list[bool] = []
+    for index, citation in enumerate(citations_ranked):
+        text_parts = [_citation_text_for_quote_match(citation)]
+        if index < len(retrieved_contexts):
+            text_parts.append(_collapse_ws(retrieved_contexts[index]).casefold())
+        text = "\n".join(part for part in text_parts if part)
+        effective_flags.append(
+            any(_answer_key_point_in_text(point, text, answer_key_point_aliases) for point in answer_key_points)
+        )
+    evaluated = int(len(effective_flags))
+    effective = int(sum(1 for flag in effective_flags if flag))
+    rate = round(float(effective) / max(1, evaluated), 4)
+    metrics.update(
+        {
+            "retrieval_effective_context_rate": rate,
+            "retrieval_noise_rate": round(1.0 - rate, 4),
+            "retrieval_effective_records": effective,
+            "retrieval_evaluated_records": evaluated,
+        }
+    )
+    return metrics
+
+
+def _reference_evidence_text(reference: str, reference_contexts: list[str]) -> str | None:
+    ref_evidence_parts: list[str] = []
+    if reference.strip():
+        ref_evidence_parts.append(reference.strip())
+    ref_evidence_parts.extend([str(text or "").strip() for text in reference_contexts if str(text or "").strip()])
+    return "\n".join(ref_evidence_parts).strip() or None
+
+
+def _reasoning_inputs(case: Any, extra_d: dict[str, Any]) -> tuple[list[str], list[dict[str, Any]]]:
+    reasoning_hops_raw = _get(case, "reasoning_hops", None)
+    if not isinstance(reasoning_hops_raw, list):
+        reasoning_hops_raw = extra_d.get("reasoning_hops")
+    reasoning_hops = [str(value) for value in (reasoning_hops_raw or []) if str(value or "").strip()][:20]
+    evidence_chain_raw = _get(case, "evidence_chain", None)
+    if not isinstance(evidence_chain_raw, list):
+        evidence_chain_raw = extra_d.get("evidence_chain")
+    evidence_chain: list[dict[str, Any]] = []
+    for item_raw in evidence_chain_raw or []:
+        row = _coerce_dict(item_raw)
+        if row:
+            evidence_chain.append(row)
+        if len(evidence_chain) >= 20:
+            break
+    return reasoning_hops, evidence_chain
+
+
+def _expected_refusal(extra_d: dict[str, Any]) -> bool | None:
+    for key in ("expected_refusal", "should_refuse", "expected_abstain"):
+        if key in extra_d:
+            return bool(extra_d.get(key))
+    return None
+
+
+def _build_explanations(
+    *,
+    meta: dict[str, Any],
+    citations_ranked: list[Any],
+    citation_eval_limit: int | None,
+    citations_ranked_all: list[Any],
+    relevance_flags: list[bool],
+    retrieval_metrics: dict[str, Any],
+    expected_metadata: dict[str, Any],
+) -> dict[str, str]:
+    explanations = _chunk_metric_explanations(meta)
+    explanations.update(
+        _retrieval_metric_explanations(
+            meta=meta,
+            citations_ranked=citations_ranked,
+            citation_eval_limit=citation_eval_limit,
+            citations_ranked_all=citations_ranked_all,
+            relevance_flags=relevance_flags,
+            retrieval_metrics=retrieval_metrics,
+            expected_metadata=expected_metadata,
+        )
+    )
+    return explanations
+
+
+def _chunk_metric_explanations(meta: dict[str, Any]) -> dict[str, str]:
+    explanations: dict[str, str] = {}
+    counts = meta.get("chunk_diag_counts") if isinstance(meta.get("chunk_diag_counts"), dict) else {}
+    ct = int(counts.get("claims_total") or 0)
+    cs = int(counts.get("claims_supported") or 0)
+    cn = int(counts.get("claims_noisy") or 0)
+    cct = int(counts.get("claims_correct_total") or 0)
+    ccu = int(counts.get("claims_correct_uncited") or 0)
+    kt = int(counts.get("chunks_total") or 0)
+    ku = int(counts.get("chunks_used") or 0)
+    if ct > 0:
+        explanations["chunk_attribution"] = f"claims_supported={cs}/{ct}"
+    if kt > 0:
+        explanations["chunk_utilization"] = f"chunks_used={ku}/{kt}"
+    if meta.get("noise_sensitivity") is not None and cs > 0:
+        explanations["noise_sensitivity"] = f"noise_claims={cn}/{cs}"
+    if meta.get("self_knowledge_ratio") is not None and cct > 0:
+        explanations["self_knowledge_ratio"] = f"correct_uncited={ccu}/{cct}"
+    if meta.get("faithfulness_det") is not None and ct > 0:
+        explanations["faithfulness_det"] = f"claims_supported={cs}/{ct} (deterministic)"
+    if meta.get("quote_verifiability") is not None:
+        explanations["quote_verifiability"] = "quoted_spans_checked_against_retrieved_contexts"
+    return explanations
+
+
+def _retrieval_metric_explanations(
+    *,
+    meta: dict[str, Any],
+    citations_ranked: list[Any],
+    citation_eval_limit: int | None,
+    citations_ranked_all: list[Any],
+    relevance_flags: list[bool],
+    retrieval_metrics: dict[str, Any],
+    expected_metadata: dict[str, Any],
+) -> dict[str, str]:
+    explanations: dict[str, str] = {}
+    if meta.get("citation_accuracy") is not None and citations_ranked:
+        citation_msg = f"relevant_citations={sum(1 for rel in relevance_flags if rel)}/{len(citations_ranked)}"
+        if citation_eval_limit is not None:
+            citation_msg = (
+                f"{citation_msg}, evaluated_top={int(citation_eval_limit)}, total={len(citations_ranked_all)}"
+            )
+        explanations["citation_accuracy"] = citation_msg
+    ref_total = retrieval_metrics.get("ref_total")
+    matched_refs = retrieval_metrics.get("matched_refs")
+    if meta.get("retrieval_recall") is not None and ref_total is not None and matched_refs is not None:
+        missed = int(ref_total) - int(matched_refs)
+        suffix = f", missed={missed}" if missed >= 0 else ""
+        msg = f"ref_sources={int(ref_total)}, matched={int(matched_refs)}{suffix}"
+        missed_ref_ids = retrieval_metrics.get("missed_ref_ids") or []
+        if missed_ref_ids:
+            msg = msg + f", missed_ids={missed_ref_ids[:3]}"
+        explanations["retrieval_recall"] = msg[:220]
+    if meta.get("retrieval_effective_context_rate") is not None and meta.get("retrieval_evaluated_records") is not None:
+        explanations["retrieval_effective_context_rate"] = (
+            f"effective_records={int(meta.get('retrieval_effective_records') or 0)}/"
+            f"{int(meta.get('retrieval_evaluated_records') or 0)}"
+        )
+    if expected_metadata and meta.get("expected_metadata_recall") is not None:
+        explanations["expected_metadata"] = (
+            f"fields_matched={int(meta.get('expected_metadata_fields_matched') or 0)}/"
+            f"{int(meta.get('expected_metadata_fields_total') or 0)}"
+        )
+    return explanations
+
+
+def _reference_contexts(reference_sources: list[Any]) -> list[str]:
+    contexts: list[str] = []
+    for src in reference_sources:
+        quote = str(_coerce_dict(src).get("quote") or "").strip()
+        if quote:
+            contexts.append(quote)
+    return contexts
+
+
+def _parse_top_relevance_score(item: dict[str, Any]) -> float | None:
+    top_rel = item.get("top_relevance_score")
+    try:
+        return float(top_rel) if top_rel is not None else None
+    except Exception:
+        return None
+
+
+def _context_relevance_flags(
+    reference_sources: list[Any], retrieved_contexts: list[Any], relevance_flags: list[bool]
+) -> list[bool] | None:
+    if not reference_sources:
+        return None
+    return [
+        bool(relevance_flags[i]) if i < len(relevance_flags) else False for i in range(len(retrieved_contexts or []))
+    ]
+
+
+def _drop_effective_context_fields(meta: dict[str, Any], *, enabled: bool) -> None:
+    if enabled:
+        return
+    for key in (
+        "retrieval_effective_context_rate",
+        "retrieval_noise_rate",
+        "retrieval_effective_records",
+        "retrieval_evaluated_records",
+    ):
+        meta.pop(key, None)
+
+
+def _attach_explanations(
+    *,
+    meta: dict[str, Any],
+    citations_ranked: list[Any],
+    citation_eval_limit: int | None,
+    citations_ranked_all: list[Any],
+    relevance_flags: list[bool],
+    retrieval_metrics: dict[str, Any],
+    expected_metadata: dict[str, Any],
+) -> None:
+    try:
+        explanations = _build_explanations(
+            meta=meta,
+            citations_ranked=citations_ranked,
+            citation_eval_limit=citation_eval_limit,
+            citations_ranked_all=citations_ranked_all,
+            relevance_flags=relevance_flags,
+            retrieval_metrics=retrieval_metrics,
+            expected_metadata=expected_metadata,
+        )
+        if explanations:
+            meta["explanations"] = explanations
+    except Exception as exc:
+        logger.debug("Ignoring non-critical regression sample fallback failure: %s", exc)
+
+
+def _apply_refusal_correctness(meta: dict[str, Any]) -> None:
+    try:
+        abst = meta.get("abstain_triggered")
+        exp = meta.get("expected_refusal")
+        if isinstance(exp, bool) and abst is not None:
+            meta["refusal_correct"] = bool(bool(exp) == bool(abst))
+    except Exception as exc:
+        logger.debug("Ignoring non-critical regression sample fallback failure: %s", exc)
+
+
+def _sample_kwargs(
+    *,
+    question: str,
+    response: str,
+    retrieved_contexts: list[Any],
+    reference: str,
+    reference_context_ids: list[str],
+    retrieved_context_ids: list[str],
+    reference_contexts: list[str],
+) -> dict[str, Any]:
+    return {
+        "user_input": question,
+        "response": response,
+        "retrieved_contexts": retrieved_contexts,
+        "reference": reference,
+        "reference_context_ids": reference_context_ids,
+        "retrieved_context_ids": retrieved_context_ids,
+        "reference_contexts": reference_contexts,
+    }
+
+
 def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     """
     Build kwargs for RAGAS SingleTurnSample plus per-item meta used for audit/gates.
@@ -517,12 +1013,7 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
 
     reference_sources = _get(case, "reference_sources", None) or []
     reference_context_ids = _dedup_ids(reference_sources, key="chunk_id")
-    reference_contexts: list[str] = []
-    for src in reference_sources or []:
-        d = _coerce_dict(src)
-        quote = str(d.get("quote") or "").strip()
-        if quote:
-            reference_contexts.append(quote)
+    reference_contexts = _reference_contexts(reference_sources)
 
     citations = item.get("citations") or []
     extra = _get(case, "extra", None)
@@ -531,276 +1022,40 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
     expected_semantic_keys = _string_set(expected_metadata.get(_SEMANTIC_KEYS_METADATA_KEY))
     answer_key_points = _answer_key_points_from_case_extra(extra_d)
     answer_key_point_aliases = _answer_key_point_aliases_from_case_extra(extra_d)
-
-    citation_eval_limit: int | None = None
-    raw_citation_eval_limit = item.get("citation_eval_limit")
-    if raw_citation_eval_limit is not None:
-        try:
-            parsed_limit = int(raw_citation_eval_limit)
-        except (TypeError, ValueError):
-            parsed_limit = 0
-        if parsed_limit > 0:
-            citation_eval_limit = parsed_limit
-
-    citations_ranked_all: list[Any] = []
-    seen_cids: set[str] = set()
-    for c in citations or []:
-        d = _coerce_dict(c)
-        cid = str(d.get("chunk_id") or "").strip()
-        if not cid:
-            continue
-        if cid in seen_cids:
-            continue
-        seen_cids.add(cid)
-        citations_ranked_all.append(c)
-    citations_ranked = (
-        citations_ranked_all[:citation_eval_limit]
-        if citation_eval_limit is not None
-        else citations_ranked_all
+    citation_eval_limit = _citation_eval_limit(item)
+    citations_ranked_all, retrieved_context_ids, citations_ranked = _ranked_citations(
+        citations,
+        citation_eval_limit=citation_eval_limit,
     )
-    retrieved_context_ids = _dedup_ids(citations_ranked, key="chunk_id")
+    match_state = _reference_match_state(
+        reference_sources=reference_sources,
+        citations_ranked=citations_ranked,
+        reference_context_ids=reference_context_ids,
+        retrieved_context_ids=retrieved_context_ids,
+        expected_semantic_keys=expected_semantic_keys,
+    )
+    retrieval_metrics = _retrieval_metrics(
+        reference_sources=reference_sources,
+        citations_ranked=citations_ranked,
+        state=match_state,
+    )
+    relevance_flags = retrieval_metrics["relevance_flags"]
+    citation_accuracy = (
+        round(float(sum(1 for rel in relevance_flags if rel)) / float(len(citations_ranked)), 4)
+        if reference_sources and citations_ranked
+        else None
+    )
+    effective_metrics = _effective_context_metrics(
+        answer_key_points=answer_key_points,
+        answer_key_point_aliases=answer_key_point_aliases,
+        citations_ranked=citations_ranked,
+        retrieved_contexts=retrieved_contexts,
+    )
+    citation_coverage = retrieval_metrics["retrieval_recall"]
 
-    # Retrieval quality signals (non-LLM):
-    # - recall: fraction of human-verified evidence sources that were matched by retrieval
-    # - hit@k: whether any evidence source appears in the top-k retrieved list
-    # Matching strategy (best-effort):
-    # 1) chunk_id exact match (fast path)
-    # 2) doc_pipeline_key + chunk_index match (version-stable)
-    # 3) quote signature substring match (fallback when ids drift)
-    ref_set = set(reference_context_ids or [])
-    ret_list = retrieved_context_ids or []
-    ret_set = set(ret_list)
+    top_rel_f = _parse_top_relevance_score(item)
 
-    ref_keys: list[str] = []
-    ref_record_keys: list[str] = []
-    ref_semantic_key_sets: list[set[str]] = []
-    ref_quotes: list[str] = []
-    for src in reference_sources or []:
-        k = _stable_ref_key(src)
-        if k:
-            ref_keys.append(k)
-        rk = _record_identity_key(src)
-        if rk:
-            ref_record_keys.append(rk)
-        semantic_keys = _semantic_key_set(src)
-        if semantic_keys:
-            ref_semantic_key_sets.append(semantic_keys)
-        qsig = _quote_signature(_coerce_dict(src).get("quote"))
-        if qsig:
-            ref_quotes.append(qsig)
-    fallback_semantic_key_set = expected_semantic_keys if expected_semantic_keys and not ref_semantic_key_sets else set()
-    if fallback_semantic_key_set:
-        ref_semantic_key_sets.append(fallback_semantic_key_set)
-    ref_key_set = set(ref_keys)
-    ref_record_key_set = set(ref_record_keys)
-
-    cit_keys: list[str] = []
-    cit_record_keys: list[str] = []
-    cit_semantic_key_sets: list[set[str]] = []
-    cit_texts: list[str] = []
-    for c in citations_ranked:
-        ck = _stable_citation_key(c)
-        if ck:
-            cit_keys.append(ck)
-        crk = _record_identity_key(c)
-        if crk:
-            cit_record_keys.append(crk)
-        cit_semantic_key_sets.append(_semantic_key_set(c))
-        cit_texts.append(_citation_text_for_quote_match(c))
-    cit_key_set = set(cit_keys)
-    cit_record_key_set = set(cit_record_keys)
-    cit_semantic_key_union = {key for keys in cit_semantic_key_sets for key in keys}
-    cit_text_joined = "\n".join([t for t in cit_texts if t]) if cit_texts else ""
-
-    def _citation_matches_any_ref(i: int) -> bool:
-        if i < 0 or i >= len(citations_ranked):
-            return False
-        d = _coerce_dict(citations_ranked[i])
-        cid = str(d.get("chunk_id") or "").strip()
-        if cid and cid in ref_set:
-            return True
-
-        ck = _stable_citation_key(d)
-        if ck and ck in ref_key_set:
-            return True
-
-        crk = _record_identity_key(d)
-        if crk and crk in ref_record_key_set:
-            return True
-
-        if ref_semantic_key_sets:
-            cit_semantic_keys = cit_semantic_key_sets[i] if i < len(cit_semantic_key_sets) else _semantic_key_set(d)
-            if cit_semantic_keys and any(cit_semantic_keys & ref_keys for ref_keys in ref_semantic_key_sets):
-                return True
-
-        if ref_quotes:
-            text_i = _citation_text_for_quote_match(d)
-            if text_i:
-                for qsig in ref_quotes:
-                    if qsig and qsig in text_i:
-                        return True
-        return False
-
-    def _ref_source_matched(src: Any) -> bool:
-        d = _coerce_dict(src)
-        cid = str(d.get("chunk_id") or "").strip()
-        if cid and cid in ret_set:
-            return True
-        k = _stable_ref_key(src)
-        if k and k in cit_key_set:
-            return True
-        rk = _record_identity_key(src)
-        if rk and rk in cit_record_key_set:
-            return True
-        src_semantic_keys = _semantic_key_set(src)
-        if not src_semantic_keys and fallback_semantic_key_set:
-            src_semantic_keys = fallback_semantic_key_set
-        if src_semantic_keys and cit_semantic_key_union and src_semantic_keys & cit_semantic_key_union:
-            return True
-        qsig = _quote_signature(d.get("quote"))
-        if qsig and cit_text_joined and qsig in cit_text_joined:
-            return True
-        return False
-
-    retrieval_recall: float | None = None
-    retrieval_hit: bool | None = None
-    retrieval_mrr: float | None = None
-    retrieval_ndcg_at_10: float | None = None
-    retrieval_ndcg_at_20: float | None = None
-    hit_at_1: bool | None = None
-    hit_at_3: bool | None = None
-    hit_at_5: bool | None = None
-    hit_at_10: bool | None = None
-    hit_at_20: bool | None = None
-    retrieval_doc_recall: float | None = None
-    retrieval_doc_hit: bool | None = None
-    retrieval_family_recall: float | None = None
-    retrieval_family_hit: bool | None = None
-    relevance_flags: list[bool] = []
-    ref_total: int | None = None
-    matched_refs: int | None = None
-    missed_ref_ids: list[str] = []
-    if reference_sources:
-        ref_total = len(list(reference_sources or []))
-        matched_refs = sum(1 for src in (reference_sources or []) if _ref_source_matched(src))
-        retrieval_recall = round(float(matched_refs) / max(1, int(ref_total)), 4)
-        retrieval_hit = bool(matched_refs > 0)
-
-        # Rank-based metrics consider a citation "relevant" if it matches any reference source.
-        rank_first: int | None = None
-        for i in range(len(citations_ranked)):
-            rel = _citation_matches_any_ref(i)
-            relevance_flags.append(rel)
-            if rel and rank_first is None:
-                rank_first = i + 1
-
-        if rank_first is not None and rank_first > 0:
-            retrieval_mrr = round(1.0 / float(rank_first), 4)
-        else:
-            retrieval_mrr = 0.0
-
-        # NDCG@K: binary relevance. Ideal ordering assumes each reference source can be hit by one retrieved item.
-        def _ndcg_at(k: int) -> float:
-            kk = max(1, int(k or 0))
-            dcg = 0.0
-            for idx, rel in enumerate(relevance_flags[:kk], 1):
-                if rel:
-                    dcg += 1.0 / math.log2(idx + 1)
-
-            idcg = 0.0
-            ideal_relevant = max(int(ref_total or 0), sum(1 for rel in relevance_flags[:kk] if rel))
-            for idx in range(1, min(kk, ideal_relevant) + 1):
-                idcg += 1.0 / math.log2(idx + 1)
-            return round(dcg / idcg, 4) if idcg > 0.0 else 0.0
-
-        retrieval_ndcg_at_10 = _ndcg_at(10)
-        retrieval_ndcg_at_20 = _ndcg_at(20)
-
-        def _hit_at(k: int) -> bool:
-            kk = max(0, int(k or 0))
-            return any(relevance_flags[:kk]) if kk > 0 else False
-
-        hit_at_1 = _hit_at(1)
-        hit_at_3 = _hit_at(3)
-        hit_at_5 = _hit_at(5)
-        hit_at_10 = _hit_at(10)
-        hit_at_20 = _hit_at(20)
-
-        # Document-level recall: unique evidence document ids hit by retrieval.
-        ref_doc_set = {str(_coerce_dict(s).get("document_id") or "").strip() for s in (reference_sources or [])}
-        ref_doc_set = {d for d in ref_doc_set if d}
-        cit_doc_set = {str(_coerce_dict(c).get("document_id") or "").strip() for c in citations_ranked}
-        cit_doc_set = {d for d in cit_doc_set if d}
-        if ref_doc_set:
-            matched_docs = int(len(ref_doc_set & cit_doc_set))
-            retrieval_doc_recall = round(float(matched_docs) / max(1, int(len(ref_doc_set))), 4)
-            retrieval_doc_hit = bool(matched_docs > 0)
-
-        # Family-level recall: unique evidence families hit by retrieval. This is only
-        # computable when reference_sources carry family keys (optional).
-        ref_fams = [_family_key(s) for s in (reference_sources or [])]
-        ref_fam_set = {k for k in ref_fams if k}
-        if ref_fam_set:
-            cit_fams = [_family_key(c) for c in citations_ranked]
-            cit_fam_set = {k for k in cit_fams if k}
-            matched_fams = int(len(ref_fam_set & cit_fam_set))
-            retrieval_family_recall = round(float(matched_fams) / max(1, int(len(ref_fam_set))), 4)
-            retrieval_family_hit = bool(matched_fams > 0)
-
-        # Missed reference sources (PII-minimal ids only, for explanations/debug).
-        for src in (reference_sources or []):
-            if _ref_source_matched(src):
-                continue
-            sk = _stable_ref_key(src)
-            fallback = str(_coerce_dict(src).get("chunk_id") or "").strip()
-            raw_id = sk or fallback
-            if not raw_id:
-                continue
-            missed_ref_ids.append(stable_hash(raw_id, length=16))
-            if len(missed_ref_ids) >= 6:
-                break
-
-    citation_accuracy: float | None = None
-    if reference_sources and citations_ranked:
-        citation_accuracy = round(float(sum(1 for rel in relevance_flags if rel)) / float(len(citations_ranked)), 4)
-    citation_coverage = retrieval_recall
-
-    retrieval_effective_context_rate: float | None = None
-    retrieval_noise_rate: float | None = None
-    retrieval_effective_records: int | None = None
-    retrieval_evaluated_records: int | None = None
-    if answer_key_points and citations_ranked:
-        effective_flags: list[bool] = []
-        for index, citation in enumerate(citations_ranked):
-            text_parts = [_citation_text_for_quote_match(citation)]
-            if index < len(retrieved_contexts):
-                text_parts.append(_collapse_ws(retrieved_contexts[index]).casefold())
-            text = "\n".join(part for part in text_parts if part)
-            effective_flags.append(
-                any(
-                    _answer_key_point_in_text(point, text, answer_key_point_aliases)
-                    for point in answer_key_points
-                )
-            )
-        retrieval_evaluated_records = int(len(effective_flags))
-        retrieval_effective_records = int(sum(1 for flag in effective_flags if flag))
-        retrieval_effective_context_rate = round(
-            float(retrieval_effective_records) / max(1, retrieval_evaluated_records),
-            4,
-        )
-        retrieval_noise_rate = round(1.0 - retrieval_effective_context_rate, 4)
-
-    top_rel = item.get("top_relevance_score")
-    try:
-        top_rel_f = float(top_rel) if top_rel is not None else None
-    except Exception:
-        top_rel_f = None
-
-    expected_refusal = None
-    for key in ("expected_refusal", "should_refuse", "expected_abstain"):
-        if key in extra_d:
-            expected_refusal = bool(extra_d.get(key))
-            break
+    expected_refusal = _expected_refusal(extra_d)
 
     faithfulness_det = _deterministic_faithfulness(response, retrieved_contexts)
     atomic_faithfulness = faithfulness_det
@@ -808,17 +1063,9 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
     quote_verifiability = _quote_verifiability(response, retrieved_contexts)
 
     # Chunk-level diagnostics (P0): attribution/utilization/noise/self-knowledge.
-    ref_evidence_parts: list[str] = []
-    if reference.strip():
-        ref_evidence_parts.append(reference.strip())
-    ref_evidence_parts.extend([str(x or "").strip() for x in (reference_contexts or []) if str(x or "").strip()])
-    reference_evidence_text = "\n".join(ref_evidence_parts).strip() or None
+    reference_evidence_text = _reference_evidence_text(reference, reference_contexts)
 
-    context_relevance: list[bool] | None = None
-    if reference_sources:
-        context_relevance = []
-        for i in range(len(retrieved_contexts or [])):
-            context_relevance.append(bool(relevance_flags[i]) if i < len(relevance_flags) else False)
+    context_relevance = _context_relevance_flags(reference_sources, retrieved_contexts, relevance_flags)
 
     chunk_diag = compute_chunk_diagnostics(
         answer=response,
@@ -827,24 +1074,7 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
         reference_evidence_text=reference_evidence_text,
     )
 
-    reasoning_hops_raw = _get(case, "reasoning_hops", None)
-    if not isinstance(reasoning_hops_raw, list):
-        reasoning_hops_raw = extra_d.get("reasoning_hops")
-    reasoning_hops = [
-        str(x) for x in (reasoning_hops_raw or []) if str(x or "").strip()
-    ][:20]
-
-    evidence_chain_raw = _get(case, "evidence_chain", None)
-    if not isinstance(evidence_chain_raw, list):
-        evidence_chain_raw = extra_d.get("evidence_chain")
-    evidence_chain: list[dict[str, Any]] = []
-    for item_raw in (evidence_chain_raw or []):
-        row = _coerce_dict(item_raw)
-        if not row:
-            continue
-        evidence_chain.append(row)
-        if len(evidence_chain) >= 20:
-            break
+    reasoning_hops, evidence_chain = _reasoning_inputs(case, extra_d)
 
     multihop = score_multihop_citation_chain(
         evidence_chain=evidence_chain,
@@ -857,26 +1087,26 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
         "abstain_triggered": bool(item.get("abstain_triggered")) if "abstain_triggered" in item else None,
         "abstain_reason": item.get("abstain_reason"),
         "top_relevance_score": top_rel_f,
-        "retrieval_recall": retrieval_recall,
-        "retrieval_hit": retrieval_hit,
-        "retrieval_mrr": retrieval_mrr,
-        "retrieval_ndcg_at_10": retrieval_ndcg_at_10,
-        "retrieval_ndcg_at_20": retrieval_ndcg_at_20,
-        "retrieval_hit_at_1": hit_at_1,
-        "retrieval_hit_at_3": hit_at_3,
-        "retrieval_hit_at_5": hit_at_5,
-        "retrieval_hit_at_10": hit_at_10,
-        "retrieval_hit_at_20": hit_at_20,
-        "retrieval_doc_recall": retrieval_doc_recall,
-        "retrieval_doc_hit": retrieval_doc_hit,
-        "retrieval_family_recall": retrieval_family_recall,
-        "retrieval_family_hit": retrieval_family_hit,
+        "retrieval_recall": retrieval_metrics["retrieval_recall"],
+        "retrieval_hit": retrieval_metrics["retrieval_hit"],
+        "retrieval_mrr": retrieval_metrics["retrieval_mrr"],
+        "retrieval_ndcg_at_10": retrieval_metrics["retrieval_ndcg_at_10"],
+        "retrieval_ndcg_at_20": retrieval_metrics["retrieval_ndcg_at_20"],
+        "retrieval_hit_at_1": retrieval_metrics["retrieval_hit_at_1"],
+        "retrieval_hit_at_3": retrieval_metrics["retrieval_hit_at_3"],
+        "retrieval_hit_at_5": retrieval_metrics["retrieval_hit_at_5"],
+        "retrieval_hit_at_10": retrieval_metrics["retrieval_hit_at_10"],
+        "retrieval_hit_at_20": retrieval_metrics["retrieval_hit_at_20"],
+        "retrieval_doc_recall": retrieval_metrics["retrieval_doc_recall"],
+        "retrieval_doc_hit": retrieval_metrics["retrieval_doc_hit"],
+        "retrieval_family_recall": retrieval_metrics["retrieval_family_recall"],
+        "retrieval_family_hit": retrieval_metrics["retrieval_family_hit"],
         "citation_accuracy": citation_accuracy,
         "citation_coverage": citation_coverage,
-        "retrieval_effective_context_rate": retrieval_effective_context_rate,
-        "retrieval_noise_rate": retrieval_noise_rate,
-        "retrieval_effective_records": retrieval_effective_records,
-        "retrieval_evaluated_records": retrieval_evaluated_records,
+        "retrieval_effective_context_rate": effective_metrics["retrieval_effective_context_rate"],
+        "retrieval_noise_rate": effective_metrics["retrieval_noise_rate"],
+        "retrieval_effective_records": effective_metrics["retrieval_effective_records"],
+        "retrieval_evaluated_records": effective_metrics["retrieval_evaluated_records"],
         "quote_verifiability": quote_verifiability,
         "atomic_faithfulness": atomic_faithfulness,
         "hallucination_rate": hallucination_rate,
@@ -894,14 +1124,7 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
         "multihop_order_consistency": multihop.get("order_consistency"),
         "multihop_chain_hit": multihop.get("chain_hit"),
     }
-    if retrieval_effective_context_rate is None:
-        for key in (
-            "retrieval_effective_context_rate",
-            "retrieval_noise_rate",
-            "retrieval_effective_records",
-            "retrieval_evaluated_records",
-        ):
-            meta.pop(key, None)
+    _drop_effective_context_fields(meta, enabled=effective_metrics["retrieval_effective_context_rate"] is not None)
     if citation_eval_limit is not None:
         meta.update(
             {
@@ -913,82 +1136,31 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
     if expected_metadata:
         meta.update(_expected_metadata_metrics(expected_metadata=expected_metadata, citations=citations_ranked))
 
-    # Per-case explanations (P0): numeric-only, PII-minimal (safe for bundle exports).
-    try:
-        explanations: dict[str, str] = {}
-        counts = meta.get("chunk_diag_counts") if isinstance(meta.get("chunk_diag_counts"), dict) else {}
-        ct = int(counts.get("claims_total") or 0)
-        cs = int(counts.get("claims_supported") or 0)
-        cn = int(counts.get("claims_noisy") or 0)
-        cct = int(counts.get("claims_correct_total") or 0)
-        ccu = int(counts.get("claims_correct_uncited") or 0)
-        kt = int(counts.get("chunks_total") or 0)
-        ku = int(counts.get("chunks_used") or 0)
+    _attach_explanations(
+        meta=meta,
+        citations_ranked=citations_ranked,
+        citation_eval_limit=citation_eval_limit,
+        citations_ranked_all=citations_ranked_all,
+        relevance_flags=relevance_flags,
+        retrieval_metrics=retrieval_metrics,
+        expected_metadata=expected_metadata,
+    )
+    _apply_refusal_correctness(meta)
 
-        if ct > 0:
-            explanations["chunk_attribution"] = f"claims_supported={cs}/{ct}"
-        if kt > 0:
-            explanations["chunk_utilization"] = f"chunks_used={ku}/{kt}"
-        if meta.get("noise_sensitivity") is not None and cs > 0:
-            explanations["noise_sensitivity"] = f"noise_claims={cn}/{cs}"
-        if meta.get("self_knowledge_ratio") is not None and cct > 0:
-            explanations["self_knowledge_ratio"] = f"correct_uncited={ccu}/{cct}"
-        if meta.get("faithfulness_det") is not None and ct > 0:
-            explanations["faithfulness_det"] = f"claims_supported={cs}/{ct} (deterministic)"
-        if meta.get("citation_accuracy") is not None and citations_ranked:
-            citation_msg = f"relevant_citations={sum(1 for rel in relevance_flags if rel)}/{len(citations_ranked)}"
-            if citation_eval_limit is not None:
-                citation_msg = (
-                    f"{citation_msg}, evaluated_top={int(citation_eval_limit)}, total={len(citations_ranked_all)}"
-                )
-            explanations["citation_accuracy"] = citation_msg
-        if meta.get("quote_verifiability") is not None:
-            explanations["quote_verifiability"] = "quoted_spans_checked_against_retrieved_contexts"
-        if retrieval_recall is not None and ref_total is not None and matched_refs is not None:
-            missed = int(ref_total) - int(matched_refs)
-            suffix = f", missed={missed}" if missed >= 0 else ""
-            msg = f"ref_sources={int(ref_total)}, matched={int(matched_refs)}{suffix}"
-            if missed_ref_ids:
-                msg = msg + f", missed_ids={missed_ref_ids[:3]}"
-            explanations["retrieval_recall"] = msg[:220]
-        if retrieval_effective_context_rate is not None and retrieval_evaluated_records is not None:
-            explanations["retrieval_effective_context_rate"] = (
-                f"effective_records={int(retrieval_effective_records or 0)}/{int(retrieval_evaluated_records)}"
-            )
-        if expected_metadata and meta.get("expected_metadata_recall") is not None:
-            explanations["expected_metadata"] = (
-                f"fields_matched={int(meta.get('expected_metadata_fields_matched') or 0)}/"
-                f"{int(meta.get('expected_metadata_fields_total') or 0)}"
-            )
-
-        if explanations:
-            meta["explanations"] = explanations
-    except Exception as exc:
-        logger.debug("Ignoring non-critical regression sample fallback failure: %s", exc)
-
-    # Per-item refusal correctness (only when expected_refusal is labeled).
-    try:
-        abst = meta.get("abstain_triggered")
-        exp = meta.get("expected_refusal")
-        if isinstance(exp, bool) and abst is not None:
-            meta["refusal_correct"] = bool(bool(exp) == bool(abst))
-    except Exception as exc:
-        logger.debug("Ignoring non-critical regression sample fallback failure: %s", exc)
-
-    sample_kwargs = {
-        "user_input": question,
-        "response": response,
-        "retrieved_contexts": retrieved_contexts,
-        "reference": reference,
-        "reference_context_ids": reference_context_ids,
-        "retrieved_context_ids": retrieved_context_ids,
-        "reference_contexts": reference_contexts,
-    }
-
-    return sample_kwargs, meta
+    return _sample_kwargs(
+        question=question,
+        response=response,
+        retrieved_contexts=retrieved_contexts,
+        reference=reference,
+        reference_context_ids=reference_context_ids,
+        retrieved_context_ids=retrieved_context_ids,
+        reference_contexts=reference_contexts,
+    ), meta
 
 
-def build_regression_item_meta(*, sample_kwargs: dict[str, Any] | None, item_meta: dict[str, Any] | None) -> dict[str, Any]:
+def build_regression_item_meta(
+    *, sample_kwargs: dict[str, Any] | None, item_meta: dict[str, Any] | None
+) -> dict[str, Any]:
     """Prepare a JSON-safe meta payload for RagasRegressionItem storage."""
     sample = dict(sample_kwargs or {})
     meta = dict(item_meta or {})

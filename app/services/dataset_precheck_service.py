@@ -7,7 +7,6 @@ Provides:
 - Drill-down file lists by finding key (streamed from JSONL artifacts)
 """
 
-
 import json
 from collections.abc import Iterable
 from datetime import UTC, datetime
@@ -64,12 +63,17 @@ _DEFAULT_UPLOAD_DIR = "./uploads"
 
 
 def _assert_artifact_path_under_tenant(*, tenant_id: UUID, path: Path) -> None:
-    upload_root = Path(getattr(settings, "UPLOAD_DIR", _DEFAULT_UPLOAD_DIR) or _DEFAULT_UPLOAD_DIR).resolve(strict=False)
+    upload_root = _upload_root()
     tenant_root = (upload_root / str(tenant_id)).resolve(strict=False)
     try:
         path.resolve(strict=False).relative_to(tenant_root)
     except Exception:
         raise HTTPException(status_code=403, detail="Artifact access denied") from None
+
+
+def _upload_root() -> Path:
+    raw = getattr(settings, "UPLOAD_DIR", _DEFAULT_UPLOAD_DIR) or _DEFAULT_UPLOAD_DIR
+    return Path(raw).resolve(strict=False)
 
 
 def _precheck_sample_reviews_path_for_row(
@@ -92,7 +96,7 @@ def _precheck_sample_reviews_path_for_row(
         _assert_artifact_path_under_tenant(tenant_id=tenant_id, path=jsonl_path)
         return jsonl_path.resolve(strict=False).parent / "sample_reviews.json"
 
-    upload_root = Path(getattr(settings, "UPLOAD_DIR", _DEFAULT_UPLOAD_DIR) or _DEFAULT_UPLOAD_DIR).resolve(strict=False)
+    upload_root = _upload_root()
     path = upload_root / str(tenant_id) / "precheck" / str(row.id) / "sample_reviews.json"
     _assert_artifact_path_under_tenant(tenant_id=tenant_id, path=path)
     return path
@@ -189,50 +193,67 @@ def _list_finding_from_jsonl(
     if key not in FINDING_KEYS:
         raise HTTPException(status_code=400, detail="Unknown finding_key")
 
-    skip_n = max(0, int(skip or 0))
-    limit_n = max(1, min(int(limit or 50), 200))
-
-    # Special-case: exact duplicates require a 2-pass scan to find sha256 groups with cnt>1.
-    dup_shas: set[str] | None = None
-    if key == "exact_dup":
-        dup_shas = set()
-        counts: dict[str, int] = {}
-        for obj in _iter_jsonl(jsonl_path):
-            sha = str(obj.get("file_sha256") or "").strip().lower()
-            if not sha:
-                continue
-            counts[sha] = counts.get(sha, 0) + 1
-        for sha, cnt in counts.items():
-            if int(cnt) > 1:
-                dup_shas.add(sha)
+    skip_n, limit_n = _bounded_skip_limit(skip=skip, limit=limit)
+    dup_shas = _exact_duplicate_shas(jsonl_path) if key == "exact_dup" else None
 
     total = 0
     items: list[DatasetPrecheckFileOut] = []
     for obj in _iter_jsonl(jsonl_path):
-        findings = obj.get("findings")
-        if not isinstance(findings, list):
-            findings = []
-        if key == "exact_dup":
-            sha = str(obj.get("file_sha256") or "").strip().lower()
-            match = bool(dup_shas and sha and sha in dup_shas)
-        else:
-            match = key in {str(x or "").strip().lower() for x in findings}
-        if not match:
+        if not _finding_matches_obj(obj=obj, finding_key=key, exact_dup_shas=dup_shas):
             continue
         total += 1
         if total <= skip_n:
             continue
-        if len(items) >= limit_n:
-            continue
-
-        try:
-            items.append(DatasetPrecheckFileOut(**obj))
-        except Exception:
-            # Best-effort: ignore invalid lines.
-            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
-            continue
+        _append_precheck_item(items, obj=obj, limit_n=limit_n)
 
     return DatasetPrecheckFindingListResponse(total=int(total), items=items)
+
+
+def _bounded_skip_limit(*, skip: int, limit: int) -> tuple[int, int]:
+    skip_n = max(0, int(skip or 0))
+    limit_n = max(1, min(int(limit or 50), 200))
+    return skip_n, limit_n
+
+
+def _exact_duplicate_shas(jsonl_path: Path) -> set[str]:
+    counts: dict[str, int] = {}
+    for obj in _iter_jsonl(jsonl_path):
+        sha = str(obj.get("file_sha256") or "").strip().lower()
+        if not sha:
+            continue
+        counts[sha] = counts.get(sha, 0) + 1
+    return {sha for sha, count in counts.items() if int(count) > 1}
+
+
+def _finding_matches_obj(
+    *,
+    obj: dict[str, Any],
+    finding_key: str,
+    exact_dup_shas: set[str] | None,
+) -> bool:
+    if finding_key == "exact_dup":
+        sha = str(obj.get("file_sha256") or "").strip().lower()
+        return bool(exact_dup_shas and sha and sha in exact_dup_shas)
+
+    findings = obj.get("findings")
+    if not isinstance(findings, list):
+        findings = []
+    normalized_findings = {str(item or "").strip().lower() for item in findings}
+    return finding_key in normalized_findings
+
+
+def _append_precheck_item(
+    items: list[DatasetPrecheckFileOut],
+    *,
+    obj: dict[str, Any],
+    limit_n: int,
+) -> None:
+    if len(items) >= limit_n:
+        return
+    try:
+        items.append(DatasetPrecheckFileOut(**obj))
+    except Exception:
+        get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
 
 
 def _list_files_from_jsonl(
@@ -255,8 +276,7 @@ def _list_files_from_jsonl(
         raw = raw.strip("/")
         prefix = f"{raw}/" if raw else ""
 
-    skip_n = max(0, int(skip or 0))
-    limit_n = max(1, min(int(limit or 50), 200))
+    skip_n, limit_n = _bounded_skip_limit(skip=skip, limit=limit)
 
     total = 0
     items: list[DatasetPrecheckFileOut] = []
@@ -267,13 +287,7 @@ def _list_files_from_jsonl(
         total += 1
         if total <= skip_n:
             continue
-        if len(items) >= limit_n:
-            continue
-        try:
-            items.append(DatasetPrecheckFileOut(**obj))
-        except Exception:
-            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
-            continue
+        _append_precheck_item(items, obj=obj, limit_n=limit_n)
 
     return DatasetPrecheckFindingListResponse(total=int(total), items=items)
 
@@ -439,34 +453,14 @@ def list_near_dup_files_from_row(
 
     This keeps JSONL immutable (streaming write) and avoids a rewrite pass.
     """
-    artifacts = getattr(row, "artifacts", None)
-    artifacts = artifacts if isinstance(artifacts, dict) else {}
-    jsonl_raw = str(artifacts.get("files_jsonl") or "").strip()
-    if not jsonl_raw:
-        raise HTTPException(status_code=404, detail=ARTIFACTS_NOT_AVAILABLE_DETAIL)
-    jsonl_path = Path(jsonl_raw)
-    _assert_artifact_path_under_tenant(tenant_id=tenant_id, path=jsonl_path)
-    if not jsonl_path.exists() or not jsonl_path.is_file():
-        raise HTTPException(status_code=404, detail=ARTIFACTS_NOT_FOUND_DETAIL)
-
+    jsonl_path = _jsonl_path_from_row(row, tenant_id=tenant_id)
     near = load_precheck_near_dups_from_row(row, tenant_id=tenant_id)
-    clusters = near.get("clusters") if isinstance(near.get("clusters"), list) else []
-    affected: set[str] = set()
-    for c in clusters:
-        if not isinstance(c, dict):
-            continue
-        members = c.get("members")
-        if isinstance(members, list):
-            for m in members:
-                name = str(m or "").strip()
-                if name:
-                    affected.add(name)
+    affected = _near_dup_affected_names(near)
 
     if not affected:
         return DatasetPrecheckFindingListResponse(total=0, items=[])
 
-    skip_n = max(0, int(skip or 0))
-    limit_n = max(1, min(int(limit or 50), 200))
+    skip_n, limit_n = _bounded_skip_limit(skip=skip, limit=limit)
 
     total = 0
     items: list[DatasetPrecheckFileOut] = []
@@ -477,15 +471,50 @@ def list_near_dup_files_from_row(
         total += 1
         if total <= skip_n:
             continue
-        if len(items) >= limit_n:
-            continue
-        try:
-            items.append(DatasetPrecheckFileOut(**obj))
-        except Exception:
-            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
-            continue
+        _append_precheck_item(items, obj=obj, limit_n=limit_n)
 
     return DatasetPrecheckFindingListResponse(total=int(total), items=items)
+
+
+def _jsonl_path_from_row(
+    row: DBDatasetPrecheckScanRun,
+    *,
+    tenant_id: UUID,
+) -> Path:
+    artifacts = getattr(row, "artifacts", None)
+    if not isinstance(artifacts, dict):
+        artifacts = {}
+    return _jsonl_path_from_artifacts(artifacts, tenant_id=tenant_id)
+
+
+def _jsonl_path_from_artifacts(artifacts: dict[str, Any], *, tenant_id: UUID) -> Path:
+    jsonl_raw = str(artifacts.get("files_jsonl") or "").strip()
+    if not jsonl_raw:
+        raise HTTPException(status_code=404, detail=ARTIFACTS_NOT_AVAILABLE_DETAIL)
+    jsonl_path = Path(jsonl_raw)
+    _assert_artifact_path_under_tenant(tenant_id=tenant_id, path=jsonl_path)
+    if not jsonl_path.exists() or not jsonl_path.is_file():
+        raise HTTPException(status_code=404, detail=ARTIFACTS_NOT_FOUND_DETAIL)
+    return jsonl_path
+
+
+def _near_dup_affected_names(near: dict[str, Any]) -> set[str]:
+    clusters = near.get("clusters")
+    if not isinstance(clusters, list):
+        return set()
+
+    affected: set[str] = set()
+    for cluster in clusters:
+        if not isinstance(cluster, dict):
+            continue
+        members = cluster.get("members")
+        if not isinstance(members, list):
+            continue
+        for member in members:
+            name = str(member or "").strip()
+            if name:
+                affected.add(name)
+    return affected
 
 
 def list_precheck_finding_files(
@@ -520,14 +549,7 @@ def list_precheck_finding_files(
     artifacts = getattr(row, "artifacts", None)
     if not isinstance(artifacts, dict):
         artifacts = {}
-    jsonl_raw = str(artifacts.get("files_jsonl") or "").strip()
-    if not jsonl_raw:
-        raise HTTPException(status_code=404, detail=ARTIFACTS_NOT_AVAILABLE_DETAIL)
-
-    jsonl_path = Path(jsonl_raw)
-    _assert_artifact_path_under_tenant(tenant_id=tenant_id, path=jsonl_path)
-    if not jsonl_path.exists() or not jsonl_path.is_file():
-        raise HTTPException(status_code=404, detail=ARTIFACTS_NOT_FOUND_DETAIL)
+    jsonl_path = _jsonl_path_from_artifacts(artifacts, tenant_id=tenant_id)
 
     # near_dup is cluster-based and resolved via near_dups_json (not per-record findings).
     if key == "near_dup":
@@ -564,14 +586,7 @@ def list_precheck_files_by_dir_prefix(
     artifacts = getattr(row, "artifacts", None)
     if not isinstance(artifacts, dict):
         artifacts = {}
-    jsonl_raw = str(artifacts.get("files_jsonl") or "").strip()
-    if not jsonl_raw:
-        raise HTTPException(status_code=404, detail=ARTIFACTS_NOT_AVAILABLE_DETAIL)
-
-    jsonl_path = Path(jsonl_raw)
-    _assert_artifact_path_under_tenant(tenant_id=tenant_id, path=jsonl_path)
-    if not jsonl_path.exists() or not jsonl_path.is_file():
-        raise HTTPException(status_code=404, detail=ARTIFACTS_NOT_FOUND_DETAIL)
+    jsonl_path = _jsonl_path_from_artifacts(artifacts, tenant_id=tenant_id)
 
     return _list_files_from_jsonl(
         jsonl_path=jsonl_path,

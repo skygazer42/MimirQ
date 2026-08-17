@@ -6,7 +6,6 @@ These are used across:
 - Long-term memory retrieval (BM25 over chat history)
 """
 
-
 import re
 import unicodedata
 from functools import lru_cache
@@ -155,6 +154,30 @@ def _numeric_normalization_tokens(text: str) -> list[str]:
     return out
 
 
+def _append_unique_token(tokens: list[str], seen: set[str], token: str) -> None:
+    if not _keep_token(token) or token in seen:
+        return
+    tokens.append(token)
+    seen.add(token)
+
+
+def _expand_ascii_parts(norm: str, *, tokens: list[str], seen: set[str]) -> None:
+    for seg in _ASCII_PATH_SPLIT_RE.split(norm):
+        segment = str(seg).strip()
+        if segment and segment != norm:
+            _append_unique_token(tokens, seen, segment)
+        for part in _ASCII_PART_SPLIT_RE.split(segment):
+            _append_unique_token(tokens, seen, str(part).strip())
+
+
+def _expand_ascii_subtokens(raw_tok: str, norm: str, *, tokens: list[str], seen: set[str]) -> None:
+    _expand_ascii_parts(norm, tokens=tokens, seen=seen)
+    for sub in _camel_subtokens(raw_tok):
+        _append_unique_token(tokens, seen, sub)
+    for sub in _version_subtokens(norm):
+        _append_unique_token(tokens, seen, sub)
+
+
 def _tokenize_for_bm25_ascii(text: str) -> list[str]:
     tokens: list[str] = []
     extra: set[str] = set()
@@ -171,48 +194,26 @@ def _tokenize_for_bm25_ascii(text: str) -> list[str]:
 
         if not bool(getattr(settings, "BM25_TOKENIZE_ASCII_EXPAND_ENABLED", True)):
             continue
-
-        # Split paths/identifiers to reduce false negatives:
-        # - keep the full token (already added)
-        # - add path segments (`api/v1/foo` -> `api`, `v1`, `foo`)
-        # - add sub-parts (`retrieve-preview` -> `retrieve`, `preview`)
-        for seg in _ASCII_PATH_SPLIT_RE.split(norm):
-            s = str(seg).strip()
-            if s and s != norm and _keep_token(s) and s not in extra:
-                tokens.append(s)
-                extra.add(s)
-            for part in _ASCII_PART_SPLIT_RE.split(s):
-                p = str(part).strip()
-                if not _keep_token(p):
-                    continue
-                if p in extra:
-                    continue
-                tokens.append(p)
-                extra.add(p)
-
-        # CamelCase subtokens for identifiers like ChatRAGConfig.
-        for sub in _camel_subtokens(raw_tok):
-            if sub in extra:
-                continue
-            tokens.append(sub)
-            extra.add(sub)
-
-        # Version-like tokens (v1.2.3 -> 1.2.3 + 1.2).
-        for sub in _version_subtokens(norm):
-            if sub in extra:
-                continue
-            tokens.append(sub)
-            extra.add(sub)
+        _expand_ascii_subtokens(raw_tok, norm, tokens=tokens, seen=extra)
 
     # Add numeric normalization tokens (once per input).
     for n in _numeric_normalization_tokens(text):
-        if n in extra:
-            continue
-        if _keep_token(n):
-            tokens.append(n)
-            extra.add(n)
+        _append_unique_token(tokens, extra, n)
 
     return tokens
+
+
+def _append_ascii_tokens(tokens: list[str], cjk_oov_buf: list[str], extra_budget: list[int], text: str) -> None:
+    _flush_cjk_oov_buffer(cjk_oov_buf, tokens, extra_budget=extra_budget)
+    for token in _tokenize_for_bm25_ascii(text):
+        if _keep_token(token):
+            tokens.append(token)
+
+
+def _append_cjk_token(tokens: list[str], cjk_oov_buf: list[str], extra_budget: list[int], token: str) -> None:
+    _flush_cjk_oov_buffer(cjk_oov_buf, tokens, extra_budget=extra_budget)
+    if _keep_token(token):
+        tokens.append(token)
 
 
 def _is_cjk_char(ch: str) -> bool:
@@ -274,10 +275,7 @@ def _tokenize_for_bm25_impl(text: str) -> list[str]:
 
         # Let the shared ASCII tokenizer handle all technical tokens uniformly (paths, versions, ids).
         if tok.isascii():
-            _flush_cjk_oov_buffer(cjk_oov_buf, tokens, extra_budget=extra_budget)
-            for t in _tokenize_for_bm25_ascii(tok):
-                if _keep_token(t):
-                    tokens.append(t)
+            _append_ascii_tokens(tokens, cjk_oov_buf, extra_budget, tok)
             continue
 
         # Build CJK bigram fallback only for OOV-like sequences where jieba yields single chars.
@@ -288,11 +286,7 @@ def _tokenize_for_bm25_impl(text: str) -> list[str]:
                 _flush_cjk_oov_buffer(cjk_oov_buf, tokens, extra_budget=extra_budget)
             continue
 
-        _flush_cjk_oov_buffer(cjk_oov_buf, tokens, extra_budget=extra_budget)
-        norm = tok  # keep CJK as-is
-        if not _keep_token(norm):
-            continue
-        tokens.append(norm)
+        _append_cjk_token(tokens, cjk_oov_buf, extra_budget, tok)
 
     _flush_cjk_oov_buffer(cjk_oov_buf, tokens, extra_budget=extra_budget)
 

@@ -12,7 +12,6 @@ The chunker splits the text into YAML documents first, then applies a fallback
 RecursiveCharacterTextSplitter inside each document while preserving offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -39,6 +38,15 @@ class _Doc:
     kind: str | None
     name: str | None
     api_version: str | None
+
+
+@dataclass(frozen=True)
+class _YamlSignalStats:
+    key_with_value: int
+    key_only: int
+    indented: int
+    list_items: int
+    total_lines: int
 
 
 _DOC_SEP_RE = re.compile(r"(?m)^\s*---\s*(?:#.*)?$")
@@ -155,29 +163,13 @@ def _build_docs(text: str) -> list[_Doc]:
     return docs
 
 
-def looks_like_yaml_manifest(text: str) -> bool:
-    if not text or len(text) < 80:
-        return False
-    if "\t" in text:
-        # Tabs are rare in YAML; avoid false positives from other formats.
-        return False
-
-    head = text[:6000]
-    if re.search(r"(?m)^\s*apiVersion\s*:\s*\S+", head) and re.search(r"(?m)^\s*kind\s*:\s*\S+", head):
-        return True
-    if _DOC_SEP_RE.search(head):
-        kv = sum(1 for ln in head.splitlines() if _parse_yaml_kv_line(ln) is not None)
-        return kv >= 4
-
-    raw_lines = [ln for ln in (text or "").splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
-    if len(raw_lines) < 8:
-        return False
+def _collect_yaml_signal_stats(lines: list[str]) -> _YamlSignalStats:
     key_with_value = 0
     key_only = 0
     indented = 0
     list_items = 0
-    window = raw_lines[:200]
-    for ln in window:
+
+    for ln in lines:
         if _LIST_ITEM_RE.match(ln):
             list_items += 1
         if _INDENTED_KEY_RE.match(ln):
@@ -188,14 +180,80 @@ def looks_like_yaml_manifest(text: str) -> bool:
         if _parse_yaml_kv_line(ln) is not None:
             key_with_value += 1
 
-    key_lines = key_with_value + key_only
+    return _YamlSignalStats(
+        key_with_value=key_with_value,
+        key_only=key_only,
+        indented=indented,
+        list_items=list_items,
+        total_lines=len(lines),
+    )
+
+
+def _looks_like_yaml_from_doc_separators(head: str) -> bool:
+    if _DOC_SEP_RE.search(head) is None:
+        return False
+    kv = sum(1 for ln in head.splitlines() if _parse_yaml_kv_line(ln) is not None)
+    return kv >= 4
+
+
+def _looks_like_structured_yaml(text: str) -> bool:
+    raw_lines = [ln for ln in (text or "").splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+    if len(raw_lines) < 8:
+        return False
+
+    stats = _collect_yaml_signal_stats(raw_lines[:200])
+    key_lines = stats.key_with_value + stats.key_only
     if key_lines < 6:
         return False
-    ratio = key_lines / max(1, len(window))
+
+    ratio = key_lines / max(1, stats.total_lines)
     if ratio < 0.25:
         return False
-    # Require at least some structural YAML signal to avoid "field: value" false positives.
-    return bool(key_only >= 1 or indented >= 2 or list_items >= 2)
+
+    return bool(stats.key_only >= 1 or stats.indented >= 2 or stats.list_items >= 2)
+
+
+def _build_yaml_chunk_metadata(
+    *,
+    base_meta: dict[str, Any],
+    split_meta: dict[str, Any],
+    doc_info: _Doc,
+    doc_count: int,
+    abs_start: int,
+    abs_end: int,
+) -> dict[str, Any]:
+    meta: dict[str, Any] = dict(base_meta)
+    meta.update(split_meta)
+    meta["chunk_strategy"] = "yaml_manifest"
+    meta["start_char"] = abs_start
+    meta["end_char"] = abs_end
+    meta.setdefault("doc_type_kwd", "yaml")
+    meta["yaml_doc_index"] = int(doc_info.index)
+    meta["yaml_doc_count"] = int(doc_count)
+    if doc_info.api_version:
+        meta["yaml_api_version"] = doc_info.api_version
+    if doc_info.kind:
+        meta["yaml_kind"] = doc_info.kind
+    if doc_info.name:
+        meta["yaml_name"] = doc_info.name
+    if doc_info.kind and doc_info.name:
+        meta["yaml_id"] = f"{doc_info.kind}/{doc_info.name}"
+    return meta
+
+
+def looks_like_yaml_manifest(text: str) -> bool:
+    if not text or len(text) < 80:
+        return False
+    if "\t" in text:
+        # Tabs are rare in YAML; avoid false positives from other formats.
+        return False
+
+    head = text[:6000]
+    if re.search(r"(?m)^\s*apiVersion\s*:\s*\S+", head) and re.search(r"(?m)^\s*kind\s*:\s*\S+", head):
+        return True
+    if _looks_like_yaml_from_doc_separators(head):
+        return True
+    return _looks_like_structured_yaml(text)
 
 
 class YAMLManifestChunker(BaseChunker):
@@ -224,6 +282,7 @@ class YAMLManifestChunker(BaseChunker):
             if not docs:
                 continue
 
+            doc_count = len(docs)
             for d in docs:
                 doc_text = text[d.start : d.end]
                 if not doc_text.strip():
@@ -234,24 +293,14 @@ class YAMLManifestChunker(BaseChunker):
                     local_start = sd.metadata.pop("start_index", None) or 0
                     abs_start = d.start + int(local_start)
                     abs_end = abs_start + len(sd.page_content)
-
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "yaml_manifest"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta.setdefault("doc_type_kwd", "yaml")
-                    meta["yaml_doc_index"] = int(d.index)
-                    meta["yaml_doc_count"] = int(len(docs))
-                    if d.api_version:
-                        meta["yaml_api_version"] = d.api_version
-                    if d.kind:
-                        meta["yaml_kind"] = d.kind
-                    if d.name:
-                        meta["yaml_name"] = d.name
-                    if d.kind and d.name:
-                        meta["yaml_id"] = f"{d.kind}/{d.name}"
-
+                    meta = _build_yaml_chunk_metadata(
+                        base_meta=base_meta,
+                        split_meta=sd.metadata or {},
+                        doc_info=d,
+                        doc_count=doc_count,
+                        abs_start=abs_start,
+                        abs_end=abs_end,
+                    )
                     out.append(Document(page_content=sd.page_content, metadata=meta))
 
         for idx, chunk in enumerate(out):

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Print a compact human-readable Changzhou Dify readiness status."""
 
-
 import argparse
 import json
 import sys
@@ -249,6 +248,11 @@ def _markdown_table(headers: list[str], rows: list[list[str]]) -> list[str]:
     return lines
 
 
+def _report_dict(report: dict[str, Any], key: str) -> dict[str, Any]:
+    value = report.get(key)
+    return value if isinstance(value, dict) else {}
+
+
 def format_markdown_evidence(
     report: dict[str, Any],
     *,
@@ -256,24 +260,24 @@ def format_markdown_evidence(
     app_id: str = "",
 ) -> str:
     """Return a PII-safe Markdown evidence summary from readiness aggregate metrics."""
-    summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
-    artifacts = report.get("artifacts") if isinstance(report.get("artifacts"), dict) else {}
-    artifact_times = report.get("artifact_generated_at") if isinstance(report.get("artifact_generated_at"), dict) else {}
-    knowledge_map = report.get("knowledge_map") if isinstance(report.get("knowledge_map"), dict) else {}
-    mimirq_direct = report.get("mimirq_direct") if isinstance(report.get("mimirq_direct"), dict) else {}
-    kg_compare = report.get("kg_compare") if isinstance(report.get("kg_compare"), dict) else {}
-    external_probe = report.get("external_probe") if isinstance(report.get("external_probe"), dict) else {}
-    full_gate = report.get("full_gate") if isinstance(report.get("full_gate"), dict) else {}
-    full_gate_stages = full_gate.get("stages") if isinstance(full_gate.get("stages"), dict) else {}
-    full_eval = full_gate_stages.get("eval") if isinstance(full_gate_stages.get("eval"), dict) else {}
-    full_trace = full_gate_stages.get("trace") if isinstance(full_gate_stages.get("trace"), dict) else {}
+    summary = _report_dict(report, "summary")
+    artifacts = _report_dict(report, "artifacts")
+    artifact_times = _report_dict(report, "artifact_generated_at")
+    knowledge_map = _report_dict(report, "knowledge_map")
+    mimirq_direct = _report_dict(report, "mimirq_direct")
+    kg_compare = _report_dict(report, "kg_compare")
+    external_probe = _report_dict(report, "external_probe")
+    full_gate = _report_dict(report, "full_gate")
+    full_gate_stages = _report_dict(full_gate, "stages")
+    full_eval = _report_dict(full_gate_stages, "eval")
+    full_trace = _report_dict(full_gate_stages, "trace")
 
-    knowledge_summary = knowledge_map.get("summary") if isinstance(knowledge_map.get("summary"), dict) else {}
-    direct_summary = mimirq_direct.get("summary") if isinstance(mimirq_direct.get("summary"), dict) else {}
-    external_summary = external_probe.get("summary") if isinstance(external_probe.get("summary"), dict) else {}
-    boundary = external_probe.get("boundary") if isinstance(external_probe.get("boundary"), dict) else {}
-    eval_summary = full_eval.get("summary") if isinstance(full_eval.get("summary"), dict) else {}
-    trace_summary = full_trace.get("summary") if isinstance(full_trace.get("summary"), dict) else {}
+    knowledge_summary = _report_dict(knowledge_map, "summary")
+    direct_summary = _report_dict(mimirq_direct, "summary")
+    external_summary = _report_dict(external_probe, "summary")
+    boundary = _report_dict(external_probe, "boundary")
+    eval_summary = _report_dict(full_eval, "summary")
+    trace_summary = _report_dict(full_trace, "summary")
 
     passed = summary.get("passed") is True
     lines = [
@@ -391,70 +395,140 @@ def format_status(
     console_ui_base_url: str = "",
     app_id: str = "",
 ) -> str:
-    summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
-    artifacts = report.get("artifacts") if isinstance(report.get("artifacts"), dict) else {}
-    artifact_times = report.get("artifact_generated_at") if isinstance(report.get("artifact_generated_at"), dict) else {}
+    summary = _report_dict(report, "summary")
+    artifacts = _report_dict(report, "artifacts")
+    artifact_times = _report_dict(report, "artifact_generated_at")
     passed = summary.get("passed") is True
+    lines = _status_header_lines(
+        report,
+        passed=passed,
+        now=now,
+        max_age_minutes=max_age_minutes,
+        console_ui_base_url=console_ui_base_url,
+        app_id=app_id,
+    )
+    if not passed:
+        lines.extend(_status_failure_lines(summary))
+    passed_stages = _stages_with_status(report, "passed")
+    if passed_stages:
+        lines.append(f"Passed stages: {', '.join(passed_stages)}")
+    lines.extend(_status_context_lines(report))
+    lines.extend(_status_warning_lines(report))
+    skipped = _text_list(summary.get("skipped_stages"))
+    if skipped:
+        lines.append(f"Skipped stages: {', '.join(skipped)}")
+    lines.extend(_artifact_lines("Artifact times", artifact_times))
+    lines.extend(_artifact_lines("Artifacts", artifacts))
+    return "\n".join(lines)
+
+
+def _status_header_lines(
+    report: dict[str, Any],
+    *,
+    passed: bool,
+    now: datetime | None,
+    max_age_minutes: int | None,
+    console_ui_base_url: str,
+    app_id: str,
+) -> list[str]:
     lines = [f"Changzhou Dify readiness: {'PASSED' if passed else 'FAILED'}"]
     generated_at = _text(report.get("generated_at"))
     if generated_at:
         lines.append(f"Generated at: {generated_at}")
-    if _text(console_ui_base_url):
-        lines.append(f"Dify console UI: {_join_url(console_ui_base_url, 'apps')}")
-        if _text(app_id):
-            lines.append(f"Dify workflow UI: {_join_url(console_ui_base_url, 'app', app_id, 'workflow')}")
-    if max_age_minutes and max_age_minutes > 0:
-        if generated_at:
-            lines.append(_freshness_line(generated_at, now=now or datetime.now(timezone.utc), max_age_minutes=max_age_minutes))
-        else:
-            lines.append("Freshness: unknown (missing generated_at)")
-    if not passed:
-        root_stage = _text(summary.get("root_cause_stage")) or ",".join(_text_list(summary.get("failed_stages")))
-        root_reason = _text(summary.get("root_cause_reason"))
-        if root_stage or root_reason:
-            lines.append(f"Root cause: {root_stage}{f' ({root_reason})' if root_reason else ''}")
-        next_action = _text(summary.get("next_action"))
-        if next_action:
-            lines.append(f"Next action: {next_action}")
-    passed_stages = _stages_with_status(report, "passed")
-    if passed_stages:
-        lines.append(f"Passed stages: {', '.join(passed_stages)}")
-    external_probe = report.get("external_probe") if isinstance(report.get("external_probe"), dict) else {}
-    boundary = external_probe.get("boundary") if isinstance(external_probe.get("boundary"), dict) else {}
+    lines.extend(_console_ui_lines(console_ui_base_url, app_id))
+    lines.extend(_freshness_lines(generated_at, now, max_age_minutes))
+    return lines
+
+
+def _console_ui_lines(console_ui_base_url: str, app_id: str) -> list[str]:
+    if not _text(console_ui_base_url):
+        return []
+    lines = [f"Dify console UI: {_join_url(console_ui_base_url, 'apps')}"]
+    if _text(app_id):
+        lines.append(f"Dify workflow UI: {_join_url(console_ui_base_url, 'app', app_id, 'workflow')}")
+    return lines
+
+
+def _freshness_lines(
+    generated_at: str,
+    now: datetime | None,
+    max_age_minutes: int | None,
+) -> list[str]:
+    if not max_age_minutes or max_age_minutes <= 0:
+        return []
+    if not generated_at:
+        return ["Freshness: unknown (missing generated_at)"]
+    return [
+        _freshness_line(
+            generated_at,
+            now=now or datetime.now(timezone.utc),
+            max_age_minutes=max_age_minutes,
+        )
+    ]
+
+
+def _status_failure_lines(summary: dict[str, Any]) -> list[str]:
+    lines: list[str] = []
+    root_stage = _text(summary.get("root_cause_stage")) or ",".join(_text_list(summary.get("failed_stages")))
+    root_reason = _text(summary.get("root_cause_reason"))
+    if root_stage or root_reason:
+        lines.append(f"Root cause: {root_stage}{f' ({root_reason})' if root_reason else ''}")
+    next_action = _text(summary.get("next_action"))
+    if next_action:
+        lines.append(f"Next action: {next_action}")
+    return lines
+
+
+def _status_context_lines(report: dict[str, Any]) -> list[str]:
+    lines: list[str] = []
+    external_probe = _report_dict(report, "external_probe")
+    boundary = _report_dict(external_probe, "boundary")
     boundary_verdict = _text(boundary.get("verdict"))
     if boundary_verdict:
         lines.append(f"Boundary: {boundary_verdict}")
-    knowledge_map = report.get("knowledge_map") if isinstance(report.get("knowledge_map"), dict) else {}
-    knowledge_summary = knowledge_map.get("summary") if isinstance(knowledge_map.get("summary"), dict) else {}
+    knowledge_map = _report_dict(report, "knowledge_map")
+    knowledge_summary = _report_dict(knowledge_map, "summary")
     knowledge_plugins = _knowledge_plugin_ref_summary(knowledge_summary)
     if knowledge_plugins:
         lines.append(f"Knowledge map plugins: {knowledge_plugins}")
     retrieval_audit_text = _retrieval_audit_summary_text(report)
     if retrieval_audit_text:
         lines.append(f"Retrieval audit: {retrieval_audit_text}")
-    kg_compare = report.get("kg_compare") if isinstance(report.get("kg_compare"), dict) else {}
+    kg_compare = _report_dict(report, "kg_compare")
     kg_compare_text = _kg_compare_summary_text(kg_compare)
     if kg_compare_text:
         lines.append(f"KG compare: status={_stage_status(report, 'kg_compare')}; {kg_compare_text}")
-    mimirq_direct = report.get("mimirq_direct") if isinstance(report.get("mimirq_direct"), dict) else {}
-    mimirq_source = mimirq_direct.get("source") if isinstance(mimirq_direct.get("source"), dict) else {}
-    direct_summary = mimirq_direct.get("summary") if isinstance(mimirq_direct.get("summary"), dict) else {}
+    direct_base_line = _direct_base_line(report, external_probe)
+    if direct_base_line:
+        lines.append(direct_base_line)
+    retrieval_quality = _retrieval_quality_line(report)
+    if retrieval_quality:
+        lines.append(f"Retrieval quality: {retrieval_quality}")
+    return lines
+
+
+def _direct_base_line(report: dict[str, Any], external_probe: dict[str, Any]) -> str:
+    mimirq_direct = _report_dict(report, "mimirq_direct")
+    mimirq_source = _report_dict(mimirq_direct, "source")
     direct_base_url = _text(mimirq_source.get("base_url"))
+    if not direct_base_url:
+        return ""
     direct_base_host = _text(mimirq_source.get("base_host"))
     external_endpoint_host = _text(external_probe.get("endpoint_host"))
-    if direct_base_url:
-        if external_endpoint_host and direct_base_host and direct_base_host != external_endpoint_host:
-            lines.append(
-                f"MimirQ direct base: {direct_base_url} (differs from external endpoint host {external_endpoint_host})"
-            )
-        elif external_endpoint_host and direct_base_host == external_endpoint_host:
-            lines.append(f"MimirQ direct base: {direct_base_url} (matches external endpoint host)")
-        else:
-            lines.append(f"MimirQ direct base: {direct_base_url}")
-    full_gate = report.get("full_gate") if isinstance(report.get("full_gate"), dict) else {}
-    full_stages = full_gate.get("stages") if isinstance(full_gate.get("stages"), dict) else {}
-    full_eval = full_stages.get("eval") if isinstance(full_stages.get("eval"), dict) else {}
-    eval_summary = full_eval.get("summary") if isinstance(full_eval.get("summary"), dict) else {}
+    if external_endpoint_host and direct_base_host and direct_base_host != external_endpoint_host:
+        return f"MimirQ direct base: {direct_base_url} (differs from external endpoint host {external_endpoint_host})"
+    if external_endpoint_host and direct_base_host == external_endpoint_host:
+        return f"MimirQ direct base: {direct_base_url} (matches external endpoint host)"
+    return f"MimirQ direct base: {direct_base_url}"
+
+
+def _retrieval_quality_line(report: dict[str, Any]) -> str:
+    mimirq_direct = _report_dict(report, "mimirq_direct")
+    direct_summary = _report_dict(mimirq_direct, "summary")
+    full_gate = _report_dict(report, "full_gate")
+    full_stages = _report_dict(full_gate, "stages")
+    full_eval = _report_dict(full_stages, "eval")
+    eval_summary = _report_dict(full_eval, "summary")
     retrieval_quality_parts = [
         f"direct.hit_at_1={_metric(direct_summary, 'hit_at_1')}",
         f"direct.effective_context_rate={_metric(direct_summary, 'retrieval_effective_context_rate')}",
@@ -462,33 +536,27 @@ def format_status(
         f"full.effective_context_rate={_metric(eval_summary, 'retrieval_effective_context_rate')}",
         f"full.noise_rate={_metric(eval_summary, 'retrieval_noise_rate')}",
     ]
-    retrieval_quality = "; ".join(part for part in retrieval_quality_parts if not part.endswith("="))
-    if retrieval_quality:
-        lines.append(f"Retrieval quality: {retrieval_quality}")
-    warning_items = _full_gate_warning_items(report)
-    if warning_items:
-        lines.append(f"Warnings: {'; '.join(warning_items)}")
-    warning_case_items = _full_gate_warning_case_items(report)
-    if warning_case_items:
-        lines.append(f"Warning cases: {'; '.join(warning_case_items)}")
-    warning_diagnosis_items = _full_gate_warning_diagnosis_items(report)
-    if warning_diagnosis_items:
-        lines.append(f"Warning diagnosis: {'; '.join(warning_diagnosis_items)}")
-    warning_detail_items = _full_gate_warning_detail_items(report)
-    if warning_detail_items:
-        lines.append(f"Warning detail: {'; '.join(warning_detail_items)}")
-    skipped = _text_list(summary.get("skipped_stages"))
-    if skipped:
-        lines.append(f"Skipped stages: {', '.join(skipped)}")
-    if artifact_times:
-        time_items = [f"{key}={value}" for key, value in artifact_times.items() if _text(value)]
-        if time_items:
-            lines.append(f"Artifact times: {'; '.join(time_items)}")
-    if artifacts:
-        artifact_items = [f"{key}={value}" for key, value in artifacts.items() if _text(value)]
-        if artifact_items:
-            lines.append(f"Artifacts: {'; '.join(artifact_items)}")
-    return "\n".join(lines)
+    return "; ".join(part for part in retrieval_quality_parts if not part.endswith("="))
+
+
+def _status_warning_lines(report: dict[str, Any]) -> list[str]:
+    lines: list[str] = []
+    for label, items in (
+        ("Warnings", _full_gate_warning_items(report)),
+        ("Warning cases", _full_gate_warning_case_items(report)),
+        ("Warning diagnosis", _full_gate_warning_diagnosis_items(report)),
+        ("Warning detail", _full_gate_warning_detail_items(report)),
+    ):
+        if items:
+            lines.append(f"{label}: {'; '.join(items)}")
+    return lines
+
+
+def _artifact_lines(label: str, values: dict[str, Any]) -> list[str]:
+    if not values:
+        return []
+    items = [f"{key}={value}" for key, value in values.items() if _text(value)]
+    return [f"{label}: {'; '.join(items)}"] if items else []
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -506,7 +574,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Optional Dify console UI base URL, including any frontend base path such as /brainai.",
     )
     parser.add_argument("--app-id", default="", help="Optional Dify app id used to print the workflow UI URL.")
-    parser.add_argument("--markdown-out", default="", help="Optional path to write a PII-safe Markdown evidence summary.")
+    parser.add_argument(
+        "--markdown-out", default="", help="Optional path to write a PII-safe Markdown evidence summary."
+    )
     return parser
 
 

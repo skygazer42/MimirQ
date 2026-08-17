@@ -9,7 +9,6 @@ Targets application / system logs with timestamped entry lines, e.g.:
 The chunker keeps whole log entries together and uses entry-level overlap.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -95,6 +94,43 @@ def looks_like_log_events(text: str) -> bool:
     return levelled >= 3 or len(entries) >= 6
 
 
+def _entry_window_end(entries: list[_Entry], *, start_idx: int, chunk_size: int) -> int:
+    end_idx = start_idx
+    while end_idx < len(entries):
+        candidate_length = entries[end_idx].end - entries[start_idx].start
+        if end_idx != start_idx and candidate_length > chunk_size:
+            break
+        end_idx += 1
+    return max(start_idx + 1, end_idx)
+
+
+def _unique_entry_levels(entries: list[_Entry], *, start_idx: int, end_idx: int) -> list[str]:
+    levels: list[str] = []
+    for entry in entries[start_idx:end_idx]:
+        if entry.level and entry.level not in levels:
+            levels.append(entry.level)
+    return levels[:10]
+
+
+def _next_entry_start(
+    entries: list[_Entry],
+    *,
+    start_idx: int,
+    end_idx: int,
+    chunk_overlap: int,
+) -> int:
+    next_start = end_idx
+    if chunk_overlap > 0 and end_idx - start_idx > 1:
+        desired = end_idx - 1
+        while desired > start_idx:
+            overlap_length = entries[end_idx - 1].end - entries[desired - 1].start
+            if overlap_length > chunk_overlap:
+                break
+            desired -= 1
+        next_start = desired if desired > start_idx else end_idx - 1
+    return end_idx if next_start <= start_idx else next_start
+
+
 class LogEventsChunker(BaseChunker):
     def __init__(self, chunk_size: int, chunk_overlap: int):
         self.chunk_size = int(chunk_size)
@@ -108,93 +144,117 @@ class LogEventsChunker(BaseChunker):
             add_start_index=True,
         )
 
+    def _append_fallback_chunks(
+        self,
+        out: list[Document],
+        *,
+        text: str,
+        base_meta: dict[str, Any],
+    ) -> None:
+        split_docs = self._fallback_splitter.create_documents(
+            texts=[text],
+            metadatas=[base_meta],
+        )
+        for split_doc in split_docs:
+            start = int(split_doc.metadata.pop("start_index", None) or 0)
+            meta: dict[str, Any] = dict(base_meta)
+            meta.update(split_doc.metadata or {})
+            meta.update(
+                {
+                    "chunk_strategy": "log_events",
+                    "start_char": start,
+                    "end_char": start + len(split_doc.page_content),
+                    "log_fallback": True,
+                }
+            )
+            meta.setdefault("doc_type_kwd", "log")
+            out.append(Document(page_content=split_doc.page_content, metadata=meta))
+
+    @staticmethod
+    def _entry_metadata(
+        *,
+        base_meta: dict[str, Any],
+        entries: list[_Entry],
+        start_idx: int,
+        end_idx: int,
+    ) -> dict[str, Any]:
+        first_entry = entries[start_idx]
+        last_entry = entries[end_idx - 1]
+        meta: dict[str, Any] = dict(base_meta)
+        meta.update(
+            {
+                "chunk_strategy": "log_events",
+                "start_char": first_entry.start,
+                "end_char": last_entry.end,
+                "log_entry_count": int(end_idx - start_idx),
+            }
+        )
+        meta.setdefault("doc_type_kwd", "log")
+        levels = _unique_entry_levels(entries, start_idx=start_idx, end_idx=end_idx)
+        if levels:
+            meta["log_levels"] = levels
+        if first_entry.ts:
+            meta["first_timestamp"] = first_entry.ts
+        if last_entry.ts:
+            meta["last_timestamp"] = last_entry.ts
+        return meta
+
+    def _append_entry_chunks(
+        self,
+        out: list[Document],
+        *,
+        text: str,
+        entries: list[_Entry],
+        base_meta: dict[str, Any],
+    ) -> None:
+        start_idx = 0
+        while start_idx < len(entries):
+            end_idx = _entry_window_end(
+                entries,
+                start_idx=start_idx,
+                chunk_size=self.chunk_size,
+            )
+            meta = self._entry_metadata(
+                base_meta=base_meta,
+                entries=entries,
+                start_idx=start_idx,
+                end_idx=end_idx,
+            )
+            out.append(
+                Document(
+                    page_content=text[meta["start_char"] : meta["end_char"]],
+                    metadata=meta,
+                )
+            )
+            start_idx = _next_entry_start(
+                entries,
+                start_idx=start_idx,
+                end_idx=end_idx,
+                chunk_overlap=self.chunk_overlap,
+            )
+
+    def _split_document(self, doc: Document, out: list[Document]) -> None:
+        text = doc.page_content or ""
+        if not text.strip():
+            return
+        base_meta = dict(doc.metadata or {})
+        entries = _iter_entries(text)
+        if entries:
+            self._append_entry_chunks(
+                out,
+                text=text,
+                entries=entries,
+                base_meta=base_meta,
+            )
+            return
+        self._append_fallback_chunks(out, text=text, base_meta=base_meta)
+
     def split_documents(self, documents: list[Document]) -> list[Document]:
         out: list[Document] = []
-
         for doc in documents:
-            text = doc.page_content or ""
-            base_meta = dict(doc.metadata or {})
-            if not text.strip():
-                continue
-
-            entries = _iter_entries(text)
-            if not entries:
-                split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "log_events"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta["log_fallback"] = True
-                    meta.setdefault("doc_type_kwd", "log")
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
-                continue
-
-            start_idx = 0
-            while start_idx < len(entries):
-                end_idx = start_idx
-                while end_idx < len(entries):
-                    candidate_end = entries[end_idx].end
-                    candidate_len = candidate_end - entries[start_idx].start
-                    if end_idx == start_idx or candidate_len <= self.chunk_size:
-                        end_idx += 1
-                        continue
-                    break
-
-                if end_idx == start_idx:
-                    end_idx = start_idx + 1
-
-                chunk_start = entries[start_idx].start
-                chunk_end = entries[end_idx - 1].end
-                content = text[chunk_start:chunk_end]
-
-                levels = [e.level for e in entries[start_idx:end_idx] if e.level]
-                uniq_levels: list[str] = []
-                for lv in levels:
-                    if lv and lv not in uniq_levels:
-                        uniq_levels.append(lv)
-                uniq_levels = uniq_levels[:10]
-
-                meta: dict[str, Any] = dict(base_meta)
-                meta["chunk_strategy"] = "log_events"
-                meta["start_char"] = chunk_start
-                meta["end_char"] = chunk_end
-                meta["log_entry_count"] = int(end_idx - start_idx)
-                meta.setdefault("doc_type_kwd", "log")
-                if uniq_levels:
-                    meta["log_levels"] = uniq_levels
-                first_ts = entries[start_idx].ts
-                last_ts = entries[end_idx - 1].ts
-                if first_ts:
-                    meta["first_timestamp"] = first_ts
-                if last_ts:
-                    meta["last_timestamp"] = last_ts
-                out.append(Document(page_content=content, metadata=meta))
-
-                # Entry-level overlap.
-                next_start = end_idx
-                if self.chunk_overlap > 0 and (end_idx - start_idx) > 1:
-                    desired = end_idx - 1
-                    while desired > start_idx:
-                        overlap_len = entries[end_idx - 1].end - entries[desired - 1].start
-                        if overlap_len <= self.chunk_overlap:
-                            desired -= 1
-                            continue
-                        break
-                    next_start = desired if desired > start_idx else (end_idx - 1)
-
-                if next_start <= start_idx:
-                    next_start = end_idx
-                start_idx = next_start
-
+            self._split_document(doc, out)
         for idx, chunk in enumerate(out):
             meta = dict(chunk.metadata or {})
             meta["chunk_index"] = idx
             chunk.metadata = meta
-
         return out
-

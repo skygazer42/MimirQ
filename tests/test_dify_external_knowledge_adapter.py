@@ -1,10 +1,10 @@
-
 import asyncio
 import json
 import logging
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from types import SimpleNamespace
 
 import httpx
@@ -374,7 +374,15 @@ def _demo_policy(**overrides: object) -> dict[str, object]:
             "办理材料",
             "最好",
         ],
-        "question_anchor_generic_subject_terms": ["事项", "材料", "申请材料", "办理材料", "办理入口", "办理流程", "流程"],
+        "question_anchor_generic_subject_terms": [
+            "事项",
+            "材料",
+            "申请材料",
+            "办理材料",
+            "办理入口",
+            "办理流程",
+            "流程",
+        ],
         "fast_response_always_labels": ["区县", "事项名称", "问题", "一件事"],
         "fast_response_field_rules": _demo_fast_response_field_rules(),
         "response_hints": _demo_response_hints(),
@@ -385,7 +393,7 @@ def _demo_policy(**overrides: object) -> dict[str, object]:
 
 def _patch_demo_policy(
     monkeypatch: pytest.MonkeyPatch,
-    dify_api,  # noqa: ANN001
+    dify_api: object,
     *,
     plugin_ref: str = _DEMO_PLUGIN_REF,
     **overrides: object,
@@ -400,13 +408,165 @@ def _patch_demo_policy(
     return policy
 
 
+def _dataset_map_json(dataset_id: uuid.UUID) -> str:
+    return json.dumps({"city": str(dataset_id)}, ensure_ascii=False)
+
+
+def _patch_dify_retrieval_settings(
+    monkeypatch: pytest.MonkeyPatch,
+    dify_api: object,
+    *,
+    token: str,
+    dataset_id: uuid.UUID,
+    account_id: str = "system:dify",
+    tenant_id: uuid.UUID | None = None,
+    **overrides: object,
+) -> None:
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    if tenant_id is not None:
+        monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", str(tenant_id), raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", account_id, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        _dataset_map_json(dataset_id),
+        raising=False,
+    )
+    for name, value in overrides.items():
+        monkeypatch.setattr(dify_api.settings, name, value, raising=False)
+
+
+def _patch_empty_chunk_content_map(monkeypatch: pytest.MonkeyPatch, dify_api: object) -> None:
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+
+def _make_dify_test_client(dify_api: object) -> TestClient:
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    return TestClient(app)
+
+
+def _run_metadata_anchor_db_fallback(
+    dify_api: object,
+    *,
+    db: object,
+    tenant_id: uuid.UUID,
+    dataset_id: uuid.UUID,
+    query: str,
+    existing_records: list[dict[str, object]],
+    prefer_question_anchor_first: bool = False,
+) -> list[dict[str, object]]:
+    return dify_api._metadata_anchor_db_fallback_records(
+        db=db,
+        tenant_id=tenant_id,
+        dataset_ids=[dataset_id],
+        query=query,
+        top_k=5,
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+        existing_records=existing_records,
+        prefer_question_anchor_first=prefer_question_anchor_first,
+    )
+
+
+def _collect_condition_values(condition: object) -> list[str]:
+    values: list[str] = []
+
+    def walk(node: object) -> None:
+        value = getattr(node, "value", None)
+        if isinstance(value, str):
+            values.append(value)
+        elif isinstance(value, dict):
+            for key, raw_items in value.items():
+                values.append(str(key))
+                items = raw_items if isinstance(raw_items, list | tuple | set) else [raw_items]
+                values.extend(str(item) for item in items)
+        for attr in ("left", "right"):
+            child = getattr(node, attr, None)
+            if child is not None:
+                walk(child)
+        clauses = getattr(node, "clauses", None)
+        if clauses is not None:
+            for child in clauses:
+                walk(child)
+
+    walk(condition)
+    return values
+
+
+class _MetadataFallbackQuery:
+    def __init__(self, on_all: Callable[[list[str]], list[dict[str, object]]]) -> None:
+        self._condition: object | None = None
+        self._on_all = on_all
+
+    def join(self, *_args: object, **_kwargs: object) -> "_MetadataFallbackQuery":
+        return self
+
+    def filter(self, *_conditions: object) -> "_MetadataFallbackQuery":
+        self._condition = _conditions[-1] if _conditions else None
+        return self
+
+    def order_by(self, *_args: object, **_kwargs: object) -> "_MetadataFallbackQuery":
+        return self
+
+    def limit(self, *_args: object, **_kwargs: object) -> "_MetadataFallbackQuery":
+        return self
+
+    def all(self) -> list[dict[str, object]]:
+        return self._on_all(_collect_condition_values(self._condition))
+
+
+class _MetadataFallbackDB:
+    def __init__(self, on_all: Callable[[list[str]], list[dict[str, object]]]) -> None:
+        self._on_all = on_all
+
+    def execute(self, _statement: object) -> None:
+        return None
+
+    def query(self, *_args: object, **_kwargs: object) -> _MetadataFallbackQuery:
+        return _MetadataFallbackQuery(self._on_all)
+
+    def rollback(self) -> None:
+        return None
+
+
+class _CapturingMetadataFallbackQuery(_MetadataFallbackQuery):
+    def __init__(
+        self,
+        on_all: Callable[[list[str]], list[dict[str, object]]],
+        captured_filters: list[object],
+    ) -> None:
+        super().__init__(on_all)
+        self._captured_filters = captured_filters
+
+    def filter(self, *conditions: object) -> "_CapturingMetadataFallbackQuery":
+        self._captured_filters[:] = list(conditions)
+        return super().filter(*conditions)
+
+
+class _CapturingMetadataFallbackDB(_MetadataFallbackDB):
+    def __init__(
+        self,
+        on_all: Callable[[list[str]], list[dict[str, object]]],
+        captured_filters: list[object],
+    ) -> None:
+        super().__init__(on_all)
+        self._captured_filters = captured_filters
+
+    def query(self, *_args: object, **_kwargs: object) -> _CapturingMetadataFallbackQuery:
+        return _CapturingMetadataFallbackQuery(self._on_all, self._captured_filters)
+
+
 def test_dify_warmup_knowledge_ids_default_to_map_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.api.v1.integrations_dify as dify_api
 
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "", raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_MAX_KNOWLEDGE_IDS", 2, raising=False)
 
-    ids = dify_api._resolve_dify_warmup_knowledge_ids({"city": "dataset-a", "district": "dataset-b", "faq": "dataset-c"})
+    ids = dify_api._resolve_dify_warmup_knowledge_ids(
+        {"city": "dataset-a", "district": "dataset-b", "faq": "dataset-c"}
+    )
 
     assert ids == ("city", "district")
 
@@ -1282,10 +1442,7 @@ def test_dify_exact_anchor_full_answer_does_not_skip_on_one_thing_partial_sectio
         mixed_intent_subject_terms=["涉及事项", "申请材料", "办理渠道"],
     )
     record = {
-        "content": (
-            "答案要点：一件事：Alpha Package；涉及事项：事项A；"
-            "申请材料：材料B；办理渠道：线上办理"
-        ),
+        "content": ("答案要点：一件事：Alpha Package；涉及事项：事项A；申请材料：材料B；办理渠道：线上办理"),
         "score": 0.91,
         "title": "alpha-process.txt",
         "metadata": {
@@ -1346,11 +1503,14 @@ def test_dify_question_bonus_does_not_promote_generic_one_thing_qa_over_specific
     }
     query = "残疾人服务“一件事”是不是能办？我这边比较急，涉及事项、申请材料、办理渠道，最好给我依据。"
 
-    assert dify_api._record_question_intent_bonus(
-        generic_qa,
-        query=query,
-        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
-    ) == 0.0
+    assert (
+        dify_api._record_question_intent_bonus(
+            generic_qa,
+            query=query,
+            policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+        )
+        == 0.0
+    )
     assert dify_api._record_rank_score(
         exact_section,
         query=query,
@@ -1436,9 +1596,10 @@ def test_dify_knowledge_mapping_plugin_refs_dedupes_and_normalizes_inputs() -> N
 
     assert dify_api._knowledge_mapping_plugin_refs(None) == ()
     assert dify_api._knowledge_mapping_plugin_refs({"plugin_ref": " plugin-a "}) == ("plugin-a",)
-    assert dify_api._knowledge_mapping_plugin_refs(
-        {"plugin_refs": [" plugin-a ", "plugin-a", "", "plugin-b"]}
-    ) == ("plugin-a", "plugin-b")
+    assert dify_api._knowledge_mapping_plugin_refs({"plugin_refs": [" plugin-a ", "plugin-a", "", "plugin-b"]}) == (
+        "plugin-a",
+        "plugin-b",
+    )
 
 
 def test_dify_resolve_knowledge_policy_helpers_use_mapping_plugin_refs(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1734,87 +1895,34 @@ def test_dify_metadata_anchor_db_fallback_prefers_service_anchor_before_broad_qu
     }
     service_query_pattern_counts: list[int] = []
 
-    def _condition_values(condition):  # noqa: ANN001, ANN202
-        values: list[str] = []
-
-        def walk(node):  # noqa: ANN001, ANN202
-            value = getattr(node, "value", None)
-            if isinstance(value, str):
-                values.append(value)
-            elif isinstance(value, dict):
-                for key, raw_items in value.items():
-                    values.append(str(key))
-                    items = raw_items if isinstance(raw_items, list | tuple | set) else [raw_items]
-                    values.extend(str(item) for item in items)
-            for attr in ("left", "right"):
-                child = getattr(node, attr, None)
-                if child is not None:
-                    walk(child)
-            clauses = getattr(node, "clauses", None)
-            if clauses is not None:
-                for child in clauses:
-                    walk(child)
-
-        walk(condition)
-        return values
-
-    class _FakeQuery:
-        def __init__(self) -> None:
-            self._condition = None
-
-        def join(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def filter(self, *_conditions):  # noqa: ANN002, ANN202
-            self._condition = _conditions[-1] if _conditions else None
-            return self
-
-        def order_by(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def limit(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def all(self):  # noqa: ANN202
-            values = _condition_values(self._condition)
-            fields = set(values)
-            patterns = [value for value in values if value.startswith("%")]
-            if "service_name" in fields:
-                service_query_pattern_counts.append(len(patterns))
-                if any(value == "重要工业产品生产许可（食品相关产品）名称变更" for value in values):
-                    return [service_row]
-                if len(patterns) == 1 and any("工业产品" in pattern for pattern in patterns):
-                    return [service_row]
-                return []
-            if fields.intersection({"retrieval_intents", "query_intents", "intent_terms"}) and any(
-                "工业产品" in value for value in values
-            ):
-                return [qa_row]
-            if (
-                "question" in fields
-                and any("工业产品生产" in pattern for pattern in patterns)
-                and not all("常州市重要" in pattern for pattern in patterns)
-            ):
-                return [qa_row]
+    def _on_all(values: list[str]):
+        fields = set(values)
+        patterns = [value for value in values if value.startswith("%")]
+        if "service_name" in fields:
+            service_query_pattern_counts.append(len(patterns))
+            if any(value == "重要工业产品生产许可（食品相关产品）名称变更" for value in values):
+                return [service_row]
+            if len(patterns) == 1 and any("工业产品" in pattern for pattern in patterns):
+                return [service_row]
             return []
+        if fields.intersection({"retrieval_intents", "query_intents", "intent_terms"}) and any(
+            "工业产品" in value for value in values
+        ):
+            return [qa_row]
+        if (
+            "question" in fields
+            and any("工业产品生产" in pattern for pattern in patterns)
+            and not all("常州市重要" in pattern for pattern in patterns)
+        ):
+            return [qa_row]
+        return []
 
-    class _FakeDB:
-        def execute(self, _statement):  # noqa: ANN001, ANN202
-            return None
-
-        def query(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return _FakeQuery()
-
-        def rollback(self) -> None:
-            return None
-
-    fallback_records = dify_api._metadata_anchor_db_fallback_records(
-        db=_FakeDB(),
+    fallback_records = _run_metadata_anchor_db_fallback(
+        dify_api,
+        db=_MetadataFallbackDB(_on_all),
         tenant_id=tenant_id,
-        dataset_ids=[dataset_id],
+        dataset_id=dataset_id,
         query="常州市重要工业产品生产许可（食品相关产品）名称变更：办理地点、办理材料？",
-        top_k=5,
-        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
         existing_records=[],
     )
 
@@ -1856,71 +1964,18 @@ def test_dify_metadata_anchor_db_fallback_checks_exact_service_name_first_for_pl
     }
     seen_values_by_query: list[list[str]] = []
 
-    def _condition_values(condition):  # noqa: ANN001, ANN202
-        values: list[str] = []
+    def _on_all(values: list[str]):
+        seen_values_by_query.append(values)
+        if values.count("service_name") == 1 and values.count("保健食品广告审查") == 1:
+            return [service_row]
+        return []
 
-        def walk(node):  # noqa: ANN001, ANN202
-            value = getattr(node, "value", None)
-            if isinstance(value, str):
-                values.append(value)
-            elif isinstance(value, dict):
-                for key, raw_items in value.items():
-                    values.append(str(key))
-                    items = raw_items if isinstance(raw_items, list | tuple | set) else [raw_items]
-                    values.extend(str(item) for item in items)
-            for attr in ("left", "right"):
-                child = getattr(node, attr, None)
-                if child is not None:
-                    walk(child)
-            clauses = getattr(node, "clauses", None)
-            if clauses is not None:
-                for child in clauses:
-                    walk(child)
-
-        walk(condition)
-        return values
-
-    class _FakeQuery:
-        def __init__(self) -> None:
-            self._condition = None
-
-        def join(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def filter(self, *_conditions):  # noqa: ANN002, ANN202
-            self._condition = _conditions[-1] if _conditions else None
-            return self
-
-        def order_by(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def limit(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def all(self):  # noqa: ANN202
-            values = _condition_values(self._condition)
-            seen_values_by_query.append(values)
-            if values.count("service_name") == 1 and values.count("保健食品广告审查") == 1:
-                return [service_row]
-            return []
-
-    class _FakeDB:
-        def execute(self, _statement):  # noqa: ANN001, ANN202
-            return None
-
-        def query(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return _FakeQuery()
-
-        def rollback(self) -> None:
-            return None
-
-    fallback_records = dify_api._metadata_anchor_db_fallback_records(
-        db=_FakeDB(),
+    fallback_records = _run_metadata_anchor_db_fallback(
+        dify_api,
+        db=_MetadataFallbackDB(_on_all),
         tenant_id=tenant_id,
-        dataset_ids=[dataset_id],
+        dataset_id=dataset_id,
         query="保健食品广告审查",
-        top_k=5,
-        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
         existing_records=[],
     )
 
@@ -1992,74 +2047,21 @@ def test_dify_metadata_anchor_db_fallback_prefers_qa_for_slot_question_before_se
         },
     }
 
-    def _condition_values(condition):  # noqa: ANN001, ANN202
-        values: list[str] = []
+    def _on_all(values: list[str]):
+        fields = set(values)
+        patterns = [value for value in values if value.startswith("%")]
+        if "question" in fields and any("企业社会保险登记" in pattern for pattern in patterns):
+            return [qa_row]
+        if "service_name" in fields and any("企业社会保险登记" in pattern for pattern in patterns):
+            return [service_row]
+        return []
 
-        def walk(node):  # noqa: ANN001, ANN202
-            value = getattr(node, "value", None)
-            if isinstance(value, str):
-                values.append(value)
-            elif isinstance(value, dict):
-                for key, raw_items in value.items():
-                    values.append(str(key))
-                    items = raw_items if isinstance(raw_items, list | tuple | set) else [raw_items]
-                    values.extend(str(item) for item in items)
-            for attr in ("left", "right"):
-                child = getattr(node, attr, None)
-                if child is not None:
-                    walk(child)
-            clauses = getattr(node, "clauses", None)
-            if clauses is not None:
-                for child in clauses:
-                    walk(child)
-
-        walk(condition)
-        return values
-
-    class _FakeQuery:
-        def __init__(self) -> None:
-            self._condition = None
-
-        def join(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def filter(self, *_conditions):  # noqa: ANN002, ANN202
-            self._condition = _conditions[-1] if _conditions else None
-            return self
-
-        def order_by(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def limit(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def all(self):  # noqa: ANN202
-            values = _condition_values(self._condition)
-            fields = set(values)
-            patterns = [value for value in values if value.startswith("%")]
-            if "question" in fields and any("企业社会保险登记" in pattern for pattern in patterns):
-                return [qa_row]
-            if "service_name" in fields and any("企业社会保险登记" in pattern for pattern in patterns):
-                return [service_row]
-            return []
-
-    class _FakeDB:
-        def execute(self, _statement):  # noqa: ANN001, ANN202
-            return None
-
-        def query(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return _FakeQuery()
-
-        def rollback(self) -> None:
-            return None
-
-    fallback_records = dify_api._metadata_anchor_db_fallback_records(
-        db=_FakeDB(),
+    fallback_records = _run_metadata_anchor_db_fallback(
+        dify_api,
+        db=_MetadataFallbackDB(_on_all),
         tenant_id=tenant_id,
-        dataset_ids=[dataset_id],
+        dataset_id=dataset_id,
         query="麻烦查一下区域甲在哪里办理企业社会保险登记，区域甲政务服务中心一楼大厅C区、东方东路168号。",
-        top_k=5,
-        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
         existing_records=[],
     )
 
@@ -2125,74 +2127,21 @@ def test_dify_metadata_anchor_db_fallback_continues_alias_scan_for_slot_question
         },
     }
 
-    def _condition_values(condition):  # noqa: ANN001, ANN202
-        values: list[str] = []
+    def _on_all(values: list[str]):
+        fields = set(values)
+        patterns = [value for value in values if value.startswith("%")]
+        if "aliases" in fields and any("居民身份证补领需要什么材料" in value for value in values):
+            return [broad_row]
+        if any("身份证补" in pattern for pattern in patterns):
+            return [material_row]
+        return []
 
-        def walk(node):  # noqa: ANN001, ANN202
-            value = getattr(node, "value", None)
-            if isinstance(value, str):
-                values.append(value)
-            elif isinstance(value, dict):
-                for key, raw_items in value.items():
-                    values.append(str(key))
-                    items = raw_items if isinstance(raw_items, list | tuple | set) else [raw_items]
-                    values.extend(str(item) for item in items)
-            for attr in ("left", "right"):
-                child = getattr(node, attr, None)
-                if child is not None:
-                    walk(child)
-            clauses = getattr(node, "clauses", None)
-            if clauses is not None:
-                for child in clauses:
-                    walk(child)
-
-        walk(condition)
-        return values
-
-    class _FakeQuery:
-        def __init__(self) -> None:
-            self._condition = None
-
-        def join(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def filter(self, *_conditions):  # noqa: ANN002, ANN202
-            self._condition = _conditions[-1] if _conditions else None
-            return self
-
-        def order_by(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def limit(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def all(self):  # noqa: ANN202
-            values = _condition_values(self._condition)
-            fields = set(values)
-            patterns = [value for value in values if value.startswith("%")]
-            if "aliases" in fields and any("居民身份证补领需要什么材料" in value for value in values):
-                return [broad_row]
-            if any("身份证补" in pattern for pattern in patterns):
-                return [material_row]
-            return []
-
-    class _FakeDB:
-        def execute(self, _statement):  # noqa: ANN001, ANN202
-            return None
-
-        def query(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return _FakeQuery()
-
-        def rollback(self) -> None:
-            return None
-
-    fallback_records = dify_api._metadata_anchor_db_fallback_records(
-        db=_FakeDB(),
+    fallback_records = _run_metadata_anchor_db_fallback(
+        dify_api,
+        db=_MetadataFallbackDB(_on_all),
         tenant_id=tenant_id,
-        dataset_ids=[dataset_id],
+        dataset_id=dataset_id,
         query="居民身份证补领需要什么材料",
-        top_k=5,
-        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
         existing_records=[],
     )
 
@@ -2358,9 +2307,7 @@ def test_dify_metadata_anchor_db_fallback_caps_each_statement_to_remaining_budge
         max_elapsed_ms=90,
     )
     statement_timeouts = [
-        int(statement.rsplit("=", 1)[1].strip())
-        for statement in db.executed
-        if "statement_timeout" in statement
+        int(statement.rsplit("=", 1)[1].strip()) for statement in db.executed if "statement_timeout" in statement
     ]
 
     assert fallback_records == []
@@ -2616,9 +2563,9 @@ def test_dify_preflight_records_still_use_final_reranker(
     class _FakeReranker:
         def rerank(self, query, candidates, **_kwargs):  # noqa: ANN001, ANN202, ARG002
             calls["rerank"] += 1
-            ordered_ids = [
-                candidate.id for candidate in candidates if "不影响法定诉权" in candidate.text
-            ] + [candidate.id for candidate in candidates if "不影响法定诉权" not in candidate.text]
+            ordered_ids = [candidate.id for candidate in candidates if "不影响法定诉权" in candidate.text] + [
+                candidate.id for candidate in candidates if "不影响法定诉权" not in candidate.text
+            ]
             return RerankResult(
                 ordered_ids=ordered_ids,
                 score_map={ordered_ids[0]: 0.98, ordered_ids[1]: 0.12},
@@ -3200,8 +3147,7 @@ def test_dify_preflight_anchor_content_uses_metadata_answer(
             "dify_metadata_anchor_fallback": True,
         }
         content = dify_api._content_with_answer_hints(
-            "检索锚点：核发居民身份证（换领）；常州市换身份证\n"
-            "相似问法：身份证到期、换领身份证、身份证换证流程",
+            "检索锚点：核发居民身份证（换领）；常州市换身份证\n相似问法：身份证到期、换领身份证、身份证换证流程",
             metadata,
             query=kwargs["query"],
             policy_plugin_refs=kwargs["policy_plugin_refs"],
@@ -3783,10 +3729,7 @@ async def test_dify_distributed_singleflight_reuses_transient_result_when_respon
         assert len(transient_keys) == 1
         transient_ttl = fake_redis.ttl_remaining(transient_keys[0]) or 0
         assert 0 < transient_ttl <= dify_api._DIFY_RESPONSE_SINGLEFLIGHT_RESULT_TTL_SEC
-        assert not any(
-            key not in transient_keys and not key.endswith(":lease")
-            for key in fake_redis._values
-        )
+        assert not any(key not in transient_keys and not key.endswith(":lease") for key in fake_redis._values)
         cached = await client.post(
             "/api/v1/integrations/dify/retrieval",
             headers=_auth(token),
@@ -4513,15 +4456,17 @@ def test_dify_kg_on_demand_skips_second_rag_when_kg_probe_is_empty(
     dataset_id = uuid.uuid4()
     kg_flags_seen: list[bool] = []
 
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", f'{{"city": "{dataset_id}"}}', raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_ENABLED", False, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_ON_DEMAND_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_ON_DEMAND_PROBE_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_QUERY_EXPANSION_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_ENABLED", True, raising=False)
+    _patch_dify_retrieval_settings(
+        monkeypatch,
+        dify_api,
+        token=token,
+        dataset_id=dataset_id,
+        DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_ENABLED=False,
+        DIFY_EXTERNAL_KNOWLEDGE_KG_ON_DEMAND_ENABLED=True,
+        DIFY_EXTERNAL_KNOWLEDGE_KG_ON_DEMAND_PROBE_ENABLED=True,
+        DIFY_EXTERNAL_KNOWLEDGE_KG_QUERY_EXPANSION_ENABLED=True,
+        DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_ENABLED=True,
+    )
     _patch_demo_policy(monkeypatch, dify_api)
 
     async def _fake_retrieve_dataset_citations(**kwargs):  # noqa: ANN003, ANN202
@@ -4546,12 +4491,9 @@ def test_dify_kg_on_demand_skips_second_rag_when_kg_probe_is_empty(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(dify_api, "_dify_kg_on_demand_records", _fake_kg_on_demand_records, raising=True)
     monkeypatch.setattr(dify_api, "_metadata_anchor_db_fallback_records", lambda **_kwargs: [], raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    _patch_empty_chunk_content_map(monkeypatch, dify_api)
 
-    app = FastAPI()
-    app.dependency_overrides[get_db] = _override_get_db
-    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
-    client = TestClient(app)
+    client = _make_dify_test_client(dify_api)
 
     res = client.post(
         "/api/v1/integrations/dify/retrieval",
@@ -4691,9 +4633,7 @@ def test_dify_metadata_anchor_supplement_uses_inherited_route_scope_for_aggregat
 
     assert res.status_code == 200, res.text
     assert calls == {"rag": 1, "metadata_anchor": 1}
-    assert seen_rag_dataset_ids == [
-        [north_service_dataset, north_qa_dataset, south_service_dataset, south_qa_dataset]
-    ]
+    assert seen_rag_dataset_ids == [[north_service_dataset, north_qa_dataset, south_service_dataset, south_qa_dataset]]
     assert seen_fallback_dataset_ids == [
         [north_service_dataset, north_qa_dataset, south_service_dataset, south_qa_dataset]
     ]
@@ -4790,7 +4730,10 @@ def test_dify_metadata_anchor_expands_to_sibling_policy_datasets_for_specific_se
             return []
         return [
             {
-                "content": "答案要点：事项名称：城市建筑垃圾处置核准\n\n原始证据：\n区县：天宁区\n事项名称：城市建筑垃圾处置核准",
+                "content": (
+                    "答案要点：事项名称：城市建筑垃圾处置核准\n\n"
+                    "原始证据：\n区县：天宁区\n事项名称：城市建筑垃圾处置核准"
+                ),
                 "score": 0.99,
                 "title": "district-service.txt",
                 "metadata": {
@@ -4850,7 +4793,12 @@ def test_dify_mixed_preflight_uses_sibling_policy_scope_for_specific_service_anc
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_SCOPE_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED",
+        True,
+        raising=False,
+    )
     monkeypatch.setattr(
         dify_api.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED",
@@ -6085,6 +6033,7 @@ def test_dify_mixed_intent_unquoted_anchor_keeps_supplemental_evidence(
         "alpha-place.txt",
     ]
 
+
 def test_dify_mixed_intent_subquery_strong_question_anchor_beats_generic_primary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -6611,67 +6560,15 @@ def test_dify_metadata_anchor_db_prefers_question_anchor_for_question_query(
     }
     queried_fields: list[str] = []
 
-    def _condition_values(condition):  # noqa: ANN001, ANN202
-        values: list[str] = []
-
-        def walk(node):  # noqa: ANN001, ANN202
-            value = getattr(node, "value", None)
-            if isinstance(value, str):
-                values.append(value)
-            elif isinstance(value, dict):
-                for key, raw_items in value.items():
-                    values.append(str(key))
-                    items = raw_items if isinstance(raw_items, list | tuple | set) else [raw_items]
-                    values.extend(str(item) for item in items)
-            for attr in ("left", "right"):
-                child = getattr(node, attr, None)
-                if child is not None:
-                    walk(child)
-            clauses = getattr(node, "clauses", None)
-            if clauses is not None:
-                for child in clauses:
-                    walk(child)
-
-        walk(condition)
-        return values
-
-    class _FakeQuery:
-        def __init__(self) -> None:
-            self._condition = None
-
-        def join(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def filter(self, *_conditions):  # noqa: ANN002, ANN202
-            self._condition = _conditions[-1] if _conditions else None
-            return self
-
-        def order_by(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def limit(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def all(self):  # noqa: ANN202
-            values = _condition_values(self._condition)
-            if "question" in values:
-                queried_fields.append("question")
-                if any("申请调解" in value or "影响法定" in value for value in values):
-                    return [qa_row]
-            if "service_name" in values:
-                queried_fields.append("service_name")
-                return [service_row]
-            return []
-
-    class _FakeDB:
-        def execute(self, _statement):  # noqa: ANN001, ANN202
-            return None
-
-        def query(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return _FakeQuery()
-
-        def rollback(self) -> None:
-            return None
+    def _on_all(values: list[str]):
+        if "question" in values:
+            queried_fields.append("question")
+            if any("申请调解" in value or "影响法定" in value for value in values):
+                return [qa_row]
+        if "service_name" in values:
+            queried_fields.append("service_name")
+            return [service_row]
+        return []
 
     _patch_demo_policy(monkeypatch, dify_api)
     monkeypatch.setattr(
@@ -6680,14 +6577,14 @@ def test_dify_metadata_anchor_db_prefers_question_anchor_for_question_query(
         True,
         raising=False,
     )
+    db = _MetadataFallbackDB(_on_all)
 
-    fallback_records = dify_api._metadata_anchor_db_fallback_records(
-        db=_FakeDB(),
+    fallback_records = _run_metadata_anchor_db_fallback(
+        dify_api,
+        db=db,
         tenant_id=tenant_id,
-        dataset_ids=[dataset_id],
+        dataset_id=dataset_id,
         query="网上申请调解是否影响法定诉权",
-        top_k=5,
-        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
         existing_records=[],
     )
 
@@ -6696,13 +6593,12 @@ def test_dify_metadata_anchor_db_prefers_question_anchor_for_question_query(
     assert "service_name" not in queried_fields
 
     queried_fields.clear()
-    fallback_records = dify_api._metadata_anchor_db_fallback_records(
-        db=_FakeDB(),
+    fallback_records = _run_metadata_anchor_db_fallback(
+        dify_api,
+        db=db,
         tenant_id=tenant_id,
-        dataset_ids=[dataset_id],
+        dataset_id=dataset_id,
         query="网上申请调解是否影响法定诉权",
-        top_k=5,
-        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
         existing_records=[
             {
                 "content": "事项名称：劳动人事争议调解申请\n办理地点：服务中心窗口。",
@@ -6729,66 +6625,14 @@ def test_dify_metadata_anchor_db_question_query_stops_after_question_fields(
 
     queried_fields: list[str] = []
 
-    def _condition_values(condition):  # noqa: ANN001, ANN202
-        values: list[str] = []
-
-        def walk(node):  # noqa: ANN001, ANN202
-            value = getattr(node, "value", None)
-            if isinstance(value, str):
-                values.append(value)
-            elif isinstance(value, dict):
-                for key, raw_items in value.items():
-                    values.append(str(key))
-                    items = raw_items if isinstance(raw_items, list | tuple | set) else [raw_items]
-                    values.extend(str(item) for item in items)
-            for attr in ("left", "right"):
-                child = getattr(node, attr, None)
-                if child is not None:
-                    walk(child)
-            clauses = getattr(node, "clauses", None)
-            if clauses is not None:
-                for child in clauses:
-                    walk(child)
-
-        walk(condition)
-        return values
-
-    class _FakeQuery:
-        def __init__(self) -> None:
-            self._condition = None
-
-        def join(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def filter(self, *_conditions):  # noqa: ANN002, ANN202
-            self._condition = _conditions[-1] if _conditions else None
-            return self
-
-        def order_by(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def limit(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def all(self):  # noqa: ANN202
-            values = _condition_values(self._condition)
-            if "question" in values:
-                queried_fields.append("question")
-            if "service_name" in values:
-                queried_fields.append("service_name")
-            if "case_title" in values or "source_topic" in values or "title" in values:
-                queried_fields.append("title")
-            return []
-
-    class _FakeDB:
-        def execute(self, _statement):  # noqa: ANN001, ANN202
-            return None
-
-        def query(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return _FakeQuery()
-
-        def rollback(self) -> None:
-            return None
+    def _on_all(values: list[str]):
+        if "question" in values:
+            queried_fields.append("question")
+        if "service_name" in values:
+            queried_fields.append("service_name")
+        if "case_title" in values or "source_topic" in values or "title" in values:
+            queried_fields.append("title")
+        return []
 
     _patch_demo_policy(monkeypatch, dify_api)
     monkeypatch.setattr(
@@ -6798,13 +6642,12 @@ def test_dify_metadata_anchor_db_question_query_stops_after_question_fields(
         raising=False,
     )
 
-    fallback_records = dify_api._metadata_anchor_db_fallback_records(
-        db=_FakeDB(),
+    fallback_records = _run_metadata_anchor_db_fallback(
+        dify_api,
+        db=_MetadataFallbackDB(_on_all),
         tenant_id=uuid.uuid4(),
-        dataset_ids=[uuid.uuid4()],
+        dataset_id=uuid.uuid4(),
         query="公积金账户有挂账余额的情况下，怎么退回资金？",
-        top_k=5,
-        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
         existing_records=[],
     )
 
@@ -6852,63 +6695,16 @@ def test_dify_metadata_anchor_db_prefers_service_anchor_for_service_intent_query
     }
     queried_fields: list[str] = []
 
-    def _condition_values(condition):  # noqa: ANN001, ANN202
-        values: list[str] = []
-
-        def walk(node):  # noqa: ANN001, ANN202
-            value = getattr(node, "value", None)
-            if isinstance(value, str):
-                values.append(value)
-            for attr in ("left", "right"):
-                child = getattr(node, attr, None)
-                if child is not None:
-                    walk(child)
-            clauses = getattr(node, "clauses", None)
-            if clauses is not None:
-                for child in clauses:
-                    walk(child)
-
-        walk(condition)
-        return values
-
-    class _FakeQuery:
-        def __init__(self) -> None:
-            self._condition = None
-
-        def join(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def filter(self, *_conditions):  # noqa: ANN002, ANN202
-            self._condition = _conditions[-1] if _conditions else None
-            return self
-
-        def order_by(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def limit(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def all(self):  # noqa: ANN202
-            values = _condition_values(self._condition)
-            if "service_name" in values:
-                queried_fields.append("service_name")
-                if any("护士执业证书遗失补办" in value for value in values):
-                    return [service_row]
-            if "question" in values:
-                queried_fields.append("question")
-                if any("护士执业证书" in value for value in values):
-                    return [qa_row]
-            return []
-
-    class _FakeDB:
-        def execute(self, _statement):  # noqa: ANN001, ANN202
-            return None
-
-        def query(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return _FakeQuery()
-
-        def rollback(self) -> None:
-            return None
+    def _on_all(values: list[str]):
+        if "service_name" in values:
+            queried_fields.append("service_name")
+            if any("护士执业证书遗失补办" in value for value in values):
+                return [service_row]
+        if "question" in values:
+            queried_fields.append("question")
+            if any("护士执业证书" in value for value in values):
+                return [qa_row]
+        return []
 
     _patch_demo_policy(monkeypatch, dify_api)
     monkeypatch.setattr(
@@ -6918,13 +6714,12 @@ def test_dify_metadata_anchor_db_prefers_service_anchor_for_service_intent_query
         raising=False,
     )
 
-    fallback_records = dify_api._metadata_anchor_db_fallback_records(
-        db=_FakeDB(),
+    fallback_records = _run_metadata_anchor_db_fallback(
+        dify_api,
+        db=_MetadataFallbackDB(_on_all),
         tenant_id=tenant_id,
-        dataset_ids=[dataset_id],
+        dataset_id=dataset_id,
         query="常州市护士执业证书遗失补办在哪里办理",
-        top_k=5,
-        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
         existing_records=[],
     )
 
@@ -6971,63 +6766,16 @@ def test_dify_metadata_anchor_db_can_prefer_question_anchor_for_mixed_subquery(
     }
     queried_fields: list[str] = []
 
-    def _condition_values(condition):  # noqa: ANN001, ANN202
-        values: list[str] = []
-
-        def walk(node):  # noqa: ANN001, ANN202
-            value = getattr(node, "value", None)
-            if isinstance(value, str):
-                values.append(value)
-            for attr in ("left", "right"):
-                child = getattr(node, attr, None)
-                if child is not None:
-                    walk(child)
-            clauses = getattr(node, "clauses", None)
-            if clauses is not None:
-                for child in clauses:
-                    walk(child)
-
-        walk(condition)
-        return values
-
-    class _FakeQuery:
-        def __init__(self) -> None:
-            self._condition = None
-
-        def join(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def filter(self, *_conditions):  # noqa: ANN002, ANN202
-            self._condition = _conditions[-1] if _conditions else None
-            return self
-
-        def order_by(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def limit(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def all(self):  # noqa: ANN202
-            values = _condition_values(self._condition)
-            if "question" in values:
-                queried_fields.append("question")
-                if any("人员参保登记" in value for value in values):
-                    return [qa_row]
-            if "service_name" in values:
-                queried_fields.append("service_name")
-                if any("人员参保登记" in value for value in values):
-                    return [service_row]
-            return []
-
-    class _FakeDB:
-        def execute(self, _statement):  # noqa: ANN001, ANN202
-            return None
-
-        def query(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return _FakeQuery()
-
-        def rollback(self) -> None:
-            return None
+    def _on_all(values: list[str]):
+        if "question" in values:
+            queried_fields.append("question")
+            if any("人员参保登记" in value for value in values):
+                return [qa_row]
+        if "service_name" in values:
+            queried_fields.append("service_name")
+            if any("人员参保登记" in value for value in values):
+                return [service_row]
+        return []
 
     _patch_demo_policy(monkeypatch, dify_api)
     monkeypatch.setattr(
@@ -7036,14 +6784,14 @@ def test_dify_metadata_anchor_db_can_prefer_question_anchor_for_mixed_subquery(
         True,
         raising=False,
     )
+    db = _MetadataFallbackDB(_on_all)
 
-    fallback_records = dify_api._metadata_anchor_db_fallback_records(
-        db=_FakeDB(),
+    fallback_records = _run_metadata_anchor_db_fallback(
+        dify_api,
+        db=db,
         tenant_id=tenant_id,
-        dataset_ids=[dataset_id],
+        dataset_id=dataset_id,
         query="人员参保登记在哪里办理",
-        top_k=5,
-        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
         existing_records=[],
     )
 
@@ -7051,13 +6799,12 @@ def test_dify_metadata_anchor_db_can_prefer_question_anchor_for_mixed_subquery(
     assert queried_fields[0] == "service_name"
 
     queried_fields.clear()
-    fallback_records = dify_api._metadata_anchor_db_fallback_records(
-        db=_FakeDB(),
+    fallback_records = _run_metadata_anchor_db_fallback(
+        dify_api,
+        db=db,
         tenant_id=tenant_id,
-        dataset_ids=[dataset_id],
+        dataset_id=dataset_id,
         query="人员参保登记在哪里办理",
-        top_k=5,
-        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
         existing_records=[],
         prefer_question_anchor_first=True,
     )
@@ -7105,62 +6852,15 @@ def test_dify_metadata_anchor_db_checks_question_first_for_explicit_question_ser
     }
     queried_fields: list[str] = []
 
-    def _condition_values(condition):  # noqa: ANN001, ANN202
-        values: list[str] = []
-
-        def walk(node):  # noqa: ANN001, ANN202
-            value = getattr(node, "value", None)
-            if isinstance(value, str):
-                values.append(value)
-            for attr in ("left", "right"):
-                child = getattr(node, attr, None)
-                if child is not None:
-                    walk(child)
-            clauses = getattr(node, "clauses", None)
-            if clauses is not None:
-                for child in clauses:
-                    walk(child)
-
-        walk(condition)
-        return values
-
-    class _FakeQuery:
-        def __init__(self) -> None:
-            self._condition = None
-
-        def join(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def filter(self, *_conditions):  # noqa: ANN002, ANN202
-            self._condition = _conditions[-1] if _conditions else None
-            return self
-
-        def order_by(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def limit(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def all(self):  # noqa: ANN202
-            values = _condition_values(self._condition)
-            if "question" in values:
-                queried_fields.append("question")
-                if any("企业社会保险登记" in value for value in values):
-                    return [qa_row]
-            if "service_name" in values:
-                queried_fields.append("service_name")
-                return [service_row]
-            return []
-
-    class _FakeDB:
-        def execute(self, _statement):  # noqa: ANN001, ANN202
-            return None
-
-        def query(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return _FakeQuery()
-
-        def rollback(self) -> None:
-            return None
+    def _on_all(values: list[str]):
+        if "question" in values:
+            queried_fields.append("question")
+            if any("企业社会保险登记" in value for value in values):
+                return [qa_row]
+        if "service_name" in values:
+            queried_fields.append("service_name")
+            return [service_row]
+        return []
 
     _patch_demo_policy(monkeypatch, dify_api)
     monkeypatch.setattr(
@@ -7170,13 +6870,12 @@ def test_dify_metadata_anchor_db_checks_question_first_for_explicit_question_ser
         raising=False,
     )
 
-    fallback_records = dify_api._metadata_anchor_db_fallback_records(
-        db=_FakeDB(),
+    fallback_records = _run_metadata_anchor_db_fallback(
+        dify_api,
+        db=_MetadataFallbackDB(_on_all),
         tenant_id=tenant_id,
-        dataset_ids=[dataset_id],
+        dataset_id=dataset_id,
         query="请问可以在哪里办理企业社会保险登记",
-        top_k=5,
-        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
         existing_records=[],
     )
 
@@ -7510,12 +7209,7 @@ def test_dify_retrieval_runs_supplemental_queries_for_mixed_intent(monkeypatch: 
     monkeypatch.setattr(
         dify_api.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
-        (
-            '{"city": {'
-            f'"dataset_ids": ["{dataset_id}"], '
-            f'"plugin_refs": ["{_DEMO_PLUGIN_REF}"]'
-            "}}"
-        ),
+        (f'{{"city": {{"dataset_ids": ["{dataset_id}"], "plugin_refs": ["{_DEMO_PLUGIN_REF}"]}}}}'),
         raising=False,
     )
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
@@ -7611,12 +7305,7 @@ def test_dify_retrieval_skips_mixed_intent_queries_when_exact_anchor_is_complete
     monkeypatch.setattr(
         dify_api.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
-        (
-            '{"city": {'
-            f'"dataset_ids": ["{dataset_id}"], '
-            f'"plugin_refs": ["{_DEMO_PLUGIN_REF}"]'
-            "}}"
-        ),
+        (f'{{"city": {{"dataset_ids": ["{dataset_id}"], "plugin_refs": ["{_DEMO_PLUGIN_REF}"]}}}}'),
         raising=False,
     )
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
@@ -7693,12 +7382,7 @@ def test_dify_retrieval_skips_unquoted_mixed_intent_when_exact_anchor_record_is_
     monkeypatch.setattr(
         dify_api.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
-        (
-            '{"city": {'
-            f'"dataset_ids": ["{dataset_id}"], '
-            f'"plugin_refs": ["{_DEMO_PLUGIN_REF}"]'
-            "}}"
-        ),
+        (f'{{"city": {{"dataset_ids": ["{dataset_id}"], "plugin_refs": ["{_DEMO_PLUGIN_REF}"]}}}}'),
         raising=False,
     )
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
@@ -7771,12 +7455,7 @@ def test_dify_retrieval_does_not_skip_mixed_intent_queries_for_unquoted_anchor(
     monkeypatch.setattr(
         dify_api.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
-        (
-            '{"city": {'
-            f'"dataset_ids": ["{dataset_id}"], '
-            f'"plugin_refs": ["{_DEMO_PLUGIN_REF}"]'
-            "}}"
-        ),
+        (f'{{"city": {{"dataset_ids": ["{dataset_id}"], "plugin_refs": ["{_DEMO_PLUGIN_REF}"]}}}}'),
         raising=False,
     )
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
@@ -8041,7 +7720,12 @@ def test_dify_retrieval_caps_top_k_for_external_timeout_budget(monkeypatch: pyte
 def test_dify_compacts_high_confidence_score_cliff_records(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.api.v1.integrations_dify as dify_api
 
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_HIGH_CONFIDENCE_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_HIGH_CONFIDENCE_ENABLED",
+        True,
+        raising=False,
+    )
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE", 0.8, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR", 0.65, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS", 1, raising=False)
@@ -8111,11 +7795,14 @@ def test_dify_strong_question_anchor_rejects_canonical_intent_conflict(
     }
     query = "汽车置换补贴怎么申请"
 
-    assert dify_api._record_question_anchor_strength(
-        record,
-        query=query,
-        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
-    ) >= dify_api._QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH
+    assert (
+        dify_api._record_question_anchor_strength(
+            record,
+            query=query,
+            policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+        )
+        >= dify_api._QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH
+    )
     assert dify_api._record_question_anchor_has_intent_conflict(
         record,
         query=query,
@@ -8126,11 +7813,14 @@ def test_dify_strong_question_anchor_rejects_canonical_intent_conflict(
         query=query,
         policy_plugin_refs=(_DEMO_PLUGIN_REF,),
     )
-    assert dify_api._metadata_anchor_fallback_record_score(
-        record,
-        query=query,
-        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
-    ) == 0.0
+    assert (
+        dify_api._metadata_anchor_fallback_record_score(
+            record,
+            query=query,
+            policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+        )
+        == 0.0
+    )
 
 
 def test_dify_strong_question_anchor_records_require_answerful_content(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -8174,12 +7864,14 @@ def test_dify_record_ranking_uses_registered_plugin_retrieval_policy(
     monkeypatch.setattr(
         dify_api,
         "_retrieval_policy_for_plugin_ref",
-        lambda ref: {
-            "schema": "mimirq.retrieval_policy.v1",
-            "boost_fields": [{"metadata": "product_line", "weight": 2.0, "match": "contains"}],
-        }
-        if ref == plugin_ref
-        else {},
+        lambda ref: (
+            {
+                "schema": "mimirq.retrieval_policy.v1",
+                "boost_fields": [{"metadata": "product_line", "weight": 2.0, "match": "contains"}],
+            }
+            if ref == plugin_ref
+            else {}
+        ),
         raising=False,
     )
     records = [
@@ -8211,12 +7903,14 @@ def test_dify_record_ranking_uses_plugin_policy_from_indexed_metadata_view(
     monkeypatch.setattr(
         dify_api,
         "_retrieval_policy_for_plugin_ref",
-        lambda ref: {
-            "schema": "mimirq.retrieval_policy.v1",
-            "boost_fields": [{"metadata": "product_line", "weight": 2.0, "match": "contains"}],
-        }
-        if ref == plugin_ref
-        else {},
+        lambda ref: (
+            {
+                "schema": "mimirq.retrieval_policy.v1",
+                "boost_fields": [{"metadata": "product_line", "weight": 2.0, "match": "contains"}],
+            }
+            if ref == plugin_ref
+            else {}
+        ),
         raising=False,
     )
     records = [
@@ -8254,12 +7948,14 @@ def test_dify_record_ranking_uses_plugin_query_expansion_fields(
     monkeypatch.setattr(
         dify_api,
         "_retrieval_policy_for_plugin_ref",
-        lambda ref: {
-            "schema": "mimirq.retrieval_policy.v1",
-            "query_expansion_fields": ["product_line"],
-        }
-        if ref == plugin_ref
-        else {},
+        lambda ref: (
+            {
+                "schema": "mimirq.retrieval_policy.v1",
+                "query_expansion_fields": ["product_line"],
+            }
+            if ref == plugin_ref
+            else {}
+        ),
         raising=False,
     )
     records = [
@@ -8294,22 +7990,24 @@ def test_dify_record_ranking_prefers_declared_anchor_over_slot_only_match(
     monkeypatch.setattr(
         dify_api,
         "_retrieval_policy_for_plugin_ref",
-        lambda ref: {
-            "schema": "mimirq.retrieval_policy.v1",
-            "anchor_binding": {
-                "enabled": True,
-                "anchor_fields": ["case_title"],
-                "slot_fields": ["field_kind"],
-                "slot_only_penalty": 0.35,
-                "anchor_match_bonus": 0.35,
-                "anchor_slot_match_bonus": 0.1,
-            },
-            "query_expansion_values": [
-                {"metadata": "field_kind", "value": "fee", "terms": ["fee", "cost"]},
-            ],
-        }
-        if ref == plugin_ref
-        else {},
+        lambda ref: (
+            {
+                "schema": "mimirq.retrieval_policy.v1",
+                "anchor_binding": {
+                    "enabled": True,
+                    "anchor_fields": ["case_title"],
+                    "slot_fields": ["field_kind"],
+                    "slot_only_penalty": 0.35,
+                    "anchor_match_bonus": 0.35,
+                    "anchor_slot_match_bonus": 0.1,
+                },
+                "query_expansion_values": [
+                    {"metadata": "field_kind", "value": "fee", "terms": ["fee", "cost"]},
+                ],
+            }
+            if ref == plugin_ref
+            else {}
+        ),
         raising=False,
     )
     records = [
@@ -8344,14 +8042,16 @@ def test_dify_record_ranking_uses_knowledge_map_plugin_policy_when_records_lack_
     monkeypatch.setattr(
         dify_api,
         "_retrieval_policy_for_plugin_ref",
-        lambda ref: {
-            "schema": "mimirq.retrieval_policy.v1",
-            "query_expansion_values": [
-                {"metadata": "section_type", "value": "steps", "terms": ["how to operate"]},
-            ],
-        }
-        if ref == plugin_ref
-        else {},
+        lambda ref: (
+            {
+                "schema": "mimirq.retrieval_policy.v1",
+                "query_expansion_values": [
+                    {"metadata": "section_type", "value": "steps", "terms": ["how to operate"]},
+                ],
+            }
+            if ref == plugin_ref
+            else {}
+        ),
         raising=False,
     )
     records = [
@@ -8398,12 +8098,14 @@ def test_dify_record_ranking_uses_plugin_rerank_features(
     monkeypatch.setattr(
         dify_api,
         "_retrieval_policy_for_plugin_ref",
-        lambda ref: {
-            "schema": "mimirq.retrieval_policy.v1",
-            "rerank_features": ["support_tier"],
-        }
-        if ref == plugin_ref
-        else {},
+        lambda ref: (
+            {
+                "schema": "mimirq.retrieval_policy.v1",
+                "rerank_features": ["support_tier"],
+            }
+            if ref == plugin_ref
+            else {}
+        ),
         raising=False,
     )
     records = [
@@ -8499,21 +8201,23 @@ def test_dify_record_ranking_demotes_plugin_anchor_mismatches(
     monkeypatch.setattr(
         dify_api,
         "_retrieval_policy_for_plugin_ref",
-        lambda ref: {
-            "schema": "mimirq.retrieval_policy.v1",
-            "anchor_fields": [
-                {
-                    "metadata": "region",
-                    "weight": 2.0,
-                    "aliases": {
-                        "north": ["north", "north district"],
-                        "south": ["south", "south district"],
-                    },
-                }
-            ],
-        }
-        if ref == plugin_ref
-        else {},
+        lambda ref: (
+            {
+                "schema": "mimirq.retrieval_policy.v1",
+                "anchor_fields": [
+                    {
+                        "metadata": "region",
+                        "weight": 2.0,
+                        "aliases": {
+                            "north": ["north", "north district"],
+                            "south": ["south", "south district"],
+                        },
+                    }
+                ],
+            }
+            if ref == plugin_ref
+            else {}
+        ),
         raising=False,
     )
     records = [
@@ -8550,12 +8254,14 @@ def test_dify_record_policy_diagnostics_summarize_active_plugin_policy(
     monkeypatch.setattr(
         dify_api,
         "_retrieval_policy_for_plugin_ref",
-        lambda ref: {
-            "schema": "mimirq.retrieval_policy.v1",
-            "boost_fields": [{"metadata": "product_line", "weight": 2.0, "match": "contains"}],
-        }
-        if ref == plugin_ref
-        else {},
+        lambda ref: (
+            {
+                "schema": "mimirq.retrieval_policy.v1",
+                "boost_fields": [{"metadata": "product_line", "weight": 2.0, "match": "contains"}],
+            }
+            if ref == plugin_ref
+            else {}
+        ),
         raising=False,
     )
     records = [
@@ -8598,14 +8304,16 @@ def test_dify_record_policy_diagnostics_split_policy_signal_counts(
     monkeypatch.setattr(
         dify_api,
         "_retrieval_policy_for_plugin_ref",
-        lambda ref: {
-            "schema": "mimirq.retrieval_policy.v1",
-            "boost_fields": [{"metadata": "product_line", "weight": 2.0, "match": "contains"}],
-            "query_expansion_fields": ["alias"],
-            "rerank_features": ["support_tier"],
-        }
-        if ref == plugin_ref
-        else {},
+        lambda ref: (
+            {
+                "schema": "mimirq.retrieval_policy.v1",
+                "boost_fields": [{"metadata": "product_line", "weight": 2.0, "match": "contains"}],
+                "query_expansion_fields": ["alias"],
+                "rerank_features": ["support_tier"],
+            }
+            if ref == plugin_ref
+            else {}
+        ),
         raising=False,
     )
     records = [
@@ -8660,23 +8368,20 @@ def test_dify_metadata_condition_rejects_fields_not_allowed_by_plugin_policy(
     monkeypatch.setattr(
         dify_api.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
-        (
-            '{"city": {'
-            f'"dataset_ids": ["{dataset_id}"],'
-            f'"plugin_refs": ["{plugin_ref}"]'
-            "}}"
-        ),
+        (f'{{"city": {{"dataset_ids": ["{dataset_id}"],"plugin_refs": ["{plugin_ref}"]}}}}'),
         raising=False,
     )
     monkeypatch.setattr(
         dify_api,
         "_retrieval_policy_for_plugin_ref",
-        lambda ref: {
-            "schema": "mimirq.retrieval_policy.v1",
-            "filter_fields": ["category"],
-        }
-        if ref == plugin_ref
-        else {},
+        lambda ref: (
+            {
+                "schema": "mimirq.retrieval_policy.v1",
+                "filter_fields": ["category"],
+            }
+            if ref == plugin_ref
+            else {}
+        ),
         raising=False,
     )
 
@@ -8738,23 +8443,20 @@ def test_dify_metadata_condition_allows_plugin_policy_filter_fields(
     monkeypatch.setattr(
         dify_api.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
-        (
-            '{"city": {'
-            f'"dataset_ids": ["{dataset_id}"],'
-            f'"plugin_refs": ["{plugin_ref}"]'
-            "}}"
-        ),
+        (f'{{"city": {{"dataset_ids": ["{dataset_id}"],"plugin_refs": ["{plugin_ref}"]}}}}'),
         raising=False,
     )
     monkeypatch.setattr(
         dify_api,
         "_retrieval_policy_for_plugin_ref",
-        lambda ref: {
-            "schema": "mimirq.retrieval_policy.v1",
-            "filter_fields": ["category"],
-        }
-        if ref == plugin_ref
-        else {},
+        lambda ref: (
+            {
+                "schema": "mimirq.retrieval_policy.v1",
+                "filter_fields": ["category"],
+            }
+            if ref == plugin_ref
+            else {}
+        ),
         raising=False,
     )
 
@@ -8816,23 +8518,20 @@ def test_dify_plugin_retrieval_policy_fallback_expands_candidate_window(
     monkeypatch.setattr(
         dify_api.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
-        (
-            '{"city": {'
-            f'"dataset_ids": ["{dataset_id}"],'
-            f'"plugin_refs": ["{plugin_ref}"]'
-            "}}"
-        ),
+        (f'{{"city": {{"dataset_ids": ["{dataset_id}"],"plugin_refs": ["{plugin_ref}"]}}}}'),
         raising=False,
     )
     monkeypatch.setattr(
         dify_api,
         "_retrieval_policy_for_plugin_ref",
-        lambda ref: {
-            "schema": "mimirq.retrieval_policy.v1",
-            "fallback": {"enabled": True, "expand_top_k_multiplier": 3},
-        }
-        if ref == plugin_ref
-        else {},
+        lambda ref: (
+            {
+                "schema": "mimirq.retrieval_policy.v1",
+                "fallback": {"enabled": True, "expand_top_k_multiplier": 3},
+            }
+            if ref == plugin_ref
+            else {}
+        ),
         raising=False,
     )
 
@@ -8878,20 +8577,22 @@ def test_dify_fast_latency_profile_uses_single_small_retrieval(
     dataset_id = uuid.uuid4()
     calls: list[dict[str, object]] = []
 
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", f'{{"city": "{dataset_id}"}}', raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 10, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN", 20, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MULTIPLIER", 4, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX", 50, raising=False)
-    monkeypatch.setattr(dify_api.settings, "ENABLE_RERANKER", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RERANKER_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED", False, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_ON_DEMAND_ENABLED", True, raising=False)
+    _patch_dify_retrieval_settings(
+        monkeypatch,
+        dify_api,
+        token=token,
+        dataset_id=dataset_id,
+        DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX=10,
+        DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN=20,
+        DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MULTIPLIER=4,
+        DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX=50,
+        ENABLE_RERANKER=True,
+        DIFY_EXTERNAL_KNOWLEDGE_RERANKER_ENABLED=True,
+        DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED=True,
+        DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED=True,
+        DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED=False,
+        DIFY_EXTERNAL_KNOWLEDGE_KG_ON_DEMAND_ENABLED=True,
+    )
 
     async def _fake_retrieve_dataset_citations(**kwargs):  # noqa: ANN003, ANN202
         calls.append(dict(kwargs))
@@ -8914,12 +8615,9 @@ def test_dify_fast_latency_profile_uses_single_small_retrieval(
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
     monkeypatch.setattr(dify_api, "_metadata_anchor_db_fallback_records", _unexpected_metadata_fallback, raising=True)
     monkeypatch.setattr(dify_api, "get_reranker", _unexpected_reranker, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    _patch_empty_chunk_content_map(monkeypatch, dify_api)
 
-    app = FastAPI()
-    app.dependency_overrides[get_db] = _override_get_db
-    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
-    client = TestClient(app)
+    client = _make_dify_test_client(dify_api)
 
     res = client.post(
         "/api/v1/integrations/dify/retrieval",
@@ -8972,8 +8670,18 @@ def test_dify_fast_latency_profile_limits_candidates_and_compacts_context(
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CANDIDATE_TOP_K_MAX", 3, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_RESPONSE_TOP_K_MAX", 2, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS", 500, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED", False, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED",
+        False,
+        raising=False,
+    )
 
     async def _fake_retrieve_dataset_citations(**kwargs):  # noqa: ANN003, ANN202
         calls.append(dict(kwargs))
@@ -9230,7 +8938,9 @@ def test_dify_fast_response_can_compact_from_plugin_metadata_hints(monkeypatch: 
 
     records = [
         {
-            "content": "一件事：Alpha Package\n合并章节原文：\n办理须知\n" + ("这是一段不该直接塞给 Dify 的长流程说明。" * 80),
+            "content": (
+                "一件事：Alpha Package\n合并章节原文：\n办理须知\n" + ("这是一段不该直接塞给 Dify 的长流程说明。" * 80)
+            ),
             "score": 0.93,
             "title": "one-thing.md",
             "metadata": {
@@ -9276,7 +8986,8 @@ def test_dify_fast_response_compacts_long_qa_answer_by_query_terms(monkeypatch: 
                 "2.报废置换更新补贴，从此入口发起补贴申请。"
                 "一、活动时间 2025年1月1日至2025年12月31日。"
                 "二、补贴范围 个人消费者转让或报废本人名下乘用车，并在江苏省内购置新车。"
-                + "三、补贴标准 各档补贴金额和资料审核规则。" * 80
+                + "三、补贴标准 各档补贴金额和资料审核规则。"
+                * 80
             ),
             "score": 0.83,
             "title": "car.md",
@@ -9311,23 +9022,15 @@ def test_dify_fast_latency_profile_can_short_circuit_with_metadata_preflight(
     hybrid_calls: list[dict[str, object]] = []
     preflight_calls: list[dict[str, object]] = []
 
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", f'{{"city": "{dataset_id}"}}', raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED", True, raising=False)
-    monkeypatch.setattr(
-        dify_api.settings,
-        "DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_STATEMENT_TIMEOUT_MS",
-        321,
-        raising=False,
-    )
-    monkeypatch.setattr(
-        dify_api.settings,
-        "DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_MAX_ELAPSED_MS",
-        654,
-        raising=False,
+    _patch_dify_retrieval_settings(
+        monkeypatch,
+        dify_api,
+        token=token,
+        dataset_id=dataset_id,
+        DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED=True,
+        DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED=True,
+        DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_STATEMENT_TIMEOUT_MS=321,
+        DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_MAX_ELAPSED_MS=654,
     )
 
     def _fake_metadata_anchor_db_fallback_records(**kwargs):  # noqa: ANN003, ANN202
@@ -9349,17 +9052,39 @@ def test_dify_fast_latency_profile_can_short_circuit_with_metadata_preflight(
         hybrid_calls.append(dict(kwargs))
         raise AssertionError("metadata preflight hit should skip hybrid retrieval")
 
-    monkeypatch.setattr(dify_api, "_metadata_anchor_db_fallback_records", _fake_metadata_anchor_db_fallback_records, raising=True)
-    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _unexpected_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_query_allows_metadata_anchor_preflight", lambda *_args, **_kwargs: True, raising=True)
-    monkeypatch.setattr(dify_api, "_query_has_specific_service_anchor_candidate", lambda *_args, **_kwargs: True, raising=True)
-    monkeypatch.setattr(dify_api, "_records_have_strong_question_anchor", lambda *_args, **_kwargs: True, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(
+        dify_api,
+        "_metadata_anchor_db_fallback_records",
+        _fake_metadata_anchor_db_fallback_records,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        dify_api,
+        "_retrieve_dataset_citations",
+        _unexpected_retrieve_dataset_citations,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        dify_api,
+        "_query_allows_metadata_anchor_preflight",
+        lambda *_args, **_kwargs: True,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        dify_api,
+        "_query_has_specific_service_anchor_candidate",
+        lambda *_args, **_kwargs: True,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        dify_api,
+        "_records_have_strong_question_anchor",
+        lambda *_args, **_kwargs: True,
+        raising=True,
+    )
+    _patch_empty_chunk_content_map(monkeypatch, dify_api)
 
-    app = FastAPI()
-    app.dependency_overrides[get_db] = _override_get_db
-    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
-    client = TestClient(app)
+    client = _make_dify_test_client(dify_api)
 
     res = client.post(
         "/api/v1/integrations/dify/retrieval",
@@ -9392,12 +9117,14 @@ def test_dify_fast_latency_profile_allows_quoted_question_metadata_preflight(
     dataset_id = uuid.uuid4()
     preflight_calls: list[dict[str, object]] = []
 
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", f'{{"city": "{dataset_id}"}}', raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED", True, raising=False)
+    _patch_dify_retrieval_settings(
+        monkeypatch,
+        dify_api,
+        token=token,
+        dataset_id=dataset_id,
+        DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED=True,
+        DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED=True,
+    )
 
     def _fake_metadata_anchor_db_fallback_records(**kwargs):  # noqa: ANN003, ANN202
         preflight_calls.append(dict(kwargs))
@@ -9417,18 +9144,45 @@ def test_dify_fast_latency_profile_allows_quoted_question_metadata_preflight(
     async def _unexpected_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
         raise AssertionError("quoted question anchor should use metadata preflight before hybrid retrieval")
 
-    monkeypatch.setattr(dify_api, "_metadata_anchor_db_fallback_records", _fake_metadata_anchor_db_fallback_records, raising=True)
-    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _unexpected_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_query_allows_metadata_anchor_preflight", lambda *_args, **_kwargs: True, raising=True)
-    monkeypatch.setattr(dify_api, "_query_has_specific_service_anchor_candidate", lambda *_args, **_kwargs: False, raising=True)
-    monkeypatch.setattr(dify_api, "_records_have_confident_metadata_anchor", lambda *_args, **_kwargs: True, raising=True)
-    monkeypatch.setattr(dify_api, "_records_have_strong_question_anchor", lambda *_args, **_kwargs: True, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(
+        dify_api,
+        "_metadata_anchor_db_fallback_records",
+        _fake_metadata_anchor_db_fallback_records,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        dify_api,
+        "_retrieve_dataset_citations",
+        _unexpected_retrieve_dataset_citations,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        dify_api,
+        "_query_allows_metadata_anchor_preflight",
+        lambda *_args, **_kwargs: True,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        dify_api,
+        "_query_has_specific_service_anchor_candidate",
+        lambda *_args, **_kwargs: False,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        dify_api,
+        "_records_have_confident_metadata_anchor",
+        lambda *_args, **_kwargs: True,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        dify_api,
+        "_records_have_strong_question_anchor",
+        lambda *_args, **_kwargs: True,
+        raising=True,
+    )
+    _patch_empty_chunk_content_map(monkeypatch, dify_api)
 
-    app = FastAPI()
-    app.dependency_overrides[get_db] = _override_get_db
-    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
-    client = TestClient(app)
+    client = _make_dify_test_client(dify_api)
 
     res = client.post(
         "/api/v1/integrations/dify/retrieval",
@@ -9458,12 +9212,14 @@ def test_dify_fast_latency_profile_skips_broad_metadata_preflight(
     dataset_id = uuid.uuid4()
     hybrid_calls: list[dict[str, object]] = []
 
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", f'{{"city": "{dataset_id}"}}', raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED", True, raising=False)
+    _patch_dify_retrieval_settings(
+        monkeypatch,
+        dify_api,
+        token=token,
+        dataset_id=dataset_id,
+        DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED=True,
+        DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED=True,
+    )
 
     def _unexpected_metadata_anchor_db_fallback_records(**_kwargs):  # noqa: ANN003, ANN202
         raise AssertionError("fast broad queries should not run metadata preflight")
@@ -9480,16 +9236,28 @@ def test_dify_fast_latency_profile_skips_broad_metadata_preflight(
             }
         ]
 
-    monkeypatch.setattr(dify_api, "_metadata_anchor_db_fallback_records", _unexpected_metadata_anchor_db_fallback_records, raising=True)
+    monkeypatch.setattr(
+        dify_api,
+        "_metadata_anchor_db_fallback_records",
+        _unexpected_metadata_anchor_db_fallback_records,
+        raising=True,
+    )
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
-    monkeypatch.setattr(dify_api, "_query_allows_metadata_anchor_preflight", lambda *_args, **_kwargs: True, raising=True)
-    monkeypatch.setattr(dify_api, "_query_has_specific_service_anchor_candidate", lambda *_args, **_kwargs: False, raising=True)
-    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(
+        dify_api,
+        "_query_allows_metadata_anchor_preflight",
+        lambda *_args, **_kwargs: True,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        dify_api,
+        "_query_has_specific_service_anchor_candidate",
+        lambda *_args, **_kwargs: False,
+        raising=True,
+    )
+    _patch_empty_chunk_content_map(monkeypatch, dify_api)
 
-    app = FastAPI()
-    app.dependency_overrides[get_db] = _override_get_db
-    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
-    client = TestClient(app)
+    client = _make_dify_test_client(dify_api)
 
     res = client.post(
         "/api/v1/integrations/dify/retrieval",
@@ -9519,19 +9287,18 @@ def test_dify_retrieval_logs_policy_diagnostics(
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
     plugin_ref = "plugin:demo-service@1.0.0:chunk"
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", f'{{"city": "{dataset_id}"}}', raising=False)
+    _patch_dify_retrieval_settings(monkeypatch, dify_api, token=token, dataset_id=dataset_id)
     monkeypatch.setattr(
         dify_api,
         "_retrieval_policy_for_plugin_ref",
-        lambda ref: {
-            "schema": "mimirq.retrieval_policy.v1",
-            "boost_fields": [{"metadata": "product_line", "weight": 2.0, "match": "contains"}],
-        }
-        if ref == plugin_ref
-        else {},
+        lambda ref: (
+            {
+                "schema": "mimirq.retrieval_policy.v1",
+                "boost_fields": [{"metadata": "product_line", "weight": 2.0, "match": "contains"}],
+            }
+            if ref == plugin_ref
+            else {}
+        ),
         raising=False,
     )
 
@@ -9931,7 +9698,9 @@ def test_dify_matched_replace_route_prioritizes_route_dataset_without_narrowing_
     assert res.json()["records"][0]["metadata"]["knowledge_section"] == "03城市常见问题"
 
 
-def test_dify_compact_prefers_records_aligned_to_plugin_retrieval_policy_intent(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_dify_compact_prefers_records_aligned_to_plugin_retrieval_policy_intent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import app.api.v1.integrations_dify as dify_api
 
     plugin_ref = "plugin:demo-service@1.0.0:chunk"
@@ -9968,7 +9737,9 @@ def test_dify_compact_prefers_records_aligned_to_plugin_retrieval_policy_intent(
         },
     }
     material_record = {
-        "content": "问题：省外和省内人员补办身份证的办理材料和办理时限分别是什么？\n答案：居民户口簿、有效身份证件之一。",
+        "content": (
+            "问题：省外和省内人员补办身份证的办理材料和办理时限分别是什么？\n答案：居民户口簿、有效身份证件之一。"
+        ),
         "score": 0.76,
         "title": "03城市常见问题/身份证QA.txt",
         "metadata": {
@@ -10154,7 +9925,9 @@ def test_dify_answer_bearing_qa_beats_anchor_only_metadata_match(monkeypatch: py
         raising=True,
     )
     anchor_only_record = {
-        "content": "检索锚点：核发居民身份证（补领）\n问题：核发居民身份证（补领）\n相似问法：居民身份证补领需要什么材料",
+        "content": (
+            "检索锚点：核发居民身份证（补领）\n问题：核发居民身份证（补领）\n相似问法：居民身份证补领需要什么材料"
+        ),
         "score": 0.78,
         "title": "03城市常见问题/身份证QA.txt",
         "metadata": {
@@ -10213,7 +9986,9 @@ def test_dify_question_intent_anchor_beats_broad_alias_answer(monkeypatch: pytes
         },
     }
     material_answer = {
-        "content": "问题：省外和省内人员补办身份证的办理材料和办理时限分别是什么？\n答案：居民户口簿、有效身份证件之一。",
+        "content": (
+            "问题：省外和省内人员补办身份证的办理材料和办理时限分别是什么？\n答案：居民户口簿、有效身份证件之一。"
+        ),
         "score": 0.75,
         "title": "03城市常见问题/身份证QA.txt",
         "metadata": {
@@ -10636,12 +10411,7 @@ def test_dify_retrieval_uses_map_plugin_refs_for_content_hints_when_citation_lac
     monkeypatch.setattr(
         dify_api.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
-        (
-            '{"region-alpha": {'
-            f'"dataset_ids": ["{dataset_id}"], '
-            f'"plugin_refs": ["{_DEMO_PLUGIN_REF}"]'
-            "}}"
-        ),
+        (f'{{"region-alpha": {{"dataset_ids": ["{dataset_id}"], "plugin_refs": ["{_DEMO_PLUGIN_REF}"]}}}}'),
         raising=False,
     )
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
@@ -10797,12 +10567,7 @@ def test_dify_records_hydrate_truncated_exact_anchor_slot_content(
 
     chunk_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
-    full_content = (
-        "Case: Alpha Package\n"
-        "Section: service channels\n"
-        "Apply online.\n"
-        "Contact: 555-0100"
-    )
+    full_content = "Case: Alpha Package\nSection: service channels\nApply online.\nContact: 555-0100"
     _patch_demo_policy(
         monkeypatch,
         dify_api,
@@ -11381,7 +11146,10 @@ def test_dify_retrieval_frontloads_named_way_markers_from_real_qa_shape(
     assert res.status_code == 200, res.text
     content = res.json()["records"][0]["content"]
     first_line = content.splitlines()[0]
-    assert first_line == "必答要点：回答申请/入口/类型类问题时必须保留这些选项名称：下载“苏证通”APP、微信关注“江苏公安微警务”公众号"
+    expected_first_line = (
+        "必答要点：回答申请/入口/类型类问题时必须保留这些选项名称：下载“苏证通”APP、微信关注“江苏公安微警务”公众号"
+    )
+    assert first_line == expected_first_line
     assert content.endswith(full_content)
 
 
@@ -11393,10 +11161,7 @@ def test_dify_retrieval_does_not_treat_numbered_process_steps_as_answer_options(
     _patch_demo_policy(monkeypatch, dify_api)
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
-    full_content = (
-        "答案：网上办理流程如下：1.登录江苏政务服务网；"
-        "2.选择服务卡居民服务一件事；3.提交申请材料。"
-    )
+    full_content = "答案：网上办理流程如下：1.登录江苏政务服务网；2.选择服务卡居民服务一件事；3.提交申请材料。"
 
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
@@ -11453,10 +11218,7 @@ def test_dify_retrieval_does_not_frontload_enumerated_options_for_non_option_que
     _patch_demo_policy(monkeypatch, dify_api)
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
-    full_content = (
-        "答案：汽车置换更新可以申请两种类型的补贴："
-        "1.卖旧置换更新补贴；2.报废置换更新补贴。"
-    )
+    full_content = "答案：汽车置换更新可以申请两种类型的补贴：1.卖旧置换更新补贴；2.报废置换更新补贴。"
 
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
@@ -11513,12 +11275,7 @@ def test_dify_retrieval_does_not_prepend_service_hints_for_weak_service_match(
     _patch_demo_policy(monkeypatch, dify_api)
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
-    full_content = (
-        "事项名称：服务卡密码修改与重置\n"
-        "办理地点：城市政务服务中心\n"
-        "收费情况：不收费\n"
-        "咨询方式：0519-12333"
-    )
+    full_content = "事项名称：服务卡密码修改与重置\n办理地点：城市政务服务中心\n收费情况：不收费\n咨询方式：0519-12333"
 
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
@@ -11665,7 +11422,9 @@ def test_dify_retrieval_prefers_metadata_question_anchor_for_tie_breaking(
                 },
             },
             {
-                "chunk_content": "问题：小学入学需要哪些材料？\n答案：凭户口簿、合法固定住所证件，到所在学区小学办理报名手续。",
+                "chunk_content": (
+                    "问题：小学入学需要哪些材料？\n答案：凭户口簿、合法固定住所证件，到所在学区小学办理报名手续。"
+                ),
                 "relevance_score": 0.73,
                 "document_name": "04专题常见问答/2026年城市义务教育学校招生入学常见问题.txt",
                 "chunk_id": str(uuid.uuid4()),
@@ -11797,15 +11556,17 @@ def test_dify_retrieval_uses_plugin_policy_value_intents_without_metadata_intent
     monkeypatch.setattr(
         dify_api,
         "_retrieval_policy_for_plugin_ref",
-        lambda ref: {
-            "schema": "mimirq.retrieval_policy.v1",
-            "query_expansion_values": [
-                {"metadata": "section_type", "value": "entry", "terms": ["portal entry"]},
-                {"metadata": "section_type", "value": "steps", "terms": ["renewal steps"]},
-            ],
-        }
-        if ref == plugin_ref
-        else {},
+        lambda ref: (
+            {
+                "schema": "mimirq.retrieval_policy.v1",
+                "query_expansion_values": [
+                    {"metadata": "section_type", "value": "entry", "terms": ["portal entry"]},
+                    {"metadata": "section_type", "value": "steps", "terms": ["renewal steps"]},
+                ],
+            }
+            if ref == plugin_ref
+            else {}
+        ),
         raising=False,
     )
 
@@ -11872,15 +11633,17 @@ def test_dify_retrieval_plugin_policy_value_intent_can_beat_small_score_gap(
     monkeypatch.setattr(
         dify_api,
         "_retrieval_policy_for_plugin_ref",
-        lambda ref: {
-            "schema": "mimirq.retrieval_policy.v1",
-            "query_expansion_values": [
-                {"metadata": "section_type", "value": "entry", "terms": ["portal entry"]},
-                {"metadata": "section_type", "value": "steps", "terms": ["renewal steps"]},
-            ],
-        }
-        if ref == plugin_ref
-        else {},
+        lambda ref: (
+            {
+                "schema": "mimirq.retrieval_policy.v1",
+                "query_expansion_values": [
+                    {"metadata": "section_type", "value": "entry", "terms": ["portal entry"]},
+                    {"metadata": "section_type", "value": "steps", "terms": ["renewal steps"]},
+                ],
+            }
+            if ref == plugin_ref
+            else {}
+        ),
         raising=False,
     )
 
@@ -12014,7 +11777,10 @@ def test_dify_retrieval_does_not_boost_generic_anchor_terms_over_specific_hits(
                 "chunk_id": str(uuid.uuid4()),
             },
             {
-                "chunk_content": "检索锚点：省外和省内人员补办身份证的办理材料和办理时限分别是什么？；身份证补办\n居民身份证补领材料说明",
+                "chunk_content": (
+                    "检索锚点：省外和省内人员补办身份证的办理材料和办理时限分别是什么？；身份证补办\n"
+                    "居民身份证补领材料说明"
+                ),
                 "relevance_score": 0.73,
                 "document_name": "身份证问答.txt",
                 "chunk_id": str(uuid.uuid4()),
@@ -12120,7 +11886,12 @@ def test_dify_retrieval_uses_server_tenant_when_header_attempts_override(
 
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", str(configured_tenant_id), raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID",
+        str(configured_tenant_id),
+        raising=False,
+    )
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
     monkeypatch.setattr(
         dify_api.settings,
@@ -12314,62 +12085,18 @@ def test_dify_metadata_anchor_db_fallback_enforces_normal_document_eligibility(
         },
     }
 
-    class _FakeQuery:
-        def join(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def filter(self, *conditions):  # noqa: ANN002, ANN202
-            captured_filters[:] = list(conditions)
-            return self
-
-        def order_by(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def limit(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return self
-
-        def all(self):  # noqa: ANN202
-            return [service_row]
-
-    class _FakeDB:
-        def execute(self, _statement):  # noqa: ANN001, ANN202
-            return None
-
-        def query(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-            return _FakeQuery()
-
-        def rollback(self) -> None:
-            return None
-
-    fallback_records = dify_api._metadata_anchor_db_fallback_records(
-        db=_FakeDB(),
+    fallback_records = _run_metadata_anchor_db_fallback(
+        dify_api,
+        db=_CapturingMetadataFallbackDB(lambda _values: [service_row], captured_filters),
         tenant_id=tenant_id,
-        dataset_ids=[dataset_id],
+        dataset_id=dataset_id,
         query="保健食品广告审查",
-        top_k=5,
-        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
         existing_records=[],
     )
 
     assert len(fallback_records) == 1
     rendered_filters = " AND ".join(str(condition) for condition in captured_filters).lower()
-    captured_values: list[str] = []
-
-    def _walk_values(node):  # noqa: ANN001, ANN202
-        value = getattr(node, "value", None)
-        if value is not None:
-            captured_values.append(str(value))
-        for attr in ("left", "right"):
-            child = getattr(node, attr, None)
-            if child is not None:
-                _walk_values(child)
-        clauses = getattr(node, "clauses", None)
-        if clauses is not None:
-            for child in clauses:
-                _walk_values(child)
-
-    for condition in captured_filters:
-        _walk_values(condition)
+    captured_values = [value for condition in captured_filters for value in _collect_condition_values(condition)]
 
     assert "documents.status" in rendered_filters
     assert "completed" in captured_values
@@ -12959,12 +12686,7 @@ def test_dify_retrieval_trace_includes_mixed_intent_subqueries_and_paths(
     monkeypatch.setattr(
         dify_api.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
-        (
-            '{"city": {'
-            f'"dataset_ids": ["{dataset_id}"], '
-            f'"plugin_refs": ["{_DEMO_PLUGIN_REF}"]'
-            "}}"
-        ),
+        (f'{{"city": {{"dataset_ids": ["{dataset_id}"], "plugin_refs": ["{_DEMO_PLUGIN_REF}"]}}}}'),
         raising=False,
     )
     _patch_demo_policy(

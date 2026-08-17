@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Validate Changzhou Dify external-knowledge mapping before remote probes."""
 
-
 import argparse
 import json
 import os
@@ -217,26 +216,39 @@ def resolve_plugin_retrieval_policy(plugin_ref: str) -> dict[str, Any]:
     return {}
 
 
-def check_knowledge_map(payload: dict[str, Any], *, generated_at: str = "") -> dict[str, Any]:
-    failed_conditions: list[str] = []
+def _city_mapping_state(
+    payload: dict[str, Any],
+    failed_conditions: list[str],
+) -> tuple[dict[str, Any] | None, list[str], list[Any]]:
     city_mapping = payload.get(CITY_KNOWLEDGE_ID)
     city_dataset_ids: list[str] = []
     routes: list[Any] = []
     if not isinstance(city_mapping, dict):
         failed_conditions.append(f"knowledge_id_missing:{CITY_KNOWLEDGE_ID}")
-    else:
-        city_dataset_ids = _mapping_dataset_ids(city_mapping)
-        routes_raw = city_mapping.get("query_routes")
-        routes = routes_raw if isinstance(routes_raw, list) else []
-        if not city_dataset_ids:
-            failed_conditions.append("city_dataset_ids_missing")
-        if not routes:
-            failed_conditions.append("query_routes_missing")
+        return None, city_dataset_ids, routes
 
-    route_precedence_issues = check_route_precedence(city_mapping, routes) if isinstance(city_mapping, dict) else []
-    for issue in route_precedence_issues:
+    city_dataset_ids = _mapping_dataset_ids(city_mapping)
+    routes_raw = city_mapping.get("query_routes")
+    routes = routes_raw if isinstance(routes_raw, list) else []
+    if not city_dataset_ids:
+        failed_conditions.append("city_dataset_ids_missing")
+    if not routes:
+        failed_conditions.append("query_routes_missing")
+    return city_mapping, city_dataset_ids, routes
+
+
+def _record_route_precedence_failures(
+    issues: list[dict[str, Any]],
+    failed_conditions: list[str],
+) -> None:
+    for issue in issues:
         failed_conditions.append(f"route_precedence_conflict:{issue['name']}")
 
+
+def _check_required_district_routes(
+    routes: list[Any],
+    failed_conditions: list[str],
+) -> tuple[list[str], list[dict[str, Any]], list[str], list[dict[str, str]]]:
     missing_routes: list[str] = []
     incomplete_routes: list[dict[str, Any]] = []
     route_dataset_missing: list[str] = []
@@ -260,7 +272,13 @@ def check_knowledge_map(payload: dict[str, Any], *, generated_at: str = "") -> d
         if mode not in VALID_ROUTE_MODES:
             route_mode_invalid.append({"district": district, "mode": mode})
             failed_conditions.append(f"route_mode_invalid:{district}:{mode}")
+    return missing_routes, incomplete_routes, route_dataset_missing, route_mode_invalid
 
+
+def _check_required_district_knowledge_ids(
+    payload: dict[str, Any],
+    failed_conditions: list[str],
+) -> tuple[list[str], list[str]]:
     missing_knowledge_ids: list[str] = []
     empty_knowledge_ids: list[str] = []
     for district in REQUIRED_DISTRICT_TERMS:
@@ -272,7 +290,13 @@ def check_knowledge_map(payload: dict[str, Any], *, generated_at: str = "") -> d
         elif not dataset_ids:
             empty_knowledge_ids.append(knowledge_id)
             failed_conditions.append(f"district_knowledge_dataset_ids_missing:{knowledge_id}")
+    return missing_knowledge_ids, empty_knowledge_ids
 
+
+def _check_plugin_refs(
+    payload: dict[str, Any],
+    failed_conditions: list[str],
+) -> tuple[list[dict[str, str]], list[dict[str, str]], list[dict[str, str]]]:
     checked_plugin_refs: list[dict[str, str]] = []
     invalid_plugin_refs: list[dict[str, str]] = []
     missing_policy_plugin_refs: list[dict[str, str]] = []
@@ -287,6 +311,29 @@ def check_knowledge_map(payload: dict[str, Any], *, generated_at: str = "") -> d
             if not resolve_plugin_retrieval_policy(plugin_ref):
                 missing_policy_plugin_refs.append(item)
                 failed_conditions.append(f"plugin_retrieval_policy_missing:{knowledge_id}:{plugin_ref}")
+    return checked_plugin_refs, invalid_plugin_refs, missing_policy_plugin_refs
+
+
+def check_knowledge_map(payload: dict[str, Any], *, generated_at: str = "") -> dict[str, Any]:
+    failed_conditions: list[str] = []
+    city_mapping, city_dataset_ids, routes = _city_mapping_state(payload, failed_conditions)
+    route_precedence_issues = check_route_precedence(city_mapping, routes) if city_mapping else []
+    _record_route_precedence_failures(route_precedence_issues, failed_conditions)
+    (
+        missing_routes,
+        incomplete_routes,
+        route_dataset_missing,
+        route_mode_invalid,
+    ) = _check_required_district_routes(routes, failed_conditions)
+    missing_knowledge_ids, empty_knowledge_ids = _check_required_district_knowledge_ids(
+        payload,
+        failed_conditions,
+    )
+    (
+        checked_plugin_refs,
+        invalid_plugin_refs,
+        missing_policy_plugin_refs,
+    ) = _check_plugin_refs(payload, failed_conditions)
 
     district_count = len(REQUIRED_DISTRICT_TERMS)
     return {

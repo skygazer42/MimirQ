@@ -8,6 +8,7 @@ auto-merge, and metadata exact-anchor post ordering. Methods run on the
 keep working.
 """
 
+from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
@@ -29,6 +30,22 @@ from app.rag.retrieval.hybrid.common import (
 from app.rag.retrieval.sibling_expand import select_document_expansion_mode
 from app.rag.retrieval.source_labels import derive_document_title, should_replace_source_label
 from app.services.dataset_embedding_config import DatasetEmbeddingRuntimeConfig
+
+
+@dataclass
+class _DocumentEnrichmentContext:
+    doc_user_by_id: dict[str, dict[str, Any]] = field(default_factory=dict)
+    doc_dataset_by_id: dict[str, str] = field(default_factory=dict)
+    doc_ready_by_id: dict[str, bool] = field(default_factory=dict)
+    doc_active_pipeline_key_by_id: dict[str, str] = field(default_factory=dict)
+    doc_parse_quality_by_id: dict[str, float] = field(default_factory=dict)
+    doc_filename_by_id: dict[str, str] = field(default_factory=dict)
+    doc_metadata_by_id: dict[str, dict[str, Any]] = field(default_factory=dict)
+    doc_title_by_id: dict[str, str] = field(default_factory=dict)
+    doc_authority_by_id: dict[str, int] = field(default_factory=dict)
+    doc_updated_ts_by_id: dict[str, float] = field(default_factory=dict)
+    doc_publication_by_id: dict[str, str] = field(default_factory=dict)
+    doc_supersedes_by_id: dict[str, str] = field(default_factory=dict)
 
 
 class PostProcessMixin:
@@ -53,481 +70,54 @@ class PostProcessMixin:
             return results
 
         stats0 = _stats if _stats is not None else stats
-        if stats0 is not None:
-            stats0.clear()
-            stats0["input_results"] = len(results)
-            stats0["filtered_orphaned"] = 0
-            stats0["filtered_acl"] = 0
-            stats0["filtered_dataset"] = 0
-            stats0["filtered_not_ready"] = 0
-            stats0["filtered_embedding_space"] = 0
-            stats0["filtered_pipeline_version"] = 0
-            stats0["filtered_metadata_filter"] = 0
-            stats0["output_results"] = 0
-            stats0["exception"] = None
+        self._reset_enrichment_stats(stats0, input_results=len(results))
 
         db: Session | None = None
         try:
             db = self._open_session()
-            tenant_filter = self.tenant_id
-            account_id = (self.account_id or "").strip() or None
-            dataset_filters = {str(dataset_id) for dataset_id in self._explicit_dataset_scope_ids()}
-            runtime = embedding_runtime or self._resolve_embedding_runtime(tenant_id=tenant_filter)
-            embedding_space = runtime.embedding_space_hash
-
-            chunk_ids: list[UUID] = []
-            # First collect existing chunk_ids (prefer using these for lookup)
-            for r in results:
-                cid = r.get("chunk_id")
-                if not cid:
-                    meta = r.get("metadata") or {}
-                    cid = meta.get("chunk_id")
-                if not cid:
-                    continue
-                try:
-                    chunk_ids.append(UUID(str(cid)))
-                except (TypeError, ValueError, AttributeError):
-                    continue
-
-            chunks_by_id: dict[str, DocumentChunk] = {}
-            if chunk_ids:
-                q = db.query(DocumentChunk).filter(DocumentChunk.id.in_(chunk_ids))
-                if tenant_filter:
-                    q = q.filter(DocumentChunk.tenant_id == tenant_filter)
-                for ck in q.all():
-                    chunks_by_id[str(ck.id)] = ck
-
-            # Batch lookup missing chunk_id by (document_id, chunk_index) to avoid N+1 queries.
-            missing_pairs: set[tuple[UUID, int]] = set()
-            for r in results:
-                cid = r.get("chunk_id")
-                if cid and str(cid) in chunks_by_id:
-                    continue
-                meta = r.get("metadata") or {}
-                doc_id = meta.get("document_id")
-                chunk_index = meta.get("chunk_index")
-                if doc_id is None or chunk_index is None:
-                    continue
-                try:
-                    doc_uuid = UUID(str(doc_id))
-                    chunk_idx = int(chunk_index)
-                except (TypeError, ValueError, AttributeError):
-                    continue
-                missing_pairs.add((doc_uuid, chunk_idx))
-
-            chunks_by_pair: dict[tuple[str, int], DocumentChunk] = {}
-            if missing_pairs:
-                q = db.query(DocumentChunk).filter(
-                    tuple_(DocumentChunk.document_id, DocumentChunk.chunk_index).in_(list(missing_pairs))
-                )
-                if tenant_filter:
-                    q = q.filter(DocumentChunk.tenant_id == tenant_filter)
-                for ck in q.all():
-                    chunks_by_pair[(str(ck.document_id), int(ck.chunk_index))] = ck
-
-            # Document-level user metadata is stored on documents.metadata.user (not per-chunk).
-            # Fetch it once per document to enable metadata filtering like `document_user.tags`.
-            doc_user_by_id: dict[str, dict[str, Any]] = {}
-            doc_dataset_by_id: dict[str, str] = {}
-            doc_ready_by_id: dict[str, bool] = {}
-            doc_active_pipeline_key_by_id: dict[str, str] = {}
-            doc_parse_quality_by_id: dict[str, float] = {}
-            doc_filename_by_id: dict[str, str] = {}
-            doc_metadata_by_id: dict[str, dict[str, Any]] = {}
-            doc_title_by_id: dict[str, str] = {}
-            doc_authority_by_id: dict[str, int] = {}
-            doc_updated_ts_by_id: dict[str, float] = {}
-            doc_publication_by_id: dict[str, str] = {}
-            doc_supersedes_by_id: dict[str, str] = {}
-            try:
-                doc_ids: set[UUID] = set()
-                for ck in list(chunks_by_id.values()) + list(chunks_by_pair.values()):
-                    if ck and getattr(ck, "document_id", None):
-                        doc_ids.add(UUID(str(ck.document_id)))
-                if doc_ids:
-                    dq = db.query(
-                        DBDocument.id,
-                        DBDocument.filename,
-                        DBDocument.dataset_id,
-                        DBDocument.status,
-                        DBDocument.doc_metadata,
-                        DBDocument.archived_at,
-                        DBDocument.disabled_at,
-                        DBDocument.publication_status,
-                        DBDocument.authority_level,
-                        DBDocument.updated_at,
-                        DBDocument.created_at,
-                        DBDocument.supersedes_document_id,
-                    ).filter(DBDocument.id.in_(sorted(doc_ids)))
-                    if tenant_filter:
-                        dq = dq.filter(DBDocument.tenant_id == tenant_filter)
-                    for (
-                        doc_id,
-                        filename,
-                        ds_id,
-                        status,
-                        doc_meta,
-                        archived_at,
-                        disabled_at,
-                        publication_status,
-                        authority_level,
-                        updated_at,
-                        created_at,
-                        supersedes_document_id,
-                    ) in dq.all():
-                        doc_id_s = str(doc_id)
-                        meta0 = doc_meta if isinstance(doc_meta, dict) else {}
-                        doc_metadata_by_id[doc_id_s] = dict(meta0)
-                        if filename:
-                            doc_filename_by_id[doc_id_s] = str(filename)
-                        user0 = meta0.get("user") if isinstance(meta0.get("user"), dict) else {}
-                        if user0:
-                            doc_user_by_id[doc_id_s] = dict(user0)
-                        try:
-                            doc_authority_by_id[doc_id_s] = max(0, min(100, int(authority_level or 0)))
-                        except (TypeError, ValueError, AttributeError):
-                            doc_authority_by_id[doc_id_s] = 0
-                        updated = updated_at or created_at
-                        if updated is not None:
-                            try:
-                                doc_updated_ts_by_id[doc_id_s] = float(updated.timestamp())
-                            except (TypeError, ValueError, AttributeError, OverflowError) as exc:
-                                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-                        doc_publication_by_id[doc_id_s] = str(publication_status or "published").strip().lower()
-                        if supersedes_document_id is not None:
-                            doc_supersedes_by_id[doc_id_s] = str(supersedes_document_id)
-                        pq_obj = meta0.get("parse_quality")
-                        pq_score_raw = None
-                        if isinstance(pq_obj, dict):
-                            pq_score_raw = pq_obj.get("score")
-                        elif pq_obj is not None:
-                            pq_score_raw = pq_obj
-                        try:
-                            if pq_score_raw is not None:
-                                pq_score = float(pq_score_raw)
-                                if pq_score < 0.0:
-                                    pq_score = 0.0
-                                if pq_score > 1.0:
-                                    pq_score = 1.0
-                                doc_parse_quality_by_id[str(doc_id)] = float(pq_score)
-                        except Exception as exc:
-                            logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-                        if ds_id is not None:
-                            doc_dataset_by_id[str(doc_id)] = str(ds_id)
-
-                        # Versioning: compute active pipeline key for candidate-level trimming.
-                        ready = (
-                            bool(meta0.get("active_pipeline_ready"))
-                            if "active_pipeline_ready" in meta0
-                            else (str(status or "").lower() == "completed")
-                        )
-                        if archived_at is not None or disabled_at is not None:
-                            ready = False
-                        if str(publication_status or "published").strip().lower() != "published":
-                            ready = False
-                        doc_ready_by_id[str(doc_id)] = bool(ready)
-
-                        active_key = str(meta0.get("active_doc_pipeline_key") or "").strip()
-                        if not active_key:
-                            active_hash = str(meta0.get("active_pipeline_hash") or meta0.get("pipeline_hash") or "").strip()
-                            if active_hash:
-                                active_key = f"{doc_id}:{active_hash}"
-                        if ready and active_key:
-                            doc_active_pipeline_key_by_id[str(doc_id)] = active_key
-
-                    first_chunk_by_doc_id: dict[str, str] = {}
-                    try:
-                        fq = db.query(DocumentChunk.document_id, DocumentChunk.content).filter(
-                            DocumentChunk.document_id.in_(sorted(doc_ids)),
-                            DocumentChunk.chunk_index == 0,
-                        )
-                        if tenant_filter:
-                            fq = fq.filter(DocumentChunk.tenant_id == tenant_filter)
-                        for doc_id, content in fq.all():
-                            first_chunk_by_doc_id[str(doc_id)] = str(content or "")
-                    except Exception as exc:
-                        logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-
-                    for doc_id in doc_ids:
-                        doc_id_s = str(doc_id)
-                        title = derive_document_title(
-                            filename=doc_filename_by_id.get(doc_id_s),
-                            doc_metadata=doc_metadata_by_id.get(doc_id_s),
-                            first_chunk_content=first_chunk_by_doc_id.get(doc_id_s),
-                        )
-                        if title:
-                            doc_title_by_id[doc_id_s] = title
-            except Exception as exc:
-                _log_retriever_fallback('_enrich_results_with_db_metadata', exc)
-                doc_user_by_id = {}
-                doc_dataset_by_id = {}
-                doc_ready_by_id = {}
-                doc_active_pipeline_key_by_id = {}
-                doc_parse_quality_by_id = {}
-                doc_filename_by_id = {}
-                doc_metadata_by_id = {}
-                doc_title_by_id = {}
-                doc_authority_by_id = {}
-                doc_updated_ts_by_id = {}
-                doc_publication_by_id = {}
-                doc_supersedes_by_id = {}
-
-            # Candidate-level ACL trimming (security trimming) and dataset scoping.
-            # This enables "open scope" retrieval (no precomputed allowed_doc_ids list) without leaking data.
-            allowed_docs_str: set[str] | None = None
-            if tenant_filter and account_id:
-                try:
-                    from app.services.document_access import get_allowed_document_id_sets
-
-                    candidate_doc_ids: set[UUID] = set()
-                    for k in doc_ready_by_id.keys():
-                        if not k:
-                            continue
-                        try:
-                            candidate_doc_ids.add(UUID(str(k)))
-                        except Exception as exc:
-                            _log_retriever_fallback('_enrich_results_with_db_metadata', exc)
-                            continue
-                    # Reduce work: if we cannot prove a doc is "ready", treat it as non-searchable.
-                    ready_doc_ids: set[UUID] = set()
-                    for doc_id, ok in doc_ready_by_id.items():
-                        if not ok:
-                            continue
-                        try:
-                            ready_doc_ids.add(UUID(str(doc_id)))
-                        except Exception as exc:
-                            _log_retriever_fallback('_enrich_results_with_db_metadata', exc)
-                            continue
-                    candidate_doc_ids = candidate_doc_ids & ready_doc_ids if ready_doc_ids else candidate_doc_ids
-
-                    if dataset_filters and doc_dataset_by_id:
-                        candidate_doc_ids = {
-                            did
-                            for did in candidate_doc_ids
-                            if str(did) in doc_dataset_by_id and doc_dataset_by_id[str(did)] in dataset_filters
-                        }
-
-                    if candidate_doc_ids:
-                        allowed_ids, _missing = get_allowed_document_id_sets(
-                            db,
-                            tenant_filter,
-                            account_id,
-                            list(candidate_doc_ids),
-                            check_member=True,
-                        )
-                        allowed_docs_str = {str(did) for did in allowed_ids}
-                    else:
-                        allowed_docs_str = set()
-                except Exception as exc:
-                    _log_retriever_fallback('_enrich_results_with_db_metadata', exc)
-                    # Fail closed: if ACL check fails, do not return potentially sensitive chunks.
-                    allowed_docs_str = set()
-            elif account_id and not tenant_filter:
-                # If caller provided account_id but not tenant_id, fail closed.
-                allowed_docs_str = set()
-
-            resolved: list[dict[str, Any]] = []
-            for r in results:
-                meta = dict(r.get("metadata") or {})
-                cid = r.get("chunk_id") or meta.get("chunk_id")
-                ck = chunks_by_id.get(str(cid)) if cid else None
-
-                if ck is None:
-                    doc_id = meta.get("document_id")
-                    chunk_index = meta.get("chunk_index")
-                    try:
-                        doc_uuid = UUID(str(doc_id))
-                        chunk_idx = int(chunk_index)
-                    except (TypeError, ValueError, AttributeError):
-                        doc_uuid = None
-                        chunk_idx = None
-                    if doc_uuid is not None and chunk_idx is not None:
-                        ck = chunks_by_pair.get((str(doc_uuid), chunk_idx))
-
-                # If we know tenant_id, treat unresolved results as stale (e.g. orphan vectors).
-                if ck is None and tenant_filter:
-                    if stats0 is not None:
-                        stats0["filtered_orphaned"] = int(stats0.get("filtered_orphaned", 0) or 0) + 1
-                    continue
-
-                if ck is not None:
-                    # Enforce candidate-level dataset/ACL trimming once we know the resolved document_id.
-                    doc_id_str = str(ck.document_id)
-                    if allowed_docs_str is not None and doc_id_str not in allowed_docs_str:
-                        if stats0 is not None:
-                            stats0["filtered_acl"] = int(stats0.get("filtered_acl", 0) or 0) + 1
-                        continue
-                    if dataset_filters:
-                        if doc_dataset_by_id.get(doc_id_str) not in dataset_filters:
-                            if stats0 is not None:
-                                stats0["filtered_dataset"] = int(stats0.get("filtered_dataset", 0) or 0) + 1
-                            continue
-                    if getattr(ck, "disabled_at", None) is not None:
-                        if stats0 is not None:
-                            stats0["filtered_not_ready"] = int(stats0.get("filtered_not_ready", 0) or 0) + 1
-                        continue
-                    if doc_ready_by_id and not doc_ready_by_id.get(doc_id_str, False):
-                        if stats0 is not None:
-                            stats0["filtered_not_ready"] = int(stats0.get("filtered_not_ready", 0) or 0) + 1
-                        continue
-
-                    cid_str = str(ck.id)
-                    r["chunk_id"] = cid_str
-                    meta["chunk_id"] = cid_str
-                    chunks_by_id[cid_str] = ck
-
-                    # Use DB content as the source of truth for downstream citations/highlighting.
-                    # Vector backends may store transformed text (e.g., embedding-only prefixes).
-                    try:
-                        db_content = ck.content or ""
-                        if isinstance(db_content, str) and db_content and r.get("content") != db_content:
-                            r["content"] = db_content
-                    except Exception as exc:
-                        logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-
-                    # Merge DB metadata (only fill empty fields, avoid overwriting vector-side score etc.)
-                    stored_meta = dict(ck.doc_metadata or {})
-                    # Fill in missing fields from persisted chunk metadata (rich JSONB).
-                    for k, v in stored_meta.items():
-                        if k not in meta or meta.get(k) in (None, "", [], {}):
-                            meta[k] = v
-                    if stored_meta.get("embedding_space_hash") and not meta.get("embedding_space_hash"):
-                        meta["embedding_space_hash"] = stored_meta.get("embedding_space_hash")
-                    if stored_meta.get("img_id") and not meta.get("img_id"):
-                        meta["img_id"] = stored_meta.get("img_id")
-                    if stored_meta.get("source") and not meta.get("source"):
-                        meta["source"] = stored_meta.get("source")
-                    doc_filename = doc_filename_by_id.get(doc_id_str)
-                    if doc_filename and (
-                        not meta.get("filename") or should_replace_source_label(meta.get("filename"), document_id=doc_id_str)
-                    ):
-                        meta["filename"] = doc_filename
-                    if doc_filename and should_replace_source_label(meta.get("source"), document_id=doc_id_str):
-                        meta["source"] = doc_filename
-                    doc_title = doc_title_by_id.get(doc_id_str)
-                    if doc_title and not meta.get("document_title"):
-                        meta["document_title"] = doc_title
-                    if doc_id_str in doc_authority_by_id:
-                        meta["_governance_authority_level"] = doc_authority_by_id[doc_id_str]
-                    if doc_id_str in doc_updated_ts_by_id:
-                        meta["_governance_updated_ts"] = doc_updated_ts_by_id[doc_id_str]
-                    if doc_id_str in doc_publication_by_id:
-                        meta["_governance_publication_status"] = doc_publication_by_id[doc_id_str]
-                    if doc_id_str in doc_supersedes_by_id:
-                        meta["_governance_supersedes_document_id"] = doc_supersedes_by_id[doc_id_str]
-                    if (ck.page_number is not None) and not meta.get("page"):
-                        meta["page"] = ck.page_number
-                    if (ck.page_number is not None) and not meta.get("page_number"):
-                        meta["page_number"] = ck.page_number
-                    # Position data enables precise UI highlighting / deep-linking.
-                    if (ck.start_char is not None) and meta.get("start_char") is None:
-                        meta["start_char"] = int(ck.start_char)
-                    if (ck.end_char is not None) and meta.get("end_char") is None:
-                        meta["end_char"] = int(ck.end_char)
-                    if meta.get("chunk_index") is None:
-                        try:
-                            meta["chunk_index"] = int(getattr(ck, "chunk_index", None))
-                        except Exception as exc:
-                            logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-                    if stored_meta.get("parser_backend") and not meta.get("parser_backend"):
-                        meta["parser_backend"] = stored_meta.get("parser_backend")
-                    if stored_meta.get("doc_type_kwd") and not meta.get("doc_type_kwd"):
-                        meta["doc_type_kwd"] = stored_meta.get("doc_type_kwd")
-                    for key in (
-                        "header_path",
-                        "header_context",
-                        "chunk_strategy",
-                        "chunk_role",
-                        "parent_id",
-                        "hierarchy_basis",
-                        "hierarchy_level",
-                        "hierarchy_node_key",
-                        "hierarchy_family_key",
-                        "hierarchy_parent_key",
-                        "hierarchy_sibling_index",
-                        "hierarchy_prev_sibling_key",
-                        "hierarchy_next_sibling_key",
-                    ):
-                        if stored_meta.get(key) and not meta.get(key):
-                            meta[key] = stored_meta.get(key)
-
-                    # Attach document-level user metadata for metadata filtering / enterprise search facets.
-                    doc_user = doc_user_by_id.get(str(ck.document_id))
-                    if doc_user and not meta.get("document_user"):
-                        meta["document_user"] = doc_user
-                    if meta.get("doc_parse_quality_score") is None:
-                        pq_score = doc_parse_quality_by_id.get(str(ck.document_id))
-                        if pq_score is not None:
-                            meta["doc_parse_quality_score"] = float(pq_score)
-
-                    # Embedding space guard (vector only): avoid mixing vectors created with different
-                    # embedding models/providers/endpoints.
-                    #
-                    # Notes:
-                    # - We only enforce this when the hit came from vector search (Milvus attaches
-                    #   `metadata.score`), because BM25 is embedding-space agnostic.
-                    # - Legacy vector metadata may omit the hash, but DB metadata must recover a
-                    #   matching value before the candidate is allowed through.
-                    expected_embedding_space = str(
-                        meta.get(_RETRIEVAL_EXPECTED_EMBEDDING_SPACE_KEY) or embedding_space or ""
-                    ).strip()
-                    if meta.get(_RETRIEVAL_EXPECTED_EMBEDDING_SPACE_KEY) is not None or meta.get("score") is not None:
-                        ck_space = str(meta.get("embedding_space_hash") or "").strip()
-                        if expected_embedding_space and ck_space != expected_embedding_space:
-                            if stats0 is not None:
-                                stats0["filtered_embedding_space"] = (
-                                    int(stats0.get("filtered_embedding_space", 0) or 0) + 1
-                                )
-                            continue
-
-                    # Candidate-level active pipeline trimming (avoid mixing versions when open-scoped).
-                    active_key = doc_active_pipeline_key_by_id.get(doc_id_str)
-                    if active_key:
-                        ck_key = str(meta.get("doc_pipeline_key") or "").strip()
-                        if not ck_key:
-                            # Best-effort fallback from pipeline_hash.
-                            ph = str(meta.get("pipeline_hash") or stored_meta.get("pipeline_hash") or "").strip()
-                            if ph:
-                                ck_key = f"{ck.document_id}:{ph}"
-                        if not ck_key or ck_key != active_key:
-                            if stats0 is not None:
-                                stats0["filtered_pipeline_version"] = (
-                                    int(stats0.get("filtered_pipeline_version", 0) or 0) + 1
-                                )
-                            continue
-
-                r["metadata"] = meta
-                resolved.append(r)
-
-            # Apply the full metadata filter *after* DB enrichment.
-            effective_metadata_filter = metadata_filter_override if metadata_filter_override is not None else self.metadata_filter
-            if effective_metadata_filter and self.metadata_filter_enabled:
-                try:
-                    before = len(resolved)
-                    from app.rag.core.filters import apply_metadata_filter_with_stats  # noqa: WPS433
-
-                    resolved, mf_stats = apply_metadata_filter_with_stats(resolved, effective_metadata_filter)
-                    blocked = int(mf_stats.get("blocked") or max(0, before - len(resolved)))
-                    matched = int(mf_stats.get("matched") or len(resolved))
-                    summary = mf_stats.get("summary") if isinstance(mf_stats.get("summary"), dict) else None
-                    if stats0 is not None:
-                        stats0["filtered_metadata_filter"] = int(blocked)
-                        stats0["metadata_filter_blocked"] = int(blocked)
-                        stats0["metadata_filter_matched"] = int(matched)
-                        if summary:
-                            stats0["metadata_filter"] = summary
-                except Exception as exc:
-                    logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-                    if stats0 is not None:
-                        stats0["exception"] = str(exc)[:200]
-                        stats0["output_results"] = 0
-                    return []
-
+            tenant_filter, account_id, dataset_filters, embedding_space = self._enrichment_runtime_state(
+                embedding_runtime=embedding_runtime,
+            )
+            chunks_by_id = self._load_enrichment_chunks_by_id(db, results, tenant_filter=tenant_filter)
+            chunks_by_pair = self._load_enrichment_chunks_by_pair(
+                db,
+                results,
+                chunks_by_id=chunks_by_id,
+                tenant_filter=tenant_filter,
+            )
+            doc_ctx = self._load_document_enrichment_context(
+                db,
+                chunks_by_id=chunks_by_id,
+                chunks_by_pair=chunks_by_pair,
+                tenant_filter=tenant_filter,
+            )
+            allowed_docs_str = self._resolve_allowed_docs_for_enrichment(
+                db,
+                tenant_filter=tenant_filter,
+                account_id=account_id,
+                dataset_filters=dataset_filters,
+                doc_ctx=doc_ctx,
+            )
+            resolved = self._resolve_enriched_results(
+                results,
+                chunks_by_id=chunks_by_id,
+                chunks_by_pair=chunks_by_pair,
+                doc_ctx=doc_ctx,
+                allowed_docs_str=allowed_docs_str,
+                dataset_filters=dataset_filters,
+                embedding_space=embedding_space,
+                stats0=stats0,
+            )
+            resolved = self._apply_enrichment_metadata_filter(
+                resolved,
+                metadata_filter_override=metadata_filter_override,
+                stats0=stats0,
+            )
             if stats0 is not None:
                 stats0["output_results"] = len(resolved)
             return resolved
         except Exception as exc:
-            _log_retriever_fallback('_enrich_results_with_db_metadata', exc)
+            _log_retriever_fallback("_enrich_results_with_db_metadata", exc)
             if stats0 is not None:
                 stats0["exception"] = str(exc)[:200]
             return []
@@ -538,28 +128,689 @@ class PostProcessMixin:
             except Exception as exc:
                 logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
 
+    @staticmethod
+    def _reset_enrichment_stats(stats0: dict[str, Any] | None, *, input_results: int) -> None:
+        if stats0 is None:
+            return
+        stats0.clear()
+        stats0.update(
+            {
+                "input_results": input_results,
+                "filtered_orphaned": 0,
+                "filtered_acl": 0,
+                "filtered_dataset": 0,
+                "filtered_not_ready": 0,
+                "filtered_embedding_space": 0,
+                "filtered_pipeline_version": 0,
+                "filtered_metadata_filter": 0,
+                "output_results": 0,
+                "exception": None,
+            }
+        )
+
+    def _enrichment_runtime_state(
+        self,
+        *,
+        embedding_runtime: DatasetEmbeddingRuntimeConfig | None,
+    ) -> tuple[UUID | None, str | None, set[str], str]:
+        tenant_filter = self.tenant_id
+        account_id = (self.account_id or "").strip() or None
+        dataset_filters = {str(dataset_id) for dataset_id in self._explicit_dataset_scope_ids()}
+        runtime = embedding_runtime or self._resolve_embedding_runtime(tenant_id=tenant_filter)
+        return tenant_filter, account_id, dataset_filters, str(runtime.embedding_space_hash or "").strip()
+
+    def _load_enrichment_chunks_by_id(
+        self,
+        db: Session,
+        results: list[dict[str, Any]],
+        *,
+        tenant_filter: UUID | None,
+    ) -> dict[str, DocumentChunk]:
+        chunk_ids = self._result_chunk_ids(results)
+        if not chunk_ids:
+            return {}
+        q = db.query(DocumentChunk).filter(DocumentChunk.id.in_(chunk_ids))
+        if tenant_filter:
+            q = q.filter(DocumentChunk.tenant_id == tenant_filter)
+        return {str(chunk.id): chunk for chunk in q.all()}
+
+    def _result_chunk_ids(self, results: list[dict[str, Any]]) -> list[UUID]:
+        chunk_ids: list[UUID] = []
+        for result in results:
+            cid = result.get("chunk_id") or (result.get("metadata") or {}).get("chunk_id")
+            try:
+                if cid:
+                    chunk_ids.append(UUID(str(cid)))
+            except (TypeError, ValueError, AttributeError):
+                continue
+        return chunk_ids
+
+    def _load_enrichment_chunks_by_pair(
+        self,
+        db: Session,
+        results: list[dict[str, Any]],
+        *,
+        chunks_by_id: dict[str, DocumentChunk],
+        tenant_filter: UUID | None,
+    ) -> dict[tuple[str, int], DocumentChunk]:
+        missing_pairs = self._missing_chunk_pairs(results, chunks_by_id=chunks_by_id)
+        if not missing_pairs:
+            return {}
+        q = db.query(DocumentChunk).filter(
+            tuple_(DocumentChunk.document_id, DocumentChunk.chunk_index).in_(list(missing_pairs))
+        )
+        if tenant_filter:
+            q = q.filter(DocumentChunk.tenant_id == tenant_filter)
+        return {(str(chunk.document_id), int(chunk.chunk_index)): chunk for chunk in q.all()}
+
+    def _missing_chunk_pairs(
+        self,
+        results: list[dict[str, Any]],
+        *,
+        chunks_by_id: dict[str, DocumentChunk],
+    ) -> set[tuple[UUID, int]]:
+        missing_pairs: set[tuple[UUID, int]] = set()
+        for result in results:
+            cid = result.get("chunk_id")
+            if cid and str(cid) in chunks_by_id:
+                continue
+            meta = result.get("metadata") or {}
+            doc_id = meta.get("document_id")
+            chunk_index = meta.get("chunk_index")
+            try:
+                if doc_id is not None and chunk_index is not None:
+                    missing_pairs.add((UUID(str(doc_id)), int(chunk_index)))
+            except (TypeError, ValueError, AttributeError):
+                continue
+        return missing_pairs
+
+    def _load_document_enrichment_context(
+        self,
+        db: Session,
+        *,
+        chunks_by_id: dict[str, DocumentChunk],
+        chunks_by_pair: dict[tuple[str, int], DocumentChunk],
+        tenant_filter: UUID | None,
+    ) -> _DocumentEnrichmentContext:
+        doc_ids = {
+            UUID(str(chunk.document_id))
+            for chunk in list(chunks_by_id.values()) + list(chunks_by_pair.values())
+            if chunk and getattr(chunk, "document_id", None)
+        }
+        if not doc_ids:
+            return _DocumentEnrichmentContext()
+        try:
+            doc_ctx = self._query_document_enrichment_rows(db, doc_ids=doc_ids, tenant_filter=tenant_filter)
+            first_chunk_by_doc_id = self._query_first_chunk_content(
+                db,
+                doc_ids=doc_ids,
+                tenant_filter=tenant_filter,
+            )
+            self._populate_document_titles(doc_ctx, doc_ids=doc_ids, first_chunk_by_doc_id=first_chunk_by_doc_id)
+            return doc_ctx
+        except Exception as exc:
+            _log_retriever_fallback("_enrich_results_with_db_metadata", exc)
+            return _DocumentEnrichmentContext()
+
+    def _query_document_enrichment_rows(
+        self,
+        db: Session,
+        *,
+        doc_ids: set[UUID],
+        tenant_filter: UUID | None,
+    ) -> _DocumentEnrichmentContext:
+        dq = db.query(
+            DBDocument.id,
+            DBDocument.filename,
+            DBDocument.dataset_id,
+            DBDocument.status,
+            DBDocument.doc_metadata,
+            DBDocument.archived_at,
+            DBDocument.disabled_at,
+            DBDocument.publication_status,
+            DBDocument.authority_level,
+            DBDocument.updated_at,
+            DBDocument.created_at,
+            DBDocument.supersedes_document_id,
+        ).filter(DBDocument.id.in_(sorted(doc_ids)))
+        if tenant_filter:
+            dq = dq.filter(DBDocument.tenant_id == tenant_filter)
+        doc_ctx = _DocumentEnrichmentContext()
+        for row in dq.all():
+            self._record_document_enrichment_row(doc_ctx, row)
+        return doc_ctx
+
+    def _record_document_enrichment_row(
+        self,
+        doc_ctx: _DocumentEnrichmentContext,
+        row: tuple[Any, ...],
+    ) -> None:
+        (
+            doc_id,
+            filename,
+            dataset_id,
+            status,
+            doc_meta,
+            archived_at,
+            disabled_at,
+            publication_status,
+            authority_level,
+            updated_at,
+            created_at,
+            supersedes_document_id,
+        ) = row
+        doc_id_s = str(doc_id)
+        meta0 = doc_meta if isinstance(doc_meta, dict) else {}
+        doc_ctx.doc_metadata_by_id[doc_id_s] = dict(meta0)
+        if filename:
+            doc_ctx.doc_filename_by_id[doc_id_s] = str(filename)
+        user0 = meta0.get("user") if isinstance(meta0.get("user"), dict) else {}
+        if user0:
+            doc_ctx.doc_user_by_id[doc_id_s] = dict(user0)
+        doc_ctx.doc_authority_by_id[doc_id_s] = self._authority_level(authority_level)
+        self._record_document_timestamps(
+            doc_ctx,
+            doc_id_s=doc_id_s,
+            updated_at=updated_at,
+            created_at=created_at,
+        )
+        doc_ctx.doc_publication_by_id[doc_id_s] = str(publication_status or "published").strip().lower()
+        if supersedes_document_id is not None:
+            doc_ctx.doc_supersedes_by_id[doc_id_s] = str(supersedes_document_id)
+        self._record_document_parse_quality(doc_ctx, doc_id_s=doc_id_s, doc_meta=meta0)
+        if dataset_id is not None:
+            doc_ctx.doc_dataset_by_id[doc_id_s] = str(dataset_id)
+        ready = self._document_ready(
+            status=status,
+            doc_meta=meta0,
+            archived_at=archived_at,
+            disabled_at=disabled_at,
+            publication_status=publication_status,
+        )
+        doc_ctx.doc_ready_by_id[doc_id_s] = bool(ready)
+        active_key = self._document_active_pipeline_key(doc_meta=meta0, document_id=str(doc_id))
+        if ready and active_key:
+            doc_ctx.doc_active_pipeline_key_by_id[doc_id_s] = active_key
+
+    @staticmethod
+    def _authority_level(value: Any) -> int:
+        try:
+            return max(0, min(100, int(value or 0)))
+        except (TypeError, ValueError, AttributeError):
+            return 0
+
+    def _record_document_timestamps(
+        self,
+        doc_ctx: _DocumentEnrichmentContext,
+        *,
+        doc_id_s: str,
+        updated_at: Any,
+        created_at: Any,
+    ) -> None:
+        updated = updated_at or created_at
+        if updated is None:
+            return
+        try:
+            doc_ctx.doc_updated_ts_by_id[doc_id_s] = float(updated.timestamp())
+        except (TypeError, ValueError, AttributeError, OverflowError) as exc:
+            logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+
+    def _record_document_parse_quality(
+        self,
+        doc_ctx: _DocumentEnrichmentContext,
+        *,
+        doc_id_s: str,
+        doc_meta: dict[str, Any],
+    ) -> None:
+        pq_obj = doc_meta.get("parse_quality")
+        pq_score_raw = pq_obj.get("score") if isinstance(pq_obj, dict) else pq_obj
+        if pq_score_raw is None:
+            return
+        try:
+            pq_score = max(0.0, min(1.0, float(pq_score_raw)))
+            doc_ctx.doc_parse_quality_by_id[doc_id_s] = float(pq_score)
+        except Exception as exc:
+            logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+
+    @staticmethod
+    def _document_ready(
+        *,
+        status: Any,
+        doc_meta: dict[str, Any],
+        archived_at: Any,
+        disabled_at: Any,
+        publication_status: Any,
+    ) -> bool:
+        ready = (
+            bool(doc_meta.get("active_pipeline_ready"))
+            if "active_pipeline_ready" in doc_meta
+            else (str(status or "").lower() == "completed")
+        )
+        if archived_at is not None or disabled_at is not None:
+            ready = False
+        if str(publication_status or "published").strip().lower() != "published":
+            ready = False
+        return bool(ready)
+
+    def _document_active_pipeline_key(self, *, doc_meta: dict[str, Any], document_id: str) -> str | None:
+        active_key = str(doc_meta.get("active_doc_pipeline_key") or "").strip()
+        if active_key:
+            return active_key
+        active_hash = str(doc_meta.get("active_pipeline_hash") or doc_meta.get("pipeline_hash") or "").strip()
+        if active_hash:
+            return f"{document_id}:{active_hash}"
+        return None
+
+    def _query_first_chunk_content(
+        self,
+        db: Session,
+        *,
+        doc_ids: set[UUID],
+        tenant_filter: UUID | None,
+    ) -> dict[str, str]:
+        first_chunk_by_doc_id: dict[str, str] = {}
+        try:
+            q = db.query(DocumentChunk.document_id, DocumentChunk.content).filter(
+                DocumentChunk.document_id.in_(sorted(doc_ids)),
+                DocumentChunk.chunk_index == 0,
+            )
+            if tenant_filter:
+                q = q.filter(DocumentChunk.tenant_id == tenant_filter)
+            for doc_id, content in q.all():
+                first_chunk_by_doc_id[str(doc_id)] = str(content or "")
+        except Exception as exc:
+            logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+        return first_chunk_by_doc_id
+
+    def _populate_document_titles(
+        self,
+        doc_ctx: _DocumentEnrichmentContext,
+        *,
+        doc_ids: set[UUID],
+        first_chunk_by_doc_id: dict[str, str],
+    ) -> None:
+        for doc_id in doc_ids:
+            doc_id_s = str(doc_id)
+            title = derive_document_title(
+                filename=doc_ctx.doc_filename_by_id.get(doc_id_s),
+                doc_metadata=doc_ctx.doc_metadata_by_id.get(doc_id_s),
+                first_chunk_content=first_chunk_by_doc_id.get(doc_id_s),
+            )
+            if title:
+                doc_ctx.doc_title_by_id[doc_id_s] = title
+
+    def _resolve_allowed_docs_for_enrichment(
+        self,
+        db: Session,
+        *,
+        tenant_filter: UUID | None,
+        account_id: str | None,
+        dataset_filters: set[str],
+        doc_ctx: _DocumentEnrichmentContext,
+    ) -> set[str] | None:
+        if tenant_filter and account_id:
+            return self._allowed_docs_for_account(
+                db,
+                tenant_filter=tenant_filter,
+                account_id=account_id,
+                dataset_filters=dataset_filters,
+                doc_ctx=doc_ctx,
+            )
+        if account_id and not tenant_filter:
+            return set()
+        return None
+
+    def _allowed_docs_for_account(
+        self,
+        db: Session,
+        *,
+        tenant_filter: UUID,
+        account_id: str,
+        dataset_filters: set[str],
+        doc_ctx: _DocumentEnrichmentContext,
+    ) -> set[str]:
+        try:
+            from app.services.document_access import get_allowed_document_id_sets
+
+            candidate_doc_ids = self._allowed_doc_candidates(dataset_filters=dataset_filters, doc_ctx=doc_ctx)
+            if not candidate_doc_ids:
+                return set()
+            allowed_ids, _missing = get_allowed_document_id_sets(
+                db,
+                tenant_filter,
+                account_id,
+                list(candidate_doc_ids),
+                check_member=True,
+            )
+            return {str(doc_id) for doc_id in allowed_ids}
+        except Exception as exc:
+            _log_retriever_fallback("_enrich_results_with_db_metadata", exc)
+            return set()
+
+    def _allowed_doc_candidates(
+        self,
+        *,
+        dataset_filters: set[str],
+        doc_ctx: _DocumentEnrichmentContext,
+    ) -> set[UUID]:
+        candidate_doc_ids = self._ready_candidate_doc_ids(doc_ctx.doc_ready_by_id)
+        if dataset_filters and doc_ctx.doc_dataset_by_id:
+            candidate_doc_ids = {
+                doc_id for doc_id in candidate_doc_ids if doc_ctx.doc_dataset_by_id.get(str(doc_id)) in dataset_filters
+            }
+        return candidate_doc_ids
+
+    def _ready_candidate_doc_ids(self, doc_ready_by_id: dict[str, bool]) -> set[UUID]:
+        candidate_doc_ids: set[UUID] = set()
+        for doc_id, ready in doc_ready_by_id.items():
+            if not ready:
+                continue
+            try:
+                candidate_doc_ids.add(UUID(str(doc_id)))
+            except Exception as exc:
+                _log_retriever_fallback("_enrich_results_with_db_metadata", exc)
+        return candidate_doc_ids
+
+    def _resolve_enriched_results(
+        self,
+        results: list[dict[str, Any]],
+        *,
+        chunks_by_id: dict[str, DocumentChunk],
+        chunks_by_pair: dict[tuple[str, int], DocumentChunk],
+        doc_ctx: _DocumentEnrichmentContext,
+        allowed_docs_str: set[str] | None,
+        dataset_filters: set[str],
+        embedding_space: str,
+        stats0: dict[str, Any] | None,
+    ) -> list[dict[str, Any]]:
+        resolved: list[dict[str, Any]] = []
+        for result in results:
+            enriched = self._enrich_single_result(
+                result,
+                chunks_by_id=chunks_by_id,
+                chunks_by_pair=chunks_by_pair,
+                doc_ctx=doc_ctx,
+                allowed_docs_str=allowed_docs_str,
+                dataset_filters=dataset_filters,
+                embedding_space=embedding_space,
+                stats0=stats0,
+            )
+            if enriched is not None:
+                resolved.append(enriched)
+        return resolved
+
+    def _enrich_single_result(
+        self,
+        result: dict[str, Any],
+        *,
+        chunks_by_id: dict[str, DocumentChunk],
+        chunks_by_pair: dict[tuple[str, int], DocumentChunk],
+        doc_ctx: _DocumentEnrichmentContext,
+        allowed_docs_str: set[str] | None,
+        dataset_filters: set[str],
+        embedding_space: str,
+        stats0: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        meta = dict(result.get("metadata") or {})
+        chunk = self._resolve_result_chunk(result, meta, chunks_by_id=chunks_by_id, chunks_by_pair=chunks_by_pair)
+        if chunk is None and self.tenant_id:
+            self._increment_enrichment_stat(stats0, "filtered_orphaned")
+            return None
+        if chunk is None:
+            result["metadata"] = meta
+            return result
+        if not self._result_passes_enrichment_guards(
+            chunk,
+            meta,
+            doc_ctx=doc_ctx,
+            allowed_docs_str=allowed_docs_str,
+            dataset_filters=dataset_filters,
+            embedding_space=embedding_space,
+            stats0=stats0,
+        ):
+            return None
+        self._merge_chunk_into_result(result, meta, chunk, doc_ctx=doc_ctx)
+        result["metadata"] = meta
+        return result
+
+    def _resolve_result_chunk(
+        self,
+        result: dict[str, Any],
+        meta: dict[str, Any],
+        *,
+        chunks_by_id: dict[str, DocumentChunk],
+        chunks_by_pair: dict[tuple[str, int], DocumentChunk],
+    ) -> DocumentChunk | None:
+        cid = result.get("chunk_id") or meta.get("chunk_id")
+        chunk = chunks_by_id.get(str(cid)) if cid else None
+        if chunk is not None:
+            return chunk
+        doc_id = meta.get("document_id")
+        chunk_index = meta.get("chunk_index")
+        try:
+            if doc_id is not None and chunk_index is not None:
+                return chunks_by_pair.get((str(UUID(str(doc_id))), int(chunk_index)))
+        except (TypeError, ValueError, AttributeError):
+            return None
+        return None
+
+    def _result_passes_enrichment_guards(
+        self,
+        chunk: DocumentChunk,
+        meta: dict[str, Any],
+        *,
+        doc_ctx: _DocumentEnrichmentContext,
+        allowed_docs_str: set[str] | None,
+        dataset_filters: set[str],
+        embedding_space: str,
+        stats0: dict[str, Any] | None,
+    ) -> bool:
+        doc_id_str = str(chunk.document_id)
+        if allowed_docs_str is not None and doc_id_str not in allowed_docs_str:
+            self._increment_enrichment_stat(stats0, "filtered_acl")
+            return False
+        if dataset_filters and doc_ctx.doc_dataset_by_id.get(doc_id_str) not in dataset_filters:
+            self._increment_enrichment_stat(stats0, "filtered_dataset")
+            return False
+        if getattr(chunk, "disabled_at", None) is not None:
+            self._increment_enrichment_stat(stats0, "filtered_not_ready")
+            return False
+        if doc_ctx.doc_ready_by_id and not doc_ctx.doc_ready_by_id.get(doc_id_str, False):
+            self._increment_enrichment_stat(stats0, "filtered_not_ready")
+            return False
+        if not self._embedding_space_allowed(meta, embedding_space=embedding_space):
+            self._increment_enrichment_stat(stats0, "filtered_embedding_space")
+            return False
+        if not self._active_pipeline_allowed(chunk, meta, doc_ctx=doc_ctx):
+            self._increment_enrichment_stat(stats0, "filtered_pipeline_version")
+            return False
+        return True
+
+    @staticmethod
+    def _increment_enrichment_stat(stats0: dict[str, Any] | None, key: str) -> None:
+        if stats0 is not None:
+            stats0[key] = int(stats0.get(key, 0) or 0) + 1
+
+    def _embedding_space_allowed(self, meta: dict[str, Any], *, embedding_space: str) -> bool:
+        expected_embedding_space = str(
+            meta.get(_RETRIEVAL_EXPECTED_EMBEDDING_SPACE_KEY) or embedding_space or ""
+        ).strip()
+        if meta.get(_RETRIEVAL_EXPECTED_EMBEDDING_SPACE_KEY) is None and meta.get("score") is None:
+            return True
+        ck_space = str(meta.get("embedding_space_hash") or "").strip()
+        return not expected_embedding_space or ck_space == expected_embedding_space
+
+    def _active_pipeline_allowed(
+        self,
+        chunk: DocumentChunk,
+        meta: dict[str, Any],
+        *,
+        doc_ctx: _DocumentEnrichmentContext,
+    ) -> bool:
+        active_key = doc_ctx.doc_active_pipeline_key_by_id.get(str(chunk.document_id))
+        if not active_key:
+            return True
+        chunk_key = self._doc_pipeline_key(meta, document_id=str(chunk.document_id))
+        return bool(chunk_key and chunk_key == active_key)
+
+    def _merge_chunk_into_result(
+        self,
+        result: dict[str, Any],
+        meta: dict[str, Any],
+        chunk: DocumentChunk,
+        *,
+        doc_ctx: _DocumentEnrichmentContext,
+    ) -> None:
+        cid_str = str(chunk.id)
+        result["chunk_id"] = cid_str
+        meta["chunk_id"] = cid_str
+        db_content = chunk.content or ""
+        if isinstance(db_content, str) and db_content and result.get("content") != db_content:
+            result["content"] = db_content
+        stored_meta = dict(chunk.doc_metadata or {})
+        for key, value in stored_meta.items():
+            if key not in meta or meta.get(key) in (None, "", [], {}):
+                meta[key] = value
+        self._merge_document_labels(meta, chunk, stored_meta=stored_meta, doc_ctx=doc_ctx)
+        self._merge_chunk_positions(meta, chunk)
+        self._merge_governance_metadata(meta, chunk, doc_ctx=doc_ctx)
+        self._merge_document_user_metadata(meta, chunk, doc_ctx=doc_ctx)
+
+    def _merge_document_labels(
+        self,
+        meta: dict[str, Any],
+        chunk: DocumentChunk,
+        *,
+        stored_meta: dict[str, Any],
+        doc_ctx: _DocumentEnrichmentContext,
+    ) -> None:
+        for key in ("embedding_space_hash", "img_id", "source", "parser_backend", "doc_type_kwd"):
+            if stored_meta.get(key) and not meta.get(key):
+                meta[key] = stored_meta.get(key)
+        doc_id_str = str(chunk.document_id)
+        doc_filename = doc_ctx.doc_filename_by_id.get(doc_id_str)
+        if doc_filename and (
+            not meta.get("filename") or should_replace_source_label(meta.get("filename"), document_id=doc_id_str)
+        ):
+            meta["filename"] = doc_filename
+        if doc_filename and should_replace_source_label(meta.get("source"), document_id=doc_id_str):
+            meta["source"] = doc_filename
+        doc_title = doc_ctx.doc_title_by_id.get(doc_id_str)
+        if doc_title and not meta.get("document_title"):
+            meta["document_title"] = doc_title
+        for key in (
+            "header_path",
+            "header_context",
+            "chunk_strategy",
+            "chunk_role",
+            "parent_id",
+            "hierarchy_basis",
+            "hierarchy_level",
+            "hierarchy_node_key",
+            "hierarchy_family_key",
+            "hierarchy_parent_key",
+            "hierarchy_sibling_index",
+            "hierarchy_prev_sibling_key",
+            "hierarchy_next_sibling_key",
+        ):
+            if stored_meta.get(key) and not meta.get(key):
+                meta[key] = stored_meta.get(key)
+
+    @staticmethod
+    def _merge_chunk_positions(meta: dict[str, Any], chunk: DocumentChunk) -> None:
+        if chunk.page_number is not None and not meta.get("page"):
+            meta["page"] = chunk.page_number
+        if chunk.page_number is not None and not meta.get("page_number"):
+            meta["page_number"] = chunk.page_number
+        if chunk.start_char is not None and meta.get("start_char") is None:
+            meta["start_char"] = int(chunk.start_char)
+        if chunk.end_char is not None and meta.get("end_char") is None:
+            meta["end_char"] = int(chunk.end_char)
+        if meta.get("chunk_index") is None:
+            try:
+                meta["chunk_index"] = int(getattr(chunk, "chunk_index", None))
+            except Exception as exc:
+                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+
+    @staticmethod
+    def _merge_governance_metadata(
+        meta: dict[str, Any],
+        chunk: DocumentChunk,
+        *,
+        doc_ctx: _DocumentEnrichmentContext,
+    ) -> None:
+        doc_id_str = str(chunk.document_id)
+        if doc_id_str in doc_ctx.doc_authority_by_id:
+            meta["_governance_authority_level"] = doc_ctx.doc_authority_by_id[doc_id_str]
+        if doc_id_str in doc_ctx.doc_updated_ts_by_id:
+            meta["_governance_updated_ts"] = doc_ctx.doc_updated_ts_by_id[doc_id_str]
+        if doc_id_str in doc_ctx.doc_publication_by_id:
+            meta["_governance_publication_status"] = doc_ctx.doc_publication_by_id[doc_id_str]
+        if doc_id_str in doc_ctx.doc_supersedes_by_id:
+            meta["_governance_supersedes_document_id"] = doc_ctx.doc_supersedes_by_id[doc_id_str]
+
+    @staticmethod
+    def _merge_document_user_metadata(
+        meta: dict[str, Any],
+        chunk: DocumentChunk,
+        *,
+        doc_ctx: _DocumentEnrichmentContext,
+    ) -> None:
+        doc_user = doc_ctx.doc_user_by_id.get(str(chunk.document_id))
+        if doc_user and not meta.get("document_user"):
+            meta["document_user"] = doc_user
+        if meta.get("doc_parse_quality_score") is None:
+            pq_score = doc_ctx.doc_parse_quality_by_id.get(str(chunk.document_id))
+            if pq_score is not None:
+                meta["doc_parse_quality_score"] = float(pq_score)
+
+    def _apply_enrichment_metadata_filter(
+        self,
+        resolved: list[dict[str, Any]],
+        *,
+        metadata_filter_override: dict[str, Any] | None,
+        stats0: dict[str, Any] | None,
+    ) -> list[dict[str, Any]]:
+        effective_metadata_filter = (
+            metadata_filter_override if metadata_filter_override is not None else self.metadata_filter
+        )
+        if not (effective_metadata_filter and self.metadata_filter_enabled):
+            return resolved
+        try:
+            before = len(resolved)
+            from app.rag.core.filters import apply_metadata_filter_with_stats  # noqa: WPS433
+
+            resolved, mf_stats = apply_metadata_filter_with_stats(resolved, effective_metadata_filter)
+            blocked = int(mf_stats.get("blocked") or max(0, before - len(resolved)))
+            matched = int(mf_stats.get("matched") or len(resolved))
+            summary = mf_stats.get("summary") if isinstance(mf_stats.get("summary"), dict) else None
+            if stats0 is not None:
+                stats0["filtered_metadata_filter"] = int(blocked)
+                stats0["metadata_filter_blocked"] = int(blocked)
+                stats0["metadata_filter_matched"] = int(matched)
+                if summary:
+                    stats0["metadata_filter"] = summary
+            return resolved
+        except Exception as exc:
+            logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+            if stats0 is not None:
+                stats0["exception"] = str(exc)[:200]
+                stats0["output_results"] = 0
+            return []
+
     def _expand_results_with_neighbors(self, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Optionally attach adjacent chunks around top hits for better continuity."""
         if not results:
             return results
 
-        window_raw = (
-            self.context_neighbor_window
-            if self.context_neighbor_window is not None
-            else getattr(settings, "RAG_CONTEXT_NEIGHBOR_WINDOW", 0)
-        )
-        window = max(0, int(window_raw or 0))
-        sibling_enabled = bool(getattr(settings, "RAG_CONTEXT_SIBLING_EXPAND_ENABLED", False))
-        short_doc_max_chunks = max(0, int(getattr(settings, "RAG_CONTEXT_SIBLING_SHORT_DOC_MAX_CHUNKS", 0) or 0))
+        neighbor_config = self._neighbor_expansion_config()
+        window = neighbor_config["window"]
+        sibling_enabled = bool(neighbor_config["sibling_enabled"])
+        short_doc_max_chunks = int(neighbor_config["short_doc_max_chunks"])
         if window <= 0 and not (sibling_enabled and short_doc_max_chunks > 0):
             return results
 
-        max_added_raw = (
-            self.context_neighbor_max_added
-            if self.context_neighbor_max_added is not None
-            else getattr(settings, "RAG_CONTEXT_NEIGHBOR_MAX_ADDED", 0)
-        )
-        max_added = max(0, int(max_added_raw or 0))
+        max_added = int(neighbor_config["max_added"])
         sibling_max_added = max(
             0,
             int(settings.RAG_CONTEXT_SIBLING_MAX_ADDED),
@@ -569,106 +820,30 @@ class PostProcessMixin:
         # Version-aware neighbor fetch:
         # - Some installations keep multiple pipeline versions in `document_chunks`.
         # - We must avoid pulling neighbors from an inactive pipeline version, even for the same document.
-        desired_pipeline_by_doc: dict[str, str] = {}
-
-        anchors: list[tuple[dict[str, Any], UUID | None, int | None, str | None]] = []
-        for r in results:
-            meta = r.get("metadata") or {}
-            doc_id = meta.get("document_id")
-            chunk_index = meta.get("chunk_index")
-            try:
-                doc_uuid = UUID(str(doc_id)) if doc_id is not None else None
-                idx = int(chunk_index) if chunk_index is not None else None
-            except (TypeError, ValueError, AttributeError):
-                doc_uuid = None
-                idx = None
-            pipeline_key = str(meta.get("doc_pipeline_key") or "").strip()
-            if not pipeline_key and doc_uuid is not None:
-                ph = str(meta.get("pipeline_hash") or "").strip()
-                if ph:
-                    pipeline_key = f"{doc_uuid}:{ph}"
-            pipeline_key = pipeline_key or None
-            if doc_uuid is not None and pipeline_key:
-                desired_pipeline_by_doc.setdefault(str(doc_uuid), pipeline_key)
-            anchors.append((r, doc_uuid, idx, pipeline_key))
+        desired_pipeline_by_doc, anchors = self._neighbor_anchor_state(results)
 
         document_chunks_by_doc: dict[str, list[DocumentChunk]] = {}
         short_doc_ids: set[str] = set()
         doc_ids_for_sibling = {doc_uuid for _, doc_uuid, _, _ in anchors if doc_uuid is not None}
 
-        needed_pairs: set[tuple[UUID, int]] = set()
-        for _, doc_uuid, idx, _pk in anchors:
-            if doc_uuid is not None and str(doc_uuid) in short_doc_ids:
-                continue
-            if doc_uuid is None or idx is None:
-                continue
-            for delta in range(-window, window + 1):
-                if delta == 0:
-                    continue
-                neighbor_idx = idx + delta
-                if neighbor_idx < 0:
-                    continue
-                needed_pairs.add((doc_uuid, neighbor_idx))
+        needed_pairs = self._neighbor_needed_pairs(anchors, window=window, short_doc_ids=short_doc_ids)
 
         if not needed_pairs:
             return results
 
         neighbors_by_pair: dict[tuple[str, int], DocumentChunk] = {}
-        db = self._open_session()
         try:
-            if sibling_enabled and short_doc_max_chunks > 0 and doc_ids_for_sibling:
-                q_all = db.query(DocumentChunk).filter(DocumentChunk.document_id.in_(list(doc_ids_for_sibling)))
-                if tenant_filter:
-                    q_all = q_all.filter(DocumentChunk.tenant_id == tenant_filter)
-                for ck in q_all.all():
-                    doc_key = str(ck.document_id)
-                    desired = desired_pipeline_by_doc.get(doc_key)
-                    if desired:
-                        stored_meta = dict(getattr(ck, "doc_metadata", None) or {})
-                        ck_key = str(stored_meta.get("doc_pipeline_key") or "").strip()
-                        if not ck_key:
-                            ph = str(stored_meta.get("pipeline_hash") or "").strip()
-                            if ph:
-                                ck_key = f"{ck.document_id}:{ph}"
-                        if not ck_key or ck_key != desired:
-                            continue
-                    document_chunks_by_doc.setdefault(doc_key, []).append(ck)
-                short_doc_ids = {
-                    doc_key
-                    for doc_key, rows in document_chunks_by_doc.items()
-                    if select_document_expansion_mode(
-                        total_chunks=len(rows),
-                        short_doc_max_chunks=short_doc_max_chunks,
-                    )
-                    == "sibling"
-                }
-
-            q = db.query(DocumentChunk).filter(
-                tuple_(DocumentChunk.document_id, DocumentChunk.chunk_index).in_(list(needed_pairs))
+            document_chunks_by_doc, short_doc_ids, neighbors_by_pair = self._load_neighbor_chunks(
+                desired_pipeline_by_doc=desired_pipeline_by_doc,
+                doc_ids_for_sibling=doc_ids_for_sibling,
+                tenant_filter=tenant_filter,
+                sibling_enabled=sibling_enabled,
+                short_doc_max_chunks=short_doc_max_chunks,
+                needed_pairs=needed_pairs,
             )
-            if tenant_filter:
-                q = q.filter(DocumentChunk.tenant_id == tenant_filter)
-            for ck in q.all():
-                doc_key = str(ck.document_id)
-                desired = desired_pipeline_by_doc.get(doc_key)
-                if desired:
-                    stored_meta = dict(getattr(ck, "doc_metadata", None) or {})
-                    ck_key = str(stored_meta.get("doc_pipeline_key") or "").strip()
-                    if not ck_key:
-                        ph = str(stored_meta.get("pipeline_hash") or "").strip()
-                        if ph:
-                            ck_key = f"{ck.document_id}:{ph}"
-                    if not ck_key or ck_key != desired:
-                        continue
-                neighbors_by_pair[(doc_key, int(ck.chunk_index))] = ck
         except Exception as exc:
-            _log_retriever_fallback('_expand_results_with_neighbors', exc)
+            _log_retriever_fallback("_expand_results_with_neighbors", exc)
             return results
-        finally:
-            try:
-                db.close()
-            except Exception as exc:
-                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
 
         original_results_by_chunk_id: dict[str, dict[str, Any]] = {}
         for r in results:
@@ -686,19 +861,187 @@ class PostProcessMixin:
             original_results_by_chunk_id=original_results_by_chunk_id,
             score_driven=bool(self.context_neighbor_score_driven),
             high_threshold=float(
-                self.context_neighbor_high_threshold
-                if self.context_neighbor_high_threshold is not None
-                else 0.7
+                self.context_neighbor_high_threshold if self.context_neighbor_high_threshold is not None else 0.7
             ),
             mid_threshold=float(
-                self.context_neighbor_mid_threshold
-                if self.context_neighbor_mid_threshold is not None
-                else 0.4
+                self.context_neighbor_mid_threshold if self.context_neighbor_mid_threshold is not None else 0.4
             ),
-            high_span=max(0, int(self.context_neighbor_high_span if self.context_neighbor_high_span is not None else window)),
+            high_span=max(
+                0, int(self.context_neighbor_high_span if self.context_neighbor_high_span is not None else window)
+            ),
             mid_span=max(0, int(self.context_neighbor_mid_span if self.context_neighbor_mid_span is not None else 1)),
         )
         return expanded
+
+    def _neighbor_expansion_config(self) -> dict[str, int | bool]:
+        window_raw = (
+            self.context_neighbor_window
+            if self.context_neighbor_window is not None
+            else getattr(settings, "RAG_CONTEXT_NEIGHBOR_WINDOW", 0)
+        )
+        max_added_raw = (
+            self.context_neighbor_max_added
+            if self.context_neighbor_max_added is not None
+            else getattr(settings, "RAG_CONTEXT_NEIGHBOR_MAX_ADDED", 0)
+        )
+        return {
+            "window": max(0, int(window_raw or 0)),
+            "max_added": max(0, int(max_added_raw or 0)),
+            "sibling_enabled": bool(getattr(settings, "RAG_CONTEXT_SIBLING_EXPAND_ENABLED", False)),
+            "short_doc_max_chunks": max(
+                0,
+                int(getattr(settings, "RAG_CONTEXT_SIBLING_SHORT_DOC_MAX_CHUNKS", 0) or 0),
+            ),
+        }
+
+    def _neighbor_anchor_state(
+        self,
+        results: list[dict[str, Any]],
+    ) -> tuple[dict[str, str], list[tuple[dict[str, Any], UUID | None, int | None, str | None]]]:
+        desired_pipeline_by_doc: dict[str, str] = {}
+        anchors: list[tuple[dict[str, Any], UUID | None, int | None, str | None]] = []
+        for result in results:
+            meta = result.get("metadata") or {}
+            doc_uuid, idx = self._neighbor_anchor_identity(meta)
+            pipeline_key = self._doc_pipeline_key(meta, document_id=str(doc_uuid) if doc_uuid else None)
+            if doc_uuid is not None and pipeline_key:
+                desired_pipeline_by_doc.setdefault(str(doc_uuid), pipeline_key)
+            anchors.append((result, doc_uuid, idx, pipeline_key))
+        return desired_pipeline_by_doc, anchors
+
+    @staticmethod
+    def _neighbor_anchor_identity(meta: dict[str, Any]) -> tuple[UUID | None, int | None]:
+        doc_id = meta.get("document_id")
+        chunk_index = meta.get("chunk_index")
+        try:
+            return (
+                UUID(str(doc_id)) if doc_id is not None else None,
+                int(chunk_index) if chunk_index is not None else None,
+            )
+        except (TypeError, ValueError, AttributeError):
+            return None, None
+
+    @staticmethod
+    def _doc_pipeline_key(meta: dict[str, Any], *, document_id: str | None) -> str | None:
+        pipeline_key = str(meta.get("doc_pipeline_key") or "").strip()
+        if pipeline_key:
+            return pipeline_key
+        pipeline_hash = str(meta.get("pipeline_hash") or "").strip()
+        if pipeline_hash and document_id:
+            return f"{document_id}:{pipeline_hash}"
+        return None
+
+    @classmethod
+    def _neighbor_needed_pairs(
+        cls,
+        anchors: list[tuple[dict[str, Any], UUID | None, int | None, str | None]],
+        *,
+        window: int,
+        short_doc_ids: set[str],
+    ) -> set[tuple[UUID, int]]:
+        needed_pairs: set[tuple[UUID, int]] = set()
+        for _result, doc_uuid, idx, _pipeline_key in anchors:
+            if doc_uuid is None or idx is None or str(doc_uuid) in short_doc_ids:
+                continue
+            for delta in range(-window, window + 1):
+                if delta == 0 or idx + delta < 0:
+                    continue
+                needed_pairs.add((doc_uuid, idx + delta))
+        return needed_pairs
+
+    def _load_neighbor_chunks(
+        self,
+        *,
+        desired_pipeline_by_doc: dict[str, str],
+        doc_ids_for_sibling: set[UUID],
+        tenant_filter: UUID | None,
+        sibling_enabled: bool,
+        short_doc_max_chunks: int,
+        needed_pairs: set[tuple[UUID, int]],
+    ) -> tuple[dict[str, list[DocumentChunk]], set[str], dict[tuple[str, int], DocumentChunk]]:
+        document_chunks_by_doc: dict[str, list[DocumentChunk]] = {}
+        short_doc_ids: set[str] = set()
+        neighbors_by_pair: dict[tuple[str, int], DocumentChunk] = {}
+        db = self._open_session()
+        try:
+            if sibling_enabled and short_doc_max_chunks > 0 and doc_ids_for_sibling:
+                document_chunks_by_doc = self._load_document_chunks_for_siblings(
+                    db,
+                    desired_pipeline_by_doc=desired_pipeline_by_doc,
+                    doc_ids_for_sibling=doc_ids_for_sibling,
+                    tenant_filter=tenant_filter,
+                )
+                short_doc_ids = {
+                    doc_key
+                    for doc_key, rows in document_chunks_by_doc.items()
+                    if select_document_expansion_mode(
+                        total_chunks=len(rows),
+                        short_doc_max_chunks=short_doc_max_chunks,
+                    )
+                    == "sibling"
+                }
+            neighbors_by_pair = self._load_neighbor_pairs(
+                db,
+                desired_pipeline_by_doc=desired_pipeline_by_doc,
+                needed_pairs=needed_pairs,
+                tenant_filter=tenant_filter,
+            )
+            return document_chunks_by_doc, short_doc_ids, neighbors_by_pair
+        finally:
+            try:
+                db.close()
+            except Exception as exc:
+                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+
+    def _load_document_chunks_for_siblings(
+        self,
+        db: Session,
+        *,
+        desired_pipeline_by_doc: dict[str, str],
+        doc_ids_for_sibling: set[UUID],
+        tenant_filter: UUID | None,
+    ) -> dict[str, list[DocumentChunk]]:
+        q_all = db.query(DocumentChunk).filter(DocumentChunk.document_id.in_(list(doc_ids_for_sibling)))
+        if tenant_filter:
+            q_all = q_all.filter(DocumentChunk.tenant_id == tenant_filter)
+        document_chunks_by_doc: dict[str, list[DocumentChunk]] = {}
+        for chunk in q_all.all():
+            if not self._chunk_matches_desired_pipeline(chunk, desired_pipeline_by_doc):
+                continue
+            document_chunks_by_doc.setdefault(str(chunk.document_id), []).append(chunk)
+        return document_chunks_by_doc
+
+    def _load_neighbor_pairs(
+        self,
+        db: Session,
+        *,
+        desired_pipeline_by_doc: dict[str, str],
+        needed_pairs: set[tuple[UUID, int]],
+        tenant_filter: UUID | None,
+    ) -> dict[tuple[str, int], DocumentChunk]:
+        q = db.query(DocumentChunk).filter(
+            tuple_(DocumentChunk.document_id, DocumentChunk.chunk_index).in_(list(needed_pairs))
+        )
+        if tenant_filter:
+            q = q.filter(DocumentChunk.tenant_id == tenant_filter)
+        neighbors_by_pair: dict[tuple[str, int], DocumentChunk] = {}
+        for chunk in q.all():
+            if not self._chunk_matches_desired_pipeline(chunk, desired_pipeline_by_doc):
+                continue
+            neighbors_by_pair[(str(chunk.document_id), int(chunk.chunk_index))] = chunk
+        return neighbors_by_pair
+
+    def _chunk_matches_desired_pipeline(
+        self,
+        chunk: DocumentChunk,
+        desired_pipeline_by_doc: dict[str, str],
+    ) -> bool:
+        desired = desired_pipeline_by_doc.get(str(chunk.document_id))
+        if not desired:
+            return True
+        stored_meta = dict(getattr(chunk, "doc_metadata", None) or {})
+        ck_key = self._doc_pipeline_key(stored_meta, document_id=str(chunk.document_id))
+        return bool(ck_key and ck_key == desired)
 
     @staticmethod
     def _stitching_score(result: dict[str, Any]) -> float:
@@ -833,262 +1176,324 @@ class PostProcessMixin:
         if not bool(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_ENABLED", False)):
             return results
 
-        mode = str(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_MODE", "replace") or "replace").strip().lower()
-        if mode not in {"replace", "append"}:
-            mode = "replace"
-
+        mode = self._parent_child_merge_mode()
         min_children = max(1, int(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_MIN_CHILDREN", 2) or 2))
         max_parents = max(0, int(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_MAX_PARENTS", 20) or 20))
-
-        tenant_filter = self.tenant_id
-
-        # Group child hits by (document_id, family collapse key).
-        child_groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
-        parent_results: dict[tuple[str, str], dict[str, Any]] = {}
-
-        # For neighbor cleanup (replace mode).
-        child_chunk_ids_by_group: dict[tuple[str, str], set[str]] = {}
-
-        for r in results:
-            meta = r.get("metadata") or {}
-            role = str(meta.get("chunk_role") or "").strip().lower()
-            doc_id = str(meta.get("document_id") or "").strip()
-            family_key = self._resolve_family_collapse_key(meta, result=r)
-            if not family_key or not doc_id:
-                continue
-
-            cid = r.get("chunk_id") or meta.get("chunk_id")
-            cid_str = str(cid) if cid else ""
-
-            if role == "parent":
-                parent_results[(doc_id, family_key)] = r
-            elif role == "child":
-                key = (doc_id, family_key)
-                child_groups.setdefault(key, []).append(r)
-                if cid_str:
-                    child_chunk_ids_by_group.setdefault(key, set()).add(cid_str)
+        child_groups, parent_results, child_chunk_ids_by_group = self._group_parent_child_results(results)
 
         if not child_groups:
             return results
 
-        # Version-aware parent materialization: only pull parent chunks from the same active pipeline
-        # version as the retrieved children.
-        desired_pipeline_by_doc: dict[str, str] = {}
-        for r in results:
-            meta = r.get("metadata") or {}
-            doc_id = str(meta.get("document_id") or "").strip()
-            if not doc_id:
-                continue
-            pipeline_key = str(meta.get("doc_pipeline_key") or "").strip()
-            if not pipeline_key:
-                ph = str(meta.get("pipeline_hash") or "").strip()
-                if ph:
-                    pipeline_key = f"{doc_id}:{ph}"
-            if pipeline_key:
-                desired_pipeline_by_doc.setdefault(doc_id, pipeline_key)
-
-        # Select top groups (by best child score) to avoid excessive DB queries.
-        scored_groups: list[tuple[float, tuple[str, str]]] = []
-        for key, items in child_groups.items():
-            best = 0.0
-            for it in items:
-                try:
-                    best = max(best, float(it.get("score", 0.0) or 0.0))
-                except (TypeError, ValueError, AttributeError):
-                    continue
-            scored_groups.append((best, key))
-        scored_groups.sort(key=lambda x: x[0], reverse=True)
-        if max_parents and len(scored_groups) > max_parents:
-            scored_groups = scored_groups[:max_parents]
-
-        # Decide which groups to materialize a parent for.
-        selected_keys: list[tuple[str, str]] = []
-        for _, key in scored_groups:
-            if mode == "replace" and len(child_groups.get(key) or []) < min_children:
-                continue
-            selected_keys.append(key)
+        desired_pipeline_by_doc = self._desired_parent_pipeline_by_doc(results)
+        selected_keys = self._selected_parent_child_keys(
+            child_groups,
+            mode=mode,
+            min_children=min_children,
+            max_parents=max_parents,
+        )
 
         if not selected_keys:
             return results
 
-        # Fetch parent chunks not already present in results.
-        missing_keys = [k for k in selected_keys if k not in parent_results]
-        fetched_parents: dict[tuple[str, str], DocumentChunk] = {}
-
-        if missing_keys:
-            doc_ids: set[UUID] = set()
-            family_keys: set[str] = set()
-            for doc_id, family_key in missing_keys:
-                try:
-                    doc_ids.add(UUID(doc_id))
-                except Exception as exc:
-                    _log_retriever_fallback('_auto_merge_parent_child', exc)
-                    continue
-                if family_key:
-                    family_keys.add(family_key)
-
-            if doc_ids and family_keys:
-                db = self._open_session()
-                try:
-                    q = db.query(DocumentChunk).filter(DocumentChunk.document_id.in_(list(doc_ids)))
-                    if tenant_filter:
-                        q = q.filter(DocumentChunk.tenant_id == tenant_filter)
-                    # Prefer hierarchy_family_key and keep parent_id as a backward-compatible fallback.
-                    q = q.filter(DocumentChunk.doc_metadata["chunk_role"].astext == "parent")  # type: ignore[attr-defined]
-                    q = q.filter(
-                        or_(
-                            DocumentChunk.doc_metadata["hierarchy_family_key"].astext.in_(list(family_keys)),  # type: ignore[attr-defined]
-                            DocumentChunk.doc_metadata["parent_id"].astext.in_(list(family_keys)),  # type: ignore[attr-defined]
-                        )
-                    )
-                    for ck in q.all():
-                        meta = dict(getattr(ck, "doc_metadata", None) or {})
-                        family_key = self._resolve_family_collapse_key(meta)
-                        if not family_key:
-                            continue
-                        desired = desired_pipeline_by_doc.get(str(ck.document_id))
-                        if desired:
-                            ck_key = str(meta.get("doc_pipeline_key") or "").strip()
-                            if not ck_key:
-                                ph = str(meta.get("pipeline_hash") or "").strip()
-                                if ph:
-                                    ck_key = f"{ck.document_id}:{ph}"
-                            if not ck_key or ck_key != desired:
-                                continue
-                        fetched_parents[(str(ck.document_id), family_key)] = ck
-                except Exception as exc:
-                    _log_retriever_fallback('_auto_merge_parent_child', exc)
-                    fetched_parents = {}
-                finally:
-                    try:
-                        db.close()
-                    except Exception as exc:
-                        logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-
-        # Helper: materialize a parent result dict.
-        def _parent_result_for(key: tuple[str, str], *, best_child_score: float) -> dict[str, Any] | None:
-            if key in parent_results:
-                # If parent is already present (e.g., neighbor expansion), bump its score and mark role.
-                existing = parent_results[key]
-                meta = dict(existing.get("metadata") or {})
-                meta["retrieval_role"] = "parent"
-                existing["metadata"] = meta
-                try:
-                    existing_score = float(existing.get("score", 0.0) or 0.0)
-                except (TypeError, ValueError, AttributeError):
-                    existing_score = 0.0
-                existing["score"] = max(existing_score, best_child_score * 0.97)
-                return existing
-
-            ck = fetched_parents.get(key)
-            if ck is None:
-                return None
-
-            cid = str(ck.id)
-            stored_meta = dict(ck.doc_metadata or {})
-            stored_meta.setdefault("tenant_id", str(ck.tenant_id))
-            stored_meta.setdefault("document_id", str(ck.document_id))
-            stored_meta.setdefault("chunk_index", int(ck.chunk_index))
-            stored_meta.setdefault("chunk_id", cid)
-            if ck.page_number is not None:
-                stored_meta.setdefault("page", ck.page_number)
-            if not stored_meta.get("source"):
-                stored_meta["source"] = "unknown"
-            stored_meta["retrieval_role"] = "parent"
-
-            return {
-                "chunk_id": cid,
-                "content": ck.content,
-                "metadata": stored_meta,
-                "score": float(best_child_score * 0.97),
-            }
-
-        # Build quick access for best child score per group.
-        best_score_by_group: dict[tuple[str, str], float] = {}
-        for key in selected_keys:
-            best = 0.0
-            for it in child_groups.get(key) or []:
-                try:
-                    best = max(best, float(it.get("score", 0.0) or 0.0))
-                except (TypeError, ValueError, AttributeError):
-                    continue
-            best_score_by_group[key] = best
+        fetched_parents = self._fetch_parent_child_chunks(
+            selected_keys=selected_keys,
+            parent_results=parent_results,
+            desired_pipeline_by_doc=desired_pipeline_by_doc,
+            tenant_filter=self.tenant_id,
+        )
+        best_score_by_group = self._best_child_score_by_group(child_groups, selected_keys=selected_keys)
 
         if mode == "append":
-            inserted: set[tuple[str, str]] = set()
-            out: list[dict[str, Any]] = []
-            for r in results:
-                out.append(r)
-                meta = r.get("metadata") or {}
-                role = str(meta.get("chunk_role") or "").strip().lower()
-                if role != "child":
-                    continue
-                key = (
-                    str(meta.get("document_id") or "").strip(),
-                    self._resolve_family_collapse_key(meta, result=r),
-                )
-                if key not in selected_keys or key in inserted:
-                    continue
-                # Parent already present in results (e.g., neighbor expansion) -> don't duplicate.
-                if key in parent_results:
-                    inserted.add(key)
-                    continue
-                # Only insert if we can materialize the parent.
-                parent = _parent_result_for(key, best_child_score=best_score_by_group.get(key, 0.0))
-                if parent is not None:
-                    out.append(parent)
-                    inserted.add(key)
-            return out
+            return self._append_parent_child_results(
+                results=results,
+                selected_keys=selected_keys,
+                parent_results=parent_results,
+                fetched_parents=fetched_parents,
+                best_score_by_group=best_score_by_group,
+            )
+        return self._replace_parent_child_results(
+            results=results,
+            selected_keys=selected_keys,
+            child_chunk_ids_by_group=child_chunk_ids_by_group,
+            parent_results=parent_results,
+            fetched_parents=fetched_parents,
+            best_score_by_group=best_score_by_group,
+        )
 
-        # replace mode: collapse groups.
-        to_replace = set(selected_keys)
-        removed_child_ids: set[str] = set()
-        for key in to_replace:
-            removed_child_ids |= child_chunk_ids_by_group.get(key, set())
+    @staticmethod
+    def _parent_child_merge_mode() -> str:
+        mode = str(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_MODE", "replace") or "replace").strip().lower()
+        return mode if mode in {"replace", "append"} else "replace"
 
+    def _group_parent_child_results(
+        self,
+        results: list[dict[str, Any]],
+    ) -> tuple[
+        dict[tuple[str, str], list[dict[str, Any]]],
+        dict[tuple[str, str], dict[str, Any]],
+        dict[tuple[str, str], set[str]],
+    ]:
+        child_groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        parent_results: dict[tuple[str, str], dict[str, Any]] = {}
+        child_chunk_ids_by_group: dict[tuple[str, str], set[str]] = {}
+        for result in results:
+            meta = result.get("metadata") or {}
+            role = str(meta.get("chunk_role") or "").strip().lower()
+            doc_id = str(meta.get("document_id") or "").strip()
+            family_key = self._resolve_family_collapse_key(meta, result=result)
+            if not family_key or not doc_id:
+                continue
+            key = (doc_id, family_key)
+            if role == "parent":
+                parent_results[key] = result
+                continue
+            if role != "child":
+                continue
+            child_groups.setdefault(key, []).append(result)
+            cid = result.get("chunk_id") or meta.get("chunk_id")
+            if cid:
+                child_chunk_ids_by_group.setdefault(key, set()).add(str(cid))
+        return child_groups, parent_results, child_chunk_ids_by_group
+
+    def _desired_parent_pipeline_by_doc(self, results: list[dict[str, Any]]) -> dict[str, str]:
+        desired_pipeline_by_doc: dict[str, str] = {}
+        for result in results:
+            meta = result.get("metadata") or {}
+            doc_id = str(meta.get("document_id") or "").strip()
+            pipeline_key = self._doc_pipeline_key(meta, document_id=doc_id or None)
+            if doc_id and pipeline_key:
+                desired_pipeline_by_doc.setdefault(doc_id, pipeline_key)
+        return desired_pipeline_by_doc
+
+    def _selected_parent_child_keys(
+        self,
+        child_groups: dict[tuple[str, str], list[dict[str, Any]]],
+        *,
+        mode: str,
+        min_children: int,
+        max_parents: int,
+    ) -> list[tuple[str, str]]:
+        scored_groups = sorted(
+            ((self._best_child_score(items), key) for key, items in child_groups.items()),
+            key=lambda item: item[0],
+            reverse=True,
+        )
+        if max_parents and len(scored_groups) > max_parents:
+            scored_groups = scored_groups[:max_parents]
+        return [
+            key
+            for _score, key in scored_groups
+            if mode != "replace" or len(child_groups.get(key) or []) >= min_children
+        ]
+
+    def _best_child_score_by_group(
+        self,
+        child_groups: dict[tuple[str, str], list[dict[str, Any]]],
+        *,
+        selected_keys: list[tuple[str, str]],
+    ) -> dict[tuple[str, str], float]:
+        return {key: self._best_child_score(child_groups.get(key) or []) for key in selected_keys}
+
+    @staticmethod
+    def _best_child_score(items: list[dict[str, Any]]) -> float:
+        best = 0.0
+        for item in items:
+            try:
+                best = max(best, float(item.get("score", 0.0) or 0.0))
+            except (TypeError, ValueError, AttributeError):
+                continue
+        return best
+
+    def _fetch_parent_child_chunks(
+        self,
+        *,
+        selected_keys: list[tuple[str, str]],
+        parent_results: dict[tuple[str, str], dict[str, Any]],
+        desired_pipeline_by_doc: dict[str, str],
+        tenant_filter: UUID | None,
+    ) -> dict[tuple[str, str], DocumentChunk]:
+        missing_keys = [key for key in selected_keys if key not in parent_results]
+        doc_ids, family_keys = self._parent_child_lookup_scope(missing_keys)
+        if not doc_ids or not family_keys:
+            return {}
+        db = self._open_session()
+        try:
+            return self._query_parent_child_chunks(
+                db,
+                doc_ids=doc_ids,
+                family_keys=family_keys,
+                desired_pipeline_by_doc=desired_pipeline_by_doc,
+                tenant_filter=tenant_filter,
+            )
+        except Exception as exc:
+            _log_retriever_fallback("_auto_merge_parent_child", exc)
+            return {}
+        finally:
+            try:
+                db.close()
+            except Exception as exc:
+                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+
+    def _parent_child_lookup_scope(
+        self,
+        missing_keys: list[tuple[str, str]],
+    ) -> tuple[set[UUID], set[str]]:
+        doc_ids: set[UUID] = set()
+        family_keys: set[str] = set()
+        for doc_id, family_key in missing_keys:
+            try:
+                doc_ids.add(UUID(doc_id))
+            except Exception as exc:
+                _log_retriever_fallback("_auto_merge_parent_child", exc)
+                continue
+            if family_key:
+                family_keys.add(family_key)
+        return doc_ids, family_keys
+
+    def _query_parent_child_chunks(
+        self,
+        db: Session,
+        *,
+        doc_ids: set[UUID],
+        family_keys: set[str],
+        desired_pipeline_by_doc: dict[str, str],
+        tenant_filter: UUID | None,
+    ) -> dict[tuple[str, str], DocumentChunk]:
+        q = db.query(DocumentChunk).filter(DocumentChunk.document_id.in_(list(doc_ids)))
+        if tenant_filter:
+            q = q.filter(DocumentChunk.tenant_id == tenant_filter)
+        q = q.filter(DocumentChunk.doc_metadata["chunk_role"].astext == "parent")  # type: ignore[attr-defined]
+        q = q.filter(
+            or_(
+                DocumentChunk.doc_metadata["hierarchy_family_key"].astext.in_(list(family_keys)),  # type: ignore[attr-defined]
+                DocumentChunk.doc_metadata["parent_id"].astext.in_(list(family_keys)),  # type: ignore[attr-defined]
+            )
+        )
+        fetched_parents: dict[tuple[str, str], DocumentChunk] = {}
+        for chunk in q.all():
+            meta = dict(getattr(chunk, "doc_metadata", None) or {})
+            family_key = self._resolve_family_collapse_key(meta)
+            if not family_key or not self._chunk_matches_desired_pipeline(chunk, desired_pipeline_by_doc):
+                continue
+            fetched_parents[(str(chunk.document_id), family_key)] = chunk
+        return fetched_parents
+
+    def _parent_result_for(
+        self,
+        key: tuple[str, str],
+        *,
+        parent_results: dict[tuple[str, str], dict[str, Any]],
+        fetched_parents: dict[tuple[str, str], DocumentChunk],
+        best_child_score: float,
+    ) -> dict[str, Any] | None:
+        if key in parent_results:
+            existing = parent_results[key]
+            meta = dict(existing.get("metadata") or {})
+            meta["retrieval_role"] = "parent"
+            existing["metadata"] = meta
+            try:
+                existing_score = float(existing.get("score", 0.0) or 0.0)
+            except (TypeError, ValueError, AttributeError):
+                existing_score = 0.0
+            existing["score"] = max(existing_score, best_child_score * 0.97)
+            return existing
+        chunk = fetched_parents.get(key)
+        if chunk is None:
+            return None
+        cid = str(chunk.id)
+        stored_meta = dict(chunk.doc_metadata or {})
+        stored_meta.setdefault("tenant_id", str(chunk.tenant_id))
+        stored_meta.setdefault("document_id", str(chunk.document_id))
+        stored_meta.setdefault("chunk_index", int(chunk.chunk_index))
+        stored_meta.setdefault("chunk_id", cid)
+        if chunk.page_number is not None:
+            stored_meta.setdefault("page", chunk.page_number)
+        if not stored_meta.get("source"):
+            stored_meta["source"] = "unknown"
+        stored_meta["retrieval_role"] = "parent"
+        return {
+            "chunk_id": cid,
+            "content": chunk.content,
+            "metadata": stored_meta,
+            "score": float(best_child_score * 0.97),
+        }
+
+    def _append_parent_child_results(
+        self,
+        *,
+        results: list[dict[str, Any]],
+        selected_keys: list[tuple[str, str]],
+        parent_results: dict[tuple[str, str], dict[str, Any]],
+        fetched_parents: dict[tuple[str, str], DocumentChunk],
+        best_score_by_group: dict[tuple[str, str], float],
+    ) -> list[dict[str, Any]]:
+        inserted: set[tuple[str, str]] = set()
+        selected = set(selected_keys)
+        out: list[dict[str, Any]] = []
+        for result in results:
+            out.append(result)
+            meta = result.get("metadata") or {}
+            if str(meta.get("chunk_role") or "").strip().lower() != "child":
+                continue
+            key = (
+                str(meta.get("document_id") or "").strip(),
+                self._resolve_family_collapse_key(meta, result=result),
+            )
+            if key not in selected or key in inserted:
+                continue
+            inserted.add(key)
+            if key in parent_results:
+                continue
+            parent = self._parent_result_for(
+                key,
+                parent_results=parent_results,
+                fetched_parents=fetched_parents,
+                best_child_score=best_score_by_group.get(key, 0.0),
+            )
+            if parent is not None:
+                out.append(parent)
+        return out
+
+    def _replace_parent_child_results(
+        self,
+        *,
+        results: list[dict[str, Any]],
+        selected_keys: list[tuple[str, str]],
+        child_chunk_ids_by_group: dict[tuple[str, str], set[str]],
+        parent_results: dict[tuple[str, str], dict[str, Any]],
+        fetched_parents: dict[tuple[str, str], DocumentChunk],
+        best_score_by_group: dict[tuple[str, str], float],
+    ) -> list[dict[str, Any]]:
+        selected = set(selected_keys)
+        removed_child_ids = {cid for key in selected for cid in child_chunk_ids_by_group.get(key, set())}
         inserted: set[tuple[str, str]] = set()
         out: list[dict[str, Any]] = []
-        for r in results:
-            meta = r.get("metadata") or {}
-            cid = r.get("chunk_id") or meta.get("chunk_id")
-            cid_str = str(cid) if cid else ""
-
-            # Drop neighbors that were added for removed children.
-            if meta.get("retrieval_role") == "neighbor":
-                if str(meta.get("neighbor_of") or "") in removed_child_ids:
-                    continue
-
+        for result in results:
+            meta = result.get("metadata") or {}
+            cid = str(result.get("chunk_id") or meta.get("chunk_id") or "")
+            if meta.get("retrieval_role") == "neighbor" and str(meta.get("neighbor_of") or "") in removed_child_ids:
+                continue
             role = str(meta.get("chunk_role") or "").strip().lower()
             key = (
                 str(meta.get("document_id") or "").strip(),
-                self._resolve_family_collapse_key(meta, result=r),
+                self._resolve_family_collapse_key(meta, result=result),
             )
-
-            if role == "child" and key in to_replace:
+            if key in selected and role in {"child", "parent"}:
                 if key in inserted:
                     continue
-                parent = _parent_result_for(key, best_child_score=best_score_by_group.get(key, 0.0))
+                parent = self._parent_result_for(
+                    key,
+                    parent_results=parent_results,
+                    fetched_parents=fetched_parents,
+                    best_child_score=best_score_by_group.get(key, 0.0),
+                )
+                inserted.add(key)
                 if parent is not None:
                     out.append(parent)
-                inserted.add(key)
                 continue
-
-            # If parent is already present, keep it (and mark as parent role).
-            if role == "parent" and key in to_replace:
-                pr = _parent_result_for(key, best_child_score=best_score_by_group.get(key, 0.0))
-                if pr is not None:
-                    # Ensure we only keep one parent per group.
-                    if key in inserted:
-                        continue
-                    out.append(pr)
-                    inserted.add(key)
-                    continue
-
-            # Keep other results as-is.
-            if cid_str and cid_str in removed_child_ids and role == "child":
+            if cid and cid in removed_child_ids and role == "child":
                 continue
-            out.append(r)
-
+            out.append(result)
         return out
 
     def _apply_metadata_exact_anchor_post_ordering(
@@ -1108,13 +1513,39 @@ class PostProcessMixin:
             0.0,
             float(getattr(settings, "RETRIEVAL_EXACT_PHRASE_RERANK_BOOST", 0.35) or 0.0),
         )
+        annotated, annotated_count, promoted_count = self._annotated_metadata_anchor_results(
+            query=query,
+            results=results,
+            phrase_boost_weight=phrase_boost_weight,
+        )
+
+        if annotated_count <= 0:
+            if stats is not None:
+                stats["applied"] = False
+                stats["annotated"] = 0
+            return results
+
+        before_top = self._result_key(annotated[0][0]) if annotated else ""
+        annotated.sort(key=self._metadata_anchor_sort_key_factory(annotated, result_count=len(results)))
+        ordered = [item for item, _pos in annotated]
+        after_top = self._result_key(ordered[0]) if ordered else ""
+        if stats is not None:
+            stats["applied"] = True
+            stats["annotated"] = int(annotated_count)
+            stats["score_promoted"] = int(promoted_count)
+            stats["top_changed"] = bool(before_top and after_top and before_top != after_top)
+        return ordered
+
+    def _annotated_metadata_anchor_results(
+        self,
+        *,
+        query: str,
+        results: list[dict[str, Any]],
+        phrase_boost_weight: float,
+    ) -> tuple[list[tuple[dict[str, Any], int]], int, int]:
         annotated: list[tuple[dict[str, Any], int]] = []
         annotated_count = 0
         promoted_count = 0
-        has_budgeted_prefix = any(
-            isinstance(result, dict) and result.get("fusion_budgeted_prefix_rank") is not None
-            for result in results
-        )
         for pos, result in enumerate(results):
             item = dict(result)
             changed = _apply_metadata_exact_anchor_to_result(
@@ -1130,14 +1561,18 @@ class PostProcessMixin:
             else:
                 item = result
             annotated.append((item, pos))
+        return annotated, annotated_count, promoted_count
 
-        if annotated_count <= 0:
-            if stats is not None:
-                stats["applied"] = False
-                stats["annotated"] = 0
-            return results
-
-        before_top = self._result_key(annotated[0][0]) if annotated else ""
+    def _metadata_anchor_sort_key_factory(
+        self,
+        annotated: list[tuple[dict[str, Any], int]],
+        *,
+        result_count: int,
+    ):
+        has_budgeted_prefix = any(
+            isinstance(result, dict) and result.get("fusion_budgeted_prefix_rank") is not None
+            for result, _pos in annotated
+        )
         best_anchor_score = max(
             _float_or_default(item.get("metadata_exact_match_score"), 0.0) for item, _pos in annotated
         )
@@ -1148,7 +1583,7 @@ class PostProcessMixin:
                 try:
                     prefix_rank = int(item.get("fusion_budgeted_prefix_rank"))
                 except (TypeError, ValueError):
-                    prefix_rank = len(results) + int(pos) + 1
+                    prefix_rank = result_count + int(pos) + 1
                 return (
                     float(prefix_rank),
                     -_float_or_default(item.get("metadata_exact_match_score"), 0.0),
@@ -1166,12 +1601,4 @@ class PostProcessMixin:
                 int(pos),
             )
 
-        annotated.sort(key=sort_key)
-        ordered = [item for item, _pos in annotated]
-        after_top = self._result_key(ordered[0]) if ordered else ""
-        if stats is not None:
-            stats["applied"] = True
-            stats["annotated"] = int(annotated_count)
-            stats["score_promoted"] = int(promoted_count)
-            stats["top_changed"] = bool(before_top and after_top and before_top != after_top)
-        return ordered
+        return sort_key

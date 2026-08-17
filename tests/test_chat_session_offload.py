@@ -1,10 +1,234 @@
 import asyncio
 import threading
 import uuid
+from collections.abc import AsyncIterable, AsyncIterator
 from types import SimpleNamespace
 
 import pytest
 from fastapi import BackgroundTasks
+
+
+class _TransientDistributedSingleflightHarness:
+    def __init__(self, key: str) -> None:
+        self.key = key
+        self.transient_key = f"{key}:result"
+        self.state = {
+            "lease_owner": None,
+            "transient_payload": None,
+            "writes": [],
+        }
+
+    async def get_cached(self, cache_key: str) -> None:
+        assert cache_key == self.key
+        return None
+
+    async def get_best_effort(self, cache_key: str) -> dict[str, object] | None:
+        if cache_key == self.transient_key:
+            return self.state["transient_payload"]
+        return None
+
+    async def set_best_effort(
+        self,
+        cache_key: str,
+        payload: dict[str, object],
+        *,
+        ttl_sec: int,
+        max_value_bytes: int = 0,
+    ) -> bool:
+        self.state["writes"].append((cache_key, ttl_sec, max_value_bytes))
+        if cache_key == self.transient_key:
+            self.state["transient_payload"] = payload
+        return True
+
+    async def acquire_lease(self, cache_key: str, *, value: str, ttl_sec: int) -> bool:
+        assert cache_key == f"{self.key}:lease"
+        assert ttl_sec >= 60
+        if self.state["lease_owner"] is None:
+            self.state["lease_owner"] = value
+            return True
+        return False
+
+    async def release_lease(self, cache_key: str, *, value: str) -> None:
+        if cache_key == f"{self.key}:lease" and self.state["lease_owner"] == value:
+            self.state["lease_owner"] = None
+
+    def patch(self, monkeypatch: pytest.MonkeyPatch, cache: object) -> None:
+        monkeypatch.setattr(cache, "get_cached_chat_response_async", self.get_cached, raising=True)
+        monkeypatch.setattr(cache, "get_best_effort_json_cache_value", self.get_best_effort, raising=True)
+        monkeypatch.setattr(cache, "set_best_effort_json_cache_value", self.set_best_effort, raising=True)
+        monkeypatch.setattr(cache, "try_acquire_best_effort_redis_lease", self.acquire_lease, raising=True)
+        monkeypatch.setattr(cache, "release_best_effort_redis_lease", self.release_lease, raising=True)
+
+
+def _patch_disabled_langchain_features(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: object,
+) -> None:
+    for name, value in {
+        "ENABLE_QUERY_REWRITE": False,
+        "ENABLE_MULTI_QUERY": False,
+        "ENABLE_HYDE": False,
+        "ENABLE_STEP_BACK_QUERY": False,
+        "ENABLE_QUERY_DECOMPOSITION": False,
+        "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_ENABLED": False,
+        "RETRIEVAL_QUERY_PARALLELISM": 1,
+        "RAG_AGENTIC_MODE_ENABLED": False,
+        "RAG_CORRECTIVE_ENABLED": False,
+        "RAG_ABSTAIN_ENABLED": False,
+        "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED": False,
+        "RAG_RETRIEVAL_RAIL_ENABLED": False,
+        "RAG_CONTEXT_EVIDENCE_ENABLED": False,
+        "RAG_KG_QUERY_EXPANSION_ENABLED": False,
+        "RAG_KG_CHUNK_INJECTION_ENABLED": False,
+        "KG_ENABLED": False,
+        "KG_CHAT_ENABLED": False,
+        "VISION_RAG_READER_ENABLED": False,
+        "VISION_RAG_GENERATION_ENABLED": False,
+        "INPUT_GUARD_ENABLED": False,
+        "OUTPUT_GUARD_ENABLED": False,
+        "RAG_CLAIM_CHECK_ENABLED": False,
+        "PII_REDACTION_ENABLED": False,
+        "LLM_MOCK_ENABLED": True,
+    }.items():
+        monkeypatch.setattr(settings, name, value, raising=False)
+
+
+class _TrackingRequestDB:
+    def __init__(self) -> None:
+        self.checked_out = False
+        self.rollback_calls = 0
+
+    def query(self, *_args: object) -> "_TrackingRequestDB":
+        self.checked_out = True
+        return self
+
+    def filter(self, *_args: object) -> "_TrackingRequestDB":
+        return self
+
+    def all(self) -> list[object]:
+        return []
+
+    def rollback(self) -> None:
+        self.rollback_calls += 1
+        self.checked_out = False
+
+
+class _StaticRetriever:
+    _last_debug_metrics: dict[str, object] = {}
+
+    def model_copy(self, **_kwargs: object) -> "_StaticRetriever":
+        return self
+
+    def invoke(self, _query: str) -> list[object]:
+        from langchain_core.documents import Document
+
+        return [
+            Document(
+                page_content="retrieved evidence",
+                id="chunk-1",
+                metadata={
+                    "document_id": "doc-1",
+                    "chunk_id": "chunk-1",
+                    "source": "source.txt",
+                    "score": 0.9,
+                    "relevance_score": 0.9,
+                },
+            )
+        ]
+
+
+class _BlockingStreamChain:
+    def __init__(
+        self,
+        *,
+        request_db: _TrackingRequestDB,
+        generation_release_states: list[bool],
+        generation_started: asyncio.Event,
+        finish_generation: asyncio.Event,
+    ) -> None:
+        self.request_db = request_db
+        self.generation_release_states = generation_release_states
+        self.generation_started = generation_started
+        self.finish_generation = finish_generation
+
+    def __or__(self, _other: object) -> "_BlockingStreamChain":
+        return self
+
+    async def astream(self, _inputs: object) -> AsyncIterator[str]:
+        self.generation_release_states.append(not self.request_db.checked_out)
+        self.generation_started.set()
+        await self.finish_generation.wait()
+        yield "answer"
+
+
+class _FakeChatLLM:
+    model_name = "test"
+
+    def bind(self, **_kwargs: object) -> "_FakeChatLLM":
+        return self
+
+
+def _build_engine_stream(
+    engine: object,
+    request_db: _TrackingRequestDB,
+    *,
+    request_id: str,
+) -> object:
+    return engine.stream_chat(
+        question="What does the evidence say?",
+        history=[],
+        tenant_id=uuid.uuid4(),
+        account_id="member-1",
+        document_ids=[uuid.uuid4()],
+        top_k=1,
+        score_threshold=0.0,
+        retrieval_mode="vector",
+        db=request_db,
+        request_id=request_id,
+    )
+
+
+async def _consume_stream_to_first_token(
+    stream: AsyncIterable[dict[str, object]],
+    stream_events: list[dict[str, object]],
+) -> None:
+    async for event in stream:
+        stream_events.append(event)
+        if event.get("type") == "error":
+            raise AssertionError(event)
+        if event.get("type") == "token":
+            return
+
+
+async def _assert_generation_waits_with_released_session(
+    consumer: asyncio.Task[None],
+    generation_started: asyncio.Event,
+    *,
+    generation_release_states: list[bool],
+    limiter_release_states: list[bool],
+    request_db: _TrackingRequestDB,
+    stream_events: list[dict[str, object]],
+) -> None:
+    generation_waiter = asyncio.create_task(generation_started.wait())
+    done, _pending = await asyncio.wait(
+        {consumer, generation_waiter},
+        timeout=5,
+        return_when=asyncio.FIRST_COMPLETED,
+    )
+    if consumer in done:
+        await consumer
+        raise AssertionError(f"stream ended before generation: {stream_events!r}")
+    assert generation_waiter in done
+    assert {
+        "limiter_release_states": limiter_release_states,
+        "generation_release_states": generation_release_states,
+        "request_db_checked_out": request_db.checked_out,
+    } == {
+        "limiter_release_states": [True],
+        "generation_release_states": [True],
+        "request_db_checked_out": False,
+    }
+    assert request_db.rollback_calls >= 2
 
 
 @pytest.mark.asyncio
@@ -189,6 +413,7 @@ async def test_retrieval_explain_uses_chat_rag_defaults_when_rag_config_omitted(
         },
         raising=True,
     )
+
     async def managed_offload(work, *, request_db, runtime_metrics):  # noqa: ANN001, ANN202
         assert runtime_metrics == {}
         return work(worker_db)
@@ -424,6 +649,7 @@ async def test_chat_singleflight_follower_reacquires_after_leader_cancellation(
         "prepare_chat_cache_lookup",
         lambda **_kwargs: (True, key, None),
     )
+
     async def _get_cached(_key: str):  # noqa: ANN202
         return None
 
@@ -435,9 +661,7 @@ async def test_chat_singleflight_follower_reacquires_after_leader_cancellation(
         leader_state = await cache_runtime.prepare_non_streaming_chat_cache_state(options=options)
         assert leader_state.singleflight_leader is True
 
-        follower = asyncio.create_task(
-            cache_runtime.prepare_non_streaming_chat_cache_state(options=options)
-        )
+        follower = asyncio.create_task(cache_runtime.prepare_non_streaming_chat_cache_state(options=options))
         await asyncio.sleep(0)
         cache.reject_inflight_chat_response(
             key,
@@ -601,48 +825,12 @@ async def test_chat_distributed_singleflight_uses_transient_result_when_cache_tt
     import app.services.chat_response_cache as cache
 
     key = "chat-distributed-transient"
-    transient_key = f"{key}:result"
-    state = {
-        "lease_owner": None,
-        "transient_payload": None,
-        "writes": [],
-    }
-
-    async def _get_cached(_key: str):  # noqa: ANN202
-        assert _key == key
-        return None
-
-    async def _get_best_effort(_key: str):  # noqa: ANN202
-        if _key == transient_key:
-            return state["transient_payload"]
-        return None
-
-    async def _set_best_effort(_key: str, payload: dict[str, object], *, ttl_sec: int, max_value_bytes: int = 0):  # noqa: ANN202
-        state["writes"].append((_key, ttl_sec, max_value_bytes))
-        if _key == transient_key:
-            state["transient_payload"] = payload
-        return True
-
-    async def _acquire_lease(_key: str, *, value: str, ttl_sec: int):  # noqa: ANN202
-        assert _key == f"{key}:lease"
-        assert ttl_sec >= 60
-        if state["lease_owner"] is None:
-            state["lease_owner"] = value
-            return True
-        return False
-
-    async def _release_lease(_key: str, *, value: str):  # noqa: ANN202
-        if _key == f"{key}:lease" and state["lease_owner"] == value:
-            state["lease_owner"] = None
+    harness = _TransientDistributedSingleflightHarness(key)
 
     cache.clear_inflight_chat_responses()
     monkeypatch.setattr(cache.settings, "CHAT_RESPONSE_CACHE_ENABLED", True, raising=False)
     monkeypatch.setattr(cache.settings, "CHAT_RESPONSE_CACHE_TTL_SEC", 0, raising=False)
-    monkeypatch.setattr(cache, "get_cached_chat_response_async", _get_cached, raising=True)
-    monkeypatch.setattr(cache, "get_best_effort_json_cache_value", _get_best_effort, raising=True)
-    monkeypatch.setattr(cache, "set_best_effort_json_cache_value", _set_best_effort, raising=True)
-    monkeypatch.setattr(cache, "try_acquire_best_effort_redis_lease", _acquire_lease, raising=True)
-    monkeypatch.setattr(cache, "release_best_effort_redis_lease", _release_lease, raising=True)
+    harness.patch(monkeypatch, cache)
 
     payload = {"content": "cached", "citations": [], "metrics": {}}
 
@@ -667,13 +855,13 @@ async def test_chat_distributed_singleflight_uses_transient_result_when_cache_tt
 
     assert follower_is_leader is False
     assert follower_payload == payload
-    assert state["writes"] == [(transient_key, 10, 200_000)]
+    assert harness.state["writes"] == [(harness.transient_key, 10, 200_000)]
 
     for _ in range(10):
-        if state["lease_owner"] is None:
+        if harness.state["lease_owner"] is None:
             break
         await asyncio.sleep(0)
-    assert state["lease_owner"] is None
+    assert harness.state["lease_owner"] is None
     cache.clear_inflight_chat_responses()
 
 
@@ -811,7 +999,13 @@ async def test_set_cached_chat_response_schedules_async_write_in_event_loop(
 
     written = asyncio.Event()
 
-    async def _fake_set(key: str, payload: dict[str, object], *, ttl_sec: int | None = None, max_value_bytes: int | None = None):  # noqa: ANN202
+    async def _fake_set(
+        key: str,
+        payload: dict[str, object],
+        *,
+        ttl_sec: int | None = None,
+        max_value_bytes: int | None = None,
+    ):
         assert key == "chat-write"
         assert payload["content"] == "ok"
         assert ttl_sec == 90
@@ -913,6 +1107,7 @@ async def test_chat_cancelled_or_overloaded_leader_releases_singleflight_for_ret
         rag_config_template_meta=None,
         history_for_llm=[],
     )
+
     async def _fake_enforce_tenant_qps_quota_async(**_kwargs):  # noqa: ANN202
         return {}
 
@@ -1024,8 +1219,6 @@ async def test_chat_cancelled_or_overloaded_leader_releases_singleflight_for_ret
 async def test_langchain_engine_releases_session_and_propagates_admission_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from langchain_core.documents import Document
-
     import app.rag.engine as engine_mod
     import app.rag.policy.modality_router as modality_router
     import app.services.chat_tag_service as tag_service
@@ -1033,78 +1226,12 @@ async def test_langchain_engine_releases_session_and_propagates_admission_timeou
     from app.rag.engine import RAGEngine
     from app.services.rag_runtime_limiter import RetrievalAdmissionTimeoutError
 
-    for name, value in {
-        "ENABLE_QUERY_REWRITE": False,
-        "ENABLE_MULTI_QUERY": False,
-        "ENABLE_HYDE": False,
-        "ENABLE_STEP_BACK_QUERY": False,
-        "ENABLE_QUERY_DECOMPOSITION": False,
-        "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_ENABLED": False,
-        "RETRIEVAL_QUERY_PARALLELISM": 1,
-        "RAG_AGENTIC_MODE_ENABLED": False,
-        "RAG_CORRECTIVE_ENABLED": False,
-        "RAG_ABSTAIN_ENABLED": False,
-        "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED": False,
-        "RAG_RETRIEVAL_RAIL_ENABLED": False,
-        "RAG_CONTEXT_EVIDENCE_ENABLED": False,
-        "RAG_KG_QUERY_EXPANSION_ENABLED": False,
-        "RAG_KG_CHUNK_INJECTION_ENABLED": False,
-        "KG_ENABLED": False,
-        "KG_CHAT_ENABLED": False,
-        "VISION_RAG_READER_ENABLED": False,
-        "VISION_RAG_GENERATION_ENABLED": False,
-        "INPUT_GUARD_ENABLED": False,
-        "OUTPUT_GUARD_ENABLED": False,
-        "RAG_CLAIM_CHECK_ENABLED": False,
-        "PII_REDACTION_ENABLED": False,
-        "LLM_MOCK_ENABLED": True,
-    }.items():
-        monkeypatch.setattr(settings, name, value, raising=False)
+    _patch_disabled_langchain_features(monkeypatch, settings)
 
-    class RequestDB:
-        def __init__(self) -> None:
-            self.checked_out = False
-            self.rollback_calls = 0
-
-        def query(self, *_args):  # noqa: ANN002, ANN202
-            self.checked_out = True
-            return self
-
-        def filter(self, *_args):  # noqa: ANN002, ANN202
-            return self
-
-        def all(self) -> list[object]:
-            return []
-
-        def rollback(self) -> None:
-            self.rollback_calls += 1
-            self.checked_out = False
-
-    class Retriever:
-        _last_debug_metrics: dict[str, object] = {}
-
-        def model_copy(self, **_kwargs):  # noqa: ANN003, ANN202
-            return self
-
-        def invoke(self, _query: str) -> list[Document]:
-            return [
-                Document(
-                    page_content="retrieved evidence",
-                    id="chunk-1",
-                    metadata={
-                        "document_id": "doc-1",
-                        "chunk_id": "chunk-1",
-                        "source": "source.txt",
-                        "score": 0.9,
-                        "relevance_score": 0.9,
-                    },
-                )
-            ]
-
-    request_db = RequestDB()
+    request_db = _TrackingRequestDB()
     limiter_release_states: list[bool] = []
     generation_release_states: list[bool] = []
-    stream_events: list[dict] = []
+    stream_events: list[dict[str, object]] = []
     generation_started = asyncio.Event()
     finish_generation = asyncio.Event()
 
@@ -1112,82 +1239,40 @@ async def test_langchain_engine_releases_session_and_propagates_admission_timeou
         limiter_release_states.append(not request_db.checked_out)
         return func(*args)
 
-    class BlockingChain:
-        def __or__(self, _other):  # noqa: ANN001, ANN202
-            return self
-
-        async def astream(self, _inputs):  # noqa: ANN001, ANN202
-            generation_release_states.append(not request_db.checked_out)
-            generation_started.set()
-            await finish_generation.wait()
-            yield "answer"
-
-    class FakeLLM:
-        model_name = "test"
-
-        def bind(self, **_kwargs):  # noqa: ANN003, ANN202
-            return self
-
     def build_tag_context(db, **_kwargs):  # noqa: ANN001, ANN003, ANN202
         assert db is request_db
         request_db.checked_out = True
         return [], {"enabled": True, "used": False, "reason": "test"}
 
-    monkeypatch.setattr(engine_mod, "hybrid_retriever", Retriever())
+    monkeypatch.setattr(engine_mod, "hybrid_retriever", _StaticRetriever())
     monkeypatch.setattr(engine_mod, "run_blocking_retrieval_call", limited_call, raising=False)
     monkeypatch.setattr(modality_router, "classify_query_modality", lambda _query: ("table", ["test"]))
     monkeypatch.setattr(tag_service, "build_chat_tag_context_docs", build_tag_context)
 
     engine = RAGEngine()
-    engine.prompt_template = BlockingChain()
+    engine.prompt_template = _BlockingStreamChain(
+        request_db=request_db,
+        generation_release_states=generation_release_states,
+        generation_started=generation_started,
+        finish_generation=finish_generation,
+    )
     monkeypatch.setattr(
         engine,
         "_select_llm",
-        lambda *_args, **_kwargs: (FakeLLM(), "test", "test"),
+        lambda *_args, **_kwargs: (_FakeChatLLM(), "test", "test"),
     )
-    stream = engine.stream_chat(
-        question="What does the evidence say?",
-        history=[],
-        tenant_id=uuid.uuid4(),
-        account_id="member-1",
-        document_ids=[uuid.uuid4()],
-        top_k=1,
-        score_threshold=0.0,
-        retrieval_mode="vector",
-        db=request_db,
-        request_id="session-boundary-test",
-    )
+    stream = _build_engine_stream(engine, request_db, request_id="session-boundary-test")
 
-    async def consume_to_first_token() -> None:
-        async for event in stream:
-            stream_events.append(event)
-            if event.get("type") == "error":
-                raise AssertionError(event)
-            if event.get("type") == "token":
-                return
-
-    consumer = asyncio.create_task(consume_to_first_token())
+    consumer = asyncio.create_task(_consume_stream_to_first_token(stream, stream_events))
     try:
-        generation_waiter = asyncio.create_task(generation_started.wait())
-        done, _pending = await asyncio.wait(
-            {consumer, generation_waiter},
-            timeout=5,
-            return_when=asyncio.FIRST_COMPLETED,
+        await _assert_generation_waits_with_released_session(
+            consumer,
+            generation_started,
+            generation_release_states=generation_release_states,
+            limiter_release_states=limiter_release_states,
+            request_db=request_db,
+            stream_events=stream_events,
         )
-        if consumer in done:
-            await consumer
-            raise AssertionError(f"stream ended before generation: {stream_events!r}")
-        assert generation_waiter in done
-        assert {
-            "limiter_release_states": limiter_release_states,
-            "generation_release_states": generation_release_states,
-            "request_db_checked_out": request_db.checked_out,
-        } == {
-            "limiter_release_states": [True],
-            "generation_release_states": [True],
-            "request_db_checked_out": False,
-        }
-        assert request_db.rollback_calls >= 2
     finally:
         finish_generation.set()
         await asyncio.wait_for(consumer, timeout=5)
@@ -1197,18 +1282,7 @@ async def test_langchain_engine_releases_session_and_propagates_admission_timeou
         raise RetrievalAdmissionTimeoutError(0.03)
 
     monkeypatch.setattr(engine_mod, "run_blocking_retrieval_call", overloaded_call)
-    overloaded_stream = engine.stream_chat(
-        question="What does the evidence say?",
-        history=[],
-        tenant_id=uuid.uuid4(),
-        account_id="member-1",
-        document_ids=[uuid.uuid4()],
-        top_k=1,
-        score_threshold=0.0,
-        retrieval_mode="vector",
-        db=request_db,
-        request_id="overload-test",
-    )
+    overloaded_stream = _build_engine_stream(engine, request_db, request_id="overload-test")
     try:
         with pytest.raises(RetrievalAdmissionTimeoutError):
             async for _event in overloaded_stream:

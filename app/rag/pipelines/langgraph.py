@@ -6,12 +6,13 @@ This module is the canonical home for the non-streaming LangGraph-based runner.
 
 Refactored to use LangGraph 1.0+ Functional API with @entrypoint and @task decorators.
 """
+
 import contextlib
 import hashlib
 import json
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from functools import partial
 from typing import Any, TypedDict, cast
 from uuid import UUID, uuid4
@@ -85,6 +86,7 @@ class RAGState(TypedDict, total=False):
 
     Using TypedDict for better type hints and IDE support.
     """
+
     question: str
     history: list[dict[str, str]]
     document_ids: list[UUID] | None
@@ -243,13 +245,20 @@ def _retrieve_cache_key(state: dict[str, Any]) -> str:
         "query_rewrite_temperature": state.get("query_rewrite_temperature"),
         "query_rewrite_max_chars": state.get("query_rewrite_max_chars"),
         "alpha": float(settings.RETRIEVAL_DEFAULT_ALPHA if state.get("alpha") is None else state.get("alpha")),
-        "enable_weight_rerank": bool(True if state.get("enable_weight_rerank") is None else state.get("enable_weight_rerank")),
+        "enable_weight_rerank": bool(
+            True if state.get("enable_weight_rerank") is None else state.get("enable_weight_rerank")
+        ),
         "vector_weight": float(0.6 if state.get("vector_weight") is None else state.get("vector_weight")),
         "keyword_weight": float(0.4 if state.get("keyword_weight") is None else state.get("keyword_weight")),
-        "mmr_lambda": float(settings.RETRIEVAL_MMR_LAMBDA if state.get("mmr_lambda") is None else state.get("mmr_lambda")),
-        "enable_reranker": bool(settings.ENABLE_RERANKER if state.get("enable_reranker") is None else state.get("enable_reranker")),
+        "mmr_lambda": float(
+            settings.RETRIEVAL_MMR_LAMBDA if state.get("mmr_lambda") is None else state.get("mmr_lambda")
+        ),
+        "enable_reranker": bool(
+            settings.ENABLE_RERANKER if state.get("enable_reranker") is None else state.get("enable_reranker")
+        ),
         "reranker_provider": str(
-            (settings.RERANKER_PROVIDER if state.get("reranker_provider") is None else state.get("reranker_provider")) or ""
+            (settings.RERANKER_PROVIDER if state.get("reranker_provider") is None else state.get("reranker_provider"))
+            or ""
         ),
         "reranker_top_n": int(
             settings.RERANKER_TOP_N if state.get("reranker_top_n") is None else state.get("reranker_top_n")
@@ -273,36 +282,7 @@ def _build_context(docs: list[Document], *, query: str | None = None) -> str:
     if not docs:
         return "No relevant reference materials found."
 
-    try:
-        from app.rag.core.context_denoise import denoise_context_docs
-
-        usable_docs = denoise_context_docs(docs) or list(docs)
-    except Exception as exc:
-        logger.debug("Context denoise failed, falling back to raw docs: %s", exc)
-        usable_docs = list(docs)
-
-    if bool(getattr(settings, "RAG_CONTEXT_LLM_COMPRESSION_ENABLED", False)):
-        try:
-            from app.rag.core.context_denoise import compress_context_docs_with_llm
-
-            usable_docs = compress_context_docs_with_llm(usable_docs, query=query) or list(usable_docs)
-        except Exception as exc:
-            logger.debug("LLM context compression failed, skipping compression: %s", exc)
-    elif bool(getattr(settings, "RAG_CONTEXT_COMPRESSION_ENABLED", False)):
-        try:
-            from app.rag.core.context_compression import compress_context_docs
-
-            usable_docs = compress_context_docs(usable_docs, query=query) or list(usable_docs)
-        except Exception as exc:
-            logger.debug("Context compression failed, skipping compression: %s", exc)
-
-    if bool(getattr(settings, "RAG_CONTEXT_REORDER_ENABLED", False)):
-        try:
-            from app.rag.core.doc_ordering import reorder_docs_for_generation
-
-            usable_docs = reorder_docs_for_generation(usable_docs) or list(usable_docs)
-        except Exception as exc:
-            logger.debug("Context doc ordering failed, skipping reorder: %s", exc)
+    usable_docs = _prepare_context_docs(docs, query=query)
 
     parts = []
     max_per_chunk_chars = max(0, int(settings.RAG_CONTEXT_MAX_CHARS_PER_CHUNK or 0))
@@ -312,53 +292,13 @@ def _build_context(docs: list[Document], *, query: str | None = None) -> str:
     total_chars = 0
     total_tokens = 0
     for idx, doc in enumerate(usable_docs, 1):
-        meta = doc.metadata or {}
-        source = str(meta.get("source") or meta.get("filename") or "Unknown")
-        filename = str(meta.get("filename") or "").strip()
-        document_title = str(meta.get("document_title") or meta.get("doc_title") or meta.get("title") or "").strip()
-        page_info = None
-        page_raw = meta.get("page")
-        try:
-            page_int = int(page_raw) if page_raw is not None else None
-            if page_int and page_int > 0:
-                page_info = f"Page {page_int}"
-        except Exception:
-            page_info = None
-        header = meta.get("header_path") or meta.get("header_context")
-        retrieval_role = meta.get("retrieval_role")
-        role_info = None
-        if retrieval_role == "neighbor":
-            role_info = "neighbor"
-        elif retrieval_role:
-            role_info = str(retrieval_role)
-        raw_content = (doc.page_content or "").strip()
-        content = raw_content
-        if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED) and query:
-            content = extract_evidence_text(
-                raw_content,
-                str(query),
-                max_chars=(max_per_chunk_chars if not max_per_chunk_tokens else 0),
-                max_sentences=settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK,
-                min_sentence_chars=settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS,
-            )
-        elif max_per_chunk_tokens:
-            content = truncate(content, max_per_chunk_tokens)
-        elif max_per_chunk_chars and len(content) > max_per_chunk_chars:
-            content = content[:max_per_chunk_chars] + "..."
-        info_parts = []
-        if document_title:
-            info_parts.append(f"Title: {document_title}")
-        if filename:
-            info_parts.append(f"File: {filename}")
-        elif source:
-            info_parts.append(str(source))
-        if page_info:
-            info_parts.append(page_info)
-        if header:
-            info_parts.append(str(header))
-        if role_info:
-            info_parts.append(str(role_info))
-        part = f"[Source {idx}: {' | '.join(info_parts)}]\n{content}"
+        part = _build_context_part(
+            doc,
+            idx=idx,
+            query=query,
+            max_per_chunk_chars=max_per_chunk_chars,
+            max_per_chunk_tokens=max_per_chunk_tokens,
+        )
         if max_total_tokens:
             part_tokens = num_tokens_from_string(part)
             if parts and (total_tokens + part_tokens) > max_total_tokens:
@@ -373,6 +313,135 @@ def _build_context(docs: list[Document], *, query: str | None = None) -> str:
         if max_total_chars and total_chars >= max_total_chars:
             break
     return "\n\n".join(parts)
+
+
+def _prepare_context_docs(docs: list[Document], *, query: str | None) -> list[Document]:
+    usable_docs = _denoise_context_docs(docs)
+    if bool(getattr(settings, "RAG_CONTEXT_LLM_COMPRESSION_ENABLED", False)):
+        return _compress_context_docs_with_llm(usable_docs, query=query)
+    if bool(getattr(settings, "RAG_CONTEXT_COMPRESSION_ENABLED", False)):
+        usable_docs = _compress_context_docs(usable_docs, query=query)
+    if bool(getattr(settings, "RAG_CONTEXT_REORDER_ENABLED", False)):
+        usable_docs = _reorder_context_docs(usable_docs)
+    return usable_docs
+
+
+def _denoise_context_docs(docs: list[Document]) -> list[Document]:
+    try:
+        from app.rag.core.context_denoise import denoise_context_docs
+
+        return denoise_context_docs(docs) or list(docs)
+    except Exception as exc:
+        logger.debug("Context denoise failed, falling back to raw docs: %s", exc)
+        return list(docs)
+
+
+def _compress_context_docs_with_llm(docs: list[Document], *, query: str | None) -> list[Document]:
+    try:
+        from app.rag.core.context_denoise import compress_context_docs_with_llm
+
+        return compress_context_docs_with_llm(docs, query=query) or list(docs)
+    except Exception as exc:
+        logger.debug("LLM context compression failed, skipping compression: %s", exc)
+        return list(docs)
+
+
+def _compress_context_docs(docs: list[Document], *, query: str | None) -> list[Document]:
+    try:
+        from app.rag.core.context_compression import compress_context_docs
+
+        return compress_context_docs(docs, query=query) or list(docs)
+    except Exception as exc:
+        logger.debug("Context compression failed, skipping compression: %s", exc)
+        return list(docs)
+
+
+def _reorder_context_docs(docs: list[Document]) -> list[Document]:
+    try:
+        from app.rag.core.doc_ordering import reorder_docs_for_generation
+
+        return reorder_docs_for_generation(docs) or list(docs)
+    except Exception as exc:
+        logger.debug("Context doc ordering failed, skipping reorder: %s", exc)
+        return list(docs)
+
+
+def _context_page_info(meta: dict[str, Any]) -> str | None:
+    try:
+        page_raw = meta.get("page")
+        page_int = int(page_raw) if page_raw is not None else None
+    except Exception:
+        return None
+    if page_int and page_int > 0:
+        return f"Page {page_int}"
+    return None
+
+
+def _context_role_info(meta: dict[str, Any]) -> str | None:
+    retrieval_role = meta.get("retrieval_role")
+    if retrieval_role == "neighbor":
+        return "neighbor"
+    if retrieval_role:
+        return str(retrieval_role)
+    return None
+
+
+def _context_content(
+    doc: Document,
+    *,
+    query: str | None,
+    max_per_chunk_chars: int,
+    max_per_chunk_tokens: int,
+) -> str:
+    raw_content = str(doc.page_content or "").strip()
+    if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED) and query:
+        return extract_evidence_text(
+            raw_content,
+            str(query),
+            max_chars=(max_per_chunk_chars if not max_per_chunk_tokens else 0),
+            max_sentences=settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK,
+            min_sentence_chars=settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS,
+        )
+    if max_per_chunk_tokens:
+        return truncate(raw_content, max_per_chunk_tokens)
+    if max_per_chunk_chars and len(raw_content) > max_per_chunk_chars:
+        return raw_content[:max_per_chunk_chars] + "..."
+    return raw_content
+
+
+def _build_context_part(
+    doc: Document,
+    *,
+    idx: int,
+    query: str | None,
+    max_per_chunk_chars: int,
+    max_per_chunk_tokens: int,
+) -> str:
+    meta = doc.metadata or {}
+    filename = str(meta.get("filename") or "").strip()
+    source = str(meta.get("source") or filename or "Unknown")
+    info_parts: list[str] = []
+    title = str(meta.get("document_title") or meta.get("doc_title") or meta.get("title") or "").strip()
+    if title:
+        info_parts.append(f"Title: {title}")
+    if filename:
+        info_parts.append(f"File: {filename}")
+    elif source:
+        info_parts.append(source)
+    for value in (
+        _context_page_info(meta),
+        meta.get("header_path") or meta.get("header_context"),
+        _context_role_info(meta),
+    ):
+        if value:
+            info_parts.append(str(value))
+    content = _context_content(
+        doc,
+        query=query,
+        max_per_chunk_chars=max_per_chunk_chars,
+        max_per_chunk_tokens=max_per_chunk_tokens,
+    )
+    return f"[Source {idx}: {' | '.join(info_parts)}]\n{content}"
 
 
 def _build_history_text(history: list[dict[str, str]] | None) -> str:
@@ -432,164 +501,196 @@ def _retrieve_node(state: RAGState) -> RAGState:
 def _generate_node(state: RAGState) -> RAGState:
     # Grounding guard: retrieval already decided to abstain, skip generation.
     if bool(state.get("abstain_triggered")):
-        engine = get_rag_engine()
-        llm, route, reason = engine._select_llm(state["question"], state.get("history"))  # type: ignore[attr-defined]
+        return _generate_abstain_result(state)
+    return _generate_standard_result(state)
 
-        abstain_message = build_abstain_answer_message(state.get("abstain_reason"))
-        answer = abstain_message
-        if bool(state.get("structured_output")):
-            citations = state.get("citations") or []
-            top_k = int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 5)
-            structured_citations: list[dict[str, Any]] = []
-            for c in citations[: max(0, int(top_k or 0))]:
-                structured_citations.append(
-                    {
-                        "document_id": c.get("document_id"),
-                        "chunk_id": c.get("chunk_id"),
-                        "page_number": c.get("page_number"),
-                        "relevance_score": c.get("relevance_score"),
-                    }
-                )
-            payload = build_structured_abstain_payload(
-                preset=state.get("structured_preset"),
-                answer=abstain_message,
-                citations=structured_citations,
-            )
-            answer = json.dumps(payload, ensure_ascii=False)
 
-        metrics = dict(state.get("metrics") or {})
-        followup_questions = derive_followup_questions(metrics.get("abstain_followup"))
-        metrics["generation_elapsed_sec"] = 0.0
-        metrics["context_evidence_enabled"] = bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED)
-        metrics["context_evidence_max_sentences_per_chunk"] = (
-            int(settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK or 0) if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED) else None
-        )
-        metrics["context_evidence_min_sentence_chars"] = (
-            int(settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS or 0) if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED) else None
-        )
-        faithfulness_meta: dict[str, Any] = {
-            "score": None,
-            "supported_claims": 0,
-            "total_claims": 0,
-            "unsupported_claims": [],
-            "method": "claim_support_ratio",
-        }
-        if bool(getattr(settings, "FAITHFULNESS_SCORE_ENABLED", True)):
-            evidence_text = "\n".join(
-                [
-                    str(getattr(d, "page_content", "") or "")
-                    for d in (state.get("docs") or [])
-                    if str(getattr(d, "page_content", "") or "").strip()
-                ]
-            )
-            max_evidence_chars = max(
-                0, int(getattr(settings, "FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS", 24_000) or 24_000)
-            )
-            if max_evidence_chars and len(evidence_text) > max_evidence_chars:
-                evidence_text = evidence_text[:max_evidence_chars]
-            faithfulness_meta = compute_faithfulness_score(
-                answer=str(answer or ""),
-                evidence_text=evidence_text,
-                max_claims=max(1, int(getattr(settings, "FAITHFULNESS_SCORE_MAX_CLAIMS", 24) or 24)),
-                verifier_mode=(
-                    str(getattr(settings, "RAG_CLAIM_VERIFIER_MODE", "token_overlap") or "token_overlap").strip().lower()
-                ),
-                verifier_enable_contradiction_check=bool(
-                    getattr(settings, "RAG_CLAIM_VERIFIER_ENABLE_CONTRADICTION_CHECK", True)
-                ),
-                use_nli_fallback=bool(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)),
-                nli_provider=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_PROVIDER", "none") or "none"),
-                nli_model_name=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or ""),
-                nli_timeout_sec=float(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", 8) or 8),
-            )
-        retrieval_gap = metrics.get("iterative_pass_gap")
-        if not isinstance(retrieval_gap, dict):
-            retrieval_gap = metrics.get("evidence_gap") if isinstance(metrics.get("evidence_gap"), dict) else None
-        confidence_meta = compute_confidence_score(
-            faithfulness_score=faithfulness_meta.get("score"),
-            claim_total=faithfulness_meta.get("total_claims"),
-            claim_supported=faithfulness_meta.get("supported_claims"),
-            evidence_gap=retrieval_gap,
-        )
+def _generate_abstain_result(state: RAGState) -> RAGState:
+    _engine, llm, route, reason, model_used = _prepare_generation_model(state)
+    abstain_message = build_abstain_answer_message(state.get("abstain_reason"))
+    answer = _abstain_answer_payload(state, abstain_message=abstain_message)
+    metrics = dict(state.get("metrics") or {})
+    followup_questions = derive_followup_questions(metrics.get("abstain_followup"))
+    faithfulness_meta = _compute_generation_faithfulness(
+        answer=answer,
+        docs=state.get("docs") or [],
+        verifier_mode=_normalized_claim_verifier_mode(),
+        verifier_enable_contradiction_check=bool(
+            getattr(settings, "RAG_CLAIM_VERIFIER_ENABLE_CONTRADICTION_CHECK", True)
+        ),
+    )
+    _apply_common_generation_metrics(
+        metrics=metrics,
+        faithfulness_meta=faithfulness_meta,
+        confidence_meta=_generation_confidence_meta(metrics=metrics, faithfulness_meta=faithfulness_meta),
+        followup_questions=followup_questions,
+        route=route,
+        model_used=model_used,
+        generation_elapsed=0.0,
+        prompt_state=state,
+    )
+    metrics["sentence_citations_count"] = 0
+    metrics["sentence_citations"] = []
+    metrics["sentence_citations_inline_enabled"] = bool(getattr(settings, "SENTENCE_CITATIONS_INLINE_ENABLED", False))
+    metrics["sentence_citations_inline_used"] = False
+    metrics["sentence_citations_inline_count"] = 0
+    return {
+        **state,
+        "answer": answer,
+        "route": route,
+        "model_used": model_used,
+        "routing_reason": reason,
+        "metrics": metrics,
+        "followup_questions": followup_questions,
+    }
 
-        metrics["sentence_citations_count"] = 0
-        metrics["sentence_citations"] = []
-        metrics["sentence_citations_inline_enabled"] = bool(getattr(settings, "SENTENCE_CITATIONS_INLINE_ENABLED", False))
-        metrics["sentence_citations_inline_used"] = False
-        metrics["sentence_citations_inline_count"] = 0
-        metrics["faithfulness_score_enabled"] = bool(getattr(settings, "FAITHFULNESS_SCORE_ENABLED", True))
-        metrics["faithfulness_score_method"] = str(faithfulness_meta.get("method") or "claim_support_ratio")
-        metrics["faithfulness_score"] = faithfulness_meta.get("score")
-        metrics["faithfulness_supported_claims"] = int(faithfulness_meta.get("supported_claims") or 0)
-        metrics["faithfulness_total_claims"] = int(faithfulness_meta.get("total_claims") or 0)
-        metrics["faithfulness_unsupported_claims"] = list(faithfulness_meta.get("unsupported_claims") or [])
-        metrics["confidence_score"] = confidence_meta.get("score")
-        metrics["confidence_band"] = confidence_meta.get("band")
-        metrics["confidence_reasons"] = list(confidence_meta.get("reasons") or [])
-        metrics["followup_questions"] = followup_questions
 
-        base = 0.0
-        base += float(metrics.get("retrieval_elapsed_sec", 0.0) or 0.0)
-        base += float(metrics.get("rewrite_elapsed_sec", 0.0) or 0.0)
-        base += float(metrics.get("multi_query_elapsed_sec", 0.0) or 0.0)
-        base += float(metrics.get("hyde_elapsed_sec", 0.0) or 0.0)
-        base += float(metrics.get("decompose_elapsed_sec", 0.0) or 0.0)
-        metrics["elapsed_sec"] = round(base, 3)
+def _generate_standard_result(state: RAGState) -> RAGState:
+    engine, llm, route, reason, model_used = _prepare_generation_model(state)
+    llm, generation_max_tokens = _apply_generation_max_tokens(llm, state)
+    chain = _build_generation_chain(engine=engine, llm=llm, prompt_content=state.get("prompt_template_content"))
+    ctx = _build_context(state.get("docs") or [], query=state.get("query_for_retrieval") or state.get("question"))
+    hist_text = _build_history_text(state.get("history"))
+    pii_on = bool(pii_redaction_enabled())
+    answer, generation_elapsed = _invoke_generation_chain(
+        chain=chain,
+        state=state,
+        ctx=ctx,
+        hist_text=hist_text,
+        pii_on=pii_on,
+    )
+    answer, source_identification_answer_used, followup_questions = _prepare_generation_answer(
+        answer=answer,
+        state=state,
+        pii_on=pii_on,
+    )
+    claim_ctx = _generation_claim_context(state=state, ctx=ctx, pii_on=pii_on)
+    answer, claim_meta = _apply_claim_check_to_answer(
+        answer=answer,
+        state=state,
+        claim_ctx=claim_ctx,
+    )
+    claim_evidence = _build_claim_evidence_safe(
+        answer=answer,
+        state=state,
+        claim_ctx=claim_ctx,
+    )
+    answer, sentence_meta = _render_generation_answer_extras(
+        answer=answer,
+        state=state,
+        pii_on=pii_on,
+        claim_ctx=claim_ctx,
+        claim_evidence=claim_evidence,
+    )
+    faithfulness_meta = _compute_generation_faithfulness(
+        answer=answer,
+        docs=state.get("docs") or [],
+        verifier_mode=str(claim_ctx["claim_verifier_mode"]),
+        verifier_enable_contradiction_check=bool(claim_ctx["claim_verifier_enable_contradiction_check"]),
+    )
+    metrics = dict(state.get("metrics") or {})
+    _populate_standard_generation_metrics(
+        metrics=metrics,
+        state=state,
+        ctx=ctx,
+        hist_text=hist_text,
+        route=route,
+        model_used=model_used,
+        generation_elapsed=generation_elapsed,
+        generation_max_tokens=generation_max_tokens,
+        claim_ctx=claim_ctx,
+        claim_meta=claim_meta,
+        claim_evidence=claim_evidence,
+        sentence_meta=sentence_meta,
+        faithfulness_meta=faithfulness_meta,
+        followup_questions=followup_questions,
+        source_identification_answer_used=source_identification_answer_used,
+    )
+    return {
+        **state,
+        "answer": answer,
+        "route": route,
+        "model_used": model_used,
+        "routing_reason": reason,
+        "metrics": metrics,
+        "followup_questions": list(followup_questions or []),
+    }
 
-        metrics["model_route"] = route
-        metrics["model_used"] = getattr(llm, "model_name", None) or getattr(llm, "model", None)
-        metrics["llm_max_retries"] = settings.LLM_MAX_RETRIES
-        metrics["prompt_template_id"] = state.get("prompt_template_id")
-        metrics["prompt_template_key"] = state.get("prompt_template_key")
-        metrics["prompt_ab_experiment_key"] = state.get("prompt_ab_experiment_key")
-        metrics["prompt_ab_variant"] = state.get("prompt_ab_variant")
 
-        return {
-            **state,
-            "answer": answer,
-            "route": route,
-            "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
-            "routing_reason": reason,
-            "metrics": metrics,
-            "followup_questions": followup_questions,
-        }
-
+def _prepare_generation_model(state: RAGState) -> tuple[Any, Any, str | None, str | None, str | None]:
     engine = get_rag_engine()
     llm, route, reason = engine._select_llm(state["question"], state.get("history"))  # type: ignore[attr-defined]
-    llm_model_used = getattr(llm, "model_name", None) or getattr(llm, "model", None)
+    model_used = getattr(llm, "model_name", None) or getattr(llm, "model", None)
+    return engine, llm, route, reason, model_used
+
+
+def _apply_generation_max_tokens(llm: Any, state: RAGState) -> tuple[Any, int]:
     generation_max_tokens = max(0, int(state.get("max_tokens") or 0))
     if generation_max_tokens > 0:
         llm = llm.bind(max_tokens=generation_max_tokens)
+    return llm, generation_max_tokens
+
+
+def _build_structured_citations(citations: list[dict[str, Any]], *, top_k: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "document_id": citation.get("document_id"),
+            "chunk_id": citation.get("chunk_id"),
+            "page_number": citation.get("page_number"),
+            "relevance_score": citation.get("relevance_score"),
+        }
+        for citation in citations[: max(0, int(top_k or 0))]
+    ]
+
+
+def _abstain_answer_payload(state: RAGState, *, abstain_message: str) -> str:
+    if not bool(state.get("structured_output")):
+        return abstain_message
+    citations = state.get("citations") or []
+    top_k = int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 5)
+    payload = build_structured_abstain_payload(
+        preset=state.get("structured_preset"),
+        answer=abstain_message,
+        citations=_build_structured_citations(citations, top_k=top_k),
+    )
+    return json.dumps(payload, ensure_ascii=False)
+
+
+def _build_generation_chain(*, engine: Any, llm: Any, prompt_content: Any) -> Any:
     prompt_obj = engine.prompt_template
-    prompt_content = state.get("prompt_template_content")
     if prompt_content:
-        try:
+        with contextlib.suppress(Exception):
             prompt_obj = ChatPromptTemplate.from_template(str(prompt_content))
-        except Exception:
-            prompt_obj = engine.prompt_template
+    return prompt_obj | llm | StrOutputParser()
 
-    chain = prompt_obj | llm | StrOutputParser()
-    format_instructions = state.get("format_instructions", "")
 
-    ctx = _build_context(state.get("docs") or [], query=state.get("query_for_retrieval") or state.get("question"))
-    hist_text = _build_history_text(state.get("history"))
-
-    pii_on = bool(pii_redaction_enabled())
-
+def _invoke_generation_chain(
+    *,
+    chain: Any,
+    state: RAGState,
+    ctx: str,
+    hist_text: str,
+    pii_on: bool,
+) -> tuple[str, float]:
     start = time.time()
     answer = chain.invoke(
         {
             "context": redact_text(ctx) if pii_on else ctx,
             "history": redact_text(hist_text) if pii_on else hist_text,
             "question": redact_text(state["question"]) if pii_on else state["question"],
-            "format_instructions": format_instructions,
+            "format_instructions": state.get("format_instructions", ""),
         }
     )
-    generation_elapsed = time.time() - start
+    rendered = redact_text(str(answer)) if pii_on else str(answer)
+    return rendered, time.time() - start
 
-    if pii_on:
-        answer = redact_text(str(answer))
 
+def _prepare_generation_answer(
+    *,
+    answer: str,
+    state: RAGState,
+    pii_on: bool,
+) -> tuple[str, bool, list[str]]:
     source_identification_answer_used = False
     if not bool(state.get("structured_output")):
         deterministic_source_answer = maybe_build_source_identification_answer(
@@ -599,134 +700,311 @@ def _generate_node(state: RAGState) -> RAGState:
         if deterministic_source_answer:
             answer = redact_text(deterministic_source_answer) if pii_on else deterministic_source_answer
             source_identification_answer_used = True
-
     followup_questions: list[str] = []
-    if (
-        not bool(state.get("structured_output"))
-        and bool(getattr(settings, "RAG_FOLLOWUP_SUGGESTIONS_ENABLED", False))
-    ):
+    if not bool(state.get("structured_output")) and bool(getattr(settings, "RAG_FOLLOWUP_SUGGESTIONS_ENABLED", False)):
         answer, followup_questions = extract_followup_questions_from_answer(str(answer or ""), max_items=3)
+    return answer, source_identification_answer_used, followup_questions
 
-    strict_visible = bool(getattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False)) or bool(state.get("visible_evidence_only"))
-    claim_check_configured = bool(getattr(settings, "RAG_CLAIM_CHECK_ENABLED", False)) or strict_visible
-    claim_check_max_claims = max(1, int(getattr(settings, "RAG_CLAIM_CHECK_MAX_CLAIMS", 24) or 24))
-    claim_verifier_mode = str(getattr(settings, "RAG_CLAIM_VERIFIER_MODE", "token_overlap") or "token_overlap").strip().lower()
-    if claim_verifier_mode not in {"token_overlap", "semantic_heuristic", "strict"}:
-        claim_verifier_mode = "token_overlap"
-    claim_verifier_enable_contradiction_check = bool(
-        getattr(settings, "RAG_CLAIM_VERIFIER_ENABLE_CONTRADICTION_CHECK", True)
+
+def _normalized_claim_verifier_mode() -> str:
+    mode = str(getattr(settings, "RAG_CLAIM_VERIFIER_MODE", "token_overlap") or "token_overlap").strip().lower()
+    return mode if mode in {"token_overlap", "semantic_heuristic", "strict"} else "token_overlap"
+
+
+def _generation_claim_context(*, state: RAGState, ctx: str, pii_on: bool) -> dict[str, Any]:
+    strict_visible = bool(getattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False)) or bool(
+        state.get("visible_evidence_only")
     )
+    claim_check_configured = bool(getattr(settings, "RAG_CLAIM_CHECK_ENABLED", False)) or strict_visible
     claim_check_mode = "none"
-    if bool(claim_check_configured):
+    if claim_check_configured:
         claim_check_mode = "structured" if bool(state.get("structured_output")) else "text"
-    claim_check_applied = claim_check_mode != "none"
-    claim_check_removed = 0
-    claim_check_total = 0
-    claim_check_removed_reasons: list[dict[str, Any]] = []
+    return {
+        "strict_visible": strict_visible,
+        "claim_check_configured": claim_check_configured,
+        "claim_check_mode": claim_check_mode,
+        "claim_check_applied": claim_check_mode != "none",
+        "claim_check_max_claims": max(1, int(getattr(settings, "RAG_CLAIM_CHECK_MAX_CLAIMS", 24) or 24)),
+        "claim_verifier_mode": _normalized_claim_verifier_mode(),
+        "claim_verifier_enable_contradiction_check": bool(
+            getattr(settings, "RAG_CLAIM_VERIFIER_ENABLE_CONTRADICTION_CHECK", True)
+        ),
+        "evidence_text": redact_text(ctx) if pii_on else ctx,
+    }
 
-    if claim_check_applied:
-        evidence_text = redact_text(ctx) if pii_on else ctx
-        if claim_check_mode == "text":
-            claims = split_into_claims(str(answer or ""), max_claims=claim_check_max_claims)
-            claim_check_total = len(claims)
-            kept: list[str] = []
-            for c in claims:
-                vr = verify_claim_with_fallback(
-                    c,
-                    evidence_text,
-                    verifier_mode=claim_verifier_mode,
-                    verifier_enable_contradiction_check=claim_verifier_enable_contradiction_check,
-                    use_nli_fallback=bool(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)),
-                    nli_provider=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_PROVIDER", "none") or "none"),
-                    nli_model_name=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or ""),
-                    nli_timeout_sec=float(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", 8) or 8),
-                )
-                if bool(vr.supported):
-                    kept.append(c)
-                else:
-                    claim_check_removed += 1
-                    if len(claim_check_removed_reasons) < 64:
-                        diag = vr.diagnostics if isinstance(vr.diagnostics, dict) else {}
-                        claim_check_removed_reasons.append(
-                            {
-                                "claim": str(c or "")[:300],
-                                "reason_code": str(diag.get("reason_code") or diag.get("reason") or "unsupported")[:120],
-                                "contradiction_type": (
-                                    str(diag.get("contradiction_type"))[:120]
-                                    if diag.get("contradiction_type") is not None
-                                    else None
-                                ),
-                            }
-                        )
-            cleaned = "\n".join(kept).strip()
-            if not cleaned:
-                cleaned = _UNABLE_TO_ANSWER_MESSAGE
-            answer = cleaned
-        elif claim_check_mode == "structured":
-            structured_citations: list[dict[str, Any]] = []
-            for c in (state.get("citations") or [])[: max(0, int(state.get("top_k") or 0))]:
-                structured_citations.append(
-                    {
-                        "document_id": c.get("document_id"),
-                        "chunk_id": c.get("chunk_id"),
-                        "page_number": c.get("page_number"),
-                        "relevance_score": c.get("relevance_score"),
-                    }
-                )
-            parsed, _meta = parse_and_repair_structured_output(
-                str(answer or ""),
-                preset=state.get("structured_preset"),
-                fallback_answer=_UNABLE_TO_ANSWER_MESSAGE,
-                fallback_citations=structured_citations,
+
+def _claim_verifier_kwargs(claim_ctx: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "verifier_mode": claim_ctx["claim_verifier_mode"],
+        "verifier_enable_contradiction_check": claim_ctx["claim_verifier_enable_contradiction_check"],
+        "use_nli_fallback": bool(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)),
+        "nli_provider": str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_PROVIDER", "none") or "none"),
+        "nli_model_name": str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or ""),
+        "nli_timeout_sec": float(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", 8) or 8),
+    }
+
+
+def _apply_claim_check_to_answer(
+    *,
+    answer: str,
+    state: RAGState,
+    claim_ctx: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    meta = {"claim_check_removed": 0, "claim_check_total": 0, "claim_check_removed_reasons": []}
+    if not claim_ctx["claim_check_applied"]:
+        return answer, meta
+    if claim_ctx["claim_check_mode"] == "text":
+        return _apply_text_claim_check(answer=answer, claim_ctx=claim_ctx)
+    return _apply_structured_claim_check(answer=answer, state=state, claim_ctx=claim_ctx)
+
+
+def _apply_text_claim_check(*, answer: str, claim_ctx: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    claims = split_into_claims(str(answer or ""), max_claims=int(claim_ctx["claim_check_max_claims"]))
+    kept: list[str] = []
+    removed_reasons: list[dict[str, Any]] = []
+    for claim in claims:
+        result = verify_claim_with_fallback(
+            claim,
+            claim_ctx["evidence_text"],
+            **_claim_verifier_kwargs(claim_ctx),
+        )
+        if bool(result.supported):
+            kept.append(claim)
+            continue
+        if len(removed_reasons) < 64:
+            diag = result.diagnostics if isinstance(result.diagnostics, dict) else {}
+            removed_reasons.append(
+                {
+                    "claim": str(claim or "")[:300],
+                    "reason_code": str(diag.get("reason_code") or diag.get("reason") or "unsupported")[:120],
+                    "contradiction_type": (
+                        str(diag.get("contradiction_type"))[:120]
+                        if diag.get("contradiction_type") is not None
+                        else None
+                    ),
+                }
             )
+    cleaned = "\n".join(kept).strip() or _UNABLE_TO_ANSWER_MESSAGE
+    return cleaned, {
+        "claim_check_removed": max(0, len(claims) - len(kept)),
+        "claim_check_total": len(claims),
+        "claim_check_removed_reasons": removed_reasons,
+    }
 
-            scrubbed, scrub_meta = scrub_structured_output_visible_evidence_only(
-                parsed,
-                evidence_text=evidence_text,
-                max_claims=claim_check_max_claims,
-                verifier_mode=claim_verifier_mode,
-                verifier_enable_contradiction_check=claim_verifier_enable_contradiction_check,
-                use_nli_fallback=bool(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)),
-                nli_provider=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_PROVIDER", "none") or "none"),
-                nli_model_name=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or ""),
-                nli_timeout_sec=float(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", 8) or 8),
-            )
-            if isinstance(scrub_meta, dict):
-                claim_check_total = int(scrub_meta.get("claims_total") or 0)
-                claim_check_removed = int(scrub_meta.get("claims_removed") or 0)
-                rm = scrub_meta.get("claim_check_removed_reasons")
-                if isinstance(rm, list):
-                    claim_check_removed_reasons = [x for x in rm if isinstance(x, dict)][:64]
 
-            try:
-                if (
-                    isinstance(scrubbed, dict)
-                    and isinstance(scrubbed.get("answer"), str)
-                    and not str(scrubbed.get("answer") or "").strip()
-                ):
-                    scrubbed["answer"] = _UNABLE_TO_ANSWER_MESSAGE
-            except Exception as exc:
-                logger.debug("Ignoring structured abstain answer fallback patch failure: %s", exc)
+def _apply_structured_claim_check(
+    *,
+    answer: str,
+    state: RAGState,
+    claim_ctx: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    structured_citations = _build_structured_citations(
+        state.get("citations") or [],
+        top_k=int(state.get("top_k") or 0),
+    )
+    parsed, _meta = parse_and_repair_structured_output(
+        str(answer or ""),
+        preset=state.get("structured_preset"),
+        fallback_answer=_UNABLE_TO_ANSWER_MESSAGE,
+        fallback_citations=structured_citations,
+    )
+    scrubbed, scrub_meta = scrub_structured_output_visible_evidence_only(
+        parsed,
+        evidence_text=claim_ctx["evidence_text"],
+        max_claims=int(claim_ctx["claim_check_max_claims"]),
+        **_claim_verifier_kwargs(claim_ctx),
+    )
+    if (
+        isinstance(scrubbed, dict)
+        and isinstance(scrubbed.get("answer"), str)
+        and not str(scrubbed.get("answer") or "").strip()
+    ):
+        scrubbed["answer"] = _UNABLE_TO_ANSWER_MESSAGE
+    removed_reasons = []
+    if isinstance(scrub_meta, dict) and isinstance(scrub_meta.get("claim_check_removed_reasons"), list):
+        removed_reasons = [x for x in scrub_meta["claim_check_removed_reasons"] if isinstance(x, dict)][:64]
+    return json.dumps(scrubbed, ensure_ascii=False, separators=(",", ":")), {
+        "claim_check_removed": int(scrub_meta.get("claims_removed") or 0) if isinstance(scrub_meta, dict) else 0,
+        "claim_check_total": int(scrub_meta.get("claims_total") or 0) if isinstance(scrub_meta, dict) else 0,
+        "claim_check_removed_reasons": removed_reasons,
+    }
 
-            answer = json.dumps(scrubbed, ensure_ascii=False, separators=(",", ":"))
 
-    claim_evidence: list[dict[str, Any]] = []
-    if not bool(state.get("structured_output")):
-        try:
-            claim_evidence = build_claim_evidence_map(
-                str(answer or ""),
-                evidence_chunks=list(state.get("docs") or []),
-                max_claims=claim_check_max_claims if claim_check_configured else 24,
-                verifier_mode=claim_verifier_mode,
-                verifier_enable_contradiction_check=claim_verifier_enable_contradiction_check,
-                use_nli_fallback=bool(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)),
-                nli_provider=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_PROVIDER", "none") or "none"),
-                nli_model_name=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or ""),
-                nli_timeout_sec=float(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", 8) or 8),
-            )
-        except Exception:
-            claim_evidence = []
+def _build_claim_evidence_safe(
+    *,
+    answer: str,
+    state: RAGState,
+    claim_ctx: dict[str, Any],
+) -> list[dict[str, Any]]:
+    if bool(state.get("structured_output")):
+        return []
+    try:
+        return build_claim_evidence_map(
+            str(answer or ""),
+            evidence_chunks=list(state.get("docs") or []),
+            max_claims=int(claim_ctx["claim_check_max_claims"]) if claim_ctx["claim_check_configured"] else 24,
+            **_claim_verifier_kwargs(claim_ctx),
+        )
+    except Exception:
+        return []
 
+
+def _render_generation_answer_extras(
+    *,
+    answer: str,
+    state: RAGState,
+    pii_on: bool,
+    claim_ctx: dict[str, Any],
+    claim_evidence: list[dict[str, Any]],
+) -> tuple[str, dict[str, Any]]:
+    sentence_meta = {
+        "enabled": bool(getattr(settings, "SENTENCE_CITATIONS_INLINE_ENABLED", False)),
+        "style": str(getattr(settings, "SENTENCE_CITATIONS_INLINE_STYLE", "appendix") or "appendix").strip().lower()
+        or "appendix",
+        "used": False,
+        "count": 0,
+        "fallback_reason": None,
+    }
+    if sentence_meta["style"] not in {"appendix", "inline"}:
+        sentence_meta["style"] = "appendix"
+    answer, sentence_meta = _render_sentence_citation_variants(
+        answer=answer,
+        state=state,
+        pii_on=pii_on,
+        claim_ctx=claim_ctx,
+        claim_evidence=claim_evidence,
+        sentence_meta=sentence_meta,
+    )
+    answer = _append_related_images(answer=answer, state=state, pii_on=pii_on)
+    return answer, sentence_meta
+
+
+def _render_sentence_citation_variants(
+    *,
+    answer: str,
+    state: RAGState,
+    pii_on: bool,
+    claim_ctx: dict[str, Any],
+    claim_evidence: list[dict[str, Any]],
+    sentence_meta: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    if bool(state.get("structured_output")) or not sentence_meta["enabled"]:
+        return answer, sentence_meta
+    if sentence_meta["style"] == "inline":
+        answer, sentence_meta = _render_inline_sentence_citations(
+            answer=answer,
+            claim_ctx=claim_ctx,
+            claim_evidence=claim_evidence,
+            sentence_meta=sentence_meta,
+        )
+    if sentence_meta["style"] == "appendix":
+        answer, sentence_meta = _render_appendix_sentence_citations(
+            answer=answer,
+            pii_on=pii_on,
+            claim_evidence=claim_evidence,
+            sentence_meta=sentence_meta,
+        )
+    return answer, sentence_meta
+
+
+def _sentence_citation_render_limits() -> dict[str, int]:
+    return {
+        "max_items": max(0, int(getattr(settings, "SENTENCE_CITATIONS_INLINE_MAX_ITEMS", 8) or 8)),
+        "max_evidence_per_claim": max(
+            1,
+            int(getattr(settings, "SENTENCE_CITATIONS_INLINE_MAX_EVIDENCE_PER_CLAIM", 2) or 2),
+        ),
+    }
+
+
+def _render_inline_sentence_citations(
+    *,
+    answer: str,
+    claim_ctx: dict[str, Any],
+    claim_evidence: list[dict[str, Any]],
+    sentence_meta: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    if claim_ctx["claim_check_mode"] != "text":
+        sentence_meta["style"] = "appendix"
+        sentence_meta["fallback_reason"] = "claim_check_not_text"
+        return answer, sentence_meta
+    limits = _sentence_citation_render_limits()
+    inline_text, rendered_count = render_sentence_citations_inline(claim_evidence, **limits)
+    if inline_text:
+        sentence_meta["used"] = True
+        sentence_meta["count"] = int(rendered_count or 0)
+        return inline_text, sentence_meta
+    sentence_meta["style"] = "appendix"
+    sentence_meta["fallback_reason"] = "inline_render_empty"
+    return answer, sentence_meta
+
+
+def _render_appendix_sentence_citations(
+    *,
+    answer: str,
+    pii_on: bool,
+    claim_evidence: list[dict[str, Any]],
+    sentence_meta: dict[str, Any],
+) -> tuple[str, dict[str, Any]]:
+    limits = _sentence_citation_render_limits()
+    suffix_md, rendered_count = render_sentence_citations_markdown(claim_evidence, **limits)
+    if not suffix_md:
+        return answer, sentence_meta
+    answer = (answer or "") + (redact_text(suffix_md) if pii_on else suffix_md)
+    sentence_meta["used"] = True
+    sentence_meta["count"] = int(rendered_count or 0)
+    return answer, sentence_meta
+
+
+def _append_related_images(*, answer: str, state: RAGState, pii_on: bool) -> str:
+    if (
+        bool(state.get("structured_output"))
+        or not bool(settings.SHOW_IMAGE_IN_ANSWER)
+        or settings.IMAGE_APPEND_MAX <= 0
+    ):
+        return answer
+    image_urls = _answer_image_urls(state.get("citations") or [])
+    if not image_urls:
+        return answer
+    parts = ["\n\n---\n\n### Related Images\n"]
+    parts.extend(f"![Referenced Image {idx}]({url})" for idx, url in enumerate(image_urls, 1))
+    images_md = "\n\n".join(parts) + "\n"
+    return (answer or "") + (redact_text(images_md) if pii_on else images_md)
+
+
+def _answer_image_urls(citations: list[dict[str, Any]]) -> list[str]:
+    urls: list[str] = []
+    for citation in citations:
+        if not citation.get("has_image"):
+            continue
+        url = citation.get("img_url")
+        if not isinstance(url, str) or not url.strip() or url in urls:
+            continue
+        urls.append(url)
+        if len(urls) >= settings.IMAGE_APPEND_MAX:
+            break
+    return urls
+
+
+def _generation_evidence_text(docs: list[Document]) -> str:
+    evidence_text = "\n".join(
+        str(getattr(doc, "page_content", "") or "")
+        for doc in docs
+        if str(getattr(doc, "page_content", "") or "").strip()
+    )
+    max_evidence_chars = max(0, int(getattr(settings, "FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS", 24_000) or 24_000))
+    if max_evidence_chars and len(evidence_text) > max_evidence_chars:
+        return evidence_text[:max_evidence_chars]
+    return evidence_text
+
+
+def _compute_generation_faithfulness(
+    *,
+    answer: str,
+    docs: list[Document],
+    verifier_mode: str,
+    verifier_enable_contradiction_check: bool,
+) -> dict[str, Any]:
     faithfulness_meta: dict[str, Any] = {
         "score": None,
         "supported_claims": 0,
@@ -734,117 +1012,121 @@ def _generate_node(state: RAGState) -> RAGState:
         "unsupported_claims": [],
         "method": "claim_support_ratio",
     }
-    if bool(getattr(settings, "FAITHFULNESS_SCORE_ENABLED", True)):
-        evidence_text = "\n".join(
-            [
-                str(getattr(d, "page_content", "") or "")
-                for d in (state.get("docs") or [])
-                if str(getattr(d, "page_content", "") or "").strip()
-            ]
-        )
-        max_evidence_chars = max(
-            0, int(getattr(settings, "FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS", 24_000) or 24_000)
-        )
-        if max_evidence_chars and len(evidence_text) > max_evidence_chars:
-            evidence_text = evidence_text[:max_evidence_chars]
-        faithfulness_meta = compute_faithfulness_score(
-            answer=str(answer or ""),
-            evidence_text=evidence_text,
-            max_claims=max(1, int(getattr(settings, "FAITHFULNESS_SCORE_MAX_CLAIMS", 24) or 24)),
-            verifier_mode=claim_verifier_mode,
-            verifier_enable_contradiction_check=bool(claim_verifier_enable_contradiction_check),
-            use_nli_fallback=bool(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)),
-            nli_provider=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_PROVIDER", "none") or "none"),
-            nli_model_name=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or ""),
-            nli_timeout_sec=float(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", 8) or 8),
-        )
+    if not bool(getattr(settings, "FAITHFULNESS_SCORE_ENABLED", True)):
+        return faithfulness_meta
+    return compute_faithfulness_score(
+        answer=str(answer or ""),
+        evidence_text=_generation_evidence_text(docs),
+        max_claims=max(1, int(getattr(settings, "FAITHFULNESS_SCORE_MAX_CLAIMS", 24) or 24)),
+        verifier_mode=verifier_mode,
+        verifier_enable_contradiction_check=bool(verifier_enable_contradiction_check),
+        use_nli_fallback=bool(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)),
+        nli_provider=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_PROVIDER", "none") or "none"),
+        nli_model_name=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or ""),
+        nli_timeout_sec=float(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", 8) or 8),
+    )
 
-    sentence_citations_inline_enabled = bool(getattr(settings, "SENTENCE_CITATIONS_INLINE_ENABLED", False))
-    sentence_citations_inline_used = False
-    sentence_citations_inline_count = 0
-    sentence_citations_inline_style = str(
-        getattr(settings, "SENTENCE_CITATIONS_INLINE_STYLE", "appendix") or "appendix"
-    ).strip().lower() or "appendix"
-    if sentence_citations_inline_style not in {"appendix", "inline"}:
-        sentence_citations_inline_style = "appendix"
-    sentence_citations_inline_fallback_reason: str | None = None
 
-    if (
-        not bool(state.get("structured_output"))
-        and sentence_citations_inline_enabled
-        and sentence_citations_inline_style == "inline"
-    ):
-        if claim_check_mode == "text":
-            inline_text, rendered_count = render_sentence_citations_inline(
-                claim_evidence,
-                max_items=max(0, int(getattr(settings, "SENTENCE_CITATIONS_INLINE_MAX_ITEMS", 8) or 8)),
-                max_evidence_per_claim=max(
-                    1, int(getattr(settings, "SENTENCE_CITATIONS_INLINE_MAX_EVIDENCE_PER_CLAIM", 2) or 2)
-                ),
-            )
-            if inline_text:
-                answer = inline_text
-                sentence_citations_inline_used = True
-                sentence_citations_inline_count = int(rendered_count or 0)
-            else:
-                sentence_citations_inline_style = "appendix"
-                sentence_citations_inline_fallback_reason = "inline_render_empty"
-        else:
-            sentence_citations_inline_style = "appendix"
-            sentence_citations_inline_fallback_reason = "claim_check_not_text"
+def _retrieval_gap(metrics: dict[str, Any]) -> dict[str, Any] | None:
+    gap = metrics.get("iterative_pass_gap")
+    if isinstance(gap, dict):
+        return gap
+    fallback_gap = metrics.get("evidence_gap")
+    return fallback_gap if isinstance(fallback_gap, dict) else None
 
-    # Append cited images as inline Markdown to the answer (non-structured output only, configurable)
-    if not bool(state.get("structured_output")) and bool(settings.SHOW_IMAGE_IN_ANSWER) and settings.IMAGE_APPEND_MAX > 0:
-        citations = state.get("citations") or []
-        image_urls: list[str] = []
-        for c in citations:
-            if not c.get("has_image"):
-                continue
-            url = c.get("img_url")
-            if not isinstance(url, str) or not url.strip():
-                continue
-            if url in image_urls:
-                continue
-            image_urls.append(url)
-            if len(image_urls) >= settings.IMAGE_APPEND_MAX:
-                break
-        if image_urls:
-            parts = ["\n\n---\n\n### Related Images\n"]
-            for i, url in enumerate(image_urls, 1):
-                parts.append(f"![Referenced Image {i}]({url})")
-            images_md = "\n\n".join(parts) + "\n"
-            images_md_safe = redact_text(images_md) if pii_on else images_md
-            answer = (answer or "") + images_md_safe
 
-    if (
-        not bool(state.get("structured_output"))
-        and sentence_citations_inline_enabled
-        and sentence_citations_inline_style == "appendix"
-    ):
-        suffix_md, rendered_count = render_sentence_citations_markdown(
-            claim_evidence,
-            max_items=max(0, int(getattr(settings, "SENTENCE_CITATIONS_INLINE_MAX_ITEMS", 8) or 8)),
-            max_evidence_per_claim=max(
-                1, int(getattr(settings, "SENTENCE_CITATIONS_INLINE_MAX_EVIDENCE_PER_CLAIM", 2) or 2)
-            ),
-        )
-        if suffix_md:
-            suffix_md_safe = redact_text(suffix_md) if pii_on else suffix_md
-            answer = (answer or "") + suffix_md_safe
-            sentence_citations_inline_used = True
-            sentence_citations_inline_count = int(rendered_count or 0)
-
-    metrics = dict(state.get("metrics") or {})
-    retrieval_gap = metrics.get("iterative_pass_gap")
-    if not isinstance(retrieval_gap, dict):
-        retrieval_gap = metrics.get("evidence_gap") if isinstance(metrics.get("evidence_gap"), dict) else None
-    confidence_meta = compute_confidence_score(
+def _generation_confidence_meta(
+    *,
+    metrics: dict[str, Any],
+    faithfulness_meta: dict[str, Any],
+) -> dict[str, Any]:
+    return compute_confidence_score(
         faithfulness_score=faithfulness_meta.get("score"),
         claim_total=faithfulness_meta.get("total_claims"),
         claim_supported=faithfulness_meta.get("supported_claims"),
-        evidence_gap=retrieval_gap,
+        evidence_gap=_retrieval_gap(metrics),
     )
-    metrics["generation_elapsed_sec"] = round(generation_elapsed, 3)
+
+
+def _apply_common_generation_metrics(
+    *,
+    metrics: dict[str, Any],
+    faithfulness_meta: dict[str, Any],
+    confidence_meta: dict[str, Any],
+    followup_questions: list[str],
+    route: str | None,
+    model_used: str | None,
+    generation_elapsed: float,
+    prompt_state: RAGState,
+) -> None:
+    metrics["generation_elapsed_sec"] = round(float(generation_elapsed), 3)
+    metrics["context_evidence_enabled"] = bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED)
+    metrics["context_evidence_max_sentences_per_chunk"] = (
+        int(settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK or 0)
+        if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED)
+        else None
+    )
+    metrics["context_evidence_min_sentence_chars"] = (
+        int(settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS or 0)
+        if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED)
+        else None
+    )
+    metrics["faithfulness_score_enabled"] = bool(getattr(settings, "FAITHFULNESS_SCORE_ENABLED", True))
+    metrics["faithfulness_score_method"] = str(faithfulness_meta.get("method") or "claim_support_ratio")
+    metrics["faithfulness_score"] = faithfulness_meta.get("score")
+    metrics["faithfulness_supported_claims"] = int(faithfulness_meta.get("supported_claims") or 0)
+    metrics["faithfulness_total_claims"] = int(faithfulness_meta.get("total_claims") or 0)
+    metrics["faithfulness_unsupported_claims"] = list(faithfulness_meta.get("unsupported_claims") or [])
+    metrics["confidence_score"] = confidence_meta.get("score")
+    metrics["confidence_band"] = confidence_meta.get("band")
+    metrics["confidence_reasons"] = list(confidence_meta.get("reasons") or [])
+    metrics["followup_questions"] = list(followup_questions or [])
+    metrics["elapsed_sec"] = round(
+        float(generation_elapsed)
+        + float(metrics.get("retrieval_elapsed_sec", 0.0) or 0.0)
+        + float(metrics.get("rewrite_elapsed_sec", 0.0) or 0.0)
+        + float(metrics.get("multi_query_elapsed_sec", 0.0) or 0.0)
+        + float(metrics.get("hyde_elapsed_sec", 0.0) or 0.0)
+        + float(metrics.get("decompose_elapsed_sec", 0.0) or 0.0),
+        3,
+    )
+    metrics["model_route"] = route
+    metrics["model_used"] = model_used
+    metrics["llm_max_retries"] = settings.LLM_MAX_RETRIES
+    metrics["prompt_template_id"] = prompt_state.get("prompt_template_id")
+    metrics["prompt_template_key"] = prompt_state.get("prompt_template_key")
+    metrics["prompt_ab_experiment_key"] = prompt_state.get("prompt_ab_experiment_key")
+    metrics["prompt_ab_variant"] = prompt_state.get("prompt_ab_variant")
+
+
+def _populate_standard_generation_metrics(
+    *,
+    metrics: dict[str, Any],
+    state: RAGState,
+    ctx: str,
+    hist_text: str,
+    route: str | None,
+    model_used: str | None,
+    generation_elapsed: float,
+    generation_max_tokens: int,
+    claim_ctx: dict[str, Any],
+    claim_meta: dict[str, Any],
+    claim_evidence: list[dict[str, Any]],
+    sentence_meta: dict[str, Any],
+    faithfulness_meta: dict[str, Any],
+    followup_questions: list[str],
+    source_identification_answer_used: bool,
+) -> None:
+    _apply_common_generation_metrics(
+        metrics=metrics,
+        faithfulness_meta=faithfulness_meta,
+        confidence_meta=_generation_confidence_meta(metrics=metrics, faithfulness_meta=faithfulness_meta),
+        followup_questions=followup_questions,
+        route=route,
+        model_used=model_used,
+        generation_elapsed=generation_elapsed,
+        prompt_state=state,
+    )
     metrics["context_chars"] = len(ctx or "")
     metrics["context_tokens"] = num_tokens_from_string(ctx or "")
     metrics.update(
@@ -861,21 +1143,16 @@ def _generate_node(state: RAGState) -> RAGState:
     metrics["context_limit_total_tokens"] = int(getattr(settings, "RAG_CONTEXT_MAX_TOTAL_TOKENS", 0) or 0)
     metrics["context_limit_per_chunk_chars"] = int(settings.RAG_CONTEXT_MAX_CHARS_PER_CHUNK or 0)
     metrics["context_limit_per_chunk_tokens"] = int(getattr(settings, "RAG_CONTEXT_MAX_TOKENS_PER_CHUNK", 0) or 0)
-    metrics["context_evidence_enabled"] = bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED)
-    metrics["context_evidence_max_sentences_per_chunk"] = (
-        int(settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK or 0) if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED) else None
+    metrics["claim_check_enabled"] = bool(claim_ctx["claim_check_applied"])
+    metrics["claim_check_mode"] = claim_ctx["claim_check_mode"]
+    metrics["claim_verifier_mode"] = claim_ctx["claim_verifier_mode"]
+    metrics["claim_verifier_enable_contradiction_check"] = bool(claim_ctx["claim_verifier_enable_contradiction_check"])
+    metrics["claim_check_removed"] = int(claim_meta.get("claim_check_removed") or 0)
+    metrics["claim_check_total"] = int(claim_meta.get("claim_check_total") or 0)
+    metrics["claim_check_removed_reasons"] = list(claim_meta.get("claim_check_removed_reasons") or [])
+    metrics["claim_check_max_claims"] = (
+        int(claim_ctx["claim_check_max_claims"]) if claim_ctx["claim_check_configured"] else None
     )
-    metrics["context_evidence_min_sentence_chars"] = (
-        int(settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS or 0) if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED) else None
-    )
-    metrics["claim_check_enabled"] = bool(claim_check_applied)
-    metrics["claim_check_mode"] = claim_check_mode
-    metrics["claim_verifier_mode"] = claim_verifier_mode
-    metrics["claim_verifier_enable_contradiction_check"] = bool(claim_verifier_enable_contradiction_check)
-    metrics["claim_check_removed"] = int(claim_check_removed)
-    metrics["claim_check_total"] = int(claim_check_total)
-    metrics["claim_check_removed_reasons"] = claim_check_removed_reasons
-    metrics["claim_check_max_claims"] = int(claim_check_max_claims) if claim_check_configured else None
     metrics["claim_nli_verifier"] = {
         "enabled": bool(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)),
         "provider": str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_PROVIDER", "none") or "none"),
@@ -884,48 +1161,15 @@ def _generate_node(state: RAGState) -> RAGState:
     metrics["claim_evidence"] = claim_evidence
     metrics["sentence_citations_count"] = int(len(claim_evidence or []))
     metrics["sentence_citations"] = claim_evidence
-    metrics["sentence_citations_inline_enabled"] = bool(sentence_citations_inline_enabled)
-    metrics["sentence_citations_inline_style"] = str(sentence_citations_inline_style)
-    metrics["sentence_citations_inline_used"] = bool(sentence_citations_inline_used)
-    metrics["sentence_citations_inline_count"] = int(sentence_citations_inline_count or 0)
-    metrics["sentence_citations_inline_fallback_reason"] = sentence_citations_inline_fallback_reason
-    metrics["faithfulness_score_enabled"] = bool(getattr(settings, "FAITHFULNESS_SCORE_ENABLED", True))
-    metrics["faithfulness_score_method"] = str(faithfulness_meta.get("method") or "claim_support_ratio")
-    metrics["faithfulness_score"] = faithfulness_meta.get("score")
-    metrics["faithfulness_supported_claims"] = int(faithfulness_meta.get("supported_claims") or 0)
-    metrics["faithfulness_total_claims"] = int(faithfulness_meta.get("total_claims") or 0)
-    metrics["faithfulness_unsupported_claims"] = list(faithfulness_meta.get("unsupported_claims") or [])
-    metrics["confidence_score"] = confidence_meta.get("score")
-    metrics["confidence_band"] = confidence_meta.get("band")
-    metrics["confidence_reasons"] = list(confidence_meta.get("reasons") or [])
-    metrics["followup_questions"] = list(followup_questions or [])
-    metrics["visible_evidence_only_enabled"] = bool(strict_visible)
+    metrics["sentence_citations_inline_enabled"] = bool(sentence_meta["enabled"])
+    metrics["sentence_citations_inline_style"] = str(sentence_meta["style"])
+    metrics["sentence_citations_inline_used"] = bool(sentence_meta["used"])
+    metrics["sentence_citations_inline_count"] = int(sentence_meta["count"] or 0)
+    metrics["sentence_citations_inline_fallback_reason"] = sentence_meta["fallback_reason"]
+    metrics["visible_evidence_only_enabled"] = bool(claim_ctx["strict_visible"])
     metrics["visible_evidence_only_requested"] = bool(state.get("visible_evidence_only"))
-    base = generation_elapsed
-    base += float(metrics.get("retrieval_elapsed_sec", 0.0) or 0.0)
-    base += float(metrics.get("rewrite_elapsed_sec", 0.0) or 0.0)
-    base += float(metrics.get("multi_query_elapsed_sec", 0.0) or 0.0)
-    base += float(metrics.get("hyde_elapsed_sec", 0.0) or 0.0)
-    base += float(metrics.get("decompose_elapsed_sec", 0.0) or 0.0)
-    metrics["elapsed_sec"] = round(base, 3)
-    metrics["model_route"] = route
-    metrics["model_used"] = llm_model_used
-    metrics["llm_max_retries"] = settings.LLM_MAX_RETRIES
     metrics["generation_max_tokens"] = generation_max_tokens or None
-    metrics["prompt_template_id"] = state.get("prompt_template_id")
-    metrics["prompt_template_key"] = state.get("prompt_template_key")
-    metrics["prompt_ab_experiment_key"] = state.get("prompt_ab_experiment_key")
-    metrics["prompt_ab_variant"] = state.get("prompt_ab_variant")
     metrics["source_identification_answer_used"] = bool(source_identification_answer_used)
-    return {
-        **state,
-            "answer": answer,
-            "route": route,
-            "model_used": llm_model_used,
-        "routing_reason": reason,
-        "metrics": metrics,
-        "followup_questions": list(followup_questions or []),
-    }
 
 
 # =============================================================================
@@ -1120,7 +1364,9 @@ def _run_corrective_loop(
     min_faithfulness = min(1.0, max(0.0, float(min_faithfulness)))
 
     # Second-pass retrieval overrides (best-effort).
-    second_profile = str(getattr(settings, "RAG_CORRECTIVE_SECOND_PASS_PROFILE", "recall50") or "recall50").strip().lower()
+    second_profile = (
+        str(getattr(settings, "RAG_CORRECTIVE_SECOND_PASS_PROFILE", "recall50") or "recall50").strip().lower()
+    )
     if second_profile not in {"recall20", "recall50", "coverage80", "hierarchy_recall20", "hierarchy_recall20_expand"}:
         second_profile = "recall50"
     second_enable_mq = bool(getattr(settings, "RAG_CORRECTIVE_SECOND_PASS_ENABLE_MULTI_QUERY", True))
@@ -1141,65 +1387,27 @@ def _run_corrective_loop(
         return last_state
 
     for attempt in range(1, max_attempts + 1):
-        attempt_state = dict(base_state)
-        attempt_metrics = dict(metrics0)
-        attempt_metrics["corrective_attempt"] = int(attempt)
-        attempt_state["metrics"] = attempt_metrics
-
-        if attempt > 1:
-            used = True
-            attempt_state["retrieval_profile"] = second_profile
-            if second_enable_mq:
-                attempt_state["enable_multi_query"] = True
-                attempt_state["multi_query_count"] = int(second_mq_count)
-
-        retrieved = retrieve_fn(attempt_state)
-        last_state = dict(retrieved or {})
-        metrics_r = dict(last_state.get("metrics") or {})
-        metrics0 = metrics_r
-
-        attempt_summary: dict[str, Any] = {
-            "attempt": int(attempt),
-            "retrieval_profile": last_state.get("retrieval_profile"),
-            "top_k": last_state.get("top_k"),
-            "retrieval_mode": metrics_r.get("retrieval_mode") or last_state.get("retrieval_mode"),
-            "abstain_triggered": bool(last_state.get("abstain_triggered")),
-        }
-
-        if bool(last_state.get("abstain_triggered")) and attempt < max_attempts:
-            if "abstain" not in reason_codes:
-                reason_codes.append("abstain")
-            attempt_summaries.append(attempt_summary)
-            continue
-
-        generated = generate_fn(last_state)
-        last_state = dict(generated or {})
-        metrics_g = dict(last_state.get("metrics") or {})
-        metrics0 = metrics_g
-
-        faithfulness_score = metrics_g.get("faithfulness_score")
-        attempt_summary.update(
-            {
-                "faithfulness_score": faithfulness_score,
-                "claim_check_removed": metrics_g.get("claim_check_removed"),
-                "claim_check_total": metrics_g.get("claim_check_total"),
-            }
+        attempt_result = _run_corrective_attempt(
+            base_state=base_state,
+            metrics=metrics0,
+            attempt=attempt,
+            max_attempts=max_attempts,
+            second_profile=second_profile,
+            second_enable_mq=second_enable_mq,
+            second_mq_count=second_mq_count,
+            min_faithfulness=min_faithfulness,
+            retrieve_fn=retrieve_fn,
+            generate_fn=generate_fn,
         )
-        attempt_summaries.append(attempt_summary)
-
-        low_faithfulness = False
-        try:
-            if faithfulness_score is not None:
-                low_faithfulness = float(faithfulness_score) < float(min_faithfulness)
-        except Exception:
-            low_faithfulness = False
-
-        if low_faithfulness and attempt < max_attempts:
-            if "faithfulness_lt_min" not in reason_codes:
-                reason_codes.append("faithfulness_lt_min")
-            continue
-
-        break
+        last_state = attempt_result["state"]
+        metrics0 = dict(last_state.get("metrics") or {})
+        attempt_summaries.append(attempt_result["summary"])
+        used = bool(used or attempt_result["used_second_pass"])
+        reason_code = attempt_result["reason_code"]
+        if reason_code and reason_code not in reason_codes:
+            reason_codes.append(reason_code)
+        if not attempt_result["retry"]:
+            break
 
     # Attach a compact summary for debugging (PII-safe).
     metrics_final = dict(last_state.get("metrics") or {})
@@ -1215,6 +1423,78 @@ def _run_corrective_loop(
     }
     last_state["metrics"] = metrics_final
     return last_state
+
+
+def _run_corrective_attempt(
+    *,
+    base_state: dict[str, Any],
+    metrics: dict[str, Any],
+    attempt: int,
+    max_attempts: int,
+    second_profile: str,
+    second_enable_mq: bool,
+    second_mq_count: int,
+    min_faithfulness: float,
+    retrieve_fn: Callable[[dict[str, Any]], dict[str, Any]],
+    generate_fn: Callable[[dict[str, Any]], dict[str, Any]],
+) -> dict[str, Any]:
+    attempt_state = dict(base_state)
+    attempt_metrics = dict(metrics)
+    attempt_metrics["corrective_attempt"] = int(attempt)
+    attempt_state["metrics"] = attempt_metrics
+    used_second_pass = attempt > 1
+    if used_second_pass:
+        attempt_state["retrieval_profile"] = second_profile
+        if second_enable_mq:
+            attempt_state["enable_multi_query"] = True
+            attempt_state["multi_query_count"] = int(second_mq_count)
+
+    retrieved = dict(retrieve_fn(attempt_state) or {})
+    retrieval_metrics = dict(retrieved.get("metrics") or {})
+    summary = {
+        "attempt": int(attempt),
+        "retrieval_profile": retrieved.get("retrieval_profile"),
+        "top_k": retrieved.get("top_k"),
+        "retrieval_mode": retrieval_metrics.get("retrieval_mode") or retrieved.get("retrieval_mode"),
+        "abstain_triggered": bool(retrieved.get("abstain_triggered")),
+    }
+    if bool(retrieved.get("abstain_triggered")):
+        return {
+            "state": retrieved,
+            "summary": summary,
+            "used_second_pass": used_second_pass,
+            "reason_code": "abstain" if attempt < max_attempts else None,
+            "retry": attempt < max_attempts,
+        }
+
+    generated = dict(generate_fn(retrieved) or {})
+    generation_metrics = dict(generated.get("metrics") or {})
+    faithfulness_score = generation_metrics.get("faithfulness_score")
+    summary.update(
+        {
+            "faithfulness_score": faithfulness_score,
+            "claim_check_removed": generation_metrics.get("claim_check_removed"),
+            "claim_check_total": generation_metrics.get("claim_check_total"),
+        }
+    )
+    low_faithfulness = _faithfulness_below_threshold(
+        faithfulness_score=faithfulness_score,
+        min_faithfulness=min_faithfulness,
+    )
+    return {
+        "state": generated,
+        "summary": summary,
+        "used_second_pass": used_second_pass,
+        "reason_code": "faithfulness_lt_min" if low_faithfulness and attempt < max_attempts else None,
+        "retry": bool(low_faithfulness and attempt < max_attempts),
+    }
+
+
+def _faithfulness_below_threshold(*, faithfulness_score: Any, min_faithfulness: float) -> bool:
+    try:
+        return faithfulness_score is not None and float(faithfulness_score) < float(min_faithfulness)
+    except Exception:
+        return False
 
 
 @entrypoint(checkpointer=_get_checkpointer(), store=get_langgraph_store(), context_schema=RAGRuntimeContext)
@@ -1460,272 +1740,164 @@ def build_rag_state(
     """Build initial RAG graph state shared by run/stream entrypoints."""
 
     resolved = _resolve_rag_state_build_options(options=options, legacy_overrides=legacy_overrides)
-
-    question = resolved.question
-    history = resolved.history
-    document_ids = resolved.document_ids
-    tenant_id = resolved.tenant_id
-    request_id = resolved.request_id
-    account_id = resolved.account_id
-    dataset_id = resolved.dataset_id
-    dataset_ids = resolved.dataset_ids
-    top_k = resolved.top_k
-    score_threshold = resolved.score_threshold
-    retrieval_mode = resolved.retrieval_mode
-    retrieval_profile = resolved.retrieval_profile
-    retrieval_contract_mode = resolved.retrieval_contract_mode
-    must_recall = resolved.must_recall
-    must_recall_expected_source_keys = resolved.must_recall_expected_source_keys
-    must_recall_required_anchor_fields = resolved.must_recall_required_anchor_fields
-    intent_router = resolved.intent_router
-    intent_router_policy = resolved.intent_router_policy
-    industry_rules_enabled = resolved.industry_rules_enabled
-    industry_rules_rulesets = resolved.industry_rules_rulesets
-    enable_query_alias_expansion = resolved.enable_query_alias_expansion
-    query_aliases = resolved.query_aliases
-    query_alias_max_queries = resolved.query_alias_max_queries
-    enable_multi_query = resolved.enable_multi_query
-    multi_query_count = resolved.multi_query_count
-    multi_query_temperature = resolved.multi_query_temperature
-    multi_query_max_chars = resolved.multi_query_max_chars
-    enable_hyde = resolved.enable_hyde
-    enable_query_decomposition = resolved.enable_query_decomposition
-    enable_hierarchy_recall = resolved.enable_hierarchy_recall
-    hierarchy_family_collapse = resolved.hierarchy_family_collapse
-    hierarchy_family_aggregation = resolved.hierarchy_family_aggregation
-    hierarchy_tree_dedup = resolved.hierarchy_tree_dedup
-    hierarchy_parent_depth = resolved.hierarchy_parent_depth
-    hierarchy_sibling_window = resolved.hierarchy_sibling_window
-    hierarchy_overfetch_factor = resolved.hierarchy_overfetch_factor
-    enable_kg_query_expansion = resolved.enable_kg_query_expansion
-    enable_kg_chunk_injection = resolved.enable_kg_chunk_injection
-    kg_chunk_injection_max_chunks = resolved.kg_chunk_injection_max_chunks
-    enable_kg_chunk_boost = resolved.enable_kg_chunk_boost
-    kg_chunk_boost_weight = resolved.kg_chunk_boost_weight
-    kg_chunk_boost_max_promoted = resolved.kg_chunk_boost_max_promoted
-    enable_query_rewrite = resolved.enable_query_rewrite
-    query_rewrite_strategy = resolved.query_rewrite_strategy
-    query_rewrite_temperature = resolved.query_rewrite_temperature
-    query_rewrite_max_chars = resolved.query_rewrite_max_chars
-    sparse_retrieval_enabled = resolved.sparse_retrieval_enabled
-    sparse_retrieval_provider = resolved.sparse_retrieval_provider
-    lexical_db_hybrid_fallback_only = resolved.lexical_db_hybrid_fallback_only
-    lexical_db_hybrid_metadata_exact_fallback_enabled = (
-        resolved.lexical_db_hybrid_metadata_exact_fallback_enabled
+    state = asdict(resolved)
+    state["history"] = resolved.history or []
+    state["intent_router_policy"] = _normalize_intent_router_policy_or_none(resolved.intent_router_policy)
+    state["format_instructions"] = (
+        build_structured_output_instructions(resolved.structured_preset) if resolved.structured_output else ""
     )
-    metadata_exact_db_fallback_enabled = resolved.metadata_exact_db_fallback_enabled
-    alpha = resolved.alpha
-    fusion_strategy = resolved.fusion_strategy
-    fusion_budgets = resolved.fusion_budgets
-    fusion_min_scores = resolved.fusion_min_scores
-    fusion_weights = resolved.fusion_weights
-    retrieval_overfetch_multiplier = resolved.retrieval_overfetch_multiplier
-    retrieval_overfetch_max_k = resolved.retrieval_overfetch_max_k
-    enable_weight_rerank = resolved.enable_weight_rerank
-    vector_weight = resolved.vector_weight
-    keyword_weight = resolved.keyword_weight
-    mmr_lambda = resolved.mmr_lambda
-    enable_reranker = resolved.enable_reranker
-    reranker_provider = resolved.reranker_provider
-    reranker_top_n = resolved.reranker_top_n
-    metadata_filter = resolved.metadata_filter
-    max_tokens = resolved.max_tokens
-    structured_output = resolved.structured_output
-    structured_preset = resolved.structured_preset
-    visible_evidence_only = resolved.visible_evidence_only
-    prompt_template_id = resolved.prompt_template_id
-    prompt_template_key = resolved.prompt_template_key
-    prompt_ab_experiment_key = resolved.prompt_ab_experiment_key
-    ab_user_key = resolved.ab_user_key
-    db = resolved.db
+    state.update(
+        _resolve_prompt_template_fields(
+            db=resolved.db,
+            tenant_id=resolved.tenant_id,
+            prompt_template_id=resolved.prompt_template_id,
+            prompt_template_key=resolved.prompt_template_key,
+            prompt_ab_experiment_key=resolved.prompt_ab_experiment_key,
+            ab_user_key=resolved.ab_user_key,
+        )
+    )
+    state["metadata_filter"] = _apply_active_pipeline_metadata_filter(
+        db=resolved.db,
+        tenant_id=resolved.tenant_id,
+        document_ids=resolved.document_ids,
+        metadata_filter=resolved.metadata_filter,
+    )
+    _apply_profile_overrides_to_state(state)
+    state["structured_output"] = bool(resolved.structured_output)
+    state["visible_evidence_only"] = bool(resolved.visible_evidence_only)
+    state.pop("db", None)
+    state.pop("ab_user_key", None)
+    return state
 
+
+def _normalize_intent_router_policy_or_none(policy: dict[str, Any] | None) -> dict[str, Any] | None:
     try:
         from app.rag.policy.intent_router import normalize_intent_router_policy
 
-        intent_router_policy = normalize_intent_router_policy(intent_router_policy)
+        return normalize_intent_router_policy(policy)
     except Exception:
-        intent_router_policy = None
+        return None
 
-    format_instructions = ""
-    if structured_output:
-        format_instructions = build_structured_output_instructions(structured_preset)
 
-    prompt_template_content = None
-    selected_prompt_template_id = None
-    selected_prompt_template_key = None
-    selected_prompt_ab_experiment_key = None
-    selected_prompt_ab_variant = None
-    if db and tenant_id and (prompt_template_id or prompt_template_key or prompt_ab_experiment_key):
-        chosen = resolve_prompt_template(
-            db=db,
-            tenant_id=tenant_id,
-            prompt_template_id=prompt_template_id,
-            template_key=prompt_template_key,
-            ab_experiment_key=prompt_ab_experiment_key,
-            ab_user_key=ab_user_key,
-        )
-        if chosen:
-            prompt_template_content = chosen.content
-            selected_prompt_template_id = str(chosen.id)
-            selected_prompt_template_key = getattr(chosen, "template_key", None)
-            selected_prompt_ab_experiment_key = getattr(chosen, "ab_experiment_key", None)
-            selected_prompt_ab_variant = getattr(chosen, "ab_variant", None)
-            chosen.usage_count += 1
-            db.commit()
-
-    # Version-aware retrieval scoping: force retrieval to use each doc's active pipeline.
-    if db is not None and tenant_id is not None and document_ids:
-        try:
-            from app.models.document import Document as DBDocument
-
-            rows = (
-                db.query(DBDocument.id, DBDocument.status, DBDocument.doc_metadata)
-                .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(list(document_ids)))
-                .all()
-            )
-            active_keys: list[str] = []
-            for did, status, meta in rows:
-                m = meta if isinstance(meta, dict) else {}
-                ready = (
-                    bool(m.get("active_pipeline_ready"))
-                    if "active_pipeline_ready" in m
-                    else (str(status or "").lower() == "completed")
-                )
-                if not ready:
-                    continue
-                active_hash = str(m.get("active_pipeline_hash") or m.get("pipeline_hash") or "").strip()
-                if not active_hash:
-                    continue
-                active_keys.append(f"{did}:{active_hash}")
-
-            if active_keys:
-                mf = dict(metadata_filter or {})
-                mf["doc_pipeline_key"] = {"$in": set(active_keys)}
-                metadata_filter = mf
-        except Exception as exc:
-            logger.debug("Ignoring active pipeline metadata filter synthesis failure: %s", exc)
-
-    profile_applied = apply_retrieval_profile_overrides(
-        profile=retrieval_profile,
-        top_k=int(top_k or 0),
-        score_threshold=float(score_threshold or 0.0),
-        retrieval_mode=retrieval_mode,
-        enable_reranker=enable_reranker,
-        reranker_provider=reranker_provider,
-        reranker_top_n=reranker_top_n,
-        enable_weight_rerank=enable_weight_rerank,
-    )
-    retrieval_profile = profile_applied.get("retrieval_profile")
-    top_k = int(profile_applied.get("top_k") or 0)
-    score_threshold = float(profile_applied.get("score_threshold") or 0.0)
-    retrieval_mode = str(profile_applied.get("retrieval_mode") or retrieval_mode)
-    if profile_applied.get("enable_reranker") is not None:
-        enable_reranker = bool(profile_applied.get("enable_reranker"))
-    if profile_applied.get("reranker_provider"):
-        reranker_provider = str(profile_applied.get("reranker_provider") or reranker_provider)
-    if profile_applied.get("reranker_top_n") is not None:
-        reranker_top_n = int(profile_applied.get("reranker_top_n") or reranker_top_n or 0)
-    if profile_applied.get("enable_weight_rerank") is not None:
-        enable_weight_rerank = bool(profile_applied.get("enable_weight_rerank"))
-    if profile_applied.get("sparse_retrieval_enabled") is not None:
-        sparse_retrieval_enabled = bool(profile_applied.get("sparse_retrieval_enabled"))
-    if profile_applied.get("sparse_retrieval_provider"):
-        sparse_retrieval_provider = str(profile_applied.get("sparse_retrieval_provider") or sparse_retrieval_provider)
-    if profile_applied.get("enable_hierarchy_recall") is not None:
-        enable_hierarchy_recall = bool(profile_applied.get("enable_hierarchy_recall"))
-    if profile_applied.get("hierarchy_family_collapse") is not None:
-        hierarchy_family_collapse = bool(profile_applied.get("hierarchy_family_collapse"))
-    if profile_applied.get("hierarchy_family_aggregation") is not None:
-        hierarchy_family_aggregation = str(profile_applied.get("hierarchy_family_aggregation") or "").strip() or None
-    if profile_applied.get("hierarchy_tree_dedup") is not None:
-        hierarchy_tree_dedup = bool(profile_applied.get("hierarchy_tree_dedup"))
-    if profile_applied.get("hierarchy_parent_depth") is not None:
-        hierarchy_parent_depth = int(profile_applied.get("hierarchy_parent_depth") or 0)
-    if profile_applied.get("hierarchy_sibling_window") is not None:
-        hierarchy_sibling_window = int(profile_applied.get("hierarchy_sibling_window") or 0)
-    if profile_applied.get("hierarchy_overfetch_factor") is not None:
-        hierarchy_overfetch_factor = int(profile_applied.get("hierarchy_overfetch_factor") or 1)
-
-    return {
-        "question": question,
-        "history": history or [],
-        "document_ids": document_ids,
-        "dataset_ids": dataset_ids,
-        "tenant_id": tenant_id,
-        "request_id": request_id,
-        "account_id": account_id,
-        "dataset_id": dataset_id,
-        "top_k": top_k,
-        "score_threshold": score_threshold,
-        "retrieval_mode": retrieval_mode,
-        "retrieval_profile": retrieval_profile,
-        "retrieval_contract_mode": retrieval_contract_mode,
-        "must_recall": must_recall,
-        "must_recall_expected_source_keys": must_recall_expected_source_keys,
-        "must_recall_required_anchor_fields": must_recall_required_anchor_fields,
-        "intent_router": intent_router,
-        "intent_router_policy": intent_router_policy,
-        "industry_rules_enabled": industry_rules_enabled,
-        "industry_rules_rulesets": industry_rules_rulesets,
-        "enable_query_alias_expansion": enable_query_alias_expansion,
-        "query_aliases": query_aliases,
-        "query_alias_max_queries": query_alias_max_queries,
-        "enable_multi_query": enable_multi_query,
-        "multi_query_count": multi_query_count,
-        "multi_query_temperature": multi_query_temperature,
-        "multi_query_max_chars": multi_query_max_chars,
-        "enable_hyde": enable_hyde,
-        "enable_query_decomposition": enable_query_decomposition,
-        "enable_hierarchy_recall": enable_hierarchy_recall,
-        "hierarchy_family_collapse": hierarchy_family_collapse,
-        "hierarchy_family_aggregation": hierarchy_family_aggregation,
-        "hierarchy_tree_dedup": hierarchy_tree_dedup,
-        "hierarchy_parent_depth": hierarchy_parent_depth,
-        "hierarchy_sibling_window": hierarchy_sibling_window,
-        "hierarchy_overfetch_factor": hierarchy_overfetch_factor,
-        "enable_kg_query_expansion": enable_kg_query_expansion,
-        "enable_kg_chunk_injection": enable_kg_chunk_injection,
-        "kg_chunk_injection_max_chunks": kg_chunk_injection_max_chunks,
-        "enable_kg_chunk_boost": enable_kg_chunk_boost,
-        "kg_chunk_boost_weight": kg_chunk_boost_weight,
-        "kg_chunk_boost_max_promoted": kg_chunk_boost_max_promoted,
-        "enable_query_rewrite": enable_query_rewrite,
-        "query_rewrite_strategy": query_rewrite_strategy,
-        "query_rewrite_temperature": query_rewrite_temperature,
-        "query_rewrite_max_chars": query_rewrite_max_chars,
-        "alpha": alpha,
-        "fusion_strategy": fusion_strategy,
-        "fusion_budgets": fusion_budgets,
-        "fusion_min_scores": fusion_min_scores,
-        "fusion_weights": fusion_weights,
-        "retrieval_overfetch_multiplier": retrieval_overfetch_multiplier,
-        "retrieval_overfetch_max_k": retrieval_overfetch_max_k,
-        "enable_weight_rerank": enable_weight_rerank,
-        "vector_weight": vector_weight,
-        "keyword_weight": keyword_weight,
-        "mmr_lambda": mmr_lambda,
-        "enable_reranker": enable_reranker,
-        "reranker_provider": reranker_provider,
-        "reranker_top_n": reranker_top_n,
-        "sparse_retrieval_enabled": sparse_retrieval_enabled,
-        "sparse_retrieval_provider": sparse_retrieval_provider,
-        "lexical_db_hybrid_fallback_only": lexical_db_hybrid_fallback_only,
-        "lexical_db_hybrid_metadata_exact_fallback_enabled": (
-            lexical_db_hybrid_metadata_exact_fallback_enabled
-        ),
-        "metadata_exact_db_fallback_enabled": metadata_exact_db_fallback_enabled,
-        "metadata_filter": metadata_filter,
-        "max_tokens": max_tokens,
-        "format_instructions": format_instructions,
-        "structured_output": bool(structured_output),
-        "structured_preset": structured_preset,
-        "visible_evidence_only": bool(visible_evidence_only),
-        "prompt_template_content": prompt_template_content,
-        "prompt_template_id": selected_prompt_template_id,
-        "prompt_template_key": selected_prompt_template_key,
-        "prompt_ab_experiment_key": selected_prompt_ab_experiment_key,
-        "prompt_ab_variant": selected_prompt_ab_variant,
+def _resolve_prompt_template_fields(
+    *,
+    db: Any,
+    tenant_id: UUID | None,
+    prompt_template_id: UUID | None,
+    prompt_template_key: str | None,
+    prompt_ab_experiment_key: str | None,
+    ab_user_key: str | None,
+) -> dict[str, Any]:
+    fields = {
+        "prompt_template_content": None,
+        "prompt_template_id": None,
+        "prompt_template_key": None,
+        "prompt_ab_experiment_key": None,
+        "prompt_ab_variant": None,
     }
+    if not (db and tenant_id and (prompt_template_id or prompt_template_key or prompt_ab_experiment_key)):
+        return fields
+    chosen = resolve_prompt_template(
+        db=db,
+        tenant_id=tenant_id,
+        prompt_template_id=prompt_template_id,
+        template_key=prompt_template_key,
+        ab_experiment_key=prompt_ab_experiment_key,
+        ab_user_key=ab_user_key,
+    )
+    if not chosen:
+        return fields
+    chosen.usage_count += 1
+    db.commit()
+    fields.update(
+        {
+            "prompt_template_content": chosen.content,
+            "prompt_template_id": str(chosen.id),
+            "prompt_template_key": getattr(chosen, "template_key", None),
+            "prompt_ab_experiment_key": getattr(chosen, "ab_experiment_key", None),
+            "prompt_ab_variant": getattr(chosen, "ab_variant", None),
+        }
+    )
+    return fields
+
+
+def _apply_active_pipeline_metadata_filter(
+    *,
+    db: Any,
+    tenant_id: UUID | None,
+    document_ids: list[UUID] | None,
+    metadata_filter: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if db is None or tenant_id is None or not document_ids:
+        return metadata_filter
+    try:
+        from app.models.document import Document as DBDocument
+
+        rows = (
+            db.query(DBDocument.id, DBDocument.status, DBDocument.doc_metadata)
+            .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(list(document_ids)))
+            .all()
+        )
+        active_keys = [
+            f"{did}:{active_hash}"
+            for did, status, meta in rows
+            if (active_hash := _active_pipeline_hash(status=status, meta=meta))
+        ]
+        if not active_keys:
+            return metadata_filter
+        scoped_filter = dict(metadata_filter or {})
+        scoped_filter["doc_pipeline_key"] = {"$in": set(active_keys)}
+        return scoped_filter
+    except Exception as exc:
+        logger.debug("Ignoring active pipeline metadata filter synthesis failure: %s", exc)
+        return metadata_filter
+
+
+def _active_pipeline_hash(*, status: Any, meta: Any) -> str | None:
+    metadata = meta if isinstance(meta, dict) else {}
+    ready = (
+        bool(metadata.get("active_pipeline_ready"))
+        if "active_pipeline_ready" in metadata
+        else (str(status or "").lower() == "completed")
+    )
+    if not ready:
+        return None
+    active_hash = str(metadata.get("active_pipeline_hash") or metadata.get("pipeline_hash") or "").strip()
+    return active_hash or None
+
+
+def _apply_profile_overrides_to_state(state: dict[str, Any]) -> None:
+    profile_applied = apply_retrieval_profile_overrides(
+        profile=state.get("retrieval_profile"),
+        top_k=int(state.get("top_k") or 0),
+        score_threshold=float(state.get("score_threshold") or 0.0),
+        retrieval_mode=str(state.get("retrieval_mode") or "hybrid"),
+        enable_reranker=bool(state.get("enable_reranker")),
+        reranker_provider=state.get("reranker_provider"),
+        reranker_top_n=int(state.get("reranker_top_n") or 0),
+        enable_weight_rerank=bool(state.get("enable_weight_rerank")),
+    )
+    state["retrieval_profile"] = profile_applied.get("retrieval_profile")
+    state["top_k"] = int(profile_applied.get("top_k") or 0)
+    state["score_threshold"] = float(profile_applied.get("score_threshold") or 0.0)
+    state["retrieval_mode"] = str(profile_applied.get("retrieval_mode") or state.get("retrieval_mode") or "hybrid")
+    for key in (
+        "enable_reranker",
+        "reranker_provider",
+        "reranker_top_n",
+        "enable_weight_rerank",
+        "sparse_retrieval_enabled",
+        "sparse_retrieval_provider",
+        "enable_hierarchy_recall",
+        "hierarchy_family_collapse",
+        "hierarchy_family_aggregation",
+        "hierarchy_tree_dedup",
+        "hierarchy_parent_depth",
+        "hierarchy_sibling_window",
+        "hierarchy_overfetch_factor",
+    ):
+        if profile_applied.get(key) is not None and profile_applied.get(key) != "":
+            state[key] = profile_applied.get(key)
 
 
 def run_rag_graph(

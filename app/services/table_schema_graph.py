@@ -1,4 +1,3 @@
-
 import math
 from typing import Any
 
@@ -129,7 +128,13 @@ def _sample_column_selectivity(*, rows: list[dict[str, Any]] | None, column_name
     return min(1.0, max(0.0, float(uniq) / float(total)))
 
 
-def _edge_penalties(*, left_column: str, right_column: str, left_table: str, right_table: str) -> tuple[list[str], float]:
+def _edge_penalties(
+    *,
+    left_column: str,
+    right_column: str,
+    left_table: str,
+    right_table: str,
+) -> tuple[list[str], float]:
     penalties: list[str] = []
     total = 0.0
 
@@ -148,6 +153,211 @@ def _edge_penalties(*, left_column: str, right_column: str, left_table: str, rig
         total += 0.1
 
     return penalties, round(float(total), 6)
+
+
+def _build_relationship_candidate(
+    *,
+    left_table: str,
+    left_column: str,
+    right_table: str,
+    right_column: str,
+    confidence: float,
+    reason: str,
+    left_row_count: int | None,
+    right_row_count: int | None,
+    left_sample_rows: list[dict[str, Any]] | None,
+    right_sample_rows: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
+    base_penalties, base_penalty_score = _edge_penalties(
+        left_column=left_column,
+        right_column=right_column,
+        left_table=left_table,
+        right_table=right_table,
+    )
+    cost_penalties, cost_penalty_score, cost_signals = _cost_model_penalties(
+        left_row_count=left_row_count,
+        right_row_count=right_row_count,
+        left_sample_rows=left_sample_rows,
+        right_sample_rows=right_sample_rows,
+        left_column=left_column,
+        right_column=right_column,
+    )
+    penalties = list(base_penalties)
+    for penalty in cost_penalties:
+        if penalty not in penalties:
+            penalties.append(penalty)
+    penalty_score = round(float(base_penalty_score) + float(cost_penalty_score), 6)
+    return {
+        "left_table": left_table,
+        "left_column": left_column,
+        "right_table": right_table,
+        "right_column": right_column,
+        "confidence": round(float(confidence), 6),
+        "reason": str(reason or "").strip(),
+        "penalties": penalties,
+        "penalty_score": penalty_score,
+        "base_penalty_score": round(float(base_penalty_score), 6),
+        "cost_penalty_score": round(float(cost_penalty_score), 6),
+        "cost_signals": dict(cost_signals or {}),
+        "left_row_count": left_row_count,
+        "right_row_count": right_row_count,
+    }
+
+
+def _relationship_candidate_score(candidate: dict[str, Any]) -> float:
+    return float(candidate.get("confidence") or 0.0) - float(candidate.get("penalty_score") or 0.0)
+
+
+def _prefer_relationship_candidate(current: dict[str, Any] | None, candidate: dict[str, Any]) -> dict[str, Any]:
+    if current is None:
+        return candidate
+    candidate_score = _relationship_candidate_score(candidate)
+    current_score = _relationship_candidate_score(current)
+    if candidate_score > current_score:
+        return candidate
+    if candidate_score == current_score:
+        candidate_confidence = float(candidate.get("confidence") or 0.0)
+        current_confidence = float(current.get("confidence") or 0.0)
+        if candidate_confidence > current_confidence:
+            return candidate
+    return current
+
+
+def _same_key_relationship_candidate(
+    *,
+    left_table: str,
+    left_column: str,
+    left_row_count: int | None,
+    left_sample_rows: list[dict[str, Any]] | None,
+    right_table: str,
+    right_column: str,
+    right_row_count: int | None,
+    right_sample_rows: list[dict[str, Any]] | None,
+    left_norm: str,
+    right_norm: str,
+) -> dict[str, Any] | None:
+    if left_norm != right_norm or not _is_likely_key_column(left_norm):
+        return None
+    return _build_relationship_candidate(
+        left_table=left_table,
+        left_column=left_column,
+        right_table=right_table,
+        right_column=right_column,
+        confidence=0.96,
+        reason="same_key_name",
+        left_row_count=left_row_count,
+        right_row_count=right_row_count,
+        left_sample_rows=left_sample_rows,
+        right_sample_rows=right_sample_rows,
+    )
+
+
+def _fk_relationship_candidate(
+    *,
+    left_table: str,
+    left_column: str,
+    left_row_count: int | None,
+    left_sample_rows: list[dict[str, Any]] | None,
+    right_table: str,
+    right_column: str,
+    right_row_count: int | None,
+    right_sample_rows: list[dict[str, Any]] | None,
+    left_norm: str,
+    right_norm: str,
+    target_bases: set[str],
+) -> dict[str, Any] | None:
+    if not left_norm.endswith("_id"):
+        return None
+    base = left_norm[: -len("_id")]
+    if not base or right_norm not in {"id", f"{base}_id"}:
+        return None
+    confidence = 0.90
+    reason = "fk_to_id"
+    if base in target_bases:
+        confidence = 0.95
+        reason = "fk_to_table_id"
+    return _build_relationship_candidate(
+        left_table=left_table,
+        left_column=left_column,
+        right_table=right_table,
+        right_column=right_column,
+        confidence=confidence,
+        reason=reason,
+        left_row_count=left_row_count,
+        right_row_count=right_row_count,
+        left_sample_rows=left_sample_rows,
+        right_sample_rows=right_sample_rows,
+    )
+
+
+def _best_candidate_for_column_pair(
+    *,
+    best: dict[str, Any] | None,
+    left_table: str,
+    left_column: str,
+    left_row_count: int | None,
+    left_sample_rows: list[dict[str, Any]] | None,
+    left_bases: set[str],
+    right_table: str,
+    right_column: str,
+    right_row_count: int | None,
+    right_sample_rows: list[dict[str, Any]] | None,
+    right_bases: set[str],
+) -> dict[str, Any] | None:
+    left_norm = _normalize_ident(left_column)
+    right_norm = _normalize_ident(right_column)
+    if not left_norm or not right_norm:
+        return best
+
+    same_key = _same_key_relationship_candidate(
+        left_table=left_table,
+        left_column=left_column,
+        left_row_count=left_row_count,
+        left_sample_rows=left_sample_rows,
+        right_table=right_table,
+        right_column=right_column,
+        right_row_count=right_row_count,
+        right_sample_rows=right_sample_rows,
+        left_norm=left_norm,
+        right_norm=right_norm,
+    )
+    if same_key is not None:
+        return _prefer_relationship_candidate(best, same_key)
+    if left_norm == right_norm and left_norm in _GENERIC_NON_KEY_COLUMNS:
+        return best
+
+    forward_fk = _fk_relationship_candidate(
+        left_table=left_table,
+        left_column=left_column,
+        left_row_count=left_row_count,
+        left_sample_rows=left_sample_rows,
+        right_table=right_table,
+        right_column=right_column,
+        right_row_count=right_row_count,
+        right_sample_rows=right_sample_rows,
+        left_norm=left_norm,
+        right_norm=right_norm,
+        target_bases=right_bases,
+    )
+    if forward_fk is not None:
+        return _prefer_relationship_candidate(best, forward_fk)
+
+    reverse_fk = _fk_relationship_candidate(
+        left_table=right_table,
+        left_column=right_column,
+        left_row_count=right_row_count,
+        left_sample_rows=right_sample_rows,
+        right_table=left_table,
+        right_column=left_column,
+        right_row_count=left_row_count,
+        right_sample_rows=left_sample_rows,
+        left_norm=right_norm,
+        right_norm=left_norm,
+        target_bases=left_bases,
+    )
+    if reverse_fk is not None:
+        return _prefer_relationship_candidate(best, reverse_fk)
+    return best
 
 
 def _cost_model_penalties(
@@ -232,140 +442,21 @@ def _pick_best_relationship_between(
     right_bases = _alias_bases(right_table, right_aliases)
     best: dict[str, Any] | None = None
 
-    def _build_candidate(
-        *,
-        left_table_name: str,
-        left_column_name: str,
-        right_table_name: str,
-        right_column_name: str,
-        confidence: float,
-        reason: str,
-        left_rows: int | None,
-        right_rows: int | None,
-        left_samples: list[dict[str, Any]] | None,
-        right_samples: list[dict[str, Any]] | None,
-    ) -> dict[str, Any]:
-        base_penalties, base_penalty_score = _edge_penalties(
-            left_column=left_column_name,
-            right_column=right_column_name,
-            left_table=left_table_name,
-            right_table=right_table_name,
-        )
-        cost_penalties, cost_penalty_score, cost_signals = _cost_model_penalties(
-            left_row_count=left_rows,
-            right_row_count=right_rows,
-            left_sample_rows=left_samples,
-            right_sample_rows=right_samples,
-            left_column=left_column_name,
-            right_column=right_column_name,
-        )
-        penalties = list(base_penalties)
-        for p in cost_penalties:
-            if p not in penalties:
-                penalties.append(p)
-        penalty_score = round(float(base_penalty_score) + float(cost_penalty_score), 6)
-        return {
-            "left_table": left_table_name,
-            "left_column": left_column_name,
-            "right_table": right_table_name,
-            "right_column": right_column_name,
-            "confidence": round(float(confidence), 6),
-            "reason": str(reason or "").strip(),
-            "penalties": penalties,
-            "penalty_score": penalty_score,
-            "base_penalty_score": round(float(base_penalty_score), 6),
-            "cost_penalty_score": round(float(cost_penalty_score), 6),
-            "cost_signals": dict(cost_signals or {}),
-            "left_row_count": left_rows,
-            "right_row_count": right_rows,
-        }
-
-    def _update(candidate: dict[str, Any]) -> None:
-        nonlocal best
-        if best is None:
-            best = candidate
-            return
-        cand_score = float(candidate.get("confidence") or 0.0) - float(candidate.get("penalty_score") or 0.0)
-        best_score = float(best.get("confidence") or 0.0) - float(best.get("penalty_score") or 0.0)
-        if cand_score > best_score:
-            best = candidate
-            return
-        if cand_score == best_score and float(candidate.get("confidence") or 0.0) > float(best.get("confidence") or 0.0):
-            best = candidate
-
     for l_raw in left_col_names:
         for r_raw in right_col_names:
-            ln = _normalize_ident(l_raw)
-            rn = _normalize_ident(r_raw)
-            if not ln or not rn:
-                continue
-
-            if ln == rn and _is_likely_key_column(ln):
-                _update(
-                    _build_candidate(
-                        left_table_name=left_table,
-                        left_column_name=l_raw,
-                        right_table_name=right_table,
-                        right_column_name=r_raw,
-                        confidence=0.96,
-                        reason="same_key_name",
-                        left_rows=left_row_count,
-                        right_rows=right_row_count,
-                        left_samples=left_sample_rows,
-                        right_samples=right_sample_rows,
-                    )
-                )
-                continue
-
-            if ln == rn and ln in _GENERIC_NON_KEY_COLUMNS:
-                continue
-
-            if ln.endswith("_id"):
-                base = ln[: -len("_id")]
-                if base and rn in {"id", f"{base}_id"}:
-                    conf = 0.90
-                    reason = "fk_to_id"
-                    if base in right_bases:
-                        conf = 0.95
-                        reason = "fk_to_table_id"
-                    _update(
-                        _build_candidate(
-                            left_table_name=left_table,
-                            left_column_name=l_raw,
-                            right_table_name=right_table,
-                            right_column_name=r_raw,
-                            confidence=conf,
-                            reason=reason,
-                            left_rows=left_row_count,
-                            right_rows=right_row_count,
-                            left_samples=left_sample_rows,
-                            right_samples=right_sample_rows,
-                        )
-                    )
-                    continue
-
-            if rn.endswith("_id"):
-                base = rn[: -len("_id")]
-                if base and ln in {"id", f"{base}_id"}:
-                    conf = 0.90
-                    reason = "fk_to_id"
-                    if base in left_bases:
-                        conf = 0.95
-                        reason = "fk_to_table_id"
-                    _update(
-                        _build_candidate(
-                            left_table_name=right_table,
-                            left_column_name=r_raw,
-                            right_table_name=left_table,
-                            right_column_name=l_raw,
-                            confidence=conf,
-                            reason=reason,
-                            left_rows=right_row_count,
-                            right_rows=left_row_count,
-                            left_samples=right_sample_rows,
-                            right_samples=left_sample_rows,
-                        )
-                    )
+            best = _best_candidate_for_column_pair(
+                best=best,
+                left_table=left_table,
+                left_column=l_raw,
+                left_row_count=left_row_count,
+                left_sample_rows=left_sample_rows,
+                left_bases=left_bases,
+                right_table=right_table,
+                right_column=r_raw,
+                right_row_count=right_row_count,
+                right_sample_rows=right_sample_rows,
+                right_bases=right_bases,
+            )
 
     return best
 
@@ -505,6 +596,130 @@ def score_join_plan_candidates(
     }
 
 
+def _empty_multi_join_result(*, graph: dict[str, Any], max_states: int) -> dict[str, Any]:
+    return {
+        "graph": graph,
+        "candidates": [],
+        "selected": None,
+        "ambiguous": False,
+        "ambiguity_gap": None,
+        "states_explored": 0,
+        "max_states": max(4, int(max_states or 4)),
+    }
+
+
+def _multi_join_state_score(state: dict[str, Any]) -> float:
+    joins_n = max(1, int(len(list(state.get("joins") or []))))
+    avg_score = float(state.get("score_sum") or 0.0) / float(joins_n)
+    coverage_bonus = 0.01 * float(len(set(state.get("tables") or set())))
+    return round(avg_score + coverage_bonus, 6)
+
+
+def _multi_join_state_sort_key(state: dict[str, Any]) -> tuple[Any, ...]:
+    join_ids = [str(v) for v in (state.get("join_ids") or []) if str(v).strip()]
+    return (
+        -_multi_join_state_score(state),
+        -int(len(set(state.get("tables") or set()))),
+        ",".join(sorted(join_ids)),
+    )
+
+
+def _seed_multi_join_states(edge_candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    states: list[dict[str, Any]] = []
+    for candidate in edge_candidates:
+        join = candidate.get("join") if isinstance(candidate.get("join"), dict) else {}
+        left_table = str(join.get("left_table") or "").strip()
+        right_table = str(join.get("right_table") or "").strip()
+        if not left_table or not right_table:
+            continue
+        states.append(
+            {
+                "joins": [join],
+                "join_ids": [str(candidate.get("candidate_id") or "").strip()],
+                "tables": {left_table, right_table},
+                "score_sum": float(candidate.get("score") or 0.0),
+                "confidence_sum": float(candidate.get("confidence") or 0.0),
+                "penalty_sum": float(candidate.get("penalty_score") or 0.0),
+            }
+        )
+    return states
+
+
+def _expand_multi_join_states(
+    *,
+    states: list[dict[str, Any]],
+    edge_candidates: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    expanded: list[dict[str, Any]] = []
+    for state in states:
+        current_tables = set(state.get("tables") or set())
+        current_join_ids = {str(v) for v in (state.get("join_ids") or []) if str(v).strip()}
+        for candidate in edge_candidates:
+            candidate_id = str(candidate.get("candidate_id") or "").strip()
+            if not candidate_id or candidate_id in current_join_ids:
+                continue
+            join = candidate.get("join") if isinstance(candidate.get("join"), dict) else {}
+            left_table = str(join.get("left_table") or "").strip()
+            right_table = str(join.get("right_table") or "").strip()
+            if not left_table or not right_table:
+                continue
+            candidate_tables = {left_table, right_table}
+            if not (candidate_tables & current_tables):
+                continue
+            if candidate_tables.issubset(current_tables):
+                continue
+            expanded.append(
+                {
+                    "joins": list(state.get("joins") or []) + [join],
+                    "join_ids": list(state.get("join_ids") or []) + [candidate_id],
+                    "tables": set(current_tables | candidate_tables),
+                    "score_sum": float(state.get("score_sum") or 0.0) + float(candidate.get("score") or 0.0),
+                    "confidence_sum": float(state.get("confidence_sum") or 0.0)
+                    + float(candidate.get("confidence") or 0.0),
+                    "penalty_sum": float(state.get("penalty_sum") or 0.0)
+                    + float(candidate.get("penalty_score") or 0.0),
+                }
+            )
+    return expanded
+
+
+def _finalize_multi_join_candidates(
+    *,
+    states: list[dict[str, Any]],
+    top_n: int,
+) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    for state in states:
+        joins = [join for join in (state.get("joins") or []) if isinstance(join, dict)]
+        join_ids = [str(v) for v in (state.get("join_ids") or []) if str(v).strip()]
+        if not joins or not join_ids:
+            continue
+        joins_n = max(1, len(joins))
+        score_avg = float(state.get("score_sum") or 0.0) / float(joins_n)
+        confidence_avg = float(state.get("confidence_sum") or 0.0) / float(joins_n)
+        penalty_avg = float(state.get("penalty_sum") or 0.0) / float(joins_n)
+        selected_tables = sorted(str(v) for v in set(state.get("tables") or set()) if str(v).strip())
+        candidates.append(
+            {
+                "candidate_id": stable_hash("->".join(sorted(join_ids)), length=16),
+                "score": round(float(score_avg), 6),
+                "confidence": round(float(confidence_avg), 6),
+                "penalty_score": round(float(penalty_avg), 6),
+                "joins": joins,
+                "selected_tables": selected_tables,
+                "hop_count": int(len(joins)),
+            }
+        )
+    candidates.sort(
+        key=lambda candidate: (
+            -float(candidate.get("score") or 0.0),
+            -int(len(list(candidate.get("selected_tables") or []))),
+            str(candidate.get("candidate_id") or ""),
+        )
+    )
+    return candidates[: max(1, int(top_n or 1))]
+
+
 def score_multi_join_plan_candidates(
     *,
     tables: list[dict[str, Any]],
@@ -520,15 +735,7 @@ def score_multi_join_plan_candidates(
     graph = build_table_schema_graph(tables=tables)
     edges = [e for e in (graph.get("edges") or []) if isinstance(e, dict)]
     if not edges:
-        return {
-            "graph": graph,
-            "candidates": [],
-            "selected": None,
-            "ambiguous": False,
-            "ambiguity_gap": None,
-            "states_explored": 0,
-            "max_states": max(4, int(max_states or 4)),
-        }
+        return _empty_multi_join_result(graph=graph, max_states=max_states)
 
     # Reuse pairwise scoring signal as atomic edge scores.
     base = score_join_plan_candidates(
@@ -538,131 +745,27 @@ def score_multi_join_plan_candidates(
     )
     edge_candidates = [c for c in (base.get("candidates") or []) if isinstance(c, dict)]
     if not edge_candidates:
-        return {
-            "graph": graph,
-            "candidates": [],
-            "selected": None,
-            "ambiguous": False,
-            "ambiguity_gap": None,
-            "states_explored": 0,
-            "max_states": max(4, int(max_states or 4)),
-        }
+        return _empty_multi_join_result(graph=graph, max_states=max_states)
 
     beam_limit = max(4, int(max_states or 4))
     table_names = [str(t.get("table_name") or "").strip() for t in (tables or []) if isinstance(t, dict)]
     target_tables = len([t for t in table_names if t])
 
-    # Seed states with each pairwise candidate.
-    states: list[dict[str, Any]] = []
-    for c in edge_candidates:
-        join = c.get("join") if isinstance(c.get("join"), dict) else {}
-        left_table = str(join.get("left_table") or "").strip()
-        right_table = str(join.get("right_table") or "").strip()
-        if not left_table or not right_table:
-            continue
-        tables_set = {left_table, right_table}
-        states.append(
-            {
-                "joins": [join],
-                "join_ids": [str(c.get("candidate_id") or "").strip()],
-                "tables": tables_set,
-                "score_sum": float(c.get("score") or 0.0),
-                "confidence_sum": float(c.get("confidence") or 0.0),
-                "penalty_sum": float(c.get("penalty_score") or 0.0),
-            }
-        )
-
-    def _state_score(state: dict[str, Any]) -> float:
-        joins_n = max(1, int(len(list(state.get("joins") or []))))
-        avg_score = float(state.get("score_sum") or 0.0) / float(joins_n)
-        # Mild preference for wider table coverage.
-        coverage_bonus = 0.01 * float(len(set(state.get("tables") or set())))
-        return round(avg_score + coverage_bonus, 6)
-
-    def _state_sort_key(state: dict[str, Any]) -> tuple[Any, ...]:
-        join_ids = [str(v) for v in (state.get("join_ids") or []) if str(v).strip()]
-        return (
-            -_state_score(state),
-            -int(len(set(state.get("tables") or set()))),
-            ",".join(sorted(join_ids)),
-        )
-
-    states.sort(key=_state_sort_key)
+    states = _seed_multi_join_states(edge_candidates)
+    states.sort(key=_multi_join_state_sort_key)
     states = states[:beam_limit]
     states_explored = int(len(states))
 
     max_hops = max(1, min(int(target_tables) - 1 if target_tables > 1 else 1, int(beam_limit)))
     for _depth in range(2, max_hops + 1):
-        expanded: list[dict[str, Any]] = []
-        for state in states:
-            current_tables = set(state.get("tables") or set())
-            current_join_ids = {str(v) for v in (state.get("join_ids") or []) if str(v).strip()}
-            for c in edge_candidates:
-                cid = str(c.get("candidate_id") or "").strip()
-                if not cid or cid in current_join_ids:
-                    continue
-                join = c.get("join") if isinstance(c.get("join"), dict) else {}
-                left_table = str(join.get("left_table") or "").strip()
-                right_table = str(join.get("right_table") or "").strip()
-                if not left_table or not right_table:
-                    continue
-                candidate_tables = {left_table, right_table}
-                # Must connect to the current path and add at least one new table.
-                if not (candidate_tables & current_tables):
-                    continue
-                if candidate_tables.issubset(current_tables):
-                    continue
-
-                new_state = {
-                    "joins": list(state.get("joins") or []) + [join],
-                    "join_ids": list(state.get("join_ids") or []) + [cid],
-                    "tables": set(current_tables | candidate_tables),
-                    "score_sum": float(state.get("score_sum") or 0.0) + float(c.get("score") or 0.0),
-                    "confidence_sum": float(state.get("confidence_sum") or 0.0) + float(c.get("confidence") or 0.0),
-                    "penalty_sum": float(state.get("penalty_sum") or 0.0) + float(c.get("penalty_score") or 0.0),
-                }
-                expanded.append(new_state)
-
+        expanded = _expand_multi_join_states(states=states, edge_candidates=edge_candidates)
         if not expanded:
             break
-        expanded.sort(key=_state_sort_key)
+        expanded.sort(key=_multi_join_state_sort_key)
         states = expanded[:beam_limit]
         states_explored += len(expanded)
 
-    candidates: list[dict[str, Any]] = []
-    for st in states:
-        joins = [j for j in (st.get("joins") or []) if isinstance(j, dict)]
-        if not joins:
-            continue
-        join_ids = [str(v) for v in (st.get("join_ids") or []) if str(v).strip()]
-        if not join_ids:
-            continue
-        joins_n = max(1, len(joins))
-        score_avg = float(st.get("score_sum") or 0.0) / float(joins_n)
-        confidence_avg = float(st.get("confidence_sum") or 0.0) / float(joins_n)
-        penalty_avg = float(st.get("penalty_sum") or 0.0) / float(joins_n)
-        selected_tables = sorted(str(v) for v in set(st.get("tables") or set()) if str(v).strip())
-        candidates.append(
-            {
-                "candidate_id": stable_hash("->".join(sorted(join_ids)), length=16),
-                "score": round(float(score_avg), 6),
-                "confidence": round(float(confidence_avg), 6),
-                "penalty_score": round(float(penalty_avg), 6),
-                "joins": joins,
-                "selected_tables": selected_tables,
-                "hop_count": int(len(joins)),
-            }
-        )
-
-    candidates.sort(
-        key=lambda c: (
-            -float(c.get("score") or 0.0),
-            -int(len(list(c.get("selected_tables") or []))),
-            str(c.get("candidate_id") or ""),
-        )
-    )
-    n = max(1, int(top_n or 1))
-    candidates = candidates[:n]
+    candidates = _finalize_multi_join_candidates(states=states, top_n=top_n)
     selected = candidates[0] if candidates else None
 
     gap = None

@@ -1,4 +1,3 @@
-
 import hashlib
 import re
 from pathlib import Path
@@ -211,12 +210,12 @@ def _source_topic(source: str, section: str) -> str:
 
 
 def _split_field_line(line: str, labels: tuple[str, ...]) -> tuple[str, str] | None:
-    text = str(line or "").strip().lstrip("\"“”").strip()
+    text = str(line or "").strip().lstrip('"“”').strip()
     for label in labels:
         for separator in ("：", ":"):
             prefixes = (
                 f"{label}{separator}",
-                f"{label}\"{separator}",
+                f'{label}"{separator}',
                 f"{label}”{separator}",
                 f"{label}“{separator}",
             )
@@ -273,7 +272,11 @@ def _first_labeled_field_value(text: str, labels: tuple[str, ...]) -> str:
 
 def _is_inline_marker_line(line: str) -> bool:
     text = str(line or "").strip()
-    return text.startswith(_MARKER_START) and text.endswith(_MARKER_END) and len(text) > len(_MARKER_START) + len(_MARKER_END)
+    return (
+        text.startswith(_MARKER_START)
+        and text.endswith(_MARKER_END)
+        and len(text) > len(_MARKER_START) + len(_MARKER_END)
+    )
 
 
 def _structured_qa_title_value(text: str) -> str:
@@ -524,6 +527,20 @@ def _clean_text(text: str) -> str:
     return "\n".join(lines).strip()
 
 
+def _excel_parser_record_fields(record: str) -> list[str]:
+    value = str(record or "")
+    sheet = ""
+    if " ——" in value:
+        value, sheet = value.rsplit(" ——", 1)
+        sheet = sheet.strip()
+    fields = [part.strip().strip("[]").strip() for part in value.split(";") if part.strip()]
+    if not fields:
+        return []
+    if sheet:
+        fields.append(f"来源工作表：{sheet}")
+    return fields
+
+
 def _normalize_excel_parser_rows(text: str) -> str:
     normalized = str(text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
     if ";" in normalized and "答案" in normalized and "问题" in normalized:
@@ -533,22 +550,7 @@ def _normalize_excel_parser_rows(text: str) -> str:
             if ";" not in record:
                 converted.append(record)
                 continue
-            sheet = ""
-            if " ——" in record:
-                record, sheet = record.rsplit(" ——", 1)
-                sheet = sheet.strip()
-            fields: list[str] = []
-            for part in record.split(";"):
-                field = part.strip()
-                if not field:
-                    continue
-                field = field.strip("[]").strip()
-                fields.append(field)
-            if not fields:
-                continue
-            converted.extend(fields)
-            if sheet:
-                converted.append(f"来源工作表：{sheet}")
+            converted.extend(_excel_parser_record_fields(record))
         return "\n".join(converted).strip()
 
     lines: list[str] = []
@@ -559,22 +561,7 @@ def _normalize_excel_parser_rows(text: str) -> str:
         if ";" not in line or "答案" not in line or "问题" not in line:
             lines.append(line)
             continue
-        sheet = ""
-        if " ——" in line:
-            line, sheet = line.rsplit(" ——", 1)
-            sheet = sheet.strip()
-        fields: list[str] = []
-        for part in line.split(";"):
-            field = part.strip()
-            if not field:
-                continue
-            field = field.strip("[]").strip()
-            fields.append(field)
-        if not fields:
-            continue
-        lines.extend(fields)
-        if sheet:
-            lines.append(f"来源工作表：{sheet}")
+        lines.extend(_excel_parser_record_fields(line))
     return "\n".join(lines).strip()
 
 
@@ -611,7 +598,9 @@ def _long_text_title(text: str) -> str:
             if title_lines:
                 break
             continue
-        if title_lines and (line.startswith(("（", "(")) or _SECTION_HEADING_RE.match(line) or line.endswith(("：", ":"))):
+        if title_lines and (
+            line.startswith(("（", "(")) or _SECTION_HEADING_RE.match(line) or line.endswith(("：", ":"))
+        ):
             break
         title_lines.append(_strip_bracket_title(line))
         if len("".join(title_lines)) >= 120 or len(title_lines) >= 4:
@@ -648,7 +637,13 @@ def _semantic_terms(*values: str) -> list[str]:
     return out
 
 
-def _semantic_keys_for_record(*, kind: str, title: str, aliases: list[str] | None = None, keywords: list[str] | None = None) -> list[str]:
+def _semantic_keys_for_record(
+    *,
+    kind: str,
+    title: str,
+    aliases: list[str] | None = None,
+    keywords: list[str] | None = None,
+) -> list[str]:
     keys: list[str] = []
     seen: set[str] = set()
 
@@ -749,7 +744,11 @@ def _split_operation_blocks(text: str) -> list[str]:
     if len(indices) <= 1:
         return blocks
     indices.append(len(normalized))
-    return [normalized[indices[i] : indices[i + 1]].strip() for i in range(len(indices) - 1) if normalized[indices[i] : indices[i + 1]].strip()]
+    return [
+        normalized[indices[index] : indices[index + 1]].strip()
+        for index in range(len(indices) - 1)
+        if normalized[indices[index] : indices[index + 1]].strip()
+    ]
 
 
 def _govern_one_thing_operation(source_doc: Document) -> list[Document]:
@@ -783,6 +782,81 @@ def _clean_question(value: str) -> str:
     return cleaned.strip().strip("[]").rstrip("]").strip()
 
 
+def _qa_document_lines(
+    *,
+    question: str,
+    answer: str,
+    aliases: list[str],
+    keywords: list[str],
+    category_path: list[str],
+    applicable_area: str,
+    service_url: str,
+    valid_from: str,
+    valid_to: str,
+    source_department: str,
+    source_sheet: str,
+) -> list[str]:
+    optional_before_answer = (
+        (category_path, f"业务分类：{'/'.join(category_path)}"),
+        (keywords, f"关键字：{'、'.join(keywords)}"),
+        (aliases, f"相似问法：{'、'.join(aliases)}"),
+        (applicable_area, f"适用区域：{applicable_area}"),
+        (service_url, f"办事链接：{service_url}"),
+        (valid_from, f"生效时间：{valid_from}"),
+        (valid_to, f"失效时间：{valid_to}"),
+    )
+    optional_after_answer = (
+        (source_department, f"来源部门：{source_department}"),
+        (source_sheet, f"来源工作表：{source_sheet}"),
+    )
+    return [
+        f"问题：{question}",
+        *(line for value, line in optional_before_answer if value),
+        f"答案：{answer}",
+        *(line for value, line in optional_after_answer if value),
+    ]
+
+
+def _qa_document_urls(answer: str, service_url: str) -> list[str]:
+    urls: list[str] = []
+    seen: set[str] = set()
+    for url in [*_extract_urls(answer), *_extract_urls(service_url)]:
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        urls.append(url)
+    return urls
+
+
+def _apply_optional_qa_metadata(
+    meta: dict[str, Any],
+    *,
+    aliases: list[str],
+    source_sheet: str,
+    category_path: list[str],
+    category_leaf: str,
+    applicable_area: str,
+    service_url: str,
+    valid_from: str,
+    valid_to: str,
+) -> None:
+    if aliases:
+        meta["primary_alias"] = aliases[0]
+    if source_sheet:
+        meta["source_sheet"] = _clamp_meta_text(source_sheet, 200)
+    if category_path:
+        meta["category_path"] = [_clamp_meta_text(item, 200) for item in category_path]
+        meta["category_leaf"] = _clamp_meta_text(category_leaf, 200)
+    if applicable_area:
+        meta["applicable_area"] = applicable_area
+    if service_url:
+        meta["service_url"] = _clamp_meta_text(service_url, 1000)
+    if valid_from:
+        meta["valid_from"] = valid_from
+    if valid_to:
+        meta["valid_to"] = valid_to
+
+
 def _build_qa_document(
     source_doc: Document,
     *,
@@ -809,59 +883,42 @@ def _build_qa_document(
     category_leaf = category_path[-1] if category_path else ""
     source_department = _clamp_meta_text(source_department, _SOURCE_DEPARTMENT_MAX)
     applicable_area = _clamp_meta_text(applicable_area, 200)
-    service_url = _extract_urls(service_url)[0] if _extract_urls(service_url) else str(service_url or "").strip()
+    extracted_service_urls = _extract_urls(service_url)
+    service_url = extracted_service_urls[0] if extracted_service_urls else str(service_url or "").strip()
     valid_from = _clamp_meta_text(valid_from, 120)
     valid_to = _clamp_meta_text(valid_to, 120)
-    lines = [f"问题：{question}"]
-    if category_path:
-        lines.append(f"业务分类：{'/'.join(category_path)}")
-    if keywords:
-        lines.append(f"关键字：{'、'.join(keywords)}")
-    if aliases:
-        lines.append(f"相似问法：{'、'.join(aliases)}")
-    if applicable_area:
-        lines.append(f"适用区域：{applicable_area}")
-    if service_url:
-        lines.append(f"办事链接：{service_url}")
-    if valid_from:
-        lines.append(f"生效时间：{valid_from}")
-    if valid_to:
-        lines.append(f"失效时间：{valid_to}")
-    lines.append(f"答案：{answer}")
-    if source_department:
-        lines.append(f"来源部门：{source_department}")
-    if source_sheet:
-        lines.append(f"来源工作表：{source_sheet}")
+    lines = _qa_document_lines(
+        question=question,
+        answer=answer,
+        aliases=aliases,
+        keywords=keywords,
+        category_path=category_path,
+        applicable_area=applicable_area,
+        service_url=service_url,
+        valid_from=valid_from,
+        valid_to=valid_to,
+        source_department=source_department,
+        source_sheet=source_sheet,
+    )
     text = "\n".join(lines)
     meta = _common_meta(source_doc, kind="qa", title=question, index=index, text=text)
     meta["question"] = question
     meta["answer"] = answer
     meta["aliases"] = aliases
-    if aliases:
-        meta["primary_alias"] = aliases[0]
     meta["keywords"] = keywords
-    urls: list[str] = []
-    seen_urls: set[str] = set()
-    for url in [*_extract_urls(answer), *_extract_urls(service_url)]:
-        if not url or url in seen_urls:
-            continue
-        seen_urls.add(url)
-        urls.append(url)
-    meta["urls"] = urls
+    meta["urls"] = _qa_document_urls(answer, service_url)
     meta["source_department"] = source_department
-    if source_sheet:
-        meta["source_sheet"] = _clamp_meta_text(source_sheet, 200)
-    if category_path:
-        meta["category_path"] = [_clamp_meta_text(item, 200) for item in category_path]
-        meta["category_leaf"] = _clamp_meta_text(category_leaf, 200)
-    if applicable_area:
-        meta["applicable_area"] = applicable_area
-    if service_url:
-        meta["service_url"] = _clamp_meta_text(service_url, 1000)
-    if valid_from:
-        meta["valid_from"] = valid_from
-    if valid_to:
-        meta["valid_to"] = valid_to
+    _apply_optional_qa_metadata(
+        meta,
+        aliases=aliases,
+        source_sheet=source_sheet,
+        category_path=category_path,
+        category_leaf=category_leaf,
+        applicable_area=applicable_area,
+        service_url=service_url,
+        valid_from=valid_from,
+        valid_to=valid_to,
+    )
     meta["semantic_keys"] = _semantic_keys_for_record(
         kind="qa",
         title=question,
@@ -1001,29 +1058,26 @@ def _is_markdown_separator(cells: list[str]) -> bool:
     return bool(cells) and all(re.fullmatch(r":?-{3,}:?", cell.strip()) for cell in cells if cell.strip())
 
 
+_MARKDOWN_HEADER_KEYS = (
+    (("问答标题", "问题"), "question"),
+    (("问答答案", "答案"), "answer"),
+    (("相似问",), "aliases"),
+    (("关键字", "关键词"), "keywords"),
+    (("问答提供部门", "来源部门"), "source_department"),
+    (("内容生效时间", "生效时间"), "valid_from"),
+    (("内容失效时间", "失效时间"), "valid_to"),
+    (("类目路径", "分类路径", "业务分类"), "category_path"),
+    (("适用区域", "适用地区"), "applicable_area"),
+    (("办事链接", "办理链接", "服务链接"), "service_url"),
+)
+
+
 def _header_key(cell: str) -> str:
     value = _clean_marker_value(cell)
     value = re.sub(r"[\s\[\]（）()【】:：]+", "", value)
-    if "问答标题" in value or "问题" in value:
-        return "question"
-    if "问答答案" in value or "答案" in value:
-        return "answer"
-    if "相似问" in value:
-        return "aliases"
-    if "关键字" in value or "关键词" in value:
-        return "keywords"
-    if "问答提供部门" in value or "来源部门" in value:
-        return "source_department"
-    if "内容生效时间" in value or "生效时间" in value:
-        return "valid_from"
-    if "内容失效时间" in value or "失效时间" in value:
-        return "valid_to"
-    if "类目路径" in value or "分类路径" in value or "业务分类" in value:
-        return "category_path"
-    if "适用区域" in value or "适用地区" in value:
-        return "applicable_area"
-    if "办事链接" in value or "办理链接" in value or "服务链接" in value:
-        return "service_url"
+    for markers, key in _MARKDOWN_HEADER_KEYS:
+        if any(marker in value for marker in markers):
+            return key
     return ""
 
 
@@ -1141,18 +1195,26 @@ def _loose_qa_category(lines: list[str], question_index: int, topic: str) -> lis
 
 
 def _govern_loose_answer_marker_qa(source_doc: Document) -> list[Document]:
-    lines = [line.strip() for line in str(source_doc.page_content or "").replace("\r\n", "\n").replace("\r", "\n").splitlines()]
+    lines = [
+        line.strip()
+        for line in str(source_doc.page_content or "").replace("\r\n", "\n").replace("\r", "\n").splitlines()
+    ]
     answer_indices = [index for index, line in enumerate(lines) if _is_answer_marker(line)]
     if not answer_indices:
         return []
-    topic = _source_topic(_source(dict(source_doc.metadata or {})), _knowledge_section(_source(dict(source_doc.metadata or {}))))
+    source = _source(dict(source_doc.metadata or {}))
+    topic = _source_topic(source, _knowledge_section(source))
     out: list[Document] = []
     for pair_index, answer_index in enumerate(answer_indices):
         question_index = _previous_non_empty_index(lines, answer_index - 1)
         if question_index < 0:
             continue
         next_answer_index = answer_indices[pair_index + 1] if pair_index + 1 < len(answer_indices) else len(lines)
-        next_question_index = _previous_non_empty_index(lines, next_answer_index - 1) if pair_index + 1 < len(answer_indices) else len(lines)
+        next_question_index = (
+            _previous_non_empty_index(lines, next_answer_index - 1)
+            if pair_index + 1 < len(answer_indices)
+            else len(lines)
+        )
         answer_lines = [_strip_answer_marker(lines[answer_index])]
         answer_lines.extend(line for line in lines[answer_index + 1 : next_question_index] if line.strip())
         doc = _build_qa_document(
@@ -1170,7 +1232,11 @@ def _govern_loose_answer_marker_qa(source_doc: Document) -> list[Document]:
 def _govern_long_text(source_doc: Document) -> list[Document]:
     out: list[Document] = []
     source = _source(dict(source_doc.metadata or {}))
-    kind = "regulation_text" if "法规" in source or "不动产" in source or _is_real_estate_regulation_source(source) else "gov_text"
+    kind = (
+        "regulation_text"
+        if "法规" in source or "不动产" in source or _is_real_estate_regulation_source(source)
+        else "gov_text"
+    )
     for index, block in enumerate(_split_blocks(source_doc.page_content or ""), 1):
         text = _clean_text(block)
         if not text:
@@ -1194,7 +1260,10 @@ def govern_documents(
         section = _knowledge_section(source)
         text = doc.page_content or ""
         if section == _SERVICE_ITEMS_SECTION or "[事项名称：" in text:
-            out.extend(_augment_service_item_meta(item) for item in _govern_service_items([doc], params=params, context=context))
+            out.extend(
+                _augment_service_item_meta(item)
+                for item in _govern_service_items([doc], params=params, context=context)
+            )
         elif section == _ONE_THING_SECTION and "操作指引" in Path(source).name:
             out.extend(_govern_one_thing_operation(doc))
         elif section == _ONE_THING_SECTION:
@@ -1210,34 +1279,39 @@ def govern_documents(
     return out
 
 
+def _split_long_chunk_line(line: str, *, max_chars: int) -> list[str]:
+    value = str(line or "").strip()
+    if len(value) <= max_chars:
+        return [value] if value else []
+    pieces: list[str] = []
+    current = ""
+    for part in [item.strip() for item in _SOFT_BREAK_RE.split(value) if item.strip()]:
+        if len(part) > max_chars:
+            if current:
+                pieces.append(current.strip())
+                current = ""
+            pieces.extend(
+                part[index : index + max_chars].strip()
+                for index in range(0, len(part), max_chars)
+                if part[index : index + max_chars].strip()
+            )
+            continue
+        if current and len(current) + len(part) + 1 > max_chars:
+            pieces.append(current.strip())
+            current = part
+        else:
+            current = f"{current}{part}" if current else part
+    if current:
+        pieces.append(current.strip())
+    return pieces
+
+
 def _split_for_chunk(text: str, max_chars: int) -> list[str]:
     cleaned = str(text or "").strip()
     if not cleaned:
         return []
     if len(cleaned) <= max_chars:
         return [cleaned]
-
-    def split_long_line(line: str) -> list[str]:
-        value = str(line or "").strip()
-        if len(value) <= max_chars:
-            return [value] if value else []
-        pieces: list[str] = []
-        current = ""
-        for part in [p.strip() for p in _SOFT_BREAK_RE.split(value) if p.strip()]:
-            if len(part) > max_chars:
-                if current:
-                    pieces.append(current.strip())
-                    current = ""
-                pieces.extend(part[i : i + max_chars].strip() for i in range(0, len(part), max_chars) if part[i : i + max_chars].strip())
-                continue
-            if current and len(current) + len(part) + 1 > max_chars:
-                pieces.append(current.strip())
-                current = part
-            else:
-                current = f"{current}{part}" if current else part
-        if current:
-            pieces.append(current.strip())
-        return pieces
 
     chunks: list[str] = []
     current: list[str] = []
@@ -1247,8 +1321,10 @@ def _split_for_chunk(text: str, max_chars: int) -> list[str]:
         if not line:
             continue
         starts_new_section = bool(_SECTION_HEADING_RE.match(line))
-        for piece in split_long_line(line):
-            if current and (current_len + len(piece) + 1 > max_chars or (starts_new_section and current_len > max_chars * 0.45)):
+        for piece in _split_long_chunk_line(line, max_chars=max_chars):
+            exceeds_limit = current_len + len(piece) + 1 > max_chars
+            starts_late_section = starts_new_section and current_len > max_chars * 0.45
+            if current and (exceeds_limit or starts_late_section):
                 chunks.append("\n".join(current).strip())
                 current = []
                 current_len = 0
@@ -1595,7 +1671,13 @@ def chunk_documents(
     others = [doc for doc in governed if (doc.metadata or {}).get("gov_knowledge_type") != "service_item"]
     chunks: list[Document] = []
     if service_items:
-        chunks.extend(_chunk_service_items(service_items, params={**params, "max_record_chars": max_chars}, context=context))
+        chunks.extend(
+            _chunk_service_items(
+                service_items,
+                params={**params, "max_record_chars": max_chars},
+                context=context,
+            )
+        )
     chunks.extend(_chunk_generic(others, max_chars=max_chars))
     for index, chunk in enumerate(chunks):
         meta = dict(chunk.metadata or {})
