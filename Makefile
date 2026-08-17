@@ -1,4 +1,4 @@
-.PHONY: help init install-host setup-host models up up-web up-lite up-retrieval-dev up-docling up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-magicpdf up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-docling infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-magicpdf infra-up-qianfanocr infra-ps infra-down down docker-reset docker-purge down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload worker worker-check web test test-serial test-full test-web test-web-full test-web-e2e test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit-docs audit openapi-export openapi-types openapi-validate openapi-check api-docs-build api-docs-build-static diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure plugin-release-gate mixed-rag-quality live-core-release-gate check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init install-host setup-host models up up-web up-lite up-retrieval-dev up-docling up-docling-gpu up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-magicpdf up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-docling infra-up-docling-gpu infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-magicpdf infra-up-qianfanocr infra-ps infra-down down docker-reset docker-purge down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload worker worker-check web test test-serial test-full test-web test-web-full test-web-e2e test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit-docs audit openapi-export openapi-types openapi-validate openapi-check api-docs-build api-docs-build-static diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure plugin-release-gate mixed-rag-quality live-core-release-gate check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer the project venv whenever it exists. Missing packages should fail in the
 # project environment rather than silently falling back to unrelated global tools.
@@ -85,6 +85,7 @@ help:
 	@echo "  make up-lite   - docker compose up (lite: no milvus/minio; chroma by default)"
 	@echo "  make up-retrieval-dev - start minimal retrieval-only stack (postgres+redis+api; no parser services)"
 	@echo "  make up-docling - docker compose up + isolated Docling Serve CPU parser (profile docling)"
+	@echo "  make up-docling-gpu - docker compose up + isolated Docling Serve CUDA parser (profile docling-gpu)"
 	@echo "  make up-etl4llm - docker compose up + ETL4LLM parser (profile etl4llm)"
 	@echo "  make up-marker - docker compose up + Marker parser (profile marker)"
 	@echo "  make up-paddlevl - docker compose up + PaddleOCR-VL parser (profile paddlevl)"
@@ -99,6 +100,7 @@ help:
 	@echo "  make up-prod-web - run Docker Compose (backend+web) with ENV=production after config preflight"
 	@echo "  make infra-up  - start infra only (ports exposed)"
 	@echo "  make infra-up-docling - infra-up + isolated Docling Serve CPU parser (profile docling)"
+	@echo "  make infra-up-docling-gpu - infra-up + isolated Docling Serve CUDA parser (profile docling-gpu)"
 	@echo "  make infra-up-etl4llm - infra-up + ETL4LLM parser (profile etl4llm)"
 	@echo "  make infra-up-marker - infra-up + Marker parser (profile marker)"
 	@echo "  make infra-up-paddlevl - infra-up + PaddleOCR-VL parser (profile paddlevl)"
@@ -208,6 +210,9 @@ up-retrieval-dev: init
 up-docling: init
 	DOCLING_ENABLED_DOCKER=true DOCLING_API_URL_DOCKER=http://mimirq-docling:5001 $(COMPOSE_PARSERS) --profile docling up -d --build
 
+up-docling-gpu: init
+	DOCLING_ENABLED_DOCKER=true DOCLING_API_URL_DOCKER=http://mimirq-docling:5001 $(COMPOSE_PARSERS) --profile docling-gpu up -d --build
+
 up-etl4llm: init
 	$(COMPOSE_PARSERS) --profile etl4llm up -d --build
 
@@ -253,6 +258,9 @@ infra-up: init
 
 infra-up-docling: init
 	$(COMPOSE_INFRA_PARSERS) --profile docling up -d
+
+infra-up-docling-gpu: init
+	$(COMPOSE_INFRA_PARSERS) --profile docling-gpu up -d
 
 infra-up-etl4llm: init
 	$(COMPOSE_INFRA_PARSERS) --profile etl4llm up -d

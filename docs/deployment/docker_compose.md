@@ -15,6 +15,9 @@
 Docling 同样只通过独立的 `mimirq-docling` 服务运行。API / worker 和宿主机 venv
 不安装 `docling`、`docling-ibm-models` 或其模型栈；`make up-docling` 会启动固定版本的
 官方 CPU 镜像，并为 Docker 内后端注入 `http://mimirq-docling:5001`。
+NVIDIA 机器可使用 `make up-docling-gpu`（全栈）或 `make infra-up-docling-gpu`
+（本地后端），默认镜像为固定版本的 CUDA 12.8 变体。两个 profile 共享 5001 端口，
+只能选择一个。
 
 DeepDoc 的轻量解析模型不随源码仓库分发。Docker 构建会从
 `qwqqwq/mimirq@118452f3ea3ccd09a41b2d39ea82d7de535e2908` 下载并校验模型，
@@ -67,6 +70,7 @@ LLM_MODEL_HEAVY=qwen3-max
 | LlamaIndex 分块 | `LLAMA_INDEX_ENABLED=true`，上传/工作台选择 `chunk_strategy=llama_index` | 用真实上传或 `/documents/preview` 验证 chunk 不因 metadata 过长失败 |
 | MagicPDF 服务解析 | `MAGIC_PDF_ENABLED=true`、`MAGIC_PDF_API_URL=http://mimirq-magicpdf:2095/convert`、GPU 服务器设置 `MAGIC_PDF_DEVICE_MODE=cuda`，并用 `--profile magicpdf` 启动服务 | `scripts/check_parsers.py` 应显示 `magicpdf ... configured (service)`，再做真实 PDF 预览/上传；默认 API / worker 镜像不包含本地 CLI |
 | Docling Serve | `DOCLING_ENABLED=true`、`DOCLING_API_URL=http://mimirq-docling:5001`，并用 `--profile docling` 启动服务 | 等 `/health` 通过后用 `parser_backend=docling` 做真实 PDF / DOCX 预览；默认 API / worker 镜像不包含 Docling 包或模型 |
+| Docling Serve GPU | NVIDIA 驱动 ≥ 550.54.14、nvidia-container-toolkit、`--profile docling-gpu`；默认 `DOCLING_DEVICE=cuda` | 先在容器内检查 `torch.cuda.is_available()`，再做真实 PDF 预览并用 `nvidia-smi` 确认显存占用；不要和 CPU profile 同时启动 |
 | MinerU 本地 pipeline | `MINERU_LOCAL_SERVER_URL=http://mimirq-mineru:8000`，`MINERU_BACKEND=pipeline`，`--profile mineru` 启动本地服务 | 先单独启动 `mimirq-mineru`，健康后再跑 `parser_backend=mineru` 预览 |
 | MinerU 本地 VLM | `MINERU_BACKEND=vlm-http-client`，`MINERU_VL_SERVER=http://mimirq-mineru-vlm:30000`，`MINERU_API_ALLOW_PUBLIC_HTTP_CLIENT=1`，同时启用 `--profile mineru --profile mineru-vlm` | 先检查 `mimirq-mineru-vlm` 健康和 `nvidia-smi` 显存占用，再跑大 PDF 预览；MinerU API 不要直接暴露公网 |
 | MinerU 在线 API | `MINERU_API_TOKEN`；如需强制在线路径，不能同时配置 `MINERU_LOCAL_SERVER_URL` | 临时清空本地 URL 后用 `parser_backend=mineru` 做预览；注意外部 API token/额度/队列状态 |

@@ -141,6 +141,26 @@ DOCLING_REQUEST_TIMEOUT_SEC=600
 CPU 镜像版本，并在启动时预热默认模型；镜像较大，但不会增加 MimirQ 主镜像及本地
 Python venv 的依赖体积。
 
+NVIDIA GPU 机器可改用 CUDA profile：
+
+```bash
+# 全 Docker（API / worker 同时启动）
+make up-docling-gpu
+
+# 本地 Python 后端 + Docker Docling GPU 服务
+make infra-up-docling-gpu
+```
+
+GPU profile 默认固定 `quay.io/docling-project/docling-serve-cu128:v1.28.0`，服务地址仍是
+`http://mimirq-docling:5001`（宿主机仍用 `http://127.0.0.1:5001`）。CPU 与 GPU profile
+共享端口和网络别名，不能同时启动。默认只启用 1 个推理 worker，并使用较保守的 batch，
+适配 8 GiB 级显存。需要 CUDA 13.0 时可显式覆盖：
+
+```bash
+DOCLING_GPU_IMAGE=quay.io/docling-project/docling-serve-cu130:v1.28.0 \
+  make infra-up-docling-gpu
+```
+
 ### (可选) 启用 ETL4LLM（Bisheng Unstructured）版面解析
 
 MimirQ 已内置 `etl4llm` 解析器（并兼容 `bisheng` / `bisheng-unstructured` 别名），你只需要把服务跑起来并配置好 API URL：
@@ -297,6 +317,7 @@ LIBREOFFICE_ENABLED=true
 | `marker` | CPU-only 本地服务 | ~0 GiB | 无需 GPU；建议独立容器运行 |
 | `etl4llm` | CPU / 无本地 GPU 分配 | ~0 GiB | 无需 GPU；建议独立容器运行 |
 | `docling` | 官方 Docling Serve CPU 镜像 | ~0 GiB GPU；默认限制 4 CPU / 12 GiB 内存 | 重依赖与模型完全隔离；建议独立容器运行 |
+| `docling-gpu` | 官方 Docling Serve CUDA 12.8 镜像 | 默认单 worker；8 GiB 显存使用保守 batch | OCR/版面/表格模型可走 GPU；RapidOCR 的部分 ONNX 阶段仍可能使用 CPU |
 | `textin` | 外部 TextIn xParse API | ~0 GiB | 本地无模型；必须配置 `TEXTIN_APP_ID` / `TEXTIN_SECRET_CODE` 后才可真实解析 |
 | `qianfan_ocr` | 本地轻量 wrapper，实际推理在上游视觉服务 | ~0 GiB | 本地容器无需 GPU；上游服务显存单独评估 |
 | `mineru`（`backend=pipeline` / `file_parse`） | 本地 `mineru-api` + 本地缓存模型 | 当前验证流未观测到独立 GPU 峰值 | 建议单独部署；若切换不同 backend / 模型链路，需重新量测 |

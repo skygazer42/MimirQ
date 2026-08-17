@@ -162,6 +162,7 @@ make api-ping
 |:---|:---|:---|:---|
 | 常规 PDF / Office / 文本 | 内置 DeepDoc | 无 | 无需额外容器 |
 | 表格、公式与复杂版式，多格式 CPU 解析 | Docling Serve | CPU；独立重型镜像，不进入 MimirQ 主镜像 | `make up-docling` |
+| 表格、公式、OCR 与复杂版式 GPU 解析 | Docling Serve CUDA | NVIDIA GPU；默认 CUDA 12.8 | `make up-docling-gpu` |
 | PDF 转 Markdown，服务器无 GPU | Marker | CPU | `make up-marker` |
 | 版面、表格与图片混合文档 | ETL4LLM | CPU | `make up-etl4llm` |
 | 扫描件、OCR、复杂版面 | PaddleOCR-VL | NVIDIA GPU，建议预留 10 GiB | `make up-paddlevl` |
