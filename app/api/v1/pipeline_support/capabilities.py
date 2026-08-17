@@ -3,6 +3,7 @@
 Extracted verbatim from ``app/api/v1/pipeline.py``. Submodules must not import
 ``app.api.v1.pipeline`` (circular import).
 """
+
 import importlib.metadata as importlib_metadata
 from collections.abc import Callable
 
@@ -143,9 +144,9 @@ def _magicpdf_backend_availability() -> tuple[bool, str | None]:
 
 _PARSER_BACKEND_CHECKS: dict[str, Callable[[], tuple[bool, str | None]]] = {
     "mineru": _mineru_backend_availability,
-    "deepdoc": lambda: (True, None)
-    if bool(getattr(settings, "DEEPDOC_ENABLED", False))
-    else (False, "Set DEEPDOC_ENABLED=true."),
+    "deepdoc": lambda: (
+        (True, None) if bool(getattr(settings, "DEEPDOC_ENABLED", False)) else (False, "Set DEEPDOC_ENABLED=true.")
+    ),
     "deepseek_ocr": _deepseek_ocr_backend_availability,
     "qianfan_ocr": _qianfan_ocr_backend_availability,
     "textin": _textin_backend_availability,
@@ -204,7 +205,10 @@ _MANUSCRIPT_CHUNK_STRATEGY_NOTE = (
 _CHUNK_STRATEGY_NOTES = {
     "auto": _AUTO_CHUNK_STRATEGY_NOTE,
     "manuscript": _MANUSCRIPT_CHUNK_STRATEGY_NOTE,
-    "pdf_layout": "PDF layout-aware chunking. Requires parsers that emit position tags like @@page\\tl\\tr\\tt\\tb##; strips tags from chunk text and records bbox/column metadata.",
+    "pdf_layout": (
+        "PDF layout-aware chunking. Requires parsers that emit position tags like "
+        "@@page\\tl\\tr\\tt\\tb##; strips tags from chunk text and records bbox/column metadata."
+    ),
     "outline": "Numbered-outline aware chunking (keeps section heading context).",
     "transcript": "Transcript/dialogue aware chunking (keeps speaker turns together).",
     "qa_pairs": "FAQ / Q&A aware chunking (keeps Q/A pairs together).",
@@ -217,7 +221,9 @@ _CHUNK_STRATEGY_NOTES = {
     "resume_structured": "Resume/CV section-aware chunking (splits by common resume headings).",
     "presentation_slides": "Slide-aware chunking (splits by separators/markers like '---' or 'Slide 1').",
     "csv_rows": "CSV row-aware chunking (groups 'row N:' blocks; best with CsvParser output).",
-    "spreadsheet_sheet": "Spreadsheet sheet-aware chunking (splits by '## Sheet:' sections; best with ExcelParser output).",
+    "spreadsheet_sheet": (
+        "Spreadsheet sheet-aware chunking (splits by '## Sheet:' sections; best with ExcelParser output)."
+    ),
     "markdown_table": "Markdown table-aware chunking (avoids splitting rows; splits large tables at row boundaries).",
     "chat_history": "Timestamped chat history chunking (keeps whole messages together with message-level overlap).",
     "changelog": "Changelog/release-notes aware chunking (splits by release headings like '## [1.2.3] - 2024-01-01').",
@@ -225,7 +231,9 @@ _CHUNK_STRATEGY_NOTES = {
     "subtitles": "Subtitles aware chunking (SRT/VTT-like; splits by timecode cues).",
     "api_reference": "API reference aware chunking (splits by endpoint signatures like 'GET /path').",
     "diff_patch": "Diff/patch aware chunking (splits by file blocks and @@ hunks).",
-    "git_commit_log": "Git commit-log aware chunking (splits by 'commit <sha>' blocks; preserves commit context even with patches).",
+    "git_commit_log": (
+        "Git commit-log aware chunking (splits by 'commit <sha>' blocks; preserves commit context even with patches)."
+    ),
     "kv_config": "Key-value config aware chunking (groups KEY=VALUE entries; supports INI sections).",
     "qa_markdown": "Markdown Q/A aware chunking (supports bullets/headings like '**Q:**' / '### Q:').",
     "meeting_minutes": "Meeting-minutes aware chunking (splits by common sections like agenda/actions/decisions).",
@@ -255,11 +263,21 @@ _CHUNK_STRATEGY_NOTES = {
     "makefile": "Makefile aware chunking (splits by target blocks and recipes).",
     "nginx_config": "Nginx config aware chunking (splits by server blocks; brace-aware).",
     "terraform_hcl": "Terraform/HCL block-aware chunking (splits by resource/module/variable blocks; brace-aware).",
-    "graphql_schema": "GraphQL schema aware chunking (splits by top-level type/input/enum/interface/union/scalar/directive/schema definitions).",
-    "proto_schema": "Protocol Buffers schema aware chunking (splits by message/enum/service blocks; brace-aware).",
-    "jira_ticket": "Jira/issue-ticket aware chunking (splits by common fields like Summary/Description/Steps/Expected/Actual).",
-    "prd_spec": "PRD/spec aware chunking (splits by common sections like Background/Goals/Scope/Requirements/Acceptance/Risks).",
-    "postmortem_report": "Incident postmortem/RCA aware chunking (splits by common sections like Summary/Impact/Timeline/Root Cause/Action Items).",
+    "graphql_schema": (
+        "GraphQL schema aware chunking (splits by top-level "
+        "type/input/enum/interface/union/scalar/directive/schema definitions)."
+    ),
+    "proto_schema": ("Protocol Buffers schema aware chunking (splits by message/enum/service blocks; brace-aware)."),
+    "jira_ticket": (
+        "Jira/issue-ticket aware chunking (splits by common fields like Summary/Description/Steps/Expected/Actual)."
+    ),
+    "prd_spec": (
+        "PRD/spec aware chunking (splits by common sections like Background/Goals/Scope/Requirements/Acceptance/Risks)."
+    ),
+    "postmortem_report": (
+        "Incident postmortem/RCA aware chunking (splits by common sections like "
+        "Summary/Impact/Timeline/Root Cause/Action Items)."
+    ),
     "jsonl_records": "JSONL/NDJSON record-aware chunking (groups whole JSON records per line; preserves offsets).",
     "markdown_frontmatter": "Markdown frontmatter aware chunking (keeps YAML frontmatter, then chunks the body).",
     "sentence_window": "Sentence window chunking with sentence-level overlap.",
@@ -275,13 +293,21 @@ def _llama_index_chunk_availability() -> tuple[bool, str | None]:
 
 def _integrated_pipeline_chunk_note() -> str:
     vision_enabled = bool(getattr(settings, "VISION_LLM_ENABLED", False))
-    vision_key_ok = bool(((getattr(settings, "VISION_LLM_API_KEY", "") or getattr(settings, "LLM_API_KEY", "") or "").strip()))
+    vision_key_ok = bool(
+        ((getattr(settings, "VISION_LLM_API_KEY", "") or getattr(settings, "LLM_API_KEY", "") or "").strip())
+    )
     vision_model = (getattr(settings, "VISION_LLM_MODEL", "") or "").strip()
     if vision_enabled and vision_key_ok:
         return f"Integrated pipeline (parse+chunk). Vision enrichment enabled (model={vision_model or 'configured'})."
     if vision_enabled and not vision_key_ok:
-        return "Integrated pipeline (parse+chunk). Vision enrichment enabled but missing API key (set MIMIRQ_VISION_LLM_API_KEY or LLM_API_KEY)."
-    return "Integrated pipeline (parse+chunk). Vision enrichment disabled by default (set MIMIRQ_VISION_LLM_ENABLED=true to enable)."
+        return (
+            "Integrated pipeline (parse+chunk). Vision enrichment enabled but missing API key "
+            "(set MIMIRQ_VISION_LLM_API_KEY or LLM_API_KEY)."
+        )
+    return (
+        "Integrated pipeline (parse+chunk). Vision enrichment disabled by default "
+        "(set MIMIRQ_VISION_LLM_ENABLED=true to enable)."
+    )
 
 
 def _pipeline_chunk_strategy_info(name: str) -> ChunkStrategyInfo:
@@ -294,4 +320,6 @@ def _pipeline_chunk_strategy_info(name: str) -> ChunkStrategyInfo:
         notes = _integrated_pipeline_chunk_note()
     elif strategy == "markdown":
         notes = "Alias of markdown_header."
-    return ChunkStrategyInfo(name=strategy, available=bool(available), notes=decorate_chunk_strategy_note(strategy, notes))
+    return ChunkStrategyInfo(
+        name=strategy, available=bool(available), notes=decorate_chunk_strategy_note(strategy, notes)
+    )

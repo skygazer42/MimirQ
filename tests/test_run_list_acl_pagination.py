@@ -135,15 +135,25 @@ def _build_runs() -> tuple[UUID, list[_FakeRun], set[UUID]]:
     allowed_dataset_ids = [uuid4(), uuid4()]
     base = datetime(2026, 1, 1, tzinfo=timezone.utc)
     runs = [
-        _FakeRun(id=uuid4(), tenant_id=tenant_id, dataset_id=blocked_dataset_ids[0], created_at=base + timedelta(minutes=4)),
-        _FakeRun(id=uuid4(), tenant_id=tenant_id, dataset_id=blocked_dataset_ids[1], created_at=base + timedelta(minutes=3)),
-        _FakeRun(id=uuid4(), tenant_id=tenant_id, dataset_id=allowed_dataset_ids[0], created_at=base + timedelta(minutes=2)),
-        _FakeRun(id=uuid4(), tenant_id=tenant_id, dataset_id=allowed_dataset_ids[1], created_at=base + timedelta(minutes=1)),
+        _FakeRun(
+            id=uuid4(), tenant_id=tenant_id, dataset_id=blocked_dataset_ids[0], created_at=base + timedelta(minutes=4)
+        ),
+        _FakeRun(
+            id=uuid4(), tenant_id=tenant_id, dataset_id=blocked_dataset_ids[1], created_at=base + timedelta(minutes=3)
+        ),
+        _FakeRun(
+            id=uuid4(), tenant_id=tenant_id, dataset_id=allowed_dataset_ids[0], created_at=base + timedelta(minutes=2)
+        ),
+        _FakeRun(
+            id=uuid4(), tenant_id=tenant_id, dataset_id=allowed_dataset_ids[1], created_at=base + timedelta(minutes=1)
+        ),
     ]
     return tenant_id, runs, set(allowed_dataset_ids)
 
 
-def _install_acl_guards(monkeypatch: pytest.MonkeyPatch, *, dataset_service, allowed_dataset_ids: set[UUID]) -> dict[str, int]:
+def _install_acl_guards(
+    monkeypatch: pytest.MonkeyPatch, *, dataset_service, allowed_dataset_ids: set[UUID]
+) -> dict[str, int]:
     calls = {"get_dataset": 0, "assert_dataset_writable": 0}
 
     monkeypatch.setattr(dataset_service, "ensure_member", lambda *_args, **_kwargs: _TenantMember(), raising=True)
@@ -166,7 +176,9 @@ def _install_acl_guards(monkeypatch: pytest.MonkeyPatch, *, dataset_service, all
 def test_list_ingestion_runs_applies_acl_before_count_and_pagination(monkeypatch: pytest.MonkeyPatch) -> None:
     tenant_id, runs, allowed_dataset_ids = _build_runs()
     db = _FakeSession(query=_FakeQuery(runs=runs))
-    calls = _install_acl_guards(monkeypatch, dataset_service=ingestion_runs_module.DatasetService, allowed_dataset_ids=allowed_dataset_ids)
+    calls = _install_acl_guards(
+        monkeypatch, dataset_service=ingestion_runs_module.DatasetService, allowed_dataset_ids=allowed_dataset_ids
+    )
     monkeypatch.setattr(
         ingestion_runs_module,
         "_writable_dataset_ids_subquery",
@@ -301,13 +313,16 @@ def test_writable_dataset_subquery_executes_real_acl_policy(subquery_factory) ->
 
     with engine.begin() as conn:
         conn.exec_driver_sql(
-            "CREATE TABLE datasets (id UUID PRIMARY KEY, tenant_id UUID NOT NULL, permission TEXT NOT NULL, owner_id TEXT)"
+            "CREATE TABLE datasets (id UUID PRIMARY KEY, tenant_id UUID NOT NULL, "
+            "permission TEXT NOT NULL, owner_id TEXT)"
         )
         conn.exec_driver_sql(
-            "CREATE TABLE dataset_permissions (tenant_id UUID NOT NULL, dataset_id UUID NOT NULL, account_id TEXT NOT NULL)"
+            "CREATE TABLE dataset_permissions (tenant_id UUID NOT NULL, "
+            "dataset_id UUID NOT NULL, account_id TEXT NOT NULL)"
         )
         conn.exec_driver_sql(
-            "CREATE TABLE dataset_group_permissions (tenant_id UUID NOT NULL, dataset_id UUID NOT NULL, group_id UUID NOT NULL)"
+            "CREATE TABLE dataset_group_permissions (tenant_id UUID NOT NULL, "
+            "dataset_id UUID NOT NULL, group_id UUID NOT NULL)"
         )
         conn.exec_driver_sql(
             "CREATE TABLE tenant_group_members (tenant_id UUID NOT NULL, group_id UUID NOT NULL, user_id TEXT NOT NULL)"
@@ -324,7 +339,10 @@ def test_writable_dataset_subquery_executes_real_acl_policy(subquery_factory) ->
         ]
         conn.exec_driver_sql(
             "INSERT INTO datasets (id, tenant_id, permission, owner_id) VALUES (?, ?, ?, ?)",
-            [(dataset_id.hex, row_tenant_id.hex, permission.name, owner_id) for dataset_id, row_tenant_id, permission, owner_id in rows],
+            [
+                (dataset_id.hex, row_tenant_id.hex, permission.name, owner_id)
+                for dataset_id, row_tenant_id, permission, owner_id in rows
+            ],
         )
         conn.exec_driver_sql(
             "INSERT INTO dataset_permissions (tenant_id, dataset_id, account_id) VALUES (?, ?, ?)",

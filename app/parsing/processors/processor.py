@@ -1,6 +1,7 @@
 """
 Document processing service - core processing flow.
 """
+
 import asyncio
 import base64
 import datetime as dt
@@ -203,8 +204,8 @@ from app.types.pipeline import PipelineEffective
 logger = get_logger("parsing.document_processor")
 RetryCleanupStatus = Literal["applied", "deferred", "invalid"]
 
-LOG_DOC_ID_FMT = '%s document_id=%s'
-AUDIT_ACTION_DOCUMENT_QUARANTINE = 'document.quarantine'
+LOG_DOC_ID_FMT = "%s document_id=%s"
+AUDIT_ACTION_DOCUMENT_QUARANTINE = "document.quarantine"
 
 _parsed_checkpoint_is_reusable = parsed_checkpoint_is_reusable
 _indexed_checkpoint_is_reusable = indexed_checkpoint_is_reusable
@@ -256,13 +257,17 @@ class IndexStage:
                 )
             )
 
-        persist_result = Indexer(db).upsert(
-            tenant_id=tenant_id,
-            records=records,
-            default_source=str(default_source or "").strip() or str(file_path.name),
-            commit=False,
-            options=options,
-        ).chunk_result
+        persist_result = (
+            Indexer(db)
+            .upsert(
+                tenant_id=tenant_id,
+                records=records,
+                default_source=str(default_source or "").strip() or str(file_path.name),
+                commit=False,
+                options=options,
+            )
+            .chunk_result
+        )
         if persist_result is None:
             raise RuntimeError("Chunk indexing returned no result")
         return IndexResult(
@@ -459,9 +464,15 @@ class DocumentProcessorService:
                 document_id=document_id,
                 error=e,
                 with_stage_durations=runtime_state.get("with_stage_durations", lambda meta: dict(meta or {})),
-                resolved_backend=(runtime_state.get("parse_state").resolved_backend if runtime_state.get("parse_state") is not None else None),
+                resolved_backend=(
+                    runtime_state.get("parse_state").resolved_backend
+                    if runtime_state.get("parse_state") is not None
+                    else None
+                ),
                 resolved_chunk_strategy=(
-                    runtime_state.get("parse_state").resolved_chunk_strategy if runtime_state.get("parse_state") is not None else None
+                    runtime_state.get("parse_state").resolved_chunk_strategy
+                    if runtime_state.get("parse_state") is not None
+                    else None
                 ),
             )
         except Exception as e:
@@ -595,14 +606,7 @@ class DocumentProcessorService:
             logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
 
     async def _update_status(
-        self,
-        db: Session,
-        tenant_id: UUID,
-        document_id: UUID,
-        status: str,
-        progress: int,
-        stage: str,
-        **kwargs
+        self, db: Session, tenant_id: UUID, document_id: UUID, status: str, progress: int, stage: str, **kwargs
     ):
         """Update document processing status."""
         await asyncio.sleep(0)
@@ -626,10 +630,14 @@ class DocumentProcessorService:
             status_norm = str(status or "").strip().lower()
             failed_stage_hint = kwargs.pop("failed_stage", None)
             error_code_hint = kwargs.pop("error_code", None)
-            criticality = str(
-                kwargs.pop("ingestion_run_criticality", None)
-                or resolve_ingestion_run_update_criticality(db_doc, status_norm=status_norm)
-            ).strip().lower()
+            criticality = (
+                str(
+                    kwargs.pop("ingestion_run_criticality", None)
+                    or resolve_ingestion_run_update_criticality(db_doc, status_norm=status_norm)
+                )
+                .strip()
+                .lower()
+            )
             self._apply_status_update_fields(
                 db_doc,
                 status=status,
@@ -756,18 +764,17 @@ class DocumentProcessorService:
             logger.warning("Failed to rebuild BM25 index: %s", e)
 
     def _record_processing_metadata(
-        self,
-        db: Session,
-        tenant_id: UUID,
-        document_id: UUID,
-        parser_backend: str,
-        chunk_strategy: str
+        self, db: Session, tenant_id: UUID, document_id: UUID, parser_backend: str, chunk_strategy: str
     ):
         """Ensure document metadata records the final parser selection."""
-        db_doc = db.query(DBDocument).filter(
-            DBDocument.id == document_id,
-            DBDocument.tenant_id == tenant_id,
-        ).first()
+        db_doc = (
+            db.query(DBDocument)
+            .filter(
+                DBDocument.id == document_id,
+                DBDocument.tenant_id == tenant_id,
+            )
+            .first()
+        )
 
         if not db_doc:
             return
@@ -941,7 +948,11 @@ class DocumentProcessorService:
                 db.commit()
                 db.refresh(db_document)
         except Exception as exc:  # noqa: BLE001
-            logger.info("Failed to persist parsed table_store metadata (ignored): %s document_id=%s", str(exc)[:200], db_document.id)
+            logger.info(
+                "Failed to persist parsed table_store metadata (ignored): %s document_id=%s",
+                str(exc)[:200],
+                db_document.id,
+            )
 
     def _import_parsed_markdown_tables_to_store(
         self,
@@ -1116,7 +1127,19 @@ class DocumentProcessorService:
                 path = Path(raw).resolve(strict=False)
                 if not path.exists():
                     continue
-                if not any(p in path.parts for p in {".magicpdf", ".deepseek_ocr", ".qianfan_ocr", ".etl4llm", ".marker", ".paddlevl", ".olmocr", MIMIRQ_PARSE_DIRNAME}):
+                if not any(
+                    p in path.parts
+                    for p in {
+                        ".magicpdf",
+                        ".deepseek_ocr",
+                        ".qianfan_ocr",
+                        ".etl4llm",
+                        ".marker",
+                        ".paddlevl",
+                        ".olmocr",
+                        MIMIRQ_PARSE_DIRNAME,
+                    }
+                ):
                     continue
                 # Safety: only delete within this tenant's upload directory.
                 path.relative_to(tenant_root)
@@ -1127,7 +1150,7 @@ class DocumentProcessorService:
             try:
                 shutil.rmtree(path, ignore_errors=True)
             except Exception as exc:
-                _log_processor_fallback('_cleanup_parser_artifacts', exc)
+                _log_processor_fallback("_cleanup_parser_artifacts", exc)
                 # Best-effort only.
 
     def _record_pipeline_effective(
@@ -1138,10 +1161,14 @@ class DocumentProcessorService:
         effective: PipelineEffective,
     ) -> None:
         """Persist effective pipeline settings on the document metadata."""
-        db_doc = db.query(DBDocument).filter(
-            DBDocument.id == document_id,
-            DBDocument.tenant_id == tenant_id,
-        ).first()
+        db_doc = (
+            db.query(DBDocument)
+            .filter(
+                DBDocument.id == document_id,
+                DBDocument.tenant_id == tenant_id,
+            )
+            .first()
+        )
 
         if not db_doc:
             return
@@ -1216,6 +1243,7 @@ class DocumentProcessorService:
         - original_markdown_content: parsed output after normalize stage (pre-governance)
         - markdown_content: parsed output after governance cleaning
         """
+
         def _truncate(text: str) -> tuple[str, bool, int, int]:
             raw = text or ""
             raw_len = len(raw)
@@ -1253,8 +1281,16 @@ class DocumentProcessorService:
         return {
             "enabled": True,
             "max_chars": int(max_chars_eff),
-            "original": {"raw_len": int(orig_raw_len), "stored_len": int(orig_stored_len), "truncated": bool(orig_is_trunc)},
-            "cleaned": {"raw_len": int(clean_raw_len), "stored_len": int(clean_stored_len), "truncated": bool(clean_is_trunc)},
+            "original": {
+                "raw_len": int(orig_raw_len),
+                "stored_len": int(orig_stored_len),
+                "truncated": bool(orig_is_trunc),
+            },
+            "cleaned": {
+                "raw_len": int(clean_raw_len),
+                "stored_len": int(clean_stored_len),
+                "truncated": bool(clean_is_trunc),
+            },
         }
 
     def _build_governance_audit_metadata_patch(
@@ -1280,10 +1316,18 @@ class DocumentProcessorService:
             "governance_char_stats": {
                 "original_chars": int(max(0, original_chars)),
                 "cleaned_chars": int(max(0, cleaned_chars)),
-                "reduction_pct": int(max(0, min(100, _governance_reduction_pct(
-                    original_chars=original_chars,
-                    cleaned_chars=cleaned_chars,
-                )))),
+                "reduction_pct": int(
+                    max(
+                        0,
+                        min(
+                            100,
+                            _governance_reduction_pct(
+                                original_chars=original_chars,
+                                cleaned_chars=cleaned_chars,
+                            ),
+                        ),
+                    )
+                ),
             }
         }
 
@@ -1306,17 +1350,23 @@ class DocumentProcessorService:
         audit_patch: dict[str, Any] | None = None,
     ) -> None:
         """Persist governance stats on the document metadata."""
-        db_doc = db.query(DBDocument).filter(
-            DBDocument.id == document_id,
-            DBDocument.tenant_id == tenant_id,
-        ).first()
+        db_doc = (
+            db.query(DBDocument)
+            .filter(
+                DBDocument.id == document_id,
+                DBDocument.tenant_id == tenant_id,
+            )
+            .first()
+        )
 
         if not db_doc:
             return
 
         metadata = dict(db_doc.doc_metadata or {})
         metadata["governance_enabled"] = True
-        metadata["governance_version"] = str(getattr(stats, "version", None) or metadata.get("governance_version") or "1")
+        metadata["governance_version"] = str(
+            getattr(stats, "version", None) or metadata.get("governance_version") or "1"
+        )
         metadata["governance_documents"] = int(stats.documents)
         metadata["governance_changed_documents"] = int(stats.changed)
         metadata["governance_rules_applied"] = int(stats.applied_rules)
@@ -1457,7 +1507,9 @@ class DocumentProcessorService:
         return "\n\n".join(text_parts).strip()
 
     @staticmethod
-    def _collect_llm_auto_tagging_values(result: Any, *, max_items: int) -> tuple[list[str], list[str], list[dict[str, Any]]]:
+    def _collect_llm_auto_tagging_values(
+        result: Any, *, max_items: int
+    ) -> tuple[list[str], list[str], list[dict[str, Any]]]:
         tag_values: list[str] = []
         keyword_values: list[str] = []
         structured_tags: list[dict[str, Any]] = []
@@ -1484,7 +1536,9 @@ class DocumentProcessorService:
         max_items: int,
     ) -> dict[str, Any]:
         meta = dict(first.metadata or {})
-        existing_tags = [str(x).strip() for x in (meta.get("document_tags") or []) if isinstance(x, str) and str(x).strip()]
+        existing_tags = [
+            str(x).strip() for x in (meta.get("document_tags") or []) if isinstance(x, str) and str(x).strip()
+        ]
         existing_keywords = [
             str(x).strip() for x in (meta.get("document_keywords") or []) if isinstance(x, str) and str(x).strip()
         ]
@@ -1526,7 +1580,7 @@ class DocumentProcessorService:
 
             result = await extract_llm_tags(text=source_text, max_chars=max_chars, max_items=max_items)
         except Exception as exc:  # noqa: BLE001
-            _log_processor_fallback('_apply_llm_auto_tagging', exc)
+            _log_processor_fallback("_apply_llm_auto_tagging", exc)
             return {"enabled": True, "used": False, "error": str(exc)[:160]}
 
         tag_values, keyword_values, structured_tags = self._collect_llm_auto_tagging_values(
@@ -1556,11 +1610,7 @@ class DocumentProcessorService:
         if not items:
             return
 
-        db_doc = (
-            db.query(DBDocument)
-            .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-            .first()
-        )
+        db_doc = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
         if not db_doc:
             return
 
@@ -1613,11 +1663,7 @@ class DocumentProcessorService:
         selected_counts: dict[str, int],
     ) -> None:
         """Persist auto-chunk selection stats on the document metadata."""
-        db_doc = (
-            db.query(DBDocument)
-            .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-            .first()
-        )
+        db_doc = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
         if not db_doc:
             return
         metadata = dict(db_doc.doc_metadata or {})
@@ -1637,11 +1683,7 @@ class DocumentProcessorService:
         stats: ChunkPostprocessStats,
     ) -> None:
         """Persist chunk postprocessing stats (dedup/truncation) on the document metadata."""
-        db_doc = (
-            db.query(DBDocument)
-            .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-            .first()
-        )
+        db_doc = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
         if not db_doc:
             return
 
@@ -1722,7 +1764,9 @@ class DocumentProcessorService:
         compute_chunk_quality_gate: Any,
     ) -> tuple[dict[str, object] | None, list[str], list[dict[str, object]]]:
         try:
-            effective = metadata.get("pipeline_effective") if isinstance(metadata.get("pipeline_effective"), dict) else {}
+            effective = (
+                metadata.get("pipeline_effective") if isinstance(metadata.get("pipeline_effective"), dict) else {}
+            )
             gate_raw, recs_raw, patches_raw = compute_chunk_quality_gate(
                 stats=DocumentProcessorService._chunk_quality_gate_inputs(stats=stats, coverage=coverage),
                 total_chunks=int(chunks_count),
@@ -1738,7 +1782,7 @@ class DocumentProcessorService:
             patches = [p for p in (patches_raw or []) if isinstance(p, dict)]
             return gate, recs, patches
         except Exception as exc:
-            _log_processor_fallback('_record_chunking_stats_metadata', exc)
+            _log_processor_fallback("_record_chunking_stats_metadata", exc)
             return None, [], []
 
     @staticmethod
@@ -1785,11 +1829,7 @@ class DocumentProcessorService:
         if not chunks:
             return
 
-        db_doc = (
-            db.query(DBDocument)
-            .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-            .first()
-        )
+        db_doc = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
         if not db_doc:
             return
 
@@ -1853,11 +1893,7 @@ class DocumentProcessorService:
         if not img_ids:
             return
 
-        db_doc = (
-            db.query(DBDocument)
-            .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-            .first()
-        )
+        db_doc = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
         if not db_doc:
             return
 
@@ -1966,7 +2002,7 @@ class DocumentProcessorService:
         try:
             path_obj.relative_to(base_dir_resolved)
         except Exception as exc:
-            _log_processor_fallback('_upload_inline_images_to_minio', exc)
+            _log_processor_fallback("_upload_inline_images_to_minio", exc)
             return None
         return path_obj
 
@@ -2006,7 +2042,7 @@ class DocumentProcessorService:
             if path_obj.stat().st_size > max_image_bytes:
                 return None
         except Exception as exc:
-            _log_processor_fallback('_upload_inline_images_to_minio', exc)
+            _log_processor_fallback("_upload_inline_images_to_minio", exc)
             return None
         return path_obj.read_bytes()
 
@@ -2199,7 +2235,11 @@ class DocumentProcessorService:
             max_image_bytes=max_image_bytes,
         )
 
-        return self._rewrite_inline_image_refs(markdown_text, replacements=replacements, patterns=patterns), new_ids, idx
+        return (
+            self._rewrite_inline_image_refs(markdown_text, replacements=replacements, patterns=patterns),
+            new_ids,
+            idx,
+        )
 
     def _integrated_chunk_file(self, file_path: Path, strategy: str):
         """
@@ -2217,7 +2257,11 @@ class DocumentProcessorService:
             text = item.get("content_with_weight") or item.get("text") or ""
             if not text:
                 continue
-            meta = {k: v for k, v in item.items() if k not in {"content_with_weight", "text", "content_ltks", "content_sm_ltks"}}
+            meta = {
+                k: v
+                for k, v in item.items()
+                if k not in {"content_with_weight", "text", "content_ltks", "content_sm_ltks"}
+            }
             documents.append(Document(page_content=text, metadata=meta))
 
         return documents
@@ -2259,7 +2303,7 @@ class DocumentProcessorService:
             candidate = Path(raw_path.strip()).resolve(strict=False)
             candidate.relative_to(tenant_root)
         except Exception as exc:
-            _log_processor_fallback('_extract_and_upload_image_to_minio', exc)
+            _log_processor_fallback("_extract_and_upload_image_to_minio", exc)
             return None
         if not candidate.exists() or not candidate.is_file():
             return None
@@ -2280,7 +2324,7 @@ class DocumentProcessorService:
         try:
             size = int(path.stat().st_size)
         except Exception as exc:
-            _log_processor_fallback('_extract_and_upload_image_to_minio', exc)
+            _log_processor_fallback("_extract_and_upload_image_to_minio", exc)
             size = 0
         return size <= max_bytes
 
@@ -2309,7 +2353,7 @@ class DocumentProcessorService:
         try:
             return candidate, candidate.read_bytes(), "image_path"
         except Exception as exc:
-            _log_processor_fallback('_extract_and_upload_image_to_minio', exc)
+            _log_processor_fallback("_extract_and_upload_image_to_minio", exc)
             metadata.pop("image_path", None)
             return None, None, None
 
@@ -2504,7 +2548,7 @@ class DocumentProcessorService:
         try:
             binary = base64.b64decode(b64_data)
         except Exception as exc:
-            _log_processor_fallback('_extract_and_save_image', exc)
+            _log_processor_fallback("_extract_and_save_image", exc)
             return None
 
         image_id = hashlib.sha256(binary).hexdigest()[:32]

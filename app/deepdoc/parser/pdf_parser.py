@@ -78,7 +78,8 @@ RULES:
 4. Transcribe content word-for-word. Do NOT modify, translate, or omit any content.
 5. Do NOT explain Markdown or mention that you are using Markdown.
 6. Do NOT wrap the output in ```markdown or ``` blocks.
-7. Only apply Markdown structure to headings, paragraphs, lists, and tables, strictly based on the layout of the image. Do NOT create tables unless an actual table exists in the image.
+7. Only apply Markdown structure to headings, paragraphs, lists, and tables, \
+strictly based on the layout of the image. Do NOT create tables unless an actual table exists in the image.
 8. Preserve the original language, information, and order exactly as shown in the image.
 """
 
@@ -125,16 +126,14 @@ def get_default_resource_dir():
     """
     Return the repo-bundled paragraph-concat model directory.
     """
-    resource_dir = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "../resources/models/xgboost")
-    )
+    resource_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../resources/models/xgboost"))
     return resource_dir
 
 
 def clean_markdown_block(text):
     stripped = text.strip()
     if stripped.lower().startswith("```markdown"):
-        stripped = stripped[len("```markdown"):].lstrip()
+        stripped = stripped[len("```markdown") :].lstrip()
     elif stripped.startswith("```"):
         stripped = stripped[3:].lstrip()
     if stripped.endswith("```"):
@@ -156,7 +155,7 @@ def picture_vision_llm_chunk(binary, vision_model, prompt=None, callback=None):
 
     try:
         img_binary = io.BytesIO()
-        img.save(img_binary, format='JPEG')
+        img.save(img_binary, format="JPEG")
         img_binary.seek(0)
 
         ans = clean_markdown_block(vision_model.describe_with_prompt(img_binary.read(), prompt))
@@ -231,7 +230,9 @@ class IntegratedPipelinePdfParser:
         self.parallel_limiter = self._build_ocr_parallel_limiters()
 
         if hasattr(self, "model_speciess"):
-            self.layouter = layout_cls("layout." + self.model_speciess)  # Initialize layout recognizer with specified model
+            self.layouter = layout_cls(
+                "layout." + self.model_speciess
+            )  # Initialize layout recognizer with specified model
         else:
             self.layouter = layout_cls("layout")  # Initialize layout recognizer with default model
         self.tbl_det = table_cls()  # Initialize table structure recognizer
@@ -241,6 +242,7 @@ class IntegratedPipelinePdfParser:
         if not LIGHTEN:
             try:
                 import torch
+
                 if torch.cuda.is_available():
                     self.updown_cnt_mdl.set_param({"device": "cuda"})  # Use GPU acceleration if CUDA is available
             except Exception:
@@ -254,7 +256,10 @@ class IntegratedPipelinePdfParser:
         except Exception as exc:
             self._updown_cnt_model_error = f"local={str(exc)[:200]}"
             logging.warning(
-                "IntegratedPipelinePdfParser paragraph-concat model unavailable; continuing with heuristic-only merging: %s",
+                (
+                    "IntegratedPipelinePdfParser paragraph-concat model unavailable; "
+                    "continuing with heuristic-only merging: %s"
+                ),
                 self._updown_cnt_model_error,
             )
             self.updown_cnt_mdl = None
@@ -288,14 +293,11 @@ class IntegratedPipelinePdfParser:
 
     # Calculate minimum distance between two boxes in x direction (may overlap)
     def _x_dis(self, a, b):
-        return min(abs(a["x1"] - b["x0"]), abs(a["x0"] - b["x1"]),
-                   abs(a["x0"] + a["x1"] - b["x0"] - b["x1"]) / 2)
+        return min(abs(a["x1"] - b["x0"]), abs(a["x0"] - b["x1"]), abs(a["x0"] + a["x1"] - b["x0"] - b["x1"]) / 2)
 
     # Calculate center point difference between two boxes in y direction
-    def _y_dis(
-            self, a, b):
-        return (
-                b["top"] + b["bottom"] - a["top"] - a["bottom"]) / 2
+    def _y_dis(self, a, b):
+        return (b["top"] + b["bottom"] - a["top"] - a["bottom"]) / 2
 
     # Check if text matches item numbering patterns (e.g., "Chapter X", "1.", "1.1.", etc.)
     def _match_proj(self, b):
@@ -332,7 +334,11 @@ class IntegratedPipelinePdfParser:
             bool(re.match(r"[A-Z]", up_text[-1])),
             bool(re.match(r"[a-z0-9]", up_text[-1])),
             bool(re.match(r"[0-9.%,-]+$", down_text)),
-            up_text.strip()[-2:] == down_text.strip()[-2:] if len(up_text.strip()) > 1 and len(down_text.strip()) > 1 else False,
+            (
+                up_text.strip()[-2:] == down_text.strip()[-2:]
+                if len(up_text.strip()) > 1 and len(down_text.strip()) > 1
+                else False
+            ),
         ]
 
     def _updown_layout_features(self, up, down, y_dis, h):
@@ -398,10 +404,13 @@ class IntegratedPipelinePdfParser:
         arr = sorted(arr, key=lambda r: (r["page_number"], r["x0"], r["top"]))
         for i in range(len(arr) - 1):
             for j in range(i, -1, -1):
-                # If x coordinate difference is less than threshold, current item's top is smaller (higher position), and on same page, swap positions
-                if abs(arr[j + 1]["x0"] - arr[j]["x0"]) < threashold\
-                        and arr[j + 1]["top"] < arr[j]["top"]\
-                        and arr[j + 1]["page_number"] == arr[j]["page_number"]:
+                # Swap same-page items when x values are close but the later item is
+                # visually higher on the page.
+                if (
+                    abs(arr[j + 1]["x0"] - arr[j]["x0"]) < threashold
+                    and arr[j + 1]["top"] < arr[j]["top"]
+                    and arr[j + 1]["page_number"] == arr[j]["page_number"]
+                ):
                     tmp = arr[j]
                     arr[j] = arr[j + 1]
                     arr[j + 1] = tmp
@@ -411,8 +420,12 @@ class IntegratedPipelinePdfParser:
         # Check if text object has color (mainly for determining if grayscale text is valid)
         if o.get("ncs", "") == "DeviceGray":
             # If both stroke color and fill color are white (1 means white)
-            if o["stroking_color"] and o["stroking_color"][0] == 1 and o["non_stroking_color"] and\
-                    o["non_stroking_color"][0] == 1:
+            if (
+                o["stroking_color"]
+                and o["stroking_color"][0] == 1
+                and o["non_stroking_color"]
+                and o["non_stroking_color"][0] == 1
+            ):
                 # If text is invalid placeholder characters, e.g., [a-zT_[]()-]
                 if re.match(r"[a-zT_\[\]\(\)-]+", o.get("text", "")):
                     return False
@@ -434,10 +447,10 @@ class IntegratedPipelinePdfParser:
         return imgs, pos, tbcnt
 
     def _restore_table_component(self, item, page_index, layout_index, offset, zoom):
-        item["x0"] = (item["x0"] + offset[0])
-        item["x1"] = (item["x1"] + offset[0])
-        item["top"] = (item["top"] + offset[1])
-        item["bottom"] = (item["bottom"] + offset[1])
+        item["x0"] = item["x0"] + offset[0]
+        item["x1"] = item["x1"] + offset[0]
+        item["top"] = item["top"] + offset[1]
+        item["bottom"] = item["bottom"] + offset[1]
         for n in ["x0", "x1", "top", "bottom"]:
             item[n] /= zoom
         item["top"] += self.page_cum_height[page_index]
@@ -450,8 +463,8 @@ class IntegratedPipelinePdfParser:
         tbcnt = np.cumsum(tbcnt)
         for page_index in range(len(tbcnt) - 1):
             page_components = []
-            poss = pos[tbcnt[page_index]: tbcnt[page_index + 1]]
-            for layout_index, tb_items in enumerate(recos[tbcnt[page_index]: tbcnt[page_index + 1]]):
+            poss = pos[tbcnt[page_index] : tbcnt[page_index + 1]]
+            for layout_index, tb_items in enumerate(recos[tbcnt[page_index] : tbcnt[page_index + 1]]):
                 page_components.extend(
                     self._restore_table_component(item, page_index, layout_index, poss[layout_index], zoom)
                     for item in tb_items
@@ -532,23 +545,27 @@ class IntegratedPipelinePdfParser:
             self._store_ocr_boxes(pagenum - 1, [])
             return []
         raw_boxes = [(line[0], line[1][0]) for line in raw_boxes]
-        return Recognizer.sort_y_firstly([
-            {
-                "x0": b[0][0] / zoom,
-                "x1": b[1][0] / zoom,
-                "top": b[0][1] / zoom,
-                "text": "",
-                "txt": t,
-                "bottom": b[-1][1] / zoom,
-                "page_number": pagenum
-            }
-            for b, t in raw_boxes if b[0][0] <= b[1][0] and b[0][1] <= b[-1][1]
-        ], self.mean_height[-1] / 3)
+        return Recognizer.sort_y_firstly(
+            [
+                {
+                    "x0": b[0][0] / zoom,
+                    "x1": b[1][0] / zoom,
+                    "top": b[0][1] / zoom,
+                    "text": "",
+                    "txt": t,
+                    "bottom": b[-1][1] / zoom,
+                    "page_number": pagenum,
+                }
+                for b, t in raw_boxes
+                if b[0][0] <= b[1][0] and b[0][1] <= b[-1][1]
+            ],
+            self.mean_height[-1] / 3,
+        )
 
     def _append_char_to_ocr_box(self, char, box):
         ch = char["bottom"] - char["top"]
         bh = box["bottom"] - box["top"]
-        if abs(ch - bh) / max(ch, bh) >= 0.7 and char["text"] != ' ':
+        if abs(ch - bh) / max(ch, bh) >= 0.7 and char["text"] != " ":
             return False
         if char["text"] == " " and box["text"]:
             if re.match(r"[0-9a-zA-Zа-яА-Я,.?;:!%]", box["text"][-1]):
@@ -570,8 +587,7 @@ class IntegratedPipelinePdfParser:
             if not b["text"]:
                 left, right, top, bott = b["x0"] * zoom, b["x1"] * zoom, b["top"] * zoom, b["bottom"] * zoom
                 b["box_image"] = self.ocr.get_rotate_crop_image(
-                    img_np,
-                    np.array([[left, top], [right, top], [right, bott], [left, bott]], dtype=np.float32)
+                    img_np, np.array([[left, top], [right, top], [right, bott], [left, bott]], dtype=np.float32)
                 )
                 boxes_to_reg.append(b)
             del b["txt"]
@@ -627,14 +643,11 @@ class IntegratedPipelinePdfParser:
         # Layout recognition: identify layout type (text, image, table, etc.) for each box
         if len(self.page_images) != len(self.boxes):
             raise RuntimeError("Layout recognition requires one box list per page image")
-        self.boxes, self.page_layout = self.layouter(
-            self.page_images, self.boxes, zoom, drop=drop)
+        self.boxes, self.page_layout = self.layouter(self.page_images, self.boxes, zoom, drop=drop)
         # Cumulative height offset: unify box y coordinates to global coordinates
         for i in range(len(self.boxes)):
-            self.boxes[i]["top"] +=\
-                self.page_cum_height[self.boxes[i]["page_number"] - 1]
-            self.boxes[i]["bottom"] +=\
-                self.page_cum_height[self.boxes[i]["page_number"] - 1]
+            self.boxes[i]["top"] += self.page_cum_height[self.boxes[i]["page_number"] - 1]
+            self.boxes[i]["bottom"] += self.page_cum_height[self.boxes[i]["page_number"] - 1]
 
     @staticmethod
     def _box_text_ends_with(box, txt):
@@ -682,7 +695,9 @@ class IntegratedPipelinePdfParser:
     def _should_merge_horizontal_pair(self, box, next_box, mean_height):
         if self._horizontal_merge_disallowed(box, next_box):
             return False
-        return self._same_row_mergeable(box, next_box, mean_height) or self._tight_row_mergeable(box, next_box, mean_height)
+        return self._same_row_mergeable(box, next_box, mean_height) or self._tight_row_mergeable(
+            box, next_box, mean_height
+        )
 
     def _text_merge(self):
         # Merge text boxes in the same row (horizontal merge)
@@ -702,16 +717,13 @@ class IntegratedPipelinePdfParser:
 
     # Simple vertical merge of text blocks: merge upper and lower text blocks into paragraphs
     def _naive_vertical_merge(self):
-        bxs = Recognizer.sort_y_firstly(
-            self.boxes, np.median(
-                self.mean_height) / 3)
+        bxs = Recognizer.sort_y_firstly(self.boxes, np.median(self.mean_height) / 3)
         i = 0
         while i + 1 < len(bxs):
             b = bxs[i]
             b_ = bxs[i + 1]
             # Remove page number rows and other useless info (page numbers typically occupy a single row)
-            if b["page_number"] < b_["page_number"] and re.match(
-                    r"[0-9 •一—-]+$", b["text"]):
+            if b["page_number"] < b_["page_number"] and re.match(r"[0-9 •一—-]+$", b["text"]):
                 bxs.pop(i)
                 continue
             if not b["text"].strip():
@@ -719,8 +731,7 @@ class IntegratedPipelinePdfParser:
                 continue
             concatting_feats = [
                 b["text"].strip()[-1] in ",;:'\"，、‘“；：-",
-                len(b["text"].strip()) > 1 and b["text"].strip(
-                )[-2] in ",;:'\"，‘“、；：",
+                len(b["text"].strip()) > 1 and b["text"].strip()[-2] in ",;:'\"，‘“、；：",
                 b_["text"].strip() and b_["text"].strip()[0] in "。；？！?”）),，、：",
             ]
             # features for not concating
@@ -728,21 +739,22 @@ class IntegratedPipelinePdfParser:
                 b.get("layoutno", 0) != b_.get("layoutno", 0),
                 b["text"].strip()[-1] in "。？！?",
                 self.is_english and b["text"].strip()[-1] in ".!?",
-                b["page_number"] == b_["page_number"] and b_["top"] -
-                b["bottom"] > self.mean_height[b["page_number"] - 1] * 1.5,
-                b["page_number"] < b_["page_number"] and abs(
-                    b["x0"] - b_["x0"]) > self.mean_width[b["page_number"] - 1] * 4,
+                b["page_number"] == b_["page_number"]
+                and b_["top"] - b["bottom"] > self.mean_height[b["page_number"] - 1] * 1.5,
+                b["page_number"] < b_["page_number"]
+                and abs(b["x0"] - b_["x0"]) > self.mean_width[b["page_number"] - 1] * 4,
             ]
             # split features
-            detach_feats = [b["x1"] < b_["x0"],
-                            b["x0"] > b_["x1"]]
+            detach_feats = [b["x1"] < b_["x0"], b["x0"] > b_["x1"]]
             if (any(feats) and not any(concatting_feats)) or any(detach_feats):
-                logging.debug("{} {} {} {}".format(
-                    b["text"],
-                    b_["text"],
-                    any(feats),
-                    any(concatting_feats),
-                ))
+                logging.debug(
+                    "{} {} {} {}".format(
+                        b["text"],
+                        b_["text"],
+                        any(feats),
+                        any(concatting_feats),
+                    )
+                )
                 i += 1
                 continue
             # merge up and down
@@ -966,10 +978,12 @@ class IntegratedPipelinePdfParser:
                 self.boxes.pop(i + 1)
                 continue
             # Merge current box content into next box
-            if b["text"].strip()[0] != b_["text"].strip()[0]\
-                    or b["text"].strip()[0].lower() in set("qwertyuopasdfghjklzxcvbnm")\
-                    or rag_tokenizer.is_chinese(b["text"].strip()[0])\
-                    or b["top"] > b_["bottom"]:
+            if (
+                b["text"].strip()[0] != b_["text"].strip()[0]
+                or b["text"].strip()[0].lower() in set("qwertyuopasdfghjklzxcvbnm")
+                or rag_tokenizer.is_chinese(b["text"].strip()[0])
+                or b["top"] > b_["bottom"]
+            ):
                 i += 1
                 continue
             b_["text"] = b["text"] + "\n" + b_["text"]
@@ -1134,10 +1148,21 @@ class IntegratedPipelinePdfParser:
         page_numbers = {b["page_number"] - 1 for b in boxes}
         if len(page_numbers) < 2:
             return self._crop_single_layout_group(boxes, layout_type, positions, zoom)
-        images = [self._crop_layout_group(arr, layout_type, positions, zoom) for _, arr in self._boxes_by_page_index(boxes)]
+        images = [
+            self._crop_layout_group(arr, layout_type, positions, zoom) for _, arr in self._boxes_by_page_index(boxes)
+        ]
         return self._compose_vertical_images(images)
 
-    def _append_figure_extracts(self, figures, zoom, separate_tables_figures, res, positions, figure_results, figure_positions):
+    def _append_figure_extracts(
+        self,
+        figures,
+        zoom,
+        separate_tables_figures,
+        res,
+        positions,
+        figure_results,
+        figure_positions,
+    ):
         for k, bxs in figures.items():
             txt = "\n".join([b["text"] for b in bxs])
             if not txt:
@@ -1156,8 +1181,7 @@ class IntegratedPipelinePdfParser:
         for k, bxs in tables.items():
             if not bxs:
                 continue
-            bxs = Recognizer.sort_y_firstly(bxs, np.mean(
-                [(b["bottom"] - b["top"]) / 2 for b in bxs]))
+            bxs = Recognizer.sort_y_firstly(bxs, np.mean([(b["bottom"] - b["top"]) / 2 for b in bxs]))
 
             poss = []
 
@@ -1170,12 +1194,22 @@ class IntegratedPipelinePdfParser:
             positions.append(poss)
 
     @staticmethod
-    def _format_extract_result(res, positions, figure_results, figure_positions, separate_tables_figures, need_position):
+    def _format_extract_result(
+        res,
+        positions,
+        figure_results,
+        figure_positions,
+        separate_tables_figures,
+        need_position,
+    ):
         if separate_tables_figures:
             if len(positions) + len(figure_positions) != len(res) + len(figure_results):
                 raise RuntimeError("Extracted table/figure positions must match result counts")
             if need_position:
-                return list(zip(res, positions, strict=False)), list(zip(figure_results, figure_positions, strict=False))
+                return (
+                    list(zip(res, positions, strict=False)),
+                    list(zip(figure_results, figure_positions, strict=False)),
+                )
             return res, figure_results
         if len(positions) != len(res):
             raise RuntimeError("Extracted positions must match result count")
@@ -1183,7 +1217,14 @@ class IntegratedPipelinePdfParser:
             return list(zip(res, positions, strict=False))
         return res
 
-    def _extract_table_figure(self, need_image, zoom, return_html, need_position, separate_tables_figures=False):
+    def _extract_table_figure(
+        self,
+        need_image,
+        zoom,
+        return_html,
+        need_position,
+        separate_tables_figures=False,
+    ):
         tables, figures, nomerge_lout_no = self._collect_table_figure_groups(need_image)
         self._merge_cross_page_tables(tables, nomerge_lout_no)
         self._attach_table_figure_captions(tables, figures)
@@ -1192,14 +1233,30 @@ class IntegratedPipelinePdfParser:
         positions = []
         figure_results = []
         figure_positions = []
-        self._append_figure_extracts(figures, zoom, separate_tables_figures, res, positions, figure_results, figure_positions)
+        self._append_figure_extracts(
+            figures,
+            zoom,
+            separate_tables_figures,
+            res,
+            positions,
+            figure_results,
+            figure_positions,
+        )
         self._append_table_extracts(tables, zoom, return_html, res, positions)
-        return self._format_extract_result(res, positions, figure_results, figure_positions, separate_tables_figures, need_position)
+        return self._format_extract_result(
+            res,
+            positions,
+            figure_results,
+            figure_positions,
+            separate_tables_figures,
+            need_position,
+        )
 
     def proj_match(self, line):
         if len(line) <= 2:
             return
-        # If the entire line contains only numbers, spaces, punctuation, etc., consider it not a structured heading, return False
+        # If the entire line contains only numbers, spaces, punctuation, etc.,
+        # consider it not a structured heading.
         if re.match(r"[0-9 ().,%+/-]+$", line):
             return False
         # Define a set of regex patterns and their corresponding labels for recognizing structured heading formats
@@ -1216,7 +1273,7 @@ class IntegratedPipelinePdfParser:
             (r"\d+）", 10),
             (r"[\(（]\d+[）\)]", 11),
             (r"[零一二三四五六七八九十百]+是", 12),
-            (r"[⚫•➢✓]", 12)
+            (r"[⚫•➢✓]", 12),
         ]:
             if re.match(p, line):
                 return j
@@ -1234,9 +1291,9 @@ class IntegratedPipelinePdfParser:
             if pn[-1] - 1 >= page_images_cnt:
                 return ""
 
-        return "@@{}\t{:.1f}\t{:.1f}\t{:.1f}\t{:.1f}##"\
-            .format("-".join([str(p) for p in pn]),
-                    bx["x0"], bx["x1"], top, bott)
+        return "@@{}\t{:.1f}\t{:.1f}\t{:.1f}\t{:.1f}##".format(
+            "-".join([str(p) for p in pn]), bx["x0"], bx["x1"], top, bott
+        )
 
     @staticmethod
     def _scrap_box_width(box):
@@ -1256,11 +1313,7 @@ class IntegratedPipelinePdfParser:
     def _scrap_scan_should_stop(self, line, box, has_major_project, mh):
         if (box["page_number"] - line["page_number"]) > 0:
             return True
-        return (
-            not has_major_project
-            and self._y_dis(line, box) >= 3 * mh
-            and self._scrap_box_height(line) < 1.5 * mh
-        )
+        return not has_major_project and self._y_dis(line, box) >= 3 * mh and self._scrap_box_height(line) < 1.5 * mh
 
     def _collect_scrap_lines(self, boxes, line, start, lines, widths, mh, pw, zoom):
         lines.append(line)
@@ -1308,8 +1361,7 @@ class IntegratedPipelinePdfParser:
     def total_page_number(fnm, binary=None):
         try:
             with sys.modules[LOCK_KEY_pdfplumber]:
-                pdf = pdfplumber.open(
-                    fnm) if not binary else pdfplumber.open(BytesIO(binary))
+                pdf = pdfplumber.open(fnm) if not binary else pdfplumber.open(BytesIO(binary))
             total_page = len(pdf.pages)
             pdf.close()
             return total_page
@@ -1330,17 +1382,21 @@ class IntegratedPipelinePdfParser:
         pdfplumber_pdf = None
         try:
             with sys.modules[LOCK_KEY_pdfplumber]:
-                pdfplumber_pdf = pdfplumber.open(fnm) if isinstance(
-                    fnm, str) else pdfplumber.open(BytesIO(fnm))
-                self.page_images = [p.to_image(resolution=72 * zoomin).annotated for i, p in
-                                    enumerate(pdfplumber_pdf.pages[page_from:page_to])]
+                pdfplumber_pdf = pdfplumber.open(fnm) if isinstance(fnm, str) else pdfplumber.open(BytesIO(fnm))
+                self.page_images = [
+                    p.to_image(resolution=72 * zoomin).annotated
+                    for i, p in enumerate(pdfplumber_pdf.pages[page_from:page_to])
+                ]
                 try:
-                    self.page_chars = [[c for c in page.dedupe_chars().chars if self._has_color(c)] for page in
-                                       pdfplumber_pdf.pages[page_from:page_to]]
+                    self.page_chars = [
+                        [c for c in page.dedupe_chars().chars if self._has_color(c)]
+                        for page in pdfplumber_pdf.pages[page_from:page_to]
+                    ]
                 except Exception as e:
                     logging.warning(f"Failed to extract characters for pages {page_from}-{page_to}: {str(e)}")
-                    self.page_chars = [[] for _ in
-                                       range(page_to - page_from)]  # If failed to extract, using empty list instead.
+                    self.page_chars = [
+                        [] for _ in range(page_to - page_from)
+                    ]  # If failed to extract, using empty list instead.
 
                 self.total_page = len(pdfplumber_pdf.pages)
                 self.boxes = [None for _ in self.page_images]
@@ -1366,7 +1422,7 @@ class IntegratedPipelinePdfParser:
         except Exception as e:
             logging.warning(f"Outlines exception: {e}")
         finally:
-            if hasattr(self.pdf, 'close'):
+            if hasattr(self.pdf, "close"):
                 self.pdf.close()
         if not self.outlines:
             logging.warning("Miss outlines")
@@ -1386,21 +1442,19 @@ class IntegratedPipelinePdfParser:
     def _insert_ocr_char_spaces(chars):
         j = 0
         while j + 1 < len(chars):
-            if chars[j]["text"] and chars[j + 1]["text"]\
-                    and re.match(r"[0-9a-zA-Z,.:;!%]+", chars[j]["text"] + chars[j + 1]["text"])\
-                    and chars[j + 1]["x0"] - chars[j]["x1"] >= min(chars[j + 1]["width"],
-                                                                   chars[j]["width"]) / 2:
+            if (
+                chars[j]["text"]
+                and chars[j + 1]["text"]
+                and re.match(r"[0-9a-zA-Z,.:;!%]+", chars[j]["text"] + chars[j + 1]["text"])
+                and chars[j + 1]["x0"] - chars[j]["x1"] >= min(chars[j + 1]["width"], chars[j]["width"]) / 2
+            ):
                 chars[j]["text"] += " "
             j += 1
 
     def _prepare_image_ocr_chars(self, index, img, zoomin):
         chars = self.page_chars[index] if not self.is_english else []
-        self.mean_height.append(
-            np.median(sorted([c["height"] for c in chars])) if chars else 0
-        )
-        self.mean_width.append(
-            np.median(sorted([c["width"] for c in chars])) if chars else 8
-        )
+        self.mean_height.append(np.median(sorted([c["height"] for c in chars])) if chars else 0)
+        self.mean_width.append(np.median(sorted([c["width"] for c in chars])) if chars else 8)
         self.page_cum_height.append(img.size[1] / zoomin)
         return chars
 
@@ -1456,8 +1510,7 @@ class IntegratedPipelinePdfParser:
             "".join([b["text"] for b in _evenly_sample(boxes, min(30, len(boxes)))]),
         )
 
-    def __images__(self, fnm, zoomin=3, page_from=0,
-                   page_to=299, callback=None):
+    def __images__(self, fnm, zoomin=3, page_from=0, page_to=299, callback=None):
         """
         Read PDF file into images;
         Extract characters, OCR results, header/footer structure for each page image;
@@ -1507,8 +1560,7 @@ class IntegratedPipelinePdfParser:
         self._text_merge()
         self._concat_downward()
         self._filter_forpages()
-        tbls = self._extract_table_figure(
-            need_image, zoomin, return_html, False)
+        tbls = self._extract_table_figure(need_image, zoomin, return_html, False)
         return self.__filterout_scraps(deepcopy(self.boxes), zoomin), tbls
 
     @staticmethod
@@ -1519,21 +1571,24 @@ class IntegratedPipelinePdfParser:
     def _parse_crop_positions(text):
         positions = []
         for tag in re.findall(r"@@[0-9-]+\t[0-9.\t]+##", text):
-            pn, left, right, top, bottom = tag.strip(
-                "#").strip("@").split("\t")
-            left, right, top, bottom = float(left), float(
-                right), float(top), float(bottom)
-            positions.append(([int(p) - 1 for p in pn.split("-")],
-                              left, right, top, bottom))
+            pn, left, right, top, bottom = tag.strip("#").strip("@").split("\t")
+            left, right, top, bottom = float(left), float(right), float(top), float(bottom)
+            positions.append(([int(p) - 1 for p in pn.split("-")], left, right, top, bottom))
         return positions
 
     def _add_crop_context_positions(self, positions, gap, zoom):
         pos = positions[0]
-        positions.insert(0, ([pos[0][0]], pos[1], pos[2], max(
-            0, pos[3] - 120), max(pos[3] - gap, 0)))
+        positions.insert(0, ([pos[0][0]], pos[1], pos[2], max(0, pos[3] - 120), max(pos[3] - gap, 0)))
         pos = positions[-1]
-        positions.append(([pos[0][-1]], pos[1], pos[2], min(self.page_images[pos[0][-1]].size[1] / zoom, pos[4] + gap),
-                          min(self.page_images[pos[0][-1]].size[1] / zoom, pos[4] + 120)))
+        positions.append(
+            (
+                [pos[0][-1]],
+                pos[1],
+                pos[2],
+                min(self.page_images[pos[0][-1]].size[1] / zoom, pos[4] + gap),
+                min(self.page_images[pos[0][-1]].size[1] / zoom, pos[4] + 120),
+            )
+        )
 
     def _append_crop_position_images(self, imgs, positions, pns, left, top, bottom, max_width, zoom, is_content):
         right = left + max_width
@@ -1541,43 +1596,37 @@ class IntegratedPipelinePdfParser:
         for pn in pns[1:]:
             bottom += self.page_images[pn - 1].size[1]
         imgs.append(
-            self.page_images[pns[0]].crop((left * zoom, top * zoom,
-                                           right *
-                                           zoom, min(
-                bottom, self.page_images[pns[0]].size[1])
-                                           ))
+            self.page_images[pns[0]].crop(
+                (left * zoom, top * zoom, right * zoom, min(bottom, self.page_images[pns[0]].size[1]))
+            )
         )
         if is_content:
-            positions.append((pns[0] + self.page_from, left, right, top, min(
-                bottom, self.page_images[pns[0]].size[1]) / zoom))
+            positions.append(
+                (pns[0] + self.page_from, left, right, top, min(bottom, self.page_images[pns[0]].size[1]) / zoom)
+            )
 
         bottom -= self.page_images[pns[0]].size[1]
         for pn in pns[1:]:
             imgs.append(
-                self.page_images[pn].crop((left * zoom, 0,
-                                           right * zoom,
-                                           min(bottom,
-                                               self.page_images[pn].size[1])
-                                           ))
+                self.page_images[pn].crop((left * zoom, 0, right * zoom, min(bottom, self.page_images[pn].size[1])))
             )
             if is_content:
-                positions.append((pn + self.page_from, left, right, 0, min(
-                    bottom, self.page_images[pn].size[1]) / zoom))
+                positions.append(
+                    (pn + self.page_from, left, right, 0, min(bottom, self.page_images[pn].size[1]) / zoom)
+                )
             bottom -= self.page_images[pn].size[1]
 
     @staticmethod
     def _dim_crop_context_image(img):
-        img = img.convert('RGBA')
-        overlay = Image.new('RGBA', img.size, (0, 0, 0, 0))
+        img = img.convert("RGBA")
+        overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
         overlay.putalpha(128)
         return Image.alpha_composite(img, overlay).convert("RGB")
 
     def _compose_crop_images(self, imgs, gap):
         height = int(sum(img.size[1] + gap for img in imgs))
         width = int(np.max([i.size[0] for i in imgs]))
-        pic = Image.new("RGB",
-                        (width, height),
-                        (245, 245, 245))
+        pic = Image.new("RGB", (width, height), (245, 245, 245))
         height = 0
         for ii, img in enumerate(imgs):
             if ii == 0 or ii + 1 == len(imgs):
@@ -1595,14 +1644,23 @@ class IntegratedPipelinePdfParser:
                 return None, None
             return
 
-        max_width = max(
-            np.max([right - left for (_, left, right, _, _) in poss]), 6)
+        max_width = max(np.max([right - left for (_, left, right, _, _) in poss]), 6)
         GAP = 6
         self._add_crop_context_positions(poss, GAP, zoom)
 
         positions = []
         for ii, (pns, left, _right, top, bottom) in enumerate(poss):
-            self._append_crop_position_images(imgs, positions, pns, left, top, bottom, max_width, zoom, 0 < ii < len(poss) - 1)
+            self._append_crop_position_images(
+                imgs,
+                positions,
+                pns,
+                left,
+                top,
+                bottom,
+                max_width,
+                zoom,
+                0 < ii < len(poss) - 1,
+            )
 
         if not imgs:
             if need_position:
@@ -1619,14 +1677,12 @@ class IntegratedPipelinePdfParser:
         pn = bx["page_number"]
         top = bx["top"] - self.page_cum_height[pn - 1]
         bott = bx["bottom"] - self.page_cum_height[pn - 1]
-        poss.append((pn, bx["x0"], bx["x1"], top, min(
-            bott, self.page_images[pn - 1].size[1] / zoom)))
+        poss.append((pn, bx["x0"], bx["x1"], top, min(bott, self.page_images[pn - 1].size[1] / zoom)))
         while bott * zoom > self.page_images[pn - 1].size[1]:
             bott -= self.page_images[pn - 1].size[1] / zoom
             top = 0
             pn += 1
-            poss.append((pn, bx["x0"], bx["x1"], top, min(
-                bott, self.page_images[pn - 1].size[1] / zoom)))
+            poss.append((pn, bx["x0"], bx["x1"], top, min(bott, self.page_images[pn - 1].size[1] / zoom)))
         return poss
 
 
@@ -1636,9 +1692,7 @@ class PlainParser:
         self.outlines = []
         lines = []
         try:
-            self.pdf = pdf2_read(
-                filename if isinstance(
-                    filename, str) else BytesIO(filename))
+            self.pdf = pdf2_read(filename if isinstance(filename, str) else BytesIO(filename))
             for page in self.pdf.pages[from_page:to_page]:
                 lines.extend(list(page.extract_text().split("\n")))
 
@@ -1670,7 +1724,8 @@ class PlainParser:
         return txt or ""
 
 
-# Uses Vision Language Model (e.g., GPT-4V, BLIP-2, Qwen-VL, etc.) to directly analyze PDF page image content and extract document info, rather than traditional character-level, table structure, OCR approaches.
+# Uses a Vision Language Model to analyze PDF page images directly instead of
+# relying only on character-level, table-structure, or OCR-only pipelines.
 class VisionParser(IntegratedPipelinePdfParser):
     def __init__(self, vision_model, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1679,10 +1734,11 @@ class VisionParser(IntegratedPipelinePdfParser):
     def __images__(self, fnm, zoomin=3, page_from=0, page_to=299, callback=None):
         try:
             with sys.modules[LOCK_KEY_pdfplumber]:
-                self.pdf = pdfplumber.open(fnm) if isinstance(
-                    fnm, str) else pdfplumber.open(BytesIO(fnm))
-                self.page_images = [p.to_image(resolution=72 * zoomin).annotated for i, p in
-                                    enumerate(self.pdf.pages[page_from:page_to])]
+                self.pdf = pdfplumber.open(fnm) if isinstance(fnm, str) else pdfplumber.open(BytesIO(fnm))
+                self.page_images = [
+                    p.to_image(resolution=72 * zoomin).annotated
+                    for i, p in enumerate(self.pdf.pages[page_from:page_to])
+                ]
                 self.total_page = len(self.pdf.pages)
         except Exception:
             self.page_images = None

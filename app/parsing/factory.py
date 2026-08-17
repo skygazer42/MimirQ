@@ -21,59 +21,59 @@ from app.rag.core.logging import get_logger
 
 logger = get_logger("parsing.factory")
 
-DOCX_EXTENSION = '.docx'
-PPTX_EXTENSION = '.pptx'
-XLSX_EXTENSION = '.xlsx'
-HTML_EXTENSION = '.html'
-JSON_EXTENSION = '.json'
-EML_EXTENSION = '.eml'
-MSG_EXTENSION = '.msg'
-EPUB_EXTENSION = '.epub'
-RTF_EXTENSION = '.rtf'
-ODT_EXTENSION = '.odt'
-IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'}
-VIDEO_EXTENSIONS = {'.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v'}
-AUDIO_EXTENSIONS = {'.mp3', '.wav', '.m4a', '.aac', '.flac', '.ogg'}
+DOCX_EXTENSION = ".docx"
+PPTX_EXTENSION = ".pptx"
+XLSX_EXTENSION = ".xlsx"
+HTML_EXTENSION = ".html"
+JSON_EXTENSION = ".json"
+EML_EXTENSION = ".eml"
+MSG_EXTENSION = ".msg"
+EPUB_EXTENSION = ".epub"
+RTF_EXTENSION = ".rtf"
+ODT_EXTENSION = ".odt"
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
+AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"}
 SOURCE_CODE_EXTENSIONS = {
-    '.astro',
-    '.bash',
-    '.c',
-    '.cc',
-    '.cjs',
-    '.cpp',
-    '.cs',
-    '.css',
-    '.cts',
-    '.cxx',
-    '.go',
-    '.h',
-    '.hpp',
-    '.java',
-    '.js',
-    '.jsx',
-    '.kt',
-    '.kts',
-    '.less',
-    '.lua',
-    '.mjs',
-    '.mts',
-    '.php',
-    '.ps1',
-    '.py',
-    '.pyi',
-    '.r',
-    '.rb',
-    '.rs',
-    '.sass',
-    '.scala',
-    '.scss',
-    '.sh',
-    '.svelte',
-    '.swift',
-    '.ts',
-    '.tsx',
-    '.vue',
-    '.zsh',
+    ".astro",
+    ".bash",
+    ".c",
+    ".cc",
+    ".cjs",
+    ".cpp",
+    ".cs",
+    ".css",
+    ".cts",
+    ".cxx",
+    ".go",
+    ".h",
+    ".hpp",
+    ".java",
+    ".js",
+    ".jsx",
+    ".kt",
+    ".kts",
+    ".less",
+    ".lua",
+    ".mjs",
+    ".mts",
+    ".php",
+    ".ps1",
+    ".py",
+    ".pyi",
+    ".r",
+    ".rb",
+    ".rs",
+    ".sass",
+    ".scala",
+    ".scss",
+    ".sh",
+    ".svelte",
+    ".swift",
+    ".ts",
+    ".tsx",
+    ".vue",
+    ".zsh",
 }
 
 if TYPE_CHECKING:
@@ -109,20 +109,14 @@ class ParserFactory:
     """Select appropriate parser based on file type"""
 
     PDF_ADVANCED_FALLBACK_BACKENDS = {
-        family.canonical_name
-        for family in _USER_SELECTABLE_BACKEND_FAMILIES
-        if family.pdf_advanced_fallback
+        family.canonical_name for family in _USER_SELECTABLE_BACKEND_FAMILIES if family.pdf_advanced_fallback
     }
     DOCX_ADVANCED_FALLBACK_BACKENDS = {
-        family.canonical_name
-        for family in _USER_SELECTABLE_BACKEND_FAMILIES
-        if family.docx_advanced_fallback
+        family.canonical_name for family in _USER_SELECTABLE_BACKEND_FAMILIES if family.docx_advanced_fallback
     }
 
     SUPPORTED_PDF_BACKENDS = {
-        family.canonical_name
-        for family in _USER_SELECTABLE_BACKEND_FAMILIES
-        if family.supports_pdf
+        family.canonical_name for family in _USER_SELECTABLE_BACKEND_FAMILIES if family.supports_pdf
     }
     PLAIN_TEXT_EXTENSIONS = SOURCE_CODE_EXTENSIONS | {
         ".txt",
@@ -156,29 +150,33 @@ class ParserFactory:
         ".jsonl",
         ".ndjson",
     }
-    SUPPORTED_NON_PDF_EXTENSIONS = PLAIN_TEXT_EXTENSIONS | IMAGE_EXTENSIONS | VIDEO_EXTENSIONS | AUDIO_EXTENSIONS | {
-        ".doc",
-        DOCX_EXTENSION,
-        ".ppt",
-        PPTX_EXTENSION,
-        ".xls",
-        XLSX_EXTENSION,
-        ".csv",
-        HTML_EXTENSION,
-        ".htm",
-        JSON_EXTENSION,
-        EML_EXTENSION,
-        MSG_EXTENSION,
-        EPUB_EXTENSION,
-        RTF_EXTENSION,
-        ODT_EXTENSION,
-    }
+    SUPPORTED_NON_PDF_EXTENSIONS = (
+        PLAIN_TEXT_EXTENSIONS
+        | IMAGE_EXTENSIONS
+        | VIDEO_EXTENSIONS
+        | AUDIO_EXTENSIONS
+        | {
+            ".doc",
+            DOCX_EXTENSION,
+            ".ppt",
+            PPTX_EXTENSION,
+            ".xls",
+            XLSX_EXTENSION,
+            ".csv",
+            HTML_EXTENSION,
+            ".htm",
+            JSON_EXTENSION,
+            EML_EXTENSION,
+            MSG_EXTENSION,
+            EPUB_EXTENSION,
+            RTF_EXTENSION,
+            ODT_EXTENSION,
+        }
+    )
     # Non-PDF formats are primarily handled by general converters (MarkItDown/Pandoc),
     # but some advanced backends (e.g. DeepDoc/Docling) can also handle DOCX when enabled.
     SUPPORTED_NON_PDF_BACKENDS = {
-        family.canonical_name
-        for family in _USER_SELECTABLE_BACKEND_FAMILIES
-        if family.supports_non_pdf
+        family.canonical_name for family in _USER_SELECTABLE_BACKEND_FAMILIES if family.supports_non_pdf
     }
 
     PDF_SETTING_REQUIREMENTS = {
@@ -248,19 +246,46 @@ class ParserFactory:
     def _log_available_parsers(self) -> None:
         logger.debug("[pdf] Basic PyMuPDF parser available (lazy)")
         availability_logs = (
-            (self._settings_enabled("MARKER_ENABLED", "MARKER_API_URL"), "[pdf] Marker parser available (requires selection)"),
-            (self._settings_enabled("PADDLE_VL_ENABLED", "PADDLE_VL_API_URL"), "[pdf] PaddleOCR-VL parser available (requires selection)"),
-            (self._settings_enabled("GLM_OCR_ENABLED", "GLM_OCR_API_URL"), "[pdf] GLM-OCR parser available (requires selection)"),
-            (self._settings_enabled("OLMOCR_ENABLED", "OLMOCR_API_URL"), "[pdf] olmOCR parser available (requires selection)"),
-            (self._settings_enabled("QIANFAN_OCR_ENABLED", "QIANFAN_OCR_API_URL"), "[pdf] Qianfan-OCR parser available (requires selection)"),
-            (self._settings_enabled("TEXTIN_ENABLED", "TEXTIN_APP_ID", "TEXTIN_SECRET_CODE"), "[pdf] TextIn parser available (requires selection)"),
+            (
+                self._settings_enabled("MARKER_ENABLED", "MARKER_API_URL"),
+                "[pdf] Marker parser available (requires selection)",
+            ),
+            (
+                self._settings_enabled("PADDLE_VL_ENABLED", "PADDLE_VL_API_URL"),
+                "[pdf] PaddleOCR-VL parser available (requires selection)",
+            ),
+            (
+                self._settings_enabled("GLM_OCR_ENABLED", "GLM_OCR_API_URL"),
+                "[pdf] GLM-OCR parser available (requires selection)",
+            ),
+            (
+                self._settings_enabled("OLMOCR_ENABLED", "OLMOCR_API_URL"),
+                "[pdf] olmOCR parser available (requires selection)",
+            ),
+            (
+                self._settings_enabled("QIANFAN_OCR_ENABLED", "QIANFAN_OCR_API_URL"),
+                "[pdf] Qianfan-OCR parser available (requires selection)",
+            ),
+            (
+                self._settings_enabled("TEXTIN_ENABLED", "TEXTIN_APP_ID", "TEXTIN_SECRET_CODE"),
+                "[pdf] TextIn parser available (requires selection)",
+            ),
             (self._mineru_configured(), "[pdf] MinerU parser available (requires selection)"),
             (bool(settings.DEEPDOC_ENABLED), "[pdf] DeepDoc parser available (requires selection)"),
-            (self._settings_enabled("DEEPSEEK_OCR_ENABLED", "SILICONFLOW_API_KEY"), "[pdf] DeepSeek OCR parser available (requires selection)"),
-            (self._settings_enabled("ETL4LLM_ENABLED", "ETL4LLM_API_URL"), "[pdf] ETL4LLM parser available (requires selection)"),
+            (
+                self._settings_enabled("DEEPSEEK_OCR_ENABLED", "SILICONFLOW_API_KEY"),
+                "[pdf] DeepSeek OCR parser available (requires selection)",
+            ),
+            (
+                self._settings_enabled("ETL4LLM_ENABLED", "ETL4LLM_API_URL"),
+                "[pdf] ETL4LLM parser available (requires selection)",
+            ),
             (bool(settings.MARKITDOWN_ENABLED), "[pdf] MarkItDown parser available (requires selection)"),
             (bool(getattr(settings, "DOCLING_ENABLED", False)), "[pdf] Docling parser available (requires selection)"),
-            (bool(getattr(settings, "MAGIC_PDF_ENABLED", False)), "[pdf] MagicPDF parser available (requires selection)"),
+            (
+                bool(getattr(settings, "MAGIC_PDF_ENABLED", False)),
+                "[pdf] MagicPDF parser available (requires selection)",
+            ),
         )
         for available, message in availability_logs:
             if available:
@@ -300,8 +325,7 @@ class ParserFactory:
 
             cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
             return bool(
-                resolve_cli_command(cli)
-                and resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
+                resolve_cli_command(cli) and resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
             )
         except Exception as exc:
             logger.debug("MagicPDF runtime availability check failed: %s", exc)
@@ -316,7 +340,9 @@ class ParserFactory:
         file_ext = file_ext.lower()
 
         if file_ext != ".pdf":
-            return self._resolve_non_pdf_backend(file_ext=file_ext, backend=normalized, explicit_backend=explicit_backend)
+            return self._resolve_non_pdf_backend(
+                file_ext=file_ext, backend=normalized, explicit_backend=explicit_backend
+            )
         return self._resolve_pdf_backend(normalized)
 
     def _resolve_non_pdf_backend(self, *, file_ext: str, backend: str, explicit_backend: bool = True) -> str:
@@ -385,10 +411,7 @@ class ParserFactory:
             )
         self._validate_non_pdf_extension_rule(backend=backend, file_ext=file_ext)
         if backend == "docling" and not getattr(settings, "DOCLING_ENABLED", False):
-            raise ValueError(
-                "Docling parser is not enabled. "
-                "Please set DOCLING_ENABLED=True."
-            )
+            raise ValueError("Docling parser is not enabled. Please set DOCLING_ENABLED=True.")
 
     def _validate_non_pdf_extension_rule(self, *, backend: str, file_ext: str) -> None:
         rule = self.NON_PDF_BACKEND_EXTENSION_RULES.get(backend)
@@ -408,8 +431,7 @@ class ParserFactory:
     def _resolve_pdf_backend(self, backend: str) -> str:
         if backend not in self.SUPPORTED_PDF_BACKENDS:
             raise ValueError(
-                f"Unsupported parser backend '{backend}'. "
-                f"Supported backends: {sorted(self.SUPPORTED_PDF_BACKENDS)}"
+                f"Unsupported parser backend '{backend}'. Supported backends: {sorted(self.SUPPORTED_PDF_BACKENDS)}"
             )
         if backend == "auto":
             return self._resolve_auto_pdf_backend()
@@ -469,17 +491,11 @@ class ParserFactory:
     def _validate_docling_backend() -> None:
         if getattr(settings, "DOCLING_ENABLED", False):
             return
-        raise ValueError(
-            "Docling parser is not enabled. "
-            "Please set DOCLING_ENABLED=True."
-        )
+        raise ValueError("Docling parser is not enabled. Please set DOCLING_ENABLED=True.")
 
     def _validate_magicpdf_backend(self) -> None:
         if not getattr(settings, "MAGIC_PDF_ENABLED", False):
-            raise ValueError(
-                "MagicPDF parser is not enabled. "
-                "Please set MAGIC_PDF_ENABLED=True."
-            )
+            raise ValueError("MagicPDF parser is not enabled. Please set MAGIC_PDF_ENABLED=True.")
         if not self._magicpdf_runtime_ready():
             raise ValueError(
                 "MagicPDF parser is not available. "
@@ -588,7 +604,9 @@ class ParserFactory:
             doc.metadata = meta
 
     @staticmethod
-    def _successful_attempt(*, backend: str, started_at: float, documents: list[Document], selected: bool = True) -> dict[str, Any]:
+    def _successful_attempt(
+        *, backend: str, started_at: float, documents: list[Document], selected: bool = True
+    ) -> dict[str, Any]:
         return {
             "backend": backend,
             "ok": True,

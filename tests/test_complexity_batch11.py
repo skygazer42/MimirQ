@@ -564,13 +564,28 @@ def test_list_dataset_tables_filters_docs_and_audits_fls_masking(
     )
     audits: list[dict[str, object]] = []
 
-    monkeypatch.setattr(dataset_tables.DatasetService, "get_dataset", lambda *_a, **_k: SimpleNamespace(dataset_metadata={}), raising=True)
+    monkeypatch.setattr(
+        dataset_tables.DatasetService,
+        "get_dataset",
+        lambda *_a, **_k: SimpleNamespace(dataset_metadata={}),
+        raising=True,
+    )
     monkeypatch.setattr(dataset_tables.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(dataset_tables.DatasetService, "ensure_member", lambda *_a, **_k: SimpleNamespace(role="member"), raising=True)
-    monkeypatch.setattr(dataset_tables, "get_allowed_document_id_sets", lambda *_a, **_k: ({allowed_doc_id}, set()), raising=True)
-    monkeypatch.setattr(dataset_tables, "parse_fls_policy_from_metadata", lambda *_a, **_k: {"policy": True}, raising=True)
-    monkeypatch.setattr(dataset_tables, "build_fls_column_mask_map", lambda *_a, **_k: {"secret": "[MASK]"}, raising=True)
-    monkeypatch.setattr(dataset_tables, "redact_row_dicts", lambda rows, **_k: [{"secret": "[MASKED]"} for _ in rows], raising=True)
+    monkeypatch.setattr(
+        dataset_tables.DatasetService, "ensure_member", lambda *_a, **_k: SimpleNamespace(role="member"), raising=True
+    )
+    monkeypatch.setattr(
+        dataset_tables, "get_allowed_document_id_sets", lambda *_a, **_k: ({allowed_doc_id}, set()), raising=True
+    )
+    monkeypatch.setattr(
+        dataset_tables, "parse_fls_policy_from_metadata", lambda *_a, **_k: {"policy": True}, raising=True
+    )
+    monkeypatch.setattr(
+        dataset_tables, "build_fls_column_mask_map", lambda *_a, **_k: {"secret": "[MASK]"}, raising=True
+    )
+    monkeypatch.setattr(
+        dataset_tables, "redact_row_dicts", lambda rows, **_k: [{"secret": "[MASKED]"} for _ in rows], raising=True
+    )
     monkeypatch.setattr(dataset_tables, "_audit_fls_redaction", lambda **kwargs: audits.append(kwargs), raising=True)
 
     response = dataset_tables.list_dataset_tables(
@@ -614,13 +629,26 @@ def test_get_dataset_table_masks_sample_rows_for_matching_table(
     )
     audits: list[dict[str, object]] = []
 
-    monkeypatch.setattr(dataset_tables.DatasetService, "get_dataset", lambda *_a, **_k: SimpleNamespace(dataset_metadata={}), raising=True)
+    monkeypatch.setattr(
+        dataset_tables.DatasetService,
+        "get_dataset",
+        lambda *_a, **_k: SimpleNamespace(dataset_metadata={}),
+        raising=True,
+    )
     monkeypatch.setattr(dataset_tables.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(dataset_tables.DatasetService, "ensure_member", lambda *_a, **_k: SimpleNamespace(role="member"), raising=True)
+    monkeypatch.setattr(
+        dataset_tables.DatasetService, "ensure_member", lambda *_a, **_k: SimpleNamespace(role="member"), raising=True
+    )
     monkeypatch.setattr(dataset_tables, "filter_allowed_document_ids", lambda *_a, **_k: [document_id], raising=True)
-    monkeypatch.setattr(dataset_tables, "parse_fls_policy_from_metadata", lambda *_a, **_k: {"policy": True}, raising=True)
-    monkeypatch.setattr(dataset_tables, "build_fls_column_mask_map", lambda *_a, **_k: {"secret": "[MASK]"}, raising=True)
-    monkeypatch.setattr(dataset_tables, "redact_row_dicts", lambda rows, **_k: [{"secret": "[MASKED]"} for _ in rows], raising=True)
+    monkeypatch.setattr(
+        dataset_tables, "parse_fls_policy_from_metadata", lambda *_a, **_k: {"policy": True}, raising=True
+    )
+    monkeypatch.setattr(
+        dataset_tables, "build_fls_column_mask_map", lambda *_a, **_k: {"secret": "[MASK]"}, raising=True
+    )
+    monkeypatch.setattr(
+        dataset_tables, "redact_row_dicts", lambda rows, **_k: [{"secret": "[MASKED]"} for _ in rows], raising=True
+    )
     monkeypatch.setattr(dataset_tables, "_audit_fls_redaction", lambda **kwargs: audits.append(kwargs), raising=True)
 
     asset = dataset_tables.get_dataset_table(
@@ -668,13 +696,26 @@ def test_ask_dataset_table_masks_rows_before_answer_and_hides_sql(
     monkeypatch.setattr(dataset_tables, "tag_enabled", lambda: True, raising=True)
     monkeypatch.setattr(dataset_tables.settings, "LLM_API_KEY", "key", raising=False)
     monkeypatch.setattr(dataset_tables.settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", True, raising=False)
-    monkeypatch.setattr(dataset_tables.DatasetService, "get_dataset", lambda *_a, **_k: SimpleNamespace(dataset_metadata={}), raising=True)
+    monkeypatch.setattr(
+        dataset_tables.DatasetService,
+        "get_dataset",
+        lambda *_a, **_k: SimpleNamespace(dataset_metadata={}),
+        raising=True,
+    )
     monkeypatch.setattr(dataset_tables.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(dataset_tables.DatasetService, "ensure_member", lambda *_a, **_k: SimpleNamespace(role="member"), raising=True)
+    monkeypatch.setattr(
+        dataset_tables.DatasetService, "ensure_member", lambda *_a, **_k: SimpleNamespace(role="member"), raising=True
+    )
     monkeypatch.setattr(dataset_tables, "filter_allowed_document_ids", lambda *_a, **_k: [document_id], raising=True)
-    monkeypatch.setattr(dataset_tables, "parse_fls_policy_from_metadata", lambda *_a, **_k: {"policy": True}, raising=True)
-    monkeypatch.setattr(dataset_tables, "build_fls_column_mask_map", lambda *_a, **_k: {"secret": "[MASK]"}, raising=True)
-    monkeypatch.setattr(dataset_tables, "redact_row_lists", lambda rows, **_k: [["[MASKED]"] for _ in rows], raising=True)
+    monkeypatch.setattr(
+        dataset_tables, "parse_fls_policy_from_metadata", lambda *_a, **_k: {"policy": True}, raising=True
+    )
+    monkeypatch.setattr(
+        dataset_tables, "build_fls_column_mask_map", lambda *_a, **_k: {"secret": "[MASK]"}, raising=True
+    )
+    monkeypatch.setattr(
+        dataset_tables, "redact_row_lists", lambda rows, **_k: [["[MASKED]"] for _ in rows], raising=True
+    )
     monkeypatch.setattr(dataset_tables, "_audit_fls_redaction", lambda **_k: None, raising=True)
     monkeypatch.setattr(dataset_tables, "_audit_table_query", lambda **_k: None, raising=True)
     monkeypatch.setattr(
@@ -750,17 +791,34 @@ def test_lotus_sem_filter_dataset_table_fallback_runs_nl2sql_and_masks_rows(
 
     monkeypatch.setattr(dataset_tables.settings, "TABLE_LOTUS_ENABLED", True, raising=False)
     monkeypatch.setattr(dataset_tables.settings, "LLM_API_KEY", "key", raising=False)
-    monkeypatch.setattr(dataset_tables, "lotus_available", lambda: SimpleNamespace(ok=False, reason="missing"), raising=True)
+    monkeypatch.setattr(
+        dataset_tables, "lotus_available", lambda: SimpleNamespace(ok=False, reason="missing"), raising=True
+    )
     monkeypatch.setattr(dataset_tables, "tag_enabled", lambda: True, raising=True)
-    monkeypatch.setattr(dataset_tables.DatasetService, "get_dataset", lambda *_a, **_k: SimpleNamespace(dataset_metadata={}), raising=True)
+    monkeypatch.setattr(
+        dataset_tables.DatasetService,
+        "get_dataset",
+        lambda *_a, **_k: SimpleNamespace(dataset_metadata={}),
+        raising=True,
+    )
     monkeypatch.setattr(dataset_tables.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(dataset_tables.DatasetService, "ensure_member", lambda *_a, **_k: SimpleNamespace(role="member"), raising=True)
+    monkeypatch.setattr(
+        dataset_tables.DatasetService, "ensure_member", lambda *_a, **_k: SimpleNamespace(role="member"), raising=True
+    )
     monkeypatch.setattr(dataset_tables, "filter_allowed_document_ids", lambda *_a, **_k: [document_id], raising=True)
-    monkeypatch.setattr(dataset_tables, "parse_fls_policy_from_metadata", lambda *_a, **_k: {"policy": True}, raising=True)
-    monkeypatch.setattr(dataset_tables, "build_fls_column_mask_map", lambda *_a, **_k: {"secret": "[MASK]"}, raising=True)
-    monkeypatch.setattr(dataset_tables, "redact_row_lists", lambda rows, **_k: [["[MASKED]"] for _ in rows], raising=True)
+    monkeypatch.setattr(
+        dataset_tables, "parse_fls_policy_from_metadata", lambda *_a, **_k: {"policy": True}, raising=True
+    )
+    monkeypatch.setattr(
+        dataset_tables, "build_fls_column_mask_map", lambda *_a, **_k: {"secret": "[MASK]"}, raising=True
+    )
+    monkeypatch.setattr(
+        dataset_tables, "redact_row_lists", lambda rows, **_k: [["[MASKED]"] for _ in rows], raising=True
+    )
     monkeypatch.setattr(dataset_tables, "_audit_fls_redaction", lambda **_k: None, raising=True)
-    monkeypatch.setattr(dataset_tables, "generate_sql_for_table", lambda **_k: "SELECT secret FROM sheet_0", raising=True)
+    monkeypatch.setattr(
+        dataset_tables, "generate_sql_for_table", lambda **_k: "SELECT secret FROM sheet_0", raising=True
+    )
     monkeypatch.setattr(
         dataset_tables,
         "run_table_query",

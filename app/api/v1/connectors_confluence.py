@@ -1,4 +1,3 @@
-
 import contextlib
 import html
 import sys
@@ -209,7 +208,9 @@ def _delta_sync_confluence_documents_acl_by_page_id(
             updated += 1
     except Exception:
         # Best-effort fallback: scan a bounded recent window and filter in Python.
-        for doc in _confluence_recent_documents(db, tenant_id=tenant_id, dataset_id=dataset_id, max_docs_scan=max_docs_scan):
+        for doc in _confluence_recent_documents(
+            db, tenant_id=tenant_id, dataset_id=dataset_id, max_docs_scan=max_docs_scan
+        ):
             if not _confluence_doc_matches_page(doc, base_url=base_url, space_key=space_key, page_id=pid):
                 continue
             _apply_confluence_acl_to_doc(
@@ -396,7 +397,9 @@ def _confluence_parse_read_restriction_groups(data: object, *, max_groups: int =
         if not isinstance(restrictions, dict):
             continue
 
-        group_names.extend(_confluence_restriction_group_names(restrictions.get("group"), seen=seen_g, max_groups=max_groups))
+        group_names.extend(
+            _confluence_restriction_group_names(restrictions.get("group"), seen=seen_g, max_groups=max_groups)
+        )
         user_count += _confluence_restriction_user_count(restrictions.get("user"))
 
         if max_groups and len(group_names) >= max_groups:
@@ -455,7 +458,9 @@ def _confluence_effective_positive_limit(limit: int) -> int:
 
 def _confluence_attachment_link_base(data: dict, *, fallback: str) -> str:
     links = data.get("_links") if isinstance(data.get("_links"), dict) else {}
-    base = links.get("base") if isinstance(links.get("base"), str) and str(links.get("base") or "").strip() else fallback
+    base = (
+        links.get("base") if isinstance(links.get("base"), str) and str(links.get("base") or "").strip() else fallback
+    )
     return str(base or "")
 
 
@@ -817,10 +822,14 @@ def _resolve_confluence_acl_access_from_principals(
         return _confluence_source_acl_fallback_access(settings_map), mapped_gids, True
 
     ordered = sorted(mapped_gids, key=lambda value: str(value))
-    return {
-        "mode": "partial_members",
-        "partial_group_list": [str(group_id) for group_id in ordered],
-    }, mapped_gids, False
+    return (
+        {
+            "mode": "partial_members",
+            "partial_group_list": [str(group_id) for group_id in ordered],
+        },
+        mapped_gids,
+        False,
+    )
 
 
 def _build_confluence_acl_provenance(
@@ -1019,7 +1028,7 @@ def _confluence_page_html_document(*, title: str, page_url: str, page_html: str)
         "<!doctype html>\n"
         "<html>\n"
         "<head>\n"
-        "  <meta charset=\"utf-8\" />\n"
+        '  <meta charset="utf-8" />\n'
         f"  <title>{title_escaped}</title>\n"
         f"  {base_tag}\n"
         "</head>\n"
@@ -1189,7 +1198,9 @@ async def _ingest_confluence_page(
         acl_provenance=acl_provenance,
         settings_map=settings_map,
     )
-    _track_confluence_run_document(db, run=run, tenant_id=tenant_id, document_id=doc.id, source_ref=(page_id or page_url))
+    _track_confluence_run_document(
+        db, run=run, tenant_id=tenant_id, document_id=doc.id, source_ref=(page_id or page_url)
+    )
     return doc.id
 
 
@@ -1299,7 +1310,9 @@ async def _ingest_single_confluence_attachment(
     return att_doc.id
 
 
-def _confluence_should_skip_attachments(db: Session, *, run: ConnectorRun, page_id: str, settings_map: dict[str, Any], progress: dict[str, Any]) -> bool:
+def _confluence_should_skip_attachments(
+    db: Session, *, run: ConnectorRun, page_id: str, settings_map: dict[str, Any], progress: dict[str, Any]
+) -> bool:
     return (
         not settings_map.get("include_attachments")
         or not page_id
@@ -1309,7 +1322,9 @@ def _confluence_should_skip_attachments(db: Session, *, run: ConnectorRun, page_
 
 
 def _confluence_attachment_page_limit(settings_map: dict[str, Any], progress: dict[str, Any]) -> int:
-    remaining_total = int(settings_map.get("max_total_attachments") or 0) - int(progress.get("attachments_processed") or 0)
+    remaining_total = int(settings_map.get("max_total_attachments") or 0) - int(
+        progress.get("attachments_processed") or 0
+    )
     return int(min(int(settings_map.get("max_attachments_per_page") or 0), max(0, remaining_total)))
 
 
@@ -1351,8 +1366,12 @@ def _append_confluence_attachment_error(run: ConnectorRun, *, url: str, exc: Exc
     run.stats = _resolve_connectors_helper("_append_connector_error")(dict(run.stats or {}), url=url, exc=exc)
 
 
-def _confluence_total_attachment_limit_reached(progress: dict[str, Any], *, processed_in_page: int, settings_map: dict[str, Any]) -> bool:
-    return (int(progress.get("attachments_processed") or 0) + processed_in_page) >= int(settings_map.get("max_total_attachments") or 0)
+def _confluence_total_attachment_limit_reached(
+    progress: dict[str, Any], *, processed_in_page: int, settings_map: dict[str, Any]
+) -> bool:
+    return (int(progress.get("attachments_processed") or 0) + processed_in_page) >= int(
+        settings_map.get("max_total_attachments") or 0
+    )
 
 
 async def _process_confluence_attachment_ref(
@@ -1434,7 +1453,9 @@ async def _ingest_confluence_page_attachments(
     failed = 0
 
     for attachment_ref in att_refs:
-        if _confluence_total_attachment_limit_reached(progress, processed_in_page=attachments_processed, settings_map=settings_map):
+        if _confluence_total_attachment_limit_reached(
+            progress, processed_in_page=attachments_processed, settings_map=settings_map
+        ):
             break
         if _confluence_space_run_cancelled(db, run=run):
             break
@@ -1762,7 +1783,9 @@ def _confluence_soft_delete_candidates(
         )
 
 
-def _confluence_doc_missing_from_full_sync(doc: Any, *, settings_map: dict[str, Any], observed_page_ids: set[str]) -> bool:
+def _confluence_doc_missing_from_full_sync(
+    doc: Any, *, settings_map: dict[str, Any], observed_page_ids: set[str]
+) -> bool:
     conn = _confluence_doc_connector_metadata(doc)
     if str(conn.get("connector_id") or "") != "confluence_space":
         return False
@@ -1786,7 +1809,9 @@ def _soft_delete_missing_confluence_pages(
     disabled = 0
     docs = _confluence_soft_delete_candidates(db, run=run, tenant_id=tenant_id, settings_map=settings_map)
     for doc in docs or []:
-        if not _confluence_doc_missing_from_full_sync(doc, settings_map=settings_map, observed_page_ids=observed_page_ids):
+        if not _confluence_doc_missing_from_full_sync(
+            doc, settings_map=settings_map, observed_page_ids=observed_page_ids
+        ):
             continue
         if getattr(doc, "disabled_at", None) is None:
             doc.disabled_at = now
@@ -1881,11 +1906,7 @@ def _finalize_confluence_space_run_success(
 
 def _mark_confluence_space_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, exc: Exception) -> None:
     with contextlib.suppress(Exception):
-        run = (
-            db.query(ConnectorRun)
-            .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
-            .first()
-        )
+        run = db.query(ConnectorRun).filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id).first()
         if run is not None:
             run.status = "failed"
             run.finished_at = _resolve_connectors_helper("_now")()

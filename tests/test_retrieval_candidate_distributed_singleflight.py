@@ -356,17 +356,45 @@ def test_hybrid_search_releases_distributed_lease_after_candidate_cache_write(
         monkeypatch.setattr(retriever_module.settings, name, value, raising=False)
 
     monkeypatch.setattr(HybridRetriever, "_explicit_dataset_scope_ids", lambda self: (), raising=True)  # noqa: ANN001
-    monkeypatch.setattr(HybridRetriever, "_resolve_document_dataset_scope", lambda self, *, tenant_id, document_ids: ((), False), raising=True)  # noqa: ANN001,ARG005,E501
-    monkeypatch.setattr(HybridRetriever, "_resolve_dataset_runtime_shards", lambda self, *, tenant_id, dataset_ids=None: [], raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_resolve_document_dataset_scope",
+        lambda self, *, tenant_id, document_ids: ((), False),
+        raising=True,
+    )  # noqa: ANN001,ARG005,E501
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_resolve_dataset_runtime_shards",
+        lambda self, *, tenant_id, dataset_ids=None: [],
+        raising=True,
+    )  # noqa: ANN001,ARG005
     monkeypatch.setattr(HybridRetriever, "_resolve_embedding_runtime", lambda self, *, tenant_id: runtime, raising=True)  # noqa: ANN001,ARG005
-    monkeypatch.setattr(HybridRetriever, "_resolve_candidate_cache_corpus_token", lambda self, **kwargs: "corpus-token", raising=True)  # noqa: ANN001,ARG005
-    monkeypatch.setattr(HybridRetriever, "_enrich_results_with_db_metadata", lambda self, items, **kwargs: list(items), raising=True)  # noqa: ANN001,ARG005
-    monkeypatch.setattr(HybridRetriever, "_expand_results_with_neighbors", lambda self, items: list(items), raising=True)  # noqa: ANN001
+    monkeypatch.setattr(
+        HybridRetriever, "_resolve_candidate_cache_corpus_token", lambda self, **kwargs: "corpus-token", raising=True
+    )  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever, "_enrich_results_with_db_metadata", lambda self, items, **kwargs: list(items), raising=True
+    )  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever, "_expand_results_with_neighbors", lambda self, items: list(items), raising=True
+    )  # noqa: ANN001
     monkeypatch.setattr(HybridRetriever, "_auto_merge_parent_child", lambda self, items: list(items), raising=True)  # noqa: ANN001
     monkeypatch.setattr(HybridRetriever, "_deduplicate_results", lambda self, items: list(items), raising=True)  # noqa: ANN001
-    monkeypatch.setattr(HybridRetriever, "_apply_document_diversity", lambda self, items, **kwargs: list(items), raising=True)  # noqa: ANN001,ARG005
-    monkeypatch.setattr(HybridRetriever, "_apply_metadata_exact_anchor_post_ordering", lambda self, query, items, **kwargs: list(items), raising=True)  # noqa: ANN001,ARG005
-    monkeypatch.setattr(HybridRetriever, "_merge_results", lambda self, vector_results, *args, **kwargs: list(vector_results), raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever, "_apply_document_diversity", lambda self, items, **kwargs: list(items), raising=True
+    )  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_apply_metadata_exact_anchor_post_ordering",
+        lambda self, query, items, **kwargs: list(items),
+        raising=True,
+    )  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_merge_results",
+        lambda self, vector_results, *args, **kwargs: list(vector_results),
+        raising=True,
+    )  # noqa: ANN001,ARG005
     monkeypatch.setattr(HybridRetriever, "_search_bm25", lambda self, **kwargs: [], raising=True)  # noqa: ANN001,ARG005
     monkeypatch.setattr(HybridRetriever, "_search_lexical_db", lambda self, **kwargs: [], raising=True)  # noqa: ANN001,ARG005
     monkeypatch.setattr(HybridRetriever, "_search_sparse", lambda self, **kwargs: [], raising=True)  # noqa: ANN001,ARG005
@@ -391,9 +419,24 @@ def test_hybrid_search_releases_distributed_lease_after_candidate_cache_write(
         ),
         raising=True,
     )
-    monkeypatch.setattr(retriever_module, "acquire_or_wait_for_distributed_inflight_retrieval_candidates", lambda key: (True, None, SimpleNamespace(lease_key=f"{key}:lease", owner="owner-1")), raising=True)  # noqa: ANN001,E501
-    monkeypatch.setattr(retriever_module, "set_cached_retrieval_candidates", lambda key, payload: order.append("write") or True, raising=True)  # noqa: ANN001
-    monkeypatch.setattr(retriever_module, "release_distributed_inflight_retrieval_candidates", lambda lease: order.append("release"), raising=True)  # noqa: ANN001
+    monkeypatch.setattr(
+        retriever_module,
+        "acquire_or_wait_for_distributed_inflight_retrieval_candidates",
+        lambda key: (True, None, SimpleNamespace(lease_key=f"{key}:lease", owner="owner-1")),
+        raising=True,
+    )  # noqa: ANN001,E501
+    monkeypatch.setattr(
+        retriever_module,
+        "set_cached_retrieval_candidates",
+        lambda key, payload: order.append("write") or True,
+        raising=True,
+    )  # noqa: ANN001
+    monkeypatch.setattr(
+        retriever_module,
+        "release_distributed_inflight_retrieval_candidates",
+        lambda lease: order.append("release"),
+        raising=True,
+    )  # noqa: ANN001
 
     retriever = HybridRetriever(
         tenant_id=tenant_id,
@@ -457,17 +500,45 @@ def test_hybrid_search_publishes_distributed_result_before_semantic_cache_write(
         monkeypatch.setattr(retriever_module.settings, name, value, raising=False)
 
     monkeypatch.setattr(HybridRetriever, "_explicit_dataset_scope_ids", lambda self: (), raising=True)  # noqa: ANN001
-    monkeypatch.setattr(HybridRetriever, "_resolve_document_dataset_scope", lambda self, *, tenant_id, document_ids: ((), False), raising=True)  # noqa: ANN001,ARG005,E501
-    monkeypatch.setattr(HybridRetriever, "_resolve_dataset_runtime_shards", lambda self, *, tenant_id, dataset_ids=None: [], raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_resolve_document_dataset_scope",
+        lambda self, *, tenant_id, document_ids: ((), False),
+        raising=True,
+    )  # noqa: ANN001,ARG005,E501
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_resolve_dataset_runtime_shards",
+        lambda self, *, tenant_id, dataset_ids=None: [],
+        raising=True,
+    )  # noqa: ANN001,ARG005
     monkeypatch.setattr(HybridRetriever, "_resolve_embedding_runtime", lambda self, *, tenant_id: runtime, raising=True)  # noqa: ANN001,ARG005
-    monkeypatch.setattr(HybridRetriever, "_resolve_candidate_cache_corpus_token", lambda self, **kwargs: "corpus-token", raising=True)  # noqa: ANN001,ARG005
-    monkeypatch.setattr(HybridRetriever, "_enrich_results_with_db_metadata", lambda self, items, **kwargs: list(items), raising=True)  # noqa: ANN001,ARG005
-    monkeypatch.setattr(HybridRetriever, "_expand_results_with_neighbors", lambda self, items: list(items), raising=True)  # noqa: ANN001
+    monkeypatch.setattr(
+        HybridRetriever, "_resolve_candidate_cache_corpus_token", lambda self, **kwargs: "corpus-token", raising=True
+    )  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever, "_enrich_results_with_db_metadata", lambda self, items, **kwargs: list(items), raising=True
+    )  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever, "_expand_results_with_neighbors", lambda self, items: list(items), raising=True
+    )  # noqa: ANN001
     monkeypatch.setattr(HybridRetriever, "_auto_merge_parent_child", lambda self, items: list(items), raising=True)  # noqa: ANN001
     monkeypatch.setattr(HybridRetriever, "_deduplicate_results", lambda self, items: list(items), raising=True)  # noqa: ANN001
-    monkeypatch.setattr(HybridRetriever, "_apply_document_diversity", lambda self, items, **kwargs: list(items), raising=True)  # noqa: ANN001,ARG005
-    monkeypatch.setattr(HybridRetriever, "_apply_metadata_exact_anchor_post_ordering", lambda self, query, items, **kwargs: list(items), raising=True)  # noqa: ANN001,ARG005
-    monkeypatch.setattr(HybridRetriever, "_merge_results", lambda self, vector_results, *args, **kwargs: list(vector_results), raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever, "_apply_document_diversity", lambda self, items, **kwargs: list(items), raising=True
+    )  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_apply_metadata_exact_anchor_post_ordering",
+        lambda self, query, items, **kwargs: list(items),
+        raising=True,
+    )  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_merge_results",
+        lambda self, vector_results, *args, **kwargs: list(vector_results),
+        raising=True,
+    )  # noqa: ANN001,ARG005
     monkeypatch.setattr(HybridRetriever, "_search_bm25", lambda self, **kwargs: [], raising=True)  # noqa: ANN001,ARG005
     monkeypatch.setattr(HybridRetriever, "_search_lexical_db", lambda self, **kwargs: [], raising=True)  # noqa: ANN001,ARG005
     monkeypatch.setattr(HybridRetriever, "_search_sparse", lambda self, **kwargs: [], raising=True)  # noqa: ANN001,ARG005
@@ -492,10 +563,30 @@ def test_hybrid_search_publishes_distributed_result_before_semantic_cache_write(
         ),
         raising=True,
     )
-    monkeypatch.setattr(retriever_module, "acquire_or_wait_for_distributed_inflight_retrieval_candidates", lambda key: (True, None, SimpleNamespace(lease_key=f"{key}:lease", owner="owner-1")), raising=True)  # noqa: ANN001,E501
-    monkeypatch.setattr(retriever_module, "publish_distributed_inflight_retrieval_candidates", lambda key, payload: order.append("publish") or True, raising=True)  # noqa: ANN001
-    monkeypatch.setattr(retriever_module, "resolve_inflight_retrieval_candidates", lambda key, payload: order.append("resolve"), raising=True)  # noqa: ANN001
-    monkeypatch.setattr(retriever_module, "release_distributed_inflight_retrieval_candidates", lambda lease: order.append("release"), raising=True)  # noqa: ANN001
+    monkeypatch.setattr(
+        retriever_module,
+        "acquire_or_wait_for_distributed_inflight_retrieval_candidates",
+        lambda key: (True, None, SimpleNamespace(lease_key=f"{key}:lease", owner="owner-1")),
+        raising=True,
+    )  # noqa: ANN001,E501
+    monkeypatch.setattr(
+        retriever_module,
+        "publish_distributed_inflight_retrieval_candidates",
+        lambda key, payload: order.append("publish") or True,
+        raising=True,
+    )  # noqa: ANN001
+    monkeypatch.setattr(
+        retriever_module,
+        "resolve_inflight_retrieval_candidates",
+        lambda key, payload: order.append("resolve"),
+        raising=True,
+    )  # noqa: ANN001
+    monkeypatch.setattr(
+        retriever_module,
+        "release_distributed_inflight_retrieval_candidates",
+        lambda lease: order.append("release"),
+        raising=True,
+    )  # noqa: ANN001
     monkeypatch.setattr(
         semantic_cache_module,
         "get_cached_semantic_payload",
@@ -568,17 +659,45 @@ def test_hybrid_search_singleflight_only_uses_behavior_hash_in_cache_key(
         monkeypatch.setattr(retriever_module.settings, name, value, raising=False)
 
     monkeypatch.setattr(HybridRetriever, "_explicit_dataset_scope_ids", lambda self: (), raising=True)  # noqa: ANN001
-    monkeypatch.setattr(HybridRetriever, "_resolve_document_dataset_scope", lambda self, *, tenant_id, document_ids: ((), False), raising=True)  # noqa: ANN001,ARG005,E501
-    monkeypatch.setattr(HybridRetriever, "_resolve_dataset_runtime_shards", lambda self, *, tenant_id, dataset_ids=None: [], raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_resolve_document_dataset_scope",
+        lambda self, *, tenant_id, document_ids: ((), False),
+        raising=True,
+    )  # noqa: ANN001,ARG005,E501
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_resolve_dataset_runtime_shards",
+        lambda self, *, tenant_id, dataset_ids=None: [],
+        raising=True,
+    )  # noqa: ANN001,ARG005
     monkeypatch.setattr(HybridRetriever, "_resolve_embedding_runtime", lambda self, *, tenant_id: runtime, raising=True)  # noqa: ANN001,ARG005
-    monkeypatch.setattr(HybridRetriever, "_resolve_candidate_cache_corpus_token", lambda self, **kwargs: "corpus-token", raising=True)  # noqa: ANN001,ARG005
-    monkeypatch.setattr(HybridRetriever, "_enrich_results_with_db_metadata", lambda self, items, **kwargs: list(items), raising=True)  # noqa: ANN001,ARG005
-    monkeypatch.setattr(HybridRetriever, "_expand_results_with_neighbors", lambda self, items: list(items), raising=True)  # noqa: ANN001
+    monkeypatch.setattr(
+        HybridRetriever, "_resolve_candidate_cache_corpus_token", lambda self, **kwargs: "corpus-token", raising=True
+    )  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever, "_enrich_results_with_db_metadata", lambda self, items, **kwargs: list(items), raising=True
+    )  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever, "_expand_results_with_neighbors", lambda self, items: list(items), raising=True
+    )  # noqa: ANN001
     monkeypatch.setattr(HybridRetriever, "_auto_merge_parent_child", lambda self, items: list(items), raising=True)  # noqa: ANN001
     monkeypatch.setattr(HybridRetriever, "_deduplicate_results", lambda self, items: list(items), raising=True)  # noqa: ANN001
-    monkeypatch.setattr(HybridRetriever, "_apply_document_diversity", lambda self, items, **kwargs: list(items), raising=True)  # noqa: ANN001,ARG005
-    monkeypatch.setattr(HybridRetriever, "_apply_metadata_exact_anchor_post_ordering", lambda self, query, items, **kwargs: list(items), raising=True)  # noqa: ANN001,ARG005
-    monkeypatch.setattr(HybridRetriever, "_merge_results", lambda self, vector_results, *args, **kwargs: list(vector_results), raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever, "_apply_document_diversity", lambda self, items, **kwargs: list(items), raising=True
+    )  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_apply_metadata_exact_anchor_post_ordering",
+        lambda self, query, items, **kwargs: list(items),
+        raising=True,
+    )  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_merge_results",
+        lambda self, vector_results, *args, **kwargs: list(vector_results),
+        raising=True,
+    )  # noqa: ANN001,ARG005
     monkeypatch.setattr(HybridRetriever, "_search_bm25", lambda self, **kwargs: [], raising=True)  # noqa: ANN001,ARG005
     monkeypatch.setattr(HybridRetriever, "_search_lexical_db", lambda self, **kwargs: [], raising=True)  # noqa: ANN001,ARG005
     monkeypatch.setattr(HybridRetriever, "_search_sparse", lambda self, **kwargs: [], raising=True)  # noqa: ANN001,ARG005
@@ -609,9 +728,18 @@ def test_hybrid_search_singleflight_only_uses_behavior_hash_in_cache_key(
         lambda **kwargs: key_calls.append(kwargs) or f"cache-key-{len(key_calls)}",
         raising=True,
     )
-    monkeypatch.setattr(retriever_module, "acquire_or_wait_for_distributed_inflight_retrieval_candidates", lambda key: (True, None, None), raising=True)  # noqa: ANN001,E501
-    monkeypatch.setattr(retriever_module, "publish_distributed_inflight_retrieval_candidates", lambda key, payload: True, raising=True)  # noqa: ANN001,E501
-    monkeypatch.setattr(retriever_module, "release_distributed_inflight_retrieval_candidates", lambda lease: None, raising=True)  # noqa: ANN001
+    monkeypatch.setattr(
+        retriever_module,
+        "acquire_or_wait_for_distributed_inflight_retrieval_candidates",
+        lambda key: (True, None, None),
+        raising=True,
+    )  # noqa: ANN001,E501
+    monkeypatch.setattr(
+        retriever_module, "publish_distributed_inflight_retrieval_candidates", lambda key, payload: True, raising=True
+    )  # noqa: ANN001,E501
+    monkeypatch.setattr(
+        retriever_module, "release_distributed_inflight_retrieval_candidates", lambda lease: None, raising=True
+    )  # noqa: ANN001
 
     retriever_a = HybridRetriever(
         tenant_id=tenant_id,
@@ -696,17 +824,45 @@ def test_hybrid_search_uses_distributed_singleflight_when_exact_cache_disabled(
         monkeypatch.setattr(retriever_module.settings, name, value, raising=False)
 
     monkeypatch.setattr(HybridRetriever, "_explicit_dataset_scope_ids", lambda self: (), raising=True)  # noqa: ANN001
-    monkeypatch.setattr(HybridRetriever, "_resolve_document_dataset_scope", lambda self, *, tenant_id, document_ids: ((), False), raising=True)  # noqa: ANN001,ARG005,E501
-    monkeypatch.setattr(HybridRetriever, "_resolve_dataset_runtime_shards", lambda self, *, tenant_id, dataset_ids=None: [], raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_resolve_document_dataset_scope",
+        lambda self, *, tenant_id, document_ids: ((), False),
+        raising=True,
+    )  # noqa: ANN001,ARG005,E501
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_resolve_dataset_runtime_shards",
+        lambda self, *, tenant_id, dataset_ids=None: [],
+        raising=True,
+    )  # noqa: ANN001,ARG005
     monkeypatch.setattr(HybridRetriever, "_resolve_embedding_runtime", lambda self, *, tenant_id: runtime, raising=True)  # noqa: ANN001,ARG005
-    monkeypatch.setattr(HybridRetriever, "_resolve_candidate_cache_corpus_token", lambda self, **kwargs: "corpus-token", raising=True)  # noqa: ANN001,ARG005
-    monkeypatch.setattr(HybridRetriever, "_enrich_results_with_db_metadata", lambda self, items, **kwargs: list(items), raising=True)  # noqa: ANN001,ARG005
-    monkeypatch.setattr(HybridRetriever, "_expand_results_with_neighbors", lambda self, items: list(items), raising=True)  # noqa: ANN001
+    monkeypatch.setattr(
+        HybridRetriever, "_resolve_candidate_cache_corpus_token", lambda self, **kwargs: "corpus-token", raising=True
+    )  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever, "_enrich_results_with_db_metadata", lambda self, items, **kwargs: list(items), raising=True
+    )  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever, "_expand_results_with_neighbors", lambda self, items: list(items), raising=True
+    )  # noqa: ANN001
     monkeypatch.setattr(HybridRetriever, "_auto_merge_parent_child", lambda self, items: list(items), raising=True)  # noqa: ANN001
     monkeypatch.setattr(HybridRetriever, "_deduplicate_results", lambda self, items: list(items), raising=True)  # noqa: ANN001
-    monkeypatch.setattr(HybridRetriever, "_apply_document_diversity", lambda self, items, **kwargs: list(items), raising=True)  # noqa: ANN001,ARG005
-    monkeypatch.setattr(HybridRetriever, "_apply_metadata_exact_anchor_post_ordering", lambda self, query, items, **kwargs: list(items), raising=True)  # noqa: ANN001,ARG005
-    monkeypatch.setattr(HybridRetriever, "_merge_results", lambda self, vector_results, *args, **kwargs: list(vector_results), raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever, "_apply_document_diversity", lambda self, items, **kwargs: list(items), raising=True
+    )  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_apply_metadata_exact_anchor_post_ordering",
+        lambda self, query, items, **kwargs: list(items),
+        raising=True,
+    )  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_merge_results",
+        lambda self, vector_results, *args, **kwargs: list(vector_results),
+        raising=True,
+    )  # noqa: ANN001,ARG005
     monkeypatch.setattr(HybridRetriever, "_search_bm25", lambda self, **kwargs: [], raising=True)  # noqa: ANN001,ARG005
     monkeypatch.setattr(HybridRetriever, "_search_lexical_db", lambda self, **kwargs: [], raising=True)  # noqa: ANN001,ARG005
     monkeypatch.setattr(HybridRetriever, "_search_sparse", lambda self, **kwargs: [], raising=True)  # noqa: ANN001,ARG005
@@ -734,11 +890,17 @@ def test_hybrid_search_uses_distributed_singleflight_when_exact_cache_disabled(
     monkeypatch.setattr(
         retriever_module,
         "acquire_or_wait_for_distributed_inflight_retrieval_candidates",
-        lambda key: leader_calls.append(key) or (True, None, SimpleNamespace(lease_key=f"{key}:lease", owner="owner-1")),
+        lambda key: (
+            leader_calls.append(key) or (True, None, SimpleNamespace(lease_key=f"{key}:lease", owner="owner-1"))
+        ),
         raising=True,
     )
-    monkeypatch.setattr(retriever_module, "publish_distributed_inflight_retrieval_candidates", lambda key, payload: True, raising=True)  # noqa: ANN001,E501
-    monkeypatch.setattr(retriever_module, "release_distributed_inflight_retrieval_candidates", lambda lease: None, raising=True)  # noqa: ANN001
+    monkeypatch.setattr(
+        retriever_module, "publish_distributed_inflight_retrieval_candidates", lambda key, payload: True, raising=True
+    )  # noqa: ANN001,E501
+    monkeypatch.setattr(
+        retriever_module, "release_distributed_inflight_retrieval_candidates", lambda lease: None, raising=True
+    )  # noqa: ANN001
 
     retriever = HybridRetriever(
         tenant_id=tenant_id,
@@ -802,17 +964,45 @@ def test_hybrid_search_keeps_local_followers_when_distributed_singleflight_error
         monkeypatch.setattr(retriever_module.settings, name, value, raising=False)
 
     monkeypatch.setattr(HybridRetriever, "_explicit_dataset_scope_ids", lambda self: (), raising=True)  # noqa: ANN001
-    monkeypatch.setattr(HybridRetriever, "_resolve_document_dataset_scope", lambda self, *, tenant_id, document_ids: ((), False), raising=True)  # noqa: ANN001,ARG005,E501
-    monkeypatch.setattr(HybridRetriever, "_resolve_dataset_runtime_shards", lambda self, *, tenant_id, dataset_ids=None: [], raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_resolve_document_dataset_scope",
+        lambda self, *, tenant_id, document_ids: ((), False),
+        raising=True,
+    )  # noqa: ANN001,ARG005,E501
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_resolve_dataset_runtime_shards",
+        lambda self, *, tenant_id, dataset_ids=None: [],
+        raising=True,
+    )  # noqa: ANN001,ARG005
     monkeypatch.setattr(HybridRetriever, "_resolve_embedding_runtime", lambda self, *, tenant_id: runtime, raising=True)  # noqa: ANN001,ARG005
-    monkeypatch.setattr(HybridRetriever, "_resolve_candidate_cache_corpus_token", lambda self, **kwargs: "corpus-token", raising=True)  # noqa: ANN001,ARG005
-    monkeypatch.setattr(HybridRetriever, "_enrich_results_with_db_metadata", lambda self, items, **kwargs: list(items), raising=True)  # noqa: ANN001,ARG005
-    monkeypatch.setattr(HybridRetriever, "_expand_results_with_neighbors", lambda self, items: list(items), raising=True)  # noqa: ANN001
+    monkeypatch.setattr(
+        HybridRetriever, "_resolve_candidate_cache_corpus_token", lambda self, **kwargs: "corpus-token", raising=True
+    )  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever, "_enrich_results_with_db_metadata", lambda self, items, **kwargs: list(items), raising=True
+    )  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever, "_expand_results_with_neighbors", lambda self, items: list(items), raising=True
+    )  # noqa: ANN001
     monkeypatch.setattr(HybridRetriever, "_auto_merge_parent_child", lambda self, items: list(items), raising=True)  # noqa: ANN001
     monkeypatch.setattr(HybridRetriever, "_deduplicate_results", lambda self, items: list(items), raising=True)  # noqa: ANN001
-    monkeypatch.setattr(HybridRetriever, "_apply_document_diversity", lambda self, items, **kwargs: list(items), raising=True)  # noqa: ANN001,ARG005
-    monkeypatch.setattr(HybridRetriever, "_apply_metadata_exact_anchor_post_ordering", lambda self, query, items, **kwargs: list(items), raising=True)  # noqa: ANN001,ARG005
-    monkeypatch.setattr(HybridRetriever, "_merge_results", lambda self, vector_results, *args, **kwargs: list(vector_results), raising=True)  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever, "_apply_document_diversity", lambda self, items, **kwargs: list(items), raising=True
+    )  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_apply_metadata_exact_anchor_post_ordering",
+        lambda self, query, items, **kwargs: list(items),
+        raising=True,
+    )  # noqa: ANN001,ARG005
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_merge_results",
+        lambda self, vector_results, *args, **kwargs: list(vector_results),
+        raising=True,
+    )  # noqa: ANN001,ARG005
     monkeypatch.setattr(HybridRetriever, "_search_bm25", lambda self, **kwargs: [], raising=True)  # noqa: ANN001,ARG005
     monkeypatch.setattr(HybridRetriever, "_search_lexical_db", lambda self, **kwargs: [], raising=True)  # noqa: ANN001,ARG005
     monkeypatch.setattr(HybridRetriever, "_search_sparse", lambda self, **kwargs: [], raising=True)  # noqa: ANN001,ARG005
@@ -847,8 +1037,12 @@ def test_hybrid_search_keeps_local_followers_when_distributed_singleflight_error
         lambda key: (_ for _ in ()).throw(RuntimeError("distributed helper failed")),
         raising=True,
     )
-    monkeypatch.setattr(retriever_module, "publish_distributed_inflight_retrieval_candidates", lambda key, payload: True, raising=True)  # noqa: ANN001,E501
-    monkeypatch.setattr(retriever_module, "release_distributed_inflight_retrieval_candidates", lambda lease: None, raising=True)  # noqa: ANN001
+    monkeypatch.setattr(
+        retriever_module, "publish_distributed_inflight_retrieval_candidates", lambda key, payload: True, raising=True
+    )  # noqa: ANN001,E501
+    monkeypatch.setattr(
+        retriever_module, "release_distributed_inflight_retrieval_candidates", lambda lease: None, raising=True
+    )  # noqa: ANN001
 
     retriever = HybridRetriever(
         tenant_id=tenant_id,

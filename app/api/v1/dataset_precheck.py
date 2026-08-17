@@ -5,7 +5,6 @@ Precheck scans are intended for "before ingestion" analysis on a local folder.
 They are run-based (async), store progress in DB, and store per-file records on disk.
 """
 
-
 import asyncio
 import json
 import re
@@ -255,7 +254,12 @@ def _run_precheck_scan_background(
         db.close()
 
 
-@router.post("/{dataset_id}/precheck/scan-runs", response_model=DatasetPrecheckScanRunOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/{dataset_id}/precheck/scan-runs",
+    response_model=DatasetPrecheckScanRunOut,
+    status_code=201,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def create_dataset_precheck_scan_run(
     dataset_id: UUID,
     body: DatasetPrecheckScanRunCreateRequest,
@@ -305,9 +309,7 @@ async def create_dataset_precheck_scan_run(
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        expired_after_conflict = await _expire_stale_precheck_scan_runs(
-            db, tenant_id=tenant_id, dataset_id=dataset_id
-        )
+        expired_after_conflict = await _expire_stale_precheck_scan_runs(db, tenant_id=tenant_id, dataset_id=dataset_id)
         if expired_after_conflict:
             db.commit()
         if _active_precheck_scan() is not None:
@@ -344,7 +346,11 @@ async def create_dataset_precheck_scan_run(
     return DatasetPrecheckScanRunOut(**_scan_run_out_from_row(row))
 
 
-@router.get("/{dataset_id}/precheck/scan-runs", response_model=DatasetPrecheckScanRunListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/{dataset_id}/precheck/scan-runs",
+    response_model=DatasetPrecheckScanRunListResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def list_dataset_precheck_scan_runs(
     dataset_id: UUID,
     skip: Annotated[int, Query(ge=0)] = 0,
@@ -356,21 +362,21 @@ def list_dataset_precheck_scan_runs(
 ):
     get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
 
-    q = (
-        db.query(DBDatasetPrecheckScanRun)
-        .filter(DBDatasetPrecheckScanRun.tenant_id == tenant_id, DBDatasetPrecheckScanRun.dataset_id == dataset_id)
+    q = db.query(DBDatasetPrecheckScanRun).filter(
+        DBDatasetPrecheckScanRun.tenant_id == tenant_id, DBDatasetPrecheckScanRun.dataset_id == dataset_id
     )
     total = int(q.count())
-    rows = (
-        q.order_by(DBDatasetPrecheckScanRun.created_at.desc())
-        .offset(int(skip or 0))
-        .limit(int(limit or 20))
-        .all()
+    rows = q.order_by(DBDatasetPrecheckScanRun.created_at.desc()).offset(int(skip or 0)).limit(int(limit or 20)).all()
+    return DatasetPrecheckScanRunListResponse(
+        total=total, items=[DatasetPrecheckScanRunOut(**_scan_run_out_from_row(r)) for r in rows]
     )
-    return DatasetPrecheckScanRunListResponse(total=total, items=[DatasetPrecheckScanRunOut(**_scan_run_out_from_row(r)) for r in rows])
 
 
-@router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}", response_model=DatasetPrecheckScanRunOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/{dataset_id}/precheck/scan-runs/{scan_run_id}",
+    response_model=DatasetPrecheckScanRunOut,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def get_dataset_precheck_scan_run(
     dataset_id: UUID,
     scan_run_id: UUID,
@@ -395,7 +401,11 @@ def get_dataset_precheck_scan_run(
     return DatasetPrecheckScanRunOut(**_scan_run_out_from_row(row))
 
 
-@router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}/summary", response_model=DatasetPrecheckSummary, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/{dataset_id}/precheck/scan-runs/{scan_run_id}/summary",
+    response_model=DatasetPrecheckSummary,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def get_dataset_precheck_summary(
     dataset_id: UUID,
     scan_run_id: UUID,
@@ -455,7 +465,9 @@ def list_dataset_precheck_finding_files(
 def list_dataset_precheck_files(
     dataset_id: UUID,
     scan_run_id: UUID,
-    dir_prefix: Annotated[str | None, Query(max_length=1024, description='Optional: directory prefix under scan root')] = None,
+    dir_prefix: Annotated[
+        str | None, Query(max_length=1024, description="Optional: directory prefix under scan root")
+    ] = None,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     *,
@@ -475,7 +487,11 @@ def list_dataset_precheck_files(
     )
 
 
-@router.post("/{dataset_id}/precheck/scan-runs/{scan_run_id}/cancel", response_model=DatasetPrecheckScanRunOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/{dataset_id}/precheck/scan-runs/{scan_run_id}/cancel",
+    response_model=DatasetPrecheckScanRunOut,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def cancel_dataset_precheck_scan_run(
     dataset_id: UUID,
     scan_run_id: UUID,
@@ -603,7 +619,9 @@ def get_dataset_precheck_samples(
     if row is None:
         raise HTTPException(status_code=404, detail=_SCAN_RUN_NOT_FOUND_DETAIL)
 
-    raw = load_precheck_samples_from_row(row, tenant_id=tenant_id, size=int(size or 0), prefer_artifact=bool(prefer_artifact))
+    raw = load_precheck_samples_from_row(
+        row, tenant_id=tenant_id, size=int(size or 0), prefer_artifact=bool(prefer_artifact)
+    )
     raw = apply_precheck_sample_reviews(
         raw,
         load_precheck_sample_reviews_from_row(row, tenant_id=tenant_id),
@@ -716,7 +734,7 @@ def get_dataset_precheck_near_dups(
 def diff_dataset_precheck_scan_runs(
     dataset_id: UUID,
     scan_run_id: UUID,
-    base_scan_run_id: Annotated[UUID, Query(..., description='Base scan run id to compare against')],
+    base_scan_run_id: Annotated[UUID, Query(..., description="Base scan run id to compare against")],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -777,7 +795,9 @@ def get_dataset_precheck_ingestion_policy_suggestion(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
+    dataset = get_dataset_for_precheck(
+        db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False
+    )
     before_policy = parse_ingestion_policy_from_metadata(dict(getattr(dataset, "dataset_metadata", None) or {}))
     row = (
         db.query(DBDatasetPrecheckScanRun)
@@ -807,14 +827,16 @@ def get_dataset_precheck_ingestion_policy_suggestion(
 def apply_dataset_precheck_ingestion_policy_suggestion(
     dataset_id: UUID,
     scan_run_id: UUID,
-    replace: Annotated[bool, Query(description='Whether to overwrite existing dataset ingestion_policy')] = False,
+    replace: Annotated[bool, Query(description="Whether to overwrite existing dataset ingestion_policy")] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
     # Applying modifies dataset metadata -> require write permission.
-    dataset = get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=True)
+    dataset = get_dataset_for_precheck(
+        db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=True
+    )
     row = (
         db.query(DBDatasetPrecheckScanRun)
         .filter(
@@ -874,13 +896,15 @@ def export_dataset_precheck_summary_json(
 def export_dataset_precheck_html_report(
     dataset_id: UUID,
     scan_run_id: UUID,
-    redact: Annotated[bool, Query(description='Whether to redact dataset/path for sharing')] = True,
+    redact: Annotated[bool, Query(description="Whether to redact dataset/path for sharing")] = True,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = get_dataset_for_precheck(db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False)
+    dataset = get_dataset_for_precheck(
+        db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False
+    )
 
     row = (
         db.query(DBDatasetPrecheckScanRun)

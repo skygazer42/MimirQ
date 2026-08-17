@@ -1,6 +1,7 @@
 """
 Document management API.
 """
+
 import asyncio
 import contextlib
 import hashlib
@@ -269,6 +270,7 @@ async def run_document_processing_limited(*args: Any, **kwargs: Any) -> Any:
             on_cancelled_worker_error=_log_cancelled_background_processing_error,
         )
 
+
 __all__ = [
     "DBDatasetPrecheckScanRun",
     "SessionLocal",
@@ -326,33 +328,31 @@ preview_document = document_preview.preview_document
 # - We store uploads by UUID on disk/MinIO, so we don't need a strict character allowlist.
 # - Still reject path separators / control characters to prevent path traversal and header issues.
 UUID_PATTERN = r"(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
-PREVIEW_IMAGE_REF_RE = re.compile(
-    rf"(?:https?://[^\s)\"']+)?/api/v1/documents/image/({UUID_PATTERN})(?![0-9A-Za-z_-])"
-)
+PREVIEW_IMAGE_REF_RE = re.compile(rf"(?:https?://[^\s)\"']+)?/api/v1/documents/image/({UUID_PATTERN})(?![0-9A-Za-z_-])")
 MINIO_IMAGE_REF_RE = re.compile(r"(?:https?://[^\s)\"']+)?/api/v1/documents/image-url/([^\s)\"']+)")
 # Position tags emitted by some PDF parsers (used for PDF overlay highlighting).
 POSITION_TAG_RE = re.compile(r"@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)##")
 
-DOC_NOT_FOUND_DETAIL = 'Document not found'
-INVALID_RANGE_HEADER_DETAIL = 'Invalid Range header'
-IMAGE_NOT_FOUND_DETAIL = 'Image not found'
-IMAGE_JPEG_MEDIA_TYPE = 'image/jpeg'
-DUPLICATE_DOCUMENT_PROCESSING_DETAIL = 'Duplicate document is currently processing'
-HTML_FILE_EXTENSION = '.html'
-PIPELINE_HASH_TOO_LONG_DETAIL = 'pipeline_hash too long'
-FILENAME_INVALID_CHARS_DETAIL = 'Filename contains invalid characters'
-CHUNK_NOT_FOUND_DETAIL = 'Chunk not found'
-CHUNK_NOT_ACTIVE_PIPELINE_DETAIL = 'Chunk is not in the active pipeline version'
-DOCUMENT_FILE_ACCESS_DENIED_DETAIL = 'Document file access denied'
-DOCUMENT_FILE_NOT_FOUND_DETAIL = 'Document file not found'
+DOC_NOT_FOUND_DETAIL = "Document not found"
+INVALID_RANGE_HEADER_DETAIL = "Invalid Range header"
+IMAGE_NOT_FOUND_DETAIL = "Image not found"
+IMAGE_JPEG_MEDIA_TYPE = "image/jpeg"
+DUPLICATE_DOCUMENT_PROCESSING_DETAIL = "Duplicate document is currently processing"
+HTML_FILE_EXTENSION = ".html"
+PIPELINE_HASH_TOO_LONG_DETAIL = "pipeline_hash too long"
+FILENAME_INVALID_CHARS_DETAIL = "Filename contains invalid characters"
+CHUNK_NOT_FOUND_DETAIL = "Chunk not found"
+CHUNK_NOT_ACTIVE_PIPELINE_DETAIL = "Chunk is not in the active pipeline version"
+DOCUMENT_FILE_ACCESS_DENIED_DETAIL = "Document file access denied"
+DOCUMENT_FILE_NOT_FOUND_DETAIL = "Document file not found"
 DOCUMENT_DEDUP_CONSTRAINT_NAME = "uq_documents_tenant_dataset_dedup_key_active"
-DATA_IMAGE_PREFIX = 'data:image'
-CHUNK_OVERLAP_LESS_THAN_SIZE_DETAIL = 'chunk_overlap must be less than chunk_size'
-MANUAL_FILE_PATH_PREFIX = 'manual://'
-IMAGE_FILE_EXT_JPEG = '.jpeg'
-IMAGE_FILE_EXT_WEBP = '.webp'
+DATA_IMAGE_PREFIX = "data:image"
+CHUNK_OVERLAP_LESS_THAN_SIZE_DETAIL = "chunk_overlap must be less than chunk_size"
+MANUAL_FILE_PATH_PREFIX = "manual://"
+IMAGE_FILE_EXT_JPEG = ".jpeg"
+IMAGE_FILE_EXT_WEBP = ".webp"
 PREVIEW_IMAGE_EXTENSIONS = [".png", ".jpg", IMAGE_FILE_EXT_JPEG, IMAGE_FILE_EXT_WEBP, ".gif", ".bmp"]
-CHUNK_PATCH_OPERATION = 'chunk.patch'
+CHUNK_PATCH_OPERATION = "chunk.patch"
 
 
 def _existing_minio_image_refs(text: str) -> list[str]:
@@ -714,7 +714,11 @@ def _rewrite_preview_images_to_minio(
         existing_refs=existing,
     )
 
-    return PREVIEW_IMAGE_REF_RE.sub(lambda match: _replace_preview_ref(match, local_id_to_img_id), text), referenced_img_ids, start_index
+    return (
+        PREVIEW_IMAGE_REF_RE.sub(lambda match: _replace_preview_ref(match, local_id_to_img_id), text),
+        referenced_img_ids,
+        start_index,
+    )
 
 
 def _asset_cache_control(*, max_age: int) -> str:
@@ -888,8 +892,8 @@ def _decode_escaped_input_preview(value: str) -> str:
     if not raw:
         return raw
     try:
-        escaped = raw.replace("\"", "\\\"")
-        return json.loads(f"\"{escaped}\"")
+        escaped = raw.replace('"', '\\"')
+        return json.loads(f'"{escaped}"')
     except Exception:
         return raw
 
@@ -950,12 +954,9 @@ def _resolve_writable_dataset(
             continue
 
     # Validate user permission to create a dataset.
-    role = (getattr(member, 'role', None) or "").lower()
+    role = (getattr(member, "role", None) or "").lower()
     if role not in EDIT_ROLES:
-        raise HTTPException(
-            status_code=403,
-            detail="No permission to create dataset. Please contact an administrator."
-        )
+        raise HTTPException(status_code=403, detail="No permission to create dataset. Please contact an administrator.")
 
     # Auto-create a default dataset with restricted permission (ONLY_ME).
     return DatasetService.create_dataset(
@@ -1248,11 +1249,7 @@ def _validate_chunk_params(chunk_size: int, chunk_overlap: int) -> None:
 
 
 def _get_document_for_chunk_ops(db: Session, tenant_id: UUID, document_id: UUID) -> DBDocument | None:
-    return (
-        db.query(DBDocument)
-        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-        .first()
-    )
+    return db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
 
 
 def _get_chunk_for_chunk_ops(
@@ -1294,7 +1291,9 @@ class UrlUploadRequest(BaseModel):
 
     url: str = Field(..., max_length=2000)
     dataset_id: UUID | None = None
-    filename: str | None = Field(default=None, max_length=500, description="Optional override filename (used for extension + display)")
+    filename: str | None = Field(
+        default=None, max_length=500, description="Optional override filename (used for extension + display)"
+    )
     # Optional: authenticated fetch (cookie/bearer/basic) for private pages.
     fetch_headers: dict[str, str] | None = None
     user_agent: str | None = Field(default=None, max_length=200)
@@ -1346,9 +1345,13 @@ class LocalHtmlIngestRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     html: str = Field(..., description="HTML content (fragment or full document)")
-    source_url: str | None = Field(default=None, max_length=2000, description="Best-effort source URL for citations/debug")
+    source_url: str | None = Field(
+        default=None, max_length=2000, description="Best-effort source URL for citations/debug"
+    )
     dataset_id: UUID | None = None
-    filename: str | None = Field(default=None, max_length=500, description="Optional override filename (used for extension + display)")
+    filename: str | None = Field(
+        default=None, max_length=500, description="Optional override filename (used for extension + display)"
+    )
     parser_backend: str = Field(default=settings.DEFAULT_PARSER_BACKEND)
     chunk_strategy: str = Field(default=settings.DEFAULT_CHUNK_STRATEGY)
     pipeline: DocumentPipelineOptions | None = None
@@ -1438,7 +1441,9 @@ def _ext_from_content_type(content_type: str) -> str | None:
 def _assert_allowed_file_ext(file_ext: str) -> str:
     file_ext = file_ext.lower()
     if file_ext not in settings.allowed_extensions_list:
-        raise HTTPException(status_code=400, detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}")
+        raise HTTPException(
+            status_code=400, detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}"
+        )
     return file_ext
 
 
@@ -1477,7 +1482,9 @@ def _finalize_url_download(temp_path: Path, final_path: Path) -> None:
         except Exception as exc:  # noqa: BLE001
             with contextlib.suppress(OSError):
                 temp_path.unlink(missing_ok=True)
-            raise HTTPException(status_code=500, detail=f"failed to finalize downloaded file: {str(exc)[:120]}") from exc
+            raise HTTPException(
+                status_code=500, detail=f"failed to finalize downloaded file: {str(exc)[:120]}"
+            ) from exc
 
 
 def _read_html_prefix(path: Path) -> str:
@@ -1522,8 +1529,18 @@ def _dataset_pipeline_defaults(dataset: Dataset | None) -> tuple[str, str]:
             dataset_default_pb = _normalized_dataset_default(ds_meta.get("default_parser_backend"))
             dataset_default_cs = _normalized_dataset_default(ds_meta.get("default_chunk_strategy"))
 
-    default_pb_eff = dataset_default_pb or str(getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto").strip().lower() or "auto"
-    default_cs_eff = dataset_default_cs or str(getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower() or "langchain_recursive"
+    default_pb_eff = (
+        dataset_default_pb
+        or str(getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto").strip().lower()
+        or "auto"
+    )
+    default_cs_eff = (
+        dataset_default_cs
+        or str(getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive")
+        .strip()
+        .lower()
+        or "langchain_recursive"
+    )
     return default_pb_eff, default_cs_eff
 
 
@@ -2284,7 +2301,11 @@ def _build_url_document_metadata(
     pipeline: ResolvedDocumentPipeline,
 ) -> dict[str, Any]:
     requested_parser_backend = str(body.parser_backend or "").strip().lower()
-    parser_backend_resolved = None if pipeline.parser_backend == "auto" and requested_parser_backend in {"", "auto"} else pipeline.parser_backend
+    parser_backend_resolved = (
+        None
+        if pipeline.parser_backend == "auto" and requested_parser_backend in {"", "auto"}
+        else pipeline.parser_backend
+    )
     return {
         "parser_backend": pipeline.parser_backend,
         "parser_backend_requested": str(body.parser_backend or "").lower(),
@@ -2317,7 +2338,11 @@ def _build_local_html_document_metadata(
     pipeline: ResolvedDocumentPipeline,
 ) -> dict[str, Any]:
     requested_parser_backend = str(body.parser_backend or "").strip().lower()
-    parser_backend_resolved = None if pipeline.parser_backend == "auto" and requested_parser_backend in {"", "auto"} else pipeline.parser_backend
+    parser_backend_resolved = (
+        None
+        if pipeline.parser_backend == "auto" and requested_parser_backend in {"", "auto"}
+        else pipeline.parser_backend
+    )
     return {
         "parser_backend": pipeline.parser_backend,
         "parser_backend_requested": str(body.parser_backend or "").lower(),
@@ -2608,7 +2633,11 @@ def _scan_duplicate_documents(
     max_scan: int,
     predicate: Any,
 ) -> DBDocument | None:
-    docs = _duplicate_document_query(db, tenant_id=tenant_id, dataset_id=dataset_id).limit(max(1, int(max_scan or 5000))).all()
+    docs = (
+        _duplicate_document_query(db, tenant_id=tenant_id, dataset_id=dataset_id)
+        .limit(max(1, int(max_scan or 5000)))
+        .all()
+    )
     for doc in docs or []:
         meta = dict(getattr(doc, "doc_metadata", None) or {})
         if predicate(meta):
@@ -2649,8 +2678,7 @@ def _find_duplicate_document(
             dataset_id=dataset_id,
             max_scan=max_scan,
             predicate=lambda meta: (
-                get_content_sha256(meta) == sha
-                and str(meta.get("pipeline_hash") or "").strip() == ph
+                get_content_sha256(meta) == sha and str(meta.get("pipeline_hash") or "").strip() == ph
             ),
         )
 
@@ -2803,7 +2831,7 @@ async def _ingest_local_html_request(
     dataset = _resolve_writable_dataset(db, tenant_id, account_id, body.dataset_id)
     ingest_file = _write_local_html_ingest_file(body=body, tenant_id=tenant_id)
     content_type = "text/html"
-    source_url = (str(body.source_url or "").strip() or None)
+    source_url = str(body.source_url or "").strip() or None
     url_normalized = normalize_url_for_dedup(source_url) if source_url else None
 
     prepared = _prepare_document_ingestion(
@@ -2927,8 +2955,11 @@ upload_document = document_upload.upload_document
 upload_document_from_url = document_upload.upload_document_from_url
 upload_documents_batch = document_upload.upload_documents_batch
 
+
 def _resolve_active_doc_pipeline_key(document_id: UUID, doc_metadata: dict) -> str:
-    active_hash = str((doc_metadata or {}).get("active_pipeline_hash") or (doc_metadata or {}).get("pipeline_hash") or "").strip()
+    active_hash = str(
+        (doc_metadata or {}).get("active_pipeline_hash") or (doc_metadata or {}).get("pipeline_hash") or ""
+    ).strip()
     return f"{document_id}:{active_hash}" if active_hash else str(document_id)
 
 

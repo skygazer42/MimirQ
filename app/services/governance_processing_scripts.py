@@ -14,7 +14,6 @@ therefore intentionally side-effect free reference code customers can copy as
 a starting point — not a guarantee of runtime behavior.
 """
 
-
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -211,7 +210,7 @@ def expand(text: str) -> str:
 '''
 
 
-_HTML_EMPTY_TAG_STRIP = '''/**
+_HTML_EMPTY_TAG_STRIP = """/**
  * HTML 空标签清理(模板)
  *
  * 删除 <p></p>、<span></span>、<div></div> 等空容器(包括只含空白/&nbsp; 的)。
@@ -247,10 +246,11 @@ function stripEmpty(html) {
 }
 
 module.exports = { stripEmpty };
-'''
+"""
 
 
-_MD_TABLE_ALIGN = '''/**
+_MD_TABLE_ALIGN = (
+    """/**
  * markdown 表格列对齐修复(模板)
  *
  * 输入的 markdown 表格可能存在:
@@ -272,15 +272,20 @@ function alignTables(md) {
   let i = 0;
   while (i < lines.length) {
     const line = lines[i];
-    if (/^\\s*\\|.+\\|\\s*$/.test(line) && i + 1 < lines.length && /^\\s*\\|?\\s*:?-+:?\\s*(\\|\\s*:?-+:?\\s*)*\\|?\\s*$/.test(lines[i + 1])) {
-      const cols = line.split("|").filter((c, idx, arr) => !(idx === 0 && c.trim() === "") && !(idx === arr.length - 1 && c.trim() === "")).length;
-      out.push(line);
+"""
+    "    if (/^\\s*\\|.+\\|\\s*$/.test(line) && i + 1 < lines.length "
+    "&& /^\\s*\\|?\\s*:?-+:?\\s*(\\|\\s*:?-+:?\\s*)*\\|?\\s*$/.test(lines[i + 1])) {\n"
+    '      const cols = line.split("|").filter((c, idx, arr) => '
+    '!(idx === 0 && c.trim() === "") && !(idx === arr.length - 1 && c.trim() === "")).length;\n'
+    """      out.push(line);
       out.push("| " + Array(cols).fill("---").join(" | ") + " |");
       i += 2;
       while (i < lines.length && /\\|/.test(lines[i])) {
         const cells = lines[i].split("|").map((c) => c.trim());
-        const inner = cells.slice(cells[0] === "" ? 1 : 0, cells[cells.length - 1] === "" ? cells.length - 1 : cells.length);
-        while (inner.length < cols) inner.push("");
+"""
+    '        const inner = cells.slice(cells[0] === "" ? 1 : 0, '
+    'cells[cells.length - 1] === "" ? cells.length - 1 : cells.length);\n'
+    """        while (inner.length < cols) inner.push("");
         out.push("| " + inner.slice(0, cols).join(" | ") + " |");
         i++;
       }
@@ -293,10 +298,11 @@ function alignTables(md) {
 }
 
 module.exports = { alignTables };
-'''
+"""
+)
 
 
-_CN_LAW_CLAUSE_NORMALIZE = '''/**
+_CN_LAW_CLAUSE_NORMALIZE = """/**
  * 法规条款编号统一(模板)
  *
  * 把"第Ｘ条"、"第x条"、"第 X 條"、"第壹条" 等多变写法统一为
@@ -345,7 +351,7 @@ export function normalizeClauseNumbering(text: string): string {
     },
   );
 }
-'''
+"""
 
 
 _PII_PLACEHOLDER_AUDIT = '''"""
@@ -674,7 +680,9 @@ _BUILTIN_PROCESSING_SCRIPTS: tuple[BuiltinProcessingScript, ...] = (
     BuiltinProcessingScript(
         key="currency_unit_expand",
         name="货币单位口径展开",
-        description="把 1.2 亿元 / 350 万元 展开为完整阿拉伯数字 [≈ 120,000,000 元] 并保留原文。模板代码,不会被入库管道执行。",
+        description=(
+            "把 1.2 亿元 / 350 万元 展开为完整阿拉伯数字 [≈ 120,000,000 元] 并保留原文。模板代码,不会被入库管道执行。"
+        ),
         language="python",
         stage="post_governance",
         content=_CURRENCY_UNIT_EXPAND,
@@ -683,7 +691,9 @@ _BUILTIN_PROCESSING_SCRIPTS: tuple[BuiltinProcessingScript, ...] = (
     BuiltinProcessingScript(
         key="html_empty_tag_strip",
         name="HTML 空标签清理",
-        description="移除 <p></p> / <span></span> / <div></div> 等空容器,保留 <br/> / <hr/>。模板代码,不会被入库管道执行。",
+        description=(
+            "移除 <p></p> / <span></span> / <div></div> 等空容器,保留 <br/> / <hr/>。模板代码,不会被入库管道执行。"
+        ),
         language="javascript",
         stage="post_parse",
         content=_HTML_EMPTY_TAG_STRIP,
@@ -701,7 +711,9 @@ _BUILTIN_PROCESSING_SCRIPTS: tuple[BuiltinProcessingScript, ...] = (
     BuiltinProcessingScript(
         key="cn_law_clause_normalize",
         name="法规条款编号统一",
-        description="把第Ｘ条 / 第x条 / 第 X 條 / 第壹条 统一为标准 第 X 条;支持条/款/项/章/节。模板代码,不会被入库管道执行。",
+        description=(
+            "把第Ｘ条 / 第x条 / 第 X 條 / 第壹条 统一为标准 第 X 条;支持条/款/项/章/节。模板代码,不会被入库管道执行。"
+        ),
         language="typescript",
         stage="post_governance",
         content=_CN_LAW_CLAUSE_NORMALIZE,
@@ -710,7 +722,9 @@ _BUILTIN_PROCESSING_SCRIPTS: tuple[BuiltinProcessingScript, ...] = (
     BuiltinProcessingScript(
         key="pii_placeholder_audit",
         name="PII 占位符审计",
-        description="扫描 [REDACTED]/[SECRET]/[PII] 等占位符统计与首次出现行号,不修改正文。模板代码,不会被入库管道执行。",
+        description=(
+            "扫描 [REDACTED]/[SECRET]/[PII] 等占位符统计与首次出现行号,不修改正文。模板代码,不会被入库管道执行。"
+        ),
         language="python",
         stage="post_governance",
         content=_PII_PLACEHOLDER_AUDIT,
@@ -728,7 +742,9 @@ _BUILTIN_PROCESSING_SCRIPTS: tuple[BuiltinProcessingScript, ...] = (
     BuiltinProcessingScript(
         key="gov_qa_field_parse",
         name="问答字段解析",
-        description="把单个问答单元解析为 question/answer/source_dept/aliases/links 等结构化字段。模板代码,不会被入库管道执行。",
+        description=(
+            "把单个问答单元解析为 question/answer/source_dept/aliases/links 等结构化字段。模板代码,不会被入库管道执行。"
+        ),
         language="python",
         stage="post_parse",
         content=_GOV_QA_FIELD_PARSE,
@@ -755,7 +771,9 @@ _BUILTIN_PROCESSING_SCRIPTS: tuple[BuiltinProcessingScript, ...] = (
     BuiltinProcessingScript(
         key="gov_url_unwrap",
         name="文档 URL 解包",
-        description="把尖括号或加粗包裹的 URL 解为标准 markdown 链接,保留 host 作为可检索文字。模板代码,不会被入库管道执行。",
+        description=(
+            "把尖括号或加粗包裹的 URL 解为标准 markdown 链接,保留 host 作为可检索文字。模板代码,不会被入库管道执行。"
+        ),
         language="python",
         stage="post_parse",
         content=_GOV_URL_UNWRAP,
@@ -764,7 +782,9 @@ _BUILTIN_PROCESSING_SCRIPTS: tuple[BuiltinProcessingScript, ...] = (
     BuiltinProcessingScript(
         key="gov_keyword_extract",
         name="关键字/相似问法抽取",
-        description="抽取 ==##关键字##== / ==##相似问法##== 元数据块为 keywords/aliases 列表。模板代码,不会被入库管道执行。",
+        description=(
+            "抽取 ==##关键字##== / ==##相似问法##== 元数据块为 keywords/aliases 列表。模板代码,不会被入库管道执行。"
+        ),
         language="python",
         stage="post_parse",
         content=_GOV_KEYWORD_EXTRACT,
@@ -773,7 +793,10 @@ _BUILTIN_PROCESSING_SCRIPTS: tuple[BuiltinProcessingScript, ...] = (
     BuiltinProcessingScript(
         key="gov_qa_xlsx_header_align",
         name="问答 xlsx 表头规范化",
-        description="把不同来源导出的问答表头统一为 question/answer/aliases/region/link/source_dept 等字段。模板代码,不会被入库管道执行。",
+        description=(
+            "把不同来源导出的问答表头统一为 question/answer/aliases/region/link/source_dept 等字段。"
+            "模板代码,不会被入库管道执行。"
+        ),
         language="python",
         stage="post_parse",
         content=_GOV_QA_XLSX_HEADER_ALIGN,

@@ -35,6 +35,8 @@ from app.rag.core.logging import get_logger
 
 logger = get_logger("deepdoc.parser.docling")
 _DOCLING_PARSER_FALLBACK_LOG_MESSAGE = "Ignoring non-critical docling parser fallback failure: %s"
+_ExtractedPosition = tuple[list[int], float, float, float, float]
+_CropPosition = tuple[int, int, int, int, int]
 
 
 class DoclingContentType(str, Enum):
@@ -200,7 +202,6 @@ class DoclingParser(IntegratedPipelinePdfParser):
         self.page_to = 10_000
         self.outlines = []
 
-
     def check_installation(self) -> bool:
         try:
             _ = DocumentConverter()
@@ -264,16 +265,14 @@ class DoclingParser(IntegratedPipelinePdfParser):
                 with contextlib.suppress(Exception):
                     doc.close()
 
-    def _make_line_tag(self,bbox: _BBox) -> str:
+    def _make_line_tag(self, bbox: _BBox) -> str:
         if bbox is None:
             return ""
-        x0,x1, top, bott = bbox.x0, bbox.x1, bbox.y0, bbox.y1
+        x0, x1, top, bott = bbox.x0, bbox.x1, bbox.y0, bbox.y1
         if hasattr(self, "page_images") and self.page_images and len(self.page_images) >= bbox.page_no:
-            _, page_height = self.page_images[bbox.page_no-1].size
-            top, bott = page_height-top ,page_height-bott
-        return "@@{}\t{:.1f}\t{:.1f}\t{:.1f}\t{:.1f}##".format(
-            bbox.page_no, x0,x1, top, bott
-        )
+            _, page_height = self.page_images[bbox.page_no - 1].size
+            top, bott = page_height - top, page_height - bott
+        return "@@{}\t{:.1f}\t{:.1f}\t{:.1f}\t{:.1f}##".format(bbox.page_no, x0, x1, top, bott)
 
     @staticmethod
     def extract_positions(txt: str) -> list[tuple[list[int], float, float, float, float]]:
@@ -291,32 +290,16 @@ class DoclingParser(IntegratedPipelinePdfParser):
             return (None, None) if need_position else None
 
         GAP = 6
-        pos = poss[0]
-        poss.insert(0, ([pos[0][0]], pos[1], pos[2], max(0, pos[3] - 120), max(pos[3] - GAP, 0)))
-        pos = poss[-1]
-        poss.append(([pos[0][-1]], pos[1], pos[2], min(self.page_images[pos[0][-1]].size[1], pos[4] + GAP), min(self.page_images[pos[0][-1]].size[1], pos[4] + 120)))
         positions = []
-        for ii, (pns, left, right, top, bottom) in enumerate(poss):
-            if bottom <= top:
-                bottom = top + 4
-            img0 = self.page_images[pns[0]]
-            x0, y0, x1, y1 = int(left), int(top), int(right), int(min(bottom, img0.size[1]))
-
-            crop0 = img0.crop((x0, y0, x1, y1))
-            imgs.append(crop0)
-            if 0 < ii < len(poss)-1:
-                positions.append((pns[0] + self.page_from, x0, x1, y0, y1))
-            remain_bottom = bottom - img0.size[1]
-            for pn in pns[1:]:
-                if remain_bottom <= 0:
-                    break
-                page = self.page_images[pn]
-                x0, y0, x1, y1 = int(left), 0, int(right), int(min(remain_bottom, page.size[1]))
-                cimgp = page.crop((x0, y0, x1, y1))
-                imgs.append(cimgp)
-                if 0 < ii < len(poss) - 1:
-                    positions.append((pn + self.page_from, x0, x1, y0, y1))
-                remain_bottom -= page.size[1]
+        expanded_poss = self._expand_crop_positions(poss, gap=GAP)
+        for ii, pos in enumerate(expanded_poss):
+            cropped_images, cropped_positions = self._crop_position_images(
+                pos,
+                index=ii,
+                total=len(expanded_poss),
+            )
+            imgs.extend(cropped_images)
+            positions.extend(cropped_positions)
 
         if not imgs:
             return (None, None) if need_position else None
@@ -336,18 +319,103 @@ class DoclingParser(IntegratedPipelinePdfParser):
 
         return (pic, positions) if need_position else pic
 
+    def _expand_crop_positions(
+        self,
+        positions: list[_ExtractedPosition],
+        *,
+        gap: int,
+    ) -> list[_ExtractedPosition]:
+        first = positions[0]
+        last = positions[-1]
+        last_page_height = self.page_images[last[0][-1]].size[1]
+        return [
+            (
+                [first[0][0]],
+                first[1],
+                first[2],
+                max(0.0, first[3] - 120),
+                max(first[3] - gap, 0.0),
+            ),
+            *positions,
+            (
+                [last[0][-1]],
+                last[1],
+                last[2],
+                min(float(last_page_height), last[4] + gap),
+                min(float(last_page_height), last[4] + 120),
+            ),
+        ]
+
+    @staticmethod
+    def _crop_bounds(
+        page_image: Image.Image,
+        left: float,
+        top: float,
+        right: float,
+        bottom: float,
+    ) -> tuple[int, int, int, int]:
+        safe_bottom = bottom if bottom > top else top + 4
+        return (
+            int(left),
+            int(top),
+            int(right),
+            int(min(safe_bottom, page_image.size[1])),
+        )
+
+    def _crop_position_images(
+        self,
+        pos: _ExtractedPosition,
+        *,
+        index: int,
+        total: int,
+    ) -> tuple[list[Image.Image], list[_CropPosition]]:
+        pns, left, right, top, bottom = pos
+        safe_bottom = bottom if bottom > top else top + 4
+        images: list[Image.Image] = []
+        positions: list[_CropPosition] = []
+        page_image = self.page_images[pns[0]]
+        x0, y0, x1, y1 = self._crop_bounds(page_image, left, top, right, safe_bottom)
+        images.append(page_image.crop((x0, y0, x1, y1)))
+        if 0 < index < total - 1:
+            positions.append((pns[0] + self.page_from, x0, x1, y0, y1))
+
+        remain_bottom = safe_bottom - page_image.size[1]
+        for pn in pns[1:]:
+            if remain_bottom <= 0:
+                break
+            page = self.page_images[pn]
+            x0, y0, x1, y1 = self._crop_bounds(page, left, 0.0, right, remain_bottom)
+            images.append(page.crop((x0, y0, x1, y1)))
+            if 0 < index < total - 1:
+                positions.append((pn + self.page_from, x0, x1, y0, y1))
+            remain_bottom -= page.size[1]
+
+        return images, positions
+
     def _iter_doc_items(self, doc) -> Iterable[tuple[str, Any, _BBox | None]]:
         for t in getattr(doc, "texts", []):
-            parent=getattr(t, "parent", "")
-            ref=getattr(parent,"cref","")
-            label=getattr(t, "label", "")
-            if (label in ("section_header","text",) and ref in ("#/body",)) or label in ("list_item",):
+            parent = getattr(t, "parent", "")
+            ref = getattr(parent, "cref", "")
+            label = getattr(t, "label", "")
+            if (
+                label
+                in (
+                    "section_header",
+                    "text",
+                )
+                and ref in ("#/body",)
+            ) or label in ("list_item",):
                 text = getattr(t, "text", "") or ""
                 bbox = None
                 if getattr(t, "prov", None):
                     pn = getattr(t.prov[0], "page_no", None)
                     bb = getattr(t.prov[0], "bbox", None)
-                    bb = [getattr(bb, "l", None),getattr(bb, "t", None),getattr(bb, "r", None),getattr(bb, "b", None)]
+                    bb = [
+                        getattr(bb, "l", None),
+                        getattr(bb, "t", None),
+                        getattr(bb, "r", None),
+                        getattr(bb, "b", None),
+                    ]
                     if pn and bb and len(bb) == 4:
                         bbox = _BBox(page_no=int(pn), x0=bb[0], y0=bb[1], x1=bb[2], y1=bb[3])
                 yield (DoclingContentType.TEXT.value, text, bbox)
@@ -359,7 +427,12 @@ class DoclingParser(IntegratedPipelinePdfParser):
                 if getattr(item, "prov", None):
                     pn = getattr(item.prov, "page_no", None)
                     bb = getattr(item.prov, "bbox", None)
-                    bb = [getattr(bb, "l", None),getattr(bb, "t", None),getattr(bb, "r", None),getattr(bb, "b", None)]
+                    bb = [
+                        getattr(bb, "l", None),
+                        getattr(bb, "t", None),
+                        getattr(bb, "r", None),
+                        getattr(bb, "b", None),
+                    ]
                     if pn and bb and len(bb) == 4:
                         bbox = _BBox(int(pn), bb[0], bb[1], bb[2], bb[3])
                 yield (DoclingContentType.EQUATION.value, text, bbox)
@@ -376,7 +449,7 @@ class DoclingParser(IntegratedPipelinePdfParser):
             else:
                 continue
 
-            tag = self._make_line_tag(bbox) if isinstance(bbox,_BBox) else ""
+            tag = self._make_line_tag(bbox) if isinstance(bbox, _BBox) else ""
             if parse_method == "manual":
                 sections.append((section, typ, tag))
             elif parse_method == "paper":
@@ -399,9 +472,9 @@ class DoclingParser(IntegratedPipelinePdfParser):
         left, top, right, bott = bbox
 
         x0 = float(left)
-        y0 = float(H-top)
+        y0 = float(H - top)
         x1 = float(right)
-        y1 = float(H-bott)
+        y1 = float(H - bott)
 
         x0, y0 = max(0.0, min(x0, W - 1)), max(0.0, min(y0, H - 1))
         x1, y1 = max(x0 + 1.0, min(x1, W)), max(y0 + 1.0, min(y1, H))
@@ -411,13 +484,55 @@ class DoclingParser(IntegratedPipelinePdfParser):
         except Exception:
             return None, ""
 
-        pos = (page_no-1 if page_no>0 else 0, x0, x1, y0, y1)
+        pos = (page_no - 1 if page_no > 0 else 0, x0, x1, y0, y1)
         return crop, [pos]
 
     def _transfer_to_tables(self, doc):
         report = JsonReportProcessor(self).build_report(doc, parse_method="raw")
         _sections, tables = JsonReportProcessor.to_sections_tables(report)
         return tables
+
+    @staticmethod
+    def _resolve_source_path(
+        filepath: str | PathLike[str],
+        binary: BytesIO | bytes | None,
+        output_dir: str | None,
+    ) -> Path:
+        if binary is None:
+            src_path = Path(filepath)
+            if not src_path.exists():
+                raise FileNotFoundError(f"PDF not found: {src_path}")
+            return src_path
+
+        tmpdir = Path(output_dir) if output_dir else Path.cwd() / ".docling_tmp"
+        tmpdir.mkdir(parents=True, exist_ok=True)
+        src_path = tmpdir / (Path(filepath).name or "input.pdf")
+        with open(src_path, "wb") as f:
+            if isinstance(binary, (bytes, bytearray)):
+                f.write(binary)
+            else:
+                f.write(binary.getbuffer())
+        return src_path
+
+    @staticmethod
+    def _emit_callback(callback: Callable | None, progress: float, message: str) -> None:
+        if callback:
+            callback(progress, message)
+
+    def _render_page_images(self, src_path: Path) -> None:
+        try:
+            self.__images__(str(src_path), zoomin=1)
+        except Exception as e:
+            self.logger.warning(f"[Docling] render pages failed: {e}")
+
+    @staticmethod
+    def _cleanup_temp_pdf(src_path: Path, *, binary: BytesIO | bytes | None, delete_output: bool) -> None:
+        if binary is None or not delete_output:
+            return
+        try:
+            src_path.unlink(missing_ok=True)
+        except Exception as exc:
+            logger.debug(_DOCLING_PARSER_FALLBACK_LOG_MESSAGE, exc)
 
     def parse_pdf(
         self,
@@ -429,57 +544,35 @@ class DoclingParser(IntegratedPipelinePdfParser):
         lang: str | None = None,
         method: str = "auto",
         delete_output: bool = True,
-        parse_method: str = "raw"
+        parse_method: str = "raw",
     ):
         _ = (lang, method)
 
         if not self.check_installation():
             raise RuntimeError("Docling not available, please install `docling`")
 
-        if binary is not None:
-            tmpdir = Path(output_dir) if output_dir else Path.cwd() / ".docling_tmp"
-            tmpdir.mkdir(parents=True, exist_ok=True)
-            name = Path(filepath).name or "input.pdf"
-            tmp_pdf = tmpdir / name
-            with open(tmp_pdf, "wb") as f:
-                if isinstance(binary, (bytes, bytearray)):
-                    f.write(binary)
-                else:
-                    f.write(binary.getbuffer())
-            src_path = tmp_pdf
-        else:
-            src_path = Path(filepath)
-            if not src_path.exists():
-                raise FileNotFoundError(f"PDF not found: {src_path}")
-
-        if callback:
-            callback(0.1, f"[Docling] Converting: {src_path}")
-
-        try:
-            self.__images__(str(src_path), zoomin=1)
-        except Exception as e:
-            self.logger.warning(f"[Docling] render pages failed: {e}")
+        src_path = self._resolve_source_path(filepath, binary, output_dir)
+        self._emit_callback(callback, 0.1, f"[Docling] Converting: {src_path}")
+        self._render_page_images(src_path)
 
         conv = DocumentConverter()
         conv_res = conv.convert(str(src_path))
         doc = conv_res.document
-        if callback:
-            callback(0.7, f"[Docling] Parsed doc: {getattr(doc, 'num_pages', 'n/a')} pages")
+        self._emit_callback(
+            callback,
+            0.7,
+            f"[Docling] Parsed doc: {getattr(doc, 'num_pages', 'n/a')} pages",
+        )
 
         report = JsonReportProcessor(self).build_report(doc, parse_method=parse_method)
         sections, tables = JsonReportProcessor.to_sections_tables(report)
-
-        if callback:
-            callback(0.95, f"[Docling] Sections: {len(sections)}, Tables: {len(tables)}")
-
-        if binary is not None and delete_output:
-            try:
-                Path(src_path).unlink(missing_ok=True)
-            except Exception as exc:
-                logger.debug(_DOCLING_PARSER_FALLBACK_LOG_MESSAGE, exc)
-
-        if callback:
-            callback(1.0, "[Docling] Done.")
+        self._emit_callback(
+            callback,
+            0.95,
+            f"[Docling] Sections: {len(sections)}, Tables: {len(tables)}",
+        )
+        self._cleanup_temp_pdf(src_path, binary=binary, delete_output=delete_output)
+        self._emit_callback(callback, 1.0, "[Docling] Done.")
         return sections, tables
 
 

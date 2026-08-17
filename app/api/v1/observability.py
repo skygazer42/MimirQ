@@ -5,7 +5,6 @@ Currently provides a small, PII-safe dashboard summary for RAG metrics based on 
 JSONL metrics log (ENABLE_METRICS_LOG / METRICS_LOG_PATH).
 """
 
-
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
@@ -663,7 +662,11 @@ def _serialize_index_drift_item(item: Any) -> dict[str, Any]:
     }
 
 
-@router.get("/rag-metrics/summary", response_model=RagMetricsSummaryResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/rag-metrics/summary",
+    response_model=RagMetricsSummaryResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def get_rag_metrics_summary(
     window_minutes: Annotated[int, Query(ge=1, le=7 * 24 * 60)] = 60,
     max_bytes: Annotated[int, Query(ge=100000, le=50000000)] = 5_000_000,
@@ -673,7 +676,11 @@ def get_rag_metrics_summary(
     db: Annotated[Session, Depends(get_db)],
 ):
     _ensure_admin(db, tenant_id, account_id)
-    summary = summarize_rag_metrics(tenant_id=str(tenant_id), window_minutes=window_minutes, max_bytes=max_bytes)
+    summary = summarize_rag_metrics(
+        tenant_id=str(tenant_id),
+        window_minutes=window_minutes,
+        max_bytes=max_bytes,
+    )
     # Dataclass -> dict (safe fields only by construction).
     return summary.__dict__
 
@@ -782,16 +789,30 @@ def diff_queryset_health_runs(
     if not base_ts or not curr_ts:
         raise HTTPException(status_code=400, detail="baseline_generated_at and current_generated_at are required")
 
-    baseline = next((r for r in rows if isinstance(r, dict) and str(r.get("generated_at") or "").strip() == base_ts), None)
-    current = next((r for r in rows if isinstance(r, dict) and str(r.get("generated_at") or "").strip() == curr_ts), None)
+    baseline = next(
+        (r for r in rows if isinstance(r, dict) and str(r.get("generated_at") or "").strip() == base_ts),
+        None,
+    )
+    current = next(
+        (r for r in rows if isinstance(r, dict) and str(r.get("generated_at") or "").strip() == curr_ts),
+        None,
+    )
     if baseline is None or current is None:
         raise HTTPException(status_code=404, detail="baseline/current snapshot not found in history")
 
-    diff = diff_queryset_health_snapshots(baseline=baseline, current=current, max_hard_case_ids=int(max_hard_case_ids or 20))
+    diff = diff_queryset_health_snapshots(
+        baseline=baseline,
+        current=current,
+        max_hard_case_ids=int(max_hard_case_ids or 20),
+    )
     return QuerysetHealthDiffResponse(diff=diff)
 
 
-@router.get("/rag-metrics/query-analytics", response_model=RagQueryAnalyticsResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/rag-metrics/query-analytics",
+    response_model=RagQueryAnalyticsResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def get_rag_query_analytics(
     window_minutes: Annotated[int, Query(ge=1, le=7 * 24 * 60)] = 60,
     slow_threshold_sec: Annotated[float, Query(ge=0.0, le=120.0)] = 2.0,
@@ -846,7 +867,11 @@ def get_rag_metrics_tail(
     )
 
 
-@router.get("/rag-metrics/cost-attribution", response_model=RagCostAttributionResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/rag-metrics/cost-attribution",
+    response_model=RagCostAttributionResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def get_rag_cost_attribution(
     window_minutes: Annotated[int, Query(ge=1, le=7 * 24 * 60)] = 60,
     max_bytes: Annotated[int, Query(ge=100000, le=50000000)] = 5_000_000,
@@ -856,7 +881,11 @@ def get_rag_cost_attribution(
     db: Annotated[Session, Depends(get_db)],
 ):
     _ensure_admin(db, tenant_id, account_id)
-    summary = summarize_rag_cost_attribution(tenant_id=str(tenant_id), window_minutes=window_minutes, max_bytes=max_bytes)
+    summary = summarize_rag_cost_attribution(
+        tenant_id=str(tenant_id),
+        window_minutes=window_minutes,
+        max_bytes=max_bytes,
+    )
     return summary.__dict__
 
 
@@ -878,7 +907,11 @@ def get_deps_diagnostics_snapshot(
     return snap.__dict__
 
 
-@router.get("/rag-metrics/trace-bundle", response_model=RagTraceBundleResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/rag-metrics/trace-bundle",
+    response_model=RagTraceBundleResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def get_rag_trace_bundle(
     request_id: Annotated[str, Query(..., min_length=1, max_length=200, description="X-Request-ID to export")],
     window_minutes: Annotated[int, Query(ge=1, le=7 * 24 * 60)] = 24 * 60,
@@ -900,7 +933,11 @@ def get_rag_trace_bundle(
     return bundle.__dict__
 
 
-@router.get("/rag-metrics/trace-bundle/diff", response_model=RagTraceBundleDiffResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/rag-metrics/trace-bundle/diff",
+    response_model=RagTraceBundleDiffResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def get_rag_trace_bundle_diff(
     request_id_a: Annotated[str, Query(..., min_length=1, max_length=200, description="X-Request-ID A to compare")],
     request_id_b: Annotated[str, Query(..., min_length=1, max_length=200, description="X-Request-ID B to compare")],
@@ -954,7 +991,11 @@ def get_ops_config_snapshot(
     return snap.__dict__
 
 
-@router.post("/cache/datasets/{dataset_id}/invalidate", response_model=DatasetCacheInvalidationResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/cache/datasets/{dataset_id}/invalidate",
+    response_model=DatasetCacheInvalidationResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def invalidate_dataset_cache_namespace_endpoint(
     dataset_id: UUID,
     *,
@@ -973,7 +1014,11 @@ def invalidate_dataset_cache_namespace_endpoint(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@router.get("/periodic-jobs/freshness", response_model=PeriodicJobFreshnessResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/periodic-jobs/freshness",
+    response_model=PeriodicJobFreshnessResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def get_periodic_job_freshness(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -990,9 +1035,13 @@ def get_periodic_job_freshness(
     return build_periodic_job_freshness_snapshot(db=db, tenant_id=tenant_id)
 
 
-@router.get("/task-queue/snapshot", response_model=TaskQueueObservabilitySnapshotResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/task-queue/snapshot",
+    response_model=TaskQueueObservabilitySnapshotResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def get_task_queue_observability_snapshot(
-    force_refresh: Annotated[bool, Query(description='Force refresh from broker (best-effort)')] = False,
+    force_refresh: Annotated[bool, Query(description="Force refresh from broker (best-effort)")] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1028,11 +1077,15 @@ async def get_slo_snapshot(
     return await build_slo_snapshot(tenant_id=str(tenant_id))
 
 
-@router.get("/ingestion/summary", response_model=IngestionDashboardSummaryResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/ingestion/summary",
+    response_model=IngestionDashboardSummaryResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def get_ingestion_dashboard_summary(
     window_hours: Annotated[int, Query(ge=1, le=30 * 24)] = 24,
     bucket_minutes: Annotated[int, Query(ge=1, le=30 * 24 * 60)] = 60,
-    dataset_id: Annotated[UUID | None, Query(description='Optional dataset_id filter')] = None,
+    dataset_id: Annotated[UUID | None, Query(description="Optional dataset_id filter")] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1061,9 +1114,9 @@ def get_ingestion_dashboard_summary(
 @router.get("/index-audit", response_model=IndexAuditResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_index_audit(
     dataset_id: Annotated[UUID, Query(..., description="Dataset id to audit (required)")],
-    max_check_ids: Annotated[int, Query(ge=0, le=50000, description='Max DB vector_ids to existence-check')] = 5000,
-    milvus_list_limit: Annotated[int, Query(ge=0, le=50000, description='Max Milvus ids to sample for orphans')] = 2000,
-    sample_limit: Annotated[int, Query(ge=0, le=200, description='Max sample ids to return per category')] = 20,
+    max_check_ids: Annotated[int, Query(ge=0, le=50000, description="Max DB vector_ids to existence-check")] = 5000,
+    milvus_list_limit: Annotated[int, Query(ge=0, le=50000, description="Max Milvus ids to sample for orphans")] = 2000,
+    sample_limit: Annotated[int, Query(ge=0, le=200, description="Max sample ids to return per category")] = 20,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1092,7 +1145,11 @@ def get_index_audit(
     )
 
 
-@router.post("/index-audit/reconcile", response_model=IndexAuditReconcileResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/index-audit/reconcile",
+    response_model=IndexAuditReconcileResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def reconcile_index_audit(
     payload: IndexAuditReconcileRequest,
     *,
@@ -1171,7 +1228,11 @@ async def reconcile_index_audit(
     return result
 
 
-@router.get("/index-audit/reconcile-status", response_model=IndexAuditReconcileStatusResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/index-audit/reconcile-status",
+    response_model=IndexAuditReconcileStatusResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def get_index_audit_reconcile_status(
     dataset_id: Annotated[UUID, Query(..., description="Dataset id for the reconciled document")],
     document_id: Annotated[UUID, Query(..., description="Document id to inspect reconcile readiness for")],
@@ -1201,7 +1262,11 @@ def get_index_audit_reconcile_status(
     return status
 
 
-@router.post("/index-audit/reconcile-jobs", response_model=IndexAuditReconcileEnqueueResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/index-audit/reconcile-jobs",
+    response_model=IndexAuditReconcileEnqueueResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def enqueue_index_audit_reconcile_job_endpoint(
     payload: IndexAuditReconcileEnqueueRequest,
     *,
@@ -1355,8 +1420,8 @@ def run_perf_suite(
 
 @router.get("/index-drift", response_model=IndexDriftListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_index_drift(
-    dataset_id: Annotated[UUID | None, Query(description='Optional dataset UUID filter')] = None,
-    status: Annotated[str, Query(description='open | resolved | all')] = "open",
+    dataset_id: Annotated[UUID | None, Query(description="Optional dataset UUID filter")] = None,
+    status: Annotated[str, Query(description="open | resolved | all")] = "open",
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -1380,7 +1445,11 @@ def list_index_drift(
     }
 
 
-@router.post("/index-drift/{item_id}/resolve", response_model=IndexDriftItemResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/index-drift/{item_id}/resolve",
+    response_model=IndexDriftItemResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def resolve_index_drift(
     item_id: UUID,
     payload: IndexDriftResolveRequest,

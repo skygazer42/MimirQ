@@ -5,7 +5,6 @@ Selects an appropriate chunker per-document based on metadata + lightweight
 content heuristics.
 """
 
-
 import json
 import re
 
@@ -166,6 +165,7 @@ def _adaptive_chunk_params(
         overlap = 0
 
     return int(size), int(overlap), str(reason), metrics
+
 
 _MD_HINT_RES = (
     re.compile(r"(?m)^\s*#{1,6}\s+"),
@@ -525,18 +525,42 @@ class AutoChunker(BaseChunker):
 
         cases = [
             (_json_case, _build_json_chunker, "json"),
-            (lambda: file_type in {"jsonl", "ndjson"} or looks_like_jsonl_records(text), lambda: self._jsonl, "jsonl_records"),
+            (
+                lambda: file_type in {"jsonl", "ndjson"} or looks_like_jsonl_records(text),
+                lambda: self._jsonl,
+                "jsonl_records",
+            ),
             (lambda: looks_like_maven_pom(text), lambda: self._maven_pom, "maven_pom"),
             (lambda: looks_like_junit_xml(text), lambda: self._junit_xml, "junit_xml"),
             (lambda: looks_like_sitemap_xml(text), lambda: self._sitemap_xml, "sitemap_xml"),
             (lambda: file_type in {"rss", "atom"} or looks_like_xml_feed(text), lambda: self._xml_feed, "xml_feed"),
-            (lambda: file_type in {"graphql", "gql"} or looks_like_graphql_schema(text), lambda: self._graphql, "graphql_schema"),
+            (
+                lambda: file_type in {"graphql", "gql"} or looks_like_graphql_schema(text),
+                lambda: self._graphql,
+                "graphql_schema",
+            ),
             (lambda: file_type in {"proto"} or looks_like_proto_schema(text), lambda: self._proto, "proto_schema"),
-            (lambda: file_type in {"tf", "hcl"} or looks_like_terraform_hcl(text), lambda: self._terraform, "terraform_hcl"),
+            (
+                lambda: file_type in {"tf", "hcl"} or looks_like_terraform_hcl(text),
+                lambda: self._terraform,
+                "terraform_hcl",
+            ),
             (lambda: file_type == "csv" and looks_like_csv_rows(text), lambda: self._csv_rows, "csv_rows"),
-            (lambda: file_type == "csv" and looks_like_markdown_table(text), lambda: self._markdown_table, "markdown_table"),
-            (lambda: file_type in {"xlsx", "xls"} and looks_like_spreadsheet(text), lambda: self._spreadsheet, "spreadsheet_sheet"),
-            (lambda: file_type in {"xlsx", "xls"} and looks_like_markdown_table(text), lambda: self._markdown_table, "markdown_table"),
+            (
+                lambda: file_type == "csv" and looks_like_markdown_table(text),
+                lambda: self._markdown_table,
+                "markdown_table",
+            ),
+            (
+                lambda: file_type in {"xlsx", "xls"} and looks_like_spreadsheet(text),
+                lambda: self._spreadsheet,
+                "spreadsheet_sheet",
+            ),
+            (
+                lambda: file_type in {"xlsx", "xls"} and looks_like_markdown_table(text),
+                lambda: self._markdown_table,
+                "markdown_table",
+            ),
             (lambda: looks_like_git_commit_log(text), lambda: self._git_commit_log, "git_commit_log"),
             (lambda: looks_like_diff_patch(text), lambda: self._diff, "diff_patch"),
             (lambda: looks_like_subtitles(text), lambda: self._subtitles, "subtitles"),
@@ -556,8 +580,16 @@ class AutoChunker(BaseChunker):
                 "docker_compose",
             ),
             (lambda: file_type in {"yaml", "yml"} and looks_like_gitlab_ci(text), lambda: self._gitlab_ci, "gitlab_ci"),
-            (lambda: file_type in {"yaml", "yml"} and looks_like_ansible_playbook(text), lambda: self._ansible, "ansible_playbook"),
-            (lambda: file_type in {"yaml", "yml"} or looks_like_yaml_manifest(text), lambda: self._yaml, "yaml_manifest"),
+            (
+                lambda: file_type in {"yaml", "yml"} and looks_like_ansible_playbook(text),
+                lambda: self._ansible,
+                "ansible_playbook",
+            ),
+            (
+                lambda: file_type in {"yaml", "yml"} or looks_like_yaml_manifest(text),
+                lambda: self._yaml,
+                "yaml_manifest",
+            ),
             (lambda: file_type in {"toml"} or looks_like_toml_config(text), lambda: self._toml, "toml_config"),
             (lambda: file_type in {"sql"} or looks_like_sql_schema(text), lambda: self._sql, "sql_schema"),
             (lambda: looks_like_nginx_config(text), lambda: self._nginx, "nginx_config"),
@@ -584,8 +616,16 @@ class AutoChunker(BaseChunker):
             (lambda: looks_like_paper(text), lambda: self._paper, "paper"),
             (lambda: looks_like_book(text), lambda: self._book, "book_structured"),
             (lambda: file_type in {"rst"} or looks_like_rst_sections(text), lambda: self._rst, "rst_sections"),
-            (lambda: file_type in {"adoc", "asciidoc"} or looks_like_asciidoc(text), lambda: self._asciidoc, "asciidoc_sections"),
-            (lambda: file_type in {"tex", "latex"} or looks_like_latex_sections(text), lambda: self._latex, "latex_sections"),
+            (
+                lambda: file_type in {"adoc", "asciidoc"} or looks_like_asciidoc(text),
+                lambda: self._asciidoc,
+                "asciidoc_sections",
+            ),
+            (
+                lambda: file_type in {"tex", "latex"} or looks_like_latex_sections(text),
+                lambda: self._latex,
+                "latex_sections",
+            ),
             (lambda: file_type in {"org"} or looks_like_orgmode(text), lambda: self._orgmode, "orgmode_sections"),
             (lambda: looks_like_mediawiki(text), lambda: self._mediawiki, "mediawiki_sections"),
             (lambda: looks_like_html_sections(text), lambda: self._html, "html_sections"),
@@ -596,7 +636,11 @@ class AutoChunker(BaseChunker):
                 lambda: self._markdown_frontmatter,
                 "markdown_frontmatter",
             ),
-            (lambda: file_type in {"md", "markdown"} or _looks_like_markdown(text), lambda: self._markdown, "markdown_aware"),
+            (
+                lambda: file_type in {"md", "markdown"} or _looks_like_markdown(text),
+                lambda: self._markdown,
+                "markdown_aware",
+            ),
             (lambda: looks_like_transcript(text), lambda: self._transcript, "transcript"),
         ]
 

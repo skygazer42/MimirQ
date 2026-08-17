@@ -7,7 +7,6 @@ Key goals:
 - Sync approved evidence into RAGAS regression cases for retrieval-only evaluation
 """
 
-
 import csv
 import hashlib
 import io
@@ -94,7 +93,10 @@ def _hash_text_for_metrics(text: str) -> str:
 def _ensure_status(item: EvidenceItem, *, expected: str) -> None:
     cur = str(getattr(item, "status", "") or "").strip().lower()
     if cur != expected:
-        raise HTTPException(status_code=400, detail=f"Invalid status transition (expected {expected}, got {cur or 'unknown'})")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status transition (expected {expected}, got {cur or 'unknown'})",
+        )
 
 
 def _suite_counts(db: Session, *, tenant_id: UUID, suite_ids: list[UUID]) -> dict[str, dict[str, int]]:
@@ -129,22 +131,14 @@ def _suite_counts(db: Session, *, tenant_id: UUID, suite_ids: list[UUID]) -> dic
 
 
 def _get_evidence_suite_or_404(db: Session, *, tenant_id: UUID, suite_id: UUID) -> EvidenceSuite:
-    suite = (
-        db.query(EvidenceSuite)
-        .filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id)
-        .first()
-    )
+    suite = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
     return suite
 
 
 def _get_evidence_item_or_404(db: Session, *, tenant_id: UUID, item_id: UUID) -> EvidenceItem:
-    row = (
-        db.query(EvidenceItem)
-        .filter(EvidenceItem.id == item_id, EvidenceItem.tenant_id == tenant_id)
-        .first()
-    )
+    row = db.query(EvidenceItem).filter(EvidenceItem.id == item_id, EvidenceItem.tenant_id == tenant_id).first()
     if not row:
         raise HTTPException(status_code=404, detail=_DETAIL_ITEM_NOT_FOUND)
     return row
@@ -433,7 +427,9 @@ def _resolve_retrieval_config_hash(snapshot: dict[str, Any]) -> str | None:
         return retrieval_cfg_hash
 
     trace = snapshot.get("retrieval_trace") if isinstance(snapshot.get("retrieval_trace"), dict) else None
-    fingerprint = (trace or {}).get("retrieval_config") if isinstance((trace or {}).get("retrieval_config"), dict) else None
+    fingerprint = (
+        (trace or {}).get("retrieval_config") if isinstance((trace or {}).get("retrieval_config"), dict) else None
+    )
     maybe_hash = (fingerprint or {}).get("hash") if isinstance(fingerprint, dict) else None
     return str(maybe_hash or "").strip() or None
 
@@ -870,7 +866,7 @@ def _render_training_export_csv(rows: list[dict[str, Any]]) -> str:
     ]
     writer = csv.DictWriter(buf, fieldnames=fieldnames)
     writer.writeheader()
-    for row in (rows or []):
+    for row in rows or []:
         writer.writerow(
             {
                 "schema": row.get("schema"),
@@ -881,10 +877,30 @@ def _render_training_export_csv(rows: list[dict[str, Any]]) -> str:
                 "question": row.get("question"),
                 "expected_answer": row.get("expected_answer"),
                 "tags_json": json.dumps(row.get("tags") or [], ensure_ascii=False, separators=(",", ":")),
-                "reference_sources_json": json.dumps(row.get("reference_sources") or [], ensure_ascii=False, separators=(",", ":"), default=str),
-                "trace_snapshot_json": json.dumps(row.get("trace_snapshot") or {}, ensure_ascii=False, separators=(",", ":"), default=str),
-                "rag_config_snapshot_json": json.dumps(row.get("rag_config_snapshot") or {}, ensure_ascii=False, separators=(",", ":"), default=str),
-                "source_metadata_json": json.dumps(row.get("source_metadata") or {}, ensure_ascii=False, separators=(",", ":"), default=str),
+                "reference_sources_json": json.dumps(
+                    row.get("reference_sources") or [],
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    default=str,
+                ),
+                "trace_snapshot_json": json.dumps(
+                    row.get("trace_snapshot") or {},
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    default=str,
+                ),
+                "rag_config_snapshot_json": json.dumps(
+                    row.get("rag_config_snapshot") or {},
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    default=str,
+                ),
+                "source_metadata_json": json.dumps(
+                    row.get("source_metadata") or {},
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    default=str,
+                ),
                 "created_at": row.get("created_at"),
                 "updated_at": row.get("updated_at"),
             }
@@ -924,12 +940,16 @@ def _audit_reference_sources_drift(
     )
 
 
-@router.post("/suites/{suite_id}/repair-reference-sources", response_model=EvidenceReferenceRepairResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/suites/{suite_id}/repair-reference-sources",
+    response_model=EvidenceReferenceRepairResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def repair_evidence_suite_reference_sources(
     suite_id: UUID,
     payload: EvidenceReferenceRepairRequest,
     response: Response,
-    async_mode: Annotated[bool, Query(description='Enqueue repair via task queue (arq)')] = False,
+    async_mode: Annotated[bool, Query(description="Enqueue repair via task queue (arq)")] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1090,7 +1110,13 @@ def list_evidence_suites(
     items_out: list[dict[str, Any]] = []
     for s in suites:
         out = EvidenceSuiteOut.model_validate(s).model_dump()
-        out["item_counts"] = counts.get(str(s.id)) or {"total": 0, "draft": 0, "reviewed": 0, "approved": 0, "archived": 0}
+        out["item_counts"] = counts.get(str(s.id)) or {
+            "total": 0,
+            "draft": 0,
+            "reviewed": 0,
+            "approved": 0,
+            "archived": 0,
+        }
         items_out.append(out)
 
     return {"total": total, "items": items_out}
@@ -1106,11 +1132,7 @@ def get_evidence_suite(
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    row = (
-        db.query(EvidenceSuite)
-        .filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id)
-        .first()
-    )
+    row = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not row:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
@@ -1119,11 +1141,21 @@ def get_evidence_suite(
 
     counts = _suite_counts(db, tenant_id=tenant_id, suite_ids=[row.id])
     out = EvidenceSuiteOut.model_validate(row).model_dump()
-    out["item_counts"] = counts.get(str(row.id)) or {"total": 0, "draft": 0, "reviewed": 0, "approved": 0, "archived": 0}
+    out["item_counts"] = counts.get(str(row.id)) or {
+        "total": 0,
+        "draft": 0,
+        "reviewed": 0,
+        "approved": 0,
+        "archived": 0,
+    }
     return out
 
 
-@router.get("/suites/{suite_id}/dashboard", response_model=EvidenceSuiteDashboardOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/suites/{suite_id}/dashboard",
+    response_model=EvidenceSuiteDashboardOut,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def get_evidence_suite_dashboard(
     suite_id: UUID,
     include_archived_items: bool = False,
@@ -1141,11 +1173,7 @@ def get_evidence_suite_dashboard(
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    suite = (
-        db.query(EvidenceSuite)
-        .filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id)
-        .first()
-    )
+    suite = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
@@ -1206,7 +1234,11 @@ def get_evidence_suite_dashboard(
     )
 
 
-@router.get("/suites/{suite_id}/hardcase-candidates", response_model=EvidenceHardcaseDiscoveryOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/suites/{suite_id}/hardcase-candidates",
+    response_model=EvidenceHardcaseDiscoveryOut,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def list_evidence_suite_hardcase_candidates(
     suite_id: UUID,
     window_minutes: Annotated[int, Query(ge=1, le=60 * 24 * 30)] = 7 * 24 * 60,
@@ -1322,11 +1354,7 @@ def patch_evidence_suite(
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    row = (
-        db.query(EvidenceSuite)
-        .filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id)
-        .first()
-    )
+    row = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not row:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
@@ -1351,11 +1379,21 @@ def patch_evidence_suite(
 
     counts = _suite_counts(db, tenant_id=tenant_id, suite_ids=[row.id])
     out = EvidenceSuiteOut.model_validate(row).model_dump()
-    out["item_counts"] = counts.get(str(row.id)) or {"total": 0, "draft": 0, "reviewed": 0, "approved": 0, "archived": 0}
+    out["item_counts"] = counts.get(str(row.id)) or {
+        "total": 0,
+        "draft": 0,
+        "reviewed": 0,
+        "approved": 0,
+        "archived": 0,
+    }
     return out
 
 
-@router.get("/suites/{suite_id}/drift-audit", response_model=EvidenceReferenceDriftAuditOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/suites/{suite_id}/drift-audit",
+    response_model=EvidenceReferenceDriftAuditOut,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def audit_evidence_suite_reference_sources_drift(
     suite_id: UUID,
     include_archived_items: bool = False,
@@ -1369,11 +1407,7 @@ def audit_evidence_suite_reference_sources_drift(
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    suite = (
-        db.query(EvidenceSuite)
-        .filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id)
-        .first()
-    )
+    suite = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
@@ -1398,7 +1432,11 @@ def audit_evidence_suite_reference_sources_drift(
     )
 
 
-@router.get("/datasets/{dataset_id}/drift-audit", response_model=EvidenceReferenceDriftAuditOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/datasets/{dataset_id}/drift-audit",
+    response_model=EvidenceReferenceDriftAuditOut,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def audit_dataset_reference_sources_drift(
     dataset_id: UUID,
     include_archived_items: bool = False,
@@ -1419,7 +1457,11 @@ def audit_dataset_reference_sources_drift(
         row[0]
         for row in (
             db.query(EvidenceSuite.id)
-            .filter(EvidenceSuite.tenant_id == tenant_id, EvidenceSuite.dataset_id == dataset_id, EvidenceSuite.archived_at.is_(None))
+            .filter(
+                EvidenceSuite.tenant_id == tenant_id,
+                EvidenceSuite.dataset_id == dataset_id,
+                EvidenceSuite.archived_at.is_(None),
+            )
             .all()
         )
         if row and row[0] is not None
@@ -1458,7 +1500,12 @@ def audit_dataset_reference_sources_drift(
     )
 
 
-@router.post("/suites/{suite_id}/items", response_model=EvidenceItemOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/suites/{suite_id}/items",
+    response_model=EvidenceItemOut,
+    status_code=201,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def create_evidence_item(
     suite_id: UUID,
     payload: EvidenceItemCreateRequest,
@@ -1469,11 +1516,7 @@ def create_evidence_item(
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    suite = (
-        db.query(EvidenceSuite)
-        .filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id)
-        .first()
-    )
+    suite = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
     if suite.archived_at is not None:
@@ -1519,7 +1562,11 @@ def create_evidence_item(
     return row
 
 
-@router.post("/suites/{suite_id}/items/import", response_model=EvidenceItemImportResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/suites/{suite_id}/items/import",
+    response_model=EvidenceItemImportResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def import_evidence_items(
     suite_id: UUID,
     file: Annotated[UploadFile, File(...)],
@@ -1539,11 +1586,7 @@ async def import_evidence_items(
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    suite = (
-        db.query(EvidenceSuite)
-        .filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id)
-        .first()
-    )
+    suite = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
     if suite.archived_at is not None:
@@ -1557,10 +1600,17 @@ async def import_evidence_items(
     if len(raw) > max_bytes:
         raise HTTPException(status_code=400, detail="import file too large (max 5MB)")
 
-    from app.services.evidence_item_import import parse_qa_faq_import_bytes, plan_evidence_item_import  # noqa: WPS433
+    from app.services.evidence_item_import import (  # noqa: WPS433
+        parse_qa_faq_import_bytes,
+        plan_evidence_item_import,
+    )
 
     try:
-        items, parse_errors = parse_qa_faq_import_bytes(raw=raw, filename=getattr(file, "filename", None), max_items=int(max_items))
+        items, parse_errors = parse_qa_faq_import_bytes(
+            raw=raw,
+            filename=getattr(file, "filename", None),
+            max_items=int(max_items),
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)[:200]) from exc
 
@@ -1627,21 +1677,14 @@ def list_evidence_items(
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    suite = (
-        db.query(EvidenceSuite)
-        .filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id)
-        .first()
-    )
+    suite = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
     ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
     DatasetService.assert_dataset_readable(db, ds, account_id)
 
-    q = (
-        db.query(EvidenceItem)
-        .filter(EvidenceItem.tenant_id == tenant_id, EvidenceItem.suite_id == suite_id)
-    )
+    q = db.query(EvidenceItem).filter(EvidenceItem.tenant_id == tenant_id, EvidenceItem.suite_id == suite_id)
     if status:
         q = q.filter(EvidenceItem.status == str(status).strip().lower())
 
@@ -1698,18 +1741,12 @@ def review_evidence_item(
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    row = (
-        db.query(EvidenceItem)
-        .filter(EvidenceItem.id == item_id, EvidenceItem.tenant_id == tenant_id)
-        .first()
-    )
+    row = db.query(EvidenceItem).filter(EvidenceItem.id == item_id, EvidenceItem.tenant_id == tenant_id).first()
     if not row:
         raise HTTPException(status_code=404, detail=_DETAIL_ITEM_NOT_FOUND)
 
     suite = (
-        db.query(EvidenceSuite)
-        .filter(EvidenceSuite.id == row.suite_id, EvidenceSuite.tenant_id == tenant_id)
-        .first()
+        db.query(EvidenceSuite).filter(EvidenceSuite.id == row.suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     )
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
@@ -1741,18 +1778,12 @@ def approve_evidence_item(
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    row = (
-        db.query(EvidenceItem)
-        .filter(EvidenceItem.id == item_id, EvidenceItem.tenant_id == tenant_id)
-        .first()
-    )
+    row = db.query(EvidenceItem).filter(EvidenceItem.id == item_id, EvidenceItem.tenant_id == tenant_id).first()
     if not row:
         raise HTTPException(status_code=404, detail=_DETAIL_ITEM_NOT_FOUND)
 
     suite = (
-        db.query(EvidenceSuite)
-        .filter(EvidenceSuite.id == row.suite_id, EvidenceSuite.tenant_id == tenant_id)
-        .first()
+        db.query(EvidenceSuite).filter(EvidenceSuite.id == row.suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     )
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
@@ -1784,18 +1815,12 @@ def archive_evidence_item(
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    row = (
-        db.query(EvidenceItem)
-        .filter(EvidenceItem.id == item_id, EvidenceItem.tenant_id == tenant_id)
-        .first()
-    )
+    row = db.query(EvidenceItem).filter(EvidenceItem.id == item_id, EvidenceItem.tenant_id == tenant_id).first()
     if not row:
         raise HTTPException(status_code=404, detail=_DETAIL_ITEM_NOT_FOUND)
 
     suite = (
-        db.query(EvidenceSuite)
-        .filter(EvidenceSuite.id == row.suite_id, EvidenceSuite.tenant_id == tenant_id)
-        .first()
+        db.query(EvidenceSuite).filter(EvidenceSuite.id == row.suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     )
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
@@ -1817,7 +1842,11 @@ def archive_evidence_item(
     return row
 
 
-@router.post("/suites/{suite_id}/sync-regression", response_model=EvidenceSuiteSyncRegressionResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/suites/{suite_id}/sync-regression",
+    response_model=EvidenceSuiteSyncRegressionResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def sync_suite_to_regression_cases(
     suite_id: UUID,
     *,
@@ -1827,11 +1856,7 @@ def sync_suite_to_regression_cases(
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    suite = (
-        db.query(EvidenceSuite)
-        .filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id)
-        .first()
-    )
+    suite = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
@@ -1879,7 +1904,10 @@ def sync_suite_to_regression_cases(
             if item.regression_case_id:
                 case = (
                     db.query(RagasRegressionCase)
-                    .filter(RagasRegressionCase.id == item.regression_case_id, RagasRegressionCase.tenant_id == tenant_id)
+                    .filter(
+                        RagasRegressionCase.id == item.regression_case_id,
+                        RagasRegressionCase.tenant_id == tenant_id,
+                    )
                     .first()
                 )
 
@@ -1944,7 +1972,11 @@ def sync_suite_to_regression_cases(
     )
 
 
-@router.get("/suites/{suite_id}/export", response_model=EvidenceSuiteExportV1, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/suites/{suite_id}/export",
+    response_model=EvidenceSuiteExportV1,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def export_evidence_suite(
     suite_id: UUID,
     include_archived_items: bool = False,
@@ -1955,11 +1987,7 @@ def export_evidence_suite(
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    suite = (
-        db.query(EvidenceSuite)
-        .filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id)
-        .first()
-    )
+    suite = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
@@ -2023,7 +2051,7 @@ def export_evidence_suite(
 @router.get("/training-export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_training_dataset(
     dataset_id: Annotated[UUID, Query(..., description="Dataset id to export")],
-    format: Annotated[str, Query(description='jsonl or csv')] = "jsonl",
+    format: Annotated[str, Query(description="jsonl or csv")] = "jsonl",
     include_feedback: Annotated[bool, Query()] = True,
     include_evidence: Annotated[bool, Query()] = True,
     include_archived_evidence: Annotated[bool, Query()] = False,
@@ -2101,7 +2129,7 @@ def export_training_dataset(
 def export_evidence_suite_ltr_training_bundle(
     suite_id: UUID,
     include_archived_items: bool = False,
-    max_items: Annotated[int, Query(ge=1, le=10000, description='Max items to include in export')] = 2000,
+    max_items: Annotated[int, Query(ge=1, le=10000, description="Max items to include in export")] = 2000,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],

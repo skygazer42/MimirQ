@@ -158,13 +158,19 @@ def _connector_run_dispatcher(connector_id: str) -> Any:
 def _validate_connector_run_enabled(connector_id: str) -> None:
     if connector_id not in _CONNECTOR_CONFIG_MODELS:
         raise HTTPException(status_code=400, detail=connectors_module.UNSUPPORTED_CONNECTOR_ID_DETAIL)
-    if connector_id in _URL_INGEST_CONNECTOR_IDS and not bool(getattr(connectors_module.settings, "URL_INGEST_ENABLED", False)):
+    if connector_id in _URL_INGEST_CONNECTOR_IDS and not bool(
+        getattr(connectors_module.settings, "URL_INGEST_ENABLED", False)
+    ):
         raise HTTPException(status_code=400, detail=connectors_module.URL_INGEST_DISABLED_DETAIL)
-    if connector_id in _DB_CATALOG_CONNECTOR_IDS and not bool(getattr(connectors_module.settings, "DB_CATALOG_ENABLED", False)):
+    if connector_id in _DB_CATALOG_CONNECTOR_IDS and not bool(
+        getattr(connectors_module.settings, "DB_CATALOG_ENABLED", False)
+    ):
         raise HTTPException(status_code=400, detail="DB catalog ingestion is disabled")
 
 
-def _validate_and_encrypt_run_config(connector_id: str, raw_config: dict[str, Any] | None) -> tuple[Any, dict[str, Any]]:
+def _validate_and_encrypt_run_config(
+    connector_id: str, raw_config: dict[str, Any] | None
+) -> tuple[Any, dict[str, Any]]:
     config_model = _CONNECTOR_CONFIG_MODELS.get(connector_id)
     if config_model is None:
         raise HTTPException(status_code=400, detail=connectors_module.UNSUPPORTED_CONNECTOR_ID_DETAIL)
@@ -466,7 +472,12 @@ def _build_resume_run_config(
     )
 
 
-@router.post("/runs", response_model=ConnectorRunOut, status_code=201, responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/runs",
+    response_model=ConnectorRunOut,
+    status_code=201,
+    responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def create_connector_run(
     payload: ConnectorRunCreateRequest,
     background_tasks: BackgroundTasks,
@@ -521,7 +532,9 @@ async def create_connector_run(
     )
 
 
-@router.get("/runs", response_model=ConnectorRunListResponse, responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/runs", response_model=ConnectorRunListResponse, responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def list_connector_runs(
     params: Annotated[ConnectorRunListParams, Depends()],
     *,
@@ -559,10 +572,15 @@ def list_connector_runs(
         run_ids=[run.id for run in runs],
     )
 
-    return {"total": total, "items": [connectors_module._run_out(run, acl_summary=summaries.get(run.id)) for run in runs]}
+    return {
+        "total": total,
+        "items": [connectors_module._run_out(run, acl_summary=summaries.get(run.id)) for run in runs],
+    }
 
 
-@router.get("/runs/{run_id}", response_model=ConnectorRunOut, responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/runs/{run_id}", response_model=ConnectorRunOut, responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def get_connector_run(
     run_id: UUID,
     *,
@@ -595,7 +613,12 @@ def get_connector_run(
     return connectors_module._run_out(run, acl_summary=summary)
 
 
-@router.post("/runs/{run_id}/retry-failed", response_model=ConnectorRunOut, status_code=201, responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/runs/{run_id}/retry-failed",
+    response_model=ConnectorRunOut,
+    status_code=201,
+    responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def retry_failed_connector_run(
     run_id: UUID,
     background_tasks: BackgroundTasks,
@@ -651,7 +674,12 @@ async def retry_failed_connector_run(
     )
 
 
-@router.post("/runs/{run_id}/resume", response_model=ConnectorRunOut, status_code=201, responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/runs/{run_id}/resume",
+    response_model=ConnectorRunOut,
+    status_code=201,
+    responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def resume_connector_run(
     run_id: UUID,
     background_tasks: BackgroundTasks,
@@ -702,7 +730,11 @@ async def resume_connector_run(
     )
 
 
-@router.post("/runs/{run_id}/cancel", response_model=ConnectorRunOut, responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/runs/{run_id}/cancel",
+    response_model=ConnectorRunOut,
+    responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def cancel_connector_run(
     run_id: UUID,
     *,

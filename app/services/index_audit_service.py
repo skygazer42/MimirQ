@@ -1,4 +1,3 @@
-
 import contextlib
 from datetime import UTC, datetime
 from typing import Any
@@ -179,7 +178,9 @@ def resolve_index_drift_item(
 
 
 def _resolve_active_doc_pipeline_key(document_id: UUID, doc_metadata: dict[str, Any]) -> str:
-    active_hash = str((doc_metadata or {}).get("active_pipeline_hash") or (doc_metadata or {}).get("pipeline_hash") or "").strip()
+    active_hash = str(
+        (doc_metadata or {}).get("active_pipeline_hash") or (doc_metadata or {}).get("pipeline_hash") or ""
+    ).strip()
     return f"{document_id}:{active_hash}" if active_hash else str(document_id)
 
 
@@ -263,7 +264,12 @@ def _replay_vector_patch(*, db: Session, item: IndexDriftItem, chunk: DocumentCh
     )
     ids = list(
         store.add_documents(
-            [{"content": str(getattr(chunk, "content", "") or ""), "metadata": dict(getattr(chunk, "doc_metadata", None) or {})}],
+            [
+                {
+                    "content": str(getattr(chunk, "content", "") or ""),
+                    "metadata": dict(getattr(chunk, "doc_metadata", None) or {}),
+                }
+            ],
             item.document_id,
             item.tenant_id,
         )
@@ -635,7 +641,9 @@ def _index_channel_rows_by_document(
         if pipeline_hash != pipeline_hash_by_document.get(document_key):
             continue
         rows_seen_by_document.add(document_key)
-        rows_by_document.setdefault(document_key, {})[str(getattr(row, "channel", "") or "")] = _row_index_channel_status(row)
+        rows_by_document.setdefault(document_key, {})[str(getattr(row, "channel", "") or "")] = (
+            _row_index_channel_status(row)
+        )
     return rows_by_document, rows_seen_by_document
 
 
@@ -680,7 +688,9 @@ def _positive_channel_counts(values: dict[str, int]) -> dict[str, int]:
     return {channel: int(count) for channel, count in values.items() if int(count or 0) > 0}
 
 
-def _accumulate_index_channel_summary(summary: dict[str, Any], *, statuses: dict[str, dict[str, Any]], used_legacy_fallback: bool) -> None:
+def _accumulate_index_channel_summary(
+    summary: dict[str, Any], *, statuses: dict[str, dict[str, Any]], used_legacy_fallback: bool
+) -> None:
     doc_required_pending = False
     doc_required_error = False
     doc_optional_disabled = False
@@ -697,19 +707,27 @@ def _accumulate_index_channel_summary(summary: dict[str, Any], *, statuses: dict
         if bool(payload.get("legacy")):
             summary["legacy_by_channel"][channel] = int(summary["legacy_by_channel"].get(channel, 0) or 0) + 1
         if enabled and status in DOCUMENT_INDEX_CHANNEL_TERMINAL_ERROR:
-            summary["required_error_by_channel"][channel] = int(summary["required_error_by_channel"].get(channel, 0) or 0) + 1
+            summary["required_error_by_channel"][channel] = (
+                int(summary["required_error_by_channel"].get(channel, 0) or 0) + 1
+            )
             doc_required_error = True
             continue
         if enabled and status not in DOCUMENT_INDEX_CHANNEL_TERMINAL_READY | DOCUMENT_INDEX_CHANNEL_TERMINAL_ERROR:
-            summary["required_pending_by_channel"][channel] = int(summary["required_pending_by_channel"].get(channel, 0) or 0) + 1
+            summary["required_pending_by_channel"][channel] = (
+                int(summary["required_pending_by_channel"].get(channel, 0) or 0) + 1
+            )
             doc_required_pending = True
             continue
         if not enabled and status == "disabled":
-            summary["optional_disabled_by_channel"][channel] = int(summary["optional_disabled_by_channel"].get(channel, 0) or 0) + 1
+            summary["optional_disabled_by_channel"][channel] = (
+                int(summary["optional_disabled_by_channel"].get(channel, 0) or 0) + 1
+            )
             doc_optional_disabled = True
             continue
         if not enabled and status == "skipped":
-            summary["optional_skipped_by_channel"][channel] = int(summary["optional_skipped_by_channel"].get(channel, 0) or 0) + 1
+            summary["optional_skipped_by_channel"][channel] = (
+                int(summary["optional_skipped_by_channel"].get(channel, 0) or 0) + 1
+            )
             doc_optional_skipped = True
 
     summary["required_error_documents"] += int(doc_required_error)
@@ -752,7 +770,9 @@ def compute_index_channel_audit_summary(
     documents: list[Any],
     channel_rows: list[Any],
 ) -> dict[str, Any]:
-    rows_by_document, rows_seen_by_document = _index_channel_rows_by_document(documents=documents, channel_rows=channel_rows)
+    rows_by_document, rows_seen_by_document = _index_channel_rows_by_document(
+        documents=documents, channel_rows=channel_rows
+    )
     summary = _empty_index_channel_audit_summary()
     summary["documents_with_channel_rows"] = int(len(rows_seen_by_document))
     for document in documents:
@@ -950,7 +970,9 @@ def plan_index_audit_reconcile(
         )
         documents = [document] if document is not None else []
     else:
-        documents = list(_active_index_audit_documents_query(db=db, tenant_id=tenant_id, dataset_id=dataset_id).limit(cap).all())
+        documents = list(
+            _active_index_audit_documents_query(db=db, tenant_id=tenant_id, dataset_id=dataset_id).limit(cap).all()
+        )
 
     items: list[dict[str, Any]] = []
     counts = {
@@ -1110,7 +1132,9 @@ def run_dataset_index_audit_internal(
     )
 
 
-def _active_index_audit_documents(db: Session, *, tenant_id: UUID, dataset_id: UUID, doc_ready_clause: Any) -> tuple[list[Any], list[UUID]]:
+def _active_index_audit_documents(
+    db: Session, *, tenant_id: UUID, dataset_id: UUID, doc_ready_clause: Any
+) -> tuple[list[Any], list[UUID]]:
     docs_q = (
         db.query(DBDocument)
         .filter(
@@ -1269,7 +1293,11 @@ def _run_dataset_index_audit_core(
 
     vector_backend = str(getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").strip().lower()
     vector_ids_existing = _milvus_existing_vector_ids(vector_ids_checked) if vector_backend == "milvus" else None
-    milvus_ids_sample = _milvus_ids_sample(tenant_id=tenant_id, dataset_id=dataset_id, milvus_list_limit=milvus_list_limit) if vector_backend == "milvus" else None
+    milvus_ids_sample = (
+        _milvus_ids_sample(tenant_id=tenant_id, dataset_id=dataset_id, milvus_list_limit=milvus_list_limit)
+        if vector_backend == "milvus"
+        else None
+    )
     active_chunk_ids_present = _active_chunk_ids_present(chunks_q, milvus_ids_sample)
     index_channels = _dataset_index_channel_summary(
         db,
