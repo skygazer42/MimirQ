@@ -106,6 +106,31 @@ def ensure_fixture_tenant_owner(db: Any, *, tenant_id: UUID, account_id: str) ->
         member.is_current = True
 
 
+def _prepare_schema() -> None:
+    # Keep standalone CI entrypoints safe on both fresh and migrated databases.
+    apply_runtime_migrations(engine)
+    Base.metadata.create_all(bind=engine)
+    apply_runtime_migrations(engine)
+
+
+def seed_tenant_memberships(*, tenant_ids: list[UUID], account_id: str) -> None:
+    """Create explicit owner memberships for live header-auth CI probes."""
+    if not tenant_ids:
+        raise ValueError("tenant_ids must not be empty")
+    normalized_account_id = str(account_id or "").strip()
+    if not normalized_account_id:
+        raise ValueError("account_id is required")
+
+    _prepare_schema()
+    db = SessionLocal()
+    try:
+        for tenant_id in tenant_ids:
+            ensure_fixture_tenant_owner(db, tenant_id=tenant_id, account_id=normalized_account_id)
+        db.commit()
+    finally:
+        db.close()
+
+
 def _parse_fixture_config(
     fixture: dict[str, Any],
 ) -> tuple[UUID, str, UUID, str, str | None, list[dict[str, Any]]]:
@@ -280,10 +305,7 @@ def _upsert_document(
 def seed_fixture(*, fixture: dict[str, Any]) -> None:
     tenant_id, account_id, dataset_id, dataset_name, dataset_desc, documents = _parse_fixture_config(fixture)
 
-    # Ensure schema is up-to-date (best-effort; mirrors app startup).
-    apply_runtime_migrations(engine)
-    Base.metadata.create_all(bind=engine)
-    apply_runtime_migrations(engine)
+    _prepare_schema()
 
     db = SessionLocal()
     try:
@@ -306,7 +328,7 @@ def seed_fixture(*, fixture: dict[str, Any]) -> None:
         db.close()
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Seed CI retrieval regression fixture dataset/documents/chunks.")
     p.add_argument(
         "--fixture",
@@ -318,7 +340,26 @@ def main() -> int:
         default="",
         help="Write regression cases bundle (mimirq.regression_cases.v1) to this path (optional)",
     )
-    args = p.parse_args()
+    p.add_argument(
+        "--membership-only",
+        action="store_true",
+        help="Create explicit tenant owner memberships without seeding retrieval documents.",
+    )
+    p.add_argument("--tenant-id", action="append", default=[], help="Tenant UUID; repeat for multiple tenants.")
+    p.add_argument("--account-id", default="", help="Account/user id for membership-only mode.")
+    args = p.parse_args(argv)
+
+    if args.membership_only:
+        if not args.tenant_id:
+            p.error("--membership-only requires at least one --tenant-id")
+        if not str(args.account_id or "").strip():
+            p.error("--membership-only requires --account-id")
+        seed_tenant_memberships(
+            tenant_ids=[UUID(str(value)) for value in args.tenant_id],
+            account_id=str(args.account_id),
+        )
+        print("[seed_ci_retrieval_regression] memberships OK")
+        return 0
 
     fixture_path = Path(args.fixture)
     fixture = _load_json(fixture_path)

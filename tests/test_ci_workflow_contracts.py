@@ -667,6 +667,9 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     assert '--name "$api2_name" --no-deps mimirq-api' in docker_job
     assert "Docker live core release gate" in docker_job
     assert "python scripts/live_core_release_gate.py" in docker_job
+    assert "python scripts/seed_ci_retrieval_regression.py" in docker_job
+    assert "--membership-only" in docker_job
+    assert "--account-id ci-live-gate" in docker_job
     assert "--secondary-base-url http://$api2_name:8000" in docker_job
     assert "AUTH_MODE_RETRIEVAL_DEV: header" in docker_job
     assert 'UPLOAD_DEDUP_ENABLED_RETRIEVAL_DEV: "true"' in docker_job

@@ -1,11 +1,13 @@
-from uuid import uuid4
+from uuid import UUID, uuid4
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.database import Base
 from app.models.tenant import Tenant, TenantMember
+from scripts import seed_ci_retrieval_regression
 from scripts.seed_ci_retrieval_regression import ensure_fixture_tenant_owner
 
 
@@ -35,3 +37,34 @@ def test_seed_creates_explicit_idempotent_tenant_owner_membership() -> None:
             assert members[0].is_current is True
     finally:
         engine.dispose()
+
+
+def test_membership_only_cli_routes_all_tenants_to_explicit_seed(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_seed(*, tenant_ids: list[UUID], account_id: str) -> None:
+        captured["tenant_ids"] = tenant_ids
+        captured["account_id"] = account_id
+
+    monkeypatch.setattr(seed_ci_retrieval_regression, "seed_tenant_memberships", fake_seed)
+
+    result = seed_ci_retrieval_regression.main(
+        [
+            "--membership-only",
+            "--tenant-id",
+            "11111111-1111-1111-1111-111111111111",
+            "--tenant-id",
+            "22222222-2222-2222-2222-222222222222",
+            "--account-id",
+            "ci-live-gate",
+        ]
+    )
+
+    assert result == 0
+    assert captured == {
+        "tenant_ids": [
+            UUID("11111111-1111-1111-1111-111111111111"),
+            UUID("22222222-2222-2222-2222-222222222222"),
+        ],
+        "account_id": "ci-live-gate",
+    }
