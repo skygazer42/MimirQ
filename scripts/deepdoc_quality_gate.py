@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Run a repeatable DeepDoc QA/retrieval/KG quality gate against a live dataset."""
 
-
 import argparse
 import asyncio
 import json
@@ -480,7 +479,9 @@ async def run_gate(
 
     async with httpx.AsyncClient(headers=headers, timeout=httpx.Timeout(180.0), trust_env=False) as client:
 
-        async def run_one(kind: str, case: dict[str, Any], variant: str = "", rag_config: dict[str, Any] | None = None) -> None:
+        async def run_one(
+            kind: str, case: dict[str, Any], variant: str = "", rag_config: dict[str, Any] | None = None
+        ) -> None:
             async with sem:
                 question = str(case.get("question") or "")
                 if kind == "retrieve":
@@ -492,7 +493,9 @@ async def run_gate(
                     payload = {"message": question, "dataset_id": dataset_id, "rag_config": cfg}
                     status, body, elapsed_ms = await _post_json(client, _join(base, "chat"), payload)
                 elif kind == "kg":
-                    status, body, elapsed_ms = await _post_json(client, _join(base, "kg/search"), {"query": question, "dataset_id": dataset_id})
+                    status, body, elapsed_ms = await _post_json(
+                        client, _join(base, "kg/search"), {"query": question, "dataset_id": dataset_id}
+                    )
                 else:
                     return
 
@@ -562,11 +565,23 @@ def summarize_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
         fact_total = sum(1 for r in vals if int(r.get("fact_group_count") or 0) > 0)
         fact_hit = sum(1 for r in vals if bool(r.get("fact_hit")) and int(r.get("fact_group_count") or 0) > 0)
         latencies = [float(r.get("elapsed_ms") or 0.0) for r in vals]
-        server_retrieval_latencies = [float(r.get("server_retrieval_ms") or 0.0) for r in vals if float(r.get("server_retrieval_ms") or 0.0) > 0.0]
-        api_overhead_latencies = [float(r.get("api_overhead_ms") or 0.0) for r in vals if float(r.get("api_overhead_ms") or 0.0) > 0.0]
-        api_net_overhead_latencies = [float(r.get("api_net_overhead_ms") or 0.0) for r in vals if float(r.get("api_net_overhead_ms") or 0.0) > 0.0]
-        offload_queue_latencies = [float(r.get("rag_offload_queue_ms") or 0.0) for r in vals if float(r.get("rag_offload_queue_ms") or 0.0) > 0.0]
-        offload_exec_latencies = [float(r.get("rag_offload_exec_ms") or 0.0) for r in vals if float(r.get("rag_offload_exec_ms") or 0.0) > 0.0]
+        server_retrieval_latencies = [
+            float(r.get("server_retrieval_ms") or 0.0) for r in vals if float(r.get("server_retrieval_ms") or 0.0) > 0.0
+        ]
+        api_overhead_latencies = [
+            float(r.get("api_overhead_ms") or 0.0) for r in vals if float(r.get("api_overhead_ms") or 0.0) > 0.0
+        ]
+        api_net_overhead_latencies = [
+            float(r.get("api_net_overhead_ms") or 0.0) for r in vals if float(r.get("api_net_overhead_ms") or 0.0) > 0.0
+        ]
+        offload_queue_latencies = [
+            float(r.get("rag_offload_queue_ms") or 0.0)
+            for r in vals
+            if float(r.get("rag_offload_queue_ms") or 0.0) > 0.0
+        ]
+        offload_exec_latencies = [
+            float(r.get("rag_offload_exec_ms") or 0.0) for r in vals if float(r.get("rag_offload_exec_ms") or 0.0) > 0.0
+        ]
         kg_query_expansion_used = sum(1 for r in vals if bool(r.get("kg_query_expansion_used")))
         out[key] = {
             "requests": total,
@@ -598,7 +613,9 @@ def summarize_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 "rag_offload_exec_p95_ms": percentile(offload_exec_latencies, 95),
                 "rag_offload_limit": max([int(r.get("rag_offload_limit") or 0) for r in vals] or [0]),
                 "max_retrieval_query_count": max([int(r.get("retrieval_query_count") or 0) for r in vals] or [0]),
-                "max_retrieval_query_parallelism": max([int(r.get("retrieval_query_parallelism") or 0) for r in vals] or [0]),
+                "max_retrieval_query_parallelism": max(
+                    [int(r.get("retrieval_query_parallelism") or 0) for r in vals] or [0]
+                ),
             },
             "kg": {
                 "chunks_injected_total": sum(int(r.get("kg_chunks_injected") or 0) for r in vals),
@@ -619,7 +636,10 @@ def evaluate_gate(summary: dict[str, Any], *, thresholds: dict[str, dict[str, An
             continue
         for metric, raw_threshold in (rules or {}).items():
             if metric == "max_p95_ms":
-                observed = float(((section.get("latency") or {}) if isinstance(section.get("latency"), dict) else {}).get("p95_ms") or 0.0)
+                observed = float(
+                    ((section.get("latency") or {}) if isinstance(section.get("latency"), dict) else {}).get("p95_ms")
+                    or 0.0
+                )
                 passed = observed <= float(raw_threshold)
                 label = f"{key}.p95_ms"
                 if not passed:
@@ -657,18 +677,26 @@ def _load_variants(raw: str) -> dict[str, dict[str, Any]]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default=os.getenv("NEXT_PUBLIC_API_URL") or "http://127.0.0.1:8000/api/v1")
-    parser.add_argument("--tenant-id", default=os.getenv("NEXT_PUBLIC_TENANT_ID") or "00000000-0000-0000-0000-000000000000")
+    parser.add_argument(
+        "--tenant-id", default=os.getenv("NEXT_PUBLIC_TENANT_ID") or "00000000-0000-0000-0000-000000000000"
+    )
     parser.add_argument("--user-id", default=os.getenv("NEXT_PUBLIC_USER_ID") or "deepdoc-quality-gate")
     parser.add_argument("--bearer", default="")
     parser.add_argument("--dataset-id", default="")
     parser.add_argument("--cases", required=True)
     parser.add_argument("--modes", default="retrieve,chat,kg")
-    parser.add_argument("--retrieval-variants", default="", help="JSON object or file path. Empty uses built-in DeepDoc matrix.")
-    parser.add_argument("--chat-rag-config", default="", help="JSON object or file path. Empty uses expanded extractive defaults.")
+    parser.add_argument(
+        "--retrieval-variants", default="", help="JSON object or file path. Empty uses built-in DeepDoc matrix."
+    )
+    parser.add_argument(
+        "--chat-rag-config", default="", help="JSON object or file path. Empty uses expanded extractive defaults."
+    )
     parser.add_argument("--thresholds", default="")
     parser.add_argument("--concurrency", type=int, default=4)
     parser.add_argument("--out", default="artifacts/deepdoc-quality-gate/report.json")
-    parser.add_argument("--include-diagnostics", action="store_true", help="Fetch dataset ingestion/KG quality diagnostics.")
+    parser.add_argument(
+        "--include-diagnostics", action="store_true", help="Fetch dataset ingestion/KG quality diagnostics."
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
@@ -731,7 +759,9 @@ def main(argv: list[str] | None = None) -> int:
             retrieval_variants=retrieval_variants,
             chat_rag_config=dict(chat_rag_config or {}),
             concurrency=int(args.concurrency or 1),
-            headers=_headers(tenant_id=str(args.tenant_id or ""), user_id=str(args.user_id or ""), bearer=str(args.bearer or "")),
+            headers=_headers(
+                tenant_id=str(args.tenant_id or ""), user_id=str(args.user_id or ""), bearer=str(args.bearer or "")
+            ),
         )
     )
     summary = summarize_rows(rows)
@@ -741,7 +771,9 @@ def main(argv: list[str] | None = None) -> int:
             collect_dataset_diagnostics(
                 base_url=str(args.base_url),
                 dataset_id=dataset_id,
-                headers=_headers(tenant_id=str(args.tenant_id or ""), user_id=str(args.user_id or ""), bearer=str(args.bearer or "")),
+                headers=_headers(
+                    tenant_id=str(args.tenant_id or ""), user_id=str(args.user_id or ""), bearer=str(args.bearer or "")
+                ),
             )
         )
         if bool(args.include_diagnostics)

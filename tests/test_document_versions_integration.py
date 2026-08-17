@@ -1,4 +1,3 @@
-
 import uuid
 from types import SimpleNamespace
 
@@ -34,7 +33,9 @@ def _make_app(db, *, tenant_id: uuid.UUID, account_id: str) -> FastAPI:  # noqa:
     return app
 
 
-def _add_chunk(db, *, tenant_id: uuid.UUID, document_id: uuid.UUID, pipeline_hash: str, chunk_index: int, content: str) -> None:  # noqa: ANN001
+def _add_chunk(
+    db, *, tenant_id: uuid.UUID, document_id: uuid.UUID, pipeline_hash: str, chunk_index: int, content: str
+) -> None:  # noqa: ANN001
     db.add(
         DocumentChunk(
             tenant_id=tenant_id,
@@ -95,12 +96,47 @@ def test_document_versions_list_activate_delete(pg_session, monkeypatch):  # noq
     )
 
     # v1: 2 chunks
-    _add_chunk(pg_session, tenant_id=tenant_id, document_id=document_id, pipeline_hash="v1", chunk_index=0, content="hello v1-0")
-    _add_chunk(pg_session, tenant_id=tenant_id, document_id=document_id, pipeline_hash="v1", chunk_index=1, content="hello v1-1")
+    _add_chunk(
+        pg_session,
+        tenant_id=tenant_id,
+        document_id=document_id,
+        pipeline_hash="v1",
+        chunk_index=0,
+        content="hello v1-0",
+    )
+    _add_chunk(
+        pg_session,
+        tenant_id=tenant_id,
+        document_id=document_id,
+        pipeline_hash="v1",
+        chunk_index=1,
+        content="hello v1-1",
+    )
     # v2: 3 chunks
-    _add_chunk(pg_session, tenant_id=tenant_id, document_id=document_id, pipeline_hash="v2", chunk_index=0, content="hello v2-0")
-    _add_chunk(pg_session, tenant_id=tenant_id, document_id=document_id, pipeline_hash="v2", chunk_index=1, content="hello v2-1")
-    _add_chunk(pg_session, tenant_id=tenant_id, document_id=document_id, pipeline_hash="v2", chunk_index=2, content="hello v2-2")
+    _add_chunk(
+        pg_session,
+        tenant_id=tenant_id,
+        document_id=document_id,
+        pipeline_hash="v2",
+        chunk_index=0,
+        content="hello v2-0",
+    )
+    _add_chunk(
+        pg_session,
+        tenant_id=tenant_id,
+        document_id=document_id,
+        pipeline_hash="v2",
+        chunk_index=1,
+        content="hello v2-1",
+    )
+    _add_chunk(
+        pg_session,
+        tenant_id=tenant_id,
+        document_id=document_id,
+        pipeline_hash="v2",
+        chunk_index=2,
+        content="hello v2-2",
+    )
 
     pg_session.commit()
 
@@ -173,8 +209,22 @@ def test_unassigned_document_versions_require_write_role_for_activate_delete(pg_
         )
     )
 
-    _add_chunk(pg_session, tenant_id=tenant_id, document_id=document_id, pipeline_hash="v1", chunk_index=0, content="hello v1-0")
-    _add_chunk(pg_session, tenant_id=tenant_id, document_id=document_id, pipeline_hash="v2", chunk_index=1, content="hello v2-0")
+    _add_chunk(
+        pg_session,
+        tenant_id=tenant_id,
+        document_id=document_id,
+        pipeline_hash="v1",
+        chunk_index=0,
+        content="hello v1-0",
+    )
+    _add_chunk(
+        pg_session,
+        tenant_id=tenant_id,
+        document_id=document_id,
+        pipeline_hash="v2",
+        chunk_index=1,
+        content="hello v2-0",
+    )
     pg_session.commit()
 
     monkeypatch.setattr(

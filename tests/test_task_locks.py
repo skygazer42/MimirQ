@@ -665,7 +665,9 @@ async def test_document_job_marks_failed_on_final_coordination_retry_without_byp
     monkeypatch.setattr(jobs.settings, "TASK_TENANT_MAX_CONCURRENCY_DOC", 2, raising=False)
     monkeypatch.setattr(jobs.settings, "TASK_DATASET_MAX_CONCURRENCY_DOC", 3, raising=False)
 
-    result = await jobs.process_document_job({"job_try": 5, "redis": object()}, str(tenant_id), str(document_id), "member-1")
+    result = await jobs.process_document_job(
+        {"job_try": 5, "redis": object()}, str(tenant_id), str(document_id), "member-1"
+    )
 
     assert observed["tenant_limit"] == 2
     assert result["ok"] is False
@@ -1081,8 +1083,12 @@ async def test_extract_kg_job_fails_closed_when_selected_pipeline_has_no_matchin
         doc_metadata={"active_pipeline_hash": "pipe-b", "pipeline_hash": "pipe-a"},
     )
     chunks = [
-        SimpleNamespace(id=uuid4(), doc_metadata={"pipeline_hash": "pipe-a", "doc_pipeline_key": f"{document_id}:pipe-a"}),
-        SimpleNamespace(id=uuid4(), doc_metadata={"pipeline_hash": "pipe-a", "doc_pipeline_key": f"{document_id}:pipe-a"}),
+        SimpleNamespace(
+            id=uuid4(), doc_metadata={"pipeline_hash": "pipe-a", "doc_pipeline_key": f"{document_id}:pipe-a"}
+        ),
+        SimpleNamespace(
+            id=uuid4(), doc_metadata={"pipeline_hash": "pipe-a", "doc_pipeline_key": f"{document_id}:pipe-a"}
+        ),
     ]
     db = _KGDB(document=document, chunks=chunks)
 
@@ -1156,7 +1162,9 @@ async def test_extract_kg_job_invalidates_dataset_cache_after_success(monkeypatc
         doc_metadata={"active_pipeline_hash": "pipe-a", "pipeline_hash": "pipe-a"},
     )
     chunks = [
-        SimpleNamespace(id=uuid4(), doc_metadata={"pipeline_hash": "pipe-a", "doc_pipeline_key": f"{document_id}:pipe-a"}),
+        SimpleNamespace(
+            id=uuid4(), doc_metadata={"pipeline_hash": "pipe-a", "doc_pipeline_key": f"{document_id}:pipe-a"}
+        ),
     ]
     dataset = SimpleNamespace(dataset_metadata={})
     db = _KGDB(document=document, chunks=chunks, dataset=dataset)
@@ -1218,7 +1226,9 @@ async def test_extract_kg_job_invalidates_dataset_cache_after_success(monkeypatc
     monkeypatch.setattr("app.rag.kg.pipeline.extract_events", _extract_events, raising=True)
     monkeypatch.setattr(
         "app.services.corpus_cache_tokens.invalidate_dataset_cache_namespace",
-        lambda _db, *, tenant_id, dataset_id: cache_invalidations.append((tenant_id, dataset_id)) or {"dataset_id": str(dataset_id)},
+        lambda _db, *, tenant_id, dataset_id: (
+            cache_invalidations.append((tenant_id, dataset_id)) or {"dataset_id": str(dataset_id)}
+        ),
         raising=True,
     )
 
@@ -1271,7 +1281,9 @@ async def test_extract_kg_job_does_not_mark_terminal_status_before_retryable_fai
         doc_metadata={"active_pipeline_hash": "pipe-a", "pipeline_hash": "pipe-a"},
     )
     chunks = [
-        SimpleNamespace(id=uuid4(), doc_metadata={"pipeline_hash": "pipe-a", "doc_pipeline_key": f"{document_id}:pipe-a"}),
+        SimpleNamespace(
+            id=uuid4(), doc_metadata={"pipeline_hash": "pipe-a", "doc_pipeline_key": f"{document_id}:pipe-a"}
+        ),
     ]
     db = _KGDB(document=document, chunks=chunks)
     transitions: list[tuple[str, str, bool, str | None]] = []
@@ -1356,7 +1368,9 @@ async def test_extract_kg_job_marks_ready_and_skipped_channels_when_no_events(
         doc_metadata={"active_pipeline_hash": "pipe-a", "pipeline_hash": "pipe-a"},
     )
     chunks = [
-        SimpleNamespace(id=uuid4(), doc_metadata={"pipeline_hash": "pipe-a", "doc_pipeline_key": f"{document_id}:pipe-a"}),
+        SimpleNamespace(
+            id=uuid4(), doc_metadata={"pipeline_hash": "pipe-a", "doc_pipeline_key": f"{document_id}:pipe-a"}
+        ),
     ]
     dataset = SimpleNamespace(dataset_metadata={})
     db = _KGDB(document=document, chunks=chunks, dataset=dataset)
@@ -1535,7 +1549,9 @@ async def test_reconcile_index_audit_job_reports_candidates_in_dry_run(monkeypat
     async def _unexpected_enqueue(**_kwargs):  # noqa: ANN202
         raise AssertionError("dry-run must not enqueue rebuild jobs")
 
-    monkeypatch.setattr("app.services.index_audit_service.enqueue_index_audit_reconcile", _unexpected_enqueue, raising=True)
+    monkeypatch.setattr(
+        "app.services.index_audit_service.enqueue_index_audit_reconcile", _unexpected_enqueue, raising=True
+    )
 
     result = await jobs.reconcile_index_audit_job(
         {"job_try": 1, "redis": object()},

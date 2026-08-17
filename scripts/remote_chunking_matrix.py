@@ -2,7 +2,6 @@
 # ruff: noqa: E402, I001
 """Verify chunking breadth on real parsed outputs against a live API."""
 
-
 import argparse
 import json
 import os
@@ -88,9 +87,7 @@ def prepare_fixture_files(fixtures_dir: Path) -> list[dict[str, Any]]:
 
     csv_path = fixtures_dir / "chunking-metrics.csv"
     csv_path.write_text(
-        "region,status,owner,token\n"
-        "APAC,Review,Rina Vale,CSV-APAC\n"
-        "EU,Healthy,Evan Peak,CSV-EU\n",
+        "region,status,owner,token\nAPAC,Review,Rina Vale,CSV-APAC\nEU,Healthy,Evan Peak,CSV-EU\n",
         encoding="utf-8",
     )
 
@@ -259,12 +256,14 @@ def summarize_preview_result(case: dict[str, Any], strategy: str, body: Any) -> 
     payload = body if isinstance(body, dict) else {}
     stats = payload.get("stats") if isinstance(payload.get("stats"), dict) else {}
     quality_gate = payload.get("quality_gate") if isinstance(payload.get("quality_gate"), dict) else {}
+    total_chunks = payload.get("total_chunks")
+    total_chunks_full = payload.get("total_chunks_full")
     return {
         "case": str(case.get("name") or ""),
         "strategy": str(strategy),
         "parser_backend": str(case.get("parser_backend") or "auto"),
-        "total_chunks": int(payload.get("total_chunks") or list_count(payload)),
-        "total_chunks_full": int(payload.get("total_chunks_full") or payload.get("total_chunks") or list_count(payload)),
+        "total_chunks": int(total_chunks or list_count(payload)),
+        "total_chunks_full": int(total_chunks_full or total_chunks or list_count(payload)),
         "avg_chunk_length": int(stats.get("avg") or 0),
         "coverage_ratio": float(stats.get("coverage_ratio") or 0.0),
         "overlap_waste_ratio": float(stats.get("overlap_waste_ratio") or 0.0),
@@ -279,16 +278,34 @@ def summarize_preview_result(case: dict[str, Any], strategy: str, body: Any) -> 
     }
 
 
-def evaluate_persisted_case(case: dict[str, Any], *, detail: dict[str, Any], chunk_items: list[dict[str, Any]], parsed_chars: int) -> list[str]:
+def _detail_metadata(detail: dict[str, Any]) -> dict[str, Any]:
+    metadata = detail.get("metadata")
+    return metadata if isinstance(metadata, dict) else {}
+
+
+def _first_chunk_metadata(chunk_items: list[dict[str, Any]]) -> dict[str, Any]:
+    if not chunk_items:
+        return {}
+    first_meta = chunk_items[0].get("metadata")
+    return first_meta if isinstance(first_meta, dict) else {}
+
+
+def evaluate_persisted_case(
+    case: dict[str, Any],
+    *,
+    detail: dict[str, Any],
+    chunk_items: list[dict[str, Any]],
+    parsed_chars: int,
+) -> list[str]:
     failures: list[str] = []
     name = str(case.get("name") or "case")
     chunk_count = int(list_count({"items": chunk_items}) or 0)
     min_chunks = int(case.get("min_chunks") or 0)
     min_parsed_chars = int(case.get("min_parsed_chars") or 0)
-    metadata = detail.get("metadata") if isinstance(detail.get("metadata"), dict) else {}
+    metadata = _detail_metadata(detail)
     stats = metadata.get("chunking_stats") if isinstance(metadata.get("chunking_stats"), dict) else {}
     coverage = metadata.get("chunk_coverage") if isinstance(metadata.get("chunk_coverage"), dict) else {}
-    first_meta = chunk_items[0].get("metadata") if chunk_items and isinstance(chunk_items[0].get("metadata"), dict) else {}
+    first_meta = _first_chunk_metadata(chunk_items)
     empty_chunks = sum(1 for item in chunk_items if not str(item.get("content") or "").strip())
 
     if str(detail.get("status") or "").lower() != "completed":
@@ -302,9 +319,9 @@ def evaluate_persisted_case(case: dict[str, Any], *, detail: dict[str, Any], chu
     if not isinstance(coverage, dict) or float(coverage.get("coverage_ratio") or 0.0) <= 0.0:
         failures.append(f"{name}: missing chunk_coverage")
     if str(first_meta.get("chunk_strategy") or "").strip() != str(case.get("persist_chunk_strategy") or "").strip():
-        failures.append(
-            f"{name}: persisted chunk_strategy expected={case.get('persist_chunk_strategy')} actual={first_meta.get('chunk_strategy')}"
-        )
+        expected = case.get("persist_chunk_strategy")
+        actual = first_meta.get("chunk_strategy")
+        failures.append(f"{name}: persisted chunk_strategy expected={expected} actual={actual}")
     if empty_chunks > 0:
         failures.append(f"{name}: empty persisted chunks={empty_chunks}")
     return failures
@@ -335,18 +352,28 @@ def evaluate_preview_summary(case: dict[str, Any], preview: dict[str, Any]) -> l
 
 def summarize_profile_summary(body: Any) -> dict[str, Any]:
     payload = body if isinstance(body, dict) else {}
-    return {
-        "total_documents": int(payload.get("total_documents") or 0),
-        "chunk_count_histogram_bins": len(payload.get("chunk_count_histogram") or []) if isinstance(payload.get("chunk_count_histogram"), list) else 0,
-        "avg_chunk_chars_histogram_bins": len(payload.get("avg_chunk_chars_histogram") or []) if isinstance(payload.get("avg_chunk_chars_histogram"), list) else 0,
-        "chunk_length_histogram_bins": len(payload.get("chunk_length_histogram") or []) if isinstance(payload.get("chunk_length_histogram"), list) else 0,
-        "chunk_coverage_histogram_bins": len(payload.get("chunk_coverage_histogram") or []) if isinstance(payload.get("chunk_coverage_histogram"), list) else 0,
-        "chunk_overlap_waste_histogram_bins": len(payload.get("chunk_overlap_waste_histogram") or []) if isinstance(payload.get("chunk_overlap_waste_histogram"), list) else 0,
-        "by_file_type": dict(payload.get("by_file_type") or {}) if isinstance(payload.get("by_file_type"), dict) else {},
+    histogram_fields = {
+        "chunk_count_histogram_bins": "chunk_count_histogram",
+        "avg_chunk_chars_histogram_bins": "avg_chunk_chars_histogram",
+        "chunk_length_histogram_bins": "chunk_length_histogram",
+        "chunk_coverage_histogram_bins": "chunk_coverage_histogram",
+        "chunk_overlap_waste_histogram_bins": "chunk_overlap_waste_histogram",
     }
+    by_file_type = payload.get("by_file_type")
+    summary = {"total_documents": int(payload.get("total_documents") or 0)}
+    for summary_field, payload_field in histogram_fields.items():
+        values = payload.get(payload_field)
+        summary[summary_field] = len(values) if isinstance(values, list) else 0
+    summary["by_file_type"] = dict(by_file_type or {}) if isinstance(by_file_type, dict) else {}
+    return summary
 
 
-def evaluate_profile_summary(summary: dict[str, Any], *, expected_documents: int, expected_file_types: set[str]) -> list[str]:
+def evaluate_profile_summary(
+    summary: dict[str, Any],
+    *,
+    expected_documents: int,
+    expected_file_types: set[str],
+) -> list[str]:
     failures: list[str] = []
     if int(summary.get("total_documents") or 0) != int(expected_documents):
         failures.append(
@@ -366,6 +393,212 @@ def evaluate_profile_summary(summary: dict[str, Any], *, expected_documents: int
     if missing_types:
         failures.append(f"profile: missing file types {missing_types}")
     return failures
+
+
+def _dataset_payload(run_id: str) -> dict[str, Any]:
+    return {
+        "name": f"Chunking Matrix {run_id}",
+        "description": "Chunking breadth verification on real parsed outputs.",
+        "permission": "all_team_members",
+        "default_parser_backend": "auto",
+        "default_chunk_strategy": "langchain_recursive",
+        "pipeline": {
+            "governance_enabled": True,
+            "persist_parsed_content": True,
+            "persist_parsed_content_max_chars": 400000,
+            "chunk_size": 1200,
+            "chunk_overlap": 120,
+            "chunk_vector_enabled": True,
+            "bm25_index_enabled": True,
+            "kg_enabled": False,
+            "event_vector_enabled": False,
+            "entity_vector_enabled": False,
+        },
+    }
+
+
+def _upload_fields(dataset_id: str, case: dict[str, Any]) -> dict[str, str]:
+    return {
+        "dataset_id": dataset_id,
+        "parser_backend": str(case.get("parser_backend") or "auto"),
+        "chunk_strategy": str(case.get("persist_chunk_strategy") or "langchain_recursive"),
+        "governance_enabled": "true",
+        "chunk_vector_enabled": "true",
+        "bm25_index_enabled": "true",
+        "kg_enabled": "false",
+        "event_vector_enabled": "false",
+        "entity_vector_enabled": "false",
+    }
+
+
+def _case_row(
+    case: dict[str, Any],
+    *,
+    detail: dict[str, Any],
+    chunk_items: list[dict[str, Any]],
+    document_id: str,
+    parsed_chars: int,
+) -> dict[str, Any]:
+    detail_metadata = _detail_metadata(detail)
+    return {
+        "name": str(case["name"]),
+        "file_type": str(case["file_type"]),
+        "document_id": document_id,
+        "status": str(detail.get("status") or ""),
+        "chunk_count": len(chunk_items),
+        "parsed_chars": parsed_chars,
+        "empty_persisted_chunks": sum(1 for item in chunk_items if not str(item.get("content") or "").strip()),
+        "chunking_stats": detail_metadata.get("chunking_stats"),
+        "chunk_coverage": detail_metadata.get("chunk_coverage"),
+        "first_chunk_metadata": _first_chunk_metadata(chunk_items),
+    }
+
+
+def _case_chunk_count(chunks_body: Any, chunk_items: list[dict[str, Any]]) -> int:
+    if not isinstance(chunks_body, dict):
+        return len(chunk_items)
+    return int(chunks_body.get("total") or len(chunk_items))
+
+
+def _preview_strategies(case: dict[str, Any]) -> list[str]:
+    return [str(item) for item in (case.get("preview_strategies") or []) if str(item).strip()]
+
+
+def process_case(
+    api: LiveApi,
+    *,
+    case: dict[str, Any],
+    dataset_id: str,
+    steps: list[dict[str, Any]],
+    summary: dict[str, Any],
+    failures: list[str],
+    poll_timeout: int,
+    timeout: int,
+) -> None:
+    upload_fields = _upload_fields(dataset_id, case)
+    resp = api.multipart("POST", "/api/v1/documents/upload", fields=upload_fields, file_path=Path(case["path"]))
+    record_step(steps, f"upload:{case['name']}", resp)
+    ensure_success(f"upload:{case['name']}", resp)
+    document_id = str((resp.body or {}).get("id") or (resp.body or {}).get("document_id") or "")
+    if not document_id:
+        raise RuntimeError(f"upload:{case['name']} missing document id")
+
+    detail = wait_for_document_completed(
+        api,
+        steps=steps,
+        filename=str(case["name"]),
+        document_id=document_id,
+        poll_timeout=poll_timeout,
+    )
+    detail_resp = api.json("GET", f"/api/v1/documents/{document_id}")
+    record_step(steps, f"detail:{case['name']}", detail_resp)
+    ensure_success(f"detail:{case['name']}", detail_resp)
+    if isinstance(detail_resp.body, dict):
+        detail = detail_resp.body
+
+    chunks_resp = api.json("GET", f"/api/v1/documents/{document_id}/chunks?limit={DOCUMENT_CHUNK_LIST_LIMIT}")
+    chunk_items = list((chunks_resp.body or {}).get("items") or []) if isinstance(chunks_resp.body, dict) else []
+    record_step(steps, f"chunks:{case['name']}", chunks_resp, chunk_count=len(chunk_items))
+    ensure_success(f"chunks:{case['name']}", chunks_resp)
+
+    parsed_resp = api.json("GET", f"/api/v1/documents/{document_id}/parsed-content?max_chars=25000")
+    parsed_chars = max(len(parsed_text_from_response(parsed_resp.body)), int(detail.get("total_characters") or 0))
+    record_step(steps, f"parsed:{case['name']}", parsed_resp, parsed_chars=parsed_chars)
+    ensure_success(f"parsed:{case['name']}", parsed_resp)
+
+    case_row = _case_row(
+        case,
+        detail=detail,
+        chunk_items=chunk_items,
+        document_id=document_id,
+        parsed_chars=parsed_chars,
+    )
+    case_row["chunk_count"] = _case_chunk_count(chunks_resp.body, chunk_items)
+    case_failures = evaluate_persisted_case(
+        case,
+        detail=detail,
+        chunk_items=chunk_items,
+        parsed_chars=parsed_chars,
+    )
+    case_row["failures"] = case_failures
+    if case_failures:
+        failures.extend(case_failures)
+    summary["persisted_cases"].append(case_row)
+
+    for strategy in _preview_strategies(case):
+        preview_fields = preview_strategy_fields(case, strategy)
+        preview_resp = api.multipart(
+            "POST",
+            "/api/v1/documents/chunk-preview",
+            fields=preview_fields,
+            file_path=Path(case["path"]),
+            timeout=timeout,
+        )
+        preview_row = summarize_preview_result(case, strategy, preview_resp.body)
+        record_step(
+            steps,
+            f"preview:{case['name']}:{strategy}",
+            preview_resp,
+            total_chunks=preview_row["total_chunks_full"],
+            avg_chunk_length=preview_row["avg_chunk_length"],
+            parse_cache_hit=preview_row["parse_cache_hit"],
+        )
+        ensure_success(f"preview:{case['name']}:{strategy}", preview_resp)
+        preview_failures = evaluate_preview_summary(case, preview_row)
+        preview_row["elapsed_sec"] = round(float(preview_resp.elapsed_sec), 3)
+        preview_row["failures"] = preview_failures
+        if preview_failures:
+            failures.extend(preview_failures)
+        summary["preview_checks"].append(preview_row)
+
+
+def create_dataset(api: LiveApi, *, run_id: str, steps: list[dict[str, Any]]) -> str:
+    resp = api.json("POST", "/api/v1/datasets/", payload=_dataset_payload(run_id))
+    record_step(steps, "create_dataset", resp)
+    ensure_success("create_dataset", resp)
+    dataset_id = str((resp.body or {}).get("id") or (resp.body or {}).get("dataset_id") or "")
+    if not dataset_id:
+        raise RuntimeError("create_dataset missing dataset id")
+    return dataset_id
+
+
+def write_reports(summary: dict[str, Any], artifact_dir: Path) -> None:
+    report_json = artifact_dir / "report.json"
+    report_json.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    lines = [
+        "# Remote Chunking Matrix",
+        "",
+        f"- ok: `{summary['ok']}`",
+        f"- dataset_id: `{summary.get('dataset_id') or '-'}`",
+        f"- persisted_cases: `{len(summary.get('persisted_cases') or [])}`",
+        f"- preview_checks: `{len(summary.get('preview_checks') or [])}`",
+        f"- failures: `{len(summary.get('failures') or [])}`",
+        "",
+        "## Persisted Cases",
+    ]
+    for item in summary.get("persisted_cases") or []:
+        lines.append(
+            f"- {item['name']}: status={item['status']} "
+            f"chunks={item['chunk_count']} parsed_chars={item['parsed_chars']} "
+            f"empty={item['empty_persisted_chunks']}"
+        )
+    lines.append("")
+    lines.append("## Preview Checks")
+    for item in summary.get("preview_checks") or []:
+        lines.append(
+            f"- {item['case']} / {item['strategy']}: "
+            f"total_chunks={item['total_chunks_full']} avg={item['avg_chunk_length']} "
+            f"coverage={item['coverage_ratio']:.3f} overlap={item['overlap_waste_ratio']:.3f} "
+            f"elapsed={item['elapsed_sec']}s"
+        )
+    failures = summary.get("failures") or []
+    if failures:
+        lines.append("")
+        lines.append("## Failures")
+        for failure in failures:
+            lines.append(f"- {failure}")
+    (artifact_dir / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def cleanup_dataset(api: LiveApi, *, steps: list[dict[str, Any]], dataset_id: str) -> dict[str, Any]:
@@ -427,123 +660,20 @@ def main() -> int:
         record_step(steps, "health", resp)
         ensure_success("health", resp)
 
-        resp = api.json(
-            "POST",
-            "/api/v1/datasets/",
-            payload={
-                "name": f"Chunking Matrix {run_id}",
-                "description": "Chunking breadth verification on real parsed outputs.",
-                "permission": "all_team_members",
-                "default_parser_backend": "auto",
-                "default_chunk_strategy": "langchain_recursive",
-                "pipeline": {
-                    "governance_enabled": True,
-                    "persist_parsed_content": True,
-                    "persist_parsed_content_max_chars": 400000,
-                    "chunk_size": 1200,
-                    "chunk_overlap": 120,
-                    "chunk_vector_enabled": True,
-                    "bm25_index_enabled": True,
-                    "kg_enabled": False,
-                    "event_vector_enabled": False,
-                    "entity_vector_enabled": False,
-                },
-            },
-        )
-        record_step(steps, "create_dataset", resp)
-        ensure_success("create_dataset", resp)
-        dataset_id = str((resp.body or {}).get("id") or (resp.body or {}).get("dataset_id") or "")
-        if not dataset_id:
-            raise RuntimeError("create_dataset missing dataset id")
+        dataset_id = create_dataset(api, run_id=run_id, steps=steps)
         summary["dataset_id"] = dataset_id
 
         for case in cases:
-            upload_fields = {
-                "dataset_id": dataset_id,
-                "parser_backend": str(case.get("parser_backend") or "auto"),
-                "chunk_strategy": str(case.get("persist_chunk_strategy") or "langchain_recursive"),
-                "governance_enabled": "true",
-                "chunk_vector_enabled": "true",
-                "bm25_index_enabled": "true",
-                "kg_enabled": "false",
-                "event_vector_enabled": "false",
-                "entity_vector_enabled": "false",
-            }
-            resp = api.multipart("POST", "/api/v1/documents/upload", fields=upload_fields, file_path=Path(case["path"]))
-            record_step(steps, f"upload:{case['name']}", resp)
-            ensure_success(f"upload:{case['name']}", resp)
-            document_id = str((resp.body or {}).get("id") or (resp.body or {}).get("document_id") or "")
-            if not document_id:
-                raise RuntimeError(f"upload:{case['name']} missing document id")
-
-            detail = wait_for_document_completed(
+            process_case(
                 api,
+                case=case,
+                dataset_id=dataset_id,
                 steps=steps,
-                filename=str(case["name"]),
-                document_id=document_id,
+                summary=summary,
+                failures=failures,
                 poll_timeout=args.poll_timeout,
+                timeout=args.timeout,
             )
-            detail_resp = api.json("GET", f"/api/v1/documents/{document_id}")
-            record_step(steps, f"detail:{case['name']}", detail_resp)
-            ensure_success(f"detail:{case['name']}", detail_resp)
-            detail = detail_resp.body if isinstance(detail_resp.body, dict) else detail
-
-            chunks_resp = api.json("GET", f"/api/v1/documents/{document_id}/chunks?limit={DOCUMENT_CHUNK_LIST_LIMIT}")
-            chunk_items = list((chunks_resp.body or {}).get("items") or []) if isinstance(chunks_resp.body, dict) else []
-            record_step(steps, f"chunks:{case['name']}", chunks_resp, chunk_count=len(chunk_items))
-            ensure_success(f"chunks:{case['name']}", chunks_resp)
-
-            parsed_resp = api.json("GET", f"/api/v1/documents/{document_id}/parsed-content?max_chars=25000")
-            parsed_chars = max(
-                len(parsed_text_from_response(parsed_resp.body)),
-                int(detail.get("total_characters") or 0),
-            )
-            record_step(steps, f"parsed:{case['name']}", parsed_resp, parsed_chars=parsed_chars)
-            ensure_success(f"parsed:{case['name']}", parsed_resp)
-
-            case_row = {
-                "name": str(case["name"]),
-                "file_type": str(case["file_type"]),
-                "document_id": document_id,
-                "status": str(detail.get("status") or ""),
-                "chunk_count": int((chunks_resp.body or {}).get("total") or len(chunk_items)) if isinstance(chunks_resp.body, dict) else len(chunk_items),
-                "parsed_chars": parsed_chars,
-                "empty_persisted_chunks": sum(1 for item in chunk_items if not str(item.get("content") or "").strip()),
-                "chunking_stats": (detail.get("metadata") or {}).get("chunking_stats") if isinstance(detail.get("metadata"), dict) else None,
-                "chunk_coverage": (detail.get("metadata") or {}).get("chunk_coverage") if isinstance(detail.get("metadata"), dict) else None,
-                "first_chunk_metadata": (chunk_items[0].get("metadata") or {}) if chunk_items and isinstance(chunk_items[0].get("metadata"), dict) else {},
-            }
-            case_failures = evaluate_persisted_case(case, detail=detail, chunk_items=chunk_items, parsed_chars=parsed_chars)
-            case_row["failures"] = case_failures
-            if case_failures:
-                failures.extend(case_failures)
-            summary["persisted_cases"].append(case_row)
-
-            for strategy in [item for item in case.get("preview_strategies") or [] if str(item).strip()]:
-                preview_fields = preview_strategy_fields(case, str(strategy))
-                preview_resp = api.multipart(
-                    "POST",
-                    "/api/v1/documents/chunk-preview",
-                    fields=preview_fields,
-                    file_path=Path(case["path"]),
-                    timeout=args.timeout,
-                )
-                preview_row = summarize_preview_result(case, str(strategy), preview_resp.body)
-                record_step(
-                    steps,
-                    f"preview:{case['name']}:{strategy}",
-                    preview_resp,
-                    total_chunks=preview_row["total_chunks_full"],
-                    avg_chunk_length=preview_row["avg_chunk_length"],
-                    parse_cache_hit=preview_row["parse_cache_hit"],
-                )
-                ensure_success(f"preview:{case['name']}:{strategy}", preview_resp)
-                preview_failures = evaluate_preview_summary(case, preview_row)
-                preview_row["elapsed_sec"] = round(float(preview_resp.elapsed_sec), 3)
-                preview_row["failures"] = preview_failures
-                if preview_failures:
-                    failures.extend(preview_failures)
-                summary["preview_checks"].append(preview_row)
 
         profile_resp = api.json("GET", f"/api/v1/datasets/{dataset_id}/profile/summary")
         record_step(steps, "profile:summary", profile_resp)
@@ -570,39 +700,13 @@ def main() -> int:
     summary["ok"] = not failures
     summary["steps"] = steps
 
-    report_json = artifact_dir / "report.json"
-    report_json.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    lines = [
-        "# Remote Chunking Matrix",
-        "",
-        f"- ok: `{summary['ok']}`",
-        f"- dataset_id: `{summary.get('dataset_id') or '-'}`",
-        f"- persisted_cases: `{len(summary.get('persisted_cases') or [])}`",
-        f"- preview_checks: `{len(summary.get('preview_checks') or [])}`",
-        f"- failures: `{len(summary.get('failures') or [])}`",
-        "",
-        "## Persisted Cases",
-    ]
-    for item in summary.get("persisted_cases") or []:
-        lines.append(
-            f"- {item['name']}: status={item['status']} chunks={item['chunk_count']} parsed_chars={item['parsed_chars']} empty={item['empty_persisted_chunks']}"
-        )
-    lines.append("")
-    lines.append("## Preview Checks")
-    for item in summary.get("preview_checks") or []:
-        lines.append(
-            f"- {item['case']} / {item['strategy']}: total_chunks={item['total_chunks_full']} avg={item['avg_chunk_length']} "
-            f"coverage={item['coverage_ratio']:.3f} overlap={item['overlap_waste_ratio']:.3f} elapsed={item['elapsed_sec']}s"
-        )
-    if failures:
-        lines.append("")
-        lines.append("## Failures")
-        for failure in failures:
-            lines.append(f"- {failure}")
-    (artifact_dir / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-    print(json.dumps({"ok": summary["ok"], "artifact_dir": str(artifact_dir), "dataset_id": summary.get("dataset_id")}, ensure_ascii=False, indent=2))
+    write_reports(summary, artifact_dir)
+    output = {
+        "ok": summary["ok"],
+        "artifact_dir": str(artifact_dir),
+        "dataset_id": summary.get("dataset_id"),
+    }
+    print(json.dumps(output, ensure_ascii=False, indent=2))
     return 0 if summary["ok"] else 1
 
 

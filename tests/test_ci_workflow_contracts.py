@@ -95,9 +95,7 @@ def test_ci_seed_entrypoints_bootstrap_the_repository_before_app_imports() -> No
 
 def test_retrieval_only_job_uses_the_non_jwt_ci_runtime() -> None:
     workflow = _read(".github/workflows/ci.yml")
-    job = workflow.split("\n  retrieval-only-bounded-gate:\n", 1)[1].split(
-        "\n  retrieval-regression-gate:\n", 1
-    )[0]
+    job = workflow.split("\n  retrieval-only-bounded-gate:\n", 1)[1].split("\n  retrieval-regression-gate:\n", 1)[0]
 
     assert "    env:\n      ENV: ci\n      AUTH_MODE: header\n" in job
 
@@ -139,10 +137,7 @@ def test_public_pr_live_core_gate_launcher_contract() -> None:
         'export RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED="${RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED:-true}"'
         in script
     )
-    assert (
-        'export DATASET_ANALYSIS_PNG_STALE_AFTER_SEC="${DATASET_ANALYSIS_PNG_STALE_AFTER_SEC:-2}"'
-        in script
-    )
+    assert 'export DATASET_ANALYSIS_PNG_STALE_AFTER_SEC="${DATASET_ANALYSIS_PNG_STALE_AFTER_SEC:-2}"' in script
     assert 'python -m uvicorn app.main:app --host 127.0.0.1 --port "$PRIMARY_PORT"' in script
     assert 'python -m uvicorn app.main:app --host 127.0.0.1 --port "$SECONDARY_PORT"' in script
     assert 'python scripts/api_ping.py --base-url "$base_url" >/dev/null' in script
@@ -156,7 +151,7 @@ def test_main_ci_runs_database_migrations_and_integrations() -> None:
     workflow = _read(".github/workflows/ci.yml")
     conftest = _read("tests/conftest.py")
 
-    assert "MIMIRQ_INTEGRATION_TESTS: \"1\"" in workflow
+    assert 'MIMIRQ_INTEGRATION_TESTS: "1"' in workflow
     assert "make db-upgrade" in workflow
     assert workflow.count("SECRET_KEY: ci-db-upgrade-secret-key-0123456789") == 2
     assert "tests/test_alembic_upgrade_from_prior_revision.py" in workflow
@@ -172,8 +167,7 @@ def test_repo_checks_enforce_api_type_drift_and_shared_python_audit_policy() -> 
     python_audit = makefile.split("audit-py:", 1)[1].split("audit-web:", 1)[0]
 
     assert (
-        "node web/scripts/check-api-types-drift.mjs --strict "
-        "--baseline web/scripts/api-types-drift-baseline.json"
+        "node web/scripts/check-api-types-drift.mjs --strict --baseline web/scripts/api-types-drift-baseline.json"
     ) in makefile
     assert "make audit-py" in security_workflow
     assert "--no-deps" not in python_audit
@@ -208,7 +202,9 @@ def test_dependency_audit_covers_web_and_handbook_with_shared_policy() -> None:
     assert "$(MAKE) audit-docs" in makefile
     assert "run: make audit-web" in security_workflow
     assert "run: make audit-docs" in security_workflow
-    assert "npm --prefix docs-site audit --audit-level=high --json | python scripts/check_npm_audit.py" in powershell_audit
+    assert (
+        "npm --prefix docs-site audit --audit-level=high --json | python scripts/check_npm_audit.py" in powershell_audit
+    )
     assert powershell_audit.count("Assert-AuditSucceeded") == 5
 
 
@@ -228,9 +224,7 @@ def test_main_ci_runs_all_browser_smoke_specs_and_critical_coverage() -> None:
     # chain, so it runs in parallel with the backend test-and-verify job.
     assert "needs:" not in web_job
     assert "filter_cpu_ci_requirements.py" not in web_job
-    backend_job = workflow.split("\n  test-and-verify:\n", 1)[1].split(
-        "\n  web-test-and-verify:\n", 1
-    )[0]
+    backend_job = workflow.split("\n  test-and-verify:\n", 1)[1].split("\n  web-test-and-verify:\n", 1)[0]
     assert "make test-web-e2e" not in backend_job
     assert "pnpm run test:coverage:critical" not in backend_job
     assert "make test\n" in backend_job
@@ -247,7 +241,7 @@ def test_main_ci_host_browser_smoke_stays_on_the_live_stack_spec_in_pr_jobs_too(
         "\n  kg-search-regression-gate:\n",
         1,
     )[0]
-    assert 'AUTH_MODE: header' in retrieval_regression_job
+    assert "AUTH_MODE: header" in retrieval_regression_job
     assert "README host browser smoke" in retrieval_regression_job
     assert 'PLAYWRIGHT_LIVE_STACK: "1"' in retrieval_regression_job
     assert "NEXT_PUBLIC_USER_ID: ci-bot" in retrieval_regression_job
@@ -257,14 +251,8 @@ def test_main_ci_host_browser_smoke_stays_on_the_live_stack_spec_in_pr_jobs_too(
         1,
     )[0]
     assert 'NEXT_PUBLIC_API_URL="/"' in browser_smoke
-    assert (
-        'API_INTERNAL_URL="http://127.0.0.1:${MIMIRQ_RETRIEVAL_API_PORT}"'
-        in browser_smoke
-    )
-    assert (
-        'NEXT_PUBLIC_API_URL="http://127.0.0.1:${MIMIRQ_RETRIEVAL_API_PORT}"'
-        not in browser_smoke
-    )
+    assert 'API_INTERNAL_URL="http://127.0.0.1:${MIMIRQ_RETRIEVAL_API_PORT}"' in browser_smoke
+    assert 'NEXT_PUBLIC_API_URL="http://127.0.0.1:${MIMIRQ_RETRIEVAL_API_PORT}"' not in browser_smoke
     assert "pnpm exec playwright test e2e/live-stack.smoke.spec.ts" in retrieval_regression_job
 
 
@@ -299,17 +287,15 @@ def test_retrieval_regression_gate_is_offline_and_reuses_bounded_proof_artifacts
     assert "path: bounded_gate_artifacts" in download_step
     assert "EMBEDDING_PROVIDER: deterministic_test" in backend_step
     assert "EMBEDDING_MODEL: mimirq-deterministic-test-v1" in backend_step
-    assert "LLM_MOCK_ENABLED: \"true\"" in backend_step
+    assert 'LLM_MOCK_ENABLED: "true"' in backend_step
     assert "RERANKER_PROVIDER: pc" in backend_step
     assert (
         "--parsing-proof-summary "
-        "bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/summary.json"
-        in release_gate_step
+        "bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/summary.json" in release_gate_step
     )
     assert (
         "--parsing-proof-diff "
-        "bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/diff.json"
-        in release_gate_step
+        "bounded_gate_artifacts/artifacts/parsing_proof_broader_sample/diff.json" in release_gate_step
     )
 
 
@@ -344,7 +330,9 @@ def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
         "        env:\n"
         "          http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}\n"
         "          https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}\n"
-        "          no_proxy: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}\n"
+        "          no_proxy: ${{ vars.CI_NO_PROXY != '' && "
+        "format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || "
+        "'127.0.0.1,localhost' }}\n"
     )
 
     assert "permissions:\n  contents: read" in workflow
@@ -384,40 +372,35 @@ def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     assert "${{ runner.temp }}/pip-cache" not in workflow
     assert "${{ runner.temp }}/torch-wheels" not in workflow
     assert "corepack enable" not in public_pr_job
-    assert (
-        "uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0"
-        in public_pr_job
-    )
+    assert "uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0" in public_pr_job
     assert "package_json_file: web/package.json" in public_pr_job
     assert "cache: pip" in public_pr_job
-    assert (
-        "cache-dependency-path: |\n            requirements.txt\n            requirements-dev.txt"
-        in public_pr_job
-    )
+    assert "cache-dependency-path: |\n            requirements.txt\n            requirements-dev.txt" in public_pr_job
     assert "cache: pnpm" in public_pr_job
     assert "cache-dependency-path: web/pnpm-lock.yaml" in public_pr_job
-    assert (
-        public_pr_job.count("uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0")
-        == 2
-    )
+    assert public_pr_job.count("uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0") == 2
     assert "path: /home/runner/.cache/torch-wheels" in public_pr_job
     assert (
-        "key: torch-wheels-${{ runner.os }}-py311-${{ hashFiles('ci/download_verified_wheels.py') }}"
-        in public_pr_job
+        "key: torch-wheels-${{ runner.os }}-py311-${{ hashFiles('ci/download_verified_wheels.py') }}" in public_pr_job
     )
     assert "path: /home/runner/.cache/ms-playwright" in public_pr_job
-    assert (
-        "key: playwright-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}"
-        in public_pr_job
-    )
-    assert "python ci/download_verified_wheels.py --cache-dir \"$TORCH_WHEEL_DIR\"" in workflow
+    assert "key: playwright-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}" in public_pr_job
+    assert 'python ci/download_verified_wheels.py --cache-dir "$TORCH_WHEEL_DIR"' in workflow
     assert "command -v rg" in workflow
     assert "rg --version | head -n 1" in workflow
     assert "make openapi-check" in workflow
     assert "cp .env.example .env" in workflow
     assert "docker compose --env-file .env -f docker/docker-compose.yml config --quiet" in workflow
-    assert "docker compose --env-file .env -f docker/docker-compose.yml -f docker/docker-compose.web.yml config --quiet" in workflow
-    assert "docker run --rm -v \"$PWD:/work\" -w /work alpine/helm@sha256:aef9b56f64e866207d9591d0abd8f6d767b36aadd12edf68f8a719716d9d29c9 lint deploy/helm/mimirq" in workflow
+    assert (
+        "docker compose --env-file .env -f docker/docker-compose.yml -f docker/docker-compose.web.yml config --quiet"
+        in workflow
+    )
+    assert (
+        'docker run --rm -v "$PWD:/work" -w /work '
+        "alpine/helm@sha256:"
+        "aef9b56f64e866207d9591d0abd8f6d767b36aadd12edf68f8a719716d9d29c9 "
+        "lint deploy/helm/mimirq" in workflow
+    )
     assert "template mimirq deploy/helm/mimirq >/dev/null" in workflow
     assert "make test" in workflow
     assert "PR deterministic retrieval-ranking proxy gate" in workflow
@@ -499,21 +482,16 @@ def test_host_setup_uses_project_venv_and_complete_cpu_dependencies() -> None:
         assert "make setup-host" in readme
         assert "pnpm -C web install" not in readme
 
-    assert (
-        "make core-e2e CORE_E2E_BASE_URL=http://127.0.0.1:8000 CORE_E2E_BOOTSTRAP_REGISTER=1"
-        not in _read("README.md")
+    assert "make core-e2e CORE_E2E_BASE_URL=http://127.0.0.1:8000 CORE_E2E_BOOTSTRAP_REGISTER=1" not in _read(
+        "README.md"
     )
-    assert (
-        "make core-e2e CORE_E2E_BASE_URL=http://127.0.0.1:8000 CORE_E2E_BOOTSTRAP_REGISTER=1"
-        not in _read("docs/quickstart.md")
+    assert "make core-e2e CORE_E2E_BASE_URL=http://127.0.0.1:8000 CORE_E2E_BOOTSTRAP_REGISTER=1" not in _read(
+        "docs/quickstart.md"
     )
 
 
 def test_pull_request_lint_and_security_jobs_use_hosted_runners() -> None:
-    runner_policy = (
-        "runs-on: ${{ github.event_name == 'pull_request' && "
-        "'ubuntu-latest' || 'mimirq' }}"
-    )
+    runner_policy = "runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'mimirq' }}"
     expected_counts = {
         ".github/workflows/lint-fast.yml": 1,
         ".github/workflows/security.yml": 2,
@@ -540,7 +518,9 @@ def test_api_docs_workflow_actually_deploys_pages() -> None:
         "        env:\n"
         "          http_proxy: ${{ vars.CI_HTTP_PROXY || '' }}\n"
         "          https_proxy: ${{ vars.CI_HTTPS_PROXY || '' }}\n"
-        "          no_proxy: ${{ vars.CI_NO_PROXY != '' && format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || '127.0.0.1,localhost' }}\n"
+        "          no_proxy: ${{ vars.CI_NO_PROXY != '' && "
+        "format('127.0.0.1,localhost,{0}', vars.CI_NO_PROXY) || "
+        "'127.0.0.1,localhost' }}\n"
     )
 
     assert "pull_request:" in workflow
@@ -603,8 +583,7 @@ def test_security_workflow_pins_trufflehog_by_digest() -> None:
     workflow = _read(".github/workflows/security.yml")
 
     assert (
-        "trufflesecurity/trufflehog@sha256:c28ab4a11e01d6fcc10776f65cce015bdf9795f2393cffa2ec0a7c8464ee58b6"
-        in workflow
+        "trufflesecurity/trufflehog@sha256:c28ab4a11e01d6fcc10776f65cce015bdf9795f2393cffa2ec0a7c8464ee58b6" in workflow
     )
 
 
@@ -623,30 +602,20 @@ def test_backend_dockerfile_uses_bundled_buildkit_frontend() -> None:
 
 def test_cpu_torch_wheels_match_linux_runtime_requirements() -> None:
     requirements = _read("requirements.txt")
-    torch_version = re.search(
-        r'^torch==([^;]+); platform_system == "Linux"$', requirements, re.MULTILINE
-    )
-    torchvision_version = re.search(
-        r'^torchvision==([^;]+); platform_system == "Linux"$', requirements, re.MULTILINE
-    )
+    torch_version = re.search(r'^torch==([^;]+); platform_system == "Linux"$', requirements, re.MULTILINE)
+    torchvision_version = re.search(r'^torchvision==([^;]+); platform_system == "Linux"$', requirements, re.MULTILINE)
 
     assert torch_version is not None
     assert torchvision_version is not None
     for install_surface in ("docker/Dockerfile", ".github/workflows/ci.yml"):
         content = _read(install_surface)
-        assert set(re.findall(r"\btorch-([0-9.]+)\+cpu-", content)) == {
-            torch_version.group(1)
-        }
-        assert set(re.findall(r"\btorchvision-([0-9.]+)\+cpu-", content)) == {
-            torchvision_version.group(1)
-        }
+        assert set(re.findall(r"\btorch-([0-9.]+)\+cpu-", content)) == {torch_version.group(1)}
+        assert set(re.findall(r"\btorchvision-([0-9.]+)\+cpu-", content)) == {torchvision_version.group(1)}
 
 
 def test_docker_ci_supports_cold_web_builds() -> None:
     workflow = _read(".github/workflows/ci.yml")
-    docker_job = workflow.split("\n  docker-build:", 1)[1].split(
-        "\n  retrieval-only-bounded-gate:", 1
-    )[0]
+    docker_job = workflow.split("\n  docker-build:", 1)[1].split("\n  retrieval-only-bounded-gate:", 1)[0]
     retrieval_compose = _read("docker/docker-compose.retrieval-dev.yml")
     backend_dockerfile = _read("docker/Dockerfile")
     web_dockerfile = _read("web/Dockerfile.prod")
@@ -661,7 +630,7 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     assert 'if [ "$attempt" = "3" ]; then exit 1; fi' in backend_dockerfile
     assert "PNPM_REGISTRY: ${PNPM_REGISTRY:-https://registry.npmmirror.com}" in web_compose
     assert 'python scripts/select_free_docker_subnet.py --seed "$GITHUB_RUN_ID"' in docker_job
-    assert 'printf \'DOCKER_BUILD_NETWORK=host\\n\'' in docker_job
+    assert "printf 'DOCKER_BUILD_NETWORK=host\\n'" in docker_job
     assert "--build-arg NEXT_PUBLIC_API_URL=/" in docker_job
     assert "README docker quickstart smoke" in docker_job
     assert "make up-web" in docker_job
@@ -675,10 +644,7 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     assert "CORE_E2E_BASE_URL=http://127.0.0.1:$api_port" in docker_job
     assert "http://127.0.0.1:$api_port/api/v1/health/ready" in docker_job
     assert "Clean up README lite quickstart stack" in docker_job
-    assert (
-        "docker compose --env-file .env -f docker/docker-compose.lite.yml down -v --remove-orphans"
-        in docker_job
-    )
+    assert "docker compose --env-file .env -f docker/docker-compose.lite.yml down -v --remove-orphans" in docker_job
     assert "Smoke built backend and web images" in docker_job
     assert "up -d --no-build" in docker_job
     assert "Docker web-proxy and dual-api core smoke" in docker_job
@@ -722,9 +688,7 @@ def test_live_core_gate_keeps_png_cross_instance_and_worker_lost_probes() -> Non
 
 def test_built_web_jwt_browser_smoke_is_explicitly_wired() -> None:
     workflow = _read(".github/workflows/ci.yml")
-    docker_job = workflow.split("\n  docker-build:", 1)[1].split(
-        "\n  retrieval-only-bounded-gate:", 1
-    )[0]
+    docker_job = workflow.split("\n  docker-build:", 1)[1].split("\n  retrieval-only-bounded-gate:", 1)[0]
     script = _read("scripts/run_ci_jwt_browser_smoke.sh")
     playwright_config = _read("web/playwright.config.ts")
 
@@ -732,8 +696,8 @@ def test_built_web_jwt_browser_smoke_is_explicitly_wired() -> None:
     assert "set -x" not in script
     assert 'docker port "$WEB_CONTAINER" 3000/tcp' in script
     assert '"${web_base_url}/api/v1/auth/register"' in script
-    assert 'MIMIRQ_SMOKE_IDENTIFIER and MIMIRQ_SMOKE_PASSWORD must be set together' in script
-    assert 'reuse_account=1' in script
+    assert "MIMIRQ_SMOKE_IDENTIFIER and MIMIRQ_SMOKE_PASSWORD must be set together" in script
+    assert "reuse_account=1" in script
     assert "@example.com`" in script
     assert "@example.invalid" not in script
     assert "PLAYWRIGHT_EXTERNAL_SERVER=1" in script
@@ -773,8 +737,16 @@ def test_playwright_prod_server_can_reuse_an_existing_build_artifact() -> None:
     playwright_config = _read("web/playwright.config.ts")
 
     assert "const reuseBuildOutput = process.env.PLAYWRIGHT_REUSE_BUILD === '1'" in playwright_config
-    assert "MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} HOST=127.0.0.1 PORT=${PORT} pnpm start" in playwright_config
-    assert "MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} pnpm exec next build --webpack && MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} HOST=127.0.0.1 PORT=${PORT} pnpm start" in playwright_config
+    assert (
+        "MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} HOST=127.0.0.1 PORT=${PORT} pnpm start"
+        in playwright_config
+    )
+    assert (
+        "MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} "
+        "pnpm exec next build --webpack && "
+        "MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} "
+        "HOST=127.0.0.1 PORT=${PORT} pnpm start" in playwright_config
+    )
 
 
 def test_generic_browser_suite_does_not_probe_an_ambient_live_backend() -> None:
@@ -788,9 +760,9 @@ def test_generic_browser_suite_does_not_probe_an_ambient_live_backend() -> None:
 
 def test_main_ci_runs_core_e2e_against_the_existing_host_backend() -> None:
     workflow = _read(".github/workflows/ci.yml")
-    regression_job = workflow.split("\n  retrieval-regression-gate:", 1)[1].split(
-        "\n  kg-search-regression-gate:", 1
-    )[0]
+    regression_job = workflow.split("\n  retrieval-regression-gate:", 1)[1].split("\n  kg-search-regression-gate:", 1)[
+        0
+    ]
 
     assert "README host web contract smoke" in regression_job
     assert "node web/scripts/api-ping.mjs" in regression_job

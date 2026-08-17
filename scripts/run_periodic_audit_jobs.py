@@ -16,12 +16,12 @@ Examples:
   python scripts/run_periodic_audit_jobs.py --index-audit --dry-run
 
   # Execute and write audit events for one tenant
-  python scripts/run_periodic_audit_jobs.py --index-audit --evidence-drift-audit --tenant-id <uuid> --execute --max-datasets 50
+  python scripts/run_periodic_audit_jobs.py --index-audit --evidence-drift-audit \
+--tenant-id <uuid> --execute --max-datasets 50
 
   # Execute for all tenants (use with care)
   python scripts/run_periodic_audit_jobs.py --index-audit --all-tenants --execute --force
 """
-
 
 import argparse
 import json
@@ -59,19 +59,36 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--max-datasets", type=int, default=50, help="Max datasets scanned per tenant (default: 50)")
 
     # Index-audit bounds.
-    p.add_argument("--max-check-ids", type=int, default=5000, help="Max DB vector_ids to existence-check (default: 5000)")
-    p.add_argument("--milvus-list-limit", type=int, default=2000, help="Max Milvus ids to sample for orphans (default: 2000)")
+    p.add_argument(
+        "--max-check-ids", type=int, default=5000, help="Max DB vector_ids to existence-check (default: 5000)"
+    )
+    p.add_argument(
+        "--milvus-list-limit", type=int, default=2000, help="Max Milvus ids to sample for orphans (default: 2000)"
+    )
     p.add_argument("--sample-limit", type=int, default=20, help="Max sample ids to return per dataset (default: 20)")
 
     # Drift-audit bounds.
-    p.add_argument("--include-archived-items", action="store_true", help="Include archived EvidenceItems in drift audit")
-    p.add_argument("--include-details", action="store_true", help="Include bounded per-ref drift details (still PII-safe)")
-    p.add_argument("--details-limit", type=int, default=0, help="Max drifted references returned when include-details (default: 0)")
+    p.add_argument(
+        "--include-archived-items", action="store_true", help="Include archived EvidenceItems in drift audit"
+    )
+    p.add_argument(
+        "--include-details", action="store_true", help="Include bounded per-ref drift details (still PII-safe)"
+    )
+    p.add_argument(
+        "--details-limit", type=int, default=0, help="Max drifted references returned when include-details (default: 0)"
+    )
     p.add_argument("--slice-top-n", type=int, default=20, help="Max buckets per slice (default: 20)")
 
     # Embedding drift bounds.
-    p.add_argument("--drift-sample-n", type=int, default=200, help="Max chunks sampled for embedding drift (default: 200)")
-    p.add_argument("--drift-threshold", type=float, default=0.05, help="Cosine distance threshold for embedding drift (default: 0.05)")
+    p.add_argument(
+        "--drift-sample-n", type=int, default=200, help="Max chunks sampled for embedding drift (default: 200)"
+    )
+    p.add_argument(
+        "--drift-threshold",
+        type=float,
+        default=0.05,
+        help="Cosine distance threshold for embedding drift (default: 0.05)",
+    )
 
     p.add_argument("--force", action="store_true", help="Write audit even if today's report already exists.")
 
@@ -84,7 +101,8 @@ def main(argv: list[str] | None = None) -> int:
         and (not bool(args.embedding_drift))
     ):
         print(
-            "No job selected. Use --index-audit and/or --evidence-drift-audit and/or --access-review and/or --embedding-drift.",
+            "No job selected. Use --index-audit and/or --evidence-drift-audit "
+            "and/or --access-review and/or --embedding-drift.",
             file=sys.stderr,
         )
         return 2

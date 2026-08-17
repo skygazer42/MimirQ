@@ -380,6 +380,211 @@ def _render_metric_value_table(rows: list[tuple[str, Any]]) -> str:
     return _render_table_or_empty(BARS_METRIC_TABLE_HEADER, rendered)
 
 
+def _render_field_value_table(rows: list[tuple[str, Any]], *, field_label: str = "Field") -> str:
+    rendered = [
+        f'<tr><td class="k">{escape(str(key))}</td><td class="v">{escape(_fmt_scalar(value))}</td><td></td></tr>'
+        for key, value in rows
+    ]
+    header = f'<table class="bars"><thead><tr><th>{escape(field_label)}</th><th>Value</th><th></th></tr></thead><tbody>'
+    return _render_table_or_empty(header, rendered)
+
+
+def _render_kpi_card(label: str, value: str) -> str:
+    return f'      <div class="card"><div class="kpi-label">{label}</div><div class="kpi-value">{value}</div></div>'
+
+
+def _render_grid(cards: list[tuple[str, str]]) -> str:
+    lines = ['    <div class="grid">']
+    lines.extend(_render_kpi_card(label, value) for label, value in cards)
+    lines.append("    </div>")
+    return "\n".join(lines)
+
+
+def _render_section_block(title: str, body: str) -> str:
+    return "\n".join(
+        [
+            '    <div class="section">',
+            f"      <h2>{title}</h2>",
+            f"      {body}",
+            "    </div>",
+        ]
+    )
+
+
+def _render_two_column_section(
+    left_title: str,
+    left_body: str,
+    right_title: str,
+    right_body: str,
+) -> str:
+    return "\n".join(
+        [
+            '    <div class="section two">',
+            "      <div>",
+            f"        <h2>{left_title}</h2>",
+            f"        {left_body}",
+            "      </div>",
+            "      <div>",
+            f"        <h2>{right_title}</h2>",
+            f"        {right_body}",
+            "      </div>",
+            "    </div>",
+        ]
+    )
+
+
+def _render_page_subtitle(
+    *,
+    dataset_name: str,
+    dataset_id: str,
+    generated_at: str,
+    root_path: str | None = None,
+) -> str:
+    parts = [
+        'dataset: <span style="font-family:var(--mono)">',
+        escape(dataset_name),
+        '</span> · id: <span style="font-family:var(--mono)">',
+        escape(dataset_id),
+        "</span>",
+    ]
+    if root_path is not None:
+        parts.extend(
+            [
+                ' · root: <span style="font-family:var(--mono)">',
+                escape(root_path),
+                "</span>",
+            ]
+        )
+    parts.extend(
+        [
+            ' · generated_at: <span style="font-family:var(--mono)">',
+            escape(generated_at),
+            "</span>",
+        ]
+    )
+    return '    <div class="sub">' + "".join(parts) + "</div>"
+
+
+def _render_page_style(
+    *,
+    gradient_rgba: str,
+    key_width: int,
+    value_width: int,
+    include_pre: bool = False,
+    include_notes: bool = False,
+    include_emoji_fonts: bool = False,
+    include_status_colors: bool = False,
+) -> str:
+    sans_fonts = (
+        "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "
+        '"Apple Color Emoji", "Segoe UI Emoji"'
+        if include_emoji_fonts
+        else "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial"
+    )
+    lines = [
+        "  <style>",
+        "    :root {",
+        "      --bg: #0b1020;",
+        "      --card: rgba(255,255,255,.06);",
+        "      --muted: rgba(255,255,255,.65);",
+        "      --text: rgba(255,255,255,.92);",
+        "      --border: rgba(255,255,255,.10);",
+        "      --accent: #38bdf8;",
+        "      --accent2: #22c55e;",
+    ]
+    if include_status_colors:
+        lines.extend(
+            [
+                "      --warn: #f59e0b;",
+                "      --err: #fb7185;",
+            ]
+        )
+    lines.extend(
+        [
+            (
+                "      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "
+                '"Liberation Mono", "Courier New", monospace;'
+            ),
+            f"      --sans: {sans_fonts};",
+            "    }",
+            (
+                "    body { margin: 0; background: radial-gradient(1200px 800px at 10% 10%, "
+                f"{gradient_rgba}, transparent), var(--bg); color: var(--text); "
+                "font-family: var(--sans); }"
+            ),
+            "    .wrap { max-width: 1100px; margin: 0 auto; padding: 28px 18px 40px; }",
+            "    .title { font-size: 22px; font-weight: 800; letter-spacing: .2px; }",
+            "    .sub { margin-top: 6px; color: var(--muted); font-size: 13px; }",
+            "    .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 16px; }",
+            (
+                "    .card { border: 1px solid var(--border); border-radius: 14px; "
+                "background: var(--card); padding: 12px 12px; }"
+            ),
+            "    .kpi-label { color: var(--muted); font-size: 12px; }",
+            "    .kpi-value { font-family: var(--mono); font-weight: 800; font-size: 18px; margin-top: 6px; }",
+            (
+                "    .section { margin-top: 16px; border: 1px solid var(--border); "
+                "border-radius: 14px; background: rgba(0,0,0,.12); padding: 14px 14px; }"
+            ),
+            "    .section h2 { margin: 0 0 10px; font-size: 14px; letter-spacing: .2px; }",
+            "    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }",
+            "    .empty { color: var(--muted); font-size: 13px; padding: 18px 0; text-align: center; }",
+            "    table.bars { width: 100%; border-collapse: collapse; }",
+            (
+                "    table.bars th { text-align: left; font-size: 12px; color: var(--muted); "
+                "font-family: var(--mono); padding: 8px 6px; border-bottom: 1px solid var(--border); }"
+            ),
+            (
+                "    table.bars td { padding: 7px 6px; border-bottom: 1px solid "
+                "rgba(255,255,255,.06); vertical-align: middle; }"
+            ),
+            (
+                "    table.bars td.k { font-family: var(--mono); font-size: 12px; "
+                f"color: var(--text); max-width: {key_width}px; overflow: hidden; "
+                "text-overflow: ellipsis; white-space: nowrap; }"
+            ),
+            (
+                "    table.bars td.v { font-family: var(--mono); font-size: 12px; "
+                f"color: var(--muted); width: {value_width}px; "
+                "}"
+            ),
+            ("    .bar-bg { height: 10px; border-radius: 99px; background: rgba(255,255,255,.08); overflow: hidden; }"),
+            (
+                "    .bar-fill { height: 10px; border-radius: 99px; background: "
+                "linear-gradient(90deg, var(--accent), rgba(34,197,94,.9)); }"
+            ),
+        ]
+    )
+    if include_pre:
+        lines.append(
+            (
+                "    pre { white-space: pre-wrap; word-break: break-word; "
+                "background: rgba(0,0,0,.22); padding: 12px; border: 1px solid "
+                "rgba(255,255,255,.08); border-radius: 12px; font-family: var(--mono); "
+                "font-size: 12px; color: var(--text); }"
+            )
+        )
+    if include_notes:
+        lines.extend(
+            [
+                "    .notes { color: var(--muted); font-size: 13px; line-height: 1.6; }",
+                "    .notes ul { margin: 0; padding-left: 18px; }",
+                "    .notes li { margin: 6px 0; }",
+            ]
+        )
+    lines.extend(
+        [
+            "    .footer { margin-top: 18px; color: var(--muted); font-size: 12px; }",
+            (
+                "    @media (max-width: 980px) { .grid { grid-template-columns: "
+                "repeat(2, 1fr); } .two { grid-template-columns: 1fr; } }"
+            ),
+            "  </style>",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def _format_generated_at(generated_at: datetime | str | None) -> str:
     return generated_at.isoformat() if isinstance(generated_at, datetime) else (str(generated_at or "") or "")
 
@@ -433,18 +638,24 @@ def _render_redacted_retrieval_audit(report: dict[str, Any], safe: dict[str, Any
 
 
 def _render_chunk_targets_table(chunk_targets: Any) -> str:
-    rows = [
-        "<tr>"
-        f'<td class="k">{escape(str(item.get("label") or item.get("key") or "").strip() or "unknown")}</td>'
-        f'<td class="v">{escape(str(item.get("status") or "").strip() or "unknown")}</td>'
-        f'<td class="v">{escape(str(item.get("message") or "").strip())}</td>'
-        f'<td class="v">{escape("; ".join(str(s).strip() for s in _as_list(item.get("suggestions")) if str(s).strip())[:500])}</td>'
-        "</tr>"
-        for item in _as_list(chunk_targets)
-        if isinstance(item, dict)
-    ]
+    rows: list[str] = []
+    for item in _as_list(chunk_targets):
+        if not isinstance(item, dict):
+            continue
+        suggestions = "; ".join(str(s).strip() for s in _as_list(item.get("suggestions")) if str(s).strip())[:500]
+        rows.append(
+            "<tr>"
+            f'<td class="k">{escape(str(item.get("label") or item.get("key") or "").strip() or "unknown")}</td>'
+            f'<td class="v">{escape(str(item.get("status") or "").strip() or "unknown")}</td>'
+            f'<td class="v">{escape(str(item.get("message") or "").strip())}</td>'
+            f'<td class="v">{escape(suggestions)}</td>'
+            "</tr>"
+        )
     return _render_table_or_empty(
-        '<table class="bars"><thead><tr><th>Check</th><th>Status</th><th>Message</th><th>Suggestions</th></tr></thead><tbody>',
+        (
+            '<table class="bars"><thead><tr><th>Check</th><th>Status</th><th>Message</th>'
+            "<th>Suggestions</th></tr></thead><tbody>"
+        ),
         rows,
     )
 
@@ -467,7 +678,10 @@ def _render_recall_risk_table(recall_risk_hints: Any) -> str:
             "</tr>"
         )
     return _render_table_or_empty(
-        '<table class="bars"><thead><tr><th>Hint</th><th>Severity</th><th>Observed</th><th>Message</th></tr></thead><tbody>',
+        (
+            '<table class="bars"><thead><tr><th>Hint</th><th>Severity</th><th>Observed</th>'
+            "<th>Message</th></tr></thead><tbody>"
+        ),
         rows,
     )
 
@@ -602,7 +816,10 @@ def _render_rr_slice_table(rr_slices: Any, dim: str, *, redact: bool) -> str:
             "</tr>"
         )
     return _render_table_or_empty(
-        '<table class=\\"bars\\"><thead><tr><th>bucket</th><th>items</th><th>recall</th><th>hit@20</th><th>mrr</th><th>abstain</th></tr></thead><tbody>',
+        (
+            '<table class=\\"bars\\"><thead><tr><th>bucket</th><th>items</th><th>recall</th>'
+            "<th>hit@20</th><th>mrr</th><th>abstain</th></tr></thead><tbody>"
+        ),
         rows,
         empty='<div class="empty">暂无数据</div>',
     )
@@ -706,7 +923,11 @@ def _render_precheck_samples_section(samples: Any) -> str:
 
     def _render_file_list(items: Any, *, max_rows: int = 60) -> str:
         rows = [
-            f'<tr><td class="k">{escape(str(item.get("name") or ""))}</td><td class="v">{escape(str(item.get("file_type") or ""))}</td><td class="v">{escape(_fmt_bytes(item.get("file_size")))}</td></tr>'
+            (
+                f'<tr><td class="k">{escape(str(item.get("name") or ""))}</td>'
+                f'<td class="v">{escape(str(item.get("file_type") or ""))}</td>'
+                f'<td class="v">{escape(_fmt_bytes(item.get("file_size")))}</td></tr>'
+            )
             for item in _as_list(items)[: max(0, int(max_rows))]
             if isinstance(item, dict)
         ]
@@ -764,21 +985,30 @@ def _render_precheck_tips_html(
         tips.append("存在“未提取到文本”的文件：若这些文件需要入库，建议调整解析/路由（PDF 走 OCR、二进制先转换）")
     if tok_p90 >= 20_000:
         tips.append(
-            f"P90 文本长度较长（~{_fmt_int(tok_p90)} tokens）：建议提高 chunk_size 或使用结构化 chunk_strategy（markdown_header/outline），入库后用 chunk-preview + gate 验证分布"
+            (
+                f"P90 文本长度较长（~{_fmt_int(tok_p90)} tokens）：建议提高 chunk_size "
+                "或使用结构化 chunk_strategy（markdown_header/outline），"
+                "入库后用 chunk-preview + gate 验证分布"
+            )
         )
     elif tok_p90 >= 5_000:
         tips.append(
-            f"P90 文本长度偏长（~{_fmt_int(tok_p90)} tokens）：建议检查 chunk_size/overlap，避免 chunk 数过多导致成本/延迟上升"
+            (
+                f"P90 文本长度偏长（~{_fmt_int(tok_p90)} tokens）：建议检查 "
+                "chunk_size/overlap，避免 chunk 数过多导致成本/延迟上升"
+            )
         )
     elif p90 > 0:
         tips.append(
-            "tokens 分布为空（可能未启用文本抽取或文件类型非文本）；如需成本估算，建议开启 enable_text_extract 并重跑预检"
+            "tokens 分布为空（可能未启用文本抽取或文件类型非文本）；"
+            "如需成本估算，建议开启 enable_text_extract 并重跑预检"
         )
     if pii:
         tips.append("检测到 PII 命中（来自抽样/治理信号）：建议启用治理脱敏/隔离规则（governance_pii_*）并人工复核样本")
     if secrets:
         tips.append(
-            "检测到 Secrets/Token 命中（来自抽样/治理信号）：建议启用 secrets 脱敏/隔离（governance_secrets_*）并人工复核样本"
+            "检测到 Secrets/Token 命中（来自抽样/治理信号）：建议启用 secrets "
+            "脱敏/隔离（governance_secrets_*）并人工复核样本"
         )
     if not tips:
         tips.append("暂无显著风险信号；建议先用 chunk-preview 小样本调参，再进行小批量入库验证（可回归）")
@@ -792,42 +1022,58 @@ def _render_precheck_section(precheck_summary: Any, *, redact: bool) -> str:
     pre_total_files = _int_from(pre, "total_files")
     pre_total_bytes = _int_from(pre, "total_size_bytes")
     pdf0 = _as_dict(pre.get("pdf_scan"))
-    pre_meta = (
-        '<table class="bars">'
-        "<thead><tr><th>Field</th><th>Value</th><th></th></tr></thead>"
-        "<tbody>"
-        f'<tr><td class="k">scan_run_id</td><td class="v">{escape(REDACTED_TEXT if redact else _text_from(pre, "scan_run_id"))}</td><td></td></tr>'
-        f'<tr><td class="k">generated_at</td><td class="v">{escape(_text_from(pre, "generated_at"))}</td><td></td></tr>'
-        f'<tr><td class="k">total_files</td><td class="v">{_fmt_int(pre_total_files)}</td><td></td></tr>'
-        f'<tr><td class="k">total_size</td><td class="v">{escape(_fmt_bytes(pre_total_bytes))}</td><td></td></tr>'
-        f'<tr><td class="k">pdf_scan (scanned/text/unknown)</td><td class="v">{_fmt_int(_int_from(pdf0, "scanned"))}/{_fmt_int(_int_from(pdf0, "not_scanned"))}/{_fmt_int(_int_from(pdf0, "unknown"))}</td><td></td></tr>'
-        + TABLE_TBODY_CLOSE
+    pre_meta = _render_field_value_table(
+        [
+            ("scan_run_id", REDACTED_TEXT if redact else _text_from(pre, "scan_run_id")),
+            ("generated_at", _text_from(pre, "generated_at")),
+            ("total_files", _fmt_int(pre_total_files)),
+            ("total_size", _fmt_bytes(pre_total_bytes)),
+            (
+                "pdf_scan (scanned/text/unknown)",
+                f"{_fmt_int(_int_from(pdf0, 'scanned'))}/"
+                f"{_fmt_int(_int_from(pdf0, 'not_scanned'))}/"
+                f"{_fmt_int(_int_from(pdf0, 'unknown'))}",
+            ),
+        ]
     )
     pre_finding_rows = [
         row for row in _collect_labeled_counts(pre.get("findings"), skip_nonpositive=True) if row[1] > 0
     ]
-    return (
-        '<div class="section">'
-        "<h2>Precheck（入库前摸底）</h2>"
-        '<div class="two">'
-        f"<div><h2>概览</h2>{pre_meta}</div>"
-        f"<div><h2>格式分布（Top）</h2>{_render_bar_table(_as_items(pre.get('by_file_type'), top=12), total=max(1, pre_total_files))}</div>"
-        "</div>"
-        '<div class="two" style="margin-top:12px">'
-        f"<div><h2>文件大小分布</h2>{_render_histogram(pre.get('file_size_histogram'))}</div>"
-        f"<div><h2>长度分布（tokens）</h2>{_render_histogram(pre.get('token_histogram'))}</div>"
-        "</div>"
-        '<div class="two" style="margin-top:12px">'
-        f"<div><h2>语言分布（抽样）</h2>{_render_bar_table(_as_items(pre.get('language_mix'), top=4), total=max(1, pre_total_files))}</div>"
-        f"<div><h2>问题清单（可操作）</h2>{_render_bar_table(pre_finding_rows[:12], total=max(1, pre_total_files))}</div>"
-        "</div>"
-        '<div class="two" style="margin-top:12px">'
-        f"<div><h2>PII 命中（次数）</h2>{_render_bar_table(_as_items(pre.get('pii_hits_total'), top=12), total=max(1, pre_total_files))}</div>"
-        f"<div><h2>Secrets/Token 命中（次数）</h2>{_render_bar_table(_as_items(pre.get('secrets_hits_total'), top=12), total=max(1, pre_total_files))}</div>"
-        "</div>"
-        '<div style="margin-top:12px">'
-        f"<h2>目录结构（Top 风险聚集区）</h2>{_render_precheck_dir_table(pre.get('directory_stats'), redact=redact, max_rows=20)}"
-        "</div></div>"
+    format_table = _render_bar_table(_as_items(pre.get("by_file_type"), top=12), total=max(1, pre_total_files))
+    file_size_histogram = _render_histogram(pre.get("file_size_histogram"))
+    token_histogram = _render_histogram(pre.get("token_histogram"))
+    language_table = _render_bar_table(_as_items(pre.get("language_mix"), top=4), total=max(1, pre_total_files))
+    findings_table = _render_bar_table(pre_finding_rows[:12], total=max(1, pre_total_files))
+    pii_table = _render_bar_table(_as_items(pre.get("pii_hits_total"), top=12), total=max(1, pre_total_files))
+    secrets_table = _render_bar_table(
+        _as_items(pre.get("secrets_hits_total"), top=12),
+        total=max(1, pre_total_files),
+    )
+    directory_table = _render_precheck_dir_table(pre.get("directory_stats"), redact=redact, max_rows=20)
+    return "\n".join(
+        [
+            '<div class="section">',
+            "<h2>Precheck（入库前摸底）</h2>",
+            '<div class="two">',
+            f"<div><h2>概览</h2>{pre_meta}</div>",
+            f"<div><h2>格式分布（Top）</h2>{format_table}</div>",
+            "</div>",
+            '<div class="two" style="margin-top:12px">',
+            f"<div><h2>文件大小分布</h2>{file_size_histogram}</div>",
+            f"<div><h2>长度分布（tokens）</h2>{token_histogram}</div>",
+            "</div>",
+            '<div class="two" style="margin-top:12px">',
+            f"<div><h2>语言分布（抽样）</h2>{language_table}</div>",
+            f"<div><h2>问题清单（可操作）</h2>{findings_table}</div>",
+            "</div>",
+            '<div class="two" style="margin-top:12px">',
+            f"<div><h2>PII 命中（次数）</h2>{pii_table}</div>",
+            f"<div><h2>Secrets/Token 命中（次数）</h2>{secrets_table}</div>",
+            "</div>",
+            '<div style="margin-top:12px">',
+            f"<h2>目录结构（Top 风险聚集区）</h2>{directory_table}",
+            "</div></div>",
+        ]
     )
 
 
@@ -978,179 +1224,121 @@ def render_dataset_profile_html(
         finding_rows.append((key, cnt))
     finding_rows.sort(key=lambda kv: (-kv[1], kv[0]))
 
-    html = f"""<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{escape(title)}</title>
-  <style>
-    :root {{
-      --bg: #0b1020;
-      --card: rgba(255,255,255,.06);
-      --muted: rgba(255,255,255,.65);
-      --text: rgba(255,255,255,.92);
-      --border: rgba(255,255,255,.10);
-      --accent: #38bdf8;
-      --accent2: #22c55e;
-      --warn: #f59e0b;
-      --err: #fb7185;
-      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-    }}
-    body {{ margin: 0; background: radial-gradient(1200px 800px at 10% 10%, rgba(56,189,248,.16), transparent), var(--bg); color: var(--text); font-family: var(--sans); }}
-    .wrap {{ max-width: 1100px; margin: 0 auto; padding: 28px 18px 40px; }}
-    .title {{ font-size: 22px; font-weight: 800; letter-spacing: .2px; }}
-    .sub {{ margin-top: 6px; color: var(--muted); font-size: 13px; }}
-    .grid {{ display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 16px; }}
-    .card {{ border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 12px 12px; }}
-    .kpi-label {{ color: var(--muted); font-size: 12px; }}
-    .kpi-value {{ font-family: var(--mono); font-weight: 800; font-size: 18px; margin-top: 6px; }}
-    .section {{ margin-top: 16px; border: 1px solid var(--border); border-radius: 14px; background: rgba(0,0,0,.12); padding: 14px 14px; }}
-    .section h2 {{ margin: 0 0 10px; font-size: 14px; letter-spacing: .2px; }}
-    .two {{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }}
-    .empty {{ color: var(--muted); font-size: 13px; padding: 18px 0; text-align: center; }}
-    table.bars {{ width: 100%; border-collapse: collapse; }}
-    table.bars th {{ text-align: left; font-size: 12px; color: var(--muted); font-family: var(--mono); padding: 8px 6px; border-bottom: 1px solid var(--border); }}
-    table.bars td {{ padding: 7px 6px; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: middle; }}
-    table.bars td.k {{ font-family: var(--mono); font-size: 12px; color: var(--text); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
-    table.bars td.v {{ font-family: var(--mono); font-size: 12px; color: var(--muted); width: 90px; }}
-    .bar-bg {{ height: 10px; border-radius: 99px; background: rgba(255,255,255,.08); overflow: hidden; }}
-    .bar-fill {{ height: 10px; border-radius: 99px; background: linear-gradient(90deg, var(--accent), rgba(34,197,94,.9)); }}
-    .footer {{ margin-top: 18px; color: var(--muted); font-size: 12px; }}
-    @media (max-width: 980px) {{ .grid {{ grid-template-columns: repeat(2, 1fr); }} .two {{ grid-template-columns: 1fr; }} }}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="title">{escape(title)}</div>
-    <div class="sub">dataset: <span style="font-family:var(--mono)">{escape(name)}</span> · id: <span style="font-family:var(--mono)">{escape(dsid)}</span> · generated_at: <span style="font-family:var(--mono)">{escape(ts)}</span></div>
-
-    <div class="grid">
-      <div class="card"><div class="kpi-label">文档总数</div><div class="kpi-value">{_fmt_int(total_docs)}</div></div>
-      <div class="card"><div class="kpi-label">总大小</div><div class="kpi-value">{escape(_fmt_bytes(total_bytes))}</div></div>
-      <div class="card"><div class="kpi-label">P50 长度（chars）</div><div class="kpi-value">{_fmt_int(p50)}</div></div>
-      <div class="card"><div class="kpi-label">P90 长度（chars）</div><div class="kpi-value">{_fmt_int(p90)}</div></div>
-      <div class="card"><div class="kpi-label">PDF 扫描/文本/未知</div><div class="kpi-value">{_fmt_int(pdf_scanned)}/{_fmt_int(pdf_text)}/{_fmt_int(pdf_unknown)}</div></div>
-      <div class="card"><div class="kpi-label">P50 chunks/doc</div><div class="kpi-value">{_fmt_int(chunk_p50)}</div></div>
-      <div class="card"><div class="kpi-label">P50 avg chunk（chars）</div><div class="kpi-value">{_fmt_int(avg_chunk_p50)}</div></div>
-      <div class="card"><div class="kpi-label">P50 chunk len（chars）</div><div class="kpi-value">{_fmt_int(chunk_len_p50)}</div></div>
-      <div class="card"><div class="kpi-label">P50 avg chunk（tokens）</div><div class="kpi-value">{_fmt_int(avg_chunk_tok_p50)}</div></div>
-      <div class="card"><div class="kpi-label">P50 chunk len（tokens）</div><div class="kpi-value">{_fmt_int(chunk_tok_p50)}</div></div>
-      <div class="card"><div class="kpi-label">P50 coverage（%）</div><div class="kpi-value">{_fmt_int(cov_p50)}%</div></div>
-      <div class="card"><div class="kpi-label">P50 overlap waste（%）</div><div class="kpi-value">{_fmt_int(waste_p50)}%</div></div>
-    </div>
-
-    <div class="section">
-      <h2>格式分布（Top）</h2>
-      {_render_bar_table(by_type, total=total_docs)}
-    </div>
-
-    <div class="section two">
-      <div>
-        <h2>状态分布</h2>
-        {_render_bar_table(by_status, total=total_docs)}
-      </div>
-      <div>
-        <h2>问题清单（可操作）</h2>
-        {_render_bar_table(finding_rows, total=max(1, total_docs))}
-      </div>
-    </div>
-
-    <div class="section two">
-      <div>
-        <h2>长度分布（chars）</h2>
-        {_render_histogram(summary.get("length_histogram"))}
-      </div>
-      <div>
-        <h2>文件大小分布</h2>
-        {_render_histogram(summary.get("file_size_histogram"))}
-      </div>
-    </div>
-
-    <div class="section two">
-      <div>
-        <h2>页数分布</h2>
-        {_render_histogram(summary.get("page_number_histogram"))}
-      </div>
-      <div>
-        <h2>解析质量分布</h2>
-        {_render_histogram(summary.get("parse_quality_histogram"))}
-      </div>
-    </div>
-
-    <div class="section two">
-      <div>
-        <h2>语言分布</h2>
-        {_render_bar_table(lang, total=max(1, total_docs))}
-      </div>
-      <div>
-        <h2>Chunk 数分布（每文档）</h2>
-        {_render_histogram(summary.get("chunk_count_histogram"))}
-      </div>
-    </div>
-
-    <div class="section two">
-      <div>
-        <h2>目录分布（Top-level）</h2>
-        {_render_bar_table(dirs, total=max(1, total_docs))}
-      </div>
-      <div>
-        <h2>质量桶分布</h2>
-        {_render_bar_table(qual, total=max(1, total_docs))}
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>Chunk 长度分布（chars，chunk-level）</h2>
-      {_render_histogram(summary.get("chunk_length_histogram"))}
-    </div>
-
-    <div class="section">
-      <h2>平均 Chunk 长度分布（chars/chunk，每文档）</h2>
-      {_render_histogram(summary.get("avg_chunk_chars_histogram"))}
-    </div>
-
-    <div class="section">
-      <h2>Chunk 长度分布（tokens，chunk-level）</h2>
-      {_render_histogram(summary.get("chunk_token_histogram"))}
-    </div>
-
-    <div class="section">
-      <h2>平均 Chunk 长度分布（tokens/chunk，每文档）</h2>
-      {_render_histogram(summary.get("avg_chunk_tokens_histogram"))}
-    </div>
-
-    <div class="section two">
-      <div>
-        <h2>Chunk coverage 分布（%）</h2>
-        {_render_histogram(summary.get("chunk_coverage_histogram"))}
-      </div>
-      <div>
-        <h2>Overlap waste 分布（%）</h2>
-        {_render_histogram(summary.get("chunk_overlap_waste_histogram"))}
-      </div>
-    </div>
-
-    <div class="section two">
-      <div>
-        <h2>PII 命中（次数）</h2>
-        {_render_bar_table(pii, total=max(1, sum(v for _, v in pii) if pii else 1))}
-      </div>
-      <div>
-        <h2>Secrets/Token 命中（次数）</h2>
-        {_render_bar_table(secrets, total=max(1, sum(v for _, v in secrets) if secrets else 1))}
-      </div>
-    </div>
-
-    <div class="footer">
-      <div>说明：报告仅展示客观统计（不做主观评分）。PII/Secrets 为抽样/治理阶段统计，需人工复核。</div>
-    </div>
-  </div>
-</body>
-</html>
-"""
-    return html
+    cards = [
+        ("文档总数", _fmt_int(total_docs)),
+        ("总大小", escape(_fmt_bytes(total_bytes))),
+        ("P50 长度（chars）", _fmt_int(p50)),
+        ("P90 长度（chars）", _fmt_int(p90)),
+        ("PDF 扫描/文本/未知", f"{_fmt_int(pdf_scanned)}/{_fmt_int(pdf_text)}/{_fmt_int(pdf_unknown)}"),
+        ("P50 chunks/doc", _fmt_int(chunk_p50)),
+        ("P50 avg chunk（chars）", _fmt_int(avg_chunk_p50)),
+        ("P50 chunk len（chars）", _fmt_int(chunk_len_p50)),
+        ("P50 avg chunk（tokens）", _fmt_int(avg_chunk_tok_p50)),
+        ("P50 chunk len（tokens）", _fmt_int(chunk_tok_p50)),
+        ("P50 coverage（%）", f"{_fmt_int(cov_p50)}%"),
+        ("P50 overlap waste（%）", f"{_fmt_int(waste_p50)}%"),
+    ]
+    parts = [
+        "<!doctype html>",
+        '<html lang="zh-CN">',
+        "<head>",
+        '  <meta charset="utf-8" />',
+        '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
+        f"  <title>{escape(title)}</title>",
+        _render_page_style(
+            gradient_rgba="rgba(56,189,248,.16)",
+            key_width=260,
+            value_width=90,
+            include_emoji_fonts=True,
+            include_status_colors=True,
+        ),
+        "</head>",
+        "<body>",
+        '  <div class="wrap">',
+        f'    <div class="title">{escape(title)}</div>',
+        _render_page_subtitle(dataset_name=name, dataset_id=dsid, generated_at=ts),
+        "",
+        _render_grid(cards),
+        "",
+        _render_section_block("格式分布（Top）", _render_bar_table(by_type, total=total_docs)),
+        "",
+        _render_two_column_section(
+            "状态分布",
+            _render_bar_table(by_status, total=total_docs),
+            "问题清单（可操作）",
+            _render_bar_table(finding_rows, total=max(1, total_docs)),
+        ),
+        "",
+        _render_two_column_section(
+            "长度分布（chars）",
+            _render_histogram(summary.get("length_histogram")),
+            "文件大小分布",
+            _render_histogram(summary.get("file_size_histogram")),
+        ),
+        "",
+        _render_two_column_section(
+            "页数分布",
+            _render_histogram(summary.get("page_number_histogram")),
+            "解析质量分布",
+            _render_histogram(summary.get("parse_quality_histogram")),
+        ),
+        "",
+        _render_two_column_section(
+            "语言分布",
+            _render_bar_table(lang, total=max(1, total_docs)),
+            "Chunk 数分布（每文档）",
+            _render_histogram(summary.get("chunk_count_histogram")),
+        ),
+        "",
+        _render_two_column_section(
+            "目录分布（Top-level）",
+            _render_bar_table(dirs, total=max(1, total_docs)),
+            "质量桶分布",
+            _render_bar_table(qual, total=max(1, total_docs)),
+        ),
+        "",
+        _render_section_block(
+            "Chunk 长度分布（chars，chunk-level）",
+            _render_histogram(summary.get("chunk_length_histogram")),
+        ),
+        "",
+        _render_section_block(
+            "平均 Chunk 长度分布（chars/chunk，每文档）",
+            _render_histogram(summary.get("avg_chunk_chars_histogram")),
+        ),
+        "",
+        _render_section_block(
+            "Chunk 长度分布（tokens，chunk-level）",
+            _render_histogram(summary.get("chunk_token_histogram")),
+        ),
+        "",
+        _render_section_block(
+            "平均 Chunk 长度分布（tokens/chunk，每文档）",
+            _render_histogram(summary.get("avg_chunk_tokens_histogram")),
+        ),
+        "",
+        _render_two_column_section(
+            "Chunk coverage 分布（%）",
+            _render_histogram(summary.get("chunk_coverage_histogram")),
+            "Overlap waste 分布（%）",
+            _render_histogram(summary.get("chunk_overlap_waste_histogram")),
+        ),
+        "",
+        _render_two_column_section(
+            "PII 命中（次数）",
+            _render_bar_table(pii, total=max(1, sum(v for _, v in pii) if pii else 1)),
+            "Secrets/Token 命中（次数）",
+            _render_bar_table(secrets, total=max(1, sum(v for _, v in secrets) if secrets else 1)),
+        ),
+        "",
+        '    <div class="footer">',
+        "      <div>说明：报告仅展示客观统计（不做主观评分）。PII/Secrets 为抽样/治理阶段统计，需人工复核。</div>",
+        "    </div>",
+        "  </div>",
+        "</body>",
+        "</html>",
+    ]
+    return "\n".join(parts) + "\n"
 
 
 def render_dataset_report_html(
@@ -1246,178 +1434,114 @@ def render_dataset_report_html(
     raw_payload = _scrub_report_for_redaction(raw_report) if redact else raw_report
     raw_json = json.dumps(raw_payload, ensure_ascii=False, indent=2)
 
-    html = f"""<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{escape(title)}</title>
-  <style>
-    :root {{
-      --bg: #0b1020;
-      --card: rgba(255,255,255,.06);
-      --muted: rgba(255,255,255,.65);
-      --text: rgba(255,255,255,.92);
-      --border: rgba(255,255,255,.10);
-      --accent: #38bdf8;
-      --accent2: #22c55e;
-      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-    }}
-    body {{ margin: 0; background: radial-gradient(1200px 800px at 10% 10%, rgba(56,189,248,.16), transparent), var(--bg); color: var(--text); font-family: var(--sans); }}
-    .wrap {{ max-width: 1100px; margin: 0 auto; padding: 28px 18px 40px; }}
-    .title {{ font-size: 22px; font-weight: 800; letter-spacing: .2px; }}
-    .sub {{ margin-top: 6px; color: var(--muted); font-size: 13px; }}
-    .grid {{ display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 16px; }}
-    .card {{ border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 12px 12px; }}
-    .kpi-label {{ color: var(--muted); font-size: 12px; }}
-    .kpi-value {{ font-family: var(--mono); font-weight: 800; font-size: 18px; margin-top: 6px; }}
-    .section {{ margin-top: 16px; border: 1px solid var(--border); border-radius: 14px; background: rgba(0,0,0,.12); padding: 14px 14px; }}
-    .section h2 {{ margin: 0 0 10px; font-size: 14px; letter-spacing: .2px; }}
-    .two {{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }}
-    .empty {{ color: var(--muted); font-size: 13px; padding: 18px 0; text-align: center; }}
-    table.bars {{ width: 100%; border-collapse: collapse; }}
-    table.bars th {{ text-align: left; font-size: 12px; color: var(--muted); font-family: var(--mono); padding: 8px 6px; border-bottom: 1px solid var(--border); }}
-    table.bars td {{ padding: 7px 6px; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: middle; }}
-    table.bars td.k {{ font-family: var(--mono); font-size: 12px; color: var(--text); max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
-    table.bars td.v {{ font-family: var(--mono); font-size: 12px; color: var(--muted); width: 160px; }}
-    .bar-bg {{ height: 10px; border-radius: 99px; background: rgba(255,255,255,.08); overflow: hidden; }}
-    .bar-fill {{ height: 10px; border-radius: 99px; background: linear-gradient(90deg, var(--accent), rgba(34,197,94,.9)); }}
-    pre {{ white-space: pre-wrap; word-break: break-word; background: rgba(0,0,0,.22); padding: 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; font-family: var(--mono); font-size: 12px; color: var(--text); }}
-    .footer {{ margin-top: 18px; color: var(--muted); font-size: 12px; }}
-    @media (max-width: 980px) {{ .grid {{ grid-template-columns: repeat(2, 1fr); }} .two {{ grid-template-columns: 1fr; }} }}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="title">{escape(title)}</div>
-    <div class="sub">dataset: <span style="font-family:var(--mono)">{escape(name)}</span> · id: <span style="font-family:var(--mono)">{escape(dsid)}</span> · generated_at: <span style="font-family:var(--mono)">{escape(ts)}</span></div>
-
-    <div class="grid">
-      <div class="card"><div class="kpi-label">文档总数</div><div class="kpi-value">{_fmt_int(total_docs)}</div></div>
-      <div class="card"><div class="kpi-label">总大小</div><div class="kpi-value">{escape(_fmt_bytes(total_bytes))}</div></div>
-      <div class="card"><div class="kpi-label">隔离（Quarantine）</div><div class="kpi-value">{_fmt_int(quarantined)}</div></div>
-      <div class="card"><div class="kpi-label">失败（Failed）</div><div class="kpi-value">{_fmt_int(failed)}</div></div>
-      <div class="card"><div class="kpi-label">Pipeline Filter</div><div class="kpi-value">{escape(str(report.get("pipeline_hash") or "all"))}</div></div>
-    </div>
-
-\t    <div class="section two">
-\t      <div>
-\t        <h2>状态分布</h2>
-\t        {_render_bar_table(by_status, total=max(1, total_docs))}
-\t      </div>
-\t      <div>
-\t        <h2>格式分布（Top）</h2>
-\t        {_render_bar_table(by_type, total=max(1, total_docs))}
-\t      </div>
-\t    </div>
-
-\t    <div class="section two">
-\t      <div>
-\t        <h2>问题清单（可操作）</h2>
-\t        {_render_bar_table(finding_rows, total=max(1, total_docs))}
-\t      </div>
-\t      <div>
-\t        <h2>Parsing / Routing（Docs）</h2>
-\t        {_render_bar_table(prov_by_backend, total=max(1, prov_docs))}
-\t        <div style="margin-top:10px">{prov_meta_table}</div>
-\t      </div>
-\t    </div>
-
-\t    <div class="section two">
-\t      <div>
-\t        <h2>Chunk Quality Gate（文档数）</h2>
-\t        {_render_bar_table(gate_grades, total=max(1, total_docs))}
-\t      </div>
-\t      <div>
-\t        <h2>Chunk 风险计数（best-effort）</h2>
-\t        {_render_bar_table([("coverage_low", coverage_low), ("overlap_waste_high", overlap_high), ("token_stats_missing", tokens_missing)], total=max(1, total_docs))}
-\t      </div>
-\t    </div>
-
-\t    <div class="section">
-\t      <h2>Chunk Targets（分布目标检查）</h2>
-\t      {chunk_targets_table}
-\t    </div>
-
-\t    <div class="section">
-\t      <h2>召回风险摘要（Recall Risk Hints）</h2>
-\t      {recall_risk_table}
-\t    </div>
-
-\t    <div class="section two">
-\t      <div>
-\t        <h2>Knowledge Graph（KG）</h2>
-\t        <table class="bars">
-\t          <thead><tr><th>Metric</th><th>Value</th><th></th></tr></thead>
-          <tbody>
-            <tr><td class="k">events</td><td class="v">{_fmt_int(kg_events)}</td><td></td></tr>
-            <tr><td class="k">entities</td><td class="v">{_fmt_int(kg_entities)}</td><td></td></tr>
-            <tr><td class="k">links</td><td class="v">{_fmt_int(kg_links)}</td><td></td></tr>
-            <tr><td class="k">events_with_chunk_id</td><td class="v">{_fmt_int(kg_events_with_chunk)}</td><td></td></tr>
-            <tr><td class="k">events_with_page_ref</td><td class="v">{_fmt_int(kg_events_with_page)}</td><td></td></tr>
-            <tr><td class="k">links_with_provenance</td><td class="v">{_fmt_int(kg_links_with_prov)}</td><td></td></tr>
-            <tr><td class="k">links_with_page_ref</td><td class="v">{_fmt_int(kg_links_with_page)}</td><td></td></tr>
-            <tr><td class="k">documents_with_kg_extracted_at</td><td class="v">{_fmt_int(kg_docs_extracted)}</td><td></td></tr>
-            <tr><td class="k">documents_with_kg_events</td><td class="v">{_fmt_int(kg_docs_with_events)}</td><td></td></tr>
-            <tr><td class="k">event_count_from_documents</td><td class="v">{_fmt_int(kg_event_count_from_docs)}</td><td></td></tr>
-            <tr><td class="k">skipped_chunks_total</td><td class="v">{_fmt_int(kg_skipped_chunks)}</td><td></td></tr>
-            <tr><td class="k">skipped_short_chunks_total</td><td class="v">{_fmt_int(kg_skipped_short)}</td><td></td></tr>
-            <tr><td class="k">failed_chunks_total</td><td class="v">{_fmt_int(kg_failed_chunks)}</td><td></td></tr>
-            <tr><td class="k">retry_chunks_total</td><td class="v">{_fmt_int(kg_retry_chunks)}</td><td></td></tr>
-            <tr><td class="k">updated_at</td><td class="v">{escape(kg_updated_at or "")}</td><td></td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div>
-        <h2>实体类型（Top）</h2>
-        {_render_bar_table(kg_type_items, total=max(1, sum(v for _, v in kg_type_items) if kg_type_items else 1))}
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>KG Drilldown（Top Documents）</h2>
-      {kg_top_docs_table}
-    </div>
-
-    <div class="section two">
-      <div>
-        <h2>评估（Regression Run）</h2>
-        {rr_meta_table}
-      </div>
-      <div>
-        <h2>评估 Summary</h2>
-        {rr_summary_table}
-      </div>
-    </div>
-
-    {retrieval_audit_section}
-
-    {rr_slices_section}
-
-    <div class="section">
-      <h2>Pipeline 版本分布</h2>
-      {_render_bar_table(version_items, total=max(1, total_docs))}
-    </div>
-
-    <div class="section">
-      <h2>最近 Connector Runs</h2>
-      {connector_runs_table}
-    </div>
-
-    <div class="section">
-      <h2>Raw JSON（用于审计/分享）</h2>
-      <pre>{escape(raw_json)}</pre>
-    </div>
-
-    <div class="footer">
-      <div>说明：报告聚合现有画像/治理/入库指标，以可分享的 HTML + JSON 输出为目标。</div>
-    </div>
-  </div>
-</body>
-</html>
-"""
-    return html
+    cards = [
+        ("文档总数", _fmt_int(total_docs)),
+        ("总大小", escape(_fmt_bytes(total_bytes))),
+        ("隔离（Quarantine）", _fmt_int(quarantined)),
+        ("失败（Failed）", _fmt_int(failed)),
+        ("Pipeline Filter", escape(str(report.get("pipeline_hash") or "all"))),
+    ]
+    kg_metrics = [
+        ("events", kg_events),
+        ("entities", kg_entities),
+        ("links", kg_links),
+        ("events_with_chunk_id", kg_events_with_chunk),
+        ("events_with_page_ref", kg_events_with_page),
+        ("links_with_provenance", kg_links_with_prov),
+        ("links_with_page_ref", kg_links_with_page),
+        ("documents_with_kg_extracted_at", kg_docs_extracted),
+        ("documents_with_kg_events", kg_docs_with_events),
+        ("event_count_from_documents", kg_event_count_from_docs),
+        ("skipped_chunks_total", kg_skipped_chunks),
+        ("skipped_short_chunks_total", kg_skipped_short),
+        ("failed_chunks_total", kg_failed_chunks),
+        ("retry_chunks_total", kg_retry_chunks),
+        ("updated_at", kg_updated_at or ""),
+    ]
+    chunk_risk_rows = [
+        ("coverage_low", coverage_low),
+        ("overlap_waste_high", overlap_high),
+        ("token_stats_missing", tokens_missing),
+    ]
+    prov_section_body = _render_bar_table(prov_by_backend, total=max(1, prov_docs))
+    prov_section_body += '\n        <div style="margin-top:10px">'
+    prov_section_body += prov_meta_table
+    prov_section_body += "</div>"
+    parts = [
+        "<!doctype html>",
+        '<html lang="zh-CN">',
+        "<head>",
+        '  <meta charset="utf-8" />',
+        '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
+        f"  <title>{escape(title)}</title>",
+        _render_page_style(
+            gradient_rgba="rgba(56,189,248,.16)",
+            key_width=320,
+            value_width=160,
+            include_pre=True,
+        ),
+        "</head>",
+        "<body>",
+        '  <div class="wrap">',
+        f'    <div class="title">{escape(title)}</div>',
+        _render_page_subtitle(dataset_name=name, dataset_id=dsid, generated_at=ts),
+        "",
+        _render_grid(cards),
+        "",
+        _render_two_column_section(
+            "状态分布",
+            _render_bar_table(by_status, total=max(1, total_docs)),
+            "格式分布（Top）",
+            _render_bar_table(by_type, total=max(1, total_docs)),
+        ),
+        "",
+        _render_two_column_section(
+            "问题清单（可操作）",
+            _render_bar_table(finding_rows, total=max(1, total_docs)),
+            "Parsing / Routing（Docs）",
+            prov_section_body,
+        ),
+        "",
+        _render_two_column_section(
+            "Chunk Quality Gate（文档数）",
+            _render_bar_table(gate_grades, total=max(1, total_docs)),
+            "Chunk 风险计数（best-effort）",
+            _render_bar_table(chunk_risk_rows, total=max(1, total_docs)),
+        ),
+        "",
+        _render_section_block("Chunk Targets（分布目标检查）", chunk_targets_table),
+        "",
+        _render_section_block("召回风险摘要（Recall Risk Hints）", recall_risk_table),
+        "",
+        _render_two_column_section(
+            "Knowledge Graph（KG）",
+            _render_field_value_table(kg_metrics, field_label="Metric"),
+            "实体类型（Top）",
+            _render_bar_table(kg_type_items, total=max(1, sum(v for _, v in kg_type_items) if kg_type_items else 1)),
+        ),
+        "",
+        _render_section_block("KG Drilldown（Top Documents）", kg_top_docs_table),
+        "",
+        _render_two_column_section("评估（Regression Run）", rr_meta_table, "评估 Summary", rr_summary_table),
+        "",
+        retrieval_audit_section,
+        "",
+        rr_slices_section,
+        "",
+        _render_section_block("Pipeline 版本分布", _render_bar_table(version_items, total=max(1, total_docs))),
+        "",
+        _render_section_block("最近 Connector Runs", connector_runs_table),
+        "",
+        _render_section_block("Raw JSON（用于审计/分享）", f"<pre>{escape(raw_json)}</pre>"),
+        "",
+        '    <div class="footer">',
+        "      <div>说明：报告聚合现有画像/治理/入库指标，以可分享的 HTML + JSON 输出为目标。</div>",
+        "    </div>",
+        "  </div>",
+        "</body>",
+        "</html>",
+    ]
+    return "\n".join(parts) + "\n"
 
 
 def render_rag_audit_html(
@@ -1509,194 +1633,129 @@ def render_rag_audit_html(
     raw_payload = _scrub_report_for_redaction(raw_report) if redact else raw_report
     raw_json = json.dumps(raw_payload, ensure_ascii=False, indent=2)
 
-    html = f"""<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{escape(title)}</title>
-  <style>
-    :root {{
-      --bg: #0b1020;
-      --card: rgba(255,255,255,.06);
-      --muted: rgba(255,255,255,.65);
-      --text: rgba(255,255,255,.92);
-      --border: rgba(255,255,255,.10);
-      --accent: #38bdf8;
-      --accent2: #22c55e;
-      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-    }}
-    body {{ margin: 0; background: radial-gradient(1200px 800px at 10% 10%, rgba(34,197,94,.12), transparent), var(--bg); color: var(--text); font-family: var(--sans); }}
-    .wrap {{ max-width: 1100px; margin: 0 auto; padding: 28px 18px 40px; }}
-    .title {{ font-size: 22px; font-weight: 800; letter-spacing: .2px; }}
-    .sub {{ margin-top: 6px; color: var(--muted); font-size: 13px; }}
-    .grid {{ display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 16px; }}
-    .card {{ border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 12px 12px; }}
-    .kpi-label {{ color: var(--muted); font-size: 12px; }}
-    .kpi-value {{ font-family: var(--mono); font-weight: 800; font-size: 18px; margin-top: 6px; }}
-    .section {{ margin-top: 16px; border: 1px solid var(--border); border-radius: 14px; background: rgba(0,0,0,.12); padding: 14px 14px; }}
-    .section h2 {{ margin: 0 0 10px; font-size: 14px; letter-spacing: .2px; }}
-    .two {{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }}
-    .empty {{ color: var(--muted); font-size: 13px; padding: 18px 0; text-align: center; }}
-    table.bars {{ width: 100%; border-collapse: collapse; }}
-    table.bars th {{ text-align: left; font-size: 12px; color: var(--muted); font-family: var(--mono); padding: 8px 6px; border-bottom: 1px solid var(--border); }}
-    table.bars td {{ padding: 7px 6px; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: middle; }}
-    table.bars td.k {{ font-family: var(--mono); font-size: 12px; color: var(--text); max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
-    table.bars td.v {{ font-family: var(--mono); font-size: 12px; color: var(--muted); width: 160px; }}
-    .bar-bg {{ height: 10px; border-radius: 99px; background: rgba(255,255,255,.08); overflow: hidden; }}
-    .bar-fill {{ height: 10px; border-radius: 99px; background: linear-gradient(90deg, var(--accent), rgba(34,197,94,.9)); }}
-    pre {{ white-space: pre-wrap; word-break: break-word; background: rgba(0,0,0,.22); padding: 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; font-family: var(--mono); font-size: 12px; color: var(--text); }}
-    .footer {{ margin-top: 18px; color: var(--muted); font-size: 12px; }}
-    @media (max-width: 980px) {{ .grid {{ grid-template-columns: repeat(2, 1fr); }} .two {{ grid-template-columns: 1fr; }} }}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="title">{escape(title)}</div>
-    <div class="sub">dataset: <span style="font-family:var(--mono)">{escape(name)}</span> · id: <span style="font-family:var(--mono)">{escape(dsid)}</span> · generated_at: <span style="font-family:var(--mono)">{escape(ts)}</span></div>
-
-    <div class="grid">
-      <div class="card"><div class="kpi-label">文档总数</div><div class="kpi-value">{_fmt_int(total_docs)}</div></div>
-      <div class="card"><div class="kpi-label">总大小</div><div class="kpi-value">{escape(_fmt_bytes(total_bytes))}</div></div>
-      <div class="card"><div class="kpi-label">隔离（Quarantine）</div><div class="kpi-value">{_fmt_int(quarantined)}</div></div>
-      <div class="card"><div class="kpi-label">失败（Failed）</div><div class="kpi-value">{_fmt_int(failed)}</div></div>
-      <div class="card"><div class="kpi-label">P50 长度（chars）</div><div class="kpi-value">{_fmt_int(p50)}</div></div>
-      <div class="card"><div class="kpi-label">P90 长度（chars）</div><div class="kpi-value">{_fmt_int(p90)}</div></div>
-      <div class="card"><div class="kpi-label">P50 chunk len（tokens）</div><div class="kpi-value">{_fmt_int(chunk_tok_p50)}</div></div>
-      <div class="card"><div class="kpi-label">P50 coverage（%）</div><div class="kpi-value">{_fmt_int(cov_p50)}%</div></div>
-    </div>
-
-\t    <div class="section two">
-\t      <div>
-\t        <h2>状态分布</h2>
-\t        {_render_bar_table(by_status, total=max(1, total_docs))}
-\t      </div>
-\t      <div>
-\t        <h2>格式分布（Top）</h2>
-\t        {_render_bar_table(by_type, total=max(1, total_docs))}
-\t      </div>
-\t    </div>
-
-\t\t    <div class="section two">
-\t\t      <div>
-\t\t        <h2>长度分布（chars）</h2>
-\t\t        {_render_histogram(prof.get("length_histogram"))}
-\t      </div>
-      <div>
-        <h2>文件大小分布</h2>
-        {_render_histogram(prof.get("file_size_histogram"))}
-      </div>
-    </div>
-
-    {precheck_section}
-
-    <div class="section two">
-      <div>
-        <h2>Chunk Quality Gate（文档数）</h2>
-        {_render_bar_table(gate_grades, total=max(1, total_docs))}
-      </div>
-      <div>
-        <h2>Chunk 风险计数（best-effort）</h2>
-        {_render_bar_table([("coverage_low", coverage_low), ("overlap_waste_high", overlap_high), ("token_stats_missing", tokens_missing)], total=max(1, total_docs))}
-      </div>
-    </div>
-
-    <div class="section two">
-      <div>
-        <h2>Governance Metrics</h2>
-        <table class="bars">
-          <thead><tr><th>Metric</th><th>Value</th><th></th></tr></thead>
-          <tbody>
-            <tr><td class="k">docs_with_governance</td><td class="v">{_fmt_int(govd.get("docs_with_governance") or 0)}</td><td></td></tr>
-            <tr><td class="k">rules_applied_total</td><td class="v">{_fmt_int(govd.get("rules_applied_total") or 0)}</td><td></td></tr>
-            <tr><td class="k">dropped_documents_total</td><td class="v">{_fmt_int(govd.get("dropped_documents_total") or 0)}</td><td></td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div>
-        <h2>Drop Reasons（Top）</h2>
-        {_render_bar_table(drop_reasons, total=max(1, sum(v for _, v in drop_reasons) if drop_reasons else 1))}
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>Rule Packs（Docs）</h2>
-      {_render_bar_table(rule_packs, total=max(1, total_docs))}
-    </div>
-
-    {governance_audit_section}
-
-    <div class="section two">
-      <div>
-        <h2>Knowledge Graph（KG）</h2>
-        <table class="bars">
-          <thead><tr><th>Metric</th><th>Value</th><th></th></tr></thead>
-          <tbody>
-            <tr><td class="k">events</td><td class="v">{_fmt_int(kg_events)}</td><td></td></tr>
-            <tr><td class="k">entities</td><td class="v">{_fmt_int(kg_entities)}</td><td></td></tr>
-            <tr><td class="k">links</td><td class="v">{_fmt_int(kg_links)}</td><td></td></tr>
-            <tr><td class="k">events_with_chunk_id</td><td class="v">{_fmt_int(kg_events_with_chunk)}</td><td></td></tr>
-            <tr><td class="k">events_with_page_ref</td><td class="v">{_fmt_int(kg_events_with_page)}</td><td></td></tr>
-            <tr><td class="k">links_with_provenance</td><td class="v">{_fmt_int(kg_links_with_prov)}</td><td></td></tr>
-            <tr><td class="k">links_with_page_ref</td><td class="v">{_fmt_int(kg_links_with_page)}</td><td></td></tr>
-            <tr><td class="k">documents_with_kg_extracted_at</td><td class="v">{_fmt_int(kg_docs_extracted)}</td><td></td></tr>
-            <tr><td class="k">documents_with_kg_events</td><td class="v">{_fmt_int(kg_docs_with_events)}</td><td></td></tr>
-            <tr><td class="k">event_count_from_documents</td><td class="v">{_fmt_int(kg_event_count_from_docs)}</td><td></td></tr>
-            <tr><td class="k">skipped_chunks_total</td><td class="v">{_fmt_int(kg_skipped_chunks)}</td><td></td></tr>
-            <tr><td class="k">skipped_short_chunks_total</td><td class="v">{_fmt_int(kg_skipped_short)}</td><td></td></tr>
-            <tr><td class="k">failed_chunks_total</td><td class="v">{_fmt_int(kg_failed_chunks)}</td><td></td></tr>
-            <tr><td class="k">retry_chunks_total</td><td class="v">{_fmt_int(kg_retry_chunks)}</td><td></td></tr>
-            <tr><td class="k">updated_at</td><td class="v">{escape(kg_updated_at)}</td><td></td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div>
-        <h2>实体类型（Top）</h2>
-        {_render_bar_table(kg_types, total=max(1, sum(v for _, v in kg_types) if kg_types else 1))}
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>KG Drilldown（Top Documents）</h2>
-      {kg_top_docs_table}
-    </div>
-
-    <div class="section two">
-      <div>
-        <h2>评估（Latest Regression Run）</h2>
-        <table class="bars">
-          <thead><tr><th>Field</th><th>Value</th><th></th></tr></thead>
-          <tbody>
-            <tr><td class="k">status</td><td class="v">{escape(rr_status)}</td><td></td></tr>
-            <tr><td class="k">created_at</td><td class="v">{escape(rr_created_at)}</td><td></td></tr>
-            <tr><td class="k">finished_at</td><td class="v">{escape(rr_finished_at)}</td><td></td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div>
-        <h2>评估 Summary</h2>
-        {rr_summary_table}
-      </div>
-    </div>
-
-    {retrieval_audit_section}
-
-    {rr_slices_section}
-
-    <div class="section">
-      <h2>Raw JSON（用于审计/分享）</h2>
-      <pre>{escape(raw_json)}</pre>
-    </div>
-
-    <div class="footer">
-      <div>说明：本报告聚合 profile/governance/chunk/KG/eval 的客观指标，用于审计与回归对比。</div>
-    </div>
-  </div>
-</body>
-</html>
-"""
-    return html
+    cards = [
+        ("文档总数", _fmt_int(total_docs)),
+        ("总大小", escape(_fmt_bytes(total_bytes))),
+        ("隔离（Quarantine）", _fmt_int(quarantined)),
+        ("失败（Failed）", _fmt_int(failed)),
+        ("P50 长度（chars）", _fmt_int(p50)),
+        ("P90 长度（chars）", _fmt_int(p90)),
+        ("P50 chunk len（tokens）", _fmt_int(chunk_tok_p50)),
+        ("P50 coverage（%）", f"{_fmt_int(cov_p50)}%"),
+    ]
+    governance_metrics = [
+        ("docs_with_governance", _int_from(govd, "docs_with_governance")),
+        ("rules_applied_total", _int_from(govd, "rules_applied_total")),
+        ("dropped_documents_total", _int_from(govd, "dropped_documents_total")),
+    ]
+    kg_metrics = [
+        ("events", kg_events),
+        ("entities", kg_entities),
+        ("links", kg_links),
+        ("events_with_chunk_id", kg_events_with_chunk),
+        ("events_with_page_ref", kg_events_with_page),
+        ("links_with_provenance", kg_links_with_prov),
+        ("links_with_page_ref", kg_links_with_page),
+        ("documents_with_kg_extracted_at", kg_docs_extracted),
+        ("documents_with_kg_events", kg_docs_with_events),
+        ("event_count_from_documents", kg_event_count_from_docs),
+        ("skipped_chunks_total", kg_skipped_chunks),
+        ("skipped_short_chunks_total", kg_skipped_short),
+        ("failed_chunks_total", kg_failed_chunks),
+        ("retry_chunks_total", kg_retry_chunks),
+        ("updated_at", kg_updated_at),
+    ]
+    rr_rows = [("status", rr_status), ("created_at", rr_created_at), ("finished_at", rr_finished_at)]
+    chunk_risk_rows = [
+        ("coverage_low", coverage_low),
+        ("overlap_waste_high", overlap_high),
+        ("token_stats_missing", tokens_missing),
+    ]
+    parts = [
+        "<!doctype html>",
+        '<html lang="zh-CN">',
+        "<head>",
+        '  <meta charset="utf-8" />',
+        '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
+        f"  <title>{escape(title)}</title>",
+        _render_page_style(
+            gradient_rgba="rgba(34,197,94,.12)",
+            key_width=320,
+            value_width=160,
+            include_pre=True,
+        ),
+        "</head>",
+        "<body>",
+        '  <div class="wrap">',
+        f'    <div class="title">{escape(title)}</div>',
+        _render_page_subtitle(dataset_name=name, dataset_id=dsid, generated_at=ts),
+        "",
+        _render_grid(cards),
+        "",
+        _render_two_column_section(
+            "状态分布",
+            _render_bar_table(by_status, total=max(1, total_docs)),
+            "格式分布（Top）",
+            _render_bar_table(by_type, total=max(1, total_docs)),
+        ),
+        "",
+        _render_two_column_section(
+            "长度分布（chars）",
+            _render_histogram(prof.get("length_histogram")),
+            "文件大小分布",
+            _render_histogram(prof.get("file_size_histogram")),
+        ),
+        "",
+        precheck_section,
+        "",
+        _render_two_column_section(
+            "Chunk Quality Gate（文档数）",
+            _render_bar_table(gate_grades, total=max(1, total_docs)),
+            "Chunk 风险计数（best-effort）",
+            _render_bar_table(chunk_risk_rows, total=max(1, total_docs)),
+        ),
+        "",
+        _render_two_column_section(
+            "Governance Metrics",
+            _render_metric_value_table(governance_metrics),
+            "Drop Reasons（Top）",
+            _render_bar_table(drop_reasons, total=max(1, sum(v for _, v in drop_reasons) if drop_reasons else 1)),
+        ),
+        "",
+        _render_section_block("Rule Packs（Docs）", _render_bar_table(rule_packs, total=max(1, total_docs))),
+        "",
+        governance_audit_section,
+        "",
+        _render_two_column_section(
+            "Knowledge Graph（KG）",
+            _render_field_value_table(kg_metrics, field_label="Metric"),
+            "实体类型（Top）",
+            _render_bar_table(kg_types, total=max(1, sum(v for _, v in kg_types) if kg_types else 1)),
+        ),
+        "",
+        _render_section_block("KG Drilldown（Top Documents）", kg_top_docs_table),
+        "",
+        _render_two_column_section(
+            "评估（Latest Regression Run）",
+            _render_field_value_table(rr_rows),
+            "评估 Summary",
+            rr_summary_table,
+        ),
+        "",
+        retrieval_audit_section,
+        "",
+        rr_slices_section,
+        "",
+        _render_section_block("Raw JSON（用于审计/分享）", f"<pre>{escape(raw_json)}</pre>"),
+        "",
+        '    <div class="footer">',
+        "      <div>说明：本报告聚合 profile/governance/chunk/KG/eval 的客观指标，用于审计与回归对比。</div>",
+        "    </div>",
+        "  </div>",
+        "</body>",
+        "</html>",
+    ]
+    return "\n".join(parts) + "\n"
 
 
 def render_precheck_html(
@@ -1745,148 +1804,89 @@ def render_precheck_html(
     pdf_det = _as_dict(summary.get("pdf_detection"))
     samples_section = _render_precheck_samples_section(samples)
 
-    html = f"""<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{escape(title)}</title>
-  <style>
-    :root {{
-      --bg: #0b1020;
-      --card: rgba(255,255,255,.06);
-      --muted: rgba(255,255,255,.65);
-      --text: rgba(255,255,255,.92);
-      --border: rgba(255,255,255,.10);
-      --accent: #38bdf8;
-      --accent2: #22c55e;
-      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-    }}
-    body {{ margin: 0; background: radial-gradient(1200px 800px at 10% 10%, rgba(34,197,94,.12), transparent), var(--bg); color: var(--text); font-family: var(--sans); }}
-    .wrap {{ max-width: 1100px; margin: 0 auto; padding: 28px 18px 40px; }}
-    .title {{ font-size: 22px; font-weight: 800; letter-spacing: .2px; }}
-    .sub {{ margin-top: 6px; color: var(--muted); font-size: 13px; }}
-    .grid {{ display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 16px; }}
-    .card {{ border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 12px 12px; }}
-    .kpi-label {{ color: var(--muted); font-size: 12px; }}
-    .kpi-value {{ font-family: var(--mono); font-weight: 800; font-size: 18px; margin-top: 6px; }}
-    .section {{ margin-top: 16px; border: 1px solid var(--border); border-radius: 14px; background: rgba(0,0,0,.12); padding: 14px 14px; }}
-    .section h2 {{ margin: 0 0 10px; font-size: 14px; letter-spacing: .2px; }}
-    .two {{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }}
-    .empty {{ color: var(--muted); font-size: 13px; padding: 18px 0; text-align: center; }}
-    table.bars {{ width: 100%; border-collapse: collapse; }}
-    table.bars th {{ text-align: left; font-size: 12px; color: var(--muted); font-family: var(--mono); padding: 8px 6px; border-bottom: 1px solid var(--border); }}
-    table.bars td {{ padding: 7px 6px; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: middle; }}
-    table.bars td.k {{ font-family: var(--mono); font-size: 12px; color: var(--text); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
-    table.bars td.v {{ font-family: var(--mono); font-size: 12px; color: var(--muted); width: 90px; }}
-    .bar-bg {{ height: 10px; border-radius: 99px; background: rgba(255,255,255,.08); overflow: hidden; }}
-    .bar-fill {{ height: 10px; border-radius: 99px; background: linear-gradient(90deg, var(--accent), rgba(34,197,94,.9)); }}
-    .notes {{ color: var(--muted); font-size: 13px; line-height: 1.6; }}
-    .notes ul {{ margin: 0; padding-left: 18px; }}
-    .notes li {{ margin: 6px 0; }}
-    .footer {{ margin-top: 18px; color: var(--muted); font-size: 12px; }}
-    @media (max-width: 980px) {{ .grid {{ grid-template-columns: repeat(2, 1fr); }} .two {{ grid-template-columns: 1fr; }} }}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="title">{escape(title)}</div>
-    <div class="sub">dataset: <span style="font-family:var(--mono)">{escape(name)}</span> · id: <span style="font-family:var(--mono)">{escape(dsid)}</span> · root: <span style="font-family:var(--mono)">{escape(rp)}</span> · generated_at: <span style="font-family:var(--mono)">{escape(ts)}</span></div>
-
-    <div class="grid">
-      <div class="card"><div class="kpi-label">文件总数</div><div class="kpi-value">{_fmt_int(total_files)}</div></div>
-      <div class="card"><div class="kpi-label">总大小</div><div class="kpi-value">{escape(_fmt_bytes(total_bytes))}</div></div>
-      <div class="card"><div class="kpi-label">P50 文本长度（chars）</div><div class="kpi-value">{_fmt_int(p50)}</div></div>
-      <div class="card"><div class="kpi-label">P90 文本长度（chars）</div><div class="kpi-value">{_fmt_int(p90)}</div></div>
-      <div class="card"><div class="kpi-label">PDF 扫描/文本/未知</div><div class="kpi-value">{_fmt_int(pdf_scanned)}/{_fmt_int(pdf_text)}/{_fmt_int(pdf_unknown)}</div></div>
-      <div class="card"><div class="kpi-label">P50 文本长度（tokens）</div><div class="kpi-value">{_fmt_int(tok_p50)}</div></div>
-      <div class="card"><div class="kpi-label">P90 文本长度（tokens）</div><div class="kpi-value">{_fmt_int(tok_p90)}</div></div>
-    </div>
-
-    <div class="section">
-      <h2>格式分布（Top）</h2>
-      {_render_bar_table(by_type, total=total_files)}
-    </div>
-
-    <div class="section two">
-      <div>
-        <h2>长度分布（chars）</h2>
-        {_render_histogram(summary.get("length_histogram"))}
-      </div>
-      <div>
-        <h2>长度分布（tokens）</h2>
-        {_render_histogram(summary.get("token_histogram"))}
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>语言分布（抽样）</h2>
-      {_render_bar_table(lang, total=max(1, total_files))}
-    </div>
-
-    <div class="section">
-      <h2>文件大小分布</h2>
-      {_render_histogram(summary.get("file_size_histogram"))}
-    </div>
-
-    <div class="section">
-      <h2>目录结构（Top 风险聚集区）</h2>
-      {_render_precheck_dir_table(summary.get("directory_stats"), redact=redact, max_rows=20)}
-    </div>
-
-    <div class="section two">
-      <div>
-        <h2>主标签分布</h2>
-        {_render_bar_table(primary_tags, total=max(1, total_files))}
-      </div>
-      <div>
-        <h2>处理路径建议</h2>
-        {_render_bar_table(processing_paths, total=max(1, total_files))}
-      </div>
-    </div>
-
-    <div class="section two">
-      <div>
-        <h2>PII 命中（次数）</h2>
-        {_render_bar_table(pii, total=max(1, sum(v for _, v in pii) if pii else 1))}
-      </div>
-      <div>
-        <h2>Secrets/Token 命中（次数）</h2>
-        {_render_bar_table(secrets, total=max(1, sum(v for _, v in secrets) if secrets else 1))}
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>问题清单（可操作）</h2>
-      {_render_bar_table(finding_rows, total=max(1, total_files))}
-    </div>
-
-    <div class="section">
-      <h2>入库建议（best-effort）</h2>
-      {tips_html}
-    </div>
-
-    <div class="section">
-      <h2>PDF 判定参数（透明阈值）</h2>
-      <table class="bars">
-        <thead><tr><th>Key</th><th>Value</th><th></th></tr></thead>
-        <tbody>
-          <tr><td class="k">sample_pages</td><td class="v">{escape(str(pdf_det.get("sample_pages") or ""))}</td><td></td></tr>
-          <tr><td class="k">scan_max_chars_per_page</td><td class="v">{escape(str(pdf_det.get("scan_max_chars_per_page") or ""))}</td><td></td></tr>
-          <tr><td class="k">text_min_chars_per_page</td><td class="v">{escape(str(pdf_det.get("text_min_chars_per_page") or ""))}</td><td></td></tr>
-          <tr><td class="k">scan_ratio_threshold</td><td class="v">{escape(str(pdf_det.get("scan_ratio_threshold") or ""))}</td><td></td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    {samples_section}
-
-    <div class="footer">
-      <div>说明：预检扫描以“入库前摸底”为目标，输出客观统计与待复核清单；不做主观评分。</div>
-    </div>
-  </div>
-</body>
-</html>
-"""
-    return html
+    cards = [
+        ("文件总数", _fmt_int(total_files)),
+        ("总大小", escape(_fmt_bytes(total_bytes))),
+        ("P50 文本长度（chars）", _fmt_int(p50)),
+        ("P90 文本长度（chars）", _fmt_int(p90)),
+        ("PDF 扫描/文本/未知", f"{_fmt_int(pdf_scanned)}/{_fmt_int(pdf_text)}/{_fmt_int(pdf_unknown)}"),
+        ("P50 文本长度（tokens）", _fmt_int(tok_p50)),
+        ("P90 文本长度（tokens）", _fmt_int(tok_p90)),
+    ]
+    pdf_detection_rows = [
+        ("sample_pages", str(pdf_det.get("sample_pages") or "")),
+        ("scan_max_chars_per_page", str(pdf_det.get("scan_max_chars_per_page") or "")),
+        ("text_min_chars_per_page", str(pdf_det.get("text_min_chars_per_page") or "")),
+        ("scan_ratio_threshold", str(pdf_det.get("scan_ratio_threshold") or "")),
+    ]
+    pdf_detection_table = _render_field_value_table(pdf_detection_rows, field_label="Key")
+    parts = [
+        "<!doctype html>",
+        '<html lang="zh-CN">',
+        "<head>",
+        '  <meta charset="utf-8" />',
+        '  <meta name="viewport" content="width=device-width, initial-scale=1" />',
+        f"  <title>{escape(title)}</title>",
+        _render_page_style(
+            gradient_rgba="rgba(34,197,94,.12)",
+            key_width=260,
+            value_width=90,
+            include_notes=True,
+            include_emoji_fonts=True,
+        ),
+        "</head>",
+        "<body>",
+        '  <div class="wrap">',
+        f'    <div class="title">{escape(title)}</div>',
+        _render_page_subtitle(dataset_name=name, dataset_id=dsid, generated_at=ts, root_path=rp),
+        "",
+        _render_grid(cards),
+        "",
+        _render_section_block("格式分布（Top）", _render_bar_table(by_type, total=total_files)),
+        "",
+        _render_two_column_section(
+            "长度分布（chars）",
+            _render_histogram(summary.get("length_histogram")),
+            "长度分布（tokens）",
+            _render_histogram(summary.get("token_histogram")),
+        ),
+        "",
+        _render_section_block("语言分布（抽样）", _render_bar_table(lang, total=max(1, total_files))),
+        "",
+        _render_section_block("文件大小分布", _render_histogram(summary.get("file_size_histogram"))),
+        "",
+        _render_section_block(
+            "目录结构（Top 风险聚集区）",
+            _render_precheck_dir_table(summary.get("directory_stats"), redact=redact, max_rows=20),
+        ),
+        "",
+        _render_two_column_section(
+            "主标签分布",
+            _render_bar_table(primary_tags, total=max(1, total_files)),
+            "处理路径建议",
+            _render_bar_table(processing_paths, total=max(1, total_files)),
+        ),
+        "",
+        _render_two_column_section(
+            "PII 命中（次数）",
+            _render_bar_table(pii, total=max(1, sum(v for _, v in pii) if pii else 1)),
+            "Secrets/Token 命中（次数）",
+            _render_bar_table(secrets, total=max(1, sum(v for _, v in secrets) if secrets else 1)),
+        ),
+        "",
+        _render_section_block("问题清单（可操作）", _render_bar_table(finding_rows, total=max(1, total_files))),
+        "",
+        _render_section_block("入库建议（best-effort）", tips_html),
+        "",
+        _render_section_block("PDF 判定参数（透明阈值）", pdf_detection_table),
+        "",
+        samples_section,
+        "",
+        '    <div class="footer">',
+        "      <div>说明：预检扫描以“入库前摸底”为目标，输出客观统计与待复核清单；不做主观评分。</div>",
+        "    </div>",
+        "  </div>",
+        "</body>",
+        "</html>",
+    ]
+    return "\n".join(parts) + "\n"

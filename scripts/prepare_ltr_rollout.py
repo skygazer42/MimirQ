@@ -197,7 +197,7 @@ def _find_trace_by_request_id(*, tenant_id: UUID, conversation_id: UUID, request
         )
     except Exception:
         return None
-    for item in (getattr(traces, "items", []) or []):
+    for item in getattr(traces, "items", []) or []:
         if str(getattr(item, "request_id", "") or "") != rid:
             continue
         if hasattr(item, "model_dump"):
@@ -214,11 +214,7 @@ def _collect_suite_evidence(
     tenant_id: UUID,
     suite_id: UUID,
 ) -> tuple[EvidenceSuite, list[EvidenceItem]]:
-    suite = (
-        db.query(EvidenceSuite)
-        .filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id)
-        .first()
-    )
+    suite = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if suite is None:
         raise ValueError(f"evidence suite not found: {suite_id}")
     items = (
@@ -241,7 +237,7 @@ def _collect_feedback_cases(
     feedback_ids: Sequence[UUID],
 ) -> list[FeedbackCaseMaterialization]:
     out: list[FeedbackCaseMaterialization] = []
-    for feedback_id in (feedback_ids or []):
+    for feedback_id in feedback_ids or []:
         feedback = (
             db.query(MessageFeedback)
             .filter(MessageFeedback.id == feedback_id, MessageFeedback.tenant_id == tenant_id)
@@ -249,11 +245,7 @@ def _collect_feedback_cases(
         )
         if feedback is None:
             raise ValueError(f"feedback not found: {feedback_id}")
-        assistant = (
-            db.query(Message)
-            .filter(Message.id == feedback.message_id, Message.tenant_id == tenant_id)
-            .first()
-        )
+        assistant = db.query(Message).filter(Message.id == feedback.message_id, Message.tenant_id == tenant_id).first()
         if assistant is None:
             raise ValueError(f"assistant message not found for feedback: {feedback_id}")
         conversation = (
@@ -331,7 +323,7 @@ def prepare_ltr_rollout(
 
     dataset_id = str(suite.dataset_id) if suite is not None else ""
     if not dataset_id:
-        for case in (feedback_cases or []):
+        for case in feedback_cases or []:
             if case.dataset_id:
                 dataset_id = str(case.dataset_id)
                 break
@@ -456,7 +448,10 @@ def prepare_ltr_rollout(
             "artifacts": {
                 "cases_bundle": {"path": str(cases_path), "sha256": sha256_file(cases_path)},
                 "candidate_model": {"path": str(candidate_model_path), "sha256": sha256_file(candidate_model_path)},
-                "candidate_manifest": {"path": str(candidate_manifest_path), "sha256": sha256_file(candidate_manifest_path)},
+                "candidate_manifest": {
+                    "path": str(candidate_manifest_path),
+                    "sha256": sha256_file(candidate_manifest_path),
+                },
                 "candidate_eval": {"path": str(candidate_eval_path), "sha256": sha256_file(candidate_eval_path)},
                 "baseline_eval": (
                     {"path": str(baseline_eval_path), "sha256": sha256_file(baseline_eval_path)}
@@ -493,20 +488,34 @@ def prepare_ltr_rollout(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Prepare a bounded LTR rollout from approved evidence and selected feedback.")
+    parser = argparse.ArgumentParser(
+        description="Prepare a bounded LTR rollout from approved evidence and selected feedback."
+    )
     parser.add_argument("--suite-id", default="", help="EvidenceSuite id to source approved evidence from")
-    parser.add_argument("--feedback-id", action="append", default=[], help="Feedback id to materialize into rollout cases (repeatable)")
-    parser.add_argument("--workflow-dir", default="", help="Directory to write workflow artifacts (default: uploads/.ltr_rollouts/<timestamp>)")
-    parser.add_argument("--base-url", default="http://localhost:8000/api/v1", help="API base URL for train/eval scripts")
+    parser.add_argument(
+        "--feedback-id", action="append", default=[], help="Feedback id to materialize into rollout cases (repeatable)"
+    )
+    parser.add_argument(
+        "--workflow-dir",
+        default="",
+        help="Directory to write workflow artifacts (default: uploads/.ltr_rollouts/<timestamp>)",
+    )
+    parser.add_argument(
+        "--base-url", default="http://localhost:8000/api/v1", help="API base URL for train/eval scripts"
+    )
     parser.add_argument("--tenant-id", required=True, help="Tenant id")
     parser.add_argument("--user-id", default="ltr-rollout-cli", help="Actor id for registry lineage")
     parser.add_argument("--bearer", default="", help="Bearer token for API requests")
-    parser.add_argument("--skip-register", action="store_true", help="Do not register the candidate model in the local LTR registry")
+    parser.add_argument(
+        "--skip-register", action="store_true", help="Do not register the candidate model in the local LTR registry"
+    )
     parser.add_argument("--feature-spec-version", type=int, default=1, help="LTR feature spec version")
     parser.add_argument("--retrieval-profile", default="recall50", help="Retrieval profile for train/eval")
     parser.add_argument("--retrieval-mode", default="hybrid", help="Retrieval mode for train/eval")
     parser.add_argument("--top-k", type=int, default=50, help="Evidence API top-k for train/eval")
-    parser.add_argument("--score-threshold", type=float, default=0.0, help="Evidence API score threshold for train/eval")
+    parser.add_argument(
+        "--score-threshold", type=float, default=0.0, help="Evidence API score threshold for train/eval"
+    )
     parser.add_argument("--alpha", type=float, default=0.6, help="Fusion alpha for train/eval")
     parser.add_argument("--num-boost-round", type=int, default=50, help="LTR training rounds")
     parser.add_argument("--seed", type=int, default=42, help="Training seed")
@@ -518,7 +527,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--gate-min-delta-mrr", type=float, default=None, help="Override threshold for delta.mrr")
     parser.add_argument("--gate-min-delta-recall", type=float, default=None, help="Override threshold for delta.recall")
     parser.add_argument("--gate-min-delta-ndcg", type=float, default=None, help="Override threshold for delta.ndcg")
-    parser.add_argument("--gate-min-cases-used", type=float, default=None, help="Override threshold for candidate.cases_used")
+    parser.add_argument(
+        "--gate-min-cases-used", type=float, default=None, help="Override threshold for candidate.cases_used"
+    )
     parser.add_argument(
         "--canary-on-pass",
         action="store_true",

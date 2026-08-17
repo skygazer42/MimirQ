@@ -6,7 +6,6 @@ They are disabled by default and must be explicitly enabled via pipeline options
 or governance profiles.
 """
 
-
 from app.rag.preprocessing.cleaning import RegexRule
 
 # Keep rule packs conservative and line-oriented. Prefer anchored patterns to avoid
@@ -18,7 +17,9 @@ GOVERNANCE_RULE_PACKS: dict[str, list[RegexRule]] = {
         # Common banner lines.
         RegexRule(pattern=r"(?mi)^\s*we\s+use\s+cookies?\b.*$", repl="", flags=0),
         RegexRule(pattern=r"(?mi)^\s*this\s+(?:site|website)\s+uses\s+cookies?\b.*$", repl="", flags=0),
-        RegexRule(pattern=r"(?mi)^\s*by\s+continuing\s+to\s+(?:use|browse|navigate)\b.*cookies?\b.*$", repl="", flags=0),
+        RegexRule(
+            pattern=r"(?mi)^\s*by\s+continuing\s+to\s+(?:use|browse|navigate)\b.*cookies?\b.*$", repl="", flags=0
+        ),
         # Button-like standalone lines.
         RegexRule(pattern=r"(?mi)^\s*(?:accept|agree|allow)\s+cookies?\s*$", repl="", flags=0),
         RegexRule(pattern=r"(?mi)^\s*(?:reject|decline)\s+cookies?\s*$", repl="", flags=0),
@@ -48,7 +49,11 @@ GOVERNANCE_RULE_PACKS: dict[str, list[RegexRule]] = {
     "chat_export_noise": [
         # Slack/Teams export headers/footers and navigation prompts.
         RegexRule(pattern=r"(?mi)^\s*(?:slack\s+export|exported\s+from\s+slack)\b.*$", repl="", flags=0),
-        RegexRule(pattern=r"(?mi)^\s*(?:microsoft\s+teams\s+export|exported\s+from\s+microsoft\s+teams)\b.*$", repl="", flags=0),
+        RegexRule(
+            pattern=r"(?mi)^\s*(?:microsoft\s+teams\s+export|exported\s+from\s+microsoft\s+teams)\b.*$",
+            repl="",
+            flags=0,
+        ),
         RegexRule(pattern=r"(?mi)^\s*view\s+in\s+(?:slack|teams|microsoft\s+teams)\s*$", repl="", flags=0),
         RegexRule(pattern=r"(?mi)^\s*(?:jump|go)\s+to\s+message\s*$", repl="", flags=0),
         RegexRule(pattern=r"(?mi)^\s*reply\s+in\s+thread\s*$", repl="", flags=0),
@@ -82,15 +87,30 @@ GOVERNANCE_RULE_PACKS: dict[str, list[RegexRule]] = {
         # WeChat official account (公众号) export / copy-paste call-to-action lines.
         RegexRule(pattern=r"(?m)^\s*\u9605\u8bfb\u539f\u6587\s*$", repl="", flags=0),  # 阅读原文
         RegexRule(pattern=r"(?m)^\s*\u70b9\u51fb\u4e0a\u65b9.*(?:\u5173\u6ce8|\u8ba2\u9605).*$", repl="", flags=0),
-        RegexRule(pattern=r"(?m)^\s*\u957f\u6309.*\u8bc6\u522b.*\u4e8c\u7ef4\u7801.*(?:\u5173\u6ce8|\u6dfb\u52a0).*$", repl="", flags=0),
-        RegexRule(pattern=r"(?m)^\s*(?:\u626b\u4e00\u626b|\u626b\u63cf).*\u4e8c\u7ef4\u7801.*(?:\u5173\u6ce8|\u6dfb\u52a0).*$", repl="", flags=0),
-        RegexRule(pattern=r"(?m)^\s*(?:\u5728\u770b|\u70b9\u8d5e|\u8f6c\u53d1|\u5206\u4eab(?:\u5230)?\u670b\u53cb\u5708)\s*$", repl="", flags=0),
+        RegexRule(
+            pattern=r"(?m)^\s*\u957f\u6309.*\u8bc6\u522b.*\u4e8c\u7ef4\u7801.*(?:\u5173\u6ce8|\u6dfb\u52a0).*$",
+            repl="",
+            flags=0,
+        ),
+        RegexRule(
+            pattern=r"(?m)^\s*(?:\u626b\u4e00\u626b|\u626b\u63cf).*\u4e8c\u7ef4\u7801.*(?:\u5173\u6ce8|\u6dfb\u52a0).*$",
+            repl="",
+            flags=0,
+        ),
+        RegexRule(
+            pattern=r"(?m)^\s*(?:\u5728\u770b|\u70b9\u8d5e|\u8f6c\u53d1|\u5206\u4eab(?:\u5230)?\u670b\u53cb\u5708)\s*$",
+            repl="",
+            flags=0,
+        ),
     ],
     "pdf_header_footer_cn": [
         # Chinese page header/footer lines that include a title/company prefix.
         # Plain "第 N 页" forms are already covered by DEFAULT_MARKDOWN_RULES.
         RegexRule(
-            pattern=r"(?m)^[ \t]*[\u4e00-\u9fffA-Za-z0-9（）()《》·._/\\ -]{2,80}[ \t]+第[ \t]*\d+[ \t]*页(?:[ \t]*/[ \t]*(?:\u5171[ \t]*)?\d+[ \t]*页)?[ \t]*$",
+            pattern=(
+                r"(?m)^[ \t]*[\u4e00-\u9fffA-Za-z0-9（）()《》·._/\\ -]{2,80}"
+                r"[ \t]+第[ \t]*\d+[ \t]*页(?:[ \t]*/[ \t]*(?:\u5171[ \t]*)?\d+[ \t]*页)?[ \t]*$"
+            ),
             repl="",
             flags=0,
         ),
@@ -100,7 +120,11 @@ GOVERNANCE_RULE_PACKS: dict[str, list[RegexRule]] = {
             flags=0,
         ),
         RegexRule(
-            pattern=r"(?m)^[ \t]*[\u4e00-\u9fffA-Za-z0-9（）()《》·._/\\ -]{2,80}[ \t]*[|｜][ \t]*第[ \t]*\d+[ \t]*页(?:[ \t]*/[ \t]*\u5171?[ \t]*\d+[ \t]*页)?[ \t]*$",
+            pattern=(
+                r"(?m)^[ \t]*[\u4e00-\u9fffA-Za-z0-9（）()《》·._/\\ -]{2,80}"
+                r"[ \t]*[|｜][ \t]*第[ \t]*\d+[ \t]*页"
+                r"(?:[ \t]*/[ \t]*\u5171?[ \t]*\d+[ \t]*页)?[ \t]*$"
+            ),
             repl="",
             flags=0,
         ),
@@ -148,7 +172,11 @@ GOVERNANCE_RULE_PACKS: dict[str, list[RegexRule]] = {
     "cn_gov_redhead_artifacts": [
         # 抄送 / 印发 / 签发(末尾常见,line-oriented)
         RegexRule(pattern=r"(?m)^\s*抄\s*送[:：].*$", repl="", flags=0),
-        RegexRule(pattern=r"(?m)^.*(?:办公厅|办公室|发文办)\s*\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日\s*印发\s*$", repl="", flags=0),
+        RegexRule(
+            pattern=r"(?m)^.*(?:办公厅|办公室|发文办)\s*\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日\s*印发\s*$",
+            repl="",
+            flags=0,
+        ),
         RegexRule(pattern=r"(?m)^\s*签\s*发[:：\s]*\S.*$", repl="", flags=0),
         RegexRule(pattern=r"(?m)^\s*承办\s*(?:单位|处室|司局|部门)[:：].*$", repl="", flags=0),
         RegexRule(pattern=r"(?m)^\s*主送[:：].*$", repl="", flags=0),

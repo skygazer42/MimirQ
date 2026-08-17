@@ -494,7 +494,11 @@ def _tag_preview_rows(payload: dict[str, Any]) -> list[str]:
     for row in rows[:4]:
         if not isinstance(row, list):
             continue
-        pairs = [f"{col}={str(row[i]).strip()}" for i, col in enumerate(cols_s) if i < len(row) and row[i] is not None and str(row[i]).strip()]
+        pairs = [
+            f"{col}={str(row[i]).strip()}"
+            for i, col in enumerate(cols_s)
+            if i < len(row) and row[i] is not None and str(row[i]).strip()
+        ]
         if pairs:
             preview.append("- " + ", ".join(pairs))
     return preview
@@ -730,13 +734,21 @@ def _hit_type(*, scores: dict[str, Any], retrieval_mode: str, retrieval_role: st
 
 def _media_urls(meta: dict[str, Any]) -> tuple[Any, str | None, str | None]:
     img_id = meta.get("img_id")
-    img_url = f"/api/v1/documents/image-url/{img_id}" if img_id else _optional_clean_str(meta.get("img_url") or meta.get("image_url"))
+    img_url = (
+        f"/api/v1/documents/image-url/{img_id}"
+        if img_id
+        else _optional_clean_str(meta.get("img_url") or meta.get("image_url"))
+    )
 
     clean_docx_url = _optional_clean_str(meta.get("clean_docx_url"))
     doc_id_for_clean = meta.get("document_id")
     doc_name_for_clean = str(meta.get("source") or meta.get("document_name") or "").strip().lower()
     file_type_for_clean = str(meta.get("file_type") or "").strip().lower()
-    if clean_docx_url or doc_id_for_clean is None or not (doc_name_for_clean.endswith(".docx") or file_type_for_clean == "docx"):
+    if (
+        clean_docx_url
+        or doc_id_for_clean is None
+        or not (doc_name_for_clean.endswith(".docx") or file_type_for_clean == "docx")
+    ):
         return img_id, img_url, clean_docx_url
     return img_id, img_url, f"/api/v1/documents/{doc_id_for_clean}/clean-docx"
 
@@ -772,7 +784,11 @@ def _optional_meta_int(meta: dict[str, Any], key: str) -> int | None:
 def _family_keys(meta: dict[str, Any]) -> tuple[str | None, str | None, str | None, bool]:
     hierarchy_basis = _optional_clean_str(meta.get("hierarchy_basis"))
     hierarchy_family_key = _optional_clean_str(meta.get("hierarchy_family_key"))
-    family_collapse_key = hierarchy_family_key or _optional_clean_str(meta.get("parent_id")) or _optional_clean_str(meta.get("parent_node_id"))
+    family_collapse_key = (
+        hierarchy_family_key
+        or _optional_clean_str(meta.get("parent_id"))
+        or _optional_clean_str(meta.get("parent_node_id"))
+    )
     return hierarchy_basis, hierarchy_family_key, family_collapse_key, bool(family_collapse_key)
 
 
@@ -786,7 +802,10 @@ def _citation_context(
     retrieval_role = _optional_clean_str(meta.get("retrieval_role"))
     neighbor_of = _optional_clean_str(meta.get("neighbor_of"))
     is_tag = str(retrieval_role or "").strip().lower() == "tag" or str(meta.get("chunk_role") or "") == "tag_sql_result"
-    is_image = str(retrieval_role or "").strip().lower() == "image" or str(meta.get("doc_type_kwd") or "").strip().lower() == "image"
+    is_image = (
+        str(retrieval_role or "").strip().lower() == "image"
+        or str(meta.get("doc_type_kwd") or "").strip().lower() == "image"
+    )
     tag_payload = _parse_json_object(doc.page_content or "") if is_tag else None
     scores = _citation_scores(meta)
     chunk_id = _resolve_chunk_id(doc, meta, is_tag=is_tag, tag_payload=tag_payload)
@@ -813,7 +832,9 @@ def _citation_context(
         neighbor_of=neighbor_of,
         is_tag=is_tag,
         is_image=is_image,
-        hit_type=_hit_type(scores=scores, retrieval_mode=retrieval_mode, retrieval_role=retrieval_role, is_image=is_image),
+        hit_type=_hit_type(
+            scores=scores, retrieval_mode=retrieval_mode, retrieval_role=retrieval_role, is_image=is_image
+        ),
         img_id=img_id,
         img_url=img_url,
         clean_docx_url=clean_docx_url,
@@ -887,7 +908,9 @@ def _base_citation(
         "sparse_score": round(float(scores["sparse_score"]), 3),
         "colbert_score": round(float(scores["colbert_score"]), 3),
         "keyword_score": round(_float_meta(meta, "keyword_score"), 3),
-        "field_aware_signal": str(meta.get("field_aware_signal")).strip().lower() if meta.get("field_aware_signal") is not None else None,
+        "field_aware_signal": str(meta.get("field_aware_signal")).strip().lower()
+        if meta.get("field_aware_signal") is not None
+        else None,
         "field_aware_boost": round(_float_meta(meta, "field_aware_boost"), 6),
         "kg_pagerank": round(_float_meta(meta, "kg_pagerank"), 3),
         "kg_shared_events": int(meta.get("kg_shared_events", 0) or 0),
@@ -905,7 +928,9 @@ def _base_citation(
         "exact_phrase_score": _rounded_optional(scores.get("exact_phrase_score"), digits=6),
         "exact_phrase_boost": _rounded_optional(scores.get("exact_phrase_boost"), digits=6),
         "metadata_exact_match_score": _rounded_optional(scores.get("metadata_exact_match_score"), digits=6),
-        "metadata_exact_match_primary_score": _rounded_optional(scores.get("metadata_exact_match_primary_score"), digits=6),
+        "metadata_exact_match_primary_score": _rounded_optional(
+            scores.get("metadata_exact_match_primary_score"), digits=6
+        ),
         "metadata_exact_match_boost": _rounded_optional(scores.get("metadata_exact_match_boost"), digits=6),
         "metadata_exact_match_promoted_score": _rounded_optional(
             scores.get("metadata_exact_match_promoted_score"),
@@ -1145,7 +1170,9 @@ def _merge_hierarchy_parent_spans(
     raw_text_by_chunk_id: dict[str, str],
     query: str | None,
 ) -> None:
-    by_chunk = {str(c.get("chunk_id")).strip(): c for c in citations if isinstance(c, dict) and c.get("chunk_id") is not None}
+    by_chunk = {
+        str(c.get("chunk_id")).strip(): c for c in citations if isinstance(c, dict) and c.get("chunk_id") is not None
+    }
     for citation in citations:
         if str(citation.get("retrieval_role") or "").strip().lower() != "hierarchy_parent":
             continue

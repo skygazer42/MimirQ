@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Live API smoke for plugin-backed corpus ingest plus Golden regression."""
 
-
 import argparse
 import json
 import os
@@ -35,9 +34,7 @@ REGISTERED_CHUNK_PLUGIN_REF_RE = re.compile(
 REGISTERED_STAGE_PLUGIN_REF_RE = re.compile(
     r"^plugin:[a-z0-9][a-z0-9_.-]{0,63}@[A-Za-z0-9][A-Za-z0-9_.+-]{0,31}:(?P<stage>governance|chunk|kg)$"
 )
-PLUGIN_ACTIVATION_REF_KEYS = frozenset(
-    {"governance_python_plugin", "chunk_python_plugin", "kg_python_plugin"}
-)
+PLUGIN_ACTIVATION_REF_KEYS = frozenset({"governance_python_plugin", "chunk_python_plugin", "kg_python_plugin"})
 
 
 @dataclass(frozen=True)
@@ -87,11 +84,7 @@ class CorpusApiClient(LiveApiClient):
         raise RuntimeError(f"{method} {path} failed after rate-limit retries")
 
     def upload_file(self, path: str, *, data: dict[str, str], file: CorpusFile) -> dict[str, Any]:
-        headers = {
-            key: value
-            for key, value in self.headers.items()
-            if key.lower() not in {"content-type", "accept"}
-        }
+        headers = {key: value for key, value in self.headers.items() if key.lower() not in {"content-type", "accept"}}
         url = _join_url(self.base_url, path)
         with file.path.open("rb") as fh:
             try:
@@ -370,7 +363,9 @@ def wait_for_uploaded_documents(
                 continue
 
             if status != "completed":
-                raise RuntimeError(f"{item.file.rel_path} ended with status={status}: {json.dumps(detail, ensure_ascii=False)[:800]}")
+                raise RuntimeError(
+                    f"{item.file.rel_path} ended with status={status}: {json.dumps(detail, ensure_ascii=False)[:800]}"
+                )
 
             chunks = client.json("GET", f"/api/v1/documents/{doc_id}/chunks", query={"limit": 2000})
             chunk_total = int(chunks.get("total") or 0)
@@ -638,7 +633,9 @@ def resolve_pipeline_patch_for_run(
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run plugin-backed corpus ingest + Golden regression smoke.")
     parser.add_argument("--source-dir", required=True, help="Local corpus directory to upload recursively.")
-    parser.add_argument("--dataset-id", default="", help="Existing dataset UUID. If omitted, an isolated dataset is created.")
+    parser.add_argument(
+        "--dataset-id", default="", help="Existing dataset UUID. If omitted, an isolated dataset is created."
+    )
     parser.add_argument("--dataset-name", default="", help="Dataset name when --dataset-id is omitted.")
     parser.add_argument("--plugin-ref", required=True, help="Registered chunk plugin ref.")
     parser.add_argument(
@@ -647,7 +644,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Optional DocumentPipelineOptions JSON object. Omit to use the plugin manifest suggested_pipeline_patch.",
     )
     parser.add_argument("--extensions", default=",".join(DEFAULT_EXTENSIONS))
-    parser.add_argument("--include-empty-files", action="store_true", help="Upload zero-byte files instead of reporting them as skipped.")
+    parser.add_argument(
+        "--include-empty-files",
+        action="store_true",
+        help="Upload zero-byte files instead of reporting them as skipped.",
+    )
     parser.add_argument(
         "--include-source-root-name",
         action="store_true",
@@ -656,9 +657,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--include-hidden",
         action="store_true",
-        help="Include files under hidden directories and hidden files. Defaults to false to skip editor/conversion artifacts.",
+        help=(
+            "Include files under hidden directories and hidden files. "
+            "Defaults to false to skip editor/conversion artifacts."
+        ),
     )
-    parser.add_argument("--max-files", type=int, default=0, help="Limit uploaded files for smoke debugging. 0 means all.")
+    parser.add_argument(
+        "--max-files", type=int, default=0, help="Limit uploaded files for smoke debugging. 0 means all."
+    )
     parser.add_argument(
         "--max-files-per-group",
         type=int,
@@ -690,7 +696,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--user-id", default=os.getenv("MIMIRQ_USER_ID") or "demo")
     parser.add_argument("--bearer", default=os.getenv("MIMIRQ_API_TOKEN") or os.getenv("AUTH_TOKEN") or "")
     parser.add_argument("--timeout", type=float, default=float(os.getenv("MIMIRQ_API_TIMEOUT_SEC") or "120"))
-    parser.add_argument("--processing-timeout", type=float, default=float(os.getenv("MIMIRQ_PROCESSING_TIMEOUT_SEC") or "1800"))
+    parser.add_argument(
+        "--processing-timeout", type=float, default=float(os.getenv("MIMIRQ_PROCESSING_TIMEOUT_SEC") or "1800")
+    )
     parser.add_argument("--poll-interval", type=float, default=float(os.getenv("MIMIRQ_POLL_INTERVAL_SEC") or "2"))
     parser.add_argument("--golden-max-items", type=int, default=200)
     parser.add_argument("--golden-max-chunks", type=int, default=5000)

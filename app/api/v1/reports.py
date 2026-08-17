@@ -3,7 +3,6 @@
 Provides exportable, shareable dataset-level bundles (quality + compliance).
 """
 
-
 import io
 import json
 import re
@@ -99,7 +98,9 @@ def _report_bundle_manifest(
 ) -> dict[str, object]:
     manifest: dict[str, object] = {
         "schema": "mimirq.report_bundle.v2",
-        "generated_at": report.generated_at.isoformat() if hasattr(report.generated_at, "isoformat") else str(report.generated_at or ""),
+        "generated_at": report.generated_at.isoformat()
+        if hasattr(report.generated_at, "isoformat")
+        else str(report.generated_at or ""),
         "redact": bool(redact),
         "files": files,
     }
@@ -207,12 +208,16 @@ def _regression_bundle_artifacts(context: ReportContext, dataset_id: UUID, *, re
 @router.get("/datasets/{dataset_id}", response_model=DatasetReportOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_dataset_report(
     dataset_id: UUID,
-    pipeline_hash: Annotated[str | None, Query(max_length=64, description='Optional: filter by pipeline_hash (active)')] = None,
+    pipeline_hash: Annotated[
+        str | None, Query(max_length=64, description="Optional: filter by pipeline_hash (active)")
+    ] = None,
     connector_runs_limit: Annotated[int, Query(ge=0, le=100)] = 20,
     *,
     context: ReportContextDep,
 ):
-    return _build_report(context, dataset_id=dataset_id, pipeline_hash=pipeline_hash, connector_runs_limit=connector_runs_limit)
+    return _build_report(
+        context, dataset_id=dataset_id, pipeline_hash=pipeline_hash, connector_runs_limit=connector_runs_limit
+    )
 
 
 @router.get("/datasets/{dataset_id}/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -223,9 +228,13 @@ def export_dataset_report_json(
     *,
     context: ReportContextDep,
 ):
-    report = _build_report(context, dataset_id=dataset_id, pipeline_hash=pipeline_hash, connector_runs_limit=connector_runs_limit)
+    report = _build_report(
+        context, dataset_id=dataset_id, pipeline_hash=pipeline_hash, connector_runs_limit=connector_runs_limit
+    )
     content = _json_compact(report.model_dump(mode="json"))
-    filename = _report_filename(dataset_name=report.dataset_name, pipeline_hash=pipeline_hash, stem="report", suffix="json")
+    filename = _report_filename(
+        dataset_name=report.dataset_name, pipeline_hash=pipeline_hash, stem="report", suffix="json"
+    )
     return Response(
         content=content,
         media_type="application/json",
@@ -238,11 +247,13 @@ def export_dataset_report_html(
     dataset_id: UUID,
     pipeline_hash: Annotated[str | None, Query(max_length=64)] = None,
     connector_runs_limit: Annotated[int, Query(ge=0, le=100)] = 20,
-    redact: Annotated[bool, Query(description='Whether to redact dataset name/id for sharing')] = True,
+    redact: Annotated[bool, Query(description="Whether to redact dataset name/id for sharing")] = True,
     *,
     context: ReportContextDep,
 ):
-    report = _build_report(context, dataset_id=dataset_id, pipeline_hash=pipeline_hash, connector_runs_limit=connector_runs_limit)
+    report = _build_report(
+        context, dataset_id=dataset_id, pipeline_hash=pipeline_hash, connector_runs_limit=connector_runs_limit
+    )
 
     html = render_dataset_report_html(
         title="MimirQ · 数据集报告中心（质量 + 合规）",
@@ -272,11 +283,13 @@ def export_dataset_rag_audit_html(
     dataset_id: UUID,
     pipeline_hash: Annotated[str | None, Query(max_length=64)] = None,
     connector_runs_limit: Annotated[int, Query(ge=0, le=100)] = 20,
-    redact: Annotated[bool, Query(description='Whether to redact dataset name/id for sharing')] = True,
+    redact: Annotated[bool, Query(description="Whether to redact dataset name/id for sharing")] = True,
     *,
     context: ReportContextDep,
 ):
-    report = _build_report(context, dataset_id=dataset_id, pipeline_hash=pipeline_hash, connector_runs_limit=connector_runs_limit)
+    report = _build_report(
+        context, dataset_id=dataset_id, pipeline_hash=pipeline_hash, connector_runs_limit=connector_runs_limit
+    )
 
     html = render_rag_audit_html(
         title="MimirQ · RAG Audit（Profile + Governance + Chunk + KG + Eval）",
@@ -306,7 +319,7 @@ def export_dataset_report_bundle_zip(
     dataset_id: UUID,
     pipeline_hash: Annotated[str | None, Query(max_length=64)] = None,
     connector_runs_limit: Annotated[int, Query(ge=0, le=100)] = 20,
-    redact: Annotated[bool, Query(description='Whether to redact dataset name/id for sharing')] = True,
+    redact: Annotated[bool, Query(description="Whether to redact dataset name/id for sharing")] = True,
     *,
     context: ReportContextDep,
 ):
@@ -317,7 +330,9 @@ def export_dataset_report_bundle_zip(
     - rag_audit.html
     - manifest.json
     """
-    report = _build_report(context, dataset_id=dataset_id, pipeline_hash=pipeline_hash, connector_runs_limit=connector_runs_limit)
+    report = _build_report(
+        context, dataset_id=dataset_id, pipeline_hash=pipeline_hash, connector_runs_limit=connector_runs_limit
+    )
 
     report_obj_raw = report.model_dump(mode="json")
     report_obj = report_obj_raw

@@ -3,7 +3,14 @@ import json
 
 import httpx
 
-from scripts.rag_e2e_load_test import E2ELoadTestConfig, evaluate_concurrency_gate, run_e2e_load_test
+from scripts import rag_e2e_load_test
+from scripts.rag_e2e_load_test import (
+    E2ELoadTestConfig,
+    evaluate_concurrency_gate,
+    evaluate_load_gate,
+    main,
+    run_e2e_load_test,
+)
 
 
 def _load_report(*, concurrency: int, retrieve_rps: float, chat_rps: float, overlap: bool) -> dict:
@@ -190,3 +197,152 @@ def test_load_test_round_robins_request_base_urls() -> None:
         "primary.test",
         "secondary.test",
     ]
+
+
+def test_evaluate_load_gate_preserves_failure_aggregation_order() -> None:
+    gate = evaluate_load_gate(
+        {
+            "ingest": {
+                "requested": 2,
+                "completed": 1,
+                "errors": 3,
+                "e2e_latency_ms": {"p95_ms": 111},
+            },
+            "retrieve": {
+                "requested": 4,
+                "ok": 2,
+                "errors": 5,
+                "latency_ms": {"p95_ms": 222},
+            },
+            "chat": {
+                "requested": 6,
+                "ok": 3,
+                "errors": 7,
+                "latency_ms": {"p95_ms": 333},
+            },
+        },
+        max_ingest_p95_ms=100,
+        max_retrieve_p95_ms=200,
+        max_chat_p95_ms=300,
+    )
+
+    assert gate["passed"] is False
+    assert gate["failures"] == [
+        "ingest_completed 1 < requested 2",
+        "ingest_errors 3 > 0",
+        "retrieve_ok 2 < requested 4",
+        "retrieve_errors 5 > 0",
+        "chat_ok 3 < requested 6",
+        "chat_errors 7 > 0",
+        "ingest_p95_ms 111 > max 100",
+        "retrieve_p95_ms 222 > max 200",
+        "chat_p95_ms 333 > max 300",
+    ]
+
+
+def test_main_dry_run_preserves_cli_defaults(tmp_path, monkeypatch, capsys) -> None:
+    file_path = tmp_path / "sample.txt"
+    file_path.write_text("hello", encoding="utf-8")
+    monkeypatch.delenv("NEXT_PUBLIC_API_URL", raising=False)
+
+    exit_code = main(["--dry-run", "--file", str(file_path)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.err == ""
+    assert "[rag-e2e-loadtest] base_url=http://localhost:8000/api/v1" in captured.out
+    assert "[rag-e2e-loadtest] ingest_count=1 ingest_concurrency=1" in captured.out
+    assert "[rag-e2e-loadtest] retrieve_requests=20 retrieve_concurrency=10" in captured.out
+    assert "[rag-e2e-loadtest] chat_requests=10 chat_concurrency=5" in captured.out
+
+
+def test_main_comparison_mode_writes_schema_and_returns_zero(tmp_path, capsys) -> None:
+    baseline = tmp_path / "baseline.json"
+    candidate = tmp_path / "candidate.json"
+    out_path = tmp_path / "comparison.json"
+    baseline.write_text(
+        json.dumps(_load_report(concurrency=1, retrieve_rps=0.5, chat_rps=0.25, overlap=False)),
+        encoding="utf-8",
+    )
+    candidate.write_text(
+        json.dumps(_load_report(concurrency=3, retrieve_rps=0.8, chat_rps=0.4, overlap=True)),
+        encoding="utf-8",
+    )
+
+    exit_code = main(
+        [
+            "--baseline-report",
+            str(baseline),
+            "--candidate-report",
+            str(candidate),
+            "--out",
+            str(out_path),
+            "--min-retrieve-throughput-ratio",
+            "1.1",
+            "--min-chat-throughput-ratio",
+            "1.1",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    report = json.loads(out_path.read_text(encoding="utf-8"))
+    assert exit_code == 0
+    assert report["schema"] == "mimirq.rag_concurrency_gate.v1"
+    assert report["baseline_report"] == str(baseline)
+    assert report["candidate_report"] == str(candidate)
+    assert report["passed"] is True
+    assert "[rag-e2e-loadtest] CONCURRENCY PASS" in captured.out
+
+
+def test_main_reports_gate_failures_and_returns_2(tmp_path, monkeypatch, capsys) -> None:
+    file_path = tmp_path / "sample.txt"
+    file_path.write_text("hello", encoding="utf-8")
+
+    async def fake_run_e2e_load_test(
+        cfg: E2ELoadTestConfig,
+        *,
+        client: httpx.AsyncClient | None = None,
+    ) -> dict:
+        del cfg, client
+        return {
+            "ingest": {
+                "requested": 0,
+                "completed": 0,
+                "errors": 0,
+                "throughput_docs_per_sec": 0.0,
+                "e2e_latency_ms": {"p95_ms": 0},
+            },
+            "retrieve": {
+                "requested": 1,
+                "ok": 0,
+                "errors": 1,
+                "throughput_rps": 0.0,
+                "latency_ms": {"p95_ms": 150},
+                "client_peak_in_flight": 1,
+            },
+            "chat": {
+                "requested": 0,
+                "ok": 0,
+                "errors": 0,
+                "throughput_rps": 0.0,
+                "latency_ms": {"p95_ms": 0},
+                "client_peak_in_flight": 1,
+            },
+        }
+
+    monkeypatch.setattr(rag_e2e_load_test, "run_e2e_load_test", fake_run_e2e_load_test)
+
+    exit_code = main(
+        [
+            "--file",
+            str(file_path),
+            "--max-retrieve-p95-ms",
+            "100",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "[rag-e2e-loadtest] FAIL: retrieve_ok 0 < requested 1" in captured.err
+    assert "[rag-e2e-loadtest] FAIL: retrieve_errors 1 > 0" in captured.err
+    assert "[rag-e2e-loadtest] FAIL: retrieve_p95_ms 150 > max 100" in captured.err

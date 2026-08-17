@@ -53,7 +53,9 @@ def _postgres_alembic_test_database(monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.mark.skipif(not _integration_enabled(), reason="Integration tests disabled (set MIMIRQ_INTEGRATION_TESTS=1)")
-def test_upgrade_from_previous_revision_backfills_conversation_owner_account_id(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_upgrade_from_previous_revision_backfills_conversation_owner_account_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     with _postgres_alembic_test_database(monkeypatch) as (alembic_cfg, engine):
         command.upgrade(alembic_cfg, "0020_unique_tenant_member")
 
@@ -200,7 +202,10 @@ def test_upgrade_to_0024_dedupes_ingestion_run_documents_and_repairs_stats(monke
             conn.execute(
                 text(
                     """
-                    INSERT INTO datasets (id, tenant_id, name, description, permission, owner_id, metadata, created_at, updated_at)
+                    INSERT INTO datasets (
+                        id, tenant_id, name, description, permission, owner_id,
+                        metadata, created_at, updated_at
+                    )
                     VALUES (
                         :dataset_id, :tenant_id, :name, :description, :permission, :owner_id,
                         CAST(:metadata AS jsonb), now(), now()
@@ -229,9 +234,12 @@ def test_upgrade_to_0024_dedupes_ingestion_run_documents_and_repairs_stats(monke
                         (:duplicate_document_id, :tenant_id, :dataset_id, NULL, 'dup.txt', 'txt', 1, '/tmp/dup.txt',
                          'acct-1', 'private', 'completed', 100, 'completed', NULL,
                          0, 0, CAST(:metadata AS jsonb), now(), now()),
-                        (:pending_document_id, :tenant_id, :dataset_id, NULL, 'pending.txt', 'txt', 1, '/tmp/pending.txt',
+                        (
+                         :pending_document_id, :tenant_id, :dataset_id, NULL,
+                         'pending.txt', 'txt', 1, '/tmp/pending.txt',
                          'acct-1', 'private', 'pending', 0, 'pending', NULL,
-                         0, 0, CAST(:metadata AS jsonb), now(), now())
+                         0, 0, CAST(:metadata AS jsonb), now(), now()
+                        )
                     """
                 ),
                 {
@@ -273,10 +281,20 @@ def test_upgrade_to_0024_dedupes_ingestion_run_documents_and_repairs_stats(monke
             conn.execute(
                 text(
                     """
-                    INSERT INTO ingestion_run_documents (id, tenant_id, run_id, document_id, source_ref, status, created_at)
+                    INSERT INTO ingestion_run_documents (
+                        id, tenant_id, run_id, document_id,
+                        source_ref, status, created_at
+                    )
                     VALUES
-                        (:duplicate_failed_row_id, :tenant_id, :run_id, :duplicate_document_id, 'dup.txt', 'failed', now()),
-                        (:duplicate_completed_row_id, :tenant_id, :run_id, :duplicate_document_id, 'dup.txt', ' Completed ', now() - interval '1 hour'),
+                        (
+                         :duplicate_failed_row_id, :tenant_id, :run_id,
+                         :duplicate_document_id, 'dup.txt', 'failed', now()
+                        ),
+                        (
+                         :duplicate_completed_row_id, :tenant_id, :run_id,
+                         :duplicate_document_id, 'dup.txt', ' Completed ',
+                         now() - interval '1 hour'
+                        ),
                         (:pending_row_id, :tenant_id, :run_id, :pending_document_id, 'pending.txt', 'pending', now())
                     """
                 ),
@@ -323,7 +341,10 @@ def test_upgrade_to_0024_dedupes_ingestion_run_documents_and_repairs_stats(monke
                 conn.execute(
                     text(
                         """
-                        INSERT INTO ingestion_run_documents (id, tenant_id, run_id, document_id, source_ref, status, created_at)
+                        INSERT INTO ingestion_run_documents (
+                            id, tenant_id, run_id, document_id,
+                            source_ref, status, created_at
+                        )
                         VALUES (:row_id, :tenant_id, :run_id, :document_id, 'dup-again.txt', 'completed', now())
                         """
                     ),

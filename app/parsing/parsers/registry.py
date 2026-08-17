@@ -4,7 +4,6 @@ The registry is data-only: it describes parser exports and backend families
 without importing parser implementations.
 """
 
-
 from dataclasses import dataclass
 from importlib import import_module
 
@@ -114,7 +113,9 @@ _BACKEND_FAMILIES: tuple[ParserBackendFamily, ...] = (
         parser_class_name="MarkerParser",
         init_log_message="[pdf] Initializing Marker parser (external service)",
         pdf_required_setting_flag="MARKER_ENABLED",
-        pdf_disabled_message="Marker parser is not enabled. Please set MARKER_ENABLED=True and configure MARKER_API_URL.",
+        pdf_disabled_message=(
+            "Marker parser is not enabled. Please set MARKER_ENABLED=True and configure MARKER_API_URL."
+        ),
         pdf_required_settings=(("MARKER_API_URL", "Marker parser requires MARKER_API_URL."),),
         pdf_advanced_fallback=True,
     ),
@@ -130,7 +131,9 @@ _BACKEND_FAMILIES: tuple[ParserBackendFamily, ...] = (
         parser_class_name="PaddleVLParser",
         init_log_message="[pdf] Initializing PaddleOCR-VL parser (external service)",
         pdf_required_setting_flag="PADDLE_VL_ENABLED",
-        pdf_disabled_message="PaddleOCR-VL parser is not enabled. Please set PADDLE_VL_ENABLED=True and configure PADDLE_VL_API_URL.",
+        pdf_disabled_message=(
+            "PaddleOCR-VL parser is not enabled. Please set PADDLE_VL_ENABLED=True and configure PADDLE_VL_API_URL."
+        ),
         pdf_required_settings=(("PADDLE_VL_API_URL", "PaddleOCR-VL parser requires PADDLE_VL_API_URL."),),
         pdf_advanced_fallback=True,
     ),
@@ -146,7 +149,9 @@ _BACKEND_FAMILIES: tuple[ParserBackendFamily, ...] = (
         parser_class_name="GlmOCRParser",
         init_log_message="[pdf] Initializing GLM-OCR parser (external service)",
         pdf_required_setting_flag="GLM_OCR_ENABLED",
-        pdf_disabled_message="GLM-OCR parser is not enabled. Please set GLM_OCR_ENABLED=True and configure GLM_OCR_API_URL.",
+        pdf_disabled_message=(
+            "GLM-OCR parser is not enabled. Please set GLM_OCR_ENABLED=True and configure GLM_OCR_API_URL."
+        ),
         pdf_required_settings=(("GLM_OCR_API_URL", "GLM-OCR parser requires GLM_OCR_API_URL."),),
         pdf_advanced_fallback=True,
     ),
@@ -162,7 +167,9 @@ _BACKEND_FAMILIES: tuple[ParserBackendFamily, ...] = (
         parser_class_name="OlmocrParser",
         init_log_message="[pdf] Initializing olmOCR parser (external service)",
         pdf_required_setting_flag="OLMOCR_ENABLED",
-        pdf_disabled_message="olmOCR parser is not enabled. Please set OLMOCR_ENABLED=True and configure OLMOCR_API_URL.",
+        pdf_disabled_message=(
+            "olmOCR parser is not enabled. Please set OLMOCR_ENABLED=True and configure OLMOCR_API_URL."
+        ),
         pdf_required_settings=(("OLMOCR_API_URL", "olmOCR parser requires OLMOCR_API_URL."),),
         pdf_advanced_fallback=True,
     ),
@@ -178,7 +185,9 @@ _BACKEND_FAMILIES: tuple[ParserBackendFamily, ...] = (
         parser_class_name="QianfanOCRParser",
         init_log_message="[pdf] Initializing Qianfan-OCR parser (external service)",
         pdf_required_setting_flag="QIANFAN_OCR_ENABLED",
-        pdf_disabled_message="Qianfan-OCR parser is not enabled. Please set QIANFAN_OCR_ENABLED=True and configure QIANFAN_OCR_API_URL.",
+        pdf_disabled_message=(
+            "Qianfan-OCR parser is not enabled. Please set QIANFAN_OCR_ENABLED=True and configure QIANFAN_OCR_API_URL."
+        ),
         pdf_required_settings=(("QIANFAN_OCR_API_URL", "Qianfan-OCR parser requires QIANFAN_OCR_API_URL."),),
         pdf_advanced_fallback=True,
     ),
@@ -196,7 +205,9 @@ _BACKEND_FAMILIES: tuple[ParserBackendFamily, ...] = (
         parser_class_name="TextInParser",
         init_log_message="[pdf] Initializing TextIn xParse parser (external API)",
         pdf_required_setting_flag="TEXTIN_ENABLED",
-        pdf_disabled_message="TextIn parser is not enabled. Please set TEXTIN_ENABLED=True and configure TEXTIN credentials.",
+        pdf_disabled_message=(
+            "TextIn parser is not enabled. Please set TEXTIN_ENABLED=True and configure TEXTIN credentials."
+        ),
         pdf_required_settings=(
             ("TEXTIN_APP_ID", "TextIn parser requires TEXTIN_APP_ID."),
             ("TEXTIN_SECRET_CODE", "TextIn parser requires TEXTIN_SECRET_CODE."),
@@ -248,7 +259,10 @@ _BACKEND_FAMILIES: tuple[ParserBackendFamily, ...] = (
         parser_class_name="DeepSeekOCRParser",
         init_log_message="[pdf] Initializing DeepSeek OCR parser (SiliconFlow)",
         pdf_required_setting_flag="DEEPSEEK_OCR_ENABLED",
-        pdf_disabled_message="DeepSeek OCR parser is not enabled. Please set DEEPSEEK_OCR_ENABLED=True and configure SILICONFLOW_API_KEY.",
+        pdf_disabled_message=(
+            "DeepSeek OCR parser is not enabled. Please set "
+            "DEEPSEEK_OCR_ENABLED=True and configure SILICONFLOW_API_KEY."
+        ),
         pdf_required_settings=(("SILICONFLOW_API_KEY", "DeepSeek OCR parser requires SILICONFLOW_API_KEY."),),
         pdf_advanced_fallback=True,
     ),
@@ -264,7 +278,9 @@ _BACKEND_FAMILIES: tuple[ParserBackendFamily, ...] = (
         parser_class_name="Etl4LlmParser",
         init_log_message="[pdf] Initializing ETL4LLM parser (layout-aware)",
         pdf_required_setting_flag="ETL4LLM_ENABLED",
-        pdf_disabled_message="ETL4LLM parser is not enabled. Please set ETL4LLM_ENABLED=True and configure ETL4LLM_API_URL.",
+        pdf_disabled_message=(
+            "ETL4LLM parser is not enabled. Please set ETL4LLM_ENABLED=True and configure ETL4LLM_API_URL."
+        ),
         pdf_required_settings=(("ETL4LLM_API_URL", "ETL4LLM parser requires ETL4LLM_API_URL."),),
         pdf_advanced_fallback=True,
     ),
@@ -470,11 +486,7 @@ _BACKEND_FAMILIES: tuple[ParserBackendFamily, ...] = (
 )
 
 _EXPORT_BY_NAME = {item.export_name: item for item in _EXPORTS}
-_BACKEND_BY_ALIAS = {
-    alias: family
-    for family in _BACKEND_FAMILIES
-    for alias in family.aliases
-}
+_BACKEND_BY_ALIAS = {alias: family for family in _BACKEND_FAMILIES for alias in family.aliases}
 
 
 def get_parser_export(name: str) -> ParserExport | None:

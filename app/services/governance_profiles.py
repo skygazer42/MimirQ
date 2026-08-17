@@ -6,7 +6,6 @@ This module intentionally keeps profiles declarative:
 - Profiles are used to patch pipeline options and provide additional regex rules.
 """
 
-
 import re
 from dataclasses import dataclass
 
@@ -68,7 +67,7 @@ def validate_and_normalize_payload(payload: GovernanceProfilePayload) -> Governa
             extends = ref[:120]
 
     cleaned_formats: list[str] = []
-    for fmt in (payload.input_formats or []):
+    for fmt in payload.input_formats or []:
         v = str(fmt or "").strip().lower()
         if v in {"markdown", "html"} and v not in cleaned_formats:
             cleaned_formats.append(v)
@@ -416,7 +415,9 @@ def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
         BuiltinGovernanceProfile(
             key="builtin:cn_a_share_annual_report",
             name="A 股年报 PDF（表格+口径）",
-            description="适用于 A 股上市公司年报/季报 PDF：保留表格结构、去重复页眉页脚、剥离董事会承诺/披露免责声明等噪声。",
+            description=(
+                "适用于 A 股上市公司年报/季报 PDF：保留表格结构、去重复页眉页脚、剥离董事会承诺/披露免责声明等噪声。"
+            ),
             payload=_p(
                 input_formats=["markdown"],
                 pipeline_patch={
@@ -466,7 +467,10 @@ def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
         BuiltinGovernanceProfile(
             key="builtin:bank_compliance_report",
             name="银行/金融机构合规报告（强 PII）",
-            description="适用于银行/券商/保险合规报告：继承 legal_compliance 做 PII/密钥脱敏，叠加财报披露噪声移除与表格规范化。",
+            description=(
+                "适用于银行/券商/保险合规报告：继承 legal_compliance 做 PII/密钥脱敏，"
+                "叠加财报披露噪声移除与表格规范化。"
+            ),
             payload=_p(
                 input_formats=["markdown"],
                 pipeline_patch={
@@ -560,7 +564,9 @@ def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
         BuiltinGovernanceProfile(
             key="builtin:china_law_regulation",
             name="中国法规条例（条/款/项结构）",
-            description="适用于中国法律法规/行政条例/部门规章：继承 policy_manual_pdf，保留附则与条款编号，强化重复段落去除。",
+            description=(
+                "适用于中国法律法规/行政条例/部门规章：继承 policy_manual_pdf，保留附则与条款编号，强化重复段落去除。"
+            ),
             payload=_p(
                 input_formats=["markdown"],
                 pipeline_patch={
@@ -585,7 +591,10 @@ def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
         BuiltinGovernanceProfile(
             key="builtin:court_judgment",
             name="法院判决书（裁判文书脱敏）",
-            description="适用于裁判文书网/法院判决书：继承 legal_compliance 做当事人 PII 脱敏，叠加签发/印发块清理与重复段去除。",
+            description=(
+                "适用于裁判文书网/法院判决书：继承 legal_compliance 做当事人 PII 脱敏，"
+                "叠加签发/印发块清理与重复段去除。"
+            ),
             payload=_p(
                 input_formats=["markdown"],
                 pipeline_patch={
@@ -610,7 +619,9 @@ def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
         BuiltinGovernanceProfile(
             key="builtin:confluence_enterprise",
             name="Confluence 企业导出（强化）",
-            description="适用于企业级 Confluence 导出：继承 wiki_longform，叠加 Confluence/Jira 噪声、导航栏、邮件签名清理。",
+            description=(
+                "适用于企业级 Confluence 导出：继承 wiki_longform，叠加 Confluence/Jira 噪声、导航栏、邮件签名清理。"
+            ),
             payload=_p(
                 input_formats=["markdown", "html"],
                 pipeline_patch={
@@ -636,7 +647,10 @@ def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
         BuiltinGovernanceProfile(
             key="builtin:sharepoint_o365",
             name="SharePoint / Office 365 导出",
-            description="适用于 SharePoint/OneDrive/Office 365 导出文档：继承 wiki_longform，叠加样板移除、装饰图剥离、URL 规范化。",
+            description=(
+                "适用于 SharePoint/OneDrive/Office 365 导出文档：继承 wiki_longform，"
+                "叠加样板移除、装饰图剥离、URL 规范化。"
+            ),
             payload=_p(
                 input_formats=["markdown", "html"],
                 pipeline_patch={
@@ -661,7 +675,9 @@ def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
         BuiltinGovernanceProfile(
             key="builtin:notion_database",
             name="Notion 数据库 + 文档导出",
-            description="适用于 Notion markdown 导出（含 database properties）：继承 wiki_longform，规范化属性表格并合并断行。",
+            description=(
+                "适用于 Notion markdown 导出（含 database properties）：继承 wiki_longform，规范化属性表格并合并断行。"
+            ),
             payload=_p(
                 input_formats=["markdown"],
                 pipeline_patch={
@@ -683,7 +699,9 @@ def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
         BuiltinGovernanceProfile(
             key="builtin:feishu_lark_doc",
             name="飞书 / Lark 知识库",
-            description="适用于飞书/Lark 知识库导出：继承 wiki_longform，叠加飞书特有噪声（导出标识/最后编辑/协作者）清理。",
+            description=(
+                "适用于飞书/Lark 知识库导出：继承 wiki_longform，叠加飞书特有噪声（导出标识/最后编辑/协作者）清理。"
+            ),
             payload=_p(
                 input_formats=["markdown"],
                 pipeline_patch={

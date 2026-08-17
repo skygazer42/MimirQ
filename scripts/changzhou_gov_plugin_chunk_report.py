@@ -107,7 +107,9 @@ def _markdown_table(headers: list[str], rows: list[list[str]]) -> list[str]:
         "| " + " | ".join(headers) + " |",
         "| " + " | ".join("---" for _header in headers) + " |",
     ]
-    lines.extend("| " + " | ".join(_clean_one_line(cell, limit=900).replace("|", "\\|") for cell in row) + " |" for row in rows)
+    lines.extend(
+        "| " + " | ".join(_clean_one_line(cell, limit=900).replace("|", "\\|") for cell in row) + " |" for row in rows
+    )
     return lines
 
 
@@ -148,8 +150,12 @@ def format_markdown_report(report: dict[str, Any]) -> str:
                     _text(section.get("governed_records")),
                     _text(section.get("chunks")),
                     _join_counts(section.get("chunk_kinds") if isinstance(section.get("chunk_kinds"), dict) else {}),
-                    _join_inline(section.get("metadata_fields") if isinstance(section.get("metadata_fields"), list) else {}),
-                    _join_inline(section.get("kg_entity_types") if isinstance(section.get("kg_entity_types"), list) else {}),
+                    _join_inline(
+                        section.get("metadata_fields") if isinstance(section.get("metadata_fields"), list) else {}
+                    ),
+                    _join_inline(
+                        section.get("kg_entity_types") if isinstance(section.get("kg_entity_types"), list) else {}
+                    ),
                 ]
                 for section in sections
                 if isinstance(section, dict)
@@ -185,8 +191,10 @@ def format_markdown_report(report: dict[str, Any]) -> str:
             "",
             "## Notes",
             "",
-            "- This report is generated from the plugin sample and plugin contracts; it does not write to the database, vector store, or KG store.",
-            "- Use it to review how 01-06 source families are governed, chunked, and represented for retrieval/KG before production ingestion.",
+            "- This report is generated from the plugin sample and plugin contracts; "
+            "it does not write to the database, vector store, or KG store.",
+            "- Use it to review how 01-06 source families are governed, chunked, "
+            "and represented for retrieval/KG before production ingestion.",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -202,8 +210,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Build a reviewable Changzhou plugin governance/chunk/KG report.")
     parser.add_argument("--plugin-dir", default=DEFAULT_PLUGIN_DIR)
     parser.add_argument("--input", default=DEFAULT_SAMPLE, dest="input_path")
-    parser.add_argument("--json-out", default=DEFAULT_JSON_OUT, help="Write JSON report to this path, or '-' for stdout.")
-    parser.add_argument("--markdown-out", default=DEFAULT_MARKDOWN_OUT, help="Write Markdown report to this path. Empty disables it.")
+    parser.add_argument(
+        "--json-out", default=DEFAULT_JSON_OUT, help="Write JSON report to this path, or '-' for stdout."
+    )
+    parser.add_argument(
+        "--markdown-out", default=DEFAULT_MARKDOWN_OUT, help="Write Markdown report to this path. Empty disables it."
+    )
     parser.add_argument("--max-examples-per-section", type=int, default=2)
     parser.add_argument("--preview-chars", type=int, default=180)
     return parser

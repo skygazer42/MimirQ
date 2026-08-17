@@ -1,4 +1,3 @@
-
 import argparse
 import difflib
 import hashlib
@@ -34,6 +33,43 @@ class BenchmarkCase:
     governance_rule_packs: list[str] | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class RunConfig:
+    args: argparse.Namespace
+    input_dir: Path
+    manifest_path: Path | None
+    baseline_path: Path | None
+    strict_profile_path: Path | None
+    strict_profile: dict[str, Any]
+    strict_thresholds: dict[str, float]
+    out_path: Path
+    backends: list[str]
+    cases: list[BenchmarkCase]
+
+
+@dataclass(frozen=True, slots=True)
+class BenchmarkDependencies:
+    parser_factory: Any
+    merge_cross_page_documents: Any
+    score_document_parse_quality: Any
+    score_pdf_quality: Any
+    score_parsed_text_quality: Any
+
+
+@dataclass(frozen=True, slots=True)
+class CaseGoldenData:
+    markdown: str
+    structure: dict[str, Any] | None
+    plain_chars: int
+    image_refs: int
+    specialty: dict[str, Any] | None
+    image_visual_kinds: dict[str, Any] | None
+    image_code_values: dict[str, Any] | None
+    table_continuity: dict[str, Any] | None
+    missing_input_assets: list[str]
+    missing_local_assets: list[str]
+
+
 _HEADING_RE = re.compile(r"(?m)^#{1,6}\s+\S+")
 _LIST_ITEM_RE = re.compile(r"(?m)^\s*(?:[-*+]|\d+\.)\s+\S+")
 _FENCE_RE = re.compile(r"(?m)^\s*```")
@@ -47,6 +83,69 @@ _POSITION_TAG_INLINE_RE = re.compile(r"@@[0-9-]+\t[0-9.]+\t[0-9.]+\t[0-9.]+\t[0-
 _STRICT_PROFILE_SCHEMA_V1 = "mimirq.parser_benchmark_strict_profile.v1"
 _SPECIALTY_KINDS = ("seal", "equation", "table", "image")
 _IMAGE_VISUAL_KINDS = ("chart", "qr", "barcode", "diagram")
+_STRICT_THRESHOLD_FIELDS = (
+    ("ok_rate", "strict_max_ok_rate_drop"),
+    ("parse_score_mean", "strict_max_parse_score_drop"),
+    ("golden_similarity_mean", "strict_max_golden_similarity_drop"),
+    ("golden_coverage_ratio_mean", "strict_max_golden_coverage_drop"),
+    ("golden_image_ref_recall_mean", "strict_max_golden_image_ref_recall_drop"),
+    ("mean_seal_recall", "strict_max_seal_recall_drop"),
+    ("mean_equation_recall", "strict_max_equation_recall_drop"),
+    ("mean_table_recall", "strict_max_table_recall_drop"),
+    ("mean_image_recall", "strict_max_image_recall_drop"),
+    ("mean_chart_image_recall", "strict_max_chart_image_recall_drop"),
+    ("mean_qr_image_recall", "strict_max_qr_image_recall_drop"),
+    ("mean_barcode_image_recall", "strict_max_barcode_image_recall_drop"),
+    ("mean_diagram_image_recall", "strict_max_diagram_image_recall_drop"),
+    ("mean_qr_code_value_recall", "strict_max_qr_code_value_recall_drop"),
+    ("mean_barcode_code_value_recall", "strict_max_barcode_code_value_recall_drop"),
+)
+_BASELINE_REGRESSION_METRICS = (
+    "ok_rate",
+    "elapsed_ms_p50",
+    "elapsed_ms_p90",
+    "parse_score_mean",
+    "golden_similarity_mean",
+    "golden_coverage_ratio_mean",
+    "golden_image_ref_recall_mean",
+    "mean_seal_recall",
+    "mean_equation_recall",
+    "mean_table_recall",
+    "mean_image_recall",
+    "mean_chart_image_recall",
+    "mean_qr_image_recall",
+    "mean_barcode_image_recall",
+    "mean_diagram_image_recall",
+    "mean_qr_code_value_recall",
+    "mean_barcode_code_value_recall",
+)
+
+
+def _dict_copy_or_none(value: Any) -> dict[str, Any] | None:
+    return dict(value or {}) if isinstance(value, dict) else None
+
+
+def _finite_float(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number):
+        return None
+    return number
+
+
+def _average_or_none(values: list[float]) -> float | None:
+    return round(sum(values) / len(values), 4) if values else None
+
+
+def _nested_metric_map(value: Any) -> dict[str, list[float]]:
+    return value if isinstance(value, dict) else {}
+
+
+def _image_source_content_type(item: dict[str, Any]) -> str:
+    attributes = item.get("attributes") if isinstance(item.get("attributes"), dict) else {}
+    return str((attributes or {}).get("source_content_type") or "").strip().lower()
 
 
 def _iter_files(root: Path, *, exts: Iterable[str]) -> list[Path]:
@@ -318,12 +417,7 @@ def _benchmark_image_elements(documents: Iterable[Any]) -> list[dict[str, Any]]:
 
     deduped: list[dict[str, Any]] = []
     for group in grouped.values():
-        explicit = [
-            item
-            for item in group
-            if str(((item.get("attributes") or {}) if isinstance(item.get("attributes"), dict) else {}).get("source_content_type") or "").strip().lower()
-            != "markdown_image"
-        ]
+        explicit = [item for item in group if _image_source_content_type(item) != "markdown_image"]
         deduped.extend(explicit or group)
     return deduped
 
@@ -483,9 +577,9 @@ def _build_fixture_hash(*, cases: list[BenchmarkCase], manifest_path: Path | Non
                 if case.golden_markdown_path and case.golden_markdown_path.exists()
                 else None
             ),
-            "golden_specialty_elements": dict(case.golden_specialty_elements or {}) if isinstance(case.golden_specialty_elements, dict) else None,
-            "golden_image_visual_kinds": dict(case.golden_image_visual_kinds or {}) if isinstance(case.golden_image_visual_kinds, dict) else None,
-            "golden_image_code_values": dict(case.golden_image_code_values or {}) if isinstance(case.golden_image_code_values, dict) else None,
+            "golden_specialty_elements": _dict_copy_or_none(case.golden_specialty_elements),
+            "golden_image_visual_kinds": _dict_copy_or_none(case.golden_image_visual_kinds),
+            "golden_image_code_values": _dict_copy_or_none(case.golden_image_code_values),
             "governance_rule_packs": list(case.governance_rule_packs or []),
             "case_root": _stable_path_id(case_root),
             "case_files": case_files,
@@ -616,6 +710,199 @@ def _load_cases(input_dir: Path, *, manifest_path: Path | None, max_files: int) 
     return cases
 
 
+def _resolve_regression_metrics(
+    *,
+    max_drop_by_metric: dict[str, float],
+    failures: list[str],
+) -> list[tuple[str, float]]:
+    metrics: list[tuple[str, float]] = []
+    for raw_metric, max_drop in (max_drop_by_metric or {}).items():
+        metric = str(raw_metric).strip()
+        if not metric:
+            continue
+        allowed_drop = _finite_float(abs(float(max_drop)) if _finite_float(max_drop) is not None else None)
+        if allowed_drop is None:
+            failures.append(f"{metric} has a non-numeric maximum drop")
+            continue
+        metrics.append((metric, allowed_drop))
+    return metrics
+
+
+def _missing_regression_metric_failure(
+    *,
+    metric: str,
+    before: Any,
+    after: Any,
+    reason: str,
+) -> dict[str, Any]:
+    return {
+        "metric": metric,
+        "before": before,
+        "after": after,
+        "reason": reason,
+    }
+
+
+def _evaluate_regression_metric(
+    *,
+    backend: str,
+    metric: str,
+    allowed_drop: float,
+    before: dict[str, Any],
+    after: dict[str, Any],
+    failures: list[str],
+) -> dict[str, Any] | None:
+    baseline_value = before.get(metric)
+    current_value = after.get(metric)
+    if baseline_value is None:
+        failures.append(f"{backend}.{metric} is missing from the baseline summary")
+        return _missing_regression_metric_failure(
+            metric=metric,
+            before=None,
+            after=current_value,
+            reason="missing_baseline_metric",
+        )
+    if current_value is None:
+        failures.append(f"{backend}.{metric} is missing from the current summary")
+        return _missing_regression_metric_failure(
+            metric=metric,
+            before=baseline_value,
+            after=None,
+            reason="missing_metric",
+        )
+
+    baseline_number = _finite_float(baseline_value)
+    if baseline_number is None:
+        failures.append(f"{backend}.{metric} has a non-numeric baseline value")
+        return _missing_regression_metric_failure(
+            metric=metric,
+            before=baseline_value,
+            after=current_value,
+            reason="invalid_baseline_metric",
+        )
+
+    current_number = _finite_float(current_value)
+    if current_number is None:
+        failures.append(f"{backend}.{metric} has a non-numeric current value")
+        return _missing_regression_metric_failure(
+            metric=metric,
+            before=baseline_value,
+            after=current_value,
+            reason="invalid_current_metric",
+        )
+
+    delta = float(current_number - baseline_number)
+    if delta >= (0.0 - allowed_drop):
+        return None
+    failures.append(
+        f"{backend}.{metric} regressed by {delta:.4f} "
+        f"(before={baseline_number:.4f}, after={current_number:.4f}, "
+        f"allowed_drop={allowed_drop:.4f})"
+    )
+    return {
+        "metric": metric,
+        "before": baseline_number,
+        "after": current_number,
+        "delta": round(delta, 6),
+        "max_drop": allowed_drop,
+    }
+
+
+def _evaluate_backend_regressions(
+    *,
+    backend: str,
+    before: dict[str, Any],
+    after: dict[str, Any],
+    metrics: list[tuple[str, float]],
+    failures: list[str],
+) -> list[dict[str, Any]]:
+    backend_failures: list[dict[str, Any]] = []
+    for metric, allowed_drop in metrics:
+        failure = _evaluate_regression_metric(
+            backend=backend,
+            metric=metric,
+            allowed_drop=allowed_drop,
+            before=before,
+            after=after,
+            failures=failures,
+        )
+        if failure is not None:
+            backend_failures.append(failure)
+    return backend_failures
+
+
+def _resolve_severity_thresholds(severity_bands: dict[str, float] | None) -> dict[str, float]:
+    bands_raw = severity_bands if isinstance(severity_bands, dict) else {}
+
+    def _band(name: str, default: float) -> float:
+        try:
+            return max(0.0, float(bands_raw.get(name, default)))
+        except Exception:
+            return float(default)
+
+    critical_at = _band("critical", 3.0)
+    high_at = _band("high", 1.5)
+    medium_at = _band("medium", 1.0)
+    low_at = _band("low", 0.5)
+    return {
+        "critical": max(critical_at, high_at, medium_at, low_at),
+        "high": max(high_at, medium_at, low_at),
+        "medium": max(medium_at, low_at),
+        "low": low_at,
+    }
+
+
+def _resolve_regression_level(ratio: float, thresholds: dict[str, float]) -> str | None:
+    if ratio >= float(thresholds["critical"]):
+        return "critical"
+    if ratio >= float(thresholds["high"]):
+        return "high"
+    if ratio >= float(thresholds["medium"]):
+        return "medium"
+    if ratio >= float(thresholds["low"]):
+        return "low"
+    return None
+
+
+def _build_regression_severity_item(
+    *,
+    backend: str,
+    metric: str,
+    before: dict[str, Any],
+    after: dict[str, Any],
+    max_drop: float,
+    thresholds: dict[str, float],
+) -> dict[str, Any] | None:
+    try:
+        allowed = abs(float(max_drop))
+    except Exception:
+        return None
+    if allowed <= 0:
+        return None
+    try:
+        baseline_number = float(before.get(metric))
+        current_number = float(after.get(metric))
+    except Exception:
+        return None
+    delta = float(current_number - baseline_number)
+    if delta >= 0.0:
+        return None
+    ratio = abs(delta) / allowed
+    level = _resolve_regression_level(ratio, thresholds)
+    if level is None:
+        return None
+    return {
+        "backend": backend,
+        "metric": metric,
+        "before": baseline_number,
+        "after": current_number,
+        "delta": round(delta, 6),
+        "max_drop": round(float(allowed), 6),
+        "ratio": round(float(ratio), 6),
+        "level": level,
+    }
+
+
 def evaluate_strict_regressions(
     *,
     current_summary: dict[str, Any],
@@ -631,19 +918,10 @@ def evaluate_strict_regressions(
             "by_backend": {},
         }
 
-    metrics: list[tuple[str, float]] = []
-    for raw_metric, max_drop in (max_drop_by_metric or {}).items():
-        metric = str(raw_metric).strip()
-        if not metric:
-            continue
-        try:
-            allowed_drop = abs(float(max_drop))
-            if not math.isfinite(allowed_drop):
-                raise ValueError
-        except (TypeError, ValueError):
-            failures.append(f"{metric} has a non-numeric maximum drop")
-            continue
-        metrics.append((metric, allowed_drop))
+    metrics = _resolve_regression_metrics(
+        max_drop_by_metric=max_drop_by_metric,
+        failures=failures,
+    )
 
     for backend, before in (baseline_summary or {}).items():
         if not isinstance(before, dict):
@@ -656,76 +934,13 @@ def evaluate_strict_regressions(
             by_backend[str(backend)] = [{"reason": "missing_backend"}]
             continue
 
-        backend_failures: list[dict[str, Any]] = []
-        for metric, allowed_drop in metrics:
-            b_raw = before.get(metric)
-            a_raw = after.get(metric)
-            if b_raw is None:
-                backend_failures.append(
-                    {
-                        "metric": metric,
-                        "before": None,
-                        "after": a_raw,
-                        "reason": "missing_baseline_metric",
-                    }
-                )
-                failures.append(f"{backend}.{metric} is missing from the baseline summary")
-                continue
-            if a_raw is None:
-                backend_failures.append(
-                    {
-                        "metric": metric,
-                        "before": b_raw,
-                        "after": None,
-                        "reason": "missing_metric",
-                    }
-                )
-                failures.append(f"{backend}.{metric} is missing from the current summary")
-                continue
-            try:
-                b = float(b_raw)
-                if not math.isfinite(b):
-                    raise ValueError
-            except (TypeError, ValueError):
-                backend_failures.append(
-                    {
-                        "metric": metric,
-                        "before": b_raw,
-                        "after": a_raw,
-                        "reason": "invalid_baseline_metric",
-                    }
-                )
-                failures.append(f"{backend}.{metric} has a non-numeric baseline value")
-                continue
-            try:
-                a = float(a_raw)
-                if not math.isfinite(a):
-                    raise ValueError
-            except (TypeError, ValueError):
-                backend_failures.append(
-                    {
-                        "metric": metric,
-                        "before": b_raw,
-                        "after": a_raw,
-                        "reason": "invalid_current_metric",
-                    }
-                )
-                failures.append(f"{backend}.{metric} has a non-numeric current value")
-                continue
-            delta = float(a - b)
-            if delta < (0.0 - allowed_drop):
-                backend_failures.append(
-                    {
-                        "metric": metric,
-                        "before": b,
-                        "after": a,
-                        "delta": round(delta, 6),
-                        "max_drop": allowed_drop,
-                    }
-                )
-                failures.append(
-                    f"{backend}.{metric} regressed by {delta:.4f} (before={b:.4f}, after={a:.4f}, allowed_drop={allowed_drop:.4f})"
-                )
+        backend_failures = _evaluate_backend_regressions(
+            backend=str(backend),
+            before=before,
+            after=after,
+            metrics=metrics,
+            failures=failures,
+        )
 
         if backend_failures:
             by_backend[str(backend)] = backend_failures
@@ -767,7 +982,9 @@ def load_strict_profile(path: Path | None) -> dict[str, Any]:
         raise ValueError("strict_profile_invalid: expected JSON object")
     schema = str(obj.get("schema") or "").strip()
     if schema != _STRICT_PROFILE_SCHEMA_V1:
-        raise ValueError(f"strict_profile_invalid_schema: expected {_STRICT_PROFILE_SCHEMA_V1}, got {schema or '<empty>'}")
+        raise ValueError(
+            f"strict_profile_invalid_schema: expected {_STRICT_PROFILE_SCHEMA_V1}, got {schema or '<empty>'}"
+        )
     return obj
 
 
@@ -789,23 +1006,7 @@ def resolve_strict_thresholds(
         except Exception:
             return float(cli_default)
 
-    return {
-        "ok_rate": _pick("ok_rate", float(args.strict_max_ok_rate_drop)),
-        "parse_score_mean": _pick("parse_score_mean", float(args.strict_max_parse_score_drop)),
-        "golden_similarity_mean": _pick("golden_similarity_mean", float(args.strict_max_golden_similarity_drop)),
-        "golden_coverage_ratio_mean": _pick("golden_coverage_ratio_mean", float(args.strict_max_golden_coverage_drop)),
-        "golden_image_ref_recall_mean": _pick("golden_image_ref_recall_mean", float(args.strict_max_golden_image_ref_recall_drop)),
-        "mean_seal_recall": _pick("mean_seal_recall", float(args.strict_max_seal_recall_drop)),
-        "mean_equation_recall": _pick("mean_equation_recall", float(args.strict_max_equation_recall_drop)),
-        "mean_table_recall": _pick("mean_table_recall", float(args.strict_max_table_recall_drop)),
-        "mean_image_recall": _pick("mean_image_recall", float(args.strict_max_image_recall_drop)),
-        "mean_chart_image_recall": _pick("mean_chart_image_recall", float(args.strict_max_chart_image_recall_drop)),
-        "mean_qr_image_recall": _pick("mean_qr_image_recall", float(args.strict_max_qr_image_recall_drop)),
-        "mean_barcode_image_recall": _pick("mean_barcode_image_recall", float(args.strict_max_barcode_image_recall_drop)),
-        "mean_diagram_image_recall": _pick("mean_diagram_image_recall", float(args.strict_max_diagram_image_recall_drop)),
-        "mean_qr_code_value_recall": _pick("mean_qr_code_value_recall", float(args.strict_max_qr_code_value_recall_drop)),
-        "mean_barcode_code_value_recall": _pick("mean_barcode_code_value_recall", float(args.strict_max_barcode_code_value_recall_drop)),
-    }
+    return {metric: _pick(metric, float(getattr(args, attr_name))) for metric, attr_name in _STRICT_THRESHOLD_FIELDS}
 
 
 def build_regression_severity_summary(
@@ -815,22 +1016,7 @@ def build_regression_severity_summary(
     max_drop_by_metric: dict[str, float],
     severity_bands: dict[str, float] | None = None,
 ) -> dict[str, Any]:
-    bands_raw = severity_bands if isinstance(severity_bands, dict) else {}
-
-    def _band(name: str, default: float) -> float:
-        try:
-            return max(0.0, float(bands_raw.get(name, default)))
-        except Exception:
-            return float(default)
-
-    critical_at = _band("critical", 3.0)
-    high_at = _band("high", 1.5)
-    medium_at = _band("medium", 1.0)
-    low_at = _band("low", 0.5)
-    # Keep monotonic thresholds.
-    critical_at = max(critical_at, high_at, medium_at, low_at)
-    high_at = max(high_at, medium_at, low_at)
-    medium_at = max(medium_at, low_at)
+    thresholds = _resolve_severity_thresholds(severity_bands)
 
     items: list[dict[str, Any]] = []
     levels = {"critical": 0, "high": 0, "medium": 0, "low": 0}
@@ -842,53 +1028,27 @@ def build_regression_severity_summary(
         if not isinstance(before, dict):
             continue
         for metric, max_drop in (max_drop_by_metric or {}).items():
-            try:
-                allowed = abs(float(max_drop))
-            except Exception:
-                continue
-            if allowed <= 0:
-                continue
-            b_raw = before.get(metric)
-            a_raw = after.get(metric)
-            if b_raw is None or a_raw is None:
-                continue
-            try:
-                b = float(b_raw)
-                a = float(a_raw)
-            except Exception:
-                continue
-            delta = float(a - b)
-            if delta >= 0.0:
-                continue
-            ratio = abs(delta) / allowed
-
-            level = None
-            if ratio >= critical_at:
-                level = "critical"
-            elif ratio >= high_at:
-                level = "high"
-            elif ratio >= medium_at:
-                level = "medium"
-            elif ratio >= low_at:
-                level = "low"
-            if level is None:
-                continue
-
-            levels[level] = int(levels.get(level, 0) or 0) + 1
-            items.append(
-                {
-                    "backend": str(backend),
-                    "metric": str(metric),
-                    "before": b,
-                    "after": a,
-                    "delta": round(delta, 6),
-                    "max_drop": round(float(allowed), 6),
-                    "ratio": round(float(ratio), 6),
-                    "level": str(level),
-                }
+            item = _build_regression_severity_item(
+                backend=str(backend),
+                metric=str(metric),
+                before=before,
+                after=after,
+                max_drop=max_drop,
+                thresholds=thresholds,
             )
+            if item is None:
+                continue
+            level = str(item.get("level") or "")
+            levels[level] = int(levels.get(level, 0) or 0) + 1
+            items.append(item)
 
-    items.sort(key=lambda row: (-float(row.get("ratio") or 0.0), str(row.get("backend") or ""), str(row.get("metric") or "")))
+    items.sort(
+        key=lambda row: (
+            -float(row.get("ratio") or 0.0),
+            str(row.get("backend") or ""),
+            str(row.get("metric") or ""),
+        )
+    )
     return {
         "schema": "mimirq.parser_benchmark_regression_severity.v1",
         "levels": {k: int(levels.get(k, 0) or 0) for k in ("critical", "high", "medium", "low")},
@@ -896,12 +1056,24 @@ def build_regression_severity_summary(
     }
 
 
-def main() -> int:
+def _build_arg_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="Parser benchmark harness (golden set optional).")
-    ap.add_argument("--input-dir", required=True, help="Directory containing input files (and optional golden markdown files).")
-    ap.add_argument("--manifest", default="", help="Optional JSON manifest describing cases + golden markdown paths.")
+    ap.add_argument(
+        "--input-dir",
+        required=True,
+        help="Directory containing input files (and optional golden markdown files).",
+    )
+    ap.add_argument(
+        "--manifest",
+        default="",
+        help="Optional JSON manifest describing cases + golden markdown paths.",
+    )
     ap.add_argument("--out", default="runs/parser_benchmark.json", help="Output JSON path.")
-    ap.add_argument("--baseline", default="", help="Optional previous report JSON to diff against (adds report.regressions).")
+    ap.add_argument(
+        "--baseline",
+        default="",
+        help="Optional previous report JSON to diff against (adds report.regressions).",
+    )
     ap.add_argument(
         "--strict",
         action="store_true",
@@ -1011,58 +1183,98 @@ def main() -> int:
         default="auto,basic,deepdoc,docling,mineru,marker,markitdown,pandoc",
         help="Comma-separated parser backends to try per case.",
     )
+    return ap
 
-    args = ap.parse_args()
 
+def _resolve_optional_path(raw_value: Any) -> Path | None:
+    raw = str(raw_value or "").strip()
+    return Path(raw).resolve() if raw else None
+
+
+def _resolve_backends(raw_value: Any) -> list[str]:
+    return [item.strip().lower() for item in str(raw_value or "").split(",") if item.strip()]
+
+
+def _build_run_config(args: argparse.Namespace) -> RunConfig:
     input_dir = Path(args.input_dir).resolve()
     if not input_dir.exists():
         raise SystemExit(f"input_dir_not_found: {input_dir}")
 
-    manifest_path = Path(str(args.manifest)).resolve() if str(args.manifest or "").strip() else None
-    baseline_path = Path(str(args.baseline)).resolve() if str(args.baseline or "").strip() else None
-    strict_profile_path = Path(str(args.strict_profile)).resolve() if str(args.strict_profile or "").strip() else None
+    manifest_path = _resolve_optional_path(args.manifest)
+    baseline_path = _resolve_optional_path(args.baseline)
+    strict_profile_path = _resolve_optional_path(args.strict_profile)
     strict_profile = load_strict_profile(strict_profile_path) if strict_profile_path else {}
     strict_thresholds = resolve_strict_thresholds(args=args, strict_profile=strict_profile)
     out_path = Path(args.out).resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    backends = [b.strip().lower() for b in str(args.backends or "").split(",") if b.strip()]
+    backends = _resolve_backends(args.backends)
     if not backends:
         raise SystemExit("backends_empty")
 
-    cases = _load_cases(input_dir, manifest_path=manifest_path, max_files=int(args.max_files or 0))
+    cases = _load_cases(
+        input_dir,
+        manifest_path=manifest_path,
+        max_files=int(args.max_files or 0),
+    )
     if not cases:
         raise SystemExit("no_cases_found")
 
+    return RunConfig(
+        args=args,
+        input_dir=input_dir,
+        manifest_path=manifest_path,
+        baseline_path=baseline_path,
+        strict_profile_path=strict_profile_path,
+        strict_profile=strict_profile,
+        strict_thresholds=strict_thresholds,
+        out_path=out_path,
+        backends=backends,
+        cases=cases,
+    )
+
+
+def _load_benchmark_dependencies() -> BenchmarkDependencies:
     from app.parsing.factory import parser_factory
     from app.parsing.processors.cross_page_merge import merge_cross_page_documents
     from app.parsing.quality.document_quality import score_document_parse_quality
     from app.parsing.quality.scorer import score_pdf_quality
     from app.parsing.quality.text_quality import score_parsed_text_quality
 
-    started_at = datetime.now(timezone.utc)
-    report: dict[str, Any] = {
+    return BenchmarkDependencies(
+        parser_factory=parser_factory,
+        merge_cross_page_documents=merge_cross_page_documents,
+        score_document_parse_quality=score_document_parse_quality,
+        score_pdf_quality=score_pdf_quality,
+        score_parsed_text_quality=score_parsed_text_quality,
+    )
+
+
+def _build_report(config: RunConfig, *, started_at: datetime) -> dict[str, Any]:
+    return {
         "schema": "mimirq.parser_benchmark.v1",
         "generated_at": started_at.isoformat(),
-        "input_dir": str(input_dir),
-        "manifest": str(manifest_path) if manifest_path else None,
-        "baseline": str(baseline_path) if baseline_path else None,
-        "strict_profile": str(strict_profile_path) if strict_profile_path else None,
-        "fixture_hash": _build_fixture_hash(cases=cases, manifest_path=manifest_path),
+        "input_dir": str(config.input_dir),
+        "manifest": str(config.manifest_path) if config.manifest_path else None,
+        "baseline": str(config.baseline_path) if config.baseline_path else None,
+        "strict_profile": str(config.strict_profile_path) if config.strict_profile_path else None,
+        "fixture_hash": _build_fixture_hash(cases=config.cases, manifest_path=config.manifest_path),
         "profile_hash": _build_profile_hash(
-            strict_profile=(strict_profile if isinstance(strict_profile, dict) else {}),
-            strict_thresholds=strict_thresholds,
-            backends=backends,
-            max_files=int(args.max_files or 0),
+            strict_profile=(config.strict_profile if isinstance(config.strict_profile, dict) else {}),
+            strict_thresholds=config.strict_thresholds,
+            backends=config.backends,
+            max_files=int(config.args.max_files or 0),
         ),
-        "backends": backends,
+        "backends": config.backends,
         "fixture_issues": [],
         "cases": [],
         "summary": {},
     }
 
-    by_backend: dict[str, dict[str, Any]] = {
-        b: {
+
+def _build_backend_stats(backends: list[str]) -> dict[str, dict[str, Any]]:
+    return {
+        backend: {
             "attempts": 0,
             "ok": 0,
             "elapsed_ms": [],
@@ -1079,390 +1291,613 @@ def main() -> int:
             "specialty_image_visual_kind_recall": {},
             "specialty_image_code_value_recall": {},
         }
-        for b in backends
+        for backend in backends
     }
 
-    for case in cases:
-        file_ext = case.path.suffix.lower()
-        pdf_quality: dict[str, Any] | None = None
-        if file_ext == ".pdf":
-            try:
-                pdf_quality = score_pdf_quality(case.path)
-            except Exception:
-                pdf_quality = None
 
-        golden_md = ""
-        if case.golden_markdown_path and case.golden_markdown_path.exists():
-            golden_md = _read_text(case.golden_markdown_path)
-        golden_struct = _structure_metrics(golden_md) if golden_md else None
-        golden_plain_chars = int(golden_struct.get("plain_chars") or 0) if isinstance(golden_struct, dict) else 0
-        golden_image_refs = int(golden_struct.get("image_refs") or 0) if isinstance(golden_struct, dict) else 0
-        golden_specialty = dict(case.golden_specialty_elements or {}) if isinstance(case.golden_specialty_elements, dict) else None
-        golden_image_visual_kinds = (
-            dict(case.golden_image_visual_kinds or {}) if isinstance(case.golden_image_visual_kinds, dict) else None
-        )
-        golden_image_code_values = (
-            dict(case.golden_image_code_values or {}) if isinstance(case.golden_image_code_values, dict) else None
-        )
-        golden_table_continuity = (
-            dict(case.golden_table_continuity or {}) if isinstance(case.golden_table_continuity, dict) else None
-        )
-        missing_input_assets = _find_missing_local_markdown_assets(case.path)
-        missing_local_assets = _find_missing_local_markdown_assets(case.golden_markdown_path)
+def _score_pdf_quality(case: BenchmarkCase, dependencies: BenchmarkDependencies) -> dict[str, Any] | None:
+    if case.path.suffix.lower() != ".pdf":
+        return None
+    try:
+        return dependencies.score_pdf_quality(case.path)
+    except Exception:
+        return None
 
-        case_row: dict[str, Any] = {
-            "id": case.case_id,
-            "path": str(case.path),
-            "file_type": file_ext.lstrip("."),
-            "input_missing_local_assets": missing_input_assets or None,
-            "golden_markdown_path": str(case.golden_markdown_path) if case.golden_markdown_path else None,
-            "golden": (
-                {
-                    "structure": golden_struct,
-                    "specialty_elements": golden_specialty,
-                    "image_visual_kinds": golden_image_visual_kinds,
-                    "image_code_values": golden_image_code_values,
-                    "table_continuity": golden_table_continuity,
-                    "missing_local_assets": missing_local_assets or None,
-                }
-                if golden_struct or golden_specialty or golden_image_visual_kinds or golden_image_code_values or golden_table_continuity
-                else None
-            ),
-            "attempts": [],
+
+def _load_case_golden_data(case: BenchmarkCase) -> CaseGoldenData:
+    golden_markdown = ""
+    if case.golden_markdown_path and case.golden_markdown_path.exists():
+        golden_markdown = _read_text(case.golden_markdown_path)
+    golden_structure = _structure_metrics(golden_markdown) if golden_markdown else None
+    return CaseGoldenData(
+        markdown=golden_markdown,
+        structure=golden_structure,
+        plain_chars=int(golden_structure.get("plain_chars") or 0) if isinstance(golden_structure, dict) else 0,
+        image_refs=int(golden_structure.get("image_refs") or 0) if isinstance(golden_structure, dict) else 0,
+        specialty=_dict_copy_or_none(case.golden_specialty_elements),
+        image_visual_kinds=_dict_copy_or_none(case.golden_image_visual_kinds),
+        image_code_values=_dict_copy_or_none(case.golden_image_code_values),
+        table_continuity=_dict_copy_or_none(case.golden_table_continuity),
+        missing_input_assets=_find_missing_local_markdown_assets(case.path),
+        missing_local_assets=_find_missing_local_markdown_assets(case.golden_markdown_path),
+    )
+
+
+def _golden_case_payload(golden: CaseGoldenData) -> dict[str, Any] | None:
+    fields = (
+        golden.structure,
+        golden.specialty,
+        golden.image_visual_kinds,
+        golden.image_code_values,
+        golden.table_continuity,
+    )
+    if not any(fields):
+        return None
+    return {
+        "structure": golden.structure,
+        "specialty_elements": golden.specialty,
+        "image_visual_kinds": golden.image_visual_kinds,
+        "image_code_values": golden.image_code_values,
+        "table_continuity": golden.table_continuity,
+        "missing_local_assets": golden.missing_local_assets or None,
+    }
+
+
+def _build_case_row(case: BenchmarkCase, golden: CaseGoldenData) -> dict[str, Any]:
+    return {
+        "id": case.case_id,
+        "path": str(case.path),
+        "file_type": case.path.suffix.lower().lstrip("."),
+        "input_missing_local_assets": golden.missing_input_assets or None,
+        "golden_markdown_path": str(case.golden_markdown_path) if case.golden_markdown_path else None,
+        "golden": _golden_case_payload(golden),
+        "attempts": [],
+    }
+
+
+def _append_fixture_issue(
+    report: dict[str, Any],
+    *,
+    case_id: str,
+    stage: str,
+    items: list[str],
+) -> None:
+    if not items:
+        return
+    report["fixture_issues"].append(
+        {
+            "case_id": case_id,
+            "type": "missing_local_assets",
+            "stage": stage,
+            "items": list(items),
         }
-        if missing_input_assets:
-            report["fixture_issues"].append(
-                {
-                    "case_id": str(case.case_id),
-                    "type": "missing_local_assets",
-                    "stage": "input",
-                    "items": list(missing_input_assets),
-                }
-            )
-        if missing_local_assets:
-            report["fixture_issues"].append(
-                {
-                    "case_id": str(case.case_id),
-                    "type": "missing_local_assets",
-                    "stage": "golden",
-                    "items": list(missing_local_assets),
-                }
-            )
+    )
 
-        for backend in backends:
-            by_backend[backend]["attempts"] += 1
-            t0 = time.perf_counter()
-            attempt: dict[str, Any] = {"backend": backend, "ok": False}
-            try:
-                docs, resolved_backend, prov = parser_factory.parse_with_provenance(
-                    case.path,
-                    parser_backend=backend,
-                    pdf_quality=pdf_quality,
-                )
-                docs = merge_cross_page_documents(list(docs or []))
-                md = _join_documents_to_markdown(docs)
-                md = _augment_markdown_with_inline_image_ocr(markdown=md, origin_path=case.path)
-                md = _apply_governance_cleaning(markdown=md, governance_rule_packs=case.governance_rule_packs)
-                metric_docs = _augment_documents_with_inline_image_codes(
-                    documents=list(docs or []),
-                    markdown=md,
-                    origin_path=case.path,
-                )
-                tq = score_parsed_text_quality(md).to_dict()
-                pq = score_document_parse_quality(pdf_quality=pdf_quality, parsed_text_quality=tq)
-                struct = _structure_metrics(md)
-                reading_order_score = _reading_order_score(md)
-                specialty_counts = _count_specialty_elements(metric_docs)
-                image_visual_kind_counts = _count_image_visual_kinds(metric_docs)
-                image_code_values = _collect_image_code_values(metric_docs)
 
-                attempt.update(
-                    {
-                        "ok": True,
-                        "resolved_backend": resolved_backend,
-                        "provenance": prov,
-                        "text_quality": tq,
-                        "parse_quality": pq,
-                        "structure": struct,
-                        "reading_order_score": reading_order_score,
-                        "specialty_elements": specialty_counts,
-                        "specialty_image_visual_kinds": image_visual_kind_counts,
-                        "specialty_image_code_values": image_code_values,
-                    }
-                )
-                if reading_order_score is not None:
-                    by_backend[backend]["reading_order_score"].append(float(reading_order_score))
-                if golden_md:
-                    sim = _similarity(md, golden_md)
-                    attempt["golden_similarity"] = round(float(sim), 4)
-                    table_grits = compute_table_collection_grits(
-                        pred_tables=_extract_markdown_tables(md),
-                        gold_tables=_extract_markdown_tables(golden_md),
-                    )
-                    if any(value is not None for value in table_grits.values()):
-                        attempt["table_grits"] = table_grits
-                        for key, stats_key in (
-                            ("topology", "table_grits_topology"),
-                            ("content", "table_grits_content"),
-                            ("f1", "table_grits_f1"),
-                        ):
-                            value = table_grits.get(key)
-                            if value is not None:
-                                by_backend[backend][stats_key].append(float(value))
-                    if golden_plain_chars > 0:
-                        cov = float(struct.get("plain_chars") or 0) / float(golden_plain_chars)
-                        attempt["golden_coverage_ratio"] = round(float(cov), 4)
-                        by_backend[backend]["coverage_ratio"].append(float(cov))
-                    by_backend[backend]["similarity"].append(float(sim))
-                    if golden_image_refs > 0:
-                        img_recall = float(struct.get("image_refs") or 0) / float(golden_image_refs)
-                        attempt["golden_image_ref_recall"] = round(float(img_recall), 4)
-                        by_backend[backend]["image_ref_recall"].append(float(img_recall))
-                    table_continuity = _score_table_continuity(md, golden_table_continuity)
-                    if table_continuity is None:
-                        table_continuity = _table_continuity_recall(golden_markdown=golden_md, parsed_markdown=md)
-                    if table_continuity is not None:
-                        attempt["table_continuity_recall"] = round(float(table_continuity), 4)
-                        by_backend[backend]["table_continuity_recall"].append(float(table_continuity))
-                if golden_specialty:
-                    specialty_recall: dict[str, float] = {}
-                    for kind in _SPECIALTY_KINDS:
-                        golden_count = int(golden_specialty.get(kind) or 0)
-                        if golden_count <= 0:
-                            continue
-                        recall = min(float(specialty_counts.get(kind) or 0) / float(golden_count), 1.0)
-                        specialty_recall[kind] = round(float(recall), 4)
-                        by_backend[backend]["specialty_recall"][kind].append(float(recall))
-                    if specialty_recall:
-                        attempt["specialty_recall"] = specialty_recall
-                if golden_image_visual_kinds:
-                    subtype_recall: dict[str, float] = {}
-                    subtype_stats = by_backend[backend]["specialty_image_visual_kind_recall"]
-                    if not isinstance(subtype_stats, dict):
-                        subtype_stats = {}
-                        by_backend[backend]["specialty_image_visual_kind_recall"] = subtype_stats
-                    for visual_kind, golden_count in golden_image_visual_kinds.items():
-                        count = int(golden_count or 0)
-                        if count <= 0:
-                            continue
-                        recall = min(float(image_visual_kind_counts.get(visual_kind) or 0) / float(count), 1.0)
-                        subtype_recall[visual_kind] = round(float(recall), 4)
-                        subtype_stats.setdefault(visual_kind, []).append(float(recall))
-                    if subtype_recall:
-                        attempt["specialty_image_visual_kind_recall"] = subtype_recall
-                if golden_image_code_values:
-                    code_recall: dict[str, float] = {}
-                    code_stats = by_backend[backend]["specialty_image_code_value_recall"]
-                    if not isinstance(code_stats, dict):
-                        code_stats = {}
-                        by_backend[backend]["specialty_image_code_value_recall"] = code_stats
-                    for visual_kind, expected_values in golden_image_code_values.items():
-                        expected = [str(item).strip() for item in expected_values if str(item).strip()]
-                        if not expected:
-                            continue
-                        actual = set(image_code_values.get(visual_kind) or [])
-                        matched = sum(1 for item in expected if item in actual)
-                        recall = float(matched) / float(len(expected))
-                        code_recall[visual_kind] = round(recall, 4)
-                        code_stats.setdefault(visual_kind, []).append(float(recall))
-                    if code_recall:
-                        attempt["specialty_image_code_value_recall"] = code_recall
+def _record_case_fixture_issues(
+    report: dict[str, Any],
+    *,
+    case: BenchmarkCase,
+    golden: CaseGoldenData,
+) -> None:
+    _append_fixture_issue(
+        report,
+        case_id=str(case.case_id),
+        stage="input",
+        items=golden.missing_input_assets,
+    )
+    _append_fixture_issue(
+        report,
+        case_id=str(case.case_id),
+        stage="golden",
+        items=golden.missing_local_assets,
+    )
 
-                by_backend[backend]["ok"] += 1
-                by_backend[backend]["parse_score"].append(float(pq.get("score") or 0.0))
-            except Exception as exc:
-                attempt.update(
-                    {
-                        "ok": False,
-                        "error_type": exc.__class__.__name__,
-                        "error_message": str(exc)[:200],
-                    }
-                )
-            finally:
-                elapsed_ms = int(round((time.perf_counter() - t0) * 1000))
-                attempt["elapsed_ms"] = elapsed_ms
-                by_backend[backend]["elapsed_ms"].append(int(elapsed_ms))
-                case_row["attempts"].append(attempt)
 
-        report["cases"].append(case_row)
+def _parse_case_backend(
+    *,
+    case: BenchmarkCase,
+    backend: str,
+    pdf_quality: dict[str, Any] | None,
+    dependencies: BenchmarkDependencies,
+) -> tuple[dict[str, Any], str, dict[str, Any], list[Any], str]:
+    docs, resolved_backend, provenance = dependencies.parser_factory.parse_with_provenance(
+        case.path,
+        parser_backend=backend,
+        pdf_quality=pdf_quality,
+    )
+    docs = dependencies.merge_cross_page_documents(list(docs or []))
+    markdown = _join_documents_to_markdown(docs)
+    markdown = _augment_markdown_with_inline_image_ocr(markdown=markdown, origin_path=case.path)
+    markdown = _apply_governance_cleaning(
+        markdown=markdown,
+        governance_rule_packs=case.governance_rule_packs,
+    )
+    metric_docs = _augment_documents_with_inline_image_codes(
+        documents=list(docs or []),
+        markdown=markdown,
+        origin_path=case.path,
+    )
+    text_quality = dependencies.score_parsed_text_quality(markdown).to_dict()
+    parse_quality = dependencies.score_document_parse_quality(
+        pdf_quality=pdf_quality,
+        parsed_text_quality=text_quality,
+    )
+    attempt = {
+        "ok": True,
+        "resolved_backend": resolved_backend,
+        "provenance": provenance,
+        "text_quality": text_quality,
+        "parse_quality": parse_quality,
+        "structure": _structure_metrics(markdown),
+        "reading_order_score": _reading_order_score(markdown),
+        "specialty_elements": _count_specialty_elements(metric_docs),
+        "specialty_image_visual_kinds": _count_image_visual_kinds(metric_docs),
+        "specialty_image_code_values": _collect_image_code_values(metric_docs),
+    }
+    return attempt, markdown, parse_quality, metric_docs, resolved_backend
 
-    # Aggregate summary.
-    summary: dict[str, Any] = {}
-    for backend, stats in by_backend.items():
-        elapsed = sorted(int(x) for x in stats.get("elapsed_ms") or [])
-        parse_scores = [float(x) for x in stats.get("parse_score") or []]
-        sims = [float(x) for x in stats.get("similarity") or []]
-        covs = [float(x) for x in stats.get("coverage_ratio") or []]
-        img_recalls = [float(x) for x in stats.get("image_ref_recall") or []]
-        table_continuity = [float(x) for x in stats.get("table_continuity_recall") or []]
-        table_grits_topology = [float(x) for x in stats.get("table_grits_topology") or []]
-        table_grits_content = [float(x) for x in stats.get("table_grits_content") or []]
-        table_grits_f1 = [float(x) for x in stats.get("table_grits_f1") or []]
-        reading_order_scores = [float(x) for x in stats.get("reading_order_score") or []]
-        specialty_recalls = stats.get("specialty_recall") if isinstance(stats.get("specialty_recall"), dict) else {}
-        image_visual_kind_recalls = (
-            stats.get("specialty_image_visual_kind_recall") if isinstance(stats.get("specialty_image_visual_kind_recall"), dict) else {}
+
+def _record_table_grits(
+    *,
+    attempt: dict[str, Any],
+    stats: dict[str, Any],
+    markdown: str,
+    golden_markdown: str,
+) -> None:
+    table_grits = compute_table_collection_grits(
+        pred_tables=_extract_markdown_tables(markdown),
+        gold_tables=_extract_markdown_tables(golden_markdown),
+    )
+    if not any(value is not None for value in table_grits.values()):
+        return
+    attempt["table_grits"] = table_grits
+    for key, stats_key in (
+        ("topology", "table_grits_topology"),
+        ("content", "table_grits_content"),
+        ("f1", "table_grits_f1"),
+    ):
+        value = table_grits.get(key)
+        if value is not None:
+            stats[stats_key].append(float(value))
+
+
+def _record_golden_metrics(
+    *,
+    attempt: dict[str, Any],
+    stats: dict[str, Any],
+    markdown: str,
+    golden: CaseGoldenData,
+) -> None:
+    if not golden.markdown:
+        return
+
+    similarity = _similarity(markdown, golden.markdown)
+    attempt["golden_similarity"] = round(float(similarity), 4)
+    _record_table_grits(
+        attempt=attempt,
+        stats=stats,
+        markdown=markdown,
+        golden_markdown=golden.markdown,
+    )
+    if golden.plain_chars > 0:
+        coverage = float(attempt["structure"].get("plain_chars") or 0) / float(golden.plain_chars)
+        attempt["golden_coverage_ratio"] = round(float(coverage), 4)
+        stats["coverage_ratio"].append(float(coverage))
+    stats["similarity"].append(float(similarity))
+    if golden.image_refs > 0:
+        image_recall = float(attempt["structure"].get("image_refs") or 0) / float(golden.image_refs)
+        attempt["golden_image_ref_recall"] = round(float(image_recall), 4)
+        stats["image_ref_recall"].append(float(image_recall))
+
+    table_continuity = _score_table_continuity(markdown, golden.table_continuity)
+    if table_continuity is None:
+        table_continuity = _table_continuity_recall(
+            golden_markdown=golden.markdown,
+            parsed_markdown=markdown,
         )
-        image_code_value_recalls = (
-            stats.get("specialty_image_code_value_recall") if isinstance(stats.get("specialty_image_code_value_recall"), dict) else {}
+    if table_continuity is not None:
+        attempt["table_continuity_recall"] = round(float(table_continuity), 4)
+        stats["table_continuity_recall"].append(float(table_continuity))
+
+
+def _record_specialty_recall(
+    *,
+    attempt: dict[str, Any],
+    stats: dict[str, Any],
+    golden: CaseGoldenData,
+) -> None:
+    if not golden.specialty:
+        return
+    specialty_recall: dict[str, float] = {}
+    specialty_counts = dict(attempt.get("specialty_elements") or {})
+    for kind in _SPECIALTY_KINDS:
+        golden_count = int(golden.specialty.get(kind) or 0)
+        if golden_count <= 0:
+            continue
+        recall = min(float(specialty_counts.get(kind) or 0) / float(golden_count), 1.0)
+        specialty_recall[kind] = round(float(recall), 4)
+        stats["specialty_recall"][kind].append(float(recall))
+    if specialty_recall:
+        attempt["specialty_recall"] = specialty_recall
+
+
+def _record_image_visual_kind_recall(
+    *,
+    attempt: dict[str, Any],
+    stats: dict[str, Any],
+    golden: CaseGoldenData,
+) -> None:
+    if not golden.image_visual_kinds:
+        return
+    subtype_recall: dict[str, float] = {}
+    subtype_stats = _nested_metric_map(stats.get("specialty_image_visual_kind_recall"))
+    counts = dict(attempt.get("specialty_image_visual_kinds") or {})
+    for visual_kind, golden_count in golden.image_visual_kinds.items():
+        count = int(golden_count or 0)
+        if count <= 0:
+            continue
+        recall = min(float(counts.get(visual_kind) or 0) / float(count), 1.0)
+        subtype_recall[visual_kind] = round(float(recall), 4)
+        subtype_stats.setdefault(visual_kind, []).append(float(recall))
+    stats["specialty_image_visual_kind_recall"] = subtype_stats
+    if subtype_recall:
+        attempt["specialty_image_visual_kind_recall"] = subtype_recall
+
+
+def _record_image_code_value_recall(
+    *,
+    attempt: dict[str, Any],
+    stats: dict[str, Any],
+    golden: CaseGoldenData,
+) -> None:
+    if not golden.image_code_values:
+        return
+    code_recall: dict[str, float] = {}
+    code_stats = _nested_metric_map(stats.get("specialty_image_code_value_recall"))
+    actual_values = attempt.get("specialty_image_code_values")
+    actual_values = actual_values if isinstance(actual_values, dict) else {}
+    for visual_kind, expected_values in golden.image_code_values.items():
+        expected = [str(item).strip() for item in expected_values if str(item).strip()]
+        if not expected:
+            continue
+        actual = set(actual_values.get(visual_kind) or [])
+        matched = sum(1 for item in expected if item in actual)
+        recall = float(matched) / float(len(expected))
+        code_recall[visual_kind] = round(recall, 4)
+        code_stats.setdefault(visual_kind, []).append(float(recall))
+    stats["specialty_image_code_value_recall"] = code_stats
+    if code_recall:
+        attempt["specialty_image_code_value_recall"] = code_recall
+
+
+def _record_success_metrics(
+    *,
+    attempt: dict[str, Any],
+    stats: dict[str, Any],
+    markdown: str,
+    golden: CaseGoldenData,
+    parse_quality: dict[str, Any],
+) -> None:
+    reading_order_score = attempt.get("reading_order_score")
+    if reading_order_score is not None:
+        stats["reading_order_score"].append(float(reading_order_score))
+    _record_golden_metrics(attempt=attempt, stats=stats, markdown=markdown, golden=golden)
+    _record_specialty_recall(attempt=attempt, stats=stats, golden=golden)
+    _record_image_visual_kind_recall(attempt=attempt, stats=stats, golden=golden)
+    _record_image_code_value_recall(attempt=attempt, stats=stats, golden=golden)
+    stats["ok"] += 1
+    stats["parse_score"].append(float(parse_quality.get("score") or 0.0))
+
+
+def _run_backend_attempt(
+    *,
+    case: BenchmarkCase,
+    backend: str,
+    pdf_quality: dict[str, Any] | None,
+    golden: CaseGoldenData,
+    stats: dict[str, Any],
+    dependencies: BenchmarkDependencies,
+) -> dict[str, Any]:
+    stats["attempts"] += 1
+    started = time.perf_counter()
+    attempt: dict[str, Any] = {"backend": backend, "ok": False}
+    try:
+        parsed_attempt, markdown, parse_quality, _metric_docs, _resolved_backend = _parse_case_backend(
+            case=case,
+            backend=backend,
+            pdf_quality=pdf_quality,
+            dependencies=dependencies,
         )
-
-        def _pct(vals: list[int], p: float) -> int | None:
-            if not vals:
-                return None
-            k = int(round((p / 100.0) * (len(vals) - 1)))
-            k = max(0, min(k, len(vals) - 1))
-            return int(vals[k])
-
-        summary[backend] = {
-            "attempts": int(stats.get("attempts") or 0),
-            "ok": int(stats.get("ok") or 0),
-            "ok_rate": round((float(stats.get("ok") or 0) / float(stats.get("attempts") or 1)), 4),
-            "elapsed_ms_p50": _pct(elapsed, 50.0),
-            "elapsed_ms_p90": _pct(elapsed, 90.0),
-            "parse_score_mean": (round(sum(parse_scores) / len(parse_scores), 4) if parse_scores else None),
-            "golden_similarity_mean": (round(sum(sims) / len(sims), 4) if sims else None),
-            "golden_coverage_ratio_mean": (round(sum(covs) / len(covs), 4) if covs else None),
-            "golden_image_ref_recall_mean": (round(sum(img_recalls) / len(img_recalls), 4) if img_recalls else None),
-            "mean_table_continuity_recall": (round(sum(table_continuity) / len(table_continuity), 4) if table_continuity else None),
-            "mean_table_grits_topology": (round(sum(table_grits_topology) / len(table_grits_topology), 4) if table_grits_topology else None),
-            "mean_table_grits_content": (round(sum(table_grits_content) / len(table_grits_content), 4) if table_grits_content else None),
-            "mean_table_grits_f1": (round(sum(table_grits_f1) / len(table_grits_f1), 4) if table_grits_f1 else None),
-            "mean_reading_order_score": (round(sum(reading_order_scores) / len(reading_order_scores), 4) if reading_order_scores else None),
-        }
-        for kind in _SPECIALTY_KINDS:
-            values = specialty_recalls.get(kind) if isinstance(specialty_recalls, dict) else None
-            values = [float(x) for x in values] if isinstance(values, list) else []
-            summary[backend][f"mean_{kind}_recall"] = (round(sum(values) / len(values), 4) if values else None)
-        subtype_summary: dict[str, float] = {}
-        for visual_kind, values in (image_visual_kind_recalls or {}).items():
-            numeric = [float(x) for x in values] if isinstance(values, list) else []
-            if not numeric:
-                continue
-            subtype_summary[str(visual_kind)] = round(sum(numeric) / len(numeric), 4)
-        if subtype_summary:
-            summary[backend]["mean_image_visual_kind_recall"] = subtype_summary
-        for visual_kind in _IMAGE_VISUAL_KINDS:
-            value = subtype_summary.get(visual_kind) if isinstance(subtype_summary, dict) else None
-            summary[backend][f"mean_{visual_kind}_image_recall"] = value if value is not None else None
-        for visual_kind in ("qr", "barcode"):
-            values = image_code_value_recalls.get(visual_kind) if isinstance(image_code_value_recalls, dict) else None
-            numeric = [float(x) for x in values] if isinstance(values, list) else []
-            summary[backend][f"mean_{visual_kind}_code_value_recall"] = (round(sum(numeric) / len(numeric), 4) if numeric else None)
-
-    report["summary"] = summary
-
-    # Optional: compute a simple baseline diff (best-effort).
-    if baseline_path and baseline_path.exists():
-        try:
-            baseline_obj = json.loads(_read_text(baseline_path))
-        except Exception:
-            baseline_obj = {}
-        baseline_summary = baseline_obj.get("summary") if isinstance(baseline_obj, dict) else {}
-        baseline_summary = baseline_summary if isinstance(baseline_summary, dict) else {}
-
-        def _metric(before: dict[str, Any], after: dict[str, Any], key: str) -> dict[str, Any] | None:
-            b = before.get(key)
-            a = after.get(key)
-            if b is None and a is None:
-                return None
-            try:
-                delta = (float(a) - float(b)) if a is not None and b is not None else None
-            except Exception:
-                delta = None
-            return {"before": b, "after": a, "delta": (round(delta, 6) if isinstance(delta, float) else delta)}
-
-        diffs: dict[str, Any] = {}
-        for backend, after in summary.items():
-            before = baseline_summary.get(backend) if isinstance(baseline_summary.get(backend), dict) else {}
-            before = before if isinstance(before, dict) else {}
-            diffs[backend] = {
-                k: v
-                for k, v in (
-                    ("ok_rate", _metric(before, after, "ok_rate")),
-                    ("elapsed_ms_p50", _metric(before, after, "elapsed_ms_p50")),
-                    ("elapsed_ms_p90", _metric(before, after, "elapsed_ms_p90")),
-                    ("parse_score_mean", _metric(before, after, "parse_score_mean")),
-                    ("golden_similarity_mean", _metric(before, after, "golden_similarity_mean")),
-                    ("golden_coverage_ratio_mean", _metric(before, after, "golden_coverage_ratio_mean")),
-                    ("golden_image_ref_recall_mean", _metric(before, after, "golden_image_ref_recall_mean")),
-                    ("mean_seal_recall", _metric(before, after, "mean_seal_recall")),
-                    ("mean_equation_recall", _metric(before, after, "mean_equation_recall")),
-                    ("mean_table_recall", _metric(before, after, "mean_table_recall")),
-                    ("mean_image_recall", _metric(before, after, "mean_image_recall")),
-                    ("mean_chart_image_recall", _metric(before, after, "mean_chart_image_recall")),
-                    ("mean_qr_image_recall", _metric(before, after, "mean_qr_image_recall")),
-                    ("mean_barcode_image_recall", _metric(before, after, "mean_barcode_image_recall")),
-                    ("mean_diagram_image_recall", _metric(before, after, "mean_diagram_image_recall")),
-                    ("mean_qr_code_value_recall", _metric(before, after, "mean_qr_code_value_recall")),
-                    ("mean_barcode_code_value_recall", _metric(before, after, "mean_barcode_code_value_recall")),
-                )
-                if v is not None
+        attempt.update(parsed_attempt)
+        _record_success_metrics(
+            attempt=attempt,
+            stats=stats,
+            markdown=markdown,
+            golden=golden,
+            parse_quality=parse_quality,
+        )
+    except Exception as exc:
+        attempt.update(
+            {
+                "ok": False,
+                "error_type": exc.__class__.__name__,
+                "error_message": str(exc)[:200],
             }
-
-        report["regressions"] = {
-            "baseline": str(baseline_path),
-            "compatibility": evaluate_baseline_compatibility(current_report=report, baseline_report=baseline_obj),
-            "by_backend": diffs,
-        }
-        severity_bands = strict_profile.get("severity_bands") if isinstance(strict_profile, dict) else {}
-        report["regression_severity"] = build_regression_severity_summary(
-            current_summary=summary,
-            baseline_summary=baseline_summary,
-            max_drop_by_metric=strict_thresholds,
-            severity_bands=(severity_bands if isinstance(severity_bands, dict) else None),
         )
-    elif bool(args.strict):
+    elapsed_ms = int(round((time.perf_counter() - started) * 1000))
+    attempt["elapsed_ms"] = elapsed_ms
+    stats["elapsed_ms"].append(int(elapsed_ms))
+    return attempt
+
+
+def _run_case(
+    *,
+    case: BenchmarkCase,
+    report: dict[str, Any],
+    by_backend: dict[str, dict[str, Any]],
+    backends: list[str],
+    dependencies: BenchmarkDependencies,
+) -> None:
+    golden = _load_case_golden_data(case)
+    case_row = _build_case_row(case, golden)
+    _record_case_fixture_issues(report, case=case, golden=golden)
+    pdf_quality = _score_pdf_quality(case, dependencies)
+    for backend in backends:
+        attempt = _run_backend_attempt(
+            case=case,
+            backend=backend,
+            pdf_quality=pdf_quality,
+            golden=golden,
+            stats=by_backend[backend],
+            dependencies=dependencies,
+        )
+        case_row["attempts"].append(attempt)
+    report["cases"].append(case_row)
+
+
+def _percentile_value(values: list[int], percentile: float) -> int | None:
+    if not values:
+        return None
+    index = int(round((percentile / 100.0) * (len(values) - 1)))
+    index = max(0, min(index, len(values) - 1))
+    return int(values[index])
+
+
+def _numeric_list(values: Any) -> list[float]:
+    return [float(item) for item in values] if isinstance(values, list) else []
+
+
+def _build_backend_summary(stats: dict[str, Any]) -> dict[str, Any]:
+    elapsed = sorted(int(item) for item in stats.get("elapsed_ms") or [])
+    parse_scores = _numeric_list(stats.get("parse_score"))
+    similarities = _numeric_list(stats.get("similarity"))
+    coverage = _numeric_list(stats.get("coverage_ratio"))
+    image_recall = _numeric_list(stats.get("image_ref_recall"))
+    table_continuity = _numeric_list(stats.get("table_continuity_recall"))
+    table_grits_topology = _numeric_list(stats.get("table_grits_topology"))
+    table_grits_content = _numeric_list(stats.get("table_grits_content"))
+    table_grits_f1 = _numeric_list(stats.get("table_grits_f1"))
+    reading_order_scores = _numeric_list(stats.get("reading_order_score"))
+    specialty_recalls = _nested_metric_map(stats.get("specialty_recall"))
+    image_visual_kind_recalls = _nested_metric_map(stats.get("specialty_image_visual_kind_recall"))
+    image_code_value_recalls = _nested_metric_map(stats.get("specialty_image_code_value_recall"))
+
+    row = {
+        "attempts": int(stats.get("attempts") or 0),
+        "ok": int(stats.get("ok") or 0),
+        "ok_rate": round((float(stats.get("ok") or 0) / float(stats.get("attempts") or 1)), 4),
+        "elapsed_ms_p50": _percentile_value(elapsed, 50.0),
+        "elapsed_ms_p90": _percentile_value(elapsed, 90.0),
+        "parse_score_mean": _average_or_none(parse_scores),
+        "golden_similarity_mean": _average_or_none(similarities),
+        "golden_coverage_ratio_mean": _average_or_none(coverage),
+        "golden_image_ref_recall_mean": _average_or_none(image_recall),
+        "mean_table_continuity_recall": _average_or_none(table_continuity),
+        "mean_table_grits_topology": _average_or_none(table_grits_topology),
+        "mean_table_grits_content": _average_or_none(table_grits_content),
+        "mean_table_grits_f1": _average_or_none(table_grits_f1),
+        "mean_reading_order_score": _average_or_none(reading_order_scores),
+    }
+    for kind in _SPECIALTY_KINDS:
+        row[f"mean_{kind}_recall"] = _average_or_none(_numeric_list(specialty_recalls.get(kind)))
+
+    subtype_summary: dict[str, float] = {}
+    for visual_kind, values in image_visual_kind_recalls.items():
+        numeric = _numeric_list(values)
+        if numeric:
+            subtype_summary[str(visual_kind)] = round(sum(numeric) / len(numeric), 4)
+    if subtype_summary:
+        row["mean_image_visual_kind_recall"] = subtype_summary
+
+    for visual_kind in _IMAGE_VISUAL_KINDS:
+        row[f"mean_{visual_kind}_image_recall"] = subtype_summary.get(visual_kind)
+    for visual_kind in ("qr", "barcode"):
+        row[f"mean_{visual_kind}_code_value_recall"] = _average_or_none(
+            _numeric_list(image_code_value_recalls.get(visual_kind))
+        )
+    return row
+
+
+def _build_summary(by_backend: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    return {backend: _build_backend_summary(stats) for backend, stats in by_backend.items()}
+
+
+def _load_baseline_report(baseline_path: Path | None) -> dict[str, Any]:
+    if baseline_path is None or not baseline_path.exists():
+        return {}
+    try:
+        payload = json.loads(_read_text(baseline_path))
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _baseline_summary(payload: dict[str, Any]) -> dict[str, Any]:
+    summary = payload.get("summary") if isinstance(payload, dict) else {}
+    return summary if isinstance(summary, dict) else {}
+
+
+def _metric_delta(before: dict[str, Any], after: dict[str, Any], key: str) -> dict[str, Any] | None:
+    before_value = before.get(key)
+    after_value = after.get(key)
+    if before_value is None and after_value is None:
+        return None
+    delta = None
+    if before_value is not None and after_value is not None:
+        try:
+            delta = float(after_value) - float(before_value)
+        except Exception:
+            delta = None
+    if isinstance(delta, float):
+        delta = round(delta, 6)
+    return {"before": before_value, "after": after_value, "delta": delta}
+
+
+def _build_backend_regression_diff(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
+    return {
+        metric: diff
+        for metric in _BASELINE_REGRESSION_METRICS
+        if (diff := _metric_delta(before, after, metric)) is not None
+    }
+
+
+def _attach_baseline_regressions(
+    *,
+    report: dict[str, Any],
+    summary: dict[str, Any],
+    config: RunConfig,
+) -> dict[str, Any]:
+    baseline_obj = _load_baseline_report(config.baseline_path)
+    if config.baseline_path is None or not config.baseline_path.exists():
+        return baseline_obj
+
+    baseline_summary = _baseline_summary(baseline_obj)
+    report["regressions"] = {
+        "baseline": str(config.baseline_path),
+        "compatibility": evaluate_baseline_compatibility(
+            current_report=report,
+            baseline_report=baseline_obj,
+        ),
+        "by_backend": {
+            backend: _build_backend_regression_diff(
+                before=baseline_summary.get(backend) if isinstance(baseline_summary.get(backend), dict) else {},
+                after=after,
+            )
+            for backend, after in summary.items()
+        },
+    }
+    severity_bands = config.strict_profile.get("severity_bands") if isinstance(config.strict_profile, dict) else {}
+    report["regression_severity"] = build_regression_severity_summary(
+        current_summary=summary,
+        baseline_summary=baseline_summary,
+        max_drop_by_metric=config.strict_thresholds,
+        severity_bands=severity_bands if isinstance(severity_bands, dict) else None,
+    )
+    return baseline_obj
+
+
+def _strict_requires_baseline(config: RunConfig) -> bool:
+    return bool(config.args.strict) and not (config.baseline_path and config.baseline_path.exists())
+
+
+def _build_fixture_issue_failure(item: dict[str, Any]) -> str:
+    missing_items = ", ".join(str(value) for value in (item.get("items") or []))
+    case_id = str(item.get("case_id") or "unknown")
+    return f"{case_id}: missing_local_assets -> {missing_items}"
+
+
+def _fixture_issue_failures(report: dict[str, Any]) -> list[str]:
+    return [
+        _build_fixture_issue_failure(item)
+        for item in list(report.get("fixture_issues") or [])
+        if str(item.get("type") or "") == "missing_local_assets"
+    ]
+
+
+def _apply_strict_gate(
+    *,
+    report: dict[str, Any],
+    summary: dict[str, Any],
+    config: RunConfig,
+    baseline_obj: dict[str, Any],
+) -> int:
+    if not bool(config.args.strict):
+        return 0
+
+    baseline_summary = _baseline_summary(baseline_obj)
+    strict_result = evaluate_strict_regressions(
+        current_summary=summary,
+        baseline_summary=baseline_summary,
+        max_drop_by_metric=config.strict_thresholds,
+    )
+    compatibility = evaluate_baseline_compatibility(
+        current_report=report,
+        baseline_report=baseline_obj,
+    )
+    compatibility_mismatches = list(compatibility.get("mismatches") or [])
+    fixture_issue_failures = _fixture_issue_failures(report)
+    passed = bool(strict_result.get("passed"))
+    passed = passed and not compatibility_mismatches and not fixture_issue_failures
+    failures = list(strict_result.get("failures") or [])
+    failures.extend(compatibility_mismatches)
+    failures.extend(fixture_issue_failures)
+    report["strict_gate"] = {
+        "enabled": True,
+        "thresholds": dict(config.strict_thresholds or {}),
+        "passed": passed,
+        "failures": failures,
+        "by_backend": dict(strict_result.get("by_backend") or {}),
+        "compatibility": compatibility,
+        "fixture_issues": list(report.get("fixture_issues") or []),
+    }
+    return 0 if passed else 2
+
+
+def _write_report(out_path: Path, report: dict[str, Any]) -> None:
+    out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"[parser-benchmark] wrote {out_path}")
+
+
+def main() -> int:
+    config = _build_run_config(_build_arg_parser().parse_args())
+    dependencies = _load_benchmark_dependencies()
+    report = _build_report(config, started_at=datetime.now(timezone.utc))
+    by_backend = _build_backend_stats(config.backends)
+
+    for case in config.cases:
+        _run_case(
+            case=case,
+            report=report,
+            by_backend=by_backend,
+            backends=config.backends,
+            dependencies=dependencies,
+        )
+
+    summary = _build_summary(by_backend)
+    report["summary"] = summary
+    if _strict_requires_baseline(config):
         report["strict_gate"] = {
             "enabled": True,
             "passed": False,
             "reason": "baseline_required",
             "failures": ["strict mode requires --baseline to exist"],
         }
-        out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"[parser-benchmark] wrote {out_path}")
+        _write_report(config.out_path, report)
         print("[parser-benchmark] strict gate failed: baseline_required")
         return 2
 
-    if bool(args.strict):
-        baseline_summary = (
-            (baseline_obj.get("summary") if isinstance(baseline_obj, dict) else {})
-            if baseline_path and baseline_path.exists()
-            else {}
-        )
-        baseline_summary = baseline_summary if isinstance(baseline_summary, dict) else {}
-        strict_result = evaluate_strict_regressions(
-            current_summary=summary,
-            baseline_summary=baseline_summary,
-            max_drop_by_metric=strict_thresholds,
-        )
-        compatibility = evaluate_baseline_compatibility(current_report=report, baseline_report=baseline_obj)
-        compatibility_mismatches = list(compatibility.get("mismatches") or [])
-        fixture_issue_failures = [
-            f"{str(item.get('case_id') or 'unknown')}: missing_local_assets -> {', '.join(str(x) for x in (item.get('items') or []))}"
-            for item in list(report.get("fixture_issues") or [])
-            if str(item.get("type") or "") == "missing_local_assets"
-        ]
-        passed = bool(strict_result.get("passed")) and len(compatibility_mismatches) == 0 and len(fixture_issue_failures) == 0
-        failures = list(strict_result.get("failures") or []) + compatibility_mismatches + fixture_issue_failures
-        report["strict_gate"] = {
-            "enabled": True,
-            "thresholds": dict(strict_thresholds or {}),
-            "passed": passed,
-            "failures": failures,
-            "by_backend": dict(strict_result.get("by_backend") or {}),
-            "compatibility": compatibility,
-            "fixture_issues": list(report.get("fixture_issues") or []),
-        }
-
-    out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"[parser-benchmark] wrote {out_path}")
-    if bool(args.strict):
-        passed = bool(((report.get("strict_gate") or {}).get("passed")))
-        if not passed:
-            print("[parser-benchmark] strict gate failed")
-            return 2
-    return 0
+    baseline_obj = _attach_baseline_regressions(report=report, summary=summary, config=config)
+    exit_code = _apply_strict_gate(
+        report=report,
+        summary=summary,
+        config=config,
+        baseline_obj=baseline_obj,
+    )
+    _write_report(config.out_path, report)
+    if exit_code:
+        print("[parser-benchmark] strict gate failed")
+    return exit_code
 
 
 if __name__ == "__main__":

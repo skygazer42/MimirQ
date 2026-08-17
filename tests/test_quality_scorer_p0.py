@@ -247,30 +247,30 @@ class TestRealWorldScenarios:
         def process_document(doc_path: str, config: dict) -> dict:
             """
             Process a document through the RAG pipeline.
-            
+
             Args:
                 doc_path: Path to the document file
                 config: Processing configuration
-                
+
             Returns:
                 Processing results with metadata
             """
             try:
                 # Load document
                 content = load_file(doc_path)
-                
+
                 # Parse content
                 parsed = parse_document(content, config.get("parser"))
-                
+
                 # Chunk content
                 chunks = chunk_document(parsed, config.get("chunking"))
-                
+
                 # Generate embeddings
                 embeddings = embed_chunks(chunks, config.get("embedding"))
-                
+
                 # Store in vector DB
                 store_embeddings(embeddings, config.get("vector_db"))
-                
+
                 return {
                     "status": "success",
                     "chunks": len(chunks),

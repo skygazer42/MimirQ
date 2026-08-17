@@ -102,17 +102,27 @@ def _install_fake_redis(monkeypatch: pytest.MonkeyPatch, redis: _FakeRedis) -> N
     monkeypatch.setattr(png_tasks, "_invalidate_redis_client", lambda: None, raising=True)
     monkeypatch.setattr(png_tasks, "_utc_now", lambda: redis.now, raising=True)
     monkeypatch.setattr(dataset_analysis_service, "get_png_export_task", png_tasks.get_png_export_task, raising=True)
-    monkeypatch.setattr(dataset_analysis_service, "get_png_export_task_result", png_tasks.get_png_export_task_result, raising=True)
-    monkeypatch.setattr(dataset_analysis_service, "create_png_export_task", png_tasks.create_png_export_task, raising=True)
-    monkeypatch.setattr(dataset_analysis_service, "begin_png_export_task", png_tasks.begin_png_export_task, raising=True)
-    monkeypatch.setattr(dataset_analysis_service, "heartbeat_png_export_task", png_tasks.heartbeat_png_export_task, raising=True)
+    monkeypatch.setattr(
+        dataset_analysis_service, "get_png_export_task_result", png_tasks.get_png_export_task_result, raising=True
+    )
+    monkeypatch.setattr(
+        dataset_analysis_service, "create_png_export_task", png_tasks.create_png_export_task, raising=True
+    )
+    monkeypatch.setattr(
+        dataset_analysis_service, "begin_png_export_task", png_tasks.begin_png_export_task, raising=True
+    )
+    monkeypatch.setattr(
+        dataset_analysis_service, "heartbeat_png_export_task", png_tasks.heartbeat_png_export_task, raising=True
+    )
     monkeypatch.setattr(
         dataset_analysis_service,
         "get_png_export_task_heartbeat_interval_sec",
         png_tasks.get_png_export_task_heartbeat_interval_sec,
         raising=True,
     )
-    monkeypatch.setattr(dataset_analysis_service, "complete_png_export_task", png_tasks.complete_png_export_task, raising=True)
+    monkeypatch.setattr(
+        dataset_analysis_service, "complete_png_export_task", png_tasks.complete_png_export_task, raising=True
+    )
     monkeypatch.setattr(dataset_analysis_service, "fail_png_export_task", png_tasks.fail_png_export_task, raising=True)
 
 
@@ -381,12 +391,15 @@ def test_running_task_only_becomes_worker_lost_after_heartbeat_stops(monkeypatch
 
     for _ in range(3):
         redis.advance(seconds=2)
-        assert png_tasks.heartbeat_png_export_task(
-            task["task_id"],
-            tenant_id="tenant-1",
-            dataset_id="dataset-1",
-            owner_token=str(started["owner_token"]),
-        ) is True
+        assert (
+            png_tasks.heartbeat_png_export_task(
+                task["task_id"],
+                tenant_id="tenant-1",
+                dataset_id="dataset-1",
+                owner_token=str(started["owner_token"]),
+            )
+            is True
+        )
         assert (
             png_tasks.get_png_export_task(
                 task["task_id"],
@@ -459,7 +472,9 @@ def test_png_background_task_marks_source_incomplete(monkeypatch: pytest.MonkeyP
         ),
         raising=True,
     )
-    monkeypatch.setattr(dataset_analysis_service, "SessionLocal", lambda: SimpleNamespace(close=lambda: None), raising=True)
+    monkeypatch.setattr(
+        dataset_analysis_service, "SessionLocal", lambda: SimpleNamespace(close=lambda: None), raising=True
+    )
 
     background_tasks = BackgroundTasks()
     task = dataset_analysis_service.create_dataset_analysis_png_task(
@@ -488,7 +503,9 @@ def test_png_background_task_heartbeats_across_multiple_stale_windows(monkeypatc
     redis = _FakeRedis()
     _install_fake_redis(monkeypatch, redis)
     monkeypatch.setattr(png_tasks.settings, "DATASET_ANALYSIS_PNG_STALE_AFTER_SEC", 5, raising=False)
-    monkeypatch.setattr(dataset_analysis_service, "SessionLocal", lambda: SimpleNamespace(close=lambda: None), raising=True)
+    monkeypatch.setattr(
+        dataset_analysis_service, "SessionLocal", lambda: SimpleNamespace(close=lambda: None), raising=True
+    )
     monkeypatch.setattr(
         dataset_analysis_service,
         "_build_full_bundle",
@@ -513,7 +530,9 @@ def test_png_background_task_heartbeats_across_multiple_stale_windows(monkeypatc
         lambda payload: {"meta": {}, "payload": payload.dataset_id},
         raising=True,
     )
-    monkeypatch.setattr(dataset_analysis_service, "get_png_export_task_heartbeat_interval_sec", lambda: 0.01, raising=True)
+    monkeypatch.setattr(
+        dataset_analysis_service, "get_png_export_task_heartbeat_interval_sec", lambda: 0.01, raising=True
+    )
 
     render_entered = threading.Event()
     allow_finish = threading.Event()
@@ -577,7 +596,9 @@ def test_png_export_endpoint_returns_non_202_when_shared_state_unavailable(monke
         lambda *_a, **_k: SimpleNamespace(id=dataset_id, name="Dataset A"),
         raising=True,
     )
-    monkeypatch.setattr(dataset_analysis_api.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(
+        dataset_analysis_api.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True
+    )
     monkeypatch.setattr(
         dataset_analysis_api,
         "create_dataset_analysis_png_task",

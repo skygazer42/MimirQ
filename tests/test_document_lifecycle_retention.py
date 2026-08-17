@@ -25,7 +25,10 @@ def test_documents_exports_delegate_to_shared_services() -> None:
     assert documents.NO_DOCUMENT_ACCESS_DETAIL == document_access_service.NO_DOCUMENT_ACCESS_DETAIL
     assert documents._assert_document_acl_readable is document_access_service.assert_document_acl_readable
     assert documents._get_document_for_lifecycle is document_access_service.get_document_for_lifecycle
-    assert documents._assert_document_writable_for_lifecycle is document_access_service.assert_document_writable_for_lifecycle
+    assert (
+        documents._assert_document_writable_for_lifecycle
+        is document_access_service.assert_document_writable_for_lifecycle
+    )
     assert documents._get_document_for_delete is document_lifecycle_service._get_document_for_delete
     assert documents._delete_document_file is document_lifecycle_service._delete_document_file
     assert documents._delete_document_lifecycle is document_lifecycle_service._delete_document_lifecycle
@@ -108,7 +111,9 @@ async def test_delete_document_lifecycle_defaults_to_membership_enforcement(
     async def _noop_async(**_kwargs) -> None:  # noqa: ANN003
         return None
 
-    monkeypatch.setattr(dls.DatasetService, "ensure_member", lambda _db, tid, aid: membership_calls.append((tid, aid)), raising=True)
+    monkeypatch.setattr(
+        dls.DatasetService, "ensure_member", lambda _db, tid, aid: membership_calls.append((tid, aid)), raising=True
+    )
     monkeypatch.setattr(dls, "_get_document_for_delete", lambda *_a, **_k: document, raising=True)
     monkeypatch.setattr(dls, "_assert_document_delete_permission", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(dls, "_abort_document_tasks_before_delete", _noop_async, raising=True)
@@ -170,13 +175,24 @@ async def test_delete_document_lifecycle_persists_deleting_state_before_external
     monkeypatch.setattr(dls, "_get_document_for_delete", lambda *_a, **_k: document, raising=True)
     monkeypatch.setattr(dls, "_assert_document_delete_permission", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(dls, "_abort_document_tasks_before_delete", _noop_async, raising=True)
-    monkeypatch.setattr(dls, "_delete_document_minio_images", lambda *_a, **_k: cleanup_steps.append("images"), raising=True)
-    monkeypatch.setattr(dls, "_delete_document_table_store", lambda **_k: cleanup_steps.append("table_store"), raising=True)
+    monkeypatch.setattr(
+        dls, "_delete_document_minio_images", lambda *_a, **_k: cleanup_steps.append("images"), raising=True
+    )
+    monkeypatch.setattr(
+        dls, "_delete_document_table_store", lambda **_k: cleanup_steps.append("table_store"), raising=True
+    )
     monkeypatch.setattr(dls, "_delete_document_file", lambda **_k: cleanup_steps.append("file"), raising=True)
-    monkeypatch.setattr(dls, "_cleanup_document_kg_artifacts", lambda *_a, **_k: cleanup_steps.append("kg"), raising=True)
+    monkeypatch.setattr(
+        dls, "_cleanup_document_kg_artifacts", lambda *_a, **_k: cleanup_steps.append("kg"), raising=True
+    )
     monkeypatch.setattr(dls, "audit_log_event", lambda *_a, **_k: None, raising=True)
 
-    monkeypatch.setattr(dls, "_touch_dataset_updated_after_delete", lambda *_a, **_k: cleanup_steps.append("touch_dataset"), raising=True)
+    monkeypatch.setattr(
+        dls,
+        "_touch_dataset_updated_after_delete",
+        lambda *_a, **_k: cleanup_steps.append("touch_dataset"),
+        raising=True,
+    )
 
     class _Indexer:
         def __init__(self, _db) -> None:  # noqa: ANN001
@@ -471,7 +487,9 @@ async def test_rtbf_cascade_uses_system_membership_bypass(
         ],
         raising=True,
     )
-    monkeypatch.setattr(cascade, "_resolve_delete_document_lifecycle", lambda: _fake_delete_document_lifecycle, raising=True)
+    monkeypatch.setattr(
+        cascade, "_resolve_delete_document_lifecycle", lambda: _fake_delete_document_lifecycle, raising=True
+    )
     monkeypatch.setattr(cascade, "_invalidate_dataset_caches", lambda *_a, **_k: 1, raising=True)
     monkeypatch.setattr(cascade, "audit_log_event", lambda *_a, **_k: None, raising=True)
 
@@ -522,7 +540,9 @@ async def test_knowledge_asset_retention_uses_system_membership_bypass(
         lambda *_a, **_k: [{"document_id": document_id, "dataset_id": dataset_id, "lifecycle_state": "archived"}],
         raising=True,
     )
-    monkeypatch.setattr(retention_jobs, "_resolve_delete_document_lifecycle", lambda: _fake_delete_document_lifecycle, raising=True)
+    monkeypatch.setattr(
+        retention_jobs, "_resolve_delete_document_lifecycle", lambda: _fake_delete_document_lifecycle, raising=True
+    )
     monkeypatch.setattr(retention_jobs, "audit_log_event", lambda *_a, **_k: None, raising=True)
 
     class _DB:

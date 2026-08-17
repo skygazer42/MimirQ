@@ -2,7 +2,6 @@
 # ruff: noqa: E402, I001
 """Verify knowledge-base breadth across multiple file types against a live API."""
 
-
 import argparse
 import json
 import shutil
@@ -80,57 +79,43 @@ def prepare_fixture_files(fixtures_dir: Path) -> list[dict[str, Any]]:
 
     txt_path = fixtures_dir / "kb-note.txt"
     txt_path.write_text(
-        "Token TXT-BEACON belongs only to this text note.\n"
-        "Owner: Talia Beacon.\n",
+        "Token TXT-BEACON belongs only to this text note.\nOwner: Talia Beacon.\n",
         encoding="utf-8",
     )
 
     ini_path = fixtures_dir / "kb-service.ini"
     ini_path.write_text(
-        "[service]\n"
-        "token=INI-HARBOR\n"
-        "owner=Inez Harbor\n"
-        "status=ready\n",
+        "[service]\ntoken=INI-HARBOR\nowner=Inez Harbor\nstatus=ready\n",
         encoding="utf-8",
     )
 
     sql_path = fixtures_dir / "kb-owner.sql"
     sql_path.write_text(
-        "-- owner lookup\n"
-        'SELECT "SQL-LANTERN" AS token, "Soren Lantern" AS owner;\n',
+        '-- owner lookup\nSELECT "SQL-LANTERN" AS token, "Soren Lantern" AS owner;\n',
         encoding="utf-8",
     )
 
     toml_path = fixtures_dir / "kb-service.toml"
     toml_path.write_text(
-        'token = "TOML-EMBER"\n'
-        'owner = "Toma Ember"\n'
-        'status = "armed"\n',
+        'token = "TOML-EMBER"\nowner = "Toma Ember"\nstatus = "armed"\n',
         encoding="utf-8",
     )
 
     properties_path = fixtures_dir / "kb-service.properties"
     properties_path.write_text(
-        "token=PROP-LATTICE\n"
-        "owner=Priya Lattice\n"
-        "status=warm\n",
+        "token=PROP-LATTICE\nowner=Priya Lattice\nstatus=warm\n",
         encoding="utf-8",
     )
 
     env_path = fixtures_dir / "kb-service.env"
     env_path.write_text(
-        "TOKEN=ENV-SIGNAL\n"
-        "OWNER=Evan Signal\n"
-        "STATUS=green\n",
+        "TOKEN=ENV-SIGNAL\nOWNER=Evan Signal\nSTATUS=green\n",
         encoding="utf-8",
     )
 
     rst_path = fixtures_dir / "kb-guide.rst"
     rst_path.write_text(
-        "RST Guide\n"
-        "=========\n\n"
-        "Token RST-FLARE belongs only to this rst note.\n\n"
-        "Owner: Rhea Flare.\n",
+        "RST Guide\n=========\n\nToken RST-FLARE belongs only to this rst note.\n\nOwner: Rhea Flare.\n",
         encoding="utf-8",
     )
 
@@ -148,16 +133,13 @@ def prepare_fixture_files(fixtures_dir: Path) -> list[dict[str, Any]]:
 
     proto_path = fixtures_dir / "kb-service.proto"
     proto_path.write_text(
-        'syntax = "proto3";\n'
-        "// token PROTO-RIDGE owner Priya Ridge\n"
-        "message Probe {}\n",
+        'syntax = "proto3";\n// token PROTO-RIDGE owner Priya Ridge\nmessage Probe {}\n',
         encoding="utf-8",
     )
 
     graphql_path = fixtures_dir / "kb-query.graphql"
     graphql_path.write_text(
-        "# token GQL-ORBIT owner Gina Orbit\n"
-        "query Probe { viewer { id } }\n",
+        "# token GQL-ORBIT owner Gina Orbit\nquery Probe { viewer { id } }\n",
         encoding="utf-8",
     )
 
@@ -169,9 +151,7 @@ def prepare_fixture_files(fixtures_dir: Path) -> list[dict[str, Any]]:
 
     patch_path = fixtures_dir / "kb-change.patch"
     patch_path.write_text(
-        "+++ token PATCH-NOVA owner Nia Nova\n"
-        "@@\n"
-        "+status=applied\n",
+        "+++ token PATCH-NOVA owner Nia Nova\n@@\n+status=applied\n",
         encoding="utf-8",
     )
 
@@ -190,52 +170,46 @@ def prepare_fixture_files(fixtures_dir: Path) -> list[dict[str, Any]]:
 
     hcl_path = fixtures_dir / "kb-service.hcl"
     hcl_path.write_text(
-        'token = "HCL-VALE"\n'
-        'owner = "Hector Vale"\n'
-        'status = "steady"\n',
+        'token = "HCL-VALE"\nowner = "Hector Vale"\nstatus = "steady"\n',
         encoding="utf-8",
     )
 
     adoc_path = fixtures_dir / "kb-guide.adoc"
     adoc_path.write_text(
-        "= ADOC Guide\n\n"
-        "Token ADOC-EMBER belongs only to this adoc note.\n\n"
-        "Owner: Ada Ember.\n",
+        "= ADOC Guide\n\nToken ADOC-EMBER belongs only to this adoc note.\n\nOwner: Ada Ember.\n",
         encoding="utf-8",
     )
 
     diff_path = fixtures_dir / "kb-change.diff"
     diff_path.write_text(
-        "--- a\n"
-        "+++ b\n"
-        "+token DIFF-SHIFT owner Dario Shift\n",
+        "--- a\n+++ b\n+token DIFF-SHIFT owner Dario Shift\n",
         encoding="utf-8",
     )
 
     atom_path = fixtures_dir / "kb-feed.atom"
     atom_path.write_text(
-        '<?xml version="1.0" encoding="utf-8"?><feed><entry><title>ATOM-NOVA</title><author><name>Anya Nova</name></author></entry></feed>',
+        '<?xml version="1.0" encoding="utf-8"?><feed><entry><title>ATOM-NOVA</title>'
+        "<author><name>Anya Nova</name></author></entry></feed>",
         encoding="utf-8",
     )
 
     markdown_path = fixtures_dir / "kb-note.md"
     markdown_path.write_text(
-        "# KB Markdown Note\n\n"
-        "Token MD-ORBIT belongs only to the markdown note.\n\n"
-        "Owner: Maya Orbit.\n",
+        "# KB Markdown Note\n\nToken MD-ORBIT belongs only to the markdown note.\n\nOwner: Maya Orbit.\n",
         encoding="utf-8",
     )
 
     html_path = fixtures_dir / "kb-page.html"
     html_path.write_text(
-        "<!doctype html><html><body><h1>KB HTML Page</h1><p>Token HTML-CASCADE belongs only to the HTML page.</p><p>Owner: Hugo Cascade.</p></body></html>",
+        "<!doctype html><html><body><h1>KB HTML Page</h1>"
+        "<p>Token HTML-CASCADE belongs only to the HTML page.</p>"
+        "<p>Owner: Hugo Cascade.</p></body></html>",
         encoding="utf-8",
     )
 
     csv_path = fixtures_dir / "kb-metrics.csv"
     csv_path.write_text(
-        "token,owner,status\n"
-        "CSV-RIDGE,Rita Ridge,healthy\n",
+        "token,owner,status\nCSV-RIDGE,Rita Ridge,healthy\n",
         encoding="utf-8",
     )
 
@@ -255,17 +229,15 @@ def prepare_fixture_files(fixtures_dir: Path) -> list[dict[str, Any]]:
 
     yaml_path = fixtures_dir / "kb-config.yaml"
     yaml_path.write_text(
-        "token: YAML-CINDER\n"
-        "owner: Yara Cinder\n"
-        "status: approved\n",
+        "token: YAML-CINDER\nowner: Yara Cinder\nstatus: approved\n",
         encoding="utf-8",
     )
 
     xml_path = fixtures_dir / "kb-catalog.xml"
     xml_path.write_text(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
         "<catalog>\n"
-        "  <entry token=\"XML-DELTA\">\n"
+        '  <entry token="XML-DELTA">\n'
         "    <owner>Xenia Delta</owner>\n"
         "    <status>verified</status>\n"
         "  </entry>\n"
@@ -612,7 +584,9 @@ def main() -> int:
             if not document_id:
                 raise RuntimeError(f"upload:{case['name']} missing document id")
 
-            detail = wait_for_document_completed(api, steps=steps, filename=str(case["name"]), document_id=document_id, poll_timeout=args.poll_timeout)
+            detail = wait_for_document_completed(
+                api, steps=steps, filename=str(case["name"]), document_id=document_id, poll_timeout=args.poll_timeout
+            )
             chunks_resp = api.json("GET", f"/api/v1/documents/{document_id}/chunks?limit=200")
             record_step(steps, f"chunks:{case['name']}", chunks_resp)
             ensure_success(f"chunks:{case['name']}", chunks_resp)
@@ -661,10 +635,14 @@ def main() -> int:
                     "min_citations": 1,
                 },
                 document_id=document_id,
-                chunk_count=len((chunks_resp.body or {}).get("items") or (chunks_resp.body or {}).get("chunks") or []) if isinstance(chunks_resp.body, dict) else 0,
+                chunk_count=len((chunks_resp.body or {}).get("items") or (chunks_resp.body or {}).get("chunks") or [])
+                if isinstance(chunks_resp.body, dict)
+                else 0,
                 parsed_chars=len(parsed_text_from_response(parsed_resp.body)),
                 citation_doc_ids=citation_document_ids(retrieve_resp.body),
-                citation_count=len((retrieve_resp.body or {}).get("citations") or []) if isinstance(retrieve_resp.body, dict) else 0,
+                citation_count=len((retrieve_resp.body or {}).get("citations") or [])
+                if isinstance(retrieve_resp.body, dict)
+                else 0,
                 response_text=merged_text,
             )
             result = {
@@ -672,7 +650,11 @@ def main() -> int:
                 "file_path": str(case["path"]),
                 "document_id": document_id,
                 "status": str(detail.get("status") or "").lower(),
-                "chunk_count": len((chunks_resp.body or {}).get("items") or (chunks_resp.body or {}).get("chunks") or []) if isinstance(chunks_resp.body, dict) else 0,
+                "chunk_count": len(
+                    (chunks_resp.body or {}).get("items") or (chunks_resp.body or {}).get("chunks") or []
+                )
+                if isinstance(chunks_resp.body, dict)
+                else 0,
                 "parsed_chars": len(parsed_text_from_response(parsed_resp.body)),
                 "retrieve_status": retrieve_resp.status,
                 "retrieve_citation_document_ids": citation_document_ids(retrieve_resp.body),

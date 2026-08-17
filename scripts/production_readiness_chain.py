@@ -6,7 +6,6 @@ an isolated dataset, uploads a multi-format corpus, waits for backend processing
 checks chunking/KG/RAG/chat behavior, and writes machine-readable evidence.
 """
 
-
 import argparse
 import csv
 import json
@@ -161,7 +160,13 @@ class Api:
             fail(f"{method} {path} did not return a response")
         return resp, elapsed_ms
 
-    def json(self, method: str, path: str, expected: set[int] | None = None, **kwargs: Any) -> tuple[dict[str, Any], float]:
+    def json(
+        self,
+        method: str,
+        path: str,
+        expected: set[int] | None = None,
+        **kwargs: Any,
+    ) -> tuple[dict[str, Any], float]:
         resp, elapsed_ms = self.request(method, path, **kwargs)
         expected = expected or {200}
         if resp.status_code not in expected:
@@ -228,7 +233,9 @@ def generate_office_files(corpus_dir: Path, evidence: Evidence) -> list[Path]:
     doc.add_paragraph(read_text_sample(rfc9000, 4500))
     doc.add_heading("FastAPI README sample", level=2)
     doc.add_paragraph(read_text_sample(fastapi, 4500))
-    doc.add_paragraph("Business check: retrieval should find QUIC, FastAPI and operational parsing signals in this file.")
+    doc.add_paragraph(
+        "Business check: retrieval should find QUIC, FastAPI and operational parsing signals in this file."
+    )
     doc.save(docx_path)
 
     wb = Workbook()
@@ -241,7 +248,12 @@ def generate_office_files(corpus_dir: Path, evidence: Evidence) -> list[Path]:
     summary.append(["metric", "value"])
     summary.append(["source_url", "https://raw.githubusercontent.com/mwaskom/seaborn-data/master/iris.csv"])
     summary.append(["rows_imported", max(0, len(rows) - 1)])
-    summary.append(["purpose", "validate spreadsheet parsing, chunking and retrieval over structured rows"])
+    summary.append(
+        [
+            "purpose",
+            "validate spreadsheet parsing, chunking and retrieval over structured rows",
+        ]
+    )
     wb.save(xlsx_path)
 
     out = [docx_path, xlsx_path]
@@ -279,7 +291,10 @@ def ensure_runtime_settings(api: Api, evidence: Evidence) -> None:
     }
     evidence.check(
         "settings_kg_enabled",
-        evidence.settings["effective"]["kg_enabled"] is True and evidence.settings["effective"]["kg_chat_enabled"] is True,
+        (
+            evidence.settings["effective"]["kg_enabled"] is True
+            and evidence.settings["effective"]["kg_chat_enabled"] is True
+        ),
         effective=evidence.settings["effective"],
     )
 
@@ -375,7 +390,13 @@ def create_dataset(api: Api, evidence: Evidence) -> str:
     return dataset_id
 
 
-def wait_for_document_terminal(api: Api, doc_id: str, *, timeout_sec: float, poll_interval_sec: float = 2.0) -> dict[str, Any]:
+def wait_for_document_terminal(
+    api: Api,
+    doc_id: str,
+    *,
+    timeout_sec: float,
+    poll_interval_sec: float = 2.0,
+) -> dict[str, Any]:
     deadline = time.monotonic() + timeout_sec
     last: dict[str, Any] = {}
     while time.monotonic() < deadline:
@@ -447,9 +468,7 @@ def upload_documents(
             terminal = wait_for_document_terminal(api, doc_id, timeout_sec=per_upload_timeout_sec)
             upload_row["terminal_status"] = terminal.get("status")
             upload_row["terminal_wait_ms"] = terminal.get("_detail_elapsed_ms")
-        evidence.uploads.append(
-            upload_row
-        )
+        evidence.uploads.append(upload_row)
     evidence.check("uploaded_at_least_10_documents", len(doc_ids) >= 10, count=len(doc_ids))
     return doc_ids
 
@@ -551,7 +570,9 @@ def run_chunk_previews(api: Api, dataset_id: str, corpus_files: list[Path], evid
             )
             if response_status == 200 and count > 0:
                 break
-            if attempt < 3 and (response_status in {429, 500, 502, 503, 504} or (response_status == 200 and count == 0)):
+            if attempt < 3 and (
+                response_status in {429, 500, 502, 503, 504} or (response_status == 200 and count == 0)
+            ):
                 time.sleep(0.5 * attempt)
                 continue
             break
@@ -583,69 +604,105 @@ def run_chunk_previews(api: Api, dataset_id: str, corpus_files: list[Path], evid
     evidence.check("chunk_preview_strategies_work", not bad, failures=bad)
 
 
-def ensure_kg(api: Api, dataset_id: str, doc_ids: list[str], evidence: Evidence) -> None:
-    stats, elapsed_ms = api.json("GET", f"/api/v1/kg/stats?{urlencode({'dataset_id': dataset_id})}")
-    manual_extracts: list[dict[str, Any]] = []
-    if int(stats.get("events") or 0) <= 0 or int(stats.get("entities") or 0) <= 0:
-        for doc_id in doc_ids:
-            try:
-                extracted, extract_elapsed_ms = api.json(
-                    "POST",
-                    (
-                        f"/api/v1/kg/documents/{doc_id}/extract?"
-                        f"{urlencode({'replace_existing': 'true', 'extract_relations': 'false', 'extract_skills': 'false', 'extraction_backend': 'heuristic'})}"
-                    ),
-                    expected={200},
-                )
-                manual_extracts.append({"document_id": doc_id, "elapsed_ms": round(extract_elapsed_ms, 2), **extracted})
-            except Exception as exc:  # noqa: BLE001
-                manual_extracts.append({"document_id": doc_id, "error": str(exc)})
-        stats, elapsed_ms = api.json("GET", f"/api/v1/kg/stats?{urlencode({'dataset_id': dataset_id})}")
+def _kg_stats_path(dataset_id: str) -> str:
+    return f"/api/v1/kg/stats?{urlencode({'dataset_id': dataset_id})}"
 
-    def _search(query: str) -> dict[str, Any]:
-        payload = {"query": query, "dataset_id": dataset_id}
-        result, kg_elapsed_ms = api.json("POST", "/api/v1/kg/search", json=payload)
-        raw = result.get("result") or {}
-        return {
-            "query": query,
-            "elapsed_ms": round(kg_elapsed_ms, 2),
-            "events": len(raw.get("events") or []),
-            "entities": len(raw.get("entities") or []),
-            "stats": raw.get("stats") or {},
-        }
 
-    def _search_with_retry(query: str) -> dict[str, Any]:
-        attempts: list[dict[str, Any]] = []
-        final_row: dict[str, Any] = {}
-        for attempt in range(1, 3):
-            row = _search(query)
-            attempts.append(
+def _kg_extract_path(doc_id: str) -> str:
+    params = {
+        "replace_existing": "true",
+        "extract_relations": "false",
+        "extract_skills": "false",
+        "extraction_backend": "heuristic",
+    }
+    return f"/api/v1/kg/documents/{doc_id}/extract?{urlencode(params)}"
+
+
+def _kg_result_count(row: dict[str, Any]) -> int:
+    return int(row.get("events") or 0) + int(row.get("entities") or 0)
+
+
+def _kg_search_ready(row: dict[str, Any]) -> bool:
+    return float(row.get("elapsed_ms") or 0) <= 3000.0 and _kg_result_count(row) > 0
+
+
+def _kg_search(api: Api, dataset_id: str, query: str) -> dict[str, Any]:
+    payload = {"query": query, "dataset_id": dataset_id}
+    result, kg_elapsed_ms = api.json("POST", "/api/v1/kg/search", json=payload)
+    raw = result.get("result") or {}
+    return {
+        "query": query,
+        "elapsed_ms": round(kg_elapsed_ms, 2),
+        "events": len(raw.get("events") or []),
+        "entities": len(raw.get("entities") or []),
+        "stats": raw.get("stats") or {},
+    }
+
+
+def _kg_search_with_retry(api: Api, dataset_id: str, query: str) -> dict[str, Any]:
+    attempts: list[dict[str, Any]] = []
+    final_row: dict[str, Any] = {}
+    for attempt in range(1, 3):
+        row = _kg_search(api, dataset_id, query)
+        attempts.append(
+            {
+                "attempt": attempt,
+                "elapsed_ms": row["elapsed_ms"],
+                "events": row["events"],
+                "entities": row["entities"],
+            }
+        )
+        final_row = row
+        if _kg_search_ready(row):
+            break
+        if attempt < 2:
+            time.sleep(0.25)
+    final_row["attempts"] = attempts
+    return final_row
+
+
+def _kg_warmup_rows(api: Api, dataset_id: str) -> list[dict[str, Any]]:
+    warmup_rows: list[dict[str, Any]] = []
+    query = "Warm up KG search over QUIC FastAPI accessibility"
+    for attempt in range(1, 4):
+        row = _kg_search(api, dataset_id, query)
+        warmup_rows.append({"attempt": attempt, **row})
+        if _kg_search_ready(row):
+            break
+    return warmup_rows
+
+
+def _manual_kg_extracts(api: Api, doc_ids: list[str]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for doc_id in doc_ids:
+        try:
+            extracted, extract_elapsed_ms = api.json(
+                "POST",
+                _kg_extract_path(doc_id),
+                expected={200},
+            )
+            rows.append(
                 {
-                    "attempt": attempt,
-                    "elapsed_ms": row["elapsed_ms"],
-                    "events": row["events"],
-                    "entities": row["entities"],
+                    "document_id": doc_id,
+                    "elapsed_ms": round(extract_elapsed_ms, 2),
+                    **extracted,
                 }
             )
-            final_row = row
-            if float(row.get("elapsed_ms") or 0) <= 3000.0 and int(row.get("events") or 0) + int(row.get("entities") or 0) > 0:
-                break
-            if attempt < 2:
-                time.sleep(0.25)
-        final_row["attempts"] = attempts
-        return final_row
+        except Exception as exc:  # noqa: BLE001
+            rows.append({"document_id": doc_id, "error": str(exc)})
+    return rows
 
-    warmup_rows: list[dict[str, Any]] = []
-    for attempt in range(1, 4):
-        row = _search("Warm up KG search over QUIC FastAPI accessibility")
-        warmup_rows.append({"attempt": attempt, **row})
-        if float(row.get("elapsed_ms") or 0) <= 3000.0 and int(row.get("events") or 0) + int(row.get("entities") or 0) > 0:
-            break
 
+def ensure_kg(api: Api, dataset_id: str, doc_ids: list[str], evidence: Evidence) -> None:
+    stats, elapsed_ms = api.json("GET", _kg_stats_path(dataset_id))
+    manual_extracts: list[dict[str, Any]] = []
+    if int(stats.get("events") or 0) <= 0 or int(stats.get("entities") or 0) <= 0:
+        manual_extracts = _manual_kg_extracts(api, doc_ids)
+        stats, elapsed_ms = api.json("GET", _kg_stats_path(dataset_id))
+
+    warmup_rows = _kg_warmup_rows(api, dataset_id)
     search_queries = ["QUIC transport handshake", "FastAPI HTTP client", "accessibility conformance"]
-    search_rows: list[dict[str, Any]] = []
-    for query in search_queries:
-        search_rows.append(_search_with_retry(query))
+    search_rows = [_kg_search_with_retry(api, dataset_id, query) for query in search_queries]
 
     evidence.kg = {
         "stats_elapsed_ms": round(elapsed_ms, 2),
@@ -655,17 +712,19 @@ def ensure_kg(api: Api, dataset_id: str, doc_ids: list[str], evidence: Evidence)
         "warmup": warmup_rows,
         "search": search_rows,
     }
-    evidence.check("kg_has_entities_and_events", int(stats.get("events") or 0) > 0 and int(stats.get("entities") or 0) > 0, stats=stats)
+    evidence.check(
+        "kg_has_entities_and_events",
+        int(stats.get("events") or 0) > 0 and int(stats.get("entities") or 0) > 0,
+        stats=stats,
+    )
     latest_warmup = warmup_rows[-1] if warmup_rows else {}
     evidence.check(
         "kg_search_warmup_completed",
-        bool(latest_warmup)
-        and float(latest_warmup.get("elapsed_ms") or 0) <= 3000.0
-        and int(latest_warmup.get("events") or 0) + int(latest_warmup.get("entities") or 0) > 0,
+        bool(latest_warmup) and _kg_search_ready(latest_warmup),
         latest=latest_warmup,
     )
     slow = [row for row in search_rows if float(row.get("elapsed_ms") or 0) > 3000.0]
-    empty = [row for row in search_rows if int(row.get("events") or 0) + int(row.get("entities") or 0) <= 0]
+    empty = [row for row in search_rows if _kg_result_count(row) <= 0]
     evidence.check("kg_search_under_3s", not slow, slow=slow)
     evidence.check("kg_search_returns_results", not empty, empty=empty)
 
@@ -806,7 +865,11 @@ def run_chat(api: Api, dataset_id: str, evidence: Evidence) -> None:
                 "answer_excerpt": content[:500],
             }
         )
-    bad = [row for row in evidence.chat if int(row.get("content_chars") or 0) <= 20 or int(row.get("citation_count") or 0) <= 0]
+    bad = [
+        row
+        for row in evidence.chat
+        if int(row.get("content_chars") or 0) <= 20 or int(row.get("citation_count") or 0) <= 0
+    ]
     evidence.check("chat_answers_with_citations", not bad, failures=bad)
 
 
@@ -960,7 +1023,9 @@ def write_report(evidence: Evidence) -> None:
         "",
     ]
     for check in evidence.checks:
-        lines.append(f"- [{'x' if check.get('ok') else ' '}] {check.get('name')} `{json.dumps({k: v for k, v in check.items() if k not in {'name', 'ok'}}, ensure_ascii=False, default=str)}`")
+        details = {key: value for key, value in check.items() if key not in {"name", "ok"}}
+        marker = "x" if check.get("ok") else " "
+        lines.append(f"- [{marker}] {check.get('name')} `{json.dumps(details, ensure_ascii=False, default=str)}`")
     lines.extend(
         [
             "",
@@ -972,18 +1037,54 @@ def write_report(evidence: Evidence) -> None:
     )
     for doc in evidence.documents:
         lines.append(
-            f"| {doc.get('filename')} | {doc.get('file_type')} | {doc.get('status')} | {doc.get('chunk_total')} | {doc.get('parsed_markdown_chars')} |"
+            f"| {doc.get('filename')} | {doc.get('file_type')} "
+            f"| {doc.get('status')} | {doc.get('chunk_total')} "
+            f"| {doc.get('parsed_markdown_chars')} |"
         )
-    lines.extend(["", "## Retrieval Latency", "", "| query | elapsed ms | citations |", "| --- | ---: | ---: |"])
+    lines.extend(
+        [
+            "",
+            "## Retrieval Latency",
+            "",
+            "| query | elapsed ms | citations |",
+            "| --- | ---: | ---: |",
+        ]
+    )
     for row in evidence.retrieval:
         lines.append(f"| {row.get('query')} | {row.get('elapsed_ms')} | {row.get('citation_count')} |")
-    lines.extend(["", "## Retrieval Warmup", "", "| attempt | elapsed ms | citations |", "| ---: | ---: | ---: |"])
+    lines.extend(
+        [
+            "",
+            "## Retrieval Warmup",
+            "",
+            "| attempt | elapsed ms | citations |",
+            "| ---: | ---: | ---: |",
+        ]
+    )
     for row in evidence.retrieval_warmups:
         lines.append(f"| {row.get('attempt')} | {row.get('elapsed_ms')} | {row.get('citation_count')} |")
-    lines.extend(["", "## KG Search Warmup", "", "| attempt | elapsed ms | events | entities |", "| ---: | ---: | ---: | ---: |"])
+    lines.extend(
+        [
+            "",
+            "## KG Search Warmup",
+            "",
+            "| attempt | elapsed ms | events | entities |",
+            "| ---: | ---: | ---: | ---: |",
+        ]
+    )
     for row in evidence.kg.get("warmup", []):
-        lines.append(f"| {row.get('attempt')} | {row.get('elapsed_ms')} | {row.get('events')} | {row.get('entities')} |")
-    lines.extend(["", "## KG Search Latency", "", "| query | elapsed ms | events | entities |", "| --- | ---: | ---: | ---: |"])
+        lines.append(
+            f"| {row.get('attempt')} | {row.get('elapsed_ms')} | {row.get('events')} | {row.get('entities')} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## KG Search Latency",
+            "",
+            "| query | elapsed ms | events | entities |",
+            "| --- | ---: | ---: | ---: |",
+        ]
+    )
     for row in evidence.kg.get("search", []):
         lines.append(f"| {row.get('query')} | {row.get('elapsed_ms')} | {row.get('events')} | {row.get('entities')} |")
     lines.extend(
@@ -998,13 +1099,34 @@ def write_report(evidence: Evidence) -> None:
             f"- Message: `{evidence.provider_health.get('message') or evidence.provider_health.get('reason') or ''}`",
         ]
     )
-    lines.extend(["", "## Chat", "", "| question | elapsed ms | chars | citations |", "| --- | ---: | ---: | ---: |"])
+    lines.extend(
+        [
+            "",
+            "## Chat",
+            "",
+            "| question | elapsed ms | chars | citations |",
+            "| --- | ---: | ---: | ---: |",
+        ]
+    )
     for row in evidence.chat:
-        lines.append(f"| {row.get('question')} | {row.get('elapsed_ms')} | {row.get('content_chars')} | {row.get('citation_count')} |")
-    lines.extend(["", "## Default Chat", "", "| question | elapsed ms | chars | citations | reason |", "| --- | ---: | ---: | ---: | --- |"])
+        lines.append(
+            f"| {row.get('question')} | {row.get('elapsed_ms')} "
+            f"| {row.get('content_chars')} | {row.get('citation_count')} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Default Chat",
+            "",
+            "| question | elapsed ms | chars | citations | reason |",
+            "| --- | ---: | ---: | ---: | --- |",
+        ]
+    )
     for row in evidence.default_chat:
         lines.append(
-            f"| {row.get('question')} | {row.get('elapsed_ms')} | {row.get('content_chars')} | {row.get('citation_count')} | {row.get('fallback_reason')} |"
+            f"| {row.get('question')} | {row.get('elapsed_ms')} "
+            f"| {row.get('content_chars')} | {row.get('citation_count')} "
+            f"| {row.get('fallback_reason')} |"
         )
     if evidence.failures:
         lines.extend(["", "## Failures", ""])
@@ -1023,7 +1145,11 @@ def parse_args() -> argparse.Namespace:
         "--per-upload-timeout",
         type=float,
         default=None,
-        help="Optional per-upload terminal wait. Defaults to processing-timeout; set 0 to defer waiting until the bulk wait phase.",
+        help=(
+            "Optional per-upload terminal wait. Defaults to "
+            "processing-timeout; set 0 to defer waiting until the "
+            "bulk wait phase."
+        ),
     )
     parser.add_argument(
         "--llm-probe-timeout",
@@ -1060,9 +1186,7 @@ def main() -> int:
         probe_llm_provider(api, evidence, timeout_sec=float(args.llm_probe_timeout))
         dataset_id = create_dataset(api, evidence)
         per_upload_timeout = (
-            float(args.processing_timeout)
-            if args.per_upload_timeout is None
-            else float(args.per_upload_timeout)
+            float(args.processing_timeout) if args.per_upload_timeout is None else float(args.per_upload_timeout)
         )
         doc_ids = upload_documents(
             api,

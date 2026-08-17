@@ -1,4 +1,3 @@
-
 from typing import Annotated
 from uuid import UUID
 
@@ -32,7 +31,11 @@ router = APIRouter(responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES
 _DB_CONNECTOR_PERMISSION_DETAIL = "No permission to run DB connectors"
 
 
-@router.get("/configs", response_model=ConnectorConfigListResponse, responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/configs",
+    response_model=ConnectorConfigListResponse,
+    responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def list_connector_configs(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 20,
@@ -70,17 +73,17 @@ def list_connector_configs(
         )
 
     total = int(query.count())
-    items = (
-        query.order_by(ConnectorConfig.created_at.desc())
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
+    items = query.order_by(ConnectorConfig.created_at.desc()).offset(skip).limit(limit).all()
 
     return {"total": total, "items": [connectors_module._config_out(cfg) for cfg in items]}
 
 
-@router.post("/configs", response_model=ConnectorConfigOut, status_code=201, responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/configs",
+    response_model=ConnectorConfigOut,
+    status_code=201,
+    responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def create_connector_config(
     payload: ConnectorConfigCreateRequest,
     *,
@@ -101,7 +104,11 @@ def create_connector_config(
         connector_id=str(payload.connector_id or "").strip(),
         name=str(payload.name or "").strip(),
         enabled=bool(payload.enabled),
-        schedule_cron=(str(payload.schedule_cron).strip() if isinstance(payload.schedule_cron, str) and payload.schedule_cron.strip() else None),
+        schedule_cron=(
+            str(payload.schedule_cron).strip()
+            if isinstance(payload.schedule_cron, str) and payload.schedule_cron.strip()
+            else None
+        ),
         config=cfg_dict,
         state={},
     )
@@ -111,7 +118,11 @@ def create_connector_config(
     return connectors_module._config_out(cfg)
 
 
-@router.put("/configs/{config_id}", response_model=ConnectorConfigOut, responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.put(
+    "/configs/{config_id}",
+    response_model=ConnectorConfigOut,
+    responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def update_connector_config(
     config_id: UUID,
     payload: ConnectorConfigUpdateRequest,
@@ -139,9 +150,7 @@ def update_connector_config(
     if payload.enabled is not None:
         cfg.enabled = bool(payload.enabled)  # type: ignore[assignment]
     if payload.schedule_cron is not None:
-        cfg.schedule_cron = (
-            str(payload.schedule_cron).strip() if str(payload.schedule_cron or "").strip() else None
-        )  # type: ignore[assignment]
+        cfg.schedule_cron = str(payload.schedule_cron).strip() if str(payload.schedule_cron or "").strip() else None  # type: ignore[assignment]
     if payload.config is not None:
         cfg.config = connectors_module.encrypt_connector_config_secrets(dict(payload.config or {}))  # type: ignore[assignment]
     if payload.state is not None:
@@ -179,7 +188,12 @@ def delete_connector_config(
     return Response(status_code=204)
 
 
-@router.post("/configs/{config_id}/run", response_model=ConnectorRunOut, status_code=201, responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/configs/{config_id}/run",
+    response_model=ConnectorRunOut,
+    status_code=201,
+    responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def run_connector_config(
     config_id: UUID,
     background_tasks: BackgroundTasks,
@@ -212,11 +226,21 @@ async def run_connector_config(
     dataset = connectors_module.DatasetService.get_dataset(db, tenant_id, cfg.dataset_id)
     connectors_module.DatasetService.assert_dataset_writable(db, dataset, account_id)
 
-    url_connectors = {"url_batch", "web_crawl", "github_repo", "drive_files", "minio_bucket", "confluence_space", "jira_project"}
+    url_connectors = {
+        "url_batch",
+        "web_crawl",
+        "github_repo",
+        "drive_files",
+        "minio_bucket",
+        "confluence_space",
+        "jira_project",
+    }
     db_catalog_connectors = {"mysql_catalog", "sqlserver_catalog"}
     if connector_id in url_connectors and not bool(getattr(connectors_module.settings, "URL_INGEST_ENABLED", False)):
         raise HTTPException(status_code=400, detail=connectors_module.URL_INGEST_DISABLED_DETAIL)
-    if connector_id in db_catalog_connectors and not bool(getattr(connectors_module.settings, "DB_CATALOG_ENABLED", False)):
+    if connector_id in db_catalog_connectors and not bool(
+        getattr(connectors_module.settings, "DB_CATALOG_ENABLED", False)
+    ):
         raise HTTPException(status_code=400, detail="DB catalog ingestion is disabled")
     if connector_id in db_catalog_connectors:
         try:
@@ -302,9 +326,7 @@ def reconcile_connector_config(
         )
 
     documents = (
-        db.query(DBDocument)
-        .filter(DBDocument.tenant_id == tenant_id, DBDocument.dataset_id == cfg.dataset_id)
-        .all()
+        db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id, DBDocument.dataset_id == cfg.dataset_id).all()
     )
     report = connectors_module.plan_connector_reconcile(
         connector_id=str(cfg.connector_id or "").strip(),

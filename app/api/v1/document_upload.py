@@ -654,9 +654,7 @@ def _select_upload_defaults(
 ) -> _UploadDefaultSelection:
     global_default_pb = str(getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto").strip().lower() or "auto"
     global_default_cs = (
-        str(getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive")
-        .strip()
-        .lower()
+        str(getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower()
         or "langchain_recursive"
     )
     parser_backend_base = parser_backend
@@ -677,7 +675,11 @@ def _select_upload_defaults(
 
 def _serialize_preprocess_steps(matched_rule: Any) -> list[dict[str, Any]]:
     preprocess = getattr(matched_rule, "preprocess", None)
-    steps = getattr(preprocess, "steps", None) if preprocess is not None and bool(getattr(preprocess, "enabled", True)) else None
+    steps = (
+        getattr(preprocess, "steps", None)
+        if preprocess is not None and bool(getattr(preprocess, "enabled", True))
+        else None
+    )
     if not isinstance(steps, list) or not steps:
         return []
     return [
@@ -1011,7 +1013,9 @@ def _merge_duplicate_document_metadata(
             replace=False,
         )
     meta_any.setdefault("active_pipeline_hash", str(meta_any.get("pipeline_hash") or "").strip() or None)
-    meta_any.setdefault("active_pipeline_ready", bool(str(getattr(duplicate_document, "status", "") or "").lower() == "completed"))
+    meta_any.setdefault(
+        "active_pipeline_ready", bool(str(getattr(duplicate_document, "status", "") or "").lower() == "completed")
+    )
     sync_pipeline_execution_identity(
         meta_any,
         content_sha256=file_sha256,
@@ -1212,7 +1216,11 @@ async def _maybe_resolve_upload_duplicate(
     ingest_lock: _IngestLockLease,
     cleanup_exact_duplicate: bool,
 ) -> Any | None:
-    if not bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)) or not isinstance(file_sha256, str) or not file_sha256:
+    if (
+        not bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False))
+        or not isinstance(file_sha256, str)
+        or not file_sha256
+    ):
         return None
     duplicate = documents_module._find_duplicate_document(
         db,
@@ -1583,7 +1591,9 @@ async def _stage_upload_for_precheck(
 
 def _partition_batch_results(results: list[Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     processed = [_coerce_batch_result(result) for result in results]
-    return [result for result in processed if result.get("success")], [result for result in processed if not result.get("success")]
+    return [result for result in processed if result.get("success")], [
+        result for result in processed if not result.get("success")
+    ]
 
 
 def _cleanup_uploaded_batch_files(results: list[dict[str, Any]]) -> None:
@@ -1607,7 +1617,9 @@ def _link_precheck_staging_tree(staged_successful: list[dict[str, Any]], *, stag
         try:
             dst.relative_to(staging_root_resolved)
         except Exception:
-            dst = (staging_root / f"FILE_{idx:06d}{str(item.get('file_ext') or '').strip().lower()}").resolve(strict=False)
+            dst = (staging_root / f"FILE_{idx:06d}{str(item.get('file_ext') or '').strip().lower()}").resolve(
+                strict=False
+            )
         dst.parent.mkdir(parents=True, exist_ok=True)
         if dst.exists():
             suffix = getattr(item.get("file_id"), "hex", None) or uuid.uuid4().hex
@@ -1763,9 +1775,7 @@ def _apply_precheck_policy_suggestion(
 
 def _refresh_batch_policy(documents_module: Any, dataset: Any) -> Any:
     dataset_meta = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
-    return documents_module.parse_ingestion_policy_from_metadata(
-        dataset_meta if isinstance(dataset_meta, dict) else {}
-    )  # type: ignore[arg-type]
+    return documents_module.parse_ingestion_policy_from_metadata(dataset_meta if isinstance(dataset_meta, dict) else {})  # type: ignore[arg-type]
 
 
 def _finalize_batch_ingestion_run(
@@ -1930,7 +1940,11 @@ async def _maybe_resolve_single_upload_duplicate(
     user_patch: dict[str, Any] | None,
     ingest_lock: _IngestLockLease,
 ) -> Any | None:
-    if not bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False)) or not isinstance(file_sha256, str) or not file_sha256:
+    if (
+        not bool(getattr(settings, "UPLOAD_DEDUP_ENABLED", False))
+        or not isinstance(file_sha256, str)
+        or not file_sha256
+    ):
         return None
     duplicate = documents_module._find_duplicate_document(
         db,
@@ -1971,6 +1985,8 @@ async def _maybe_resolve_single_upload_duplicate(
         account_id=account_id,
         ingest_lock=ingest_lock,
     )
+
+
 @dataclass
 class PipelineOverridesFormFields:
     governance_enabled: bool | None = Form(None)
@@ -2291,7 +2307,12 @@ async def upload_document_from_url(
     )
 
 
-@router.post("/upload-batch", response_model=DocumentBatchUploadResponse, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/upload-batch",
+    response_model=DocumentBatchUploadResponse,
+    status_code=201,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def upload_documents_batch(
     background_tasks: BackgroundTasks,
     files: Annotated[list[UploadFile], File(...)],
@@ -2344,7 +2365,9 @@ async def upload_documents_batch(
                     "files": int(len(files or [])),
                     "parser_backend_requested": str(parser_backend or "")[:80],
                     "chunk_strategy_requested": str(chunk_strategy or "")[:80],
-                    "pipeline": (pipeline_parsed.model_dump(exclude_none=True) if pipeline_parsed is not None else None),
+                    "pipeline": (
+                        pipeline_parsed.model_dump(exclude_none=True) if pipeline_parsed is not None else None
+                    ),
                 },
                 expected_documents=int(len(files or [])),
             )
