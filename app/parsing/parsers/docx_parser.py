@@ -99,6 +99,51 @@ def _iter_docx_blocks(doc):  # noqa: ANN001
             yield Table(child, doc)
 
 
+def _render_paragraph_block(block) -> str | None:  # noqa: ANN001
+    text = (getattr(block, "text", "") or "").strip()
+    if not text:
+        return None
+
+    style = getattr(block, "style", None)
+    style_name = str(getattr(style, "name", "") or "")
+
+    if _looks_like_heading_style(style_name):
+        level = _heading_level(style_name)
+        return f"{'#' * level} {text}"
+
+    if _is_list_paragraph(block):
+        lvl = _list_level(block)
+        indent = "  " * max(0, min(6, int(lvl)))
+        marker = _list_marker(style_name)
+        return f"{indent}{marker} {text}"
+
+    return text
+
+
+def _render_table_block(block) -> str | None:  # noqa: ANN001
+    rows: list[list[str]] = []
+    for row in getattr(block, "rows", []) or []:
+        cells: list[str] = []
+        for cell in getattr(row, "cells", []) or []:
+            cells.append(clean_table_cell(getattr(cell, "text", "") or ""))
+        if any(cells):
+            rows.append(cells)
+
+    if not rows:
+        return None
+
+    header, body = infer_table_header(rows)
+    return build_markdown_table(header=header, rows=body)
+
+
+def _render_docx_block(block) -> str | None:  # noqa: ANN001
+    if hasattr(block, "text") and hasattr(block, "style"):
+        return _render_paragraph_block(block)
+    if hasattr(block, "rows"):
+        return _render_table_block(block)
+    return None
+
+
 class DocxParser:
     """Parse DOCX into a chunk-friendly plain text representation."""
 
@@ -109,45 +154,9 @@ class DocxParser:
 
         parts: list[str] = []
         for block in _iter_docx_blocks(doc):
-            # Paragraph
-            if hasattr(block, "text") and hasattr(block, "style"):
-                text = (getattr(block, "text", "") or "").strip()
-                if not text:
-                    continue
-
-                style = getattr(block, "style", None)
-                style_name = str(getattr(style, "name", "") or "")
-
-                if _looks_like_heading_style(style_name):
-                    level = _heading_level(style_name)
-                    parts.append(f"{'#' * level} {text}")
-                    continue
-
-                if _is_list_paragraph(block):
-                    lvl = _list_level(block)
-                    indent = "  " * max(0, min(6, int(lvl)))
-                    marker = _list_marker(style_name)
-                    parts.append(f"{indent}{marker} {text}")
-                    continue
-
-                parts.append(text)
-                continue
-
-            # Table
-            if hasattr(block, "rows"):
-                rows: list[list[str]] = []
-                for row in getattr(block, "rows", []) or []:
-                    cells: list[str] = []
-                    for cell in getattr(row, "cells", []) or []:
-                        cells.append(clean_table_cell(getattr(cell, "text", "") or ""))
-                    if any(cells):
-                        rows.append(cells)
-
-                if not rows:
-                    continue
-
-                header, body = infer_table_header(rows)
-                parts.append(build_markdown_table(header=header, rows=body))
+            rendered = _render_docx_block(block)
+            if rendered:
+                parts.append(rendered)
 
         content = "\n\n".join(p for p in parts if p)
         metadata = {

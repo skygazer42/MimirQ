@@ -62,6 +62,70 @@ def _resolve_delete_document_lifecycle():  # noqa: ANN202
     return _delete_document_lifecycle
 
 
+def _normalize_retention_inputs(*, retention_days: int, max_delete: int) -> tuple[int, int]:
+    try:
+        retention_days_i = max(1, int(retention_days or 0))
+    except Exception:
+        retention_days_i = 90
+    try:
+        max_delete_i = max(1, int(max_delete or 0))
+    except Exception:
+        max_delete_i = 1000
+    return retention_days_i, max_delete_i
+
+
+def _categorize_delete_status(status_code: int | None) -> str:
+    if status_code == 404:
+        return "not_found"
+    if status_code in (401, 403):
+        return "denied"
+    if status_code in (409, 413, 429, 503):
+        return "conflicts"
+    return "errors"
+
+
+async def _execute_knowledge_asset_purge(
+    *,
+    delete_document_lifecycle: Any,
+    planned: list[dict[str, Any]],
+    db: Session,
+    tenant_id: UUID,
+    actor_id: str | None,
+) -> tuple[int, int, int, int, int]:
+    deleted = 0
+    not_found = 0
+    denied = 0
+    conflicts = 0
+    errors = 0
+
+    for row in planned:
+        document_id = row.get("document_id")
+        if document_id is None:
+            continue
+        try:
+            await delete_document_lifecycle(
+                document_id=document_id,
+                tenant_id=tenant_id,
+                account_id=str(actor_id or SYSTEM_RETENTION_ACTOR_ID),
+                db=db,
+                enforce_permissions=False,
+                enforce_membership=False,
+            )
+            deleted += 1
+        except Exception as exc:  # noqa: BLE001
+            bucket = _categorize_delete_status(getattr(exc, "status_code", None))
+            if bucket == "not_found":
+                not_found += 1
+            elif bucket == "denied":
+                denied += 1
+            elif bucket == "conflicts":
+                conflicts += 1
+            else:
+                errors += 1
+
+    return deleted, not_found, denied, conflicts, errors
+
+
 def plan_knowledge_asset_purge(
     db: Session,
     *,
@@ -295,14 +359,7 @@ async def run_knowledge_asset_retention(
     rows, chunks, KG artifacts, vectors, and object assets stay aligned.
     """
     now0 = now or datetime.now(UTC)
-    try:
-        retention_days_i = max(1, int(retention_days or 0))
-    except Exception:
-        retention_days_i = 90
-    try:
-        max_delete_i = max(1, int(max_delete or 0))
-    except Exception:
-        max_delete_i = 1000
+    retention_days_i, max_delete_i = _normalize_retention_inputs(retention_days=retention_days, max_delete=max_delete)
 
     state = _normalize_lifecycle_state(lifecycle_state)
     cutoff = now0 - timedelta(days=int(retention_days_i))
@@ -315,41 +372,16 @@ async def run_knowledge_asset_retention(
         lifecycle_state=state,
     )
 
-    deleted = 0
-    not_found = 0
-    denied = 0
-    conflicts = 0
-    errors = 0
+    deleted = not_found = denied = conflicts = errors = 0
 
     if not bool(dry_run):
-        delete_document_lifecycle = _resolve_delete_document_lifecycle()
-        for row in planned:
-            document_id = row.get("document_id")
-            if document_id is None:
-                continue
-            try:
-                await delete_document_lifecycle(
-                    document_id=document_id,
-                    tenant_id=tenant_id,
-                    account_id=str(actor_id or SYSTEM_RETENTION_ACTOR_ID),
-                    db=db,
-                    enforce_permissions=False,
-                    enforce_membership=False,
-                )
-                deleted += 1
-            except Exception as exc:  # noqa: BLE001
-                status_code = getattr(exc, "status_code", None)
-                if status_code == 404:
-                    not_found += 1
-                    continue
-                if status_code in (401, 403):
-                    denied += 1
-                    continue
-                if status_code in (409, 413, 429, 503):
-                    conflicts += 1
-                    continue
-                errors += 1
-                continue
+        deleted, not_found, denied, conflicts, errors = await _execute_knowledge_asset_purge(
+            delete_document_lifecycle=_resolve_delete_document_lifecycle(),
+            planned=planned,
+            db=db,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+        )
 
     state_counts = Counter(str(row.get("lifecycle_state") or "unknown") for row in planned)
     summary = {

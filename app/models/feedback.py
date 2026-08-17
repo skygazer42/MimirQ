@@ -5,7 +5,7 @@ Records ratings, reasons, and expected answers for assistant messages to support
 quality analysis, regression sets, A/B comparisons, and model iteration.
 """
 
- 
+
 import uuid
 
 from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint

@@ -168,6 +168,82 @@ def _bh_adjust(rows: list[dict[str, Any]]) -> None:
         rows[idx]["significant"] = value < 0.05
 
 
+def _collect_metric_pairs(
+    *,
+    case_ids: list[str],
+    base_by_case: Mapping[str, Any],
+    target_by_case: Mapping[str, Any],
+    key: str,
+) -> list[tuple[float, float]]:
+    pairs: list[tuple[float, float]] = []
+    for case_id in case_ids:
+        base_value = _as_float(_scores(base_by_case[case_id]).get(key))
+        target_value = _as_float(_scores(target_by_case[case_id]).get(key))
+        if base_value is None or target_value is None:
+            continue
+        pairs.append((base_value, target_value))
+    return pairs
+
+
+def _build_significance_row(
+    *,
+    key: str,
+    pairs: list[tuple[float, float]],
+    bootstrap_iterations: int,
+) -> dict[str, Any]:
+    base_values = [base for base, _target in pairs]
+    target_values = [target for _base, target in pairs]
+    deltas = [target - base for base, target in pairs]
+    delta_mean = float(sum(deltas) / len(deltas))
+    stdev = _sample_stdev(deltas)
+    ci_low, ci_high = _bootstrap_ci(key, deltas, bootstrap_iterations)
+    return {
+        "key": key,
+        "compared": len(pairs),
+        "base_mean": _mean(base_values),
+        "target_mean": _mean(target_values),
+        "delta_mean": round(delta_mean, 6),
+        "bootstrap_ci_low": ci_low,
+        "bootstrap_ci_high": ci_high,
+        "p_value": _paired_t_p_value(deltas),
+        "p_value_method": "paired_t_normal_approx",
+        "p_value_bh": None,
+        "wilcoxon_p_value": _wilcoxon_p_value(deltas),
+        "mcnemar_p_value": _mcnemar_p_value(pairs),
+        "cohen_d": None if stdev is None or stdev <= 0 else round(float(delta_mean / stdev), 6),
+        "significant": False,
+    }
+
+
+def _metric_diffs_for_case(
+    *,
+    keys: list[str],
+    base_item: Any,
+    target_item: Any,
+) -> tuple[list[dict[str, Any]], list[float]]:
+    metric_diffs: list[dict[str, Any]] = []
+    deltas: list[float] = []
+    for key in keys:
+        base_value = _as_float(_scores(base_item).get(key))
+        target_value = _as_float(_scores(target_item).get(key))
+        if base_value is None or target_value is None:
+            continue
+        delta = round(float(target_value - base_value), 6)
+        deltas.append(delta)
+        metric_diffs.append({"key": key, "before": base_value, "after": target_value, "delta": delta})
+    return metric_diffs, deltas
+
+
+def _case_diff_label(mean_delta: float | None) -> str:
+    if mean_delta is None:
+        return "无分数"
+    if mean_delta > 0.05:
+        return "改善"
+    if mean_delta < -0.05:
+        return "退化"
+    return "无明显变化"
+
+
 def compare_regression_items(
     *,
     base_items: Iterable[Any],
@@ -187,73 +263,32 @@ def compare_regression_items(
     significance: list[dict[str, Any]] = []
     metric_pairs: dict[str, list[tuple[float, float]]] = {}
     for key in keys:
-        pairs: list[tuple[float, float]] = []
-        for case_id in case_ids:
-            base_value = _as_float(_scores(base_by_case[case_id]).get(key))
-            target_value = _as_float(_scores(target_by_case[case_id]).get(key))
-            if base_value is None or target_value is None:
-                continue
-            pairs.append((base_value, target_value))
+        pairs = _collect_metric_pairs(
+            case_ids=case_ids,
+            base_by_case=base_by_case,
+            target_by_case=target_by_case,
+            key=key,
+        )
         if not pairs:
             continue
 
         metric_pairs[key] = pairs
-        base_values = [base for base, _target in pairs]
-        target_values = [target for _base, target in pairs]
-        deltas = [target - base for base, target in pairs]
-        delta_mean = float(sum(deltas) / len(deltas))
-        stdev = _sample_stdev(deltas)
-        ci_low, ci_high = _bootstrap_ci(key, deltas, bootstrap_iterations)
-        significance.append(
-            {
-                "key": key,
-                "compared": len(pairs),
-                "base_mean": _mean(base_values),
-                "target_mean": _mean(target_values),
-                "delta_mean": round(delta_mean, 6),
-                "bootstrap_ci_low": ci_low,
-                "bootstrap_ci_high": ci_high,
-                "p_value": _paired_t_p_value(deltas),
-                "p_value_method": "paired_t_normal_approx",
-                "p_value_bh": None,
-                "wilcoxon_p_value": _wilcoxon_p_value(deltas),
-                "mcnemar_p_value": _mcnemar_p_value(pairs),
-                "cohen_d": None if stdev is None or stdev <= 0 else round(float(delta_mean / stdev), 6),
-                "significant": False,
-            }
-        )
+        significance.append(_build_significance_row(key=key, pairs=pairs, bootstrap_iterations=bootstrap_iterations))
     _bh_adjust(significance)
 
     case_diffs: list[dict[str, Any]] = []
     for case_id in case_ids[: max(0, int(max_case_diffs or 0))]:
         base_item = base_by_case[case_id]
         target_item = target_by_case[case_id]
-        metric_diffs: list[dict[str, Any]] = []
-        deltas: list[float] = []
-        for key in keys:
-            base_value = _as_float(_scores(base_item).get(key))
-            target_value = _as_float(_scores(target_item).get(key))
-            if base_value is None or target_value is None:
-                continue
-            delta = round(float(target_value - base_value), 6)
-            deltas.append(delta)
-            metric_diffs.append({"key": key, "before": base_value, "after": target_value, "delta": delta})
+        metric_diffs, deltas = _metric_diffs_for_case(keys=keys, base_item=base_item, target_item=target_item)
         mean_delta = _mean(deltas)
-        label = "无分数"
-        if mean_delta is not None:
-            if mean_delta > 0.05:
-                label = "改善"
-            elif mean_delta < -0.05:
-                label = "退化"
-            else:
-                label = "无明显变化"
         case_diffs.append(
             {
                 "case_id": case_id,
                 "question": str(_get_value(target_item, "question") or _get_value(base_item, "question") or ""),
                 "metric_diffs": metric_diffs,
                 "mean_delta": mean_delta,
-                "label": label,
+                "label": _case_diff_label(mean_delta),
             }
         )
 

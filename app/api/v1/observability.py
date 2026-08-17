@@ -115,6 +115,75 @@ class OnlineQualitySummaryResponse(BaseModel):
     alerts: list[dict[str, Any]] = Field(default_factory=list)
 
 
+def _queryset_health_history_path() -> str:
+    return str(getattr(settings, "QUERYSET_HEALTH_HISTORY_PATH", "./runs/queryset_health/history.jsonl") or "")
+
+
+def _filter_queryset_health_rows(rows: list[Any], *, profile_hash: str | None) -> list[Any]:
+    ph = str(profile_hash or "").strip()
+    if not ph:
+        return rows
+    return [row for row in rows if isinstance(row, dict) and str(row.get("profile_hash") or "").strip() == ph]
+
+
+def _queryset_health_ts_to_ms(raw: Any) -> int:
+    ts = str(raw or "").strip()
+    if not ts:
+        return 0
+    try:
+        if ts.endswith("Z"):
+            ts = ts[:-1] + "+00:00"
+        dt = datetime.fromisoformat(ts)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        return int(dt.timestamp() * 1000)
+    except Exception:
+        return 0
+
+
+def _queryset_health_optional_float(value: Any) -> float | None:
+    try:
+        if value is None or isinstance(value, bool):
+            return None
+        return float(value)
+    except Exception:
+        return None
+
+
+def _build_queryset_health_timeseries(rows: list[Any]) -> dict[str, list[Any]]:
+    timeseries = {
+        "ts_ms": [],
+        "hit_at_k": [],
+        "mrr": [],
+        "ndcg_at_k": [],
+        "p95_latency_ms": [],
+        "miss_rate": [],
+        "weak_hit_rate": [],
+        "status": [],
+    }
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        metrics = row.get("metrics") if isinstance(row.get("metrics"), dict) else {}
+        risk = row.get("risk") if isinstance(row.get("risk"), dict) else {}
+        timeseries["ts_ms"].append(_queryset_health_ts_to_ms(row.get("generated_at")))
+        timeseries["hit_at_k"].append(_queryset_health_optional_float(metrics.get("hit_at_k")))
+        timeseries["mrr"].append(_queryset_health_optional_float(metrics.get("mrr")))
+        timeseries["ndcg_at_k"].append(_queryset_health_optional_float(metrics.get("ndcg_at_k")))
+        timeseries["p95_latency_ms"].append(_queryset_health_optional_float(metrics.get("p95_latency_ms")))
+        timeseries["miss_rate"].append(_queryset_health_optional_float(risk.get("miss_rate")))
+        timeseries["weak_hit_rate"].append(_queryset_health_optional_float(risk.get("weak_hit_rate")))
+        timeseries["status"].append(str(row.get("status") or "unknown"))
+    return timeseries
+
+
+def _visible_queryset_health_rows(rows: list[Any], *, limit: int) -> tuple[int, bool, list[Any]]:
+    total = int(len(rows))
+    cap = max(1, int(limit or 1))
+    truncated = total > cap
+    return total, truncated, rows[-cap:] if cap else rows
+
+
 @router.post("/frontend-vitals", status_code=202, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def report_frontend_web_vital(
     body: FrontendWebVitalReportRequest,
@@ -663,72 +732,11 @@ def list_queryset_health_runs(
 
     from pathlib import Path
 
-    from app.core.config import settings
     from app.services.queryset_health_service import load_queryset_health_history
 
-    path_str = str(getattr(settings, "QUERYSET_HEALTH_HISTORY_PATH", "./runs/queryset_health/history.jsonl") or "")
-    path = Path(path_str)
-
-    rows = load_queryset_health_history(path)
-    if profile_hash:
-        ph = str(profile_hash or "").strip()
-        if ph:
-            rows = [r for r in rows if isinstance(r, dict) and str(r.get("profile_hash") or "").strip() == ph]
-
-    total = int(len(rows))
-    cap = max(1, int(limit or 1))
-    truncated = total > cap
-    visible = rows[-cap:] if cap else rows
-
-    # Build a compact timeseries for charts (chronological order).
-    ts_rows = visible
-    ts_ms: list[int] = []
-    hit_at_k: list[float | None] = []
-    mrr: list[float | None] = []
-    ndcg: list[float | None] = []
-    p95_latency_ms: list[float | None] = []
-    miss_rate: list[float | None] = []
-    weak_hit_rate: list[float | None] = []
-    status: list[str] = []
-
-    def _to_ms(raw: Any) -> int:
-        ts = str(raw or "").strip()
-        if not ts:
-            return 0
-        try:
-            # fromisoformat does not accept trailing "Z".
-            if ts.endswith("Z"):
-                ts = ts[:-1] + "+00:00"
-            dt = datetime.fromisoformat(ts)
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=UTC)
-            return int(dt.timestamp() * 1000)
-        except Exception:
-            return 0
-
-    for r in ts_rows:
-        if not isinstance(r, dict):
-            continue
-        ts_ms.append(_to_ms(r.get("generated_at")))
-
-        metrics = r.get("metrics") if isinstance(r.get("metrics"), dict) else {}
-        risk = r.get("risk") if isinstance(r.get("risk"), dict) else {}
-
-        def _f(v: Any) -> float | None:
-            try:
-                if v is None or isinstance(v, bool):
-                    return None
-                return float(v)
-            except Exception:
-                return None
-
-        hit_at_k.append(_f(metrics.get("hit_at_k")))
-        mrr.append(_f(metrics.get("mrr")))
-        ndcg.append(_f(metrics.get("ndcg_at_k")))
-        p95_latency_ms.append(_f(metrics.get("p95_latency_ms")))
-        miss_rate.append(_f(risk.get("miss_rate")))
-        weak_hit_rate.append(_f(risk.get("weak_hit_rate")))
-        status.append(str(r.get("status") or "unknown"))
+    path = Path(_queryset_health_history_path())
+    rows = _filter_queryset_health_rows(load_queryset_health_history(path), profile_hash=profile_hash)
+    total, truncated, visible = _visible_queryset_health_rows(rows, limit=limit)
 
     # Return newest-first list for the table.
     items = list(reversed([dict(r) for r in visible if isinstance(r, dict)]))
@@ -739,16 +747,7 @@ def list_queryset_health_runs(
         total=total,
         truncated=bool(truncated),
         items=items,
-        timeseries={
-            "ts_ms": ts_ms,
-            "hit_at_k": hit_at_k,
-            "mrr": mrr,
-            "ndcg_at_k": ndcg,
-            "p95_latency_ms": p95_latency_ms,
-            "miss_rate": miss_rate,
-            "weak_hit_rate": weak_hit_rate,
-            "status": status,
-        },
+        timeseries=_build_queryset_health_timeseries(visible),
     )
 
 

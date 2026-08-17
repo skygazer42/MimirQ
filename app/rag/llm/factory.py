@@ -271,28 +271,30 @@ def _resolve_fallback_specs(*, base_config: dict[str, Any] | None) -> list[dict[
     return resolved
 
 
-async def create_llm_client(
-    scenario: str = "general",
-    model_config: dict[str, Any] | None = None,
-    **kwargs: Any,
-) -> BaseLLMClient:
-    _ = scenario
-    _ = kwargs
-    http_client = kwargs.get("http_client")
-    http_async_client = kwargs.get("http_async_client")
+def _llm_ctor_kwargs(
+    *,
+    model_config: dict[str, Any] | None,
+    http_client: Any,
+    http_async_client: Any,
+) -> dict[str, Any]:
     ctor_kwargs: dict[str, Any] = {"model_config": model_config}
     if http_client is not None:
         ctor_kwargs["http_client"] = http_client
     if http_async_client is not None:
         ctor_kwargs["http_async_client"] = http_async_client
-    primary = await asyncio.to_thread(OpenAIChatClient, **ctor_kwargs)
+    return ctor_kwargs
 
-    if not bool(getattr(settings, "LLM_FALLBACK_ENABLED", False)):
-        return primary
 
+async def _build_fallback_clients(
+    *,
+    primary: BaseLLMClient,
+    model_config: dict[str, Any] | None,
+    http_client: Any,
+    http_async_client: Any,
+) -> list[BaseLLMClient]:
     specs = _resolve_fallback_specs(base_config=model_config)
     if not specs:
-        return primary
+        return [primary]
 
     primary_model = str((model_config or {}).get("model") or settings.LLM_MODEL or "").strip()
     clients: list[BaseLLMClient] = [primary]
@@ -302,17 +304,49 @@ async def create_llm_client(
         if not model_name or model_name in seen_models:
             continue
         try:
-            fallback_ctor_kwargs: dict[str, Any] = {"model_config": spec}
-            if http_client is not None:
-                fallback_ctor_kwargs["http_client"] = http_client
-            if http_async_client is not None:
-                fallback_ctor_kwargs["http_async_client"] = http_async_client
-            fallback_client = await asyncio.to_thread(OpenAIChatClient, **fallback_ctor_kwargs)
-            clients.append(fallback_client)
-            seen_models.add(model_name)
+            fallback_client = await asyncio.to_thread(
+                OpenAIChatClient,
+                **_llm_ctor_kwargs(
+                    model_config=spec,
+                    http_client=http_client,
+                    http_async_client=http_async_client,
+                ),
+            )
         except Exception as exc:
             logger.warning("Failed to initialize fallback LLM model '%s': %s", model_name, str(exc)[:200])
+            continue
+        clients.append(fallback_client)
+        seen_models.add(model_name)
+    return clients
 
+
+async def create_llm_client(
+    scenario: str = "general",
+    model_config: dict[str, Any] | None = None,
+    **kwargs: Any,
+) -> BaseLLMClient:
+    _ = scenario
+    _ = kwargs
+    http_client = kwargs.get("http_client")
+    http_async_client = kwargs.get("http_async_client")
+    primary = await asyncio.to_thread(
+        OpenAIChatClient,
+        **_llm_ctor_kwargs(
+            model_config=model_config,
+            http_client=http_client,
+            http_async_client=http_async_client,
+        ),
+    )
+
+    if not bool(getattr(settings, "LLM_FALLBACK_ENABLED", False)):
+        return primary
+
+    clients = await _build_fallback_clients(
+        primary=primary,
+        model_config=model_config,
+        http_client=http_client,
+        http_async_client=http_async_client,
+    )
     if len(clients) <= 1:
         return primary
     return FallbackLLMClient(clients)

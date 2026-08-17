@@ -30,12 +30,12 @@ class ParentChildReranker(DocumentReranker):
 
         groups: dict[str, list[Document]] = {}
         scores: dict[int, float] = {}
-        
+
         for doc in documents:
             meta = doc.metadata or {}
             score = float(meta.get("score", 0.0) or 0.0)
             scores[id(doc)] = score
-            
+
             # Determine the group ID.
             group_id = meta.get("parent_id") or meta.get("parent_node_id")
             if not group_id:

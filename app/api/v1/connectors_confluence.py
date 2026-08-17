@@ -55,6 +55,15 @@ def _resolve_connectors_helper(name: str):  # noqa: ANN202
     raise RuntimeError(f"connectors helper not available: {name}")
 
 
+def _load_confluence_run(db: Session, *, run_id: UUID, tenant_id: UUID) -> ConnectorRun | None:
+    return (
+        db.query(ConnectorRun)
+        .options(selectinload(ConnectorRun.documents))
+        .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
+        .first()
+    )
+
+
 def _confluence_connector_base_query(
     db: Session,
     *,
@@ -1886,6 +1895,121 @@ def _mark_confluence_space_run_failed(db: Session, *, run_id: UUID, tenant_id: U
                 _resolve_connectors_helper("_sync_connector_config_from_run")(db, run=run)
 
 
+def _prepare_confluence_space_run(db: Session, *, run: ConnectorRun) -> dict[str, Any]:
+    run.status = "running"
+    run.started_at = _resolve_connectors_helper("_now")()
+    run.error_message = None
+    run.stats = dict(run.stats or {})
+    db.commit()
+    db.refresh(run)
+
+    settings_map = _build_confluence_space_run_settings(
+        _resolve_connectors_helper("decrypt_connector_config_secrets")(dict(run.config or {}))
+    )
+    settings_map["cql"] = _build_confluence_space_search_cql(
+        space_key=str(settings_map.get("space_key") or ""),
+        effective_mode=str(settings_map.get("effective_mode") or ""),
+        cursor_last_modified=str(settings_map.get("cursor_last_modified") or ""),
+    )
+    run.stats = _resolve_connectors_helper("_finalize_connector_stats")(
+        _initialize_confluence_space_run_stats(run=run, settings_map=settings_map)
+    )
+    db.commit()
+    return settings_map
+
+
+async def _run_confluence_space_listing_loop(
+    *,
+    db: Session,
+    pool: Any,
+    run: ConnectorRun,
+    run_id: UUID,
+    tenant_id: UUID,
+    requested_by: str,
+    settings_map: dict[str, Any],
+) -> tuple[int, bool, bool, dict[str, Any]]:
+    start = 0
+    listing_complete = False
+    stopped_mid_batch = False
+    progress = _initialize_confluence_space_progress()
+
+    while int(progress.get("processed") or 0) < int(settings_map.get("max_pages") or 0):
+        if _confluence_space_run_cancelled(db, run=run):
+            break
+        pages, link_base = await _fetch_confluence_space_listing_page(
+            pool,
+            settings_map=settings_map,
+            start=start,
+        )
+        if not pages:
+            listing_complete = True
+            break
+
+        batch_processed0 = int(progress.get("processed") or 0)
+        progress = await _resolve_connectors_helper("_process_confluence_space_page_batch")(
+            pool,
+            db,
+            run=run,
+            run_id=run_id,
+            tenant_id=tenant_id,
+            requested_by=requested_by,
+            settings_map=settings_map,
+            pages=pages,
+            link_base=link_base,
+            progress=progress,
+        )
+        if int(progress.get("processed") or 0) >= int(settings_map.get("max_pages") or 0) and (
+            batch_processed0 + len(pages)
+        ) > int(settings_map.get("max_pages") or 0):
+            stopped_mid_batch = True
+
+        start += int(len(pages))
+        if int(progress.get("processed") or 0) >= int(settings_map.get("max_pages") or 0):
+            break
+        if len(pages) < int(settings_map.get("page_size") or 0):
+            listing_complete = True
+            break
+
+    return start, listing_complete, stopped_mid_batch, progress
+
+
+def _should_probe_confluence_listing(
+    *,
+    run: ConnectorRun,
+    settings_map: dict[str, Any],
+    progress: dict[str, Any],
+    listing_complete: bool,
+    stopped_mid_batch: bool,
+    cancelled: bool,
+) -> bool:
+    return (
+        str(settings_map.get("effective_mode") or "") == "full"
+        and bool(settings_map.get("soft_delete"))
+        and bool(run.dataset_id)
+        and bool(progress.get("observed_page_ids"))
+        and (not listing_complete)
+        and (not stopped_mid_batch)
+        and int(progress.get("processed") or 0) >= int(settings_map.get("max_pages") or 0)
+        and (not cancelled)
+    )
+
+
+def _should_soft_delete_confluence_pages(
+    *,
+    run: ConnectorRun,
+    settings_map: dict[str, Any],
+    progress: dict[str, Any],
+    listing_complete: bool,
+) -> bool:
+    return (
+        str(settings_map.get("effective_mode") or "") == "full"
+        and bool(settings_map.get("soft_delete"))
+        and bool(run.dataset_id)
+        and bool(progress.get("observed_page_ids"))
+        and listing_complete
+    )
+
+
 async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
     """
     Background execution for confluence_space connector.
@@ -1896,91 +2020,32 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
     """
     db = _resolve_connectors_helper("SessionLocal")()
     try:
-        run = (
-            db.query(ConnectorRun)
-            .options(selectinload(ConnectorRun.documents))
-            .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
-            .first()
-        )
+        run = _load_confluence_run(db, run_id=run_id, tenant_id=tenant_id)
         if not run:
             return
         if str(run.status or "").lower() in {"cancelled", "completed", "failed"}:
             return
 
-        run.status = "running"
-        run.started_at = _resolve_connectors_helper("_now")()
-        run.error_message = None
-        run.stats = dict(run.stats or {})
-        db.commit()
-        db.refresh(run)
-
-        settings_map = _build_confluence_space_run_settings(
-            _resolve_connectors_helper("decrypt_connector_config_secrets")(dict(run.config or {}))
-        )
-        settings_map["cql"] = _build_confluence_space_search_cql(
-            space_key=str(settings_map.get("space_key") or ""),
-            effective_mode=str(settings_map.get("effective_mode") or ""),
-            cursor_last_modified=str(settings_map.get("cursor_last_modified") or ""),
-        )
-        run.stats = _resolve_connectors_helper("_finalize_connector_stats")(
-            _initialize_confluence_space_run_stats(run=run, settings_map=settings_map)
-        )
-        db.commit()
-
+        settings_map = _prepare_confluence_space_run(db, run=run)
         pool = _resolve_connectors_helper("get_http_client_pool")()
-        start = 0
-        listing_complete = False
-        stopped_mid_batch = False
-        progress = _initialize_confluence_space_progress()
+        start, listing_complete, stopped_mid_batch, progress = await _run_confluence_space_listing_loop(
+            db=db,
+            pool=pool,
+            run=run,
+            run_id=run_id,
+            tenant_id=tenant_id,
+            requested_by=requested_by,
+            settings_map=settings_map,
+        )
 
-        while int(progress.get("processed") or 0) < int(settings_map.get("max_pages") or 0):
-            if _confluence_space_run_cancelled(db, run=run):
-                break
-
-            pages, link_base = await _fetch_confluence_space_listing_page(
-                pool,
-                settings_map=settings_map,
-                start=start,
-            )
-            if not pages:
-                listing_complete = True
-                break
-
-            batch_processed0 = int(progress.get("processed") or 0)
-            progress = await _resolve_connectors_helper("_process_confluence_space_page_batch")(
-                pool,
-                db,
-                run=run,
-                run_id=run_id,
-                tenant_id=tenant_id,
-                requested_by=requested_by,
-                settings_map=settings_map,
-                pages=pages,
-                link_base=link_base,
-                progress=progress,
-            )
-
-            if int(progress.get("processed") or 0) >= int(settings_map.get("max_pages") or 0) and (
-                batch_processed0 + len(pages)
-            ) > int(settings_map.get("max_pages") or 0):
-                stopped_mid_batch = True
-
-            start += int(len(pages))
-            if int(progress.get("processed") or 0) >= int(settings_map.get("max_pages") or 0):
-                break
-            if len(pages) < int(settings_map.get("page_size") or 0):
-                listing_complete = True
-                break
-
-        if (
-            str(settings_map.get("effective_mode") or "") == "full"
-            and bool(settings_map.get("soft_delete"))
-            and run.dataset_id
-            and progress.get("observed_page_ids")
-            and (not listing_complete)
-            and (not stopped_mid_batch)
-            and int(progress.get("processed") or 0) >= int(settings_map.get("max_pages") or 0)
-            and (not _confluence_space_run_cancelled(db, run=run))
+        cancelled = _confluence_space_run_cancelled(db, run=run)
+        if _should_probe_confluence_listing(
+            run=run,
+            settings_map=settings_map,
+            progress=progress,
+            listing_complete=listing_complete,
+            stopped_mid_batch=stopped_mid_batch,
+            cancelled=cancelled,
         ):
             listing_complete = await _resolve_connectors_helper("_probe_confluence_space_listing_complete")(
                 pool,
@@ -1988,17 +2053,16 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
                 start=start,
             )
 
-        if _confluence_space_run_cancelled(db, run=run):
+        if cancelled or _confluence_space_run_cancelled(db, run=run):
             _resolve_connectors_helper("_finalize_cancelled_confluence_space_run")(db, run=run)
             return
 
         soft_deleted = 0
-        if (
-            str(settings_map.get("effective_mode") or "") == "full"
-            and bool(settings_map.get("soft_delete"))
-            and run.dataset_id
-            and progress.get("observed_page_ids")
-            and listing_complete
+        if _should_soft_delete_confluence_pages(
+            run=run,
+            settings_map=settings_map,
+            progress=progress,
+            listing_complete=listing_complete,
         ):
             soft_deleted = _resolve_connectors_helper("_soft_delete_missing_confluence_pages")(
                 db,

@@ -100,6 +100,38 @@ def _append_unique(values: list[Any], value: Any) -> None:
     values.append(value)
 
 
+def _sorted_chunks(chunks: list[Any]) -> list[Any]:
+    return sorted(chunks or [], key=lambda c: (getattr(c, "chunk_index", 0) or 0, str(getattr(c, "id", ""))))
+
+
+def _find_or_create_path_node(
+    *,
+    root_nodes: list[dict[str, Any]],
+    by_path: dict[str, dict[str, Any]],
+    path: list[str],
+    page_number: Any,
+    max_nodes: int,
+) -> tuple[dict[str, Any] | None, bool]:
+    parent_children = root_nodes
+    parent_slug_parts: list[str] = []
+    current_node: dict[str, Any] | None = None
+
+    for title in path:
+        parent_slug_parts.append(_slug(title))
+        node_id = "/".join(parent_slug_parts)
+        current_node = by_path.get(node_id)
+        if current_node is None:
+            if len(by_path) >= max_nodes:
+                return None, True
+            current_node = _node_template(title=title, path=path[: len(parent_slug_parts)], node_id=node_id)
+            by_path[node_id] = current_node
+            parent_children.append(current_node)
+        _update_page_range(current_node, page_number)
+        parent_children = current_node["children"]
+
+    return current_node, False
+
+
 def build_document_structure_from_chunks(
     *,
     document: Any,
@@ -120,28 +152,19 @@ def build_document_structure_from_chunks(
     by_path: dict[str, dict[str, Any]] = {}
     truncated = False
 
-    for chunk in sorted(chunks or [], key=lambda c: (getattr(c, "chunk_index", 0) or 0, str(getattr(c, "id", "")))):
+    for chunk in _sorted_chunks(chunks):
         path = _extract_chunk_path(chunk)
         if not path:
             continue
 
-        parent_children = root_nodes
-        parent_slug_parts: list[str] = []
-        current_node: dict[str, Any] | None = None
-        for title in path:
-            parent_slug_parts.append(_slug(title))
-            node_id = "/".join(parent_slug_parts)
-            current_node = by_path.get(node_id)
-            if current_node is None:
-                if len(by_path) >= max_nodes:
-                    truncated = True
-                    break
-                current_node = _node_template(title=title, path=path[: len(parent_slug_parts)], node_id=node_id)
-                by_path[node_id] = current_node
-                parent_children.append(current_node)
-            _update_page_range(current_node, getattr(chunk, "page_number", None))
-            parent_children = current_node["children"]
-
+        current_node, node_truncated = _find_or_create_path_node(
+            root_nodes=root_nodes,
+            by_path=by_path,
+            path=path,
+            page_number=getattr(chunk, "page_number", None),
+            max_nodes=max_nodes,
+        )
+        truncated = truncated or node_truncated
         if current_node is None:
             continue
 

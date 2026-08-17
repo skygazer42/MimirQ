@@ -32,6 +32,27 @@ def _normalize_paragraph_signature(text: str) -> str:
     return norm.casefold()
 
 
+def _eligible_paragraph_signature(
+    paragraph: str,
+    *,
+    min_chars: int,
+    max_chars: int,
+) -> str | None:
+    raw_paragraph = paragraph or ""
+    if not raw_paragraph.strip():
+        return None
+    if _CODE_FENCE_RE.search(raw_paragraph) or _HEADING_RE.search(raw_paragraph) or _TABLE_ROW_RE.search(raw_paragraph):
+        return None
+    sig = _normalize_paragraph_signature(raw_paragraph)
+    if not sig:
+        return None
+    if len(sig) < min_chars:
+        return None
+    if max_chars and len(sig) > max_chars:
+        return None
+    return sig
+
+
 def drop_duplicate_paragraphs(
     text: str,
     *,
@@ -65,25 +86,14 @@ def drop_duplicate_paragraphs(
     counts: dict[str, int] = {}
     signatures: list[str | None] = []
     for p in paragraphs:
-        raw_p = p or ""
-        if not raw_p.strip():
-            signatures.append(None)
-            continue
-        if _CODE_FENCE_RE.search(raw_p) or _HEADING_RE.search(raw_p) or _TABLE_ROW_RE.search(raw_p):
-            signatures.append(None)
-            continue
-        sig = _normalize_paragraph_signature(raw_p)
-        if not sig:
-            signatures.append(None)
-            continue
-        if len(sig) < min_chars:
-            signatures.append(None)
-            continue
-        if max_chars and len(sig) > max_chars:
-            signatures.append(None)
-            continue
+        sig = _eligible_paragraph_signature(
+            p,
+            min_chars=min_chars,
+            max_chars=max_chars,
+        )
         signatures.append(sig)
-        counts[sig] = counts.get(sig, 0) + 1
+        if sig is not None:
+            counts[sig] = counts.get(sig, 0) + 1
 
     dropped = 0
     kept: list[str] = []
@@ -106,4 +116,3 @@ __all__ = [
     "ParagraphDedupResult",
     "drop_duplicate_paragraphs",
 ]
-

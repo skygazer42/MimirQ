@@ -132,6 +132,40 @@ class LatexSectionsChunker(BaseChunker):
             add_start_index=True,
         )
 
+    def _append_section_chunks(
+        self,
+        out: list[Document],
+        *,
+        section: _Section,
+        section_text: str,
+        base_meta: dict[str, Any],
+        path: list[str],
+    ) -> None:
+        path_str = " / ".join(path) if path else None
+        split_docs = self._fallback_splitter.create_documents(texts=[section_text], metadatas=[base_meta])
+        for sd in split_docs:
+            local_start = sd.metadata.pop("start_index", None) or 0
+            abs_start = section.start + int(local_start)
+            abs_end = abs_start + len(sd.page_content)
+
+            meta: dict[str, Any] = dict(base_meta)
+            meta.update(sd.metadata or {})
+            meta["chunk_strategy"] = "latex_sections"
+            meta["start_char"] = abs_start
+            meta["end_char"] = abs_end
+            meta.setdefault("doc_type_kwd", "latex")
+
+            if section.heading is not None:
+                meta["latex_heading"] = section.heading.title
+                meta["latex_level"] = int(section.heading.level)
+                meta["latex_cmd"] = section.heading.cmd
+            if path:
+                meta["latex_path"] = path
+            if path_str:
+                meta["latex_path_str"] = path_str
+
+            out.append(Document(page_content=sd.page_content, metadata=meta))
+
     def split_documents(self, documents: list[Document]) -> list[Document]:
         out: list[Document] = []
 
@@ -157,35 +191,13 @@ class LatexSectionsChunker(BaseChunker):
                         heading_text=section.heading.title,
                     )
 
-                path = list(heading_stack)
-                path_str = " / ".join(path) if path else None
-
-                split_docs = self._fallback_splitter.create_documents(
-                    texts=[sec_text],
-                    metadatas=[base_meta],
+                self._append_section_chunks(
+                    out,
+                    section=section,
+                    section_text=sec_text,
+                    base_meta=base_meta,
+                    path=list(heading_stack),
                 )
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = section.start + int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "latex_sections"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta.setdefault("doc_type_kwd", "latex")
-
-                    if section.heading is not None:
-                        meta["latex_heading"] = section.heading.title
-                        meta["latex_level"] = int(section.heading.level)
-                        meta["latex_cmd"] = section.heading.cmd
-                    if path:
-                        meta["latex_path"] = path
-                    if path_str:
-                        meta["latex_path_str"] = path_str
-
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
 
         for idx, chunk in enumerate(out):
             meta = dict(chunk.metadata or {})
@@ -193,4 +205,3 @@ class LatexSectionsChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

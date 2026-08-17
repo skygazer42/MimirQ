@@ -16,6 +16,50 @@ from app.rag.core.logging import get_logger
 logger = get_logger(__name__)
 
 
+def _is_pathlike_command(cmd: str) -> bool:
+    return any(sep and sep in cmd for sep in (os.sep, os.altsep)) or (os.name == "nt" and ":" in cmd[:3])
+
+
+def _candidate_command_names(base_name: str) -> list[str]:
+    names: list[str] = [base_name]
+    if not Path(base_name).suffix and os.name == "nt":
+        names.extend([f"{base_name}.exe", f"{base_name}.cmd", f"{base_name}.bat"])
+    return names
+
+
+def _candidate_directories(executable: Path) -> list[Path]:
+    return [
+        executable.parent,
+        executable.parent / "Scripts",
+        executable.parent / "bin",
+        executable.parent.parent / "Scripts",
+        executable.parent.parent / "bin",
+    ]
+
+
+def _resolve_from_python_environment(cmd: str) -> str | None:
+    executable = Path(sys.executable).resolve()
+    names = _candidate_command_names(Path(cmd).name)
+
+    seen: set[str] = set()
+    for directory in _candidate_directories(executable):
+        try:
+            directory = directory.resolve()
+        except Exception as exc:
+            logger.debug("Ignoring CLI candidate directory resolve failure: %s", exc)
+        key = str(directory)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        for name in names:
+            candidate = directory / name
+            if candidate.is_file():
+                return str(candidate.resolve())
+
+    return None
+
+
 def resolve_cli_command(command: str) -> str | None:
     """
     Best-effort resolve an executable path for `command`.
@@ -34,47 +78,14 @@ def resolve_cli_command(command: str) -> str | None:
         return str(direct.resolve())
 
     # Path-like values should not fall back to PATH search.
-    is_pathlike = any(sep and sep in cmd for sep in (os.sep, os.altsep)) or (os.name == "nt" and ":" in cmd[:3])
-    if is_pathlike:
+    if _is_pathlike_command(cmd):
         return None
 
     resolved = shutil.which(cmd)
     if resolved:
         return resolved
 
-    exe = Path(sys.executable).resolve()
-    base_name = Path(cmd).name
-    has_suffix = bool(Path(base_name).suffix)
-
-    names: list[str] = [base_name]
-    if not has_suffix and os.name == "nt":
-        names.extend([f"{base_name}.exe", f"{base_name}.cmd", f"{base_name}.bat"])
-
-    candidate_dirs = [
-        exe.parent,
-        exe.parent / "Scripts",
-        exe.parent / "bin",
-        exe.parent.parent / "Scripts",
-        exe.parent.parent / "bin",
-    ]
-
-    seen: set[str] = set()
-    for d in candidate_dirs:
-        try:
-            d = d.resolve()
-        except Exception as exc:
-            logger.debug("Ignoring CLI candidate directory resolve failure: %s", exc)
-        key = str(d)
-        if key in seen:
-            continue
-        seen.add(key)
-
-        for name in names:
-            candidate = d / name
-            if candidate.is_file():
-                return str(candidate.resolve())
-
-    return None
+    return _resolve_from_python_environment(cmd)
 
 
 def run_resolved_cli(

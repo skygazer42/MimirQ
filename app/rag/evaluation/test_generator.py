@@ -323,11 +323,11 @@ def _calculate_text_diversity_scores(texts: list[str]) -> list[float]:
     """
     if not texts:
         return []
-    
+
     # Simple tokenization (by spaces and punctuation).
     def tokenize(text: str) -> list[str]:
         return [w.lower() for w in re.findall(r'\w+', text) if len(w) > 1]
-    
+
     # Count token frequency.
     all_tokens = []
     text_tokens = []
@@ -335,7 +335,7 @@ def _calculate_text_diversity_scores(texts: list[str]) -> list[float]:
         tokens = tokenize(text)
         text_tokens.append(tokens)
         all_tokens.extend(tokens)
-    
+
     # Compute document frequency.
     doc_freq = Counter()
     for tokens in text_tokens:
@@ -347,7 +347,7 @@ def _calculate_text_diversity_scores(texts: list[str]) -> list[float]:
         if not tokens:
             scores.append(0.0)
             continue
-        
+
         # Score = average IDF of unique tokens.
         token_counts = Counter(tokens)
         score = sum(
@@ -355,7 +355,7 @@ def _calculate_text_diversity_scores(texts: list[str]) -> list[float]:
             for token, count in token_counts.items()
         ) / len(tokens)
         scores.append(score)
-    
+
     return scores
 
 
@@ -374,34 +374,34 @@ def _sample_diverse_chunks(
     """
     if not chunks:
         return []
-    
+
     # Filter out very short chunks (< 50 chars).
     valid_chunks = [c for c in chunks if len(c.content.strip()) >= 50]
-    
+
     if len(valid_chunks) <= num_samples:
         return valid_chunks
-    
+
     # Truncate long content to speed up computation.
     chunk_texts = [c.content[:max_chars] for c in valid_chunks]
-    
+
     # Compute diversity scores.
     diversity_scores = _calculate_text_diversity_scores(chunk_texts)
-    
+
     # Normalize scores to [0, 1].
     max_score = max(diversity_scores) if diversity_scores else 1.0
     if max_score > 0:
         diversity_scores = [s / max_score for s in diversity_scores]
-    
+
     # Combine randomness: 70% diversity, 30% random.
     combined_scores = [
         0.7 * div + 0.3 * secure_random_float01()
         for div in diversity_scores
     ]
-    
+
     # Select top-scoring chunks.
     indexed_scores = list(enumerate(combined_scores))
     indexed_scores.sort(key=lambda x: x[1], reverse=True)
-    
+
     selected_indices = [idx for idx, _ in indexed_scores[:num_samples]]
     return [valid_chunks[idx] for idx in selected_indices]
 
@@ -579,7 +579,7 @@ def generate_questions_from_conversations(
             .order_by(Message.created_at.asc())
             .all()
         )
-        
+
         # Pair user-assistant messages.
         pending_user = None
         for msg in messages:
@@ -590,7 +590,7 @@ def generate_questions_from_conversations(
                 user_len = len(pending_user.content.strip())
                 assistant_len = len(msg.content.strip())
                 num_citations = len(msg.citations) if msg.citations else 0
-                
+
                 # Simple scoring rules.
                 quality_score = 0.0
                 if user_len >= 10:  # Question long enough.
@@ -599,29 +599,29 @@ def generate_questions_from_conversations(
                     quality_score += 0.3
                 if num_citations > 0:  # Has citations.
                     quality_score += 0.4
-                
+
                 if quality_score >= quality_threshold:
                     high_quality_turns.append((
                         pending_user.content,
                         msg.content,
                         conv.id
                     ))
-                
+
                 pending_user = None
-    
+
     if not high_quality_turns:
         return []
-    
+
     # If many high-quality conversations, sample randomly.
     if len(high_quality_turns) > num_questions * 2:
         high_quality_turns = secure_sample(high_quality_turns, num_questions * 2)
-    
+
     # Prepare conversation text.
     conversation_text = "\n\n".join([
         f"User: {user}\nAssistant: {assistant}"
         for user, assistant, _ in high_quality_turns
     ])
-    
+
     # Prepare LLM.
     http_client, http_async_client = _build_testgen_http_clients()
     try:
@@ -634,23 +634,23 @@ def generate_questions_from_conversations(
             http_client=http_client,
             http_async_client=http_async_client,
         )
-        
+
         parser = JsonOutputParser()
         prompt = PromptTemplate(
             template=EXTRACT_QUESTIONS_FROM_CONVERSATION_PROMPT,
             input_variables=["conversations", "num_questions"]
         )
-        
+
         chain = prompt | llm | parser
-        
+
         try:
             result = chain.invoke({
                 "conversations": conversation_text[:8000],  # Limit length.
                 "num_questions": num_questions
             })
-            
+
             questions: list[GeneratedQuestion] = []
-            
+
             if isinstance(result, dict) and "questions" in result:
                 for q in result["questions"]:
                     questions.append(GeneratedQuestion(
@@ -662,9 +662,9 @@ def generate_questions_from_conversations(
                             "original_question": q.get("original_question", "")
                         }
                     ))
-            
+
             return questions[:num_questions]
-        
+
         except Exception as e:
             logger.warning("Failed to generate questions from conversation: %s", e)
             return []

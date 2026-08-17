@@ -375,6 +375,62 @@ def _start_distributed_retrieval_lease_heartbeat(lease: _DistributedRetrievalLea
     thread.start()
 
 
+def _read_any_distributed_retrieval_candidates(key: str) -> list[dict[str, Any]] | None:
+    cached = get_cached_retrieval_candidates(key)
+    if isinstance(cached, list):
+        return cached
+    shared = get_distributed_inflight_retrieval_candidates(key)
+    if isinstance(shared, list):
+        return shared
+    return None
+
+
+def _try_acquire_distributed_retrieval_lease(
+    client: Any,
+    *,
+    lease_key: str,
+    owner: str,
+    lease_ttl_sec: int,
+) -> bool | None:
+    try:
+        return try_acquire_redis_lease(
+            client,
+            lease_key,
+            value=owner,
+            ttl_sec=lease_ttl_sec,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Retrieval candidate lease acquire failed: %s", str(exc)[:200])
+        _invalidate_redis_client()
+        return None
+
+
+def _claim_distributed_retrieval_lease(
+    key: str,
+    *,
+    lease_key: str,
+    owner: str,
+    lease_ttl_sec: int,
+) -> tuple[bool, list[dict[str, Any]] | None, _DistributedRetrievalLease | None]:
+    lease = _DistributedRetrievalLease(lease_key=lease_key, owner=owner)
+    _set_current_distributed_retrieval_lease(lease)
+    available = _read_any_distributed_retrieval_candidates(key)
+    if isinstance(available, list):
+        release_distributed_inflight_retrieval_candidates(lease)
+        return False, available, None
+    _start_distributed_retrieval_lease_heartbeat(lease, ttl_sec=lease_ttl_sec)
+    return True, None, lease
+
+
+def _raise_distributed_retrieval_wait_timeout(key: str, *, wait_timeout_sec: float) -> None:
+    logger.warning(
+        "Retrieval candidate distributed singleflight timed out waiting for lease payload: %s (timeout=%.2fs)",
+        key,
+        wait_timeout_sec,
+    )
+    raise RetrievalCandidateSingleflightTimeoutError(wait_timeout_sec)
+
+
 def acquire_or_wait_for_distributed_inflight_retrieval_candidates(
     key: str,
 ) -> tuple[bool, list[dict[str, Any]] | None, _DistributedRetrievalLease | None]:
@@ -396,46 +452,29 @@ def acquire_or_wait_for_distributed_inflight_retrieval_candidates(
     deadline = time.monotonic() + wait_timeout_sec
 
     while True:
-        cached = get_cached_retrieval_candidates(key)
-        if isinstance(cached, list):
-            return False, cached, None
-        shared = get_distributed_inflight_retrieval_candidates(key)
-        if isinstance(shared, list):
-            return False, shared, None
+        available = _read_any_distributed_retrieval_candidates(key)
+        if isinstance(available, list):
+            return False, available, None
 
-        try:
-            acquired = try_acquire_redis_lease(
-                client,
-                lease_key,
-                value=owner,
-                ttl_sec=lease_ttl_sec,
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Retrieval candidate lease acquire failed: %s", str(exc)[:200])
-            _invalidate_redis_client()
+        acquired = _try_acquire_distributed_retrieval_lease(
+            client,
+            lease_key=lease_key,
+            owner=owner,
+            lease_ttl_sec=lease_ttl_sec,
+        )
+        if acquired is None:
             return True, None, None
 
         if acquired:
-            lease = _DistributedRetrievalLease(lease_key=lease_key, owner=owner)
-            _set_current_distributed_retrieval_lease(lease)
-            cached = get_cached_retrieval_candidates(key)
-            if isinstance(cached, list):
-                release_distributed_inflight_retrieval_candidates(lease)
-                return False, cached, None
-            shared = get_distributed_inflight_retrieval_candidates(key)
-            if isinstance(shared, list):
-                release_distributed_inflight_retrieval_candidates(lease)
-                return False, shared, None
-            _start_distributed_retrieval_lease_heartbeat(lease, ttl_sec=lease_ttl_sec)
-            return True, None, lease
+            return _claim_distributed_retrieval_lease(
+                key,
+                lease_key=lease_key,
+                owner=owner,
+                lease_ttl_sec=lease_ttl_sec,
+            )
 
         if time.monotonic() >= deadline:
-            logger.warning(
-                "Retrieval candidate distributed singleflight timed out waiting for lease payload: %s (timeout=%.2fs)",
-                key,
-                wait_timeout_sec,
-            )
-            raise RetrievalCandidateSingleflightTimeoutError(wait_timeout_sec)
+            _raise_distributed_retrieval_wait_timeout(key, wait_timeout_sec=wait_timeout_sec)
 
         time.sleep(poll_delay)
         poll_delay = min(

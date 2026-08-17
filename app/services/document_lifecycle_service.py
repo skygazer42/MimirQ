@@ -46,9 +46,9 @@ Indexer: Any | None = None
 def _get_indexer_class() -> Any:
     global Indexer
     if Indexer is None:
-        from app.services.indexer import Indexer as indexer_cls
+        from app.services.indexer import Indexer as DocumentIndexer
 
-        Indexer = indexer_cls
+        Indexer = DocumentIndexer
     return Indexer
 
 

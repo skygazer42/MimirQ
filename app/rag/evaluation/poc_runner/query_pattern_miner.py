@@ -20,6 +20,53 @@ def _is_abbreviation(token: str) -> bool:
     return compact.isdigit() and len(compact) <= 6
 
 
+def _record_query_tokens(
+    *,
+    query: str,
+    token_counts: Counter[str],
+    token_doc_counts: defaultdict[str, int],
+) -> None:
+    seen_in_query: set[str] = set()
+    for token in _tokenize(query):
+        token_counts[token] += 1
+        if token in seen_in_query:
+            continue
+        token_doc_counts[token] += 1
+        seen_in_query.add(token)
+
+
+def _query_signals(query: str) -> list[str]:
+    signals: list[str] = []
+    if query.count("?") + query.count("？") >= 2:
+        signals.append("multiple_question_marks")
+    if any(marker in query for marker in ("另外", "同时", "以及", "并且")):
+        signals.append("multi_intent_connector")
+    return signals
+
+
+def _build_abbreviations(token_counts: Counter[str], *, min_frequency: int) -> list[dict[str, Any]]:
+    return [
+        {"token": token, "count": count}
+        for token, count in token_counts.most_common()
+        if count >= min_frequency and _is_abbreviation(token)
+    ]
+
+
+def _build_keyword_scores(
+    *,
+    token_counts: Counter[str],
+    token_doc_counts: defaultdict[str, int],
+    total_docs: int,
+) -> list[dict[str, Any]]:
+    keyword_scores = []
+    for token, count in token_counts.items():
+        doc_freq = max(1, token_doc_counts[token])
+        score = round(float(count) * (1.0 + math.log((total_docs + 1) / doc_freq)), 4)
+        keyword_scores.append({"token": token, "score": score, "count": count})
+    keyword_scores.sort(key=lambda item: (item["score"], item["count"], item["token"]), reverse=True)
+    return keyword_scores
+
+
 def mine_query_patterns(
     rows: list[dict[str, Any]],
     *,
@@ -38,19 +85,9 @@ def mine_query_patterns(
         query = str(row.get("original_query") or "").strip()
         if not query:
             continue
-        tokens = _tokenize(query)
-        seen_in_query: set[str] = set()
-        for token in tokens:
-            token_counts[token] += 1
-            if token not in seen_in_query:
-                token_doc_counts[token] += 1
-                seen_in_query.add(token)
+        _record_query_tokens(query=query, token_counts=token_counts, token_doc_counts=token_doc_counts)
 
-        signals: list[str] = []
-        if query.count("?") + query.count("？") >= 2:
-            signals.append("multiple_question_marks")
-        if any(marker in query for marker in ("另外", "同时", "以及", "并且")):
-            signals.append("multi_intent_connector")
+        signals = _query_signals(query)
         if signals:
             multi_intent_queries.append(
                 {
@@ -65,11 +102,7 @@ def mine_query_patterns(
             if name:
                 doc_counts[name] += 1
 
-    abbreviations = [
-        {"token": token, "count": count}
-        for token, count in token_counts.most_common()
-        if count >= int(abbreviation_min_frequency or 0) and _is_abbreviation(token)
-    ]
+    abbreviations = _build_abbreviations(token_counts, min_frequency=int(abbreviation_min_frequency or 0))
 
     for item in abbreviations:
         glossary_candidates.append(
@@ -81,12 +114,11 @@ def mine_query_patterns(
         )
 
     total_docs = max(1, len(rows or []))
-    keyword_scores = []
-    for token, count in token_counts.items():
-        doc_freq = max(1, token_doc_counts[token])
-        score = round(float(count) * (1.0 + math.log((total_docs + 1) / doc_freq)), 4)
-        keyword_scores.append({"token": token, "score": score, "count": count})
-    keyword_scores.sort(key=lambda item: (item["score"], item["count"], item["token"]), reverse=True)
+    keyword_scores = _build_keyword_scores(
+        token_counts=token_counts,
+        token_doc_counts=token_doc_counts,
+        total_docs=total_docs,
+    )
 
     document_heat = [
         {"filename": filename, "count": count}

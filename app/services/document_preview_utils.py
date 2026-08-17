@@ -147,6 +147,67 @@ def _merge_preview_pair_or_append(out: list[Document], first: Document, second: 
     out.append(merged)
 
 
+def _flush_pending_preview_chunk(out: list[Document], pending: Document | None) -> None:
+    if pending is not None:
+        out.append(pending)
+
+
+def _append_non_mergeable_preview_chunk(out: list[Document], pending: Document | None, chunk: Document) -> tuple[None, None]:
+    _flush_pending_preview_chunk(out, pending)
+    out.append(chunk)
+    return None, None
+
+
+def _merge_short_preview_chunk_with_previous(
+    *,
+    out: list[Document],
+    chunk: Document,
+    page_index: int | None,
+    page_text: dict[int, str],
+) -> bool:
+    if not out:
+        return False
+    prev = out[-1]
+    prev_page = _preview_page_index_of(prev)
+    if prev_page != page_index or not _preview_chunk_mergeable(prev, page_index=prev_page, page_text=page_text):
+        return False
+    merged = (
+        _merge_preview_chunks_on_page(prev, chunk, page_index=page_index, page_text=page_text)
+        if page_index is not None
+        else None
+    )
+    if merged is None:
+        return False
+    out[-1] = merged
+    return True
+
+
+def _consume_mergeable_preview_chunk(
+    *,
+    out: list[Document],
+    pending: Document | None,
+    chunk: Document,
+    page_index: int | None,
+    page_text: dict[int, str],
+    min_chars: int,
+) -> tuple[Document | None, int | None]:
+    if pending is not None:
+        if page_index is not None:
+            _merge_preview_pair_or_append(out, pending, chunk, page_index=page_index, page_text=page_text)
+        else:
+            out.extend([pending, chunk])
+        return None, None
+
+    if len((chunk.page_content or "").strip()) >= min_chars:
+        out.append(chunk)
+        return None, None
+
+    if _merge_short_preview_chunk_with_previous(out=out, chunk=chunk, page_index=page_index, page_text=page_text):
+        return None, None
+
+    return chunk, page_index
+
+
 def _merge_small_chunks_preview(
     *,
     documents: list[Document],
@@ -173,51 +234,24 @@ def _merge_small_chunks_preview(
     for chunk in chunks:
         page_index = _preview_page_index_of(chunk)
         if pending is not None and page_index != pending_page:
-            out.append(pending)
+            _flush_pending_preview_chunk(out, pending)
             pending = None
             pending_page = None
 
         if not _preview_chunk_mergeable(chunk, page_index=page_index, page_text=page_text):
-            if pending is not None:
-                out.append(pending)
-                pending = None
-                pending_page = None
-            out.append(chunk)
+            pending, pending_page = _append_non_mergeable_preview_chunk(out, pending, chunk)
             continue
 
-        content_len = len((chunk.page_content or "").strip())
+        pending, pending_page = _consume_mergeable_preview_chunk(
+            out=out,
+            pending=pending,
+            chunk=chunk,
+            page_index=page_index,
+            page_text=page_text,
+            min_chars=min_chars,
+        )
 
-        if pending is not None:
-            if page_index is not None:
-                _merge_preview_pair_or_append(out, pending, chunk, page_index=page_index, page_text=page_text)
-            else:
-                out.extend([pending, chunk])
-            pending = None
-            pending_page = None
-            continue
-
-        if content_len >= min_chars:
-            out.append(chunk)
-            continue
-
-        if out:
-            prev = out[-1]
-            prev_page = _preview_page_index_of(prev)
-            if prev_page == page_index and _preview_chunk_mergeable(prev, page_index=prev_page, page_text=page_text):
-                merged = (
-                    _merge_preview_chunks_on_page(prev, chunk, page_index=page_index, page_text=page_text)
-                    if page_index is not None
-                    else None
-                )
-                if merged is not None:
-                    out[-1] = merged
-                    continue
-
-        pending = chunk
-        pending_page = page_index
-
-    if pending is not None:
-        out.append(pending)
+    _flush_pending_preview_chunk(out, pending)
 
     return out
 

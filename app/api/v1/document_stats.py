@@ -42,57 +42,23 @@ def get_document_stats(
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     query = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id)
-
-    if dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
-        query = query.filter(DBDocument.dataset_id == dataset_id)
-    else:
-        allowed_dataset_ids_subq = select(Dataset.id).where(
-            Dataset.tenant_id == tenant_id,
-            build_dataset_read_filter(tenant_id=tenant_id, account_id=account_id),
-        )
-
-        query = query.filter(
-            or_(
-                DBDocument.dataset_id.is_(None),
-                DBDocument.dataset_id.in_(allowed_dataset_ids_subq),
-            )
-        )
-
-    query = query.filter(
-        build_document_read_filter(tenant_id=tenant_id, account_id=account_id)
+    query = _apply_document_stats_dataset_scope(
+        query,
+        dataset_id=dataset_id,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        db=db,
+    )
+    query = query.filter(build_document_read_filter(tenant_id=tenant_id, account_id=account_id))
+    query = _apply_document_stats_lifecycle(query, lifecycle)
+    query = _apply_document_stats_filters(
+        query,
+        filename_query=q,
+        file_type=file_type,
+        owner_id=owner_id,
     )
 
-    lifecycle0 = str(lifecycle or "active").strip().lower()
-    if lifecycle0 != "all":
-        if lifecycle0 == "archived":
-            query = query.filter(DBDocument.archived_at.isnot(None))
-        elif lifecycle0 == "disabled":
-            query = query.filter(DBDocument.disabled_at.isnot(None))
-        else:
-            query = query.filter(DBDocument.archived_at.is_(None), DBDocument.disabled_at.is_(None))
-
-    if q:
-        term = q.strip()
-        if term:
-            query = query.filter(DBDocument.filename.ilike(f"%{term}%"))
-
-    if file_type:
-        ft = str(file_type or "").strip().lower()
-        if ft:
-            query = query.filter(DBDocument.file_type == ft)
-
-    if owner_id:
-        oid = str(owner_id or "").strip()
-        if oid:
-            query = query.filter(DBDocument.owner_id == oid)
-
-    status_rows = (
-        query.with_entities(DBDocument.status, func.count(DBDocument.id))
-        .group_by(DBDocument.status)
-        .all()
-    )
+    status_rows = query.with_entities(DBDocument.status, func.count(DBDocument.id)).group_by(DBDocument.status).all()
     by_status = {str(status): int(count) for status, count in status_rows if status is not None}
     total = int(sum(by_status.values()))
 
@@ -109,3 +75,63 @@ def get_document_stats(
         "total_chunks": total_chunks,
         "total_size": total_size,
     }
+
+
+def _apply_document_stats_dataset_scope(
+    query,
+    *,
+    dataset_id: UUID | None,
+    tenant_id: UUID,
+    account_id: str,
+    db: Session,
+):
+    if dataset_id:
+        dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+        DatasetService.assert_dataset_readable(db, dataset, account_id)
+        return query.filter(DBDocument.dataset_id == dataset_id)
+
+    allowed_dataset_ids_subquery = select(Dataset.id).where(
+        Dataset.tenant_id == tenant_id,
+        build_dataset_read_filter(tenant_id=tenant_id, account_id=account_id),
+    )
+    return query.filter(
+        or_(
+            DBDocument.dataset_id.is_(None),
+            DBDocument.dataset_id.in_(allowed_dataset_ids_subquery),
+        )
+    )
+
+
+def _apply_document_stats_lifecycle(query, lifecycle: str):
+    normalized = str(lifecycle or "active").strip().lower()
+    if normalized == "all":
+        return query
+    if normalized == "archived":
+        return query.filter(DBDocument.archived_at.isnot(None))
+    if normalized == "disabled":
+        return query.filter(DBDocument.disabled_at.isnot(None))
+    return query.filter(DBDocument.archived_at.is_(None), DBDocument.disabled_at.is_(None))
+
+
+def _apply_document_stats_filters(
+    query,
+    *,
+    filename_query: str | None,
+    file_type: str | None,
+    owner_id: str | None,
+):
+    if filename_query:
+        term = filename_query.strip()
+        if term:
+            query = query.filter(DBDocument.filename.ilike(f"%{term}%"))
+
+    if file_type:
+        ft = str(file_type or "").strip().lower()
+        if ft:
+            query = query.filter(DBDocument.file_type == ft)
+
+    if owner_id:
+        oid = str(owner_id or "").strip()
+        if oid:
+            query = query.filter(DBDocument.owner_id == oid)
+    return query

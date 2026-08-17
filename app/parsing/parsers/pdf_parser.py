@@ -65,6 +65,72 @@ class PDFParser:
             }
         return {}
 
+    def _extract_image_payload(self, *, pdf_document, xref: int) -> bytes | None:  # noqa: ANN001
+        try:
+            extracted = pdf_document.extract_image(xref)
+        except Exception:
+            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+            return None
+        image_bytes = extracted.get("image") if isinstance(extracted, dict) else None
+        if not isinstance(image_bytes, (bytes, bytearray)) or not image_bytes:
+            return None
+        return bytes(image_bytes)
+
+    def _load_rgb_image(self, image_bytes: bytes):  # noqa: ANN001
+        try:
+            with PILImage.open(BytesIO(image_bytes)) as raw_image:
+                return raw_image.convert("RGB")
+        except Exception:
+            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+            return None
+
+    def _decode_image_details(self, image) -> tuple[str, str, list[str]]:  # noqa: ANN001
+        code_info = decode_image_codes(image)
+        visual_kind = str(code_info.get("visual_kind") or "").strip().lower() if isinstance(code_info, dict) else ""
+        if not visual_kind:
+            visual_kind = str(infer_visual_kind_from_pixels(image) or "").strip().lower()
+
+        code_text = str(code_info.get("text") or "").strip() if isinstance(code_info, dict) else ""
+        code_values: list[str] = []
+        if isinstance(code_info, dict):
+            raw_values = code_info.get("values")
+            if isinstance(raw_values, list):
+                code_values = [str(item).strip() for item in raw_values if str(item).strip()]
+
+        return visual_kind, code_text, code_values
+
+    def _build_image_document(
+        self,
+        *,
+        file_path: Path,
+        page_num: int,
+        total_pages: int,
+        image,
+        image_index: int,
+        visual_kind: str,
+        code_text: str,
+        code_values: list[str],
+    ) -> Document:
+        metadata = {
+            "source": str(file_path.name),
+            "page": page_num + 1,
+            "total_pages": total_pages,
+            "file_type": "pdf",
+            "doc_type_kwd": "image",
+            "content_type": "image",
+            "image": image,
+            "image_index": image_index,
+        }
+        if visual_kind:
+            metadata["visual_kind"] = visual_kind
+        if code_text:
+            metadata["image_code_text"] = code_text
+        if code_values:
+            metadata["image_code_values"] = code_values
+
+        page_content = code_text or (f"{visual_kind} image" if visual_kind else "")
+        return Document(page_content=page_content, metadata=metadata)
+
     def _extract_image_documents(self, *, pdf_document, page, file_path: Path, page_num: int) -> list[Document]:  # noqa: ANN001
         documents: list[Document] = []
         seen_xrefs: set[int] = set()
@@ -78,47 +144,26 @@ class PDFParser:
             if xref in seen_xrefs:
                 continue
             seen_xrefs.add(xref)
-            try:
-                extracted = pdf_document.extract_image(xref)
-            except Exception:
-                get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+            image_bytes = self._extract_image_payload(pdf_document=pdf_document, xref=xref)
+            if image_bytes is None:
                 continue
-            image_bytes = extracted.get("image") if isinstance(extracted, dict) else None
-            if not isinstance(image_bytes, (bytes, bytearray)) or not image_bytes:
-                continue
-            try:
-                with PILImage.open(BytesIO(bytes(image_bytes))) as raw_image:
-                    image = raw_image.convert("RGB")
-            except Exception:
-                get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+            image = self._load_rgb_image(image_bytes)
+            if image is None:
                 continue
 
-            code_info = decode_image_codes(image)
-            visual_kind = str(code_info.get("visual_kind") or "").strip().lower() if isinstance(code_info, dict) else ""
-            if not visual_kind:
-                visual_kind = str(infer_visual_kind_from_pixels(image) or "").strip().lower()
-
-            metadata = {
-                "source": str(file_path.name),
-                "page": page_num + 1,
-                "total_pages": total_pages,
-                "file_type": "pdf",
-                "doc_type_kwd": "image",
-                "content_type": "image",
-                "image": image,
-                "image_index": image_index,
-            }
-            code_text = str(code_info.get("text") or "").strip() if isinstance(code_info, dict) else ""
-            if visual_kind:
-                metadata["visual_kind"] = visual_kind
-            if code_text:
-                metadata["image_code_text"] = code_text
-                raw_values = code_info.get("values")
-                if isinstance(raw_values, list):
-                    metadata["image_code_values"] = [str(item).strip() for item in raw_values if str(item).strip()]
-
-            page_content = code_text or (f"{visual_kind} image" if visual_kind else "")
-            documents.append(Document(page_content=page_content, metadata=metadata))
+            visual_kind, code_text, code_values = self._decode_image_details(image)
+            documents.append(
+                self._build_image_document(
+                    file_path=file_path,
+                    page_num=page_num,
+                    total_pages=total_pages,
+                    image=image,
+                    image_index=image_index,
+                    visual_kind=visual_kind,
+                    code_text=code_text,
+                    code_values=code_values,
+                )
+            )
         return documents
 
     def parse(self, file_path: Path) -> list[Document]:

@@ -125,6 +125,48 @@ def _normalize_column_name_regex(raw: object) -> str:
     return pat
 
 
+def _coerce_rule(rule: FlsRule | Mapping[str, Any] | object, *, index: int) -> FlsRule:
+    if isinstance(rule, FlsRule):
+        return rule
+    try:
+        return FlsRule(**(rule if isinstance(rule, dict) else {}))
+    except ValidationError as exc:
+        raise ValueError(f"invalid rule at index={index}") from exc
+
+
+def _normalize_fls_rule(rule: FlsRule, *, index: int, seen_ids: set[str]) -> FlsRule:
+    rid = str(rule.id or "").strip()
+    if not RULE_ID_RE.match(rid):
+        raise ValueError(f"invalid rule.id format at index={index}")
+    if rid in seen_ids:
+        raise ValueError(f"duplicate rule.id: {rid}")
+    seen_ids.add(rid)
+
+    name = str(rule.name or "").strip()
+    if not name:
+        raise ValueError(f"rule.name is required at index={index}")
+
+    sources = _normalize_sources(getattr(rule, "sources", None))
+    if not sources:
+        raise ValueError(f"rule.sources is required at index={index}")
+
+    allow_roles = _normalize_allow_roles(getattr(rule, "allow_roles", None))
+    allow_accounts = _normalize_allow_account_ids(getattr(rule, "allow_account_ids", None))
+    if not allow_roles and not allow_accounts:
+        raise ValueError(f"rule allowlist is empty at index={index}")
+
+    return FlsRule(
+        id=rid,
+        name=name[:200],
+        enabled=bool(rule.enabled),
+        sources=sources,
+        column_name_regex=_normalize_column_name_regex(getattr(rule, "column_name_regex", None)),
+        allow_roles=allow_roles,
+        allow_account_ids=allow_accounts,
+        mask=_normalize_mask(getattr(rule, "mask", None)),
+    )
+
+
 def validate_and_normalize_fls_policy(policy: FlsPolicy) -> FlsPolicy:
     if str(policy.version or "").strip() not in {"1"}:
         raise ValueError("unsupported FLS policy version")
@@ -137,47 +179,7 @@ def validate_and_normalize_fls_policy(policy: FlsPolicy) -> FlsPolicy:
     out_rules: list[FlsRule] = []
 
     for idx, rule in enumerate(rules_in):
-        if not isinstance(rule, FlsRule):
-            try:
-                rule = FlsRule(**(rule if isinstance(rule, dict) else {}))
-            except ValidationError as exc:
-                raise ValueError(f"invalid rule at index={idx}") from exc
-
-        rid = str(rule.id or "").strip()
-        if not RULE_ID_RE.match(rid):
-            raise ValueError(f"invalid rule.id format at index={idx}")
-        if rid in seen_ids:
-            raise ValueError(f"duplicate rule.id: {rid}")
-        seen_ids.add(rid)
-
-        name = str(rule.name or "").strip()
-        if not name:
-            raise ValueError(f"rule.name is required at index={idx}")
-
-        sources = _normalize_sources(getattr(rule, "sources", None))
-        if not sources:
-            raise ValueError(f"rule.sources is required at index={idx}")
-
-        regex = _normalize_column_name_regex(getattr(rule, "column_name_regex", None))
-        allow_roles = _normalize_allow_roles(getattr(rule, "allow_roles", None))
-        allow_accounts = _normalize_allow_account_ids(getattr(rule, "allow_account_ids", None))
-        if not allow_roles and not allow_accounts:
-            raise ValueError(f"rule allowlist is empty at index={idx}")
-
-        mask = _normalize_mask(getattr(rule, "mask", None))
-
-        out_rules.append(
-            FlsRule(
-                id=rid,
-                name=name[:200],
-                enabled=bool(rule.enabled),
-                sources=sources,
-                column_name_regex=regex,
-                allow_roles=allow_roles,
-                allow_account_ids=allow_accounts,
-                mask=mask,
-            )
-        )
+        out_rules.append(_normalize_fls_rule(_coerce_rule(rule, index=idx), index=idx, seen_ids=seen_ids))
 
     return FlsPolicy(version="1", rules=out_rules)
 

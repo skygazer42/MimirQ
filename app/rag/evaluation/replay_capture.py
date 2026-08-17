@@ -55,6 +55,19 @@ _CAPTURE_CITATION_KEYS = frozenset(
 )
 
 
+def _sanitize_capture_citation(citation: dict[str, Any]) -> dict[str, Any]:
+    safe = {
+        key: citation.get(key)
+        for key in _CAPTURE_CITATION_KEYS
+        if key in citation and citation.get(key) is not None
+    }
+    if "chunk_id" not in safe:
+        chunk_id = citation.get("chunk_id")
+        if chunk_id is not None:
+            safe["chunk_id"] = chunk_id
+    return safe
+
+
 def sanitize_citations_for_capture(citations: Any, *, max_items: int = 80) -> list[dict[str, Any]]:
     """
     Return a PII-safe list of citations for capture.
@@ -75,15 +88,7 @@ def sanitize_citations_for_capture(citations: Any, *, max_items: int = 80) -> li
             break
         if not isinstance(c, dict):
             continue
-        safe: dict[str, Any] = {}
-        for k in _CAPTURE_CITATION_KEYS:
-            if k in c and c.get(k) is not None:
-                safe[k] = c.get(k)
-        # Ensure we always include chunk_id when possible (for replay diffs).
-        if "chunk_id" not in safe:
-            cid = c.get("chunk_id")
-            if cid is not None:
-                safe["chunk_id"] = cid
+        safe = _sanitize_capture_citation(c)
         if safe:
             out.append(safe)
     return out
@@ -170,4 +175,3 @@ __all__ = [
     "fingerprint_citations",
     "sanitize_citations_for_capture",
 ]
-

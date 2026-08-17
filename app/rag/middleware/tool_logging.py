@@ -30,6 +30,77 @@ def _truncate_text(value: Any, max_chars: int) -> str:
     return text
 
 
+def _preview_value(value: Any, *, max_preview_chars: int, pii_on: bool) -> str | None:
+    preview = _truncate_text(value, max_preview_chars) if value is not None else None
+    if pii_on and preview:
+        return redact_text(preview)
+    return preview
+
+
+def _decorate_tool_output(
+    out: dict[str, Any],
+    *,
+    tool_name: str,
+    arg_keys: list[str],
+    elapsed_ms: float,
+    include_preview: bool,
+    max_preview_chars: int,
+    pii_on: bool,
+) -> dict[str, Any]:
+    meta = dict(out.get("metadata") or {})
+    result_preview = None
+    error_preview = None
+    if include_preview:
+        result_preview = _preview_value(out.get("result"), max_preview_chars=max_preview_chars, pii_on=pii_on)
+        error_preview = _preview_value(out.get("error"), max_preview_chars=max_preview_chars, pii_on=pii_on)
+    meta["tool_call"] = {
+        "tool_name": tool_name,
+        "elapsed_ms": elapsed_ms,
+        "arguments_keys": arg_keys,
+        "success": bool(out.get("success")) if out.get("success") is not None else None,
+        "error_preview": error_preview,
+        "result_type": type(out.get("result")).__name__ if "result" in out else None,
+        "result_preview": result_preview,
+    }
+    out["metadata"] = meta
+    return out
+
+
+def _emit_tool_call_metrics(
+    *,
+    metrics_enabled: bool,
+    tool_name: str,
+    elapsed_ms: float,
+    arg_keys: list[str],
+    tool_call_meta: dict[str, Any],
+) -> None:
+    if not metrics_enabled:
+        return
+    log_metrics(
+        {
+            "event": "tool_call",
+            "tool": tool_name,
+            "elapsed_ms": elapsed_ms,
+            "success": tool_call_meta.get("success"),
+            "arguments_keys": arg_keys,
+            "error": tool_call_meta.get("error_preview"),
+        }
+    )
+
+
+def _emit_tool_call_error_metrics(*, metrics_enabled: bool, tool_name: str, elapsed_ms: float, exc: Exception) -> None:
+    if not metrics_enabled:
+        return
+    log_metrics(
+        {
+            "event": "tool_call_error",
+            "tool": tool_name,
+            "elapsed_ms": elapsed_ms,
+            "error": str(exc)[:200],
+        }
+    )
+
+
 @dataclass
 class ToolCallLoggingMiddleware:
     """
@@ -66,51 +137,31 @@ class ToolCallLoggingMiddleware:
                 try:
                     out = await func(state, *args, **kwargs)
                     elapsed_ms = round((time.time() - t0) * 1000, 2)
-
-                    meta = dict(out.get("metadata") or {})
-                    result_preview = None
-                    error_preview = None
-                    if include_preview:
-                        result_preview = _truncate_text(out.get("result"), max_preview_chars) if out.get("result") is not None else None
-                        error_preview = _truncate_text(out.get("error"), max_preview_chars) if out.get("error") else None
-                        if pii_on:
-                            result_preview = redact_text(result_preview) if result_preview else None
-                            error_preview = redact_text(error_preview) if error_preview else None
-                    meta["tool_call"] = {
-                        "tool_name": tool_name,
-                        "elapsed_ms": elapsed_ms,
-                        "arguments_keys": arg_keys,
-                        "success": bool(out.get("success")) if out.get("success") is not None else None,
-                        "error_preview": error_preview,
-                        "result_type": type(out.get("result")).__name__ if "result" in out else None,
-                        "result_preview": result_preview,
-                    }
-                    out["metadata"] = meta
-
-                    if metrics_enabled:
-                        log_metrics(
-                            {
-                                "event": "tool_call",
-                                "tool": tool_name,
-                                "elapsed_ms": elapsed_ms,
-                                "success": meta["tool_call"].get("success"),
-                                "arguments_keys": arg_keys,
-                                "error": meta["tool_call"].get("error_preview"),
-                            }
-                        )
-
+                    out = _decorate_tool_output(
+                        out,
+                        tool_name=tool_name,
+                        arg_keys=arg_keys,
+                        elapsed_ms=elapsed_ms,
+                        include_preview=include_preview,
+                        max_preview_chars=max_preview_chars,
+                        pii_on=pii_on,
+                    )
+                    _emit_tool_call_metrics(
+                        metrics_enabled=metrics_enabled,
+                        tool_name=tool_name,
+                        elapsed_ms=elapsed_ms,
+                        arg_keys=arg_keys,
+                        tool_call_meta=out["metadata"]["tool_call"],
+                    )
                     return out
                 except Exception as exc:  # noqa: BLE001
                     elapsed_ms = round((time.time() - t0) * 1000, 2)
-                    if metrics_enabled:
-                        log_metrics(
-                            {
-                                "event": "tool_call_error",
-                                "tool": tool_name,
-                                "elapsed_ms": elapsed_ms,
-                                "error": str(exc)[:200],
-                            }
-                        )
+                    _emit_tool_call_error_metrics(
+                        metrics_enabled=metrics_enabled,
+                        tool_name=tool_name,
+                        elapsed_ms=elapsed_ms,
+                        exc=exc,
+                    )
                     raise
 
             return async_wrapper
@@ -121,39 +172,22 @@ class ToolCallLoggingMiddleware:
             t0 = time.time()
             out = func(state, *args, **kwargs)
             elapsed_ms = round((time.time() - t0) * 1000, 2)
-
-            meta = dict(out.get("metadata") or {})
-            result_preview = None
-            error_preview = None
-            if include_preview:
-                result_preview = _truncate_text(out.get("result"), max_preview_chars) if out.get("result") is not None else None
-                error_preview = _truncate_text(out.get("error"), max_preview_chars) if out.get("error") else None
-                if pii_on:
-                    result_preview = redact_text(result_preview) if result_preview else None
-                    error_preview = redact_text(error_preview) if error_preview else None
-            meta["tool_call"] = {
-                "tool_name": tool_name,
-                "elapsed_ms": elapsed_ms,
-                "arguments_keys": arg_keys,
-                "success": bool(out.get("success")) if out.get("success") is not None else None,
-                "error_preview": error_preview,
-                "result_type": type(out.get("result")).__name__ if "result" in out else None,
-                "result_preview": result_preview,
-            }
-            out["metadata"] = meta
-
-            if metrics_enabled:
-                log_metrics(
-                    {
-                        "event": "tool_call",
-                        "tool": tool_name,
-                        "elapsed_ms": elapsed_ms,
-                        "success": meta["tool_call"].get("success"),
-                        "arguments_keys": arg_keys,
-                        "error": meta["tool_call"].get("error_preview"),
-                    }
-                )
-
+            out = _decorate_tool_output(
+                out,
+                tool_name=tool_name,
+                arg_keys=arg_keys,
+                elapsed_ms=elapsed_ms,
+                include_preview=include_preview,
+                max_preview_chars=max_preview_chars,
+                pii_on=pii_on,
+            )
+            _emit_tool_call_metrics(
+                metrics_enabled=metrics_enabled,
+                tool_name=tool_name,
+                elapsed_ms=elapsed_ms,
+                arg_keys=arg_keys,
+                tool_call_meta=out["metadata"]["tool_call"],
+            )
             return out
 
         return sync_wrapper

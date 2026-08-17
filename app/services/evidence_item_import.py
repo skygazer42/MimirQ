@@ -139,6 +139,46 @@ def _build_item(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _append_import_item(
+    *,
+    items: list[dict[str, Any]],
+    errors: list[dict[str, Any]],
+    payload: dict[str, Any],
+    error_key: str,
+    error_value: int,
+) -> None:
+    item = _build_item(payload)
+    if item.get("query"):
+        items.append(item)
+        return
+    errors.append({error_key: error_value, "error": _QUERY_REQUIRED_ERROR})
+
+
+def _parse_csv_import_text(*, text: str, cap: int, items: list[dict[str, Any]], errors: list[dict[str, Any]]) -> None:
+    reader = csv.DictReader(io.StringIO(text))
+    for idx, row in enumerate(reader):
+        if row is None:
+            continue
+        _append_import_item(items=items, errors=errors, payload=_coerce_record(row), error_key="index", error_value=idx)
+        if len(items) >= cap:
+            break
+
+
+def _parse_jsonl_import_text(*, text: str, cap: int, items: list[dict[str, Any]], errors: list[dict[str, Any]]) -> None:
+    for idx, line in enumerate(text.splitlines(), start=1):
+        ln = line.strip()
+        if not ln:
+            continue
+        try:
+            obj = json.loads(ln)
+        except Exception:
+            errors.append({"line": idx, "error": "invalid JSON"})
+            continue
+        _append_import_item(items=items, errors=errors, payload=_coerce_record(obj), error_key="line", error_value=idx)
+        if len(items) >= cap:
+            break
+
+
 def parse_qa_faq_import_bytes(
     *,
     raw: bytes,
@@ -166,36 +206,9 @@ def parse_qa_faq_import_bytes(
         raise ValueError("invalid encoding (expect UTF-8)") from exc
 
     if ext == ".csv":
-        reader = csv.DictReader(io.StringIO(text))
-        for idx, row in enumerate(reader):
-            if row is None:
-                continue
-            payload = _coerce_record(row)
-            item = _build_item(payload)
-            if not item.get("query"):
-                errors.append({"index": idx, "error": _QUERY_REQUIRED_ERROR})
-                continue
-            items.append(item)
-            if len(items) >= cap:
-                break
+        _parse_csv_import_text(text=text, cap=cap, items=items, errors=errors)
     elif ext == ".jsonl":
-        for idx, line in enumerate(text.splitlines()):
-            ln = line.strip()
-            if not ln:
-                continue
-            try:
-                obj = json.loads(ln)
-            except Exception:
-                errors.append({"line": idx + 1, "error": "invalid JSON"})
-                continue
-            payload = _coerce_record(obj)
-            item = _build_item(payload)
-            if not item.get("query"):
-                errors.append({"line": idx + 1, "error": _QUERY_REQUIRED_ERROR})
-                continue
-            items.append(item)
-            if len(items) >= cap:
-                break
+        _parse_jsonl_import_text(text=text, cap=cap, items=items, errors=errors)
     else:
         raise ValueError("unsupported file type (expect .csv or .jsonl)")
 

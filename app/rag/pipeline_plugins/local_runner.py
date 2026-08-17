@@ -118,6 +118,120 @@ def _build_golden_draft_report(
     }
 
 
+def _plugin_stage_failure_report(*, stage: str, input_count: int, reason: str) -> dict[str, Any]:
+    validation = {"ok": False, "checked": 0, "errors": [{"reason": reason}]}
+    report: dict[str, Any] = {
+        "passed": False,
+        "input_count": input_count,
+        "output_count": 0,
+        "output_chars": 0,
+    }
+    report["kg_validation" if stage == "kg" else "metadata_validation"] = validation
+    return report
+
+
+def _invoke_stage_result(
+    *,
+    descriptor: Any,
+    stage: str,
+    current_documents: list[Document],
+    params: dict[str, Any] | None,
+) -> tuple[list[Document], Any]:
+    func = load_descriptor_stage_callable(descriptor, stage)
+    context = {"stage": stage, "plugin_id": descriptor.id, "plugin_version": descriptor.version}
+    plugin_input_documents = strip_reserved_platform_metadata_views(current_documents)
+    result = _invoke_plugin(
+        func,
+        documents=plugin_input_documents,
+        params=dict(params or {}),
+        context=context,
+    )
+    return plugin_input_documents, result
+
+
+def _run_kg_stage(
+    *,
+    descriptor: Any,
+    current_documents: list[Document],
+    plugin_input_documents: list[Document],
+    result: Any,
+) -> tuple[dict[str, Any], bool]:
+    events = []
+    try:
+        events = _coerce_kg_events(result, documents=plugin_input_documents, plugin_ref=descriptor.refs["kg"])
+        kg_validation = validate_kg_events_metadata(events, metadata_schema=descriptor.metadata_schema)
+        if current_documents and not events:
+            kg_validation = {
+                "ok": False,
+                "checked": 0,
+                "errors": [{"reason": "kg stage emitted no events"}],
+            }
+    except (PipelinePluginContractError, PythonPipelinePluginError) as exc:
+        kg_validation = {
+            "ok": False,
+            "checked": 0,
+            "errors": [{"reason": str(exc)}],
+        }
+    report = {
+        "passed": bool(kg_validation["ok"]),
+        "input_count": len(current_documents),
+        "output_count": len(events),
+        "output_chars": sum(len(event.content or "") for event in events),
+        "kg_validation": kg_validation,
+    }
+    return report, bool(kg_validation["ok"])
+
+
+def _run_document_stage(
+    *,
+    descriptor: Any,
+    stage: str,
+    current_documents: list[Document],
+    result: Any,
+) -> tuple[list[Document], dict[str, Any], bool]:
+    output_documents = []
+    try:
+        output_documents = _coerce_documents(result, stage=stage, plugin_ref=descriptor.refs[stage])
+        for document in output_documents:
+            validate_no_reserved_platform_metadata_views(document.metadata, field_label=f"{stage} plugin metadata")
+        metadata_validation = validate_documents_metadata(
+            output_documents,
+            metadata_schema=descriptor.metadata_schema,
+            stage=stage,
+        )
+    except (PipelinePluginContractError, PythonPipelinePluginError) as exc:
+        metadata_validation = {"ok": False, "checked": len(output_documents), "errors": [{"reason": str(exc)}]}
+
+    stage_passed = bool(metadata_validation.get("ok"))
+    if stage_passed:
+        try:
+            output_documents = apply_metadata_schema_views(
+                output_documents,
+                metadata_schema=descriptor.metadata_schema,
+                stage=stage,
+            )
+            output_documents = apply_retrieval_text_schema(
+                output_documents,
+                retrieval_text_schema=descriptor.retrieval_text_schema,
+                stage=stage,
+            )
+        except PipelinePluginContractError as exc:
+            stage_passed = False
+            metadata_validation = {
+                "ok": False,
+                "checked": len(output_documents),
+                "errors": [{"reason": str(exc)}],
+            }
+    report = {
+        "passed": bool(metadata_validation.get("ok")),
+        "input_count": len(current_documents),
+        "output_count": len(output_documents),
+        "output_chars": sum(len(doc.page_content or "") for doc in output_documents),
+        "metadata_validation": metadata_validation,
+    }
+    return output_documents, report, stage_passed
+
+
 def _run_plugin_stages(
     *,
     descriptor: Any,
@@ -131,104 +245,42 @@ def _run_plugin_stages(
     for stage in stages:
         if stage not in descriptor.entries:
             raise PipelinePluginRegistryError(f"plugin has no {stage} entry")
-        func = load_descriptor_stage_callable(descriptor, stage)
-        context = {"stage": stage, "plugin_id": descriptor.id, "plugin_version": descriptor.version}
-        plugin_input_documents = strip_reserved_platform_metadata_views(current_documents)
         try:
-            result = _invoke_plugin(
-                func,
-                documents=plugin_input_documents,
-                params=dict(params or {}),
-                context=context,
+            plugin_input_documents, result = _invoke_stage_result(
+                descriptor=descriptor,
+                stage=stage,
+                current_documents=current_documents,
+                params=params,
             )
         except Exception as exc:  # noqa: BLE001
-            validation = {"ok": False, "checked": 0, "errors": [{"reason": str(exc) or type(exc).__name__}]}
             passed = False
-            if stage == "kg":
-                stage_reports[stage] = {
-                    "passed": False,
-                    "input_count": len(current_documents),
-                    "output_count": 0,
-                    "output_chars": 0,
-                    "kg_validation": validation,
-                }
-            else:
-                stage_reports[stage] = {
-                    "passed": False,
-                    "input_count": len(current_documents),
-                    "output_count": 0,
-                    "output_chars": 0,
-                    "metadata_validation": validation,
-                }
+            stage_reports[stage] = _plugin_stage_failure_report(
+                stage=stage,
+                input_count=len(current_documents),
+                reason=str(exc) or type(exc).__name__,
+            )
             current_documents = []
             continue
         if stage == "kg":
-            events = []
-            try:
-                events = _coerce_kg_events(result, documents=plugin_input_documents, plugin_ref=descriptor.refs[stage])
-                kg_validation = validate_kg_events_metadata(events, metadata_schema=descriptor.metadata_schema)
-                if current_documents and not events:
-                    kg_validation = {
-                        "ok": False,
-                        "checked": 0,
-                        "errors": [{"reason": "kg stage emitted no events"}],
-                    }
-            except (PipelinePluginContractError, PythonPipelinePluginError) as exc:
-                kg_validation = {
-                    "ok": False,
-                    "checked": 0,
-                    "errors": [{"reason": str(exc)}],
-                }
-            if not kg_validation["ok"]:
-                passed = False
-            stage_reports[stage] = {
-                "passed": bool(kg_validation["ok"]),
-                "input_count": len(current_documents),
-                "output_count": len(events),
-                "output_chars": sum(len(event.content or "") for event in events),
-                "kg_validation": kg_validation,
-            }
-            continue
-        output_documents = []
-        try:
-            output_documents = _coerce_documents(result, stage=stage, plugin_ref=descriptor.refs[stage])
-            for document in output_documents:
-                validate_no_reserved_platform_metadata_views(document.metadata, field_label=f"{stage} plugin metadata")
-            metadata_validation = validate_documents_metadata(
-                output_documents,
-                metadata_schema=descriptor.metadata_schema,
-                stage=stage,
+            report, stage_passed = _run_kg_stage(
+                descriptor=descriptor,
+                current_documents=current_documents,
+                plugin_input_documents=plugin_input_documents,
+                result=result,
             )
-        except (PipelinePluginContractError, PythonPipelinePluginError) as exc:
-            metadata_validation = {"ok": False, "checked": len(output_documents), "errors": [{"reason": str(exc)}]}
-        if not metadata_validation.get("ok"):
-            passed = False
-        else:
-            try:
-                output_documents = apply_metadata_schema_views(
-                    output_documents,
-                    metadata_schema=descriptor.metadata_schema,
-                    stage=stage,
-                )
-                output_documents = apply_retrieval_text_schema(
-                    output_documents,
-                    retrieval_text_schema=descriptor.retrieval_text_schema,
-                    stage=stage,
-                )
-            except PipelinePluginContractError as exc:
+            if not stage_passed:
                 passed = False
-                metadata_validation = {
-                    "ok": False,
-                    "checked": len(output_documents),
-                    "errors": [{"reason": str(exc)}],
-                }
-        stage_reports[stage] = {
-            "passed": bool(metadata_validation.get("ok")),
-            "input_count": len(current_documents),
-            "output_count": len(output_documents),
-            "output_chars": sum(len(doc.page_content or "") for doc in output_documents),
-            "metadata_validation": metadata_validation,
-        }
+            stage_reports[stage] = report
+            continue
+        output_documents, report, stage_passed = _run_document_stage(
+            descriptor=descriptor,
+            stage=stage,
+            current_documents=current_documents,
+            result=result,
+        )
+        if not stage_passed:
+            passed = False
+        stage_reports[stage] = report
         current_documents = output_documents
     return current_documents, stage_reports, passed
 

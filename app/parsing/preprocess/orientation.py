@@ -18,6 +18,37 @@ from app.rag.core.logging import get_logger
 logger = get_logger(__name__)
 
 
+def _elapsed_ms(started_at: float) -> int:
+    return int(round((time.perf_counter() - started_at) * 1000))
+
+
+def _sample_pdf_rotations(*, doc, sample_pages: int) -> tuple[int, list[int]]:  # noqa: ANN001
+    page_count = int(doc.page_count)
+    sample_count = max(1, min(int(sample_pages or 0) or 1, page_count))
+    rotations: list[int] = []
+    for index in range(sample_count):
+        page = doc.load_page(index)
+        rotations.append(int(getattr(page, "rotation", 0) or 0) % 360)
+    return sample_count, rotations
+
+
+def _count_rotations(rotations: list[int]) -> dict[int, int]:
+    counts: dict[int, int] = {}
+    for rotation in rotations:
+        counts[int(rotation)] = counts.get(int(rotation), 0) + 1
+    return counts
+
+
+def _normalize_pdf_pages(*, doc, page_count: int) -> None:  # noqa: ANN001
+    for index in range(page_count):
+        page = doc.load_page(index)
+        try:
+            page.set_rotation(0)
+        except Exception:
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            continue
+
+
 def fix_exif_orientation(*, input_path: Path, output_path: Path) -> tuple[bool, str, dict[str, Any]]:
     """
     Returns (changed, note, meta).
@@ -57,48 +88,34 @@ def normalize_pdf_rotation(
     try:
         import fitz  # PyMuPDF
     except Exception as exc:  # noqa: BLE001
-        meta["elapsed_ms"] = int(round((time.perf_counter() - t0) * 1000))
+        meta["elapsed_ms"] = _elapsed_ms(t0)
         return False, f"pymupdf_missing:{exc.__class__.__name__}", meta
 
     doc = None
     try:
         doc = fitz.open(str(input_path))
-        n = int(doc.page_count)
-        k = max(1, min(int(sample_pages or 0) or 1, n))
-        rotations: list[int] = []
-        for i in range(k):
-            page = doc.load_page(i)
-            rotations.append(int(getattr(page, "rotation", 0) or 0) % 360)
-
-        counts: dict[int, int] = {}
-        for r in rotations:
-            counts[int(r)] = counts.get(int(r), 0) + 1
+        page_count = int(doc.page_count)
+        sample_count, rotations = _sample_pdf_rotations(doc=doc, sample_pages=sample_pages)
+        counts = _count_rotations(rotations)
         meta["rotation_counts"] = {str(k): int(v) for k, v in sorted(counts.items(), key=lambda kv: kv[0])}
 
         # Only normalize when all sampled pages share the same non-zero rotation.
         mode_rot = max(counts.items(), key=lambda kv: kv[1])[0] if counts else 0
         meta["rotation_mode"] = int(mode_rot)
         if mode_rot == 0:
-            meta["elapsed_ms"] = int(round((time.perf_counter() - t0) * 1000))
+            meta["elapsed_ms"] = _elapsed_ms(t0)
             return False, "already_upright", meta
-        if counts.get(int(mode_rot), 0) != k:
-            meta["elapsed_ms"] = int(round((time.perf_counter() - t0) * 1000))
+        if counts.get(int(mode_rot), 0) != sample_count:
+            meta["elapsed_ms"] = _elapsed_ms(t0)
             return False, "mixed_rotation_skipped", meta
 
-        for i in range(n):
-            page = doc.load_page(i)
-            try:
-                page.set_rotation(0)
-            except Exception:
-                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-                continue
-
+        _normalize_pdf_pages(doc=doc, page_count=page_count)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         doc.save(str(output_path), garbage=4, deflate=True)
-        meta["elapsed_ms"] = int(round((time.perf_counter() - t0) * 1000))
+        meta["elapsed_ms"] = _elapsed_ms(t0)
         return True, f"normalized_rotation:{mode_rot}->0", meta
     except Exception as exc:  # noqa: BLE001
-        meta["elapsed_ms"] = int(round((time.perf_counter() - t0) * 1000))
+        meta["elapsed_ms"] = _elapsed_ms(t0)
         return False, f"normalize_failed:{exc.__class__.__name__}", meta
     finally:
         try:

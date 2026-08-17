@@ -158,6 +158,38 @@ class NginxConfigChunker(BaseChunker):
             add_start_index=True,
         )
 
+    def _append_block_chunks(
+        self,
+        out: list[Document],
+        *,
+        block: _Block,
+        block_text: str,
+        base_meta: dict[str, Any],
+        server_names: str | None,
+        listen: str | None,
+    ) -> None:
+        split_docs = self._fallback_splitter.create_documents(texts=[block_text], metadatas=[base_meta])
+        for sd in split_docs:
+            local_start = sd.metadata.pop("start_index", None) or 0
+            abs_start = block.start + int(local_start)
+            abs_end = abs_start + len(sd.page_content)
+
+            meta: dict[str, Any] = dict(base_meta)
+            meta.update(sd.metadata or {})
+            meta["chunk_strategy"] = "nginx_config"
+            meta["start_char"] = abs_start
+            meta["end_char"] = abs_end
+            meta.setdefault("doc_type_kwd", "nginx")
+            meta["nginx_block_kind"] = block.kind
+            if block.title:
+                meta["nginx_block_title"] = block.title
+            if server_names:
+                meta["nginx_server_name"] = server_names
+            if listen:
+                meta["nginx_listen"] = listen
+
+            out.append(Document(page_content=sd.page_content, metadata=meta))
+
     def split_documents(self, documents: list[Document]) -> list[Document]:
         out: list[Document] = []
 
@@ -178,28 +210,14 @@ class NginxConfigChunker(BaseChunker):
                 if b.kind == "server":
                     server_names = _extract_directive_value(blk_text[:5000], "server_name")
                     listen = _extract_directive_value(blk_text[:5000], "listen")
-
-                split_docs = self._fallback_splitter.create_documents(texts=[blk_text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = b.start + int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "nginx_config"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta.setdefault("doc_type_kwd", "nginx")
-                    meta["nginx_block_kind"] = b.kind
-                    if b.title:
-                        meta["nginx_block_title"] = b.title
-                    if server_names:
-                        meta["nginx_server_name"] = server_names
-                    if listen:
-                        meta["nginx_listen"] = listen
-
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                self._append_block_chunks(
+                    out,
+                    block=b,
+                    block_text=blk_text,
+                    base_meta=base_meta,
+                    server_names=server_names,
+                    listen=listen,
+                )
 
         for idx, chunk in enumerate(out):
             meta = dict(chunk.metadata or {})

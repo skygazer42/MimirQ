@@ -525,7 +525,7 @@ def get_rag_reranker(provider: str | None = None) -> BaseReranker:
         DeprecationWarning,
         stacklevel=2
     )
-    
+
     provider = (provider or "llm").lower()
     if provider == "pc":
         return get_reranker("parent_child")

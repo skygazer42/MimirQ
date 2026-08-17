@@ -39,6 +39,49 @@ def _hash_text(value: str) -> str:
     return hashlib.sha256(str(value or "").encode("utf-8")).hexdigest()[:16]
 
 
+def _query_expansion_meta(original: str, *, enabled: bool, ruleset_names: list[str]) -> dict[str, Any]:
+    return {
+        "schema": _SCHEMA,
+        "enabled": bool(enabled),
+        "used": False,
+        "rulesets_requested": ruleset_names,
+        "rulesets_used": [],
+        "alias_count": 0,
+        "query_changed": False,
+        "query_hash": _hash_text(original),
+        "expanded_query_hash": _hash_text(original),
+        "errors": [],
+    }
+
+
+def _collect_matching_aliases(*, before: str, glossary: dict[str, Any], aliases: list[str]) -> None:
+    for term, values in (glossary or {}).items():
+        token = str(term or "").strip()
+        if not token or token not in before:
+            continue
+        for value in values or []:
+            alias = str(value or "").strip()
+            if alias and alias not in aliases:
+                aliases.append(alias)
+
+
+def _apply_ruleset_expansion(
+    *,
+    name: str,
+    expanded: str,
+    aliases: list[str],
+    meta: dict[str, Any],
+) -> str:
+    ruleset = load_ruleset(name)
+    before = expanded
+    after = expand_query_terms(expanded, ruleset.glossary)
+    if after == before:
+        return expanded
+    _collect_matching_aliases(before=before, glossary=ruleset.glossary, aliases=aliases)
+    meta["rulesets_used"].append(name)
+    return after
+
+
 def apply_industry_rules_query_expansion(
     query: str,
     *,
@@ -51,18 +94,7 @@ def apply_industry_rules_query_expansion(
     max_aliases_i = max(0, int(max_aliases or 0))
     max_query_chars_i = max(64, int(max_query_chars or 2000))
     names = normalize_ruleset_names(ruleset_names)
-    meta: dict[str, Any] = {
-        "schema": _SCHEMA,
-        "enabled": bool(enabled),
-        "used": False,
-        "rulesets_requested": names,
-        "rulesets_used": [],
-        "alias_count": 0,
-        "query_changed": False,
-        "query_hash": _hash_text(original),
-        "expanded_query_hash": _hash_text(original),
-        "errors": [],
-    }
+    meta = _query_expansion_meta(original, enabled=bool(enabled), ruleset_names=names)
     if not bool(enabled) or not original or not names or max_aliases_i <= 0:
         return original, meta
 
@@ -70,21 +102,12 @@ def apply_industry_rules_query_expansion(
     aliases: list[str] = []
     for name in names:
         try:
-            ruleset = load_ruleset(name)
-            before = expanded
-            after = expand_query_terms(expanded, ruleset.glossary)
-            if after == before:
-                continue
-            for term, values in (ruleset.glossary or {}).items():
-                token = str(term or "").strip()
-                if not token or token not in before:
-                    continue
-                for value in values or []:
-                    alias = str(value or "").strip()
-                    if alias and alias not in aliases:
-                        aliases.append(alias)
-            expanded = after
-            meta["rulesets_used"].append(name)
+            expanded = _apply_ruleset_expansion(
+                name=name,
+                expanded=expanded,
+                aliases=aliases,
+                meta=meta,
+            )
         except Exception as exc:  # noqa: BLE001
             meta["errors"].append({"ruleset": name, "error": str(exc)[:160]})
         if len(aliases) >= max_aliases_i:

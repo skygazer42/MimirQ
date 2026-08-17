@@ -131,58 +131,45 @@ class WeightedReranker(DocumentReranker):
                 document.metadata["keywords"] = document_keywords
             documents_keywords.append(document_keywords)
 
-        # Counter query keywords (TF)
         query_keyword_counts = Counter(query_keywords)
-
-        # Total documents
         total_documents = len(documents)
+        keyword_idf = self._keyword_idf(documents_keywords, total_documents=total_documents)
+        query_tfidf = self._tfidf_vector(query_keyword_counts, keyword_idf)
+        documents_tfidf = [
+            self._tfidf_vector(Counter(document_keywords), keyword_idf)
+            for document_keywords in documents_keywords
+        ]
+        return [self._cosine_similarity(query_tfidf, document_tfidf) for document_tfidf in documents_tfidf]
 
-        # Calculate IDF for all keywords
-        all_keywords = set()
+    @staticmethod
+    def _keyword_idf(documents_keywords: list[list[str]], *, total_documents: int) -> dict[str, float]:
+        all_keywords: set[str] = set()
         for document_keywords in documents_keywords:
             all_keywords.update(document_keywords)
 
-        keyword_idf = {}
+        keyword_idf: dict[str, float] = {}
         for keyword in all_keywords:
             doc_count_containing_keyword = sum(1 for doc_keywords in documents_keywords if keyword in doc_keywords)
             keyword_idf[keyword] = math.log((1 + total_documents) / (1 + doc_count_containing_keyword)) + 1
+        return keyword_idf
 
-        # Query TF-IDF
-        query_tfidf = {}
-        for keyword, count in query_keyword_counts.items():
-            tf = count
-            idf = keyword_idf.get(keyword, 0)
-            query_tfidf[keyword] = tf * idf
+    @staticmethod
+    def _tfidf_vector(keyword_counts: Counter[str], keyword_idf: dict[str, float]) -> dict[str, float]:
+        return {
+            keyword: count * keyword_idf.get(keyword, 0)
+            for keyword, count in keyword_counts.items()
+        }
 
-        # Documents TF-IDF
-        documents_tfidf = []
-        for document_keywords in documents_keywords:
-            document_keyword_counts = Counter(document_keywords)
-            document_tfidf = {}
-            for keyword, count in document_keyword_counts.items():
-                tf = count
-                idf = keyword_idf.get(keyword, 0)
-                document_tfidf[keyword] = tf * idf
-            documents_tfidf.append(document_tfidf)
-
-        def cosine_similarity(vec1: dict, vec2: dict) -> float:
-            intersection = set(vec1.keys()) & set(vec2.keys())
-            numerator = sum(vec1[x] * vec2[x] for x in intersection)
-
-            sum1 = sum(vec1[x] ** 2 for x in vec1)
-            sum2 = sum(vec2[x] ** 2 for x in vec2)
-            denominator = math.sqrt(sum1) * math.sqrt(sum2)
-
-            if not denominator:
-                return 0.0
-            return float(numerator) / denominator
-
-        similarities = []
-        for document_tfidf in documents_tfidf:
-            similarity = cosine_similarity(query_tfidf, document_tfidf)
-            similarities.append(similarity)
-
-        return similarities
+    @staticmethod
+    def _cosine_similarity(vec1: dict[str, float], vec2: dict[str, float]) -> float:
+        intersection = set(vec1.keys()) & set(vec2.keys())
+        numerator = sum(vec1[key] * vec2[key] for key in intersection)
+        denominator = math.sqrt(sum(value**2 for value in vec1.values())) * math.sqrt(
+            sum(value**2 for value in vec2.values())
+        )
+        if not denominator:
+            return 0.0
+        return float(numerator) / denominator
 
     def _calculate_cosine(
         self, query: str, documents: list[Document], vector_setting: VectorSetting

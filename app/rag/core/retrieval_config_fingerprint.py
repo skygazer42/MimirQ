@@ -5,7 +5,6 @@ Used to compare retrieval runs across environments without persisting raw querie
 or scope identifiers (tenant/dataset/document ids).
 """
 
-
 import json
 from typing import Any
 
@@ -34,32 +33,38 @@ def _normalize_value(value: Any) -> Any:
     if isinstance(value, (str, int, float, bool)):
         return value
     if isinstance(value, dict):
-        out: dict[str, Any] = {}
-        for k, v in value.items():
-            key = str(k or "").strip()
-            if not key:
-                continue
-            if key in _BANNED_KEYS:
-                continue
-            nv = _normalize_value(v)
-            if nv is None:
-                continue
-            out[key] = nv
-        return out or None
+        return _normalize_mapping(value)
     if isinstance(value, (list, tuple, set)):
-        out2 = []
-        for item in value:
-            nv = _normalize_value(item)
-            if nv is None:
-                continue
-            out2.append(nv)
-        return out2 or None
+        return _normalize_sequence(value)
 
     # Best-effort: keep the fingerprint deterministic across processes.
     return str(value)
 
 
-def build_retrieval_config_fingerprint(*, config: dict[str, Any], schema: str = "mimirq.retrieval_config.v1") -> dict[str, Any]:
+def _normalize_mapping(value: dict[Any, Any]) -> dict[str, Any] | None:
+    normalized: dict[str, Any] = {}
+    for raw_key, raw_value in value.items():
+        key = str(raw_key or "").strip()
+        if not key or key in _BANNED_KEYS:
+            continue
+        item = _normalize_value(raw_value)
+        if item is not None:
+            normalized[key] = item
+    return normalized or None
+
+
+def _normalize_sequence(value: list[Any] | tuple[Any, ...] | set[Any]) -> list[Any] | None:
+    normalized = []
+    for raw_item in value:
+        item = _normalize_value(raw_item)
+        if item is not None:
+            normalized.append(item)
+    return normalized or None
+
+
+def build_retrieval_config_fingerprint(
+    *, config: dict[str, Any], schema: str = "mimirq.retrieval_config.v1"
+) -> dict[str, Any]:
     """
     Build a stable fingerprint for a retrieval config.
 
@@ -75,7 +80,9 @@ def build_retrieval_config_fingerprint(*, config: dict[str, Any], schema: str = 
     cleaned = cleaned if isinstance(cleaned, dict) else {}
     metadata_filter = raw.get("metadata_filter")
     if isinstance(metadata_filter, dict) and metadata_filter:
-        metadata_payload = json.dumps(metadata_filter, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+        metadata_payload = json.dumps(
+            metadata_filter, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str
+        )
         cleaned["metadata_filter_hash"] = stable_hash(metadata_payload, length=32)
         metadata_summary = summarize_metadata_filter(metadata_filter)
         if metadata_summary:

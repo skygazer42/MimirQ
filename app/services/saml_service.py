@@ -274,18 +274,13 @@ def _collect_attribute_values(assertion: etree._Element, attr_name: str) -> list
     return out
 
 
-def _validate_conditions(
+def _validate_issuer_destination_and_status(
+    *,
     root: etree._Element,
     assertion: etree._Element,
-    provider: SamlProvider,
-    acs_url: str | None,
-) -> int:
-    expected_acs = provider.acs_url
-    expected_audience = provider.audience
-    expected_issuer = provider.issuer
-    skew = max(0, int(getattr(settings, "SAML_ALLOWED_CLOCK_SKEW_SEC", 60) or 60))
-    now = datetime.now(UTC)
-
+    expected_issuer: str,
+    expected_acs: str,
+) -> None:
     response_issuer = _get_text(root, "./saml:Issuer")
     assertion_issuer = _get_text(assertion, "./saml:Issuer")
     if response_issuer != expected_issuer or assertion_issuer != expected_issuer:
@@ -299,6 +294,13 @@ def _validate_conditions(
     if status_code is None or str(status_code.get("Value") or "").strip() != "urn:oasis:names:tc:SAML:2.0:status:Success":
         raise HTTPException(status_code=401, detail="SAML response not successful")
 
+
+def _validate_assertion_conditions(
+    *,
+    assertion: etree._Element,
+    now: datetime,
+    skew: int,
+) -> datetime | None:
     conditions = assertion.find("./saml:Conditions", namespaces=_NS)
     if conditions is None:
         raise HTTPException(status_code=401, detail="Missing SAML conditions")
@@ -310,7 +312,10 @@ def _validate_conditions(
     not_on_or_after = _parse_iso_datetime(conditions.get("NotOnOrAfter"))
     if not_on_or_after is not None and now - timedelta(seconds=skew) >= not_on_or_after:
         raise HTTPException(status_code=401, detail="SAML assertion expired")
+    return not_on_or_after
 
+
+def _validate_audience(*, assertion: etree._Element, expected_audience: str) -> None:
     audience_values = [
         str(audience.text or "").strip()
         for audience in assertion.findall(".//saml:AudienceRestriction/saml:Audience", namespaces=_NS)
@@ -319,6 +324,14 @@ def _validate_conditions(
     if expected_audience not in audience_values:
         raise HTTPException(status_code=401, detail="Invalid SAML audience")
 
+
+def _validate_subject_confirmation(
+    *,
+    assertion: etree._Element,
+    expected_acs: str,
+    now: datetime,
+    skew: int,
+) -> datetime | None:
     subject_confirmation = assertion.find("./saml:Subject/saml:SubjectConfirmation/saml:SubjectConfirmationData", namespaces=_NS)
     if subject_confirmation is None:
         raise HTTPException(status_code=401, detail="Missing SAML subject confirmation")
@@ -330,12 +343,53 @@ def _validate_conditions(
     subject_not_on_or_after = _parse_iso_datetime(subject_confirmation.get("NotOnOrAfter"))
     if subject_not_on_or_after is not None and now - timedelta(seconds=skew) >= subject_not_on_or_after:
         raise HTTPException(status_code=401, detail="SAML assertion expired")
+    return subject_not_on_or_after
 
-    expiration_times = [value for value in (not_on_or_after, subject_not_on_or_after) if value is not None]
-    if not expiration_times:
+
+def _compute_replay_ttl(
+    *,
+    now: datetime,
+    skew: int,
+    expiration_times: list[datetime | None],
+) -> int:
+    effective_expirations = [value for value in expiration_times if value is not None]
+    if not effective_expirations:
         raise HTTPException(status_code=401, detail="Missing SAML expiration")
-    replay_until = min(expiration_times) + timedelta(seconds=skew)
+    replay_until = min(effective_expirations) + timedelta(seconds=skew)
     return max(1, math.ceil((replay_until - now).total_seconds()))
+
+
+def _validate_conditions(
+    root: etree._Element,
+    assertion: etree._Element,
+    provider: SamlProvider,
+    acs_url: str | None,
+) -> int:
+    expected_acs = provider.acs_url
+    expected_audience = provider.audience
+    expected_issuer = provider.issuer
+    skew = max(0, int(getattr(settings, "SAML_ALLOWED_CLOCK_SKEW_SEC", 60) or 60))
+    now = datetime.now(UTC)
+
+    _validate_issuer_destination_and_status(
+        root=root,
+        assertion=assertion,
+        expected_issuer=expected_issuer,
+        expected_acs=expected_acs,
+    )
+    not_on_or_after = _validate_assertion_conditions(assertion=assertion, now=now, skew=skew)
+    _validate_audience(assertion=assertion, expected_audience=expected_audience)
+    subject_not_on_or_after = _validate_subject_confirmation(
+        assertion=assertion,
+        expected_acs=expected_acs,
+        now=now,
+        skew=skew,
+    )
+    return _compute_replay_ttl(
+        now=now,
+        skew=skew,
+        expiration_times=[not_on_or_after, subject_not_on_or_after],
+    )
 
 
 def _resolve_user_identity(db: Any, assertion: etree._Element, provider: SamlProvider):

@@ -62,6 +62,41 @@ def build_clause_fastlane_queries(query: str, *, max_refs: int = 4) -> list[str]
     return out
 
 
+def _iter_lightweight_query_candidates(
+    *,
+    raw: str,
+    min_part_chars: int,
+    max_part_chars: int,
+) -> list[str]:
+    candidates: list[str] = []
+    for sentence in _SENTENCE_SPLIT_RE.split(raw):
+        sentence = _normalize_lightweight_query_part(sentence)
+        if not sentence:
+            continue
+        soft_parts = [_normalize_lightweight_query_part(part) for part in _SOFT_SPLIT_RE.split(sentence)]
+        for part in soft_parts:
+            useful = _useful_lightweight_query_part(
+                part,
+                min_chars=min_part_chars,
+                max_chars=max_part_chars,
+            )
+            if useful:
+                candidates.append(useful)
+
+            enum_parts = [_normalize_lightweight_query_part(item) for item in _ENUM_SPLIT_RE.split(part)]
+            if len(enum_parts) < 2:
+                continue
+            for item in enum_parts:
+                useful_item = _useful_lightweight_query_part(
+                    item,
+                    min_chars=min_part_chars,
+                    max_chars=max_part_chars,
+                )
+                if useful_item:
+                    candidates.append(useful_item)
+    return candidates
+
+
 def build_lightweight_subquery_queries(
     query: str,
     *,
@@ -85,32 +120,13 @@ def build_lightweight_subquery_queries(
     if max_queries <= 0:
         return []
 
-    candidates: list[str] = []
-    for sentence in _SENTENCE_SPLIT_RE.split(raw):
-        sentence = _normalize_lightweight_query_part(sentence)
-        if not sentence:
-            continue
-        soft_parts = [_normalize_lightweight_query_part(part) for part in _SOFT_SPLIT_RE.split(sentence)]
-        for part in soft_parts:
-            useful = _useful_lightweight_query_part(
-                part,
-                min_chars=int(min_part_chars or 1),
-                max_chars=int(max_part_chars or 80),
-            )
-            if useful:
-                candidates.append(useful)
-
-            enum_parts = [_normalize_lightweight_query_part(item) for item in _ENUM_SPLIT_RE.split(part)]
-            if len(enum_parts) < 2:
-                continue
-            for item in enum_parts:
-                useful_item = _useful_lightweight_query_part(
-                    item,
-                    min_chars=int(min_part_chars or 1),
-                    max_chars=int(max_part_chars or 80),
-                )
-                if useful_item:
-                    candidates.append(useful_item)
+    min_part_chars_i = int(min_part_chars or 1)
+    max_part_chars_i = int(max_part_chars or 80)
+    candidates = _iter_lightweight_query_candidates(
+        raw=raw,
+        min_part_chars=min_part_chars_i,
+        max_part_chars=max_part_chars_i,
+    )
 
     out: list[str] = []
     seen = {raw.casefold()}

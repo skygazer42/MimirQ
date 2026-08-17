@@ -35,7 +35,7 @@ class LlamaIndexChunker(BaseChunker):
             raise RuntimeError(
                 "LlamaIndexChunker is disabled. Set LLAMA_INDEX_ENABLED=true in your .env file."
             )
-        
+
         from llama_index.core.node_parser import SentenceSplitter
 
         self.chunk_size = int(chunk_size)
@@ -58,7 +58,7 @@ class LlamaIndexChunker(BaseChunker):
 
     def split_documents(self, documents: list[Document]) -> list[Document]:
         from llama_index.core import Document as LlamaDocument
-        
+
         chunks: list[Document] = []
         for doc in documents:
             # LlamaIndex subtracts document metadata from the chunk token budget
@@ -97,9 +97,9 @@ class LlamaIndexHierarchicalChunker(BaseChunker):
             raise RuntimeError(
                 "LlamaIndexHierarchicalChunker is disabled. Set LLAMA_INDEX_ENABLED=true in your .env file."
             )
-        
+
         from llama_index.core.node_parser import HierarchicalNodeParser
-        
+
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -110,7 +110,7 @@ class LlamaIndexHierarchicalChunker(BaseChunker):
             token_overlap = max(0, base_tokens - 1)
 
         chunk_sizes = [base_tokens * 4, base_tokens * 2, base_tokens]
-        
+
         self.parser = HierarchicalNodeParser.from_defaults(
             chunk_sizes=chunk_sizes,
             chunk_overlap=token_overlap,
@@ -122,7 +122,7 @@ class LlamaIndexHierarchicalChunker(BaseChunker):
     def split_documents(self, documents: list[Document]) -> list[Document]:
         from llama_index.core import Document as LlamaDocument
         from llama_index.core.schema import NodeRelationship
-        
+
         chunks: list[Document] = []
         for doc in documents:
             # See LlamaIndexChunker above: keep metadata out of LlamaIndex's
@@ -201,6 +201,6 @@ class LlamaIndexHierarchicalChunker(BaseChunker):
                         metadata["parent_node_id"] = parent_rel.node_id
                 except Exception as exc:
                     logger.debug(_LLAMA_INDEX_CHUNKING_FALLBACK_LOG_MESSAGE, exc)
-                
+
                 chunks.append(Document(page_content=node.get_content(), metadata=metadata))
         return chunks

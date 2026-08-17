@@ -15,6 +15,50 @@ from app.api.schemas.document import DocumentAccessUpdateRequest
 from app.rag.core.logging import get_logger
 
 
+def _should_inherit(config: ConnectorSourceAclConfig | None) -> bool:
+    return config is not None and str(config.mode or "disabled") == "inherit"
+
+
+def _build_group_mapping_index(config: ConnectorSourceAclConfig) -> dict[str, set[UUID]]:
+    index: dict[str, set[UUID]] = {}
+    for rule in (config.group_mappings or [])[:200]:
+        try:
+            key = rule.source.key()
+        except Exception:
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            continue
+        index.setdefault(key, set()).add(rule.group_id)
+    return index
+
+
+def _collect_mapped_group_ids(
+    *,
+    source_acl: SourceAcl,
+    index: dict[str, set[UUID]],
+    max_groups: int,
+) -> set[UUID]:
+    mapped: set[UUID] = set()
+    for principal in (source_acl.principals or [])[:500]:
+        try:
+            key = principal.key()
+        except Exception:
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            continue
+        group_ids = index.get(key)
+        if group_ids:
+            mapped.update(group_ids)
+        if max_groups and len(mapped) >= max_groups:
+            break
+    return mapped
+
+
+def _build_group_access_request(*, mapped: set[UUID], max_groups: int) -> DocumentAccessUpdateRequest:
+    ordered = sorted(mapped, key=lambda value: str(value))
+    if max_groups:
+        ordered = ordered[: max(0, int(max_groups))]
+    return DocumentAccessUpdateRequest(mode="partial_members", partial_group_list=ordered)
+
+
 def resolve_document_access_from_source_acl(
     *,
     source_acl: SourceAcl,
@@ -29,47 +73,21 @@ def resolve_document_access_from_source_acl(
     - If no groups are mapped -> fallback_mode (default: partial_members -> owner-only)
     """
 
-    if config is None:
+    if not _should_inherit(config):
         return None
-    if str(config.mode or "disabled") != "inherit":
-        return None
+    assert config is not None
 
     if bool(config.allow_anyone) and bool(source_acl.has_anyone()):
         return DocumentAccessUpdateRequest(mode="all_team_members")
 
-    # Build a mapping index from source principal key -> group ids.
-    index: dict[str, set[UUID]] = {}
-    for rule in (config.group_mappings or [])[:200]:
-        try:
-            key = rule.source.key()
-        except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-            continue
-        index.setdefault(key, set()).add(rule.group_id)
-
-    mapped: set[UUID] = set()
-    for p in (source_acl.principals or [])[:500]:
-        try:
-            key = p.key()
-        except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-            continue
-        gids = index.get(key)
-        if gids:
-            mapped.update(gids)
-        if max_groups and len(mapped) >= max_groups:
-            break
+    index = _build_group_mapping_index(config)
+    mapped = _collect_mapped_group_ids(source_acl=source_acl, index=index, max_groups=max_groups)
 
     if mapped:
-        # Deterministic ordering for stable behavior/tests.
-        ordered = sorted(mapped, key=lambda v: str(v))
-        if max_groups:
-            ordered = ordered[: max(0, int(max_groups))]
-        return DocumentAccessUpdateRequest(mode="partial_members", partial_group_list=ordered)
+        return _build_group_access_request(mapped=mapped, max_groups=max_groups)
 
     # No mapped principals: apply fallback.
     return DocumentAccessUpdateRequest(mode=str(config.fallback_mode or "partial_members"))
 
 
 __all__ = ["resolve_document_access_from_source_acl"]
-

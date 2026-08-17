@@ -222,6 +222,98 @@ def _optional_int(value: Any, *, field_label: str, key: str) -> int | None:
     return value
 
 
+def _validate_known_fields(value: dict[str, Any], supported: set[str], *, field_label: str) -> None:
+    unknown = _unknown_keys(value, supported)
+    if unknown:
+        raise PipelinePluginContractError(f"{field_label} contains unknown fields: {', '.join(unknown[:20])}")
+
+
+def _validate_metadata_field_name(item: dict[str, Any], index: int) -> str:
+    raw_name = item.get("name")
+    if not isinstance(raw_name, str):
+        raise PipelinePluginContractError(f"metadata field at index {index} name must be a string")
+    name = raw_name.strip()
+    if not name or not _FIELD_NAME_RE.fullmatch(name):
+        raise PipelinePluginContractError(f"metadata field at index {index} has invalid name")
+    if _uses_reserved_metadata_namespace(name):
+        raise PipelinePluginContractError(f"metadata field '{name}' uses reserved platform metadata namespace")
+    if _uses_platform_owned_metadata_field_name(name):
+        raise PipelinePluginContractError(f"metadata field '{name}' uses platform-owned metadata field name")
+    return name
+
+
+def _validate_metadata_field_type(item: dict[str, Any], *, name: str) -> str:
+    field_type = str(item.get("type") or "string").strip().lower()
+    if field_type not in _SUPPORTED_TYPES:
+        raise PipelinePluginContractError(f"metadata field '{name}' has unsupported type '{field_type}'")
+    return field_type
+
+
+def _validate_metadata_field_max_length(item: dict[str, Any], *, name: str) -> int | None:
+    max_length = _optional_int(item.get("max_length"), field_label=f"metadata field '{name}'", key="max_length")
+    if max_length is not None and (max_length < 1 or max_length > 100_000):
+        raise PipelinePluginContractError(f"metadata field '{name}' max_length is out of range")
+    return max_length
+
+
+def _validate_metadata_field_stages(item: dict[str, Any], *, name: str) -> tuple[str, ...]:
+    stages = _validate_contract_stage_list(item.get("stages"), field_label=f"metadata field '{name}'")
+    if "kg" in stages and not name.startswith(_SUPPORTED_KG_METADATA_FIELD_PREFIXES):
+        raise PipelinePluginContractError(
+            f"metadata field '{name}' used by kg must start with metadata., references., or extra_data."
+        )
+    return stages
+
+
+def _validate_metadata_field_enum(item: dict[str, Any], *, name: str) -> tuple[Any, ...] | None:
+    enum_raw = item.get("enum")
+    if enum_raw is not None and not isinstance(enum_raw, list):
+        raise PipelinePluginContractError(f"metadata field '{name}' enum must be a list")
+    return tuple(enum_raw) if enum_raw else None
+
+
+def _build_metadata_field(item: dict[str, Any], *, name: str, field_type: str, stages: tuple[str, ...]) -> MetadataField:
+    field_label = f"metadata field '{name}'"
+    return MetadataField(
+        name=name,
+        type=field_type,
+        required=_optional_bool(item.get("required"), field_label=field_label, key="required"),
+        stages=stages,
+        filterable=_optional_bool(item.get("filterable"), field_label=field_label, key="filterable"),
+        display=_optional_bool(item.get("display"), field_label=field_label, key="display"),
+        evaluable=_optional_bool(item.get("evaluable"), field_label=field_label, key="evaluable"),
+        max_length=_validate_metadata_field_max_length(item, name=name),
+        enum=_validate_metadata_field_enum(item, name=name),
+    )
+
+
+def _parse_metadata_field(raw: Any, *, index: int, seen: set[str]) -> MetadataField:
+    if not isinstance(raw, dict):
+        raise PipelinePluginContractError(f"metadata field at index {index} must be an object")
+    item = raw
+    name = _validate_metadata_field_name(item, index)
+    _validate_known_fields(item, _SUPPORTED_METADATA_FIELD_KEYS, field_label=f"metadata field '{name}'")
+    if name in seen:
+        raise PipelinePluginContractError(f"metadata field '{name}' is duplicated")
+    seen.add(name)
+    field_type = _validate_metadata_field_type(item, name=name)
+    stages = _validate_metadata_field_stages(item, name=name)
+    return _build_metadata_field(item, name=name, field_type=field_type, stages=stages)
+
+
+def _validate_record_identity_fields(schema: dict[str, Any], *, declared_fields: set[str]) -> None:
+    raw_identity_fields = schema.get("record_identity")
+    if raw_identity_fields is not None and not isinstance(raw_identity_fields, list):
+        raise PipelinePluginContractError("metadata_schema.record_identity must be a list")
+    identity_fields = _as_string_list(raw_identity_fields, field_label="metadata_schema.record_identity")
+    missing_identity_fields = [field_name for field_name in identity_fields if field_name not in declared_fields]
+    if missing_identity_fields:
+        missing_text = ", ".join(missing_identity_fields[:20])
+        raise PipelinePluginContractError(
+            f"metadata_schema.record_identity references undeclared metadata fields: {missing_text}"
+        )
+
+
 def parse_metadata_schema(schema: dict[str, Any] | None) -> list[MetadataField]:
     if not schema:
         return []
@@ -234,75 +326,8 @@ def parse_metadata_schema(schema: dict[str, Any] | None) -> list[MetadataField]:
     fields: list[MetadataField] = []
     seen: set[str] = set()
     for index, raw in enumerate(raw_fields):
-        if not isinstance(raw, dict):
-            raise PipelinePluginContractError(f"metadata field at index {index} must be an object")
-        item = raw
-        raw_name = item.get("name")
-        if not isinstance(raw_name, str):
-            raise PipelinePluginContractError(f"metadata field at index {index} name must be a string")
-        name = raw_name.strip()
-        if not name or not _FIELD_NAME_RE.fullmatch(name):
-            raise PipelinePluginContractError(f"metadata field at index {index} has invalid name")
-        if _uses_reserved_metadata_namespace(name):
-            raise PipelinePluginContractError(f"metadata field '{name}' uses reserved platform metadata namespace")
-        if _uses_platform_owned_metadata_field_name(name):
-            raise PipelinePluginContractError(f"metadata field '{name}' uses platform-owned metadata field name")
-        unknown = _unknown_keys(item, _SUPPORTED_METADATA_FIELD_KEYS)
-        if unknown:
-            raise PipelinePluginContractError(f"metadata field '{name}' contains unknown fields: {', '.join(unknown[:20])}")
-        if name in seen:
-            raise PipelinePluginContractError(f"metadata field '{name}' is duplicated")
-        seen.add(name)
-        field_type = str(item.get("type") or "string").strip().lower()
-        if field_type not in _SUPPORTED_TYPES:
-            raise PipelinePluginContractError(f"metadata field '{name}' has unsupported type '{field_type}'")
-        max_length = _optional_int(item.get("max_length"), field_label=f"metadata field '{name}'", key="max_length")
-        if max_length is not None:
-            if max_length < 1 or max_length > 100_000:
-                raise PipelinePluginContractError(f"metadata field '{name}' max_length is out of range")
-        stages = _validate_contract_stage_list(
-            item.get("stages"),
-            field_label=f"metadata field '{name}'",
-        )
-        if "kg" in stages and not name.startswith(_SUPPORTED_KG_METADATA_FIELD_PREFIXES):
-            raise PipelinePluginContractError(
-                f"metadata field '{name}' used by kg must start with metadata., references., or extra_data."
-            )
-        enum_raw = item.get("enum")
-        if enum_raw is not None and not isinstance(enum_raw, list):
-            raise PipelinePluginContractError(f"metadata field '{name}' enum must be a list")
-        enum_values = tuple(enum_raw) if enum_raw else None
-        fields.append(
-            MetadataField(
-                name=name,
-                type=field_type,
-                required=_optional_bool(item.get("required"), field_label=f"metadata field '{name}'", key="required"),
-                stages=stages,
-                filterable=_optional_bool(
-                    item.get("filterable"),
-                    field_label=f"metadata field '{name}'",
-                    key="filterable",
-                ),
-                display=_optional_bool(item.get("display"), field_label=f"metadata field '{name}'", key="display"),
-                evaluable=_optional_bool(
-                    item.get("evaluable"),
-                    field_label=f"metadata field '{name}'",
-                    key="evaluable",
-                ),
-                max_length=max_length,
-                enum=enum_values,
-            )
-        )
-    raw_identity_fields = schema.get("record_identity")
-    if raw_identity_fields is not None and not isinstance(raw_identity_fields, list):
-        raise PipelinePluginContractError("metadata_schema.record_identity must be a list")
-    identity_fields = _as_string_list(raw_identity_fields, field_label="metadata_schema.record_identity")
-    missing_identity_fields = [field_name for field_name in identity_fields if field_name not in seen]
-    if missing_identity_fields:
-        missing_text = ", ".join(missing_identity_fields[:20])
-        raise PipelinePluginContractError(
-            f"metadata_schema.record_identity references undeclared metadata fields: {missing_text}"
-        )
+        fields.append(_parse_metadata_field(raw, index=index, seen=seen))
+    _validate_record_identity_fields(schema, declared_fields=seen)
     return fields
 
 
@@ -467,70 +492,60 @@ def summarize_contracts(
     }
 
 
+def _empty_retrieval_policy_summary() -> dict[str, Any]:
+    return {
+        "schema": None,
+        "query_expansion_fields": [],
+        "query_expansion_value_fields": [],
+        "filter_fields": [],
+        "boost_fields": [],
+        "anchor_fields": [],
+        "anchor_binding_fields": [],
+        "anchor_binding_enabled": False,
+        "rerank_features": [],
+        "question_intent_terms": [],
+        "mixed_intent_leading_noise_terms": [],
+        "mixed_intent_subject_terms": [],
+        "service_anchor_noise_terms": [],
+        "service_anchor_priority_terms": [],
+        "service_anchor_entity_terms": [],
+        "service_anchor_leading_noise_terms": [],
+        "service_anchor_cutoff_terms": [],
+        "question_anchor_generic_subject_terms": [],
+        "fast_response_always_labels": [],
+        "fast_response_field_rules": 0,
+        "service_anchor_query_rewrites": 0,
+        "fallback_enabled": False,
+        "response_compaction_enabled": False,
+        "response_hints_enabled": False,
+    }
+
+
+def _list_length(value: Any) -> int:
+    return len(value) if isinstance(value, list) else 0
+
+
+def _policy_metadata_field_names(raw_values: Any) -> list[str]:
+    field_names: list[str] = []
+    for raw in raw_values if isinstance(raw_values, list) else ():
+        if not isinstance(raw, dict):
+            continue
+        field_name = str(raw.get("metadata") or "").strip()
+        if field_name and field_name not in field_names:
+            field_names.append(field_name)
+    return field_names
+
+
 def _summarize_retrieval_policy(retrieval_policy: dict[str, Any] | None) -> dict[str, Any]:
     if not isinstance(retrieval_policy, dict):
-        return {
-            "schema": None,
-            "query_expansion_fields": [],
-            "query_expansion_value_fields": [],
-            "filter_fields": [],
-            "boost_fields": [],
-            "anchor_fields": [],
-            "anchor_binding_fields": [],
-            "anchor_binding_enabled": False,
-            "rerank_features": [],
-            "question_intent_terms": [],
-            "mixed_intent_leading_noise_terms": [],
-            "mixed_intent_subject_terms": [],
-            "service_anchor_noise_terms": [],
-            "service_anchor_priority_terms": [],
-            "service_anchor_entity_terms": [],
-            "service_anchor_leading_noise_terms": [],
-            "service_anchor_cutoff_terms": [],
-            "question_anchor_generic_subject_terms": [],
-            "fast_response_always_labels": [],
-            "fast_response_field_rules": 0,
-            "service_anchor_query_rewrites": 0,
-            "fallback_enabled": False,
-            "response_compaction_enabled": False,
-            "response_hints_enabled": False,
-        }
-    raw_boosts = retrieval_policy.get("boost_fields")
-    boost_fields: list[str] = []
-    if isinstance(raw_boosts, list):
-        for raw in raw_boosts:
-            if isinstance(raw, dict):
-                field_name = str(raw.get("metadata") or "").strip()
-                if field_name and field_name not in boost_fields:
-                    boost_fields.append(field_name)
-    raw_anchors = retrieval_policy.get("anchor_fields")
-    anchor_fields: list[str] = []
-    if isinstance(raw_anchors, list):
-        for raw in raw_anchors:
-            if isinstance(raw, dict):
-                field_name = str(raw.get("metadata") or "").strip()
-                if field_name and field_name not in anchor_fields:
-                    anchor_fields.append(field_name)
-    raw_value_mappings = retrieval_policy.get("query_expansion_values")
-    value_fields: list[str] = []
-    if isinstance(raw_value_mappings, list):
-        for raw in raw_value_mappings:
-            if isinstance(raw, dict):
-                field_name = str(raw.get("metadata") or "").strip()
-                if field_name and field_name not in value_fields:
-                    value_fields.append(field_name)
-    anchor_binding = retrieval_policy.get("anchor_binding")
-    anchor_binding_fields: list[str] = []
-    if isinstance(anchor_binding, dict):
-        for field_name in _as_string_list(anchor_binding.get("anchor_fields")):
-            if field_name not in anchor_binding_fields:
-                anchor_binding_fields.append(field_name)
-    fallback = retrieval_policy.get("fallback")
-    response_compaction = retrieval_policy.get("response_compaction")
+        return _empty_retrieval_policy_summary()
+    anchor_binding = _as_dict(retrieval_policy.get("anchor_binding"))
+    fallback = _as_dict(retrieval_policy.get("fallback"))
+    response_compaction = _as_dict(retrieval_policy.get("response_compaction"))
     return {
         "schema": retrieval_policy.get("schema"),
         "query_expansion_fields": list(_as_string_list(retrieval_policy.get("query_expansion_fields"))),
-        "query_expansion_value_fields": value_fields,
+        "query_expansion_value_fields": _policy_metadata_field_names(retrieval_policy.get("query_expansion_values")),
         "question_intent_terms": list(_as_string_list(retrieval_policy.get("question_intent_terms"))),
         "mixed_intent_leading_noise_terms": list(
             _as_string_list(retrieval_policy.get("mixed_intent_leading_noise_terms"))
@@ -547,31 +562,63 @@ def _summarize_retrieval_policy(retrieval_policy: dict[str, Any] | None) -> dict
             _as_string_list(retrieval_policy.get("question_anchor_generic_subject_terms"))
         ),
         "fast_response_always_labels": list(_as_string_list(retrieval_policy.get("fast_response_always_labels"))),
-        "fast_response_field_rules": (
-            len(retrieval_policy.get("fast_response_field_rules"))
-            if isinstance(retrieval_policy.get("fast_response_field_rules"), list)
-            else 0
-        ),
+        "fast_response_field_rules": _list_length(retrieval_policy.get("fast_response_field_rules")),
         "metadata_anchor_preflight_block_terms": list(
             _as_string_list(retrieval_policy.get("metadata_anchor_preflight_block_terms"))
         ),
-        "service_anchor_query_rewrites": (
-            len(retrieval_policy.get("service_anchor_query_rewrites"))
-            if isinstance(retrieval_policy.get("service_anchor_query_rewrites"), list)
-            else 0
-        ),
+        "service_anchor_query_rewrites": _list_length(retrieval_policy.get("service_anchor_query_rewrites")),
         "filter_fields": list(_as_string_list(retrieval_policy.get("filter_fields"))),
-        "boost_fields": boost_fields,
-        "anchor_fields": anchor_fields,
-        "anchor_binding_fields": anchor_binding_fields,
-        "anchor_binding_enabled": isinstance(anchor_binding, dict) and anchor_binding.get("enabled") is True,
+        "boost_fields": _policy_metadata_field_names(retrieval_policy.get("boost_fields")),
+        "anchor_fields": _policy_metadata_field_names(retrieval_policy.get("anchor_fields")),
+        "anchor_binding_fields": list(_as_string_list(anchor_binding.get("anchor_fields"))),
+        "anchor_binding_enabled": anchor_binding.get("enabled") is True,
         "rerank_features": list(_as_string_list(retrieval_policy.get("rerank_features"))),
-        "fallback_enabled": isinstance(fallback, dict) and fallback.get("enabled") is True,
-        "response_compaction_enabled": (
-            isinstance(response_compaction, dict) and response_compaction.get("enabled") is True
-        ),
+        "fallback_enabled": fallback.get("enabled") is True,
+        "response_compaction_enabled": response_compaction.get("enabled") is True,
         "response_hints_enabled": isinstance(retrieval_policy.get("response_hints"), dict),
     }
+
+
+def _validate_golden_rule_fields(
+    raw_rule_fields: Any,
+    *,
+    rule_key: str,
+    declared_fields: set[str],
+    evaluable_fields: set[str],
+) -> None:
+    if raw_rule_fields is not None and not isinstance(raw_rule_fields, list):
+        raise PipelinePluginContractError(f"golden_rules.{rule_key} must be a list")
+    rule_fields = _as_string_list(raw_rule_fields, field_label=f"golden_rules.{rule_key}")
+    missing = [field_name for field_name in rule_fields if field_name not in declared_fields]
+    if missing:
+        missing_text = ", ".join(missing[:20])
+        raise PipelinePluginContractError(
+            f"golden_rules.{rule_key} references undeclared metadata fields: {missing_text}"
+        )
+    if rule_key == "expected_metadata" and not rule_fields:
+        raise PipelinePluginContractError("golden_rules.expected_metadata must declare at least one field")
+    if rule_key not in {"expected_metadata", "answer_key_point_fields"}:
+        return
+    non_evaluable = [field_name for field_name in rule_fields if field_name not in evaluable_fields]
+    if non_evaluable:
+        non_evaluable_text = ", ".join(non_evaluable[:20])
+        raise PipelinePluginContractError(
+            f"golden_rules.{rule_key} references non-evaluable metadata fields: {non_evaluable_text}"
+        )
+
+
+def _validate_golden_rule_query_templates(raw_templates: Any) -> None:
+    if raw_templates is None:
+        return
+    if not isinstance(raw_templates, dict):
+        raise PipelinePluginContractError("golden_rules.query_templates must be an object")
+    for bucket, templates in raw_templates.items():
+        bucket_name = str(bucket or "").strip() or "<empty>"
+        if not isinstance(templates, list):
+            raise PipelinePluginContractError(f"golden_rules.query_templates.{bucket_name} must be a list")
+        for index, template in enumerate(templates):
+            if not isinstance(template, str):
+                raise PipelinePluginContractError(f"golden_rules.query_templates.{bucket_name}[{index}] must be a string")
 
 
 def validate_golden_rules_metadata_fields(
@@ -585,45 +632,77 @@ def validate_golden_rules_metadata_fields(
     declared_fields = {field.name for field in metadata_fields}
     evaluable_fields = {field.name for field in metadata_fields if field.evaluable}
     for rule_key in ("expected_metadata", "answer_key_point_fields", "template_selector_fields", "tag_fields"):
-        raw_rule_fields = golden_rules.get(rule_key)
-        if raw_rule_fields is not None and not isinstance(raw_rule_fields, list):
-            raise PipelinePluginContractError(f"golden_rules.{rule_key} must be a list")
-        rule_fields = _as_string_list(raw_rule_fields, field_label=f"golden_rules.{rule_key}")
-        missing = [field_name for field_name in rule_fields if field_name not in declared_fields]
-        if missing:
-            missing_text = ", ".join(missing[:20])
-            raise PipelinePluginContractError(
-                f"golden_rules.{rule_key} references undeclared metadata fields: {missing_text}"
-            )
-        if rule_key == "expected_metadata":
-            if not rule_fields:
-                raise PipelinePluginContractError("golden_rules.expected_metadata must declare at least one field")
-            non_evaluable = [field_name for field_name in rule_fields if field_name not in evaluable_fields]
-            if non_evaluable:
-                non_evaluable_text = ", ".join(non_evaluable[:20])
-                raise PipelinePluginContractError(
-                    f"golden_rules.expected_metadata references non-evaluable metadata fields: {non_evaluable_text}"
-                )
-        if rule_key == "answer_key_point_fields":
-            non_evaluable = [field_name for field_name in rule_fields if field_name not in evaluable_fields]
-            if non_evaluable:
-                non_evaluable_text = ", ".join(non_evaluable[:20])
-                raise PipelinePluginContractError(
-                    f"golden_rules.answer_key_point_fields references non-evaluable metadata fields: {non_evaluable_text}"
-                )
-    raw_templates = golden_rules.get("query_templates")
-    if raw_templates is not None:
-        if not isinstance(raw_templates, dict):
-            raise PipelinePluginContractError("golden_rules.query_templates must be an object")
-        for bucket, templates in raw_templates.items():
-            bucket_name = str(bucket or "").strip() or "<empty>"
-            if not isinstance(templates, list):
-                raise PipelinePluginContractError(f"golden_rules.query_templates.{bucket_name} must be a list")
-            for index, template in enumerate(templates):
-                if not isinstance(template, str):
-                    raise PipelinePluginContractError(
-                        f"golden_rules.query_templates.{bucket_name}[{index}] must be a string"
-                    )
+        _validate_golden_rule_fields(
+            golden_rules.get(rule_key),
+            rule_key=rule_key,
+            declared_fields=declared_fields,
+            evaluable_fields=evaluable_fields,
+        )
+    _validate_golden_rule_query_templates(golden_rules.get("query_templates"))
+
+
+def _validated_retrieval_text_stages(raw_stages: Any) -> dict[str, Any]:
+    if not isinstance(raw_stages, dict):
+        raise PipelinePluginContractError("retrieval_text_schema.stages must be an object")
+    unsupported_stages = [
+        str(stage_name or "").strip() or "<empty>"
+        for stage_name in raw_stages
+        if str(stage_name or "").strip() not in _SUPPORTED_RETRIEVAL_TEXT_STAGES
+    ]
+    if unsupported_stages:
+        missing_text = ", ".join(unsupported_stages[:20])
+        raise PipelinePluginContractError(f"retrieval_text_schema.stages contains unsupported stages: {missing_text}")
+    return raw_stages
+
+
+def _validate_retrieval_text_stage_field(raw_field: Any, *, stage_text: str, field_index: int) -> str:
+    if not isinstance(raw_field, dict):
+        raise PipelinePluginContractError(
+            f"retrieval_text_schema.stages.{stage_text}.fields[{field_index}] must be an object"
+        )
+    item = raw_field
+    _validate_known_fields(
+        item,
+        _SUPPORTED_RETRIEVAL_FIELD_KEYS,
+        field_label=f"retrieval_text_schema.stages.{stage_text}.fields[{field_index}]",
+    )
+    raw_content = item.get("content")
+    if "content" in item and not isinstance(raw_content, bool):
+        raise PipelinePluginContractError(
+            f"retrieval_text_schema.stages.{stage_text}.fields[{field_index}].content must be a boolean"
+        )
+    raw_field_name = item.get("metadata")
+    if raw_field_name is not None and not isinstance(raw_field_name, str):
+        raise PipelinePluginContractError(
+            f"retrieval_text_schema.stages.{stage_text}.fields[{field_index}].metadata must be a string"
+        )
+    field_name = str(raw_field_name or "").strip()
+    if not field_name and raw_content is not True:
+        raise PipelinePluginContractError(
+            f"retrieval_text_schema.stages.{stage_text}.fields[{field_index}] must set metadata or content=true"
+        )
+    return field_name
+
+
+def _validate_retrieval_text_stage(raw_stage: Any, *, stage_text: str, declared_fields: set[str]) -> None:
+    if not isinstance(raw_stage, dict):
+        raise PipelinePluginContractError(f"retrieval_text_schema.stages.{stage_text} must be an object")
+    stage = raw_stage
+    _validate_known_fields(stage, _SUPPORTED_RETRIEVAL_STAGE_KEYS, field_label=f"retrieval_text_schema.stages.{stage_text}")
+    raw_fields = stage.get("fields")
+    if not isinstance(raw_fields, list):
+        raise PipelinePluginContractError(f"retrieval_text_schema.stages.{stage_text}.fields must be a list")
+    referenced: list[str] = []
+    for field_index, raw_field in enumerate(raw_fields):
+        field_name = _validate_retrieval_text_stage_field(raw_field, stage_text=stage_text, field_index=field_index)
+        if field_name and field_name not in referenced:
+            referenced.append(field_name)
+    missing = [field_name for field_name in referenced if field_name not in declared_fields]
+    if missing:
+        missing_text = ", ".join(missing[:20])
+        raise PipelinePluginContractError(
+            f"retrieval_text_schema.stages.{stage_text}.fields references undeclared metadata fields: {missing_text}"
+        )
 
 
 def validate_retrieval_text_schema_metadata_fields(
@@ -634,65 +713,10 @@ def validate_retrieval_text_schema_metadata_fields(
     if not isinstance(retrieval_text_schema, dict) or retrieval_text_schema.get("schema") != "mimirq.retrieval_text_schema.v1":
         return
     declared_fields = {field.name for field in parse_metadata_schema(metadata_schema)}
-    stages = retrieval_text_schema.get("stages")
-    if not isinstance(stages, dict):
-        raise PipelinePluginContractError("retrieval_text_schema.stages must be an object")
-    unsupported_stages = [
-        str(stage_name or "").strip() or "<empty>"
-        for stage_name in stages
-        if str(stage_name or "").strip() not in _SUPPORTED_RETRIEVAL_TEXT_STAGES
-    ]
-    if unsupported_stages:
-        missing_text = ", ".join(unsupported_stages[:20])
-        raise PipelinePluginContractError(f"retrieval_text_schema.stages contains unsupported stages: {missing_text}")
+    stages = _validated_retrieval_text_stages(retrieval_text_schema.get("stages"))
     for stage_name, raw_stage in stages.items():
         stage_text = str(stage_name or "").strip() or "<unknown>"
-        if not isinstance(raw_stage, dict):
-            raise PipelinePluginContractError(f"retrieval_text_schema.stages.{stage_text} must be an object")
-        stage = raw_stage
-        unknown_stage_keys = _unknown_keys(stage, _SUPPORTED_RETRIEVAL_STAGE_KEYS)
-        if unknown_stage_keys:
-            raise PipelinePluginContractError(
-                f"retrieval_text_schema.stages.{stage_text} contains unknown fields: {', '.join(unknown_stage_keys[:20])}"
-            )
-        raw_fields = stage.get("fields")
-        if not isinstance(raw_fields, list):
-            raise PipelinePluginContractError(f"retrieval_text_schema.stages.{stage_text}.fields must be a list")
-        referenced: list[str] = []
-        for field_index, raw_field in enumerate(raw_fields):
-            if not isinstance(raw_field, dict):
-                raise PipelinePluginContractError(
-                    f"retrieval_text_schema.stages.{stage_text}.fields[{field_index}] must be an object"
-                )
-            item = raw_field
-            unknown_field_keys = _unknown_keys(item, _SUPPORTED_RETRIEVAL_FIELD_KEYS)
-            if unknown_field_keys:
-                raise PipelinePluginContractError(
-                    f"retrieval_text_schema.stages.{stage_text}.fields[{field_index}] contains unknown fields: {', '.join(unknown_field_keys[:20])}"
-                )
-            raw_content = item.get("content")
-            if "content" in item and not isinstance(raw_content, bool):
-                raise PipelinePluginContractError(
-                    f"retrieval_text_schema.stages.{stage_text}.fields[{field_index}].content must be a boolean"
-                )
-            raw_field_name = item.get("metadata")
-            if raw_field_name is not None and not isinstance(raw_field_name, str):
-                raise PipelinePluginContractError(
-                    f"retrieval_text_schema.stages.{stage_text}.fields[{field_index}].metadata must be a string"
-                )
-            field_name = str(raw_field_name or "").strip()
-            if not field_name and raw_content is not True:
-                raise PipelinePluginContractError(
-                    f"retrieval_text_schema.stages.{stage_text}.fields[{field_index}] must set metadata or content=true"
-                )
-            if field_name and field_name not in referenced:
-                referenced.append(field_name)
-        missing = [field_name for field_name in referenced if field_name not in declared_fields]
-        if missing:
-            missing_text = ", ".join(missing[:20])
-            raise PipelinePluginContractError(
-                f"retrieval_text_schema.stages.{stage_text}.fields references undeclared metadata fields: {missing_text}"
-            )
+        _validate_retrieval_text_stage(raw_stage, stage_text=stage_text, declared_fields=declared_fields)
 
 
 def _declared_metadata_fields(metadata_schema: dict[str, Any] | None) -> dict[str, MetadataField]:
@@ -748,40 +772,10 @@ def _validate_retrieval_policy_query_expansion_values(
         return
     if not isinstance(raw_mappings, list):
         raise PipelinePluginContractError("retrieval_policy.query_expansion_values must be a list")
-    field_names: list[str] = []
-    for index, raw in enumerate(raw_mappings):
-        if not isinstance(raw, dict):
-            raise PipelinePluginContractError(f"retrieval_policy.query_expansion_values[{index}] must be an object")
-        unknown = _unknown_keys(raw, _SUPPORTED_RETRIEVAL_POLICY_QUERY_VALUE_KEYS)
-        if unknown:
-            raise PipelinePluginContractError(
-                f"retrieval_policy.query_expansion_values[{index}] contains unknown fields: {', '.join(unknown[:20])}"
-            )
-        field_name = str(raw.get("metadata") or "").strip()
-        if not field_name:
-            raise PipelinePluginContractError(
-                f"retrieval_policy.query_expansion_values[{index}].metadata must be non-empty"
-            )
-        if "value" not in raw and "values" not in raw:
-            raise PipelinePluginContractError(
-                f"retrieval_policy.query_expansion_values[{index}] must declare value or values"
-            )
-        if "value" in raw and "values" in raw:
-            raise PipelinePluginContractError(
-                f"retrieval_policy.query_expansion_values[{index}] must not declare both value and values"
-            )
-        if "values" in raw:
-            _as_string_list(raw.get("values"), field_label=f"retrieval_policy.query_expansion_values[{index}].values")
-        elif not isinstance(raw.get("value"), str):
-            raise PipelinePluginContractError(
-                f"retrieval_policy.query_expansion_values[{index}].value must be a string"
-            )
-        terms = _as_string_list(raw.get("terms"), field_label=f"retrieval_policy.query_expansion_values[{index}].terms")
-        if not terms:
-            raise PipelinePluginContractError(
-                f"retrieval_policy.query_expansion_values[{index}].terms must declare at least one term"
-            )
-        field_names.append(field_name)
+    field_names = [
+        _validate_query_expansion_value_mapping(raw, index=index)
+        for index, raw in enumerate(raw_mappings)
+    ]
     _validate_declared_policy_fields(
         tuple(field_names),
         declared_fields=declared_fields,
@@ -792,6 +786,35 @@ def _validate_retrieval_policy_query_expansion_values(
         declared_fields=declared_fields,
         key="query_expansion_values",
     )
+
+
+def _validate_query_expansion_value_mapping(raw: Any, *, index: int) -> str:
+    if not isinstance(raw, dict):
+        raise PipelinePluginContractError(f"retrieval_policy.query_expansion_values[{index}] must be an object")
+    _validate_known_fields(
+        raw,
+        _SUPPORTED_RETRIEVAL_POLICY_QUERY_VALUE_KEYS,
+        field_label=f"retrieval_policy.query_expansion_values[{index}]",
+    )
+    field_name = str(raw.get("metadata") or "").strip()
+    if not field_name:
+        raise PipelinePluginContractError(f"retrieval_policy.query_expansion_values[{index}].metadata must be non-empty")
+    if "value" not in raw and "values" not in raw:
+        raise PipelinePluginContractError(f"retrieval_policy.query_expansion_values[{index}] must declare value or values")
+    if "value" in raw and "values" in raw:
+        raise PipelinePluginContractError(
+            f"retrieval_policy.query_expansion_values[{index}] must not declare both value and values"
+        )
+    if "values" in raw:
+        _as_string_list(raw.get("values"), field_label=f"retrieval_policy.query_expansion_values[{index}].values")
+    elif not isinstance(raw.get("value"), str):
+        raise PipelinePluginContractError(f"retrieval_policy.query_expansion_values[{index}].value must be a string")
+    terms = _as_string_list(raw.get("terms"), field_label=f"retrieval_policy.query_expansion_values[{index}].terms")
+    if not terms:
+        raise PipelinePluginContractError(
+            f"retrieval_policy.query_expansion_values[{index}].terms must declare at least one term"
+        )
+    return field_name
 
 
 def _validate_optional_string(value: Any, *, key: str) -> None:
@@ -816,12 +839,14 @@ def _validate_retrieval_policy_response_hints(
         return
     if not isinstance(raw_hints, dict):
         raise PipelinePluginContractError("retrieval_policy.response_hints must be an object")
-    unknown = _unknown_keys(raw_hints, _SUPPORTED_RETRIEVAL_POLICY_RESPONSE_HINT_KEYS)
-    if unknown:
-        raise PipelinePluginContractError(
-            f"retrieval_policy.response_hints contains unknown fields: {', '.join(unknown[:20])}"
-        )
+    _validate_known_fields(raw_hints, _SUPPORTED_RETRIEVAL_POLICY_RESPONSE_HINT_KEYS, field_label="retrieval_policy.response_hints")
+    _validate_response_hint_scalar_fields(raw_hints)
+    _validate_response_hint_highlight_fields(raw_hints.get("answer_highlight_metadata_fields"), declared_fields=declared_fields)
+    _validate_response_hint_groups(raw_hints.get("groups"), declared_fields=declared_fields)
+    _validate_response_hint_enumeration(raw_hints.get("enumeration"))
 
+
+def _validate_response_hint_scalar_fields(raw_hints: dict[str, Any]) -> None:
     for key in ("answer_prefix", "source_prefix"):
         _validate_optional_string(raw_hints.get(key), key=f"response_hints.{key}")
     for key in (
@@ -835,185 +860,206 @@ def _validate_retrieval_policy_response_hints(
     ):
         _validate_optional_string_list(raw_hints.get(key), key=f"response_hints.{key}")
 
-    raw_highlight_fields = raw_hints.get("answer_highlight_metadata_fields")
+
+def _validate_response_hint_highlight_fields(
+    raw_highlight_fields: Any,
+    *,
+    declared_fields: dict[str, MetadataField],
+) -> None:
     if raw_highlight_fields is not None and not isinstance(raw_highlight_fields, list):
         raise PipelinePluginContractError("retrieval_policy.response_hints.answer_highlight_metadata_fields must be a list")
     for index, raw_field in enumerate(raw_highlight_fields or []):
-        if not isinstance(raw_field, dict):
-            raise PipelinePluginContractError(
-                f"retrieval_policy.response_hints.answer_highlight_metadata_fields[{index}] must be an object"
-            )
-        unknown_field = _unknown_keys(raw_field, _SUPPORTED_RETRIEVAL_POLICY_RESPONSE_HINT_METADATA_FIELD_KEYS)
-        if unknown_field:
+        _validate_response_hint_highlight_field(raw_field, index=index, declared_fields=declared_fields)
+
+
+def _validate_response_hint_highlight_field(
+    raw_field: Any,
+    *,
+    index: int,
+    declared_fields: dict[str, MetadataField],
+) -> None:
+    if not isinstance(raw_field, dict):
+        raise PipelinePluginContractError(
+            f"retrieval_policy.response_hints.answer_highlight_metadata_fields[{index}] must be an object"
+        )
+    _validate_known_fields(
+        raw_field,
+        _SUPPORTED_RETRIEVAL_POLICY_RESPONSE_HINT_METADATA_FIELD_KEYS,
+        field_label=f"retrieval_policy.response_hints.answer_highlight_metadata_fields[{index}]",
+    )
+    metadata_field = str(raw_field.get("metadata") or raw_field.get("key") or "").strip()
+    if not metadata_field:
+        raise PipelinePluginContractError(
+            f"retrieval_policy.response_hints.answer_highlight_metadata_fields[{index}].metadata must be non-empty"
+        )
+    _validate_declared_policy_fields(
+        (metadata_field,),
+        declared_fields=declared_fields,
+        key="response_hints.answer_highlight_metadata_fields",
+    )
+    _validate_policy_chunk_stage_fields(
+        (metadata_field,),
+        declared_fields=declared_fields,
+        key="response_hints.answer_highlight_metadata_fields",
+    )
+    _validate_response_hint_highlight_field_options(raw_field, index=index)
+    _validate_response_hint_highlight_field_conditions(raw_field, index=index, declared_fields=declared_fields)
+
+
+def _validate_response_hint_highlight_field_options(raw_field: dict[str, Any], *, index: int) -> None:
+    for key in ("field", "label", "requested_labels_prefix", "requested_labels_separator"):
+        _validate_optional_string(
+            raw_field.get(key),
+            key=f"response_hints.answer_highlight_metadata_fields[{index}].{key}",
+        )
+    prioritize_query_fields = raw_field.get("prioritize_query_fields")
+    if prioritize_query_fields is not None and not isinstance(prioritize_query_fields, bool):
+        raise PipelinePluginContractError(
+            "retrieval_policy.response_hints.answer_highlight_metadata_fields"
+            f"[{index}].prioritize_query_fields must be a boolean"
+        )
+    _validate_optional_string_list(
+        raw_field.get("fields"),
+        key=f"response_hints.answer_highlight_metadata_fields[{index}].fields",
+    )
+    _validate_response_hint_highlight_labels(raw_field.get("labels"), index=index)
+    max_chars = raw_field.get("max_chars")
+    if max_chars is not None and (not isinstance(max_chars, int) or isinstance(max_chars, bool) or max_chars < 1 or max_chars > 3000):
+        raise PipelinePluginContractError(
+            f"retrieval_policy.response_hints.answer_highlight_metadata_fields[{index}].max_chars is out of range"
+        )
+
+
+def _validate_response_hint_highlight_labels(labels: Any, *, index: int) -> None:
+    if labels is None:
+        return
+    if not isinstance(labels, dict):
+        raise PipelinePluginContractError(
+            f"retrieval_policy.response_hints.answer_highlight_metadata_fields[{index}].labels must be an object"
+        )
+    for label_key, label_value in labels.items():
+        if not str(label_key or "").strip() or not isinstance(label_value, str) or not label_value.strip():
             raise PipelinePluginContractError(
                 "retrieval_policy.response_hints.answer_highlight_metadata_fields"
-                f"[{index}] contains unknown fields: {', '.join(unknown_field[:20])}"
-            )
-        metadata_field = str(raw_field.get("metadata") or raw_field.get("key") or "").strip()
-        if not metadata_field:
-            raise PipelinePluginContractError(
-                f"retrieval_policy.response_hints.answer_highlight_metadata_fields[{index}].metadata must be non-empty"
-            )
-        _validate_declared_policy_fields(
-            (metadata_field,),
-            declared_fields=declared_fields,
-            key="response_hints.answer_highlight_metadata_fields",
-        )
-        _validate_policy_chunk_stage_fields(
-            (metadata_field,),
-            declared_fields=declared_fields,
-            key="response_hints.answer_highlight_metadata_fields",
-        )
-        _validate_optional_string(raw_field.get("field"), key=f"response_hints.answer_highlight_metadata_fields[{index}].field")
-        _validate_optional_string(raw_field.get("label"), key=f"response_hints.answer_highlight_metadata_fields[{index}].label")
-        _validate_optional_string(
-            raw_field.get("requested_labels_prefix"),
-            key=f"response_hints.answer_highlight_metadata_fields[{index}].requested_labels_prefix",
-        )
-        _validate_optional_string(
-            raw_field.get("requested_labels_separator"),
-            key=f"response_hints.answer_highlight_metadata_fields[{index}].requested_labels_separator",
-        )
-        prioritize_query_fields = raw_field.get("prioritize_query_fields")
-        if prioritize_query_fields is not None and not isinstance(prioritize_query_fields, bool):
-            raise PipelinePluginContractError(
-                "retrieval_policy.response_hints.answer_highlight_metadata_fields"
-                f"[{index}].prioritize_query_fields must be a boolean"
-            )
-        _validate_optional_string_list(
-            raw_field.get("fields"),
-            key=f"response_hints.answer_highlight_metadata_fields[{index}].fields",
-        )
-        labels = raw_field.get("labels")
-        if labels is not None:
-            if not isinstance(labels, dict):
-                raise PipelinePluginContractError(
-                    f"retrieval_policy.response_hints.answer_highlight_metadata_fields[{index}].labels must be an object"
-                )
-            for label_key, label_value in labels.items():
-                if not str(label_key or "").strip() or not isinstance(label_value, str) or not label_value.strip():
-                    raise PipelinePluginContractError(
-                        "retrieval_policy.response_hints.answer_highlight_metadata_fields"
-                        f"[{index}].labels must map non-empty field names to non-empty strings"
-                    )
-        max_chars = raw_field.get("max_chars")
-        if max_chars is not None and (
-            not isinstance(max_chars, int) or isinstance(max_chars, bool) or max_chars < 1 or max_chars > 3000
-        ):
-            raise PipelinePluginContractError(
-                f"retrieval_policy.response_hints.answer_highlight_metadata_fields[{index}].max_chars is out of range"
-            )
-        for condition_key in ("when_metadata", "metadata_when"):
-            raw_conditions = raw_field.get(condition_key)
-            if raw_conditions is None:
-                continue
-            if not isinstance(raw_conditions, dict):
-                raise PipelinePluginContractError(
-                    "retrieval_policy.response_hints.answer_highlight_metadata_fields"
-                    f"[{index}].{condition_key} must be an object"
-                )
-            condition_fields = tuple(str(field_name or "").strip() for field_name in raw_conditions)
-            if not all(condition_fields):
-                raise PipelinePluginContractError(
-                    "retrieval_policy.response_hints.answer_highlight_metadata_fields"
-                    f"[{index}].{condition_key} contains an empty metadata field"
-                )
-            _validate_declared_policy_fields(
-                condition_fields,
-                declared_fields=declared_fields,
-                key=f"response_hints.answer_highlight_metadata_fields.{condition_key}",
-            )
-            _validate_policy_chunk_stage_fields(
-                condition_fields,
-                declared_fields=declared_fields,
-                key=f"response_hints.answer_highlight_metadata_fields.{condition_key}",
+                f"[{index}].labels must map non-empty field names to non-empty strings"
             )
 
-    raw_groups = raw_hints.get("groups")
+
+def _validate_response_hint_highlight_field_conditions(
+    raw_field: dict[str, Any],
+    *,
+    index: int,
+    declared_fields: dict[str, MetadataField],
+) -> None:
+    for condition_key in ("when_metadata", "metadata_when"):
+        raw_conditions = raw_field.get(condition_key)
+        if raw_conditions is None:
+            continue
+        if not isinstance(raw_conditions, dict):
+            raise PipelinePluginContractError(
+                "retrieval_policy.response_hints.answer_highlight_metadata_fields"
+                f"[{index}].{condition_key} must be an object"
+            )
+        condition_fields = tuple(str(field_name or "").strip() for field_name in raw_conditions)
+        if not all(condition_fields):
+            raise PipelinePluginContractError(
+                "retrieval_policy.response_hints.answer_highlight_metadata_fields"
+                f"[{index}].{condition_key} contains an empty metadata field"
+            )
+        _validate_declared_policy_fields(
+            condition_fields,
+            declared_fields=declared_fields,
+            key=f"response_hints.answer_highlight_metadata_fields.{condition_key}",
+        )
+        _validate_policy_chunk_stage_fields(
+            condition_fields,
+            declared_fields=declared_fields,
+            key=f"response_hints.answer_highlight_metadata_fields.{condition_key}",
+        )
+
+
+def _validate_response_hint_groups(
+    raw_groups: Any,
+    *,
+    declared_fields: dict[str, MetadataField],
+) -> None:
     if raw_groups is not None and not isinstance(raw_groups, list):
         raise PipelinePluginContractError("retrieval_policy.response_hints.groups must be a list")
     for index, raw_group in enumerate(raw_groups or []):
-        if not isinstance(raw_group, dict):
-            raise PipelinePluginContractError(f"retrieval_policy.response_hints.groups[{index}] must be an object")
-        unknown_group = _unknown_keys(raw_group, _SUPPORTED_RETRIEVAL_POLICY_RESPONSE_HINT_GROUP_KEYS)
-        if unknown_group:
+        _validate_response_hint_group(raw_group, index=index, declared_fields=declared_fields)
+
+
+def _validate_response_hint_group(
+    raw_group: Any,
+    *,
+    index: int,
+    declared_fields: dict[str, MetadataField],
+) -> None:
+    if not isinstance(raw_group, dict):
+        raise PipelinePluginContractError(f"retrieval_policy.response_hints.groups[{index}] must be an object")
+    _validate_known_fields(
+        raw_group,
+        _SUPPORTED_RETRIEVAL_POLICY_RESPONSE_HINT_GROUP_KEYS,
+        field_label=f"retrieval_policy.response_hints.groups[{index}]",
+    )
+    _validate_optional_string(raw_group.get("name"), key=f"response_hints.groups[{index}].name")
+    for key in ("required_any_labels", "hint_labels"):
+        labels = _validate_optional_string_list(raw_group.get(key), key=f"response_hints.groups[{index}].{key}")
+        if not labels:
             raise PipelinePluginContractError(
-                "retrieval_policy.response_hints.groups"
-                f"[{index}] contains unknown fields: {', '.join(unknown_group[:20])}"
+                f"retrieval_policy.response_hints.groups[{index}].{key} must declare at least one label"
             )
-        _validate_optional_string(raw_group.get("name"), key=f"response_hints.groups[{index}].name")
-        required = _validate_optional_string_list(
-            raw_group.get("required_any_labels"),
-            key=f"response_hints.groups[{index}].required_any_labels",
-        )
-        if not required:
+    _validate_optional_string(
+        raw_group.get("question_from_query_label"),
+        key=f"response_hints.groups[{index}].question_from_query_label",
+    )
+    _validate_optional_string(raw_group.get("answer_label"), key=f"response_hints.groups[{index}].answer_label")
+    _validate_response_hint_query_gate(raw_group.get("query_gate"), index=index, declared_fields=declared_fields)
+
+
+def _validate_response_hint_query_gate(
+    query_gate: Any,
+    *,
+    index: int,
+    declared_fields: dict[str, MetadataField],
+) -> None:
+    if query_gate is None:
+        return
+    if not isinstance(query_gate, dict):
+        raise PipelinePluginContractError(f"retrieval_policy.response_hints.groups[{index}].query_gate must be an object")
+    _validate_known_fields(
+        query_gate,
+        _SUPPORTED_RETRIEVAL_POLICY_RESPONSE_HINT_QUERY_GATE_KEYS,
+        field_label=f"retrieval_policy.response_hints.groups[{index}].query_gate",
+    )
+    _validate_optional_string_list(
+        query_gate.get("content_labels"),
+        key=f"response_hints.groups[{index}].query_gate.content_labels",
+    )
+    metadata_fields = _validate_optional_string_list(
+        query_gate.get("metadata"),
+        key=f"response_hints.groups[{index}].query_gate.metadata",
+    )
+    _validate_declared_policy_fields(metadata_fields, declared_fields=declared_fields, key="response_hints.query_gate")
+    _validate_policy_chunk_stage_fields(metadata_fields, declared_fields=declared_fields, key="response_hints.query_gate")
+    for key, upper_bound in (("min_chars", 64), ("min_common_chars", 64)):
+        value = query_gate.get(key)
+        if value is not None and (not isinstance(value, int) or isinstance(value, bool) or value < 1 or value > upper_bound):
             raise PipelinePluginContractError(
-                f"retrieval_policy.response_hints.groups[{index}].required_any_labels must declare at least one label"
-            )
-        hints = _validate_optional_string_list(
-            raw_group.get("hint_labels"),
-            key=f"response_hints.groups[{index}].hint_labels",
-        )
-        if not hints:
-            raise PipelinePluginContractError(
-                f"retrieval_policy.response_hints.groups[{index}].hint_labels must declare at least one label"
-            )
-        _validate_optional_string(
-            raw_group.get("question_from_query_label"),
-            key=f"response_hints.groups[{index}].question_from_query_label",
-        )
-        _validate_optional_string(raw_group.get("answer_label"), key=f"response_hints.groups[{index}].answer_label")
-        query_gate = raw_group.get("query_gate")
-        if query_gate is None:
-            continue
-        if not isinstance(query_gate, dict):
-            raise PipelinePluginContractError(
-                f"retrieval_policy.response_hints.groups[{index}].query_gate must be an object"
-            )
-        unknown_gate = _unknown_keys(query_gate, _SUPPORTED_RETRIEVAL_POLICY_RESPONSE_HINT_QUERY_GATE_KEYS)
-        if unknown_gate:
-            raise PipelinePluginContractError(
-                "retrieval_policy.response_hints.groups"
-                f"[{index}].query_gate contains unknown fields: {', '.join(unknown_gate[:20])}"
-            )
-        _validate_optional_string_list(
-            query_gate.get("content_labels"),
-            key=f"response_hints.groups[{index}].query_gate.content_labels",
-        )
-        metadata_fields = _validate_optional_string_list(
-            query_gate.get("metadata"),
-            key=f"response_hints.groups[{index}].query_gate.metadata",
-        )
-        _validate_declared_policy_fields(metadata_fields, declared_fields=declared_fields, key="response_hints.query_gate")
-        _validate_policy_chunk_stage_fields(metadata_fields, declared_fields=declared_fields, key="response_hints.query_gate")
-        min_chars = query_gate.get("min_chars")
-        if min_chars is not None and (
-            not isinstance(min_chars, int) or isinstance(min_chars, bool) or min_chars < 1 or min_chars > 64
-        ):
-            raise PipelinePluginContractError(
-                f"retrieval_policy.response_hints.groups[{index}].query_gate.min_chars is out of range"
-            )
-        min_common_chars = query_gate.get("min_common_chars")
-        if min_common_chars is not None and (
-            not isinstance(min_common_chars, int)
-            or isinstance(min_common_chars, bool)
-            or min_common_chars < 1
-            or min_common_chars > 64
-        ):
-            raise PipelinePluginContractError(
-                f"retrieval_policy.response_hints.groups[{index}].query_gate.min_common_chars is out of range"
+                f"retrieval_policy.response_hints.groups[{index}].query_gate.{key} is out of range"
             )
 
-    enumeration = raw_hints.get("enumeration")
+
+def _validate_response_hint_enumeration(enumeration: Any) -> None:
     if enumeration is None:
         return
     if not isinstance(enumeration, dict):
         raise PipelinePluginContractError("retrieval_policy.response_hints.enumeration must be an object")
-    unknown_enum = _unknown_keys(enumeration, _SUPPORTED_RETRIEVAL_POLICY_RESPONSE_HINT_ENUMERATION_KEYS)
-    if unknown_enum:
-        raise PipelinePluginContractError(
-            f"retrieval_policy.response_hints.enumeration contains unknown fields: {', '.join(unknown_enum[:20])}"
-        )
+    _validate_known_fields(
+        enumeration,
+        _SUPPORTED_RETRIEVAL_POLICY_RESPONSE_HINT_ENUMERATION_KEYS,
+        field_label="retrieval_policy.response_hints.enumeration",
+    )
     enabled = enumeration.get("enabled")
     if enabled is not None and not isinstance(enabled, bool):
         raise PipelinePluginContractError("retrieval_policy.response_hints.enumeration.enabled must be a boolean")
@@ -1021,25 +1067,27 @@ def _validate_retrieval_policy_response_hints(
         _validate_optional_string_list(enumeration.get(key), key=f"response_hints.enumeration.{key}")
     for key in ("prefix", "message_template", "term_separator"):
         _validate_optional_string(enumeration.get(key), key=f"response_hints.enumeration.{key}")
-    named_markers = enumeration.get("named_markers")
-    if named_markers is not None:
-        if not isinstance(named_markers, dict):
-            raise PipelinePluginContractError("retrieval_policy.response_hints.enumeration.named_markers must be an object")
-        for raw_key, raw_value in named_markers.items():
-            key = str(raw_key or "").strip()
-            if not key:
-                raise PipelinePluginContractError(
-                    "retrieval_policy.response_hints.enumeration.named_markers contains an empty key"
-                )
-            if not isinstance(raw_value, str):
-                raise PipelinePluginContractError(
-                    f"retrieval_policy.response_hints.enumeration.named_markers.{key} must be a string"
-                )
+    _validate_response_hint_named_markers(enumeration.get("named_markers"))
     max_terms = enumeration.get("max_terms")
-    if max_terms is not None and (
-        not isinstance(max_terms, int) or isinstance(max_terms, bool) or max_terms < 1 or max_terms > 20
-    ):
+    if max_terms is not None and (not isinstance(max_terms, int) or isinstance(max_terms, bool) or max_terms < 1 or max_terms > 20):
         raise PipelinePluginContractError("retrieval_policy.response_hints.enumeration.max_terms is out of range")
+
+
+def _validate_response_hint_named_markers(named_markers: Any) -> None:
+    if named_markers is None:
+        return
+    if not isinstance(named_markers, dict):
+        raise PipelinePluginContractError("retrieval_policy.response_hints.enumeration.named_markers must be an object")
+    for raw_key, raw_value in named_markers.items():
+        key = str(raw_key or "").strip()
+        if not key:
+            raise PipelinePluginContractError(
+                "retrieval_policy.response_hints.enumeration.named_markers contains an empty key"
+            )
+        if not isinstance(raw_value, str):
+            raise PipelinePluginContractError(
+                f"retrieval_policy.response_hints.enumeration.named_markers.{key} must be a string"
+            )
 
 
 def _validate_retrieval_policy_service_anchor_query_rewrites(raw_rules: Any) -> None:
@@ -1134,6 +1182,174 @@ def _validate_retrieval_policy_anchor_binding(
     )
 
 
+def _validate_policy_metadata_field_list(
+    retrieval_policy: dict[str, Any],
+    *,
+    declared_fields: dict[str, MetadataField],
+    key: str,
+) -> None:
+    field_names = _policy_string_list(retrieval_policy.get(key), key=key)
+    _validate_declared_policy_fields(field_names, declared_fields=declared_fields, key=key)
+    _validate_policy_chunk_stage_fields(field_names, declared_fields=declared_fields, key=key)
+    if key != "filter_fields":
+        return
+    non_filterable = [field_name for field_name in field_names if not declared_fields[field_name].filterable]
+    if non_filterable:
+        non_filterable_text = ", ".join(non_filterable[:20])
+        raise PipelinePluginContractError(
+            f"retrieval_policy.filter_fields references non-filterable metadata fields: {non_filterable_text}"
+        )
+
+
+def _validate_policy_string_list_sections(retrieval_policy: dict[str, Any]) -> None:
+    for key in (
+        "question_intent_terms",
+        "mixed_intent_leading_noise_terms",
+        "mixed_intent_subject_terms",
+        "service_anchor_noise_terms",
+        "service_anchor_priority_terms",
+        "service_anchor_entity_terms",
+        "service_anchor_leading_noise_terms",
+        "service_anchor_cutoff_terms",
+        "question_anchor_generic_subject_terms",
+        "fast_response_always_labels",
+        "metadata_anchor_preflight_block_terms",
+    ):
+        _validate_optional_string_list(retrieval_policy.get(key), key=key)
+
+
+def _validate_policy_question_anchor_bonus(retrieval_policy: dict[str, Any]) -> None:
+    question_anchor_bonus = retrieval_policy.get("question_anchor_bonus")
+    if question_anchor_bonus is not None and (
+        not isinstance(question_anchor_bonus, int | float)
+        or isinstance(question_anchor_bonus, bool)
+        or question_anchor_bonus < 0
+        or question_anchor_bonus > 2
+    ):
+        raise PipelinePluginContractError("retrieval_policy.question_anchor_bonus is out of range")
+
+
+def _validate_policy_boost_fields(
+    raw_boosts: Any,
+    *,
+    declared_fields: dict[str, MetadataField],
+) -> None:
+    if raw_boosts is not None and not isinstance(raw_boosts, list):
+        raise PipelinePluginContractError("retrieval_policy.boost_fields must be a list")
+    for index, raw in enumerate(raw_boosts or []):
+        _validate_policy_boost_field(raw, index=index, declared_fields=declared_fields)
+
+
+def _validate_policy_boost_field(raw: Any, *, index: int, declared_fields: dict[str, MetadataField]) -> None:
+    if not isinstance(raw, dict):
+        raise PipelinePluginContractError(f"retrieval_policy.boost_fields[{index}] must be an object")
+    _validate_known_fields(raw, _SUPPORTED_RETRIEVAL_POLICY_BOOST_KEYS, field_label=f"retrieval_policy.boost_fields[{index}]")
+    field_name = str(raw.get("metadata") or "").strip()
+    if not field_name:
+        raise PipelinePluginContractError(f"retrieval_policy.boost_fields[{index}].metadata must be non-empty")
+    _validate_declared_policy_fields((field_name,), declared_fields=declared_fields, key="boost_fields")
+    _validate_policy_chunk_stage_fields((field_name,), declared_fields=declared_fields, key="boost_fields")
+    weight = raw.get("weight", 1.0)
+    if not isinstance(weight, (int, float)) or isinstance(weight, bool) or weight <= 0 or weight > 10:
+        raise PipelinePluginContractError(f"retrieval_policy.boost_fields[{index}].weight is out of range")
+    match_mode = str(raw.get("match") or "contains").strip()
+    if match_mode not in _SUPPORTED_RETRIEVAL_POLICY_MATCHES:
+        raise PipelinePluginContractError(f"retrieval_policy.boost_fields[{index}].match is unsupported")
+
+
+def _validate_policy_anchor_fields(
+    raw_anchors: Any,
+    *,
+    declared_fields: dict[str, MetadataField],
+) -> None:
+    if raw_anchors is not None and not isinstance(raw_anchors, list):
+        raise PipelinePluginContractError("retrieval_policy.anchor_fields must be a list")
+    anchor_field_names = [
+        _validate_policy_anchor_field(raw, index=index, declared_fields=declared_fields)
+        for index, raw in enumerate(raw_anchors or [])
+    ]
+    _validate_declared_policy_fields(tuple(anchor_field_names), declared_fields=declared_fields, key="anchor_fields")
+    _validate_policy_chunk_stage_fields(tuple(anchor_field_names), declared_fields=declared_fields, key="anchor_fields")
+
+
+def _validate_policy_anchor_field(raw: Any, *, index: int, declared_fields: dict[str, MetadataField]) -> str:
+    if not isinstance(raw, dict):
+        raise PipelinePluginContractError(f"retrieval_policy.anchor_fields[{index}] must be an object")
+    _validate_known_fields(raw, _SUPPORTED_RETRIEVAL_POLICY_ANCHOR_KEYS, field_label=f"retrieval_policy.anchor_fields[{index}]")
+    field_name = str(raw.get("metadata") or "").strip()
+    if not field_name:
+        raise PipelinePluginContractError(f"retrieval_policy.anchor_fields[{index}].metadata must be non-empty")
+    role = str(raw.get("role") or "").strip()
+    if role and role != "administrative_area":
+        raise PipelinePluginContractError(f"retrieval_policy.anchor_fields[{index}].role is unsupported")
+    weight = raw.get("weight", 1.0)
+    if not isinstance(weight, (int, float)) or isinstance(weight, bool) or weight <= 0 or weight > 10:
+        raise PipelinePluginContractError(f"retrieval_policy.anchor_fields[{index}].weight is out of range")
+    _validate_policy_anchor_aliases(raw.get("aliases"), index=index)
+    return field_name
+
+
+def _validate_policy_anchor_aliases(aliases: Any, *, index: int) -> None:
+    if aliases is None:
+        return
+    if not isinstance(aliases, dict):
+        raise PipelinePluginContractError(f"retrieval_policy.anchor_fields[{index}].aliases must be an object")
+    for raw_key, raw_values in aliases.items():
+        key = str(raw_key or "").strip()
+        if not key:
+            raise PipelinePluginContractError(f"retrieval_policy.anchor_fields[{index}].aliases contains an empty key")
+        if isinstance(raw_values, str):
+            continue
+        if not isinstance(raw_values, list):
+            raise PipelinePluginContractError(
+                f"retrieval_policy.anchor_fields[{index}].aliases.{key} must be a string or list"
+            )
+        _as_string_list(raw_values, field_label=f"retrieval_policy.anchor_fields[{index}].aliases.{key}")
+
+
+def _validate_policy_fallback(fallback: Any) -> None:
+    if fallback is None:
+        return
+    if not isinstance(fallback, dict):
+        raise PipelinePluginContractError("retrieval_policy.fallback must be an object")
+    _validate_known_fields(fallback, _SUPPORTED_RETRIEVAL_POLICY_FALLBACK_KEYS, field_label="retrieval_policy.fallback")
+    enabled = fallback.get("enabled")
+    if enabled is not None and not isinstance(enabled, bool):
+        raise PipelinePluginContractError("retrieval_policy.fallback.enabled must be a boolean")
+    multiplier = fallback.get("expand_top_k_multiplier")
+    if multiplier is not None and (not isinstance(multiplier, int) or isinstance(multiplier, bool) or multiplier < 1 or multiplier > 10):
+        raise PipelinePluginContractError("retrieval_policy.fallback.expand_top_k_multiplier is out of range")
+
+
+def _validate_policy_response_compaction(response_compaction: Any) -> None:
+    if response_compaction is None:
+        return
+    if not isinstance(response_compaction, dict):
+        raise PipelinePluginContractError("retrieval_policy.response_compaction must be an object")
+    _validate_known_fields(
+        response_compaction,
+        _SUPPORTED_RETRIEVAL_POLICY_RESPONSE_COMPACTION_KEYS,
+        field_label="retrieval_policy.response_compaction",
+    )
+    enabled = response_compaction.get("enabled")
+    if enabled is not None and not isinstance(enabled, bool):
+        raise PipelinePluginContractError("retrieval_policy.response_compaction.enabled must be a boolean")
+    _validate_response_compaction_number(response_compaction.get("min_top_score"), key="min_top_score", upper_bound=2)
+    _validate_response_compaction_number(
+        response_compaction.get("relative_score_floor"),
+        key="relative_score_floor",
+        upper_bound=1,
+    )
+    min_records = response_compaction.get("min_records")
+    if min_records is not None and (not isinstance(min_records, int) or isinstance(min_records, bool) or min_records < 1 or min_records > 20):
+        raise PipelinePluginContractError("retrieval_policy.response_compaction.min_records is out of range")
+
+
+def _validate_response_compaction_number(value: Any, *, key: str, upper_bound: int) -> None:
+    if value is not None and (not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0 or value > upper_bound):
+        raise PipelinePluginContractError(f"retrieval_policy.response_compaction.{key} is out of range")
+
+
 def validate_retrieval_policy_metadata_fields(
     *,
     retrieval_policy: dict[str, Any] | None,
@@ -1144,75 +1360,19 @@ def validate_retrieval_policy_metadata_fields(
     declared_fields = _declared_metadata_fields(metadata_schema)
 
     for key in ("query_expansion_fields", "filter_fields", "rerank_features"):
-        field_names = _policy_string_list(retrieval_policy.get(key), key=key)
-        _validate_declared_policy_fields(field_names, declared_fields=declared_fields, key=key)
-        _validate_policy_chunk_stage_fields(field_names, declared_fields=declared_fields, key=key)
-        if key == "filter_fields":
-            non_filterable = [field_name for field_name in field_names if not declared_fields[field_name].filterable]
-            if non_filterable:
-                non_filterable_text = ", ".join(non_filterable[:20])
-                raise PipelinePluginContractError(
-                    f"retrieval_policy.filter_fields references non-filterable metadata fields: {non_filterable_text}"
-                )
+        _validate_policy_metadata_field_list(retrieval_policy, declared_fields=declared_fields, key=key)
     _validate_retrieval_policy_query_expansion_values(
         retrieval_policy.get("query_expansion_values"),
         declared_fields=declared_fields,
     )
-    _validate_optional_string_list(retrieval_policy.get("question_intent_terms"), key="question_intent_terms")
-    _validate_optional_string_list(
-        retrieval_policy.get("mixed_intent_leading_noise_terms"),
-        key="mixed_intent_leading_noise_terms",
-    )
-    _validate_optional_string_list(
-        retrieval_policy.get("mixed_intent_subject_terms"),
-        key="mixed_intent_subject_terms",
-    )
-    _validate_optional_string_list(
-        retrieval_policy.get("service_anchor_noise_terms"),
-        key="service_anchor_noise_terms",
-    )
-    _validate_optional_string_list(
-        retrieval_policy.get("service_anchor_priority_terms"),
-        key="service_anchor_priority_terms",
-    )
-    _validate_optional_string_list(
-        retrieval_policy.get("service_anchor_entity_terms"),
-        key="service_anchor_entity_terms",
-    )
-    _validate_optional_string_list(
-        retrieval_policy.get("service_anchor_leading_noise_terms"),
-        key="service_anchor_leading_noise_terms",
-    )
-    _validate_optional_string_list(
-        retrieval_policy.get("service_anchor_cutoff_terms"),
-        key="service_anchor_cutoff_terms",
-    )
-    _validate_optional_string_list(
-        retrieval_policy.get("question_anchor_generic_subject_terms"),
-        key="question_anchor_generic_subject_terms",
-    )
-    _validate_optional_string_list(
-        retrieval_policy.get("fast_response_always_labels"),
-        key="fast_response_always_labels",
-    )
+    _validate_policy_string_list_sections(retrieval_policy)
     _validate_retrieval_policy_fast_response_field_rules(
         retrieval_policy.get("fast_response_field_rules"),
     )
     _validate_retrieval_policy_service_anchor_query_rewrites(
         retrieval_policy.get("service_anchor_query_rewrites"),
     )
-    _validate_optional_string_list(
-        retrieval_policy.get("metadata_anchor_preflight_block_terms"),
-        key="metadata_anchor_preflight_block_terms",
-    )
-    question_anchor_bonus = retrieval_policy.get("question_anchor_bonus")
-    if question_anchor_bonus is not None and (
-        not isinstance(question_anchor_bonus, int | float)
-        or isinstance(question_anchor_bonus, bool)
-        or question_anchor_bonus < 0
-        or question_anchor_bonus > 2
-    ):
-        raise PipelinePluginContractError("retrieval_policy.question_anchor_bonus is out of range")
+    _validate_policy_question_anchor_bonus(retrieval_policy)
     _validate_retrieval_policy_response_hints(
         retrieval_policy.get("response_hints"),
         declared_fields=declared_fields,
@@ -1221,135 +1381,10 @@ def validate_retrieval_policy_metadata_fields(
         retrieval_policy.get("anchor_binding"),
         declared_fields=declared_fields,
     )
-
-    raw_boosts = retrieval_policy.get("boost_fields")
-    if raw_boosts is not None and not isinstance(raw_boosts, list):
-        raise PipelinePluginContractError("retrieval_policy.boost_fields must be a list")
-    for index, raw in enumerate(raw_boosts or []):
-        if not isinstance(raw, dict):
-            raise PipelinePluginContractError(f"retrieval_policy.boost_fields[{index}] must be an object")
-        unknown = _unknown_keys(raw, _SUPPORTED_RETRIEVAL_POLICY_BOOST_KEYS)
-        if unknown:
-            raise PipelinePluginContractError(
-                f"retrieval_policy.boost_fields[{index}] contains unknown fields: {', '.join(unknown[:20])}"
-            )
-        field_name = str(raw.get("metadata") or "").strip()
-        if not field_name:
-            raise PipelinePluginContractError(f"retrieval_policy.boost_fields[{index}].metadata must be non-empty")
-        _validate_declared_policy_fields((field_name,), declared_fields=declared_fields, key="boost_fields")
-        _validate_policy_chunk_stage_fields((field_name,), declared_fields=declared_fields, key="boost_fields")
-        weight = raw.get("weight", 1.0)
-        if not isinstance(weight, (int, float)) or isinstance(weight, bool) or weight <= 0 or weight > 10:
-            raise PipelinePluginContractError(f"retrieval_policy.boost_fields[{index}].weight is out of range")
-        match_mode = str(raw.get("match") or "contains").strip()
-        if match_mode not in _SUPPORTED_RETRIEVAL_POLICY_MATCHES:
-            raise PipelinePluginContractError(f"retrieval_policy.boost_fields[{index}].match is unsupported")
-
-    raw_anchors = retrieval_policy.get("anchor_fields")
-    if raw_anchors is not None and not isinstance(raw_anchors, list):
-        raise PipelinePluginContractError("retrieval_policy.anchor_fields must be a list")
-    anchor_field_names: list[str] = []
-    for index, raw in enumerate(raw_anchors or []):
-        if not isinstance(raw, dict):
-            raise PipelinePluginContractError(f"retrieval_policy.anchor_fields[{index}] must be an object")
-        unknown = _unknown_keys(raw, _SUPPORTED_RETRIEVAL_POLICY_ANCHOR_KEYS)
-        if unknown:
-            raise PipelinePluginContractError(
-                f"retrieval_policy.anchor_fields[{index}] contains unknown fields: {', '.join(unknown[:20])}"
-            )
-        field_name = str(raw.get("metadata") or "").strip()
-        if not field_name:
-            raise PipelinePluginContractError(f"retrieval_policy.anchor_fields[{index}].metadata must be non-empty")
-        anchor_field_names.append(field_name)
-        role = str(raw.get("role") or "").strip()
-        if role and role != "administrative_area":
-            raise PipelinePluginContractError(
-                f"retrieval_policy.anchor_fields[{index}].role is unsupported"
-            )
-        weight = raw.get("weight", 1.0)
-        if not isinstance(weight, (int, float)) or isinstance(weight, bool) or weight <= 0 or weight > 10:
-            raise PipelinePluginContractError(f"retrieval_policy.anchor_fields[{index}].weight is out of range")
-        aliases = raw.get("aliases")
-        if aliases is not None:
-            if not isinstance(aliases, dict):
-                raise PipelinePluginContractError(f"retrieval_policy.anchor_fields[{index}].aliases must be an object")
-            for raw_key, raw_values in aliases.items():
-                key = str(raw_key or "").strip()
-                if not key:
-                    raise PipelinePluginContractError(
-                        f"retrieval_policy.anchor_fields[{index}].aliases contains an empty key"
-                    )
-                if isinstance(raw_values, str):
-                    continue
-                if not isinstance(raw_values, list):
-                    raise PipelinePluginContractError(
-                        f"retrieval_policy.anchor_fields[{index}].aliases.{key} must be a string or list"
-                    )
-                _as_string_list(raw_values, field_label=f"retrieval_policy.anchor_fields[{index}].aliases.{key}")
-    _validate_declared_policy_fields(
-        tuple(anchor_field_names),
-        declared_fields=declared_fields,
-        key="anchor_fields",
-    )
-    _validate_policy_chunk_stage_fields(
-        tuple(anchor_field_names),
-        declared_fields=declared_fields,
-        key="anchor_fields",
-    )
-
-    fallback = retrieval_policy.get("fallback")
-    if fallback is not None:
-        if not isinstance(fallback, dict):
-            raise PipelinePluginContractError("retrieval_policy.fallback must be an object")
-        unknown_fallback = _unknown_keys(fallback, _SUPPORTED_RETRIEVAL_POLICY_FALLBACK_KEYS)
-        if unknown_fallback:
-            raise PipelinePluginContractError(
-                f"retrieval_policy.fallback contains unknown fields: {', '.join(unknown_fallback[:20])}"
-            )
-        enabled = fallback.get("enabled")
-        if enabled is not None and not isinstance(enabled, bool):
-            raise PipelinePluginContractError("retrieval_policy.fallback.enabled must be a boolean")
-        multiplier = fallback.get("expand_top_k_multiplier")
-        if multiplier is not None and (
-            not isinstance(multiplier, int) or isinstance(multiplier, bool) or multiplier < 1 or multiplier > 10
-        ):
-            raise PipelinePluginContractError("retrieval_policy.fallback.expand_top_k_multiplier is out of range")
-
-    response_compaction = retrieval_policy.get("response_compaction")
-    if response_compaction is None:
-        return
-    if not isinstance(response_compaction, dict):
-        raise PipelinePluginContractError("retrieval_policy.response_compaction must be an object")
-    unknown_compaction = _unknown_keys(response_compaction, _SUPPORTED_RETRIEVAL_POLICY_RESPONSE_COMPACTION_KEYS)
-    if unknown_compaction:
-        raise PipelinePluginContractError(
-            "retrieval_policy.response_compaction contains unknown fields: "
-            f"{', '.join(unknown_compaction[:20])}"
-        )
-    enabled = response_compaction.get("enabled")
-    if enabled is not None and not isinstance(enabled, bool):
-        raise PipelinePluginContractError("retrieval_policy.response_compaction.enabled must be a boolean")
-    min_top_score = response_compaction.get("min_top_score")
-    if min_top_score is not None and (
-        not isinstance(min_top_score, (int, float))
-        or isinstance(min_top_score, bool)
-        or min_top_score < 0
-        or min_top_score > 2
-    ):
-        raise PipelinePluginContractError("retrieval_policy.response_compaction.min_top_score is out of range")
-    relative_score_floor = response_compaction.get("relative_score_floor")
-    if relative_score_floor is not None and (
-        not isinstance(relative_score_floor, (int, float))
-        or isinstance(relative_score_floor, bool)
-        or relative_score_floor < 0
-        or relative_score_floor > 1
-    ):
-        raise PipelinePluginContractError("retrieval_policy.response_compaction.relative_score_floor is out of range")
-    min_records = response_compaction.get("min_records")
-    if min_records is not None and (
-        not isinstance(min_records, int) or isinstance(min_records, bool) or min_records < 1 or min_records > 20
-    ):
-        raise PipelinePluginContractError("retrieval_policy.response_compaction.min_records is out of range")
+    _validate_policy_boost_fields(retrieval_policy.get("boost_fields"), declared_fields=declared_fields)
+    _validate_policy_anchor_fields(retrieval_policy.get("anchor_fields"), declared_fields=declared_fields)
+    _validate_policy_fallback(retrieval_policy.get("fallback"))
+    _validate_policy_response_compaction(retrieval_policy.get("response_compaction"))
 
 
 def _value_from_metadata(meta: dict[str, Any], key: str) -> Any:
@@ -1392,6 +1427,30 @@ def _record_identity_payload(meta: dict[str, Any], schema: dict[str, Any] | None
     }
 
 
+def _collect_metadata_schema_views(
+    fields: list[MetadataField],
+    *,
+    meta: dict[str, Any],
+    stage: str,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    indexed: dict[str, Any] = {}
+    display: dict[str, Any] = {}
+    evaluable: dict[str, Any] = {}
+    for field in fields:
+        if not _stage_applies(field, stage):
+            continue
+        value = _value_from_metadata(meta, field.name)
+        if not _is_present(value):
+            continue
+        if field.filterable:
+            indexed[field.name] = value
+        if field.display:
+            display[field.name] = value
+        if field.evaluable:
+            evaluable[field.name] = value
+    return indexed, display, evaluable
+
+
 def build_metadata_schema_views(
     document: Document,
     *,
@@ -1410,21 +1469,7 @@ def build_metadata_schema_views(
         return {}
 
     meta = dict(document.metadata or {})
-    indexed: dict[str, Any] = {}
-    display: dict[str, Any] = {}
-    evaluable: dict[str, Any] = {}
-    for field in fields:
-        if not _stage_applies(field, stage):
-            continue
-        value = _value_from_metadata(meta, field.name)
-        if not _is_present(value):
-            continue
-        if field.filterable:
-            indexed[field.name] = value
-        if field.display:
-            display[field.name] = value
-        if field.evaluable:
-            evaluable[field.name] = value
+    indexed, display, evaluable = _collect_metadata_schema_views(fields, meta=meta, stage=stage)
 
     views: dict[str, Any] = {}
     if indexed:

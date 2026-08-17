@@ -1143,16 +1143,7 @@ def list_datasets(
         .group_by(operational_status_expr)
         .all()
     )
-    status_counts: dict[str, int] = {
-        "active": 0,
-        "anomaly": 0,
-        "pending": 0,
-        "testing": 0,
-    }
-    for status_value, count in status_rows:
-        key = str(status_value or "").strip().lower()
-        if key in status_counts:
-            status_counts[key] = int(count or 0)
+    status_counts = _dataset_operational_status_counts(status_rows)
 
     page_query = joined_filtered_query
     if operational_status == "all":
@@ -1303,6 +1294,20 @@ def list_datasets(
             },
         ),
     }
+
+
+def _dataset_operational_status_counts(status_rows: list[tuple[Any, Any]]) -> dict[str, int]:
+    counts = {
+        "active": 0,
+        "anomaly": 0,
+        "pending": 0,
+        "testing": 0,
+    }
+    for status_value, count in status_rows:
+        key = str(status_value or "").strip().lower()
+        if key in counts:
+            counts[key] = int(count or 0)
+    return counts
 
 
 @router.get("/{dataset_id}", response_model=DatasetOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)

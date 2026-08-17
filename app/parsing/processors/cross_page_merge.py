@@ -420,6 +420,42 @@ def _merge_ordered_list_blocks(prev_block: list[str], next_block: list[str]) -> 
     return [*prev_block, *next_block]
 
 
+def _split_page_text(text: str) -> tuple[list[str], bool]:
+    raw = str(text or "")
+    return raw.splitlines(), raw.endswith("\n")
+
+
+def _join_page_text(lines: list[str], ends_with_newline: bool) -> str:
+    text = "\n".join(lines)
+    if ends_with_newline and not text.endswith("\n"):
+        text += "\n"
+    return text
+
+
+def _merge_page_boundary(
+    prev_lines: list[str],
+    next_lines: list[str],
+) -> tuple[list[str], list[str], int, int, bool]:
+    prev_tbl = _extract_trailing_block(prev_lines, _looks_like_table_row)
+    next_tbl = _extract_leading_table_block(next_lines)
+    if prev_tbl and next_tbl:
+        ps, pe = prev_tbl
+        ns, ne = next_tbl
+        merged = _merge_table_blocks(prev_lines[ps:pe], next_lines[ns:ne])
+        if merged is not None:
+            return [*prev_lines[:ps], *merged, *prev_lines[pe:]], [*next_lines[:ns], *next_lines[ne:]], 1, 0, True
+
+    prev_lst = _extract_trailing_block(prev_lines, lambda line: _extract_ordered_num(line) is not None)
+    next_lst = _extract_leading_block(next_lines, lambda line: _extract_ordered_num(line) is not None)
+    if prev_lst and next_lst:
+        ps, pe = prev_lst
+        ns, ne = next_lst
+        merged = _merge_ordered_list_blocks(prev_lines[ps:pe], next_lines[ns:ne])
+        if merged is not None:
+            return [*prev_lines[:ps], *merged, *prev_lines[pe:]], [*next_lines[:ns], *next_lines[ne:]], 0, 1, True
+    return prev_lines, next_lines, 0, 0, False
+
+
 def merge_cross_page_markdown_pages(pages: list[str]) -> tuple[list[str], dict[str, int]]:
     """
     Merge cross-page table/list continuations on a list of per-page markdown texts.
@@ -432,52 +468,15 @@ def merge_cross_page_markdown_pages(pages: list[str]) -> tuple[list[str], dict[s
     lists_merged = 0
     pages_changed: set[int] = set()
 
-    def _split(text: str) -> tuple[list[str], bool]:
-        raw = str(text or "")
-        return raw.splitlines(), raw.endswith("\n")
-
-    def _join(lines: list[str], ends_with_newline: bool) -> str:
-        txt = "\n".join(lines)
-        if ends_with_newline and not txt.endswith("\n"):
-            txt += "\n"
-        return txt
-
     for i in range(len(out) - 1):
-        prev_lines, prev_nl = _split(out[i])
-        next_lines, next_nl = _split(out[i + 1])
-
-        changed = False
-
-        # 1) Table continuation: trailing table in prev + leading table in next.
-        prev_tbl = _extract_trailing_block(prev_lines, _looks_like_table_row)
-        next_tbl = _extract_leading_table_block(next_lines)
-        if prev_tbl and next_tbl:
-            ps, pe = prev_tbl
-            ns, ne = next_tbl
-            merged = _merge_table_blocks(prev_lines[ps:pe], next_lines[ns:ne])
-            if merged is not None:
-                prev_lines = [*prev_lines[:ps], *merged, *prev_lines[pe:]]
-                next_lines = [*next_lines[:ns], *next_lines[ne:]]
-                tables_merged += 1
-                changed = True
-
-        # 2) Ordered list continuation (only if table didn't already change boundary).
-        if not changed:
-            prev_lst = _extract_trailing_block(prev_lines, lambda line: _extract_ordered_num(line) is not None)
-            next_lst = _extract_leading_block(next_lines, lambda line: _extract_ordered_num(line) is not None)
-            if prev_lst and next_lst:
-                ps, pe = prev_lst
-                ns, ne = next_lst
-                merged = _merge_ordered_list_blocks(prev_lines[ps:pe], next_lines[ns:ne])
-                if merged is not None:
-                    prev_lines = [*prev_lines[:ps], *merged, *prev_lines[pe:]]
-                    next_lines = [*next_lines[:ns], *next_lines[ne:]]
-                    lists_merged += 1
-                    changed = True
-
+        prev_lines, prev_nl = _split_page_text(out[i])
+        next_lines, next_nl = _split_page_text(out[i + 1])
+        prev_lines, next_lines, table_delta, list_delta, changed = _merge_page_boundary(prev_lines, next_lines)
         if changed:
-            out[i] = _join(prev_lines, prev_nl)
-            out[i + 1] = _join(next_lines, next_nl)
+            tables_merged += table_delta
+            lists_merged += list_delta
+            out[i] = _join_page_text(prev_lines, prev_nl)
+            out[i + 1] = _join_page_text(next_lines, next_nl)
             pages_changed.add(i)
             pages_changed.add(i + 1)
 

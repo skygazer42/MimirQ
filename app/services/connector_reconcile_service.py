@@ -82,6 +82,68 @@ def extract_connector_source_identity(doc: Any) -> dict[str, str | None]:
     }
 
 
+def _collect_connector_reconcile_documents(
+    *,
+    documents: Iterable[Any],
+    connector_id: str,
+    config_id: str | None,
+) -> tuple[dict[str, list[Any]], dict[str, list[Any]], int, int, int]:
+    active_by_ref: dict[str, list[Any]] = {}
+    disabled_by_ref: dict[str, list[Any]] = {}
+    documents_scanned = 0
+    documents_considered = 0
+    documents_without_identity = 0
+
+    for doc in (documents or []):
+        documents_scanned += 1
+        identity = extract_connector_source_identity(doc)
+        if identity.get("connector_id") != connector_id:
+            continue
+        doc_config_id = str(identity.get("config_id") or "").strip() or None
+        if config_id and doc_config_id not in {config_id, None}:
+            continue
+        documents_considered += 1
+        if config_id and doc_config_id is None:
+            documents_without_identity += 1
+            continue
+
+        source_ref = str(identity.get("source_ref") or identity.get("source_id") or "").strip()
+        if not source_ref:
+            documents_without_identity += 1
+            continue
+        bucket = disabled_by_ref if getattr(doc, "disabled_at", None) is not None else active_by_ref
+        bucket.setdefault(source_ref, []).append(doc)
+
+    return active_by_ref, disabled_by_ref, documents_scanned, documents_considered, documents_without_identity
+
+
+def _apply_connector_reconcile_changes(
+    *,
+    apply: bool,
+    now_dt: datetime,
+    active_by_ref: dict[str, list[Any]],
+    disabled_by_ref: dict[str, list[Any]],
+    stale_refs: list[str],
+    reenable_refs: list[str],
+) -> tuple[int, int]:
+    disabled_documents = 0
+    reenabled_documents = 0
+    if not apply:
+        return disabled_documents, reenabled_documents
+
+    for ref in stale_refs:
+        for doc in active_by_ref.get(ref, []):
+            if getattr(doc, "disabled_at", None) is None:
+                doc.disabled_at = now_dt
+                disabled_documents += 1
+    for ref in reenable_refs:
+        for doc in disabled_by_ref.get(ref, []):
+            if getattr(doc, "disabled_at", None) is not None:
+                doc.disabled_at = None
+                reenabled_documents += 1
+    return disabled_documents, reenabled_documents
+
+
 def plan_connector_reconcile(
     *,
     connector_id: str,
@@ -100,49 +162,26 @@ def plan_connector_reconcile(
     desired_set = set(desired_refs)
     limit = max(1, int(sample_limit or 0))
 
-    active_by_ref: dict[str, list[Any]] = {}
-    disabled_by_ref: dict[str, list[Any]] = {}
-    documents_scanned = 0
-    documents_considered = 0
-    documents_without_identity = 0
-
-    for doc in (documents or []):
-        documents_scanned += 1
-        identity = extract_connector_source_identity(doc)
-        if identity.get("connector_id") != normalized_connector_id:
-            continue
-        doc_config_id = str(identity.get("config_id") or "").strip() or None
-        if normalized_config_id and doc_config_id not in {normalized_config_id, None}:
-            continue
-        documents_considered += 1
-        if normalized_config_id and doc_config_id is None:
-            documents_without_identity += 1
-            continue
-
-        source_ref = str(identity.get("source_ref") or identity.get("source_id") or "").strip()
-        if not source_ref:
-            documents_without_identity += 1
-            continue
-        bucket = disabled_by_ref if getattr(doc, "disabled_at", None) is not None else active_by_ref
-        bucket.setdefault(source_ref, []).append(doc)
+    active_by_ref, disabled_by_ref, documents_scanned, documents_considered, documents_without_identity = (
+        _collect_connector_reconcile_documents(
+            documents=documents,
+            connector_id=normalized_connector_id,
+            config_id=normalized_config_id,
+        )
+    )
 
     stale_refs = sorted(ref for ref in active_by_ref if ref not in desired_set)
     reenable_refs = sorted(ref for ref in desired_set if ref in disabled_by_ref and ref not in active_by_ref)
     missing_refs = sorted(ref for ref in desired_set if ref not in active_by_ref and ref not in disabled_by_ref)
 
-    disabled_documents = 0
-    reenabled_documents = 0
-    if apply:
-        for ref in stale_refs:
-            for doc in active_by_ref.get(ref, []):
-                if getattr(doc, "disabled_at", None) is None:
-                    doc.disabled_at = now_dt
-                    disabled_documents += 1
-        for ref in reenable_refs:
-            for doc in disabled_by_ref.get(ref, []):
-                if getattr(doc, "disabled_at", None) is not None:
-                    doc.disabled_at = None
-                    reenabled_documents += 1
+    disabled_documents, reenabled_documents = _apply_connector_reconcile_changes(
+        apply=apply,
+        now_dt=now_dt,
+        active_by_ref=active_by_ref,
+        disabled_by_ref=disabled_by_ref,
+        stale_refs=stale_refs,
+        reenable_refs=reenable_refs,
+    )
 
     return {
         "schema": CONNECTOR_RECONCILE_SCHEMA_V1,

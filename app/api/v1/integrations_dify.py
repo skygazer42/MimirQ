@@ -4981,7 +4981,7 @@ async def _dify_kg_on_demand_records(
     if not chunk_events:
         return []
 
-    event_by_chunk_id = {chunk_id: event for chunk_id, event in chunk_events}
+    event_by_chunk_id = dict(chunk_events)
     try:
         rows = await _offload_dify_kg_chunk_rows(
             request_db=db,

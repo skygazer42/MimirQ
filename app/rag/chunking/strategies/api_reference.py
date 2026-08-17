@@ -75,6 +75,31 @@ class APIReferenceChunker(BaseChunker):
             add_start_index=True,
         )
 
+    def _append_chunks(
+        self,
+        out: list[Document],
+        *,
+        text: str,
+        base_meta: dict[str, Any],
+        offset: int,
+        extra_meta: dict[str, Any],
+        doc_type_kwd: str | None = None,
+    ) -> None:
+        split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
+        for sd in split_docs:
+            local_start = sd.metadata.pop("start_index", None) or 0
+            abs_start = offset + int(local_start)
+            abs_end = abs_start + len(sd.page_content)
+            meta: dict[str, Any] = dict(base_meta)
+            meta.update(sd.metadata or {})
+            meta["chunk_strategy"] = "api_reference"
+            meta["start_char"] = abs_start
+            meta["end_char"] = abs_end
+            if doc_type_kwd:
+                meta.setdefault("doc_type_kwd", doc_type_kwd)
+            meta.update(extra_meta)
+            out.append(Document(page_content=sd.page_content, metadata=meta))
+
     def split_documents(self, documents: list[Document]) -> list[Document]:
         out: list[Document] = []
 
@@ -86,61 +111,46 @@ class APIReferenceChunker(BaseChunker):
 
             endpoints = _iter_endpoints(text)
             if not endpoints:
-                split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "api_reference"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta["api_fallback"] = True
-                    meta.setdefault("doc_type_kwd", "api")
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                self._append_chunks(
+                    out,
+                    text=text,
+                    base_meta=base_meta,
+                    offset=0,
+                    extra_meta={"api_fallback": True},
+                    doc_type_kwd="api",
+                )
                 continue
 
             # Prefix before first endpoint (overview, auth, etc.).
             if endpoints[0].start > 0 and (text[: endpoints[0].start] or "").strip():
                 prefix = text[: endpoints[0].start]
-                split_docs = self._fallback_splitter.create_documents(texts=[prefix], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "api_reference"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta["endpoint_index"] = -1
-                    meta.setdefault("doc_type_kwd", "api")
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                self._append_chunks(
+                    out,
+                    text=prefix,
+                    base_meta=base_meta,
+                    offset=0,
+                    extra_meta={"endpoint_index": -1},
+                    doc_type_kwd="api",
+                )
 
             for ep in endpoints:
                 ep_text = text[ep.start : ep.end]
                 if not ep_text.strip():
                     continue
                 sig = f"{ep.method} {ep.path}"
-
-                split_docs = self._fallback_splitter.create_documents(texts=[ep_text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = ep.start + int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "api_reference"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta.setdefault("doc_type_kwd", "api")
-                    meta["endpoint_index"] = int(ep.index)
-                    meta["http_method"] = ep.method
-                    meta["api_path"] = ep.path
-                    meta["endpoint_signature"] = sig
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                self._append_chunks(
+                    out,
+                    text=ep_text,
+                    base_meta=base_meta,
+                    offset=ep.start,
+                    extra_meta={
+                        "endpoint_index": int(ep.index),
+                        "http_method": ep.method,
+                        "api_path": ep.path,
+                        "endpoint_signature": sig,
+                    },
+                    doc_type_kwd="api",
+                )
 
         for idx, chunk in enumerate(out):
             meta = dict(chunk.metadata or {})

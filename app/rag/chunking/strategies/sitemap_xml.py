@@ -82,6 +82,30 @@ def looks_like_sitemap_xml(text: str) -> bool:
     return max(urls, maps) >= 2
 
 
+def _build_split_documents(
+    *,
+    split_docs: list[Document],
+    base_meta: dict[str, Any],
+    start_offset: int = 0,
+    extra_meta: dict[str, Any] | None = None,
+) -> list[Document]:
+    out: list[Document] = []
+    for sd in split_docs:
+        local_start = sd.metadata.pop("start_index", None) or 0
+        abs_start = start_offset + int(local_start)
+        abs_end = abs_start + len(sd.page_content)
+        meta: dict[str, Any] = dict(base_meta)
+        meta.update(sd.metadata or {})
+        meta["chunk_strategy"] = "sitemap_xml"
+        meta["start_char"] = abs_start
+        meta["end_char"] = abs_end
+        meta.setdefault("doc_type_kwd", "sitemap")
+        if extra_meta:
+            meta.update(extra_meta)
+        out.append(Document(page_content=sd.page_content, metadata=meta))
+    return out
+
+
 class SitemapXMLChunker(BaseChunker):
     def __init__(self, chunk_size: int, chunk_overlap: int):
         self.chunk_size = int(chunk_size)
@@ -110,18 +134,13 @@ class SitemapXMLChunker(BaseChunker):
 
             if not entries:
                 split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "sitemap_xml"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta["sitemap_xml_fallback"] = True
-                    meta.setdefault("doc_type_kwd", "sitemap")
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                out.extend(
+                    _build_split_documents(
+                        split_docs=split_docs,
+                        base_meta=base_meta,
+                        extra_meta={"sitemap_xml_fallback": True},
+                    )
+                )
                 continue
 
             first = entries[0]
@@ -129,41 +148,34 @@ class SitemapXMLChunker(BaseChunker):
                 pre = text[: first.start]
                 if pre.strip():
                     split_docs = self._fallback_splitter.create_documents(texts=[pre], metadatas=[base_meta])
-                    for sd in split_docs:
-                        local_start = sd.metadata.pop("start_index", None) or 0
-                        abs_start = int(local_start)
-                        abs_end = abs_start + len(sd.page_content)
-                        meta: dict[str, Any] = dict(base_meta)
-                        meta.update(sd.metadata or {})
-                        meta["chunk_strategy"] = "sitemap_xml"
-                        meta["start_char"] = abs_start
-                        meta["end_char"] = abs_end
-                        meta["sitemap_xml_preamble"] = True
-                        meta.setdefault("doc_type_kwd", "sitemap")
-                        out.append(Document(page_content=sd.page_content, metadata=meta))
+                    out.extend(
+                        _build_split_documents(
+                            split_docs=split_docs,
+                            base_meta=base_meta,
+                            extra_meta={"sitemap_xml_preamble": True},
+                        )
+                    )
 
             for ent in entries:
                 ent_text = text[ent.start : ent.end]
                 if not ent_text.strip():
                     continue
                 split_docs = self._fallback_splitter.create_documents(texts=[ent_text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = ent.start + int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "sitemap_xml"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta.setdefault("doc_type_kwd", "sitemap")
-                    meta["sitemap_kind"] = ent.kind
-                    meta["sitemap_index"] = int(ent.index)
-                    meta["sitemap_count"] = int(len(entries))
-                    if ent.loc:
-                        meta["sitemap_loc"] = ent.loc
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                extra_meta: dict[str, Any] = {
+                    "sitemap_kind": ent.kind,
+                    "sitemap_index": int(ent.index),
+                    "sitemap_count": int(len(entries)),
+                }
+                if ent.loc:
+                    extra_meta["sitemap_loc"] = ent.loc
+                out.extend(
+                    _build_split_documents(
+                        split_docs=split_docs,
+                        base_meta=base_meta,
+                        start_offset=ent.start,
+                        extra_meta=extra_meta,
+                    )
+                )
 
         for idx, chunk in enumerate(out):
             meta = dict(chunk.metadata or {})

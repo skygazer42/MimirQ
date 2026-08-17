@@ -501,10 +501,10 @@ FIXTURES: dict[str, StrategyFixture] = {
         "Makefile",
         """
         backend:
-        	.venv/bin/python -m uvicorn app.main:app --port 8000
+        \t.venv/bin/python -m uvicorn app.main:app --port 8000
 
         test:
-        	.venv/bin/python -m pytest -q
+        \t.venv/bin/python -m pytest -q
         """,
         file_type="makefile",
     ),

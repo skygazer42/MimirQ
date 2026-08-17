@@ -10,6 +10,25 @@ def build_simhash_review_candidates(
     *,
     hamming_threshold: int = 5,
 ) -> dict[str, Any]:
+    items = _normalize_simhash_items(rows)
+    pairs, groups = _group_simhash_items(items, hamming_threshold=int(hamming_threshold))
+    clusters = _build_simhash_clusters(items, groups)
+    affected_files = sum(len(cluster["members"]) for cluster in clusters)
+    clusters.sort(key=lambda row: (-len(row.get("members") or []), str(row.get("keep_candidate") or "")))
+    return {
+        "schema": "mimirq.pre_poc.simhash_review.v1",
+        "summary": {
+            "clusters": int(len(clusters)),
+            "affected_files": int(affected_files),
+            "pairs": int(len(pairs)),
+            "threshold": int(hamming_threshold),
+        },
+        "clusters": clusters,
+        "pairs": pairs,
+    }
+
+
+def _normalize_simhash_items(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     for row in rows or []:
         if not isinstance(row, dict):
@@ -27,35 +46,48 @@ def build_simhash_review_candidates(
                 "simhash64": simhash64(text),
             }
         )
+    return items
 
+
+def _find_parent(parent: list[int], index: int) -> int:
+    while parent[index] != index:
+        parent[index] = parent[parent[index]]
+        index = parent[index]
+    return index
+
+
+def _union_parents(parent: list[int], left: int, right: int) -> None:
+    left_root = _find_parent(parent, left)
+    right_root = _find_parent(parent, right)
+    if left_root != right_root:
+        parent[right_root] = left_root
+
+
+def _group_simhash_items(
+    items: list[dict[str, Any]],
+    *,
+    hamming_threshold: int,
+) -> tuple[list[dict[str, Any]], dict[int, list[int]]]:
     parent = list(range(len(items)))
-
-    def find(x: int) -> int:
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
-
-    def union(a: int, b: int) -> None:
-        ra = find(a)
-        rb = find(b)
-        if ra != rb:
-            parent[rb] = ra
-
     pairs: list[dict[str, Any]] = []
     for i in range(len(items)):
         for j in range(i + 1, len(items)):
             distance = hamming_distance64(items[i]["simhash64"], items[j]["simhash64"])
-            if distance <= int(hamming_threshold):
+            if distance <= hamming_threshold:
                 pairs.append({"a": items[i]["path"], "b": items[j]["path"], "distance": int(distance)})
-                union(i, j)
+                _union_parents(parent, i, j)
 
     groups: dict[int, list[int]] = defaultdict(list)
     for idx in range(len(items)):
-        groups[find(idx)].append(idx)
+        groups[_find_parent(parent, idx)].append(idx)
+    return pairs, groups
 
+
+def _build_simhash_clusters(
+    items: list[dict[str, Any]],
+    groups: dict[int, list[int]],
+) -> list[dict[str, Any]]:
     clusters: list[dict[str, Any]] = []
-    affected_files = 0
     for member_indexes in groups.values():
         if len(member_indexes) < 2:
             continue
@@ -70,7 +102,6 @@ def build_simhash_review_candidates(
         )
         keep = items[members_sorted[0]]
         members = [str(items[idx]["path"] or "") for idx in members_sorted]
-        affected_files += len(members)
         clusters.append(
             {
                 "members": members,
@@ -87,19 +118,7 @@ def build_simhash_review_candidates(
                 ],
             }
         )
-
-    clusters.sort(key=lambda row: (-len(row.get("members") or []), str(row.get("keep_candidate") or "")))
-    return {
-        "schema": "mimirq.pre_poc.simhash_review.v1",
-        "summary": {
-            "clusters": int(len(clusters)),
-            "affected_files": int(affected_files),
-            "pairs": int(len(pairs)),
-            "threshold": int(hamming_threshold),
-        },
-        "clusters": clusters,
-        "pairs": pairs,
-    }
+    return clusters
 
 
 __all__ = ["build_simhash_review_candidates"]

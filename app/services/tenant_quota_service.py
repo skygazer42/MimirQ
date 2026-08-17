@@ -97,6 +97,59 @@ def _quota_backend_unavailable_http(scope: str) -> HTTPException:
     )
 
 
+def _tenant_upload_limit_http(*, message: str, limit: int, scope: str) -> HTTPException:
+    return HTTPException(
+        status_code=429,
+        detail={
+            "message": message,
+            "retry_after_sec": None,
+            "limit": limit,
+            "scope": scope,
+        },
+    )
+
+
+def _enforce_upload_quota_limit(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    fail_closed: bool,
+    enabled: bool,
+    limit: int,
+    usage_fn,
+    quota: str,
+    scope: str,
+    exceeded_message: str,
+    additional_docs: int,
+    additional_bytes: int,
+    additional_usage: int,
+) -> None:
+    if not enabled or limit <= 0:
+        return
+    try:
+        used = usage_fn(db, tenant_id=tenant_id)
+    except Exception as exc:
+        _emit_quota_guard_evidence(
+            db=db,
+            tenant_id=tenant_id,
+            quota=quota,
+            scope=scope,
+            outcome="closed" if fail_closed else "degraded",
+            backend="database",
+            fail_closed=fail_closed,
+            exc=exc,
+            extra={
+                "additional_docs": int(additional_docs or 0),
+                "additional_bytes": int(additional_bytes or 0),
+            },
+        )
+        if fail_closed:
+            raise _quota_backend_unavailable_http(scope) from exc
+        return
+    if limit > 0 and (used + int(additional_usage or 0)) > limit:
+        raise _tenant_upload_limit_http(message=exceeded_message, limit=limit, scope=scope)
+
+
 def _tenant_qps_quota_config() -> tuple[bool, float, int, str]:
     enabled = bool(getattr(settings, "TENANT_QPS_QUOTA_ENABLED", False))
     rps = float(getattr(settings, "TENANT_QPS_QUOTA_REQUESTS_PER_SECOND", 0.0) or 0.0)
@@ -573,75 +626,34 @@ def enforce_tenant_upload_quotas(
     """
     fail_closed = _tenant_quota_fail_closed_enabled()
 
-    doc_enabled = bool(getattr(settings, "TENANT_DOC_QUOTA_ENABLED", False))
-    doc_limit = int(getattr(settings, "TENANT_DOC_QUOTA_LIMIT", 0) or 0)
-    if doc_enabled and doc_limit > 0:
-        try:
-            used = _document_quota_usage(db, tenant_id=tenant_id)
-        except Exception as exc:
-            _emit_quota_guard_evidence(
-                db=db,
-                tenant_id=tenant_id,
-                quota="tenant_documents",
-                scope="tenant_documents",
-                outcome="closed" if fail_closed else "degraded",
-                backend="database",
-                fail_closed=fail_closed,
-                exc=exc,
-                extra={
-                    "additional_docs": int(additional_docs or 0),
-                    "additional_bytes": int(additional_bytes or 0),
-                },
-            )
-            if fail_closed:
-                raise _quota_backend_unavailable_http("tenant_documents") from exc
-        else:
-            limit = doc_limit
-            if limit > 0 and (used + int(additional_docs or 0)) > limit:
-                raise HTTPException(
-                    status_code=429,
-                    detail={
-                        "message": "Tenant document quota exceeded",
-                        "retry_after_sec": None,
-                        "limit": limit,
-                        "scope": "tenant_documents",
-                    },
-                )
-
-    storage_enabled = bool(getattr(settings, "TENANT_STORAGE_QUOTA_ENABLED", False))
-    storage_limit = int(getattr(settings, "TENANT_STORAGE_QUOTA_LIMIT_BYTES", 0) or 0)
-    if storage_enabled and storage_limit > 0:
-        try:
-            used_b = _storage_quota_usage_bytes(db, tenant_id=tenant_id)
-        except Exception as exc:
-            _emit_quota_guard_evidence(
-                db=db,
-                tenant_id=tenant_id,
-                quota="tenant_storage",
-                scope="tenant_storage",
-                outcome="closed" if fail_closed else "degraded",
-                backend="database",
-                fail_closed=fail_closed,
-                exc=exc,
-                extra={
-                    "additional_docs": int(additional_docs or 0),
-                    "additional_bytes": int(additional_bytes or 0),
-                },
-            )
-            if fail_closed:
-                raise _quota_backend_unavailable_http("tenant_storage") from exc
-        else:
-            limit_b = storage_limit
-            if limit_b > 0 and (used_b + int(additional_bytes or 0)) > limit_b:
-                raise HTTPException(
-                    status_code=429,
-                    detail={
-                        "message": "Tenant storage quota exceeded",
-                        "retry_after_sec": None,
-                        "limit": limit_b,
-                        "scope": "tenant_storage",
-                    },
-                )
+    _enforce_upload_quota_limit(
+        db,
+        tenant_id=tenant_id,
+        fail_closed=fail_closed,
+        enabled=bool(getattr(settings, "TENANT_DOC_QUOTA_ENABLED", False)),
+        limit=int(getattr(settings, "TENANT_DOC_QUOTA_LIMIT", 0) or 0),
+        usage_fn=_document_quota_usage,
+        quota="tenant_documents",
+        scope="tenant_documents",
+        exceeded_message="Tenant document quota exceeded",
+        additional_docs=additional_docs,
+        additional_bytes=additional_bytes,
+        additional_usage=additional_docs,
+    )
+    _enforce_upload_quota_limit(
+        db,
+        tenant_id=tenant_id,
+        fail_closed=fail_closed,
+        enabled=bool(getattr(settings, "TENANT_STORAGE_QUOTA_ENABLED", False)),
+        limit=int(getattr(settings, "TENANT_STORAGE_QUOTA_LIMIT_BYTES", 0) or 0),
+        usage_fn=_storage_quota_usage_bytes,
+        quota="tenant_storage",
+        scope="tenant_storage",
+        exceeded_message="Tenant storage quota exceeded",
+        additional_docs=additional_docs,
+        additional_bytes=additional_bytes,
+        additional_usage=additional_bytes,
+    )
 
 
 __all__ = [

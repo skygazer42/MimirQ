@@ -197,6 +197,79 @@ def _run_dataset_evidence_drift_audit(
     }
 
 
+def _resolve_index_audit_dataset_cap(max_datasets: int) -> int:
+    try:
+        cap = max(1, int(max_datasets or 0))
+    except Exception:
+        cap = 50
+    return min(cap, 5000)
+
+
+def _summarize_index_audit_result(res: dict[str, Any], dataset_id: UUID) -> tuple[dict[str, Any], bool, int, int, int]:
+    vector_id_missing = int(res.get("vector_id_missing") or 0)
+    missing_backend = int(res.get("vector_ids_missing_in_backend") or 0)
+    orphan_ids = res.get("milvus_orphan_ids_sample") or []
+    orphan_count = len(orphan_ids) if isinstance(orphan_ids, list) else 0
+
+    return (
+        {
+            "dataset_id": str(res.get("dataset_id") or dataset_id),
+            "active_documents": int(res.get("active_documents") or 0),
+            "active_chunks": int(res.get("active_chunks") or 0),
+            "vector_id_missing": int(vector_id_missing),
+            "vector_ids_missing_in_backend": int(missing_backend),
+            "milvus_orphan_ids_sampled": int(orphan_count),
+            "vector_ids_missing_in_backend_sample": list(res.get("vector_ids_missing_in_backend_sample") or [])[:20],
+            "milvus_orphan_ids_sample": list(orphan_ids)[:20],
+        },
+        (vector_id_missing > 0) or (missing_backend > 0) or (orphan_count > 0),
+        max(0, vector_id_missing),
+        max(0, missing_backend),
+        max(0, orphan_count),
+    )
+
+
+def _index_audit_severity(dataset_summary: dict[str, Any]) -> tuple[int, int, int, str]:
+    return (
+        int(dataset_summary.get("vector_ids_missing_in_backend") or 0),
+        int(dataset_summary.get("vector_id_missing") or 0),
+        int(dataset_summary.get("milvus_orphan_ids_sampled") or 0),
+        str(dataset_summary.get("dataset_id") or ""),
+    )
+
+
+def _write_index_audit_summary(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    actor_id: str | None,
+    report_date: str,
+    summary: dict[str, Any],
+) -> dict[str, Any]:
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            action="observability.index_audit.daily",
+            resource_type="index_audit_report",
+            resource_id=report_date,
+            details={k: v for k, v in summary.items() if k not in {"ok"}},
+        )
+        db.commit()
+        summary["dry_run"] = False
+        return summary
+    except Exception:
+        try:
+            db.rollback()
+        except Exception as exc:
+            logger.debug(_PERIODIC_AUDIT_FALLBACK_LOG_MESSAGE, exc)
+        summary["ok"] = False
+        summary["dry_run"] = False
+        summary["audit_write_error"] = True
+        return summary
+
+
 def run_daily_index_audit_report(
     db: Session,
     *,
@@ -235,11 +308,7 @@ def run_daily_index_audit_report(
             "skip_reason": "already_written",
         }
 
-    try:
-        cap_ds = max(1, int(max_datasets or 0))
-    except Exception:
-        cap_ds = 50
-    cap_ds = min(cap_ds, 5000)
+    cap_ds = _resolve_index_audit_dataset_cap(max_datasets)
 
     ds_ids = list(dataset_ids or [])
     if not ds_ids:
@@ -271,43 +340,19 @@ def run_daily_index_audit_report(
             continue
 
         scanned += 1
-        vid_missing = int(res.get("vector_id_missing") or 0)
-        missing_backend = int(res.get("vector_ids_missing_in_backend") or 0)
-        orphan_ids = res.get("milvus_orphan_ids_sample") or []
-        orphan_cnt = len(orphan_ids) if isinstance(orphan_ids, list) else 0
-
-        vector_id_missing_total += max(0, vid_missing)
-        vector_missing_backend_total += max(0, missing_backend)
-        milvus_orphan_ids_total += max(0, orphan_cnt)
-
-        has_issue = (vid_missing > 0) or (missing_backend > 0) or (orphan_cnt > 0)
+        dataset_summary, has_issue, vid_missing, missing_backend, orphan_cnt = _summarize_index_audit_result(res, ds_id)
+        vector_id_missing_total += vid_missing
+        vector_missing_backend_total += missing_backend
+        milvus_orphan_ids_total += orphan_cnt
         if has_issue:
             datasets_with_issues += 1
+        per_dataset.append(dataset_summary)
 
-        per_dataset.append(
-            {
-                "dataset_id": str(res.get("dataset_id") or ds_id),
-                "active_documents": int(res.get("active_documents") or 0),
-                "active_chunks": int(res.get("active_chunks") or 0),
-                "vector_id_missing": int(vid_missing),
-                "vector_ids_missing_in_backend": int(missing_backend),
-                "milvus_orphan_ids_sampled": int(orphan_cnt),
-                # Keep bounded id samples (PII-safe; ids only).
-                "vector_ids_missing_in_backend_sample": list(res.get("vector_ids_missing_in_backend_sample") or [])[:20],
-                "milvus_orphan_ids_sample": list(orphan_ids)[:20],
-            }
-        )
-
-    # Rank datasets by "issue severity" to keep the payload bounded but useful.
-    def _severity(d: dict[str, Any]) -> tuple[int, int, int, str]:
-        return (
-            int(d.get("vector_ids_missing_in_backend") or 0),
-            int(d.get("vector_id_missing") or 0),
-            int(d.get("milvus_orphan_ids_sampled") or 0),
-            str(d.get("dataset_id") or ""),
-        )
-
-    top_issue_datasets = sorted((d for d in per_dataset if _severity(d)[:3] != (0, 0, 0)), key=_severity, reverse=True)[:50]
+    top_issue_datasets = sorted(
+        (dataset_summary for dataset_summary in per_dataset if _index_audit_severity(dataset_summary)[:3] != (0, 0, 0)),
+        key=_index_audit_severity,
+        reverse=True,
+    )[:50]
 
     summary: dict[str, Any] = {
         "tenant_id": str(tenant_id),
@@ -332,29 +377,13 @@ def run_daily_index_audit_report(
         summary["dry_run"] = True
         return summary
 
-    # Best-effort audit log write (PII-safe; small + bounded).
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=actor_id,
-            action="observability.index_audit.daily",
-            resource_type="index_audit_report",
-            resource_id=report_date,
-            details={k: v for k, v in summary.items() if k not in {"ok"}},
-        )
-        db.commit()
-        summary["dry_run"] = False
-        return summary
-    except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(_PERIODIC_AUDIT_FALLBACK_LOG_MESSAGE, exc)
-        summary["ok"] = False
-        summary["dry_run"] = False
-        summary["audit_write_error"] = True
-        return summary
+    return _write_index_audit_summary(
+        db=db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        report_date=report_date,
+        summary=summary,
+    )
 
 
 def run_daily_embedding_drift_report(

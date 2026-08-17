@@ -63,6 +63,30 @@ def _kg_signal_score(meta: dict[str, Any]) -> float:
     return 0.0
 
 
+def _coerce_optional_int(meta: dict[str, Any], key: str) -> int | None:
+    raw_value = meta.get(key)
+    if raw_value is None:
+        return None
+    try:
+        return int(raw_value)
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
+def _merge_optional_int(
+    main_meta: dict[str, Any],
+    kg_meta: dict[str, Any],
+    *,
+    key: str,
+    reducer: Any,
+) -> None:
+    kg_value = _coerce_optional_int(kg_meta, key)
+    if kg_value is None:
+        return
+    current_value = _coerce_optional_int(main_meta, key)
+    main_meta[key] = reducer(current_value, kg_value) if current_value is not None else kg_value
+
+
 def _merge_kg_metadata_into_main(main_doc: Document, kg_doc: Document) -> Document:
     main_meta = dict(main_doc.metadata or {})
     kg_meta = dict(kg_doc.metadata or {})
@@ -76,27 +100,8 @@ def _merge_kg_metadata_into_main(main_doc: Document, kg_doc: Document) -> Docume
         if kg_meta.get(key) and not main_meta.get(key):
             main_meta[key] = kg_meta[key]
 
-    try:
-        kg_path_length = int(kg_meta.get("kg_path_length")) if kg_meta.get("kg_path_length") is not None else None
-    except (TypeError, ValueError, AttributeError):
-        kg_path_length = None
-    if kg_path_length is not None:
-        try:
-            current = int(main_meta.get("kg_path_length")) if main_meta.get("kg_path_length") is not None else None
-        except (TypeError, ValueError, AttributeError):
-            current = None
-        main_meta["kg_path_length"] = min(current, kg_path_length) if current is not None else kg_path_length
-
-    try:
-        kg_shared_events = int(kg_meta.get("kg_shared_events")) if kg_meta.get("kg_shared_events") is not None else None
-    except (TypeError, ValueError, AttributeError):
-        kg_shared_events = None
-    if kg_shared_events is not None:
-        try:
-            current = int(main_meta.get("kg_shared_events")) if main_meta.get("kg_shared_events") is not None else None
-        except (TypeError, ValueError, AttributeError):
-            current = None
-        main_meta["kg_shared_events"] = max(current, kg_shared_events) if current is not None else kg_shared_events
+    _merge_optional_int(main_meta, kg_meta, key="kg_path_length", reducer=min)
+    _merge_optional_int(main_meta, kg_meta, key="kg_shared_events", reducer=max)
 
     if "kg_evidence_anchored" in kg_meta:
         main_meta["kg_evidence_anchored"] = bool(main_meta.get("kg_evidence_anchored") or kg_meta.get("kg_evidence_anchored"))

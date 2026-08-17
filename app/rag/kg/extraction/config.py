@@ -6,6 +6,23 @@ from app.rag.kg.schemas import KGBaseModel
 from app.rag.pipeline_plugins.refs import clean_python_plugin_ref
 
 
+def _clean_kg_python_param_item(key: object, value: object) -> tuple[str, object] | None:
+    if not isinstance(key, str):
+        raise ValueError("kg_python_params keys must be strings")
+    cleaned_key = key.strip()
+    if not cleaned_key:
+        return None
+    if len(cleaned_key) > 80:
+        raise ValueError("kg_python_params key too long (max=80)")
+    if value is None or isinstance(value, (bool, int, float)):
+        return cleaned_key, value
+    if isinstance(value, str):
+        if len(value) > 500:
+            raise ValueError("kg_python_params string value too long (max=500)")
+        return cleaned_key, value
+    raise ValueError("kg_python_params values must be JSON primitives")
+
+
 def _clean_kg_python_params(raw: object) -> dict | None:
     if raw is None:
         return None
@@ -16,22 +33,11 @@ def _clean_kg_python_params(raw: object) -> dict | None:
 
     cleaned: dict = {}
     for key, value in raw.items():
-        if not isinstance(key, str):
-            raise ValueError("kg_python_params keys must be strings")
-        cleaned_key = key.strip()
-        if not cleaned_key:
+        item = _clean_kg_python_param_item(key, value)
+        if item is None:
             continue
-        if len(cleaned_key) > 80:
-            raise ValueError("kg_python_params key too long (max=80)")
-        if value is None or isinstance(value, (bool, int, float)):
-            cleaned[cleaned_key] = value
-            continue
-        if isinstance(value, str):
-            if len(value) > 500:
-                raise ValueError("kg_python_params string value too long (max=500)")
-            cleaned[cleaned_key] = value
-            continue
-        raise ValueError("kg_python_params values must be JSON primitives")
+        cleaned_key, cleaned_value = item
+        cleaned[cleaned_key] = cleaned_value
     return cleaned or None
 
 

@@ -36,6 +36,16 @@ class MarkdownCanonicalizeResult:
     table_rows_changed: int = 0
 
 
+@dataclass(frozen=True)
+class _CanonicalLine:
+    text: str
+    in_fence: bool
+    headings_changed: int = 0
+    list_markers_changed: int = 0
+    ordered_list_markers_changed: int = 0
+    code_fences_changed: int = 0
+
+
 def _split_blockquote_lead(line: str) -> tuple[str, str]:
     """
     Split a markdown blockquote prefix from a line.
@@ -196,6 +206,63 @@ def _is_indented_code_line(line: str) -> bool:
     return False
 
 
+def _canonicalize_fence_line(lead: str, body: str, in_fence: bool) -> _CanonicalLine | None:
+    fence = _parse_code_fence(body)
+    if fence is None:
+        return None
+
+    indent, ticks, rest = fence
+    if in_fence:
+        new_body = f"{indent}{ticks}"
+    else:
+        info = rest.strip()
+        new_body = f"{indent}{ticks}{info}" if info else f"{indent}{ticks}"
+
+    return _CanonicalLine(
+        text=f"{lead}{new_body}",
+        in_fence=not in_fence,
+        code_fences_changed=int(new_body != body),
+    )
+
+
+def _canonicalize_body_line(lead: str, body: str) -> _CanonicalLine:
+    head = _parse_heading(body)
+    if head is not None:
+        indent, hashes, title = head
+        new_body = f"{indent}{hashes} {(title or '').rstrip()}"
+        return _CanonicalLine(text=f"{lead}{new_body}", in_fence=False, headings_changed=int(new_body != body))
+
+    unordered = _parse_ulist(body)
+    if unordered is not None:
+        indent, rest = unordered
+        new_body = f"{indent}- {rest.lstrip()}"
+        return _CanonicalLine(text=f"{lead}{new_body}", in_fence=False, list_markers_changed=int(new_body != body))
+
+    ordered = _parse_olist(body)
+    if ordered is not None:
+        indent, num, rest = ordered
+        new_body = f"{indent}{num or '1'}. {rest.lstrip()}"
+        return _CanonicalLine(
+            text=f"{lead}{new_body}",
+            in_fence=False,
+            ordered_list_markers_changed=int(new_body != body),
+        )
+
+    return _CanonicalLine(text=f"{lead}{body}", in_fence=False)
+
+
+def _canonicalize_markdown_line(raw_line: str, in_fence: bool) -> _CanonicalLine:
+    lead, body = _split_blockquote_lead(raw_line)
+    fence_line = _canonicalize_fence_line(lead, body, in_fence)
+    if fence_line is not None:
+        return fence_line
+    if in_fence:
+        return _CanonicalLine(text=raw_line, in_fence=True)
+    if _is_indented_code_line(body) and not (_parse_ulist(body) or _parse_olist(body) or _parse_heading(body)):
+        return _CanonicalLine(text=raw_line, in_fence=False)
+    return _canonicalize_body_line(lead, body)
+
+
 def canonicalize_markdown(text: str) -> MarkdownCanonicalizeResult:
     original = text if isinstance(text, str) else ""
     if not original:
@@ -212,70 +279,13 @@ def canonicalize_markdown(text: str) -> MarkdownCanonicalizeResult:
     code_fences_changed = 0
 
     for raw_line in normalized.splitlines():
-        lead, body = _split_blockquote_lead(raw_line)
-
-        fence = _parse_code_fence(body)
-        if fence is not None:
-            indent, ticks, rest = fence
-
-            if not in_fence:
-                # Opening fence: strip leading/trailing whitespace in info string.
-                info = rest.strip()
-                new_body = f"{indent}{ticks}{info}" if info else f"{indent}{ticks}"
-            else:
-                # Closing fence: keep only the fence marker.
-                new_body = f"{indent}{ticks}"
-
-            if new_body != body:
-                code_fences_changed += 1
-
-            out_lines.append(f"{lead}{new_body}")
-            in_fence = not in_fence
-            continue
-
-        if in_fence:
-            out_lines.append(raw_line)
-            continue
-
-        # If this line is an indented code block (4+ spaces) and is NOT a list/heading,
-        # do not attempt canonicalization (avoid accidental semantics changes).
-        if _is_indented_code_line(body) and not (_parse_ulist(body) or _parse_olist(body) or _parse_heading(body)):
-            out_lines.append(raw_line)
-            continue
-
-        # Headings.
-        head = _parse_heading(body)
-        if head is not None:
-            indent, hashes, title = head
-            title = (title or "").rstrip()
-            new_body = f"{indent}{hashes} {title}"
-            if new_body != body:
-                headings_changed += 1
-            out_lines.append(f"{lead}{new_body}")
-            continue
-
-        # Unordered list markers.
-        ul = _parse_ulist(body)
-        if ul is not None:
-            indent, rest = ul
-            new_body = f"{indent}- {rest.lstrip()}"
-            if new_body != body:
-                list_markers_changed += 1
-            out_lines.append(f"{lead}{new_body}")
-            continue
-
-        # Ordered list markers.
-        ol = _parse_olist(body)
-        if ol is not None:
-            indent, num, rest = ol
-            num = num or "1"
-            new_body = f"{indent}{num}. {rest.lstrip()}"
-            if new_body != body:
-                olist_markers_changed += 1
-            out_lines.append(f"{lead}{new_body}")
-            continue
-
-        out_lines.append(raw_line)
+        line = _canonicalize_markdown_line(raw_line, in_fence)
+        out_lines.append(line.text)
+        in_fence = line.in_fence
+        headings_changed += line.headings_changed
+        list_markers_changed += line.list_markers_changed
+        olist_markers_changed += line.ordered_list_markers_changed
+        code_fences_changed += line.code_fences_changed
 
     rebuilt = "\n".join(out_lines)
 

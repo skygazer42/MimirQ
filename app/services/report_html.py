@@ -1055,55 +1055,55 @@ def render_dataset_report_html(
       <div class="card"><div class="kpi-label">Pipeline Filter</div><div class="kpi-value">{escape(str(report.get("pipeline_hash") or "all"))}</div></div>
     </div>
 
-	    <div class="section two">
-	      <div>
-	        <h2>状态分布</h2>
-	        {_render_bar_table(by_status, total=max(1, total_docs))}
-	      </div>
-	      <div>
-	        <h2>格式分布（Top）</h2>
-	        {_render_bar_table(by_type, total=max(1, total_docs))}
-	      </div>
-	    </div>
+\t    <div class="section two">
+\t      <div>
+\t        <h2>状态分布</h2>
+\t        {_render_bar_table(by_status, total=max(1, total_docs))}
+\t      </div>
+\t      <div>
+\t        <h2>格式分布（Top）</h2>
+\t        {_render_bar_table(by_type, total=max(1, total_docs))}
+\t      </div>
+\t    </div>
 
-	    <div class="section two">
-	      <div>
-	        <h2>问题清单（可操作）</h2>
-	        {_render_bar_table(finding_rows, total=max(1, total_docs))}
-	      </div>
-	      <div>
-	        <h2>Parsing / Routing（Docs）</h2>
-	        {_render_bar_table(prov_by_backend, total=max(1, prov_docs))}
-	        <div style="margin-top:10px">{prov_meta_table}</div>
-	      </div>
-	    </div>
+\t    <div class="section two">
+\t      <div>
+\t        <h2>问题清单（可操作）</h2>
+\t        {_render_bar_table(finding_rows, total=max(1, total_docs))}
+\t      </div>
+\t      <div>
+\t        <h2>Parsing / Routing（Docs）</h2>
+\t        {_render_bar_table(prov_by_backend, total=max(1, prov_docs))}
+\t        <div style="margin-top:10px">{prov_meta_table}</div>
+\t      </div>
+\t    </div>
 
-	    <div class="section two">
-	      <div>
-	        <h2>Chunk Quality Gate（文档数）</h2>
-	        {_render_bar_table(gate_grades, total=max(1, total_docs))}
-	      </div>
-	      <div>
-	        <h2>Chunk 风险计数（best-effort）</h2>
-	        {_render_bar_table([("coverage_low", coverage_low), ("overlap_waste_high", overlap_high), ("token_stats_missing", tokens_missing)], total=max(1, total_docs))}
-	      </div>
-	    </div>
+\t    <div class="section two">
+\t      <div>
+\t        <h2>Chunk Quality Gate（文档数）</h2>
+\t        {_render_bar_table(gate_grades, total=max(1, total_docs))}
+\t      </div>
+\t      <div>
+\t        <h2>Chunk 风险计数（best-effort）</h2>
+\t        {_render_bar_table([("coverage_low", coverage_low), ("overlap_waste_high", overlap_high), ("token_stats_missing", tokens_missing)], total=max(1, total_docs))}
+\t      </div>
+\t    </div>
 
-	    <div class="section">
-	      <h2>Chunk Targets（分布目标检查）</h2>
-	      {chunk_targets_table}
-	    </div>
+\t    <div class="section">
+\t      <h2>Chunk Targets（分布目标检查）</h2>
+\t      {chunk_targets_table}
+\t    </div>
 
-	    <div class="section">
-	      <h2>召回风险摘要（Recall Risk Hints）</h2>
-	      {recall_risk_table}
-	    </div>
+\t    <div class="section">
+\t      <h2>召回风险摘要（Recall Risk Hints）</h2>
+\t      {recall_risk_table}
+\t    </div>
 
-	    <div class="section two">
-	      <div>
-	        <h2>Knowledge Graph（KG）</h2>
-	        <table class="bars">
-	          <thead><tr><th>Metric</th><th>Value</th><th></th></tr></thead>
+\t    <div class="section two">
+\t      <div>
+\t        <h2>Knowledge Graph（KG）</h2>
+\t        <table class="bars">
+\t          <thead><tr><th>Metric</th><th>Value</th><th></th></tr></thead>
           <tbody>
             <tr><td class="k">events</td><td class="v">{_fmt_int(kg_events)}</td><td></td></tr>
             <tr><td class="k">entities</td><td class="v">{_fmt_int(kg_entities)}</td><td></td></tr>
@@ -1624,22 +1624,22 @@ def render_rag_audit_html(
       <div class="card"><div class="kpi-label">P50 coverage（%）</div><div class="kpi-value">{_fmt_int(cov_p50)}%</div></div>
     </div>
 
-	    <div class="section two">
-	      <div>
-	        <h2>状态分布</h2>
-	        {_render_bar_table(by_status, total=max(1, total_docs))}
-	      </div>
-	      <div>
-	        <h2>格式分布（Top）</h2>
-	        {_render_bar_table(by_type, total=max(1, total_docs))}
-	      </div>
-	    </div>
+\t    <div class="section two">
+\t      <div>
+\t        <h2>状态分布</h2>
+\t        {_render_bar_table(by_status, total=max(1, total_docs))}
+\t      </div>
+\t      <div>
+\t        <h2>格式分布（Top）</h2>
+\t        {_render_bar_table(by_type, total=max(1, total_docs))}
+\t      </div>
+\t    </div>
 
-		    <div class="section two">
-		      <div>
-		        <h2>长度分布（chars）</h2>
-		        {_render_histogram(prof.get("length_histogram"))}
-	      </div>
+\t\t    <div class="section two">
+\t\t      <div>
+\t\t        <h2>长度分布（chars）</h2>
+\t\t        {_render_histogram(prof.get("length_histogram"))}
+\t      </div>
       <div>
         <h2>文件大小分布</h2>
         {_render_histogram(prof.get("file_size_histogram"))}

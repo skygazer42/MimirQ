@@ -108,6 +108,30 @@ class TerraformPlanChunker(BaseChunker):
             add_start_index=True,
         )
 
+    def _append_split_chunks(
+        self,
+        out: list[Document],
+        *,
+        text: str,
+        base_meta: dict[str, Any],
+        start_offset: int,
+        extra_meta: dict[str, Any],
+    ) -> None:
+        split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
+        for sd in split_docs:
+            sd_meta = dict(sd.metadata or {})
+            local_start = sd_meta.pop("start_index", None) or 0
+            abs_start = start_offset + int(local_start)
+            abs_end = abs_start + len(sd.page_content)
+            meta: dict[str, Any] = dict(base_meta)
+            meta.update(sd_meta)
+            meta["chunk_strategy"] = "terraform_plan"
+            meta["start_char"] = abs_start
+            meta["end_char"] = abs_end
+            meta.setdefault("doc_type_kwd", "terraform")
+            meta.update(extra_meta)
+            out.append(Document(page_content=sd.page_content, metadata=meta))
+
     def split_documents(self, documents: list[Document]) -> list[Document]:
         out: list[Document] = []
 
@@ -119,60 +143,43 @@ class TerraformPlanChunker(BaseChunker):
 
             blocks = _build_change_blocks(text)
             if not blocks:
-                split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "terraform_plan"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta["terraform_plan_fallback"] = True
-                    meta.setdefault("doc_type_kwd", "terraform")
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                self._append_split_chunks(
+                    out,
+                    text=text,
+                    base_meta=base_meta,
+                    start_offset=0,
+                    extra_meta={"terraform_plan_fallback": True},
+                )
                 continue
 
             first = blocks[0]
             if first.start > 0:
                 pre = text[: first.start]
                 if pre.strip():
-                    split_docs = self._fallback_splitter.create_documents(texts=[pre], metadatas=[base_meta])
-                    for sd in split_docs:
-                        local_start = sd.metadata.pop("start_index", None) or 0
-                        abs_start = int(local_start)
-                        abs_end = abs_start + len(sd.page_content)
-                        meta: dict[str, Any] = dict(base_meta)
-                        meta.update(sd.metadata or {})
-                        meta["chunk_strategy"] = "terraform_plan"
-                        meta["start_char"] = abs_start
-                        meta["end_char"] = abs_end
-                        meta["terraform_plan_preamble"] = True
-                        meta.setdefault("doc_type_kwd", "terraform")
-                        out.append(Document(page_content=sd.page_content, metadata=meta))
+                    self._append_split_chunks(
+                        out,
+                        text=pre,
+                        base_meta=base_meta,
+                        start_offset=0,
+                        extra_meta={"terraform_plan_preamble": True},
+                    )
 
             for blk in blocks:
                 blk_text = text[blk.start : blk.end]
                 if not blk_text.strip():
                     continue
-                split_docs = self._fallback_splitter.create_documents(texts=[blk_text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = blk.start + int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "terraform_plan"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta.setdefault("doc_type_kwd", "terraform")
-                    meta["terraform_address"] = blk.address
-                    meta["terraform_action"] = blk.action
-                    meta["terraform_change_index"] = int(blk.index)
-                    meta["terraform_change_count"] = int(len(blocks))
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                self._append_split_chunks(
+                    out,
+                    text=blk_text,
+                    base_meta=base_meta,
+                    start_offset=blk.start,
+                    extra_meta={
+                        "terraform_address": blk.address,
+                        "terraform_action": blk.action,
+                        "terraform_change_index": int(blk.index),
+                        "terraform_change_count": int(len(blocks)),
+                    },
+                )
 
         for idx, chunk in enumerate(out):
             meta = dict(chunk.metadata or {})

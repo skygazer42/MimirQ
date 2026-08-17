@@ -77,6 +77,106 @@ def _is_docx(mime: str, ext: str) -> bool:
     }
 
 
+def _recommend_pdf_strategy(
+    *,
+    ocr_ratio: float,
+    image_ratio: float,
+    has_tables: bool,
+    seal_low_confidence: bool,
+    seal_candidate_count: int,
+) -> tuple[str, float, dict[str, Any], list[str]]:
+    reason_codes = ["pdf_document"]
+    if seal_low_confidence:
+        return (
+            "pdf_ocr_layout",
+            0.91,
+            {
+                "ocr_enabled": True,
+                "layout_mode": "full",
+                "table_detection": True,
+                "seal_review": True,
+                "seal_candidate_count": int(seal_candidate_count),
+            },
+            [*reason_codes, "low_seal_confidence"],
+        )
+    if ocr_ratio >= 0.35 or image_ratio >= 0.5:
+        return (
+            "pdf_ocr_layout",
+            0.9,
+            {"ocr_enabled": True, "layout_mode": "full", "table_detection": True},
+            [*reason_codes, "image_or_ocr_heavy_pdf"],
+        )
+    if has_tables:
+        return (
+            "pdf_table_aware",
+            0.82,
+            {"ocr_enabled": False, "layout_mode": "table_aware", "table_detection": True},
+            [*reason_codes, "table_dense_pdf"],
+        )
+    return (
+        "pdf_text_fast",
+        0.78,
+        {"ocr_enabled": False, "layout_mode": "fast_text", "table_detection": False},
+        [*reason_codes, "text_dominant_pdf"],
+    )
+
+
+def _recommend_non_pdf_strategy(mime: str, ext: str) -> tuple[str, float, dict[str, Any], list[str]]:
+    if _is_spreadsheet(mime, ext):
+        return (
+            "spreadsheet_structured",
+            0.88,
+            {"table_mode": "structured", "preserve_headers": True},
+            ["spreadsheet_document", "table_native_format"],
+        )
+    if _is_html(mime, ext):
+        return (
+            "html_readability",
+            0.8,
+            {"boilerplate_removal": True, "link_density_filter": True},
+            ["html_document", "dom_readability"],
+        )
+    if _is_markdown(mime, ext):
+        return (
+            "markdown_structured",
+            0.75,
+            {"preserve_headings": True, "preserve_code_fences": True},
+            ["markdown_or_text_document"],
+        )
+    if _is_docx(mime, ext):
+        return (
+            "docx_layout",
+            0.78,
+            {"track_sections": True, "extract_tables": True},
+            ["docx_document", "office_layout_parser"],
+        )
+    if _is_image(mime, ext):
+        return (
+            "image_ocr_vision",
+            0.92,
+            {"ocr_enabled": True, "vision_layout": True},
+            ["image_document", "ocr_required"],
+        )
+    return (
+        "generic_balanced",
+        0.55,
+        {"ocr_enabled": False, "layout_mode": "auto"},
+        ["fallback_generic"],
+    )
+
+
+def _apply_large_document_profile(
+    *,
+    page_count: int,
+    strategy: str,
+    parser_options: dict[str, Any],
+    reason_codes: list[str],
+) -> None:
+    if page_count >= 120 and strategy in {"pdf_ocr_layout", "pdf_table_aware", "docx_layout"}:
+        reason_codes.append("large_document")
+        parser_options["chunking_profile"] = "long_doc_balanced"
+
+
 def recommend_parser_strategy(profile: Mapping[str, Any] | None) -> dict[str, Any]:
     """
     Recommend parser strategy by document profile.
@@ -101,73 +201,23 @@ def recommend_parser_strategy(profile: Mapping[str, Any] | None) -> dict[str, An
     seal_candidate_count = max(0, _safe_int(payload.get("seal_candidate_count"), 0))
     seal_low_confidence = bool(seal_expected and seal_confidence > 0.0 and seal_confidence < 0.6)
 
-    reason_codes: list[str] = []
-    strategy: str
-    confidence: float
-    parser_options: dict[str, Any]
-
     if _is_pdf(mime, ext):
-        reason_codes.append("pdf_document")
-        if seal_low_confidence:
-            strategy = "pdf_ocr_layout"
-            reason_codes.append("low_seal_confidence")
-            confidence = 0.91
-            parser_options = {
-                "ocr_enabled": True,
-                "layout_mode": "full",
-                "table_detection": True,
-                "seal_review": True,
-                "seal_candidate_count": int(seal_candidate_count),
-            }
-        elif ocr_ratio >= 0.35 or image_ratio >= 0.5:
-            strategy = "pdf_ocr_layout"
-            reason_codes.append("image_or_ocr_heavy_pdf")
-            confidence = 0.9
-            parser_options = {"ocr_enabled": True, "layout_mode": "full", "table_detection": True}
-        elif has_tables:
-            strategy = "pdf_table_aware"
-            reason_codes.append("table_dense_pdf")
-            confidence = 0.82
-            parser_options = {"ocr_enabled": False, "layout_mode": "table_aware", "table_detection": True}
-        else:
-            strategy = "pdf_text_fast"
-            reason_codes.append("text_dominant_pdf")
-            confidence = 0.78
-            parser_options = {"ocr_enabled": False, "layout_mode": "fast_text", "table_detection": False}
-    elif _is_spreadsheet(mime, ext):
-        strategy = "spreadsheet_structured"
-        reason_codes.extend(["spreadsheet_document", "table_native_format"])
-        confidence = 0.88
-        parser_options = {"table_mode": "structured", "preserve_headers": True}
-    elif _is_html(mime, ext):
-        strategy = "html_readability"
-        reason_codes.extend(["html_document", "dom_readability"])
-        confidence = 0.8
-        parser_options = {"boilerplate_removal": True, "link_density_filter": True}
-    elif _is_markdown(mime, ext):
-        strategy = "markdown_structured"
-        reason_codes.extend(["markdown_or_text_document"])
-        confidence = 0.75
-        parser_options = {"preserve_headings": True, "preserve_code_fences": True}
-    elif _is_docx(mime, ext):
-        strategy = "docx_layout"
-        reason_codes.extend(["docx_document", "office_layout_parser"])
-        confidence = 0.78
-        parser_options = {"track_sections": True, "extract_tables": True}
-    elif _is_image(mime, ext):
-        strategy = "image_ocr_vision"
-        reason_codes.extend(["image_document", "ocr_required"])
-        confidence = 0.92
-        parser_options = {"ocr_enabled": True, "vision_layout": True}
+        strategy, confidence, parser_options, reason_codes = _recommend_pdf_strategy(
+            ocr_ratio=ocr_ratio,
+            image_ratio=image_ratio,
+            has_tables=has_tables,
+            seal_low_confidence=seal_low_confidence,
+            seal_candidate_count=seal_candidate_count,
+        )
     else:
-        strategy = "generic_balanced"
-        reason_codes.append("fallback_generic")
-        confidence = 0.55
-        parser_options = {"ocr_enabled": False, "layout_mode": "auto"}
+        strategy, confidence, parser_options, reason_codes = _recommend_non_pdf_strategy(mime, ext)
 
-    if page_count >= 120 and strategy in {"pdf_ocr_layout", "pdf_table_aware", "docx_layout"}:
-        reason_codes.append("large_document")
-        parser_options["chunking_profile"] = "long_doc_balanced"
+    _apply_large_document_profile(
+        page_count=page_count,
+        strategy=strategy,
+        parser_options=parser_options,
+        reason_codes=reason_codes,
+    )
 
     return {
         "schema": "mimirq.parser_strategy_recommendation.v1",

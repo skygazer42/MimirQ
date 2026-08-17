@@ -215,19 +215,12 @@ def _metadata_exact_anchor_doc_order_meta() -> dict[str, Any]:
     }
 
 
-def _apply_metadata_exact_anchor_doc_ordering(
+def _annotate_anchor_docs(
+    *,
     query: str,
     docs: list[Document],
-) -> tuple[list[Document], dict[str, Any]]:
-    meta = _metadata_exact_anchor_doc_order_meta()
-    if not query or not docs:
-        meta["reason"] = "empty"
-        return docs, meta
-
-    phrase_boost_weight = max(
-        0.0,
-        float(getattr(settings, "RETRIEVAL_EXACT_PHRASE_RERANK_BOOST", 0.35) or 0.0),
-    )
+    phrase_boost_weight: float,
+) -> tuple[list[tuple[Document, int]], int, int]:
     rows: list[tuple[Document, int]] = []
     annotated = 0
     promoted = 0
@@ -268,7 +261,41 @@ def _apply_metadata_exact_anchor_doc_ordering(
                 id=getattr(doc, "id", None) or doc_meta.get("chunk_id"),
             )
         rows.append((doc, idx))
+    return rows, annotated, promoted
 
+
+def _metadata_exact_anchor_sort_key(
+    row: tuple[Document, int],
+    *,
+    best_anchor_score: float,
+) -> tuple[float, float, int]:
+    doc, idx = row
+    doc_meta = doc.metadata if isinstance(doc.metadata, dict) else {}
+    metadata_score = _float_or_default(doc_meta.get("metadata_exact_match_score"), 0.0)
+    score = _float_or_default(doc_meta.get("score"), 0.0)
+    if best_anchor_score >= 0.65:
+        return (-metadata_score, -score, int(idx))
+    return (-score, -metadata_score, int(idx))
+
+
+def _apply_metadata_exact_anchor_doc_ordering(
+    query: str,
+    docs: list[Document],
+) -> tuple[list[Document], dict[str, Any]]:
+    meta = _metadata_exact_anchor_doc_order_meta()
+    if not query or not docs:
+        meta["reason"] = "empty"
+        return docs, meta
+
+    phrase_boost_weight = max(
+        0.0,
+        float(getattr(settings, "RETRIEVAL_EXACT_PHRASE_RERANK_BOOST", 0.35) or 0.0),
+    )
+    rows, annotated, promoted = _annotate_anchor_docs(
+        query=query,
+        docs=docs,
+        phrase_boost_weight=phrase_boost_weight,
+    )
     if annotated <= 0:
         meta["reason"] = "no_anchor_matches"
         return [doc for doc, _idx in rows], meta
@@ -281,19 +308,7 @@ def _apply_metadata_exact_anchor_doc_ordering(
         )
         for row in rows
     )
-
-    def _doc_order_key(row: tuple[Document, int]) -> tuple[float, float, int]:
-        doc, idx = row
-        doc_meta = doc.metadata if isinstance(doc.metadata, dict) else {}
-        metadata_score = _float_or_default(doc_meta.get("metadata_exact_match_score"), 0.0)
-        score = _float_or_default(doc_meta.get("score"), 0.0)
-        if best_anchor_score >= 0.65:
-            return (-metadata_score, -score, int(idx))
-        return (-score, -metadata_score, int(idx))
-
-    rows.sort(
-        key=_doc_order_key
-    )
+    rows.sort(key=lambda row: _metadata_exact_anchor_sort_key(row, best_anchor_score=best_anchor_score))
     out = [doc for doc, _idx in rows]
     after_top = _doc_key(out[0]) if out else ""
     meta["applied"] = True

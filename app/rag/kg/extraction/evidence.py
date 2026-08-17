@@ -26,6 +26,20 @@ def _collapse_ws(text: str) -> str:
     return _WS_RE.sub(" ", _clean(text)).strip()
 
 
+def _ascii_case_insensitive_match(pattern: str, hay: str) -> tuple[int, int] | None:
+    try:
+        match = re.search(pattern, hay, flags=re.IGNORECASE | re.MULTILINE)
+    except re.error:
+        return None
+    if not match:
+        return None
+    return int(match.start()), int(match.end())
+
+
+def _can_use_ascii_fallback(needle: str) -> bool:
+    return needle.isascii() and len(needle) >= 6 and any(ch.isalpha() for ch in needle)
+
+
 @dataclass(frozen=True)
 class EvidenceSpan:
     quote: str
@@ -58,13 +72,8 @@ def find_evidence_span(text: str, quote: str) -> tuple[int, int] | None:
     parts = [p for p in needle.split() if p]
     if len(parts) <= 1:
         # Best-effort: allow ASCII case-insensitive matching for short single-token quotes.
-        if needle.isascii() and len(needle) >= 6 and any(ch.isalpha() for ch in needle):
-            try:
-                m2 = re.search(re.escape(needle), hay, flags=re.IGNORECASE | re.MULTILINE)
-            except re.error:
-                m2 = None
-            if m2:
-                return int(m2.start()), int(m2.end())
+        if _can_use_ascii_fallback(needle):
+            return _ascii_case_insensitive_match(re.escape(needle), hay)
         return None
     pat = r"\s+".join(re.escape(p) for p in parts)
     try:
@@ -73,13 +82,8 @@ def find_evidence_span(text: str, quote: str) -> tuple[int, int] | None:
         return None
     if not m:
         # ASCII case-insensitive fallback: helps when the model changes casing in evidence_quote.
-        if needle.isascii() and len(needle) >= 6 and any(ch.isalpha() for ch in needle):
-            try:
-                m2 = re.search(pat, hay, flags=re.IGNORECASE | re.MULTILINE)
-            except re.error:
-                m2 = None
-            if m2:
-                return int(m2.start()), int(m2.end())
+        if _can_use_ascii_fallback(needle):
+            return _ascii_case_insensitive_match(pat, hay)
         return None
     return int(m.start()), int(m.end())
 

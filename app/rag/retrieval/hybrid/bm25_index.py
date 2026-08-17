@@ -1027,6 +1027,78 @@ class Bm25IndexMixin:
                 except Exception as exc:
                     logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
 
+    def _clear_bm25_document_scope_caches(self, *, tenant_key: str) -> None:
+        document_scope_prefix = f"{tenant_key}:documents:"
+        with self._bm25_cache_lock:
+            document_scope_keys = [
+                key
+                for key in set(self._bm25_docs) | set(self._bm25_retrievers) | set(self._bm25_deferred_scopes)
+                if str(key).startswith(document_scope_prefix)
+            ]
+            for key in document_scope_keys:
+                self._drop_bm25_cache_key_locked(key)
+
+    def _resolve_bm25_upsert_dataset_scope_ids(self, upsert_docs: list[Document]) -> tuple[UUID, ...]:
+        dataset_scope_ids = self._explicit_dataset_scope_ids()
+        if dataset_scope_ids:
+            return dataset_scope_ids
+        inferred_dataset_id = self.dataset_id or self._infer_single_dataset_scope_from_docs(upsert_docs)
+        return self._normalize_dataset_scope_ids([inferred_dataset_id] if inferred_dataset_id is not None else None)
+
+    def _merge_bm25_upsert_scope_documents(
+        self,
+        *,
+        cache_key: str,
+        tenant_uuid: UUID,
+        dataset_scope_ids: tuple[UUID, ...],
+        upsert_docs: list[Document],
+        sync_needs_corpus: bool,
+        db: Session | None,
+    ) -> tuple[bool, list[Document] | None]:
+        with self._bm25_cache_lock:
+            existing = list(self._bm25_docs.get(cache_key) or [])
+            scope_deferred = cache_key in self._bm25_deferred_scopes
+        if scope_deferred and not existing and sync_needs_corpus:
+            existing = self._load_bm25_scope_documents_for_deferred_upsert(
+                tenant_uuid=tenant_uuid,
+                dataset_scope_ids=dataset_scope_ids,
+                cache_key=cache_key,
+                db=db,
+            )
+            if existing is None:
+                return scope_deferred, None
+        return scope_deferred, self._merge_bm25_scope_docs(existing, upsert_docs)
+
+    def _store_bm25_upsert_scope(
+        self,
+        *,
+        cache_key: str,
+        scope_deferred: bool,
+        merged_docs: list[Document] | None,
+        eager_limit: int,
+        upsert_docs: list[Document],
+    ) -> None:
+        if scope_deferred:
+            self._defer_bm25_scope_index(cache_key=cache_key, merged_docs=merged_docs or [])
+            logger.info(
+                "BM25 deferred scope retained for %s after upsert chunks=%s corpus_refresh=%s",
+                cache_key,
+                len(upsert_docs),
+                bool(merged_docs is not None),
+            )
+            return
+        if merged_docs is not None and eager_limit > 0 and len(merged_docs) > eager_limit:
+            self._defer_bm25_scope_index(cache_key=cache_key, merged_docs=merged_docs)
+            logger.info(
+                "BM25 index rebuild deferred for scope %s chunks=%s eager_limit=%s",
+                cache_key,
+                len(merged_docs),
+                eager_limit,
+            )
+            return
+        self._replace_bm25_scope_index(cache_key=cache_key, merged_docs=merged_docs or [])
+        logger.info("BM25 index updated to %s chunks for scope %s", len(merged_docs or []), cache_key)
+
     def upsert_bm25_documents(
         self,
         docs: list[Document],
@@ -1053,22 +1125,8 @@ class Bm25IndexMixin:
 
         self._clear_candidate_corpus_token_cache(tenant_uuid)
         tenant_key = self._tenant_key(tenant_uuid)
-        document_scope_prefix = f"{tenant_key}:documents:"
-        with self._bm25_cache_lock:
-            document_scope_keys = [
-                key
-                for key in set(self._bm25_docs) | set(self._bm25_retrievers) | set(self._bm25_deferred_scopes)
-                if str(key).startswith(document_scope_prefix)
-            ]
-            for key in document_scope_keys:
-                self._drop_bm25_cache_key_locked(key)
-
-        dataset_scope_ids = self._explicit_dataset_scope_ids()
-        if not dataset_scope_ids:
-            inferred_dataset_id = self.dataset_id or self._infer_single_dataset_scope_from_docs(upsert_docs)
-            dataset_scope_ids = self._normalize_dataset_scope_ids(
-                [inferred_dataset_id] if inferred_dataset_id is not None else None
-            )
+        self._clear_bm25_document_scope_caches(tenant_key=tenant_key)
+        dataset_scope_ids = self._resolve_bm25_upsert_dataset_scope_ids(upsert_docs)
         cache_key = self._bm25_scope_key(
             tenant_id=tenant_uuid,
             dataset_ids=dataset_scope_ids,
@@ -1079,40 +1137,22 @@ class Bm25IndexMixin:
         )
         merged_docs: list[Document] | None = None
         with self._get_bm25_build_lock(cache_key):
-            with self._bm25_cache_lock:
-                existing = list(self._bm25_docs.get(cache_key) or [])
-                scope_deferred = cache_key in self._bm25_deferred_scopes
-            if scope_deferred and not existing and sync_needs_corpus:
-                existing = self._load_bm25_scope_documents_for_deferred_upsert(
-                    tenant_uuid=tenant_uuid,
-                    dataset_scope_ids=dataset_scope_ids,
-                    cache_key=cache_key,
-                    db=db,
-                )
-                if existing is not None:
-                    merged_docs = self._merge_bm25_scope_docs(existing, upsert_docs)
-            else:
-                merged_docs = self._merge_bm25_scope_docs(existing, upsert_docs)
+            scope_deferred, merged_docs = self._merge_bm25_upsert_scope_documents(
+                cache_key=cache_key,
+                tenant_uuid=tenant_uuid,
+                dataset_scope_ids=dataset_scope_ids,
+                upsert_docs=upsert_docs,
+                sync_needs_corpus=sync_needs_corpus,
+                db=db,
+            )
             eager_limit = self._bm25_eager_upsert_max_chunks()
-            if scope_deferred:
-                self._defer_bm25_scope_index(cache_key=cache_key, merged_docs=merged_docs or [])
-                logger.info(
-                    "BM25 deferred scope retained for %s after upsert chunks=%s corpus_refresh=%s",
-                    cache_key,
-                    len(upsert_docs),
-                    bool(merged_docs is not None),
-                )
-            elif merged_docs is not None and eager_limit > 0 and len(merged_docs) > eager_limit:
-                self._defer_bm25_scope_index(cache_key=cache_key, merged_docs=merged_docs)
-                logger.info(
-                    "BM25 index rebuild deferred for scope %s chunks=%s eager_limit=%s",
-                    cache_key,
-                    len(merged_docs),
-                    eager_limit,
-                )
-            else:
-                self._replace_bm25_scope_index(cache_key=cache_key, merged_docs=merged_docs)
-                logger.info("BM25 index updated to %s chunks for scope %s", len(merged_docs), cache_key)
+            self._store_bm25_upsert_scope(
+                cache_key=cache_key,
+                scope_deferred=scope_deferred,
+                merged_docs=merged_docs,
+                eager_limit=eager_limit,
+                upsert_docs=upsert_docs,
+            )
 
         if merged_docs is not None:
             self._sync_sparse_index_after_bm25_upsert(

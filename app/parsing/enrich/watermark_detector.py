@@ -138,6 +138,85 @@ def _is_removable_kind(kind: str) -> bool:
     return str(kind or "").strip().lower() not in {"table", "equation", "formula", "seal"}
 
 
+def _repeated_overlay_key(
+    element: Mapping[str, Any],
+    *,
+    bounds: Mapping[int, tuple[float, float]],
+) -> tuple[str, tuple[int, int] | None] | None:
+    text = _text_value(element)
+    kind = _kind_value(element)
+    page = _page_value(element)
+    if not text or page is None or not _is_removable_kind(kind):
+        return None
+    normalized = _normalize_text(text)
+    if (
+        len(normalized) < 4
+        or len(normalized) > 80
+        or normalized in _COMMON_SHORT_REPEAT_TEXT
+        or not _is_center_overlay_candidate(element, bounds)
+    ):
+        return None
+    return normalized, _bbox_center_key(element)
+
+
+def _collect_remove_indexes(
+    original: Sequence[Mapping[str, Any]],
+    *,
+    bounds: Mapping[int, tuple[float, float]],
+    threshold: int,
+) -> tuple[set[int], dict[int, str]]:
+    remove_indexes: set[int] = set()
+    reason_by_index: dict[int, str] = {}
+    repeated_candidates: dict[tuple[str, tuple[int, int] | None], list[tuple[int, int]]] = defaultdict(list)
+    for index, element in enumerate(original):
+        text = _text_value(element)
+        if text and _is_known_export_noise(text):
+            remove_indexes.add(index)
+            reason_by_index[index] = "pdf_export_noise"
+            continue
+        candidate = _repeated_overlay_key(element, bounds=bounds)
+        if candidate is None:
+            continue
+        page = _page_value(element)
+        if page is not None:
+            repeated_candidates[candidate].append((index, int(page)))
+
+    for entries in repeated_candidates.values():
+        candidate_pages = {page for _index, page in entries}
+        if len(candidate_pages) < threshold:
+            continue
+        for index, _page in entries:
+            remove_indexes.add(index)
+            reason_by_index.setdefault(index, "repeated_overlay")
+    return remove_indexes, reason_by_index
+
+
+def _result_from_removed_indexes(
+    original: Sequence[Mapping[str, Any]],
+    *,
+    pages: list[int],
+    remove_indexes: set[int],
+    reason_by_index: Mapping[int, str],
+) -> WatermarkRemovalResult:
+    kept: list[dict[str, Any]] = []
+    removed_ids: list[str] = []
+    reasons = Counter()
+    for index, element in enumerate(original):
+        if index in remove_indexes:
+            removed_ids.append(str(element.get("id") or index))
+            reasons[reason_by_index.get(index, "watermark_noise")] += 1
+            continue
+        kept.append(dict(element))
+    return WatermarkRemovalResult(
+        elements=kept,
+        changed=True,
+        removed_count=int(len(remove_indexes)),
+        removed_ids=removed_ids,
+        pages=pages,
+        reasons=dict(reasons),
+    )
+
+
 def remove_document_watermark_elements(
     elements: Sequence[Mapping[str, Any]] | None,
     *,
@@ -149,61 +228,15 @@ def remove_document_watermark_elements(
 
     pages = sorted({int(page) for item in original if (page := _page_value(item)) is not None})
     bounds = _page_bounds(original)
-    remove_indexes: set[int] = set()
-    reason_by_index: dict[int, str] = {}
-
-    repeated_candidates: dict[tuple[str, tuple[int, int] | None], list[tuple[int, int]]] = defaultdict(list)
-    for index, element in enumerate(original):
-        text = _text_value(element)
-        kind = _kind_value(element)
-        page = _page_value(element)
-        if not text or page is None or not _is_removable_kind(kind):
-            continue
-
-        if _is_known_export_noise(text):
-            remove_indexes.add(index)
-            reason_by_index[index] = "pdf_export_noise"
-            continue
-
-        normalized = _normalize_text(text)
-        if (
-            len(normalized) < 4
-            or len(normalized) > 80
-            or normalized in _COMMON_SHORT_REPEAT_TEXT
-            or not _is_center_overlay_candidate(element, bounds)
-        ):
-            continue
-        repeated_candidates[(normalized, _bbox_center_key(element))].append((index, int(page)))
-
     threshold = max(2, int(min_pages or 2))
-    for (_normalized, _center), entries in repeated_candidates.items():
-        candidate_pages = {page for _index, page in entries}
-        if len(candidate_pages) < threshold:
-            continue
-        for index, _page in entries:
-            remove_indexes.add(index)
-            reason_by_index.setdefault(index, "repeated_overlay")
-
+    remove_indexes, reason_by_index = _collect_remove_indexes(original, bounds=bounds, threshold=threshold)
     if not remove_indexes:
         return WatermarkRemovalResult(elements=original, changed=False, removed_count=0, removed_ids=[], pages=pages)
-
-    kept: list[dict[str, Any]] = []
-    removed_ids: list[str] = []
-    reasons = Counter()
-    for index, element in enumerate(original):
-        if index in remove_indexes:
-            removed_ids.append(str(element.get("id") or index))
-            reasons[reason_by_index.get(index, "watermark_noise")] += 1
-            continue
-        kept.append(dict(element))
-
-    return WatermarkRemovalResult(
-        elements=kept,
-        changed=True,
-        removed_count=int(len(remove_indexes)),
-        removed_ids=removed_ids,
+    return _result_from_removed_indexes(
+        original,
         pages=pages,
-        reasons=dict(reasons),
+        remove_indexes=remove_indexes,
+        reason_by_index=reason_by_index,
     )
 
 

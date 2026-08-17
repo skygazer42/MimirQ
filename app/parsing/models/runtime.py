@@ -141,6 +141,136 @@ class SmallModelRuntime:
             return ["CPUExecutionProvider"]
         return None
 
+    @staticmethod
+    def _status(
+        spec: SmallModelSpec,
+        *,
+        available: bool,
+        optional: bool,
+        version: str,
+        elapsed_ms: int,
+        reason: str | None = None,
+        path: Path | None = None,
+        repo_id: str | None = None,
+        revision: str | None = None,
+        size_mb: float | None = None,
+    ) -> SmallModelStatus:
+        return SmallModelStatus(
+            task=spec.task,
+            model_id=spec.model_id,
+            kind=spec.kind,
+            available=available,
+            optional=optional,
+            reason=reason,
+            path=path,
+            repo_id=repo_id,
+            revision=revision,
+            version=version,
+            size_mb=size_mb,
+            elapsed_ms=elapsed_ms,
+        )
+
+    def _resolve_onnx_status(
+        self,
+        spec: SmallModelSpec,
+        *,
+        version: str,
+        elapsed_ms: int,
+    ) -> SmallModelStatus:
+        path = spec.resolved_path()
+        if not path.exists():
+            return self._status(
+                spec,
+                available=False,
+                optional=spec.optional,
+                reason="local_model_missing",
+                path=path,
+                version=version or "unresolved",
+                elapsed_ms=elapsed_ms,
+            )
+        rejection_reason, size_mb = self._cpu_rejection_reason(spec, path=path)
+        return self._status(
+            spec,
+            available=rejection_reason is None,
+            optional=spec.optional,
+            reason=rejection_reason,
+            path=path,
+            version=version or ("local" if rejection_reason is None else "unresolved"),
+            size_mb=size_mb,
+            elapsed_ms=elapsed_ms,
+        )
+
+    def _resolve_hf_status(
+        self,
+        spec: SmallModelSpec,
+        *,
+        version: str,
+        elapsed_ms: int,
+        allow_download: bool,
+    ) -> SmallModelStatus:
+        local_path = spec.resolved_path() if spec.path else None
+        if local_path is not None and local_path.exists():
+            rejection_reason, size_mb = self._cpu_rejection_reason(spec, path=local_path)
+            return self._status(
+                spec,
+                available=rejection_reason is None,
+                optional=spec.optional,
+                reason=rejection_reason,
+                path=local_path,
+                repo_id=spec.repo_id,
+                revision=spec.revision,
+                version=version or ("local" if rejection_reason is None else "unresolved"),
+                size_mb=size_mb,
+                elapsed_ms=elapsed_ms,
+            )
+        rejection_reason, size_mb = self._cpu_rejection_reason(spec)
+        if rejection_reason:
+            return self._status(
+                spec,
+                available=False,
+                optional=spec.optional,
+                reason=rejection_reason,
+                repo_id=spec.repo_id,
+                revision=spec.revision,
+                version=version or "unresolved",
+                size_mb=size_mb,
+                elapsed_ms=elapsed_ms,
+            )
+        if not allow_download:
+            return self._status(
+                spec,
+                available=False,
+                optional=spec.optional,
+                reason="hf_download_disabled",
+                repo_id=spec.repo_id,
+                revision=spec.revision,
+                version=version or "unresolved",
+                elapsed_ms=elapsed_ms,
+            )
+        if not spec.repo_id:
+            return self._status(
+                spec,
+                available=False,
+                optional=spec.optional,
+                reason="hf_repo_missing",
+                version=version or "unresolved",
+                elapsed_ms=elapsed_ms,
+            )
+        snapshot = download_hf_snapshot(repo_id=spec.repo_id, revision=spec.revision)
+        rejection_reason, size_mb = self._cpu_rejection_reason(spec, path=snapshot.path)
+        return self._status(
+            spec,
+            available=rejection_reason is None,
+            optional=spec.optional,
+            reason=rejection_reason,
+            path=snapshot.path,
+            repo_id=spec.repo_id,
+            revision=spec.revision,
+            version=version or ("downloaded" if rejection_reason is None else "unresolved"),
+            size_mb=size_mb,
+            elapsed_ms=elapsed_ms,
+        )
+
     def resolve(self, task: str, *, model_id: str | None = None, allow_download: bool = False) -> SmallModelStatus:
         started = time.perf_counter()
         spec = self._spec(task, model_id=model_id)
@@ -150,151 +280,18 @@ class SmallModelRuntime:
             return max(0, int(round((time.perf_counter() - started) * 1000)))
 
         if spec.kind == "onnx":
-            path = spec.resolved_path()
-            if path.exists():
-                rejection_reason, size_mb = self._cpu_rejection_reason(spec, path=path)
-                if rejection_reason:
-                    return SmallModelStatus(
-                        task=spec.task,
-                        model_id=spec.model_id,
-                        kind=spec.kind,
-                        available=False,
-                        optional=spec.optional,
-                        reason=rejection_reason,
-                        path=path,
-                        version=version or "unresolved",
-                        size_mb=size_mb,
-                        elapsed_ms=elapsed_ms(),
-                    )
-                return SmallModelStatus(
-                    task=spec.task,
-                    model_id=spec.model_id,
-                    kind=spec.kind,
-                    available=True,
-                    optional=spec.optional,
-                    path=path,
-                    version=version or "local",
-                    size_mb=size_mb,
-                    elapsed_ms=elapsed_ms(),
-                )
-            return SmallModelStatus(
-                task=spec.task,
-                model_id=spec.model_id,
-                kind=spec.kind,
-                available=False,
-                optional=spec.optional,
-                reason="local_model_missing",
-                path=path,
-                version=version or "unresolved",
-                elapsed_ms=elapsed_ms(),
-            )
+            return self._resolve_onnx_status(spec, version=version or "", elapsed_ms=elapsed_ms())
 
         if spec.kind == "hf_transformers":
-            local_path = spec.resolved_path() if spec.path else None
-            if local_path is not None and local_path.exists():
-                rejection_reason, size_mb = self._cpu_rejection_reason(spec, path=local_path)
-                if rejection_reason:
-                    return SmallModelStatus(
-                        task=spec.task,
-                        model_id=spec.model_id,
-                        kind=spec.kind,
-                        available=False,
-                        optional=spec.optional,
-                        reason=rejection_reason,
-                        path=local_path,
-                        repo_id=spec.repo_id,
-                        revision=spec.revision,
-                        version=version or "unresolved",
-                        size_mb=size_mb,
-                        elapsed_ms=elapsed_ms(),
-                    )
-                return SmallModelStatus(
-                    task=spec.task,
-                    model_id=spec.model_id,
-                    kind=spec.kind,
-                    available=True,
-                    optional=spec.optional,
-                    path=local_path,
-                    repo_id=spec.repo_id,
-                    revision=spec.revision,
-                    version=version or "local",
-                    size_mb=size_mb,
-                    elapsed_ms=elapsed_ms(),
-                )
-            rejection_reason, size_mb = self._cpu_rejection_reason(spec)
-            if rejection_reason:
-                return SmallModelStatus(
-                    task=spec.task,
-                    model_id=spec.model_id,
-                    kind=spec.kind,
-                    available=False,
-                    optional=spec.optional,
-                    reason=rejection_reason,
-                    repo_id=spec.repo_id,
-                    revision=spec.revision,
-                    version=version or "unresolved",
-                    size_mb=size_mb,
-                    elapsed_ms=elapsed_ms(),
-                )
-            if not allow_download:
-                return SmallModelStatus(
-                    task=spec.task,
-                    model_id=spec.model_id,
-                    kind=spec.kind,
-                    available=False,
-                    optional=spec.optional,
-                    reason="hf_download_disabled",
-                    repo_id=spec.repo_id,
-                    revision=spec.revision,
-                    version=version or "unresolved",
-                    elapsed_ms=elapsed_ms(),
-                )
-            if not spec.repo_id:
-                return SmallModelStatus(
-                    task=spec.task,
-                    model_id=spec.model_id,
-                    kind=spec.kind,
-                    available=False,
-                    optional=spec.optional,
-                    reason="hf_repo_missing",
-                    version=version or "unresolved",
-                    elapsed_ms=elapsed_ms(),
-                )
-            snapshot = download_hf_snapshot(repo_id=spec.repo_id, revision=spec.revision)
-            rejection_reason, size_mb = self._cpu_rejection_reason(spec, path=snapshot.path)
-            if rejection_reason:
-                return SmallModelStatus(
-                    task=spec.task,
-                    model_id=spec.model_id,
-                    kind=spec.kind,
-                    available=False,
-                    optional=spec.optional,
-                    reason=rejection_reason,
-                    path=snapshot.path,
-                    repo_id=spec.repo_id,
-                    revision=spec.revision,
-                    version=version or "unresolved",
-                    size_mb=size_mb,
-                    elapsed_ms=elapsed_ms(),
-                )
-            return SmallModelStatus(
-                task=spec.task,
-                model_id=spec.model_id,
-                kind=spec.kind,
-                available=True,
-                optional=spec.optional,
-                path=snapshot.path,
-                repo_id=spec.repo_id,
-                revision=spec.revision,
-                version=version or "downloaded",
-                size_mb=size_mb,
+            return self._resolve_hf_status(
+                spec,
+                version=version or "",
                 elapsed_ms=elapsed_ms(),
+                allow_download=allow_download,
             )
 
-        return SmallModelStatus(
-            task=spec.task,
-            model_id=spec.model_id,
-            kind=spec.kind,
+        return self._status(
+            spec,
             available=False,
             optional=spec.optional,
             reason="unsupported_model_kind",

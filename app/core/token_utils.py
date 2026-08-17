@@ -65,54 +65,40 @@ def total_token_count_from_response(resp: Any) -> int:
     if resp is None:
         return 0
 
-    # OpenAI-style response
-    usage = getattr(resp, "usage", None)
-    total_tokens = getattr(usage, "total_tokens", None)
-    if isinstance(total_tokens, int) and not isinstance(total_tokens, bool):
-        return total_tokens
+    for usage in (getattr(resp, "usage", None), getattr(resp, "usage_metadata", None)):
+        total = _valid_token_count(getattr(usage, "total_tokens", None))
+        if total is not None:
+            return total
 
-    # Google-style response
-    usage_metadata = getattr(resp, "usage_metadata", None)
-    total_tokens = getattr(usage_metadata, "total_tokens", None)
-    if isinstance(total_tokens, int) and not isinstance(total_tokens, bool):
-        return total_tokens
-
-    # Dict with usage.total_tokens
     if isinstance(resp, dict):
-        usage = resp.get("usage", {})
-        if isinstance(usage, dict):
-            total_tokens = usage.get("total_tokens")
-            if isinstance(total_tokens, int) and not isinstance(total_tokens, bool):
-                return total_tokens
-
-            # Dict with usage.input_tokens + output_tokens
-            input_tokens = usage.get("input_tokens")
-            output_tokens = usage.get("output_tokens")
-            if (
-                isinstance(input_tokens, int)
-                and not isinstance(input_tokens, bool)
-                and isinstance(output_tokens, int)
-                and not isinstance(output_tokens, bool)
-            ):
-                return input_tokens + output_tokens
-
-    # Cohere-style response
-    if isinstance(resp, dict):
-        meta = resp.get("meta", {})
-        if isinstance(meta, dict):
-            tokens = meta.get("tokens", {})
-            if isinstance(tokens, dict):
-                input_tokens = tokens.get("input_tokens")
-                output_tokens = tokens.get("output_tokens")
-                if (
-                    isinstance(input_tokens, int)
-                    and not isinstance(input_tokens, bool)
-                    and isinstance(output_tokens, int)
-                    and not isinstance(output_tokens, bool)
-                ):
-                    return input_tokens + output_tokens
+        usage_total = _token_total_from_mapping(resp.get("usage"))
+        if usage_total is not None:
+            return usage_total
+        meta = resp.get("meta")
+        cohere_total = _token_total_from_mapping(meta.get("tokens") if isinstance(meta, dict) else None)
+        if cohere_total is not None:
+            return cohere_total
 
     return 0
+
+
+def _valid_token_count(value: Any) -> int | None:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return None
+
+
+def _token_total_from_mapping(value: Any) -> int | None:
+    if not isinstance(value, dict):
+        return None
+    total = _valid_token_count(value.get("total_tokens"))
+    if total is not None:
+        return total
+    input_tokens = _valid_token_count(value.get("input_tokens"))
+    output_tokens = _valid_token_count(value.get("output_tokens"))
+    if input_tokens is None or output_tokens is None:
+        return None
+    return input_tokens + output_tokens
 
 
 def truncate(string: str, max_len: int) -> str:

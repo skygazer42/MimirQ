@@ -43,6 +43,14 @@ _PRIVATE_KEY_BLOCK_RE = re.compile(
     r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----",
     flags=re.MULTILINE,
 )
+_SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    ("private_key", _PRIVATE_KEY_BLOCK_RE),
+    ("openai_key", _OPENAI_KEY_RE),
+    ("github_token", _GITHUB_TOKEN_RE),
+    ("slack_token", _SLACK_TOKEN_RE),
+    ("aws_access_key", _AWS_ACCESS_KEY_RE),
+    ("bearer_token", _BEARER_TOKEN_RE),
+]
 
 
 def redact_secrets(text: str, *, enabled: bool, mode: SecretMode = "mask", mask: str = "[SECRET]") -> SecretsRedactResult:
@@ -96,6 +104,13 @@ def redact_secrets(text: str, *, enabled: bool, mode: SecretMode = "mask", mask:
     return SecretsRedactResult(text=current, hits=hits, changed=(current != original))
 
 
+def _overlaps_taken(a0: int, a1: int, taken: list[tuple[int, int]]) -> bool:
+    for b0, b1 in taken:
+        if a0 < b1 and a1 > b0:
+            return True
+    return False
+
+
 def find_secret_matches(text: str, *, max_matches: int = 50) -> list[SecretMatch]:
     """
     Find secret/token candidates in text (best-effort).
@@ -111,25 +126,10 @@ def find_secret_matches(text: str, *, max_matches: int = 50) -> list[SecretMatch
     if max_matches <= 0:
         return []
 
-    patterns: list[tuple[str, re.Pattern[str]]] = [
-        ("private_key", _PRIVATE_KEY_BLOCK_RE),
-        ("openai_key", _OPENAI_KEY_RE),
-        ("github_token", _GITHUB_TOKEN_RE),
-        ("slack_token", _SLACK_TOKEN_RE),
-        ("aws_access_key", _AWS_ACCESS_KEY_RE),
-        ("bearer_token", _BEARER_TOKEN_RE),
-    ]
-
     taken: list[tuple[int, int]] = []
     out: list[SecretMatch] = []
 
-    def overlaps(a0: int, a1: int) -> bool:
-        for b0, b1 in taken:
-            if a0 < b1 and a1 > b0:
-                return True
-        return False
-
-    for kind, pat in patterns:
+    for kind, pat in _SECRET_PATTERNS:
         for m in pat.finditer(s):
             raw = m.group(0) or ""
             if not raw:
@@ -137,7 +137,7 @@ def find_secret_matches(text: str, *, max_matches: int = 50) -> list[SecretMatch
             start, end = int(m.start()), int(m.end())
             if start < 0 or end <= start:
                 continue
-            if overlaps(start, end):
+            if _overlaps_taken(start, end, taken):
                 continue
             out.append(SecretMatch(kind=kind, start=start, end=end, text=raw))
             taken.append((start, end))

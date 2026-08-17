@@ -194,6 +194,18 @@ def update_rag_config_template(
     if not template:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_RAG_CONFIG_TEMPLATE_NOT_FOUND_DETAIL)
 
+    _apply_rag_config_template_fields(template, request)
+    _apply_rag_config_template_experiment_fields(template, request)
+
+    db.commit()
+    db.refresh(template)
+    return template
+
+
+def _apply_rag_config_template_fields(
+    template: RagConfigTemplate,
+    request: RagConfigTemplateUpdate,
+) -> None:
     if request.template_key is not None:
         template.template_key = str(request.template_key or "").strip() or None
     if request.name is not None:
@@ -208,16 +220,18 @@ def update_rag_config_template(
         template.version = int(request.version)
     if request.parent_id is not None:
         template.parent_id = request.parent_id
+
+
+def _apply_rag_config_template_experiment_fields(
+    template: RagConfigTemplate,
+    request: RagConfigTemplateUpdate,
+) -> None:
     if request.ab_experiment_key is not None:
         template.ab_experiment_key = str(request.ab_experiment_key or "").strip() or None
     if request.ab_variant is not None:
         template.ab_variant = str(request.ab_variant or "").strip()[:50] or None
     if request.ab_weight is not None:
         template.ab_weight = float(request.ab_weight)
-
-    db.commit()
-    db.refresh(template)
-    return template
 
 
 @router.post("/{template_id}/versions", response_model=RagConfigTemplateOut, status_code=status.HTTP_201_CREATED, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)

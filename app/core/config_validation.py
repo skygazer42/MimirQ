@@ -12,7 +12,6 @@ import ipaddress
 import os
 import re
 import warnings
-from collections.abc import Mapping
 from urllib.parse import urlparse
 from uuid import UUID
 
@@ -36,6 +35,218 @@ _COMMA_OR_WHITESPACE_RE = None
 _LEGACY_DEV_SECRET_KEY = None
 _LOCAL_MINIO_DEFAULT_CREDENTIAL = None
 _DEFAULT_RAG_EVAL_SUMMARY_PATH = None
+
+
+def _set_if_changed(settings, field_name, value):
+    if getattr(settings, field_name) != value:
+        setattr(settings, field_name, value)
+
+
+def _raise_if(condition, message):
+    if condition:
+        raise ValueError(message)
+
+
+def _require_int_min(value, minimum, message):
+    _raise_if(value < minimum, message)
+
+
+def _require_int_between(value, minimum, maximum, message):
+    _raise_if(value < minimum or value > maximum, message)
+
+
+def _require_float_min(value, minimum, message):
+    _raise_if(value < minimum, message)
+
+
+def _require_float_positive(value, message):
+    _raise_if(value <= 0.0, message)
+
+
+def _require_float_between(value, minimum, maximum, message):
+    _raise_if(value < minimum or value > maximum, message)
+
+
+def _require_nonempty(value, message):
+    _raise_if(not value, message)
+
+
+def _require_no_whitespace(value, message):
+    _raise_if(any(ch.isspace() for ch in value), message)
+
+
+def _normalize_lower_choice(value, default):
+    return str(value or default).strip().lower()
+
+
+def _normalize_choice_setting(settings, field_name, default, valid_values, message):
+    normalized = _normalize_lower_choice(getattr(settings, field_name, default), default)
+    _raise_if(normalized not in valid_values, message)
+    _set_if_changed(settings, field_name, normalized)
+    return normalized
+
+
+def _normalize_stripped_setting(settings, field_name, default=""):
+    normalized = str(getattr(settings, field_name, default) or default).strip()
+    _set_if_changed(settings, field_name, normalized)
+    return normalized
+
+
+def _validate_sha256_digest(value, message):
+    if str(value).lower().startswith("sha256:"):
+        digest = str(value).split(":", 1)[1].strip()
+        _raise_if(not re.fullmatch(r"[0-9a-fA-F]{64}", digest or ""), message)
+
+
+def _split_token_values(raw_value):
+    return [part.strip() for part in re.split(_COMMA_OR_WHITESPACE_RE, raw_value) if part.strip()]
+
+
+def _validate_uuid_value(value, message):
+    try:
+        UUID(value)
+    except ValueError as exc:
+        raise ValueError(message) from exc
+
+
+def _validate_tokenized_sha256_digests(token_raw, field_name, required_message):
+    tokens = _split_token_values(token_raw)
+    _require_nonempty(tokens, required_message)
+    for token in tokens:
+        _validate_sha256_digest(token, f"{field_name} sha256 digest must be 64 hex chars")
+    return tokens
+
+
+def _validate_initial_registration_token(settings):
+    initial_registration_token = str(getattr(settings, "INITIAL_REGISTRATION_TOKEN", "") or "").strip()
+    _validate_sha256_digest(
+        initial_registration_token,
+        "INITIAL_REGISTRATION_TOKEN sha256 digest must be 64 hex chars",
+    )
+
+
+def _validate_jwt_tenant_source(settings, auth_mode, is_production):
+    if auth_mode != "jwt" or not is_production:
+        return
+    tenant_claim = str(getattr(settings, "JWT_TENANT_CLAIM", "") or "").strip()
+    if not tenant_claim and not bool(getattr(settings, "TENANT_HEADER_TRUSTED", False)):
+        raise ValueError(
+            "AUTH_MODE=jwt in production requires a trusted tenant source: "
+            "set JWT_TENANT_CLAIM (recommended) or set TENANT_HEADER_TRUSTED=true "
+            "to explicitly trust the client/gateway-supplied tenant header"
+        )
+
+
+def _validate_jwt_member_auto_provision(settings, auth_mode):
+    if not bool(getattr(settings, "JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED", False)):
+        return
+    _raise_if(auth_mode != "jwt", "JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED requires AUTH_MODE=jwt")
+    claim = str(getattr(settings, "JWT_TENANT_CLAIM", "") or "").strip()
+    _require_nonempty(
+        claim,
+        "JWT_TENANT_CLAIM required when JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED=true",
+    )
+
+
+def _validate_jwt_remote_settings(settings):
+    issuer = str(getattr(settings, "JWT_ISSUER", "") or "").strip()
+    if issuer:
+        validate_jwt_remote_url(issuer, field_name="JWT_ISSUER")
+
+    jwks_urls_raw = str(getattr(settings, "JWT_JWKS_URLS", "") or "").strip()
+    if jwks_urls_raw:
+        for raw_url in [item.strip() for item in jwks_urls_raw.split(",") if item.strip()]:
+            validate_jwt_remote_url(raw_url, field_name="JWT_JWKS_URLS")
+
+
+def _validate_initial_admin_identity(email, username, password, password_file):
+    if not any((email, username, password, password_file)):
+        return False
+    if not email or not username:
+        raise ValueError(
+            "INITIAL_ADMIN bootstrap requires "
+            "INITIAL_ADMIN_EMAIL, INITIAL_ADMIN_USERNAME, and exactly one password source"
+        )
+    return True
+
+
+def _validate_initial_admin_password_sources(password, password_file):
+    password_sources = int(bool(password)) + int(bool(password_file))
+    if password_sources == 1:
+        return
+    if password and password_file:
+        raise ValueError("INITIAL_ADMIN_PASSWORD and INITIAL_ADMIN_PASSWORD_FILE are mutually exclusive")
+    raise ValueError(
+        "INITIAL_ADMIN bootstrap requires "
+        "INITIAL_ADMIN_EMAIL, INITIAL_ADMIN_USERNAME, and exactly one password source"
+    )
+
+
+def _validate_initial_admin_email(email):
+    try:
+        normalized_email = validate_email(email, check_deliverability=False).normalized.lower()
+    except EmailNotValidError as exc:
+        raise ValueError("INITIAL_ADMIN_EMAIL must be a valid email address") from exc
+    _raise_if(len(normalized_email) > 255, "INITIAL_ADMIN_EMAIL must be a valid email address")
+    return normalized_email
+
+
+def _validate_initial_admin_password(settings, password):
+    if not password:
+        return
+    min_len = int(getattr(settings, "PASSWORD_MIN_LENGTH", 8) or 8)
+    _raise_if(len(password) < min_len, f"INITIAL_ADMIN_PASSWORD must be at least {min_len} characters")
+    _raise_if(
+        len(password.encode("utf-8")) > 72,
+        "INITIAL_ADMIN_PASSWORD cannot be longer than 72 bytes for bcrypt",
+    )
+
+
+def _validate_scim_allowlist(settings):
+    allow_raw = str(getattr(settings, "SCIM_IP_ALLOWLIST_CIDRS", "") or "").strip()
+    if not allow_raw:
+        return
+    cidrs = _split_token_values(allow_raw)
+    _require_nonempty(cidrs, "SCIM_IP_ALLOWLIST_CIDRS must be a comma/space-separated list of CIDRs")
+    for cidr in cidrs:
+        try:
+            ipaddress.ip_network(cidr, strict=False)
+        except ValueError as exc:
+            raise ValueError(f"Invalid SCIM_IP_ALLOWLIST_CIDRS entry: {cidr}") from exc
+
+
+def _validate_object_storage_profile(label, profile):
+    enabled = bool(profile.get("enabled", False))
+    documents_enabled = bool(profile.get("documents_enabled", False))
+    _raise_if(documents_enabled and not enabled, f"{label}.documents_enabled requires {label}.enabled=true")
+    if not enabled:
+        return
+    for field_name in ("endpoint", "access_key", "secret_key", "bucket_name"):
+        _require_nonempty(
+            str(profile.get(field_name) or "").strip(),
+            f"{label}.{field_name} is required when {label}.enabled=true",
+        )
+
+
+def _validate_object_storage_region_profile(region, raw_profile, base_object_storage, object_storage_provider):
+    for boolean_field in ("enabled", "use_ssl", "documents_enabled"):
+        if boolean_field in raw_profile and not isinstance(raw_profile[boolean_field], bool):
+            raise ValueError(
+                f"OBJECT_STORAGE_REGION_PROFILES[{region!r}].{boolean_field} must be a JSON boolean"
+            )
+    merged_profile = dict(base_object_storage)
+    merged_profile.update(
+        {
+            key: value
+            for key, value in raw_profile.items()
+            if key in merged_profile and value not in (None, "")
+        }
+    )
+    merged_profile["provider"] = normalize_object_storage_provider_name(
+        raw_profile.get("provider") or object_storage_provider
+    )
+    _validate_object_storage_profile(f"OBJECT_STORAGE_REGION_PROFILES[{region!r}]", merged_profile)
+
 
 def validate_uvicorn_workers_and_distributed_limits(settings):
     is_production = is_production_env()
@@ -141,51 +352,17 @@ def validate_cors(settings):
 def validate_auth_mode_and_jwt_claims(settings):
     is_production = is_production_env()
     # Security: Auth mode guard
-    auth_mode = (getattr(settings, "AUTH_MODE", "jwt") or "jwt").lower()
-    if auth_mode not in ("jwt", "header"):
-        raise ValueError(f"Unsupported AUTH_MODE: {auth_mode}")
-    if auth_mode == "header" and is_production:
-        raise ValueError("AUTH_MODE=header is not allowed in production")
+    auth_mode = _normalize_lower_choice(getattr(settings, "AUTH_MODE", "jwt"), "jwt")
+    _raise_if(auth_mode not in ("jwt", "header"), f"Unsupported AUTH_MODE: {auth_mode}")
+    _raise_if(auth_mode == "header" and is_production, "AUTH_MODE=header is not allowed in production")
     if bool(getattr(settings, "LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED", False)):
-        if is_production:
-            raise ValueError("LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED is not allowed in production")
-        if auth_mode != "header":
-            raise ValueError("LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED requires AUTH_MODE=header")
+        _raise_if(is_production, "LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED is not allowed in production")
+        _raise_if(auth_mode != "header", "LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED requires AUTH_MODE=header")
 
-    initial_registration_token = str(getattr(settings, "INITIAL_REGISTRATION_TOKEN", "") or "").strip()
-    if initial_registration_token.lower().startswith("sha256:"):
-        digest = initial_registration_token.split(":", 1)[1].strip()
-        if not re.fullmatch(r"[0-9a-fA-F]{64}", digest or ""):
-            raise ValueError("INITIAL_REGISTRATION_TOKEN sha256 digest must be 64 hex chars")
-
-    # Security: tenant-source guard. Without a verified JWT tenant claim the tenant id comes
-    # from the client-controlled tenant header (cross-tenant spoofing of team-shared
-    # resources); fail closed in production unless the deployment explicitly trusts the header.
-    if auth_mode == "jwt" and is_production:
-        tenant_claim = str(getattr(settings, "JWT_TENANT_CLAIM", "") or "").strip()
-        if not tenant_claim and not bool(getattr(settings, "TENANT_HEADER_TRUSTED", False)):
-            raise ValueError(
-                "AUTH_MODE=jwt in production requires a trusted tenant source: "
-                "set JWT_TENANT_CLAIM (recommended) or set TENANT_HEADER_TRUSTED=true "
-                "to explicitly trust the client/gateway-supplied tenant header"
-            )
-
-    # Security: JWT tenant member auto-provision guard (enterprise).
-    if bool(getattr(settings, "JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED", False)):
-        if auth_mode != "jwt":
-            raise ValueError("JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED requires AUTH_MODE=jwt")
-        claim = str(getattr(settings, "JWT_TENANT_CLAIM", "") or "").strip()
-        if not claim:
-            raise ValueError("JWT_TENANT_CLAIM required when JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED=true")
-
-    issuer = str(getattr(settings, "JWT_ISSUER", "") or "").strip()
-    if issuer:
-        validate_jwt_remote_url(issuer, field_name="JWT_ISSUER")
-
-    jwks_urls_raw = str(getattr(settings, "JWT_JWKS_URLS", "") or "").strip()
-    if jwks_urls_raw:
-        for raw_url in [item.strip() for item in jwks_urls_raw.split(",") if item.strip()]:
-            validate_jwt_remote_url(raw_url, field_name="JWT_JWKS_URLS")
+    _validate_initial_registration_token(settings)
+    _validate_jwt_tenant_source(settings, auth_mode, is_production)
+    _validate_jwt_member_auto_provision(settings, auth_mode)
+    _validate_jwt_remote_settings(settings)
 
 
 def validate_initial_admin_bootstrap(settings):
@@ -194,39 +371,12 @@ def validate_initial_admin_bootstrap(settings):
     password = str(getattr(settings, "INITIAL_ADMIN_PASSWORD", "") or "")
     password_file = str(getattr(settings, "INITIAL_ADMIN_PASSWORD_FILE", "") or "").strip()
 
-    if not any((email, username, password, password_file)):
+    if not _validate_initial_admin_identity(email, username, password, password_file):
         return
-
-    if not email or not username:
-        raise ValueError(
-            "INITIAL_ADMIN bootstrap requires "
-            "INITIAL_ADMIN_EMAIL, INITIAL_ADMIN_USERNAME, and exactly one password source"
-        )
-
-    password_sources = int(bool(password)) + int(bool(password_file))
-    if password_sources != 1:
-        if password and password_file:
-            raise ValueError("INITIAL_ADMIN_PASSWORD and INITIAL_ADMIN_PASSWORD_FILE are mutually exclusive")
-        raise ValueError(
-            "INITIAL_ADMIN bootstrap requires "
-            "INITIAL_ADMIN_EMAIL, INITIAL_ADMIN_USERNAME, and exactly one password source"
-        )
-
-    try:
-        normalized_email = validate_email(email, check_deliverability=False).normalized.lower()
-    except EmailNotValidError as exc:
-        raise ValueError("INITIAL_ADMIN_EMAIL must be a valid email address") from exc
-    if len(normalized_email) > 255:
-        raise ValueError("INITIAL_ADMIN_EMAIL must be a valid email address")
-    if len(username) < 3 or len(username) > 64:
-        raise ValueError("INITIAL_ADMIN_USERNAME must be between 3 and 64 characters")
-    if password:
-        min_len = int(getattr(settings, "PASSWORD_MIN_LENGTH", 8) or 8)
-        if len(password) < min_len:
-            raise ValueError(f"INITIAL_ADMIN_PASSWORD must be at least {min_len} characters")
-        if len(password.encode("utf-8")) > 72:
-            raise ValueError("INITIAL_ADMIN_PASSWORD cannot be longer than 72 bytes for bcrypt")
-
+    _validate_initial_admin_password_sources(password, password_file)
+    normalized_email = _validate_initial_admin_email(email)
+    _require_int_between(len(username), 3, 64, "INITIAL_ADMIN_USERNAME must be between 3 and 64 characters")
+    _validate_initial_admin_password(settings, password)
     settings.INITIAL_ADMIN_EMAIL = normalized_email
     settings.INITIAL_ADMIN_USERNAME = username
     settings.INITIAL_ADMIN_PASSWORD_FILE = password_file
@@ -234,35 +384,18 @@ def validate_initial_admin_bootstrap(settings):
 
 def validate_scim(settings):
     # Security: SCIM provisioning auth guard (enterprise).
-    if bool(getattr(settings, "SCIM_ENABLED", False)):
-        token_raw = str(getattr(settings, "SCIM_BEARER_TOKEN", "") or "").strip()
-        tokens = [p.strip() for p in re.split(_COMMA_OR_WHITESPACE_RE, token_raw) if p.strip()]
-        if not tokens:
-            raise ValueError("SCIM_BEARER_TOKEN required when SCIM_ENABLED=true")
-        for tok in tokens:
-            if tok.lower().startswith("sha256:"):
-                digest = tok.split(":", 1)[1].strip()
-                if not re.fullmatch(r"[0-9a-fA-F]{64}", digest or ""):
-                    raise ValueError("SCIM_BEARER_TOKEN sha256 digest must be 64 hex chars")
-
-        tenant_raw = str(getattr(settings, "SCIM_TENANT_ID", "") or "").strip()
-        if not tenant_raw:
-            raise ValueError("SCIM_TENANT_ID required when SCIM_ENABLED=true")
-        try:
-            UUID(tenant_raw)
-        except ValueError as exc:
-            raise ValueError("SCIM_TENANT_ID must be a UUID") from exc
-
-        allow_raw = str(getattr(settings, "SCIM_IP_ALLOWLIST_CIDRS", "") or "").strip()
-        if allow_raw:
-            cidrs = [p.strip() for p in re.split(_COMMA_OR_WHITESPACE_RE, allow_raw) if p.strip()]
-            if not cidrs:
-                raise ValueError("SCIM_IP_ALLOWLIST_CIDRS must be a comma/space-separated list of CIDRs")
-            for cidr in cidrs:
-                try:
-                    ipaddress.ip_network(cidr, strict=False)
-                except ValueError as exc:
-                    raise ValueError(f"Invalid SCIM_IP_ALLOWLIST_CIDRS entry: {cidr}") from exc
+    if not bool(getattr(settings, "SCIM_ENABLED", False)):
+        return
+    token_raw = str(getattr(settings, "SCIM_BEARER_TOKEN", "") or "").strip()
+    _validate_tokenized_sha256_digests(
+        token_raw,
+        "SCIM_BEARER_TOKEN",
+        "SCIM_BEARER_TOKEN required when SCIM_ENABLED=true",
+    )
+    tenant_raw = str(getattr(settings, "SCIM_TENANT_ID", "") or "").strip()
+    _require_nonempty(tenant_raw, "SCIM_TENANT_ID required when SCIM_ENABLED=true")
+    _validate_uuid_value(tenant_raw, "SCIM_TENANT_ID must be a UUID")
+    _validate_scim_allowlist(settings)
 
 
 def validate_dify_resolution_mode(settings):
@@ -296,159 +429,225 @@ def validate_rag_runtime_warmup(settings):
 def validate_dify_external_knowledge(settings):
     is_production = is_production_env()
     # Security: Dify external knowledge adapter auth guard.
-    if bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", False)):
-        token_raw = str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", "") or "").strip()
-        tokens = [p.strip() for p in re.split(_COMMA_OR_WHITESPACE_RE, token_raw) if p.strip()]
-        if not tokens:
-            raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_API_KEYS required when DIFY_EXTERNAL_KNOWLEDGE_ENABLED=true")
-        for tok in tokens:
-            if tok.lower().startswith("sha256:"):
-                digest = tok.split(":", 1)[1].strip()
-                if not re.fullmatch(r"[0-9a-fA-F]{64}", digest or ""):
-                    raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_API_KEYS sha256 digest must be 64 hex chars")
+    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", False)):
+        return
+    token_raw = str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", "") or "").strip()
+    _validate_tokenized_sha256_digests(
+        token_raw,
+        "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS",
+        "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS required when DIFY_EXTERNAL_KNOWLEDGE_ENABLED=true",
+    )
 
-        tenant_raw = str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", "") or "").strip()
-        if is_production and not tenant_raw:
-            raise ValueError(
-                "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID is required when DIFY_EXTERNAL_KNOWLEDGE_ENABLED=true in production"
-            )
-        if tenant_raw:
-            try:
-                UUID(tenant_raw)
-            except ValueError as exc:
-                raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID must be a UUID") from exc
+    tenant_raw = str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", "") or "").strip()
+    _raise_if(
+        is_production and not tenant_raw,
+        "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID is required when DIFY_EXTERNAL_KNOWLEDGE_ENABLED=true in production",
+    )
+    if tenant_raw:
+        _validate_uuid_value(tenant_raw, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID must be a UUID")
 
-        top_k_max = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 5) or 0)
-        if top_k_max < 1 or top_k_max > 200:
-            raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX must be between 1 and 200")
-        internal_top_k_min = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN", 20) or 0)
-        if internal_top_k_min < 1 or internal_top_k_min > 200:
-            raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN must be between 1 and 200")
-        internal_top_k_multiplier = int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MULTIPLIER", 4) or 0
-        )
-        if internal_top_k_multiplier < 1 or internal_top_k_multiplier > 20:
-            raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MULTIPLIER must be between 1 and 20")
-        internal_top_k_max = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX", 50) or 0)
-        if internal_top_k_max < 1 or internal_top_k_max > 200:
-            raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX must be between 1 and 200")
-        if internal_top_k_max < top_k_max:
-            raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX must be >= DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX")
-        if internal_top_k_max < internal_top_k_min:
-            raise ValueError(
-                "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX must be >= DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN"
-            )
-        warmup_top_k = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TOP_K", 1) or 0)
-        if warmup_top_k < 1 or warmup_top_k > 200:
-            raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TOP_K must be between 1 and 200")
-        warmup_max_ids = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_MAX_KNOWLEDGE_IDS", 8) or 0)
-        if warmup_max_ids < 0 or warmup_max_ids > 500:
-            raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_WARMUP_MAX_KNOWLEDGE_IDS must be between 0 and 500")
-        warmup_timeout_sec = float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC", 60.0) or 0.0)
-        if warmup_timeout_sec < 1.0 or warmup_timeout_sec > 600.0:
-            raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC must be between 1 and 600")
-        warmup_start_delay_sec = float(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_START_DELAY_SEC", 1.0) or 0.0
-        )
-        if warmup_start_delay_sec < 0.0 or warmup_start_delay_sec > 60.0:
-            raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_WARMUP_START_DELAY_SEC must be between 0 and 60")
-        dify_overfetch_multiplier = int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MULTIPLIER", 1) or 0
-        )
-        if dify_overfetch_multiplier < 1 or dify_overfetch_multiplier > 20:
-            raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MULTIPLIER must be between 1 and 20")
-        dify_overfetch_max_k = int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MAX_K", 0) or 0
-        )
-        if dify_overfetch_max_k < 0 or dify_overfetch_max_k > 500:
-            raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MAX_K must be between 0 and 500")
-        primary_min_records = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_RECORDS", 1) or 0)
-        if primary_min_records < 1 or primary_min_records > top_k_max:
-            raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_RECORDS must be between 1 and TOP_K_MAX")
-        primary_min_top_score = float(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_TOP_SCORE", 0.45) or 0.0
-        )
-        if primary_min_top_score < 0.0 or primary_min_top_score > 2.0:
-            raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_TOP_SCORE must be between 0 and 2")
-        response_cache_ttl_sec = int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_TTL_SEC", 30) or 0
-        )
-        if response_cache_ttl_sec < 0:
-            raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_TTL_SEC must be >= 0")
-        response_cache_max_entries = int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_MAX_ENTRIES", 512) or 0
-        )
-        if response_cache_max_entries < 0:
-            raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_MAX_ENTRIES must be >= 0")
-        compact_min_top_score = float(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE", 0.7) or 0.0
-        )
-        if compact_min_top_score < 0.0 or compact_min_top_score > 2.0:
-            raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE must be between 0 and 2")
-        compact_relative_floor = float(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR", 0.65) or 0.0
-        )
-        if compact_relative_floor < 0.0 or compact_relative_floor > 1.0:
-            raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR must be between 0 and 1")
-        compact_min_records = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS", 1) or 0)
-        if compact_min_records < 1 or compact_min_records > top_k_max:
-            raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS must be between 1 and TOP_K_MAX")
-        fast_candidate_top_k_max = int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CANDIDATE_TOP_K_MAX", 3) or 0
-        )
-        if fast_candidate_top_k_max < 1 or fast_candidate_top_k_max > top_k_max:
-            raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_FAST_CANDIDATE_TOP_K_MAX must be between 1 and TOP_K_MAX")
-        fast_response_top_k_max = int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_RESPONSE_TOP_K_MAX", 2) or 0
-        )
-        if fast_response_top_k_max < 1 or fast_response_top_k_max > top_k_max:
-            raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_FAST_RESPONSE_TOP_K_MAX must be between 1 and TOP_K_MAX")
-        fast_content_max_chars = int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS", 1400) or 0
-        )
-        if fast_content_max_chars < 200 or fast_content_max_chars > 10000:
-            raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS must be between 200 and 10000")
-        fast_total_content_max_chars = int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_TOTAL_CONTENT_MAX_CHARS", 2200) or 0
-        )
-        if fast_total_content_max_chars < 200 or fast_total_content_max_chars > 50000:
-            raise ValueError(
-                "DIFY_EXTERNAL_KNOWLEDGE_FAST_TOTAL_CONTENT_MAX_CHARS must be between 200 and 50000"
-            )
-        fast_metadata_preflight_statement_timeout_ms = int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_STATEMENT_TIMEOUT_MS", 600) or 0
-        )
-        if fast_metadata_preflight_statement_timeout_ms < 0 or fast_metadata_preflight_statement_timeout_ms > 30000:
-            raise ValueError(
-                "DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_STATEMENT_TIMEOUT_MS must be between 0 and 30000"
-            )
-        fast_metadata_preflight_max_elapsed_ms = int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_MAX_ELAPSED_MS", 900) or 0
-        )
-        if fast_metadata_preflight_max_elapsed_ms < 0 or fast_metadata_preflight_max_elapsed_ms > 30000:
-            raise ValueError(
-                "DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_MAX_ELAPSED_MS must be between 0 and 30000"
-            )
-        metadata_anchor_total_budget_ms = int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_TOTAL_BUDGET_MS", 1500) or 0
-        )
-        if metadata_anchor_total_budget_ms < 0 or metadata_anchor_total_budget_ms > 30000:
-            raise ValueError(
-                "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_TOTAL_BUDGET_MS must be between 0 and 30000"
-            )
-        kg_injection_max_chunks = int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_MAX_CHUNKS", 3) or 0
-        )
-        if kg_injection_max_chunks < 0 or kg_injection_max_chunks > 50:
-            raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_MAX_CHUNKS must be between 0 and 50")
-        kg_boost_weight = float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_WEIGHT", 0.25) or 0.0)
-        if kg_boost_weight < 0.0 or kg_boost_weight > 1.0:
-            raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_WEIGHT must be between 0 and 1")
-        kg_boost_max_promoted = int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_MAX_PROMOTED", 2) or 0
-        )
-        if kg_boost_max_promoted < 0 or kg_boost_max_promoted > 20:
-            raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_MAX_PROMOTED must be between 0 and 20")
+    top_k_max = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 5) or 0)
+    _require_int_between(top_k_max, 1, 200, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX must be between 1 and 200")
+    internal_top_k_min = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN", 20) or 0)
+    _require_int_between(
+        internal_top_k_min,
+        1,
+        200,
+        "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN must be between 1 and 200",
+    )
+    internal_top_k_multiplier = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MULTIPLIER", 4) or 0)
+    _require_int_between(
+        internal_top_k_multiplier,
+        1,
+        20,
+        "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MULTIPLIER must be between 1 and 20",
+    )
+    internal_top_k_max = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX", 50) or 0)
+    _require_int_between(
+        internal_top_k_max,
+        1,
+        200,
+        "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX must be between 1 and 200",
+    )
+    _raise_if(
+        internal_top_k_max < top_k_max,
+        "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX must be >= DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX",
+    )
+    _raise_if(
+        internal_top_k_max < internal_top_k_min,
+        "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX must be >= DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN",
+    )
+    warmup_top_k = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TOP_K", 1) or 0)
+    _require_int_between(
+        warmup_top_k,
+        1,
+        200,
+        "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TOP_K must be between 1 and 200",
+    )
+    warmup_max_ids = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_MAX_KNOWLEDGE_IDS", 8) or 0)
+    _require_int_between(
+        warmup_max_ids,
+        0,
+        500,
+        "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_MAX_KNOWLEDGE_IDS must be between 0 and 500",
+    )
+    warmup_timeout_sec = float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC", 60.0) or 0.0)
+    _require_float_between(
+        warmup_timeout_sec,
+        1.0,
+        600.0,
+        "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC must be between 1 and 600",
+    )
+    warmup_start_delay_sec = float(
+        getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_START_DELAY_SEC", 1.0) or 0.0
+    )
+    _require_float_between(
+        warmup_start_delay_sec,
+        0.0,
+        60.0,
+        "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_START_DELAY_SEC must be between 0 and 60",
+    )
+    dify_overfetch_multiplier = int(
+        getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MULTIPLIER", 1) or 0
+    )
+    _require_int_between(
+        dify_overfetch_multiplier,
+        1,
+        20,
+        "DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MULTIPLIER must be between 1 and 20",
+    )
+    dify_overfetch_max_k = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MAX_K", 0) or 0)
+    _require_int_between(
+        dify_overfetch_max_k,
+        0,
+        500,
+        "DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MAX_K must be between 0 and 500",
+    )
+    primary_min_records = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_RECORDS", 1) or 0)
+    _require_int_between(
+        primary_min_records,
+        1,
+        top_k_max,
+        "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_RECORDS must be between 1 and TOP_K_MAX",
+    )
+    primary_min_top_score = float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_TOP_SCORE", 0.45) or 0.0)
+    _require_float_between(
+        primary_min_top_score,
+        0.0,
+        2.0,
+        "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_TOP_SCORE must be between 0 and 2",
+    )
+    response_cache_ttl_sec = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_TTL_SEC", 30) or 0)
+    _require_int_min(response_cache_ttl_sec, 0, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_TTL_SEC must be >= 0")
+    response_cache_max_entries = int(
+        getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_MAX_ENTRIES", 512) or 0
+    )
+    _require_int_min(
+        response_cache_max_entries,
+        0,
+        "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_MAX_ENTRIES must be >= 0",
+    )
+    compact_min_top_score = float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE", 0.7) or 0.0)
+    _require_float_between(
+        compact_min_top_score,
+        0.0,
+        2.0,
+        "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE must be between 0 and 2",
+    )
+    compact_relative_floor = float(
+        getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR", 0.65) or 0.0
+    )
+    _require_float_between(
+        compact_relative_floor,
+        0.0,
+        1.0,
+        "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR must be between 0 and 1",
+    )
+    compact_min_records = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS", 1) or 0)
+    _require_int_between(
+        compact_min_records,
+        1,
+        top_k_max,
+        "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS must be between 1 and TOP_K_MAX",
+    )
+    fast_candidate_top_k_max = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CANDIDATE_TOP_K_MAX", 3) or 0)
+    _require_int_between(
+        fast_candidate_top_k_max,
+        1,
+        top_k_max,
+        "DIFY_EXTERNAL_KNOWLEDGE_FAST_CANDIDATE_TOP_K_MAX must be between 1 and TOP_K_MAX",
+    )
+    fast_response_top_k_max = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_RESPONSE_TOP_K_MAX", 2) or 0)
+    _require_int_between(
+        fast_response_top_k_max,
+        1,
+        top_k_max,
+        "DIFY_EXTERNAL_KNOWLEDGE_FAST_RESPONSE_TOP_K_MAX must be between 1 and TOP_K_MAX",
+    )
+    fast_content_max_chars = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS", 1400) or 0)
+    _require_int_between(
+        fast_content_max_chars,
+        200,
+        10000,
+        "DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS must be between 200 and 10000",
+    )
+    fast_total_content_max_chars = int(
+        getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_TOTAL_CONTENT_MAX_CHARS", 2200) or 0
+    )
+    _require_int_between(
+        fast_total_content_max_chars,
+        200,
+        50000,
+        "DIFY_EXTERNAL_KNOWLEDGE_FAST_TOTAL_CONTENT_MAX_CHARS must be between 200 and 50000",
+    )
+    fast_metadata_preflight_statement_timeout_ms = int(
+        getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_STATEMENT_TIMEOUT_MS", 600) or 0
+    )
+    _require_int_between(
+        fast_metadata_preflight_statement_timeout_ms,
+        0,
+        30000,
+        "DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_STATEMENT_TIMEOUT_MS must be between 0 and 30000",
+    )
+    fast_metadata_preflight_max_elapsed_ms = int(
+        getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_MAX_ELAPSED_MS", 900) or 0
+    )
+    _require_int_between(
+        fast_metadata_preflight_max_elapsed_ms,
+        0,
+        30000,
+        "DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_MAX_ELAPSED_MS must be between 0 and 30000",
+    )
+    metadata_anchor_total_budget_ms = int(
+        getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_TOTAL_BUDGET_MS", 1500) or 0
+    )
+    _require_int_between(
+        metadata_anchor_total_budget_ms,
+        0,
+        30000,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_TOTAL_BUDGET_MS must be between 0 and 30000",
+    )
+    kg_injection_max_chunks = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_MAX_CHUNKS", 3) or 0)
+    _require_int_between(
+        kg_injection_max_chunks,
+        0,
+        50,
+        "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_MAX_CHUNKS must be between 0 and 50",
+    )
+    kg_boost_weight = float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_WEIGHT", 0.25) or 0.0)
+    _require_float_between(
+        kg_boost_weight,
+        0.0,
+        1.0,
+        "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_WEIGHT must be between 0 and 1",
+    )
+    kg_boost_max_promoted = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_MAX_PROMOTED", 2) or 0)
+    _require_int_between(
+        kg_boost_max_promoted,
+        0,
+        20,
+        "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_MAX_PROMOTED must be between 0 and 20",
+    )
 
 
 def validate_secret_key_and_jwt_key_source(settings):
@@ -548,522 +747,378 @@ def validate_object_storage(settings):
         "documents_enabled": bool(settings.OBJECT_STORAGE_DOCUMENTS_ENABLED),
     }
 
-    def validate_object_storage_profile(label: str, profile: Mapping[str, object]) -> None:
-        enabled = bool(profile.get("enabled", False))
-        documents_enabled = bool(profile.get("documents_enabled", False))
-        if documents_enabled and not enabled:
-            raise ValueError(f"{label}.documents_enabled requires {label}.enabled=true")
-        if not enabled:
-            return
-        for field_name in ("endpoint", "access_key", "secret_key", "bucket_name"):
-            if not str(profile.get(field_name) or "").strip():
-                raise ValueError(f"{label}.{field_name} is required when {label}.enabled=true")
-
-    validate_object_storage_profile("OBJECT_STORAGE", base_object_storage)
-    if (
-        data_region
-        and bool(base_object_storage["enabled"])
-        and bool(base_object_storage["documents_enabled"])
-        and data_region not in object_storage_profiles
-    ):
+    _validate_object_storage_profile("OBJECT_STORAGE", base_object_storage)
+    if data_region and bool(base_object_storage["enabled"]) and bool(base_object_storage["documents_enabled"]) and data_region not in object_storage_profiles:
         raise ValueError(
             "DATA_REGION must have a matching OBJECT_STORAGE_REGION_PROFILES entry "
             "when generic document object storage is enabled"
         )
     for region, raw_profile in object_storage_profiles.items():
-        for boolean_field in ("enabled", "use_ssl", "documents_enabled"):
-            if boolean_field in raw_profile and not isinstance(raw_profile[boolean_field], bool):
-                raise ValueError(
-                    f"OBJECT_STORAGE_REGION_PROFILES[{region!r}].{boolean_field} must be a JSON boolean"
-                )
-        merged_profile = dict(base_object_storage)
-        merged_profile.update(
-            {
-                key: value
-                for key, value in raw_profile.items()
-                if key in merged_profile and value not in (None, "")
-            }
-        )
-        merged_profile["provider"] = normalize_object_storage_provider_name(
-            raw_profile.get("provider") or object_storage_provider
-        )
-        validate_object_storage_profile(f"OBJECT_STORAGE_REGION_PROFILES[{region!r}]", merged_profile)
+        _validate_object_storage_region_profile(region, raw_profile, base_object_storage, object_storage_provider)
 
-    if is_production and bool(getattr(settings, "FAISS_ALLOW_DANGEROUS_DESERIALIZATION", False)):
-        raise ValueError("FAISS_ALLOW_DANGEROUS_DESERIALIZATION is not allowed in production")
+    _raise_if(
+        is_production and bool(getattr(settings, "FAISS_ALLOW_DANGEROUS_DESERIALIZATION", False)),
+        "FAISS_ALLOW_DANGEROUS_DESERIALIZATION is not allowed in production",
+    )
 
 
 def validate_chunk_llm_and_retrieval(settings):
     is_production = is_production_env()
     # Validate chunk settings
-    if settings.CHUNK_OVERLAP >= settings.CHUNK_SIZE:
-        raise ValueError(
-            f"CHUNK_OVERLAP ({settings.CHUNK_OVERLAP}) must be less than "
-            f"CHUNK_SIZE ({settings.CHUNK_SIZE})"
-        )
+    _raise_if(
+        settings.CHUNK_OVERLAP >= settings.CHUNK_SIZE,
+        f"CHUNK_OVERLAP ({settings.CHUNK_OVERLAP}) must be less than "
+        f"CHUNK_SIZE ({settings.CHUNK_SIZE})",
+    )
 
     # Validate LLM temperature
-    if not 0 <= settings.LLM_TEMPERATURE <= 2:
-        raise ValueError(
-            f"LLM_TEMPERATURE ({settings.LLM_TEMPERATURE}) must be between 0 and 2"
-        )
+    _raise_if(
+        not 0 <= settings.LLM_TEMPERATURE <= 2,
+        f"LLM_TEMPERATURE ({settings.LLM_TEMPERATURE}) must be between 0 and 2",
+    )
 
     # Validate retrieval settings
-    if settings.SIMILARITY_THRESHOLD < 0 or settings.SIMILARITY_THRESHOLD > 1:
-        raise ValueError(
-            f"SIMILARITY_THRESHOLD ({settings.SIMILARITY_THRESHOLD}) must be between 0 and 1"
-        )
+    _raise_if(
+        settings.SIMILARITY_THRESHOLD < 0 or settings.SIMILARITY_THRESHOLD > 1,
+        f"SIMILARITY_THRESHOLD ({settings.SIMILARITY_THRESHOLD}) must be between 0 and 1",
+    )
 
-    if int(getattr(settings, "RETRIEVAL_TOP_K", 0) or 0) < 1:
-        raise ValueError(f"RETRIEVAL_TOP_K ({getattr(settings, 'RETRIEVAL_TOP_K', None)}) must be >= 1")
-
-    if settings.RETRIEVAL_MMR_LAMBDA < 0 or settings.RETRIEVAL_MMR_LAMBDA > 1:
-        raise ValueError(
-            f"RETRIEVAL_MMR_LAMBDA ({settings.RETRIEVAL_MMR_LAMBDA}) must be between 0 and 1"
-        )
-    if settings.RETRIEVAL_DEFAULT_ALPHA < 0 or settings.RETRIEVAL_DEFAULT_ALPHA > 1:
-        raise ValueError(
-            f"RETRIEVAL_DEFAULT_ALPHA ({settings.RETRIEVAL_DEFAULT_ALPHA}) must be between 0 and 1"
-        )
-    if int(getattr(settings, "RETRIEVAL_RRF_K", 0) or 0) < 1:
-        raise ValueError(f"RETRIEVAL_RRF_K ({getattr(settings, 'RETRIEVAL_RRF_K', None)}) must be >= 1")
+    _require_int_min(
+        int(getattr(settings, "RETRIEVAL_TOP_K", 0) or 0),
+        1,
+        f"RETRIEVAL_TOP_K ({getattr(settings, 'RETRIEVAL_TOP_K', None)}) must be >= 1",
+    )
+    _raise_if(
+        settings.RETRIEVAL_MMR_LAMBDA < 0 or settings.RETRIEVAL_MMR_LAMBDA > 1,
+        f"RETRIEVAL_MMR_LAMBDA ({settings.RETRIEVAL_MMR_LAMBDA}) must be between 0 and 1",
+    )
+    _raise_if(
+        settings.RETRIEVAL_DEFAULT_ALPHA < 0 or settings.RETRIEVAL_DEFAULT_ALPHA > 1,
+        f"RETRIEVAL_DEFAULT_ALPHA ({settings.RETRIEVAL_DEFAULT_ALPHA}) must be between 0 and 1",
+    )
+    _require_int_min(
+        int(getattr(settings, "RETRIEVAL_RRF_K", 0) or 0),
+        1,
+        f"RETRIEVAL_RRF_K ({getattr(settings, 'RETRIEVAL_RRF_K', None)}) must be >= 1",
+    )
     dedup_thr = float(getattr(settings, "RETRIEVAL_DEDUP_JACCARD_THRESHOLD", 0.0) or 0.0)
-    if dedup_thr < 0.0 or dedup_thr > 1.0:
-        raise ValueError(f"RETRIEVAL_DEDUP_JACCARD_THRESHOLD ({dedup_thr}) must be between 0 and 1")
-    if int(getattr(settings, "RETRIEVAL_DEDUP_MAX_COMPARE", 0) or 0) < 0:
-        raise ValueError("RETRIEVAL_DEDUP_MAX_COMPARE must be >= 0")
-    if int(getattr(settings, "RETRIEVAL_NEAR_DEDUP_HAMMING_THRESHOLD", 0) or 0) < 0:
-        raise ValueError("RETRIEVAL_NEAR_DEDUP_HAMMING_THRESHOLD must be >= 0")
-    if int(getattr(settings, "RETRIEVAL_NEAR_DEDUP_MAX_COMPARE", 0) or 0) < 0:
-        raise ValueError("RETRIEVAL_NEAR_DEDUP_MAX_COMPARE must be >= 0")
-    if int(getattr(settings, "RETRIEVAL_MAX_CHUNKS_PER_DOC", 0) or 0) < 0:
-        raise ValueError("RETRIEVAL_MAX_CHUNKS_PER_DOC must be >= 0")
-    if int(getattr(settings, "RETRIEVAL_MAX_CHUNKS_PER_RECORD_IDENTITY", 0) or 0) < 0:
-        raise ValueError("RETRIEVAL_MAX_CHUNKS_PER_RECORD_IDENTITY must be >= 0")
+    _require_float_between(dedup_thr, 0.0, 1.0, f"RETRIEVAL_DEDUP_JACCARD_THRESHOLD ({dedup_thr}) must be between 0 and 1")
+    _require_int_min(int(getattr(settings, "RETRIEVAL_DEDUP_MAX_COMPARE", 0) or 0), 0, "RETRIEVAL_DEDUP_MAX_COMPARE must be >= 0")
+    _require_int_min(int(getattr(settings, "RETRIEVAL_NEAR_DEDUP_HAMMING_THRESHOLD", 0) or 0), 0, "RETRIEVAL_NEAR_DEDUP_HAMMING_THRESHOLD must be >= 0")
+    _require_int_min(int(getattr(settings, "RETRIEVAL_NEAR_DEDUP_MAX_COMPARE", 0) or 0), 0, "RETRIEVAL_NEAR_DEDUP_MAX_COMPARE must be >= 0")
+    _require_int_min(int(getattr(settings, "RETRIEVAL_MAX_CHUNKS_PER_DOC", 0) or 0), 0, "RETRIEVAL_MAX_CHUNKS_PER_DOC must be >= 0")
+    _require_int_min(
+        int(getattr(settings, "RETRIEVAL_MAX_CHUNKS_PER_RECORD_IDENTITY", 0) or 0),
+        0,
+        "RETRIEVAL_MAX_CHUNKS_PER_RECORD_IDENTITY must be >= 0",
+    )
     compact_min_top_score = float(getattr(settings, "RETRIEVAL_COMPACT_MIN_TOP_SCORE", 0.8) or 0.8)
-    if compact_min_top_score < 0.0 or compact_min_top_score > 2.0:
-        raise ValueError("RETRIEVAL_COMPACT_MIN_TOP_SCORE must be between 0 and 2")
+    _require_float_between(compact_min_top_score, 0.0, 2.0, "RETRIEVAL_COMPACT_MIN_TOP_SCORE must be between 0 and 2")
     compact_relative_floor = float(getattr(settings, "RETRIEVAL_COMPACT_RELATIVE_SCORE_FLOOR", 0.65) or 0.65)
-    if compact_relative_floor < 0.0 or compact_relative_floor > 1.0:
-        raise ValueError("RETRIEVAL_COMPACT_RELATIVE_SCORE_FLOOR must be between 0 and 1")
-    if int(getattr(settings, "RETRIEVAL_COMPACT_MIN_RECORDS", 1) or 1) < 1:
-        raise ValueError("RETRIEVAL_COMPACT_MIN_RECORDS must be >= 1")
-    if int(getattr(settings, "RETRIEVAL_MAX_CHUNKS_PER_PAGE", 0) or 0) < 0:
-        raise ValueError("RETRIEVAL_MAX_CHUNKS_PER_PAGE must be >= 0")
-    if int(getattr(settings, "RETRIEVAL_MIN_DISTINCT_DOCS", 0) or 0) < 0:
-        raise ValueError("RETRIEVAL_MIN_DISTINCT_DOCS must be >= 0")
+    _require_float_between(compact_relative_floor, 0.0, 1.0, "RETRIEVAL_COMPACT_RELATIVE_SCORE_FLOOR must be between 0 and 1")
+    _require_int_min(int(getattr(settings, "RETRIEVAL_COMPACT_MIN_RECORDS", 1) or 1), 1, "RETRIEVAL_COMPACT_MIN_RECORDS must be >= 1")
+    _require_int_min(int(getattr(settings, "RETRIEVAL_MAX_CHUNKS_PER_PAGE", 0) or 0), 0, "RETRIEVAL_MAX_CHUNKS_PER_PAGE must be >= 0")
+    _require_int_min(int(getattr(settings, "RETRIEVAL_MIN_DISTINCT_DOCS", 0) or 0), 0, "RETRIEVAL_MIN_DISTINCT_DOCS must be >= 0")
     field_title_boost = float(getattr(settings, "RETRIEVAL_FIELD_AWARE_TITLE_BOOST", 0.0) or 0.0)
     field_heading_boost = float(getattr(settings, "RETRIEVAL_FIELD_AWARE_HEADING_BOOST", 0.0) or 0.0)
     field_max_boost = float(getattr(settings, "RETRIEVAL_FIELD_AWARE_MAX_BOOST", 0.0) or 0.0)
-    if field_title_boost < 0.0:
-        raise ValueError("RETRIEVAL_FIELD_AWARE_TITLE_BOOST must be >= 0")
-    if field_heading_boost < 0.0:
-        raise ValueError("RETRIEVAL_FIELD_AWARE_HEADING_BOOST must be >= 0")
-    if field_max_boost < 0.0:
-        raise ValueError("RETRIEVAL_FIELD_AWARE_MAX_BOOST must be >= 0")
-    if field_title_boost > field_max_boost:
-        raise ValueError("RETRIEVAL_FIELD_AWARE_TITLE_BOOST must be <= RETRIEVAL_FIELD_AWARE_MAX_BOOST")
-    if field_heading_boost > field_max_boost:
-        raise ValueError("RETRIEVAL_FIELD_AWARE_HEADING_BOOST must be <= RETRIEVAL_FIELD_AWARE_MAX_BOOST")
+    _require_float_min(field_title_boost, 0.0, "RETRIEVAL_FIELD_AWARE_TITLE_BOOST must be >= 0")
+    _require_float_min(field_heading_boost, 0.0, "RETRIEVAL_FIELD_AWARE_HEADING_BOOST must be >= 0")
+    _require_float_min(field_max_boost, 0.0, "RETRIEVAL_FIELD_AWARE_MAX_BOOST must be >= 0")
+    _raise_if(field_title_boost > field_max_boost, "RETRIEVAL_FIELD_AWARE_TITLE_BOOST must be <= RETRIEVAL_FIELD_AWARE_MAX_BOOST")
+    _raise_if(field_heading_boost > field_max_boost, "RETRIEVAL_FIELD_AWARE_HEADING_BOOST must be <= RETRIEVAL_FIELD_AWARE_MAX_BOOST")
     chunk_type_match_boost = float(getattr(settings, "RETRIEVAL_CHUNK_TYPE_MATCH_BOOST", 0.0) or 0.0)
-    if chunk_type_match_boost < 0.0:
-        raise ValueError("RETRIEVAL_CHUNK_TYPE_MATCH_BOOST must be >= 0")
-    if int(settings.RETRIEVAL_QUERY_PARALLELISM or 0) < 1:
-        raise ValueError(
-            f"RETRIEVAL_QUERY_PARALLELISM ({settings.RETRIEVAL_QUERY_PARALLELISM}) must be >= 1"
-        )
-    if int(getattr(settings, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1) or 1) < 1:
-        raise ValueError("RETRIEVAL_OVERFETCH_MULTIPLIER must be >= 1")
+    _require_float_min(chunk_type_match_boost, 0.0, "RETRIEVAL_CHUNK_TYPE_MATCH_BOOST must be >= 0")
+    _require_int_min(
+        int(settings.RETRIEVAL_QUERY_PARALLELISM or 0),
+        1,
+        f"RETRIEVAL_QUERY_PARALLELISM ({settings.RETRIEVAL_QUERY_PARALLELISM}) must be >= 1",
+    )
+    _require_int_min(int(getattr(settings, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1) or 1), 1, "RETRIEVAL_OVERFETCH_MULTIPLIER must be >= 1")
     hierarchy_family_aggregation = str(
         getattr(settings, "HIERARCHY_RECALL_FAMILY_AGGREGATION", "combined") or "combined"
     ).strip().lower()
     valid_hierarchy_family_aggregation = {"frequency", "score", "combined"}
-    if hierarchy_family_aggregation not in valid_hierarchy_family_aggregation:
-        raise ValueError(
-            "HIERARCHY_RECALL_FAMILY_AGGREGATION must be one of: "
-            + ", ".join(sorted(valid_hierarchy_family_aggregation))
-        )
-    if settings.HIERARCHY_RECALL_FAMILY_AGGREGATION != hierarchy_family_aggregation:
-        settings.HIERARCHY_RECALL_FAMILY_AGGREGATION = hierarchy_family_aggregation
+    _raise_if(
+        hierarchy_family_aggregation not in valid_hierarchy_family_aggregation,
+        "HIERARCHY_RECALL_FAMILY_AGGREGATION must be one of: "
+        + ", ".join(sorted(valid_hierarchy_family_aggregation)),
+    )
+    _set_if_changed(settings, "HIERARCHY_RECALL_FAMILY_AGGREGATION", hierarchy_family_aggregation)
     hierarchy_parent_depth = int(getattr(settings, "HIERARCHY_RECALL_PARENT_DEPTH", 0) or 0)
-    if hierarchy_parent_depth < 0 or hierarchy_parent_depth > 8:
-        raise ValueError("HIERARCHY_RECALL_PARENT_DEPTH must be between 0 and 8")
+    _require_int_between(hierarchy_parent_depth, 0, 8, "HIERARCHY_RECALL_PARENT_DEPTH must be between 0 and 8")
     hierarchy_sibling_window = int(getattr(settings, "HIERARCHY_RECALL_SIBLING_WINDOW", 0) or 0)
-    if hierarchy_sibling_window < 0 or hierarchy_sibling_window > 16:
-        raise ValueError("HIERARCHY_RECALL_SIBLING_WINDOW must be between 0 and 16")
+    _require_int_between(hierarchy_sibling_window, 0, 16, "HIERARCHY_RECALL_SIBLING_WINDOW must be between 0 and 16")
     hierarchy_overfetch_factor = int(getattr(settings, "HIERARCHY_RECALL_OVERFETCH_FACTOR", 4) or 0)
-    if hierarchy_overfetch_factor < 1 or hierarchy_overfetch_factor > 32:
-        raise ValueError("HIERARCHY_RECALL_OVERFETCH_FACTOR must be between 1 and 32")
-    if int(getattr(settings, "RETRIEVAL_OVERFETCH_MAX_K", 0) or 0) < 0:
-        raise ValueError("RETRIEVAL_OVERFETCH_MAX_K must be >= 0")
+    _require_int_between(hierarchy_overfetch_factor, 1, 32, "HIERARCHY_RECALL_OVERFETCH_FACTOR must be between 1 and 32")
+    _require_int_min(int(getattr(settings, "RETRIEVAL_OVERFETCH_MAX_K", 0) or 0), 0, "RETRIEVAL_OVERFETCH_MAX_K must be >= 0")
     auth_boost = float(getattr(settings, "RETRIEVAL_GOVERNANCE_AUTHORITY_BOOST_MAX", 0.0) or 0.0)
-    if auth_boost < 0.0 or auth_boost > 1.0:
-        raise ValueError("RETRIEVAL_GOVERNANCE_AUTHORITY_BOOST_MAX must be between 0 and 1")
+    _require_float_between(auth_boost, 0.0, 1.0, "RETRIEVAL_GOVERNANCE_AUTHORITY_BOOST_MAX must be between 0 and 1")
     latest_boost = float(getattr(settings, "RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX", 0.0) or 0.0)
-    if latest_boost < 0.0 or latest_boost > 1.0:
-        raise ValueError("RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX must be between 0 and 1")
-    if int(getattr(settings, "RETRIEVAL_GOVERNANCE_LATEST_WINDOW_DAYS", 0) or 0) < 1:
-        raise ValueError("RETRIEVAL_GOVERNANCE_LATEST_WINDOW_DAYS must be >= 1")
-    if int(getattr(settings, "MILVUS_EXPR_MAX_DOC_IDS", 0) or 0) < 0:
-        raise ValueError("MILVUS_EXPR_MAX_DOC_IDS must be >= 0")
+    _require_float_between(latest_boost, 0.0, 1.0, "RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX must be between 0 and 1")
+    _require_int_min(int(getattr(settings, "RETRIEVAL_GOVERNANCE_LATEST_WINDOW_DAYS", 0) or 0), 1, "RETRIEVAL_GOVERNANCE_LATEST_WINDOW_DAYS must be >= 1")
+    _require_int_min(int(getattr(settings, "MILVUS_EXPR_MAX_DOC_IDS", 0) or 0), 0, "MILVUS_EXPR_MAX_DOC_IDS must be >= 0")
 
-    if int(getattr(settings, "BM25_CACHE_MAX_TENANTS", 0) or 0) < 0:
-        raise ValueError("BM25_CACHE_MAX_TENANTS must be >= 0")
-    if int(getattr(settings, "BM25_EAGER_UPSERT_MAX_CHUNKS", 0) or 0) < 0:
-        raise ValueError("BM25_EAGER_UPSERT_MAX_CHUNKS must be >= 0")
-    if int(getattr(settings, "RETRIEVAL_REBUILD_MAX_CHUNKS", 0) or 0) < 0:
-        raise ValueError("RETRIEVAL_REBUILD_MAX_CHUNKS must be >= 0")
-    if is_production and int(getattr(settings, "RETRIEVAL_REBUILD_MAX_CHUNKS", 0) or 0) <= 0:
-        raise ValueError("RETRIEVAL_REBUILD_MAX_CHUNKS must be > 0 in production")
-    if int(getattr(settings, "BM25_TOKENIZE_CJK_OOV_MAX_TERM_CHARS", 0) or 0) < 2:
-        raise ValueError("BM25_TOKENIZE_CJK_OOV_MAX_TERM_CHARS must be >= 2")
-    if int(getattr(settings, "BM25_TOKENIZE_CJK_OOV_MAX_EXTRA_TOKENS", 0) or 0) < 0:
-        raise ValueError("BM25_TOKENIZE_CJK_OOV_MAX_EXTRA_TOKENS must be >= 0")
+    _require_int_min(int(getattr(settings, "BM25_CACHE_MAX_TENANTS", 0) or 0), 0, "BM25_CACHE_MAX_TENANTS must be >= 0")
+    _require_int_min(int(getattr(settings, "BM25_EAGER_UPSERT_MAX_CHUNKS", 0) or 0), 0, "BM25_EAGER_UPSERT_MAX_CHUNKS must be >= 0")
+    rebuild_max_chunks = int(getattr(settings, "RETRIEVAL_REBUILD_MAX_CHUNKS", 0) or 0)
+    _require_int_min(rebuild_max_chunks, 0, "RETRIEVAL_REBUILD_MAX_CHUNKS must be >= 0")
+    _raise_if(is_production and rebuild_max_chunks <= 0, "RETRIEVAL_REBUILD_MAX_CHUNKS must be > 0 in production")
+    _require_int_min(int(getattr(settings, "BM25_TOKENIZE_CJK_OOV_MAX_TERM_CHARS", 0) or 0), 2, "BM25_TOKENIZE_CJK_OOV_MAX_TERM_CHARS must be >= 2")
+    _require_int_min(int(getattr(settings, "BM25_TOKENIZE_CJK_OOV_MAX_EXTRA_TOKENS", 0) or 0), 0, "BM25_TOKENIZE_CJK_OOV_MAX_EXTRA_TOKENS must be >= 0")
 
 
 def validate_embedding_and_migration(settings):
-    if int(getattr(settings, "EMBEDDING_CACHE_TTL_SEC", 0) or 0) < 0:
-        raise ValueError("EMBEDDING_CACHE_TTL_SEC must be >= 0")
+    _require_int_min(int(getattr(settings, "EMBEDDING_CACHE_TTL_SEC", 0) or 0), 0, "EMBEDDING_CACHE_TTL_SEC must be >= 0")
 
     emb_prefix = (getattr(settings, "EMBEDDING_CACHE_PREFIX", "") or "").strip()
-    if not emb_prefix:
-        raise ValueError("EMBEDDING_CACHE_PREFIX must be non-empty")
-    if any(ch.isspace() for ch in emb_prefix):
-        raise ValueError("EMBEDDING_CACHE_PREFIX must not contain whitespace")
-    if settings.EMBEDDING_CACHE_PREFIX != emb_prefix:
-        settings.EMBEDDING_CACHE_PREFIX = emb_prefix
+    _require_nonempty(emb_prefix, "EMBEDDING_CACHE_PREFIX must be non-empty")
+    _require_no_whitespace(emb_prefix, "EMBEDDING_CACHE_PREFIX must not contain whitespace")
+    _set_if_changed(settings, "EMBEDDING_CACHE_PREFIX", emb_prefix)
 
-    if float(getattr(settings, "EMBEDDING_API_TIMEOUT_SEC", 0.0) or 0.0) <= 0:
-        raise ValueError("EMBEDDING_API_TIMEOUT_SEC must be > 0")
-    if int(getattr(settings, "EMBEDDING_API_BATCH_SIZE", 0) or 0) < 1:
-        raise ValueError("EMBEDDING_API_BATCH_SIZE must be >= 1")
-    if int(getattr(settings, "EMBEDDING_API_MAX_CONCURRENCY", 0) or 0) < 1:
-        raise ValueError("EMBEDDING_API_MAX_CONCURRENCY must be >= 1")
-    if int(getattr(settings, "EMBEDDING_API_MAX_RETRIES", 0) or 0) < 0:
-        raise ValueError("EMBEDDING_API_MAX_RETRIES must be >= 0")
-    if float(getattr(settings, "EMBEDDING_API_RETRY_BACKOFF_SEC", 0.0) or 0.0) < 0:
-        raise ValueError("EMBEDDING_API_RETRY_BACKOFF_SEC must be >= 0")
-    if float(getattr(settings, "EMBEDDING_API_RETRY_JITTER_SEC", 0.0) or 0.0) < 0:
-        raise ValueError("EMBEDDING_API_RETRY_JITTER_SEC must be >= 0")
+    _require_float_positive(float(getattr(settings, "EMBEDDING_API_TIMEOUT_SEC", 0.0) or 0.0), "EMBEDDING_API_TIMEOUT_SEC must be > 0")
+    _require_int_min(int(getattr(settings, "EMBEDDING_API_BATCH_SIZE", 0) or 0), 1, "EMBEDDING_API_BATCH_SIZE must be >= 1")
+    _require_int_min(int(getattr(settings, "EMBEDDING_API_MAX_CONCURRENCY", 0) or 0), 1, "EMBEDDING_API_MAX_CONCURRENCY must be >= 1")
+    _require_int_min(int(getattr(settings, "EMBEDDING_API_MAX_RETRIES", 0) or 0), 0, "EMBEDDING_API_MAX_RETRIES must be >= 0")
+    _require_float_min(float(getattr(settings, "EMBEDDING_API_RETRY_BACKOFF_SEC", 0.0) or 0.0), 0.0, "EMBEDDING_API_RETRY_BACKOFF_SEC must be >= 0")
+    _require_float_min(float(getattr(settings, "EMBEDDING_API_RETRY_JITTER_SEC", 0.0) or 0.0), 0.0, "EMBEDDING_API_RETRY_JITTER_SEC must be >= 0")
 
     # Gap5: embedding blue-green migration / dual-write config validation.
     shadow_enabled = bool(getattr(settings, "EMBEDDING_SHADOW_ENABLED", False))
     if shadow_enabled:
-        if str(getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").strip().lower() != "milvus":
-            raise ValueError("EMBEDDING_SHADOW_ENABLED requires VECTOR_BACKEND=milvus")
+        _raise_if(
+            str(getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").strip().lower() != "milvus",
+            "EMBEDDING_SHADOW_ENABLED requires VECTOR_BACKEND=milvus",
+        )
 
         shadow_model = str(getattr(settings, "EMBEDDING_SHADOW_MODEL", "") or "").strip()
-        if not shadow_model:
-            raise ValueError("EMBEDDING_SHADOW_MODEL must be non-empty when EMBEDDING_SHADOW_ENABLED=true")
-        if settings.EMBEDDING_SHADOW_MODEL != shadow_model:
-            settings.EMBEDDING_SHADOW_MODEL = shadow_model
+        _require_nonempty(shadow_model, "EMBEDDING_SHADOW_MODEL must be non-empty when EMBEDDING_SHADOW_ENABLED=true")
+        _set_if_changed(settings, "EMBEDDING_SHADOW_MODEL", shadow_model)
 
         shadow_collection = str(getattr(settings, "MILVUS_SHADOW_COLLECTION_NAME", "") or "").strip()
-        if not shadow_collection:
-            raise ValueError(
-                "MILVUS_SHADOW_COLLECTION_NAME must be non-empty when EMBEDDING_SHADOW_ENABLED=true"
-            )
-        if any(ch.isspace() for ch in shadow_collection):
-            raise ValueError("MILVUS_SHADOW_COLLECTION_NAME must not contain whitespace")
+        _require_nonempty(shadow_collection, "MILVUS_SHADOW_COLLECTION_NAME must be non-empty when EMBEDDING_SHADOW_ENABLED=true")
+        _require_no_whitespace(shadow_collection, "MILVUS_SHADOW_COLLECTION_NAME must not contain whitespace")
         primary_collection = str(getattr(settings, "MILVUS_COLLECTION_NAME", "") or "").strip()
-        if primary_collection and primary_collection == shadow_collection:
-            raise ValueError("MILVUS_SHADOW_COLLECTION_NAME must differ from MILVUS_COLLECTION_NAME")
-        if settings.MILVUS_SHADOW_COLLECTION_NAME != shadow_collection:
-            settings.MILVUS_SHADOW_COLLECTION_NAME = shadow_collection
+        _raise_if(primary_collection and primary_collection == shadow_collection, "MILVUS_SHADOW_COLLECTION_NAME must differ from MILVUS_COLLECTION_NAME")
+        _set_if_changed(settings, "MILVUS_SHADOW_COLLECTION_NAME", shadow_collection)
 
         shadow_provider = str(getattr(settings, "EMBEDDING_SHADOW_PROVIDER", "") or "").strip()
-        if shadow_provider and any(ch.isspace() for ch in shadow_provider):
-            raise ValueError("EMBEDDING_SHADOW_PROVIDER must not contain whitespace")
-        if settings.EMBEDDING_SHADOW_PROVIDER != shadow_provider:
-            settings.EMBEDDING_SHADOW_PROVIDER = shadow_provider
+        if shadow_provider:
+            _require_no_whitespace(shadow_provider, "EMBEDDING_SHADOW_PROVIDER must not contain whitespace")
+        _set_if_changed(settings, "EMBEDDING_SHADOW_PROVIDER", shadow_provider)
 
         shadow_api_base = str(getattr(settings, "EMBEDDING_SHADOW_API_BASE", "") or "").strip()
-        if shadow_api_base and any(ch.isspace() for ch in shadow_api_base):
-            raise ValueError("EMBEDDING_SHADOW_API_BASE must not contain whitespace")
-        if settings.EMBEDDING_SHADOW_API_BASE != shadow_api_base:
-            settings.EMBEDDING_SHADOW_API_BASE = shadow_api_base
+        if shadow_api_base:
+            _require_no_whitespace(shadow_api_base, "EMBEDDING_SHADOW_API_BASE must not contain whitespace")
+        _set_if_changed(settings, "EMBEDDING_SHADOW_API_BASE", shadow_api_base)
 
         shadow_api_key = str(getattr(settings, "EMBEDDING_SHADOW_API_KEY", "") or "").strip()
-        if settings.EMBEDDING_SHADOW_API_KEY != shadow_api_key:
-            settings.EMBEDDING_SHADOW_API_KEY = shadow_api_key
+        _set_if_changed(settings, "EMBEDDING_SHADOW_API_KEY", shadow_api_key)
 
     prog_prefix = (getattr(settings, "EMBEDDING_MIGRATION_PROGRESS_REDIS_PREFIX", "") or "").strip()
-    if not prog_prefix:
-        raise ValueError("EMBEDDING_MIGRATION_PROGRESS_REDIS_PREFIX must be non-empty")
-    if any(ch.isspace() for ch in prog_prefix):
-        raise ValueError("EMBEDDING_MIGRATION_PROGRESS_REDIS_PREFIX must not contain whitespace")
-    if settings.EMBEDDING_MIGRATION_PROGRESS_REDIS_PREFIX != prog_prefix:
-        settings.EMBEDDING_MIGRATION_PROGRESS_REDIS_PREFIX = prog_prefix
-    if int(getattr(settings, "EMBEDDING_MIGRATION_PROGRESS_TTL_SEC", 0) or 0) < 0:
-        raise ValueError("EMBEDDING_MIGRATION_PROGRESS_TTL_SEC must be >= 0")
+    _require_nonempty(prog_prefix, "EMBEDDING_MIGRATION_PROGRESS_REDIS_PREFIX must be non-empty")
+    _require_no_whitespace(prog_prefix, "EMBEDDING_MIGRATION_PROGRESS_REDIS_PREFIX must not contain whitespace")
+    _set_if_changed(settings, "EMBEDDING_MIGRATION_PROGRESS_REDIS_PREFIX", prog_prefix)
+    _require_int_min(int(getattr(settings, "EMBEDDING_MIGRATION_PROGRESS_TTL_SEC", 0) or 0), 0, "EMBEDDING_MIGRATION_PROGRESS_TTL_SEC must be >= 0")
 
 
 def validate_chat_and_retrieval_caches(settings):
-    if int(getattr(settings, "CHAT_RESPONSE_CACHE_TTL_SEC", 0) or 0) < 0:
-        raise ValueError("CHAT_RESPONSE_CACHE_TTL_SEC must be >= 0")
-    if int(getattr(settings, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 0) or 0) < 0:
-        raise ValueError("CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES must be >= 0")
-    if float(getattr(settings, "CHAT_RESPONSE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC", 0.0) or 0.0) <= 0.0:
-        raise ValueError("CHAT_RESPONSE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC must be > 0")
+    _require_int_min(int(getattr(settings, "CHAT_RESPONSE_CACHE_TTL_SEC", 0) or 0), 0, "CHAT_RESPONSE_CACHE_TTL_SEC must be >= 0")
+    _require_int_min(int(getattr(settings, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 0) or 0), 0, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES must be >= 0")
+    _require_float_positive(
+        float(getattr(settings, "CHAT_RESPONSE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC", 0.0) or 0.0),
+        "CHAT_RESPONSE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC must be > 0",
+    )
 
-    if int(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_TTL_SEC", 0) or 0) < 0:
-        raise ValueError("RETRIEVAL_CANDIDATE_CACHE_TTL_SEC must be >= 0")
-    if float(getattr(settings, "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC", 0.0) or 0.0) <= 0.0:
-        raise ValueError("RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC must be > 0")
-    if int(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_MAX_VALUE_BYTES", 0) or 0) < 0:
-        raise ValueError("RETRIEVAL_CANDIDATE_CACHE_MAX_VALUE_BYTES must be >= 0")
+    _require_int_min(int(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_TTL_SEC", 0) or 0), 0, "RETRIEVAL_CANDIDATE_CACHE_TTL_SEC must be >= 0")
+    _require_float_positive(
+        float(getattr(settings, "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC", 0.0) or 0.0),
+        "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC must be > 0",
+    )
+    _require_int_min(int(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_MAX_VALUE_BYTES", 0) or 0), 0, "RETRIEVAL_CANDIDATE_CACHE_MAX_VALUE_BYTES must be >= 0")
 
     cand_prefix = (getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_PREFIX", "") or "").strip()
-    if not cand_prefix:
-        raise ValueError("RETRIEVAL_CANDIDATE_CACHE_PREFIX must be non-empty")
-    if any(ch.isspace() for ch in cand_prefix):
-        raise ValueError("RETRIEVAL_CANDIDATE_CACHE_PREFIX must not contain whitespace")
-    if settings.RETRIEVAL_CANDIDATE_CACHE_PREFIX != cand_prefix:
-        settings.RETRIEVAL_CANDIDATE_CACHE_PREFIX = cand_prefix
+    _require_nonempty(cand_prefix, "RETRIEVAL_CANDIDATE_CACHE_PREFIX must be non-empty")
+    _require_no_whitespace(cand_prefix, "RETRIEVAL_CANDIDATE_CACHE_PREFIX must not contain whitespace")
+    _set_if_changed(settings, "RETRIEVAL_CANDIDATE_CACHE_PREFIX", cand_prefix)
 
-    if int(getattr(settings, "SEMANTIC_CACHE_TTL_SEC", 0) or 0) < 0:
-        raise ValueError("SEMANTIC_CACHE_TTL_SEC must be >= 0")
-    if int(getattr(settings, "SEMANTIC_CACHE_MAX_VALUE_BYTES", 0) or 0) < 0:
-        raise ValueError("SEMANTIC_CACHE_MAX_VALUE_BYTES must be >= 0")
+    _require_int_min(int(getattr(settings, "SEMANTIC_CACHE_TTL_SEC", 0) or 0), 0, "SEMANTIC_CACHE_TTL_SEC must be >= 0")
+    _require_int_min(int(getattr(settings, "SEMANTIC_CACHE_MAX_VALUE_BYTES", 0) or 0), 0, "SEMANTIC_CACHE_MAX_VALUE_BYTES must be >= 0")
     sem_threshold = float(getattr(settings, "SEMANTIC_CACHE_SCORE_THRESHOLD", 0.0) or 0.0)
-    if sem_threshold < 0.0 or sem_threshold > 1.0:
-        raise ValueError("SEMANTIC_CACHE_SCORE_THRESHOLD must be between 0 and 1")
-    if float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC", 0.0) or 0.0) <= 0.0:
-        raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC must be > 0")
-    if int(getattr(settings, "RAG_VECTOR_SHARD_GLOBAL_MAX_CONCURRENCY", 0) or 0) < 0:
-        raise ValueError("RAG_VECTOR_SHARD_GLOBAL_MAX_CONCURRENCY must be >= 0")
-    if settings.SEMANTIC_CACHE_SCORE_THRESHOLD != sem_threshold:
-        settings.SEMANTIC_CACHE_SCORE_THRESHOLD = sem_threshold
-    if int(getattr(settings, "SEMANTIC_CACHE_SEARCH_TOP_K", 0) or 0) < 1:
-        raise ValueError("SEMANTIC_CACHE_SEARCH_TOP_K must be >= 1")
+    _require_float_between(sem_threshold, 0.0, 1.0, "SEMANTIC_CACHE_SCORE_THRESHOLD must be between 0 and 1")
+    _require_float_positive(
+        float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC", 0.0) or 0.0),
+        "DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC must be > 0",
+    )
+    _require_int_min(int(getattr(settings, "RAG_VECTOR_SHARD_GLOBAL_MAX_CONCURRENCY", 0) or 0), 0, "RAG_VECTOR_SHARD_GLOBAL_MAX_CONCURRENCY must be >= 0")
+    _set_if_changed(settings, "SEMANTIC_CACHE_SCORE_THRESHOLD", sem_threshold)
+    _require_int_min(int(getattr(settings, "SEMANTIC_CACHE_SEARCH_TOP_K", 0) or 0), 1, "SEMANTIC_CACHE_SEARCH_TOP_K must be >= 1")
 
     sem_prefix = (getattr(settings, "SEMANTIC_CACHE_REDIS_PREFIX", "") or "").strip()
-    if not sem_prefix:
-        raise ValueError("SEMANTIC_CACHE_REDIS_PREFIX must be non-empty")
-    if any(ch.isspace() for ch in sem_prefix):
-        raise ValueError("SEMANTIC_CACHE_REDIS_PREFIX must not contain whitespace")
-    if settings.SEMANTIC_CACHE_REDIS_PREFIX != sem_prefix:
-        settings.SEMANTIC_CACHE_REDIS_PREFIX = sem_prefix
+    _require_nonempty(sem_prefix, "SEMANTIC_CACHE_REDIS_PREFIX must be non-empty")
+    _require_no_whitespace(sem_prefix, "SEMANTIC_CACHE_REDIS_PREFIX must not contain whitespace")
+    _set_if_changed(settings, "SEMANTIC_CACHE_REDIS_PREFIX", sem_prefix)
 
     sem_collection = (getattr(settings, "SEMANTIC_CACHE_COLLECTION_NAME", "") or "").strip()
-    if not sem_collection:
-        raise ValueError("SEMANTIC_CACHE_COLLECTION_NAME must be non-empty")
-    if any(ch.isspace() for ch in sem_collection):
-        raise ValueError("SEMANTIC_CACHE_COLLECTION_NAME must not contain whitespace")
-    if settings.SEMANTIC_CACHE_COLLECTION_NAME != sem_collection:
-        settings.SEMANTIC_CACHE_COLLECTION_NAME = sem_collection
+    _require_nonempty(sem_collection, "SEMANTIC_CACHE_COLLECTION_NAME must be non-empty")
+    _require_no_whitespace(sem_collection, "SEMANTIC_CACHE_COLLECTION_NAME must not contain whitespace")
+    _set_if_changed(settings, "SEMANTIC_CACHE_COLLECTION_NAME", sem_collection)
 
-    if int(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_TTL_SEC", 0) or 0) < 0:
-        raise ValueError("EVIDENCE_POST_RERANK_CACHE_TTL_SEC must be >= 0")
-    if int(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_MAX_ENTRIES", 0) or 0) < 0:
-        raise ValueError("EVIDENCE_POST_RERANK_CACHE_MAX_ENTRIES must be >= 0")
+    _require_int_min(int(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_TTL_SEC", 0) or 0), 0, "EVIDENCE_POST_RERANK_CACHE_TTL_SEC must be >= 0")
+    _require_int_min(int(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_MAX_ENTRIES", 0) or 0), 0, "EVIDENCE_POST_RERANK_CACHE_MAX_ENTRIES must be >= 0")
     post_rerank_score_calibration_alpha = float(
         getattr(settings, "EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ALPHA", 0.0) or 0.0
     )
-    if post_rerank_score_calibration_alpha < 0.0 or post_rerank_score_calibration_alpha > 1.0:
-        raise ValueError("EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ALPHA must be between 0 and 1")
-    post_rerank_cache_backend = (
-        str(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_BACKEND", "memory") or "memory").strip().lower()
+    _require_float_between(
+        post_rerank_score_calibration_alpha,
+        0.0,
+        1.0,
+        "EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ALPHA must be between 0 and 1",
     )
-    if post_rerank_cache_backend not in {"memory", "redis"}:
-        raise ValueError("EVIDENCE_POST_RERANK_CACHE_BACKEND must be one of: memory, redis")
-    if settings.EVIDENCE_POST_RERANK_CACHE_BACKEND != post_rerank_cache_backend:
-        settings.EVIDENCE_POST_RERANK_CACHE_BACKEND = post_rerank_cache_backend
+    _normalize_choice_setting(
+        settings,
+        "EVIDENCE_POST_RERANK_CACHE_BACKEND",
+        "memory",
+        {"memory", "redis"},
+        "EVIDENCE_POST_RERANK_CACHE_BACKEND must be one of: memory, redis",
+    )
     post_rerank_cache_prefix = (getattr(settings, "EVIDENCE_POST_RERANK_CACHE_PREFIX", "") or "").strip()
-    if not post_rerank_cache_prefix:
-        raise ValueError("EVIDENCE_POST_RERANK_CACHE_PREFIX must be non-empty")
-    if any(ch.isspace() for ch in post_rerank_cache_prefix):
-        raise ValueError("EVIDENCE_POST_RERANK_CACHE_PREFIX must not contain whitespace")
-    if settings.EVIDENCE_POST_RERANK_CACHE_PREFIX != post_rerank_cache_prefix:
-        settings.EVIDENCE_POST_RERANK_CACHE_PREFIX = post_rerank_cache_prefix
+    _require_nonempty(post_rerank_cache_prefix, "EVIDENCE_POST_RERANK_CACHE_PREFIX must be non-empty")
+    _require_no_whitespace(post_rerank_cache_prefix, "EVIDENCE_POST_RERANK_CACHE_PREFIX must not contain whitespace")
+    _set_if_changed(settings, "EVIDENCE_POST_RERANK_CACHE_PREFIX", post_rerank_cache_prefix)
 
-    if int(getattr(settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 0) or 0) < 0:
-        raise ValueError("RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY must be >= 0")
-    if float(getattr(settings, "RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC", 0.0) or 0.0) < 0.0:
-        raise ValueError("RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC must be >= 0")
-    if int(getattr(settings, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY", 0) or 0) < 0:
-        raise ValueError("RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY must be >= 0")
+    _require_int_min(int(getattr(settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 0) or 0), 0, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY must be >= 0")
+    _require_float_min(float(getattr(settings, "RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC", 0.0) or 0.0), 0.0, "RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC must be >= 0")
+    _require_int_min(int(getattr(settings, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY", 0) or 0), 0, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY must be >= 0")
     adm_prefix = (getattr(settings, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX", "") or "").strip()
-    if not adm_prefix:
-        raise ValueError("RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX must be non-empty")
-    if any(ch.isspace() for ch in adm_prefix):
-        raise ValueError("RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX must not contain whitespace")
-    if settings.RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX != adm_prefix:
-        settings.RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX = adm_prefix
-    if int(getattr(settings, "RAG_KG_CHUNK_INJECTION_MAX_CHUNKS", 0) or 0) < 0:
-        raise ValueError("RAG_KG_CHUNK_INJECTION_MAX_CHUNKS must be >= 0")
+    _require_nonempty(adm_prefix, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX must be non-empty")
+    _require_no_whitespace(adm_prefix, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX must not contain whitespace")
+    _set_if_changed(settings, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX", adm_prefix)
+    _require_int_min(int(getattr(settings, "RAG_KG_CHUNK_INJECTION_MAX_CHUNKS", 0) or 0), 0, "RAG_KG_CHUNK_INJECTION_MAX_CHUNKS must be >= 0")
     kg_chunk_boost_weight = float(getattr(settings, "RAG_KG_CHUNK_BOOST_WEIGHT", 0.15) or 0.0)
-    if kg_chunk_boost_weight < 0.0 or kg_chunk_boost_weight > 1.0:
-        raise ValueError("RAG_KG_CHUNK_BOOST_WEIGHT must be between 0 and 1")
-    if settings.RAG_KG_CHUNK_BOOST_WEIGHT != kg_chunk_boost_weight:
-        settings.RAG_KG_CHUNK_BOOST_WEIGHT = kg_chunk_boost_weight
-    if int(getattr(settings, "RAG_KG_CHUNK_BOOST_MAX_PROMOTED", 0) or 0) < 0:
-        raise ValueError("RAG_KG_CHUNK_BOOST_MAX_PROMOTED must be >= 0")
+    _require_float_between(kg_chunk_boost_weight, 0.0, 1.0, "RAG_KG_CHUNK_BOOST_WEIGHT must be between 0 and 1")
+    _set_if_changed(settings, "RAG_KG_CHUNK_BOOST_WEIGHT", kg_chunk_boost_weight)
+    _require_int_min(int(getattr(settings, "RAG_KG_CHUNK_BOOST_MAX_PROMOTED", 0) or 0), 0, "RAG_KG_CHUNK_BOOST_MAX_PROMOTED must be >= 0")
 
 
 def validate_kg_search(settings):
-    if int(getattr(settings, "KG_SEARCH_CACHE_TTL_SEC", 0) or 0) < 0:
-        raise ValueError("KG_SEARCH_CACHE_TTL_SEC must be >= 0")
-    if int(getattr(settings, "KG_SEARCH_CACHE_MAX_ENTRIES", 0) or 0) < 0:
-        raise ValueError("KG_SEARCH_CACHE_MAX_ENTRIES must be >= 0")
+    _require_int_min(int(getattr(settings, "KG_SEARCH_CACHE_TTL_SEC", 0) or 0), 0, "KG_SEARCH_CACHE_TTL_SEC must be >= 0")
+    _require_int_min(int(getattr(settings, "KG_SEARCH_CACHE_MAX_ENTRIES", 0) or 0), 0, "KG_SEARCH_CACHE_MAX_ENTRIES must be >= 0")
     kg_dataset_scope_max_enum_docs = int(getattr(settings, "KG_SEARCH_DATASET_SCOPE_MAX_ENUM_DOCS", 0) or 0)
-    if kg_dataset_scope_max_enum_docs < 1 or kg_dataset_scope_max_enum_docs > 10_000:
-        raise ValueError("KG_SEARCH_DATASET_SCOPE_MAX_ENUM_DOCS must be between 1 and 10000")
+    _require_int_between(
+        kg_dataset_scope_max_enum_docs,
+        1,
+        10_000,
+        "KG_SEARCH_DATASET_SCOPE_MAX_ENUM_DOCS must be between 1 and 10000",
+    )
     kg_expand_budget_sec = float(getattr(settings, "KG_SEARCH_EXPAND_BUDGET_SEC", 0.0) or 0.0)
-    if kg_expand_budget_sec < 0.0:
-        raise ValueError("KG_SEARCH_EXPAND_BUDGET_SEC must be >= 0")
-    if settings.KG_SEARCH_EXPAND_BUDGET_SEC != kg_expand_budget_sec:
-        settings.KG_SEARCH_EXPAND_BUDGET_SEC = kg_expand_budget_sec
-    if int(getattr(settings, "KG_SEARCH_LATENCY_SLO_MS", 0) or 0) < 0:
-        raise ValueError("KG_SEARCH_LATENCY_SLO_MS must be >= 0")
+    _require_float_min(kg_expand_budget_sec, 0.0, "KG_SEARCH_EXPAND_BUDGET_SEC must be >= 0")
+    _set_if_changed(settings, "KG_SEARCH_EXPAND_BUDGET_SEC", kg_expand_budget_sec)
+    _require_int_min(int(getattr(settings, "KG_SEARCH_LATENCY_SLO_MS", 0) or 0), 0, "KG_SEARCH_LATENCY_SLO_MS must be >= 0")
     kg_quality_low = float(getattr(settings, "KG_QUALITY_LOW_CONFIDENCE_THRESHOLD", 0.30) or 0.30)
-    if not (0.0 <= kg_quality_low <= 1.0):
-        raise ValueError("KG_QUALITY_LOW_CONFIDENCE_THRESHOLD must be between 0 and 1")
-    if settings.KG_QUALITY_LOW_CONFIDENCE_THRESHOLD != kg_quality_low:
-        settings.KG_QUALITY_LOW_CONFIDENCE_THRESHOLD = kg_quality_low
-    if int(getattr(settings, "KG_QUALITY_RELATION_EDGES_LIMIT", 0) or 0) < 0:
-        raise ValueError("KG_QUALITY_RELATION_EDGES_LIMIT must be >= 0")
+    _require_float_between(kg_quality_low, 0.0, 1.0, "KG_QUALITY_LOW_CONFIDENCE_THRESHOLD must be between 0 and 1")
+    _set_if_changed(settings, "KG_QUALITY_LOW_CONFIDENCE_THRESHOLD", kg_quality_low)
+    _require_int_min(int(getattr(settings, "KG_QUALITY_RELATION_EDGES_LIMIT", 0) or 0), 0, "KG_QUALITY_RELATION_EDGES_LIMIT must be >= 0")
     kg_query_mode_default = str(getattr(settings, "KG_SEARCH_QUERY_MODE_DEFAULT", "auto") or "auto").strip().lower()
-    if kg_query_mode_default not in {"auto", "local", "global", "drift"}:
-        raise ValueError("KG_SEARCH_QUERY_MODE_DEFAULT must be one of: auto, local, global, drift")
-    if settings.KG_SEARCH_QUERY_MODE_DEFAULT != kg_query_mode_default:
-        settings.KG_SEARCH_QUERY_MODE_DEFAULT = kg_query_mode_default
-    if int(getattr(settings, "KG_SEARCH_QUERY_MODE_LOCAL_MAX_EVENTS", 0) or 0) < 1:
-        raise ValueError("KG_SEARCH_QUERY_MODE_LOCAL_MAX_EVENTS must be >= 1")
-    if int(getattr(settings, "KG_SEARCH_QUERY_MODE_GLOBAL_MIN_EVENTS", 0) or 0) < 1:
-        raise ValueError("KG_SEARCH_QUERY_MODE_GLOBAL_MIN_EVENTS must be >= 1")
-    if int(getattr(settings, "KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS", 0) or 0) < 1:
-        raise ValueError("KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS must be >= 1")
-    if int(getattr(settings, "KG_SEARCH_QUERY_MODE_DRIFT_MIN_EVENTS", 0) or 0) < 1:
-        raise ValueError("KG_SEARCH_QUERY_MODE_DRIFT_MIN_EVENTS must be >= 1")
+    _raise_if(kg_query_mode_default not in {"auto", "local", "global", "drift"}, "KG_SEARCH_QUERY_MODE_DEFAULT must be one of: auto, local, global, drift")
+    _set_if_changed(settings, "KG_SEARCH_QUERY_MODE_DEFAULT", kg_query_mode_default)
+    _require_int_min(int(getattr(settings, "KG_SEARCH_QUERY_MODE_LOCAL_MAX_EVENTS", 0) or 0), 1, "KG_SEARCH_QUERY_MODE_LOCAL_MAX_EVENTS must be >= 1")
+    _require_int_min(int(getattr(settings, "KG_SEARCH_QUERY_MODE_GLOBAL_MIN_EVENTS", 0) or 0), 1, "KG_SEARCH_QUERY_MODE_GLOBAL_MIN_EVENTS must be >= 1")
+    _require_int_min(int(getattr(settings, "KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS", 0) or 0), 1, "KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS must be >= 1")
+    _require_int_min(int(getattr(settings, "KG_SEARCH_QUERY_MODE_DRIFT_MIN_EVENTS", 0) or 0), 1, "KG_SEARCH_QUERY_MODE_DRIFT_MIN_EVENTS must be >= 1")
     local_entity_weight_bonus = float(getattr(settings, "KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS", 0.05) or 0.05)
-    if not (0.0 <= local_entity_weight_bonus <= 1.0):
-        raise ValueError("KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS must be between 0 and 1")
-    if settings.KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS != local_entity_weight_bonus:
-        settings.KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS = local_entity_weight_bonus
-    if int(getattr(settings, "KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK", 0) or 0) < 0:
-        raise ValueError("KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK must be >= 0")
-    if int(getattr(settings, "KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT", 0) or 0) < 0:
-        raise ValueError("KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT must be >= 0")
-    if int(getattr(settings, "KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT", 0) or 0) < 0:
-        raise ValueError("KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT must be >= 0")
-    if str(getattr(settings, "KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT_STRATEGY", "uniform") or "uniform").strip().lower() not in {"head", "uniform"}:
-        raise ValueError("KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT_STRATEGY must be one of: head, uniform")
-    if int(getattr(settings, "KG_EXTRACT_LONG_DOC_MIN_CHUNKS", 0) or 0) < 0:
-        raise ValueError("KG_EXTRACT_LONG_DOC_MIN_CHUNKS must be >= 0")
+    _require_float_between(local_entity_weight_bonus, 0.0, 1.0, "KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS must be between 0 and 1")
+    _set_if_changed(settings, "KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS", local_entity_weight_bonus)
+    _require_int_min(int(getattr(settings, "KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK", 0) or 0), 0, "KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK must be >= 0")
+    _require_int_min(int(getattr(settings, "KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT", 0) or 0), 0, "KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT must be >= 0")
+    _require_int_min(int(getattr(settings, "KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT", 0) or 0), 0, "KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT must be >= 0")
+    _raise_if(
+        str(getattr(settings, "KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT_STRATEGY", "uniform") or "uniform").strip().lower() not in {"head", "uniform"},
+        "KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT_STRATEGY must be one of: head, uniform",
+    )
+    _require_int_min(int(getattr(settings, "KG_EXTRACT_LONG_DOC_MIN_CHUNKS", 0) or 0), 0, "KG_EXTRACT_LONG_DOC_MIN_CHUNKS must be >= 0")
     kg_serving_min_score = float(getattr(settings, "KG_SEARCH_SERVING_MIN_SCORE", 0.0) or 0.0)
-    if not (0.0 <= kg_serving_min_score <= 1.0):
-        raise ValueError("KG_SEARCH_SERVING_MIN_SCORE must be between 0 and 1")
-    if settings.KG_SEARCH_SERVING_MIN_SCORE != kg_serving_min_score:
-        settings.KG_SEARCH_SERVING_MIN_SCORE = kg_serving_min_score
-    if int(getattr(settings, "KG_SEARCH_SERVING_CANDIDATE_MULTIPLIER", 0) or 0) < 1:
-        raise ValueError("KG_SEARCH_SERVING_CANDIDATE_MULTIPLIER must be >= 1")
+    _require_float_between(kg_serving_min_score, 0.0, 1.0, "KG_SEARCH_SERVING_MIN_SCORE must be between 0 and 1")
+    _set_if_changed(settings, "KG_SEARCH_SERVING_MIN_SCORE", kg_serving_min_score)
+    _require_int_min(int(getattr(settings, "KG_SEARCH_SERVING_CANDIDATE_MULTIPLIER", 0) or 0), 1, "KG_SEARCH_SERVING_CANDIDATE_MULTIPLIER must be >= 1")
 
 
 def validate_vector_write_and_table_catalog(settings):
-    if int(getattr(settings, "VECTOR_WRITE_BATCH_SIZE", 0) or 0) < 1:
-        raise ValueError("VECTOR_WRITE_BATCH_SIZE must be >= 1")
-    if int(getattr(settings, "VECTOR_WRITE_BATCH_MAX_CHARS", 0) or 0) < 0:
-        raise ValueError("VECTOR_WRITE_BATCH_MAX_CHARS must be >= 0")
+    _require_int_min(int(getattr(settings, "VECTOR_WRITE_BATCH_SIZE", 0) or 0), 1, "VECTOR_WRITE_BATCH_SIZE must be >= 1")
+    _require_int_min(int(getattr(settings, "VECTOR_WRITE_BATCH_MAX_CHARS", 0) or 0), 0, "VECTOR_WRITE_BATCH_MAX_CHARS must be >= 0")
 
-    if int(getattr(settings, "DB_CATALOG_ROW_SYNC_MAX_TABLES", 0) or 0) < 1:
-        raise ValueError("DB_CATALOG_ROW_SYNC_MAX_TABLES must be >= 1")
-    if int(getattr(settings, "DB_CATALOG_ROW_SYNC_MAX_ROWS_PER_TABLE", 0) or 0) < 1:
-        raise ValueError("DB_CATALOG_ROW_SYNC_MAX_ROWS_PER_TABLE must be >= 1")
-    if int(getattr(settings, "DB_CATALOG_ROW_SYNC_MAX_COLS", 0) or 0) < 1:
-        raise ValueError("DB_CATALOG_ROW_SYNC_MAX_COLS must be >= 1")
-    if int(getattr(settings, "TABLE_QUERY_MAX_JOIN_TABLES", 0) or 0) < 1:
-        raise ValueError("TABLE_QUERY_MAX_JOIN_TABLES must be >= 1")
-    if int(getattr(settings, "TABLE_TAG_PLAN_CANDIDATES_TOP_N", 0) or 0) < 1:
-        raise ValueError("TABLE_TAG_PLAN_CANDIDATES_TOP_N must be >= 1")
+    _require_int_min(int(getattr(settings, "DB_CATALOG_ROW_SYNC_MAX_TABLES", 0) or 0), 1, "DB_CATALOG_ROW_SYNC_MAX_TABLES must be >= 1")
+    _require_int_min(int(getattr(settings, "DB_CATALOG_ROW_SYNC_MAX_ROWS_PER_TABLE", 0) or 0), 1, "DB_CATALOG_ROW_SYNC_MAX_ROWS_PER_TABLE must be >= 1")
+    _require_int_min(int(getattr(settings, "DB_CATALOG_ROW_SYNC_MAX_COLS", 0) or 0), 1, "DB_CATALOG_ROW_SYNC_MAX_COLS must be >= 1")
+    _require_int_min(int(getattr(settings, "TABLE_QUERY_MAX_JOIN_TABLES", 0) or 0), 1, "TABLE_QUERY_MAX_JOIN_TABLES must be >= 1")
+    _require_int_min(int(getattr(settings, "TABLE_TAG_PLAN_CANDIDATES_TOP_N", 0) or 0), 1, "TABLE_TAG_PLAN_CANDIDATES_TOP_N must be >= 1")
     tag_ambiguity_gap = float(getattr(settings, "TABLE_TAG_AMBIGUITY_SCORE_GAP", 0.03) or 0.03)
-    if not (0.0 <= tag_ambiguity_gap <= 1.0):
-        raise ValueError("TABLE_TAG_AMBIGUITY_SCORE_GAP must be between 0 and 1")
-    if settings.TABLE_TAG_AMBIGUITY_SCORE_GAP != tag_ambiguity_gap:
-        settings.TABLE_TAG_AMBIGUITY_SCORE_GAP = tag_ambiguity_gap
+    _require_float_between(tag_ambiguity_gap, 0.0, 1.0, "TABLE_TAG_AMBIGUITY_SCORE_GAP must be between 0 and 1")
+    _set_if_changed(settings, "TABLE_TAG_AMBIGUITY_SCORE_GAP", tag_ambiguity_gap)
     tag_cost_fanout_weight = float(getattr(settings, "TABLE_TAG_COST_FANOUT_PENALTY_WEIGHT", 0.08) or 0.08)
-    if not (0.0 <= tag_cost_fanout_weight <= 1.0):
-        raise ValueError("TABLE_TAG_COST_FANOUT_PENALTY_WEIGHT must be between 0 and 1")
-    if settings.TABLE_TAG_COST_FANOUT_PENALTY_WEIGHT != tag_cost_fanout_weight:
-        settings.TABLE_TAG_COST_FANOUT_PENALTY_WEIGHT = tag_cost_fanout_weight
+    _require_float_between(tag_cost_fanout_weight, 0.0, 1.0, "TABLE_TAG_COST_FANOUT_PENALTY_WEIGHT must be between 0 and 1")
+    _set_if_changed(settings, "TABLE_TAG_COST_FANOUT_PENALTY_WEIGHT", tag_cost_fanout_weight)
     tag_cost_selectivity_weight = float(
         getattr(settings, "TABLE_TAG_COST_SELECTIVITY_PENALTY_WEIGHT", 0.12) or 0.12
     )
-    if not (0.0 <= tag_cost_selectivity_weight <= 1.0):
-        raise ValueError("TABLE_TAG_COST_SELECTIVITY_PENALTY_WEIGHT must be between 0 and 1")
-    if settings.TABLE_TAG_COST_SELECTIVITY_PENALTY_WEIGHT != tag_cost_selectivity_weight:
-        settings.TABLE_TAG_COST_SELECTIVITY_PENALTY_WEIGHT = tag_cost_selectivity_weight
+    _require_float_between(tag_cost_selectivity_weight, 0.0, 1.0, "TABLE_TAG_COST_SELECTIVITY_PENALTY_WEIGHT must be between 0 and 1")
+    _set_if_changed(settings, "TABLE_TAG_COST_SELECTIVITY_PENALTY_WEIGHT", tag_cost_selectivity_weight)
     tag_fanout_ratio_alert = float(getattr(settings, "TABLE_TAG_COST_FANOUT_RATIO_ALERT", 20.0) or 20.0)
-    if tag_fanout_ratio_alert < 1.0:
-        raise ValueError("TABLE_TAG_COST_FANOUT_RATIO_ALERT must be >= 1")
-    if settings.TABLE_TAG_COST_FANOUT_RATIO_ALERT != tag_fanout_ratio_alert:
-        settings.TABLE_TAG_COST_FANOUT_RATIO_ALERT = tag_fanout_ratio_alert
+    _require_float_min(tag_fanout_ratio_alert, 1.0, "TABLE_TAG_COST_FANOUT_RATIO_ALERT must be >= 1")
+    _set_if_changed(settings, "TABLE_TAG_COST_FANOUT_RATIO_ALERT", tag_fanout_ratio_alert)
     tag_selectivity_min = float(getattr(settings, "TABLE_TAG_COST_SELECTIVITY_MIN", 0.2) or 0.2)
-    if not (0.0 <= tag_selectivity_min <= 1.0):
-        raise ValueError("TABLE_TAG_COST_SELECTIVITY_MIN must be between 0 and 1")
-    if settings.TABLE_TAG_COST_SELECTIVITY_MIN != tag_selectivity_min:
-        settings.TABLE_TAG_COST_SELECTIVITY_MIN = tag_selectivity_min
+    _require_float_between(tag_selectivity_min, 0.0, 1.0, "TABLE_TAG_COST_SELECTIVITY_MIN must be between 0 and 1")
+    _set_if_changed(settings, "TABLE_TAG_COST_SELECTIVITY_MIN", tag_selectivity_min)
     tag_low_conf = float(getattr(settings, "TABLE_TAG_PLAN_LOW_CONFIDENCE_THRESHOLD", 0.55) or 0.55)
-    if not (0.0 <= tag_low_conf <= 1.0):
-        raise ValueError("TABLE_TAG_PLAN_LOW_CONFIDENCE_THRESHOLD must be between 0 and 1")
-    if settings.TABLE_TAG_PLAN_LOW_CONFIDENCE_THRESHOLD != tag_low_conf:
-        settings.TABLE_TAG_PLAN_LOW_CONFIDENCE_THRESHOLD = tag_low_conf
-    if int(getattr(settings, "RETRIEVAL_MUST_RECALL_AUTO_EXPECTED_SOURCE_KEYS_MAX", 0) or 0) < 1:
-        raise ValueError("RETRIEVAL_MUST_RECALL_AUTO_EXPECTED_SOURCE_KEYS_MAX must be >= 1")
+    _require_float_between(tag_low_conf, 0.0, 1.0, "TABLE_TAG_PLAN_LOW_CONFIDENCE_THRESHOLD must be between 0 and 1")
+    _set_if_changed(settings, "TABLE_TAG_PLAN_LOW_CONFIDENCE_THRESHOLD", tag_low_conf)
+    _require_int_min(int(getattr(settings, "RETRIEVAL_MUST_RECALL_AUTO_EXPECTED_SOURCE_KEYS_MAX", 0) or 0), 1, "RETRIEVAL_MUST_RECALL_AUTO_EXPECTED_SOURCE_KEYS_MAX must be >= 1")
 
 
 def validate_evidence_governance_and_quotas(settings):
     signing_key_id = str(getattr(settings, "EVIDENCE_CAPSULE_SIGNING_KEY_ID", "default") or "default").strip()
-    if not signing_key_id:
-        raise ValueError("EVIDENCE_CAPSULE_SIGNING_KEY_ID must be non-empty")
-    if any(ch.isspace() for ch in signing_key_id):
-        raise ValueError("EVIDENCE_CAPSULE_SIGNING_KEY_ID must not contain whitespace")
-    if settings.EVIDENCE_CAPSULE_SIGNING_KEY_ID != signing_key_id:
-        settings.EVIDENCE_CAPSULE_SIGNING_KEY_ID = signing_key_id
+    _require_nonempty(signing_key_id, "EVIDENCE_CAPSULE_SIGNING_KEY_ID must be non-empty")
+    _require_no_whitespace(signing_key_id, "EVIDENCE_CAPSULE_SIGNING_KEY_ID must not contain whitespace")
+    _set_if_changed(settings, "EVIDENCE_CAPSULE_SIGNING_KEY_ID", signing_key_id)
 
     if bool(getattr(settings, "EVIDENCE_CAPSULE_SIGNING_ENABLED", False)):
         signing_secret = str(getattr(settings, "EVIDENCE_CAPSULE_SIGNING_SECRET", "") or "").strip()
-        if not signing_secret:
-            raise ValueError("EVIDENCE_CAPSULE_SIGNING_SECRET must be non-empty when signing is enabled")
+        _require_nonempty(signing_secret, "EVIDENCE_CAPSULE_SIGNING_SECRET must be non-empty when signing is enabled")
 
-    index_strictness = str(getattr(settings, "INDEX_CONSISTENCY_STRICTNESS", "off") or "off").strip().lower()
-    valid_index_strictness = {"off", "warn", "strict"}
-    if index_strictness not in valid_index_strictness:
-        raise ValueError(
-            "INDEX_CONSISTENCY_STRICTNESS must be one of: "
-            + ", ".join(sorted(valid_index_strictness))
-        )
-    if settings.INDEX_CONSISTENCY_STRICTNESS != index_strictness:
-        settings.INDEX_CONSISTENCY_STRICTNESS = index_strictness
+    index_strictness = _normalize_choice_setting(
+        settings,
+        "INDEX_CONSISTENCY_STRICTNESS",
+        "off",
+        {"off", "warn", "strict"},
+        "INDEX_CONSISTENCY_STRICTNESS must be one of: off, strict, warn",
+    )
+    if index_strictness == "warn":
+        _set_if_changed(settings, "INDEX_CONSISTENCY_STRICTNESS", index_strictness)
 
-    if int(getattr(settings, "CHAT_ASSISTANT_TOKEN_QUOTA_LIMIT", 0) or 0) < 0:
-        raise ValueError("CHAT_ASSISTANT_TOKEN_QUOTA_LIMIT must be >= 0")
-    if int(getattr(settings, "CHAT_ASSISTANT_TOKEN_QUOTA_WINDOW_HOURS", 0) or 0) <= 0:
-        raise ValueError("CHAT_ASSISTANT_TOKEN_QUOTA_WINDOW_HOURS must be > 0")
-    quota_mode = str(getattr(settings, "CHAT_ASSISTANT_TOKEN_QUOTA_MODE", "block") or "block").lower()
-    if quota_mode not in {"block", "warn"}:
-        raise ValueError("CHAT_ASSISTANT_TOKEN_QUOTA_MODE must be one of: block, warn")
-    if settings.CHAT_ASSISTANT_TOKEN_QUOTA_MODE != quota_mode:
-        settings.CHAT_ASSISTANT_TOKEN_QUOTA_MODE = quota_mode
+    _require_int_min(int(getattr(settings, "CHAT_ASSISTANT_TOKEN_QUOTA_LIMIT", 0) or 0), 0, "CHAT_ASSISTANT_TOKEN_QUOTA_LIMIT must be >= 0")
+    _require_int_min(int(getattr(settings, "CHAT_ASSISTANT_TOKEN_QUOTA_WINDOW_HOURS", 0) or 0), 1, "CHAT_ASSISTANT_TOKEN_QUOTA_WINDOW_HOURS must be > 0")
+    _normalize_choice_setting(
+        settings,
+        "CHAT_ASSISTANT_TOKEN_QUOTA_MODE",
+        "block",
+        {"block", "warn"},
+        "CHAT_ASSISTANT_TOKEN_QUOTA_MODE must be one of: block, warn",
+    )
 
-    if int(getattr(settings, "TENANT_DOC_QUOTA_LIMIT", 0) or 0) < 0:
-        raise ValueError("TENANT_DOC_QUOTA_LIMIT must be >= 0")
-    if int(getattr(settings, "TENANT_STORAGE_QUOTA_LIMIT_BYTES", 0) or 0) < 0:
-        raise ValueError("TENANT_STORAGE_QUOTA_LIMIT_BYTES must be >= 0")
-    if int(getattr(settings, "TENANT_EMBED_CHAR_QUOTA_LIMIT", 0) or 0) < 0:
-        raise ValueError("TENANT_EMBED_CHAR_QUOTA_LIMIT must be >= 0")
-    if int(getattr(settings, "TENANT_EMBED_CHAR_QUOTA_WINDOW_HOURS", 0) or 0) <= 0:
-        raise ValueError("TENANT_EMBED_CHAR_QUOTA_WINDOW_HOURS must be > 0")
-    embed_quota_mode = str(getattr(settings, "TENANT_EMBED_CHAR_QUOTA_MODE", "block") or "block").lower()
-    if embed_quota_mode not in {"block", "warn"}:
-        raise ValueError("TENANT_EMBED_CHAR_QUOTA_MODE must be one of: block, warn")
-    if settings.TENANT_EMBED_CHAR_QUOTA_MODE != embed_quota_mode:
-        settings.TENANT_EMBED_CHAR_QUOTA_MODE = embed_quota_mode
+    _require_int_min(int(getattr(settings, "TENANT_DOC_QUOTA_LIMIT", 0) or 0), 0, "TENANT_DOC_QUOTA_LIMIT must be >= 0")
+    _require_int_min(int(getattr(settings, "TENANT_STORAGE_QUOTA_LIMIT_BYTES", 0) or 0), 0, "TENANT_STORAGE_QUOTA_LIMIT_BYTES must be >= 0")
+    _require_int_min(int(getattr(settings, "TENANT_EMBED_CHAR_QUOTA_LIMIT", 0) or 0), 0, "TENANT_EMBED_CHAR_QUOTA_LIMIT must be >= 0")
+    _require_int_min(int(getattr(settings, "TENANT_EMBED_CHAR_QUOTA_WINDOW_HOURS", 0) or 0), 1, "TENANT_EMBED_CHAR_QUOTA_WINDOW_HOURS must be > 0")
+    _normalize_choice_setting(
+        settings,
+        "TENANT_EMBED_CHAR_QUOTA_MODE",
+        "block",
+        {"block", "warn"},
+        "TENANT_EMBED_CHAR_QUOTA_MODE must be one of: block, warn",
+    )
 
-    if int(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_LOOKBACK_MESSAGES", 0) or 0) <= 0:
-        raise ValueError("PERSISTENT_SUMMARY_MEMORY_LOOKBACK_MESSAGES must be > 0")
-    if int(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_MAX_SUMMARY_TOKENS", 0) or 0) <= 0:
-        raise ValueError("PERSISTENT_SUMMARY_MEMORY_MAX_SUMMARY_TOKENS must be > 0")
+    _require_int_min(int(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_LOOKBACK_MESSAGES", 0) or 0), 1, "PERSISTENT_SUMMARY_MEMORY_LOOKBACK_MESSAGES must be > 0")
+    _require_int_min(int(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_MAX_SUMMARY_TOKENS", 0) or 0), 1, "PERSISTENT_SUMMARY_MEMORY_MAX_SUMMARY_TOKENS must be > 0")
 
 
 def validate_workflow_and_retrieval_profiles(settings):
@@ -1156,96 +1211,97 @@ def validate_claim_verifier(settings):
 
 def validate_retrieval_fallback_modes(settings):
     valid_retrieval_modes = {"hybrid", "vector", "keyword", "mmr"}
-    fallback_mode = str(getattr(settings, "RETRIEVAL_HARD_FALLBACK_MODE", "keyword") or "keyword").strip().lower()
-    if fallback_mode not in valid_retrieval_modes:
-        raise ValueError(
-            f"RETRIEVAL_HARD_FALLBACK_MODE ({fallback_mode}) must be one of {valid_retrieval_modes}"
-        )
-    if settings.RETRIEVAL_HARD_FALLBACK_MODE != fallback_mode:
-        settings.RETRIEVAL_HARD_FALLBACK_MODE = fallback_mode
-    if int(getattr(settings, "RETRIEVAL_HARD_FALLBACK_TOP_K", 0) or 0) < 1:
-        raise ValueError("RETRIEVAL_HARD_FALLBACK_TOP_K must be >= 1")
+    fallback_mode = _normalize_lower_choice(getattr(settings, "RETRIEVAL_HARD_FALLBACK_MODE", "keyword"), "keyword")
+    _raise_if(
+        fallback_mode not in valid_retrieval_modes,
+        f"RETRIEVAL_HARD_FALLBACK_MODE ({fallback_mode}) must be one of {valid_retrieval_modes}",
+    )
+    _set_if_changed(settings, "RETRIEVAL_HARD_FALLBACK_MODE", fallback_mode)
+    _require_int_min(int(getattr(settings, "RETRIEVAL_HARD_FALLBACK_TOP_K", 0) or 0), 1, "RETRIEVAL_HARD_FALLBACK_TOP_K must be >= 1")
 
-    must_recall_second_pass_mode = str(
-        getattr(settings, "RETRIEVAL_MUST_RECALL_SECOND_PASS_MODE", "keyword") or "keyword"
-    ).strip().lower()
-    if must_recall_second_pass_mode not in valid_retrieval_modes:
-        raise ValueError(
-            "RETRIEVAL_MUST_RECALL_SECOND_PASS_MODE "
-            f"({must_recall_second_pass_mode}) must be one of {valid_retrieval_modes}"
-        )
-    if settings.RETRIEVAL_MUST_RECALL_SECOND_PASS_MODE != must_recall_second_pass_mode:
-        settings.RETRIEVAL_MUST_RECALL_SECOND_PASS_MODE = must_recall_second_pass_mode
-    if int(getattr(settings, "RETRIEVAL_MUST_RECALL_SECOND_PASS_TOP_K", 0) or 0) < 1:
-        raise ValueError("RETRIEVAL_MUST_RECALL_SECOND_PASS_TOP_K must be >= 1")
-    contextual_followup_mode = str(
-        getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MODE", "keyword") or "keyword"
-    ).strip().lower()
-    if contextual_followup_mode not in valid_retrieval_modes:
-        raise ValueError(
-            "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MODE "
-            f"({contextual_followup_mode}) must be one of {valid_retrieval_modes}"
-        )
-    if settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MODE != contextual_followup_mode:
-        settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MODE = contextual_followup_mode
-    if int(getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_TOP_K", 0) or 0) < 1:
-        raise ValueError("RETRIEVAL_CONTEXTUAL_FOLLOWUP_TOP_K must be >= 1")
-    if int(getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_DOCS", 0) or 0) < 1:
-        raise ValueError("RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_DOCS must be >= 1")
-    if int(getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_TERMS", 0) or 0) < 0:
-        raise ValueError("RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_TERMS must be >= 0")
-    if int(getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MIN_TERM_CHARS", 0) or 0) < 2:
-        raise ValueError("RETRIEVAL_CONTEXTUAL_FOLLOWUP_MIN_TERM_CHARS must be >= 2")
-    if int(getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_QUERY_CHARS", 0) or 0) < 32:
-        raise ValueError("RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_QUERY_CHARS must be >= 32")
-    if int(getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_HOPS", 0) or 0) < 1:
-        raise ValueError("RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_HOPS must be >= 1")
+    must_recall_second_pass_mode = _normalize_lower_choice(
+        getattr(settings, "RETRIEVAL_MUST_RECALL_SECOND_PASS_MODE", "keyword"),
+        "keyword",
+    )
+    _raise_if(
+        must_recall_second_pass_mode not in valid_retrieval_modes,
+        "RETRIEVAL_MUST_RECALL_SECOND_PASS_MODE "
+        f"({must_recall_second_pass_mode}) must be one of {valid_retrieval_modes}",
+    )
+    _set_if_changed(settings, "RETRIEVAL_MUST_RECALL_SECOND_PASS_MODE", must_recall_second_pass_mode)
+    _require_int_min(int(getattr(settings, "RETRIEVAL_MUST_RECALL_SECOND_PASS_TOP_K", 0) or 0), 1, "RETRIEVAL_MUST_RECALL_SECOND_PASS_TOP_K must be >= 1")
+    contextual_followup_mode = _normalize_lower_choice(
+        getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MODE", "keyword"),
+        "keyword",
+    )
+    _raise_if(
+        contextual_followup_mode not in valid_retrieval_modes,
+        "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MODE "
+        f"({contextual_followup_mode}) must be one of {valid_retrieval_modes}",
+    )
+    _set_if_changed(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MODE", contextual_followup_mode)
+    _require_int_min(int(getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_TOP_K", 0) or 0), 1, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_TOP_K must be >= 1")
+    _require_int_min(int(getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_DOCS", 0) or 0), 1, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_DOCS must be >= 1")
+    _require_int_min(int(getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_TERMS", 0) or 0), 0, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_TERMS must be >= 0")
+    _require_int_min(int(getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MIN_TERM_CHARS", 0) or 0), 2, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MIN_TERM_CHARS must be >= 2")
+    _require_int_min(int(getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_QUERY_CHARS", 0) or 0), 32, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_QUERY_CHARS must be >= 32")
+    _require_int_min(int(getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_HOPS", 0) or 0), 1, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_HOPS must be >= 1")
     contextual_followup_latency_budget_ms = float(
         getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_LATENCY_BUDGET_MS", 500.0) or 500.0
     )
-    if contextual_followup_latency_budget_ms < 0.0:
-        raise ValueError("RETRIEVAL_CONTEXTUAL_FOLLOWUP_LATENCY_BUDGET_MS must be >= 0")
-    if settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_LATENCY_BUDGET_MS != contextual_followup_latency_budget_ms:
-        settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_LATENCY_BUDGET_MS = contextual_followup_latency_budget_ms
-    if int(getattr(settings, "RAG_CONTEXT_DENOISE_MAX_TOTAL_TOKENS", 0) or 0) < 0:
-        raise ValueError("RAG_CONTEXT_DENOISE_MAX_TOTAL_TOKENS must be >= 0")
-    if int(getattr(settings, "CONTEXTUAL_RETRIEVAL_LLM_MAX_INPUT_CHARS", 0) or 0) < 0:
-        raise ValueError("CONTEXTUAL_RETRIEVAL_LLM_MAX_INPUT_CHARS must be >= 0")
-    if int(getattr(settings, "CONTEXTUAL_RETRIEVAL_LLM_MAX_SUMMARY_CHARS", 0) or 0) < 0:
-        raise ValueError("CONTEXTUAL_RETRIEVAL_LLM_MAX_SUMMARY_CHARS must be >= 0")
+    _require_float_min(
+        contextual_followup_latency_budget_ms,
+        0.0,
+        "RETRIEVAL_CONTEXTUAL_FOLLOWUP_LATENCY_BUDGET_MS must be >= 0",
+    )
+    _set_if_changed(
+        settings,
+        "RETRIEVAL_CONTEXTUAL_FOLLOWUP_LATENCY_BUDGET_MS",
+        contextual_followup_latency_budget_ms,
+    )
+    _require_int_min(int(getattr(settings, "RAG_CONTEXT_DENOISE_MAX_TOTAL_TOKENS", 0) or 0), 0, "RAG_CONTEXT_DENOISE_MAX_TOTAL_TOKENS must be >= 0")
+    _require_int_min(int(getattr(settings, "CONTEXTUAL_RETRIEVAL_LLM_MAX_INPUT_CHARS", 0) or 0), 0, "CONTEXTUAL_RETRIEVAL_LLM_MAX_INPUT_CHARS must be >= 0")
+    _require_int_min(int(getattr(settings, "CONTEXTUAL_RETRIEVAL_LLM_MAX_SUMMARY_CHARS", 0) or 0), 0, "CONTEXTUAL_RETRIEVAL_LLM_MAX_SUMMARY_CHARS must be >= 0")
     intent_router_model_confidence_min = float(
         getattr(settings, "RAG_INTENT_ROUTER_MODEL_CONFIDENCE_MIN", 0.7) or 0.7
     )
-    if not (0.0 <= intent_router_model_confidence_min <= 1.0):
-        raise ValueError("RAG_INTENT_ROUTER_MODEL_CONFIDENCE_MIN must be between 0 and 1")
-    if settings.RAG_INTENT_ROUTER_MODEL_CONFIDENCE_MIN != intent_router_model_confidence_min:
-        settings.RAG_INTENT_ROUTER_MODEL_CONFIDENCE_MIN = intent_router_model_confidence_min
+    _require_float_between(
+        intent_router_model_confidence_min,
+        0.0,
+        1.0,
+        "RAG_INTENT_ROUTER_MODEL_CONFIDENCE_MIN must be between 0 and 1",
+    )
+    _set_if_changed(settings, "RAG_INTENT_ROUTER_MODEL_CONFIDENCE_MIN", intent_router_model_confidence_min)
     intent_router_model_path = str(getattr(settings, "RAG_INTENT_ROUTER_MODEL_PATH", "") or "").strip()
-    if settings.RAG_INTENT_ROUTER_MODEL_PATH != intent_router_model_path:
-        settings.RAG_INTENT_ROUTER_MODEL_PATH = intent_router_model_path
+    _set_if_changed(settings, "RAG_INTENT_ROUTER_MODEL_PATH", intent_router_model_path)
 
 
 def validate_parse_quality(settings):
     low_quality = float(getattr(settings, "RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD", 0.35) or 0.35)
-    if low_quality < 0.0 or low_quality > 1.0:
-        raise ValueError("RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD must be between 0 and 1")
+    _require_float_between(low_quality, 0.0, 1.0, "RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD must be between 0 and 1")
     alert_ratio = float(getattr(settings, "RETRIEVAL_PARSE_QUALITY_ALERT_RATIO", 0.5) or 0.5)
-    if alert_ratio < 0.0 or alert_ratio > 1.0:
-        raise ValueError("RETRIEVAL_PARSE_QUALITY_ALERT_RATIO must be between 0 and 1")
-    parse_quality_gate_profile = str(
-        getattr(settings, "RETRIEVAL_PARSE_QUALITY_GATE_PROFILE", "warn") or "warn"
-    ).strip().lower()
-    if parse_quality_gate_profile not in {"off", "warn", "strict"}:
-        raise ValueError("RETRIEVAL_PARSE_QUALITY_GATE_PROFILE must be one of: off, warn, strict")
-    if settings.RETRIEVAL_PARSE_QUALITY_GATE_PROFILE != parse_quality_gate_profile:
-        settings.RETRIEVAL_PARSE_QUALITY_GATE_PROFILE = parse_quality_gate_profile
+    _require_float_between(alert_ratio, 0.0, 1.0, "RETRIEVAL_PARSE_QUALITY_ALERT_RATIO must be between 0 and 1")
+    _normalize_choice_setting(
+        settings,
+        "RETRIEVAL_PARSE_QUALITY_GATE_PROFILE",
+        "warn",
+        {"off", "warn", "strict"},
+        "RETRIEVAL_PARSE_QUALITY_GATE_PROFILE must be one of: off, warn, strict",
+    )
     parse_risk_min_low_ratio = float(getattr(settings, "RETRIEVAL_PARSE_RISK_HARDCASE_MIN_LOW_RATIO", 0.5) or 0.5)
-    if parse_risk_min_low_ratio < 0.0 or parse_risk_min_low_ratio > 1.0:
-        raise ValueError("RETRIEVAL_PARSE_RISK_HARDCASE_MIN_LOW_RATIO must be between 0 and 1")
+    _require_float_between(
+        parse_risk_min_low_ratio,
+        0.0,
+        1.0,
+        "RETRIEVAL_PARSE_RISK_HARDCASE_MIN_LOW_RATIO must be between 0 and 1",
+    )
     raw_parse_risk_min_considered = getattr(settings, "RETRIEVAL_PARSE_RISK_HARDCASE_MIN_CONSIDERED", 3)
     parse_risk_min_considered = int(3 if raw_parse_risk_min_considered is None else raw_parse_risk_min_considered)
-    if parse_risk_min_considered < 1:
-        raise ValueError("RETRIEVAL_PARSE_RISK_HARDCASE_MIN_CONSIDERED must be >= 1")
+    _require_int_min(
+        parse_risk_min_considered,
+        1,
+        "RETRIEVAL_PARSE_RISK_HARDCASE_MIN_CONSIDERED must be >= 1",
+    )
     parse_risk_auto_enqueue_levels = [
         p.strip()
         for p in str(
@@ -1260,22 +1316,28 @@ def validate_parse_quality(settings):
     allowed_levels = {str(x).strip().lower() for x in parse_risk_auto_enqueue_levels if str(x).strip()}
     if not allowed_levels:
         allowed_levels = {"high", "medium"}
-    if not allowed_levels.issubset({"high", "medium", "low", "unknown"}):
-        raise ValueError(
-            "RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS must be a CSV subset of: high, medium, low, unknown"
-        )
+    _raise_if(
+        not allowed_levels.issubset({"high", "medium", "low", "unknown"}),
+        "RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS must be a CSV subset of: high, medium, low, unknown",
+    )
     settings.RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS = ",".join(sorted(allowed_levels))
     parse_risk_auto_enqueue_min_score = float(
         getattr(settings, "RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_MIN_SCORE", 0.0) or 0.0
     )
-    if parse_risk_auto_enqueue_min_score < 0.0 or parse_risk_auto_enqueue_min_score > 1.0:
-        raise ValueError("RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_MIN_SCORE must be between 0 and 1")
-    if settings.RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_MIN_SCORE != parse_risk_auto_enqueue_min_score:
-        settings.RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_MIN_SCORE = parse_risk_auto_enqueue_min_score
+    _require_float_between(
+        parse_risk_auto_enqueue_min_score,
+        0.0,
+        1.0,
+        "RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_MIN_SCORE must be between 0 and 1",
+    )
+    _set_if_changed(
+        settings,
+        "RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_MIN_SCORE",
+        parse_risk_auto_enqueue_min_score,
+    )
     raw_parse_risk_reparse_max_docs = getattr(settings, "RETRIEVAL_PARSE_RISK_REPARSE_MAX_DOCS", 100)
     parse_risk_reparse_max_docs = int(100 if raw_parse_risk_reparse_max_docs is None else raw_parse_risk_reparse_max_docs)
-    if parse_risk_reparse_max_docs < 1:
-        raise ValueError("RETRIEVAL_PARSE_RISK_REPARSE_MAX_DOCS must be >= 1")
+    _require_int_min(parse_risk_reparse_max_docs, 1, "RETRIEVAL_PARSE_RISK_REPARSE_MAX_DOCS must be >= 1")
 
 
 def validate_sparse_and_colbert_providers(settings):

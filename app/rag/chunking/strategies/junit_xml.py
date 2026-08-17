@@ -63,6 +63,48 @@ def _build_testcase_blocks(text: str) -> list[_CaseBlock]:
     return blocks
 
 
+def _append_split_documents(
+    out: list[Document],
+    split_docs: list[Document],
+    base_meta: dict[str, Any],
+    *,
+    offset_base: int = 0,
+    extra_meta: dict[str, Any] | None = None,
+) -> None:
+    for split_doc in split_docs:
+        local_start = split_doc.metadata.pop("start_index", None) or 0
+        abs_start = offset_base + int(local_start)
+        abs_end = abs_start + len(split_doc.page_content)
+        meta: dict[str, Any] = dict(base_meta)
+        meta.update(split_doc.metadata or {})
+        meta["chunk_strategy"] = "junit_xml"
+        meta["start_char"] = abs_start
+        meta["end_char"] = abs_end
+        meta.setdefault("doc_type_kwd", "junit")
+        if extra_meta:
+            meta.update(extra_meta)
+        out.append(Document(page_content=split_doc.page_content, metadata=meta))
+
+
+def _case_block_meta(block: _CaseBlock, block_count: int) -> dict[str, Any]:
+    meta: dict[str, Any] = {
+        "junit_case_index": int(block.index),
+        "junit_case_count": int(block_count),
+    }
+    if block.name:
+        meta["junit_case"] = block.name
+    if block.classname:
+        meta["junit_classname"] = block.classname
+    return meta
+
+
+def _assign_chunk_indexes(chunks: list[Document]) -> None:
+    for idx, chunk in enumerate(chunks):
+        meta = dict(chunk.metadata or {})
+        meta["chunk_index"] = idx
+        chunk.metadata = meta
+
+
 def looks_like_junit_xml(text: str) -> bool:
     if not text or len(text) < 80:
         return False
@@ -100,18 +142,7 @@ class JUnitXMLChunker(BaseChunker):
             blocks = _build_testcase_blocks(text)
             if not blocks:
                 split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "junit_xml"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta["junit_xml_fallback"] = True
-                    meta.setdefault("doc_type_kwd", "junit")
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                _append_split_documents(out, split_docs, base_meta, extra_meta={"junit_xml_fallback": True})
                 continue
 
             first = blocks[0]
@@ -119,46 +150,21 @@ class JUnitXMLChunker(BaseChunker):
                 pre = text[: first.start]
                 if pre.strip():
                     split_docs = self._fallback_splitter.create_documents(texts=[pre], metadatas=[base_meta])
-                    for sd in split_docs:
-                        local_start = sd.metadata.pop("start_index", None) or 0
-                        abs_start = int(local_start)
-                        abs_end = abs_start + len(sd.page_content)
-                        meta: dict[str, Any] = dict(base_meta)
-                        meta.update(sd.metadata or {})
-                        meta["chunk_strategy"] = "junit_xml"
-                        meta["start_char"] = abs_start
-                        meta["end_char"] = abs_end
-                        meta["junit_xml_preamble"] = True
-                        meta.setdefault("doc_type_kwd", "junit")
-                        out.append(Document(page_content=sd.page_content, metadata=meta))
+                    _append_split_documents(out, split_docs, base_meta, extra_meta={"junit_xml_preamble": True})
 
             for blk in blocks:
                 blk_text = text[blk.start : blk.end]
                 if not blk_text.strip():
                     continue
                 split_docs = self._fallback_splitter.create_documents(texts=[blk_text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = blk.start + int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
+                _append_split_documents(
+                    out,
+                    split_docs,
+                    base_meta,
+                    offset_base=blk.start,
+                    extra_meta=_case_block_meta(blk, len(blocks)),
+                )
 
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "junit_xml"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta.setdefault("doc_type_kwd", "junit")
-                    meta["junit_case_index"] = int(blk.index)
-                    meta["junit_case_count"] = int(len(blocks))
-                    if blk.name:
-                        meta["junit_case"] = blk.name
-                    if blk.classname:
-                        meta["junit_classname"] = blk.classname
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
-
-        for idx, chunk in enumerate(out):
-            meta = dict(chunk.metadata or {})
-            meta["chunk_index"] = idx
-            chunk.metadata = meta
+        _assign_chunk_indexes(out)
 
         return out

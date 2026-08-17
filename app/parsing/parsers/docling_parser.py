@@ -239,79 +239,77 @@ class DoclingParser(BaseAdvancedParser):
             **kwargs
         )
 
+    def _process_document(self, doc: Document) -> list[Document]:
+        meta = dict(doc.metadata or {})
+        doc_type = str(meta.get("doc_type_kwd") or "").lower()
+        if not self.extract_images and doc_type == "image":
+            return []
+
+        content = doc.page_content or ""
+        content_type = str(meta.get("content_type") or "").lower()
+        meta = _apply_element_hints(meta, text=content)
+        if content_type == "table":
+            converted = _convert_table_content(content, mode=self.table_mode)
+            if converted != content:
+                return [
+                    Document(
+                        page_content=converted,
+                        metadata=_apply_element_hints(meta, text=converted),
+                        id=getattr(doc, "id", None),
+                    )
+                ]
+        return [Document(page_content=content, metadata=meta, id=getattr(doc, "id", None))]
+
+    def _page_image_documents(self, file_path: Path, processed: list[Document]) -> list[Document]:
+        include_page_images = bool(getattr(settings, "DOCLING_INCLUDE_PAGE_IMAGES_IF_EMPTY", True))
+        if not self.extract_images or not include_page_images:
+            return []
+        has_image_segment = any(
+            str((doc.metadata or {}).get("doc_type_kwd") or "").lower() == "image"
+            for doc in processed
+        )
+        if has_image_segment:
+            return []
+        try:
+            parser = self._get_parser()
+            page_images = getattr(parser, "page_images", None)
+            page_from = int(getattr(parser, "page_from", 0) or 0)
+        except Exception:
+            return []
+        if not isinstance(page_images, list) or not page_images:
+            return []
+        max_pages = int(getattr(settings, "DOCLING_PAGE_IMAGE_MAX_PAGES", 20) or 20)
+        if max_pages <= 0:
+            return []
+        page_images = page_images[:max_pages]
+        base_meta = {
+            "source": file_path.name,
+            "filename": file_path.name,
+            "file_type": file_path.suffix.lstrip(".").lower(),
+            "parser": self._get_parser_name(),
+            "doc_type_kwd": "image",
+            "element_kind": "image",
+            "content_type": "image",
+            "image_source": "page",
+        }
+        page_docs: list[Document] = []
+        for idx, img in enumerate(page_images):
+            page_no = page_from + idx + 1
+            meta = dict(base_meta)
+            meta["page"] = page_no
+            meta["element_page"] = page_no
+            meta["image"] = img
+            meta["element_text"] = f"Page {page_no}"
+            page_docs.append(Document(page_content=f"Page {page_no}", metadata=meta))
+        return page_docs
+
     def parse(self, file_path: Path, **kwargs) -> list[Document]:
         documents = super().parse(file_path, **kwargs)
 
         processed: list[Document] = []
         for doc in documents:
-            meta = dict(doc.metadata or {})
-
-            doc_type = str(meta.get("doc_type_kwd") or "").lower()
-            if not self.extract_images and doc_type == "image":
-                continue
-
-            content_type = str(meta.get("content_type") or "").lower()
-            meta = _apply_element_hints(meta, text=doc.page_content or "")
-            if content_type == "table":
-                content = doc.page_content or ""
-                converted = _convert_table_content(content, mode=self.table_mode)
-                if converted != content:
-                    processed.append(
-                        Document(
-                            page_content=converted,
-                            metadata=_apply_element_hints(meta, text=converted),
-                            id=getattr(doc, "id", None),
-                        )
-                    )
-                    continue
-
-            processed.append(Document(page_content=doc.page_content or "", metadata=meta, id=getattr(doc, "id", None)))
-
-        # Fallback: some PDFs produce no explicit image segments (tables/figures) from Docling,
-        # but users still expect to see page images in preview. When enabled, emit page render
-        # images only if there are no image segments at all.
-        include_page_images = bool(getattr(settings, "DOCLING_INCLUDE_PAGE_IMAGES_IF_EMPTY", True))
-        if self.extract_images and include_page_images:
-            has_image_segment = any(
-                str((d.metadata or {}).get("doc_type_kwd") or "").lower() == "image"
-                for d in processed
-            )
-            if not has_image_segment:
-                try:
-                    parser = self._get_parser()
-                    page_images = getattr(parser, "page_images", None)
-                    page_from = int(getattr(parser, "page_from", 0) or 0)
-                except Exception:
-                    page_images = None
-                    page_from = 0
-
-                if isinstance(page_images, list) and page_images:
-                    max_pages = int(getattr(settings, "DOCLING_PAGE_IMAGE_MAX_PAGES", 20) or 20)
-                    if max_pages > 0:
-                        page_images = page_images[:max_pages]
-
-                    base_meta = {
-                        "source": file_path.name,
-                        "filename": file_path.name,
-                        "file_type": file_path.suffix.lstrip(".").lower(),
-                        "parser": self._get_parser_name(),
-                        "doc_type_kwd": "image",
-                        "element_kind": "image",
-                        "content_type": "image",
-                        "image_source": "page",
-                    }
-
-                    page_docs: list[Document] = []
-                    for idx, img in enumerate(page_images):
-                        page_no = page_from + idx + 1
-                        meta = dict(base_meta)
-                        meta["page"] = page_no
-                        meta["element_page"] = page_no
-                        meta["image"] = img
-                        meta["element_text"] = f"Page {page_no}"
-                        page_docs.append(Document(page_content=f"Page {page_no}", metadata=meta))
-
-                    if page_docs:
-                        processed = page_docs + processed
-
+            processed.extend(self._process_document(doc))
+        page_docs = self._page_image_documents(file_path, processed)
+        if page_docs:
+            processed = page_docs + processed
         return processed

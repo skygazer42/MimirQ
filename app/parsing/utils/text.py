@@ -162,18 +162,7 @@ def _iter_candidate_encodings(*, detected: str | None, default_encoding: str, bl
     return yield_list
 
 
-def read_text_file(path: Path, *, default_encoding: str = "utf-8") -> DecodedText:
-    """
-    Read and decode a text file with best-effort encoding detection.
-
-    Notes:
-    - Always returns a string (decoding errors are replaced).
-    - `confidence` is 1.0 for successful UTF-8 decode, otherwise derived from chardet.
-    """
-    blob = Path(path).read_bytes()
-    had_bom = blob.startswith(_BOM_UTF8) or _has_utf16_bom(blob) or _has_utf32_bom(blob)
-
-    # 1) BOM-aware fast paths.
+def _decode_bom_text(blob: bytes) -> DecodedText | None:
     if _has_utf32_bom(blob):
         try:
             text = blob.decode("utf-32", errors="strict")
@@ -187,32 +176,28 @@ def read_text_file(path: Path, *, default_encoding: str = "utf-8") -> DecodedTex
             return DecodedText(text=text.lstrip("\ufeff"), encoding="utf-16", confidence=1.0, had_bom=True)
         except UnicodeDecodeError as exc:
             logger.debug(_TEXT_DECODE_FALLBACK_LOG_MESSAGE, exc)
+    return None
 
-    # 2) Fast path: UTF-8 (with BOM stripping).
-    try:
-        return DecodedText(
-            text=blob.decode("utf-8-sig", errors="strict"),
-            encoding="utf-8",
-            confidence=1.0,
-            had_bom=had_bom,
-        )
-    except UnicodeDecodeError as exc:
-        logger.debug(_TEXT_DECODE_FALLBACK_LOG_MESSAGE, exc)
 
-    # 3) Best-effort detection with chardet.
-    detected_encoding: str | None = None
-    detected_confidence = 0.0
+def _detect_encoding(blob: bytes) -> tuple[str | None, float]:
     chardet = _get_chardet()
-    if chardet is not None:
-        try:
-            detected = chardet.detect(blob[:65536])
-            detected_encoding = (detected.get("encoding") or "").strip() or None
-            detected_confidence = float(detected.get("confidence") or 0.0)
-        except Exception:
-            detected_encoding = None
-            detected_confidence = 0.0
+    if chardet is None:
+        return None, 0.0
+    try:
+        detected = chardet.detect(blob[:65536])
+        detected_encoding = (detected.get("encoding") or "").strip() or None
+        detected_confidence = float(detected.get("confidence") or 0.0)
+    except Exception:
+        return None, 0.0
+    return detected_encoding, detected_confidence
 
-    # 4) Try a small set of candidates and pick the best-scoring result.
+
+def _decode_best_candidate(
+    blob: bytes,
+    *,
+    detected_encoding: str | None,
+    default_encoding: str,
+) -> tuple[str | None, str | None]:
     best_text: str | None = None
     best_encoding: str | None = None
     best_score: tuple[float, float, float] = (0.0, 0.0, 0.0)
@@ -228,24 +213,79 @@ def read_text_file(path: Path, *, default_encoding: str = "utf-8") -> DecodedTex
             best_text = decoded
             best_encoding = enc
             best_score = score
+    return best_text, best_encoding
+
+
+def _replacement_decoded_text(
+    blob: bytes,
+    *,
+    detected_encoding: str | None,
+    detected_confidence: float,
+    default_encoding: str,
+    had_bom: bool,
+) -> DecodedText:
+    fallback = _normalize_encoding(detected_encoding or "") or default_encoding
+    try:
+        return DecodedText(
+            text=blob.decode(fallback, errors="replace"),
+            encoding=str(fallback),
+            confidence=float(detected_confidence or 0.0),
+            had_bom=had_bom,
+        )
+    except Exception:
+        return DecodedText(
+            text=blob.decode(default_encoding, errors="replace"),
+            encoding=str(default_encoding),
+            confidence=0.0,
+            had_bom=had_bom,
+        )
+
+
+def read_text_file(path: Path, *, default_encoding: str = "utf-8") -> DecodedText:
+    """
+    Read and decode a text file with best-effort encoding detection.
+
+    Notes:
+    - Always returns a string (decoding errors are replaced).
+    - `confidence` is 1.0 for successful UTF-8 decode, otherwise derived from chardet.
+    """
+    blob = Path(path).read_bytes()
+    had_bom = blob.startswith(_BOM_UTF8) or _has_utf16_bom(blob) or _has_utf32_bom(blob)
+
+    # 1) BOM-aware fast paths.
+    bom_decoded = _decode_bom_text(blob)
+    if bom_decoded is not None:
+        return bom_decoded
+
+    # 2) Fast path: UTF-8 (with BOM stripping).
+    try:
+        return DecodedText(
+            text=blob.decode("utf-8-sig", errors="strict"),
+            encoding="utf-8",
+            confidence=1.0,
+            had_bom=had_bom,
+        )
+    except UnicodeDecodeError as exc:
+        logger.debug(_TEXT_DECODE_FALLBACK_LOG_MESSAGE, exc)
+
+    # 3) Best-effort detection with chardet.
+    detected_encoding, detected_confidence = _detect_encoding(blob)
+
+    # 4) Try a small set of candidates and pick the best-scoring result.
+    best_text, best_encoding = _decode_best_candidate(
+        blob,
+        detected_encoding=detected_encoding,
+        default_encoding=default_encoding,
+    )
 
     if best_text is None or best_encoding is None:
-        # Worst-case: replacement decode.
-        fallback = _normalize_encoding(detected_encoding or "") or default_encoding
-        try:
-            return DecodedText(
-                text=blob.decode(fallback, errors="replace"),
-                encoding=str(fallback),
-                confidence=float(detected_confidence or 0.0),
-                had_bom=had_bom,
-            )
-        except Exception:
-            return DecodedText(
-                text=blob.decode(default_encoding, errors="replace"),
-                encoding=str(default_encoding),
-                confidence=0.0,
-                had_bom=had_bom,
-            )
+        return _replacement_decoded_text(
+            blob,
+            detected_encoding=detected_encoding,
+            detected_confidence=detected_confidence,
+            default_encoding=default_encoding,
+            had_bom=had_bom,
+        )
 
     confidence = float(detected_confidence or 0.0) if _normalize_encoding(detected_encoding or "") == best_encoding else 0.0
     return DecodedText(text=best_text, encoding=str(best_encoding), confidence=confidence, had_bom=had_bom)

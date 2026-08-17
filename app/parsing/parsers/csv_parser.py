@@ -23,6 +23,79 @@ def _safe_cell(value: str, *, max_chars: int = 2000) -> str:
     return text
 
 
+def _sniff_csv_format(sample: str) -> tuple[csv.Dialect, str, bool]:
+    delimiter = ","
+    dialect: csv.Dialect = csv.excel
+    try:
+        sniffed = csv.Sniffer().sniff(sample, delimiters=",\t;|")
+        dialect = sniffed
+        delimiter = getattr(sniffed, "delimiter", ",") or ","
+    except Exception:
+        dialect = csv.excel
+        delimiter = ","
+
+    has_header = False
+    try:
+        has_header = csv.Sniffer().has_header(sample)
+    except Exception:
+        has_header = False
+
+    return dialect, delimiter, has_header
+
+
+def _read_csv_rows(
+    *,
+    raw: str,
+    dialect: csv.Dialect,
+    has_header: bool,
+    max_rows: int | None,
+) -> tuple[list[str], list[list[str]]]:
+    reader = csv.reader(io.StringIO(raw), dialect)
+    first = next(reader, None)
+    if first is None:
+        return [], []
+
+    header = [c.strip() or f"col{i+1}" for i, c in enumerate(first)]
+    rows: list[list[str]] = []
+    if not has_header:
+        rows.append(first)
+
+    for row in reader:
+        if row is None:
+            continue
+        rows.append(row)
+        if max_rows is not None and len(rows) >= max_rows:
+            break
+
+    return header, rows
+
+
+def _render_csv_content(
+    *,
+    file_name: str,
+    delimiter: str,
+    header: list[str],
+    rows: list[list[str]],
+    max_cell_chars: int,
+) -> str:
+    if not header:
+        return ""
+
+    out = io.StringIO()
+    out.write(f"CSV: {file_name}\n")
+    out.write(f"Delimiter: {delimiter!r}\n")
+    out.write(f"Columns: {', '.join(header)}\n\n")
+
+    for idx, row in enumerate(rows, start=1):
+        pairs = []
+        for j, val in enumerate(row):
+            key = header[j] if j < len(header) else f"col{j+1}"
+            pairs.append(f"{key}={_safe_cell(val, max_chars=max_cell_chars)}")
+        out.write(f"row {idx}: " + " | ".join(pairs) + "\n")
+
+    return out.getvalue()
+
+
 class CsvParser:
     """CSV parser that emits a row-oriented, chunk-friendly text representation."""
 
@@ -34,57 +107,21 @@ class CsvParser:
         decoded = read_text_file(file_path)
         raw = decoded.text or ""
         sample = raw[:8192]
-
-        delimiter = ","
-        dialect: csv.Dialect = csv.excel
-        try:
-            sniffed = csv.Sniffer().sniff(sample, delimiters=",\t;|")
-            dialect = sniffed
-            delimiter = getattr(sniffed, "delimiter", ",") or ","
-        except Exception:
-            dialect = csv.excel
-            delimiter = ","
-
-        has_header = False
-        try:
-            has_header = csv.Sniffer().has_header(sample)
-        except Exception:
-            has_header = False
-
-        reader = csv.reader(io.StringIO(raw), dialect)
-        first = next(reader, None)
-        if first is None:
-            content = ""
-            header: list[str] = []
-            row_count = 0
-        else:
-            header = [c.strip() or f"col{i+1}" for i, c in enumerate(first)]
-            rows: list[list[str]] = []
-            if not has_header:
-                rows.append(first)
-
-            for row in reader:
-                if row is None:
-                    continue
-                rows.append(row)
-                if self.max_rows is not None and len(rows) >= self.max_rows:
-                    break
-
-            row_count = len(rows)
-
-            out = io.StringIO()
-            out.write(f"CSV: {file_path.name}\n")
-            out.write(f"Delimiter: {delimiter!r}\n")
-            out.write(f"Columns: {', '.join(header)}\n\n")
-
-            for idx, row in enumerate(rows, start=1):
-                pairs = []
-                for j, val in enumerate(row):
-                    key = header[j] if j < len(header) else f"col{j+1}"
-                    pairs.append(f"{key}={_safe_cell(val, max_chars=self.max_cell_chars)}")
-                out.write(f"row {idx}: " + " | ".join(pairs) + "\n")
-
-            content = out.getvalue()
+        dialect, delimiter, has_header = _sniff_csv_format(sample)
+        header, rows = _read_csv_rows(
+            raw=raw,
+            dialect=dialect,
+            has_header=has_header,
+            max_rows=self.max_rows,
+        )
+        row_count = len(rows)
+        content = _render_csv_content(
+            file_name=file_path.name,
+            delimiter=delimiter,
+            header=header,
+            rows=rows,
+            max_cell_chars=self.max_cell_chars,
+        )
 
         metadata = {
             "source": str(file_path.name),

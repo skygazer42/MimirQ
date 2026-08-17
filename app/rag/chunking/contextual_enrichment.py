@@ -128,6 +128,37 @@ def _extract_keywords(content: str, *, top_k: int, max_chars: int) -> list[str]:
     return out
 
 
+def _build_intro_part(*, title: str, mostly_cjk: bool) -> str:
+    if title:
+        return f"本文档《{title}》的摘录。" if mostly_cjk else f"Excerpt from document '{title}'."
+    return "本文档摘录。" if mostly_cjk else "Document excerpt."
+
+
+def _build_section_part(section: str | None, *, mostly_cjk: bool) -> str | None:
+    if not section:
+        return None
+    return f"章节：{section}。" if mostly_cjk else f"Section: {section}."
+
+
+def _build_keywords_part(keywords: list[str], *, mostly_cjk: bool) -> str | None:
+    if not keywords:
+        return None
+    joined = "，".join(keywords) if mostly_cjk else ", ".join(keywords)
+    return f"关键词：{joined}。" if mostly_cjk else f"Keywords: {joined}."
+
+
+def _cap_prefix(prefix: str, *, max_prefix_chars: int, mostly_cjk: bool) -> str:
+    cap = max(40, int(max_prefix_chars or 0))
+    if len(prefix) <= cap:
+        return prefix
+    capped = prefix[:cap].rstrip()
+    if capped.endswith((".", "。", "!", "！")):
+        return capped
+    if len(capped) >= cap:
+        capped = capped[: max(0, cap - 1)].rstrip()
+    return capped + ("。" if mostly_cjk else ".")
+
+
 def build_context_prefix(
     content: str,
     *,
@@ -155,44 +186,16 @@ def build_context_prefix(
 
     mostly_cjk = _is_mostly_cjk(body)
 
-    parts: list[str] = []
-    if title:
-        if mostly_cjk:
-            parts.append(f"本文档《{title}》的摘录。")
-        else:
-            parts.append(f"Excerpt from document '{title}'.")
-    else:
-        if mostly_cjk:
-            parts.append("本文档摘录。")
-        else:
-            parts.append("Document excerpt.")
-
-    if section:
-        if mostly_cjk:
-            parts.append(f"章节：{section}。")
-        else:
-            parts.append(f"Section: {section}.")
-
-    if keywords:
-        joined = "，".join(keywords) if mostly_cjk else ", ".join(keywords)
-        if mostly_cjk:
-            parts.append(f"关键词：{joined}。")
-        else:
-            parts.append(f"Keywords: {joined}.")
+    parts = [
+        _build_intro_part(title=title, mostly_cjk=mostly_cjk),
+        _build_section_part(section, mostly_cjk=mostly_cjk),
+        _build_keywords_part(keywords, mostly_cjk=mostly_cjk),
+    ]
 
     prefix = " ".join([p for p in parts if p]).strip()
     if not prefix:
         return None
-
-    cap = max(40, int(max_prefix_chars or 0))
-    if len(prefix) > cap:
-        prefix = prefix[:cap].rstrip()
-        if not prefix.endswith((".", "。", "!", "！")):
-            if len(prefix) >= cap:
-                prefix = prefix[: max(0, cap - 1)].rstrip()
-            prefix = prefix + ("。" if mostly_cjk else ".")
-
-    return prefix
+    return _cap_prefix(prefix, max_prefix_chars=max_prefix_chars, mostly_cjk=mostly_cjk)
 
 
 __all__ = ["build_context_prefix"]

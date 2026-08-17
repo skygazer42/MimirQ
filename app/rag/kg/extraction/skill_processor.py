@@ -19,6 +19,22 @@ from app.rag.llm.models import LLMMessage, LLMRole
 logger = get_logger("kg.extract.skills")
 
 
+def _strip_text(value: object) -> str:
+    return str(value or "").strip()
+
+
+def _coerce_text_items(values: list[object], *, limit: int) -> list[str]:
+    out: list[str] = []
+    for item in values:
+        text = _strip_text(item)
+        if not text:
+            continue
+        out.append(text)
+        if len(out) >= limit:
+            break
+    return out
+
+
 def _coerce_str_list(value: object, *, max_items: int = 50) -> list[str]:
     lim = max(0, int(max_items or 0))
     if lim <= 0:
@@ -38,18 +54,10 @@ def _coerce_str_list(value: object, *, max_items: int = 50) -> list[str]:
         return out[:lim]
 
     if isinstance(value, list):
-        out: list[str] = []
-        for item in value:
-            s = str(item or "").strip()
-            if not s:
-                continue
-            out.append(s)
-            if len(out) >= lim:
-                break
-        return out
+        return _coerce_text_items(value, limit=lim)
 
     # Fallback: coerce scalars to a single-item list.
-    text = str(value).strip()
+    text = _strip_text(value)
     if not text:
         return []
     return [text][:lim]

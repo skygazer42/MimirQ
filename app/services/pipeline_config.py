@@ -6,7 +6,7 @@ Provides parsing, building, and resolution for pipeline configuration.
 
 import re
 from dataclasses import asdict
-from typing import Any
+from typing import Any, Callable
 
 from app.core.config import settings
 from app.core.regex_safety import looks_like_nested_quantifier
@@ -111,6 +111,55 @@ def _sanitize_stage_python_plugin_ref(value: Any, expected_stage: str) -> str | 
     return sanitize_python_plugin_ref(value, expected_stage=expected_stage)
 
 
+def _sanitize_regex_pattern(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    pattern = value.strip()
+    if not pattern or len(pattern) > _REGEX_PATTERN_MAX:
+        return None
+    if looks_like_nested_quantifier(pattern):
+        return None
+    return pattern
+
+
+def _sanitize_regex_replacement(value: Any) -> str:
+    if value is None:
+        return ""
+    repl = value if isinstance(value, str) else str(value)
+    return repl[:_REGEX_REPL_MAX]
+
+
+def _sanitize_regex_flags(value: Any) -> int | None:
+    try:
+        flags = int(value)
+    except Exception:
+        get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+        return None
+    if flags < 0 or (flags & ~_ALLOWED_RE_FLAG_BITS):
+        return None
+    return flags
+
+
+def _sanitize_regex_rule(item: Any) -> dict[str, Any] | None:
+    if not isinstance(item, dict):
+        return None
+    pattern = _sanitize_regex_pattern(item.get("pattern"))
+    if pattern is None:
+        return None
+    flags = _sanitize_regex_flags(item.get("flags", 0))
+    if flags is None:
+        return None
+    try:
+        re.compile(pattern, flags=flags)
+    except re.error:
+        return None
+    return {
+        "pattern": pattern,
+        "repl": _sanitize_regex_replacement(item.get("repl", "")),
+        "flags": flags,
+    }
+
+
 def _sanitize_regex_rules(value: Any) -> list[dict] | None:
     """
     Best-effort validation for user-provided regex rules stored in metadata.
@@ -127,41 +176,10 @@ def _sanitize_regex_rules(value: Any) -> list[dict] | None:
 
     out: list[dict] = []
     for item in value:
-        if not isinstance(item, dict):
+        sanitized = _sanitize_regex_rule(item)
+        if sanitized is None:
             continue
-        pattern = item.get("pattern")
-        if not isinstance(pattern, str):
-            continue
-        pattern = pattern.strip()
-        if not pattern:
-            continue
-        if len(pattern) > _REGEX_PATTERN_MAX:
-            continue
-        if looks_like_nested_quantifier(pattern):
-            continue
-
-        repl = item.get("repl", "")
-        if repl is None:
-            repl = ""
-        if not isinstance(repl, str):
-            repl = str(repl)
-        if len(repl) > _REGEX_REPL_MAX:
-            repl = repl[:_REGEX_REPL_MAX]
-
-        flags = item.get("flags", 0)
-        try:
-            flags_int = int(flags)
-        except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-            continue
-        if flags_int < 0 or (flags_int & ~_ALLOWED_RE_FLAG_BITS):
-            continue
-        try:
-            re.compile(pattern, flags=flags_int)
-        except re.error:
-            continue
-
-        out.append({"pattern": pattern, "repl": repl, "flags": flags_int})
+        out.append(sanitized)
         if len(out) >= _REGEX_RULES_MAX:
             break
 
@@ -205,6 +223,220 @@ def _sanitize_rule_packs(value: Any) -> list[str] | None:
 
 def _resolve_flag(default: bool, override: bool | None) -> bool:
     return bool(default) and override is not False
+
+
+_MetadataTransform = Callable[[Any], Any]
+_MetadataFieldSpec = tuple[str, str, _MetadataTransform]
+
+_PIPELINE_METADATA_FIELDS: tuple[_MetadataFieldSpec, ...] = (
+    ("governance_enabled", "governance_enabled", bool),
+    ("parse_fallback_enabled", "parse_fallback_enabled", bool),
+    ("parse_fallback_min_content_chars", "parse_fallback_min_content_chars", int),
+    ("parse_fallback_min_parse_score", "parse_fallback_min_parse_score", float),
+    ("parse_fallback_max_retries", "parse_fallback_max_retries", int),
+    ("cross_page_merge_enabled", "cross_page_merge_enabled", bool),
+    ("cross_page_merge_max_page_gap", "cross_page_merge_max_page_gap", int),
+    ("reading_order_enabled", "reading_order_enabled", bool),
+    ("parse_cache_enabled", "parse_cache_enabled", bool),
+    ("parse_cache_ttl_sec", "parse_cache_ttl_sec", int),
+    ("vlm_correction_enabled", "vlm_correction_enabled", bool),
+    ("vlm_correction_min_table_score", "vlm_correction_min_table_score", float),
+    ("vlm_correction_max_pages", "vlm_correction_max_pages", int),
+    ("persist_parsed_content", "persist_parsed_content", bool),
+    ("persist_parsed_content_max_chars", "persist_parsed_content_max_chars", int),
+    ("chunk_size", "chunk_size", int),
+    ("chunk_overlap", "chunk_overlap", int),
+    ("chunk_merge_small_min_chars", "chunk_merge_small_min_chars", int),
+)
+
+_PIPELINE_METADATA_SANITIZED_FIELDS: tuple[_MetadataFieldSpec, ...] = (
+    ("chunk_strategy_params", "chunk_strategy_params", _sanitize_chunk_strategy_params),
+    ("chunk_python_plugin", "chunk_python_plugin", lambda value: _sanitize_stage_python_plugin_ref(value, "chunk")),
+    ("chunk_python_params", "chunk_python_params", _sanitize_chunk_strategy_params),
+    ("kg_python_plugin", "kg_python_plugin", lambda value: _sanitize_stage_python_plugin_ref(value, "kg")),
+    ("kg_python_params", "kg_python_params", _sanitize_chunk_strategy_params),
+)
+
+_TABLES_METADATA_FIELDS: tuple[_MetadataFieldSpec, ...] = (
+    ("table_store_enabled", "enabled", bool),
+    ("table_store_max_rows", "max_rows", int),
+    ("table_store_max_cols", "max_cols", int),
+    ("table_store_sample_rows", "sample_rows", int),
+    ("table_store_auto_route", "auto_route", bool),
+    ("table_store_sidecar_exclusive_routing", "sidecar_exclusive_routing", bool),
+    ("table_store_auto_row_threshold", "auto_row_threshold", int),
+    ("table_store_auto_col_threshold", "auto_col_threshold", int),
+    ("table_store_auto_sheet_threshold", "auto_sheet_threshold", int),
+    ("table_store_auto_file_bytes_threshold", "auto_file_bytes_threshold", int),
+)
+
+_IMAGES_METADATA_FIELDS: tuple[_MetadataFieldSpec, ...] = (
+    ("image_caption_enabled", "caption_enabled", bool),
+    ("image_ocr_enabled", "ocr_enabled", bool),
+    ("image_ocr_max_chars", "ocr_max_chars", int),
+    ("image_ocr_max_images", "ocr_max_images", int),
+)
+
+_PRE_POC_METADATA_FIELDS: tuple[_MetadataFieldSpec, ...] = (
+    ("ingest_pre_poc_scanner_enabled", "scanner_enabled", bool),
+    ("ingest_pre_poc_quality_gate_mode", "quality_gate_mode", str),
+)
+
+_GOVERNANCE_METADATA_FIELDS: tuple[_MetadataFieldSpec, ...] = (
+    ("governance_remove_toc_lines", "remove_toc_lines", bool),
+    ("governance_remove_noise_lines", "remove_noise_lines", bool),
+    ("governance_unwrap_lines", "unwrap_lines", bool),
+    ("governance_remove_common_lines", "remove_common_lines", bool),
+    ("governance_remove_boilerplate", "remove_boilerplate", bool),
+    ("governance_remove_images", "remove_images", str),
+    ("governance_extract_frontmatter", "extract_frontmatter", bool),
+    ("governance_strip_frontmatter", "strip_frontmatter", bool),
+    ("governance_detect_language", "detect_language", bool),
+    ("governance_language_min_chars", "language_min_chars", int),
+    ("governance_normalize_urls", "normalize_urls", bool),
+    ("governance_normalize_urls_strip_tracking", "normalize_urls_strip_tracking", bool),
+    ("governance_drop_duplicate_paragraphs", "drop_duplicate_paragraphs", bool),
+    ("governance_drop_duplicate_paragraphs_min_occurrences", "drop_duplicate_paragraphs_min_occurrences", int),
+    ("governance_drop_duplicate_paragraphs_min_chars", "drop_duplicate_paragraphs_min_chars", int),
+    ("governance_drop_duplicate_paragraphs_max_chars", "drop_duplicate_paragraphs_max_chars", int),
+    ("governance_trim_references", "trim_references", bool),
+    ("governance_extract_keywords", "extract_keywords", bool),
+    ("governance_keywords_provider", "keywords_provider", str),
+    ("governance_keywords_top_k", "keywords_top_k", int),
+    ("governance_keywords_max_chars", "keywords_max_chars", int),
+    ("governance_normalize_tables", "normalize_tables", bool),
+    ("governance_strip_code_line_numbers", "strip_code_line_numbers", bool),
+    ("governance_quarantine_on_drop", "quarantine_on_drop", bool),
+    ("governance_pii_anonymize", "pii_anonymize", bool),
+    ("governance_pii_mode", "pii_mode", str),
+    ("governance_pii_mask", "pii_mask", str),
+    ("governance_pii_max_hits", "pii_max_hits", int),
+    ("governance_llm_auto_tagging_enabled", "llm_auto_tagging_enabled", bool),
+    ("governance_llm_auto_tagging_max_chars", "llm_auto_tagging_max_chars", int),
+    ("governance_llm_auto_tagging_max_items", "llm_auto_tagging_max_items", int),
+    ("governance_secrets_redact", "secrets_redact", bool),
+    ("governance_secrets_mode", "secrets_mode", str),
+    ("governance_secrets_mask", "secrets_mask", str),
+    ("governance_secrets_max_hits", "secrets_max_hits", int),
+    ("governance_max_blank_lines", "max_blank_lines", int),
+    ("governance_html_xpath", "html_xpath", str),
+    ("governance_drop_outline_only", "drop_outline_only", bool),
+    ("governance_drop_outline_min_content_chars", "drop_outline_min_content_chars", int),
+    ("governance_drop_outline_max_heading_ratio", "drop_outline_max_heading_ratio", float),
+    ("governance_drop_low_density", "drop_low_density", bool),
+    ("governance_drop_low_density_threshold", "drop_low_density_threshold", float),
+    ("governance_unwrap_max_line_length", "unwrap_max_line_length", int),
+    ("governance_noise_min_chars", "noise_min_chars", int),
+    ("governance_noise_ratio_threshold", "noise_ratio_threshold", float),
+    ("governance_common_lines_min_docs", "common_lines_min_docs", int),
+    ("governance_common_lines_min_ratio", "common_lines_min_ratio", float),
+)
+
+_GOVERNANCE_METADATA_SANITIZED_FIELDS: tuple[_MetadataFieldSpec, ...] = (
+    ("governance_rule_packs", "rule_packs", _sanitize_rule_packs),
+    ("governance_regex_rules", "regex_rules", _sanitize_regex_rules),
+    ("governance_python_plugin", "python_plugin", lambda value: _sanitize_stage_python_plugin_ref(value, "governance")),
+    ("governance_python_params", "python_params", _sanitize_chunk_strategy_params),
+)
+
+_DEDUP_METADATA_FIELDS: tuple[_MetadataFieldSpec, ...] = (
+    ("near_dedup_enabled", "enabled", bool),
+    ("near_dedup_hamming_threshold", "hamming_threshold", int),
+    ("near_dedup_max_bucket_size", "max_bucket_size", int),
+)
+
+_INDEX_METADATA_FIELDS: tuple[_MetadataFieldSpec, ...] = (
+    ("chunk_vector_enabled", "chunk_vector_enabled", bool),
+    ("bm25_index_enabled", "bm25_index_enabled", bool),
+    ("kg_enabled", "kg_enabled", bool),
+    ("event_vector_enabled", "event_vector_enabled", bool),
+    ("entity_vector_enabled", "entity_vector_enabled", bool),
+    ("embedding_context_prefix_enabled", "embedding_context_prefix_enabled", bool),
+    ("embedding_contextual_retrieval_enabled", "embedding_contextual_retrieval_enabled", bool),
+    ("embedding_contextual_retrieval_lazy_mode", "embedding_contextual_retrieval_lazy_mode", bool),
+    ("embedding_field_aware_enabled", "embedding_field_aware_enabled", bool),
+)
+
+
+def _apply_metadata_fields(
+    options: PipelineOptions,
+    target: dict[str, Any],
+    fields: tuple[_MetadataFieldSpec, ...],
+) -> None:
+    for attr_name, metadata_key, transform in fields:
+        value = getattr(options, attr_name)
+        if value is None:
+            continue
+        target[metadata_key] = transform(value)
+
+
+def _apply_sanitized_metadata_fields(
+    options: PipelineOptions,
+    target: dict[str, Any],
+    fields: tuple[_MetadataFieldSpec, ...],
+) -> None:
+    for attr_name, metadata_key, sanitize in fields:
+        value = getattr(options, attr_name)
+        if value is None:
+            continue
+        sanitized = sanitize(value)
+        if sanitized:
+            target[metadata_key] = sanitized
+
+
+def _build_tables_metadata(options: PipelineOptions) -> dict[str, Any]:
+    tables: dict[str, Any] = {}
+    _apply_metadata_fields(options, tables, _TABLES_METADATA_FIELDS)
+    return tables
+
+
+def _build_images_metadata(options: PipelineOptions) -> dict[str, Any]:
+    images: dict[str, Any] = {}
+    _apply_metadata_fields(options, images, _IMAGES_METADATA_FIELDS)
+    return images
+
+
+def _build_pre_poc_metadata(options: PipelineOptions) -> dict[str, Any]:
+    pre_poc: dict[str, Any] = {}
+    _apply_metadata_fields(options, pre_poc, _PRE_POC_METADATA_FIELDS)
+    return pre_poc
+
+
+def _build_governance_metadata(options: PipelineOptions) -> dict[str, Any]:
+    governance: dict[str, Any] = {}
+    _apply_metadata_fields(
+        options,
+        governance,
+        _GOVERNANCE_METADATA_FIELDS[:6],
+    )
+    _apply_sanitized_metadata_fields(
+        options,
+        governance,
+        _GOVERNANCE_METADATA_SANITIZED_FIELDS[:2],
+    )
+    _apply_metadata_fields(
+        options,
+        governance,
+        _GOVERNANCE_METADATA_FIELDS[6:],
+    )
+    _apply_sanitized_metadata_fields(
+        options,
+        governance,
+        _GOVERNANCE_METADATA_SANITIZED_FIELDS[2:],
+    )
+    return governance
+
+
+def _build_dedup_metadata(options: PipelineOptions) -> dict[str, Any]:
+    dedup: dict[str, Any] = {}
+    _apply_metadata_fields(options, dedup, _DEDUP_METADATA_FIELDS)
+    return dedup
+
+
+def _build_index_metadata(options: PipelineOptions) -> dict[str, Any]:
+    index: dict[str, Any] = {}
+    _apply_metadata_fields(options, index, _INDEX_METADATA_FIELDS)
+    return index
 
 
 def merge_pipeline_options(*options: PipelineOptions) -> PipelineOptions:
@@ -361,249 +593,30 @@ def build_pipeline_metadata(options: PipelineOptions) -> dict[str, Any] | None:
         return None
 
     pipeline: dict[str, Any] = {}
-    if options.governance_enabled is not None:
-        pipeline["governance_enabled"] = bool(options.governance_enabled)
-    if options.parse_fallback_enabled is not None:
-        pipeline["parse_fallback_enabled"] = bool(options.parse_fallback_enabled)
-    if options.parse_fallback_min_content_chars is not None:
-        pipeline["parse_fallback_min_content_chars"] = int(options.parse_fallback_min_content_chars)
-    if options.parse_fallback_min_parse_score is not None:
-        pipeline["parse_fallback_min_parse_score"] = float(options.parse_fallback_min_parse_score)
-    if options.parse_fallback_max_retries is not None:
-        pipeline["parse_fallback_max_retries"] = int(options.parse_fallback_max_retries)
-    if options.cross_page_merge_enabled is not None:
-        pipeline["cross_page_merge_enabled"] = bool(options.cross_page_merge_enabled)
-    if options.cross_page_merge_max_page_gap is not None:
-        pipeline["cross_page_merge_max_page_gap"] = int(options.cross_page_merge_max_page_gap)
-    if options.reading_order_enabled is not None:
-        pipeline["reading_order_enabled"] = bool(options.reading_order_enabled)
-    if options.parse_cache_enabled is not None:
-        pipeline["parse_cache_enabled"] = bool(options.parse_cache_enabled)
-    if options.parse_cache_ttl_sec is not None:
-        pipeline["parse_cache_ttl_sec"] = int(options.parse_cache_ttl_sec)
-    if options.vlm_correction_enabled is not None:
-        pipeline["vlm_correction_enabled"] = bool(options.vlm_correction_enabled)
-    if options.vlm_correction_min_table_score is not None:
-        pipeline["vlm_correction_min_table_score"] = float(options.vlm_correction_min_table_score)
-    if options.vlm_correction_max_pages is not None:
-        pipeline["vlm_correction_max_pages"] = int(options.vlm_correction_max_pages)
-    if options.persist_parsed_content is not None:
-        pipeline["persist_parsed_content"] = bool(options.persist_parsed_content)
-    if options.persist_parsed_content_max_chars is not None:
-        pipeline["persist_parsed_content_max_chars"] = int(options.persist_parsed_content_max_chars)
-    if options.chunk_size is not None:
-        pipeline["chunk_size"] = int(options.chunk_size)
-    if options.chunk_overlap is not None:
-        pipeline["chunk_overlap"] = int(options.chunk_overlap)
-    if options.chunk_merge_small_min_chars is not None:
-        pipeline["chunk_merge_small_min_chars"] = int(options.chunk_merge_small_min_chars)
-    if options.chunk_strategy_params is not None:
-        sanitized = _sanitize_chunk_strategy_params(options.chunk_strategy_params)
-        if sanitized:
-            pipeline["chunk_strategy_params"] = sanitized
-    if options.chunk_python_plugin is not None:
-        plugin_ref = _sanitize_stage_python_plugin_ref(options.chunk_python_plugin, "chunk")
-        if plugin_ref:
-            pipeline["chunk_python_plugin"] = plugin_ref
-    if options.chunk_python_params is not None:
-        sanitized = _sanitize_chunk_strategy_params(options.chunk_python_params)
-        if sanitized:
-            pipeline["chunk_python_params"] = sanitized
-    if options.kg_python_plugin is not None:
-        plugin_ref = _sanitize_stage_python_plugin_ref(options.kg_python_plugin, "kg")
-        if plugin_ref:
-            pipeline["kg_python_plugin"] = plugin_ref
-    if options.kg_python_params is not None:
-        sanitized = _sanitize_chunk_strategy_params(options.kg_python_params)
-        if sanitized:
-            pipeline["kg_python_params"] = sanitized
+    _apply_metadata_fields(options, pipeline, _PIPELINE_METADATA_FIELDS)
+    _apply_sanitized_metadata_fields(options, pipeline, _PIPELINE_METADATA_SANITIZED_FIELDS)
 
-    tables: dict[str, Any] = {}
-    if options.table_store_enabled is not None:
-        tables["enabled"] = bool(options.table_store_enabled)
-    if options.table_store_max_rows is not None:
-        tables["max_rows"] = int(options.table_store_max_rows)
-    if options.table_store_max_cols is not None:
-        tables["max_cols"] = int(options.table_store_max_cols)
-    if options.table_store_sample_rows is not None:
-        tables["sample_rows"] = int(options.table_store_sample_rows)
-    if options.table_store_auto_route is not None:
-        tables["auto_route"] = bool(options.table_store_auto_route)
-    if options.table_store_sidecar_exclusive_routing is not None:
-        tables["sidecar_exclusive_routing"] = bool(options.table_store_sidecar_exclusive_routing)
-    if options.table_store_auto_row_threshold is not None:
-        tables["auto_row_threshold"] = int(options.table_store_auto_row_threshold)
-    if options.table_store_auto_col_threshold is not None:
-        tables["auto_col_threshold"] = int(options.table_store_auto_col_threshold)
-    if options.table_store_auto_sheet_threshold is not None:
-        tables["auto_sheet_threshold"] = int(options.table_store_auto_sheet_threshold)
-    if options.table_store_auto_file_bytes_threshold is not None:
-        tables["auto_file_bytes_threshold"] = int(options.table_store_auto_file_bytes_threshold)
+    tables = _build_tables_metadata(options)
     if tables:
         pipeline["tables"] = tables
 
-    images: dict[str, Any] = {}
-    if options.image_caption_enabled is not None:
-        images["caption_enabled"] = bool(options.image_caption_enabled)
-    if options.image_ocr_enabled is not None:
-        images["ocr_enabled"] = bool(options.image_ocr_enabled)
-    if options.image_ocr_max_chars is not None:
-        images["ocr_max_chars"] = int(options.image_ocr_max_chars)
-    if options.image_ocr_max_images is not None:
-        images["ocr_max_images"] = int(options.image_ocr_max_images)
+    images = _build_images_metadata(options)
     if images:
         pipeline["images"] = images
 
-    governance: dict[str, Any] = {}
-    if options.governance_remove_toc_lines is not None:
-        governance["remove_toc_lines"] = bool(options.governance_remove_toc_lines)
-    if options.governance_remove_noise_lines is not None:
-        governance["remove_noise_lines"] = bool(options.governance_remove_noise_lines)
-    if options.governance_unwrap_lines is not None:
-        governance["unwrap_lines"] = bool(options.governance_unwrap_lines)
-    if options.governance_remove_common_lines is not None:
-        governance["remove_common_lines"] = bool(options.governance_remove_common_lines)
-    if options.governance_remove_boilerplate is not None:
-        governance["remove_boilerplate"] = bool(options.governance_remove_boilerplate)
-    if options.governance_remove_images is not None:
-        governance["remove_images"] = str(options.governance_remove_images)
-    if options.governance_rule_packs is not None:
-        sanitized = _sanitize_rule_packs(options.governance_rule_packs)
-        if sanitized:
-            governance["rule_packs"] = sanitized
-    if options.governance_regex_rules is not None:
-        sanitized = _sanitize_regex_rules(options.governance_regex_rules)
-        if sanitized:
-            governance["regex_rules"] = sanitized
-    if options.governance_extract_frontmatter is not None:
-        governance["extract_frontmatter"] = bool(options.governance_extract_frontmatter)
-    if options.governance_strip_frontmatter is not None:
-        governance["strip_frontmatter"] = bool(options.governance_strip_frontmatter)
-    if options.governance_detect_language is not None:
-        governance["detect_language"] = bool(options.governance_detect_language)
-    if options.governance_language_min_chars is not None:
-        governance["language_min_chars"] = int(options.governance_language_min_chars)
-    if options.governance_normalize_urls is not None:
-        governance["normalize_urls"] = bool(options.governance_normalize_urls)
-    if options.governance_normalize_urls_strip_tracking is not None:
-        governance["normalize_urls_strip_tracking"] = bool(options.governance_normalize_urls_strip_tracking)
-    if options.governance_drop_duplicate_paragraphs is not None:
-        governance["drop_duplicate_paragraphs"] = bool(options.governance_drop_duplicate_paragraphs)
-    if options.governance_drop_duplicate_paragraphs_min_occurrences is not None:
-        governance["drop_duplicate_paragraphs_min_occurrences"] = int(options.governance_drop_duplicate_paragraphs_min_occurrences)
-    if options.governance_drop_duplicate_paragraphs_min_chars is not None:
-        governance["drop_duplicate_paragraphs_min_chars"] = int(options.governance_drop_duplicate_paragraphs_min_chars)
-    if options.governance_drop_duplicate_paragraphs_max_chars is not None:
-        governance["drop_duplicate_paragraphs_max_chars"] = int(options.governance_drop_duplicate_paragraphs_max_chars)
-    if options.governance_trim_references is not None:
-        governance["trim_references"] = bool(options.governance_trim_references)
-    if options.governance_extract_keywords is not None:
-        governance["extract_keywords"] = bool(options.governance_extract_keywords)
-    if options.governance_keywords_provider is not None:
-        governance["keywords_provider"] = str(options.governance_keywords_provider)
-    if options.governance_keywords_top_k is not None:
-        governance["keywords_top_k"] = int(options.governance_keywords_top_k)
-    if options.governance_keywords_max_chars is not None:
-        governance["keywords_max_chars"] = int(options.governance_keywords_max_chars)
-    if options.governance_normalize_tables is not None:
-        governance["normalize_tables"] = bool(options.governance_normalize_tables)
-    if options.governance_strip_code_line_numbers is not None:
-        governance["strip_code_line_numbers"] = bool(options.governance_strip_code_line_numbers)
-    if options.governance_quarantine_on_drop is not None:
-        governance["quarantine_on_drop"] = bool(options.governance_quarantine_on_drop)
-    if options.governance_pii_anonymize is not None:
-        governance["pii_anonymize"] = bool(options.governance_pii_anonymize)
-    if options.governance_pii_mode is not None:
-        governance["pii_mode"] = str(options.governance_pii_mode)
-    if options.governance_pii_mask is not None:
-        governance["pii_mask"] = str(options.governance_pii_mask)
-    if options.governance_pii_max_hits is not None:
-        governance["pii_max_hits"] = int(options.governance_pii_max_hits)
-    if options.governance_llm_auto_tagging_enabled is not None:
-        governance["llm_auto_tagging_enabled"] = bool(options.governance_llm_auto_tagging_enabled)
-    if options.governance_llm_auto_tagging_max_chars is not None:
-        governance["llm_auto_tagging_max_chars"] = int(options.governance_llm_auto_tagging_max_chars)
-    if options.governance_llm_auto_tagging_max_items is not None:
-        governance["llm_auto_tagging_max_items"] = int(options.governance_llm_auto_tagging_max_items)
-    pre_poc: dict[str, Any] = {}
-    if options.ingest_pre_poc_scanner_enabled is not None:
-        pre_poc["scanner_enabled"] = bool(options.ingest_pre_poc_scanner_enabled)
-    if options.ingest_pre_poc_quality_gate_mode is not None:
-        pre_poc["quality_gate_mode"] = str(options.ingest_pre_poc_quality_gate_mode)
+    pre_poc = _build_pre_poc_metadata(options)
     if pre_poc:
         pipeline["pre_poc"] = pre_poc
-    if options.governance_secrets_redact is not None:
-        governance["secrets_redact"] = bool(options.governance_secrets_redact)
-    if options.governance_secrets_mode is not None:
-        governance["secrets_mode"] = str(options.governance_secrets_mode)
-    if options.governance_secrets_mask is not None:
-        governance["secrets_mask"] = str(options.governance_secrets_mask)
-    if options.governance_secrets_max_hits is not None:
-        governance["secrets_max_hits"] = int(options.governance_secrets_max_hits)
-    if options.governance_max_blank_lines is not None:
-        governance["max_blank_lines"] = int(options.governance_max_blank_lines)
-    if options.governance_html_xpath is not None:
-        governance["html_xpath"] = str(options.governance_html_xpath)
-    if options.governance_drop_outline_only is not None:
-        governance["drop_outline_only"] = bool(options.governance_drop_outline_only)
-    if options.governance_drop_outline_min_content_chars is not None:
-        governance["drop_outline_min_content_chars"] = int(options.governance_drop_outline_min_content_chars)
-    if options.governance_drop_outline_max_heading_ratio is not None:
-        governance["drop_outline_max_heading_ratio"] = float(options.governance_drop_outline_max_heading_ratio)
-    if options.governance_drop_low_density is not None:
-        governance["drop_low_density"] = bool(options.governance_drop_low_density)
-    if options.governance_drop_low_density_threshold is not None:
-        governance["drop_low_density_threshold"] = float(options.governance_drop_low_density_threshold)
-    if options.governance_unwrap_max_line_length is not None:
-        governance["unwrap_max_line_length"] = int(options.governance_unwrap_max_line_length)
-    if options.governance_noise_min_chars is not None:
-        governance["noise_min_chars"] = int(options.governance_noise_min_chars)
-    if options.governance_noise_ratio_threshold is not None:
-        governance["noise_ratio_threshold"] = float(options.governance_noise_ratio_threshold)
-    if options.governance_common_lines_min_docs is not None:
-        governance["common_lines_min_docs"] = int(options.governance_common_lines_min_docs)
-    if options.governance_common_lines_min_ratio is not None:
-        governance["common_lines_min_ratio"] = float(options.governance_common_lines_min_ratio)
-    if options.governance_python_plugin is not None:
-        plugin_ref = _sanitize_stage_python_plugin_ref(options.governance_python_plugin, "governance")
-        if plugin_ref:
-            governance["python_plugin"] = plugin_ref
-    if options.governance_python_params is not None:
-        sanitized = _sanitize_chunk_strategy_params(options.governance_python_params)
-        if sanitized:
-            governance["python_params"] = sanitized
+
+    governance = _build_governance_metadata(options)
     if governance:
         pipeline["governance"] = governance
 
-    dedup: dict[str, Any] = {}
-    if options.near_dedup_enabled is not None:
-        dedup["enabled"] = bool(options.near_dedup_enabled)
-    if options.near_dedup_hamming_threshold is not None:
-        dedup["hamming_threshold"] = int(options.near_dedup_hamming_threshold)
-    if options.near_dedup_max_bucket_size is not None:
-        dedup["max_bucket_size"] = int(options.near_dedup_max_bucket_size)
+    dedup = _build_dedup_metadata(options)
     if dedup:
         pipeline["dedup"] = dedup
 
-    index: dict[str, Any] = {}
-    if options.chunk_vector_enabled is not None:
-        index["chunk_vector_enabled"] = bool(options.chunk_vector_enabled)
-    if options.bm25_index_enabled is not None:
-        index["bm25_index_enabled"] = bool(options.bm25_index_enabled)
-    if options.kg_enabled is not None:
-        index["kg_enabled"] = bool(options.kg_enabled)
-    if options.event_vector_enabled is not None:
-        index["event_vector_enabled"] = bool(options.event_vector_enabled)
-    if options.entity_vector_enabled is not None:
-        index["entity_vector_enabled"] = bool(options.entity_vector_enabled)
-    if options.embedding_context_prefix_enabled is not None:
-        index["embedding_context_prefix_enabled"] = bool(options.embedding_context_prefix_enabled)
-    if options.embedding_contextual_retrieval_enabled is not None:
-        index["embedding_contextual_retrieval_enabled"] = bool(options.embedding_contextual_retrieval_enabled)
-    if options.embedding_contextual_retrieval_lazy_mode is not None:
-        index["embedding_contextual_retrieval_lazy_mode"] = bool(options.embedding_contextual_retrieval_lazy_mode)
-    if options.embedding_field_aware_enabled is not None:
-        index["embedding_field_aware_enabled"] = bool(options.embedding_field_aware_enabled)
+    index = _build_index_metadata(options)
     if index:
         pipeline["index"] = index
 

@@ -120,6 +120,30 @@ def looks_like_policy_manual(text: str) -> bool:
     return bool(chapters or clauses or bracket_titles or len(raw) >= 400)
 
 
+def _resolve_document_id(base_meta: dict[str, Any]) -> str:
+    doc_id = str(base_meta.get("document_id") or "").strip()
+    if doc_id:
+        return doc_id
+    return str(base_meta.get("source") or "").strip() or "unknown"
+
+
+def _article_headings(headings: list[PolicyHeading]) -> list[PolicyHeading]:
+    article_heads = [heading for heading in headings if heading.kind == "article"]
+    if article_heads:
+        return article_heads
+    return [PolicyHeading(start=0, end=0, text="(document)", level=3, kind="article", number="document")]
+
+
+def _policy_paths_by_article_start(headings: list[PolicyHeading]) -> dict[int, list[str]]:
+    stack: list[PolicyHeading] = []
+    path_by_article_start: dict[int, list[str]] = {}
+    for heading in headings:
+        _update_heading_stack(stack, heading=heading)
+        if heading.kind == "article":
+            path_by_article_start[heading.start] = [item.text for item in stack]
+    return path_by_article_start
+
+
 class PolicyManualStructuredChunker(BaseChunker):
     """
     Structured chunker for policy/manual documents.
@@ -141,6 +165,65 @@ class PolicyManualStructuredChunker(BaseChunker):
             add_start_index=True,
         )
 
+    def _append_article_chunks(
+        self,
+        out: list[Document],
+        *,
+        sec_text: str,
+        sec_start: int,
+        sec_end: int,
+        base_meta: dict[str, Any],
+        doc_id: str,
+        article_number: str,
+        path: list[str],
+    ) -> None:
+        parent_id = _stable_id24(f"{doc_id}:{article_number}")
+        path_str = " / ".join(path)
+        parent_content_hash = _sha256_hex(sec_text)
+        parent_clause_id = _stable_id24(f"{doc_id}:{article_number}:{parent_content_hash}")
+        parent_meta: dict[str, Any] = dict(base_meta)
+        parent_meta.update(
+            {
+                "chunk_strategy": "policy_manual_structured",
+                "chunk_role": "parent",
+                "parent_id": parent_id,
+                "start_char": sec_start,
+                "end_char": sec_end,
+                "policy_clause_id": parent_clause_id,
+                "policy_clause_number": article_number,
+                "policy_path": list(path),
+                "policy_path_str": path_str,
+            }
+        )
+        out.append(Document(page_content=sec_text, metadata=parent_meta))
+
+        split_docs = self._child_splitter.create_documents(texts=[sec_text], metadatas=[base_meta])
+        for sd in split_docs:
+            sd_meta = dict(sd.metadata or {})
+            local_start = sd_meta.pop("start_index", None) or 0
+            abs_start = sec_start + int(local_start)
+            abs_end = abs_start + len(sd.page_content)
+            child_content = sd.page_content or ""
+            child_content_hash = _sha256_hex(child_content)
+            child_clause_id = _stable_id24(f"{doc_id}:{article_number}:{child_content_hash}")
+
+            meta: dict[str, Any] = dict(base_meta)
+            meta.update(sd_meta)
+            meta.update(
+                {
+                    "chunk_strategy": "policy_manual_structured",
+                    "chunk_role": "child",
+                    "parent_id": parent_id,
+                    "start_char": abs_start,
+                    "end_char": abs_end,
+                    "policy_clause_id": child_clause_id,
+                    "policy_clause_number": article_number,
+                    "policy_path": list(path),
+                    "policy_path_str": path_str,
+                }
+            )
+            out.append(Document(page_content=child_content, metadata=meta))
+
     def split_documents(self, documents: list[Document]) -> list[Document]:
         out: list[Document] = []
 
@@ -150,91 +233,35 @@ class PolicyManualStructuredChunker(BaseChunker):
             if not text.strip():
                 continue
 
-            doc_id = str(base_meta.get("document_id") or "").strip()
-            if not doc_id:
-                doc_id = str(base_meta.get("source") or "").strip() or "unknown"
-
+            doc_id = _resolve_document_id(base_meta)
             headings = _iter_headings(text)
-            article_heads = [h for h in headings if h.kind == "article"]
-
-            # Best-effort: if no articles detected, treat entire text as one section.
-            if not article_heads:
-                article_heads = [
-                    PolicyHeading(start=0, end=0, text="(document)", level=3, kind="article", number="document")
-                ]
-
-            # Pre-compute heading path for each article heading start.
-            stack: list[PolicyHeading] = []
-            path_by_article_start: dict[int, list[str]] = {}
-            for h in headings:
-                _update_heading_stack(stack, heading=h)
-                if h.kind == "article":
-                    path_by_article_start[h.start] = [x.text for x in stack]
+            article_heads = _article_headings(headings)
+            path_by_article_start = _policy_paths_by_article_start(headings)
 
             preamble = text[: article_heads[0].start]
             first_start = 0 if preamble.strip() else article_heads[0].start
 
-            for idx, h in enumerate(article_heads):
-                sec_start = first_start if idx == 0 else h.start
+            for idx, heading in enumerate(article_heads):
+                sec_start = first_start if idx == 0 else heading.start
                 sec_end = article_heads[idx + 1].start if idx + 1 < len(article_heads) else len(text)
                 sec_text = text[sec_start:sec_end]
                 if not sec_text.strip():
                     continue
 
-                article_number = str(h.number or "").strip() or f"article_{idx + 1}"
-                parent_id = _stable_id24(f"{doc_id}:{article_number}")
-
-                path = path_by_article_start.get(h.start) or ([h.text] if h.text else [])
+                article_number = str(heading.number or "").strip() or f"article_{idx + 1}"
+                path = path_by_article_start.get(heading.start) or ([heading.text] if heading.text else [])
                 if not path:
                     path = [article_number]
-                path_str = " / ".join(path)
-
-                # Parent chunk (one per article section; may exceed chunk_size for now).
-                parent_content_hash = _sha256_hex(sec_text)
-                parent_clause_id = _stable_id24(f"{doc_id}:{article_number}:{parent_content_hash}")
-                parent_meta: dict[str, Any] = dict(base_meta)
-                parent_meta.update(
-                    {
-                        "chunk_strategy": "policy_manual_structured",
-                        "chunk_role": "parent",
-                        "parent_id": parent_id,
-                        "start_char": sec_start,
-                        "end_char": sec_end,
-                        "policy_clause_id": parent_clause_id,
-                        "policy_clause_number": article_number,
-                        "policy_path": list(path),
-                        "policy_path_str": path_str,
-                    }
+                self._append_article_chunks(
+                    out,
+                    sec_text=sec_text,
+                    sec_start=sec_start,
+                    sec_end=sec_end,
+                    base_meta=base_meta,
+                    doc_id=doc_id,
+                    article_number=article_number,
+                    path=path,
                 )
-                out.append(Document(page_content=sec_text, metadata=parent_meta))
-
-                # Child chunks (bounded by chunk_size).
-                split_docs = self._child_splitter.create_documents(texts=[sec_text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = sec_start + int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-
-                    child_content = sd.page_content or ""
-                    child_content_hash = _sha256_hex(child_content)
-                    child_clause_id = _stable_id24(f"{doc_id}:{article_number}:{child_content_hash}")
-
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta.update(
-                        {
-                            "chunk_strategy": "policy_manual_structured",
-                            "chunk_role": "child",
-                            "parent_id": parent_id,
-                            "start_char": abs_start,
-                            "end_char": abs_end,
-                            "policy_clause_id": child_clause_id,
-                            "policy_clause_number": article_number,
-                            "policy_path": list(path),
-                            "policy_path_str": path_str,
-                        }
-                    )
-                    out.append(Document(page_content=child_content, metadata=meta))
 
         # Add a stable chunk_index within this output list for convenience/debugging.
         for idx, chunk in enumerate(out):

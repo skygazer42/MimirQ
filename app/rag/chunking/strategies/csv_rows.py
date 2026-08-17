@@ -45,6 +45,57 @@ def _iter_rows(text: str) -> list[_Row]:
     return rows
 
 
+def _append_fallback_documents(
+    out: list[Document],
+    split_docs: list[Document],
+    base_meta: dict[str, Any],
+) -> None:
+    for split_doc in split_docs:
+        local_start = split_doc.metadata.pop("start_index", None) or 0
+        abs_start = int(local_start)
+        abs_end = abs_start + len(split_doc.page_content)
+        meta: dict[str, Any] = dict(base_meta)
+        meta.update(split_doc.metadata or {})
+        meta["chunk_strategy"] = "csv_rows"
+        meta["start_char"] = abs_start
+        meta["end_char"] = abs_end
+        meta["csv_rows_fallback"] = True
+        out.append(Document(page_content=split_doc.page_content, metadata=meta))
+
+
+def _find_chunk_end(rows: list[_Row], start_idx: int, chunk_size: int) -> int:
+    end_idx = start_idx
+    while end_idx < len(rows):
+        candidate_end = rows[end_idx].end
+        candidate_len = candidate_end - rows[start_idx].start
+        if end_idx == start_idx or candidate_len <= chunk_size:
+            end_idx += 1
+            continue
+        break
+    return end_idx if end_idx > start_idx else (start_idx + 1)
+
+
+def _next_row_start(rows: list[_Row], start_idx: int, end_idx: int, chunk_overlap: int) -> int:
+    next_start = end_idx
+    if chunk_overlap > 0 and (end_idx - start_idx) > 1:
+        desired = end_idx - 1
+        while desired > start_idx:
+            overlap_len = rows[end_idx - 1].end - rows[desired - 1].start
+            if overlap_len <= chunk_overlap:
+                desired -= 1
+                continue
+            break
+        next_start = desired if desired > start_idx else (end_idx - 1)
+    return end_idx if next_start <= start_idx else next_start
+
+
+def _assign_chunk_indexes(chunks: list[Document]) -> None:
+    for idx, chunk in enumerate(chunks):
+        meta = dict(chunk.metadata or {})
+        meta["chunk_index"] = idx
+        chunk.metadata = meta
+
+
 def looks_like_csv_rows(text: str) -> bool:
     if not text or len(text) < 200:
         return False
@@ -77,33 +128,12 @@ class CsvRowsChunker(BaseChunker):
             rows = _iter_rows(text)
             if not rows:
                 split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "csv_rows"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta["csv_rows_fallback"] = True
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                _append_fallback_documents(out, split_docs, base_meta)
                 continue
 
             start_idx = 0
             while start_idx < len(rows):
-                end_idx = start_idx
-                while end_idx < len(rows):
-                    candidate_end = rows[end_idx].end
-                    candidate_len = candidate_end - rows[start_idx].start
-                    if end_idx == start_idx or candidate_len <= self.chunk_size:
-                        end_idx += 1
-                        continue
-                    break
-
-                if end_idx == start_idx:
-                    end_idx = start_idx + 1
-
+                end_idx = _find_chunk_end(rows, start_idx, self.chunk_size)
                 chunk_start = rows[start_idx].start
                 chunk_end = rows[end_idx - 1].end
                 content = text[chunk_start:chunk_end]
@@ -117,26 +147,8 @@ class CsvRowsChunker(BaseChunker):
                 meta["csv_row_end"] = int(rows[end_idx - 1].row_no)
                 out.append(Document(page_content=content, metadata=meta))
 
-                # Row-level overlap bounded by `chunk_overlap` characters.
-                next_start = end_idx
-                if self.chunk_overlap > 0 and (end_idx - start_idx) > 1:
-                    desired = end_idx - 1
-                    while desired > start_idx:
-                        overlap_len = rows[end_idx - 1].end - rows[desired - 1].start
-                        if overlap_len <= self.chunk_overlap:
-                            desired -= 1
-                            continue
-                        break
-                    next_start = desired if desired > start_idx else (end_idx - 1)
+                start_idx = _next_row_start(rows, start_idx, end_idx, self.chunk_overlap)
 
-                if next_start <= start_idx:
-                    next_start = end_idx
-                start_idx = next_start
-
-        for idx, chunk in enumerate(out):
-            meta = dict(chunk.metadata or {})
-            meta["chunk_index"] = idx
-            chunk.metadata = meta
+        _assign_chunk_indexes(out)
 
         return out
-

@@ -43,6 +43,7 @@ _TIMELINE_REDACT_KEYS = {
     "password",
     "api_key",
 }
+_TIMELINE_VALUE_SKIPPED = object()
 
 
 def _sanitize_timeline_details(details: Any, *, _depth: int = 0) -> dict[str, Any]:
@@ -62,24 +63,29 @@ def _sanitize_timeline_details(details: Any, *, _depth: int = 0) -> dict[str, An
         key_l = key_norm.lower()
         if any(redact in key_l for redact in _TIMELINE_REDACT_KEYS):
             continue
-        if isinstance(value, (str, int, float, bool)) or value is None:
-            out[key_norm] = value
-        elif isinstance(value, list):
-            safe_items: list[Any] = []
-            for item in value[:20]:
-                if isinstance(item, (str, int, float, bool)) or item is None:
-                    safe_items.append(item)
-                elif isinstance(item, dict):
-                    safe_item = _sanitize_timeline_details(dict(list(item.items())[:20]), _depth=_depth + 1)
-                    if safe_item:
-                        safe_items.append(safe_item)
-            if safe_items:
-                out[key_norm] = safe_items
-        elif isinstance(value, dict):
-            safe_map = _sanitize_timeline_details(dict(list(value.items())[:20]), _depth=_depth + 1)
-            if safe_map:
-                out[key_norm] = safe_map
+        safe_value = _sanitize_timeline_value(value, depth=_depth)
+        if safe_value is not _TIMELINE_VALUE_SKIPPED:
+            out[key_norm] = safe_value
     return out
+
+
+def _sanitize_timeline_value(value: Any, *, depth: int) -> Any:
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if isinstance(value, list):
+        safe_items: list[Any] = []
+        for item in value[:20]:
+            if isinstance(item, (str, int, float, bool)) or item is None:
+                safe_items.append(item)
+            elif isinstance(item, dict):
+                safe_item = _sanitize_timeline_details(dict(list(item.items())[:20]), _depth=depth + 1)
+                if safe_item:
+                    safe_items.append(safe_item)
+        return safe_items or _TIMELINE_VALUE_SKIPPED
+    if isinstance(value, dict):
+        safe_map = _sanitize_timeline_details(dict(list(value.items())[:20]), _depth=depth + 1)
+        return safe_map or _TIMELINE_VALUE_SKIPPED
+    return _TIMELINE_VALUE_SKIPPED
 
 
 @router.get("/{document_id}/timeline", response_model=DocumentTimelineResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)

@@ -47,6 +47,26 @@ def _safe_float(v: object) -> float | None:
     return f
 
 
+def _extract_prometheus_values(data: object) -> list[float]:
+    if not isinstance(data, dict) or str(data.get("status") or "") != "success":
+        return []
+    result = ((data.get("data") or {}) if isinstance(data.get("data"), dict) else {}).get("result")
+    if not isinstance(result, list) or not result:
+        return []
+
+    values: list[float] = []
+    for item in result:
+        if not isinstance(item, dict):
+            continue
+        pair = item.get("value")
+        if not (isinstance(pair, list) and len(pair) >= 2):
+            continue
+        fv = _safe_float(pair[1])
+        if fv is not None:
+            values.append(fv)
+    return values
+
+
 async def _prom_query(client: httpx.AsyncClient, *, base_url: str, promql: str) -> float | None:
     if not base_url:
         return None
@@ -57,28 +77,7 @@ async def _prom_query(client: httpx.AsyncClient, *, base_url: str, promql: str) 
     url = f"{base_url}/api/v1/query"
     resp = await client.get(url, params={"query": q})
     resp.raise_for_status()
-    data = resp.json() if resp.content else {}
-
-    if str(data.get("status") or "") != "success":
-        return None
-
-    result = ((data.get("data") or {}) if isinstance(data.get("data"), dict) else {}).get("result")
-    if not isinstance(result, list) or not result:
-        return None
-
-    # We expect a single scalar/vector element after sum()/histogram_quantile().
-    # If multiple series appear, sum values best-effort.
-    values: list[float] = []
-    for item in result:
-        if not isinstance(item, dict):
-            continue
-        pair = item.get("value")
-        if not (isinstance(pair, list) and len(pair) >= 2):
-            continue
-        fv = _safe_float(pair[1])
-        if fv is None:
-            continue
-        values.append(fv)
+    values = _extract_prometheus_values(resp.json() if resp.content else {})
 
     if not values:
         return None
@@ -185,4 +184,3 @@ async def build_slo_snapshot(*, tenant_id: str | None) -> dict[str, Any]:
 
 
 __all__ = ["SLO_SNAPSHOT_SCHEMA_V1", "build_slo_snapshot"]
-

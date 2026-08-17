@@ -174,9 +174,7 @@ def _load_accessible_conversation(
     not_found_detail: str,
 ) -> Conversation:
     conversation = (
-        db.query(Conversation)
-        .filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id)
-        .first()
+        db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id).first()
     )
     if not conversation:
         raise HTTPException(status_code=404, detail=not_found_detail)
@@ -351,29 +349,8 @@ def _finalize_reference_sources(
     from app.models.document import DocumentChunk
     from app.services.document_access import filter_allowed_document_ids
 
-    # Coerce to dict payloads (Pydantic models provide model_dump).
-    coerced: list[dict] = []
-    for src in reference_sources or []:
-        if src is None:
-            continue
-        if hasattr(src, "model_dump"):
-            coerced.append(src.model_dump(mode="json"))
-        elif isinstance(src, dict):
-            coerced.append(dict(src))
-
-    doc_ids: list[UUID] = []
-    chunk_ids: list[UUID] = []
-    for src in coerced:
-        try:
-            doc_ids.append(UUID(str(src.get("document_id"))))
-        except Exception:
-            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
-            continue
-        try:
-            chunk_ids.append(UUID(str(src.get("chunk_id"))))
-        except Exception:
-            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
-            continue
+    coerced = _coerce_reference_sources(reference_sources)
+    doc_ids, chunk_ids = _reference_source_ids(coerced)
 
     # ACL: all evidence documents must be readable.
     allowed_docs = set(filter_allowed_document_ids(db, tenant_id, account_id, doc_ids))
@@ -404,40 +381,79 @@ def _finalize_reference_sources(
         raise HTTPException(status_code=400, detail="Some evidence chunks were not found")
 
     out: list[dict] = []
-    for src in coerced:
-        chunk_id_raw = src.get("chunk_id")
-        doc_id_raw = src.get("document_id")
-        if not chunk_id_raw or not doc_id_raw:
-            continue
-        try:
-            chunk_id = UUID(str(chunk_id_raw))
-            doc_id = UUID(str(doc_id_raw))
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid evidence chunk_id/document_id") from None
-
-        row = row_by_chunk_id.get(chunk_id)
-        if not row:
-            raise HTTPException(status_code=400, detail="Evidence chunk not found")
-        _chunk_id, chunk_doc_id, chunk_dataset_id, content, disabled_at, chunk_index, chunk_meta = row
-        if disabled_at is not None:
-            raise HTTPException(status_code=400, detail="Evidence chunk is disabled")
-        if UUID(str(chunk_doc_id)) != doc_id:
-            raise HTTPException(status_code=400, detail="Evidence chunk does not belong to document_id")
-        if chunk_dataset_id is None or UUID(str(chunk_dataset_id)) != dataset_id:
-            raise HTTPException(status_code=400, detail="Evidence chunk does not belong to dataset_id")
-
-        payload = _enrich_reference_source_payload(
-            dict(src),
-            chunk_index=chunk_index if isinstance(chunk_index, int) else None,
-            chunk_meta=(chunk_meta if isinstance(chunk_meta, dict) else None),
-            chunk_content=(content if isinstance(content, str) else None),
-        )
-        out.append(payload)
+    for source in coerced:
+        payload = _validated_reference_source_payload(source, row_by_chunk_id, dataset_id)
+        if payload is not None:
+            out.append(payload)
 
     if not out:
         raise HTTPException(status_code=400, detail="reference_sources is empty or invalid")
 
     return out
+
+
+def _coerce_reference_sources(reference_sources: list[dict] | list[Any]) -> list[dict]:
+    """Convert supported reference-source objects into independent dictionaries."""
+    coerced: list[dict] = []
+    for source in reference_sources or []:
+        if source is None:
+            continue
+        if hasattr(source, "model_dump"):
+            coerced.append(source.model_dump(mode="json"))
+        elif isinstance(source, dict):
+            coerced.append(dict(source))
+    return coerced
+
+
+def _reference_source_ids(reference_sources: list[dict]) -> tuple[list[UUID], list[UUID]]:
+    """Collect valid document and chunk identifiers with the original skip semantics."""
+    document_ids: list[UUID] = []
+    chunk_ids: list[UUID] = []
+    for source in reference_sources:
+        try:
+            document_ids.append(UUID(str(source.get("document_id"))))
+        except Exception:
+            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+            continue
+        try:
+            chunk_ids.append(UUID(str(source.get("chunk_id"))))
+        except Exception:
+            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+    return document_ids, chunk_ids
+
+
+def _validated_reference_source_payload(
+    source: dict,
+    row_by_chunk_id: dict[UUID, Any],
+    dataset_id: UUID,
+) -> dict | None:
+    chunk_id_raw = source.get("chunk_id")
+    document_id_raw = source.get("document_id")
+    if not chunk_id_raw or not document_id_raw:
+        return None
+    try:
+        chunk_id = UUID(str(chunk_id_raw))
+        document_id = UUID(str(document_id_raw))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid evidence chunk_id/document_id") from None
+
+    row = row_by_chunk_id.get(chunk_id)
+    if not row:
+        raise HTTPException(status_code=400, detail="Evidence chunk not found")
+    _chunk_id, chunk_document_id, chunk_dataset_id, content, disabled_at, chunk_index, chunk_meta = row
+    if disabled_at is not None:
+        raise HTTPException(status_code=400, detail="Evidence chunk is disabled")
+    if UUID(str(chunk_document_id)) != document_id:
+        raise HTTPException(status_code=400, detail="Evidence chunk does not belong to document_id")
+    if chunk_dataset_id is None or UUID(str(chunk_dataset_id)) != dataset_id:
+        raise HTTPException(status_code=400, detail="Evidence chunk does not belong to dataset_id")
+
+    return _enrich_reference_source_payload(
+        dict(source),
+        chunk_index=chunk_index if isinstance(chunk_index, int) else None,
+        chunk_meta=(chunk_meta if isinstance(chunk_meta, dict) else None),
+        chunk_content=(content if isinstance(content, str) else None),
+    )
 
 
 def _normalize_reasoning_hops(raw: Any) -> list[str]:
@@ -459,28 +475,36 @@ def _normalize_evidence_chain(raw: Any) -> list[dict[str, Any]]:
         return []
     out: list[dict[str, Any]] = []
     for item in raw:
-        if item is None:
+        payload = _normalize_evidence_item(item)
+        if payload is None:
             continue
-        if hasattr(item, "model_dump"):
-            item = item.model_dump(mode="json")
-        if not isinstance(item, dict):
-            continue
-        doc_id = str(item.get("document_id") or "").strip()
-        chunk_id = str(item.get("chunk_id") or "").strip()
-        if not doc_id or not chunk_id:
-            continue
-        payload: dict[str, Any] = {"document_id": doc_id, "chunk_id": chunk_id}
-        if item.get("chunk_index") is not None:
-            try:
-                payload["chunk_index"] = int(item.get("chunk_index"))
-            except Exception as exc:
-                logger.debug(_EVALUATIONS_ROUTER_FALLBACK_LOG_MESSAGE, exc)
-        if item.get("label") is not None:
-            payload["label"] = str(item.get("label"))[:100]
         out.append(payload)
         if len(out) >= 20:
             break
     return out
+
+
+def _normalize_evidence_item(item: Any) -> dict[str, Any] | None:
+    if item is None:
+        return None
+    if hasattr(item, "model_dump"):
+        item = item.model_dump(mode="json")
+    if not isinstance(item, dict):
+        return None
+    document_id = str(item.get("document_id") or "").strip()
+    chunk_id = str(item.get("chunk_id") or "").strip()
+    if not document_id or not chunk_id:
+        return None
+
+    payload: dict[str, Any] = {"document_id": document_id, "chunk_id": chunk_id}
+    if item.get("chunk_index") is not None:
+        try:
+            payload["chunk_index"] = int(item.get("chunk_index"))
+        except Exception as exc:
+            logger.debug(_EVALUATIONS_ROUTER_FALLBACK_LOG_MESSAGE, exc)
+    if item.get("label") is not None:
+        payload["label"] = str(item.get("label"))[:100]
+    return payload
 
 
 def _merge_regression_case_extra(
@@ -686,7 +710,12 @@ def get_ragas_run(
     return {"run": run, "items": items_out}
 
 
-@router.post("/ragas/regression/cases", response_model=RagasRegressionCaseOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/ragas/regression/cases",
+    response_model=RagasRegressionCaseOut,
+    status_code=201,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def create_ragas_regression_case(
     request: RagasRegressionCaseCreateRequest,
     *,
@@ -737,7 +766,11 @@ def create_ragas_regression_case(
     return _attach_reasoning_fields(row)
 
 
-@router.patch("/ragas/regression/cases/{case_id}", response_model=RagasRegressionCaseOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.patch(
+    "/ragas/regression/cases/{case_id}",
+    response_model=RagasRegressionCaseOut,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def patch_ragas_regression_case(
     case_id: UUID,
     request: RagasRegressionCasePatchRequest,
@@ -764,43 +797,26 @@ def patch_ragas_regression_case(
         DatasetService.assert_dataset_writable(db, ds, account_id)
 
     fields = set(getattr(request, "model_fields_set", set()) or set())
-    if "question" in fields and request.question is not None:
-        row.question = request.question
-    if "expected_answer" in fields:
-        row.expected_answer = request.expected_answer
-    if "tags" in fields and request.tags is not None:
-        row.tags = request.tags
-    if (
-        "extra" in fields
-        or "reasoning_hops" in fields
-        or "evidence_chain" in fields
-    ):
-        base_extra = request.extra if ("extra" in fields and request.extra is not None) else row.extra
-        row.extra = _merge_regression_case_extra(
-            base_extra=base_extra,
-            reasoning_hops=(request.reasoning_hops if "reasoning_hops" in fields else None),
-            evidence_chain=(request.evidence_chain if "evidence_chain" in fields else None),
-        )
-    if "document_ids" in fields and request.document_ids is not None:
-        if ds_id is None:
-            raise HTTPException(status_code=400, detail="Cannot patch document_ids without dataset_id")
-        row.document_ids = _finalize_scope_document_ids(
-            db,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            dataset_id=UUID(str(ds_id)),
-            document_ids=list(request.document_ids or []),
-        )
-    if "reference_sources" in fields and request.reference_sources is not None:
-        if ds_id is None:
-            raise HTTPException(status_code=400, detail="Cannot patch reference_sources without dataset_id")
-        row.reference_sources = _finalize_reference_sources(
-            db,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            dataset_id=UUID(str(ds_id)),
-            reference_sources=request.reference_sources,
-        )
+    _apply_regression_case_scalar_patch(row, request, fields)
+    _apply_regression_case_extra_patch(row, request, fields)
+    _apply_regression_case_document_patch(
+        row,
+        request,
+        fields,
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=ds_id,
+    )
+    _apply_regression_case_reference_patch(
+        row,
+        request,
+        fields,
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=ds_id,
+    )
 
     db.add(row)
     db.commit()
@@ -808,7 +824,80 @@ def patch_ragas_regression_case(
     return _attach_reasoning_fields(row)
 
 
-@router.get("/ragas/regression/cases", response_model=RagasRegressionCaseList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def _apply_regression_case_scalar_patch(
+    row: RagasRegressionCase,
+    request: RagasRegressionCasePatchRequest,
+    fields: set[str],
+) -> None:
+    if "question" in fields and request.question is not None:
+        row.question = request.question
+    if "expected_answer" in fields:
+        row.expected_answer = request.expected_answer
+    if "tags" in fields and request.tags is not None:
+        row.tags = request.tags
+
+
+def _apply_regression_case_extra_patch(
+    row: RagasRegressionCase,
+    request: RagasRegressionCasePatchRequest,
+    fields: set[str],
+) -> None:
+    if "extra" in fields or "reasoning_hops" in fields or "evidence_chain" in fields:
+        base_extra = request.extra if ("extra" in fields and request.extra is not None) else row.extra
+        row.extra = _merge_regression_case_extra(
+            base_extra=base_extra,
+            reasoning_hops=(request.reasoning_hops if "reasoning_hops" in fields else None),
+            evidence_chain=(request.evidence_chain if "evidence_chain" in fields else None),
+        )
+
+
+def _apply_regression_case_document_patch(
+    row: RagasRegressionCase,
+    request: RagasRegressionCasePatchRequest,
+    fields: set[str],
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: Any,
+) -> None:
+    if "document_ids" in fields and request.document_ids is not None:
+        if dataset_id is None:
+            raise HTTPException(status_code=400, detail="Cannot patch document_ids without dataset_id")
+        row.document_ids = _finalize_scope_document_ids(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=UUID(str(dataset_id)),
+            document_ids=list(request.document_ids or []),
+        )
+
+
+def _apply_regression_case_reference_patch(
+    row: RagasRegressionCase,
+    request: RagasRegressionCasePatchRequest,
+    fields: set[str],
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: Any,
+) -> None:
+    if "reference_sources" in fields and request.reference_sources is not None:
+        if dataset_id is None:
+            raise HTTPException(status_code=400, detail="Cannot patch reference_sources without dataset_id")
+        row.reference_sources = _finalize_reference_sources(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=UUID(str(dataset_id)),
+            reference_sources=request.reference_sources,
+        )
+
+
+@router.get(
+    "/ragas/regression/cases", response_model=RagasRegressionCaseList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def list_ragas_regression_cases(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
@@ -826,12 +915,7 @@ def list_ragas_regression_cases(
         query = query.filter(RagasRegressionCase.dataset_id == dataset_id)
 
     total = query.count()
-    items = (
-        query.order_by(RagasRegressionCase.updated_at.desc())
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
+    items = query.order_by(RagasRegressionCase.updated_at.desc()).offset(skip).limit(limit).all()
     items = [_attach_reasoning_fields(x) for x in items]
     return {"total": total, "items": items}
 
@@ -899,12 +983,8 @@ def import_ragas_regression_cases(
         max_items=int(payload.max_items or 0),
     )
 
-    created = 0
-    updated = 0
     skipped = int(plan.get("skipped") or 0)
     errors: list[dict[str, Any]] = list(plan.get("errors") or [])
-    created_case_ids: list[UUID] = []
-    updated_case_ids: list[UUID] = []
     skipped_case_ids: list[UUID] = []
 
     for question in plan.get("skipped_existing_questions") or []:
@@ -912,20 +992,65 @@ def import_ragas_regression_cases(
         if row is not None:
             skipped_case_ids.append(row.id)
 
-    for item in plan.get("create_items") or []:
+    created_case_ids, create_skipped, create_errors = _import_new_regression_cases(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=payload.dataset_id,
+        items=plan.get("create_items") or [],
+    )
+    updated_case_ids, update_skipped, update_errors = _import_existing_regression_cases(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=payload.dataset_id,
+        by_question=by_question,
+        items=plan.get("update_items") or [],
+    )
+    skipped += create_skipped + update_skipped
+    errors.extend(create_errors)
+    errors.extend(update_errors)
+
+    db.flush()
+    db.commit()
+
+    return {
+        "created": len(created_case_ids),
+        "updated": len(updated_case_ids),
+        "skipped": skipped,
+        "errors": errors,
+        "created_case_ids": created_case_ids,
+        "updated_case_ids": updated_case_ids,
+        "skipped_case_ids": skipped_case_ids,
+        "case_ids": [*created_case_ids, *updated_case_ids, *skipped_case_ids],
+    }
+
+
+def _import_new_regression_cases(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: UUID,
+    items: list[dict[str, Any]],
+) -> tuple[list[UUID], int, list[dict[str, Any]]]:
+    created_case_ids: list[UUID] = []
+    skipped = 0
+    errors: list[dict[str, Any]] = []
+    for item in items:
         try:
             reference_sources = _finalize_reference_sources(
                 db,
                 tenant_id=tenant_id,
                 account_id=account_id,
-                dataset_id=payload.dataset_id,
+                dataset_id=dataset_id,
                 reference_sources=item.get("reference_sources") or [],
             )
             case_id = uuid4()
             row = RagasRegressionCase(
                 id=case_id,
                 tenant_id=tenant_id,
-                dataset_id=payload.dataset_id,
+                dataset_id=dataset_id,
                 question=str(item.get("question") or "").strip(),
                 expected_answer=item.get("expected_answer"),
                 reference_sources=reference_sources,
@@ -938,7 +1063,6 @@ def import_ragas_regression_cases(
                 created_by=account_id,
             )
             db.add(row)
-            created += 1
             created_case_ids.append(case_id)
         except HTTPException as exc:
             skipped += 1
@@ -946,8 +1070,22 @@ def import_ragas_regression_cases(
         except Exception as exc:  # noqa: BLE001
             skipped += 1
             errors.append({"question": item.get("question"), "error": str(exc)[:200]})
+    return created_case_ids, skipped, errors
 
-    for item in plan.get("update_items") or []:
+
+def _import_existing_regression_cases(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: UUID,
+    by_question: dict[str, Any],
+    items: list[dict[str, Any]],
+) -> tuple[list[UUID], int, list[dict[str, Any]]]:
+    updated_case_ids: list[UUID] = []
+    skipped = 0
+    errors: list[dict[str, Any]] = []
+    for item in items:
         question = str(item.get("question") or "").strip()
         row = by_question.get(question)
         if row is None:
@@ -955,27 +1093,14 @@ def import_ragas_regression_cases(
             errors.append({"question": question, "error": "Case not found for update"})
             continue
         try:
-            reference_sources = _finalize_reference_sources(
-                db,
+            _update_imported_regression_case(
+                db=db,
+                row=row,
+                item=item,
                 tenant_id=tenant_id,
                 account_id=account_id,
-                dataset_id=payload.dataset_id,
-                reference_sources=item.get("reference_sources") or [],
+                dataset_id=dataset_id,
             )
-            row.expected_answer = item.get("expected_answer")
-            row.tags = list(item.get("tags") or [])
-            row.reference_sources = reference_sources
-            merged_base_extra = dict(row.extra) if isinstance(row.extra, dict) else {}
-            incoming_extra = item.get("extra")
-            if isinstance(incoming_extra, dict):
-                merged_base_extra.update(incoming_extra)
-            row.extra = _merge_regression_case_extra(
-                base_extra=merged_base_extra,
-                reasoning_hops=item.get("reasoning_hops"),
-                evidence_chain=item.get("evidence_chain"),
-            )
-            db.add(row)
-            updated += 1
             updated_case_ids.append(row.id)
         except HTTPException as exc:
             skipped += 1
@@ -983,23 +1108,45 @@ def import_ragas_regression_cases(
         except Exception as exc:  # noqa: BLE001
             skipped += 1
             errors.append({"question": question, "error": str(exc)[:200]})
-
-    db.flush()
-    db.commit()
-
-    return {
-        "created": created,
-        "updated": updated,
-        "skipped": skipped,
-        "errors": errors,
-        "created_case_ids": created_case_ids,
-        "updated_case_ids": updated_case_ids,
-        "skipped_case_ids": skipped_case_ids,
-        "case_ids": [*created_case_ids, *updated_case_ids, *skipped_case_ids],
-    }
+    return updated_case_ids, skipped, errors
 
 
-@router.post("/ragas/regression/cases/synthetic-hardcases", response_model=SyntheticHardcaseGenerateResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def _update_imported_regression_case(
+    *,
+    db: Session,
+    row: RagasRegressionCase,
+    item: dict[str, Any],
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: UUID,
+) -> None:
+    reference_sources = _finalize_reference_sources(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=dataset_id,
+        reference_sources=item.get("reference_sources") or [],
+    )
+    row.expected_answer = item.get("expected_answer")
+    row.tags = list(item.get("tags") or [])
+    row.reference_sources = reference_sources
+    merged_base_extra = dict(row.extra) if isinstance(row.extra, dict) else {}
+    incoming_extra = item.get("extra")
+    if isinstance(incoming_extra, dict):
+        merged_base_extra.update(incoming_extra)
+    row.extra = _merge_regression_case_extra(
+        base_extra=merged_base_extra,
+        reasoning_hops=item.get("reasoning_hops"),
+        evidence_chain=item.get("evidence_chain"),
+    )
+    db.add(row)
+
+
+@router.post(
+    "/ragas/regression/cases/synthetic-hardcases",
+    response_model=SyntheticHardcaseGenerateResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def generate_synthetic_hardcases(
     payload: SyntheticHardcaseGenerateRequest,
     *,
@@ -1027,63 +1174,24 @@ def generate_synthetic_hardcases(
         # Creating many cases is a write action (governance).
         DatasetService.assert_dataset_writable(db, ds, account_id)
 
-    # Validate explicit case_ids when provided.
-    if payload.case_ids:
-        rows = (
-            db.query(RagasRegressionCase.id, RagasRegressionCase.dataset_id)
-            .filter(
-                RagasRegressionCase.tenant_id == tenant_id,
-                RagasRegressionCase.id.in_(list(payload.case_ids or [])),
-            )
-            .all()
-        )
-        try:
-            validate_case_ids_belong_to_dataset(
-                dataset_id=payload.dataset_id,
-                case_ids=list(payload.case_ids or []),
-                rows=rows,
-            )
-        except MissingCasesError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        except DatasetMismatchError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _validate_synthetic_case_scope(db, tenant_id=tenant_id, payload=payload)
 
     max_cases = max(1, min(int(payload.max_cases or 0), 200))
     per_case = max(0, min(int(payload.hardcases_per_case or 0), 20))
     max_created = max(0, min(int(payload.max_created or 0), 5000))
     tag = str(payload.tag or "").strip() or "synthetic_hardcase"
 
-    # Load base cases (dataset-scoped).
-    base_q = db.query(RagasRegressionCase).filter(
-        RagasRegressionCase.tenant_id == tenant_id,
-        RagasRegressionCase.dataset_id == payload.dataset_id,
+    base_total, base_cases = _load_synthetic_base_cases(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=payload.dataset_id,
+        case_ids=list(payload.case_ids or []),
+        max_cases=max_cases,
     )
-    if payload.case_ids:
-        base_q = base_q.filter(RagasRegressionCase.id.in_(list(payload.case_ids or [])))
-    base_total = int(base_q.count())
-    base_cases = (
-        base_q.order_by(RagasRegressionCase.updated_at.desc(), RagasRegressionCase.id.asc())
-        .limit(max_cases)
-        .all()
-    )
-
-    # Dedupe against existing suite questions (casefold + collapsed whitespace).
-    def _qkey(text: str) -> str:
-        s = " ".join(str(text or "").strip().split())
-        return s.casefold()
-
-    existing_q_rows = (
-        db.query(RagasRegressionCase.question)
-        .filter(RagasRegressionCase.tenant_id == tenant_id, RagasRegressionCase.dataset_id == payload.dataset_id)
-        .all()
-    )
-    existing_keys = {_qkey(str(q or "")) for (q,) in existing_q_rows if q}
-
-    # Lazy imports: keep eval module import-light in non-KG environments.
-    from app.rag.evaluation.kg_hardcase_deterministic import generate_hardcases_deterministic
-    from app.rag.evaluation.kg_search_diagnostics import (
-        _deterministic_hardcase_candidates,
-        _resolve_ground_truth_event_ids,
+    existing_keys = _load_existing_synthetic_question_keys(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=payload.dataset_id,
     )
 
     created_ids: list[UUID] = []
@@ -1098,92 +1206,22 @@ def generate_synthetic_hardcases(
         if max_created > 0 and len(created_ids) >= max_created:
             break
 
-        question = str(getattr(case, "question", "") or "").strip()
-        if not question:
-            continue
-
-        ref_sources = getattr(case, "reference_sources", None) or []
-        evidence_chunk_ids: list[str] = []
-        for src in ref_sources if isinstance(ref_sources, list) else []:
-            if not isinstance(src, dict):
-                continue
-            raw = src.get("chunk_id")
-            if raw is None:
-                continue
-            s = str(raw).strip()
-            if s:
-                evidence_chunk_ids.append(s)
-
-        gt_event_ids = _resolve_ground_truth_event_ids(db, tenant_id=tenant_id, evidence_chunk_ids=evidence_chunk_ids)
-        alias_pairs, skills, tags0 = _deterministic_hardcase_candidates(db, tenant_id=tenant_id, ground_truth_event_ids=gt_event_ids)
-
-        hardcases = generate_hardcases_deterministic(
-            question=question,
-            alias_pairs=alias_pairs,
-            skills=skills,
-            tags=tags0,
-            max_items=per_case,
+        used, generated, duplicates = _generate_hardcases_for_base_case(
+            db=db,
+            case=case,
+            tenant_id=tenant_id,
+            dataset_id=payload.dataset_id,
+            account_id=account_id,
+            per_case=per_case,
+            max_created=max_created,
+            tag=tag,
+            dry_run=bool(payload.dry_run),
+            existing_keys=existing_keys,
+            created_ids=created_ids,
         )
-        if not hardcases:
-            continue
-
-        base_used += 1
-        for hc in hardcases:
-            q2 = str(getattr(hc, "question", "") or "").strip()
-            if not q2:
-                continue
-            hardcases_generated += 1
-
-            key = _qkey(q2)
-            if key in existing_keys:
-                skipped_dup += 1
-                continue
-
-            if bool(payload.dry_run):
-                existing_keys.add(key)
-                continue
-
-            # Create a new case reusing the same evidence pointers.
-            base_tags = list(getattr(case, "tags", None) or [])
-            tags_new = [*base_tags, tag, f"hardcase:{getattr(hc, 'kind', 'unknown')}"]
-            # Keep tags small and stable.
-            tags_clean: list[str] = []
-            seen: set[str] = set()
-            for t in tags_new:
-                s = str(t or "").strip()
-                if not s:
-                    continue
-                if s in seen:
-                    continue
-                seen.add(s)
-                tags_clean.append(s[:80])
-
-            extra_base = getattr(case, "extra", None)
-            extra_d = dict(extra_base or {}) if isinstance(extra_base, dict) else {}
-            extra_d.setdefault("synthetic_from_case_id", str(getattr(case, "id", "") or ""))
-            extra_d["hardcase_kind"] = str(getattr(hc, "kind", "") or "")
-            rationale = getattr(hc, "rationale", None)
-            if rationale:
-                extra_d["hardcase_rationale"] = str(rationale)[:400]
-
-            row = RagasRegressionCase(
-                tenant_id=tenant_id,
-                dataset_id=payload.dataset_id,
-                document_ids=list(getattr(case, "document_ids", None) or []),
-                question=q2,
-                expected_answer=getattr(case, "expected_answer", None),
-                reference_sources=list(ref_sources) if isinstance(ref_sources, list) else [],
-                tags=tags_clean,
-                extra=extra_d,
-                created_by=account_id,
-            )
-            db.add(row)
-            db.flush()
-            created_ids.append(row.id)
-            existing_keys.add(key)
-
-            if max_created > 0 and len(created_ids) >= max_created:
-                break
+        base_used += used
+        hardcases_generated += generated
+        skipped_dup += duplicates
 
     if not bool(payload.dry_run):
         try:
@@ -1202,6 +1240,250 @@ def generate_synthetic_hardcases(
         created_case_ids=created_ids,
         errors=errors,
     )
+
+
+def _validate_synthetic_case_scope(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    payload: SyntheticHardcaseGenerateRequest,
+) -> None:
+    if not payload.case_ids:
+        return
+    rows = (
+        db.query(RagasRegressionCase.id, RagasRegressionCase.dataset_id)
+        .filter(
+            RagasRegressionCase.tenant_id == tenant_id,
+            RagasRegressionCase.id.in_(list(payload.case_ids or [])),
+        )
+        .all()
+    )
+    try:
+        validate_case_ids_belong_to_dataset(
+            dataset_id=payload.dataset_id,
+            case_ids=list(payload.case_ids or []),
+            rows=rows,
+        )
+    except MissingCasesError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except DatasetMismatchError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _load_synthetic_base_cases(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    case_ids: list[UUID],
+    max_cases: int,
+) -> tuple[int, list[RagasRegressionCase]]:
+    query = db.query(RagasRegressionCase).filter(
+        RagasRegressionCase.tenant_id == tenant_id,
+        RagasRegressionCase.dataset_id == dataset_id,
+    )
+    if case_ids:
+        query = query.filter(RagasRegressionCase.id.in_(case_ids))
+    total = int(query.count())
+    cases = query.order_by(RagasRegressionCase.updated_at.desc(), RagasRegressionCase.id.asc()).limit(max_cases).all()
+    return total, cases
+
+
+def _synthetic_question_key(text: str) -> str:
+    return " ".join(str(text or "").strip().split()).casefold()
+
+
+def _load_existing_synthetic_question_keys(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+) -> set[str]:
+    rows = (
+        db.query(RagasRegressionCase.question)
+        .filter(RagasRegressionCase.tenant_id == tenant_id, RagasRegressionCase.dataset_id == dataset_id)
+        .all()
+    )
+    return {_synthetic_question_key(str(question or "")) for (question,) in rows if question}
+
+
+def _synthetic_evidence_chunk_ids(reference_sources: Any) -> list[str]:
+    chunk_ids: list[str] = []
+    for source in reference_sources if isinstance(reference_sources, list) else []:
+        if not isinstance(source, dict):
+            continue
+        raw_chunk_id = source.get("chunk_id")
+        if raw_chunk_id is None:
+            continue
+        chunk_id = str(raw_chunk_id).strip()
+        if chunk_id:
+            chunk_ids.append(chunk_id)
+    return chunk_ids
+
+
+def _generate_hardcases_for_base_case(
+    *,
+    db: Session,
+    case: RagasRegressionCase,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    account_id: str,
+    per_case: int,
+    max_created: int,
+    tag: str,
+    dry_run: bool,
+    existing_keys: set[str],
+    created_ids: list[UUID],
+) -> tuple[int, int, int]:
+    question = str(getattr(case, "question", "") or "").strip()
+    if not question:
+        return 0, 0, 0
+
+    from app.rag.evaluation.kg_hardcase_deterministic import generate_hardcases_deterministic
+    from app.rag.evaluation.kg_search_diagnostics import (
+        _deterministic_hardcase_candidates,
+        _resolve_ground_truth_event_ids,
+    )
+
+    reference_sources = getattr(case, "reference_sources", None) or []
+    event_ids = _resolve_ground_truth_event_ids(
+        db,
+        tenant_id=tenant_id,
+        evidence_chunk_ids=_synthetic_evidence_chunk_ids(reference_sources),
+    )
+    alias_pairs, skills, tags = _deterministic_hardcase_candidates(
+        db,
+        tenant_id=tenant_id,
+        ground_truth_event_ids=event_ids,
+    )
+    hardcases = generate_hardcases_deterministic(
+        question=question,
+        alias_pairs=alias_pairs,
+        skills=skills,
+        tags=tags,
+        max_items=per_case,
+    )
+    if not hardcases:
+        return 0, 0, 0
+
+    generated, duplicates = _persist_generated_hardcases(
+        db=db,
+        hardcases=hardcases,
+        base_case=case,
+        reference_sources=reference_sources,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        account_id=account_id,
+        max_created=max_created,
+        tag=tag,
+        dry_run=dry_run,
+        existing_keys=existing_keys,
+        created_ids=created_ids,
+    )
+    return 1, generated, duplicates
+
+
+def _persist_generated_hardcases(
+    *,
+    db: Session,
+    hardcases: list[Any],
+    base_case: RagasRegressionCase,
+    reference_sources: Any,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    account_id: str,
+    max_created: int,
+    tag: str,
+    dry_run: bool,
+    existing_keys: set[str],
+    created_ids: list[UUID],
+) -> tuple[int, int]:
+    generated = 0
+    duplicates = 0
+    for hardcase in hardcases:
+        question = str(getattr(hardcase, "question", "") or "").strip()
+        if not question:
+            continue
+        generated += 1
+        key = _synthetic_question_key(question)
+        if key in existing_keys:
+            duplicates += 1
+            continue
+        if dry_run:
+            existing_keys.add(key)
+            continue
+
+        row = _build_synthetic_regression_case(
+            base_case=base_case,
+            hardcase=hardcase,
+            reference_sources=reference_sources,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            account_id=account_id,
+            question=question,
+            tag=tag,
+        )
+        db.add(row)
+        db.flush()
+        created_ids.append(row.id)
+        existing_keys.add(key)
+        if max_created > 0 and len(created_ids) >= max_created:
+            break
+    return generated, duplicates
+
+
+def _build_synthetic_regression_case(
+    *,
+    base_case: RagasRegressionCase,
+    hardcase: Any,
+    reference_sources: Any,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    account_id: str,
+    question: str,
+    tag: str,
+) -> RagasRegressionCase:
+    tags = _synthetic_case_tags(base_case, hardcase, tag)
+    extra = _synthetic_case_extra(base_case, hardcase)
+    return RagasRegressionCase(
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        document_ids=list(getattr(base_case, "document_ids", None) or []),
+        question=question,
+        expected_answer=getattr(base_case, "expected_answer", None),
+        reference_sources=list(reference_sources) if isinstance(reference_sources, list) else [],
+        tags=tags,
+        extra=extra,
+        created_by=account_id,
+    )
+
+
+def _synthetic_case_tags(base_case: RagasRegressionCase, hardcase: Any, tag: str) -> list[str]:
+    tags = [
+        *list(getattr(base_case, "tags", None) or []),
+        tag,
+        f"hardcase:{getattr(hardcase, 'kind', 'unknown')}",
+    ]
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for raw_tag in tags:
+        normalized = str(raw_tag or "").strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        cleaned.append(normalized[:80])
+    return cleaned
+
+
+def _synthetic_case_extra(base_case: RagasRegressionCase, hardcase: Any) -> dict[str, Any]:
+    base_extra = getattr(base_case, "extra", None)
+    extra = dict(base_extra or {}) if isinstance(base_extra, dict) else {}
+    extra.setdefault("synthetic_from_case_id", str(getattr(base_case, "id", "") or ""))
+    extra["hardcase_kind"] = str(getattr(hardcase, "kind", "") or "")
+    rationale = getattr(hardcase, "rationale", None)
+    if rationale:
+        extra["hardcase_rationale"] = str(rationale)[:400]
+    return extra
 
 
 @router.delete("/ragas/regression/cases/{case_id}", status_code=204, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -1235,7 +1517,12 @@ def delete_ragas_regression_case(
     return None
 
 
-@router.post("/ragas/regression/runs", response_model=RagasRegressionRunSchema, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/ragas/regression/runs",
+    response_model=RagasRegressionRunSchema,
+    status_code=201,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def create_ragas_regression_run(
     request: RagasRegressionRunCreateRequest,
     background_tasks: BackgroundTasks,
@@ -1260,7 +1547,9 @@ def create_ragas_regression_run(
             .all()
         )
         try:
-            validate_case_ids_belong_to_dataset(dataset_id=request.dataset_id, case_ids=list(request.case_ids), rows=rows)
+            validate_case_ids_belong_to_dataset(
+                dataset_id=request.dataset_id, case_ids=list(request.case_ids), rows=rows
+            )
         except MissingCasesError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except DatasetMismatchError as exc:
@@ -1313,7 +1602,9 @@ def create_ragas_regression_ablation_batch(
             .all()
         )
         try:
-            validate_case_ids_belong_to_dataset(dataset_id=request.dataset_id, case_ids=list(request.case_ids), rows=rows)
+            validate_case_ids_belong_to_dataset(
+                dataset_id=request.dataset_id, case_ids=list(request.case_ids), rows=rows
+            )
         except MissingCasesError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except DatasetMismatchError as exc:
@@ -1372,7 +1663,9 @@ def create_ragas_regression_ablation_batch(
     }
 
 
-@router.get("/ragas/regression/runs", response_model=RagasRegressionRunList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/ragas/regression/runs", response_model=RagasRegressionRunList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def list_ragas_regression_runs(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
@@ -1390,26 +1683,21 @@ def list_ragas_regression_runs(
         DatasetService.get_dataset(db, tenant_id, dataset_id)
         query = query.filter(RagasRegressionRun.dataset_id == dataset_id)
     total = query.count()
-    runs = (
-        query.order_by(RagasRegressionRun.created_at.desc())
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
+    runs = query.order_by(RagasRegressionRun.created_at.desc()).offset(skip).limit(limit).all()
     return {"total": total, "items": runs}
 
 
-@router.get("/ragas/regression/runs/leaderboard", response_model=RagasRegressionRunLeaderboardResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/ragas/regression/runs/leaderboard",
+    response_model=RagasRegressionRunLeaderboardResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def get_ragas_regression_run_leaderboard(
     dataset_id: Annotated[UUID, Query(..., description="Dataset to scope runs (required)")],
-    metric_key: Annotated[str, Query(description='Metric key from run.summary')] = "retrieval_mrr",
+    metric_key: Annotated[str, Query(description="Metric key from run.summary")] = "retrieval_mrr",
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    include_incomplete: Annotated[
-        bool, Query(description='Include pending/failed runs (default: false)')
-    ] = False,
-    max_candidates: Annotated[
-        int, Query(ge=1, le=5000, description='Max runs to consider (recency window)')
-    ] = 500,
+    include_incomplete: Annotated[bool, Query(description="Include pending/failed runs (default: false)")] = False,
+    max_candidates: Annotated[int, Query(ge=1, le=5000, description="Max runs to consider (recency window)")] = 500,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1437,7 +1725,11 @@ def get_ragas_regression_run_leaderboard(
     return {"metric_key": metric_key, "items": items}
 
 
-@router.get("/ragas/regression/runs/{run_id}", response_model=RagasRegressionRunDetail, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/ragas/regression/runs/{run_id}",
+    response_model=RagasRegressionRunDetail,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def get_ragas_regression_run(
     run_id: UUID,
     include_items: bool = True,
@@ -1478,14 +1770,21 @@ def get_ragas_regression_run(
 @router.get("/ragas/regression/runs/{run_id}/export-bundle", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_ragas_regression_run_bundle_api(
     run_id: UUID,
-    include_text: Annotated[bool, Query(description='Include raw question/response (may include PII; default false)')] = False,
-    include_contexts: Annotated[bool, Query(description='Include retrieved_contexts (may include PII; requires include_text=true)')] = False,
-    redact_ids: Annotated[bool, Query(description='Redact internal ids (tenant/dataset/case/run) into stable hashes for sharing (default true)')] = True,
-    max_items: Annotated[int, Query(ge=1, le=5000, description='Max regression items to include')] = 500,
-    max_citations: Annotated[
-        int, Query(ge=0, le=500, description='Max citations per item (PII-safe allowlist)')
-    ] = 80,
-    download: Annotated[bool, Query(description='Set Content-Disposition to download as a file')] = True,
+    include_text: Annotated[
+        bool, Query(description="Include raw question/response (may include PII; default false)")
+    ] = False,
+    include_contexts: Annotated[
+        bool, Query(description="Include retrieved_contexts (may include PII; requires include_text=true)")
+    ] = False,
+    redact_ids: Annotated[
+        bool,
+        Query(
+            description="Redact internal ids (tenant/dataset/case/run) into stable hashes for sharing (default true)"
+        ),
+    ] = True,
+    max_items: Annotated[int, Query(ge=1, le=5000, description="Max regression items to include")] = 500,
+    max_citations: Annotated[int, Query(ge=0, le=500, description="Max citations per item (PII-safe allowlist)")] = 80,
+    download: Annotated[bool, Query(description="Set Content-Disposition to download as a file")] = True,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1539,10 +1838,10 @@ def export_ragas_regression_run_bundle_api(
 
 @router.post("/ragas/regression/runs/purge")
 def purge_ragas_regression_runs(
-    retention_days: Annotated[int, Query(ge=1, le=3650, description='Delete runs older than N days')] = 90,
-    max_delete: Annotated[int, Query(ge=1, le=5000, description='Max runs to delete in this call')] = 200,
-    dry_run: Annotated[bool, Query(description='Plan only; do not delete rows')] = True,
-    dataset_id: Annotated[UUID | None, Query(description='Optional dataset scope')] = None,
+    retention_days: Annotated[int, Query(ge=1, le=3650, description="Delete runs older than N days")] = 90,
+    max_delete: Annotated[int, Query(ge=1, le=5000, description="Max runs to delete in this call")] = 200,
+    dry_run: Annotated[bool, Query(description="Plan only; do not delete rows")] = True,
+    dataset_id: Annotated[UUID | None, Query(description="Optional dataset scope")] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1626,7 +1925,11 @@ def purge_ragas_regression_runs(
     }
 
 
-@router.get("/ragas/regression/runs/{run_id}/diff", response_model=RagasRegressionRunDiffResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/ragas/regression/runs/{run_id}/diff",
+    response_model=RagasRegressionRunDiffResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def diff_ragas_regression_runs(
     run_id: UUID,
     base_run_id: Annotated[UUID, Query(..., description="Base run id to compare against")],
@@ -1706,7 +2009,7 @@ def diff_ragas_regression_runs(
 async def export_ragas_regression_run_diff_html(
     run_id: UUID,
     base_run_id: Annotated[UUID, Query(..., description="Base run id to compare against")],
-    redact: Annotated[bool, Query(description='Whether to redact run ids for sharing')] = True,
+    redact: Annotated[bool, Query(description="Whether to redact run ids for sharing")] = True,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1741,7 +2044,9 @@ async def export_ragas_regression_run_diff_html(
     )
 
 
-@router.post("/ragas/test-gen/from-documents", response_model=TestGenResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/ragas/test-gen/from-documents", response_model=TestGenResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def generate_test_cases_from_documents(
     request: TestGenFromDocsRequest,
     *,
@@ -1753,7 +2058,6 @@ def generate_test_cases_from_documents(
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     try:
-        # Generate questions.
         questions = generate_questions_from_documents(
             db=db,
             tenant_id=tenant_id,
@@ -1766,180 +2070,19 @@ def generate_test_cases_from_documents(
             prompt_template_key=request.prompt_template_key,
             prompt_ab_experiment_key=request.prompt_ab_experiment_key,
         )
-
-        # Auto-save as regression cases when requested.
-        #
-        # Gap7 (P2): generated cases must carry `reference_sources` so they can be used for
-        # retrieval gates and regression slicing.
         saved_case_ids: list[UUID] = []
         if request.auto_save_as_cases and questions:
-            # Lazy imports (keeps endpoint import-time side effects low).
-            from app.models.document import Document as DBDocument
-
-            # Best-effort: infer dataset_id per question when request.dataset_id is omitted.
-            doc_ids: list[UUID] = []
-            for q in questions:
-                raw_doc = str((q.metadata or {}).get("source_id") or "").strip()
-                if not raw_doc:
-                    continue
-                try:
-                    doc_ids.append(UUID(raw_doc))
-                except Exception:
-                    get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
-                    continue
-
-            doc_to_dataset: dict[str, UUID | None] = {}
-            if doc_ids:
-                rows = (
-                    db.query(DBDocument.id, DBDocument.dataset_id)
-                    .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(list(set(doc_ids))))
-                    .all()
-                )
-                doc_to_dataset = {str(doc_id): (ds_id if ds_id is not None else None) for doc_id, ds_id in rows}
-
-            ds_cache: dict[UUID, Any] = {}
-
-            def _validate_reference_chunk_hit(
-                *,
-                question: str,
-                dataset_id: UUID,
-                chunk_id: UUID,
-            ) -> dict[str, Any]:
-                """
-                Best-effort vector recall validation for the reference chunk.
-
-                This is intentionally non-blocking: failures do not abort generation/saving.
-                """
-                top_k = 20
-                try:
-                    from app.rag.retriever import HybridRetriever
-
-                    retriever = HybridRetriever(
-                        k=top_k,
-                        retrieval_mode="vector",
-                        score_threshold=0.0,
-                        enable_reranker=False,
-                        enable_weight_rerank=False,
-                        dedup_enabled=False,
-                        max_chunks_per_doc=max(50, top_k),
-                        min_distinct_docs=0,
-                        tenant_id=tenant_id,
-                        account_id=account_id,
-                        dataset_id=dataset_id,
-                    )
-                    docs = retriever.get_relevant_documents(str(question or ""))
-                    rank: int | None = None
-                    for i, d in enumerate(docs or []):
-                        meta = getattr(d, "metadata", None) or {}
-                        if str(meta.get("chunk_id") or "").strip() == str(chunk_id):
-                            rank = int(i + 1)
-                            break
-                    return {"mode": "vector_topk", "top_k": top_k, "hit": bool(rank is not None), "rank": rank}
-                except Exception as exc:  # noqa: BLE001
-                    return {
-                        "mode": "vector_topk",
-                        "top_k": top_k,
-                        "hit": None,
-                        "reason": f"{type(exc).__name__}:{str(exc)[:160]}",
-                    }
-
-            for q in questions:
-                meta = dict(q.metadata or {})
-                doc_id_raw = str(meta.get("source_id") or "").strip()
-                chunk_ids_raw = meta.get("reference_chunk_ids") or [meta.get("chunk_id")]
-
-                # Resolve dataset_id for this case.
-                ds_id: UUID | None = request.dataset_id
-                if ds_id is None and doc_id_raw:
-                    ds_id = doc_to_dataset.get(doc_id_raw)
-
-                if ds_id is None:
-                    meta["auto_save"] = {"saved": False, "reason": "missing_dataset_id"}
-                    q.metadata = meta
-                    continue
-
-                # Governance: saving regression cases is a write operation.
-                if ds_id not in ds_cache:
-                    try:
-                        ds = DatasetService.get_dataset(db, tenant_id, ds_id)
-                        DatasetService.assert_dataset_writable(db, ds, account_id)
-                        ds_cache[ds_id] = ds
-                    except HTTPException as exc:
-                        meta["auto_save"] = {"saved": False, "reason": f"dataset_not_writable:{exc.detail}"}
-                        q.metadata = meta
-                        continue
-
-                # Build reference_sources payloads (doc_id + chunk_id).
-                ref_payloads: list[dict[str, Any]] = []
-                for cid_raw in (chunk_ids_raw or []):
-                    cid = str(cid_raw or "").strip()
-                    if not cid or not doc_id_raw:
-                        continue
-                    ref_payloads.append({"document_id": doc_id_raw, "chunk_id": cid})
-
-                # Normalize + enrich reference_sources (ACL + dataset scope + quote fallback).
-                try:
-                    reference_sources = _finalize_reference_sources(
-                        db,
-                        tenant_id=tenant_id,
-                        account_id=account_id,
-                        dataset_id=ds_id,
-                        reference_sources=ref_payloads,
-                    )
-                except HTTPException as exc:
-                    meta["auto_save"] = {"saved": False, "reason": f"invalid_reference_sources:{exc.detail}"}
-                    q.metadata = meta
-                    continue
-
-                # Best-effort embedding/vector validation.
-                try:
-                    if ref_payloads:
-                        chunk0 = UUID(str(ref_payloads[0].get("chunk_id")))
-                        meta["reference_validation"] = _validate_reference_chunk_hit(
-                            question=q.question,
-                            dataset_id=ds_id,
-                            chunk_id=chunk0,
-                        )
-                except Exception as exc:
-                    logger.debug(_EVALUATIONS_ROUTER_FALLBACK_LOG_MESSAGE, exc)
-
-                case = RagasRegressionCase(
-                    tenant_id=tenant_id,
-                    dataset_id=ds_id,
-                    # Keep retrieval dataset-scoped by default (do NOT scope to a single document).
-                    document_ids=[],
-                    question=q.question,
-                    expected_answer=q.expected_answer,
-                    reference_sources=reference_sources,
-                    tags=["auto_generated", "from_documents"],
-                    extra=meta,
-                    created_by=account_id,
-                )
-                db.add(case)
-                db.flush()
-                saved_case_ids.append(case.id)
-
-                meta["auto_save"] = {"saved": True, "case_id": str(case.id)}
-                q.metadata = meta
-
-            db.commit()
-
-        # Convert to response format (after auto-save, so metadata can include case ids).
-        generated_questions = [
-            GeneratedQuestion(
-                question=q.question,
-                expected_answer=q.expected_answer,
-                context=q.context,
-                source_type="document",
-                source_id=(q.metadata or {}).get("source_id", ""),
-                metadata=q.metadata,
+            saved_case_ids = _auto_save_generated_document_questions(
+                db=db,
+                questions=questions,
+                requested_dataset_id=request.dataset_id,
+                tenant_id=tenant_id,
+                account_id=account_id,
             )
-            for q in questions
-        ]
 
         return TestGenResponse(
             status="completed",
-            generated_questions=generated_questions,
+            generated_questions=_document_questions_response(questions),
             saved_case_ids=saved_case_ids,
         )
 
@@ -1953,7 +2096,254 @@ def generate_test_cases_from_documents(
         )
 
 
-@router.post("/kg/search/diagnostics", response_model=KGSearchDiagnosticsResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def _auto_save_generated_document_questions(
+    *,
+    db: Session,
+    questions: list[Any],
+    requested_dataset_id: UUID | None,
+    tenant_id: UUID,
+    account_id: str,
+) -> list[UUID]:
+    document_to_dataset = _document_dataset_map(db, tenant_id=tenant_id, questions=questions)
+    dataset_cache: dict[UUID, Any] = {}
+    saved_case_ids: list[UUID] = []
+    for question in questions:
+        case_id = _auto_save_generated_document_question(
+            db=db,
+            question=question,
+            requested_dataset_id=requested_dataset_id,
+            document_to_dataset=document_to_dataset,
+            dataset_cache=dataset_cache,
+            tenant_id=tenant_id,
+            account_id=account_id,
+        )
+        if case_id is not None:
+            saved_case_ids.append(case_id)
+    db.commit()
+    return saved_case_ids
+
+
+def _document_dataset_map(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    questions: list[Any],
+) -> dict[str, UUID | None]:
+    from app.models.document import Document as DBDocument
+
+    document_ids = _generated_question_document_ids(questions)
+    if not document_ids:
+        return {}
+    rows = (
+        db.query(DBDocument.id, DBDocument.dataset_id)
+        .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(list(set(document_ids))))
+        .all()
+    )
+    return {str(document_id): (dataset_id if dataset_id is not None else None) for document_id, dataset_id in rows}
+
+
+def _generated_question_document_ids(questions: list[Any]) -> list[UUID]:
+    document_ids: list[UUID] = []
+    for question in questions:
+        raw_document_id = str((question.metadata or {}).get("source_id") or "").strip()
+        if not raw_document_id:
+            continue
+        try:
+            document_ids.append(UUID(raw_document_id))
+        except Exception:
+            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+    return document_ids
+
+
+def _auto_save_generated_document_question(
+    *,
+    db: Session,
+    question: Any,
+    requested_dataset_id: UUID | None,
+    document_to_dataset: dict[str, UUID | None],
+    dataset_cache: dict[UUID, Any],
+    tenant_id: UUID,
+    account_id: str,
+) -> UUID | None:
+    metadata = dict(question.metadata or {})
+    document_id = str(metadata.get("source_id") or "").strip()
+    dataset_id = requested_dataset_id or document_to_dataset.get(document_id)
+    if dataset_id is None:
+        _mark_generated_question_unsaved(question, metadata, "missing_dataset_id")
+        return None
+    if not _ensure_generated_case_dataset_writable(
+        db=db,
+        dataset_id=dataset_id,
+        dataset_cache=dataset_cache,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        question=question,
+        metadata=metadata,
+    ):
+        return None
+
+    reference_payloads = _generated_question_reference_payloads(metadata, document_id)
+    try:
+        reference_sources = _finalize_reference_sources(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=dataset_id,
+            reference_sources=reference_payloads,
+        )
+    except HTTPException as exc:
+        _mark_generated_question_unsaved(question, metadata, f"invalid_reference_sources:{exc.detail}")
+        return None
+
+    _record_generated_question_reference_validation(
+        question=question,
+        metadata=metadata,
+        reference_payloads=reference_payloads,
+        dataset_id=dataset_id,
+        tenant_id=tenant_id,
+        account_id=account_id,
+    )
+    case = RagasRegressionCase(
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        document_ids=[],
+        question=question.question,
+        expected_answer=question.expected_answer,
+        reference_sources=reference_sources,
+        tags=["auto_generated", "from_documents"],
+        extra=metadata,
+        created_by=account_id,
+    )
+    db.add(case)
+    db.flush()
+    metadata["auto_save"] = {"saved": True, "case_id": str(case.id)}
+    question.metadata = metadata
+    return case.id
+
+
+def _ensure_generated_case_dataset_writable(
+    *,
+    db: Session,
+    dataset_id: UUID,
+    dataset_cache: dict[UUID, Any],
+    tenant_id: UUID,
+    account_id: str,
+    question: Any,
+    metadata: dict[str, Any],
+) -> bool:
+    if dataset_id in dataset_cache:
+        return True
+    try:
+        dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+        DatasetService.assert_dataset_writable(db, dataset, account_id)
+        dataset_cache[dataset_id] = dataset
+        return True
+    except HTTPException as exc:
+        _mark_generated_question_unsaved(question, metadata, f"dataset_not_writable:{exc.detail}")
+        return False
+
+
+def _mark_generated_question_unsaved(question: Any, metadata: dict[str, Any], reason: str) -> None:
+    metadata["auto_save"] = {"saved": False, "reason": reason}
+    question.metadata = metadata
+
+
+def _generated_question_reference_payloads(
+    metadata: dict[str, Any],
+    document_id: str,
+) -> list[dict[str, Any]]:
+    chunk_ids = metadata.get("reference_chunk_ids") or [metadata.get("chunk_id")]
+    payloads: list[dict[str, Any]] = []
+    for raw_chunk_id in chunk_ids or []:
+        chunk_id = str(raw_chunk_id or "").strip()
+        if chunk_id and document_id:
+            payloads.append({"document_id": document_id, "chunk_id": chunk_id})
+    return payloads
+
+
+def _record_generated_question_reference_validation(
+    *,
+    question: Any,
+    metadata: dict[str, Any],
+    reference_payloads: list[dict[str, Any]],
+    dataset_id: UUID,
+    tenant_id: UUID,
+    account_id: str,
+) -> None:
+    try:
+        if reference_payloads:
+            chunk_id = UUID(str(reference_payloads[0].get("chunk_id")))
+            metadata["reference_validation"] = _validate_generated_reference_chunk_hit(
+                question=question.question,
+                dataset_id=dataset_id,
+                chunk_id=chunk_id,
+                tenant_id=tenant_id,
+                account_id=account_id,
+            )
+    except Exception as exc:
+        logger.debug(_EVALUATIONS_ROUTER_FALLBACK_LOG_MESSAGE, exc)
+
+
+def _validate_generated_reference_chunk_hit(
+    *,
+    question: str,
+    dataset_id: UUID,
+    chunk_id: UUID,
+    tenant_id: UUID,
+    account_id: str,
+) -> dict[str, Any]:
+    """Best-effort vector recall validation for a generated question's reference chunk."""
+    top_k = 20
+    try:
+        from app.rag.retriever import HybridRetriever
+
+        retriever = HybridRetriever(
+            k=top_k,
+            retrieval_mode="vector",
+            score_threshold=0.0,
+            enable_reranker=False,
+            enable_weight_rerank=False,
+            dedup_enabled=False,
+            max_chunks_per_doc=max(50, top_k),
+            min_distinct_docs=0,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=dataset_id,
+        )
+        docs = retriever.get_relevant_documents(str(question or ""))
+        rank: int | None = None
+        for index, document in enumerate(docs or []):
+            metadata = getattr(document, "metadata", None) or {}
+            if str(metadata.get("chunk_id") or "").strip() == str(chunk_id):
+                rank = int(index + 1)
+                break
+        return {"mode": "vector_topk", "top_k": top_k, "hit": bool(rank is not None), "rank": rank}
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "mode": "vector_topk",
+            "top_k": top_k,
+            "hit": None,
+            "reason": f"{type(exc).__name__}:{str(exc)[:160]}",
+        }
+
+
+def _document_questions_response(questions: list[Any]) -> list[GeneratedQuestion]:
+    return [
+        GeneratedQuestion(
+            question=question.question,
+            expected_answer=question.expected_answer,
+            context=question.context,
+            source_type="document",
+            source_id=(question.metadata or {}).get("source_id", ""),
+            metadata=question.metadata,
+        )
+        for question in questions
+    ]
+
+
+@router.post(
+    "/kg/search/diagnostics", response_model=KGSearchDiagnosticsResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 async def run_kg_search_diagnostics(
     payload: KGSearchDiagnosticsRequest,
     *,
@@ -1991,15 +2381,29 @@ async def run_kg_search_diagnostics(
                 "KG_EXTRACT_EVIDENCE_REQUIRED": bool(getattr(settings, "KG_EXTRACT_EVIDENCE_REQUIRED", False)),
                 "KG_SKILL_EVIDENCE_REQUIRED": bool(getattr(settings, "KG_SKILL_EVIDENCE_REQUIRED", False)),
                 "KG_SEARCH_VECTOR_RECALL_ENABLED": bool(getattr(settings, "KG_SEARCH_VECTOR_RECALL_ENABLED", True)),
-                "KG_SEARCH_GRAPH_EMBEDDINGS_ENABLED": bool(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_ENABLED", False)),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_ENABLED": bool(
+                    getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_ENABLED", False)
+                ),
                 "KG_SEARCH_GRAPH_EMBEDDINGS_DIM": int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_DIM", 0) or 0),
-                "KG_SEARCH_GRAPH_EMBEDDINGS_NUM_WALKS": int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_NUM_WALKS", 0) or 0),
-                "KG_SEARCH_GRAPH_EMBEDDINGS_WALK_LENGTH": int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_WALK_LENGTH", 0) or 0),
-                "KG_SEARCH_GRAPH_EMBEDDINGS_WINDOW_SIZE": int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_WINDOW_SIZE", 0) or 0),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_NUM_WALKS": int(
+                    getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_NUM_WALKS", 0) or 0
+                ),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_WALK_LENGTH": int(
+                    getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_WALK_LENGTH", 0) or 0
+                ),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_WINDOW_SIZE": int(
+                    getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_WINDOW_SIZE", 0) or 0
+                ),
                 "KG_SEARCH_GRAPH_EMBEDDINGS_SEED": int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_SEED", 0) or 0),
-                "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_EVENTS": int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_EVENTS", 0) or 0),
-                "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_ENTITIES": int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_ENTITIES", 0) or 0),
-                "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_RELATIONS": int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_RELATIONS", 0) or 0),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_EVENTS": int(
+                    getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_EVENTS", 0) or 0
+                ),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_ENTITIES": int(
+                    getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_ENTITIES", 0) or 0
+                ),
+                "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_RELATIONS": int(
+                    getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_MAX_RELATIONS", 0) or 0
+                ),
                 "KG_SEARCH_GRAPH_EMBEDDINGS_TOP_K": int(getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_TOP_K", 0) or 0),
                 "KG_SEARCH_GRAPH_EMBEDDINGS_MIN_SIMILARITY": float(
                     getattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_MIN_SIMILARITY", 0.0) or 0.0
@@ -2007,7 +2411,9 @@ async def run_kg_search_diagnostics(
                 "KG_SEARCH_RELATION_EXPANSION_ENABLED": bool(
                     getattr(settings, "KG_SEARCH_RELATION_EXPANSION_ENABLED", False)
                 ),
-                "KG_SEARCH_RELATION_MIN_CONFIDENCE": float(getattr(settings, "KG_SEARCH_RELATION_MIN_CONFIDENCE", 0.0) or 0.0),
+                "KG_SEARCH_RELATION_MIN_CONFIDENCE": float(
+                    getattr(settings, "KG_SEARCH_RELATION_MIN_CONFIDENCE", 0.0) or 0.0
+                ),
                 "KG_SEARCH_RELATION_MAX_EDGES": int(getattr(settings, "KG_SEARCH_RELATION_MAX_EDGES", 0) or 0),
                 "KG_SEARCH_RELATION_MAX_NEIGHBORS": int(getattr(settings, "KG_SEARCH_RELATION_MAX_NEIGHBORS", 0) or 0),
             }
@@ -2017,7 +2423,7 @@ async def run_kg_search_diagnostics(
 
             # Compact per-case records to keep the persisted payload small.
             items_compact: list[dict[str, Any]] = []
-            for item in (getattr(resp, "items", []) or []):
+            for item in getattr(resp, "items", []) or []:
                 baseline = getattr(item, "baseline", None)
                 baseline_metrics_obj = getattr(baseline, "metrics", None)
                 baseline_metrics = (
@@ -2025,7 +2431,7 @@ async def run_kg_search_diagnostics(
                 )
 
                 hardcases_compact: list[dict[str, Any]] = []
-                for hc in (getattr(item, "hardcases", []) or []):
+                for hc in getattr(item, "hardcases", []) or []:
                     run = getattr(hc, "run", None)
                     m_obj = getattr(run, "metrics", None)
                     hardcases_compact.append(
@@ -2087,10 +2493,14 @@ async def run_kg_search_diagnostics(
     return resp
 
 
-@router.get("/kg/search/diagnostics/runs", response_model=KGSearchDiagnosticsRunList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/kg/search/diagnostics/runs",
+    response_model=KGSearchDiagnosticsRunList,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def list_kg_search_diagnostics_runs(
     dataset_id: Annotated[UUID, Query(..., description="Dataset ID (required)")],
-    limit: Annotated[int, Query(ge=1, le=200, description='Max runs to return (default: 20)')] = 20,
+    limit: Annotated[int, Query(ge=1, le=200, description="Max runs to return (default: 20)")] = 20,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -2112,7 +2522,11 @@ def list_kg_search_diagnostics_runs(
     return KGSearchDiagnosticsRunList(total=total, items=items)
 
 
-@router.get("/kg/search/diagnostics/runs/{run_id}", response_model=KGSearchDiagnosticsRunDetail, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/kg/search/diagnostics/runs/{run_id}",
+    response_model=KGSearchDiagnosticsRunDetail,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def get_kg_search_diagnostics_run(
     run_id: UUID,
     *,
@@ -2143,7 +2557,9 @@ def get_kg_search_diagnostics_run(
 def get_kg_quality_report(
     dataset_id: Annotated[UUID, Query(..., description="Dataset ID (required)")],
     document_limit: Annotated[int, Query(ge=1, le=2000, description="Max documents sampled for the report")] = 200,
-    pipeline_hash: Annotated[str | None, Query(min_length=1, max_length=200, description="Optional pipeline hash filter")] = None,
+    pipeline_hash: Annotated[
+        str | None, Query(min_length=1, max_length=200, description="Optional pipeline hash filter")
+    ] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -2197,7 +2613,9 @@ def get_kg_quality_report(
     return report
 
 
-@router.post("/ragas/test-gen/from-conversations", response_model=TestGenResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/ragas/test-gen/from-conversations", response_model=TestGenResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def generate_test_cases_from_conversations(
     request: TestGenFromConversationsRequest,
     *,
@@ -2249,7 +2667,7 @@ def generate_test_cases_from_conversations(
                 db.add(case)
                 db.flush()
                 saved_case_ids.append(case.id)
-            
+
             db.commit()
 
         return TestGenResponse(

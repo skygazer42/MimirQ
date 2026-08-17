@@ -214,6 +214,50 @@ def _tags(plugin_id: str, meta: dict[str, Any], golden_rules: dict[str, Any]) ->
     return out
 
 
+def _plugin_extra(
+    *,
+    plugin_id: str,
+    plugin_version: str | None,
+    plugin_ref: str | None,
+    plugin_package_hash: str | None,
+) -> dict[str, str]:
+    extra = {"plugin_id": plugin_id}
+    if _text(plugin_version):
+        extra["plugin_version"] = _text(plugin_version)
+    if _text(plugin_ref):
+        extra["plugin_ref"] = _text(plugin_ref)
+    if _text(plugin_package_hash):
+        extra["plugin_package_hash"] = _text(plugin_package_hash)
+    return extra
+
+
+def _golden_draft_item(
+    *,
+    chunk: Any,
+    meta: dict[str, Any],
+    plugin_id: str,
+    plugin_extra: dict[str, str],
+    expected: dict[str, Any],
+    answer_key_points: list[str],
+    question: str,
+    golden_rules: dict[str, Any],
+) -> dict[str, Any]:
+    extra: dict[str, Any] = {
+        "source": "plugin_golden_draft",
+        **plugin_extra,
+        "expected_metadata": expected,
+    }
+    if answer_key_points:
+        extra["answer_key_points"] = answer_key_points
+    return {
+        "question": question,
+        "expected_answer": _text(getattr(chunk, "content", None)) or None,
+        "reference_sources": [_reference_source(chunk, meta)],
+        "tags": _tags(plugin_id, meta, golden_rules),
+        "extra": extra,
+    }
+
+
 def build_golden_draft_bundle_from_chunks(
     *,
     dataset_id: UUID,
@@ -238,13 +282,12 @@ def build_golden_draft_bundle_from_chunks(
     cap = max(1, min(2000, int(max_items or 500)))
     seen_questions: set[str] = set()
     items: list[dict[str, Any]] = []
-    plugin_extra = {"plugin_id": plugin_id}
-    if _text(plugin_version):
-        plugin_extra["plugin_version"] = _text(plugin_version)
-    if _text(plugin_ref):
-        plugin_extra["plugin_ref"] = _text(plugin_ref)
-    if _text(plugin_package_hash):
-        plugin_extra["plugin_package_hash"] = _text(plugin_package_hash)
+    plugin_extra = _plugin_extra(
+        plugin_id=plugin_id,
+        plugin_version=plugin_version,
+        plugin_ref=plugin_ref,
+        plugin_package_hash=plugin_package_hash,
+    )
     for chunk in chunks or []:
         meta = _meta(chunk)
         expected = _expected_metadata(meta, golden_rules)
@@ -256,21 +299,17 @@ def build_golden_draft_bundle_from_chunks(
             if not question or question in seen_questions:
                 continue
             seen_questions.add(question)
-            extra = {
-                "source": "plugin_golden_draft",
-                **plugin_extra,
-                "expected_metadata": expected,
-            }
-            if answer_key_points:
-                extra["answer_key_points"] = answer_key_points
             items.append(
-                {
-                    "question": question,
-                    "expected_answer": _text(getattr(chunk, "content", None)) or None,
-                    "reference_sources": [_reference_source(chunk, meta)],
-                    "tags": _tags(plugin_id, meta, golden_rules),
-                    "extra": extra,
-                }
+                _golden_draft_item(
+                    chunk=chunk,
+                    meta=meta,
+                    plugin_id=plugin_id,
+                    plugin_extra=plugin_extra,
+                    expected=expected,
+                    answer_key_points=answer_key_points,
+                    question=question,
+                    golden_rules=golden_rules,
+                )
             )
             if len(items) >= cap:
                 return {"schema": REGRESSION_CASE_BUNDLE_SCHEMA_V1, "dataset_id": str(dataset_id), "items": items}

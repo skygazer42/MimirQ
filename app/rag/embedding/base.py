@@ -158,7 +158,7 @@ class BaseEmbeddingModel(ABC):
         """
         if not messages:
             return []
-        
+
         data = []
         task_id = None
 
@@ -178,7 +178,7 @@ class BaseEmbeddingModel(ABC):
 
         # Process with concurrent control using semaphore
         semaphore = asyncio.Semaphore(max_concurrent)
-        
+
         async def encode_batch_with_limit(batch_info):
             idx, group_msg = batch_info
             async with semaphore:

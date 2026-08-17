@@ -24,14 +24,11 @@ def is_registered_python_plugin_ref(plugin_ref: str) -> bool:
     return registered_python_plugin_stage(plugin_ref) is not None
 
 
-def clean_python_plugin_ref(
+def _normalize_python_plugin_ref_value(
     raw: Any,
     *,
-    field_name: str = "python plugin ref",
-    expected_stage: str | None = None,
-    invalid_message: str | None = None,
-    file_path_message: str | None = None,
-    disabled_import_message: str | None = None,
+    field_name: str,
+    file_path_message: str | None,
 ) -> str | None:
     if raw is None:
         return None
@@ -44,13 +41,16 @@ def clean_python_plugin_ref(
         raise ValueError(f"{field_name} too long (max=240)")
     if "/" in value or "\\" in value or "\x00" in value:
         raise ValueError(file_path_message or f"{field_name} must be an import path or registered plugin ref, not a file path")
+    return value
 
-    registered_stage = registered_python_plugin_stage(value)
-    if registered_stage is not None:
-        if expected_stage and registered_stage != expected_stage:
-            raise ValueError(f"{field_name} registered ref must target the {expected_stage} stage")
-        return value
 
+def _validate_python_import_ref(
+    value: str,
+    *,
+    field_name: str,
+    invalid_message: str | None,
+    disabled_import_message: str | None,
+) -> str:
     if not PYTHON_PLUGIN_IMPORT_REF_RE.fullmatch(value):
         raise ValueError(invalid_message or f"{field_name} must be module:function or plugin:<id>@<version>:<stage>")
 
@@ -64,6 +64,37 @@ def clean_python_plugin_ref(
     if not any(module_name.startswith(prefix) for prefix in allowed):
         raise ValueError(f"{field_name} module '{module_name}' is not allowed")
     return value
+
+
+def clean_python_plugin_ref(
+    raw: Any,
+    *,
+    field_name: str = "python plugin ref",
+    expected_stage: str | None = None,
+    invalid_message: str | None = None,
+    file_path_message: str | None = None,
+    disabled_import_message: str | None = None,
+) -> str | None:
+    value = _normalize_python_plugin_ref_value(
+        raw,
+        field_name=field_name,
+        file_path_message=file_path_message,
+    )
+    if value is None:
+        return None
+
+    registered_stage = registered_python_plugin_stage(value)
+    if registered_stage is not None:
+        if expected_stage and registered_stage != expected_stage:
+            raise ValueError(f"{field_name} registered ref must target the {expected_stage} stage")
+        return value
+
+    return _validate_python_import_ref(
+        value,
+        field_name=field_name,
+        invalid_message=invalid_message,
+        disabled_import_message=disabled_import_message,
+    )
 
 
 def sanitize_python_plugin_ref(

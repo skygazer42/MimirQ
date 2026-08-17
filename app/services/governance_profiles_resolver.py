@@ -56,6 +56,65 @@ def _summary(profile: GovernanceProfileOut) -> GovernanceProfileSummary:
     )
 
 
+def _resolve_profile_chain(
+    *,
+    start: GovernanceProfileOut,
+    fetch_by_ref: Callable[[str], GovernanceProfileOut],
+    max_depth: int,
+) -> list[GovernanceProfileOut]:
+    chain_leaf_to_root: list[GovernanceProfileOut] = []
+    seen: set[str] = set()
+
+    current = start
+    for _ in range(max_depth):
+        ident = _profile_identity(current)
+        if ident in seen:
+            raise ValueError("governance profile inheritance cycle detected")
+        seen.add(ident)
+        chain_leaf_to_root.append(current)
+
+        parent_ref = str(getattr(current.payload, "extends", None) or "").strip()
+        if not parent_ref:
+            return list(reversed(chain_leaf_to_root))
+        current = fetch_by_ref(parent_ref)
+
+    raise ValueError("governance profile inheritance chain too deep")
+
+
+def _merge_profile_payload(chain: list[GovernanceProfileOut]) -> GovernanceProfilePayload:
+    input_formats: list[str] = []
+    pipeline_patch: dict = {}
+    regex_rules: list[RegexRuleModel] = []
+    processing_scripts: list = []
+
+    for profile in chain:
+        for fmt in (getattr(profile.payload, "input_formats", None) or []):
+            value = str(fmt or "").strip().lower()
+            if value in {"markdown", "html"} and value not in input_formats:
+                input_formats.append(value)
+
+        patch = getattr(profile.payload, "pipeline_patch", None) or {}
+        if isinstance(patch, dict):
+            pipeline_patch.update(dict(patch))
+
+        for rule in (getattr(profile.payload, "regex_rules", None) or []):
+            if isinstance(rule, RegexRuleModel):
+                regex_rules.append(rule)
+            elif isinstance(rule, dict):
+                regex_rules.append(RegexRuleModel(**rule))
+
+        processing_scripts.extend(list(getattr(profile.payload, "processing_scripts", None) or []))
+
+    return GovernanceProfilePayload(
+        version="1",
+        extends=None,
+        input_formats=input_formats or ["markdown"],  # type: ignore[arg-type]
+        pipeline_patch=pipeline_patch,
+        regex_rules=regex_rules,
+        processing_scripts=processing_scripts[:10],
+    )
+
+
 def resolve_profile_inheritance(
     start: GovernanceProfileOut,
     *,
@@ -71,57 +130,8 @@ def resolve_profile_inheritance(
     if max_depth <= 0:
         raise ValueError("max_depth must be > 0")
 
-    chain_leaf_to_root: list[GovernanceProfileOut] = []
-    seen: set[str] = set()
-
-    current = start
-    for _ in range(max_depth):
-        ident = _profile_identity(current)
-        if ident in seen:
-            raise ValueError("governance profile inheritance cycle detected")
-        seen.add(ident)
-        chain_leaf_to_root.append(current)
-
-        parent_ref = str(getattr(current.payload, "extends", None) or "").strip()
-        if not parent_ref:
-            break
-        current = fetch_by_ref(parent_ref)
-    else:
-        raise ValueError("governance profile inheritance chain too deep")
-
-    chain = list(reversed(chain_leaf_to_root))  # root -> leaf
-
-    input_formats: list[str] = []
-    pipeline_patch: dict = {}
-    regex_rules: list[RegexRuleModel] = []
-    processing_scripts: list = []
-
-    for prof in chain:
-        for fmt in (getattr(prof.payload, "input_formats", None) or []):
-            v = str(fmt or "").strip().lower()
-            if v in {"markdown", "html"} and v not in input_formats:
-                input_formats.append(v)
-
-        patch = getattr(prof.payload, "pipeline_patch", None) or {}
-        if isinstance(patch, dict):
-            pipeline_patch.update(dict(patch))
-
-        for r in (getattr(prof.payload, "regex_rules", None) or []):
-            if isinstance(r, RegexRuleModel):
-                regex_rules.append(r)
-            elif isinstance(r, dict):
-                regex_rules.append(RegexRuleModel(**r))
-
-        processing_scripts.extend(list(getattr(prof.payload, "processing_scripts", None) or []))
-
-    effective = GovernanceProfilePayload(
-        version="1",
-        extends=None,
-        input_formats=input_formats or ["markdown"],  # type: ignore[arg-type]
-        pipeline_patch=pipeline_patch,
-        regex_rules=regex_rules,
-        processing_scripts=processing_scripts[:10],
-    )
+    chain = _resolve_profile_chain(start=start, fetch_by_ref=fetch_by_ref, max_depth=max_depth)
+    effective = _merge_profile_payload(chain)
 
     return ResolvedGovernanceProfile(
         profile=start,

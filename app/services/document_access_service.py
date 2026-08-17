@@ -16,6 +16,54 @@ NO_DOCUMENT_ACCESS_DETAIL = "No document access"
 NO_UNASSIGNED_DOCUMENT_WRITE_DETAIL = "No permission to manage unassigned documents"
 
 
+def _raise_no_document_access() -> None:
+    raise HTTPException(status_code=403, detail=NO_DOCUMENT_ACCESS_DETAIL)
+
+
+def _document_acl_owner_allowed(*, account_id: str, document: DBDocument, dataset: Dataset | None) -> bool:
+    if dataset is not None and str(getattr(dataset, "owner_id", "") or "") == account_id:
+        return True
+    owner_id = (str(getattr(document, "owner_id", "") or "")).strip()
+    return bool(owner_id and owner_id == account_id)
+
+
+def _document_acl_inherited_allowed(*, dataset: Dataset | None) -> bool:
+    return dataset is not None
+
+
+def _document_acl_partial_member_allowed(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    document: DBDocument,
+) -> bool:
+    exists = (
+        db.query(DocumentPermission)
+        .filter(
+            DocumentPermission.tenant_id == tenant_id,
+            DocumentPermission.document_id == document.id,
+            DocumentPermission.account_id == account_id,
+        )
+        .first()
+    )
+    if exists:
+        return True
+
+    group_ids = TenantGroupService.resolve_account_group_ids(db, tenant_id=tenant_id, account_id=account_id)
+    if not group_ids:
+        return False
+    allowlist_groups = DocumentGroupPermissionService.get_document_partial_group_list(
+        db,
+        tenant_id,
+        document.id,
+    )
+    if not allowlist_groups:
+        return False
+    allowed = set(allowlist_groups)
+    return any(group_id in allowed for group_id in group_ids)
+
+
 def assert_document_acl_readable(
     db: Session,
     *,
@@ -34,53 +82,30 @@ def assert_document_acl_readable(
     if not account_id:
         return
 
-    if dataset is not None and str(getattr(dataset, "owner_id", "") or "") == account_id:
-        return
-
     mode = (str(getattr(document, "access_mode", "") or "")).strip().lower()
-    owner_id = (str(getattr(document, "owner_id", "") or "")).strip()
-    if owner_id and owner_id == account_id:
+    if _document_acl_owner_allowed(account_id=account_id, document=document, dataset=dataset):
         return
 
     if mode == "all_team_members":
         return
 
     if not mode or mode == "inherit":
-        if dataset is not None:
+        if _document_acl_inherited_allowed(dataset=dataset):
             return
-        raise HTTPException(status_code=403, detail=NO_DOCUMENT_ACCESS_DETAIL)
+        _raise_no_document_access()
 
     if mode == "only_me":
-        raise HTTPException(status_code=403, detail=NO_DOCUMENT_ACCESS_DETAIL)
+        _raise_no_document_access()
 
-    if mode == "partial_members":
-        exists = (
-            db.query(DocumentPermission)
-            .filter(
-                DocumentPermission.tenant_id == tenant_id,
-                DocumentPermission.document_id == document.id,
-                DocumentPermission.account_id == account_id,
-            )
-            .first()
-        )
-        if exists:
-            return
+    if mode == "partial_members" and _document_acl_partial_member_allowed(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        document=document,
+    ):
+        return
 
-        group_ids = TenantGroupService.resolve_account_group_ids(db, tenant_id=tenant_id, account_id=account_id)
-        if group_ids:
-            allowlist_groups = DocumentGroupPermissionService.get_document_partial_group_list(
-                db,
-                tenant_id,
-                document.id,
-            )
-            if allowlist_groups:
-                allowed = set(allowlist_groups)
-                if any(group_id in allowed for group_id in group_ids):
-                    return
-
-        raise HTTPException(status_code=403, detail=NO_DOCUMENT_ACCESS_DETAIL)
-
-    raise HTTPException(status_code=403, detail=NO_DOCUMENT_ACCESS_DETAIL)
+    _raise_no_document_access()
 
 
 def get_document_for_lifecycle(db: Session, tenant_id: UUID, document_id: UUID) -> DBDocument | None:

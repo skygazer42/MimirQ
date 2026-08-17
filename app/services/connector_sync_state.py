@@ -195,6 +195,31 @@ def _build_state_sync_payload(
     }
 
 
+def _apply_policy_state_key(*, state: dict[str, Any], stats_map: Mapping[str, Any], key: str) -> None:
+    if key == "cursor":
+        state["cursor"] = get_resume_cursor(stats_map)
+        return
+
+    if key == "source_manifest":
+        if "source_manifest" in stats_map:
+            state["source_manifest"] = normalize_source_manifest(stats_map.get("source_manifest"))
+        return
+
+    if key == "last_modified_ids":
+        if "last_modified_ids" in stats_map:
+            state["last_modified_ids"] = normalize_boundary_ids(stats_map.get("last_modified_ids"))
+        return
+
+    value = stats_map.get(key)
+    if value is None:
+        return
+    if key == "last_modified":
+        value = str(value or "").strip()
+        if not value:
+            return
+    state[key] = value
+
+
 def build_persisted_state(
     *,
     connector_id: str,
@@ -209,25 +234,7 @@ def build_persisted_state(
 
     stats_map = stats if isinstance(stats, Mapping) else {}
     for key in policy.state_keys:
-        if key == "cursor":
-            state["cursor"] = get_resume_cursor(stats_map)
-            continue
-        if key == "source_manifest":
-            if "source_manifest" in stats_map:
-                state["source_manifest"] = normalize_source_manifest(stats_map.get("source_manifest"))
-            continue
-        if key == "last_modified_ids":
-            if "last_modified_ids" in stats_map:
-                state["last_modified_ids"] = normalize_boundary_ids(stats_map.get("last_modified_ids"))
-            continue
-        value = stats_map.get(key)
-        if value is None:
-            continue
-        if key == "last_modified":
-            value = str(value or "").strip()
-            if not value:
-                continue
-        state[key] = value
+        _apply_policy_state_key(state=state, stats_map=stats_map, key=key)
 
     state["last_run_id"] = str(run_id)
     state["state_schema_version"] = int(_STATE_SCHEMA_VERSION)

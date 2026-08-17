@@ -501,48 +501,23 @@ def run_blocking_retrieval_call_sync(
     wait_deadline = _admission_deadline(admission_timeout_sec)
     effective_cancel_event = cancel_event or getattr(_admission_state, "cancel_event", None)
     try:
-        while True:
-            if gate is not None and not already_admitted and not acquired:
-                while True:
-                    if effective_cancel_event is not None and effective_cancel_event.is_set():
-                        raise RetrievalAdmissionCancelledError("retrieval admission cancelled")
-                    remaining = _remaining_admission_time(
-                        deadline=wait_deadline,
-                        timeout_sec=admission_timeout_sec,
-                    )
-                    wait_sec = min(0.05, remaining) if remaining is not None else 0.05
-                    if gate.acquire(timeout=wait_sec):
-                        break
-                acquired = True
-                if effective_cancel_event is not None and effective_cancel_event.is_set():
-                    raise RetrievalAdmissionCancelledError("retrieval admission cancelled")
-            if already_distributed_admitted:
-                break
-            distributed_lease, degraded = _try_acquire_distributed_admission_slot(
-                limit=limit,
-                timeout_sec=admission_timeout_sec,
+        acquired, distributed_lease, distributed_state = _acquire_sync_retrieval_admission(
+            gate=gate,
+            acquired=acquired,
+            already_admitted=already_admitted,
+            already_distributed_admitted=already_distributed_admitted,
+            cancel_event=effective_cancel_event,
+            limit=limit,
+            timeout_sec=admission_timeout_sec,
+            deadline=wait_deadline,
+            distributed_ttl_sec=distributed_ttl_sec,
+            distributed_state=distributed_state,
+        )
+        if distributed_lease is not None:
+            _start_distributed_admission_lease_heartbeat(
+                distributed_lease,
+                ttl_sec=distributed_ttl_sec,
             )
-            if distributed_lease is not None:
-                distributed_state = "acquired"
-                _start_distributed_admission_lease_heartbeat(
-                    distributed_lease,
-                    ttl_sec=distributed_ttl_sec,
-                )
-                break
-            if not _distributed_admission_enabled(limit):
-                distributed_state = "disabled"
-                break
-            if degraded:
-                distributed_state = "degraded_local_only"
-                break
-            if acquired and gate is not None:
-                gate.release()
-                acquired = False
-            remaining = _remaining_admission_time(
-                deadline=wait_deadline,
-                timeout_sec=admission_timeout_sec,
-            )
-            time.sleep(min(0.01, remaining) if remaining is not None else 0.01)
         acquired_at = time.perf_counter()
         with _distributed_admission_scope(distributed_lease):
             result = (
@@ -570,6 +545,68 @@ def run_blocking_retrieval_call_sync(
             }
         )
     return result
+
+
+def _acquire_sync_local_gate(
+    *,
+    gate: threading.BoundedSemaphore | None,
+    acquired: bool,
+    already_admitted: bool,
+    cancel_event: threading.Event | None,
+    deadline: float | None,
+    timeout_sec: float,
+) -> bool:
+    if gate is None or already_admitted or acquired:
+        return acquired
+    while True:
+        if cancel_event is not None and cancel_event.is_set():
+            raise RetrievalAdmissionCancelledError("retrieval admission cancelled")
+        remaining = _remaining_admission_time(deadline=deadline, timeout_sec=timeout_sec)
+        wait_sec = min(0.05, remaining) if remaining is not None else 0.05
+        if gate.acquire(timeout=wait_sec):
+            break
+    if cancel_event is not None and cancel_event.is_set():
+        gate.release()
+        raise RetrievalAdmissionCancelledError("retrieval admission cancelled")
+    return True
+
+
+def _acquire_sync_retrieval_admission(
+    *,
+    gate: threading.BoundedSemaphore | None,
+    acquired: bool,
+    already_admitted: bool,
+    already_distributed_admitted: bool,
+    cancel_event: threading.Event | None,
+    limit: int,
+    timeout_sec: float,
+    deadline: float | None,
+    distributed_ttl_sec: int,
+    distributed_state: str,
+) -> tuple[bool, _DistributedAdmissionLease | None, str]:
+    while True:
+        acquired = _acquire_sync_local_gate(
+            gate=gate,
+            acquired=acquired,
+            already_admitted=already_admitted,
+            cancel_event=cancel_event,
+            deadline=deadline,
+            timeout_sec=timeout_sec,
+        )
+        if already_distributed_admitted:
+            return acquired, None, distributed_state
+        lease, degraded = _try_acquire_distributed_admission_slot(limit=limit, timeout_sec=timeout_sec)
+        if lease is not None:
+            return acquired, lease, "acquired"
+        if not _distributed_admission_enabled(limit):
+            return acquired, None, "disabled"
+        if degraded:
+            return acquired, None, "degraded_local_only"
+        if acquired and gate is not None:
+            gate.release()
+            acquired = False
+        remaining = _remaining_admission_time(deadline=deadline, timeout_sec=timeout_sec)
+        time.sleep(min(0.01, remaining) if remaining is not None else 0.01)
 
 
 def run_with_retrieval_backend_budget_sync(

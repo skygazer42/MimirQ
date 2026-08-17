@@ -790,10 +790,10 @@ class DocumentReranker(BaseReranker):
         Converts RerankCandidate to Document and calls run().
         """
         from app.models.chunk import Document as ChunkDocument
-        
+
         if not candidates:
             return RerankResult(ordered_ids=[], score_map={})
-        
+
         # Convert to Document objects.
         docs: list[ChunkDocument] = []
         for c in candidates:
@@ -806,12 +806,12 @@ class DocumentReranker(BaseReranker):
                     provider="reranker"
                 )
             )
-        
+
         # Call run().
         top_n = kwargs.get("top_n")
         score_threshold = kwargs.get("score_threshold")
         reranked = self.run(query, docs, score_threshold=score_threshold, top_n=top_n)
-        
+
         # Extract results.
         ordered_ids: list[str] = []
         score_map: dict[str, float] = {}
@@ -823,7 +823,7 @@ class DocumentReranker(BaseReranker):
             cid = str(cid)
             ordered_ids.append(cid)
             score_map[cid] = float(meta.get("score", 0.0) or 0.0)
-        
+
         return RerankResult(
             ordered_ids=ordered_ids,
             score_map=score_map,

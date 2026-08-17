@@ -256,38 +256,13 @@ def _build_readiness(
     }
 
 
-def build_pipeline_plugin_chunk_report(
-    plugin_dir: str | Path,
+def _run_governance_stage(
     *,
-    input_path: str | Path,
-    schema: str = PIPELINE_PLUGIN_CHUNK_REPORT_SCHEMA,
-    max_examples_per_section: int = 2,
-    preview_chars: int = 180,
-    governance_params: dict[str, Any] | None = None,
-    chunk_params: dict[str, Any] | None = None,
-    kg_params: dict[str, Any] | None = None,
-    section_metadata_keys: Sequence[str] = _DEFAULT_SECTION_METADATA_KEYS,
-    title_metadata_keys: Sequence[str] = _DEFAULT_TITLE_METADATA_KEYS,
-    metadata_highlight_keys: Sequence[str] = (),
-    section_resolver: DocumentResolver | None = None,
-    event_section_resolver: EventResolver | None = None,
-    title_resolver: DocumentResolver | None = None,
-    record_type_metadata_key: str | None = None,
-    extra_example_metadata_fields: Mapping[str, str] | None = None,
-) -> dict[str, Any]:
-    plugin_path = Path(plugin_dir)
-    sample_path = Path(input_path)
-    descriptor = describe_plugin_dir(plugin_path, require_test_report=False)
-    input_documents = load_plugin_test_input(sample_path)
-    context = {"plugin_directories": [plugin_path], "require_test_report": False}
-
-    governed: list[Document] = []
-    chunks: list[Document] = []
-    events: list[Any] = []
-    governance_metadata_validation: dict[str, Any]
-    chunk_metadata_validation: dict[str, Any]
-    kg_metadata_validation: dict[str, Any]
-
+    input_documents: Sequence[Document],
+    descriptor: Any,
+    context: dict[str, Any],
+    governance_params: dict[str, Any] | None,
+) -> tuple[list[Document], dict[str, Any]]:
     try:
         governed = apply_governance_python_plugin(
             input_documents,
@@ -295,62 +270,82 @@ def build_pipeline_plugin_chunk_report(
             params=dict(governance_params or {}),
             context=context,
         )
-        governance_metadata_validation = validate_documents_metadata(
+        validation = validate_documents_metadata(
             governed,
             metadata_schema=descriptor.metadata_schema,
             stage="governance",
         )
+        return governed, validation
     except Exception as exc:  # noqa: BLE001
-        governed = []
-        governance_metadata_validation = _validation_error(exc, checked=len(input_documents))
+        return [], _validation_error(exc, checked=len(input_documents))
 
-    if governance_metadata_validation.get("ok") is True:
-        try:
-            chunks = apply_chunk_python_plugin(
-                governed,
-                plugin_ref=descriptor.refs["chunk"],
-                params=dict(chunk_params or {}),
-                context=context,
-            )
-            chunk_metadata_validation = validate_documents_metadata(
-                chunks,
-                metadata_schema=descriptor.metadata_schema,
-                stage="chunk",
-            )
-        except Exception as exc:  # noqa: BLE001
-            chunks = []
-            chunk_metadata_validation = _validation_error(exc, checked=len(governed))
-    else:
-        chunk_metadata_validation = _validation_error("chunk stage skipped because governance failed", checked=0)
 
-    events = []
-    if "kg" in descriptor.refs:
-        if chunk_metadata_validation.get("ok") is True:
-            try:
-                events = apply_kg_python_plugin(
-                    chunks,
-                    plugin_ref=descriptor.refs["kg"],
-                    params=dict(kg_params or {}),
-                    context=context,
-                )
-                kg_metadata_validation = validate_kg_events_metadata(events, metadata_schema=descriptor.metadata_schema)
-            except Exception as exc:  # noqa: BLE001
-                events = []
-                kg_metadata_validation = _validation_error(exc, checked=len(chunks))
-        else:
-            kg_metadata_validation = _validation_error("kg stage skipped because chunk failed", checked=0)
-    else:
-        kg_metadata_validation = _validation_ok(checked=0)
+def _run_chunk_stage(
+    *,
+    governed: Sequence[Document],
+    descriptor: Any,
+    context: dict[str, Any],
+    chunk_params: dict[str, Any] | None,
+    governance_metadata_validation: Mapping[str, Any],
+) -> tuple[list[Document], dict[str, Any]]:
+    if governance_metadata_validation.get("ok") is not True:
+        return [], _validation_error("chunk stage skipped because governance failed", checked=0)
+    try:
+        chunks = apply_chunk_python_plugin(
+            governed,
+            plugin_ref=descriptor.refs["chunk"],
+            params=dict(chunk_params or {}),
+            context=context,
+        )
+        validation = validate_documents_metadata(
+            chunks,
+            metadata_schema=descriptor.metadata_schema,
+            stage="chunk",
+        )
+        return chunks, validation
+    except Exception as exc:  # noqa: BLE001
+        return [], _validation_error(exc, checked=len(governed))
 
-    section_keys = tuple(section_metadata_keys or _DEFAULT_SECTION_METADATA_KEYS)
-    resolve_section = section_resolver or (lambda doc: _default_document_section(doc, metadata_keys=section_keys))
-    resolve_event_section = event_section_resolver or (
-        lambda event: _default_event_section(event, metadata_keys=section_keys)
-    )
-    resolve_title = title_resolver or (
-        lambda doc: _default_title(doc, metadata_keys=tuple(title_metadata_keys or _DEFAULT_TITLE_METADATA_KEYS))
-    )
 
+def _run_kg_stage(
+    *,
+    chunks: Sequence[Document],
+    descriptor: Any,
+    context: dict[str, Any],
+    kg_params: dict[str, Any] | None,
+    chunk_metadata_validation: Mapping[str, Any],
+) -> tuple[list[Any], dict[str, Any]]:
+    if "kg" not in descriptor.refs:
+        return [], _validation_ok(checked=0)
+    if chunk_metadata_validation.get("ok") is not True:
+        return [], _validation_error("kg stage skipped because chunk failed", checked=0)
+    try:
+        events = apply_kg_python_plugin(
+            chunks,
+            plugin_ref=descriptor.refs["kg"],
+            params=dict(kg_params or {}),
+            context=context,
+        )
+        validation = validate_kg_events_metadata(events, metadata_schema=descriptor.metadata_schema)
+        return events, validation
+    except Exception as exc:  # noqa: BLE001
+        return [], _validation_error(exc, checked=len(chunks))
+
+
+def _build_section_reports(
+    *,
+    governed: Sequence[Document],
+    chunks: Sequence[Document],
+    events: Sequence[Any],
+    preview_chars: int,
+    max_examples_per_section: int,
+    metadata_highlight_keys: Sequence[str],
+    extra_example_metadata_fields: Mapping[str, str],
+    resolve_section: DocumentResolver,
+    resolve_event_section: EventResolver,
+    resolve_title: DocumentResolver,
+    record_type_metadata_key: str | None,
+) -> list[dict[str, Any]]:
     records_by_section: dict[str, list[Document]] = defaultdict(list)
     chunks_by_section: dict[str, list[Document]] = defaultdict(list)
     events_by_section: dict[str, list[Any]] = defaultdict(list)
@@ -393,6 +388,76 @@ def build_pipeline_plugin_chunk_report(
             )
             section_report["record_type_counts"] = _as_count_dict(record_types)
         sections.append(section_report)
+    return sections
+
+
+def build_pipeline_plugin_chunk_report(
+    plugin_dir: str | Path,
+    *,
+    input_path: str | Path,
+    schema: str = PIPELINE_PLUGIN_CHUNK_REPORT_SCHEMA,
+    max_examples_per_section: int = 2,
+    preview_chars: int = 180,
+    governance_params: dict[str, Any] | None = None,
+    chunk_params: dict[str, Any] | None = None,
+    kg_params: dict[str, Any] | None = None,
+    section_metadata_keys: Sequence[str] = _DEFAULT_SECTION_METADATA_KEYS,
+    title_metadata_keys: Sequence[str] = _DEFAULT_TITLE_METADATA_KEYS,
+    metadata_highlight_keys: Sequence[str] = (),
+    section_resolver: DocumentResolver | None = None,
+    event_section_resolver: EventResolver | None = None,
+    title_resolver: DocumentResolver | None = None,
+    record_type_metadata_key: str | None = None,
+    extra_example_metadata_fields: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    plugin_path = Path(plugin_dir)
+    sample_path = Path(input_path)
+    descriptor = describe_plugin_dir(plugin_path, require_test_report=False)
+    input_documents = load_plugin_test_input(sample_path)
+    context = {"plugin_directories": [plugin_path], "require_test_report": False}
+    governed, governance_metadata_validation = _run_governance_stage(
+        input_documents=input_documents,
+        descriptor=descriptor,
+        context=context,
+        governance_params=governance_params,
+    )
+    chunks, chunk_metadata_validation = _run_chunk_stage(
+        governed=governed,
+        descriptor=descriptor,
+        context=context,
+        chunk_params=chunk_params,
+        governance_metadata_validation=governance_metadata_validation,
+    )
+    events, kg_metadata_validation = _run_kg_stage(
+        chunks=chunks,
+        descriptor=descriptor,
+        context=context,
+        kg_params=kg_params,
+        chunk_metadata_validation=chunk_metadata_validation,
+    )
+
+    section_keys = tuple(section_metadata_keys or _DEFAULT_SECTION_METADATA_KEYS)
+    resolve_section = section_resolver or (lambda doc: _default_document_section(doc, metadata_keys=section_keys))
+    resolve_event_section = event_section_resolver or (
+        lambda event: _default_event_section(event, metadata_keys=section_keys)
+    )
+    resolve_title = title_resolver or (
+        lambda doc: _default_title(doc, metadata_keys=tuple(title_metadata_keys or _DEFAULT_TITLE_METADATA_KEYS))
+    )
+
+    sections = _build_section_reports(
+        governed=governed,
+        chunks=chunks,
+        events=events,
+        preview_chars=preview_chars,
+        max_examples_per_section=max_examples_per_section,
+        metadata_highlight_keys=tuple(metadata_highlight_keys or ()),
+        extra_example_metadata_fields=dict(extra_example_metadata_fields or {}),
+        resolve_section=resolve_section,
+        resolve_event_section=resolve_event_section,
+        resolve_title=resolve_title,
+        record_type_metadata_key=record_type_metadata_key,
+    )
 
     readiness = _build_readiness(
         input_documents=input_documents,

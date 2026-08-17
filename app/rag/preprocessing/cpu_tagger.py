@@ -175,6 +175,84 @@ def _classify_document(text: str, tags: list[CPUDocumentTag]) -> None:
         _append_doc_tag(tags, tag_type="doc_type", value="制度规范", confidence=0.72)
 
 
+def _apply_sensitivity_tags(
+    *,
+    source: str,
+    document_tags: list[CPUDocumentTag],
+) -> set[str]:
+    pii_hits = find_pii_matches(source, max_matches=5)
+    secret_hits = find_secret_matches(source, max_matches=5)
+    sensitive_texts = {str(match.text or "").casefold() for match in [*pii_hits, *secret_hits] if str(match.text or "").strip()}
+    if pii_hits or secret_hits:
+        _append_doc_tag(document_tags, tag_type="sensitivity", value="restricted", confidence=0.92)
+        _append_doc_tag(document_tags, tag_type="quality", value="含敏感信息，建议人工复核", confidence=0.9)
+    else:
+        _append_doc_tag(document_tags, tag_type="sensitivity", value="internal", confidence=0.62)
+    return sensitive_texts
+
+
+def _append_domain_terms(
+    *,
+    source: str,
+    document_tags: list[CPUDocumentTag],
+    spans: list[CPUSpanAnnotation],
+    max_items: int,
+) -> None:
+    for term in _DOMAIN_TERMS:
+        if term in source and not _looks_sensitive_or_noise(term):
+            _append_doc_tag(document_tags, tag_type="topic", value=term, confidence=0.78)
+            _append_span(spans, text=term, annotation_type="keyword", label="主题关键词", confidence=0.78)
+        if len(spans) >= max_items:
+            break
+
+
+def _extract_source_keywords(source: str, *, keyword_provider: str, keyword_top_k: int) -> list[str]:
+    try:
+        return extract_keywords(source, provider=keyword_provider or "simple", top_k=keyword_top_k)
+    except Exception:
+        return extract_keywords(source, provider="simple", top_k=keyword_top_k)
+
+
+def _append_keyword_tags(
+    *,
+    source: str,
+    keywords: list[str],
+    sensitive_texts: set[str],
+    document_tags: list[CPUDocumentTag],
+    spans: list[CPUSpanAnnotation],
+    max_items: int,
+) -> None:
+    for keyword in keywords:
+        keyword_cf = str(keyword or "").casefold()
+        if _looks_sensitive_or_noise(keyword) or keyword not in source:
+            continue
+        if any(keyword_cf in sensitive_text or sensitive_text in keyword_cf for sensitive_text in sensitive_texts):
+            continue
+        _append_doc_tag(document_tags, tag_type="topic", value=keyword, confidence=0.68)
+        _append_span(spans, text=keyword, annotation_type="keyword", label="主题关键词", confidence=0.68)
+        if len(spans) >= max_items:
+            break
+
+
+def _append_action_and_risk_tags(
+    *,
+    source: str,
+    document_tags: list[CPUDocumentTag],
+    spans: list[CPUSpanAnnotation],
+) -> None:
+    for match in _ACTION_RE.finditer(source):
+        phrase = _trim_action_phrase(match.group(0))
+        _append_doc_tag(document_tags, tag_type="quality", value=phrase, confidence=0.74)
+        _append_span(spans, text=phrase, annotation_type="custom", label="动作项", confidence=0.82)
+        break
+
+    for match in _RISK_RE.finditer(source):
+        phrase = str(match.group(0) or "").strip(_TRIM_PUNCTUATION_CHARS)
+        _append_doc_tag(document_tags, tag_type="quality", value=phrase, confidence=0.74)
+        _append_span(spans, text=phrase, annotation_type="custom", label="风险线索", confidence=0.8)
+        break
+
+
 def extract_cpu_tags(
     *,
     text: str,
@@ -190,49 +268,18 @@ def extract_cpu_tags(
         return CPUTaggingResult(document_tags=[], span_annotations=[], provider="cpu")
 
     _classify_document(source, document_tags)
-
-    pii_hits = find_pii_matches(source, max_matches=5)
-    secret_hits = find_secret_matches(source, max_matches=5)
-    sensitive_texts = {str(match.text or "").casefold() for match in [*pii_hits, *secret_hits] if str(match.text or "").strip()}
-    if pii_hits or secret_hits:
-        _append_doc_tag(document_tags, tag_type="sensitivity", value="restricted", confidence=0.92)
-        _append_doc_tag(document_tags, tag_type="quality", value="含敏感信息，建议人工复核", confidence=0.9)
-    else:
-        _append_doc_tag(document_tags, tag_type="sensitivity", value="internal", confidence=0.62)
-
-    for term in _DOMAIN_TERMS:
-        if term in source and not _looks_sensitive_or_noise(term):
-            _append_doc_tag(document_tags, tag_type="topic", value=term, confidence=0.78)
-            _append_span(spans, text=term, annotation_type="keyword", label="主题关键词", confidence=0.78)
-        if len(spans) >= max_items_i:
-            break
-
-    try:
-        keywords = extract_keywords(source, provider=keyword_provider or "simple", top_k=keyword_top_k)
-    except Exception:
-        keywords = extract_keywords(source, provider="simple", top_k=keyword_top_k)
-    for keyword in keywords:
-        keyword_cf = str(keyword or "").casefold()
-        if _looks_sensitive_or_noise(keyword) or keyword not in source:
-            continue
-        if any(keyword_cf in sensitive_text or sensitive_text in keyword_cf for sensitive_text in sensitive_texts):
-            continue
-        _append_doc_tag(document_tags, tag_type="topic", value=keyword, confidence=0.68)
-        _append_span(spans, text=keyword, annotation_type="keyword", label="主题关键词", confidence=0.68)
-        if len(spans) >= max_items_i:
-            break
-
-    for match in _ACTION_RE.finditer(source):
-        phrase = _trim_action_phrase(match.group(0))
-        _append_doc_tag(document_tags, tag_type="quality", value=phrase, confidence=0.74)
-        _append_span(spans, text=phrase, annotation_type="custom", label="动作项", confidence=0.82)
-        break
-
-    for match in _RISK_RE.finditer(source):
-        phrase = str(match.group(0) or "").strip(_TRIM_PUNCTUATION_CHARS)
-        _append_doc_tag(document_tags, tag_type="quality", value=phrase, confidence=0.74)
-        _append_span(spans, text=phrase, annotation_type="custom", label="风险线索", confidence=0.8)
-        break
+    sensitive_texts = _apply_sensitivity_tags(source=source, document_tags=document_tags)
+    _append_domain_terms(source=source, document_tags=document_tags, spans=spans, max_items=max_items_i)
+    keywords = _extract_source_keywords(source, keyword_provider=keyword_provider, keyword_top_k=keyword_top_k)
+    _append_keyword_tags(
+        source=source,
+        keywords=keywords,
+        sensitive_texts=sensitive_texts,
+        document_tags=document_tags,
+        spans=spans,
+        max_items=max_items_i,
+    )
+    _append_action_and_risk_tags(source=source, document_tags=document_tags, spans=spans)
 
     return CPUTaggingResult(
         summary=None,

@@ -57,6 +57,29 @@ from app.services.chat_execution_runtime import (
 logger = get_logger("services.chat_runtime")
 
 
+def _setdefault_metric(
+    out: dict[str, Any],
+    *,
+    key: str,
+    value: Any,
+    enabled: bool,
+) -> None:
+    if enabled:
+        out.setdefault(key, value)
+
+
+def _setdefault_applied_fields(
+    out: dict[str, Any],
+    *,
+    enabled_key: str,
+    fields_key: str,
+    fields: list[str] | None,
+) -> None:
+    if fields:
+        out.setdefault(enabled_key, True)
+        out.setdefault(fields_key, fields)
+
+
 def apply_chat_runtime_metrics_context(
     metrics: dict[str, Any] | None,
     *,
@@ -72,32 +95,39 @@ def apply_chat_runtime_metrics_context(
     quota_meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     out = dict(metrics or {})
-    if dataset_id_used is not None:
-        out.setdefault("dataset_id", str(dataset_id_used))
-    if effective_prompt_template_id is not None:
-        out.setdefault("prompt_template_id", str(effective_prompt_template_id))
-    if effective_prompt_template_key:
-        out.setdefault("prompt_template_key", effective_prompt_template_key)
-    if effective_prompt_ab_experiment_key:
-        out.setdefault("prompt_ab_experiment_key", effective_prompt_ab_experiment_key)
-    if dataset_rag_defaults_applied_fields:
-        out.setdefault("dataset_rag_defaults_applied", True)
-        out.setdefault("dataset_rag_defaults_fields", dataset_rag_defaults_applied_fields)
-    if dataset_rag_config_template_defaults_applied_fields:
-        out.setdefault("dataset_rag_config_template_defaults_applied", True)
-        out.setdefault(
-            "dataset_rag_config_template_defaults_fields",
-            dataset_rag_config_template_defaults_applied_fields,
-        )
-    if rag_config_template_meta:
-        out.setdefault("rag_config_template", rag_config_template_meta)
-    if dataset_prompt_defaults_applied_fields:
-        out.setdefault("dataset_prompt_defaults_applied", True)
-        out.setdefault("dataset_prompt_defaults_fields", dataset_prompt_defaults_applied_fields)
-    if isinstance(tenant_qps_meta, dict) and tenant_qps_meta.get("enabled"):
-        out.setdefault("tenant_qps_quota", tenant_qps_meta)
-    if isinstance(quota_meta, dict) and quota_meta.get("enabled"):
-        out.setdefault("quota", quota_meta)
+    for key, value, enabled in (
+        ("dataset_id", str(dataset_id_used), dataset_id_used is not None),
+        ("prompt_template_id", str(effective_prompt_template_id), effective_prompt_template_id is not None),
+        ("prompt_template_key", effective_prompt_template_key, bool(effective_prompt_template_key)),
+        ("prompt_ab_experiment_key", effective_prompt_ab_experiment_key, bool(effective_prompt_ab_experiment_key)),
+        ("rag_config_template", rag_config_template_meta, bool(rag_config_template_meta)),
+        (
+            "tenant_qps_quota",
+            tenant_qps_meta,
+            isinstance(tenant_qps_meta, dict) and bool(tenant_qps_meta.get("enabled")),
+        ),
+        ("quota", quota_meta, isinstance(quota_meta, dict) and bool(quota_meta.get("enabled"))),
+    ):
+        _setdefault_metric(out, key=key, value=value, enabled=enabled)
+
+    _setdefault_applied_fields(
+        out,
+        enabled_key="dataset_rag_defaults_applied",
+        fields_key="dataset_rag_defaults_fields",
+        fields=dataset_rag_defaults_applied_fields,
+    )
+    _setdefault_applied_fields(
+        out,
+        enabled_key="dataset_rag_config_template_defaults_applied",
+        fields_key="dataset_rag_config_template_defaults_fields",
+        fields=dataset_rag_config_template_defaults_applied_fields,
+    )
+    _setdefault_applied_fields(
+        out,
+        enabled_key="dataset_prompt_defaults_applied",
+        fields_key="dataset_prompt_defaults_fields",
+        fields=dataset_prompt_defaults_applied_fields,
+    )
     return out
 
 

@@ -364,7 +364,7 @@ async def lifespan(app: FastAPI):
 
     # Shutdown cleanup.
     logger.info("Shutting down MimirQ backend...")
-    
+
     # Close HTTP client pool.
     await close_http_client_pool()
     logger.info("HTTP client pool closed")

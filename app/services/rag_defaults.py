@@ -14,6 +14,45 @@ from app.api.schemas.chat import ChatRAGConfig
 from app.api.schemas.dataset import DatasetRAGDefaults
 
 
+def _coerce_dataset_defaults(raw_dataset_defaults: Any) -> DatasetRAGDefaults | None:
+    if isinstance(raw_dataset_defaults, DatasetRAGDefaults):
+        return raw_dataset_defaults
+    if isinstance(raw_dataset_defaults, dict):
+        try:
+            return DatasetRAGDefaults(**raw_dataset_defaults)
+        except Exception:
+            return None
+    return None
+
+
+def _normalized_dataset_overrides(defaults: DatasetRAGDefaults) -> dict[str, Any]:
+    overrides = defaults.model_dump(exclude_none=True)
+    if (
+        str(overrides.get("retrieval_contract_mode") or "").strip().lower() == "evidence_strict"
+        and "visible_evidence_only" not in overrides
+    ):
+        overrides["visible_evidence_only"] = True
+    return overrides
+
+
+def _merge_dataset_rag_overrides(
+    *,
+    rag_config: ChatRAGConfig,
+    provided: set[str],
+    overrides: dict[str, Any],
+) -> tuple[ChatRAGConfig, list[str]]:
+    merged = dict(rag_config.model_dump())
+    applied: list[str] = []
+    for key, value in overrides.items():
+        if key in provided:
+            continue
+        merged[key] = value
+        applied.append(str(key))
+    if not applied:
+        return rag_config, []
+    return ChatRAGConfig(**merged), applied
+
+
 def merge_rag_config_with_dataset_defaults(
     *,
     rag_config: ChatRAGConfig,
@@ -37,39 +76,12 @@ def merge_rag_config_with_dataset_defaults(
     if raw_dataset_defaults is None:
         return rag_config, []
 
-    defaults: DatasetRAGDefaults | None
-    if isinstance(raw_dataset_defaults, DatasetRAGDefaults):
-        defaults = raw_dataset_defaults
-    elif isinstance(raw_dataset_defaults, dict):
-        try:
-            defaults = DatasetRAGDefaults(**raw_dataset_defaults)
-        except Exception:
-            defaults = None
-    else:
-        defaults = None
-
+    defaults = _coerce_dataset_defaults(raw_dataset_defaults)
     if defaults is None:
         return rag_config, []
 
-    overrides = defaults.model_dump(exclude_none=True)
+    overrides = _normalized_dataset_overrides(defaults)
     if not overrides:
         return rag_config, []
 
-    if (
-        str(overrides.get("retrieval_contract_mode") or "").strip().lower() == "evidence_strict"
-        and "visible_evidence_only" not in overrides
-    ):
-        overrides["visible_evidence_only"] = True
-
-    merged = dict(rag_config.model_dump())
-    applied: list[str] = []
-    for k, v in overrides.items():
-        if k in provided:
-            continue
-        merged[k] = v
-        applied.append(str(k))
-
-    if not applied:
-        return rag_config, []
-
-    return ChatRAGConfig(**merged), applied
+    return _merge_dataset_rag_overrides(rag_config=rag_config, provided=provided, overrides=overrides)

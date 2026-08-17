@@ -80,6 +80,171 @@ def _assert_requested_dataset_matches_document_scope(
         raise HTTPException(status_code=400, detail=mismatch_detail)
 
 
+def _resolve_requested_document_scope(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    request_document_ids: list[UUID],
+    request_dataset_id: UUID | None,
+    mismatch_detail: str,
+    conversation: Conversation | None = None,
+) -> tuple[UUID | None, list[UUID]]:
+    allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, request_document_ids)
+    if conversation is not None:
+        conversation.document_ids = allowed_doc_ids
+        conversation.dataset_id = None
+    _assert_requested_dataset_matches_document_scope(
+        db,
+        tenant_id=tenant_id,
+        request_dataset_id=request_dataset_id,
+        allowed_doc_ids=allowed_doc_ids,
+        mismatch_detail=mismatch_detail,
+    )
+    return None, allowed_doc_ids
+
+
+def _resolve_requested_dataset_scope(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    request_dataset_id: UUID,
+    conversation: Conversation | None = None,
+) -> tuple[UUID, list[UUID]]:
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset = DatasetService.get_dataset(db, tenant_id, request_dataset_id)
+    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    if conversation is not None:
+        conversation.dataset_id = request_dataset_id
+        conversation.document_ids = []
+    return request_dataset_id, []
+
+
+def _get_existing_conversation_scope(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    conversation: Conversation,
+    request_document_ids: list[UUID] | None,
+    request_dataset_id: UUID | None,
+    allow_open_scope: bool,
+    dataset_required_detail: str,
+    document_scope_mismatch_detail: str,
+) -> tuple[UUID | None, list[UUID]]:
+    if request_document_ids:
+        return _resolve_requested_document_scope(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            request_document_ids=request_document_ids,
+            request_dataset_id=request_dataset_id,
+            mismatch_detail=document_scope_mismatch_detail,
+            conversation=conversation,
+        )
+    if request_dataset_id is not None:
+        return _resolve_requested_dataset_scope(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            request_dataset_id=request_dataset_id,
+            conversation=conversation,
+        )
+    if conversation.document_ids:
+        allowed_doc_ids = _resolve_existing_conversation_document_scope(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            conversation=conversation,
+        )
+        conversation.document_ids = allowed_doc_ids
+        conversation.dataset_id = None
+        return None, allowed_doc_ids
+
+    scope_dataset_id = getattr(conversation, "dataset_id", None)
+    if scope_dataset_id is None and not allow_open_scope:
+        raise HTTPException(status_code=400, detail=dataset_required_detail)
+    return scope_dataset_id, []
+
+
+def _get_new_conversation_scope(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    request_document_ids: list[UUID] | None,
+    request_dataset_id: UUID | None,
+    allow_open_scope: bool,
+    dataset_required_detail: str,
+    document_scope_mismatch_detail: str,
+) -> tuple[UUID | None, list[UUID]]:
+    if request_document_ids:
+        return _resolve_requested_document_scope(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            request_document_ids=request_document_ids,
+            request_dataset_id=request_dataset_id,
+            mismatch_detail=document_scope_mismatch_detail,
+        )
+    if request_dataset_id is not None:
+        return _resolve_requested_dataset_scope(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            request_dataset_id=request_dataset_id,
+        )
+    if not allow_open_scope:
+        raise HTTPException(status_code=400, detail=dataset_required_detail)
+    return None, []
+
+
+def _load_conversation(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    conversation_id: UUID,
+    conversation_not_found_detail: str,
+) -> Conversation:
+    conversation = (
+        db.query(Conversation)
+        .filter(
+            Conversation.id == conversation_id,
+            Conversation.tenant_id == tenant_id,
+        )
+        .first()
+    )
+    if not conversation:
+        raise HTTPException(status_code=404, detail=conversation_not_found_detail)
+    ensure_conversation_access(db, tenant_id, account_id, conversation)
+    return conversation
+
+
+def _create_conversation(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    request_message: str,
+    scope_dataset_id: UUID | None,
+    allowed_doc_ids: list[UUID],
+) -> Conversation:
+    conversation = Conversation(
+        id=uuid4(),
+        tenant_id=tenant_id,
+        owner_account_id=str(account_id or "").strip() or None,
+        title_source=CONVERSATION_TITLE_SOURCE_AUTO,
+        dataset_id=scope_dataset_id,
+        document_ids=allowed_doc_ids,
+    )
+    apply_auto_conversation_title(conversation, request_message)
+    db.add(conversation)
+    db.flush()
+    return conversation
+
+
 def enforce_non_empty_chat_scope(
     db: Session,
     *,
@@ -129,90 +294,44 @@ def resolve_chat_conversation_scope(
     document_scope_mismatch_detail: str,
     empty_scope_detail: str,
 ) -> ResolvedChatConversationScope:
-    scope_dataset_id: UUID | None = None
-    allowed_doc_ids: list[UUID] = []
-
     if conversation_id:
-        conversation = (
-            db.query(Conversation)
-            .filter(
-                Conversation.id == conversation_id,
-                Conversation.tenant_id == tenant_id,
-            )
-            .first()
-        )
-        if not conversation:
-            raise HTTPException(status_code=404, detail=conversation_not_found_detail)
-        ensure_conversation_access(db, tenant_id, account_id, conversation)
-
-        if request_document_ids:
-            allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, request_document_ids)
-            conversation.document_ids = allowed_doc_ids
-            conversation.dataset_id = None
-            _assert_requested_dataset_matches_document_scope(
-                db,
-                tenant_id=tenant_id,
-                request_dataset_id=request_dataset_id,
-                allowed_doc_ids=allowed_doc_ids,
-                mismatch_detail=document_scope_mismatch_detail,
-            )
-        elif request_dataset_id is not None:
-            DatasetService.ensure_member(db, tenant_id, account_id)
-            dataset = DatasetService.get_dataset(db, tenant_id, request_dataset_id)
-            DatasetService.assert_dataset_readable(db, dataset, account_id)
-
-            scope_dataset_id = request_dataset_id
-            conversation.dataset_id = request_dataset_id
-            conversation.document_ids = []
-            allowed_doc_ids = []
-        elif conversation.document_ids:
-            allowed_doc_ids = _resolve_existing_conversation_document_scope(
-                db,
-                tenant_id=tenant_id,
-                account_id=account_id,
-                conversation=conversation,
-            )
-            conversation.document_ids = allowed_doc_ids
-            conversation.dataset_id = None
-        else:
-            scope_dataset_id = getattr(conversation, "dataset_id", None)
-            allowed_doc_ids = []
-            if scope_dataset_id is None and not allow_open_scope:
-                raise HTTPException(status_code=400, detail=dataset_required_detail)
-    else:
-        if request_document_ids:
-            allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, request_document_ids)
-            scope_dataset_id = None
-            _assert_requested_dataset_matches_document_scope(
-                db,
-                tenant_id=tenant_id,
-                request_dataset_id=request_dataset_id,
-                allowed_doc_ids=allowed_doc_ids,
-                mismatch_detail=document_scope_mismatch_detail,
-            )
-        elif request_dataset_id is not None:
-            DatasetService.ensure_member(db, tenant_id, account_id)
-            dataset = DatasetService.get_dataset(db, tenant_id, request_dataset_id)
-            DatasetService.assert_dataset_readable(db, dataset, account_id)
-            scope_dataset_id = request_dataset_id
-            allowed_doc_ids = []
-        else:
-            scope_dataset_id = None
-            allowed_doc_ids = []
-            if not allow_open_scope:
-                raise HTTPException(status_code=400, detail=dataset_required_detail)
-
-        conversation = Conversation(
-            id=uuid4(),
+        conversation = _load_conversation(
+            db,
             tenant_id=tenant_id,
-            owner_account_id=str(account_id or "").strip() or None,
-            title_source=CONVERSATION_TITLE_SOURCE_AUTO,
-            dataset_id=scope_dataset_id,
-            document_ids=allowed_doc_ids,
+            account_id=account_id,
+            conversation_id=conversation_id,
+            conversation_not_found_detail=conversation_not_found_detail,
         )
-        apply_auto_conversation_title(conversation, request_message)
-        db.add(conversation)
-        db.flush()
+        scope_dataset_id, allowed_doc_ids = _get_existing_conversation_scope(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            conversation=conversation,
+            request_document_ids=request_document_ids,
+            request_dataset_id=request_dataset_id,
+            allow_open_scope=allow_open_scope,
+            dataset_required_detail=dataset_required_detail,
+            document_scope_mismatch_detail=document_scope_mismatch_detail,
+        )
+    else:
+        scope_dataset_id, allowed_doc_ids = _get_new_conversation_scope(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            request_document_ids=request_document_ids,
+            request_dataset_id=request_dataset_id,
+            allow_open_scope=allow_open_scope,
+            dataset_required_detail=dataset_required_detail,
+            document_scope_mismatch_detail=document_scope_mismatch_detail,
+        )
+        conversation = _create_conversation(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            request_message=request_message,
+            scope_dataset_id=scope_dataset_id,
+            allowed_doc_ids=allowed_doc_ids,
+        )
         conversation_id = conversation.id
 
     if not allow_empty_docs:

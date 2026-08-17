@@ -22,7 +22,7 @@ _HTTP2_AVAILABLE = True
 
 class HTTPClientPool:
     """Global HTTP client pool with connection reuse and concurrency control."""
-    
+
     def __init__(self):
         self._async_client: httpx.AsyncClient | None = None
         self._async_client_external: httpx.AsyncClient | None = None
@@ -238,7 +238,7 @@ class HTTPClientPool:
                 trust_env,
             )
             return self._sync_client_external
-    
+
     async def get_client(self) -> httpx.AsyncClient:
         """Get the global async HTTP client (lazy init)."""
         # Keep the method async for backward compatibility (tests, callers),
@@ -250,7 +250,7 @@ class HTTPClientPool:
         """Async wrapper for the pooled external HTTP client."""
         await asyncio.sleep(0)
         return self.get_external_async_client()
-    
+
     async def close(self):
         """Close the client pool."""
         async_client: httpx.AsyncClient | None
@@ -293,7 +293,7 @@ class HTTPClientPool:
                 logger.warning("Failed to close HTTP external async client: %s", str(exc)[:200])
 
         logger.info("HTTP client pool closed")
-    
+
     async def request_with_retry(
         self,
         method: str,
@@ -336,13 +336,13 @@ class HTTPClientPool:
         jitter = float(jitter if jitter is not None else getattr(settings, "HTTP_CLIENT_RETRY_JITTER_SEC", 0.0))
 
         current_delay = retry_delay
-        
+
         for attempt in range(max_retries + 1):
             try:
                 response = await client.request(method, url, **kwargs)
                 response.raise_for_status()
                 return response
-            
+
             except (httpx.TimeoutException, httpx.NetworkError) as e:
                 last_exception = e
                 if attempt < max_retries:
@@ -358,7 +358,7 @@ class HTTPClientPool:
                     current_delay *= backoff_factor
                 else:
                     logger.exception("Request failed after %s attempts: %s", max_retries + 1, str(e)[:200])
-            
+
             except httpx.HTTPStatusError as e:
                 # Retry on 5xx/429; raise other 4xx errors.
                 status = int(getattr(e.response, "status_code", 0) or 0)
@@ -391,26 +391,26 @@ class HTTPClientPool:
                     with contextlib.suppress(Exception):
                         await e.response.aclose()
                     raise
-        
+
         # All retries failed.
         if last_exception:
             raise last_exception
-        
+
         # Should not reach here.
         raise RuntimeError("Unexpected error in request_with_retry")
-    
+
     async def get(self, url: str, **kwargs) -> httpx.Response:
         """GET request (with retry)."""
         return await self.request_with_retry("GET", url, **kwargs)
-    
+
     async def post(self, url: str, **kwargs) -> httpx.Response:
         """POST request (with retry)."""
         return await self.request_with_retry("POST", url, **kwargs)
-    
+
     async def put(self, url: str, **kwargs) -> httpx.Response:
         """PUT request (with retry)."""
         return await self.request_with_retry("PUT", url, **kwargs)
-    
+
     async def delete(self, url: str, **kwargs) -> httpx.Response:
         """DELETE request (with retry)."""
         return await self.request_with_retry("DELETE", url, **kwargs)

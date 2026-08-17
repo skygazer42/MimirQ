@@ -160,7 +160,7 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
         chunks = Docx()(filename, binary)
         callback(0.7, "Finish parsing.")
         return tokenize_chunks(chunks, doc, eng, None)
-    
+
     elif re.search(r"\.pdf$", filename, re.IGNORECASE):
         layout_recognizer = parser_config.get("layout_recognize", "DeepDOC")
 
@@ -188,7 +188,7 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
 
         if name in ["tcadp", "docling", "mineru"]:
             parser_config["chunk_token_num"] = 0
-        
+
         for txt, poss in raw_sections:
             sections.append(txt + poss)
 

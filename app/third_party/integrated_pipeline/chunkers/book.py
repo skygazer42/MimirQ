@@ -135,7 +135,7 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
 
         sample_texts = [s if isinstance(s, str) else s[0] for s in sections]
         remove_contents_table(sections, eng=is_english(random_choices(sample_texts, k=200)))
-        
+
         callback(0.8, "Finish parsing.")
     elif re.search(r"\.txt$", filename, re.IGNORECASE):
         callback(0.1, "Start to parse.")

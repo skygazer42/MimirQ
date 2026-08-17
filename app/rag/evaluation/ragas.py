@@ -868,68 +868,68 @@ def _resolve_metrics(metric_names: list[str]):
     Map user-friendly names to RAGAS metric objects.
     Returns: list[Metric]
     """
-    from ragas.metrics import AnswerCorrectness as answer_correctness_cls
-    from ragas.metrics import AnswerSimilarity as answer_similarity_cls
-    from ragas.metrics import ContextPrecision as context_precision_cls
-    from ragas.metrics import ContextRecall as context_recall_cls
-    from ragas.metrics import Faithfulness as faithfulness_cls
-    from ragas.metrics import IDBasedContextPrecision as id_context_precision_cls
-    from ragas.metrics import IDBasedContextRecall as id_context_recall_cls
-    from ragas.metrics import LLMContextPrecisionWithoutReference as llm_context_precision_cls
-    from ragas.metrics import ResponseRelevancy as response_relevancy_cls
+    from ragas.metrics import AnswerCorrectness as RagasAnswerCorrectness
+    from ragas.metrics import AnswerSimilarity as RagasAnswerSimilarity
+    from ragas.metrics import ContextPrecision as RagasContextPrecision
+    from ragas.metrics import ContextRecall as RagasContextRecall
+    from ragas.metrics import Faithfulness as RagasFaithfulness
+    from ragas.metrics import IDBasedContextPrecision as RagasIDBasedContextPrecision
+    from ragas.metrics import IDBasedContextRecall as RagasIDBasedContextRecall
+    from ragas.metrics import LLMContextPrecisionWithoutReference as RagasLLMContextPrecisionWithoutReference
+    from ragas.metrics import ResponseRelevancy as RagasResponseRelevancy
 
     resolved = []
     for name in metric_names or []:
         key = (name or "").strip().lower()
         if key in {"faithfulness"}:
-            resolved.append(faithfulness_cls())
+            resolved.append(RagasFaithfulness())
             continue
         if key in {"response_relevancy", "answer_relevancy"}:
-            resolved.append(response_relevancy_cls(strictness=_resolve_response_relevancy_strictness()))
+            resolved.append(RagasResponseRelevancy(strictness=_resolve_response_relevancy_strictness()))
             continue
         if key in {"answer_similarity"}:
-            resolved.append(answer_similarity_cls())
+            resolved.append(RagasAnswerSimilarity())
             continue
         if key in {"answer_correctness"}:
-            resolved.append(answer_correctness_cls())
+            resolved.append(RagasAnswerCorrectness())
             continue
         if key in {"context_recall"}:
-            resolved.append(context_recall_cls())
+            resolved.append(RagasContextRecall())
             continue
         if key in {"context_precision"}:
-            resolved.append(context_precision_cls())
+            resolved.append(RagasContextPrecision())
             continue
         if key in {"id_based_context_recall"}:
-            resolved.append(id_context_recall_cls())
+            resolved.append(RagasIDBasedContextRecall())
             continue
         if key in {"id_based_context_precision"}:
-            resolved.append(id_context_precision_cls())
+            resolved.append(RagasIDBasedContextPrecision())
             continue
         if key in {"llm_context_precision_without_reference"}:
-            resolved.append(llm_context_precision_cls())
+            resolved.append(RagasLLMContextPrecisionWithoutReference())
             continue
         raise ValueError(f"Unsupported RAGAS metric: {name}")
     if not resolved:
         resolved = [
-            faithfulness_cls(),
-            response_relevancy_cls(strictness=_resolve_response_relevancy_strictness()),
+            RagasFaithfulness(),
+            RagasResponseRelevancy(strictness=_resolve_response_relevancy_strictness()),
         ]
     return resolved
 
 
 def _load_ragas_evaluation_runtime() -> tuple[Any, Any, Any, Any, Any]:
-    from ragas import EvaluationDataset as evaluation_dataset_cls
-    from ragas import SingleTurnSample as single_turn_sample_cls
+    from ragas import EvaluationDataset as RagasEvaluationDataset
+    from ragas import SingleTurnSample as RagasSingleTurnSample
     from ragas import evaluate as evaluate_fn
-    from ragas.embeddings import LangchainEmbeddingsWrapper as embeddings_wrapper_cls
-    from ragas.llms import LangchainLLMWrapper as llm_wrapper_cls
+    from ragas.embeddings import LangchainEmbeddingsWrapper as RagasLangchainEmbeddingsWrapper
+    from ragas.llms import LangchainLLMWrapper as RagasLangchainLLMWrapper
 
     return (
-        evaluation_dataset_cls,
-        single_turn_sample_cls,
+        RagasEvaluationDataset,
+        RagasSingleTurnSample,
         evaluate_fn,
-        embeddings_wrapper_cls,
-        llm_wrapper_cls,
+        RagasLangchainEmbeddingsWrapper,
+        RagasLangchainLLMWrapper,
     )
 
 
@@ -1269,28 +1269,28 @@ def run_conversation_ragas_evaluation(
             return
 
         (
-            evaluation_dataset_cls,
-            single_turn_sample_cls,
+            ragas_evaluation_dataset,
+            ragas_single_turn_sample,
             evaluate_fn,
-            embeddings_wrapper_cls,
-            llm_wrapper_cls,
+            ragas_langchain_embeddings_wrapper,
+            ragas_langchain_llm_wrapper,
         ) = _load_ragas_evaluation_runtime()
         llm, embeddings = _build_llm_and_embeddings()
-        ragas_llm = llm_wrapper_cls(llm)
-        ragas_embeddings = embeddings_wrapper_cls(embeddings)
+        ragas_llm = ragas_langchain_llm_wrapper(llm)
+        ragas_embeddings = ragas_langchain_embeddings_wrapper(embeddings)
 
         metrics = _resolve_metrics(metric_names)
         metric_keys = [getattr(m, "name", None) or str(m) for m in metrics]
 
         samples = [
-            single_turn_sample_cls(
+            ragas_single_turn_sample(
                 user_input=item["user_input"],
                 response=item["response"],
                 retrieved_contexts=item["retrieved_contexts"],
             )
             for item in eval_items
         ]
-        dataset = evaluation_dataset_cls(samples=samples)
+        dataset = ragas_evaluation_dataset(samples=samples)
         run_config = _build_ragas_run_config()
 
         eval_prompt_tokens: int | None = None
@@ -2094,24 +2094,24 @@ def run_regression_ragas_evaluation(
             return
 
         (
-            evaluation_dataset_cls,
-            single_turn_sample_cls,
+            ragas_evaluation_dataset,
+            ragas_single_turn_sample,
             evaluate_fn,
-            embeddings_wrapper_cls,
-            llm_wrapper_cls,
+            ragas_langchain_embeddings_wrapper,
+            ragas_langchain_llm_wrapper,
         ) = _load_ragas_evaluation_runtime()
         llm = shared_llm
         embeddings = shared_embeddings
         if llm is None or embeddings is None:
             llm, embeddings = _build_llm_and_embeddings()
-        ragas_llm = llm_wrapper_cls(llm)
-        ragas_embeddings = embeddings_wrapper_cls(embeddings)
+        ragas_llm = ragas_langchain_llm_wrapper(llm)
+        ragas_embeddings = ragas_langchain_embeddings_wrapper(embeddings)
 
         metrics = _resolve_metrics(metric_split.ragas)
         metric_keys = [getattr(m, "name", None) or str(m) for m in metrics]
 
-        samples = [single_turn_sample_cls(**(item.get("sample_kwargs") or {})) for item in eval_items]
-        dataset = evaluation_dataset_cls(samples=samples)
+        samples = [ragas_single_turn_sample(**(item.get("sample_kwargs") or {})) for item in eval_items]
+        dataset = ragas_evaluation_dataset(samples=samples)
         run_config = _build_ragas_run_config()
         eval_prompt_tokens: int | None = None
         eval_completion_tokens: int | None = None

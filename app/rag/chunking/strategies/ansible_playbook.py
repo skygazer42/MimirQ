@@ -150,6 +150,48 @@ def _build_play_blocks(text: str) -> list[_PlayBlock]:
     return blocks
 
 
+def _append_split_documents(
+    out: list[Document],
+    split_docs: list[Document],
+    base_meta: dict[str, Any],
+    *,
+    offset_base: int = 0,
+    extra_meta: dict[str, Any] | None = None,
+) -> None:
+    for split_doc in split_docs:
+        local_start = split_doc.metadata.pop("start_index", None) or 0
+        abs_start = offset_base + int(local_start)
+        abs_end = abs_start + len(split_doc.page_content)
+        meta: dict[str, Any] = dict(base_meta)
+        meta.update(split_doc.metadata or {})
+        meta["chunk_strategy"] = "ansible_playbook"
+        meta["start_char"] = abs_start
+        meta["end_char"] = abs_end
+        meta.setdefault("doc_type_kwd", "ansible")
+        if extra_meta:
+            meta.update(extra_meta)
+        out.append(Document(page_content=split_doc.page_content, metadata=meta))
+
+
+def _play_block_meta(block: _PlayBlock, block_count: int) -> dict[str, Any]:
+    meta: dict[str, Any] = {
+        "ansible_play_index": int(block.index),
+        "ansible_play_count": int(block_count),
+    }
+    if block.name:
+        meta["ansible_play_name"] = block.name
+    if block.hosts:
+        meta["ansible_hosts"] = block.hosts
+    return meta
+
+
+def _assign_chunk_indexes(chunks: list[Document]) -> None:
+    for idx, chunk in enumerate(chunks):
+        meta = dict(chunk.metadata or {})
+        meta["chunk_index"] = idx
+        chunk.metadata = meta
+
+
 def looks_like_ansible_playbook(text: str) -> bool:
     if not text or len(text) < 60:
         return False
@@ -187,18 +229,7 @@ class AnsiblePlaybookChunker(BaseChunker):
             blocks = _build_play_blocks(text)
             if not blocks:
                 split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "ansible_playbook"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta["ansible_playbook_fallback"] = True
-                    meta.setdefault("doc_type_kwd", "ansible")
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                _append_split_documents(out, split_docs, base_meta, extra_meta={"ansible_playbook_fallback": True})
                 continue
 
             first = blocks[0]
@@ -206,47 +237,21 @@ class AnsiblePlaybookChunker(BaseChunker):
                 pre = text[: first.start]
                 if pre.strip():
                     split_docs = self._fallback_splitter.create_documents(texts=[pre], metadatas=[base_meta])
-                    for sd in split_docs:
-                        local_start = sd.metadata.pop("start_index", None) or 0
-                        abs_start = int(local_start)
-                        abs_end = abs_start + len(sd.page_content)
-                        meta: dict[str, Any] = dict(base_meta)
-                        meta.update(sd.metadata or {})
-                        meta["chunk_strategy"] = "ansible_playbook"
-                        meta["start_char"] = abs_start
-                        meta["end_char"] = abs_end
-                        meta["ansible_playbook_preamble"] = True
-                        meta.setdefault("doc_type_kwd", "ansible")
-                        out.append(Document(page_content=sd.page_content, metadata=meta))
+                    _append_split_documents(out, split_docs, base_meta, extra_meta={"ansible_playbook_preamble": True})
 
             for blk in blocks:
                 blk_text = text[blk.start : blk.end]
                 if not blk_text.strip():
                     continue
                 split_docs = self._fallback_splitter.create_documents(texts=[blk_text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = blk.start + int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
+                _append_split_documents(
+                    out,
+                    split_docs,
+                    base_meta,
+                    offset_base=blk.start,
+                    extra_meta=_play_block_meta(blk, len(blocks)),
+                )
 
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "ansible_playbook"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta.setdefault("doc_type_kwd", "ansible")
-                    meta["ansible_play_index"] = int(blk.index)
-                    meta["ansible_play_count"] = int(len(blocks))
-                    if blk.name:
-                        meta["ansible_play_name"] = blk.name
-                    if blk.hosts:
-                        meta["ansible_hosts"] = blk.hosts
-
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
-
-        for idx, chunk in enumerate(out):
-            meta = dict(chunk.metadata or {})
-            meta["chunk_index"] = idx
-            chunk.metadata = meta
+        _assign_chunk_indexes(out)
 
         return out

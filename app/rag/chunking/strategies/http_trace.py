@@ -72,6 +72,32 @@ def looks_like_http_trace(text: str) -> bool:
     return "> host:" in lowered or "< server:" in lowered or "< content-type:" in lowered
 
 
+def _build_split_documents(
+    *,
+    split_docs: list[Document],
+    base_meta: dict[str, Any],
+    strategy: str,
+    doc_type: str,
+    start_offset: int = 0,
+    extra_meta: dict[str, Any] | None = None,
+) -> list[Document]:
+    out: list[Document] = []
+    for sd in split_docs:
+        local_start = sd.metadata.pop("start_index", None) or 0
+        abs_start = start_offset + int(local_start)
+        abs_end = abs_start + len(sd.page_content)
+        meta: dict[str, Any] = dict(base_meta)
+        meta.update(sd.metadata or {})
+        meta["chunk_strategy"] = strategy
+        meta["start_char"] = abs_start
+        meta["end_char"] = abs_end
+        meta.setdefault("doc_type_kwd", doc_type)
+        if extra_meta:
+            meta.update(extra_meta)
+        out.append(Document(page_content=sd.page_content, metadata=meta))
+    return out
+
+
 class HTTPTraceChunker(BaseChunker):
     def __init__(self, chunk_size: int, chunk_overlap: int):
         self.chunk_size = int(chunk_size)
@@ -97,18 +123,15 @@ class HTTPTraceChunker(BaseChunker):
             blocks = _build_request_blocks(text)
             if not blocks:
                 split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "http_trace"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta["http_trace_fallback"] = True
-                    meta.setdefault("doc_type_kwd", "http")
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                out.extend(
+                    _build_split_documents(
+                        split_docs=split_docs,
+                        base_meta=base_meta,
+                        strategy="http_trace",
+                        doc_type="http",
+                        extra_meta={"http_trace_fallback": True},
+                    )
+                )
                 continue
 
             first = blocks[0]
@@ -116,18 +139,15 @@ class HTTPTraceChunker(BaseChunker):
                 pre = text[: first.start]
                 if pre.strip():
                     split_docs = self._fallback_splitter.create_documents(texts=[pre], metadatas=[base_meta])
-                    for sd in split_docs:
-                        local_start = sd.metadata.pop("start_index", None) or 0
-                        abs_start = int(local_start)
-                        abs_end = abs_start + len(sd.page_content)
-                        meta: dict[str, Any] = dict(base_meta)
-                        meta.update(sd.metadata or {})
-                        meta["chunk_strategy"] = "http_trace"
-                        meta["start_char"] = abs_start
-                        meta["end_char"] = abs_end
-                        meta["http_trace_preamble"] = True
-                        meta.setdefault("doc_type_kwd", "http")
-                        out.append(Document(page_content=sd.page_content, metadata=meta))
+                    out.extend(
+                        _build_split_documents(
+                            split_docs=split_docs,
+                            base_meta=base_meta,
+                            strategy="http_trace",
+                            doc_type="http",
+                            extra_meta={"http_trace_preamble": True},
+                        )
+                    )
 
             for blk in blocks:
                 blk_text = text[blk.start : blk.end]
@@ -136,25 +156,24 @@ class HTTPTraceChunker(BaseChunker):
                 status = _extract_status(blk_text)
 
                 split_docs = self._fallback_splitter.create_documents(texts=[blk_text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = blk.start + int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "http_trace"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta.setdefault("doc_type_kwd", "http")
-                    meta["http_method"] = blk.method
-                    meta["http_path"] = blk.path
-                    meta["http_request_index"] = int(blk.index)
-                    meta["http_request_count"] = int(len(blocks))
-                    if status is not None:
-                        meta["http_status"] = int(status)
-
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                extra_meta: dict[str, Any] = {
+                    "http_method": blk.method,
+                    "http_path": blk.path,
+                    "http_request_index": int(blk.index),
+                    "http_request_count": int(len(blocks)),
+                }
+                if status is not None:
+                    extra_meta["http_status"] = int(status)
+                out.extend(
+                    _build_split_documents(
+                        split_docs=split_docs,
+                        base_meta=base_meta,
+                        strategy="http_trace",
+                        doc_type="http",
+                        start_offset=blk.start,
+                        extra_meta=extra_meta,
+                    )
+                )
 
         for idx, chunk in enumerate(out):
             meta = dict(chunk.metadata or {})

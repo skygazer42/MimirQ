@@ -24,6 +24,16 @@ logger = get_logger("parsing.quality.scorer")
 _PARSING_QUALITY_FALLBACK_LOG_MESSAGE = "Ignoring non-critical parsing quality fallback failure: %s"
 
 
+def _empty_preprocess_info() -> dict[str, Any]:
+    return {
+        "skew_angle": None,
+        "orientation": 0,
+        "watermark_detected": False,
+        "watermark_regions": [],
+        "geometric_distortion": None,
+    }
+
+
 def score_pdf_quality(
     file_path: Path,
     sample_pages: int = 3,
@@ -126,14 +136,7 @@ def _detect_preprocess_info(file_path: Path, *, sample_pages: int) -> dict[str, 
 
     This is intentionally lightweight and does not run model inference.
     """
-    info: dict[str, Any] = {
-        "skew_angle": None,
-        "orientation": 0,
-        "watermark_detected": False,
-        "watermark_regions": [],
-        "geometric_distortion": None,
-    }
-
+    info = _empty_preprocess_info()
     try:
         import fitz  # PyMuPDF
     except Exception:
@@ -144,38 +147,14 @@ def _detect_preprocess_info(file_path: Path, *, sample_pages: int) -> dict[str, 
         doc = fitz.open(str(file_path))
         n = int(getattr(doc, "page_count", 0) or 0)
         k = max(1, min(int(sample_pages or 0) or 1, n if n > 0 else 1))
-
         rot_counts: dict[int, int] = {}
         watermark_annots = 0
-
         for i in range(k):
             page = doc.load_page(i)
             rot = int(getattr(page, "rotation", 0) or 0) % 360
             rot_counts[int(rot)] = rot_counts.get(int(rot), 0) + 1
-
-            try:
-                annots = list(page.annots() or [])
-            except Exception:
-                annots = []
-            for annot in annots:
-                try:
-                    typ = getattr(annot, "type", None)
-                    name = ""
-                    if isinstance(typ, (tuple, list)) and len(typ) >= 2:
-                        name = str(typ[1] or "")
-                    meta = getattr(annot, "info", None) or {}
-                    subject = str((meta or {}).get("subject") or (meta or {}).get("title") or "")
-                    hint = f"{name} {subject}".lower()
-                    if "watermark" in hint or name.strip().lower() in {"watermark", "stamp"}:
-                        watermark_annots += 1
-                except Exception:
-                    get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-                    continue
-
-        if rot_counts:
-            orientation = max(rot_counts.items(), key=lambda kv: kv[1])[0]
-        else:
-            orientation = 0
+            watermark_annots += _count_watermark_annots(page)
+        orientation = max(rot_counts.items(), key=lambda kv: kv[1])[0] if rot_counts else 0
         info["orientation"] = int(orientation)
         info["rotation_counts"] = {str(k): int(v) for k, v in sorted(rot_counts.items(), key=lambda kv: kv[0])}
         info["watermark_annots"] = int(watermark_annots)
@@ -189,6 +168,27 @@ def _detect_preprocess_info(file_path: Path, *, sample_pages: int) -> dict[str, 
                 doc.close()
         except Exception as exc:
             logger.debug(_PARSING_QUALITY_FALLBACK_LOG_MESSAGE, exc)
+
+
+def _count_watermark_annots(page: Any) -> int:
+    try:
+        annots = list(page.annots() or [])
+    except Exception:
+        annots = []
+    count = 0
+    for annot in annots:
+        try:
+            typ = getattr(annot, "type", None)
+            name = str(typ[1] or "") if isinstance(typ, (tuple, list)) and len(typ) >= 2 else ""
+            meta = getattr(annot, "info", None) or {}
+            subject = str((meta or {}).get("subject") or (meta or {}).get("title") or "")
+            hint = f"{name} {subject}".lower()
+            if "watermark" in hint or name.strip().lower() in {"watermark", "stamp"}:
+                count += 1
+        except Exception:
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            continue
+    return count
 
 
 def _score_text_quality(
@@ -208,22 +208,22 @@ def _score_text_quality(
     for page in pages:
         text = page.extract_text() or ""
         total_text_chars += len(text)
-        
+
         # Noise estimate: non-printable chars + repeated symbols.
         noise_chars += len(re.findall(r"[^\x20-\x7E\u4e00-\u9fff]", text))
         noise_chars += len(re.findall(r"[#@]{4,}|[.,]{6,}|_{10,}", text))
-        
+
         # Expected char count (rough): by page size.
         total_expected_chars += 2400  # Assume ~2400 chars per page (80x30).
 
     # Text density.
     text_density = total_text_chars / max(1, total_expected_chars)
     text_density = min(1.0, text_density)  # Cap at 1.
-    
+
     # Noise ratio.
     noise_ratio = noise_chars / max(1, total_text_chars)
     clean_ratio = max(0.0, 1.0 - noise_ratio)
-    
+
     # Base score: density 70% + cleanliness 30%.
     score = 0.70 * text_density + 0.30 * clean_ratio
 
@@ -235,9 +235,9 @@ def _score_text_quality(
                 file_path,
                 max_pages=min(2, len(pages))
             )
-            
+
             ocr_gain = (ocr_chars - total_text_chars) / max(1, total_text_chars)
-            
+
             if ocr_gain > 0.5:
                 # OCR gain >50% => scanned.
                 is_scanned = True
@@ -266,7 +266,7 @@ def _score_format_consistency(pages: list) -> float:
     font_sizes = []
     line_heights = []
     paragraph_count = 0
-    
+
     for page in pages:
         try:
             # Extract character metadata.
@@ -274,13 +274,13 @@ def _score_format_consistency(pages: list) -> float:
             if chars:
                 # Font sizes.
                 font_sizes.extend([c.get("size", 0) for c in chars if c.get("size")])
-                
+
                 # Line heights (group by y).
                 y_coords = sorted({c.get("top", 0) for c in chars})
                 if len(y_coords) > 1:
                     heights = [y_coords[i+1] - y_coords[i] for i in range(len(y_coords)-1)]
                     line_heights.extend(heights)
-            
+
             # Paragraph count (split by blank lines).
             text = page.extract_text() or ""
             paragraph_count += len(re.findall(r"\n\n+", text)) + 1
@@ -325,17 +325,17 @@ def _score_table_quality(pages: list) -> float:
     """
     total_tables = 0
     well_formed_tables = 0
-    
+
     for page in pages:
         try:
             tables = page.find_tables() or []
             total_tables += len(tables)
-            
+
             for table in tables:
                 # Table rows/cols.
                 rows = len(table.rows) if hasattr(table, "rows") and table.rows else 0
                 cells = table.cells if hasattr(table, "cells") and table.cells else []
-                
+
                 # Consider "complete": at least 2x2 and reasonable cell count.
                 if rows >= 2 and len(cells) >= 4:
                     well_formed_tables += 1

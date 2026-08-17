@@ -205,6 +205,58 @@ def _slot_binding_query_matches(
     return any(_policy_value_fuzzy_overlaps_query(query_text, value) for value in slot_values)
 
 
+def _anchor_binding_record_info(
+    record: dict[str, Any],
+    *,
+    query: str,
+    plugin_ref_for_record: PluginRefForRecord,
+    metadata_layers_for_record: MetadataLayersForRecord,
+    policy_resolver: PolicyResolver,
+) -> tuple[dict[str, Any], str, dict[str, Any], set[str], set[str], bool] | None:
+    plugin_ref = str(plugin_ref_for_record(record) or "").strip()
+    if not plugin_ref:
+        return None
+    policy = policy_resolver(plugin_ref)
+    if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
+        return None
+    config = _anchor_binding_config(policy)
+    if not bool(config.get("enabled")):
+        return None
+    metadata_layers = metadata_layers_for_record(record)
+    anchor_values = _anchor_binding_values(
+        metadata_layers,
+        anchor_fields=tuple(config.get("anchor_fields") or ()),
+    )
+    slot_matches = _slot_binding_query_matches(
+        policy,
+        metadata_layers,
+        query=query,
+        slot_fields=tuple(config.get("slot_fields") or ()),
+    )
+    query_matches = _anchor_binding_query_matches(query, anchor_values)
+    return record, plugin_ref, config, anchor_values, query_matches, slot_matches
+
+
+def _anchor_binding_score(
+    *,
+    config: dict[str, Any],
+    anchor_values: set[str],
+    bound_anchors: set[str],
+    query_matches: set[str],
+    slot_matches: bool,
+) -> float:
+    if not bound_anchors:
+        return 0.0
+    if query_matches or anchor_values.intersection(bound_anchors):
+        score = float(config.get("anchor_match_bonus") or 0.0)
+        if slot_matches:
+            score += float(config.get("anchor_slot_match_bonus") or 0.0)
+        return score
+    if slot_matches:
+        return -float(config.get("slot_only_penalty") or 0.0)
+    return -float(config.get("anchor_mismatch_penalty") or 0.0)
+
+
 def record_retrieval_policy_anchor_binding_scores(
     records: list[dict[str, Any]] | tuple[dict[str, Any], ...],
     *,
@@ -224,44 +276,30 @@ def record_retrieval_policy_anchor_binding_scores(
     record_infos: list[tuple[dict[str, Any], str, dict[str, Any], set[str], set[str], bool]] = []
     bound_anchors_by_ref: dict[str, set[str]] = {}
     for record in records or ():
-        plugin_ref = str(plugin_ref_for_record(record) or "").strip()
-        if not plugin_ref:
-            continue
-        policy = policy_resolver(plugin_ref)
-        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
-            continue
-        config = _anchor_binding_config(policy)
-        if not bool(config.get("enabled")):
-            continue
-        anchor_values = _anchor_binding_values(
-            metadata_layers_for_record(record),
-            anchor_fields=tuple(config.get("anchor_fields") or ()),
-        )
-        slot_matches = _slot_binding_query_matches(
-            policy,
-            metadata_layers_for_record(record),
+        record_info = _anchor_binding_record_info(
+            record,
             query=query,
-            slot_fields=tuple(config.get("slot_fields") or ()),
+            plugin_ref_for_record=plugin_ref_for_record,
+            metadata_layers_for_record=metadata_layers_for_record,
+            policy_resolver=policy_resolver,
         )
-        query_matches = _anchor_binding_query_matches(query, anchor_values)
+        if record_info is None:
+            continue
+        _record, plugin_ref, _config, _anchor_values, query_matches, _slot_matches = record_info
         if query_matches:
             bound_anchors_by_ref.setdefault(plugin_ref, set()).update(query_matches)
-        record_infos.append((record, plugin_ref, config, anchor_values, query_matches, slot_matches))
+        record_infos.append(record_info)
 
     scores: dict[int, float] = {}
     for record, plugin_ref, config, anchor_values, query_matches, slot_matches in record_infos:
         bound_anchors = bound_anchors_by_ref.get(plugin_ref) or set()
-        if not bound_anchors:
-            continue
-        score = 0.0
-        if query_matches or anchor_values.intersection(bound_anchors):
-            score += float(config.get("anchor_match_bonus") or 0.0)
-            if slot_matches:
-                score += float(config.get("anchor_slot_match_bonus") or 0.0)
-        elif slot_matches:
-            score -= float(config.get("slot_only_penalty") or 0.0)
-        else:
-            score -= float(config.get("anchor_mismatch_penalty") or 0.0)
+        score = _anchor_binding_score(
+            config=config,
+            anchor_values=anchor_values,
+            bound_anchors=bound_anchors,
+            query_matches=query_matches,
+            slot_matches=slot_matches,
+        )
         if score:
             scores[id(record)] = score
     return scores

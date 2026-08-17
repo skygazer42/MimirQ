@@ -121,6 +121,77 @@ class ParallelWorkflow(BaseWorkflow):
                 return await task.execute(state)
         return await task.execute(state)
 
+    def _validation_result(self, state: dict[str, Any]) -> WorkflowResult | None:
+        if not self.validate_state(state):
+            return self.create_result(
+                state,
+                success=False,
+                error="Invalid state: missing question/query",
+            )
+        if self._tasks:
+            return None
+        return self.create_result(
+            state,
+            success=False,
+            error="No tasks configured",
+        )
+
+    def _task_semaphore(self) -> asyncio.Semaphore | None:
+        if self.max_concurrency:
+            return asyncio.Semaphore(self.max_concurrency)
+        return None
+
+    async def _collect_task_results(
+        self,
+        state: dict[str, Any],
+        *,
+        semaphore: asyncio.Semaphore | None,
+    ) -> tuple[list[dict[str, Any]], list[str], list[str]]:
+        task_coroutines = [self._execute_task(task, dict(state), semaphore) for task in self._tasks]
+        results: list[dict[str, Any]] = []
+        errors: list[str] = []
+        completed_tasks: list[str] = []
+        if self.fail_fast:
+            results = await asyncio.gather(*task_coroutines)
+            completed_tasks = [task.name for task in self._tasks]
+            return results, errors, completed_tasks
+
+        task_results = await asyncio.gather(*task_coroutines, return_exceptions=True)
+        for task, result in zip(self._tasks, task_results, strict=False):
+            if isinstance(result, Exception):
+                errors.append(f"{task.name}: {str(result)}")
+                logger.error("Task %s failed: %s", task.name, result)
+                continue
+            results.append(result)
+            completed_tasks.append(task.name)
+        return results, errors, completed_tasks
+
+    async def _aggregate_results(
+        self,
+        *,
+        state: dict[str, Any],
+        results: list[dict[str, Any]],
+        errors: list[str],
+        completed_tasks: list[str],
+        execution_path: list[str],
+    ) -> WorkflowResult:
+        aggregated_state = await self._aggregator(results)
+        for key, value in state.items():
+            if key not in aggregated_state:
+                aggregated_state[key] = value
+        aggregated_state["parallel_tasks"] = completed_tasks
+        if errors:
+            aggregated_state["parallel_errors"] = errors
+        success = len(results) > 0
+        error_msg = "; ".join(errors) if errors and not results else None
+        return self.create_result(
+            aggregated_state,
+            success=success,
+            error=error_msg,
+            execution_path=execution_path,
+            metadata={"tasks_completed": len(results), "tasks_failed": len(errors)},
+        )
+
     async def run(self, state: dict[str, Any]) -> WorkflowResult:
         """
         Execute the parallel workflow.
@@ -131,57 +202,13 @@ class ParallelWorkflow(BaseWorkflow):
         Returns:
             WorkflowResult with aggregated state
         """
-        if not self.validate_state(state):
-            return self.create_result(
-                state,
-                success=False,
-                error="Invalid state: missing question/query",
-            )
-
-        if not self._tasks:
-            return self.create_result(
-                state,
-                success=False,
-                error="No tasks configured",
-            )
-
+        validation_result = self._validation_result(state)
+        if validation_result is not None:
+            return validation_result
         execution_path: list[str] = ["parallel_start"]
-
-        # Create semaphore for concurrency limiting
-        semaphore = None
-        if self.max_concurrency:
-            semaphore = asyncio.Semaphore(self.max_concurrency)
-
-        # Execute all tasks in parallel
-        task_coroutines = [
-            self._execute_task(task, dict(state), semaphore)
-            for task in self._tasks
-        ]
-
-        results: list[dict[str, Any]] = []
-        errors: list[str] = []
-        completed_tasks: list[str] = []
-
+        semaphore = self._task_semaphore()
         try:
-            if self.fail_fast:
-                # Use gather with return_exceptions=False to fail fast
-                results = await asyncio.gather(*task_coroutines)
-                completed_tasks = [t.name for t in self._tasks]
-            else:
-                # Execute all, collect errors
-                task_results = await asyncio.gather(
-                    *task_coroutines,
-                    return_exceptions=True,
-                )
-
-                for task, result in zip(self._tasks, task_results, strict=False):
-                    if isinstance(result, Exception):
-                        errors.append(f"{task.name}: {str(result)}")
-                        logger.error("Task %s failed: %s", task.name, result)
-                    else:
-                        results.append(result)
-                        completed_tasks.append(task.name)
-
+            results, errors, completed_tasks = await self._collect_task_results(state, semaphore=semaphore)
         except Exception as e:
             logger.exception("Parallel execution failed: %s", e)
             return self.create_result(
@@ -196,29 +223,13 @@ class ParallelWorkflow(BaseWorkflow):
 
         # Aggregate results
         try:
-            aggregated_state = await self._aggregator(results)
-
-            # Include original state fields not in aggregated result
-            for key, value in state.items():
-                if key not in aggregated_state:
-                    aggregated_state[key] = value
-
-            # Add task metadata
-            aggregated_state["parallel_tasks"] = completed_tasks
-            if errors:
-                aggregated_state["parallel_errors"] = errors
-
-            success = len(results) > 0
-            error_msg = "; ".join(errors) if errors and not results else None
-
-            return self.create_result(
-                aggregated_state,
-                success=success,
-                error=error_msg,
+            return await self._aggregate_results(
+                state=state,
+                results=results,
+                errors=errors,
+                completed_tasks=completed_tasks,
                 execution_path=execution_path,
-                metadata={"tasks_completed": len(results), "tasks_failed": len(errors)},
             )
-
         except Exception as e:
             logger.exception("Aggregation failed: %s", e)
             return self.create_result(

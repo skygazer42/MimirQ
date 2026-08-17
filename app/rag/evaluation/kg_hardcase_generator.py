@@ -41,6 +41,29 @@ def _normalize_kind(value: Any) -> HardcaseKind | None:
     return None
 
 
+def _iter_hardcase_items(raw: Any) -> list[dict[str, Any]]:
+    if not raw:
+        return []
+    if isinstance(raw, dict) and "raw" in raw and "hardcases" not in raw:
+        return []
+    items = raw.get("hardcases") if isinstance(raw, dict) else None
+    return items if isinstance(items, list) else []
+
+
+def _sanitize_hardcase_item(item: dict[str, Any], *, max_chars: int) -> Hardcase | None:
+    kind = _normalize_kind(item.get("kind"))
+    if kind is None:
+        return None
+
+    question = _collapse_ws(item.get("question"))
+    if not question:
+        return None
+    if len(question) > max_chars:
+        question = question[:max_chars]
+    rationale = _collapse_ws(item.get("rationale")) or None
+    return Hardcase(kind=kind, question=question, rationale=rationale)
+
+
 def sanitize_hardcases(raw: Any, *, max_items: int, max_chars: int) -> list[Hardcase]:
     """
     Coerce + sanitize hardcases from an LLM result (or any loosely-shaped object).
@@ -58,18 +81,8 @@ def sanitize_hardcases(raw: Any, *, max_items: int, max_chars: int) -> list[Hard
         return []
 
     max_chars_i = max(20, int(max_chars or 0))
-
-    if not raw:
-        return []
-
-    if isinstance(raw, dict) and "raw" in raw and "hardcases" not in raw:
-        return []
-
-    items = None
-    if isinstance(raw, dict):
-        items = raw.get("hardcases")
-
-    if not isinstance(items, list) or not items:
+    items = _iter_hardcase_items(raw)
+    if not items:
         return []
 
     out: list[Hardcase] = []
@@ -78,25 +91,14 @@ def sanitize_hardcases(raw: Any, *, max_items: int, max_chars: int) -> list[Hard
     for item in items:
         if not isinstance(item, dict):
             continue
-
-        kind = _normalize_kind(item.get("kind"))
-        if kind is None:
+        hardcase = _sanitize_hardcase_item(item, max_chars=max_chars_i)
+        if hardcase is None:
             continue
-
-        q = _collapse_ws(item.get("question"))
-        if not q:
-            continue
-
-        if len(q) > max_chars_i:
-            q = q[:max_chars_i]
-
-        key = q.casefold()
+        key = hardcase.question.casefold()
         if key in seen:
             continue
         seen.add(key)
-
-        rationale = _collapse_ws(item.get("rationale")) or None
-        out.append(Hardcase(kind=kind, question=q, rationale=rationale))
+        out.append(hardcase)
         if len(out) >= lim:
             break
 

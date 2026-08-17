@@ -424,7 +424,7 @@ class BaseAdvancedParser(ABC):
                 callback=callback,
                 **kwargs
             )
-            
+
             # Convert to LangChain Document format.
             base_metadata = {
                 "source": str(file_path.name),
@@ -436,11 +436,11 @@ class BaseAdvancedParser(ABC):
             documents = []
             documents.extend(self._convert_sections_to_documents(sections, base_metadata))
             documents.extend(self._convert_tables_to_documents(tables, base_metadata))
-            
+
             return documents
-        
+
         documents = await asyncio.to_thread(_parse_in_thread)
-        
+
         self._logger.info(
             f"{self._get_parser_name()} parsed {file_path.name}: {len(documents)} documents"
         )

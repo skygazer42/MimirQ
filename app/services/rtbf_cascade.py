@@ -150,6 +150,154 @@ def _invalidate_dataset_caches(
     return invalidated
 
 
+def _rtbf_summary_documents(candidates: list[dict[str, object]], *, dry_run: bool) -> list[dict[str, object]]:
+    return [
+        {
+            "document_id": str(item.get("document_id") or ""),
+            "dataset_id": (str(item.get("dataset_id")) if item.get("dataset_id") is not None else None),
+            "filename": item.get("filename"),
+            "match_reasons": list(item.get("match_reasons") or []),
+            "status": "planned" if bool(dry_run) else "pending",
+            "attempts": 0,
+        }
+        for item in candidates[:50]
+    ]
+
+
+def _increment_summary(summary: dict[str, object], key: str) -> None:
+    summary[key] = int(summary.get(key, 0) or 0) + 1
+
+
+def _update_summary_document(
+    doc_state_by_id: dict[str, dict[str, object]],
+    *,
+    document_id: UUID,
+    status: str,
+    attempts: int,
+    error: str | None = None,
+) -> None:
+    state = doc_state_by_id.get(str(document_id))
+    if not isinstance(state, dict):
+        return
+    state["status"] = status
+    state["attempts"] = int(attempts)
+    if error is not None:
+        state["error"] = error
+
+
+def _build_rtbf_summary(
+    *,
+    tenant_id: UUID,
+    subject: str,
+    dry_run: bool,
+    max_docs: int,
+    max_retries: int,
+    candidates: list[dict[str, object]],
+    now0: datetime,
+) -> dict[str, object]:
+    return {
+        "schema": RTBF_CASCADE_SCHEMA_V1,
+        "tenant_id": str(tenant_id),
+        "subject_account_id": subject,
+        "dry_run": bool(dry_run),
+        "max_docs": int(max_docs),
+        "max_retries": int(max(0, int(max_retries or 0))),
+        "artifact_scopes": list(RTBF_ARTIFACT_SCOPES),
+        "eligible": int(len(candidates)),
+        "deleted": 0,
+        "errors": 0,
+        "cache_invalidations": 0,
+        "retried_documents": 0,
+        "documents": _rtbf_summary_documents(candidates, dry_run=dry_run),
+        "ran_at": now0.isoformat(),
+    }
+
+
+async def _execute_rtbf_cascade(
+    *,
+    summary: dict[str, object],
+    candidates: list[dict[str, object]],
+    tenant_id: UUID,
+    actor_id: str,
+    db: Session,
+    max_retries: int,
+) -> None:
+    delete_document_lifecycle = _resolve_delete_document_lifecycle()
+    successful_dataset_ids: set[UUID] = set()
+    doc_state_by_id = {str(item.get("document_id") or ""): item for item in summary["documents"]}  # type: ignore[index]
+
+    for item in candidates:
+        document_id = item.get("document_id")
+        if not isinstance(document_id, UUID):
+            _increment_summary(summary, "errors")
+            continue
+        try:
+            attempts = await _run_delete_document_lifecycle(
+                delete_document_lifecycle,
+                document_id=document_id,
+                tenant_id=tenant_id,
+                actor_id=actor_id,
+                db=db,
+                max_retries=max_retries,
+            )
+            _update_summary_document(doc_state_by_id, document_id=document_id, status="deleted", attempts=attempts)
+            if attempts > 1:
+                _increment_summary(summary, "retried_documents")
+            _increment_summary(summary, "deleted")
+            dataset_id = item.get("dataset_id")
+            if isinstance(dataset_id, UUID):
+                successful_dataset_ids.add(dataset_id)
+        except Exception as exc:  # noqa: BLE001
+            _update_summary_document(
+                doc_state_by_id,
+                document_id=document_id,
+                status="error",
+                error=str(exc)[:200],
+                attempts=int(max(1, int(max_retries or 0) + 1)),
+            )
+            _increment_summary(summary, "errors")
+
+    if successful_dataset_ids:
+        try:
+            summary["cache_invalidations"] = int(
+                _invalidate_dataset_caches(
+                    db,
+                    tenant_id=tenant_id,
+                    dataset_ids=successful_dataset_ids,
+                    max_retries=max_retries,
+                )
+            )
+        except Exception:
+            _increment_summary(summary, "errors")
+
+
+def _audit_rtbf_summary(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    actor_id: str,
+    subject: str,
+    dry_run: bool,
+    summary: dict[str, object],
+) -> None:
+    audit_log_event(
+        db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        action="privacy.rtbf.cascade",
+        resource_type="subject",
+        resource_id=subject,
+        details={
+            "dry_run": bool(dry_run),
+            "eligible": int(summary.get("eligible", 0) or 0),
+            "deleted": int(summary.get("deleted", 0) or 0),
+            "errors": int(summary.get("errors", 0) or 0),
+            "cache_invalidations": int(summary.get("cache_invalidations", 0) or 0),
+            "artifact_scopes": list(RTBF_ARTIFACT_SCOPES),
+        },
+    )
+
+
 async def run_rtbf_cascade(
     db: Session,
     *,
@@ -170,99 +318,34 @@ async def run_rtbf_cascade(
         max_docs=max_docs,
     )
 
-    summary: dict[str, object] = {
-        "schema": RTBF_CASCADE_SCHEMA_V1,
-        "tenant_id": str(tenant_id),
-        "subject_account_id": subject,
-        "dry_run": bool(dry_run),
-        "max_docs": int(max_docs),
-        "max_retries": int(max(0, int(max_retries or 0))),
-        "artifact_scopes": list(RTBF_ARTIFACT_SCOPES),
-        "eligible": int(len(candidates)),
-        "deleted": 0,
-        "errors": 0,
-        "cache_invalidations": 0,
-        "retried_documents": 0,
-        "documents": [
-            {
-                "document_id": str(item.get("document_id") or ""),
-                "dataset_id": (str(item.get("dataset_id")) if item.get("dataset_id") is not None else None),
-                "filename": item.get("filename"),
-                "match_reasons": list(item.get("match_reasons") or []),
-                "status": "planned" if bool(dry_run) else "pending",
-                "attempts": 0,
-            }
-            for item in candidates[:50]
-        ],
-        "ran_at": now0.isoformat(),
-    }
+    summary = _build_rtbf_summary(
+        tenant_id=tenant_id,
+        subject=subject,
+        dry_run=dry_run,
+        max_docs=max_docs,
+        max_retries=max_retries,
+        candidates=candidates,
+        now0=now0,
+    )
 
     if not dry_run and candidates:
-        delete_document_lifecycle = _resolve_delete_document_lifecycle()
-        successful_dataset_ids: set[UUID] = set()
-        doc_state_by_id = {str(item.get("document_id") or ""): item for item in summary["documents"]}  # type: ignore[index]
-
-        for item in candidates:
-            document_id = item.get("document_id")
-            if not isinstance(document_id, UUID):
-                summary["errors"] = int(summary.get("errors", 0) or 0) + 1
-                continue
-            try:
-                attempts = await _run_delete_document_lifecycle(
-                    delete_document_lifecycle,
-                    document_id=document_id,
-                    tenant_id=tenant_id,
-                    actor_id=str(actor_id),
-                    db=db,
-                    max_retries=max_retries,
-                )
-                state = doc_state_by_id.get(str(document_id))
-                if isinstance(state, dict):
-                    state["status"] = "deleted"
-                    state["attempts"] = int(attempts)
-                if attempts > 1:
-                    summary["retried_documents"] = int(summary.get("retried_documents", 0) or 0) + 1
-                summary["deleted"] = int(summary.get("deleted", 0) or 0) + 1
-                dataset_id = item.get("dataset_id")
-                if isinstance(dataset_id, UUID):
-                    successful_dataset_ids.add(dataset_id)
-            except Exception as exc:  # noqa: BLE001
-                state = doc_state_by_id.get(str(document_id))
-                if isinstance(state, dict):
-                    state["status"] = "error"
-                    state["error"] = str(exc)[:200]
-                    state["attempts"] = int(max(1, int(max_retries or 0) + 1))
-                summary["errors"] = int(summary.get("errors", 0) or 0) + 1
-
-        if successful_dataset_ids:
-            try:
-                summary["cache_invalidations"] = int(
-                    _invalidate_dataset_caches(
-                        db,
-                        tenant_id=tenant_id,
-                        dataset_ids=successful_dataset_ids,
-                        max_retries=max_retries,
-                    )
-                )
-            except Exception:
-                summary["errors"] = int(summary.get("errors", 0) or 0) + 1
+        await _execute_rtbf_cascade(
+            summary=summary,
+            candidates=candidates,
+            tenant_id=tenant_id,
+            actor_id=str(actor_id),
+            db=db,
+            max_retries=max_retries,
+        )
 
     with contextlib.suppress(Exception):
-        audit_log_event(
+        _audit_rtbf_summary(
             db,
             tenant_id=tenant_id,
             actor_id=str(actor_id),
-            action="privacy.rtbf.cascade",
-            resource_type="subject",
-            resource_id=subject,
-            details={
-                "dry_run": bool(dry_run),
-                "eligible": int(summary.get("eligible", 0) or 0),
-                "deleted": int(summary.get("deleted", 0) or 0),
-                "errors": int(summary.get("errors", 0) or 0),
-                "cache_invalidations": int(summary.get("cache_invalidations", 0) or 0),
-                "artifact_scopes": list(RTBF_ARTIFACT_SCOPES),
-            },
+            subject=subject,
+            dry_run=dry_run,
+            summary=summary,
         )
     with contextlib.suppress(Exception):
         db.commit()

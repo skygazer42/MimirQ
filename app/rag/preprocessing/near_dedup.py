@@ -39,6 +39,25 @@ def _safe_int_hex(value: str) -> int | None:
         return None
 
 
+def _normalize_bucket_items(values: object) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    items: list[str] = []
+    for item in values:
+        if isinstance(item, str) and item.strip():
+            items.append(item.strip().lower())
+    return items
+
+
+def _load_bucket_payload(data: object) -> dict[str, object] | None:
+    if not isinstance(data, dict):
+        return None
+    if int(data.get("version") or 0) != INDEX_VERSION:
+        return None
+    buckets = data.get("buckets")
+    return buckets if isinstance(buckets, dict) else None
+
+
 def bucket_keys_for_simhash(simhash64_hex: str) -> list[str]:
     """Split 64-bit simhash into 4x16-bit buckets."""
     val = _safe_int_hex(simhash64_hex)
@@ -87,22 +106,15 @@ def load_near_dedup_index(path: Path) -> dict[str, list[str]]:
     except Exception:
         return {}
 
-    if not isinstance(data, dict):
-        return {}
-    if int(data.get("version") or 0) != INDEX_VERSION:
-        return {}
-    buckets = data.get("buckets")
-    if not isinstance(buckets, dict):
+    buckets = _load_bucket_payload(data)
+    if buckets is None:
         return {}
 
     out: dict[str, list[str]] = {}
     for k, v in buckets.items():
-        if not isinstance(k, str) or not isinstance(v, list):
+        if not isinstance(k, str):
             continue
-        items: list[str] = []
-        for item in v:
-            if isinstance(item, str) and item.strip():
-                items.append(item.strip().lower())
+        items = _normalize_bucket_items(v)
         if items:
             out[k] = items
     return out

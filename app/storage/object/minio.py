@@ -283,10 +283,10 @@ class MinIOService:
         """
         if not images:
             return []
-        
+
         t0 = time.perf_counter()
         semaphore = asyncio.Semaphore(max_concurrent)
-        
+
         async def upload_single(img_info: dict[str, Any]) -> dict[str, Any]:
             async with semaphore:
                 try:
@@ -310,10 +310,10 @@ class MinIOService:
                         "error": str(e),
                         "chunk_key": img_info.get("chunk_key")
                     }
-        
+
         tasks = [upload_single(img) for img in images]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         # Process exceptions.
         processed_results = []
         for i, result in enumerate(results):
@@ -325,14 +325,14 @@ class MinIOService:
                 })
             else:
                 processed_results.append(result)
-        
+
         elapsed = time.perf_counter() - t0
         success_count = sum(1 for r in processed_results if r.get("success"))
         logger.info(
             f"Batch upload completed: {success_count}/{len(images)} successful, "
             f"elapsed: {elapsed:.2f}s"
         )
-        
+
         return processed_results
 
     def get_image_url(self, img_id: str, extension: str = "jpg") -> str:
@@ -662,19 +662,19 @@ class MinIOService:
         try:
             client = self._get_client()
             prefix = f"images/{tenant_id}/{dataset_id}/"
-            
+
             objects = client.list_objects(
                 bucket_name=self._bucket_name,
                 prefix=prefix,
                 recursive=True,
             )
-            
+
             for obj in objects:
                 client.remove_object(
                     bucket_name=self._bucket_name,
                     object_name=obj.object_name,
                 )
-            
+
             logger.info("All images deleted for dataset %s", dataset_id)
             self._log_metric("delete_dataset", True, time.perf_counter() - t0, prefix)
 

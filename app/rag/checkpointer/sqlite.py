@@ -132,6 +132,104 @@ class SqliteSaver(BaseCheckpointSaver[str]):
                 """
             )
 
+    def _load_pending_writes(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        thread_id: str,
+        checkpoint_ns: str,
+        checkpoint_id: str,
+    ) -> list[tuple[str, str, Any]]:
+        writes_rows = conn.execute(
+            (
+                "SELECT task_id, channel, value_type, value_blob "  # noqa: S608 - table_prefix is validated at initialization.
+                f"FROM {self._writes_table} "
+                "WHERE thread_id = ? AND checkpoint_ns = ? AND checkpoint_id = ? "
+                "ORDER BY write_idx ASC"
+            ),
+            (thread_id, checkpoint_ns, checkpoint_id),
+        ).fetchall()
+        return [
+            (r["task_id"], r["channel"], self.serde.loads_typed((r["value_type"], r["value_blob"])))
+            for r in (writes_rows or [])
+        ]
+
+    @staticmethod
+    def _build_parent_config(
+        *,
+        thread_id: str,
+        checkpoint_ns: str,
+        parent_checkpoint_id: str | None,
+    ) -> RunnableConfig | None:
+        if not parent_checkpoint_id:
+            return None
+        return {
+            "configurable": {
+                "thread_id": thread_id,
+                "checkpoint_ns": checkpoint_ns,
+                "checkpoint_id": parent_checkpoint_id,
+            }
+        }
+
+    def _build_checkpoint_tuple(
+        self,
+        *,
+        thread_id: str,
+        checkpoint_ns: str,
+        checkpoint_id: str,
+        checkpoint: Checkpoint,
+        metadata: CheckpointMetadata,
+        parent_checkpoint_id: str | None,
+        pending_writes: list[tuple[str, str, Any]],
+    ) -> CheckpointTuple:
+        return CheckpointTuple(
+            config={
+                "configurable": {
+                    "thread_id": thread_id,
+                    "checkpoint_ns": checkpoint_ns,
+                    "checkpoint_id": checkpoint_id,
+                }
+            },
+            checkpoint=checkpoint,
+            metadata=metadata,
+            parent_config=self._build_parent_config(
+                thread_id=thread_id,
+                checkpoint_ns=checkpoint_ns,
+                parent_checkpoint_id=parent_checkpoint_id,
+            ),
+            pending_writes=pending_writes,
+        )
+
+    def _thread_ids_for_list(
+        self,
+        conn: sqlite3.Connection,
+        config: RunnableConfig | None,
+    ) -> Sequence[str]:
+        if config is not None:
+            return [config["configurable"]["thread_id"]]
+        rows = conn.execute(f"SELECT DISTINCT thread_id FROM {self._checkpoints_table}").fetchall()  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
+        return [r["thread_id"] for r in rows]
+
+    @staticmethod
+    def _checkpoint_matches_list_request(
+        checkpoint_id: str,
+        *,
+        config_checkpoint_id: str | None,
+        before_checkpoint_id: str | None,
+    ) -> bool:
+        if config_checkpoint_id and checkpoint_id != config_checkpoint_id:
+            return False
+        if before_checkpoint_id and checkpoint_id >= before_checkpoint_id:
+            return False
+        return True
+
+    @staticmethod
+    def _metadata_matches_filter(
+        metadata: CheckpointMetadata,
+        filter: dict[str, Any] | None,
+    ) -> bool:
+        return not filter or all(metadata.get(k) == v for k, v in filter.items())
+
     def get_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
         thread_id: str = config["configurable"]["thread_id"]
         checkpoint_ns: str = config["configurable"].get("checkpoint_ns", "")
@@ -166,42 +264,20 @@ class SqliteSaver(BaseCheckpointSaver[str]):
         checkpoint: Checkpoint = self.serde.loads_typed((row["checkpoint_type"], row["checkpoint_blob"]))
         metadata: CheckpointMetadata = self.serde.loads_typed((row["metadata_type"], row["metadata_blob"]))
         parent_checkpoint_id = row["parent_checkpoint_id"]
+        pending_writes = self._load_pending_writes(
+            conn,
+            thread_id=thread_id,
+            checkpoint_ns=checkpoint_ns,
+            checkpoint_id=checkpoint_id,
+        )
 
-        writes_rows = conn.execute(
-            (
-                "SELECT task_id, channel, value_type, value_blob, task_path "  # noqa: S608 - table_prefix is validated at initialization.
-                f"FROM {self._writes_table} "
-                "WHERE thread_id = ? AND checkpoint_ns = ? AND checkpoint_id = ? "
-                "ORDER BY write_idx ASC"
-            ),
-            (thread_id, checkpoint_ns, checkpoint_id),
-        ).fetchall()
-        pending_writes = [
-            (r["task_id"], r["channel"], self.serde.loads_typed((r["value_type"], r["value_blob"])))
-            for r in (writes_rows or [])
-        ]
-
-        return CheckpointTuple(
-            config={
-                "configurable": {
-                    "thread_id": thread_id,
-                    "checkpoint_ns": checkpoint_ns,
-                    "checkpoint_id": checkpoint_id,
-                }
-            },
+        return self._build_checkpoint_tuple(
+            thread_id=thread_id,
+            checkpoint_ns=checkpoint_ns,
+            checkpoint_id=checkpoint_id,
             checkpoint=checkpoint,
             metadata=metadata,
-            parent_config=(
-                {
-                    "configurable": {
-                        "thread_id": thread_id,
-                        "checkpoint_ns": checkpoint_ns,
-                        "checkpoint_id": parent_checkpoint_id,
-                    }
-                }
-                if parent_checkpoint_id
-                else None
-            ),
+            parent_checkpoint_id=parent_checkpoint_id,
             pending_writes=pending_writes,
         )
 
@@ -214,13 +290,7 @@ class SqliteSaver(BaseCheckpointSaver[str]):
         limit: int | None = None,
     ) -> Iterator[CheckpointTuple]:
         conn = self._get_conn()
-
-        thread_ids: Sequence[str]
-        if config is None:
-            rows = conn.execute(f"SELECT DISTINCT thread_id FROM {self._checkpoints_table}").fetchall()  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
-            thread_ids = [r["thread_id"] for r in rows]
-        else:
-            thread_ids = [config["configurable"]["thread_id"]]
+        thread_ids = self._thread_ids_for_list(conn, config)
 
         before_checkpoint_id = get_checkpoint_id(before) if before else None
         config_checkpoint_ns = config["configurable"].get("checkpoint_ns") if config else None
@@ -251,13 +321,15 @@ class SqliteSaver(BaseCheckpointSaver[str]):
 
                 for row in rows:
                     checkpoint_id = row["checkpoint_id"]
-                    if config_checkpoint_id and checkpoint_id != config_checkpoint_id:
-                        continue
-                    if before_checkpoint_id and checkpoint_id >= before_checkpoint_id:
+                    if not self._checkpoint_matches_list_request(
+                        checkpoint_id,
+                        config_checkpoint_id=config_checkpoint_id,
+                        before_checkpoint_id=before_checkpoint_id,
+                    ):
                         continue
 
                     metadata: CheckpointMetadata = self.serde.loads_typed((row["metadata_type"], row["metadata_blob"]))
-                    if filter and not all(metadata.get(k) == v for k, v in filter.items()):
+                    if not self._metadata_matches_filter(metadata, filter):
                         continue
 
                     if remaining is not None and remaining <= 0:
@@ -267,42 +339,20 @@ class SqliteSaver(BaseCheckpointSaver[str]):
 
                     checkpoint: Checkpoint = self.serde.loads_typed((row["checkpoint_type"], row["checkpoint_blob"]))
                     parent_checkpoint_id = row["parent_checkpoint_id"]
+                    pending_writes = self._load_pending_writes(
+                        conn,
+                        thread_id=thread_id,
+                        checkpoint_ns=checkpoint_ns,
+                        checkpoint_id=checkpoint_id,
+                    )
 
-                    writes_rows = conn.execute(
-                        (
-                            "SELECT task_id, channel, value_type, value_blob "  # noqa: S608 - table_prefix is validated at initialization.
-                            f"FROM {self._writes_table} "
-                            "WHERE thread_id = ? AND checkpoint_ns = ? AND checkpoint_id = ? "
-                            "ORDER BY write_idx ASC"
-                        ),
-                        (thread_id, checkpoint_ns, checkpoint_id),
-                    ).fetchall()
-                    pending_writes = [
-                        (r["task_id"], r["channel"], self.serde.loads_typed((r["value_type"], r["value_blob"])))
-                        for r in (writes_rows or [])
-                    ]
-
-                    yield CheckpointTuple(
-                        config={
-                            "configurable": {
-                                "thread_id": thread_id,
-                                "checkpoint_ns": checkpoint_ns,
-                                "checkpoint_id": checkpoint_id,
-                            }
-                        },
+                    yield self._build_checkpoint_tuple(
+                        thread_id=thread_id,
+                        checkpoint_ns=checkpoint_ns,
+                        checkpoint_id=checkpoint_id,
                         checkpoint=checkpoint,
                         metadata=metadata,
-                        parent_config=(
-                            {
-                                "configurable": {
-                                    "thread_id": thread_id,
-                                    "checkpoint_ns": checkpoint_ns,
-                                    "checkpoint_id": parent_checkpoint_id,
-                                }
-                            }
-                            if parent_checkpoint_id
-                            else None
-                        ),
+                        parent_checkpoint_id=parent_checkpoint_id,
                         pending_writes=pending_writes,
                     )
 

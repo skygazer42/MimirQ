@@ -10,6 +10,7 @@ Returns chunk data with positions for frontend highlighting.
 
 
 import re
+from dataclasses import dataclass, field
 from typing import Any
 
 from app.rag.core.hashing import stable_hash
@@ -94,6 +95,75 @@ def apply_sequence_hierarchy_metadata(
     apply_sibling_hierarchy_links(metas, overwrite=False)
 
 
+@dataclass
+class _ParagraphSplitState:
+    paragraphs: list[tuple[str, int, int]] = field(default_factory=list)
+    buf: list[str] = field(default_factory=list)
+    buf_start: int = 0
+    offset: int = 0
+    in_code: bool = False
+    in_table: bool = False
+
+
+def _buffer_has_content(buf: list[str]) -> bool:
+    return bool(buf) and bool("".join(buf).strip())
+
+
+def _flush_paragraph(state: _ParagraphSplitState, end_offset: int) -> None:
+    if not state.buf:
+        return
+    segment = "".join(state.buf)
+    if segment.strip():
+        state.paragraphs.append((segment, state.buf_start, end_offset))
+    state.buf = []
+    state.buf_start = end_offset
+    state.in_table = False
+
+
+def _is_structural_boundary(line: str) -> bool:
+    return bool(_HEADING_RE.match(line) or _LIST_RE.match(line) or _BLOCKQUOTE_RE.match(line))
+
+
+def _consume_paragraph_line(state: _ParagraphSplitState, line: str) -> None:
+    line_start = state.offset
+    line_end = line_start + len(line)
+    state.offset = line_end
+
+    if _CODE_FENCE_RE.match(line):
+        if not state.in_code and _buffer_has_content(state.buf):
+            _flush_paragraph(state, line_start)
+        state.buf.append(line)
+        state.in_code = not state.in_code
+        if not state.in_code:
+            _flush_paragraph(state, line_end)
+        return
+
+    if state.in_code:
+        state.buf.append(line)
+        return
+
+    if not line.strip():
+        _flush_paragraph(state, line_start)
+        state.buf_start = line_end
+        return
+
+    is_table = bool(_TABLE_ROW_RE.match(line))
+    if state.in_table and not is_table:
+        _flush_paragraph(state, line_start)
+        state.buf_start = line_start
+
+    if _is_structural_boundary(line) and _buffer_has_content(state.buf):
+        _flush_paragraph(state, line_start)
+        state.buf_start = line_start
+
+    if is_table and not state.in_table and _buffer_has_content(state.buf):
+        _flush_paragraph(state, line_start)
+        state.buf_start = line_start
+
+    state.buf.append(line)
+    state.in_table = is_table or state.in_table
+
+
 def _split_paragraphs(text: str) -> list[tuple[str, int, int]]:
     """
     Split text into paragraph-like blocks while preserving offsets.
@@ -110,67 +180,12 @@ def _split_paragraphs(text: str) -> list[tuple[str, int, int]]:
     if not text:
         return []
 
-    paragraphs: list[tuple[str, int, int]] = []
-    buf: list[str] = []
-    buf_start = 0
-    offset = 0
-    in_code = False
-    in_table = False
-
-    def flush(end_offset: int) -> None:
-        nonlocal buf, buf_start, in_table
-        if not buf:
-            return
-        seg = "".join(buf)
-        if seg.strip():
-            paragraphs.append((seg, buf_start, end_offset))
-        buf = []
-        buf_start = end_offset
-        in_table = False
-
+    state = _ParagraphSplitState()
     for line in text.splitlines(keepends=True):
-        line_start = offset
-        line_end = offset + len(line)
-        offset = line_end
+        _consume_paragraph_line(state, line)
 
-        if _CODE_FENCE_RE.match(line):
-            if not in_code and buf and "".join(buf).strip():
-                flush(line_start)
-            buf.append(line)
-            in_code = not in_code
-            if not in_code:
-                flush(line_end)
-            continue
-
-        if in_code:
-            buf.append(line)
-            continue
-
-        stripped = line.strip()
-        if not stripped:
-            flush(line_start)
-            buf_start = line_end
-            continue
-
-        is_table = bool(_TABLE_ROW_RE.match(line))
-        if in_table and not is_table:
-            flush(line_start)
-            buf_start = line_start
-
-        is_boundary = bool(_HEADING_RE.match(line) or _LIST_RE.match(line) or _BLOCKQUOTE_RE.match(line))
-        if is_boundary and buf and "".join(buf).strip():
-            flush(line_start)
-            buf_start = line_start
-
-        if is_table and not in_table and buf and "".join(buf).strip():
-            flush(line_start)
-            buf_start = line_start
-
-        buf.append(line)
-        in_table = is_table or in_table
-
-    flush(len(text))
-    return paragraphs
+    _flush_paragraph(state, len(text))
+    return state.paragraphs
 
 
 def _split_sentences(paragraph: str, base_offset: int) -> list[tuple[str, int, int]]:

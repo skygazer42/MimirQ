@@ -186,6 +186,130 @@ def _previous_user_question(
     return _safe_text(getattr(candidates[0], "content", "") if candidates else "", max_len=4000)
 
 
+def _load_feedback_message(db: Session, *, tenant_id: UUID, message_id: UUID) -> Message:
+    msg = db.query(Message).filter(Message.id == message_id, Message.tenant_id == tenant_id).first()
+    if not msg:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
+    if (getattr(msg, "role", "") or "").lower() != "assistant":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only assistant messages can be rated")
+    return msg
+
+
+def _load_feedback_conversation(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    conversation_id: UUID | None,
+) -> Conversation | None:
+    conv = db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id).first()
+    if conv is not None:
+        ensure_conversation_access(db, tenant_id, account_id, conv)
+    return conv
+
+
+def _feedback_message_meta(msg: Message) -> dict[str, Any]:
+    return msg.message_metadata if isinstance(getattr(msg, "message_metadata", None), dict) else {}
+
+
+def _feedback_dataset_id(*, meta: dict[str, Any], conv: Conversation | None) -> UUID | None:
+    raw_dataset_id = meta.get("dataset_id")
+    if isinstance(raw_dataset_id, str) and raw_dataset_id.strip():
+        try:
+            return UUID(raw_dataset_id.strip())
+        except Exception:
+            return None
+    return getattr(conv, "dataset_id", None) if conv is not None else None
+
+
+def _feedback_extra_payload(
+    *,
+    extra: dict[str, Any] | None,
+    meta: dict[str, Any],
+    conv: Conversation | None,
+    tenant_id: UUID,
+    request_id: str,
+    dataset_id: UUID | None,
+    list_rag_traces_fn: Callable[..., Any],
+) -> dict[str, Any]:
+    trace_payload = None
+    if conv is not None and request_id:
+        trace_payload = _find_trace_by_request_id(
+            tenant_id=tenant_id,
+            conversation_id=conv.id,
+            request_id=request_id,
+            list_rag_traces_fn=list_rag_traces_fn,
+        )
+    client_extra = {
+        key: value
+        for key, value in (extra.items() if isinstance(extra, dict) else [])
+        if key not in _SERVER_MANAGED_FEEDBACK_EXTRA_KEYS
+    }
+    return _augment_feedback_extra_with_snapshots(
+        extra=client_extra,
+        trace_payload=trace_payload,
+        request_id=request_id,
+        dataset_id=dataset_id,
+    )
+
+
+def _feedback_reference_values(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    msg: Message,
+    meta: dict[str, Any],
+    request_id: str,
+) -> tuple[str | None, str | None, str | None]:
+    profile = _safe_text(meta.get("retrieval_profile"), max_len=64) or None
+    question = _previous_user_question(
+        messages=db.query(Message).filter(
+            Message.tenant_id == tenant_id,
+            Message.conversation_id == msg.conversation_id,
+        ).all(),
+        conversation_id=msg.conversation_id,
+        assistant_created_at=getattr(msg, "created_at", None),
+    )
+    query_hash = _safe_text(meta.get("query_hash"), max_len=64) or (
+        stable_hash(question, length=64) if question else ""
+    )
+    retrieval_trace_ref = _safe_text(request_id, max_len=255)
+    judge_score_ref = _safe_text(meta.get("judge_score_ref"), max_len=255)
+    return query_hash or None, retrieval_trace_ref or None, judge_score_ref or None, profile
+
+
+def _apply_feedback_row_update(
+    *,
+    row: MessageFeedback,
+    rating: int,
+    reason: str | None,
+    tags: list[str],
+    expected_answer: str | None,
+    normalized_category: str | None,
+    query_hash: str | None,
+    retrieval_trace_ref: str | None,
+    profile: str | None,
+    judge_score_ref: str | None,
+    extra_payload: dict[str, Any],
+) -> None:
+    previous_extra = dict(row.extra or {}) if isinstance(row.extra, dict) else {}
+    for key in _SERVER_MANAGED_FEEDBACK_EXTRA_KEYS:
+        if key in previous_extra:
+            extra_payload[key] = previous_extra[key]
+    row.rating = int(rating)
+    row.reason = reason
+    row.tags = tags
+    row.expected_answer = expected_answer
+    if normalized_category is not None and str(row.category_source or "").lower() != "reviewer":
+        row.category = normalized_category
+        row.category_source = "user"
+    row.query_hash = query_hash
+    row.retrieval_trace_ref = retrieval_trace_ref
+    row.profile = profile
+    row.judge_score_ref = judge_score_ref
+    row.extra = extra_payload
+
+
 class FeedbackService:
     @staticmethod
     def _build_feedback_query(
@@ -251,47 +375,24 @@ class FeedbackService:
             ensure_member_fn=ensure_member_fn,
         )
 
-        msg = db.query(Message).filter(Message.id == message_id, Message.tenant_id == tenant_id).first()
-        if not msg:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
-        if (getattr(msg, "role", "") or "").lower() != "assistant":
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only assistant messages can be rated")
-
-        conv = db.query(Conversation).filter(Conversation.id == msg.conversation_id, Conversation.tenant_id == tenant_id).first()
-        if conv is not None:
-            ensure_conversation_access(db, tenant_id, account_id, conv)
-        meta = msg.message_metadata if isinstance(getattr(msg, "message_metadata", None), dict) else {}
-        request_id = str(meta.get("request_id") or "").strip() if isinstance(meta, dict) else ""
-
-        dataset_id: UUID | None = None
-        raw_dataset_id = meta.get("dataset_id") if isinstance(meta, dict) else None
-        if isinstance(raw_dataset_id, str) and raw_dataset_id.strip():
-            try:
-                dataset_id = UUID(raw_dataset_id.strip())
-            except Exception:
-                dataset_id = None
-        if dataset_id is None and conv is not None:
-            dataset_id = getattr(conv, "dataset_id", None)
-
-        trace_payload = None
-        if conv is not None and request_id:
-            trace_payload = _find_trace_by_request_id(
-                tenant_id=tenant_id,
-                conversation_id=conv.id,
-                request_id=request_id,
-                list_rag_traces_fn=list_rag_traces_fn,
-            )
-
-        client_extra = {
-            key: value
-            for key, value in (extra.items() if isinstance(extra, dict) else [])
-            if key not in _SERVER_MANAGED_FEEDBACK_EXTRA_KEYS
-        }
-        extra_payload = _augment_feedback_extra_with_snapshots(
-            extra=client_extra,
-            trace_payload=trace_payload,
+        msg = _load_feedback_message(db, tenant_id=tenant_id, message_id=message_id)
+        conv = _load_feedback_conversation(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            conversation_id=msg.conversation_id,
+        )
+        meta = _feedback_message_meta(msg)
+        request_id = str(meta.get("request_id") or "").strip()
+        dataset_id = _feedback_dataset_id(meta=meta, conv=conv)
+        extra_payload = _feedback_extra_payload(
+            extra=extra,
+            meta=meta,
+            conv=conv,
+            tenant_id=tenant_id,
             request_id=request_id,
             dataset_id=dataset_id,
+            list_rag_traces_fn=list_rag_traces_fn,
         )
         normalized_category = _normalize_feedback_category(category)
         if normalized_category is not None and int(rating) > 2:
@@ -299,20 +400,13 @@ class FeedbackService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Feedback category is only valid for ratings 1-2",
             )
-        profile = _safe_text(meta.get("retrieval_profile"), max_len=64)
-        question = _previous_user_question(
-            messages=db.query(Message).filter(
-                Message.tenant_id == tenant_id,
-                Message.conversation_id == msg.conversation_id,
-            ).all(),
-            conversation_id=msg.conversation_id,
-            assistant_created_at=getattr(msg, "created_at", None),
+        query_hash, retrieval_trace_ref, judge_score_ref, profile = _feedback_reference_values(
+            db=db,
+            tenant_id=tenant_id,
+            msg=msg,
+            meta=meta,
+            request_id=request_id,
         )
-        query_hash = _safe_text(meta.get("query_hash"), max_len=64) or (
-            stable_hash(question, length=64) if question else ""
-        )
-        retrieval_trace_ref = _safe_text(request_id, max_len=255)
-        judge_score_ref = _safe_text(meta.get("judge_score_ref"), max_len=255)
 
         row = (
             db.query(MessageFeedback)
@@ -325,22 +419,19 @@ class FeedbackService:
         )
         normalized_tags = [str(item) for item in (tags or [])]
         if row:
-            previous_extra = dict(row.extra or {}) if isinstance(row.extra, dict) else {}
-            for key in _SERVER_MANAGED_FEEDBACK_EXTRA_KEYS:
-                if key in previous_extra:
-                    extra_payload[key] = previous_extra[key]
-            row.rating = int(rating)
-            row.reason = reason
-            row.tags = normalized_tags
-            row.expected_answer = expected_answer
-            if normalized_category is not None and str(row.category_source or "").lower() != "reviewer":
-                row.category = normalized_category
-                row.category_source = "user"
-            row.query_hash = query_hash or None
-            row.retrieval_trace_ref = retrieval_trace_ref or None
-            row.profile = profile or None
-            row.judge_score_ref = judge_score_ref or None
-            row.extra = extra_payload
+            _apply_feedback_row_update(
+                row=row,
+                rating=rating,
+                reason=reason,
+                tags=normalized_tags,
+                expected_answer=expected_answer,
+                normalized_category=normalized_category,
+                query_hash=query_hash,
+                retrieval_trace_ref=retrieval_trace_ref,
+                profile=profile,
+                judge_score_ref=judge_score_ref,
+                extra_payload=extra_payload,
+            )
             db.commit()
             db.refresh(row)
             return row
@@ -356,10 +447,10 @@ class FeedbackService:
             expected_answer=expected_answer,
             category=normalized_category,
             category_source="user" if normalized_category else None,
-            query_hash=query_hash or None,
-            retrieval_trace_ref=retrieval_trace_ref or None,
-            profile=profile or None,
-            judge_score_ref=judge_score_ref or None,
+            query_hash=query_hash,
+            retrieval_trace_ref=retrieval_trace_ref,
+            profile=profile,
+            judge_score_ref=judge_score_ref,
             extra=extra_payload,
         )
         db.add(row)

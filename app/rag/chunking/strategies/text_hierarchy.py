@@ -14,10 +14,110 @@ It intentionally does NOT attempt to build a full offline tree index.
 """
 
 
+from typing import Any
+
 from langchain_core.documents import Document
 
 from app.rag.chunking.base import BaseChunker
 from app.rag.chunking.utils.hierarchical import hierarchical_chunk_markdown
+
+
+def _extract_hierarchy_items(data: object) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if not isinstance(data, dict):
+        return [], []
+    paragraphs = data.get("paragraphs")
+    sentences = data.get("sentences")
+    paragraph_items = paragraphs if isinstance(paragraphs, list) else []
+    sentence_items = sentences if isinstance(sentences, list) else []
+    return paragraph_items, sentence_items
+
+
+def _group_sentences_by_parent(sentences: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for sentence in sentences:
+        if not isinstance(sentence, dict):
+            continue
+        parent_id = str(sentence.get("parent_id") or "").strip()
+        if not parent_id:
+            continue
+        grouped.setdefault(parent_id, []).append(sentence)
+    for sentence_items in grouped.values():
+        sentence_items.sort(key=lambda item: int(item.get("index") or 0))
+    return grouped
+
+
+def _build_paragraph_document(base_meta: dict[str, Any], paragraph: dict[str, Any], chunk_index: int) -> Document | None:
+    paragraph_text = str(paragraph.get("text") or "")
+    if not paragraph_text.strip():
+        return None
+
+    start = int(paragraph.get("start") or 0)
+    end = int(paragraph.get("end") or (start + len(paragraph_text)))
+    parent_id = str(paragraph.get("id") or paragraph.get("hierarchy_node_key") or "").strip()
+    if not parent_id:
+        return None
+
+    meta = dict(base_meta)
+    meta.update(
+        {
+            "chunk_strategy": "text_hierarchy",
+            "chunk_role": "paragraph",
+            "start_char": start,
+            "end_char": end,
+            "parent_id": parent_id,
+            "hierarchy_basis": "text_hierarchy",
+            "hierarchy_level": paragraph.get("hierarchy_level") or "paragraph",
+            "hierarchy_node_key": paragraph.get("hierarchy_node_key") or parent_id,
+            "hierarchy_family_key": paragraph.get("hierarchy_family_key") or parent_id,
+            "hierarchy_parent_key": None,
+            "hierarchy_prev_sibling_key": paragraph.get("hierarchy_prev_sibling_key"),
+            "hierarchy_next_sibling_key": paragraph.get("hierarchy_next_sibling_key"),
+            "hierarchy_sibling_index": paragraph.get("hierarchy_sibling_index"),
+            "tokens_est": paragraph.get("tokens_est"),
+            "chunk_index": chunk_index,
+        }
+    )
+    return Document(page_content=paragraph_text, metadata=meta)
+
+
+def _build_sentence_document(
+    base_meta: dict[str, Any],
+    sentence: dict[str, Any],
+    parent_id: str,
+    parent_start: int,
+    chunk_index: int,
+) -> Document | None:
+    sentence_text = str(sentence.get("text") or "")
+    if not sentence_text.strip():
+        return None
+
+    start = int(sentence.get("start") or parent_start)
+    end = int(sentence.get("end") or (start + len(sentence_text)))
+    sentence_id = str(sentence.get("id") or sentence.get("hierarchy_node_key") or "").strip()
+    if not sentence_id:
+        return None
+
+    meta = dict(base_meta)
+    meta.update(
+        {
+            "chunk_strategy": "text_hierarchy",
+            "chunk_role": "sentence",
+            "start_char": start,
+            "end_char": end,
+            "parent_id": parent_id,
+            "hierarchy_basis": "text_hierarchy",
+            "hierarchy_level": sentence.get("hierarchy_level") or "sentence",
+            "hierarchy_node_key": sentence.get("hierarchy_node_key") or sentence_id,
+            "hierarchy_family_key": sentence.get("hierarchy_family_key") or parent_id,
+            "hierarchy_parent_key": parent_id,
+            "hierarchy_prev_sibling_key": sentence.get("hierarchy_prev_sibling_key"),
+            "hierarchy_next_sibling_key": sentence.get("hierarchy_next_sibling_key"),
+            "hierarchy_sibling_index": sentence.get("hierarchy_sibling_index"),
+            "tokens_est": sentence.get("tokens_est"),
+            "chunk_index": chunk_index,
+        }
+    )
+    return Document(page_content=sentence_text, metadata=meta)
 
 
 class TextHierarchyChunker(BaseChunker):
@@ -44,94 +144,23 @@ class TextHierarchyChunker(BaseChunker):
             if not text.strip():
                 continue
 
-            data = hierarchical_chunk_markdown(text) or {}
-            paragraphs = data.get("paragraphs") if isinstance(data, dict) else None
-            sentences = data.get("sentences") if isinstance(data, dict) else None
-            paragraphs = paragraphs if isinstance(paragraphs, list) else []
-            sentences = sentences if isinstance(sentences, list) else []
+            paragraphs, sentences = _extract_hierarchy_items(hierarchical_chunk_markdown(text) or {})
+            sentences_by_parent = _group_sentences_by_parent(sentences)
 
-            # Group sentences by paragraph id for stable output order.
-            sentences_by_parent: dict[str, list[dict]] = {}
-            for s in sentences:
-                if not isinstance(s, dict):
+            for paragraph in paragraphs:
+                if not isinstance(paragraph, dict):
                     continue
-                pid = str(s.get("parent_id") or "").strip()
-                if not pid:
+                paragraph_doc = _build_paragraph_document(base_meta, paragraph, len(out))
+                if paragraph_doc is None:
                     continue
-                sentences_by_parent.setdefault(pid, []).append(s)
+                out.append(paragraph_doc)
 
-            for _pid, slist in sentences_by_parent.items():
-                slist.sort(key=lambda x: int(x.get("index") or 0))
-
-            for p in paragraphs:
-                if not isinstance(p, dict):
-                    continue
-                p_text = str(p.get("text") or "")
-                if not p_text.strip():
-                    continue
-
-                start = int(p.get("start") or 0)
-                end = int(p.get("end") or (start + len(p_text)))
-                pid = str(p.get("id") or p.get("hierarchy_node_key") or "").strip()
-                if not pid:
-                    continue
-
-                p_meta = dict(base_meta)
-                p_meta.update(
-                    {
-                        "chunk_strategy": "text_hierarchy",
-                        "chunk_role": "paragraph",
-                        "start_char": start,
-                        "end_char": end,
-                        "parent_id": pid,
-                        # Preserve hierarchy keys generated by the splitter, but stamp a
-                        # plain-text basis for easier debugging.
-                        "hierarchy_basis": "text_hierarchy",
-                        "hierarchy_level": p.get("hierarchy_level") or "paragraph",
-                        "hierarchy_node_key": p.get("hierarchy_node_key") or pid,
-                        "hierarchy_family_key": p.get("hierarchy_family_key") or pid,
-                        "hierarchy_parent_key": None,
-                        "hierarchy_prev_sibling_key": p.get("hierarchy_prev_sibling_key"),
-                        "hierarchy_next_sibling_key": p.get("hierarchy_next_sibling_key"),
-                        "hierarchy_sibling_index": p.get("hierarchy_sibling_index"),
-                        "tokens_est": p.get("tokens_est"),
-                    }
-                )
-                p_meta["chunk_index"] = len(out)
-                out.append(Document(page_content=p_text, metadata=p_meta))
-
-                for s in sentences_by_parent.get(pid, []):
-                    s_text = str(s.get("text") or "")
-                    if not s_text.strip():
-                        continue
-                    s_start = int(s.get("start") or start)
-                    s_end = int(s.get("end") or (s_start + len(s_text)))
-
-                    sid = str(s.get("id") or s.get("hierarchy_node_key") or "").strip()
-                    if not sid:
-                        continue
-
-                    s_meta = dict(base_meta)
-                    s_meta.update(
-                        {
-                            "chunk_strategy": "text_hierarchy",
-                            "chunk_role": "sentence",
-                            "start_char": s_start,
-                            "end_char": s_end,
-                            "parent_id": pid,
-                            "hierarchy_basis": "text_hierarchy",
-                            "hierarchy_level": s.get("hierarchy_level") or "sentence",
-                            "hierarchy_node_key": s.get("hierarchy_node_key") or sid,
-                            "hierarchy_family_key": s.get("hierarchy_family_key") or pid,
-                            "hierarchy_parent_key": pid,
-                            "hierarchy_prev_sibling_key": s.get("hierarchy_prev_sibling_key"),
-                            "hierarchy_next_sibling_key": s.get("hierarchy_next_sibling_key"),
-                            "hierarchy_sibling_index": s.get("hierarchy_sibling_index"),
-                            "tokens_est": s.get("tokens_est"),
-                        }
-                    )
-                    s_meta["chunk_index"] = len(out)
-                    out.append(Document(page_content=s_text, metadata=s_meta))
+                parent_id = str(paragraph_doc.metadata["parent_id"])
+                parent_start = int(paragraph_doc.metadata["start_char"])
+                for sentence in sentences_by_parent.get(parent_id, []):
+                    sentence_doc = _build_sentence_document(base_meta, sentence, parent_id, parent_start, len(out))
+                    if sentence_doc is not None:
+                        out.append(sentence_doc)
 
         return out
 

@@ -211,7 +211,7 @@ class ZipImageProcessor:
                     max_images,
                 )
                 image_files = image_files[:max_images]
-            
+
             # 4. Upload images to MinIO and build mapping.
             image_mapping = {}  # {original relative path: img_id}
             uploaded_images = []
@@ -321,13 +321,13 @@ class ZipImageProcessor:
                     return match.group(0)
                 return f"![{alt_text}]({url})"
             return match.group(0)
-        
+
         markdown = re.sub(
             r'!\[([^\]]*)\]\(([^)]+)\)',
             replace_md_image,
             markdown
         )
-        
+
         # Replace HTML img tag: <img src="path">
         def replace_html_image(match):
             raw = match.group(1)
@@ -339,13 +339,13 @@ class ZipImageProcessor:
                     return match.group(0)
                 return f'<img src="{url}"'
             return match.group(0)
-        
+
         markdown = re.sub(
             r'<img\s+src="([^"]+)"',
             replace_html_image,
             markdown
         )
-        
+
         return markdown
 
 

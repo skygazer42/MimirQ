@@ -13,7 +13,7 @@ import math
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
@@ -28,6 +28,16 @@ DEFAULT_POLICY: dict[str, float | int] = {
     "weak_hit_rate_regression_threshold": 0.08,
     "weak_hit_rr_threshold": 0.2,
     "hard_cases_limit": 5,
+}
+_POLICY_NORMALIZERS: dict[str, Callable[[Any], float | int]] = {
+    "hit_at_k_drop_threshold": lambda value: _strict_rate(value, key="hit_at_k_drop_threshold"),
+    "mrr_drop_threshold": lambda value: _strict_rate(value, key="mrr_drop_threshold"),
+    "ndcg_drop_threshold": lambda value: _strict_rate(value, key="ndcg_drop_threshold"),
+    "p95_latency_regression_ms": lambda value: _strict_non_negative(value, key="p95_latency_regression_ms"),
+    "miss_rate_regression_threshold": lambda value: _strict_rate(value, key="miss_rate_regression_threshold"),
+    "weak_hit_rate_regression_threshold": lambda value: _strict_rate(value, key="weak_hit_rate_regression_threshold"),
+    "weak_hit_rr_threshold": lambda value: _strict_rate(value, key="weak_hit_rr_threshold"),
+    "hard_cases_limit": lambda value: _strict_positive_int(value, key="hard_cases_limit"),
 }
 
 
@@ -116,32 +126,8 @@ def validate_and_normalize_queryset_health_policy(policy: Mapping[str, Any] | No
         raise ValueError(f"unknown policy keys: {', '.join(unknown)}")
 
     resolved: dict[str, float | int] = dict(DEFAULT_POLICY)
-
-    if "hit_at_k_drop_threshold" in raw:
-        resolved["hit_at_k_drop_threshold"] = _strict_rate(raw["hit_at_k_drop_threshold"], key="hit_at_k_drop_threshold")
-    if "mrr_drop_threshold" in raw:
-        resolved["mrr_drop_threshold"] = _strict_rate(raw["mrr_drop_threshold"], key="mrr_drop_threshold")
-    if "ndcg_drop_threshold" in raw:
-        resolved["ndcg_drop_threshold"] = _strict_rate(raw["ndcg_drop_threshold"], key="ndcg_drop_threshold")
-    if "p95_latency_regression_ms" in raw:
-        resolved["p95_latency_regression_ms"] = _strict_non_negative(
-            raw["p95_latency_regression_ms"],
-            key="p95_latency_regression_ms",
-        )
-    if "miss_rate_regression_threshold" in raw:
-        resolved["miss_rate_regression_threshold"] = _strict_rate(
-            raw["miss_rate_regression_threshold"],
-            key="miss_rate_regression_threshold",
-        )
-    if "weak_hit_rate_regression_threshold" in raw:
-        resolved["weak_hit_rate_regression_threshold"] = _strict_rate(
-            raw["weak_hit_rate_regression_threshold"],
-            key="weak_hit_rate_regression_threshold",
-        )
-    if "weak_hit_rr_threshold" in raw:
-        resolved["weak_hit_rr_threshold"] = _strict_rate(raw["weak_hit_rr_threshold"], key="weak_hit_rr_threshold")
-    if "hard_cases_limit" in raw:
-        resolved["hard_cases_limit"] = _strict_positive_int(raw["hard_cases_limit"], key="hard_cases_limit")
+    for key, value in raw.items():
+        resolved[str(key)] = _POLICY_NORMALIZERS[str(key)](value)
 
     return resolved
 

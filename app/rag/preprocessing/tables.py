@@ -83,6 +83,54 @@ def _normalize_separator_cell(cell: str) -> str:
     return f"{left}---{right}"
 
 
+def _collect_table_block(lines: list[str], start_idx: int) -> tuple[list[str], list[tuple[str, list[str]]], int]:
+    block_lines: list[str] = []
+    block_parsed: list[tuple[str, list[str]]] = []
+    end_idx = start_idx
+    while end_idx < len(lines):
+        line = lines[end_idx]
+        if _CODE_FENCE_RE.match(line):
+            break
+        row = _try_parse_table_row(line)
+        if row is None:
+            break
+        block_lines.append(line)
+        block_parsed.append(row)
+        end_idx += 1
+    return block_lines, block_parsed, end_idx
+
+
+def _build_parsed_rows(block_parsed: list[tuple[str, list[str]]]) -> tuple[list[tuple[str, list[str], bool]], int]:
+    parsed_rows: list[tuple[str, list[str], bool]] = []
+    max_cols = 0
+    for prefix, cells in block_parsed:
+        is_separator = _is_separator_row(cells)
+        parsed_rows.append((prefix, cells, is_separator))
+        max_cols = max(max_cols, len(cells))
+    return parsed_rows, max_cols
+
+
+def _normalize_table_rows(
+    parsed_rows: list[tuple[str, list[str], bool]],
+    block_lines: list[str],
+    *,
+    max_cols: int,
+) -> tuple[list[str], int]:
+    normalized_rows: list[str] = []
+    rows_changed = 0
+    for (prefix, cells, is_separator), raw in zip(parsed_rows, block_lines, strict=False):
+        padded = list(cells) + [""] * max(0, max_cols - len(cells))
+        padded = padded[:max_cols] if max_cols > 0 else padded
+        if is_separator:
+            norm_cells = [_normalize_separator_cell(cell) for cell in padded]
+        else:
+            norm_cells = [re.sub(r"[ \t]{2,}", " ", cell.strip()) for cell in padded]
+        rebuilt = f"{prefix}| " + " | ".join(norm_cells) + " |"
+        rows_changed += int(rebuilt != raw)
+        normalized_rows.append(rebuilt)
+    return normalized_rows, rows_changed
+
+
 def normalize_markdown_tables(text: str) -> TableNormalizeResult:
     original = text or ""
     if not original:
@@ -113,27 +161,8 @@ def normalize_markdown_tables(text: str) -> TableNormalizeResult:
             i += 1
             continue
 
-        # Collect a contiguous table block.
-        block_lines: list[str] = []
-        block_parsed: list[tuple[str, list[str]]] = []
-        j = i
-        while j < len(lines):
-            ln = lines[j]
-            if _CODE_FENCE_RE.match(ln):
-                break
-            row = _try_parse_table_row(ln)
-            if row is None:
-                break
-            block_lines.append(ln)
-            block_parsed.append(row)
-            j += 1
-
-        parsed_rows: list[tuple[str, list[str], bool]] = []
-        max_cols = 0
-        for prefix, cells in block_parsed:
-            is_sep = _is_separator_row(cells)
-            parsed_rows.append((prefix, cells, is_sep))
-            max_cols = max(max_cols, len(cells))
+        block_lines, block_parsed, j = _collect_table_block(lines, i)
+        parsed_rows, max_cols = _build_parsed_rows(block_parsed)
 
         # Only normalize when the block resembles a real Markdown table
         # (header + separator row). Otherwise we risk rewriting text that happens
@@ -143,19 +172,9 @@ def normalize_markdown_tables(text: str) -> TableNormalizeResult:
             i = j
             continue
 
-        # Normalize rows.
-        for (prefix, cells, is_sep), raw in zip(parsed_rows, block_lines, strict=False):
-            padded = list(cells) + [""] * max(0, max_cols - len(cells))
-            padded = padded[:max_cols] if max_cols > 0 else padded
-            if is_sep:
-                norm_cells = [_normalize_separator_cell(c) for c in padded]
-            else:
-                # Cell whitespace is normalized conservatively: collapse runs of spaces/tabs.
-                norm_cells = [re.sub(r"[ \t]{2,}", " ", c.strip()) for c in padded]
-            rebuilt = f"{prefix}| " + " | ".join(norm_cells) + " |"
-            if rebuilt != raw:
-                rows_changed += 1
-            out.append(rebuilt)
+        normalized_rows, changed_count = _normalize_table_rows(parsed_rows, block_lines, max_cols=max_cols)
+        out.extend(normalized_rows)
+        rows_changed += changed_count
 
         tables += 1
         i = j

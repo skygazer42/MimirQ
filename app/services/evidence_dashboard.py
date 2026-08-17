@@ -199,6 +199,71 @@ def _top_n_buckets(
     return out
 
 
+def _build_hit_type_index(citations: list[Any]) -> dict[str, str]:
+    hit_by_chunk: dict[str, str] = {}
+    for citation in citations:
+        citation_dict = _as_dict(citation)
+        chunk_id = str(citation_dict.get("chunk_id") or "").strip()
+        if not chunk_id:
+            continue
+        hit_by_chunk[chunk_id] = _norm_hit_type(citation_dict.get("hit_type"))
+    return hit_by_chunk
+
+
+def _coverage_dimensions(
+    *,
+    documents: dict[UUID, dict[str, Any]],
+    document_id: UUID,
+    chunk_id: str,
+    hit_by_chunk: dict[str, str],
+) -> tuple[str, str, str, str]:
+    document = documents.get(document_id) or {}
+    file_type = _norm_bucket(document.get("file_type") or "unknown")
+    metadata = document.get("metadata") if isinstance(document.get("metadata"), dict) else {}
+    language = _norm_bucket(extract_language_bucket(metadata) or "unknown")
+    quality_bucket = _norm_bucket(quality_bucket_from_governance_quality(metadata.get("governance_quality")) or "unknown")
+    channel = hit_by_chunk.get(chunk_id) or "unknown"
+    return file_type, language, quality_bucket, channel
+
+
+def _update_coverage_buckets(
+    *,
+    buckets: dict[str, dict[str, tuple[set[str], int]]],
+    item_id: str,
+    file_type: str,
+    language: str,
+    quality_bucket: str,
+    channel: str,
+) -> None:
+    for dim, bucket_key in (
+        ("file_type", file_type),
+        ("language", language),
+        ("quality_bucket", quality_bucket),
+        ("channel", channel),
+    ):
+        current = buckets[dim].get(bucket_key)
+        if current is None:
+            current = (set(), 0)
+        item_ids, ref_count = current
+        item_ids.add(item_id)
+        buckets[dim][bucket_key] = (item_ids, int(ref_count) + 1)
+
+
+def _update_heatmap_state(
+    *,
+    cell_items: dict[tuple[str, str], set[str]],
+    lang_refs: dict[str, int],
+    ft_refs: dict[str, int],
+    item_id: str,
+    language: str,
+    file_type: str,
+) -> None:
+    cell_key = (language, file_type)
+    cell_items.setdefault(cell_key, set()).add(item_id)
+    lang_refs[language] = int(lang_refs.get(language, 0)) + 1
+    ft_refs[file_type] = int(ft_refs.get(file_type, 0)) + 1
+
+
 def compute_suite_coverage(
     items: Sequence[Any],
     *,
@@ -237,47 +302,37 @@ def compute_suite_coverage(
             continue
 
         snap = _as_dict(_get_attr(it, "retrieval_snapshot"))
-        citations = _as_list(snap.get("citations"))
-        hit_by_chunk: dict[str, str] = {}
-        for c in citations:
-            cdict = _as_dict(c)
-            cid = str(cdict.get("chunk_id") or "").strip()
-            if not cid:
-                continue
-            hit_by_chunk[cid] = _norm_hit_type(cdict.get("hit_type"))
+        hit_by_chunk = _build_hit_type_index(_as_list(snap.get("citations")))
 
         for ref in refs:
-            r = _as_dict(ref)
-            doc_uuid = _as_uuid(r.get("document_id"))
-            chunk_id = str(r.get("chunk_id") or "").strip()
-            if doc_uuid is None:
+            ref_dict = _as_dict(ref)
+            document_id = _as_uuid(ref_dict.get("document_id"))
+            chunk_id = str(ref_dict.get("chunk_id") or "").strip()
+            if document_id is None:
                 continue
 
-            doc = documents.get(doc_uuid) or {}
-            file_type = _norm_bucket(doc.get("file_type") or "unknown")
-            meta = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
-            language = _norm_bucket(extract_language_bucket(meta) or "unknown")
-            quality_bucket = _norm_bucket(quality_bucket_from_governance_quality(meta.get("governance_quality")) or "unknown")
-            channel = hit_by_chunk.get(chunk_id) or "unknown"
-
-            for dim, bucket_key in (
-                ("file_type", file_type),
-                ("language", language),
-                ("quality_bucket", quality_bucket),
-                ("channel", channel),
-            ):
-                cur = buckets[dim].get(bucket_key)
-                if cur is None:
-                    cur = (set(), 0)
-                item_ids, ref_cnt = cur
-                item_ids.add(it_id)
-                buckets[dim][bucket_key] = (item_ids, int(ref_cnt) + 1)
-
-            # Heatmap support: language x file_type, unique items count per cell.
-            cell_key = (language, file_type)
-            cell_items.setdefault(cell_key, set()).add(it_id)
-            lang_refs[language] = int(lang_refs.get(language, 0)) + 1
-            ft_refs[file_type] = int(ft_refs.get(file_type, 0)) + 1
+            file_type, language, quality_bucket, channel = _coverage_dimensions(
+                documents=documents,
+                document_id=document_id,
+                chunk_id=chunk_id,
+                hit_by_chunk=hit_by_chunk,
+            )
+            _update_coverage_buckets(
+                buckets=buckets,
+                item_id=it_id,
+                file_type=file_type,
+                language=language,
+                quality_bucket=quality_bucket,
+                channel=channel,
+            )
+            _update_heatmap_state(
+                cell_items=cell_items,
+                lang_refs=lang_refs,
+                ft_refs=ft_refs,
+                item_id=it_id,
+                language=language,
+                file_type=file_type,
+            )
 
     out: dict[str, Any] = {
         "language": [{"key": b.key, "items": b.items, "references": b.references} for b in _top_n_buckets(buckets["language"], top_n=top_n)],

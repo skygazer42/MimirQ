@@ -291,41 +291,13 @@ async def validate_connector_config(
     config_out = redact_connection_info(config_out, enabled=connector_id in _DB_CONNECTOR_IDS)
 
     if not errors and cfg_obj is not None:
-        # Validate group allowlist existence (fail-closed) for connector access config.
-        access = getattr(cfg_obj, "access", None)
-        group_ids = list(getattr(access, "partial_group_list", None) or [])
-        if group_ids:
-            missing = _unknown_tenant_groups(db, tenant_id=tenant_id, group_ids=group_ids)
-            if missing:
-                errors.append(
-                    {
-                        "loc": ("access", "partial_group_list"),
-                        "msg": f"Unknown tenant groups: {', '.join(missing[:20])}",
-                        "type": "value_error",
-                    }
-                )
-                checks["access_groups"] = {"ok": False, "missing": missing[:20], "total_missing": len(missing)}
-            else:
-                checks["access_groups"] = {"ok": True, "count": len(group_ids)}
-
-        # Validate tenant group ids referenced by source ACL mapping config (connector-level).
-        source_acl = getattr(cfg_obj, "source_acl", None)
-        rules = list(getattr(source_acl, "group_mappings", None) or [])
-        source_acl_group_ids = [getattr(r, "group_id", None) for r in rules]
-        source_acl_group_ids = [gid for gid in source_acl_group_ids if gid]
-        if source_acl_group_ids:
-            missing = _unknown_tenant_groups(db, tenant_id=tenant_id, group_ids=source_acl_group_ids)
-            if missing:
-                errors.append(
-                    {
-                        "loc": ("source_acl", "group_mappings"),
-                        "msg": f"Unknown tenant groups: {', '.join(missing[:20])}",
-                        "type": "value_error",
-                    }
-                )
-                checks["source_acl_groups"] = {"ok": False, "missing": missing[:20], "total_missing": len(missing)}
-            else:
-                checks["source_acl_groups"] = {"ok": True, "count": len(source_acl_group_ids)}
+        _validate_connector_group_references(
+            db,
+            tenant_id=tenant_id,
+            config=cfg_obj,
+            errors=errors,
+            checks=checks,
+        )
 
     if not errors and connector_id in _DB_CONNECTOR_IDS and cfg_obj is not None:
         try:
@@ -348,3 +320,62 @@ async def validate_connector_config(
         warnings=warnings,
         checks=checks,
     )
+
+
+def _validate_connector_group_references(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    config: Any,
+    errors: list[dict[str, Any]],
+    checks: dict[str, Any],
+) -> None:
+    access = getattr(config, "access", None)
+    _record_connector_group_check(
+        db,
+        tenant_id=tenant_id,
+        group_ids=list(getattr(access, "partial_group_list", None) or []),
+        location=("access", "partial_group_list"),
+        check_name="access_groups",
+        errors=errors,
+        checks=checks,
+    )
+
+    source_acl = getattr(config, "source_acl", None)
+    rules = list(getattr(source_acl, "group_mappings", None) or [])
+    source_group_ids = [group_id for rule in rules if (group_id := getattr(rule, "group_id", None))]
+    _record_connector_group_check(
+        db,
+        tenant_id=tenant_id,
+        group_ids=source_group_ids,
+        location=("source_acl", "group_mappings"),
+        check_name="source_acl_groups",
+        errors=errors,
+        checks=checks,
+    )
+
+
+def _record_connector_group_check(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    group_ids: list[UUID],
+    location: tuple[str, str],
+    check_name: str,
+    errors: list[dict[str, Any]],
+    checks: dict[str, Any],
+) -> None:
+    if not group_ids:
+        return
+    missing = _unknown_tenant_groups(db, tenant_id=tenant_id, group_ids=group_ids)
+    if missing:
+        errors.append(
+            {
+                "loc": location,
+                "msg": f"Unknown tenant groups: {', '.join(missing[:20])}",
+                "type": "value_error",
+            }
+        )
+        checks[check_name] = {"ok": False, "missing": missing[:20], "total_missing": len(missing)}
+        return
+    checks[check_name] = {"ok": True, "count": len(group_ids)}

@@ -29,6 +29,37 @@ DEFAULT_MARKDOWN_RULES: list[RegexRule] = [
 ]
 
 
+def _extend_rule_packs(out: list[RegexRule], rule_packs: list[str] | None) -> None:
+    seen: set[str] = set()
+    for raw in rule_packs or []:
+        if not isinstance(raw, str):
+            continue
+        key = raw.strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        pack = GOVERNANCE_RULE_PACKS.get(key)
+        if pack:
+            out.extend(list(pack))
+
+
+def _coerce_extra_rule(item: object) -> RegexRule | None:
+    if not isinstance(item, dict):
+        return None
+    pat = item.get("pattern")
+    if not isinstance(pat, str) or not pat.strip():
+        return None
+    repl = item.get("repl", "")
+    if repl is None:
+        repl = ""
+    flags = item.get("flags", 0)
+    try:
+        flags_int = int(flags)
+    except Exception:
+        flags_int = 0
+    return RegexRule(pattern=pat, repl=str(repl), flags=flags_int)
+
+
 def build_governance_rules(
     extra_rules: list[dict] | None = None,
     *,
@@ -44,33 +75,9 @@ def build_governance_rules(
       to reuse its internal defaults.
     """
     out = list(DEFAULT_MARKDOWN_RULES)
-
-    # Expand optional rule packs (best-effort; unknown packs are ignored).
-    if rule_packs:
-        seen: set[str] = set()
-        for raw in rule_packs:
-            if not isinstance(raw, str):
-                continue
-            key = raw.strip().lower()
-            if not key or key in seen:
-                continue
-            seen.add(key)
-            pack = GOVERNANCE_RULE_PACKS.get(key)
-            if pack:
-                out.extend(list(pack))
+    _extend_rule_packs(out, rule_packs)
     for item in (extra_rules or []):
-        if not isinstance(item, dict):
-            continue
-        pat = item.get("pattern")
-        if not isinstance(pat, str) or not pat.strip():
-            continue
-        repl = item.get("repl", "")
-        if repl is None:
-            repl = ""
-        flags = item.get("flags", 0)
-        try:
-            flags_int = int(flags)
-        except Exception:
-            flags_int = 0
-        out.append(RegexRule(pattern=pat, repl=str(repl), flags=flags_int))
+        rule = _coerce_extra_rule(item)
+        if rule is not None:
+            out.append(rule)
     return out

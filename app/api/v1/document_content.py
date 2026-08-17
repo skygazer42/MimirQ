@@ -1,7 +1,7 @@
 
 import uuid
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -96,6 +96,65 @@ def _read_local_text_source_fallback(
     return text, truncated
 
 
+def _resolve_document_dataset_for_access(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    document: DBDocument,
+) -> Dataset | None:
+    dataset: Dataset | None = None
+    if getattr(document, "dataset_id", None):
+        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_readable(db, dataset, account_id)
+    return dataset
+
+
+def _document_parsed_content_meta(document: DBDocument) -> dict[str, Any]:
+    doc_meta = getattr(document, "doc_metadata", None) or {}
+    persisted_meta = doc_meta.get("parsed_content_persisted") if isinstance(doc_meta, dict) else None
+    if not isinstance(persisted_meta, dict):
+        persisted = {}
+    else:
+        persisted = dict(persisted_meta)
+    if isinstance(doc_meta, dict):
+        for key in ("parser_backend", "parser_backend_requested", "parse_duration_sec", "elements"):
+            if key in doc_meta and key not in persisted:
+                persisted[key] = doc_meta[key]
+    return persisted
+
+
+def _truncate_parsed_content_value(value: str, *, max_chars: int) -> tuple[str, bool]:
+    if max_chars <= 0 or len(value) <= max_chars:
+        return value, False
+    return value[:max_chars], True
+
+
+def _parsed_content_with_fallback(
+    *,
+    document: DBDocument,
+    tenant_id: UUID,
+    row: DocumentParsedContent | None,
+    max_chars: int,
+) -> tuple[str, str, bool, bool, bool]:
+    markdown = (getattr(row, "markdown_content", "") or "") if row is not None else ""
+    original = (getattr(row, "original_markdown_content", "") or "") if row is not None else ""
+    markdown, markdown_truncated = _truncate_parsed_content_value(markdown, max_chars=max_chars)
+    original, original_truncated = _truncate_parsed_content_value(original, max_chars=max_chars)
+
+    if markdown.strip() or original.strip():
+        return markdown, original, markdown_truncated, original_truncated, False
+
+    fallback = _read_local_text_source_fallback(document, tenant_id=tenant_id, max_chars=max_chars)
+    if fallback is None:
+        return markdown, original, markdown_truncated, original_truncated, False
+
+    fallback_text, fallback_truncated = fallback
+    if not fallback_text.strip():
+        return markdown, original, markdown_truncated, original_truncated, False
+    return fallback_text, fallback_text, fallback_truncated, fallback_truncated, True
+
+
 @router.get("/{document_id}/parsed-content", response_model=DocumentParsedContentResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_document_parsed_content(
     document_id: uuid.UUID,
@@ -123,10 +182,12 @@ def get_document_parsed_content(
     if not document:
         raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
 
-    dataset: Dataset | None = None
-    if document.dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = _resolve_document_dataset_for_access(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        document=document,
+    )
     assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=dataset)
 
     row = (
@@ -135,49 +196,20 @@ def get_document_parsed_content(
         .first()
     )
 
-    doc_meta = getattr(document, "doc_metadata", None) or {}
-    persisted_meta = doc_meta.get("parsed_content_persisted") if isinstance(doc_meta, dict) else None
-    if not isinstance(persisted_meta, dict):
-        persisted_meta = {}
-    else:
-        persisted_meta = dict(persisted_meta)
-    if isinstance(doc_meta, dict):
-        for key in ("parser_backend", "parser_backend_requested", "parse_duration_sec", "elements"):
-            if key in doc_meta and key not in persisted_meta:
-                persisted_meta[key] = doc_meta[key]
-
-    markdown = (getattr(row, "markdown_content", "") or "") if row is not None else ""
-    original = (getattr(row, "original_markdown_content", "") or "") if row is not None else ""
-    markdown_truncated = False
-    original_truncated = False
-
     max_chars_eff = int(max_chars or 0)
-    if max_chars_eff > 0:
-        if len(markdown) > max_chars_eff:
-            markdown = markdown[:max_chars_eff]
-            markdown_truncated = True
-        if len(original) > max_chars_eff:
-            original = original[:max_chars_eff]
-            original_truncated = True
-
-    source_fallback_available = False
-    if not (markdown.strip() or original.strip()):
-        fallback = _read_local_text_source_fallback(document, tenant_id=tenant_id, max_chars=max_chars_eff)
-        if fallback is not None:
-            fallback_text, fallback_truncated = fallback
-            if fallback_text.strip():
-                markdown = fallback_text
-                original = fallback_text
-                markdown_truncated = fallback_truncated
-                original_truncated = fallback_truncated
-                source_fallback_available = True
+    markdown, original, markdown_truncated, original_truncated, source_fallback_available = _parsed_content_with_fallback(
+        document=document,
+        tenant_id=tenant_id,
+        row=row,
+        max_chars=max_chars_eff,
+    )
 
     return DocumentParsedContentResponse(
         document_id=document_id,
         available=row is not None or source_fallback_available,
         markdown_content=markdown,
         original_markdown_content=original,
-        persisted_meta=persisted_meta,
+        persisted_meta=_document_parsed_content_meta(document),
         markdown_truncated=markdown_truncated,
         original_markdown_truncated=original_truncated,
         max_chars=max_chars_eff,

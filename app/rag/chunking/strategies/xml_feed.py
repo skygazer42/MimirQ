@@ -92,6 +92,30 @@ def looks_like_xml_feed(text: str) -> bool:
     return max(item_n, entry_n) >= 2
 
 
+def _build_split_documents(
+    *,
+    split_docs: list[Document],
+    base_meta: dict[str, Any],
+    start_offset: int = 0,
+    extra_meta: dict[str, Any] | None = None,
+) -> list[Document]:
+    out: list[Document] = []
+    for sd in split_docs:
+        local_start = sd.metadata.pop("start_index", None) or 0
+        abs_start = start_offset + int(local_start)
+        abs_end = abs_start + len(sd.page_content)
+        meta: dict[str, Any] = dict(base_meta)
+        meta.update(sd.metadata or {})
+        meta["chunk_strategy"] = "xml_feed"
+        meta["start_char"] = abs_start
+        meta["end_char"] = abs_end
+        meta.setdefault("doc_type_kwd", "xml")
+        if extra_meta:
+            meta.update(extra_meta)
+        out.append(Document(page_content=sd.page_content, metadata=meta))
+    return out
+
+
 class XMLFeedChunker(BaseChunker):
     def __init__(self, chunk_size: int, chunk_overlap: int):
         self.chunk_size = int(chunk_size)
@@ -119,18 +143,13 @@ class XMLFeedChunker(BaseChunker):
             blocks = items if len(items) >= len(entries) else entries
             if not blocks:
                 split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "xml_feed"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta["xml_feed_fallback"] = True
-                    meta.setdefault("doc_type_kwd", "xml")
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                out.extend(
+                    _build_split_documents(
+                        split_docs=split_docs,
+                        base_meta=base_meta,
+                        extra_meta={"xml_feed_fallback": True},
+                    )
+                )
                 continue
 
             # Preamble before the first entry/item.
@@ -139,42 +158,34 @@ class XMLFeedChunker(BaseChunker):
                 pre = text[: first.start]
                 if pre.strip():
                     split_docs = self._fallback_splitter.create_documents(texts=[pre], metadatas=[base_meta])
-                    for sd in split_docs:
-                        local_start = sd.metadata.pop("start_index", None) or 0
-                        abs_start = int(local_start)
-                        abs_end = abs_start + len(sd.page_content)
-                        meta: dict[str, Any] = dict(base_meta)
-                        meta.update(sd.metadata or {})
-                        meta["chunk_strategy"] = "xml_feed"
-                        meta["start_char"] = abs_start
-                        meta["end_char"] = abs_end
-                        meta["xml_feed_preamble"] = True
-                        meta.setdefault("doc_type_kwd", "xml")
-                        out.append(Document(page_content=sd.page_content, metadata=meta))
+                    out.extend(
+                        _build_split_documents(
+                            split_docs=split_docs,
+                            base_meta=base_meta,
+                            extra_meta={"xml_feed_preamble": True},
+                        )
+                    )
 
             for blk in blocks:
                 blk_text = text[blk.start : blk.end]
                 if not blk_text.strip():
                     continue
                 split_docs = self._fallback_splitter.create_documents(texts=[blk_text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = blk.start + int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "xml_feed"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta.setdefault("doc_type_kwd", "xml")
-                    meta["xml_feed_kind"] = blk.kind
-                    meta["xml_feed_index"] = int(blk.index)
-                    meta["xml_feed_count"] = int(len(blocks))
-                    if blk.title:
-                        meta["xml_feed_title"] = blk.title
-
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                extra_meta: dict[str, Any] = {
+                    "xml_feed_kind": blk.kind,
+                    "xml_feed_index": int(blk.index),
+                    "xml_feed_count": int(len(blocks)),
+                }
+                if blk.title:
+                    extra_meta["xml_feed_title"] = blk.title
+                out.extend(
+                    _build_split_documents(
+                        split_docs=split_docs,
+                        base_meta=base_meta,
+                        start_offset=blk.start,
+                        extra_meta=extra_meta,
+                    )
+                )
 
         for idx, chunk in enumerate(out):
             meta = dict(chunk.metadata or {})

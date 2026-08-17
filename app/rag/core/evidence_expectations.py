@@ -1,4 +1,3 @@
-
 from collections.abc import Iterable
 from typing import Any
 
@@ -44,21 +43,9 @@ def evaluate_evidence_anchor_expectations(
     exclude_retrieval_role_prefixes: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     req = normalize_anchor_fields(list(required_fields or []))
-    prefixes = [
-        str(p or "").strip().lower()
-        for p in (exclude_retrieval_role_prefixes or [])
-        if str(p or "").strip()
-    ]
+    prefixes = [str(p or "").strip().lower() for p in (exclude_retrieval_role_prefixes or []) if str(p or "").strip()]
     if not req:
-        return {
-            "required_fields": [],
-            "considered_citations": int(len(citations or [])),
-            "skipped_citations": 0,
-            "skipped_by_role": {},
-            "missing_counts": {},
-            "missing_any": 0,
-            "passed": True,
-        }
+        return _empty_anchor_expectations(len(citations or []))
 
     missing_counts: dict[str, int] = dict.fromkeys(req, 0)
     missing_examples: list[dict[str, Any]] = []
@@ -70,30 +57,21 @@ def evaluate_evidence_anchor_expectations(
     for item in citations or []:
         if not isinstance(item, dict):
             continue
-        if prefixes:
-            rr = str(item.get("retrieval_role") or "").strip().lower()
-            if rr and any(rr.startswith(p) for p in prefixes):
-                skipped += 1
-                skipped_by_role[rr] = int(skipped_by_role.get(rr, 0) or 0) + 1
-                continue
+        excluded_role = _excluded_retrieval_role(item, prefixes)
+        if excluded_role is not None:
+            skipped += 1
+            skipped_by_role[excluded_role] = int(skipped_by_role.get(excluded_role, 0) or 0) + 1
+            continue
         considered += 1
-        miss_fields: list[str] = []
-        for f in req:
-            value = item.get(f)
-            if value is None:
-                missing_counts[f] = int(missing_counts.get(f, 0) or 0) + 1
-                miss_fields.append(f)
-                continue
-            if isinstance(value, str) and not value.strip():
-                missing_counts[f] = int(missing_counts.get(f, 0) or 0) + 1
-                miss_fields.append(f)
-        if miss_fields:
+        missing_fields = _missing_anchor_fields(item, req)
+        if missing_fields:
             missing_any += 1
+            _increment_missing_counts(missing_counts, missing_fields)
             if len(missing_examples) < 20:
                 missing_examples.append(
                     {
                         "chunk_id": item.get("chunk_id"),
-                        "missing_fields": miss_fields,
+                        "missing_fields": missing_fields,
                     }
                 )
 
@@ -107,6 +85,41 @@ def evaluate_evidence_anchor_expectations(
         "missing_examples": missing_examples,
         "passed": bool(missing_any == 0),
     }
+
+
+def _empty_anchor_expectations(citation_count: int) -> dict[str, Any]:
+    return {
+        "required_fields": [],
+        "considered_citations": int(citation_count),
+        "skipped_citations": 0,
+        "skipped_by_role": {},
+        "missing_counts": {},
+        "missing_any": 0,
+        "passed": True,
+    }
+
+
+def _excluded_retrieval_role(item: dict[str, Any], prefixes: list[str]) -> str | None:
+    if not prefixes:
+        return None
+    role = str(item.get("retrieval_role") or "").strip().lower()
+    if role and any(role.startswith(prefix) for prefix in prefixes):
+        return role
+    return None
+
+
+def _missing_anchor_fields(item: dict[str, Any], required_fields: list[str]) -> list[str]:
+    missing: list[str] = []
+    for field_name in required_fields:
+        value = item.get(field_name)
+        if value is None or (isinstance(value, str) and not value.strip()):
+            missing.append(field_name)
+    return missing
+
+
+def _increment_missing_counts(missing_counts: dict[str, int], missing_fields: list[str]) -> None:
+    for field_name in missing_fields:
+        missing_counts[field_name] = int(missing_counts.get(field_name, 0) or 0) + 1
 
 
 __all__ = [

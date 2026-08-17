@@ -584,6 +584,81 @@ def _resolve_preview_image_ref(
     return img_id, start_index
 
 
+def _iter_unique_preview_local_ids(matches: list[re.Match[str]]) -> list[str]:
+    seen_local_ids: set[str] = set()
+    unique_local_ids: list[str] = []
+    for match in matches:
+        local_id = _preview_local_image_id(match.group(1))
+        if not local_id or local_id in seen_local_ids:
+            continue
+        seen_local_ids.add(local_id)
+        unique_local_ids.append(local_id)
+    return unique_local_ids
+
+
+def _claim_preview_refs_without_minio(
+    *,
+    local_ids: list[str],
+    tenant_id: str,
+    dataset_id: str,
+    document_id: str,
+    account_id: str,
+    images_dir: Path,
+    db: Session | None,
+) -> None:
+    for local_id in local_ids:
+        if _find_preview_image_path(images_dir, local_id) is None:
+            raise HTTPException(status_code=422, detail="Preview image could not be persisted")
+        promoted = _claim_preview_image_for_document(
+            db=db,
+            images_dir=images_dir,
+            local_id=local_id,
+            tenant_id=str(tenant_id),
+            dataset_id=str(dataset_id),
+            document_id=str(document_id),
+            account_id=str(account_id),
+        )
+        if not promoted:
+            raise HTTPException(status_code=403, detail="Preview image cannot be reused for this document")
+
+
+def _persist_preview_refs_to_minio(
+    *,
+    local_ids: list[str],
+    tenant_id: str,
+    dataset_id: str,
+    document_id: str,
+    account_id: str,
+    images_dir: Path,
+    local_id_to_img_id: dict[str, str],
+    digest_to_img_id: dict[str, str],
+    db: Session | None,
+    start_index: int,
+    existing_refs: list[str],
+) -> tuple[list[str], int]:
+    referenced_img_ids: list[str] = list(existing_refs)
+    max_bytes = _preview_image_max_bytes()
+    for local_id in local_ids:
+        img_id, start_index = _resolve_preview_image_ref(
+            local_id=local_id,
+            images_dir=images_dir,
+            max_bytes=max_bytes,
+            local_id_to_img_id=local_id_to_img_id,
+            digest_to_img_id=digest_to_img_id,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            document_id=document_id,
+            account_id=account_id,
+            db=db,
+            start_index=start_index,
+        )
+        if not img_id:
+            raise HTTPException(status_code=422, detail="Preview image could not be persisted")
+        if img_id not in referenced_img_ids:
+            referenced_img_ids.append(img_id)
+    return referenced_img_ids, start_index
+
+
 def _rewrite_preview_images_to_minio(
     text: str,
     *,
@@ -611,60 +686,33 @@ def _rewrite_preview_images_to_minio(
     matches = _preview_image_matches(text)
     if not matches:
         return text, existing, start_index
+    local_ids = _iter_unique_preview_local_ids(matches)
 
     if not settings.MINIO_ENABLED:
-        seen_local_ids: set[str] = set()
-        for match in matches:
-            local_id = _preview_local_image_id(match.group(1))
-            if not local_id or local_id in seen_local_ids:
-                continue
-            seen_local_ids.add(local_id)
-            if _find_preview_image_path(images_dir, local_id) is None:
-                raise HTTPException(status_code=422, detail="Preview image could not be persisted")
-            promoted = _claim_preview_image_for_document(
-                db=db,
-                images_dir=images_dir,
-                local_id=local_id,
-                tenant_id=str(tenant_id),
-                dataset_id=str(dataset_id),
-                document_id=str(document_id),
-                account_id=str(account_id),
-            )
-            if not promoted:
-                raise HTTPException(status_code=403, detail="Preview image cannot be reused for this document")
-        return text, existing, start_index
-
-    max_bytes = _preview_image_max_bytes()
-    referenced_img_ids: list[str] = list(existing)
-    seen_local_ids: set[str] = set()
-
-    for match in matches:
-        local_id = _preview_local_image_id(match.group(1))
-        if not local_id:
-            continue
-
-        if local_id in seen_local_ids:
-            continue
-        seen_local_ids.add(local_id)
-
-        img_id, start_index = _resolve_preview_image_ref(
-            local_id=local_id,
-            images_dir=images_dir,
-            max_bytes=max_bytes,
-            local_id_to_img_id=local_id_to_img_id,
-            digest_to_img_id=digest_to_img_id,
+        _claim_preview_refs_without_minio(
+            local_ids=local_ids,
             tenant_id=tenant_id,
             dataset_id=dataset_id,
             document_id=document_id,
             account_id=account_id,
+            images_dir=images_dir,
             db=db,
-            start_index=start_index,
         )
-        if not img_id:
-            raise HTTPException(status_code=422, detail="Preview image could not be persisted")
+        return text, existing, start_index
 
-        if img_id and img_id not in referenced_img_ids:
-            referenced_img_ids.append(img_id)
+    referenced_img_ids, start_index = _persist_preview_refs_to_minio(
+        local_ids=local_ids,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        document_id=document_id,
+        account_id=account_id,
+        images_dir=images_dir,
+        local_id_to_img_id=local_id_to_img_id,
+        digest_to_img_id=digest_to_img_id,
+        db=db,
+        start_index=start_index,
+        existing_refs=existing,
+    )
 
     return PREVIEW_IMAGE_REF_RE.sub(lambda match: _replace_preview_ref(match, local_id_to_img_id), text), referenced_img_ids, start_index
 

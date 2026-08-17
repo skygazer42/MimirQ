@@ -11,7 +11,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Callable
 from urllib.parse import urlparse, urlunparse
 from uuid import UUID
 
@@ -610,126 +610,125 @@ def _parse_float(value: Any, *, default: float = 0.0) -> float:
         return default
 
 
-def _apply_runtime_settings(env_vars: dict[str, str], updated_keys: list[str]) -> None:
-    """
-    Best-effort: apply updated .env values to the in-memory settings object so
-    config changes can take effect without a restart.
-    """
-    # Feature flags
-    if "KG_ENABLED" in updated_keys and "KG_ENABLED" in env_vars:
-        settings.KG_ENABLED = _parse_bool(env_vars["KG_ENABLED"])
-    if "KG_CHAT_ENABLED" in updated_keys and "KG_CHAT_ENABLED" in env_vars:
-        settings.KG_CHAT_ENABLED = _parse_bool(env_vars["KG_CHAT_ENABLED"])
-    if "DEEPDOC_ENABLED" in updated_keys and "DEEPDOC_ENABLED" in env_vars:
-        settings.DEEPDOC_ENABLED = _parse_bool(env_vars["DEEPDOC_ENABLED"])
-    if "DOCLING_ENABLED" in updated_keys and "DOCLING_ENABLED" in env_vars:
-        settings.DOCLING_ENABLED = _parse_bool(env_vars["DOCLING_ENABLED"])
-    if "ETL4LLM_ENABLED" in updated_keys and "ETL4LLM_ENABLED" in env_vars:
-        settings.ETL4LLM_ENABLED = _parse_bool(env_vars["ETL4LLM_ENABLED"])
-    if "MARKER_ENABLED" in updated_keys and "MARKER_ENABLED" in env_vars:
-        settings.MARKER_ENABLED = _parse_bool(env_vars["MARKER_ENABLED"])
-    if "PADDLE_VL_ENABLED" in updated_keys and "PADDLE_VL_ENABLED" in env_vars:
-        settings.PADDLE_VL_ENABLED = _parse_bool(env_vars["PADDLE_VL_ENABLED"])
-    if "MARKITDOWN_ENABLED" in updated_keys and "MARKITDOWN_ENABLED" in env_vars:
-        settings.MARKITDOWN_ENABLED = _parse_bool(env_vars["MARKITDOWN_ENABLED"])
-    if "LLAMA_INDEX_ENABLED" in updated_keys and "LLAMA_INDEX_ENABLED" in env_vars:
-        settings.LLAMA_INDEX_ENABLED = _parse_bool(env_vars["LLAMA_INDEX_ENABLED"])
-    if "MINERU_ENABLED" in updated_keys and "MINERU_ENABLED" in env_vars:
-        settings.MINERU_ENABLED = _parse_bool(env_vars["MINERU_ENABLED"])
-    if "MAGIC_PDF_ENABLED" in updated_keys and "MAGIC_PDF_ENABLED" in env_vars:
-        settings.MAGIC_PDF_ENABLED = _parse_bool(env_vars["MAGIC_PDF_ENABLED"])
+def _apply_runtime_specs(
+    env_vars: dict[str, str],
+    updated_keys: set[str],
+    specs: tuple[tuple[str, Callable[[str], Any]], ...],
+) -> None:
+    for key, parser in specs:
+        if key in updated_keys and key in env_vars:
+            setattr(settings, key, parser(env_vars[key]))
 
-    # KG prompt selector
-    if "KG_EXTRACT_PROMPT_TEMPLATE_ID" in updated_keys and "KG_EXTRACT_PROMPT_TEMPLATE_ID" in env_vars:
-        settings.KG_EXTRACT_PROMPT_TEMPLATE_ID = env_vars["KG_EXTRACT_PROMPT_TEMPLATE_ID"]
-    if "KG_EXTRACT_PROMPT_TEMPLATE_KEY" in updated_keys and "KG_EXTRACT_PROMPT_TEMPLATE_KEY" in env_vars:
-        settings.KG_EXTRACT_PROMPT_TEMPLATE_KEY = env_vars["KG_EXTRACT_PROMPT_TEMPLATE_KEY"]
-    if "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY" in updated_keys and "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY" in env_vars:
-        settings.KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY = env_vars["KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY"]
-    if "KG_EXTRACT_REPLACE_EXISTING" in updated_keys and "KG_EXTRACT_REPLACE_EXISTING" in env_vars:
-        settings.KG_EXTRACT_REPLACE_EXISTING = _parse_bool(env_vars["KG_EXTRACT_REPLACE_EXISTING"])
-    if "KG_EXTRACT_PRUNE_ORPHAN_ENTITIES" in updated_keys and "KG_EXTRACT_PRUNE_ORPHAN_ENTITIES" in env_vars:
-        settings.KG_EXTRACT_PRUNE_ORPHAN_ENTITIES = _parse_bool(env_vars["KG_EXTRACT_PRUNE_ORPHAN_ENTITIES"])
 
-    # LLM
-    if "LLM_API_KEY" in updated_keys and "LLM_API_KEY" in env_vars:
-        settings.LLM_API_KEY = env_vars["LLM_API_KEY"]
-    if "LLM_API_BASE" in updated_keys and "LLM_API_BASE" in env_vars:
-        settings.LLM_API_BASE = env_vars["LLM_API_BASE"]
-    if "LLM_MODEL" in updated_keys and "LLM_MODEL" in env_vars:
-        settings.LLM_MODEL = env_vars["LLM_MODEL"]
-    if "LLM_TEMPERATURE" in updated_keys and "LLM_TEMPERATURE" in env_vars:
-        settings.LLM_TEMPERATURE = _parse_float(env_vars["LLM_TEMPERATURE"], default=settings.LLM_TEMPERATURE)
-    if "LLM_TIMEOUT" in updated_keys and "LLM_TIMEOUT" in env_vars:
-        settings.LLM_TIMEOUT = _parse_int(env_vars["LLM_TIMEOUT"], default=settings.LLM_TIMEOUT)
-    if "LLM_MAX_RETRIES" in updated_keys and "LLM_MAX_RETRIES" in env_vars:
-        settings.LLM_MAX_RETRIES = _parse_int(env_vars["LLM_MAX_RETRIES"], default=settings.LLM_MAX_RETRIES)
+def _apply_feature_flag_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
+    _apply_runtime_specs(
+        env_vars,
+        updated_keys,
+        (
+            ("KG_ENABLED", _parse_bool),
+            ("KG_CHAT_ENABLED", _parse_bool),
+            ("DEEPDOC_ENABLED", _parse_bool),
+            ("DOCLING_ENABLED", _parse_bool),
+            ("ETL4LLM_ENABLED", _parse_bool),
+            ("MARKER_ENABLED", _parse_bool),
+            ("PADDLE_VL_ENABLED", _parse_bool),
+            ("MARKITDOWN_ENABLED", _parse_bool),
+            ("LLAMA_INDEX_ENABLED", _parse_bool),
+            ("MINERU_ENABLED", _parse_bool),
+            ("MAGIC_PDF_ENABLED", _parse_bool),
+        ),
+    )
 
-    # Embedding
-    if "EMBEDDING_PROVIDER" in updated_keys and "EMBEDDING_PROVIDER" in env_vars:
-        settings.EMBEDDING_PROVIDER = env_vars["EMBEDDING_PROVIDER"]
-    if "EMBEDDING_MODEL" in updated_keys and "EMBEDDING_MODEL" in env_vars:
-        settings.EMBEDDING_MODEL = env_vars["EMBEDDING_MODEL"]
-    if "EMBEDDING_API_KEY" in updated_keys and "EMBEDDING_API_KEY" in env_vars:
-        settings.EMBEDDING_API_KEY = env_vars["EMBEDDING_API_KEY"]
-    if "EMBEDDING_API_BASE" in updated_keys and "EMBEDDING_API_BASE" in env_vars:
-        settings.EMBEDDING_API_BASE = env_vars["EMBEDDING_API_BASE"]
+
+def _apply_kg_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
+    _apply_runtime_specs(
+        env_vars,
+        updated_keys,
+        (
+            ("KG_EXTRACT_PROMPT_TEMPLATE_ID", str),
+            ("KG_EXTRACT_PROMPT_TEMPLATE_KEY", str),
+            ("KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", str),
+            ("KG_EXTRACT_REPLACE_EXISTING", _parse_bool),
+            ("KG_EXTRACT_PRUNE_ORPHAN_ENTITIES", _parse_bool),
+        ),
+    )
+
+
+def _apply_llm_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
+    _apply_runtime_specs(
+        env_vars,
+        updated_keys,
+        (
+            ("LLM_API_KEY", str),
+            ("LLM_API_BASE", str),
+            ("LLM_MODEL", str),
+            ("LLM_TEMPERATURE", lambda value: _parse_float(value, default=settings.LLM_TEMPERATURE)),
+            ("LLM_TIMEOUT", lambda value: _parse_int(value, default=settings.LLM_TIMEOUT)),
+            ("LLM_MAX_RETRIES", lambda value: _parse_int(value, default=settings.LLM_MAX_RETRIES)),
+        ),
+    )
+
+
+def _apply_embedding_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
+    _apply_runtime_specs(
+        env_vars,
+        updated_keys,
+        (
+            ("EMBEDDING_PROVIDER", str),
+            ("EMBEDDING_MODEL", str),
+            ("EMBEDDING_API_KEY", str),
+            ("EMBEDDING_API_BASE", str),
+        ),
+    )
     if _VECTOR_STORE_EMBEDDING_RESET_KEYS.intersection(updated_keys):
         from app.storage.vector.factory import reset_vector_store_singletons
 
         reset_vector_store_singletons()
 
-    # Milvus
-    if "MILVUS_HOST" in updated_keys and "MILVUS_HOST" in env_vars:
-        settings.MILVUS_HOST = env_vars["MILVUS_HOST"]
-    if "MILVUS_PORT" in updated_keys and "MILVUS_PORT" in env_vars:
-        settings.MILVUS_PORT = _parse_int(env_vars["MILVUS_PORT"], default=settings.MILVUS_PORT)
-    if "MILVUS_USER" in updated_keys and "MILVUS_USER" in env_vars:
-        settings.MILVUS_USER = env_vars["MILVUS_USER"]
-    if "MILVUS_PASSWORD" in updated_keys and "MILVUS_PASSWORD" in env_vars:
-        settings.MILVUS_PASSWORD = env_vars["MILVUS_PASSWORD"]
-    if "MILVUS_COLLECTION_NAME" in updated_keys and "MILVUS_COLLECTION_NAME" in env_vars:
-        settings.MILVUS_COLLECTION_NAME = env_vars["MILVUS_COLLECTION_NAME"]
 
-    # MinIO / object storage
-    if "MINIO_ENABLED" in updated_keys and "MINIO_ENABLED" in env_vars:
-        settings.MINIO_ENABLED = _parse_bool(env_vars["MINIO_ENABLED"])
-    if "MINIO_ENDPOINT" in updated_keys and "MINIO_ENDPOINT" in env_vars:
-        settings.MINIO_ENDPOINT = env_vars["MINIO_ENDPOINT"]
-    if "MINIO_ACCESS_KEY" in updated_keys and "MINIO_ACCESS_KEY" in env_vars:
-        settings.MINIO_ACCESS_KEY = env_vars["MINIO_ACCESS_KEY"]
-    if "MINIO_SECRET_KEY" in updated_keys and "MINIO_SECRET_KEY" in env_vars:
-        settings.MINIO_SECRET_KEY = env_vars["MINIO_SECRET_KEY"]
-    if "MINIO_BUCKET_NAME" in updated_keys and "MINIO_BUCKET_NAME" in env_vars:
-        settings.MINIO_BUCKET_NAME = env_vars["MINIO_BUCKET_NAME"]
-    if "MINIO_USE_SSL" in updated_keys and "MINIO_USE_SSL" in env_vars:
-        settings.MINIO_USE_SSL = _parse_bool(env_vars["MINIO_USE_SSL"])
-    if "MINIO_DOCUMENTS_ENABLED" in updated_keys and "MINIO_DOCUMENTS_ENABLED" in env_vars:
-        settings.MINIO_DOCUMENTS_ENABLED = _parse_bool(env_vars["MINIO_DOCUMENTS_ENABLED"])
-    if "MINIO_IMAGE_MAX_BYTES" in updated_keys and "MINIO_IMAGE_MAX_BYTES" in env_vars:
-        settings.MINIO_IMAGE_MAX_BYTES = _parse_int(
-            env_vars["MINIO_IMAGE_MAX_BYTES"],
-            default=int(getattr(settings, "MINIO_IMAGE_MAX_BYTES", 0) or 0),
-        )
-    if "MINIO_METRICS_LOG_PATH" in updated_keys and "MINIO_METRICS_LOG_PATH" in env_vars:
-        settings.MINIO_METRICS_LOG_PATH = env_vars["MINIO_METRICS_LOG_PATH"]
+def _apply_milvus_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
+    _apply_runtime_specs(
+        env_vars,
+        updated_keys,
+        (
+            ("MILVUS_HOST", str),
+            ("MILVUS_PORT", lambda value: _parse_int(value, default=settings.MILVUS_PORT)),
+            ("MILVUS_USER", str),
+            ("MILVUS_PASSWORD", str),
+            ("MILVUS_COLLECTION_NAME", str),
+        ),
+    )
 
-    if "OBJECT_STORAGE_PROVIDER" in updated_keys and "OBJECT_STORAGE_PROVIDER" in env_vars:
-        settings.OBJECT_STORAGE_PROVIDER = normalize_object_storage_provider_name(env_vars["OBJECT_STORAGE_PROVIDER"])
-    for key in ("OBJECT_STORAGE_ENABLED", "OBJECT_STORAGE_USE_SSL", "OBJECT_STORAGE_DOCUMENTS_ENABLED"):
-        if key in updated_keys and key in env_vars:
-            setattr(settings, key, _parse_bool(env_vars[key]))
-    for key in (
-        "OBJECT_STORAGE_ENDPOINT",
-        "OBJECT_STORAGE_ACCESS_KEY",
-        "OBJECT_STORAGE_SECRET_KEY",
-        "OBJECT_STORAGE_BUCKET_NAME",
-        "OBJECT_STORAGE_METRICS_LOG_PATH",
-    ):
-        if key in updated_keys and key in env_vars:
-            setattr(settings, key, env_vars[key])
-    if "DATA_REGION" in updated_keys and "DATA_REGION" in env_vars:
-        settings.DATA_REGION = str(env_vars["DATA_REGION"] or "").strip().lower()
+
+def _apply_storage_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
+    _apply_runtime_specs(
+        env_vars,
+        updated_keys,
+        (
+            ("MINIO_ENABLED", _parse_bool),
+            ("MINIO_ENDPOINT", str),
+            ("MINIO_ACCESS_KEY", str),
+            ("MINIO_SECRET_KEY", str),
+            ("MINIO_BUCKET_NAME", str),
+            ("MINIO_USE_SSL", _parse_bool),
+            ("MINIO_DOCUMENTS_ENABLED", _parse_bool),
+            (
+                "MINIO_IMAGE_MAX_BYTES",
+                lambda value: _parse_int(value, default=int(getattr(settings, "MINIO_IMAGE_MAX_BYTES", 0) or 0)),
+            ),
+            ("MINIO_METRICS_LOG_PATH", str),
+            ("OBJECT_STORAGE_PROVIDER", normalize_object_storage_provider_name),
+            ("OBJECT_STORAGE_ENABLED", _parse_bool),
+            ("OBJECT_STORAGE_USE_SSL", _parse_bool),
+            ("OBJECT_STORAGE_DOCUMENTS_ENABLED", _parse_bool),
+            ("OBJECT_STORAGE_ENDPOINT", str),
+            ("OBJECT_STORAGE_ACCESS_KEY", str),
+            ("OBJECT_STORAGE_SECRET_KEY", str),
+            ("OBJECT_STORAGE_BUCKET_NAME", str),
+            ("OBJECT_STORAGE_METRICS_LOG_PATH", str),
+            ("DATA_REGION", lambda value: str(value or "").strip().lower()),
+        ),
+    )
     if "OBJECT_STORAGE_REGION_PROFILES" in updated_keys and "OBJECT_STORAGE_REGION_PROFILES" in env_vars:
         parse_object_storage_region_profiles(env_vars["OBJECT_STORAGE_REGION_PROFILES"])
         settings.OBJECT_STORAGE_REGION_PROFILES = env_vars["OBJECT_STORAGE_REGION_PROFILES"]
@@ -747,237 +746,268 @@ def _apply_runtime_settings(env_vars: dict[str, str], updated_keys: list[str]) -
 
         invalidate_ready_cache()
 
-    # RAG knobs
-    if "CHUNK_SIZE" in updated_keys and "CHUNK_SIZE" in env_vars:
-        settings.CHUNK_SIZE = _parse_int(env_vars["CHUNK_SIZE"], default=settings.CHUNK_SIZE)
-    if "CHUNK_OVERLAP" in updated_keys and "CHUNK_OVERLAP" in env_vars:
-        settings.CHUNK_OVERLAP = _parse_int(env_vars["CHUNK_OVERLAP"], default=settings.CHUNK_OVERLAP)
-    if "CHUNK_MIN_CHARS" in updated_keys and "CHUNK_MIN_CHARS" in env_vars:
-        settings.CHUNK_MIN_CHARS = _parse_int(env_vars["CHUNK_MIN_CHARS"], default=getattr(settings, "CHUNK_MIN_CHARS", 0))
-    if "RETRIEVAL_TOP_K" in updated_keys and "RETRIEVAL_TOP_K" in env_vars:
-        settings.RETRIEVAL_TOP_K = _parse_int(env_vars["RETRIEVAL_TOP_K"], default=settings.RETRIEVAL_TOP_K)
-    if "SIMILARITY_THRESHOLD" in updated_keys and "SIMILARITY_THRESHOLD" in env_vars:
-        settings.SIMILARITY_THRESHOLD = _parse_float(
-            env_vars["SIMILARITY_THRESHOLD"],
-            default=settings.SIMILARITY_THRESHOLD,
-        )
-    if "DEFAULT_PARSER_BACKEND" in updated_keys and "DEFAULT_PARSER_BACKEND" in env_vars:
-        settings.DEFAULT_PARSER_BACKEND = env_vars["DEFAULT_PARSER_BACKEND"]
-    if "DEFAULT_CHUNK_STRATEGY" in updated_keys and "DEFAULT_CHUNK_STRATEGY" in env_vars:
-        settings.DEFAULT_CHUNK_STRATEGY = env_vars["DEFAULT_CHUNK_STRATEGY"]
+
+def _apply_rag_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
+    _apply_runtime_specs(
+        env_vars,
+        updated_keys,
+        (
+            ("CHUNK_SIZE", lambda value: _parse_int(value, default=settings.CHUNK_SIZE)),
+            ("CHUNK_OVERLAP", lambda value: _parse_int(value, default=settings.CHUNK_OVERLAP)),
+            ("CHUNK_MIN_CHARS", lambda value: _parse_int(value, default=getattr(settings, "CHUNK_MIN_CHARS", 0))),
+            ("RETRIEVAL_TOP_K", lambda value: _parse_int(value, default=settings.RETRIEVAL_TOP_K)),
+            ("SIMILARITY_THRESHOLD", lambda value: _parse_float(value, default=settings.SIMILARITY_THRESHOLD)),
+            ("DEFAULT_PARSER_BACKEND", str),
+            ("DEFAULT_CHUNK_STRATEGY", str),
+            ("ENABLE_RERANKER", _parse_bool),
+            ("RERANKER_PROVIDER", str),
+            ("RERANKER_TOP_N", lambda value: _parse_int(value, default=settings.RERANKER_TOP_N)),
+            ("SHOW_IMAGE_IN_ANSWER", _parse_bool),
+            ("IMAGE_APPEND_MAX", lambda value: _parse_int(value, default=int(getattr(settings, "IMAGE_APPEND_MAX", 3) or 3))),
+        ),
+    )
+
     if "BM25_INDEX_ENABLED" in updated_keys and "BM25_INDEX_ENABLED" in env_vars:
         old_bm25 = bool(getattr(settings, "BM25_INDEX_ENABLED", True))
         new_bm25 = _parse_bool(env_vars["BM25_INDEX_ENABLED"])
         settings.BM25_INDEX_ENABLED = new_bm25
         if old_bm25 and not new_bm25:
-            # Ensure the toggle takes effect immediately even if an in-memory BM25 cache exists.
             with contextlib.suppress(Exception):
                 from app.rag.retriever import hybrid_retriever
 
                 hybrid_retriever.clear_bm25_cache()
-    if "ENABLE_RERANKER" in updated_keys and "ENABLE_RERANKER" in env_vars:
-        settings.ENABLE_RERANKER = _parse_bool(env_vars["ENABLE_RERANKER"])
-    if "RERANKER_PROVIDER" in updated_keys and "RERANKER_PROVIDER" in env_vars:
-        settings.RERANKER_PROVIDER = env_vars["RERANKER_PROVIDER"]
-    if "RERANKER_TOP_N" in updated_keys and "RERANKER_TOP_N" in env_vars:
-        settings.RERANKER_TOP_N = _parse_int(env_vars["RERANKER_TOP_N"], default=settings.RERANKER_TOP_N)
-    if "SHOW_IMAGE_IN_ANSWER" in updated_keys and "SHOW_IMAGE_IN_ANSWER" in env_vars:
-        settings.SHOW_IMAGE_IN_ANSWER = _parse_bool(env_vars["SHOW_IMAGE_IN_ANSWER"])
-    if "IMAGE_APPEND_MAX" in updated_keys and "IMAGE_APPEND_MAX" in env_vars:
-        settings.IMAGE_APPEND_MAX = _parse_int(
-            env_vars["IMAGE_APPEND_MAX"],
-            default=int(getattr(settings, "IMAGE_APPEND_MAX", 3) or 3),
-        )
 
-    # Cache / performance (best-effort).
-    if "UPLOAD_DEDUP_ENABLED" in updated_keys and "UPLOAD_DEDUP_ENABLED" in env_vars:
-        settings.UPLOAD_DEDUP_ENABLED = _parse_bool(env_vars["UPLOAD_DEDUP_ENABLED"])
 
-    if "CHAT_RESPONSE_CACHE_ENABLED" in updated_keys and "CHAT_RESPONSE_CACHE_ENABLED" in env_vars:
-        settings.CHAT_RESPONSE_CACHE_ENABLED = _parse_bool(env_vars["CHAT_RESPONSE_CACHE_ENABLED"])
-    if "CHAT_RESPONSE_CACHE_TTL_SEC" in updated_keys and "CHAT_RESPONSE_CACHE_TTL_SEC" in env_vars:
-        settings.CHAT_RESPONSE_CACHE_TTL_SEC = _parse_int(
-            env_vars["CHAT_RESPONSE_CACHE_TTL_SEC"],
-            default=int(getattr(settings, "CHAT_RESPONSE_CACHE_TTL_SEC", 300) or 300),
-        )
-    if "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES" in updated_keys and "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES" in env_vars:
-        settings.CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES = _parse_int(
-            env_vars["CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES"],
-            default=int(getattr(settings, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 200_000) or 200_000),
-        )
-    if "CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY" in updated_keys and "CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY" in env_vars:
-        settings.CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY = _parse_bool(env_vars["CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY"])
+def _apply_cache_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
+    _apply_runtime_specs(
+        env_vars,
+        updated_keys,
+        (
+            ("UPLOAD_DEDUP_ENABLED", _parse_bool),
+            ("CHAT_RESPONSE_CACHE_ENABLED", _parse_bool),
+            (
+                "CHAT_RESPONSE_CACHE_TTL_SEC",
+                lambda value: _parse_int(value, default=int(getattr(settings, "CHAT_RESPONSE_CACHE_TTL_SEC", 300) or 300)),
+            ),
+            (
+                "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES",
+                lambda value: _parse_int(
+                    value,
+                    default=int(getattr(settings, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 200_000) or 200_000),
+                ),
+            ),
+            ("CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY", _parse_bool),
+        ),
+    )
 
-    # URL ingest / SSRF guardrails
-    if "URL_INGEST_ENABLED" in updated_keys and "URL_INGEST_ENABLED" in env_vars:
-        settings.URL_INGEST_ENABLED = _parse_bool(env_vars["URL_INGEST_ENABLED"])
-    if "URL_INGEST_MAX_BYTES" in updated_keys and "URL_INGEST_MAX_BYTES" in env_vars:
-        settings.URL_INGEST_MAX_BYTES = _parse_int(
-            env_vars["URL_INGEST_MAX_BYTES"], default=getattr(settings, "URL_INGEST_MAX_BYTES", 0)
-        )
-    if "URL_INGEST_TIMEOUT_SEC" in updated_keys and "URL_INGEST_TIMEOUT_SEC" in env_vars:
-        settings.URL_INGEST_TIMEOUT_SEC = _parse_float(
-            env_vars["URL_INGEST_TIMEOUT_SEC"], default=getattr(settings, "URL_INGEST_TIMEOUT_SEC", 30.0)
-        )
-    if "URL_INGEST_ALLOW_PRIVATE_IPS" in updated_keys and "URL_INGEST_ALLOW_PRIVATE_IPS" in env_vars:
-        settings.URL_INGEST_ALLOW_PRIVATE_IPS = _parse_bool(env_vars["URL_INGEST_ALLOW_PRIVATE_IPS"])
-    if "URL_INGEST_FOLLOW_REDIRECTS" in updated_keys and "URL_INGEST_FOLLOW_REDIRECTS" in env_vars:
-        settings.URL_INGEST_FOLLOW_REDIRECTS = _parse_bool(env_vars["URL_INGEST_FOLLOW_REDIRECTS"])
 
-    # Governance defaults
-    if "GOVERNANCE_ENABLED" in updated_keys and "GOVERNANCE_ENABLED" in env_vars:
-        settings.GOVERNANCE_ENABLED = _parse_bool(env_vars["GOVERNANCE_ENABLED"])
-    if "GOVERNANCE_PII_ANONYMIZE" in updated_keys and "GOVERNANCE_PII_ANONYMIZE" in env_vars:
-        settings.GOVERNANCE_PII_ANONYMIZE = _parse_bool(env_vars["GOVERNANCE_PII_ANONYMIZE"])
-    if "GOVERNANCE_SECRETS_REDACT" in updated_keys and "GOVERNANCE_SECRETS_REDACT" in env_vars:
-        settings.GOVERNANCE_SECRETS_REDACT = _parse_bool(env_vars["GOVERNANCE_SECRETS_REDACT"])
-    if "GOVERNANCE_QUARANTINE_ON_DROP" in updated_keys and "GOVERNANCE_QUARANTINE_ON_DROP" in env_vars:
-        settings.GOVERNANCE_QUARANTINE_ON_DROP = _parse_bool(env_vars["GOVERNANCE_QUARANTINE_ON_DROP"])
+def _apply_url_ingest_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
+    _apply_runtime_specs(
+        env_vars,
+        updated_keys,
+        (
+            ("URL_INGEST_ENABLED", _parse_bool),
+            ("URL_INGEST_MAX_BYTES", lambda value: _parse_int(value, default=getattr(settings, "URL_INGEST_MAX_BYTES", 0))),
+            (
+                "URL_INGEST_TIMEOUT_SEC",
+                lambda value: _parse_float(value, default=getattr(settings, "URL_INGEST_TIMEOUT_SEC", 30.0)),
+            ),
+            ("URL_INGEST_ALLOW_PRIVATE_IPS", _parse_bool),
+            ("URL_INGEST_FOLLOW_REDIRECTS", _parse_bool),
+        ),
+    )
 
-    # MinerU
-    if "MINERU_API_TOKEN" in updated_keys and "MINERU_API_TOKEN" in env_vars:
-        settings.MINERU_API_TOKEN = env_vars["MINERU_API_TOKEN"]
-    if "MINERU_API_BASE" in updated_keys and "MINERU_API_BASE" in env_vars:
-        settings.MINERU_API_BASE = env_vars["MINERU_API_BASE"]
-    if "MINERU_MODEL_VERSION" in updated_keys and "MINERU_MODEL_VERSION" in env_vars:
-        settings.MINERU_MODEL_VERSION = env_vars["MINERU_MODEL_VERSION"]
-    if "MINERU_BACKEND" in updated_keys and "MINERU_BACKEND" in env_vars:
-        settings.MINERU_BACKEND = _normalize_mineru_backend(env_vars["MINERU_BACKEND"])
-    if "MINERU_LOCAL_SERVER_URL" in updated_keys and "MINERU_LOCAL_SERVER_URL" in env_vars:
-        settings.MINERU_LOCAL_SERVER_URL = env_vars["MINERU_LOCAL_SERVER_URL"]
-    if "MINERU_VL_SERVER" in updated_keys and "MINERU_VL_SERVER" in env_vars:
-        settings.MINERU_VL_SERVER = env_vars["MINERU_VL_SERVER"]
 
-    # ETL4LLM
-    if "ETL4LLM_API_URL" in updated_keys and "ETL4LLM_API_URL" in env_vars:
-        settings.ETL4LLM_API_URL = env_vars["ETL4LLM_API_URL"]
-    if "ETL4LLM_TIMEOUT_SEC" in updated_keys and "ETL4LLM_TIMEOUT_SEC" in env_vars:
-        settings.ETL4LLM_TIMEOUT_SEC = _parse_int(env_vars["ETL4LLM_TIMEOUT_SEC"], default=settings.ETL4LLM_TIMEOUT_SEC)
-    if "ETL4LLM_MODE" in updated_keys and "ETL4LLM_MODE" in env_vars:
-        settings.ETL4LLM_MODE = env_vars["ETL4LLM_MODE"]
-    if "ETL4LLM_FORCE_OCR" in updated_keys and "ETL4LLM_FORCE_OCR" in env_vars:
-        settings.ETL4LLM_FORCE_OCR = _parse_bool(env_vars["ETL4LLM_FORCE_OCR"])
-    if "ETL4LLM_ENABLE_FORMULA" in updated_keys and "ETL4LLM_ENABLE_FORMULA" in env_vars:
-        settings.ETL4LLM_ENABLE_FORMULA = _parse_bool(env_vars["ETL4LLM_ENABLE_FORMULA"])
-    if "ETL4LLM_EXTRACT_IMAGES" in updated_keys and "ETL4LLM_EXTRACT_IMAGES" in env_vars:
-        settings.ETL4LLM_EXTRACT_IMAGES = _parse_bool(env_vars["ETL4LLM_EXTRACT_IMAGES"])
-    if "ETL4LLM_FILTER_PAGE_HEADER_FOOTER" in updated_keys and "ETL4LLM_FILTER_PAGE_HEADER_FOOTER" in env_vars:
-        settings.ETL4LLM_FILTER_PAGE_HEADER_FOOTER = _parse_bool(env_vars["ETL4LLM_FILTER_PAGE_HEADER_FOOTER"])
+def _apply_governance_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
+    _apply_runtime_specs(
+        env_vars,
+        updated_keys,
+        (
+            ("GOVERNANCE_ENABLED", _parse_bool),
+            ("GOVERNANCE_PII_ANONYMIZE", _parse_bool),
+            ("GOVERNANCE_SECRETS_REDACT", _parse_bool),
+            ("GOVERNANCE_QUARANTINE_ON_DROP", _parse_bool),
+        ),
+    )
 
-    # Marker
-    if "MARKER_API_URL" in updated_keys and "MARKER_API_URL" in env_vars:
-        settings.MARKER_API_URL = env_vars["MARKER_API_URL"]
-    if "MARKER_TIMEOUT_SEC" in updated_keys and "MARKER_TIMEOUT_SEC" in env_vars:
-        settings.MARKER_TIMEOUT_SEC = _parse_int(env_vars["MARKER_TIMEOUT_SEC"], default=settings.MARKER_TIMEOUT_SEC)
 
-    # PaddleOCR-VL
-    if "PADDLE_VL_API_URL" in updated_keys and "PADDLE_VL_API_URL" in env_vars:
-        settings.PADDLE_VL_API_URL = env_vars["PADDLE_VL_API_URL"]
-    if "PADDLE_VL_TIMEOUT_SEC" in updated_keys and "PADDLE_VL_TIMEOUT_SEC" in env_vars:
-        settings.PADDLE_VL_TIMEOUT_SEC = _parse_int(env_vars["PADDLE_VL_TIMEOUT_SEC"], default=settings.PADDLE_VL_TIMEOUT_SEC)
-    if "PADDLE_VL_PIPELINE_VERSION" in updated_keys and "PADDLE_VL_PIPELINE_VERSION" in env_vars:
-        settings.PADDLE_VL_PIPELINE_VERSION = env_vars["PADDLE_VL_PIPELINE_VERSION"]
-    if "PADDLE_VL_MODE" in updated_keys and "PADDLE_VL_MODE" in env_vars:
-        settings.PADDLE_VL_MODE = env_vars["PADDLE_VL_MODE"]
+def _apply_mineru_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
+    _apply_runtime_specs(
+        env_vars,
+        updated_keys,
+        (
+            ("MINERU_API_TOKEN", str),
+            ("MINERU_API_BASE", str),
+            ("MINERU_MODEL_VERSION", str),
+            ("MINERU_BACKEND", _normalize_mineru_backend),
+            ("MINERU_LOCAL_SERVER_URL", str),
+            ("MINERU_VL_SERVER", str),
+        ),
+    )
 
-    # MagicPDF
-    if "MAGIC_PDF_API_URL" in updated_keys and "MAGIC_PDF_API_URL" in env_vars:
-        settings.MAGIC_PDF_API_URL = env_vars["MAGIC_PDF_API_URL"]
-    if "MAGIC_PDF_REQUEST_TIMEOUT_SEC" in updated_keys and "MAGIC_PDF_REQUEST_TIMEOUT_SEC" in env_vars:
-        settings.MAGIC_PDF_REQUEST_TIMEOUT_SEC = _parse_int(
-            env_vars["MAGIC_PDF_REQUEST_TIMEOUT_SEC"], default=getattr(settings, "MAGIC_PDF_REQUEST_TIMEOUT_SEC", 600)
-        )
-    if "MAGIC_PDF_MAX_CONCURRENT_JOBS" in updated_keys and "MAGIC_PDF_MAX_CONCURRENT_JOBS" in env_vars:
-        settings.MAGIC_PDF_MAX_CONCURRENT_JOBS = _parse_int(
-            env_vars["MAGIC_PDF_MAX_CONCURRENT_JOBS"], default=getattr(settings, "MAGIC_PDF_MAX_CONCURRENT_JOBS", 1)
-        )
-    if "MAGIC_PDF_CLI" in updated_keys and "MAGIC_PDF_CLI" in env_vars:
-        settings.MAGIC_PDF_CLI = env_vars["MAGIC_PDF_CLI"]
-    if "MAGIC_PDF_METHOD" in updated_keys and "MAGIC_PDF_METHOD" in env_vars:
-        settings.MAGIC_PDF_METHOD = env_vars["MAGIC_PDF_METHOD"]
-    if "MAGIC_PDF_LANG" in updated_keys and "MAGIC_PDF_LANG" in env_vars:
-        settings.MAGIC_PDF_LANG = env_vars["MAGIC_PDF_LANG"]
-    if "MAGIC_PDF_DEBUG" in updated_keys and "MAGIC_PDF_DEBUG" in env_vars:
-        settings.MAGIC_PDF_DEBUG = _parse_bool(env_vars["MAGIC_PDF_DEBUG"])
-    if "MAGIC_PDF_TIMEOUT_SEC" in updated_keys and "MAGIC_PDF_TIMEOUT_SEC" in env_vars:
-        settings.MAGIC_PDF_TIMEOUT_SEC = _parse_int(env_vars["MAGIC_PDF_TIMEOUT_SEC"], default=settings.MAGIC_PDF_TIMEOUT_SEC)
-    if "MAGIC_PDF_MODELS_DIR" in updated_keys and "MAGIC_PDF_MODELS_DIR" in env_vars:
-        settings.MAGIC_PDF_MODELS_DIR = env_vars["MAGIC_PDF_MODELS_DIR"]
-    if "MAGIC_PDF_DEVICE_MODE" in updated_keys and "MAGIC_PDF_DEVICE_MODE" in env_vars:
-        settings.MAGIC_PDF_DEVICE_MODE = env_vars["MAGIC_PDF_DEVICE_MODE"]
-    if "MAGIC_PDF_KEEP_ARTIFACTS" in updated_keys and "MAGIC_PDF_KEEP_ARTIFACTS" in env_vars:
-        settings.MAGIC_PDF_KEEP_ARTIFACTS = _parse_bool(env_vars["MAGIC_PDF_KEEP_ARTIFACTS"])
 
-    # Observability / debug toggles
-    if "TOOL_CALL_LOG_ENABLED" in updated_keys and "TOOL_CALL_LOG_ENABLED" in env_vars:
-        settings.TOOL_CALL_LOG_ENABLED = _parse_bool(env_vars["TOOL_CALL_LOG_ENABLED"])
-    if "TOOL_CALL_LOG_INCLUDE_PREVIEW" in updated_keys and "TOOL_CALL_LOG_INCLUDE_PREVIEW" in env_vars:
-        settings.TOOL_CALL_LOG_INCLUDE_PREVIEW = _parse_bool(env_vars["TOOL_CALL_LOG_INCLUDE_PREVIEW"])
-    if "TOOL_CALL_LOG_MAX_PREVIEW_CHARS" in updated_keys and "TOOL_CALL_LOG_MAX_PREVIEW_CHARS" in env_vars:
-        settings.TOOL_CALL_LOG_MAX_PREVIEW_CHARS = _parse_int(
-            env_vars["TOOL_CALL_LOG_MAX_PREVIEW_CHARS"],
-            default=settings.TOOL_CALL_LOG_MAX_PREVIEW_CHARS,
-        )
+def _apply_etl4llm_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
+    _apply_runtime_specs(
+        env_vars,
+        updated_keys,
+        (
+            ("ETL4LLM_API_URL", str),
+            ("ETL4LLM_TIMEOUT_SEC", lambda value: _parse_int(value, default=settings.ETL4LLM_TIMEOUT_SEC)),
+            ("ETL4LLM_MODE", str),
+            ("ETL4LLM_FORCE_OCR", _parse_bool),
+            ("ETL4LLM_ENABLE_FORMULA", _parse_bool),
+            ("ETL4LLM_EXTRACT_IMAGES", _parse_bool),
+            ("ETL4LLM_FILTER_PAGE_HEADER_FOOTER", _parse_bool),
+        ),
+    )
 
-    if "AGENT_LOG_ENABLED" in updated_keys and "AGENT_LOG_ENABLED" in env_vars:
-        settings.AGENT_LOG_ENABLED = _parse_bool(env_vars["AGENT_LOG_ENABLED"])
-    if "AGENT_LOG_INCLUDE_EXECUTION_PATH" in updated_keys and "AGENT_LOG_INCLUDE_EXECUTION_PATH" in env_vars:
-        settings.AGENT_LOG_INCLUDE_EXECUTION_PATH = _parse_bool(env_vars["AGENT_LOG_INCLUDE_EXECUTION_PATH"])
-    if "AGENT_LOG_MAX_PREVIEW_CHARS" in updated_keys and "AGENT_LOG_MAX_PREVIEW_CHARS" in env_vars:
-        settings.AGENT_LOG_MAX_PREVIEW_CHARS = _parse_int(
-            env_vars["AGENT_LOG_MAX_PREVIEW_CHARS"],
-            default=settings.AGENT_LOG_MAX_PREVIEW_CHARS,
-        )
 
-    # Metrics log (JSONL) controls
-    if "ENABLE_METRICS_LOG" in updated_keys and "ENABLE_METRICS_LOG" in env_vars:
-        settings.ENABLE_METRICS_LOG = _parse_bool(env_vars["ENABLE_METRICS_LOG"])
-    if "METRICS_LOG_INCLUDE_TEXT" in updated_keys and "METRICS_LOG_INCLUDE_TEXT" in env_vars:
-        settings.METRICS_LOG_INCLUDE_TEXT = _parse_bool(env_vars["METRICS_LOG_INCLUDE_TEXT"])
+def _apply_marker_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
+    _apply_runtime_specs(
+        env_vars,
+        updated_keys,
+        (
+            ("MARKER_API_URL", str),
+            ("MARKER_TIMEOUT_SEC", lambda value: _parse_int(value, default=settings.MARKER_TIMEOUT_SEC)),
+        ),
+    )
 
-    # Safety / PII
-    if "PII_REDACTION_ENABLED" in updated_keys and "PII_REDACTION_ENABLED" in env_vars:
-        settings.PII_REDACTION_ENABLED = _parse_bool(env_vars["PII_REDACTION_ENABLED"])
-    if "PII_REDACTION_MASK" in updated_keys and "PII_REDACTION_MASK" in env_vars:
-        settings.PII_REDACTION_MASK = env_vars["PII_REDACTION_MASK"]
-    if "PII_STREAM_HOLDBACK_CHARS" in updated_keys and "PII_STREAM_HOLDBACK_CHARS" in env_vars:
-        settings.PII_STREAM_HOLDBACK_CHARS = _parse_int(
-            env_vars["PII_STREAM_HOLDBACK_CHARS"],
-            default=settings.PII_STREAM_HOLDBACK_CHARS,
-        )
 
-    # Chat streaming robustness
-    if "CHAT_STREAM_HEARTBEAT_SEC" in updated_keys and "CHAT_STREAM_HEARTBEAT_SEC" in env_vars:
-        settings.CHAT_STREAM_HEARTBEAT_SEC = _parse_float(
-            env_vars["CHAT_STREAM_HEARTBEAT_SEC"], default=getattr(settings, "CHAT_STREAM_HEARTBEAT_SEC", 10.0)
-        )
-    if "CHAT_STREAM_CANCEL_ON_DISCONNECT" in updated_keys and "CHAT_STREAM_CANCEL_ON_DISCONNECT" in env_vars:
-        settings.CHAT_STREAM_CANCEL_ON_DISCONNECT = _parse_bool(env_vars["CHAT_STREAM_CANCEL_ON_DISCONNECT"])
+def _apply_paddle_vl_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
+    _apply_runtime_specs(
+        env_vars,
+        updated_keys,
+        (
+            ("PADDLE_VL_API_URL", str),
+            ("PADDLE_VL_TIMEOUT_SEC", lambda value: _parse_int(value, default=settings.PADDLE_VL_TIMEOUT_SEC)),
+            ("PADDLE_VL_PIPELINE_VERSION", str),
+            ("PADDLE_VL_MODE", str),
+        ),
+    )
 
-    # LangGraph
-    if "LANGGRAPH_USE_SUBGRAPHS" in updated_keys and "LANGGRAPH_USE_SUBGRAPHS" in env_vars:
-        settings.LANGGRAPH_USE_SUBGRAPHS = _parse_bool(env_vars["LANGGRAPH_USE_SUBGRAPHS"])
 
-    # Frontend navigation visibility
-    if "NAVIGATION_USER_VISIBLE_MODULES" in updated_keys and "NAVIGATION_USER_VISIBLE_MODULES" in env_vars:
-        settings.NAVIGATION_USER_VISIBLE_MODULES = env_vars["NAVIGATION_USER_VISIBLE_MODULES"]
+def _apply_magicpdf_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
+    _apply_runtime_specs(
+        env_vars,
+        updated_keys,
+        (
+            ("MAGIC_PDF_API_URL", str),
+            (
+                "MAGIC_PDF_REQUEST_TIMEOUT_SEC",
+                lambda value: _parse_int(value, default=int(getattr(settings, "MAGIC_PDF_REQUEST_TIMEOUT_SEC", 600) or 600)),
+            ),
+            (
+                "MAGIC_PDF_MAX_CONCURRENT_JOBS",
+                lambda value: _parse_int(value, default=int(getattr(settings, "MAGIC_PDF_MAX_CONCURRENT_JOBS", 1) or 1)),
+            ),
+            ("MAGIC_PDF_CLI", str),
+            ("MAGIC_PDF_METHOD", str),
+            ("MAGIC_PDF_LANG", str),
+            ("MAGIC_PDF_DEBUG", _parse_bool),
+            ("MAGIC_PDF_TIMEOUT_SEC", lambda value: _parse_int(value, default=settings.MAGIC_PDF_TIMEOUT_SEC)),
+            ("MAGIC_PDF_MODELS_DIR", str),
+            ("MAGIC_PDF_DEVICE_MODE", str),
+            ("MAGIC_PDF_KEEP_ARTIFACTS", _parse_bool),
+        ),
+    )
 
-    # Dify External Knowledge adapter
-    if "DIFY_EXTERNAL_KNOWLEDGE_ENABLED" in updated_keys and "DIFY_EXTERNAL_KNOWLEDGE_ENABLED" in env_vars:
-        settings.DIFY_EXTERNAL_KNOWLEDGE_ENABLED = _parse_bool(env_vars["DIFY_EXTERNAL_KNOWLEDGE_ENABLED"])
-    if "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS" in updated_keys and "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS" in env_vars:
-        settings.DIFY_EXTERNAL_KNOWLEDGE_API_KEYS = env_vars["DIFY_EXTERNAL_KNOWLEDGE_API_KEYS"]
-    if "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID" in updated_keys and "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID" in env_vars:
-        settings.DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID = env_vars["DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID"]
-    if "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID" in updated_keys and "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID" in env_vars:
-        settings.DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID = env_vars["DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID"]
-    if "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON" in updated_keys and "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON" in env_vars:
-        settings.DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON = env_vars["DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON"]
-    if "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX" in updated_keys and "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX" in env_vars:
-        settings.DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX = _parse_int(
-            env_vars["DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX"],
-            default=int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 5) or 5),
-        )
+
+def _apply_observability_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
+    _apply_runtime_specs(
+        env_vars,
+        updated_keys,
+        (
+            ("TOOL_CALL_LOG_ENABLED", _parse_bool),
+            ("TOOL_CALL_LOG_INCLUDE_PREVIEW", _parse_bool),
+            ("TOOL_CALL_LOG_MAX_PREVIEW_CHARS", lambda value: _parse_int(value, default=settings.TOOL_CALL_LOG_MAX_PREVIEW_CHARS)),
+            ("AGENT_LOG_ENABLED", _parse_bool),
+            ("AGENT_LOG_INCLUDE_EXECUTION_PATH", _parse_bool),
+            ("AGENT_LOG_MAX_PREVIEW_CHARS", lambda value: _parse_int(value, default=settings.AGENT_LOG_MAX_PREVIEW_CHARS)),
+            ("ENABLE_METRICS_LOG", _parse_bool),
+            ("METRICS_LOG_INCLUDE_TEXT", _parse_bool),
+        ),
+    )
+
+
+def _apply_safety_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
+    _apply_runtime_specs(
+        env_vars,
+        updated_keys,
+        (
+            ("PII_REDACTION_ENABLED", _parse_bool),
+            ("PII_REDACTION_MASK", str),
+            ("PII_STREAM_HOLDBACK_CHARS", lambda value: _parse_int(value, default=settings.PII_STREAM_HOLDBACK_CHARS)),
+        ),
+    )
+
+
+def _apply_chat_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
+    _apply_runtime_specs(
+        env_vars,
+        updated_keys,
+        (
+            (
+                "CHAT_STREAM_HEARTBEAT_SEC",
+                lambda value: _parse_float(value, default=getattr(settings, "CHAT_STREAM_HEARTBEAT_SEC", 10.0)),
+            ),
+            ("CHAT_STREAM_CANCEL_ON_DISCONNECT", _parse_bool),
+        ),
+    )
+
+
+def _apply_langgraph_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
+    _apply_runtime_specs(env_vars, updated_keys, (("LANGGRAPH_USE_SUBGRAPHS", _parse_bool),))
+
+
+def _apply_navigation_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
+    _apply_runtime_specs(env_vars, updated_keys, (("NAVIGATION_USER_VISIBLE_MODULES", str),))
+
+
+def _apply_dify_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
+    _apply_runtime_specs(
+        env_vars,
+        updated_keys,
+        (
+            ("DIFY_EXTERNAL_KNOWLEDGE_ENABLED", _parse_bool),
+            ("DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", str),
+            ("DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", str),
+            ("DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", str),
+            ("DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", str),
+            (
+                "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX",
+                lambda value: _parse_int(value, default=int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 5) or 5)),
+            ),
+        ),
+    )
+
+
+def _apply_runtime_settings(env_vars: dict[str, str], updated_keys: list[str]) -> None:
+    """
+    Best-effort: apply updated .env values to the in-memory settings object so
+    config changes can take effect without a restart.
+    """
+    updated_key_set = set(updated_keys)
+    _apply_feature_flag_runtime_settings(env_vars, updated_key_set)
+    _apply_kg_runtime_settings(env_vars, updated_key_set)
+    _apply_llm_runtime_settings(env_vars, updated_key_set)
+    _apply_embedding_runtime_settings(env_vars, updated_key_set)
+    _apply_milvus_runtime_settings(env_vars, updated_key_set)
+    _apply_storage_runtime_settings(env_vars, updated_key_set)
+    _apply_rag_runtime_settings(env_vars, updated_key_set)
+    _apply_cache_runtime_settings(env_vars, updated_key_set)
+    _apply_url_ingest_runtime_settings(env_vars, updated_key_set)
+    _apply_governance_runtime_settings(env_vars, updated_key_set)
+    _apply_mineru_runtime_settings(env_vars, updated_key_set)
+    _apply_etl4llm_runtime_settings(env_vars, updated_key_set)
+    _apply_marker_runtime_settings(env_vars, updated_key_set)
+    _apply_paddle_vl_runtime_settings(env_vars, updated_key_set)
+    _apply_magicpdf_runtime_settings(env_vars, updated_key_set)
+    _apply_observability_runtime_settings(env_vars, updated_key_set)
+    _apply_safety_runtime_settings(env_vars, updated_key_set)
+    _apply_chat_runtime_settings(env_vars, updated_key_set)
+    _apply_langgraph_runtime_settings(env_vars, updated_key_set)
+    _apply_navigation_runtime_settings(env_vars, updated_key_set)
+    _apply_dify_runtime_settings(env_vars, updated_key_set)
 
 
 def read_env_file() -> dict[str, str]:
@@ -1245,6 +1275,507 @@ def get_settings(
     )
 
 
+def _set_bool_env(env_vars: dict[str, str], key: str, value: Any) -> None:
+    env_vars[key] = str(bool(value)).lower()
+
+
+def _set_int_env(env_vars: dict[str, str], key: str, value: Any) -> None:
+    env_vars[key] = str(int(value))
+
+
+def _set_float_env(env_vars: dict[str, str], key: str, value: Any) -> None:
+    env_vars[key] = str(float(value))
+
+
+def _set_non_negative_int_env(env_vars: dict[str, str], key: str, value: Any) -> None:
+    env_vars[key] = str(max(0, int(value or 0)))
+
+
+def _set_sanitized_env(env_vars: dict[str, str], key: str, value: Any) -> None:
+    env_vars[key] = _sanitize_env_value(key, value)
+
+
+def _set_maskable_secret_env(env_vars: dict[str, str], updated_keys: list[str], key: str, value: str) -> None:
+    if value and "***" not in value:
+        env_vars[key] = _sanitize_env_value(key, value)
+        updated_keys.append(key)
+
+
+def _normalize_choice(value: str, *, default: str, allowed: set[str]) -> str:
+    normalized = (value or default).strip().lower() or default
+    if normalized not in allowed:
+        return default
+    return normalized
+
+
+def _validate_optional_uuid_setting(key: str, value: str, *, detail: str) -> str:
+    sanitized = _sanitize_env_value(key, value or "")
+    if sanitized:
+        try:
+            UUID(sanitized)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=detail) from exc
+    return sanitized
+
+
+def _validate_json_object_setting(
+    key: str,
+    value: str,
+    *,
+    invalid_detail: str,
+    non_object_detail: str,
+) -> str:
+    sanitized = _sanitize_env_value(key, value or "")
+    if not sanitized:
+        return sanitized
+    try:
+        parsed = json.loads(sanitized)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=invalid_detail) from exc
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=400, detail=non_object_detail)
+    return sanitized
+
+
+def _update_feature_flag_env(env_vars: dict[str, str], updated_keys: list[str], feature_flags: FeatureFlags) -> None:
+    values = (
+        ("KG_ENABLED", feature_flags.kg_enabled),
+        ("DEEPDOC_ENABLED", feature_flags.deepdoc_enabled),
+        ("DOCLING_ENABLED", getattr(feature_flags, "docling_enabled", False)),
+        ("ETL4LLM_ENABLED", getattr(feature_flags, "etl4llm_enabled", False)),
+        ("MARKER_ENABLED", getattr(feature_flags, "marker_enabled", False)),
+        ("PADDLE_VL_ENABLED", getattr(feature_flags, "paddle_vl_enabled", False)),
+        ("TEXTIN_ENABLED", getattr(feature_flags, "textin_enabled", False)),
+        ("MARKITDOWN_ENABLED", feature_flags.markitdown_enabled),
+        ("LLAMA_INDEX_ENABLED", feature_flags.llama_index_enabled),
+        ("MINERU_ENABLED", feature_flags.mineru_enabled),
+        ("MAGIC_PDF_ENABLED", getattr(feature_flags, "magicpdf_enabled", False)),
+    )
+    for key, value in values:
+        _set_bool_env(env_vars, key, value)
+    updated_keys.extend(key for key, _value in values)
+
+
+def _update_kg_env(env_vars: dict[str, str], updated_keys: list[str], kg: KGConfig) -> None:
+    _set_bool_env(env_vars, "KG_CHAT_ENABLED", kg.chat_enabled)
+    env_vars["KG_EXTRACT_PROMPT_TEMPLATE_ID"] = _validate_optional_uuid_setting(
+        "KG_EXTRACT_PROMPT_TEMPLATE_ID",
+        kg.extract_prompt_template_id or "",
+        detail="Invalid KG_EXTRACT_PROMPT_TEMPLATE_ID",
+    )
+    _set_sanitized_env(env_vars, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", kg.extract_prompt_template_key or "")
+    _set_sanitized_env(env_vars, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", kg.extract_prompt_ab_experiment_key or "")
+    _set_bool_env(env_vars, "KG_EXTRACT_REPLACE_EXISTING", getattr(kg, "extract_replace_existing", True))
+    _set_bool_env(env_vars, "KG_EXTRACT_PRUNE_ORPHAN_ENTITIES", getattr(kg, "extract_prune_orphan_entities", True))
+    updated_keys.extend(
+        [
+            "KG_CHAT_ENABLED",
+            "KG_EXTRACT_PROMPT_TEMPLATE_ID",
+            "KG_EXTRACT_PROMPT_TEMPLATE_KEY",
+            "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY",
+            "KG_EXTRACT_REPLACE_EXISTING",
+            "KG_EXTRACT_PRUNE_ORPHAN_ENTITIES",
+        ]
+    )
+
+
+def _update_llm_env(env_vars: dict[str, str], updated_keys: list[str], llm: LLMConfig) -> None:
+    _set_maskable_secret_env(env_vars, updated_keys, "LLM_API_KEY", llm.api_key)
+    _set_sanitized_env(env_vars, "LLM_API_BASE", llm.api_base)
+    _set_sanitized_env(env_vars, "LLM_MODEL", llm.model)
+    env_vars["LLM_TEMPERATURE"] = str(llm.temperature)
+    env_vars["LLM_TIMEOUT"] = str(llm.timeout)
+    env_vars["LLM_MAX_RETRIES"] = str(llm.max_retries)
+    updated_keys.extend(["LLM_API_BASE", "LLM_MODEL", "LLM_TEMPERATURE", "LLM_TIMEOUT", "LLM_MAX_RETRIES"])
+
+
+def _update_embedding_env(env_vars: dict[str, str], updated_keys: list[str], embedding: EmbeddingConfig) -> None:
+    _set_sanitized_env(env_vars, "EMBEDDING_PROVIDER", embedding.provider)
+    _set_sanitized_env(env_vars, "EMBEDDING_MODEL", embedding.model)
+    _set_maskable_secret_env(env_vars, updated_keys, "EMBEDDING_API_KEY", embedding.api_key)
+    _set_sanitized_env(env_vars, "EMBEDDING_API_BASE", embedding.api_base)
+    updated_keys.extend(["EMBEDDING_PROVIDER", "EMBEDDING_MODEL", "EMBEDDING_API_BASE"])
+
+
+def _update_milvus_env(env_vars: dict[str, str], updated_keys: list[str], milvus: MilvusConfig) -> None:
+    _set_sanitized_env(env_vars, "MILVUS_HOST", milvus.host)
+    env_vars["MILVUS_PORT"] = str(milvus.port)
+    _set_sanitized_env(env_vars, "MILVUS_USER", milvus.user)
+    _set_maskable_secret_env(env_vars, updated_keys, "MILVUS_PASSWORD", milvus.password)
+    _set_sanitized_env(env_vars, "MILVUS_COLLECTION_NAME", milvus.collection_name)
+    updated_keys.extend(["MILVUS_HOST", "MILVUS_PORT", "MILVUS_USER", "MILVUS_COLLECTION_NAME"])
+
+
+def _update_minio_env(env_vars: dict[str, str], updated_keys: list[str], minio: MinioConfig) -> None:
+    _set_bool_env(env_vars, "MINIO_ENABLED", minio.enabled)
+    _set_sanitized_env(env_vars, "MINIO_ENDPOINT", minio.endpoint)
+    _set_maskable_secret_env(env_vars, updated_keys, "MINIO_ACCESS_KEY", minio.access_key)
+    _set_maskable_secret_env(env_vars, updated_keys, "MINIO_SECRET_KEY", minio.secret_key)
+    _set_sanitized_env(env_vars, "MINIO_BUCKET_NAME", minio.bucket_name)
+    _set_bool_env(env_vars, "MINIO_USE_SSL", minio.use_ssl)
+    _set_bool_env(env_vars, "MINIO_DOCUMENTS_ENABLED", minio.documents_enabled)
+    _set_non_negative_int_env(env_vars, "MINIO_IMAGE_MAX_BYTES", minio.image_max_bytes)
+    updated_keys.extend(
+        [
+            "MINIO_ENABLED",
+            "MINIO_ENDPOINT",
+            "MINIO_BUCKET_NAME",
+            "MINIO_USE_SSL",
+            "MINIO_DOCUMENTS_ENABLED",
+            "MINIO_IMAGE_MAX_BYTES",
+        ]
+    )
+
+
+def _update_rag_env(env_vars: dict[str, str], updated_keys: list[str], rag: RAGConfig) -> None:
+    env_vars["CHUNK_SIZE"] = str(rag.chunk_size)
+    env_vars["CHUNK_OVERLAP"] = str(rag.chunk_overlap)
+    _set_non_negative_int_env(env_vars, "CHUNK_MIN_CHARS", getattr(rag, "chunk_min_chars", 0))
+    env_vars["RETRIEVAL_TOP_K"] = str(rag.retrieval_top_k)
+    env_vars["SIMILARITY_THRESHOLD"] = str(rag.similarity_threshold)
+    _set_sanitized_env(env_vars, "DEFAULT_PARSER_BACKEND", rag.default_parser_backend)
+    _set_sanitized_env(env_vars, "DEFAULT_CHUNK_STRATEGY", rag.default_chunk_strategy)
+    _set_bool_env(env_vars, "BM25_INDEX_ENABLED", getattr(rag, "bm25_index_enabled", True))
+    _set_bool_env(env_vars, "ENABLE_RERANKER", getattr(rag, "enable_reranker", False))
+    _set_sanitized_env(env_vars, "RERANKER_PROVIDER", rag.reranker_provider)
+    env_vars["RERANKER_TOP_N"] = str(int(getattr(rag, "reranker_top_n", 20) or 20))
+    _set_bool_env(env_vars, "SHOW_IMAGE_IN_ANSWER", getattr(rag, "show_image_in_answer", True))
+    env_vars["IMAGE_APPEND_MAX"] = str(max(0, min(10, int(getattr(rag, "image_append_max", 3) or 0))))
+    updated_keys.extend(
+        [
+            "CHUNK_SIZE",
+            "CHUNK_OVERLAP",
+            "CHUNK_MIN_CHARS",
+            "RETRIEVAL_TOP_K",
+            "SIMILARITY_THRESHOLD",
+            "DEFAULT_PARSER_BACKEND",
+            "DEFAULT_CHUNK_STRATEGY",
+            "BM25_INDEX_ENABLED",
+            "ENABLE_RERANKER",
+            "RERANKER_PROVIDER",
+            "RERANKER_TOP_N",
+            "SHOW_IMAGE_IN_ANSWER",
+            "IMAGE_APPEND_MAX",
+        ]
+    )
+
+
+def _update_cache_env(env_vars: dict[str, str], updated_keys: list[str], cache: CacheConfig) -> None:
+    _set_bool_env(env_vars, "UPLOAD_DEDUP_ENABLED", getattr(cache, "upload_dedup_enabled", False))
+    _set_bool_env(env_vars, "CHAT_RESPONSE_CACHE_ENABLED", getattr(cache, "chat_response_cache_enabled", False))
+    env_vars["CHAT_RESPONSE_CACHE_TTL_SEC"] = str(int(getattr(cache, "chat_response_cache_ttl_sec", 0) or 0))
+    env_vars["CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES"] = str(
+        int(getattr(cache, "chat_response_cache_max_value_bytes", 0) or 0)
+    )
+    _set_bool_env(
+        env_vars,
+        "CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY",
+        getattr(cache, "chat_response_cache_require_empty_history", True),
+    )
+    updated_keys.extend(
+        [
+            "UPLOAD_DEDUP_ENABLED",
+            "CHAT_RESPONSE_CACHE_ENABLED",
+            "CHAT_RESPONSE_CACHE_TTL_SEC",
+            "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES",
+            "CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY",
+        ]
+    )
+
+
+def _update_url_ingest_env(env_vars: dict[str, str], updated_keys: list[str], url_ingest: UrlIngestConfig) -> None:
+    _set_bool_env(env_vars, "URL_INGEST_ENABLED", url_ingest.enabled)
+    _set_int_env(env_vars, "URL_INGEST_MAX_BYTES", getattr(url_ingest, "max_bytes", 0) or 0)
+    _set_float_env(env_vars, "URL_INGEST_TIMEOUT_SEC", getattr(url_ingest, "timeout_sec", 0.0) or 0.0)
+    _set_bool_env(env_vars, "URL_INGEST_ALLOW_PRIVATE_IPS", getattr(url_ingest, "allow_private_ips", False))
+    _set_bool_env(env_vars, "URL_INGEST_FOLLOW_REDIRECTS", getattr(url_ingest, "follow_redirects", False))
+    updated_keys.extend(
+        [
+            "URL_INGEST_ENABLED",
+            "URL_INGEST_MAX_BYTES",
+            "URL_INGEST_TIMEOUT_SEC",
+            "URL_INGEST_ALLOW_PRIVATE_IPS",
+            "URL_INGEST_FOLLOW_REDIRECTS",
+        ]
+    )
+
+
+def _update_governance_env(env_vars: dict[str, str], updated_keys: list[str], governance: GovernanceConfig) -> None:
+    _set_bool_env(env_vars, "GOVERNANCE_ENABLED", getattr(governance, "enabled", False))
+    _set_bool_env(env_vars, "GOVERNANCE_PII_ANONYMIZE", getattr(governance, "pii_anonymize", False))
+    _set_bool_env(env_vars, "GOVERNANCE_SECRETS_REDACT", getattr(governance, "secrets_redact", False))
+    _set_bool_env(env_vars, "GOVERNANCE_QUARANTINE_ON_DROP", getattr(governance, "quarantine_on_drop", False))
+    updated_keys.extend(
+        [
+            "GOVERNANCE_ENABLED",
+            "GOVERNANCE_PII_ANONYMIZE",
+            "GOVERNANCE_SECRETS_REDACT",
+            "GOVERNANCE_QUARANTINE_ON_DROP",
+        ]
+    )
+
+
+def _update_mineru_env(env_vars: dict[str, str], updated_keys: list[str], mineru: MinerUConfig) -> None:
+    _set_maskable_secret_env(env_vars, updated_keys, "MINERU_API_TOKEN", mineru.api_token)
+    _set_sanitized_env(env_vars, "MINERU_API_BASE", mineru.api_base)
+    _set_sanitized_env(env_vars, "MINERU_MODEL_VERSION", mineru.model_version)
+    env_vars["MINERU_BACKEND"] = _normalize_mineru_backend(mineru.backend)
+    _set_sanitized_env(env_vars, "MINERU_LOCAL_SERVER_URL", mineru.local_server_url)
+    _set_sanitized_env(env_vars, "MINERU_VL_SERVER", mineru.vl_server)
+    updated_keys.extend(
+        [
+            "MINERU_API_BASE",
+            "MINERU_MODEL_VERSION",
+            "MINERU_BACKEND",
+            "MINERU_LOCAL_SERVER_URL",
+            "MINERU_VL_SERVER",
+        ]
+    )
+
+
+def _update_etl4llm_env(env_vars: dict[str, str], updated_keys: list[str], etl4llm: Etl4LlmConfig) -> None:
+    _set_sanitized_env(env_vars, "ETL4LLM_API_URL", etl4llm.api_url or "")
+    env_vars["ETL4LLM_TIMEOUT_SEC"] = str(int(etl4llm.timeout_sec or 0))
+    env_vars["ETL4LLM_MODE"] = _sanitize_env_value(
+        "ETL4LLM_MODE",
+        _normalize_choice(etl4llm.mode or "partition", default="partition", allowed={"partition", "text"}),
+    )
+    _set_bool_env(env_vars, "ETL4LLM_FORCE_OCR", etl4llm.force_ocr)
+    _set_bool_env(env_vars, "ETL4LLM_ENABLE_FORMULA", etl4llm.enable_formula)
+    _set_bool_env(env_vars, "ETL4LLM_EXTRACT_IMAGES", etl4llm.extract_images)
+    _set_bool_env(env_vars, "ETL4LLM_FILTER_PAGE_HEADER_FOOTER", etl4llm.filter_page_header_footer)
+    updated_keys.extend(
+        [
+            "ETL4LLM_API_URL",
+            "ETL4LLM_TIMEOUT_SEC",
+            "ETL4LLM_MODE",
+            "ETL4LLM_FORCE_OCR",
+            "ETL4LLM_ENABLE_FORMULA",
+            "ETL4LLM_EXTRACT_IMAGES",
+            "ETL4LLM_FILTER_PAGE_HEADER_FOOTER",
+        ]
+    )
+
+
+def _update_marker_env(env_vars: dict[str, str], updated_keys: list[str], marker: MarkerConfig) -> None:
+    _set_sanitized_env(env_vars, "MARKER_API_URL", marker.api_url or "")
+    env_vars["MARKER_TIMEOUT_SEC"] = str(int(marker.timeout_sec or 0))
+    updated_keys.extend(["MARKER_API_URL", "MARKER_TIMEOUT_SEC"])
+
+
+def _update_paddle_vl_env(env_vars: dict[str, str], updated_keys: list[str], paddle_vl: PaddleVLConfig) -> None:
+    _set_sanitized_env(env_vars, "PADDLE_VL_API_URL", paddle_vl.api_url or "")
+    env_vars["PADDLE_VL_TIMEOUT_SEC"] = str(int(paddle_vl.timeout_sec or 0))
+    pipeline_version = (paddle_vl.pipeline_version or "v1.5").strip() or "v1.5"
+    env_vars["PADDLE_VL_PIPELINE_VERSION"] = _sanitize_env_value("PADDLE_VL_PIPELINE_VERSION", pipeline_version)
+    env_vars["PADDLE_VL_MODE"] = _sanitize_env_value(
+        "PADDLE_VL_MODE",
+        _normalize_choice(paddle_vl.mode or "doc_parser", default="doc_parser", allowed={"doc_parser"}),
+    )
+    updated_keys.extend(["PADDLE_VL_API_URL", "PADDLE_VL_TIMEOUT_SEC", "PADDLE_VL_PIPELINE_VERSION", "PADDLE_VL_MODE"])
+
+
+def _update_textin_env(env_vars: dict[str, str], updated_keys: list[str], textin: TextInConfig) -> None:
+    _set_sanitized_env(env_vars, "TEXTIN_API_URL", textin.api_url or "")
+    _set_sanitized_env(env_vars, "TEXTIN_APP_ID", textin.app_id or "")
+    _set_maskable_secret_env(env_vars, updated_keys, "TEXTIN_SECRET_CODE", textin.secret_code or "")
+    env_vars["TEXTIN_TIMEOUT_SEC"] = str(int(textin.timeout_sec or 0))
+    env_vars["TEXTIN_PARSE_MODE"] = _sanitize_env_value(
+        "TEXTIN_PARSE_MODE",
+        _normalize_choice(textin.parse_mode or "auto", default="auto", allowed={"auto", "scan", "parse", "lite", "vlm"}),
+    )
+    env_vars["TEXTIN_TABLE_FLAVOR"] = _sanitize_env_value(
+        "TEXTIN_TABLE_FLAVOR",
+        _normalize_choice(textin.table_flavor or "html", default="html", allowed={"html", "markdown"}),
+    )
+    env_vars["TEXTIN_GET_IMAGE"] = _sanitize_env_value(
+        "TEXTIN_GET_IMAGE",
+        _normalize_choice(textin.get_image or "none", default="none", allowed={"none", "objects", "pages", "both"}),
+    )
+    _set_bool_env(env_vars, "TEXTIN_APPLY_DOCUMENT_TREE", textin.apply_document_tree)
+    _set_bool_env(env_vars, "TEXTIN_MARKDOWN_DETAILS", textin.markdown_details)
+    _set_non_negative_int_env(env_vars, "TEXTIN_DPI", textin.dpi)
+    _set_non_negative_int_env(env_vars, "TEXTIN_PAGE_COUNT", textin.page_count)
+    updated_keys.extend(
+        [
+            "TEXTIN_API_URL",
+            "TEXTIN_APP_ID",
+            "TEXTIN_TIMEOUT_SEC",
+            "TEXTIN_PARSE_MODE",
+            "TEXTIN_TABLE_FLAVOR",
+            "TEXTIN_GET_IMAGE",
+            "TEXTIN_APPLY_DOCUMENT_TREE",
+            "TEXTIN_MARKDOWN_DETAILS",
+            "TEXTIN_DPI",
+            "TEXTIN_PAGE_COUNT",
+        ]
+    )
+
+
+def _update_magicpdf_env(env_vars: dict[str, str], updated_keys: list[str], magicpdf: MagicPDFConfig) -> None:
+    _set_sanitized_env(env_vars, "MAGIC_PDF_API_URL", magicpdf.api_url)
+    env_vars["MAGIC_PDF_REQUEST_TIMEOUT_SEC"] = str(max(1, int(magicpdf.request_timeout_sec or 0)))
+    env_vars["MAGIC_PDF_MAX_CONCURRENT_JOBS"] = str(max(1, int(magicpdf.max_concurrent_jobs or 1)))
+    _set_sanitized_env(env_vars, "MAGIC_PDF_CLI", magicpdf.cli)
+    _set_sanitized_env(env_vars, "MAGIC_PDF_METHOD", magicpdf.method)
+    _set_sanitized_env(env_vars, "MAGIC_PDF_LANG", magicpdf.lang)
+    _set_bool_env(env_vars, "MAGIC_PDF_DEBUG", magicpdf.debug)
+    env_vars["MAGIC_PDF_TIMEOUT_SEC"] = str(int(magicpdf.timeout_sec or 0))
+    _set_sanitized_env(env_vars, "MAGIC_PDF_MODELS_DIR", magicpdf.models_dir)
+    _set_sanitized_env(env_vars, "MAGIC_PDF_DEVICE_MODE", magicpdf.device_mode)
+    _set_bool_env(env_vars, "MAGIC_PDF_KEEP_ARTIFACTS", magicpdf.keep_artifacts)
+    updated_keys.extend(
+        [
+            "MAGIC_PDF_API_URL",
+            "MAGIC_PDF_REQUEST_TIMEOUT_SEC",
+            "MAGIC_PDF_MAX_CONCURRENT_JOBS",
+            "MAGIC_PDF_CLI",
+            "MAGIC_PDF_METHOD",
+            "MAGIC_PDF_LANG",
+            "MAGIC_PDF_DEBUG",
+            "MAGIC_PDF_TIMEOUT_SEC",
+            "MAGIC_PDF_MODELS_DIR",
+            "MAGIC_PDF_DEVICE_MODE",
+            "MAGIC_PDF_KEEP_ARTIFACTS",
+        ]
+    )
+
+
+def _update_observability_env(
+    env_vars: dict[str, str],
+    updated_keys: list[str],
+    observability: ObservabilityConfig,
+) -> None:
+    _set_bool_env(env_vars, "TOOL_CALL_LOG_ENABLED", observability.tool_call_log_enabled)
+    _set_bool_env(env_vars, "TOOL_CALL_LOG_INCLUDE_PREVIEW", observability.tool_call_log_include_preview)
+    env_vars["TOOL_CALL_LOG_MAX_PREVIEW_CHARS"] = str(int(observability.tool_call_log_max_preview_chars or 0))
+    _set_bool_env(env_vars, "AGENT_LOG_ENABLED", observability.agent_log_enabled)
+    _set_bool_env(env_vars, "AGENT_LOG_INCLUDE_EXECUTION_PATH", observability.agent_log_include_execution_path)
+    env_vars["AGENT_LOG_MAX_PREVIEW_CHARS"] = str(int(observability.agent_log_max_preview_chars or 0))
+    updated_keys.extend(
+        [
+            "TOOL_CALL_LOG_ENABLED",
+            "TOOL_CALL_LOG_INCLUDE_PREVIEW",
+            "TOOL_CALL_LOG_MAX_PREVIEW_CHARS",
+            "AGENT_LOG_ENABLED",
+            "AGENT_LOG_INCLUDE_EXECUTION_PATH",
+            "AGENT_LOG_MAX_PREVIEW_CHARS",
+        ]
+    )
+    model_fields_set = getattr(observability, "model_fields_set", set())
+    if "metrics_log_enabled" in model_fields_set:
+        _set_bool_env(env_vars, "ENABLE_METRICS_LOG", getattr(observability, "metrics_log_enabled", False))
+        updated_keys.append("ENABLE_METRICS_LOG")
+    if "metrics_log_include_text" in model_fields_set:
+        _set_bool_env(env_vars, "METRICS_LOG_INCLUDE_TEXT", getattr(observability, "metrics_log_include_text", False))
+        updated_keys.append("METRICS_LOG_INCLUDE_TEXT")
+
+
+def _update_safety_env(env_vars: dict[str, str], updated_keys: list[str], safety: SafetyConfig) -> None:
+    _set_bool_env(env_vars, "PII_REDACTION_ENABLED", safety.pii_redaction_enabled)
+    _set_sanitized_env(env_vars, "PII_REDACTION_MASK", safety.pii_redaction_mask)
+    env_vars["PII_STREAM_HOLDBACK_CHARS"] = str(int(safety.pii_stream_holdback_chars or 0))
+    updated_keys.extend(["PII_REDACTION_ENABLED", "PII_REDACTION_MASK", "PII_STREAM_HOLDBACK_CHARS"])
+
+
+def _update_chat_env(env_vars: dict[str, str], updated_keys: list[str], chat: ChatConfig) -> None:
+    model_fields_set = getattr(chat, "model_fields_set", set())
+    if "stream_heartbeat_sec" in model_fields_set:
+        env_vars["CHAT_STREAM_HEARTBEAT_SEC"] = str(float(chat.stream_heartbeat_sec or 0.0))
+        updated_keys.append("CHAT_STREAM_HEARTBEAT_SEC")
+    if "stream_cancel_on_disconnect" in model_fields_set:
+        _set_bool_env(env_vars, "CHAT_STREAM_CANCEL_ON_DISCONNECT", chat.stream_cancel_on_disconnect)
+        updated_keys.append("CHAT_STREAM_CANCEL_ON_DISCONNECT")
+
+
+def _update_langgraph_env(env_vars: dict[str, str], updated_keys: list[str], langgraph: LangGraphConfig) -> None:
+    _set_bool_env(env_vars, "LANGGRAPH_USE_SUBGRAPHS", langgraph.use_subgraphs)
+    updated_keys.append("LANGGRAPH_USE_SUBGRAPHS")
+
+
+def _update_navigation_env(env_vars: dict[str, str], updated_keys: list[str], navigation: NavigationConfig) -> None:
+    env_vars["NAVIGATION_USER_VISIBLE_MODULES"] = serialize_navigation_modules(navigation.user_visible_modules)
+    updated_keys.append("NAVIGATION_USER_VISIBLE_MODULES")
+
+
+def _update_dify_external_knowledge_env(
+    env_vars: dict[str, str],
+    updated_keys: list[str],
+    dify_external_knowledge: DifyExternalKnowledgeConfig,
+) -> None:
+    _set_bool_env(env_vars, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", dify_external_knowledge.enabled)
+    updated_keys.append("DIFY_EXTERNAL_KNOWLEDGE_ENABLED")
+    _set_maskable_secret_env(
+        env_vars,
+        updated_keys,
+        "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS",
+        dify_external_knowledge.api_keys,
+    )
+    env_vars["DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID"] = _validate_optional_uuid_setting(
+        "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID",
+        dify_external_knowledge.tenant_id or "",
+        detail="Invalid DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID",
+    )
+    _set_sanitized_env(
+        env_vars,
+        "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID",
+        dify_external_knowledge.account_id or _SYSTEM_DIFY_ACCOUNT_ID,
+    )
+    env_vars["DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON"] = _validate_json_object_setting(
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        dify_external_knowledge.knowledge_map_json or "",
+        invalid_detail="Invalid DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        non_object_detail="DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON must be a JSON object",
+    )
+    top_k_max = int(dify_external_knowledge.top_k_max or 5)
+    if top_k_max < 1 or top_k_max > 200:
+        raise HTTPException(status_code=400, detail="DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX must be between 1 and 200")
+    env_vars["DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX"] = str(top_k_max)
+    updated_keys.extend(
+        [
+            "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID",
+            "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID",
+            "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+            "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX",
+        ]
+    )
+
+
+def _apply_request_settings_updates(
+    request: UpdateSettingsRequest,
+    env_vars: dict[str, str],
+    updated_keys: list[str],
+) -> None:
+    updaters = (
+        ("feature_flags", _update_feature_flag_env),
+        ("kg", _update_kg_env),
+        ("llm", _update_llm_env),
+        ("embedding", _update_embedding_env),
+        ("milvus", _update_milvus_env),
+        ("minio", _update_minio_env),
+        ("rag", _update_rag_env),
+        ("cache", _update_cache_env),
+        ("url_ingest", _update_url_ingest_env),
+        ("governance", _update_governance_env),
+        ("mineru", _update_mineru_env),
+        ("etl4llm", _update_etl4llm_env),
+        ("marker", _update_marker_env),
+        ("paddle_vl", _update_paddle_vl_env),
+        ("textin", _update_textin_env),
+        ("magicpdf", _update_magicpdf_env),
+        ("observability", _update_observability_env),
+        ("safety", _update_safety_env),
+        ("chat", _update_chat_env),
+        ("langgraph", _update_langgraph_env),
+        ("navigation", _update_navigation_env),
+        ("dify_external_knowledge", _update_dify_external_knowledge_env),
+    )
+    for field_name, updater in updaters:
+        section = getattr(request, field_name)
+        if section is not None:
+            updater(env_vars, updated_keys, section)
+
+
 @router.put("", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def update_settings(
     request: UpdateSettingsRequest,
@@ -1266,465 +1797,7 @@ def update_settings(
     try:
         env_vars = read_env_file()
         updated_keys = []
-
-        # Update feature flags.
-        if request.feature_flags:
-            ff = request.feature_flags
-            env_vars["KG_ENABLED"] = str(ff.kg_enabled).lower()
-            env_vars["DEEPDOC_ENABLED"] = str(ff.deepdoc_enabled).lower()
-            env_vars["DOCLING_ENABLED"] = str(getattr(ff, "docling_enabled", False)).lower()
-            env_vars["ETL4LLM_ENABLED"] = str(getattr(ff, "etl4llm_enabled", False)).lower()
-            env_vars["MARKER_ENABLED"] = str(getattr(ff, "marker_enabled", False)).lower()
-            env_vars["PADDLE_VL_ENABLED"] = str(getattr(ff, "paddle_vl_enabled", False)).lower()
-            env_vars["TEXTIN_ENABLED"] = str(getattr(ff, "textin_enabled", False)).lower()
-            env_vars["MARKITDOWN_ENABLED"] = str(ff.markitdown_enabled).lower()
-            env_vars["LLAMA_INDEX_ENABLED"] = str(ff.llama_index_enabled).lower()
-            env_vars["MINERU_ENABLED"] = str(ff.mineru_enabled).lower()
-            env_vars["MAGIC_PDF_ENABLED"] = str(getattr(ff, "magicpdf_enabled", False)).lower()
-            updated_keys.extend(
-                [
-                    "KG_ENABLED",
-                    "DEEPDOC_ENABLED",
-                    "DOCLING_ENABLED",
-                    "ETL4LLM_ENABLED",
-                    "MARKER_ENABLED",
-                    "PADDLE_VL_ENABLED",
-                    "TEXTIN_ENABLED",
-                    "MARKITDOWN_ENABLED",
-                    "LLAMA_INDEX_ENABLED",
-                    "MINERU_ENABLED",
-                    "MAGIC_PDF_ENABLED",
-                ]
-            )
-
-        # Update KG config.
-        if request.kg:
-            kg = request.kg
-            env_vars["KG_CHAT_ENABLED"] = str(bool(kg.chat_enabled)).lower()
-            updated_keys.append("KG_CHAT_ENABLED")
-
-            template_id = _sanitize_env_value("KG_EXTRACT_PROMPT_TEMPLATE_ID", kg.extract_prompt_template_id or "")
-            if template_id:
-                try:
-                    UUID(template_id)
-                except ValueError as exc:
-                    raise HTTPException(status_code=400, detail="Invalid KG_EXTRACT_PROMPT_TEMPLATE_ID") from exc
-            env_vars["KG_EXTRACT_PROMPT_TEMPLATE_ID"] = template_id
-            env_vars["KG_EXTRACT_PROMPT_TEMPLATE_KEY"] = _sanitize_env_value(
-                "KG_EXTRACT_PROMPT_TEMPLATE_KEY", kg.extract_prompt_template_key or ""
-            )
-            env_vars["KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY"] = _sanitize_env_value(
-                "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", kg.extract_prompt_ab_experiment_key or ""
-            )
-            env_vars["KG_EXTRACT_REPLACE_EXISTING"] = str(bool(getattr(kg, "extract_replace_existing", True))).lower()
-            env_vars["KG_EXTRACT_PRUNE_ORPHAN_ENTITIES"] = str(bool(getattr(kg, "extract_prune_orphan_entities", True))).lower()
-            updated_keys.extend(
-                [
-                    "KG_EXTRACT_PROMPT_TEMPLATE_ID",
-                    "KG_EXTRACT_PROMPT_TEMPLATE_KEY",
-                    "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY",
-                    "KG_EXTRACT_REPLACE_EXISTING",
-                    "KG_EXTRACT_PRUNE_ORPHAN_ENTITIES",
-                ]
-            )
-
-        # Update LLM config.
-        if request.llm:
-            llm = request.llm
-            # Only update non-masked values.
-            if llm.api_key and "***" not in llm.api_key:
-                env_vars["LLM_API_KEY"] = _sanitize_env_value("LLM_API_KEY", llm.api_key)
-                updated_keys.append("LLM_API_KEY")
-            env_vars["LLM_API_BASE"] = _sanitize_env_value("LLM_API_BASE", llm.api_base)
-            env_vars["LLM_MODEL"] = _sanitize_env_value("LLM_MODEL", llm.model)
-            env_vars["LLM_TEMPERATURE"] = str(llm.temperature)
-            env_vars["LLM_TIMEOUT"] = str(llm.timeout)
-            env_vars["LLM_MAX_RETRIES"] = str(llm.max_retries)
-            updated_keys.extend(["LLM_API_BASE", "LLM_MODEL", "LLM_TEMPERATURE", "LLM_TIMEOUT", "LLM_MAX_RETRIES"])
-
-        # Update embedding config.
-        if request.embedding:
-            emb = request.embedding
-            env_vars["EMBEDDING_PROVIDER"] = _sanitize_env_value("EMBEDDING_PROVIDER", emb.provider)
-            env_vars["EMBEDDING_MODEL"] = _sanitize_env_value("EMBEDDING_MODEL", emb.model)
-            if emb.api_key and "***" not in emb.api_key:
-                env_vars["EMBEDDING_API_KEY"] = _sanitize_env_value("EMBEDDING_API_KEY", emb.api_key)
-                updated_keys.append("EMBEDDING_API_KEY")
-            env_vars["EMBEDDING_API_BASE"] = _sanitize_env_value("EMBEDDING_API_BASE", emb.api_base)
-            updated_keys.extend(["EMBEDDING_PROVIDER", "EMBEDDING_MODEL", "EMBEDDING_API_BASE"])
-
-        # Update Milvus config.
-        if request.milvus:
-            mv = request.milvus
-            env_vars["MILVUS_HOST"] = _sanitize_env_value("MILVUS_HOST", mv.host)
-            env_vars["MILVUS_PORT"] = str(mv.port)
-            env_vars["MILVUS_USER"] = _sanitize_env_value("MILVUS_USER", mv.user)
-            if mv.password and "***" not in mv.password:
-                env_vars["MILVUS_PASSWORD"] = _sanitize_env_value("MILVUS_PASSWORD", mv.password)
-                updated_keys.append("MILVUS_PASSWORD")
-            env_vars["MILVUS_COLLECTION_NAME"] = _sanitize_env_value("MILVUS_COLLECTION_NAME", mv.collection_name)
-            updated_keys.extend(["MILVUS_HOST", "MILVUS_PORT", "MILVUS_USER", "MILVUS_COLLECTION_NAME"])
-
-        # Update MinIO / object storage config.
-        if request.minio:
-            mn = request.minio
-            env_vars["MINIO_ENABLED"] = str(bool(mn.enabled)).lower()
-            env_vars["MINIO_ENDPOINT"] = _sanitize_env_value("MINIO_ENDPOINT", mn.endpoint)
-            if mn.access_key and "***" not in mn.access_key:
-                env_vars["MINIO_ACCESS_KEY"] = _sanitize_env_value("MINIO_ACCESS_KEY", mn.access_key)
-                updated_keys.append("MINIO_ACCESS_KEY")
-            if mn.secret_key and "***" not in mn.secret_key:
-                env_vars["MINIO_SECRET_KEY"] = _sanitize_env_value("MINIO_SECRET_KEY", mn.secret_key)
-                updated_keys.append("MINIO_SECRET_KEY")
-            env_vars["MINIO_BUCKET_NAME"] = _sanitize_env_value("MINIO_BUCKET_NAME", mn.bucket_name)
-            env_vars["MINIO_USE_SSL"] = str(bool(mn.use_ssl)).lower()
-            env_vars["MINIO_DOCUMENTS_ENABLED"] = str(bool(mn.documents_enabled)).lower()
-            env_vars["MINIO_IMAGE_MAX_BYTES"] = str(max(0, int(mn.image_max_bytes or 0)))
-            updated_keys.extend(
-                [
-                    "MINIO_ENABLED",
-                    "MINIO_ENDPOINT",
-                    "MINIO_BUCKET_NAME",
-                    "MINIO_USE_SSL",
-                    "MINIO_DOCUMENTS_ENABLED",
-                    "MINIO_IMAGE_MAX_BYTES",
-                ]
-            )
-
-        # Update RAG config.
-        if request.rag:
-            rag = request.rag
-            env_vars["CHUNK_SIZE"] = str(rag.chunk_size)
-            env_vars["CHUNK_OVERLAP"] = str(rag.chunk_overlap)
-            env_vars["CHUNK_MIN_CHARS"] = str(max(0, int(getattr(rag, "chunk_min_chars", 0) or 0)))
-            env_vars["RETRIEVAL_TOP_K"] = str(rag.retrieval_top_k)
-            env_vars["SIMILARITY_THRESHOLD"] = str(rag.similarity_threshold)
-            env_vars["DEFAULT_PARSER_BACKEND"] = _sanitize_env_value("DEFAULT_PARSER_BACKEND", rag.default_parser_backend)
-            env_vars["DEFAULT_CHUNK_STRATEGY"] = _sanitize_env_value("DEFAULT_CHUNK_STRATEGY", rag.default_chunk_strategy)
-            env_vars["BM25_INDEX_ENABLED"] = str(bool(getattr(rag, "bm25_index_enabled", True))).lower()
-            env_vars["ENABLE_RERANKER"] = str(bool(getattr(rag, "enable_reranker", False))).lower()
-            env_vars["RERANKER_PROVIDER"] = _sanitize_env_value("RERANKER_PROVIDER", rag.reranker_provider)
-            env_vars["RERANKER_TOP_N"] = str(int(getattr(rag, "reranker_top_n", 20) or 20))
-            env_vars["SHOW_IMAGE_IN_ANSWER"] = str(bool(getattr(rag, "show_image_in_answer", True))).lower()
-            env_vars["IMAGE_APPEND_MAX"] = str(
-                max(0, min(10, int(getattr(rag, "image_append_max", 3) or 0)))
-            )
-            updated_keys.extend(
-                [
-                    "CHUNK_SIZE",
-                    "CHUNK_OVERLAP",
-                    "CHUNK_MIN_CHARS",
-                    "RETRIEVAL_TOP_K",
-                    "SIMILARITY_THRESHOLD",
-                    "DEFAULT_PARSER_BACKEND",
-                    "DEFAULT_CHUNK_STRATEGY",
-                    "BM25_INDEX_ENABLED",
-                    "ENABLE_RERANKER",
-                    "RERANKER_PROVIDER",
-                    "RERANKER_TOP_N",
-                    "SHOW_IMAGE_IN_ANSWER",
-                    "IMAGE_APPEND_MAX",
-                ]
-            )
-
-        # Update cache/performance config.
-        if request.cache:
-            cc = request.cache
-            env_vars["UPLOAD_DEDUP_ENABLED"] = str(bool(getattr(cc, "upload_dedup_enabled", False))).lower()
-            env_vars["CHAT_RESPONSE_CACHE_ENABLED"] = str(bool(getattr(cc, "chat_response_cache_enabled", False))).lower()
-            env_vars["CHAT_RESPONSE_CACHE_TTL_SEC"] = str(int(getattr(cc, "chat_response_cache_ttl_sec", 0) or 0))
-            env_vars["CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES"] = str(
-                int(getattr(cc, "chat_response_cache_max_value_bytes", 0) or 0)
-            )
-            env_vars["CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY"] = str(
-                bool(getattr(cc, "chat_response_cache_require_empty_history", True))
-            ).lower()
-            updated_keys.extend(
-                [
-                    "UPLOAD_DEDUP_ENABLED",
-                    "CHAT_RESPONSE_CACHE_ENABLED",
-                    "CHAT_RESPONSE_CACHE_TTL_SEC",
-                    "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES",
-                    "CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY",
-                ]
-            )
-
-        if request.url_ingest:
-            ui = request.url_ingest
-            env_vars["URL_INGEST_ENABLED"] = str(bool(ui.enabled)).lower()
-            env_vars["URL_INGEST_MAX_BYTES"] = str(int(getattr(ui, "max_bytes", 0) or 0))
-            env_vars["URL_INGEST_TIMEOUT_SEC"] = str(float(getattr(ui, "timeout_sec", 0.0) or 0.0))
-            env_vars["URL_INGEST_ALLOW_PRIVATE_IPS"] = str(bool(getattr(ui, "allow_private_ips", False))).lower()
-            env_vars["URL_INGEST_FOLLOW_REDIRECTS"] = str(bool(getattr(ui, "follow_redirects", False))).lower()
-            updated_keys.extend(
-                [
-                    "URL_INGEST_ENABLED",
-                    "URL_INGEST_MAX_BYTES",
-                    "URL_INGEST_TIMEOUT_SEC",
-                    "URL_INGEST_ALLOW_PRIVATE_IPS",
-                    "URL_INGEST_FOLLOW_REDIRECTS",
-                ]
-            )
-
-        if request.governance:
-            gv = request.governance
-            env_vars["GOVERNANCE_ENABLED"] = str(bool(getattr(gv, "enabled", False))).lower()
-            env_vars["GOVERNANCE_PII_ANONYMIZE"] = str(bool(getattr(gv, "pii_anonymize", False))).lower()
-            env_vars["GOVERNANCE_SECRETS_REDACT"] = str(bool(getattr(gv, "secrets_redact", False))).lower()
-            env_vars["GOVERNANCE_QUARANTINE_ON_DROP"] = str(bool(getattr(gv, "quarantine_on_drop", False))).lower()
-            updated_keys.extend(
-                [
-                    "GOVERNANCE_ENABLED",
-                    "GOVERNANCE_PII_ANONYMIZE",
-                    "GOVERNANCE_SECRETS_REDACT",
-                    "GOVERNANCE_QUARANTINE_ON_DROP",
-                ]
-            )
-
-        # Update MinerU config.
-        if request.mineru:
-            mn = request.mineru
-            if mn.api_token and "***" not in mn.api_token:
-                env_vars["MINERU_API_TOKEN"] = _sanitize_env_value("MINERU_API_TOKEN", mn.api_token)
-                updated_keys.append("MINERU_API_TOKEN")
-            env_vars["MINERU_API_BASE"] = _sanitize_env_value("MINERU_API_BASE", mn.api_base)
-            env_vars["MINERU_MODEL_VERSION"] = _sanitize_env_value("MINERU_MODEL_VERSION", mn.model_version)
-            env_vars["MINERU_BACKEND"] = _normalize_mineru_backend(mn.backend)
-            env_vars["MINERU_LOCAL_SERVER_URL"] = _sanitize_env_value(
-                "MINERU_LOCAL_SERVER_URL", mn.local_server_url
-            )
-            env_vars["MINERU_VL_SERVER"] = _sanitize_env_value("MINERU_VL_SERVER", mn.vl_server)
-            updated_keys.extend(
-                [
-                    "MINERU_API_BASE",
-                    "MINERU_MODEL_VERSION",
-                    "MINERU_BACKEND",
-                    "MINERU_LOCAL_SERVER_URL",
-                    "MINERU_VL_SERVER",
-                ]
-            )
-
-        # Update ETL4LLM config.
-        if request.etl4llm:
-            et = request.etl4llm
-            env_vars["ETL4LLM_API_URL"] = _sanitize_env_value("ETL4LLM_API_URL", et.api_url or "")
-            env_vars["ETL4LLM_TIMEOUT_SEC"] = str(int(et.timeout_sec or 0))
-            mode = (et.mode or "partition").strip().lower()
-            if mode not in {"partition", "text"}:
-                mode = "partition"
-            env_vars["ETL4LLM_MODE"] = _sanitize_env_value("ETL4LLM_MODE", mode)
-            env_vars["ETL4LLM_FORCE_OCR"] = str(bool(et.force_ocr)).lower()
-            env_vars["ETL4LLM_ENABLE_FORMULA"] = str(bool(et.enable_formula)).lower()
-            env_vars["ETL4LLM_EXTRACT_IMAGES"] = str(bool(et.extract_images)).lower()
-            env_vars["ETL4LLM_FILTER_PAGE_HEADER_FOOTER"] = str(bool(et.filter_page_header_footer)).lower()
-            updated_keys.extend(
-                [
-                    "ETL4LLM_API_URL",
-                    "ETL4LLM_TIMEOUT_SEC",
-                    "ETL4LLM_MODE",
-                    "ETL4LLM_FORCE_OCR",
-                    "ETL4LLM_ENABLE_FORMULA",
-                    "ETL4LLM_EXTRACT_IMAGES",
-                    "ETL4LLM_FILTER_PAGE_HEADER_FOOTER",
-                ]
-            )
-
-        if request.marker:
-            mk = request.marker
-            env_vars["MARKER_API_URL"] = _sanitize_env_value("MARKER_API_URL", mk.api_url or "")
-            env_vars["MARKER_TIMEOUT_SEC"] = str(int(mk.timeout_sec or 0))
-            updated_keys.extend(["MARKER_API_URL", "MARKER_TIMEOUT_SEC"])
-
-        if request.paddle_vl:
-            pv = request.paddle_vl
-            env_vars["PADDLE_VL_API_URL"] = _sanitize_env_value("PADDLE_VL_API_URL", pv.api_url or "")
-            env_vars["PADDLE_VL_TIMEOUT_SEC"] = str(int(pv.timeout_sec or 0))
-            pipeline_version = (pv.pipeline_version or "v1.5").strip() or "v1.5"
-            env_vars["PADDLE_VL_PIPELINE_VERSION"] = _sanitize_env_value("PADDLE_VL_PIPELINE_VERSION", pipeline_version)
-
-            mode = (pv.mode or "doc_parser").strip().lower() or "doc_parser"
-            if mode not in {"doc_parser"}:
-                mode = "doc_parser"
-            env_vars["PADDLE_VL_MODE"] = _sanitize_env_value("PADDLE_VL_MODE", mode)
-
-            updated_keys.extend(["PADDLE_VL_API_URL", "PADDLE_VL_TIMEOUT_SEC", "PADDLE_VL_PIPELINE_VERSION", "PADDLE_VL_MODE"])
-
-        if request.textin:
-            tx = request.textin
-            env_vars["TEXTIN_API_URL"] = _sanitize_env_value("TEXTIN_API_URL", tx.api_url or "")
-            env_vars["TEXTIN_APP_ID"] = _sanitize_env_value("TEXTIN_APP_ID", tx.app_id or "")
-            if tx.secret_code and "***" not in tx.secret_code:
-                env_vars["TEXTIN_SECRET_CODE"] = _sanitize_env_value("TEXTIN_SECRET_CODE", tx.secret_code or "")
-                updated_keys.append("TEXTIN_SECRET_CODE")
-            env_vars["TEXTIN_TIMEOUT_SEC"] = str(int(tx.timeout_sec or 0))
-            parse_mode = (tx.parse_mode or "auto").strip().lower() or "auto"
-            if parse_mode not in {"auto", "scan", "parse", "lite", "vlm"}:
-                parse_mode = "auto"
-            env_vars["TEXTIN_PARSE_MODE"] = _sanitize_env_value("TEXTIN_PARSE_MODE", parse_mode)
-            table_flavor = (tx.table_flavor or "html").strip().lower() or "html"
-            if table_flavor not in {"html", "markdown"}:
-                table_flavor = "html"
-            env_vars["TEXTIN_TABLE_FLAVOR"] = _sanitize_env_value("TEXTIN_TABLE_FLAVOR", table_flavor)
-            get_image = (tx.get_image or "none").strip().lower() or "none"
-            if get_image not in {"none", "objects", "pages", "both"}:
-                get_image = "none"
-            env_vars["TEXTIN_GET_IMAGE"] = _sanitize_env_value("TEXTIN_GET_IMAGE", get_image)
-            env_vars["TEXTIN_APPLY_DOCUMENT_TREE"] = str(bool(tx.apply_document_tree)).lower()
-            env_vars["TEXTIN_MARKDOWN_DETAILS"] = str(bool(tx.markdown_details)).lower()
-            env_vars["TEXTIN_DPI"] = str(max(0, int(tx.dpi or 0)))
-            env_vars["TEXTIN_PAGE_COUNT"] = str(max(0, int(tx.page_count or 0)))
-            updated_keys.extend(
-                [
-                    "TEXTIN_API_URL",
-                    "TEXTIN_APP_ID",
-                    "TEXTIN_TIMEOUT_SEC",
-                    "TEXTIN_PARSE_MODE",
-                    "TEXTIN_TABLE_FLAVOR",
-                    "TEXTIN_GET_IMAGE",
-                    "TEXTIN_APPLY_DOCUMENT_TREE",
-                    "TEXTIN_MARKDOWN_DETAILS",
-                    "TEXTIN_DPI",
-                    "TEXTIN_PAGE_COUNT",
-                ]
-            )
-
-        if request.magicpdf:
-            mp = request.magicpdf
-            env_vars["MAGIC_PDF_API_URL"] = _sanitize_env_value("MAGIC_PDF_API_URL", mp.api_url)
-            env_vars["MAGIC_PDF_REQUEST_TIMEOUT_SEC"] = str(max(1, int(mp.request_timeout_sec or 0)))
-            env_vars["MAGIC_PDF_MAX_CONCURRENT_JOBS"] = str(max(1, int(mp.max_concurrent_jobs or 1)))
-            env_vars["MAGIC_PDF_CLI"] = _sanitize_env_value("MAGIC_PDF_CLI", mp.cli)
-            env_vars["MAGIC_PDF_METHOD"] = _sanitize_env_value("MAGIC_PDF_METHOD", mp.method)
-            env_vars["MAGIC_PDF_LANG"] = _sanitize_env_value("MAGIC_PDF_LANG", mp.lang)
-            env_vars["MAGIC_PDF_DEBUG"] = str(bool(mp.debug)).lower()
-            env_vars["MAGIC_PDF_TIMEOUT_SEC"] = str(int(mp.timeout_sec or 0))
-            env_vars["MAGIC_PDF_MODELS_DIR"] = _sanitize_env_value("MAGIC_PDF_MODELS_DIR", mp.models_dir)
-            env_vars["MAGIC_PDF_DEVICE_MODE"] = _sanitize_env_value("MAGIC_PDF_DEVICE_MODE", mp.device_mode)
-            env_vars["MAGIC_PDF_KEEP_ARTIFACTS"] = str(bool(mp.keep_artifacts)).lower()
-            updated_keys.extend(
-                [
-                    "MAGIC_PDF_API_URL",
-                    "MAGIC_PDF_REQUEST_TIMEOUT_SEC",
-                    "MAGIC_PDF_MAX_CONCURRENT_JOBS",
-                    "MAGIC_PDF_CLI",
-                    "MAGIC_PDF_METHOD",
-                    "MAGIC_PDF_LANG",
-                    "MAGIC_PDF_DEBUG",
-                    "MAGIC_PDF_TIMEOUT_SEC",
-                    "MAGIC_PDF_MODELS_DIR",
-                    "MAGIC_PDF_DEVICE_MODE",
-                    "MAGIC_PDF_KEEP_ARTIFACTS",
-                ]
-            )
-
-        # Update observability/debug config.
-        if request.observability:
-            ob = request.observability
-            env_vars["TOOL_CALL_LOG_ENABLED"] = str(ob.tool_call_log_enabled).lower()
-            env_vars["TOOL_CALL_LOG_INCLUDE_PREVIEW"] = str(ob.tool_call_log_include_preview).lower()
-            env_vars["TOOL_CALL_LOG_MAX_PREVIEW_CHARS"] = str(int(ob.tool_call_log_max_preview_chars or 0))
-            env_vars["AGENT_LOG_ENABLED"] = str(ob.agent_log_enabled).lower()
-            env_vars["AGENT_LOG_INCLUDE_EXECUTION_PATH"] = str(ob.agent_log_include_execution_path).lower()
-            env_vars["AGENT_LOG_MAX_PREVIEW_CHARS"] = str(int(ob.agent_log_max_preview_chars or 0))
-            updated_keys.extend(
-                [
-                    "TOOL_CALL_LOG_ENABLED",
-                    "TOOL_CALL_LOG_INCLUDE_PREVIEW",
-                    "TOOL_CALL_LOG_MAX_PREVIEW_CHARS",
-                    "AGENT_LOG_ENABLED",
-                    "AGENT_LOG_INCLUDE_EXECUTION_PATH",
-                    "AGENT_LOG_MAX_PREVIEW_CHARS",
-                ]
-            )
-            # New (optional): metrics JSONL log controls
-            if "metrics_log_enabled" in getattr(ob, "model_fields_set", set()):
-                env_vars["ENABLE_METRICS_LOG"] = str(bool(getattr(ob, "metrics_log_enabled", False))).lower()
-                updated_keys.append("ENABLE_METRICS_LOG")
-            if "metrics_log_include_text" in getattr(ob, "model_fields_set", set()):
-                env_vars["METRICS_LOG_INCLUDE_TEXT"] = str(bool(getattr(ob, "metrics_log_include_text", False))).lower()
-                updated_keys.append("METRICS_LOG_INCLUDE_TEXT")
-
-        # Update security/privacy config.
-        if request.safety:
-            sf = request.safety
-            env_vars["PII_REDACTION_ENABLED"] = str(sf.pii_redaction_enabled).lower()
-            env_vars["PII_REDACTION_MASK"] = _sanitize_env_value("PII_REDACTION_MASK", sf.pii_redaction_mask)
-            env_vars["PII_STREAM_HOLDBACK_CHARS"] = str(int(sf.pii_stream_holdback_chars or 0))
-            updated_keys.extend(["PII_REDACTION_ENABLED", "PII_REDACTION_MASK", "PII_STREAM_HOLDBACK_CHARS"])
-
-        # Update chat streaming/runtime config.
-        if request.chat:
-            ch = request.chat
-            if "stream_heartbeat_sec" in getattr(ch, "model_fields_set", set()):
-                env_vars["CHAT_STREAM_HEARTBEAT_SEC"] = str(float(ch.stream_heartbeat_sec or 0.0))
-                updated_keys.append("CHAT_STREAM_HEARTBEAT_SEC")
-            if "stream_cancel_on_disconnect" in getattr(ch, "model_fields_set", set()):
-                env_vars["CHAT_STREAM_CANCEL_ON_DISCONNECT"] = str(bool(ch.stream_cancel_on_disconnect)).lower()
-                updated_keys.append("CHAT_STREAM_CANCEL_ON_DISCONNECT")
-
-        # Update LangGraph config.
-        if request.langgraph:
-            lg = request.langgraph
-            env_vars["LANGGRAPH_USE_SUBGRAPHS"] = str(lg.use_subgraphs).lower()
-            updated_keys.append("LANGGRAPH_USE_SUBGRAPHS")
-
-        # Update ordinary-user frontend navigation visibility.
-        if request.navigation:
-            env_vars["NAVIGATION_USER_VISIBLE_MODULES"] = serialize_navigation_modules(
-                request.navigation.user_visible_modules
-            )
-            updated_keys.append("NAVIGATION_USER_VISIBLE_MODULES")
-
-        # Update Dify external knowledge adapter.
-        if request.dify_external_knowledge:
-            df = request.dify_external_knowledge
-            env_vars["DIFY_EXTERNAL_KNOWLEDGE_ENABLED"] = str(bool(df.enabled)).lower()
-            updated_keys.append("DIFY_EXTERNAL_KNOWLEDGE_ENABLED")
-
-            if df.api_keys and "***" not in df.api_keys:
-                env_vars["DIFY_EXTERNAL_KNOWLEDGE_API_KEYS"] = _sanitize_env_value(
-                    "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS",
-                    df.api_keys,
-                )
-                updated_keys.append("DIFY_EXTERNAL_KNOWLEDGE_API_KEYS")
-
-            tenant_id_text = _sanitize_env_value("DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", df.tenant_id or "")
-            if tenant_id_text:
-                try:
-                    UUID(tenant_id_text)
-                except ValueError as exc:
-                    raise HTTPException(status_code=400, detail="Invalid DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID") from exc
-            env_vars["DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID"] = tenant_id_text
-            env_vars["DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID"] = _sanitize_env_value(
-                "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID",
-                df.account_id or _SYSTEM_DIFY_ACCOUNT_ID,
-            )
-
-            knowledge_map_json = _sanitize_env_value(
-                "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
-                df.knowledge_map_json or "",
-            )
-            if knowledge_map_json:
-                try:
-                    parsed_knowledge_map = json.loads(knowledge_map_json)
-                except json.JSONDecodeError as exc:
-                    raise HTTPException(status_code=400, detail="Invalid DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON") from exc
-                if not isinstance(parsed_knowledge_map, dict):
-                    raise HTTPException(status_code=400, detail="DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON must be a JSON object")
-            env_vars["DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON"] = knowledge_map_json
-
-            top_k_max = int(df.top_k_max or 5)
-            if top_k_max < 1 or top_k_max > 200:
-                raise HTTPException(status_code=400, detail="DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX must be between 1 and 200")
-            env_vars["DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX"] = str(top_k_max)
-            updated_keys.extend(
-                [
-                    "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID",
-                    "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID",
-                    "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
-                    "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX",
-                ]
-            )
+        _apply_request_settings_updates(request, env_vars, updated_keys)
 
         write_env_file(env_vars)
         with contextlib.suppress(Exception):
@@ -1779,6 +1852,276 @@ def update_settings(
             lock_ctx.__exit__(None, None, None)
 
 
+def _check_status_import(module: str) -> tuple[bool, str]:
+    try:
+        spec = importlib.util.find_spec(module)
+    except Exception as exc:  # noqa: BLE001
+        return False, str(exc)[:120]
+    if spec is None:
+        return False, "not installed"
+    return True, "ok"
+
+
+def _configured_status_message(enabled: bool, configured: bool, missing_message: str) -> str:
+    if enabled and configured:
+        return "configured"
+    if enabled:
+        return missing_message
+    return "disabled"
+
+
+def _health_not_ok_status_message(data: dict[str, Any]) -> str:
+    reason = data.get("reason") or data.get("error") or data.get("message") or "health_not_ok"
+    return f"configured (health_not_ok: {str(reason)[:120]})"
+
+
+def _configured_parts_message(*parts: Any) -> str | None:
+    text_parts = [part for part in parts if isinstance(part, str) and part.strip()]
+    if not text_parts:
+        return None
+    return f"configured ({', '.join(text_parts[:2])})"
+
+
+def _build_import_parser_status(module: str, *, enabled: bool, available_message: str) -> dict[str, object]:
+    available, message = _check_status_import(module)
+    return {
+        "enabled": enabled,
+        "available": available,
+        "message": available_message if available else message,
+    }
+
+
+def _build_cli_parser_status(enabled: bool, cli: str) -> dict[str, object]:
+    cli_ok = bool(cli)
+    return {
+        "enabled": enabled,
+        "available": bool(enabled and cli_ok),
+        "message": _configured_status_message(enabled, cli_ok, f"missing cli: {cli}"),
+    }
+
+
+def _build_configured_parser_status(enabled: bool, configured: bool, missing_message: str) -> dict[str, object]:
+    return {
+        "enabled": enabled,
+        "available": bool(enabled and configured),
+        "message": _configured_status_message(enabled, configured, missing_message),
+    }
+
+
+async def _build_probed_parser_status(
+    *,
+    enabled: bool,
+    api_url: str,
+    success_message_builder: Callable[[dict[str, Any]], str | None] | None = None,
+) -> dict[str, object]:
+    url_ok = bool(api_url)
+    entry: dict[str, object] = _build_configured_parser_status(enabled, url_ok, _MISSING_API_URL_MESSAGE)
+    if not (enabled and url_ok):
+        return entry
+
+    health_url = _convert_service_url_to_health_url(api_url)
+    data, err = await _probe_http_json(health_url, timeout_sec=0.6)
+    if data is None:
+        entry["health"] = {"ok": False, "error": err}
+        entry["available"] = False
+        entry["message"] = _CONFIGURED_HEALTH_UNREACHABLE_MESSAGE
+        return entry
+
+    entry["health"] = data
+    if data.get("ok") is False:
+        entry["available"] = False
+        entry["message"] = _health_not_ok_status_message(data)
+        return entry
+
+    if success_message_builder is not None:
+        message = success_message_builder(data)
+        if message:
+            entry["message"] = message
+    return entry
+
+
+def _build_textin_parser_status() -> dict[str, object]:
+    textin_enabled = bool(getattr(settings, "TEXTIN_ENABLED", False))
+    textin_api_url = bool((getattr(settings, "TEXTIN_API_URL", "") or "").strip())
+    textin_app_id = bool((getattr(settings, "TEXTIN_APP_ID", "") or "").strip())
+    textin_secret = bool((getattr(settings, "TEXTIN_SECRET_CODE", "") or "").strip())
+    if not textin_enabled:
+        message = "disabled"
+    elif not textin_api_url:
+        message = "missing api_url"
+    elif not textin_app_id:
+        message = "missing app_id"
+    elif not textin_secret:
+        message = "missing secret_code"
+    else:
+        message = "configured"
+    return {
+        "enabled": textin_enabled,
+        "available": bool(textin_enabled and textin_api_url and textin_app_id and textin_secret),
+        "message": message,
+    }
+
+
+def _build_mineru_parser_status() -> dict[str, object]:
+    mineru_enabled = bool(getattr(settings, "MINERU_ENABLED", False))
+    mineru_local = bool((getattr(settings, "MINERU_LOCAL_SERVER_URL", "") or "").strip())
+    mineru_token = (getattr(settings, "MINERU_API_TOKEN", "") or "").strip()
+    mineru_exp = try_get_jwt_exp(mineru_token) if mineru_token else None
+    mineru_token_expired = bool(mineru_exp is not None and int(mineru_exp) <= int(time.time()))
+    if not mineru_enabled:
+        message = "disabled"
+    elif mineru_local:
+        message = "configured (local)"
+    elif not mineru_token:
+        message = "missing api_token or local_server_url"
+    elif mineru_token_expired and mineru_exp is not None:
+        message = f"api_token expired at {format_unix_ts_utc(int(mineru_exp))}"
+    else:
+        message = "configured"
+    return {
+        "enabled": mineru_enabled,
+        "available": bool(mineru_enabled and (mineru_local or (mineru_token and not mineru_token_expired))),
+        "message": message,
+    }
+
+
+def _build_magicpdf_parser_status(
+    *,
+    resolve_cli_command: Callable[[str], str | None],
+    resolve_magicpdf_models_dir: Callable[[str], str | None],
+) -> dict[str, object]:
+    enabled = bool(getattr(settings, "MAGIC_PDF_ENABLED", False))
+    api_url = (getattr(settings, "MAGIC_PDF_API_URL", "") or "").strip()
+    cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
+    cli_ok = bool(resolve_cli_command(cli))
+    models_dir = resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
+    if not enabled:
+        message = "disabled"
+        available = False
+    elif api_url:
+        message = "configured (service)"
+        available = True
+    elif not cli_ok:
+        message = f"missing cli: {cli}"
+        available = False
+    elif models_dir is None:
+        message = "missing models"
+        available = False
+    else:
+        message = f"configured (models: {models_dir})"
+        available = True
+    return {
+        "enabled": enabled,
+        "available": available,
+        "message": message,
+    }
+
+
+async def _build_parser_statuses(
+    *,
+    resolve_cli_command: Callable[[str], str | None],
+    resolve_magicpdf_models_dir: Callable[[str], str | None],
+) -> dict[str, dict[str, object]]:
+    pandoc_cli = (getattr(settings, "PANDOC_CLI", "") or "pandoc").strip() or "pandoc"
+    libreoffice_cli = (getattr(settings, "LIBREOFFICE_CLI", "") or "soffice").strip() or "soffice"
+    parsers: dict[str, dict[str, object]] = {
+        "basic": {"enabled": True, "available": True, "message": "built-in"},
+        "markitdown": _build_import_parser_status(
+            "markitdown",
+            enabled=bool(getattr(settings, "MARKITDOWN_ENABLED", False)),
+            available_message="installed",
+        ),
+        "pandoc": _build_cli_parser_status(
+            bool(getattr(settings, "PANDOC_ENABLED", False)),
+            resolve_cli_command(pandoc_cli) or "",
+        ),
+        "libreoffice": _build_cli_parser_status(
+            bool(getattr(settings, "LIBREOFFICE_ENABLED", False)),
+            resolve_cli_command(libreoffice_cli) or "",
+        ),
+        "deepdoc": _build_import_parser_status(
+            "app.deepdoc.parser",
+            enabled=bool(getattr(settings, "DEEPDOC_ENABLED", False)),
+            available_message="available",
+        ),
+        "deepseek_ocr": _build_configured_parser_status(
+            bool(getattr(settings, "DEEPSEEK_OCR_ENABLED", False)),
+            bool((getattr(settings, "SILICONFLOW_API_KEY", "") or "").strip()),
+            "missing api_key",
+        ),
+        "etl4llm": _build_configured_parser_status(
+            bool(getattr(settings, "ETL4LLM_ENABLED", False)),
+            bool((getattr(settings, "ETL4LLM_API_URL", "") or "").strip()),
+            _MISSING_API_URL_MESSAGE,
+        ),
+        "marker": _build_configured_parser_status(
+            bool(getattr(settings, "MARKER_ENABLED", False)),
+            bool((getattr(settings, "MARKER_API_URL", "") or "").strip()),
+            _MISSING_API_URL_MESSAGE,
+        ),
+        "textin": _build_textin_parser_status(),
+        "docling": _build_import_parser_status(
+            "docling",
+            enabled=bool(getattr(settings, "DOCLING_ENABLED", False)),
+            available_message="installed",
+        ),
+        "mineru": _build_mineru_parser_status(),
+        "magicpdf": _build_magicpdf_parser_status(
+            resolve_cli_command=resolve_cli_command,
+            resolve_magicpdf_models_dir=resolve_magicpdf_models_dir,
+        ),
+    }
+    parsers["qianfan_ocr"] = await _build_probed_parser_status(
+        enabled=bool(getattr(settings, "QIANFAN_OCR_ENABLED", False)),
+        api_url=(getattr(settings, "QIANFAN_OCR_API_URL", "") or "").strip(),
+        success_message_builder=lambda data: _configured_parts_message(data.get("model"), data.get("mode")),
+    )
+    parsers["paddle_vl"] = await _build_probed_parser_status(
+        enabled=bool(getattr(settings, "PADDLE_VL_ENABLED", False)),
+        api_url=(getattr(settings, "PADDLE_VL_API_URL", "") or "").strip(),
+        success_message_builder=lambda data: _configured_parts_message(
+            data.get("pipeline_version") or data.get("version"),
+            data.get("mode"),
+        ),
+    )
+    parsers["olmocr"] = await _build_probed_parser_status(
+        enabled=bool(getattr(settings, "OLMOCR_ENABLED", False)),
+        api_url=(getattr(settings, "OLMOCR_API_URL", "") or "").strip(),
+    )
+    return parsers
+
+
+def _get_database_status(session_local_factory: Callable[[], Any], text: Callable[[str], Any]) -> dict[str, object]:
+    status = {"connected": False, "message": ""}
+    try:
+        db_session = session_local_factory()
+        db_session.execute(text("SELECT 1"))
+        db_session.close()
+        status["connected"] = True
+        status["message"] = "connected"
+    except Exception as exc:  # noqa: BLE001
+        status["message"] = str(exc)[:100]
+    return status
+
+
+def _get_milvus_status(connections: Any) -> dict[str, object]:
+    status = {"connected": False, "message": ""}
+    try:
+        connections.connect(
+            alias="status_check",
+            host=settings.MILVUS_HOST,
+            port=settings.MILVUS_PORT,
+            user=settings.MILVUS_USER or None,
+            password=settings.MILVUS_PASSWORD or None,
+        )
+        connections.disconnect("status_check")
+        status["connected"] = True
+        status["message"] = "connected"
+    except Exception as exc:  # noqa: BLE001
+        status["message"] = str(exc)[:100]
+    return status
+
+
 @router.get("/status", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_system_status(
     *,
@@ -1792,282 +2135,18 @@ async def get_system_status(
     from sqlalchemy import text
 
     from app.core.database import SessionLocal
-
-    status = {
-        "database": {"connected": False, "message": ""},
-        "milvus": {"connected": False, "message": ""},
-        "llm": {"configured": bool(settings.LLM_API_KEY), "model": settings.LLM_MODEL},
-        "embedding": {"configured": bool(settings.EMBEDDING_API_KEY or settings.LLM_API_KEY), "model": settings.EMBEDDING_MODEL},
-    }
-    def _check_import(module: str) -> tuple[bool, str]:
-        # Avoid heavy imports with side-effects in a status endpoint.
-        try:
-            spec = importlib.util.find_spec(module)
-        except Exception as exc:  # noqa: BLE001
-            return False, str(exc)[:120]
-        if spec is None:
-            return False, "not installed"
-        return True, "ok"
-
     from app.parsing.parsers.magic_pdf_parser import resolve_magicpdf_models_dir
     from app.parsing.utils.cli import resolve_cli_command
-
-    def _configured_message(enabled: bool, configured: bool, missing_message: str) -> str:
-        if enabled and configured:
-            return "configured"
-        if enabled:
-            return missing_message
-        return "disabled"
-
-    def _health_not_ok_message(data: dict[str, Any]) -> str:
-        reason = data.get("reason") or data.get("error") or data.get("message") or "health_not_ok"
-        return f"configured (health_not_ok: {str(reason)[:120]})"
-
-    parsers: dict[str, dict] = {
-        "basic": {"enabled": True, "available": True, "message": "built-in"},
+    return {
+        "database": _get_database_status(SessionLocal, text),
+        "milvus": _get_milvus_status(connections),
+        "llm": {"configured": bool(settings.LLM_API_KEY), "model": settings.LLM_MODEL},
+        "embedding": {"configured": bool(settings.EMBEDDING_API_KEY or settings.LLM_API_KEY), "model": settings.EMBEDDING_MODEL},
+        "parsers": await _build_parser_statuses(
+            resolve_cli_command=resolve_cli_command,
+            resolve_magicpdf_models_dir=resolve_magicpdf_models_dir,
+        ),
     }
-
-    ok, msg = _check_import("markitdown")
-    parsers["markitdown"] = {
-        "enabled": bool(getattr(settings, "MARKITDOWN_ENABLED", False)),
-        "available": ok,
-        "message": "installed" if ok else msg,
-    }
-
-    pandoc_enabled = bool(getattr(settings, "PANDOC_ENABLED", False))
-    pandoc_cli = (getattr(settings, "PANDOC_CLI", "") or "pandoc").strip() or "pandoc"
-    pandoc_cli_ok = bool(resolve_cli_command(pandoc_cli))
-    parsers["pandoc"] = {
-        "enabled": pandoc_enabled,
-        "available": bool(pandoc_enabled and pandoc_cli_ok),
-        "message": _configured_message(pandoc_enabled, pandoc_cli_ok, f"missing cli: {pandoc_cli}"),
-    }
-
-    lo_enabled = bool(getattr(settings, "LIBREOFFICE_ENABLED", False))
-    lo_cli = (getattr(settings, "LIBREOFFICE_CLI", "") or "soffice").strip() or "soffice"
-    lo_cli_ok = bool(resolve_cli_command(lo_cli))
-    parsers["libreoffice"] = {
-        "enabled": lo_enabled,
-        "available": bool(lo_enabled and lo_cli_ok),
-        "message": _configured_message(lo_enabled, lo_cli_ok, f"missing cli: {lo_cli}"),
-    }
-
-    ok, msg = _check_import("app.deepdoc.parser")
-    parsers["deepdoc"] = {
-        "enabled": bool(getattr(settings, "DEEPDOC_ENABLED", False)),
-        "available": ok,
-        "message": "available" if ok else msg,
-    }
-
-    deepseek_enabled = bool(getattr(settings, "DEEPSEEK_OCR_ENABLED", False))
-    deepseek_key = bool((getattr(settings, "SILICONFLOW_API_KEY", "") or "").strip())
-    parsers["deepseek_ocr"] = {
-        "enabled": deepseek_enabled,
-        "available": bool(deepseek_enabled and deepseek_key),
-        "message": _configured_message(deepseek_enabled, deepseek_key, "missing api_key"),
-    }
-
-    qianfan_enabled = bool(getattr(settings, "QIANFAN_OCR_ENABLED", False))
-    qianfan_api_url = (getattr(settings, "QIANFAN_OCR_API_URL", "") or "").strip()
-    qianfan_url_ok = bool(qianfan_api_url)
-    qianfan_entry: dict[str, object] = {
-        "enabled": qianfan_enabled,
-        "available": bool(qianfan_enabled and qianfan_url_ok),
-        "message": _configured_message(qianfan_enabled, qianfan_url_ok, _MISSING_API_URL_MESSAGE),
-    }
-    if qianfan_enabled and qianfan_url_ok:
-        health_url = _convert_service_url_to_health_url(qianfan_api_url)
-        data, err = await _probe_http_json(health_url, timeout_sec=0.6)
-        if data is not None:
-            qianfan_entry["health"] = data
-            if data.get("ok") is False:
-                qianfan_entry["available"] = False
-                qianfan_entry["message"] = _health_not_ok_message(data)
-            else:
-                model_name = data.get("model")
-                mode = data.get("mode")
-                parts = [p for p in [model_name, mode] if isinstance(p, str) and p.strip()]
-                if parts:
-                    qianfan_entry["message"] = f"configured ({', '.join(parts[:2])})"
-        else:
-            qianfan_entry["health"] = {"ok": False, "error": err}
-            qianfan_entry["available"] = False
-            qianfan_entry["message"] = _CONFIGURED_HEALTH_UNREACHABLE_MESSAGE
-    parsers["qianfan_ocr"] = qianfan_entry
-
-    etl_enabled = bool(getattr(settings, "ETL4LLM_ENABLED", False))
-    etl_url = bool((getattr(settings, "ETL4LLM_API_URL", "") or "").strip())
-    parsers["etl4llm"] = {
-        "enabled": etl_enabled,
-        "available": bool(etl_enabled and etl_url),
-        "message": _configured_message(etl_enabled, etl_url, _MISSING_API_URL_MESSAGE),
-    }
-
-    marker_enabled = bool(getattr(settings, "MARKER_ENABLED", False))
-    marker_url = bool((getattr(settings, "MARKER_API_URL", "") or "").strip())
-    parsers["marker"] = {
-        "enabled": marker_enabled,
-        "available": bool(marker_enabled and marker_url),
-        "message": _configured_message(marker_enabled, marker_url, _MISSING_API_URL_MESSAGE),
-    }
-
-    paddlevl_enabled = bool(getattr(settings, "PADDLE_VL_ENABLED", False))
-    paddlevl_api_url = (getattr(settings, "PADDLE_VL_API_URL", "") or "").strip()
-    paddlevl_url = bool(paddlevl_api_url)
-    paddlevl_entry: dict[str, object] = {
-        "enabled": paddlevl_enabled,
-        "available": bool(paddlevl_enabled and paddlevl_url),
-        "message": _configured_message(paddlevl_enabled, paddlevl_url, _MISSING_API_URL_MESSAGE),
-    }
-    if paddlevl_enabled and paddlevl_url:
-        health_url = _convert_service_url_to_health_url(paddlevl_api_url)
-        data, err = await _probe_http_json(health_url, timeout_sec=0.6)
-        if data is not None:
-            paddlevl_entry["health"] = data
-            if data.get("ok") is False:
-                paddlevl_entry["available"] = False
-                paddlevl_entry["message"] = _health_not_ok_message(data)
-            else:
-                pv = data.get("pipeline_version") or data.get("version")
-                mode = data.get("mode")
-                parts = [p for p in [pv, mode] if isinstance(p, str) and p.strip()]
-                if parts:
-                    paddlevl_entry["message"] = f"configured ({', '.join(parts[:2])})"
-        else:
-            paddlevl_entry["health"] = {"ok": False, "error": err}
-            paddlevl_entry["available"] = False
-            paddlevl_entry["message"] = _CONFIGURED_HEALTH_UNREACHABLE_MESSAGE
-
-    parsers["paddle_vl"] = paddlevl_entry
-
-    textin_enabled = bool(getattr(settings, "TEXTIN_ENABLED", False))
-    textin_api_url = bool((getattr(settings, "TEXTIN_API_URL", "") or "").strip())
-    textin_app_id = bool((getattr(settings, "TEXTIN_APP_ID", "") or "").strip())
-    textin_secret = bool((getattr(settings, "TEXTIN_SECRET_CODE", "") or "").strip())
-    textin_available = bool(textin_enabled and textin_api_url and textin_app_id and textin_secret)
-    if not textin_enabled:
-        textin_message = "disabled"
-    elif not textin_api_url:
-        textin_message = "missing api_url"
-    elif not textin_app_id:
-        textin_message = "missing app_id"
-    elif not textin_secret:
-        textin_message = "missing secret_code"
-    else:
-        textin_message = "configured"
-    parsers["textin"] = {
-        "enabled": textin_enabled,
-        "available": textin_available,
-        "message": textin_message,
-    }
-
-    olmocr_enabled = bool(getattr(settings, "OLMOCR_ENABLED", False))
-    olmocr_api_url = (getattr(settings, "OLMOCR_API_URL", "") or "").strip()
-    olmocr_url_ok = bool(olmocr_api_url)
-    olmocr_entry: dict[str, object] = {
-        "enabled": olmocr_enabled,
-        "available": bool(olmocr_enabled and olmocr_url_ok),
-        "message": _configured_message(olmocr_enabled, olmocr_url_ok, _MISSING_API_URL_MESSAGE),
-    }
-    if olmocr_enabled and olmocr_url_ok:
-        health_url = _convert_service_url_to_health_url(olmocr_api_url)
-        data, err = await _probe_http_json(health_url, timeout_sec=0.6)
-        if data is not None:
-            olmocr_entry["health"] = data
-            if data.get("ok") is False:
-                olmocr_entry["available"] = False
-                olmocr_entry["message"] = _health_not_ok_message(data)
-        else:
-            olmocr_entry["health"] = {"ok": False, "error": err}
-            olmocr_entry["available"] = False
-            olmocr_entry["message"] = _CONFIGURED_HEALTH_UNREACHABLE_MESSAGE
-    parsers["olmocr"] = olmocr_entry
-
-    ok, msg = _check_import("docling")
-    parsers["docling"] = {
-        "enabled": bool(getattr(settings, "DOCLING_ENABLED", False)),
-        "available": ok,
-        "message": "installed" if ok else msg,
-    }
-
-    mineru_enabled = bool(getattr(settings, "MINERU_ENABLED", False))
-    mineru_local = bool((getattr(settings, "MINERU_LOCAL_SERVER_URL", "") or "").strip())
-    mineru_token = (getattr(settings, "MINERU_API_TOKEN", "") or "").strip()
-    mineru_exp = try_get_jwt_exp(mineru_token) if mineru_token else None
-    mineru_token_expired = bool(mineru_exp is not None and int(mineru_exp) <= int(time.time()))
-    mineru_available = bool(mineru_enabled and (mineru_local or (mineru_token and not mineru_token_expired)))
-
-    if not mineru_enabled:
-        mineru_message = "disabled"
-    elif mineru_local:
-        mineru_message = "configured (local)"
-    elif not mineru_token:
-        mineru_message = "missing api_token or local_server_url"
-    elif mineru_token_expired and mineru_exp is not None:
-        mineru_message = f"api_token expired at {format_unix_ts_utc(int(mineru_exp))}"
-    else:
-        mineru_message = "configured"
-
-    parsers["mineru"] = {
-        "enabled": mineru_enabled,
-        "available": mineru_available,
-        "message": mineru_message,
-    }
-
-    magicpdf_enabled = bool(getattr(settings, "MAGIC_PDF_ENABLED", False))
-    magicpdf_api_url = (getattr(settings, "MAGIC_PDF_API_URL", "") or "").strip()
-    magicpdf_cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
-    magicpdf_cli_ok = bool(resolve_cli_command(magicpdf_cli))
-    magicpdf_models_dir = resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
-    if not magicpdf_enabled:
-        magicpdf_message = "disabled"
-        magicpdf_available = False
-    elif magicpdf_api_url:
-        magicpdf_message = "configured (service)"
-        magicpdf_available = True
-    elif not magicpdf_cli_ok:
-        magicpdf_message = f"missing cli: {magicpdf_cli}"
-        magicpdf_available = False
-    elif magicpdf_models_dir is None:
-        magicpdf_message = "missing models"
-        magicpdf_available = False
-    else:
-        magicpdf_message = f"configured (models: {magicpdf_models_dir})"
-        magicpdf_available = True
-    parsers["magicpdf"] = {
-        "enabled": magicpdf_enabled,
-        "available": magicpdf_available,
-        "message": magicpdf_message,
-    }
-
-    status["parsers"] = parsers
-
-    # Check database connection.
-    try:
-        db = SessionLocal()
-        db.execute(text("SELECT 1"))
-        db.close()
-        status["database"]["connected"] = True
-        status["database"]["message"] = "connected"
-    except Exception as e:
-        status["database"]["message"] = str(e)[:100]
-
-    # Check Milvus connection.
-    try:
-        connections.connect(
-            alias="status_check",
-            host=settings.MILVUS_HOST,
-            port=settings.MILVUS_PORT,
-            user=settings.MILVUS_USER or None,
-            password=settings.MILVUS_PASSWORD or None,
-        )
-        connections.disconnect("status_check")
-        status["milvus"]["connected"] = True
-        status["milvus"]["message"] = "connected"
-    except Exception as e:
-        status["milvus"]["message"] = str(e)[:100]
-
-    return status
 
 
 class TestLLMRequest(BaseModel):

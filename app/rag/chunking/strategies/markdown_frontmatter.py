@@ -129,6 +129,32 @@ class MarkdownFrontmatterChunker(BaseChunker):
             add_start_index=True,
         )
 
+    def _append_chunks(
+        self,
+        out: list[Document],
+        *,
+        splitter: RecursiveCharacterTextSplitter,
+        text: str,
+        base_meta: dict[str, Any],
+        offset: int,
+        extra_meta: dict[str, Any],
+        doc_type_kwd: str | None = None,
+    ) -> None:
+        split_docs = splitter.create_documents(texts=[text], metadatas=[base_meta])
+        for sd in split_docs:
+            local_start = sd.metadata.pop("start_index", None) or 0
+            abs_start = offset + int(local_start)
+            abs_end = abs_start + len(sd.page_content)
+            meta: dict[str, Any] = dict(base_meta)
+            meta.update(sd.metadata or {})
+            meta["chunk_strategy"] = "markdown_frontmatter"
+            meta["start_char"] = abs_start
+            meta["end_char"] = abs_end
+            if doc_type_kwd:
+                meta.setdefault("doc_type_kwd", doc_type_kwd)
+            meta.update(extra_meta)
+            out.append(Document(page_content=sd.page_content, metadata=meta))
+
     def split_documents(self, documents: list[Document]) -> list[Document]:
         out: list[Document] = []
 
@@ -140,60 +166,53 @@ class MarkdownFrontmatterChunker(BaseChunker):
 
             fm = _find_frontmatter(text)
             if not fm:
-                split_docs = self._body_splitter.create_documents(texts=[text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "markdown_frontmatter"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta["markdown_frontmatter_fallback"] = True
-                    meta.setdefault("doc_type_kwd", "markdown")
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                self._append_chunks(
+                    out,
+                    splitter=self._body_splitter,
+                    text=text,
+                    base_meta=base_meta,
+                    offset=0,
+                    extra_meta={"markdown_frontmatter_fallback": True},
+                    doc_type_kwd="markdown",
+                )
                 continue
 
             fm_start, fm_end = fm
             fm_text = text[fm_start:fm_end]
             title = _extract_title(fm_text)
-
-            split_docs = self._frontmatter_splitter.create_documents(texts=[fm_text], metadatas=[base_meta])
-            for sd in split_docs:
-                local_start = sd.metadata.pop("start_index", None) or 0
-                abs_start = fm_start + int(local_start)
-                abs_end = abs_start + len(sd.page_content)
-                meta: dict[str, Any] = dict(base_meta)
-                meta.update(sd.metadata or {})
-                meta["chunk_strategy"] = "markdown_frontmatter"
-                meta["start_char"] = abs_start
-                meta["end_char"] = abs_end
-                meta["markdown_frontmatter"] = True
-                meta["frontmatter_end_char"] = int(fm_end)
-                if title:
-                    meta["frontmatter_title"] = title
-                meta.setdefault("doc_type_kwd", "markdown")
-                out.append(Document(page_content=sd.page_content, metadata=meta))
+            frontmatter_meta: dict[str, Any] = {
+                "markdown_frontmatter": True,
+                "frontmatter_end_char": int(fm_end),
+            }
+            if title:
+                frontmatter_meta["frontmatter_title"] = title
+            self._append_chunks(
+                out,
+                splitter=self._frontmatter_splitter,
+                text=fm_text,
+                base_meta=base_meta,
+                offset=fm_start,
+                extra_meta=frontmatter_meta,
+                doc_type_kwd="markdown",
+            )
 
             body_text = text[fm_end:]
             if body_text.strip():
-                split_docs = self._body_splitter.create_documents(texts=[body_text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = fm_end + int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "markdown_frontmatter"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta["frontmatter_present"] = True
-                    meta["frontmatter_end_char"] = int(fm_end)
-                    if title:
-                        meta["frontmatter_title"] = title
-                    meta.setdefault("doc_type_kwd", "markdown")
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                body_meta: dict[str, Any] = {
+                    "frontmatter_present": True,
+                    "frontmatter_end_char": int(fm_end),
+                }
+                if title:
+                    body_meta["frontmatter_title"] = title
+                self._append_chunks(
+                    out,
+                    splitter=self._body_splitter,
+                    text=body_text,
+                    base_meta=base_meta,
+                    offset=fm_end,
+                    extra_meta=body_meta,
+                    doc_type_kwd="markdown",
+                )
 
         for idx, chunk in enumerate(out):
             meta = dict(chunk.metadata or {})

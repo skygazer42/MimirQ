@@ -92,6 +92,28 @@ class SpreadsheetSheetChunker(BaseChunker):
             add_start_index=True,
         )
 
+    def _append_chunks(
+        self,
+        out: list[Document],
+        *,
+        text: str,
+        base_meta: dict[str, Any],
+        offset: int,
+        extra_meta: dict[str, Any],
+    ) -> None:
+        split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
+        for sd in split_docs:
+            local_start = sd.metadata.pop("start_index", None) or 0
+            abs_start = offset + int(local_start)
+            abs_end = abs_start + len(sd.page_content)
+            meta: dict[str, Any] = dict(base_meta)
+            meta.update(sd.metadata or {})
+            meta["chunk_strategy"] = "spreadsheet_sheet"
+            meta["start_char"] = abs_start
+            meta["end_char"] = abs_end
+            meta.update(extra_meta)
+            out.append(Document(page_content=sd.page_content, metadata=meta))
+
     def split_documents(self, documents: list[Document]) -> list[Document]:
         out: list[Document] = []
 
@@ -103,57 +125,38 @@ class SpreadsheetSheetChunker(BaseChunker):
 
             sheets = _iter_sheets(text)
             if not sheets:
-                split_docs = self._fallback_splitter.create_documents(texts=[text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "spreadsheet_sheet"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta["spreadsheet_fallback"] = True
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                self._append_chunks(
+                    out,
+                    text=text,
+                    base_meta=base_meta,
+                    offset=0,
+                    extra_meta={"spreadsheet_fallback": True},
+                )
                 continue
 
             # Include any prefix before the first sheet as a separate chunk.
             first = sheets[0]
             if first.start > 0 and (text[: first.start] or "").strip():
                 prefix = text[: first.start]
-                split_docs = self._fallback_splitter.create_documents(texts=[prefix], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "spreadsheet_sheet"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta["sheet_index"] = -1
-                    meta["sheet_name"] = "_meta"
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                self._append_chunks(
+                    out,
+                    text=prefix,
+                    base_meta=base_meta,
+                    offset=0,
+                    extra_meta={"sheet_index": -1, "sheet_name": "_meta"},
+                )
 
             for sheet in sheets:
                 sheet_text = text[sheet.start : sheet.end]
                 if not sheet_text.strip():
                     continue
-
-                split_docs = self._fallback_splitter.create_documents(texts=[sheet_text], metadatas=[base_meta])
-                for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
-                    abs_start = sheet.start + int(local_start)
-                    abs_end = abs_start + len(sd.page_content)
-
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "spreadsheet_sheet"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta["sheet_index"] = int(sheet.index)
-                    meta["sheet_name"] = sheet.name
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                self._append_chunks(
+                    out,
+                    text=sheet_text,
+                    base_meta=base_meta,
+                    offset=sheet.start,
+                    extra_meta={"sheet_index": int(sheet.index), "sheet_name": sheet.name},
+                )
 
         for idx, chunk in enumerate(out):
             meta = dict(chunk.metadata or {})

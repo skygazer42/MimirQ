@@ -718,6 +718,178 @@ def execute_extractive_fallback_once(
     )
 
 
+def _graph_runtime_context(
+    *,
+    request_id: str,
+    conversation_id: UUID | None,
+    tenant_id: UUID,
+    account_id: str,
+) -> dict[str, Any]:
+    return {
+        "request_id": str(request_id),
+        "conversation_id": str(conversation_id) if conversation_id else None,
+        "tenant_id": str(tenant_id) if tenant_id else None,
+        "account_id": account_id,
+    }
+
+
+def _graph_modality_meta(*, request: Any) -> tuple[str, dict[str, Any]]:
+    multimodal_meta: dict[str, Any] = {"enabled": True, "modality": "text", "reasons": []}
+    try:
+        from app.rag.policy.modality_router import classify_query_modality
+
+        modality, reasons = classify_query_modality(request.message)
+        multimodal_meta["modality"] = modality
+        multimodal_meta["reasons"] = reasons
+        return modality, multimodal_meta
+    except Exception as exc:  # noqa: BLE001
+        multimodal_meta["enabled"] = False
+        multimodal_meta["modality"] = "text"
+        multimodal_meta["reasons"] = [f"router_exception:{str(exc)[:80]}"]
+        return "text", multimodal_meta
+
+
+def _graph_tag_context_docs(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    doc_ids_to_use: list[UUID],
+    request: Any,
+    effective_rag_config: Any,
+) -> tuple[list[Any], dict[str, Any]]:
+    try:
+        import inspect
+
+        from app.services.chat_tag_service import build_chat_tag_context_docs
+
+        tag_kwargs: dict[str, Any] = {
+            "tenant_id": tenant_id,
+            "document_ids": doc_ids_to_use,
+            "question": request.message,
+        }
+        if "must_recall_expected_source_keys" in inspect.signature(build_chat_tag_context_docs).parameters:
+            tag_kwargs["must_recall_expected_source_keys"] = effective_rag_config.must_recall_expected_source_keys
+        tag_docs, tag_meta = build_chat_tag_context_docs(db, **tag_kwargs)
+        return list(tag_docs or []), tag_meta
+    except Exception as exc:  # noqa: BLE001
+        return [], {"enabled": False, "used": False, "reason": f"tag_exception:{str(exc)[:120]}"}
+
+
+def _graph_image_context_docs(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    request: Any,
+    modality: str,
+    dataset_id_used: UUID | None,
+    scope_dataset_id: UUID | None,
+) -> tuple[list[Any], dict[str, Any]]:
+    try:
+        if str(modality or "text").lower().strip() != "image":
+            return [], {"enabled": False, "used": False, "reason": "not_run"}
+
+        from app.services.chat_image_service import build_chat_image_context_docs
+
+        ds_for_images = dataset_id_used or scope_dataset_id
+        if ds_for_images is None:
+            return [], {"enabled": False, "used": False, "reason": "missing_dataset_id"}
+        image_docs, image_meta = build_chat_image_context_docs(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=ds_for_images,
+            question=request.message,
+            top_k=6,
+        )
+        return list(image_docs or []), image_meta
+    except Exception as exc:  # noqa: BLE001
+        return [], {"enabled": False, "used": False, "reason": f"image_exception:{str(exc)[:120]}"}
+
+
+def _graph_multimodal_enrichment(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    request: Any,
+    doc_ids_to_use: list[UUID],
+    dataset_id_used: UUID | None,
+    scope_dataset_id: UUID | None,
+    effective_rag_config: Any,
+) -> tuple[list[Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    modality, multimodal_meta = _graph_modality_meta(request=request)
+    tag_docs, tag_meta = _graph_tag_context_docs(
+        db=db,
+        tenant_id=tenant_id,
+        doc_ids_to_use=doc_ids_to_use,
+        request=request,
+        effective_rag_config=effective_rag_config,
+    )
+    image_docs, image_meta = _graph_image_context_docs(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        request=request,
+        modality=modality,
+        dataset_id_used=dataset_id_used,
+        scope_dataset_id=scope_dataset_id,
+    )
+    return [*tag_docs, *image_docs], multimodal_meta, tag_meta, image_meta
+
+
+def _apply_source_identification_override(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    question: str,
+    citations_data: list[Any],
+    full_response: str,
+    metrics_data: dict[str, Any],
+) -> str:
+    source_answer = _source_identification_answer_from_citations(
+        db=db,
+        tenant_id=tenant_id,
+        question=question,
+        citations=[citation for citation in citations_data if isinstance(citation, dict)],
+    )
+    if source_answer:
+        metrics_data["source_identification_answer_used"] = True
+        return source_answer
+    metrics_data.setdefault("source_identification_answer_used", False)
+    return full_response
+
+
+def _setdefault_graph_metrics(
+    *,
+    metrics_data: dict[str, Any],
+    multimodal_meta: dict[str, Any],
+    tag_meta: dict[str, Any],
+    image_meta: dict[str, Any],
+) -> None:
+    metrics_data.setdefault("multimodal_router", multimodal_meta)
+    metrics_data.setdefault("tag", tag_meta)
+    metrics_data.setdefault("image", image_meta)
+
+
+def _parse_graph_structured_output(
+    *,
+    parse_json_from_text,
+    request: Any,
+    full_response: str,
+    metrics_data: dict[str, Any],
+) -> object | None:
+    if not request.structured_output:
+        return None
+    structured_data, structured_parse_meta = parse_json_from_text(full_response, expected="object")
+    metrics_data["structured_parse_ok"] = bool(structured_parse_meta.get("ok"))
+    metrics_data["structured_parse_method"] = structured_parse_meta.get("method")
+    metrics_data["structured_parse_error"] = structured_parse_meta.get("error")
+    metrics_data["structured_type"] = type(structured_data).__name__ if structured_data is not None else None
+    metrics_data["structured_preset"] = request.structured_preset
+    return structured_data
+
+
 def execute_graph_chat_once(
     *,
     context: ChatExecutionContext,
@@ -742,12 +914,12 @@ def execute_graph_chat_once(
     rag_config_template_meta = context.rag_config_template_meta
 
     thread_id = str(conversation_id) if conversation_id else f"rag-{request_id}"
-    runtime_context = {
-        "request_id": str(request_id),
-        "conversation_id": str(conversation_id) if conversation_id else None,
-        "tenant_id": str(tenant_id) if tenant_id else None,
-        "account_id": account_id,
-    }
+    runtime_context = _graph_runtime_context(
+        request_id=request_id,
+        conversation_id=conversation_id,
+        tenant_id=tenant_id,
+        account_id=account_id,
+    )
 
     state = build_rag_state(
         question=request.message,
@@ -818,66 +990,16 @@ def execute_graph_chat_once(
     if rag_config_template_meta:
         state["rag_config_template"] = rag_config_template_meta
 
-    multimodal_meta: dict[str, Any] = {"enabled": True, "modality": "text", "reasons": []}
-    injected_docs: list[Any] = []
-
-    tag_meta: dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
-    image_meta: dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
-
-    try:
-        from app.rag.policy.modality_router import classify_query_modality
-
-        modality, reasons = classify_query_modality(request.message)
-        multimodal_meta["modality"] = modality
-        multimodal_meta["reasons"] = reasons
-    except Exception as exc:  # noqa: BLE001
-        multimodal_meta["enabled"] = False
-        multimodal_meta["modality"] = "text"
-        multimodal_meta["reasons"] = [f"router_exception:{str(exc)[:80]}"]
-        modality = "text"
-
-    try:
-        import inspect
-
-        from app.services.chat_tag_service import build_chat_tag_context_docs
-
-        tag_kwargs: dict[str, Any] = {
-            "tenant_id": tenant_id,
-            "document_ids": doc_ids_to_use,
-            "question": request.message,
-        }
-        if "must_recall_expected_source_keys" in inspect.signature(build_chat_tag_context_docs).parameters:
-            tag_kwargs["must_recall_expected_source_keys"] = (
-                effective_rag_config.must_recall_expected_source_keys
-            )
-
-        tag_docs, tag_meta = build_chat_tag_context_docs(db, **tag_kwargs)
-        if tag_docs:
-            injected_docs.extend(tag_docs)
-    except Exception as exc:  # noqa: BLE001
-        tag_meta = {"enabled": False, "used": False, "reason": f"tag_exception:{str(exc)[:120]}"}
-
-    try:
-        if str(modality or "text").lower().strip() == "image":
-            from app.services.chat_image_service import build_chat_image_context_docs
-
-            ds_for_images = dataset_id_used or scope_dataset_id
-            if ds_for_images is not None:
-                image_docs, image_meta = build_chat_image_context_docs(
-                    db,
-                    tenant_id=tenant_id,
-                    account_id=account_id,
-                    dataset_id=ds_for_images,
-                    question=request.message,
-                    top_k=6,
-                )
-                if image_docs:
-                    injected_docs.extend(image_docs)
-            else:
-                image_meta = {"enabled": False, "used": False, "reason": "missing_dataset_id"}
-    except Exception as exc:  # noqa: BLE001
-        image_meta = {"enabled": False, "used": False, "reason": f"image_exception:{str(exc)[:120]}"}
-
+    injected_docs, multimodal_meta, tag_meta, image_meta = _graph_multimodal_enrichment(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        request=request,
+        doc_ids_to_use=doc_ids_to_use,
+        dataset_id_used=dataset_id_used,
+        scope_dataset_id=scope_dataset_id,
+        effective_rag_config=effective_rag_config,
+    )
     if injected_docs:
         state["tag_docs"] = injected_docs
 
@@ -894,29 +1016,26 @@ def execute_graph_chat_once(
     citations_data = graph_result.get("citations") or []
     full_response = graph_result.get("answer") or ""
     metrics_data = dict(graph_result.get("metrics") or {})
-    source_answer = _source_identification_answer_from_citations(
+    full_response = _apply_source_identification_override(
         db=db,
         tenant_id=tenant_id,
         question=str(request.message or ""),
-        citations=[c for c in citations_data if isinstance(c, dict)],
+        citations_data=citations_data,
+        full_response=full_response,
+        metrics_data=metrics_data,
     )
-    if source_answer:
-        full_response = source_answer
-        metrics_data["source_identification_answer_used"] = True
-    else:
-        metrics_data.setdefault("source_identification_answer_used", False)
-    metrics_data.setdefault("multimodal_router", multimodal_meta)
-    metrics_data.setdefault("tag", tag_meta)
-    metrics_data.setdefault("image", image_meta)
-
-    structured_data = None
-    if request.structured_output:
-        structured_data, structured_parse_meta = parse_json_from_text(full_response, expected="object")
-        metrics_data["structured_parse_ok"] = bool(structured_parse_meta.get("ok"))
-        metrics_data["structured_parse_method"] = structured_parse_meta.get("method")
-        metrics_data["structured_parse_error"] = structured_parse_meta.get("error")
-        metrics_data["structured_type"] = type(structured_data).__name__ if structured_data is not None else None
-        metrics_data["structured_preset"] = request.structured_preset
+    _setdefault_graph_metrics(
+        metrics_data=metrics_data,
+        multimodal_meta=multimodal_meta,
+        tag_meta=tag_meta,
+        image_meta=image_meta,
+    )
+    structured_data = _parse_graph_structured_output(
+        parse_json_from_text=parse_json_from_text,
+        request=request,
+        full_response=full_response,
+        metrics_data=metrics_data,
+    )
 
     return ExecutedGraphChatOnceResult(
         content=full_response,

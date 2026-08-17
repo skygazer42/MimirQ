@@ -70,6 +70,49 @@ PRECHECK_SAMPLE_RATIO_NUMERATOR = 3
 PRECHECK_SAMPLE_RATIO_DENOMINATOR = 1000
 PRECHECK_SAMPLE_MAX_SIZE = 2000
 
+_SAMPLE_REVIEW_KEYS = {
+    "parse_failed",
+    "empty_text",
+    "short_text",
+    "low_density_text",
+    "gibberish_text",
+    "pdf_scanned",
+    "pdf_mixed",
+    "pdf_low_density",
+    "pdf_encrypted",
+    "pdf_unknown",
+    "pii",
+    "secrets",
+    "large_spreadsheet",
+    "wide_spreadsheet",
+    "many_sheets_spreadsheet",
+    "merged_heavy_spreadsheet",
+    "near_dup",
+    "exact_dup",
+}
+_LANGUAGE_BUCKETS = {"zh", "en", "mixed", "unknown"}
+_REUSE_CONFIG_KEYS = {
+    "enable_pdf_quality",
+    "enable_text_extract",
+    "enable_pii",
+    "enable_secrets",
+    "compute_file_hash",
+    "pdf_sample_pages",
+    "text_extract_max_bytes",
+    "pdf_min_text_chars_per_page",
+    "pdf_text_chars_per_page",
+    "pdf_scan_ratio_threshold",
+    "enable_pii_samples",
+    "pii_context_chars",
+    "pii_max_samples_per_file",
+    "enable_secrets_samples",
+    "secrets_context_chars",
+    "secrets_max_samples_per_file",
+    "enable_near_dup",
+    "near_dup_hamming_threshold",
+    "near_dup_max_pairs",
+}
+
 
 FINDING_KEY_REASONS: dict[str, dict[str, Any]] = {
     "parse_failed": {
@@ -331,29 +374,7 @@ def _resolve_precheck_sample_target(
     return min(total_n, min(PRECHECK_SAMPLE_MAX_SIZE, target))
 
 
-def _build_samples_payload(*, jsonl_path: Path, target_size: int) -> dict[str, Any]:
-    """
-    Build representative + problem-focused samples from a precheck JSONL artifact.
-
-    Output is designed for pricing/POC alignment (shareable when redact_paths=true).
-    """
-    target_size = max(0, min(int(target_size or 0), 2000))
-    if target_size <= 0:
-        return {"requested": 0, "representative": [], "needs_review": {}, "top_large_files": [], "top_long_text": []}
-
-    # Base strata: (file_type, size_bin, pdf_state).
-    groups: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
-    type_groups: dict[str, list[dict[str, Any]]] = {}
-    findings_buckets: dict[str, list[dict[str, Any]]] = {}
-    largest: list[dict[str, Any]] = []
-    longest: list[dict[str, Any]] = []
-
-    def _push_top(arr: list[dict[str, Any]], item: dict[str, Any], *, key: str, top_k: int = 20) -> None:
-        arr.append(item)
-        arr.sort(key=lambda x: int(x.get(key) or 0), reverse=True)
-        if len(arr) > top_k:
-            del arr[top_k:]
-
+def _iter_jsonl_objects(jsonl_path: Path) -> Iterable[dict[str, Any]]:
     with jsonl_path.open("r", encoding="utf-8") as f:
         for line in f:
             s = (line or "").strip()
@@ -364,112 +385,137 @@ def _build_samples_payload(*, jsonl_path: Path, target_size: int) -> dict[str, A
             except Exception:
                 get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                 continue
-            if not isinstance(obj, dict):
-                continue
+            if isinstance(obj, dict):
+                yield obj
 
-            file_type = str(obj.get("file_type") or "unknown")
-            file_size = int(obj.get("file_size") or 0)
-            pdf_scanned = obj.get("pdf_scanned")
-            pdf_state = "na"
-            if file_type.lower() == "pdf":
-                if pdf_scanned is True:
-                    pdf_state = "scan"
-                elif pdf_scanned is False:
-                    pdf_state = "text"
-                else:
-                    pdf_state = "unknown"
 
-            size_bin = _bucket_file_size_label(file_size)
-            key = (file_type.lower(), size_bin, pdf_state)
-            groups.setdefault(key, []).append(obj)
-            type_groups.setdefault(file_type.lower(), []).append(obj)
+def _sample_pdf_state(*, file_type: str, pdf_scanned: object) -> str:
+    if file_type.lower() != "pdf":
+        return "na"
+    if pdf_scanned is True:
+        return "scan"
+    if pdf_scanned is False:
+        return "text"
+    return "unknown"
 
-            findings = obj.get("findings")
-            if isinstance(findings, list):
-                for fk in findings:
-                    fkey = str(fk or "").strip().lower()
-                    if not fkey:
-                        continue
+
+def _push_top_records(arr: list[dict[str, Any]], item: dict[str, Any], *, key: str, top_k: int = 20) -> None:
+    arr.append(item)
+    arr.sort(key=lambda x: int(x.get(key) or 0), reverse=True)
+    if len(arr) > top_k:
+        del arr[top_k:]
+
+
+def _collect_sample_payload_buckets(
+    *, jsonl_path: Path
+) -> tuple[
+    dict[tuple[str, str, str], list[dict[str, Any]]],
+    dict[str, list[dict[str, Any]]],
+    dict[str, list[dict[str, Any]]],
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+]:
+    groups: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    type_groups: dict[str, list[dict[str, Any]]] = {}
+    findings_buckets: dict[str, list[dict[str, Any]]] = {}
+    largest: list[dict[str, Any]] = []
+    longest: list[dict[str, Any]] = []
+
+    for obj in _iter_jsonl_objects(jsonl_path):
+        file_type = str(obj.get("file_type") or "unknown")
+        file_size = int(obj.get("file_size") or 0)
+        pdf_state = _sample_pdf_state(file_type=file_type, pdf_scanned=obj.get("pdf_scanned"))
+        key = (file_type.lower(), _bucket_file_size_label(file_size), pdf_state)
+        groups.setdefault(key, []).append(obj)
+        type_groups.setdefault(file_type.lower(), []).append(obj)
+
+        findings = obj.get("findings")
+        if isinstance(findings, list):
+            for fk in findings:
+                fkey = str(fk or "").strip().lower()
+                if fkey:
                     findings_buckets.setdefault(fkey, []).append(obj)
 
-            _push_top(largest, obj, key="file_size", top_k=20)
-            _push_top(longest, obj, key="text_characters", top_k=20)
+        _push_top_records(largest, obj, key="file_size", top_k=20)
+        _push_top_records(longest, obj, key="text_characters", top_k=20)
 
-    # Representative picks: random-like deterministic coverage by present file type first,
-    # then fill the ratio target from the remaining pool. Deterministic ordering keeps
-    # exports and tests reproducible while avoiding "first N files" bias.
+    return groups, type_groups, findings_buckets, largest, longest
+
+
+def _pick_representative_sample(items: list[dict[str, Any]], *, salt: str) -> dict[str, Any] | None:
+    keyed_items = [
+        (_stable_sample_key(item, salt=salt), str(item.get("name") or ""), item)
+        for item in items
+    ]
+    if not keyed_items:
+        return None
+    return min(keyed_items, key=lambda entry: (entry[0], entry[1]))[2]
+
+
+def _build_representative_samples(
+    *, type_groups: dict[str, list[dict[str, Any]]], target_size: int
+) -> tuple[int, list[dict[str, Any]]]:
     rep: list[dict[str, Any]] = []
     picked_names: set[str] = set()
+    target_size = max(0, min(int(target_size or 0), PRECHECK_SAMPLE_MAX_SIZE))
     if len(type_groups) > target_size:
         target_size = min(PRECHECK_SAMPLE_MAX_SIZE, len(type_groups))
-    type_minimum = min(
-        int(len(type_groups)),
-        int(max(0, min(target_size, PRECHECK_SAMPLE_MAX_SIZE))),
-    )
+    type_minimum = min(len(type_groups), target_size)
 
     for file_type, items in sorted(type_groups.items(), key=lambda kv: (-len(kv[1]), kv[0]))[:type_minimum]:
-        keyed_items = [
-            (_stable_sample_key(item, salt=f"type:{file_type}"), str(item.get("name") or ""), item)
-            for item in items
-        ]
-        items_sorted = [item for _, _, item in sorted(keyed_items, key=lambda entry: (entry[0], entry[1]))]
-        if not items_sorted:
-            continue
-        item = items_sorted[0]
-        nm = str(item.get("name") or "")
-        if nm and nm not in picked_names:
-            picked_names.add(nm)
+        item = _pick_representative_sample(items, salt=f"type:{file_type}")
+        name = str((item or {}).get("name") or "")
+        if item is not None and name and name not in picked_names:
+            picked_names.add(name)
+            rep.append(item)
+        if len(rep) >= target_size:
+            return target_size, rep
+
+    remaining = [
+        item
+        for items in type_groups.values()
+        for item in items
+        if str(item.get("name") or "") not in picked_names
+    ]
+    remaining.sort(key=lambda o: (_stable_sample_key(o, salt="ratio-fill"), str(o.get("name") or "")))
+    for item in remaining:
+        name = str(item.get("name") or "")
+        if name and name not in picked_names:
+            picked_names.add(name)
             rep.append(item)
         if len(rep) >= target_size:
             break
+    return target_size, rep
 
-    if len(rep) < target_size:
-        remaining = [
-            item
-            for items in type_groups.values()
-            for item in items
-            if str(item.get("name") or "") not in picked_names
-        ]
-        remaining.sort(key=lambda o: (_stable_sample_key(o, salt="ratio-fill"), str(o.get("name") or "")))
-        for item in remaining:
-            nm = str(item.get("name") or "")
-            if nm and nm not in picked_names:
-                picked_names.add(nm)
-                rep.append(item)
-            if len(rep) >= target_size:
-                break
 
-    # Problem-focused samples: per finding bucket (cap per finding).
+def _build_needs_review_samples(
+    *, findings_buckets: dict[str, list[dict[str, Any]]], target_size: int
+) -> dict[str, list[dict[str, Any]]]:
     needs_review: dict[str, list[dict[str, Any]]] = {}
+    limit = min(10, max(1, int(target_size or 0) // 6))
     for fk, items in findings_buckets.items():
-        if fk not in {
-            "parse_failed",
-            "empty_text",
-            "short_text",
-            "low_density_text",
-            "gibberish_text",
-            "pdf_scanned",
-            "pdf_mixed",
-            "pdf_low_density",
-            "pdf_encrypted",
-            "pdf_unknown",
-            "pii",
-            "secrets",
-            "large_spreadsheet",
-            "wide_spreadsheet",
-            "many_sheets_spreadsheet",
-            "merged_heavy_spreadsheet",
-            "near_dup",
-            "exact_dup",
-        }:
+        if fk not in _SAMPLE_REVIEW_KEYS:
             continue
-        items_sorted = sorted(items, key=lambda o: int(o.get("file_size") or 0), reverse=True)
-        needs_review[fk] = items_sorted[: min(10, max(1, target_size // 6))]
+        needs_review[fk] = sorted(items, key=lambda o: int(o.get("file_size") or 0), reverse=True)[:limit]
+    return needs_review
+
+
+def _build_samples_payload(*, jsonl_path: Path, target_size: int) -> dict[str, Any]:
+    """
+    Build representative + problem-focused samples from a precheck JSONL artifact.
+
+    Output is designed for pricing/POC alignment (shareable when redact_paths=true).
+    """
+    target_size = max(0, min(int(target_size or 0), 2000))
+    if target_size <= 0:
+        return {"requested": 0, "representative": [], "needs_review": {}, "top_large_files": [], "top_long_text": []}
+    groups, type_groups, findings_buckets, largest, longest = _collect_sample_payload_buckets(jsonl_path=jsonl_path)
+    target_size, representative = _build_representative_samples(type_groups=type_groups, target_size=target_size)
 
     return {
         "requested": int(target_size),
-        "representative": rep,
-        "needs_review": needs_review,
+        "representative": representative,
+        "needs_review": _build_needs_review_samples(findings_buckets=findings_buckets, target_size=target_size),
         "top_large_files": largest,
         "top_long_text": longest,
         "strata_count": int(len(groups)),
@@ -665,6 +711,32 @@ def _sanitize_display_name(rel_path: str) -> str:
     return s[:1024] if len(s) > 1024 else s
 
 
+def _merged_range_area(rng: Any) -> int:
+    try:
+        return int(rng.size)  # type: ignore[attr-defined]
+    except Exception:
+        get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+    try:
+        return int((rng.max_row - rng.min_row + 1) * (rng.max_col - rng.min_col + 1))  # type: ignore[attr-defined]
+    except Exception:
+        get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+        return 0
+
+
+def _merged_area_for_sheet(ws: Any) -> int:
+    merged_cells = getattr(ws, "merged_cells", None)
+    ranges = list(getattr(merged_cells, "ranges", None) or [])
+    return sum(_merged_range_area(rng) for rng in ranges[:5000])
+
+
+def _clamp_unit_ratio(value: float) -> float:
+    if value < 0.0:
+        return 0.0
+    if value > 1.0:
+        return 1.0
+    return value
+
+
 def _xlsx_spreadsheet_stats(path: Path, *, max_sheets: int = 3) -> tuple[dict[str, Any] | None, str | None]:
     """
     Best-effort spreadsheet stats for .xlsx (read-only).
@@ -683,7 +755,6 @@ def _xlsx_spreadsheet_stats(path: Path, *, max_sheets: int = 3) -> tuple[dict[st
         sheet_count = int(len(sheetnames))
         max_rows = 0
         max_cols = 0
-        merged_area = 0
 
         for idx, name in enumerate(sheetnames[: max(1, int(max_sheets or 1))]):
             ws = wb[name]
@@ -691,28 +762,11 @@ def _xlsx_spreadsheet_stats(path: Path, *, max_sheets: int = 3) -> tuple[dict[st
             c = int(getattr(ws, "max_column", 0) or 0)
             max_rows = max(max_rows, r)
             max_cols = max(max_cols, c)
-
-            # Only compute merged cells on the first sheet (cheap signal).
             if idx == 0:
-                merged_cells = getattr(ws, "merged_cells", None)
-                ranges = list(getattr(merged_cells, "ranges", None) or [])
-                # Cap range count to avoid pathological files.
-                for rng in ranges[:5000]:
-                    try:
-                        merged_area += int(rng.size)  # type: ignore[attr-defined]
-                    except Exception:
-                        try:
-                            merged_area += int((rng.max_row - rng.min_row + 1) * (rng.max_col - rng.min_col + 1))  # type: ignore[attr-defined]
-                        except Exception:
-                            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
-                            continue
+                merged_area = _merged_area_for_sheet(ws)
 
         total_area = max(1, int(max_rows) * int(max_cols))
-        merged_ratio = float(merged_area) / float(total_area)
-        if merged_ratio < 0.0:
-            merged_ratio = 0.0
-        if merged_ratio > 1.0:
-            merged_ratio = 1.0
+        merged_ratio = _clamp_unit_ratio(float(merged_area) / float(total_area))
 
         return {
             "row_count": int(max_rows),
@@ -732,39 +786,56 @@ def _xlsx_spreadsheet_stats(path: Path, *, max_sheets: int = 3) -> tuple[dict[st
             logger.debug(_PRECHECK_RUNNER_FALLBACK_LOG_MESSAGE, exc)
 
 
+def _mask_email_value(raw: str) -> str:
+    if "@" not in raw:
+        return REDACTED_MASK
+    local, domain = raw.split("@", 1)
+    head = (local[:1] + "***") if local else "***"
+    return f"{head}@{domain}"
+
+
+def _mask_ip_value(raw: str) -> str:
+    parts = raw.split(".")
+    if len(parts) == 4:
+        return ".".join(parts[:3] + ["***"])
+    return REDACTED_MASK
+
+
+def _mask_phone_value(raw: str) -> str:
+    digits = re.sub(r"[^\d]", "", raw)
+    if len(digits) >= 7:
+        return f"{digits[:3]}****{digits[-2:]}"
+    return REDACTED_MASK
+
+
+def _mask_credit_card_value(raw: str) -> str:
+    digits = re.sub(r"[^\d]", "", raw)
+    if len(digits) >= 8:
+        return f"{digits[:4]}****{digits[-4:]}"
+    return REDACTED_MASK
+
+
+def _mask_cn_id_value(raw: str) -> str:
+    if len(raw) >= 10:
+        return f"{raw[:6]}********{raw[-2:]}"
+    return REDACTED_MASK
+
+
 def _mask_pii_value(kind: str, raw: str) -> str:
     k = (kind or "").strip().lower()
     s = (raw or "").strip()
     if not s:
         return REDACTED_MASK
-    if k == "email":
-        if "@" not in s:
-            return REDACTED_MASK
-        local, domain = s.split("@", 1)
-        head = (local[:1] + "***") if local else "***"
-        return f"{head}@{domain}"
-    if k == "ip":
-        parts = s.split(".")
-        if len(parts) == 4:
-            return ".".join(parts[:3] + ["***"])
-        return REDACTED_MASK
-    if k in {"phone"}:
-        digits = re.sub(r"[^\d]", "", s)
-        if len(digits) >= 7:
-            return f"{digits[:3]}****{digits[-2:]}"
-        return REDACTED_MASK
-    if k == "credit_card":
-        digits = re.sub(r"[^\d]", "", s)
-        if len(digits) >= 8:
-            return f"{digits[:4]}****{digits[-4:]}"
-        return REDACTED_MASK
-    if k == "cn_id":
-        if len(s) >= 10:
-            return f"{s[:6]}********{s[-2:]}"
-        return REDACTED_MASK
-    if k == "ssn":
-        return "***-**-****"
-    return REDACTED_MASK
+    maskers = {
+        "email": _mask_email_value,
+        "ip": _mask_ip_value,
+        "phone": _mask_phone_value,
+        "credit_card": _mask_credit_card_value,
+        "cn_id": _mask_cn_id_value,
+        "ssn": lambda _value: "***-**-****",
+    }
+    masker = maskers.get(k)
+    return masker(s) if masker is not None else REDACTED_MASK
 
 
 def _mask_secret_value(kind: str, raw: str) -> str:
@@ -818,6 +889,1414 @@ class _FileRecord:
     processing_paths: list[str] = field(default_factory=list)
     findings: list[str] = field(default_factory=list)
     error_message: str | None = None
+
+
+@dataclass(frozen=True)
+class _ScanOptions:
+    cfg: dict[str, Any]
+    root_path: str
+    max_files: int
+    max_total_bytes: int
+    text_max_bytes: int
+    pdf_sample_pages: int
+    enable_pdf_quality: bool
+    enable_text_extract: bool
+    enable_pii: bool
+    enable_secrets: bool
+    compute_file_hash: bool
+    redact_paths: bool
+    enable_pii_samples: bool
+    pii_context_chars: int
+    pii_max_samples_per_file: int
+    enable_secrets_samples: bool
+    secrets_context_chars: int
+    secrets_max_samples_per_file: int
+    enable_near_dup: bool
+    near_dup_hamming_threshold: int
+    near_dup_max_pairs: int
+    enable_sampling: bool
+    sample_size_override: int | None
+    pdf_scan_max_chars: int
+    pdf_text_min_chars: int
+    pdf_scan_ratio_threshold: float
+    spreadsheet_large_row_threshold: int
+    spreadsheet_wide_col_threshold: int
+    spreadsheet_sheet_threshold: int
+    spreadsheet_merged_ratio_threshold: float
+    language_min_chars: int
+    text_short_chars_threshold: int
+    text_density_threshold: float
+    text_gibberish_density_threshold: float
+    text_high_replacement_ratio_threshold: float
+    pdf_low_density_ratio_threshold: float
+    directory_stats_limit: int
+    allowed_exts: set[str]
+
+
+@dataclass
+class _ScanAccumulator:
+    by_type: dict[str, int] = field(default_factory=dict)
+    bytes_by_type: dict[str, int] = field(default_factory=dict)
+    file_sizes: list[int] = field(default_factory=list)
+    text_lengths: list[int] = field(default_factory=list)
+    token_lengths: list[int] = field(default_factory=list)
+    language_counts: Counter[str] = field(default_factory=Counter)
+    directory_stats: dict[str, dict[str, Any]] = field(default_factory=dict)
+    pii_totals: dict[str, int] = field(default_factory=dict)
+    secrets_totals: dict[str, int] = field(default_factory=dict)
+    pdf_scanned: int = 0
+    pdf_not_scanned: int = 0
+    pdf_unknown: int = 0
+    finding_counts: dict[str, int] = field(default_factory=lambda: dict.fromkeys(FINDING_KEY_REASONS.keys(), 0))
+    risk_bucket_counts: dict[str, int] = field(default_factory=dict)
+    primary_tag_counts: Counter[str] = field(default_factory=Counter)
+    processing_path_counts: Counter[str] = field(default_factory=Counter)
+    sha_counts: dict[str, int] = field(default_factory=dict)
+    simhash_entries: list[tuple[str, int, int, int, int]] = field(default_factory=list)
+    errors: int = 0
+    reused_files: int = 0
+    cancelled: bool = False
+
+
+def _normalize_language_bucket(value: object) -> str:
+    s = str(value or "").strip().lower()
+    return s if s in _LANGUAGE_BUCKETS else "unknown"
+
+
+def _dir_key(name: str) -> str:
+    s = str(name or "").replace("\\", "/").strip()
+    d = os.path.dirname(s)
+    return d if d else "."
+
+
+def _mark_run_running(db: Session, run: DBDatasetPrecheckScanRun) -> None:
+    run.status = "running"
+    run.progress = 0
+    run.started_at = _now_utc()
+    run.updated_at = run.started_at
+    run.error_message = None
+    db.commit()
+
+
+def _build_scan_options(*, cfg: dict[str, Any]) -> _ScanOptions:
+    max_files_cap = safe_int(getattr(settings, "PRECHECK_SCAN_MAX_FILES", 20_000), default=20_000)
+    requested_max_files = cfg.get("max_files")
+    max_files_req = safe_int(requested_max_files, default=0)
+    max_files = max_files_cap if max_files_req <= 0 else min(max_files_cap, max_files_req)
+
+    threshold_overrides = cfg.get("threshold_overrides") if isinstance(cfg.get("threshold_overrides"), dict) else {}
+    thresholds = resolve_pre_poc_scanner_thresholds(
+        {
+            **threshold_overrides,
+            "pdf_scan_ratio_threshold": cfg.get("pdf_scan_ratio_threshold"),
+            "near_dup_hamming_threshold": cfg.get("near_dup_hamming_threshold"),
+            "near_dup_max_pairs": cfg.get("near_dup_max_pairs"),
+            "sample_size": cfg.get("sample_size"),
+        }
+    )
+    configured_default_sample_size = safe_int(getattr(settings, "PRECHECK_SAMPLE_SIZE", 0), default=0)
+    raw_sample_size = cfg.get("sample_size")
+    sample_size_override = int(thresholds["sample_size"]) if raw_sample_size is not None or configured_default_sample_size > 0 else None
+
+    pii_context_chars = max(0, min(safe_int(cfg.get("pii_context_chars") or 50, default=50), 500))
+    pii_max_samples_per_file = max(0, min(safe_int(cfg.get("pii_max_samples_per_file") or 5, default=5), 50))
+    secrets_context_chars = max(0, min(safe_int(cfg.get("secrets_context_chars") or 50, default=50), 500))
+    secrets_max_samples_per_file = max(0, min(safe_int(cfg.get("secrets_max_samples_per_file") or 5, default=5), 50))
+    near_dup_hamming_threshold = max(0, min(safe_int(cfg.get("near_dup_hamming_threshold") or 5, default=5), 32))
+    near_dup_max_pairs = max(0, min(safe_int(cfg.get("near_dup_max_pairs") or 5000, default=5000), 200_000))
+    spreadsheet_merged_ratio_threshold = _clamp_unit_ratio(
+        float(getattr(settings, "PRECHECK_SPREADSHEET_MERGED_RATIO_THRESHOLD", 0.15) or 0.15)
+    )
+    directory_stats_limit = max(
+        0,
+        min(safe_int(getattr(settings, "PRECHECK_DIRECTORY_STATS_LIMIT", 200), default=200), 2000),
+    )
+
+    redact_paths = bool(cfg.get("redact_paths", False))
+    return _ScanOptions(
+        cfg=cfg,
+        root_path=str(cfg.get("root_path") or "").strip(),
+        max_files=max_files,
+        max_total_bytes=safe_int(getattr(settings, "PRECHECK_SCAN_MAX_TOTAL_BYTES", 0), default=0),
+        text_max_bytes=safe_int(
+            cfg.get("text_extract_max_bytes") or getattr(settings, "PRECHECK_TEXT_EXTRACT_MAX_BYTES", 2_000_000),
+            default=2_000_000,
+        ),
+        pdf_sample_pages=safe_int(
+            cfg.get("pdf_sample_pages") or getattr(settings, "PRECHECK_PDF_SAMPLE_PAGES", 3),
+            default=3,
+        ),
+        enable_pdf_quality=bool(cfg.get("enable_pdf_quality", True)),
+        enable_text_extract=bool(cfg.get("enable_text_extract", True)),
+        enable_pii=bool(cfg.get("enable_pii", False)),
+        enable_secrets=bool(cfg.get("enable_secrets", False)),
+        compute_file_hash=bool(cfg.get("compute_file_hash", False)),
+        redact_paths=redact_paths,
+        enable_pii_samples=False if redact_paths else bool(cfg.get("enable_pii_samples", False)),
+        pii_context_chars=pii_context_chars,
+        pii_max_samples_per_file=pii_max_samples_per_file,
+        enable_secrets_samples=False if redact_paths else bool(cfg.get("enable_secrets_samples", False)),
+        secrets_context_chars=secrets_context_chars,
+        secrets_max_samples_per_file=secrets_max_samples_per_file,
+        enable_near_dup=bool(cfg.get("enable_near_dup", False)),
+        near_dup_hamming_threshold=near_dup_hamming_threshold,
+        near_dup_max_pairs=near_dup_max_pairs,
+        enable_sampling=bool(cfg.get("enable_sampling", True)),
+        sample_size_override=sample_size_override,
+        pdf_scan_max_chars=safe_int(
+            cfg.get("pdf_min_text_chars_per_page") or getattr(settings, "PRECHECK_PDF_MIN_TEXT_CHARS_PER_PAGE", 50),
+            default=50,
+        ),
+        pdf_text_min_chars=safe_int(
+            cfg.get("pdf_text_chars_per_page") or getattr(settings, "PRECHECK_PDF_TEXT_CHARS_PER_PAGE", 200),
+            default=200,
+        ),
+        pdf_scan_ratio_threshold=float(thresholds["pdf_scan_ratio_threshold"]),
+        spreadsheet_large_row_threshold=safe_int(
+            getattr(settings, "PRECHECK_SPREADSHEET_LARGE_ROW_THRESHOLD", 5000),
+            default=5000,
+        ),
+        spreadsheet_wide_col_threshold=safe_int(
+            getattr(settings, "PRECHECK_SPREADSHEET_WIDE_COL_THRESHOLD", 80),
+            default=80,
+        ),
+        spreadsheet_sheet_threshold=safe_int(
+            getattr(settings, "PRECHECK_SPREADSHEET_SHEET_THRESHOLD", 5),
+            default=5,
+        ),
+        spreadsheet_merged_ratio_threshold=spreadsheet_merged_ratio_threshold,
+        language_min_chars=safe_int(getattr(settings, "PRECHECK_LANGUAGE_MIN_CHARS", 40), default=40),
+        text_short_chars_threshold=int(thresholds["text_short_chars_threshold"]),
+        text_density_threshold=float(thresholds["text_density_threshold"]),
+        text_gibberish_density_threshold=float(thresholds["text_gibberish_density_threshold"]),
+        text_high_replacement_ratio_threshold=float(thresholds["text_high_replacement_ratio_threshold"]),
+        pdf_low_density_ratio_threshold=float(thresholds["pdf_low_density_ratio_threshold"]),
+        directory_stats_limit=directory_stats_limit,
+        allowed_exts=set(getattr(settings, "allowed_extensions_list", []) or []),
+    )
+
+
+def _collect_scan_candidates(
+    *, root: Path, allowed_exts: set[str], max_files: int, max_total_bytes: int
+) -> tuple[list[Path], Counter[str]]:
+    candidates: list[Path] = []
+    candidate_type_counts: Counter[str] = Counter()
+    total_bytes_seen = 0
+    for path in _iter_files(root, max_files=max_files):
+        ext = path.suffix.lower()
+        if ext not in allowed_exts:
+            continue
+        try:
+            size = int(path.stat().st_size)
+        except Exception:
+            size = 0
+        if max_total_bytes > 0 and (total_bytes_seen + size) > max_total_bytes:
+            break
+        candidates.append(path)
+        file_type = ext.lstrip(".") if ext.startswith(".") else (path.suffix or "").lower().lstrip(".") or "unknown"
+        candidate_type_counts[str(file_type or "unknown").lower()] += 1
+        total_bytes_seen += size
+    return candidates, candidate_type_counts
+
+
+def _empty_findings_summary() -> list[dict[str, Any]]:
+    return [
+        {
+            "key": k,
+            "label": v.get("label", k),
+            "severity": v.get("severity", "info"),
+            "count": 0,
+            "description": v.get("description"),
+        }
+        for k, v in FINDING_KEY_REASONS.items()
+    ]
+
+
+def _build_empty_scan_summary(
+    *,
+    dataset_id: UUID,
+    scan_run_id: UUID,
+    generated_at: datetime,
+    pdf_sample_pages: int,
+    pdf_scan_max_chars: int,
+    pdf_text_min_chars: int,
+    pdf_scan_ratio_threshold: float,
+) -> dict[str, Any]:
+    return {
+        "dataset_id": str(dataset_id),
+        "scan_run_id": str(scan_run_id),
+        "generated_at": generated_at.isoformat(),
+        "schema_id": "mimirq.dataset_precheck_summary.v3",
+        "schema_version": 3,
+        "total_files": 0,
+        "total_size_bytes": 0,
+        "reused_files": 0,
+        "by_file_type": {},
+        "by_file_type_bytes": {},
+        "file_type_stats": [],
+        "language_mix": {},
+        "embedding_advisories": [],
+        "directory_stats": [],
+        "file_size_histogram": [],
+        "length_percentiles": {"p25": 0, "p50": 0, "p75": 0, "p90": 0, "p99": 0},
+        "length_histogram": [],
+        "token_percentiles": {"p25": 0, "p50": 0, "p75": 0, "p90": 0, "p99": 0},
+        "token_histogram": [],
+        "pdf_scan": {"scanned": 0, "not_scanned": 0, "unknown": 0},
+        "pdf_detection": {
+            "sample_pages": int(pdf_sample_pages),
+            "scan_max_chars_per_page": int(pdf_scan_max_chars),
+            "text_min_chars_per_page": int(pdf_text_min_chars),
+            "scan_ratio_threshold": float(pdf_scan_ratio_threshold),
+        },
+        "risk_buckets": {},
+        "near_dup_summary": summarize_near_dup_payload(None),
+        "pii_hits_total": {},
+        "secrets_hits_total": {},
+        "findings": _empty_findings_summary(),
+    }
+
+
+def _prepare_artifact_paths(*, tenant_id: UUID, scan_run_id: UUID) -> tuple[Path, Path, Path, Path]:
+    artifact_root = Path(getattr(settings, "UPLOAD_DIR", UPLOAD_DIR_FALLBACK) or UPLOAD_DIR_FALLBACK) / str(tenant_id) / "precheck" / str(scan_run_id)
+    artifact_root.mkdir(parents=True, exist_ok=True)
+    jsonl_path = (artifact_root / "files.jsonl").resolve(strict=False)
+    samples_path = (artifact_root / "samples.json").resolve(strict=False)
+    return artifact_root, jsonl_path, samples_path, artifact_root / "near_dups.json"
+
+
+def _reuse_cfg_subset(cfg: dict[str, Any]) -> dict[str, Any]:
+    return {k: cfg.get(k) for k in _REUSE_CONFIG_KEYS if k in cfg}
+
+
+def _query_previous_scan_run(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    reuse_from_scan_run_id: UUID | None,
+) -> DBDatasetPrecheckScanRun | None:
+    if reuse_from_scan_run_id is not None:
+        return (
+            db.query(DBDatasetPrecheckScanRun)
+            .filter(
+                DBDatasetPrecheckScanRun.id == reuse_from_scan_run_id,
+                DBDatasetPrecheckScanRun.tenant_id == tenant_id,
+                DBDatasetPrecheckScanRun.dataset_id == dataset_id,
+            )
+            .first()
+        )
+    return (
+        db.query(DBDatasetPrecheckScanRun)
+        .filter(
+            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
+            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
+            DBDatasetPrecheckScanRun.status == "completed",
+        )
+        .order_by(DBDatasetPrecheckScanRun.created_at.desc())
+        .first()
+    )
+
+
+def _resolve_reusable_jsonl_path(*, tenant_id: UUID, prev_run: DBDatasetPrecheckScanRun) -> Path | None:
+    prev_artifacts = getattr(prev_run, "artifacts", None)
+    prev_artifacts = prev_artifacts if isinstance(prev_artifacts, dict) else {}
+    prev_jsonl_raw = str(prev_artifacts.get("files_jsonl") or "").strip()
+    prev_jsonl = Path(prev_jsonl_raw) if prev_jsonl_raw else None
+    if prev_jsonl is None or not prev_jsonl.exists() or not prev_jsonl.is_file():
+        return None
+    try:
+        upload_root = Path(getattr(settings, "UPLOAD_DIR", UPLOAD_DIR_FALLBACK) or UPLOAD_DIR_FALLBACK).resolve(strict=False)
+        tenant_root = (upload_root / str(tenant_id)).resolve(strict=False)
+        prev_jsonl.resolve(strict=False).relative_to(tenant_root)
+    except Exception:
+        return None
+    return prev_jsonl
+
+
+def _load_jsonl_records_by_name(jsonl_path: Path) -> dict[str, dict[str, Any]]:
+    prev_records: dict[str, dict[str, Any]] = {}
+    for obj in _iter_jsonl_objects(jsonl_path):
+        name = str(obj.get("name") or "").strip()
+        if name:
+            prev_records[name] = obj
+    return prev_records
+
+
+def _load_previous_records(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    options: _ScanOptions,
+    reuse_from_scan_run_id: UUID | None,
+) -> dict[str, dict[str, Any]]:
+    if not bool(options.cfg.get("reuse_unchanged_files", False)):
+        return {}
+    if options.redact_paths:
+        logger.info("Skip reuse_unchanged_files in redact_paths mode")
+        return {}
+
+    prev_run = _query_previous_scan_run(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        reuse_from_scan_run_id=reuse_from_scan_run_id,
+    )
+    if prev_run is None:
+        return {}
+
+    prev_cfg = dict(getattr(prev_run, "config", None) or {})
+    prev_root = str(prev_cfg.get("root_path") or "").strip()
+    if not prev_root or prev_root != options.root_path or bool(prev_cfg.get("redact_paths", False)):
+        logger.info("Skip reuse_unchanged_files due to root_path mismatch or redacted prev run")
+        return {}
+    if _reuse_cfg_subset(options.cfg) != _reuse_cfg_subset(prev_cfg):
+        logger.info("Skip reuse_unchanged_files due to config mismatch (scan_run_id=%s)", str(getattr(prev_run, "id", "")))
+        return {}
+
+    prev_jsonl = _resolve_reusable_jsonl_path(tenant_id=tenant_id, prev_run=prev_run)
+    if prev_jsonl is None:
+        return {}
+    try:
+        return _load_jsonl_records_by_name(prev_jsonl)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to load previous precheck JSONL (reuse disabled): %s", str(exc)[:200])
+        return {}
+
+
+def _append_finding(rec: _FileRecord, state: _ScanAccumulator, key: str) -> None:
+    if key not in rec.findings:
+        rec.findings.append(key)
+        if key in state.finding_counts:
+            state.finding_counts[key] += 1
+
+
+def _record_parse_failure(
+    rec: _FileRecord,
+    state: _ScanAccumulator,
+    *,
+    file_type: str,
+    error_message: str,
+) -> None:
+    state.errors += 1
+    rec.error_message = str(error_message)[:200]
+    _append_finding(rec, state, "parse_failed")
+    parse_failure_kind = classify_parse_failure_kind(file_type=file_type, error_message=rec.error_message)
+    rec.parse_failure_kind = parse_failure_kind
+    if parse_failure_kind:
+        _append_finding(rec, state, parse_failure_kind)
+
+
+def _build_file_record(*, path: Path, root: Path, idx: int, redact_paths: bool) -> tuple[_FileRecord, str, int]:
+    ext = path.suffix.lower()
+    try:
+        rel = str(path.relative_to(root)).replace("\\", "/")
+    except Exception:
+        rel = path.name
+    try:
+        st = path.stat()
+        size = int(st.st_size)
+        mtime = int(st.st_mtime)
+    except Exception:
+        size = 0
+        mtime = 0
+    rec = _FileRecord(
+        name=_sanitize_display_name(rel) if not redact_paths else f"FILE_{idx:06d}{ext}",
+        file_type=ext.lstrip(".") if ext.startswith(".") else (path.suffix or "").lower().lstrip(".") or "unknown",
+        file_size=size,
+        file_mtime=mtime,
+    )
+    return rec, ext, size
+
+
+def _apply_record_text_estimate(
+    rec: _FileRecord,
+    *,
+    sample_text: str,
+    sample_tokens: int,
+    estimated_text: bool,
+    ratio: float,
+) -> None:
+    if estimated_text:
+        rec.text_characters = int(len(sample_text) * ratio)
+        rec.text_tokens_est = int(sample_tokens * ratio)
+        rec.estimated_text = True
+        return
+    rec.text_characters = int(len(sample_text))
+    rec.text_tokens_est = int(sample_tokens)
+    rec.estimated_text = False
+
+
+def _extract_textlike_sample(path: Path, *, size: int, rec: _FileRecord, options: _ScanOptions) -> tuple[str, bool]:
+    sample_text, estimated_text = _read_text_sample(path, max_bytes=options.text_max_bytes)
+    if sample_text:
+        sample_tokens = int(estimate_tokens(sample_text) or 0)
+        ratio = size / max(1, min(size, options.text_max_bytes)) if estimated_text and size > 0 else 1.0
+        _apply_record_text_estimate(
+            rec,
+            sample_text=sample_text,
+            sample_tokens=sample_tokens,
+            estimated_text=estimated_text,
+            ratio=ratio,
+        )
+    return sample_text, estimated_text
+
+
+def _extract_pdf_sample(
+    path: Path,
+    *,
+    rec: _FileRecord,
+    state: _ScanAccumulator,
+    options: _ScanOptions,
+) -> tuple[str, bool]:
+    sample_text, estimated_text, page_count, per_page_chars, pdf_err = _pdf_text_sample(
+        path, sample_pages=options.pdf_sample_pages
+    )
+    if pdf_err:
+        rec.error_message = str(pdf_err)[:200]
+        err_l = str(pdf_err or "").strip().lower()
+        if any(token in err_l for token in {"password", "encrypt", "encryption"}):
+            _append_finding(rec, state, "pdf_encrypted")
+        _append_finding(rec, state, "parse_failed")
+        state.errors += 1
+    if sample_text:
+        sample_tokens = int(estimate_tokens(sample_text) or 0)
+        ratio = page_count / max(1, min(page_count, options.pdf_sample_pages)) if estimated_text and page_count > 0 else 1.0
+        _apply_record_text_estimate(
+            rec,
+            sample_text=sample_text,
+            sample_tokens=sample_tokens,
+            estimated_text=estimated_text,
+            ratio=ratio,
+        )
+    if page_count > 0 and per_page_chars:
+        rec.pdf_pages = _build_pdf_page_breakdown(
+            page_count=page_count,
+            per_page_chars=per_page_chars,
+            scan_max_chars=options.pdf_scan_max_chars,
+            text_min_chars=options.pdf_text_min_chars,
+        )
+    return sample_text, estimated_text
+
+
+def _extract_sample_text(
+    path: Path,
+    *,
+    ext: str,
+    size: int,
+    rec: _FileRecord,
+    state: _ScanAccumulator,
+    options: _ScanOptions,
+) -> tuple[str, bool]:
+    if not options.enable_text_extract:
+        return "", False
+    if ext in TEXTLIKE_EXTS:
+        return _extract_textlike_sample(path, size=size, rec=rec, options=options)
+    if ext == ".pdf":
+        return _extract_pdf_sample(path, rec=rec, state=state, options=options)
+    return "", False
+
+
+def _detect_record_language(sample_text: str, *, rec: _FileRecord, options: _ScanOptions) -> None:
+    try:
+        lang = detect_language(sample_text, min_chars=options.language_min_chars)
+        rec.language = _normalize_language_bucket(getattr(lang, "language", "unknown"))
+        rec.language_confidence = float(getattr(lang, "confidence", 0.0) or 0.0)
+    except Exception:
+        rec.language = "unknown"
+        rec.language_confidence = 0.0
+
+
+def _apply_text_quality_score_findings(
+    sample_text: str,
+    *,
+    rec: _FileRecord,
+    state: _ScanAccumulator,
+    options: _ScanOptions,
+) -> None:
+    try:
+        tq = score_parsed_text_quality(sample_text)
+    except Exception:
+        tq = None
+    if tq is None:
+        return
+    if float(getattr(tq, "replacement_ratio", 0.0) or 0.0) >= options.text_high_replacement_ratio_threshold:
+        _append_finding(rec, state, "gibberish_text")
+    if int(getattr(tq, "chars_non_space", 0) or 0) >= 200 and float(getattr(tq, "density", 1.0) or 1.0) < options.text_density_threshold:
+        _append_finding(rec, state, "low_density_text")
+    if int(getattr(tq, "chars_non_space", 0) or 0) >= 1000 and float(getattr(tq, "density", 1.0) or 1.0) < options.text_gibberish_density_threshold:
+        _append_finding(rec, state, "gibberish_text")
+
+
+def _apply_text_findings(
+    sample_text: str,
+    *,
+    ext: str,
+    rec: _FileRecord,
+    state: _ScanAccumulator,
+    options: _ScanOptions,
+) -> None:
+    if not options.enable_text_extract:
+        return
+    if ext in TEXTLIKE_EXTS and not sample_text.strip():
+        _append_finding(rec, state, "empty_text")
+    if int(rec.text_characters or 0) > 0 and options.text_short_chars_threshold > 0 and int(rec.text_characters) < options.text_short_chars_threshold:
+        _append_finding(rec, state, "short_text")
+    if not sample_text:
+        return
+    _detect_record_language(sample_text, rec=rec, options=options)
+    _apply_text_quality_score_findings(sample_text, rec=rec, state=state, options=options)
+
+
+def _append_simhash_entry(rec: _FileRecord, state: _ScanAccumulator, *, sample_text: str) -> None:
+    if not sample_text:
+        return
+    try:
+        sim = _simhash64(sample_text)
+    except Exception:
+        sim = 0
+    if sim:
+        rec.text_simhash64 = f"{int(sim) & ((1 << 64) - 1):016x}"
+        state.simhash_entries.append((rec.name, int(sim), int(rec.file_size or 0), int(rec.text_characters or 0), int(rec.file_mtime or 0)))
+
+
+def _apply_pdf_scan_findings(rec: _FileRecord, *, state: _ScanAccumulator, options: _ScanOptions) -> None:
+    if not options.enable_pdf_quality:
+        return
+    if "parse_failed" in rec.findings:
+        rec.pdf_scanned = None
+        return
+    breakdown = rec.pdf_pages if isinstance(rec.pdf_pages, dict) else None
+    page_count = int(breakdown.get("page_count") or 0) if breakdown else 0
+    if page_count <= 0:
+        rec.pdf_scanned = None
+        _append_finding(rec, state, "pdf_unknown")
+        state.pdf_unknown += 1
+        return
+    scan_ratio = float(breakdown.get("scan_ratio") or 0.0) if breakdown else 0.0
+    low_density_ratio = float(breakdown.get("low_density_ratio") or 0.0) if breakdown else 0.0
+    scanned = bool(scan_ratio >= options.pdf_scan_ratio_threshold)
+    rec.pdf_scanned = scanned
+    if scanned:
+        _append_finding(rec, state, "pdf_scanned")
+        state.pdf_scanned += 1
+    else:
+        state.pdf_not_scanned += 1
+    if not breakdown:
+        return
+    if int(breakdown.get("scanned_pages") or 0) > 0 and int(breakdown.get("text_pages") or 0) > 0:
+        _append_finding(rec, state, "pdf_mixed")
+    if low_density_ratio >= options.pdf_low_density_ratio_threshold:
+        _append_finding(rec, state, "pdf_low_density")
+
+
+def _csv_spreadsheet_stats_from_sample(
+    *,
+    sample_text: str,
+    estimated_text: bool,
+    size: int,
+    text_max_bytes: int,
+) -> dict[str, Any] | None:
+    if not sample_text:
+        return None
+    lines = int(sample_text.count("\n"))
+    if not sample_text.endswith("\n"):
+        lines += 1
+    row_count = max(0, lines)
+    estimated_rows = False
+    if estimated_text and size > 0:
+        ratio = size / max(1, min(size, text_max_bytes))
+        row_count = int(row_count * ratio)
+        estimated_rows = True
+    col_count = 0
+    try:
+        sniff_sample = sample_text[:8192]
+        try:
+            dialect: csv.Dialect = csv.Sniffer().sniff(sniff_sample, delimiters=",\t;|")
+        except Exception:
+            dialect = csv.excel
+        reader = csv.reader(io.StringIO(sample_text), dialect)
+        for row in reader:
+            if row and any(str(c).strip() for c in row):
+                col_count = int(len(row))
+                break
+    except Exception:
+        col_count = 0
+    return {
+        "row_count": int(row_count),
+        "col_count": int(col_count),
+        "sheet_count": 1,
+        "merged_cell_ratio": 0.0,
+        "estimated_rows": bool(estimated_rows),
+        "estimated_cols": False,
+    }
+
+
+def _apply_spreadsheet_findings(rec: _FileRecord, *, state: _ScanAccumulator, options: _ScanOptions) -> None:
+    if not isinstance(rec.spreadsheet, dict):
+        return
+    rows = int(rec.spreadsheet.get("row_count") or 0)
+    cols = int(rec.spreadsheet.get("col_count") or 0)
+    sheets = int(rec.spreadsheet.get("sheet_count") or 0)
+    try:
+        merged_ratio = float(rec.spreadsheet.get("merged_cell_ratio") or 0.0)
+    except Exception:
+        merged_ratio = 0.0
+    if options.spreadsheet_large_row_threshold > 0 and rows >= options.spreadsheet_large_row_threshold:
+        _append_finding(rec, state, "large_spreadsheet")
+    if options.spreadsheet_wide_col_threshold > 0 and cols >= options.spreadsheet_wide_col_threshold:
+        _append_finding(rec, state, "wide_spreadsheet")
+    if options.spreadsheet_sheet_threshold > 0 and sheets >= options.spreadsheet_sheet_threshold:
+        _append_finding(rec, state, "many_sheets_spreadsheet")
+    if options.spreadsheet_merged_ratio_threshold > 0.0 and merged_ratio >= options.spreadsheet_merged_ratio_threshold:
+        _append_finding(rec, state, "merged_heavy_spreadsheet")
+
+
+def _mask_sample_context(text: str) -> str:
+    masked = anonymize_pii(text, enabled=True, mode="mask").text
+    masked = redact_secrets(masked, enabled=True, mode="mask").text
+    return masked[:2000] + "..." if len(masked) > 2000 else masked
+
+
+def _collect_match_context(sample_text: str, *, start: int, end: int, context_chars: int) -> str:
+    ctx_start = max(0, start - int(context_chars))
+    ctx_end = min(len(sample_text), end + int(context_chars))
+    return _mask_sample_context(sample_text[ctx_start:ctx_end])
+
+
+def _apply_pii_findings(sample_text: str, *, rec: _FileRecord, state: _ScanAccumulator, options: _ScanOptions) -> None:
+    if not (sample_text and options.enable_pii):
+        return
+    pii = anonymize_pii(sample_text, enabled=True, mode="mask")
+    if pii.hits:
+        rec.pii_hits = {str(k): int(v) for k, v in pii.hits.items() if int(v) > 0}
+        if rec.pii_hits:
+            _append_finding(rec, state, "pii")
+            for k, v in rec.pii_hits.items():
+                state.pii_totals[k] = state.pii_totals.get(k, 0) + int(v)
+    if not (options.enable_pii_samples and options.pii_max_samples_per_file > 0):
+        return
+    for match in find_pii_matches(sample_text, max_matches=options.pii_max_samples_per_file):
+        start = int(getattr(match, "start", 0) or 0)
+        end = int(getattr(match, "end", 0) or 0)
+        if end <= start:
+            continue
+        rec.pii_samples.append(
+            {
+                "kind": str(getattr(match, "kind", "") or "pii"),
+                "masked": _mask_pii_value(str(getattr(match, "kind", "") or ""), str(getattr(match, "text", "") or "")),
+                "context": _collect_match_context(sample_text, start=start, end=end, context_chars=options.pii_context_chars),
+                "start": start,
+                "end": end,
+            }
+        )
+
+
+def _apply_secret_findings(sample_text: str, *, rec: _FileRecord, state: _ScanAccumulator, options: _ScanOptions) -> None:
+    if not (sample_text and options.enable_secrets):
+        return
+    sec = redact_secrets(sample_text, enabled=True, mode="mask")
+    if sec.hits:
+        rec.secrets_hits = {str(k): int(v) for k, v in sec.hits.items() if int(v) > 0}
+        if rec.secrets_hits:
+            _append_finding(rec, state, "secrets")
+            for k, v in rec.secrets_hits.items():
+                state.secrets_totals[k] = state.secrets_totals.get(k, 0) + int(v)
+    if not (options.enable_secrets_samples and options.secrets_max_samples_per_file > 0):
+        return
+    for match in find_secret_matches(sample_text, max_matches=options.secrets_max_samples_per_file):
+        start = int(getattr(match, "start", 0) or 0)
+        end = int(getattr(match, "end", 0) or 0)
+        if end <= start:
+            continue
+        rec.secrets_samples.append(
+            {
+                "kind": str(getattr(match, "kind", "") or "secret"),
+                "masked": _mask_secret_value(str(getattr(match, "kind", "") or ""), str(getattr(match, "text", "") or "")),
+                "context": _collect_match_context(sample_text, start=start, end=end, context_chars=options.secrets_context_chars),
+                "start": start,
+                "end": end,
+            }
+        )
+
+
+def _apply_file_hash(path: Path, *, rec: _FileRecord, state: _ScanAccumulator) -> None:
+    sha = _safe_hash_file(path, algo="sha256")
+    rec.file_sha256 = sha
+    state.sha_counts[sha] = state.sha_counts.get(sha, 0) + 1
+
+
+def _apply_spreadsheet_stats(
+    path: Path,
+    *,
+    ext: str,
+    size: int,
+    sample_text: str,
+    estimated_text: bool,
+    rec: _FileRecord,
+    state: _ScanAccumulator,
+    options: _ScanOptions,
+) -> None:
+    if ext not in {".csv", ".xlsx"}:
+        return
+    if ext == ".csv":
+        rec.spreadsheet = _csv_spreadsheet_stats_from_sample(
+            sample_text=sample_text,
+            estimated_text=estimated_text,
+            size=size,
+            text_max_bytes=options.text_max_bytes,
+        )
+    else:
+        stats, xlsx_err = _xlsx_spreadsheet_stats(path)
+        if isinstance(stats, dict) and stats:
+            rec.spreadsheet = stats
+        elif xlsx_err:
+            rec.error_message = str(xlsx_err)[:200]
+            _append_finding(rec, state, "parse_failed")
+            state.errors += 1
+    _apply_spreadsheet_findings(rec, state=state, options=options)
+
+
+def _process_record_content(
+    path: Path,
+    *,
+    ext: str,
+    size: int,
+    rec: _FileRecord,
+    state: _ScanAccumulator,
+    options: _ScanOptions,
+) -> None:
+    sample_text = ""
+    estimated_text = False
+    try:
+        sample_text, estimated_text = _extract_sample_text(path, ext=ext, size=size, rec=rec, state=state, options=options)
+        _apply_text_findings(sample_text, ext=ext, rec=rec, state=state, options=options)
+        if options.enable_near_dup:
+            _append_simhash_entry(rec, state, sample_text=sample_text)
+        if ext == ".pdf":
+            _apply_pdf_scan_findings(rec, state=state, options=options)
+        _apply_spreadsheet_stats(
+            path,
+            ext=ext,
+            size=size,
+            sample_text=sample_text,
+            estimated_text=estimated_text,
+            rec=rec,
+            state=state,
+            options=options,
+        )
+        _apply_pii_findings(sample_text, rec=rec, state=state, options=options)
+        _apply_secret_findings(sample_text, rec=rec, state=state, options=options)
+        if options.compute_file_hash:
+            _apply_file_hash(path, rec=rec, state=state)
+    except Exception as exc:  # noqa: BLE001
+        _record_parse_failure(rec, state, file_type=rec.file_type, error_message=str(exc))
+
+
+def _update_directory_stats(
+    directory_stats: dict[str, dict[str, Any]],
+    *,
+    name: str,
+    file_size: int,
+    findings: list[str],
+) -> None:
+    d = _dir_key(name)
+    entry = directory_stats.get(d)
+    if entry is None:
+        entry = {"path": d, "total_files": 0, "total_size_bytes": 0, "risky_files": 0, "findings": {}}
+        directory_stats[d] = entry
+    entry["total_files"] = int(entry.get("total_files") or 0) + 1
+    entry["total_size_bytes"] = int(entry.get("total_size_bytes") or 0) + int(file_size or 0)
+    fset = {str(x or "").strip().lower() for x in (findings or []) if str(x or "").strip()}
+    risky_keys = {str(k).strip().lower() for k, v in FINDING_KEY_REASONS.items() if str((v or {}).get("severity") or "").strip().lower() in {"warning", "error"}}
+    if fset and (fset & risky_keys):
+        entry["risky_files"] = int(entry.get("risky_files") or 0) + 1
+    counts = entry.get("findings")
+    if not isinstance(counts, dict):
+        counts = {}
+        entry["findings"] = counts
+    for fk in fset:
+        counts[fk] = int(counts.get(fk, 0) or 0) + 1
+
+
+def _update_risk_bucket_counts(state: _ScanAccumulator, *, file_type: str, findings: list[str]) -> None:
+    try:
+        for bucket in risk_buckets_for_file(file_type=file_type, findings=findings):
+            state.risk_bucket_counts[bucket] = int(state.risk_bucket_counts.get(bucket, 0) or 0) + 1
+    except Exception as exc:
+        logger.debug(_PRECHECK_RUNNER_FALLBACK_LOG_MESSAGE, exc)
+
+
+def _ensure_parse_failure_kind(rec: _FileRecord, state: _ScanAccumulator) -> None:
+    if not (rec.error_message and rec.parse_failure_kind is None and "parse_failed" in rec.findings):
+        return
+    parse_failure_kind = classify_parse_failure_kind(file_type=rec.file_type, error_message=rec.error_message)
+    rec.parse_failure_kind = parse_failure_kind
+    if parse_failure_kind:
+        _append_finding(rec, state, parse_failure_kind)
+
+
+def _apply_record_tags(rec: _FileRecord, state: _ScanAccumulator) -> str:
+    file_type = str(rec.file_type or "unknown").strip().lower() or "unknown"
+    rec.primary_tag = infer_primary_tag(file_type=file_type, findings=rec.findings)
+    rec.processing_paths = infer_processing_paths(primary_tag=rec.primary_tag, findings=rec.findings)
+    state.primary_tag_counts[rec.primary_tag] += 1
+    for path_key in rec.processing_paths:
+        state.processing_path_counts[str(path_key or "")] += 1
+    return file_type
+
+
+def _aggregate_record_metrics(rec: _FileRecord, *, file_type: str, state: _ScanAccumulator) -> None:
+    state.by_type[file_type] = state.by_type.get(file_type, 0) + 1
+    state.bytes_by_type[file_type] = state.bytes_by_type.get(file_type, 0) + int(rec.file_size or 0)
+    state.file_sizes.append(int(rec.file_size or 0))
+    if int(rec.text_characters or 0) > 0:
+        state.text_lengths.append(int(rec.text_characters))
+    if int(rec.text_tokens_est or 0) > 0:
+        state.token_lengths.append(int(rec.text_tokens_est))
+    state.language_counts[_normalize_language_bucket(rec.language)] += 1
+    _update_directory_stats(state.directory_stats, name=rec.name, file_size=int(rec.file_size or 0), findings=list(rec.findings or []))
+    _update_risk_bucket_counts(state, file_type=file_type, findings=rec.findings)
+
+
+def _write_record(jf: Any, rec: _FileRecord) -> None:
+    jf.write(json.dumps(asdict(rec), ensure_ascii=False, separators=(",", ":")))
+    jf.write("\n")
+
+
+def _finalize_record(rec: _FileRecord, *, state: _ScanAccumulator, jf: Any) -> None:
+    _ensure_parse_failure_kind(rec, state)
+    file_type = _apply_record_tags(rec, state)
+    _aggregate_record_metrics(rec, file_type=file_type, state=state)
+    _write_record(jf, rec)
+
+
+def _prev_has_parse_failed(prev_findings: list[Any]) -> bool:
+    return "parse_failed" in {str(x or "").strip().lower() for x in prev_findings}
+
+
+def _accumulate_reused_hit_totals(target: dict[str, int], hits: dict[str, Any]) -> None:
+    for key, value in hits.items():
+        try:
+            target[str(key)] = target.get(str(key), 0) + int(value or 0)
+        except Exception:
+            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+
+
+def _apply_reused_text_metrics(prev: dict[str, Any], *, file_type: str, state: _ScanAccumulator) -> tuple[int, int]:
+    file_size = int(prev.get("file_size") or 0)
+    state.by_type[file_type] = state.by_type.get(file_type, 0) + 1
+    state.bytes_by_type[file_type] = state.bytes_by_type.get(file_type, 0) + file_size
+    state.file_sizes.append(file_size)
+    text_chars = int(prev.get("text_characters") or 0)
+    if text_chars > 0:
+        state.text_lengths.append(text_chars)
+    text_tokens = int(prev.get("text_tokens_est") or 0)
+    if text_tokens > 0:
+        state.token_lengths.append(text_tokens)
+    state.language_counts[_normalize_language_bucket(prev.get("language"))] += 1
+    return file_size, text_chars
+
+
+def _apply_reused_pdf_and_findings(
+    prev: dict[str, Any],
+    *,
+    file_type: str,
+    file_size: int,
+    rec: _FileRecord,
+    state: _ScanAccumulator,
+) -> list[Any]:
+    prev_findings = prev.get("findings") if isinstance(prev.get("findings"), list) else []
+    pdf_scanned = prev.get("pdf_scanned")
+    if pdf_scanned is True:
+        state.pdf_scanned += 1
+    elif pdf_scanned is False:
+        state.pdf_not_scanned += 1
+    elif file_type == "pdf":
+        state.pdf_unknown += 1
+    if isinstance(prev_findings, list):
+        for finding in {str(fk or "").strip().lower() for fk in prev_findings if str(fk or "").strip()}:
+            if finding in state.finding_counts:
+                state.finding_counts[finding] += 1
+    _update_risk_bucket_counts(state, file_type=file_type, findings=prev_findings)
+    _update_directory_stats(state.directory_stats, name=rec.name, file_size=file_size, findings=list(prev_findings))
+    return prev_findings
+
+
+def _apply_reused_signatures(
+    prev: dict[str, Any],
+    *,
+    file_size: int,
+    text_chars: int,
+    rec: _FileRecord,
+    state: _ScanAccumulator,
+    options: _ScanOptions,
+) -> None:
+    if options.enable_near_dup:
+        sim_hex = str(prev.get("text_simhash64") or "").strip().lower()
+        if sim_hex:
+            try:
+                state.simhash_entries.append((rec.name, int(sim_hex, 16), file_size, text_chars, int(prev.get("file_mtime") or 0)))
+            except Exception as exc:
+                logger.debug(_PRECHECK_RUNNER_FALLBACK_LOG_MESSAGE, exc)
+    if options.compute_file_hash:
+        sha = str(prev.get("file_sha256") or "").strip().lower()
+        if sha:
+            state.sha_counts[sha] = state.sha_counts.get(sha, 0) + 1
+
+
+def _apply_reused_record(
+    prev: dict[str, Any],
+    *,
+    rec: _FileRecord,
+    state: _ScanAccumulator,
+    options: _ScanOptions,
+) -> None:
+    prev["name"] = rec.name
+    prev["file_size"] = rec.file_size
+    prev["file_mtime"] = rec.file_mtime
+    file_type = str(prev.get("file_type") or rec.file_type or "unknown").strip().lower() or "unknown"
+    file_size, text_chars = _apply_reused_text_metrics(prev, file_type=file_type, state=state)
+    _apply_reused_pdf_and_findings(prev, file_type=file_type, file_size=file_size, rec=rec, state=state)
+    _accumulate_reused_hit_totals(state.pii_totals, prev.get("pii_hits") if isinstance(prev.get("pii_hits"), dict) else {})
+    _accumulate_reused_hit_totals(state.secrets_totals, prev.get("secrets_hits") if isinstance(prev.get("secrets_hits"), dict) else {})
+    _apply_reused_signatures(prev, file_size=file_size, text_chars=text_chars, rec=rec, state=state, options=options)
+
+
+def _try_reuse_previous_record(
+    prev_records: dict[str, dict[str, Any]],
+    *,
+    rec: _FileRecord,
+    state: _ScanAccumulator,
+    options: _ScanOptions,
+    jf: Any,
+    idx: int,
+    flush_progress: Any,
+) -> bool:
+    prev = prev_records.get(rec.name)
+    if not isinstance(prev, dict):
+        return False
+    try:
+        prev_size = int(prev.get("file_size") or 0)
+        prev_mtime = int(prev.get("file_mtime") or 0)
+    except Exception:
+        return False
+    prev_findings = prev.get("findings") if isinstance(prev.get("findings"), list) else []
+    if _prev_has_parse_failed(prev_findings):
+        return False
+    if prev_size != rec.file_size or prev_mtime != rec.file_mtime:
+        return False
+    state.reused_files += 1
+    prev_copy = dict(prev)
+    _apply_reused_record(prev_copy, rec=rec, state=state, options=options)
+    _write_record(jf, _FileRecord(**{k: v for k, v in prev_copy.items() if k in _FileRecord.__dataclass_fields__}))
+    flush_progress(idx)
+    return True
+
+
+def _process_candidate(
+    path: Path,
+    *,
+    idx: int,
+    root: Path,
+    prev_records: dict[str, dict[str, Any]],
+    state: _ScanAccumulator,
+    options: _ScanOptions,
+    jf: Any,
+    flush_progress: Any,
+) -> None:
+    rec, ext, size = _build_file_record(path=path, root=root, idx=idx, redact_paths=options.redact_paths)
+    if prev_records and not options.redact_paths:
+        if _try_reuse_previous_record(prev_records, rec=rec, state=state, options=options, jf=jf, idx=idx, flush_progress=flush_progress):
+            return
+    _process_record_content(path, ext=ext, size=size, rec=rec, state=state, options=options)
+    _finalize_record(rec, state=state, jf=jf)
+    flush_progress(idx)
+
+
+def _count_exact_duplicates(sha_counts: dict[str, int]) -> int:
+    return sum(int(cnt) for cnt in sha_counts.values() if int(cnt) > 1)
+
+
+def _find_union_root(parent: list[int], x: int) -> int:
+    while parent[x] != x:
+        parent[x] = parent[parent[x]]
+        x = parent[x]
+    return x
+
+
+def _union_union_find(parent: list[int], rank: list[int], a: int, b: int) -> None:
+    ra = _find_union_root(parent, a)
+    rb = _find_union_root(parent, b)
+    if ra == rb:
+        return
+    if rank[ra] < rank[rb]:
+        parent[ra] = rb
+    elif rank[ra] > rank[rb]:
+        parent[rb] = ra
+    else:
+        parent[rb] = ra
+        rank[ra] += 1
+
+
+def _collect_near_dup_pairs(
+    *, hashes: list[int], names: list[str], threshold: int, max_pairs: int
+) -> tuple[list[dict[str, Any]], list[int], list[int]]:
+    buckets: dict[tuple[int, int], list[int]] = {}
+    pairs: list[dict[str, Any]] = []
+    parent = list(range(len(hashes)))
+    rank = [0] * len(hashes)
+    for i, h in enumerate(hashes):
+        candidates: set[int] = set()
+        for band in range(4):
+            key = (band, int((h >> (band * 16)) & 0xFFFF))
+            existing = buckets.get(key)
+            if existing and len(existing) <= 2000:
+                candidates.update(existing)
+            buckets.setdefault(key, []).append(i)
+        for j in candidates:
+            if j == i:
+                continue
+            distance = _hamming_distance64(h, hashes[j])
+            if distance <= threshold:
+                pairs.append({"a": names[j], "b": names[i], "distance": int(distance)})
+                _union_union_find(parent, rank, i, j)
+                if len(pairs) >= max_pairs:
+                    return pairs, parent, rank
+    return pairs, parent, rank
+
+
+def _cluster_keep_score(simhash_entries: list[tuple[str, int, int, int, int]], names: list[str], idx: int) -> tuple[int, int, int, str]:
+    try:
+        name, _hash, size, text_len, mtime = simhash_entries[idx]
+        return int(text_len or 0), int(size or 0), int(mtime or 0), str(name or "")
+    except Exception:
+        return 0, 0, 0, names[idx]
+
+
+def _build_near_dup_clusters(
+    *,
+    parent: list[int],
+    names: list[str],
+    simhash_entries: list[tuple[str, int, int, int, int]],
+) -> tuple[list[dict[str, Any]], set[str]]:
+    groups: dict[int, list[int]] = {}
+    for idx in range(len(names)):
+        groups.setdefault(_find_union_root(parent, idx), []).append(idx)
+    clusters: list[dict[str, Any]] = []
+    for root_id, members in groups.items():
+        if len(members) < 2:
+            continue
+        ordered = sorted(members, key=lambda idx: _cluster_keep_score(simhash_entries, names, idx), reverse=True)
+        keep_idx = ordered[0]
+        member_names = [names[i] for i in ordered]
+        cluster: dict[str, Any] = {
+            "id": str(root_id),
+            "members": member_names,
+            "keep_candidate": str(names[keep_idx]),
+            "keep_strategy": "max_text_chars_then_size_then_mtime",
+            "review_candidates": member_names[1 : min(len(member_names), 21)],
+        }
+        member_stats = []
+        for i in ordered[: min(50, len(ordered))]:
+            try:
+                name, _hash, size, text_len, mtime = simhash_entries[i]
+                member_stats.append(
+                    {
+                        "name": str(name),
+                        "file_size": int(size or 0),
+                        "text_characters": int(text_len or 0),
+                        "file_mtime": int(mtime or 0),
+                    }
+                )
+            except Exception:
+                get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+        if member_stats:
+            cluster["member_stats"] = member_stats
+        clusters.append(cluster)
+    clusters.sort(key=lambda c: (-len(c.get("members") or []), str(c.get("id") or "")))
+    affected = {member for cluster in clusters for member in (cluster.get("members") or [])}
+    return clusters, affected
+
+
+def _build_near_dup_artifact(
+    *,
+    state: _ScanAccumulator,
+    options: _ScanOptions,
+    near_dup_path: Path,
+) -> tuple[dict[str, Any] | None, Path | None]:
+    if not (options.enable_near_dup and state.simhash_entries and options.near_dup_hamming_threshold > 0 and options.near_dup_max_pairs > 0):
+        return None, None
+    names = [name for name, _hash, _size, _text_len, _mtime in state.simhash_entries]
+    hashes = [int(_hash) for _name, _hash, _size, _text_len, _mtime in state.simhash_entries]
+    pairs, parent, _rank = _collect_near_dup_pairs(
+        hashes=hashes,
+        names=names,
+        threshold=options.near_dup_hamming_threshold,
+        max_pairs=options.near_dup_max_pairs,
+    )
+    clusters, affected = _build_near_dup_clusters(parent=parent, names=names, simhash_entries=state.simhash_entries)
+    if affected:
+        state.finding_counts["near_dup"] = int(len(affected))
+    payload = {
+        "threshold": int(options.near_dup_hamming_threshold),
+        "max_pairs": int(options.near_dup_max_pairs),
+        "pairs_returned": int(len(pairs)),
+        "clusters_returned": int(len(clusters)),
+        "clusters": clusters[:2000],
+        "pairs": pairs[:5000],
+    }
+    near_dup_path.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    return payload, near_dup_path.resolve(strict=False)
+
+
+def _maybe_write_samples_artifact(
+    *, jsonl_path: Path, samples_path: Path, enable_sampling: bool, sample_size: int
+) -> bool:
+    if not (enable_sampling and sample_size > 0):
+        return False
+    try:
+        payload = _build_samples_payload(jsonl_path=jsonl_path, target_size=sample_size)
+        samples_path.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to write samples.json: %s", str(exc)[:200])
+        return False
+
+
+def _build_file_type_stats(by_type: dict[str, int], bytes_by_type: dict[str, int]) -> list[dict[str, Any]]:
+    stats = [
+        {
+            "file_type": str(file_type or "unknown"),
+            "count": int(count or 0),
+            "total_size_bytes": int(bytes_by_type.get(str(file_type or "unknown"), 0) or 0),
+        }
+        for file_type, count in by_type.items()
+    ]
+    stats.sort(key=lambda o: (-int(o.get("count") or 0), -int(o.get("total_size_bytes") or 0), str(o.get("file_type") or "")))
+    return stats[:500]
+
+
+def _build_language_mix(language_counts: Counter[str]) -> dict[str, int]:
+    return {bucket: int(language_counts.get(bucket, 0) or 0) for bucket in ("zh", "en", "mixed", "unknown")}
+
+
+def _build_directory_items(directory_stats: dict[str, dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for path, entry in directory_stats.items():
+        if not isinstance(entry, dict):
+            continue
+        item = {
+            "path": str(entry.get("path") or path or "."),
+            "total_files": int(entry.get("total_files") or 0),
+            "total_size_bytes": int(entry.get("total_size_bytes") or 0),
+            "risky_files": int(entry.get("risky_files") or 0),
+            "findings": entry.get("findings") if isinstance(entry.get("findings"), dict) else {},
+        }
+        if len(item["path"]) > 512:
+            item["path"] = item["path"][:512]
+        items.append(item)
+    items.sort(key=lambda o: (-int(o.get("risky_files") or 0), -int(o.get("total_files") or 0), str(o.get("path") or "")))
+    return items[: int(limit)] if int(limit or 0) > 0 else []
+
+
+def _build_scan_summary(
+    *,
+    dataset_id: UUID,
+    run_id: UUID,
+    dataset_metadata: dict[str, Any],
+    state: _ScanAccumulator,
+    options: _ScanOptions,
+    near_dup_payload: dict[str, Any] | None,
+) -> dict[str, Any]:
+    state.file_sizes.sort()
+    state.text_lengths.sort()
+    state.token_lengths.sort()
+    language_mix = _build_language_mix(state.language_counts)
+    return {
+        "dataset_id": str(dataset_id),
+        "scan_run_id": str(run_id),
+        "generated_at": _now_utc().isoformat(),
+        "schema_id": "mimirq.dataset_precheck_summary.v3",
+        "schema_version": 3,
+        "total_files": int(len(state.file_sizes)),
+        "total_size_bytes": int(sum(state.file_sizes)),
+        "reused_files": int(state.reused_files),
+        "by_file_type": {k: int(v) for k, v in sorted(state.by_type.items(), key=lambda kv: (-kv[1], kv[0]))},
+        "by_file_type_bytes": {
+            k: int(v)
+            for k, v in sorted(state.bytes_by_type.items(), key=lambda kv: (-int(kv[1] or 0), str(kv[0] or "")))
+            if int(v or 0) > 0
+        },
+        "file_type_stats": _build_file_type_stats(state.by_type, state.bytes_by_type),
+        "language_mix": language_mix,
+        "embedding_advisories": build_embedding_language_advisories(language_mix=language_mix, dataset_metadata=dataset_metadata),
+        "directory_stats": _build_directory_items(state.directory_stats, limit=options.directory_stats_limit),
+        "file_size_histogram": histogram(state.file_sizes, FILE_SIZE_BINS),
+        "length_percentiles": {
+            "p25": percentile_from_sorted(state.text_lengths, 25),
+            "p50": percentile_from_sorted(state.text_lengths, 50),
+            "p75": percentile_from_sorted(state.text_lengths, 75),
+            "p90": percentile_from_sorted(state.text_lengths, 90),
+            "p99": percentile_from_sorted(state.text_lengths, 99),
+        },
+        "length_histogram": histogram(state.text_lengths, TEXT_LENGTH_BINS),
+        "token_percentiles": {
+            "p25": percentile_from_sorted(state.token_lengths, 25),
+            "p50": percentile_from_sorted(state.token_lengths, 50),
+            "p75": percentile_from_sorted(state.token_lengths, 75),
+            "p90": percentile_from_sorted(state.token_lengths, 90),
+            "p99": percentile_from_sorted(state.token_lengths, 99),
+        },
+        "token_histogram": histogram(state.token_lengths, TEXT_TOKEN_BINS),
+        "pdf_scan": {
+            "scanned": int(state.pdf_scanned),
+            "not_scanned": int(state.pdf_not_scanned),
+            "unknown": int(state.pdf_unknown),
+        },
+        "pdf_detection": {
+            "sample_pages": int(options.pdf_sample_pages),
+            "scan_max_chars_per_page": int(options.pdf_scan_max_chars),
+            "text_min_chars_per_page": int(options.pdf_text_min_chars),
+            "scan_ratio_threshold": float(options.pdf_scan_ratio_threshold),
+        },
+        "risk_buckets": {
+            k: int(v)
+            for k, v in sorted(state.risk_bucket_counts.items(), key=lambda kv: (-int(kv[1] or 0), str(kv[0] or "")))
+            if int(v or 0) > 0
+        },
+        "primary_tag_counts": {
+            k: int(v)
+            for k, v in sorted(state.primary_tag_counts.items(), key=lambda kv: (-int(kv[1] or 0), str(kv[0] or "")))
+            if int(v or 0) > 0
+        },
+        "processing_path_counts": {
+            k: int(v)
+            for k, v in sorted(state.processing_path_counts.items(), key=lambda kv: (-int(kv[1] or 0), str(kv[0] or "")))
+            if int(v or 0) > 0
+        },
+        "near_dup_summary": summarize_near_dup_payload(near_dup_payload),
+        "pii_hits_total": {k: int(v) for k, v in state.pii_totals.items()},
+        "secrets_hits_total": {k: int(v) for k, v in state.secrets_totals.items()},
+        "findings": [
+            {
+                "key": k,
+                "label": v.get("label", k),
+                "severity": v.get("severity", "info"),
+                "count": int(state.finding_counts.get(k, 0) or 0),
+                "description": v.get("description"),
+            }
+            for k, v in FINDING_KEY_REASONS.items()
+        ],
+    }
+
+
+def _finalize_scan_run(
+    db: Session,
+    *,
+    run: DBDatasetPrecheckScanRun,
+    root: Path,
+    options: _ScanOptions,
+    jsonl_path: Path,
+    samples_path: Path,
+    near_dup_path: Path | None,
+    samples_written: bool,
+    summary: dict[str, Any],
+    cancelled: bool,
+) -> None:
+    if not cancelled:
+        run.status = "completed"
+        run.progress = 100
+    run.finished_at = _now_utc()
+    run.updated_at = run.finished_at
+    run.summary = summary
+    run.artifacts = {
+        "files_jsonl": str(jsonl_path),
+        "root_path": REDACTED_MASK if options.redact_paths else str(root),
+    }
+    if near_dup_path is not None:
+        run.artifacts["near_dups_json"] = str(near_dup_path)
+    if samples_written:
+        run.artifacts["samples_json"] = str(samples_path)
+    db.commit()
+
+
+def _parse_reuse_scan_run_id(cfg: dict[str, Any]) -> UUID | None:
+    raw_reuse_id = cfg.get("reuse_from_scan_run_id")
+    if not raw_reuse_id:
+        return None
+    try:
+        return UUID(str(raw_reuse_id))
+    except Exception:
+        return None
+
+
+def _validate_scan_root(*, cfg: dict[str, Any], root_path: str) -> Path:
+    if not root_path:
+        raise ValueError("root_path_required")
+    root = Path(root_path)
+    if not root.exists() or not root.is_dir():
+        raise ValueError("root_path_not_found")
+    if not _is_local_scan_allowed_for_root(cfg=cfg, root=root):
+        raise ValueError("local_scan_disabled")
+    _assert_scan_root_allowed(root)
+    return root
+
+
+def _complete_empty_scan_run(
+    db: Session,
+    *,
+    run: DBDatasetPrecheckScanRun,
+    dataset_id: UUID,
+    root: Path,
+    options: _ScanOptions,
+    jsonl_path: Path,
+) -> dict[str, Any]:
+    run.status = "completed"
+    run.progress = 100
+    run.finished_at = _now_utc()
+    run.summary = _build_empty_scan_summary(
+        dataset_id=dataset_id,
+        scan_run_id=run.id,
+        generated_at=run.finished_at,
+        pdf_sample_pages=options.pdf_sample_pages,
+        pdf_scan_max_chars=options.pdf_scan_max_chars,
+        pdf_text_min_chars=options.pdf_text_min_chars,
+        pdf_scan_ratio_threshold=options.pdf_scan_ratio_threshold,
+    )
+    run.artifacts = {
+        "files_jsonl": str(jsonl_path),
+        "root_path": REDACTED_MASK if options.redact_paths else str(root),
+    }
+    db.commit()
+    return {"ok": True, "files": 0}
+
+
+def _scan_candidates_to_jsonl(
+    *,
+    jsonl_path: Path,
+    candidates: list[Path],
+    root: Path,
+    prev_records: dict[str, dict[str, Any]],
+    state: _ScanAccumulator,
+    options: _ScanOptions,
+    flush_progress: Any,
+) -> None:
+    with jsonl_path.open("w", encoding="utf-8") as jf:
+        for idx, path in enumerate(candidates, start=1):
+            if state.cancelled:
+                return
+            _process_candidate(
+                path,
+                idx=idx,
+                root=root,
+                prev_records=prev_records,
+                state=state,
+                options=options,
+                jf=jf,
+                flush_progress=flush_progress,
+            )
 
 
 def _iter_files(root: Path, *, max_files: int) -> Iterable[Path]:
@@ -884,1161 +2363,105 @@ def run_dataset_precheck_scan(
         .scalar()
     )
     dataset_metadata = dict(dataset_metadata_raw) if isinstance(dataset_metadata_raw, dict) else {}
-
-    # Mark running.
-    run.status = "running"
-    run.progress = 0
-    run.started_at = _now_utc()
-    run.updated_at = run.started_at
-    run.error_message = None
-    db.commit()
+    _mark_run_running(db, run)
 
     cfg = dict(getattr(run, "config", None) or {})
-    root_path = str(cfg.get("root_path") or "").strip()
-    if not root_path:
-        raise ValueError("root_path_required")
+    options = _build_scan_options(cfg=cfg)
+    root = _validate_scan_root(cfg=cfg, root_path=options.root_path)
+    reuse_from_scan_run_id = _parse_reuse_scan_run_id(cfg)
 
-    root = Path(root_path)
-    if not root.exists() or not root.is_dir():
-        raise ValueError("root_path_not_found")
-    if not _is_local_scan_allowed_for_root(cfg=cfg, root=root):
-        raise ValueError("local_scan_disabled")
-    _assert_scan_root_allowed(root)
-
-    max_files_cap = safe_int(getattr(settings, "PRECHECK_SCAN_MAX_FILES", 20_000), default=20_000)
-    requested_max_files = cfg.get("max_files")
-    max_files_req = safe_int(requested_max_files, default=0)
-    max_files = max_files_cap if max_files_req <= 0 else min(max_files_cap, max_files_req)
-
-    max_total_bytes = safe_int(getattr(settings, "PRECHECK_SCAN_MAX_TOTAL_BYTES", 0), default=0)
-    text_max_bytes = safe_int(
-        cfg.get("text_extract_max_bytes") or getattr(settings, "PRECHECK_TEXT_EXTRACT_MAX_BYTES", 2_000_000),
-        default=2_000_000,
+    _artifact_root, jsonl_path, samples_path, near_dups_path = _prepare_artifact_paths(
+        tenant_id=tenant_id,
+        scan_run_id=run.id,
     )
-    pdf_sample_pages = safe_int(
-        cfg.get("pdf_sample_pages") or getattr(settings, "PRECHECK_PDF_SAMPLE_PAGES", 3),
-        default=3,
+    candidates, candidate_type_counts = _collect_scan_candidates(
+        root=root,
+        allowed_exts=options.allowed_exts,
+        max_files=options.max_files,
+        max_total_bytes=options.max_total_bytes,
     )
-
-    enable_pdf_quality = bool(cfg.get("enable_pdf_quality", True))
-    enable_text_extract = bool(cfg.get("enable_text_extract", True))
-    enable_pii = bool(cfg.get("enable_pii", False))
-    enable_secrets = bool(cfg.get("enable_secrets", False))
-    compute_file_hash = bool(cfg.get("compute_file_hash", False))
-    redact_paths = bool(cfg.get("redact_paths", False))
-
-    enable_pii_samples = bool(cfg.get("enable_pii_samples", False))
-    pii_context_chars = safe_int(cfg.get("pii_context_chars") or 50, default=50)
-    pii_context_chars = max(0, min(pii_context_chars, 500))
-    pii_max_samples_per_file = safe_int(cfg.get("pii_max_samples_per_file") or 5, default=5)
-    pii_max_samples_per_file = max(0, min(pii_max_samples_per_file, 50))
-
-    enable_secrets_samples = bool(cfg.get("enable_secrets_samples", False))
-    secrets_context_chars = safe_int(cfg.get("secrets_context_chars") or 50, default=50)
-    secrets_context_chars = max(0, min(secrets_context_chars, 500))
-    secrets_max_samples_per_file = safe_int(cfg.get("secrets_max_samples_per_file") or 5, default=5)
-    secrets_max_samples_per_file = max(0, min(secrets_max_samples_per_file, 50))
-
-    enable_near_dup = bool(cfg.get("enable_near_dup", False))
-    near_dup_hamming_threshold = safe_int(cfg.get("near_dup_hamming_threshold") or 5, default=5)
-    near_dup_hamming_threshold = max(0, min(near_dup_hamming_threshold, 32))
-    near_dup_max_pairs = safe_int(cfg.get("near_dup_max_pairs") or 5000, default=5000)
-    near_dup_max_pairs = max(0, min(near_dup_max_pairs, 200_000))
-
-    enable_sampling = bool(cfg.get("enable_sampling", True))
-    raw_sample_size = cfg.get("sample_size")
-
-    threshold_overrides = cfg.get("threshold_overrides") if isinstance(cfg.get("threshold_overrides"), dict) else {}
-    thresholds = resolve_pre_poc_scanner_thresholds(
-        {
-            **threshold_overrides,
-            "pdf_scan_ratio_threshold": cfg.get("pdf_scan_ratio_threshold"),
-            "near_dup_hamming_threshold": cfg.get("near_dup_hamming_threshold"),
-            "near_dup_max_pairs": cfg.get("near_dup_max_pairs"),
-            "sample_size": cfg.get("sample_size"),
-        }
-    )
-    configured_default_sample_size = safe_int(getattr(settings, "PRECHECK_SAMPLE_SIZE", 0), default=0)
-    sample_size_override = (
-        int(thresholds["sample_size"])
-        if raw_sample_size is not None or configured_default_sample_size > 0
-        else None
-    )
-
-    # Optional: reuse unchanged file records from a previous scan run (incremental scans).
-    reuse_unchanged_files = bool(cfg.get("reuse_unchanged_files", False))
-    reuse_from_scan_run_id: UUID | None = None
-    raw_reuse_id = cfg.get("reuse_from_scan_run_id")
-    if raw_reuse_id:
-        try:
-            reuse_from_scan_run_id = UUID(str(raw_reuse_id))
-        except Exception:
-            reuse_from_scan_run_id = None
-
-    # Shareable mode should not include per-match contexts (even if toggled on).
-    if redact_paths:
-        enable_pii_samples = False
-        enable_secrets_samples = False
-
-    pdf_scan_max_chars = safe_int(
-        cfg.get("pdf_min_text_chars_per_page") or getattr(settings, "PRECHECK_PDF_MIN_TEXT_CHARS_PER_PAGE", 50),
-        default=50,
-    )
-    pdf_text_min_chars = safe_int(
-        cfg.get("pdf_text_chars_per_page") or getattr(settings, "PRECHECK_PDF_TEXT_CHARS_PER_PAGE", 200),
-        default=200,
-    )
-    pdf_scan_ratio_threshold = float(thresholds["pdf_scan_ratio_threshold"])
-    spreadsheet_large_row_threshold = safe_int(
-        getattr(settings, "PRECHECK_SPREADSHEET_LARGE_ROW_THRESHOLD", 5000),
-        default=5000,
-    )
-    spreadsheet_wide_col_threshold = safe_int(
-        getattr(settings, "PRECHECK_SPREADSHEET_WIDE_COL_THRESHOLD", 80),
-        default=80,
-    )
-    spreadsheet_sheet_threshold = safe_int(
-        getattr(settings, "PRECHECK_SPREADSHEET_SHEET_THRESHOLD", 5),
-        default=5,
-    )
-    spreadsheet_merged_ratio_threshold = float(getattr(settings, "PRECHECK_SPREADSHEET_MERGED_RATIO_THRESHOLD", 0.15) or 0.15)
-    if spreadsheet_merged_ratio_threshold < 0.0:
-        spreadsheet_merged_ratio_threshold = 0.0
-    if spreadsheet_merged_ratio_threshold > 1.0:
-        spreadsheet_merged_ratio_threshold = 1.0
-
-    # Best-effort text quality / language heuristics (for precheck only).
-    language_min_chars = safe_int(getattr(settings, "PRECHECK_LANGUAGE_MIN_CHARS", 40), default=40)
-    text_short_chars_threshold = int(thresholds["text_short_chars_threshold"])
-    text_density_threshold = float(thresholds["text_density_threshold"])
-    text_gibberish_density_threshold = float(thresholds["text_gibberish_density_threshold"])
-    text_high_replacement_ratio_threshold = float(thresholds["text_high_replacement_ratio_threshold"])
-    pdf_low_density_ratio_threshold = float(thresholds["pdf_low_density_ratio_threshold"])
-
-    directory_stats_limit = safe_int(getattr(settings, "PRECHECK_DIRECTORY_STATS_LIMIT", 200), default=200)
-    directory_stats_limit = max(0, min(int(directory_stats_limit or 0), 2000))
-
-    # Prepare artifact dir and JSONL writer.
-    artifact_root = Path(getattr(settings, "UPLOAD_DIR", UPLOAD_DIR_FALLBACK) or UPLOAD_DIR_FALLBACK) / str(tenant_id) / "precheck" / str(run.id)
-    artifact_root.mkdir(parents=True, exist_ok=True)
-    jsonl_path = (artifact_root / "files.jsonl").resolve(strict=False)
-    samples_path = (artifact_root / "samples.json").resolve(strict=False)
-
-    # Enumerate file candidates first to compute total for progress (bounded by max_files).
-    allowed_exts = set(getattr(settings, "allowed_extensions_list", []) or [])
-    candidates: list[Path] = []
-    candidate_type_counts: Counter[str] = Counter()
-    total_bytes_seen = 0
-    for p in _iter_files(root, max_files=max_files):
-        ext = p.suffix.lower()
-        if ext not in allowed_exts:
-            continue
-        try:
-            size = int(p.stat().st_size)
-        except Exception:
-            size = 0
-        if max_total_bytes > 0 and (total_bytes_seen + size) > max_total_bytes:
-            break
-        candidates.append(p)
-        file_type = ext.lstrip(".") if ext.startswith(".") else (p.suffix or "").lower().lstrip(".") or "unknown"
-        candidate_type_counts[str(file_type or "unknown").lower()] += 1
-        total_bytes_seen += size
-
     total = len(candidates)
     sample_size = _resolve_precheck_sample_target(
         total_files=total,
         file_type_counts=candidate_type_counts,
-        requested_size=sample_size_override,
+        requested_size=options.sample_size_override,
     )
     if total == 0:
-        run.status = "completed"
-        run.progress = 100
-        run.finished_at = _now_utc()
-        run.summary = {
-            "dataset_id": str(dataset_id),
-            "scan_run_id": str(run.id),
-            "generated_at": run.finished_at.isoformat(),
-            "schema_id": "mimirq.dataset_precheck_summary.v3",
-            "schema_version": 3,
-            "total_files": 0,
-            "total_size_bytes": 0,
-            "reused_files": 0,
-            "by_file_type": {},
-            "by_file_type_bytes": {},
-            "file_type_stats": [],
-            "language_mix": {},
-            "embedding_advisories": [],
-            "directory_stats": [],
-            "file_size_histogram": [],
-            "length_percentiles": {"p25": 0, "p50": 0, "p75": 0, "p90": 0, "p99": 0},
-            "length_histogram": [],
-            "token_percentiles": {"p25": 0, "p50": 0, "p75": 0, "p90": 0, "p99": 0},
-            "token_histogram": [],
-            "pdf_scan": {"scanned": 0, "not_scanned": 0, "unknown": 0},
-            "pdf_detection": {
-                "sample_pages": int(pdf_sample_pages),
-                "scan_max_chars_per_page": int(pdf_scan_max_chars),
-                "text_min_chars_per_page": int(pdf_text_min_chars),
-                "scan_ratio_threshold": float(pdf_scan_ratio_threshold),
-            },
-            "risk_buckets": {},
-            "near_dup_summary": summarize_near_dup_payload(None),
-            "pii_hits_total": {},
-            "secrets_hits_total": {},
-            "findings": [
-                {"key": k, "label": v.get("label", k), "severity": v.get("severity", "info"), "count": 0, "description": v.get("description")}
-                for k, v in FINDING_KEY_REASONS.items()
-            ],
-        }
-        run.artifacts = {"files_jsonl": str(jsonl_path), "root_path": REDACTED_MASK if redact_paths else str(root)}
-        db.commit()
-        return {"ok": True, "files": 0}
+        return _complete_empty_scan_run(db, run=run, dataset_id=dataset_id, root=root, options=options, jsonl_path=jsonl_path)
+
+    state = _ScanAccumulator()
+    prev_records = _load_previous_records(
+        db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        options=options,
+        reuse_from_scan_run_id=reuse_from_scan_run_id,
+    )
 
     last_progress_write = time.monotonic()
-    cancelled = False
 
     def flush_progress(processed: int, *, force: bool = False) -> None:
         nonlocal last_progress_write
-        nonlocal cancelled
         now = time.monotonic()
         if not force and (now - last_progress_write) < 0.5:
             return
         last_progress_write = now
-        pct = int((processed / max(1, total)) * 100)
-        run.progress = max(0, min(100, pct))
+        run.progress = max(0, min(100, int((processed / max(1, total)) * 100)))
         run.updated_at = _now_utc()
         db.commit()
-        # Allow cooperative cancellation from another session (API).
         try:
             db.refresh(run)
             if str(getattr(run, "status", "") or "").lower() == "cancelled":
-                cancelled = True
+                state.cancelled = True
         except Exception as exc:
-            # Best-effort: ignore refresh failures.
             logger.debug(_PRECHECK_RUNNER_FALLBACK_LOG_MESSAGE, exc)
 
-    # Aggregation accumulators.
-    by_type: dict[str, int] = {}
-    bytes_by_type: dict[str, int] = {}
-    file_sizes: list[int] = []
-    text_lengths: list[int] = []
-    token_lengths: list[int] = []
-    language_counts: Counter[str] = Counter()
-    directory_stats: dict[str, dict[str, Any]] = {}
-    pii_totals: dict[str, int] = {}
-    secrets_totals: dict[str, int] = {}
-    pdf_scanned = 0
-    pdf_not_scanned = 0
-    pdf_unknown = 0
-    finding_counts: dict[str, int] = dict.fromkeys(FINDING_KEY_REASONS.keys(), 0)
-    risk_bucket_counts: dict[str, int] = {}
-    primary_tag_counts: Counter[str] = Counter()
-    processing_path_counts: Counter[str] = Counter()
+    _scan_candidates_to_jsonl(
+        jsonl_path=jsonl_path,
+        candidates=candidates,
+        root=root,
+        prev_records=prev_records,
+        state=state,
+        options=options,
+        flush_progress=flush_progress,
+    )
 
-    # For exact-dup finding: sha256 -> count.
-    sha_counts: dict[str, int] = {}
-
-    # For near-dup finding: (name, simhash64, file_size, text_characters, file_mtime).
-    simhash_entries: list[tuple[str, int, int, int, int]] = []
-
-    errors = 0
-    reused_files = 0
-
-    # Optional: load a previous JSONL snapshot for incremental reuse.
-    prev_records: dict[str, dict[str, Any]] = {}
-    if reuse_unchanged_files and not redact_paths:
-        # Pick the previous run (explicit id, else latest completed run for this dataset).
-        prev_run: DBDatasetPrecheckScanRun | None = None
-        if reuse_from_scan_run_id is not None:
-            prev_run = (
-                db.query(DBDatasetPrecheckScanRun)
-                .filter(
-                    DBDatasetPrecheckScanRun.id == reuse_from_scan_run_id,
-                    DBDatasetPrecheckScanRun.tenant_id == tenant_id,
-                    DBDatasetPrecheckScanRun.dataset_id == dataset_id,
-                )
-                .first()
-            )
-        else:
-            prev_run = (
-                db.query(DBDatasetPrecheckScanRun)
-                .filter(
-                    DBDatasetPrecheckScanRun.tenant_id == tenant_id,
-                    DBDatasetPrecheckScanRun.dataset_id == dataset_id,
-                    DBDatasetPrecheckScanRun.status == "completed",
-                )
-                .order_by(DBDatasetPrecheckScanRun.created_at.desc())
-                .first()
-            )
-
-        def _cfg_subset(d: dict[str, Any], keys: set[str]) -> dict[str, Any]:
-            out: dict[str, Any] = {}
-            for k in keys:
-                if k in d:
-                    out[k] = d.get(k)
-            return out
-
-        if prev_run is not None:
-            prev_cfg = dict(getattr(prev_run, "config", None) or {})
-            prev_root = str(prev_cfg.get("root_path") or "").strip()
-            if prev_root and prev_root == root_path and bool(prev_cfg.get("redact_paths", False)) is False:
-                # Only reuse when the feature-affecting config matches (avoid confusing deltas).
-                cfg_keys = {
-                    "enable_pdf_quality",
-                    "enable_text_extract",
-                    "enable_pii",
-                    "enable_secrets",
-                    "compute_file_hash",
-                    "pdf_sample_pages",
-                    "text_extract_max_bytes",
-                    "pdf_min_text_chars_per_page",
-                    "pdf_text_chars_per_page",
-                    "pdf_scan_ratio_threshold",
-                    "enable_pii_samples",
-                    "pii_context_chars",
-                    "pii_max_samples_per_file",
-                    "enable_secrets_samples",
-                    "secrets_context_chars",
-                    "secrets_max_samples_per_file",
-                    "enable_near_dup",
-                    "near_dup_hamming_threshold",
-                    "near_dup_max_pairs",
-                }
-                if _cfg_subset(cfg, cfg_keys) == _cfg_subset(prev_cfg, cfg_keys):
-                    prev_artifacts = getattr(prev_run, "artifacts", None)
-                    prev_artifacts = prev_artifacts if isinstance(prev_artifacts, dict) else {}
-                    prev_jsonl_raw = str(prev_artifacts.get("files_jsonl") or "").strip()
-                    prev_jsonl = Path(prev_jsonl_raw) if prev_jsonl_raw else None
-                    if prev_jsonl and prev_jsonl.exists() and prev_jsonl.is_file():
-                        # Defense-in-depth: only reuse artifacts under the same tenant root.
-                        try:
-                            upload_root = Path(getattr(settings, "UPLOAD_DIR", UPLOAD_DIR_FALLBACK) or UPLOAD_DIR_FALLBACK).resolve(strict=False)
-                            tenant_root = (upload_root / str(tenant_id)).resolve(strict=False)
-                            prev_jsonl.resolve(strict=False).relative_to(tenant_root)
-                        except Exception:
-                            prev_jsonl = None
-                    if prev_jsonl and prev_jsonl.exists() and prev_jsonl.is_file():
-                        try:
-                            with prev_jsonl.open("r", encoding="utf-8") as f:
-                                for line in f:
-                                    s = (line or "").strip()
-                                    if not s:
-                                        continue
-                                    try:
-                                        obj = json.loads(s)
-                                    except Exception:
-                                        get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
-                                        continue
-                                    if not isinstance(obj, dict):
-                                        continue
-                                    name = str(obj.get("name") or "").strip()
-                                    if not name:
-                                        continue
-                                    prev_records[name] = obj
-                        except Exception as exc:  # noqa: BLE001
-                            logger.warning("Failed to load previous precheck JSONL (reuse disabled): %s", str(exc)[:200])
-                else:
-                    logger.info("Skip reuse_unchanged_files due to config mismatch (scan_run_id=%s)", str(getattr(prev_run, "id", "")))
-            else:
-                logger.info("Skip reuse_unchanged_files due to root_path mismatch or redacted prev run")
-    elif reuse_unchanged_files and redact_paths:
-        logger.info("Skip reuse_unchanged_files in redact_paths mode")
-
-    risk_keys: set[str] = {
-        str(k).strip().lower()
-        for k, v in FINDING_KEY_REASONS.items()
-        if str((v or {}).get("severity") or "").strip().lower() in {"warning", "error"}
-    }
-
-    def _normalize_language_bucket(value: object) -> str:
-        s = str(value or "").strip().lower()
-        if s in {"zh", "en", "mixed", "unknown"}:
-            return s
-        return "unknown"
-
-    def _dir_key(name: str) -> str:
-        s = str(name or "").replace("\\", "/").strip()
-        d = os.path.dirname(s)
-        return d if d else "."
-
-    def _update_directory_stats(*, name: str, file_size: int, findings: list[str]) -> None:
-        d = _dir_key(name)
-        entry = directory_stats.get(d)
-        if entry is None:
-            entry = {"path": d, "total_files": 0, "total_size_bytes": 0, "risky_files": 0, "findings": {}}
-            directory_stats[d] = entry
-        entry["total_files"] = int(entry.get("total_files") or 0) + 1
-        entry["total_size_bytes"] = int(entry.get("total_size_bytes") or 0) + int(file_size or 0)
-        fset = {str(x or "").strip().lower() for x in (findings or []) if str(x or "").strip()}
-        if fset and risk_keys and (fset & risk_keys):
-            entry["risky_files"] = int(entry.get("risky_files") or 0) + 1
-        counts = entry.get("findings")
-        if not isinstance(counts, dict):
-            counts = {}
-            entry["findings"] = counts
-        for fk in fset:
-            counts[fk] = int(counts.get(fk, 0) or 0) + 1
-
-    # Stream JSONL writes to avoid holding all file records in memory.
-    with jsonl_path.open("w", encoding="utf-8") as jf:
-        for idx, path in enumerate(candidates, start=1):
-            if cancelled:
-                break
-            rel = ""
-            try:
-                rel = str(path.relative_to(root)).replace("\\", "/")
-            except Exception:
-                rel = path.name
-
-            ext = path.suffix.lower()
-            file_type = ext.lstrip(".") if ext.startswith(".") else (path.suffix or "").lower().lstrip(".") or "unknown"
-            try:
-                st = path.stat()
-                size = int(st.st_size)
-                mtime = int(st.st_mtime)
-            except Exception:
-                size = 0
-                mtime = 0
-
-            rec = _FileRecord(
-                name=_sanitize_display_name(rel) if not redact_paths else f"FILE_{idx:06d}{ext}",
-                file_type=file_type or "unknown",
-                file_size=int(size),
-                file_mtime=int(mtime),
-            )
-
-            try:
-                # Incremental reuse: keep unchanged file records without re-reading content.
-                if prev_records and not redact_paths:
-                    prev = prev_records.get(rec.name)
-                    if isinstance(prev, dict):
-                        try:
-                            prev_size = int(prev.get("file_size") or 0)
-                            prev_mtime = int(prev.get("file_mtime") or 0)
-                        except Exception:
-                            prev_size = -1
-                            prev_mtime = -1
-                        prev_findings = prev.get("findings") if isinstance(prev.get("findings"), list) else []
-                        has_parse_failed = "parse_failed" in {str(x or "").strip().lower() for x in prev_findings}
-                        if not has_parse_failed and prev_size == rec.file_size and prev_mtime == rec.file_mtime:
-                            # We intentionally skip reuse of parse_failed files so a new environment
-                            # (deps/permissions) can re-evaluate them.
-                            reused_files += 1
-                            # Preserve stable name (relative path) and current fs stats.
-                            prev = dict(prev)
-                            prev["name"] = rec.name
-                            prev["file_size"] = rec.file_size
-                            prev["file_mtime"] = rec.file_mtime
-
-                            # Aggregation (best-effort) from previous record.
-                            ft = str(prev.get("file_type") or rec.file_type or "unknown").strip().lower() or "unknown"
-                            by_type[ft] = by_type.get(ft, 0) + 1
-                            bs = int(prev.get("file_size") or 0)
-                            bytes_by_type[ft] = bytes_by_type.get(ft, 0) + int(bs)
-                            file_sizes.append(int(bs))
-                            tl = int(prev.get("text_characters") or 0)
-                            if tl > 0:
-                                text_lengths.append(tl)
-                            tt = int(prev.get("text_tokens_est") or 0)
-                            if tt > 0:
-                                token_lengths.append(tt)
-
-                            lang_bucket = _normalize_language_bucket(prev.get("language"))
-                            language_counts[lang_bucket] += 1
-
-                            # PDF scan counts.
-                            pdf_sc = prev.get("pdf_scanned")
-                            if pdf_sc is True:
-                                pdf_scanned += 1
-                            elif pdf_sc is False:
-                                pdf_not_scanned += 1
-                            elif str(prev.get("file_type") or "").strip().lower() == "pdf":
-                                pdf_unknown += 1
-
-                            # Findings counts.
-                            if isinstance(prev_findings, list):
-                                prev_fset = {str(fk or "").strip().lower() for fk in prev_findings if str(fk or "").strip()}
-                                for k in prev_fset:
-                                    if k in finding_counts:
-                                        finding_counts[k] += 1
-
-                            # Risk buckets (v3).
-                            try:
-                                for b in risk_buckets_for_file(file_type=ft, findings=prev_findings):
-                                    risk_bucket_counts[b] = int(risk_bucket_counts.get(b, 0) or 0) + 1
-                            except Exception as exc:
-                                logger.debug(_PRECHECK_RUNNER_FALLBACK_LOG_MESSAGE, exc)
-
-                            _update_directory_stats(name=rec.name, file_size=int(bs), findings=list(prev_findings) if isinstance(prev_findings, list) else [])
-
-                            # Totals for pii/secrets.
-                            pii_hits = prev.get("pii_hits") if isinstance(prev.get("pii_hits"), dict) else {}
-                            for k, v in pii_hits.items():
-                                try:
-                                    pii_totals[str(k)] = pii_totals.get(str(k), 0) + int(v or 0)
-                                except Exception:
-                                    get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
-                                    continue
-                            secrets_hits = prev.get("secrets_hits") if isinstance(prev.get("secrets_hits"), dict) else {}
-                            for k, v in secrets_hits.items():
-                                try:
-                                    secrets_totals[str(k)] = secrets_totals.get(str(k), 0) + int(v or 0)
-                                except Exception:
-                                    get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
-                                    continue
-
-                            # Near-dup entries and exact-dup entries.
-                            if enable_near_dup:
-                                sim_hex = str(prev.get("text_simhash64") or "").strip().lower()
-                                if sim_hex:
-                                    try:
-                                        simhash_entries.append((rec.name, int(sim_hex, 16), int(bs), int(tl), int(prev.get("file_mtime") or 0)))
-                                    except Exception as exc:
-                                        logger.debug(_PRECHECK_RUNNER_FALLBACK_LOG_MESSAGE, exc)
-                            if compute_file_hash:
-                                sha = str(prev.get("file_sha256") or "").strip().lower()
-                                if sha:
-                                    sha_counts[sha] = sha_counts.get(sha, 0) + 1
-
-                            jf.write(json.dumps(prev, ensure_ascii=False, separators=(",", ":")))
-                            jf.write("\n")
-                            flush_progress(idx)
-                            continue
-
-                # Text metrics (best-effort).
-                sample_text = ""
-                estimated_text = False
-                if enable_text_extract:
-                    if ext in TEXTLIKE_EXTS:
-                        sample_text, estimated_text = _read_text_sample(path, max_bytes=text_max_bytes)
-                        # Estimate text length using bytes ratio (rough).
-                        if sample_text:
-                            sample_tokens = int(estimate_tokens(sample_text) or 0)
-                            if estimated_text and size > 0:
-                                ratio = size / max(1, min(size, text_max_bytes))
-                                rec.text_characters = int(len(sample_text) * ratio)
-                                rec.text_tokens_est = int(sample_tokens * ratio)
-                                rec.estimated_text = True
-                            else:
-                                rec.text_characters = int(len(sample_text))
-                                rec.text_tokens_est = int(sample_tokens)
-                                rec.estimated_text = False
-                    elif ext == ".pdf":
-                        sample_text, estimated_text, page_count, per_page_chars, pdf_err = _pdf_text_sample(
-                            path, sample_pages=pdf_sample_pages
-                        )
-                        if pdf_err:
-                            rec.error_message = str(pdf_err)[:200]
-                            err_l = str(pdf_err or "").strip().lower()
-                            if ("password" in err_l) or ("encrypt" in err_l) or ("encryption" in err_l):
-                                if "pdf_encrypted" not in rec.findings:
-                                    rec.findings.append("pdf_encrypted")
-                                    finding_counts["pdf_encrypted"] += 1
-                            if "parse_failed" not in rec.findings:
-                                rec.findings.append("parse_failed")
-                                finding_counts["parse_failed"] += 1
-                                errors += 1
-                        if sample_text:
-                            sample_tokens = int(estimate_tokens(sample_text) or 0)
-                            if estimated_text and page_count > 0:
-                                # Scale by pages (rough).
-                                ratio = page_count / max(1, min(page_count, pdf_sample_pages))
-                                rec.text_characters = int(len(sample_text) * ratio)
-                                rec.text_tokens_est = int(sample_tokens * ratio)
-                                rec.estimated_text = True
-                            else:
-                                rec.text_characters = int(len(sample_text))
-                                rec.text_tokens_est = int(sample_tokens)
-                                rec.estimated_text = False
-                        # Always attach PDF page breakdown when possible (even if text is empty).
-                        if page_count > 0 and per_page_chars:
-                            rec.pdf_pages = _build_pdf_page_breakdown(
-                                page_count=int(page_count),
-                                per_page_chars=per_page_chars,
-                                scan_max_chars=int(pdf_scan_max_chars),
-                                text_min_chars=int(pdf_text_min_chars),
-                            )
-
-                # Text quality / language heuristics (best-effort; based on sampled extracted text).
-                if enable_text_extract:
-                    if ext in TEXTLIKE_EXTS and not (sample_text or "").strip():
-                        if "empty_text" not in rec.findings:
-                            rec.findings.append("empty_text")
-                            finding_counts["empty_text"] += 1
-
-                    if int(rec.text_characters or 0) > 0 and int(text_short_chars_threshold or 0) > 0:
-                        if int(rec.text_characters) < int(text_short_chars_threshold):
-                            if "short_text" not in rec.findings:
-                                rec.findings.append("short_text")
-                                finding_counts["short_text"] += 1
-
-                    if sample_text:
-                        try:
-                            lang = detect_language(sample_text, min_chars=int(language_min_chars or 0))
-                            rec.language = _normalize_language_bucket(getattr(lang, "language", "unknown"))
-                            rec.language_confidence = float(getattr(lang, "confidence", 0.0) or 0.0)
-                        except Exception:
-                            rec.language = "unknown"
-                            rec.language_confidence = 0.0
-
-                        try:
-                            tq = score_parsed_text_quality(sample_text)
-                        except Exception:
-                            tq = None
-
-                        if tq is not None:
-                            if float(getattr(tq, "replacement_ratio", 0.0) or 0.0) >= float(text_high_replacement_ratio_threshold):
-                                if "gibberish_text" not in rec.findings:
-                                    rec.findings.append("gibberish_text")
-                                    finding_counts["gibberish_text"] += 1
-                            if (
-                                int(getattr(tq, "chars_non_space", 0) or 0) >= 200
-                                and float(getattr(tq, "density", 1.0) or 1.0) < float(text_density_threshold)
-                                and "low_density_text" not in rec.findings
-                            ):
-                                rec.findings.append("low_density_text")
-                                finding_counts["low_density_text"] += 1
-                            if (
-                                int(getattr(tq, "chars_non_space", 0) or 0) >= 1000
-                                and float(getattr(tq, "density", 1.0) or 1.0) < float(text_gibberish_density_threshold)
-                                and "gibberish_text" not in rec.findings
-                            ):
-                                rec.findings.append("gibberish_text")
-                                finding_counts["gibberish_text"] += 1
-
-                # Optional near-duplicate fingerprint (SimHash over extracted text sample).
-                if enable_near_dup and sample_text:
-                    try:
-                        sim = _simhash64(sample_text)
-                    except Exception:
-                        sim = 0
-                    if sim:
-                        rec.text_simhash64 = f"{int(sim) & ((1<<64)-1):016x}"
-                        simhash_entries.append((rec.name, int(sim), int(rec.file_size or 0), int(rec.text_characters or 0), int(rec.file_mtime or 0)))
-
-                # PDF scan detection (transparent heuristics on sampled pages).
-                if enable_pdf_quality and ext == ".pdf":
-                    if "parse_failed" in rec.findings:
-                        # If we couldn't even sample pages/text, do not report misleading "pdf_unknown" heuristics.
-                        rec.pdf_scanned = None
-                    else:
-                        breakdown = rec.pdf_pages if isinstance(rec.pdf_pages, dict) else None
-                        scan_ratio = float(breakdown.get("scan_ratio") or 0.0) if breakdown else 0.0
-                        low_density_ratio = float(breakdown.get("low_density_ratio") or 0.0) if breakdown else 0.0
-                        page_count = int(breakdown.get("page_count") or 0) if breakdown else 0
-
-                        if page_count <= 0:
-                            rec.pdf_scanned = None
-                            rec.findings.append("pdf_unknown")
-                            finding_counts["pdf_unknown"] += 1
-                            pdf_unknown += 1
-                        else:
-                            scanned = bool(scan_ratio >= float(pdf_scan_ratio_threshold))
-                            rec.pdf_scanned = scanned
-                            if scanned:
-                                rec.findings.append("pdf_scanned")
-                                finding_counts["pdf_scanned"] += 1
-                                pdf_scanned += 1
-                            else:
-                                pdf_not_scanned += 1
-
-                            if breakdown:
-                                scanned_pages = int(breakdown.get("scanned_pages") or 0)
-                                text_pages = int(breakdown.get("text_pages") or 0)
-                                if scanned_pages > 0 and text_pages > 0 and "pdf_mixed" not in rec.findings:
-                                    rec.findings.append("pdf_mixed")
-                                    finding_counts["pdf_mixed"] += 1
-                                if float(low_density_ratio) >= float(pdf_low_density_ratio_threshold) and "pdf_low_density" not in rec.findings:
-                                    rec.findings.append("pdf_low_density")
-                                    finding_counts["pdf_low_density"] += 1
-
-                # Spreadsheet stats (best-effort): large tables are often better served by structured indexing / Text-to-SQL.
-                if ext in {".csv", ".xlsx"}:
-                    if ext == ".csv":
-                        # Use the already-read text sample as a cheap proxy for row count.
-                        if sample_text:
-                            lines = int(sample_text.count("\n"))
-                            if not sample_text.endswith("\n"):
-                                lines += 1
-                            row_count = max(0, lines)
-                            estimated_rows = False
-                            if estimated_text and size > 0:
-                                ratio = size / max(1, min(size, text_max_bytes))
-                                row_count = int(row_count * ratio)
-                                estimated_rows = True
-                            col_count = 0
-                            try:
-                                sniff_sample = sample_text[:8192]
-                                dialect: csv.Dialect = csv.excel
-                                try:
-                                    dialect = csv.Sniffer().sniff(sniff_sample, delimiters=",\t;|")
-                                except Exception:
-                                    dialect = csv.excel
-                                reader = csv.reader(io.StringIO(sample_text), dialect)
-                                for row in reader:
-                                    if row and any(str(c).strip() for c in row):
-                                        col_count = int(len(row))
-                                        break
-                            except Exception:
-                                col_count = 0
-                            rec.spreadsheet = {
-                                "row_count": int(row_count),
-                                "col_count": int(col_count),
-                                "sheet_count": 1,
-                                "merged_cell_ratio": 0.0,
-                                "estimated_rows": bool(estimated_rows),
-                                "estimated_cols": False,
-                            }
-                    else:
-                        stats, xlsx_err = _xlsx_spreadsheet_stats(path)
-                        if isinstance(stats, dict) and stats:
-                            rec.spreadsheet = stats
-                        elif xlsx_err:
-                            rec.error_message = str(xlsx_err)[:200]
-                            if "parse_failed" not in rec.findings:
-                                rec.findings.append("parse_failed")
-                                finding_counts["parse_failed"] += 1
-                                errors += 1
-
-                    if isinstance(rec.spreadsheet, dict):
-                        rows = int(rec.spreadsheet.get("row_count") or 0)
-                        if spreadsheet_large_row_threshold > 0 and rows >= int(spreadsheet_large_row_threshold):
-                            rec.findings.append("large_spreadsheet")
-                            finding_counts["large_spreadsheet"] += 1
-                        cols = int(rec.spreadsheet.get("col_count") or 0)
-                        if spreadsheet_wide_col_threshold > 0 and cols >= int(spreadsheet_wide_col_threshold):
-                            rec.findings.append("wide_spreadsheet")
-                            finding_counts["wide_spreadsheet"] += 1
-                        sheets = int(rec.spreadsheet.get("sheet_count") or 0)
-                        if spreadsheet_sheet_threshold > 0 and sheets >= int(spreadsheet_sheet_threshold):
-                            rec.findings.append("many_sheets_spreadsheet")
-                            finding_counts["many_sheets_spreadsheet"] += 1
-                        try:
-                            merged_ratio = float(rec.spreadsheet.get("merged_cell_ratio") or 0.0)
-                        except Exception:
-                            merged_ratio = 0.0
-                        if spreadsheet_merged_ratio_threshold > 0.0 and merged_ratio >= float(spreadsheet_merged_ratio_threshold):
-                            rec.findings.append("merged_heavy_spreadsheet")
-                            finding_counts["merged_heavy_spreadsheet"] += 1
-
-                # Optional PII/secrets detection on sample text.
-                if sample_text and enable_pii:
-                    pii = anonymize_pii(sample_text, enabled=True, mode="mask")
-                    if pii.hits:
-                        rec.pii_hits = {str(k): int(v) for k, v in pii.hits.items() if int(v) > 0}
-                        if rec.pii_hits:
-                            rec.findings.append("pii")
-                            finding_counts["pii"] += 1
-                            for k, v in rec.pii_hits.items():
-                                pii_totals[k] = pii_totals.get(k, 0) + int(v)
-
-                    if enable_pii_samples and pii_max_samples_per_file > 0:
-                        matches = find_pii_matches(sample_text, max_matches=pii_max_samples_per_file)
-                        for m in matches:
-                            start = int(getattr(m, "start", 0) or 0)
-                            end = int(getattr(m, "end", 0) or 0)
-                            if end <= start:
-                                continue
-                            ctx_start = max(0, start - int(pii_context_chars))
-                            ctx_end = min(len(sample_text), end + int(pii_context_chars))
-                            ctx = sample_text[ctx_start:ctx_end]
-                            # Mask other occurrences within context for safer display.
-                            ctx = anonymize_pii(ctx, enabled=True, mode="mask").text
-                            ctx = redact_secrets(ctx, enabled=True, mode="mask").text
-                            if len(ctx) > 2000:
-                                ctx = ctx[:2000] + "..."
-                            rec.pii_samples.append(
-                                {
-                                    "kind": str(getattr(m, "kind", "") or "pii"),
-                                    "masked": _mask_pii_value(str(getattr(m, "kind", "") or ""), str(getattr(m, "text", "") or "")),
-                                    "context": ctx,
-                                    "start": start,
-                                    "end": end,
-                                }
-                            )
-
-                if sample_text and enable_secrets:
-                    sec = redact_secrets(sample_text, enabled=True, mode="mask")
-                    if sec.hits:
-                        rec.secrets_hits = {str(k): int(v) for k, v in sec.hits.items() if int(v) > 0}
-                        if rec.secrets_hits:
-                            rec.findings.append("secrets")
-                            finding_counts["secrets"] += 1
-                            for k, v in rec.secrets_hits.items():
-                                secrets_totals[k] = secrets_totals.get(k, 0) + int(v)
-
-                    if enable_secrets_samples and secrets_max_samples_per_file > 0:
-                        matches = find_secret_matches(sample_text, max_matches=secrets_max_samples_per_file)
-                        for m in matches:
-                            start = int(getattr(m, "start", 0) or 0)
-                            end = int(getattr(m, "end", 0) or 0)
-                            if end <= start:
-                                continue
-                            ctx_start = max(0, start - int(secrets_context_chars))
-                            ctx_end = min(len(sample_text), end + int(secrets_context_chars))
-                            ctx = sample_text[ctx_start:ctx_end]
-                            # Mask PII/secrets in context for safer display.
-                            ctx = anonymize_pii(ctx, enabled=True, mode="mask").text
-                            ctx = redact_secrets(ctx, enabled=True, mode="mask").text
-                            if len(ctx) > 2000:
-                                ctx = ctx[:2000] + "..."
-                            rec.secrets_samples.append(
-                                {
-                                    "kind": str(getattr(m, "kind", "") or "secret"),
-                                    "masked": _mask_secret_value(str(getattr(m, "kind", "") or ""), str(getattr(m, "text", "") or "")),
-                                    "context": ctx,
-                                    "start": start,
-                                    "end": end,
-                                }
-                            )
-
-                # Optional file hash (expensive; for exact duplicates).
-                if compute_file_hash:
-                    sha = _safe_hash_file(path, algo="sha256")
-                    rec.file_sha256 = sha
-                    sha_counts[sha] = sha_counts.get(sha, 0) + 1
-
-            except Exception as exc:  # noqa: BLE001
-                errors += 1
-                rec.error_message = str(exc)[:200]
-                rec.findings.append("parse_failed")
-                finding_counts["parse_failed"] += 1
-                rec.parse_failure_kind = classify_parse_failure_kind(file_type=rec.file_type, error_message=rec.error_message)
-                if rec.parse_failure_kind not in rec.findings:
-                    rec.findings.append(rec.parse_failure_kind)
-                    finding_counts[rec.parse_failure_kind] += 1
-
-            # Aggregation (best-effort).
-            ft = str(rec.file_type or "unknown").strip().lower() or "unknown"
-            if rec.error_message and rec.parse_failure_kind is None and "parse_failed" in rec.findings:
-                rec.parse_failure_kind = classify_parse_failure_kind(file_type=rec.file_type, error_message=rec.error_message)
-                if rec.parse_failure_kind not in rec.findings:
-                    rec.findings.append(rec.parse_failure_kind)
-                    finding_counts[rec.parse_failure_kind] += 1
-
-            rec.primary_tag = infer_primary_tag(file_type=ft, findings=rec.findings)
-            rec.processing_paths = infer_processing_paths(primary_tag=rec.primary_tag, findings=rec.findings)
-            primary_tag_counts[rec.primary_tag] += 1
-            for path_key in rec.processing_paths:
-                processing_path_counts[str(path_key or "")] += 1
-
-            by_type[ft] = by_type.get(ft, 0) + 1
-            bytes_by_type[ft] = bytes_by_type.get(ft, 0) + int(rec.file_size or 0)
-            file_sizes.append(int(rec.file_size or 0))
-            if int(rec.text_characters or 0) > 0:
-                text_lengths.append(int(rec.text_characters))
-            if int(rec.text_tokens_est or 0) > 0:
-                token_lengths.append(int(rec.text_tokens_est))
-            language_counts[_normalize_language_bucket(rec.language)] += 1
-            _update_directory_stats(name=rec.name, file_size=int(rec.file_size or 0), findings=list(rec.findings or []))
-
-            # Risk buckets (v3).
-            try:
-                for b in risk_buckets_for_file(file_type=ft, findings=rec.findings):
-                    risk_bucket_counts[b] = int(risk_bucket_counts.get(b, 0) or 0) + 1
-            except Exception as exc:
-                logger.debug(_PRECHECK_RUNNER_FALLBACK_LOG_MESSAGE, exc)
-
-            # Write JSONL line.
-            jf.write(json.dumps(asdict(rec), ensure_ascii=False, separators=(",", ":")))
-            jf.write("\n")
-
-            flush_progress(idx)
-
-    if cancelled:
-        # Best-effort: keep partial artifacts + summary.
+    if state.cancelled:
         run.status = "cancelled"
+    if options.compute_file_hash:
+        exact_dup_total = _count_exact_duplicates(state.sha_counts)
+        if exact_dup_total > 0:
+            state.finding_counts["exact_dup"] = int(exact_dup_total)
 
-    # Add exact-dup counts.
-    if compute_file_hash and sha_counts:
-        dup_total = 0
-        for _sha, cnt in sha_counts.items():
-            if int(cnt) > 1:
-                dup_total += int(cnt)
-        if dup_total > 0:
-            finding_counts["exact_dup"] = int(dup_total)
-
-    near_dup_payload: dict[str, Any] | None = None
-    near_dup_path: Path | None = None
-    if enable_near_dup and simhash_entries and near_dup_hamming_threshold > 0 and near_dup_max_pairs > 0:
-        names = [n for n, _h, _sz, _tl, _mt in simhash_entries]
-        hashes = [int(_h) for _n, _h, _sz, _tl, _mt in simhash_entries]
-        n_total = len(hashes)
-
-        # LSH banding to avoid O(N^2) comparisons (4x16-bit bands).
-        buckets: dict[tuple[int, int], list[int]] = {}
-        pairs: list[dict[str, Any]] = []
-        parent = list(range(n_total))
-        rank = [0] * n_total
-
-        def find(x: int) -> int:
-            while parent[x] != x:
-                parent[x] = parent[parent[x]]
-                x = parent[x]
-            return x
-
-        def union(a: int, b: int) -> None:
-            ra = find(a)
-            rb = find(b)
-            if ra == rb:
-                return
-            if rank[ra] < rank[rb]:
-                parent[ra] = rb
-            elif rank[ra] > rank[rb]:
-                parent[rb] = ra
-            else:
-                parent[rb] = ra
-                rank[ra] += 1
-
-        # Compare candidates as we insert each item.
-        for i, h in enumerate(hashes):
-            candidates: set[int] = set()
-            for band in range(4):
-                key = (band, int((h >> (band * 16)) & 0xFFFF))
-                existing = buckets.get(key)
-                if existing and len(existing) <= 2000:
-                    candidates.update(existing)
-                buckets.setdefault(key, []).append(i)
-
-            for j in candidates:
-                if j == i:
-                    continue
-                d = _hamming_distance64(h, hashes[j])
-                if d <= int(near_dup_hamming_threshold):
-                    pairs.append({"a": names[j], "b": names[i], "distance": int(d)})
-                    union(i, j)
-                    if len(pairs) >= int(near_dup_max_pairs):
-                        break
-            if len(pairs) >= int(near_dup_max_pairs):
-                break
-
-        # Build clusters from union-find (size>=2).
-        groups: dict[int, list[int]] = {}
-        for idx in range(n_total):
-            r = find(idx)
-            groups.setdefault(r, []).append(idx)
-
-        clusters: list[dict[str, Any]] = []
-        for root_id, members in groups.items():
-            if len(members) < 2:
-                continue
-
-            # Conservative recommendation: pick a "keep" candidate (max text chars, then size, then mtime),
-            # and ask humans to review the rest (no auto-drop).
-            def _score(idx: int) -> tuple[int, int, int, str]:
-                try:
-                    _nm, _h, _sz, _tl, _mt = simhash_entries[idx]
-                except Exception:
-                    return (0, 0, 0, names[idx])
-                return (int(_tl or 0), int(_sz or 0), int(_mt or 0), str(_nm or ""))
-
-            ordered = sorted(members, key=_score, reverse=True)
-            keep_idx = ordered[0]
-            member_names = [names[i] for i in ordered]
-
-            cluster: dict[str, Any] = {
-                "id": str(root_id),
-                "members": member_names,
-                "keep_candidate": str(names[keep_idx]),
-                "keep_strategy": "max_text_chars_then_size_then_mtime",
-                "review_candidates": member_names[1: min(len(member_names), 21)],
-            }
-            # Keep artifacts reasonably small; include per-member stats when helpful.
-            member_stats: list[dict[str, Any]] = []
-            for i in ordered[: min(50, len(ordered))]:
-                try:
-                    nm, _h, sz, tl, mt = simhash_entries[i]
-                    member_stats.append(
-                        {
-                            "name": str(nm),
-                            "file_size": int(sz or 0),
-                            "text_characters": int(tl or 0),
-                            "file_mtime": int(mt or 0),
-                        }
-                    )
-                except Exception:
-                    get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
-                    continue
-            if member_stats:
-                cluster["member_stats"] = member_stats
-
-            clusters.append(cluster)
-
-        clusters.sort(key=lambda c: (-len(c.get("members") or []), str(c.get("id") or "")))
-        affected = {m for c in clusters for m in (c.get("members") or [])}
-        if affected:
-            finding_counts["near_dup"] = int(len(affected))
-
-        near_dup_payload = {
-            "threshold": int(near_dup_hamming_threshold),
-            "max_pairs": int(near_dup_max_pairs),
-            "pairs_returned": int(len(pairs)),
-            "clusters_returned": int(len(clusters)),
-            "clusters": clusters[:2000],
-            "pairs": pairs[:5000],
-        }
-        near_dup_path = (artifact_root / "near_dups.json").resolve(strict=False)
-        near_dup_path.write_text(json.dumps(near_dup_payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-
-    # Representative sampling artifact (shareable when redact_paths=true).
-    samples_written = False
-    if enable_sampling and sample_size > 0:
-        try:
-            payload = _build_samples_payload(jsonl_path=jsonl_path, target_size=sample_size)
-            samples_path.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-            samples_written = True
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to write samples.json: %s", str(exc)[:200])
-
-    # Histograms + percentiles.
-    file_sizes.sort()
-    text_lengths.sort()
-    token_lengths.sort()
-    percentiles = {
-        "p25": percentile_from_sorted(text_lengths, 25),
-        "p50": percentile_from_sorted(text_lengths, 50),
-        "p75": percentile_from_sorted(text_lengths, 75),
-        "p90": percentile_from_sorted(text_lengths, 90),
-        "p99": percentile_from_sorted(text_lengths, 99),
-    }
-    token_percentiles = {
-        "p25": percentile_from_sorted(token_lengths, 25),
-        "p50": percentile_from_sorted(token_lengths, 50),
-        "p75": percentile_from_sorted(token_lengths, 75),
-        "p90": percentile_from_sorted(token_lengths, 90),
-        "p99": percentile_from_sorted(token_lengths, 99),
-    }
-
-    file_type_stats: list[dict[str, Any]] = []
-    for ft, cnt in by_type.items():
-        file_type_stats.append(
-            {
-                "file_type": str(ft or "unknown"),
-                "count": int(cnt or 0),
-                "total_size_bytes": int(bytes_by_type.get(str(ft or "unknown"), 0) or 0),
-            }
-        )
-    file_type_stats.sort(key=lambda o: (-int(o.get("count") or 0), -int(o.get("total_size_bytes") or 0), str(o.get("file_type") or "")))
-    if len(file_type_stats) > 500:
-        file_type_stats = file_type_stats[:500]
-
-    lang_mix = {
-        "zh": int(language_counts.get("zh", 0) or 0),
-        "en": int(language_counts.get("en", 0) or 0),
-        "mixed": int(language_counts.get("mixed", 0) or 0),
-        "unknown": int(language_counts.get("unknown", 0) or 0),
-    }
-
-    dir_items: list[dict[str, Any]] = []
-    for d, entry in directory_stats.items():
-        if not isinstance(entry, dict):
-            continue
-        item = {
-            "path": str(entry.get("path") or d or "."),
-            "total_files": int(entry.get("total_files") or 0),
-            "total_size_bytes": int(entry.get("total_size_bytes") or 0),
-            "risky_files": int(entry.get("risky_files") or 0),
-            "findings": entry.get("findings") if isinstance(entry.get("findings"), dict) else {},
-        }
-        # Keep report payload small and predictable.
-        if len(item["path"]) > 512:
-            item["path"] = item["path"][:512]
-        dir_items.append(item)
-    dir_items.sort(key=lambda o: (-int(o.get("risky_files") or 0), -int(o.get("total_files") or 0), str(o.get("path") or "")))
-    if int(directory_stats_limit or 0) > 0:
-        dir_items = dir_items[: int(directory_stats_limit)]
-    else:
-        dir_items = []
-
-    near_dup_summary = summarize_near_dup_payload(near_dup_payload)
-
-    summary = {
-        "dataset_id": str(dataset_id),
-        "scan_run_id": str(run.id),
-        "generated_at": _now_utc().isoformat(),
-        "schema_id": "mimirq.dataset_precheck_summary.v3",
-        "schema_version": 3,
-        # Use processed count (supports cancelled runs with partial artifacts).
-        "total_files": int(len(file_sizes)),
-        "total_size_bytes": int(sum(file_sizes)),
-        "reused_files": int(reused_files),
-        "by_file_type": {k: int(v) for k, v in sorted(by_type.items(), key=lambda kv: (-kv[1], kv[0]))},
-        "by_file_type_bytes": {
-            k: int(v)
-            for k, v in sorted(bytes_by_type.items(), key=lambda kv: (-int(kv[1] or 0), str(kv[0] or "")))
-            if int(v or 0) > 0
-        },
-        "file_type_stats": file_type_stats,
-        "language_mix": lang_mix,
-        "embedding_advisories": build_embedding_language_advisories(
-            language_mix=lang_mix,
-            dataset_metadata=dataset_metadata,
-        ),
-        "directory_stats": dir_items,
-        "file_size_histogram": histogram(file_sizes, FILE_SIZE_BINS),
-        "length_percentiles": percentiles,
-        "length_histogram": histogram(text_lengths, TEXT_LENGTH_BINS),
-        "token_percentiles": token_percentiles,
-        "token_histogram": histogram(token_lengths, TEXT_TOKEN_BINS),
-        "pdf_scan": {"scanned": int(pdf_scanned), "not_scanned": int(pdf_not_scanned), "unknown": int(pdf_unknown)},
-        "pdf_detection": {
-            "sample_pages": int(pdf_sample_pages),
-            "scan_max_chars_per_page": int(pdf_scan_max_chars),
-            "text_min_chars_per_page": int(pdf_text_min_chars),
-            "scan_ratio_threshold": float(pdf_scan_ratio_threshold),
-        },
-        "risk_buckets": {
-            k: int(v)
-            for k, v in sorted(
-                risk_bucket_counts.items(),
-                key=lambda kv: (-int(kv[1] or 0), str(kv[0] or "")),
-            )
-            if int(v or 0) > 0
-        },
-        "primary_tag_counts": {
-            k: int(v)
-            for k, v in sorted(primary_tag_counts.items(), key=lambda kv: (-int(kv[1] or 0), str(kv[0] or "")))
-            if int(v or 0) > 0
-        },
-        "processing_path_counts": {
-            k: int(v)
-            for k, v in sorted(processing_path_counts.items(), key=lambda kv: (-int(kv[1] or 0), str(kv[0] or "")))
-            if int(v or 0) > 0
-        },
-        "near_dup_summary": near_dup_summary,
-        "pii_hits_total": {k: int(v) for k, v in pii_totals.items()},
-        "secrets_hits_total": {k: int(v) for k, v in secrets_totals.items()},
-        "findings": [
-            {
-                "key": k,
-                "label": v.get("label", k),
-                "severity": v.get("severity", "info"),
-                "count": int(finding_counts.get(k, 0) or 0),
-                "description": v.get("description"),
-            }
-            for k, v in FINDING_KEY_REASONS.items()
-        ],
-    }
-
-    if not cancelled:
-        run.status = "completed"
-        run.progress = 100
-    run.finished_at = _now_utc()
-    run.updated_at = run.finished_at
-    run.summary = summary
-    run.artifacts = {
-        "files_jsonl": str(jsonl_path),
-        "root_path": REDACTED_MASK if redact_paths else str(root),
-    }
-    if near_dup_path is not None:
-        run.artifacts["near_dups_json"] = str(near_dup_path)
-    if samples_written:
-        run.artifacts["samples_json"] = str(samples_path)
-    db.commit()
-
-    return {
-        "ok": True,
-        "files": int(total),
-        "errors": int(errors),
-        "reused": int(reused_files),
-    }
+    near_dup_payload, near_dup_path = _build_near_dup_artifact(
+        state=state,
+        options=options,
+        near_dup_path=near_dups_path.resolve(strict=False),
+    )
+    samples_written = _maybe_write_samples_artifact(
+        jsonl_path=jsonl_path,
+        samples_path=samples_path,
+        enable_sampling=options.enable_sampling,
+        sample_size=sample_size,
+    )
+    summary = _build_scan_summary(
+        dataset_id=dataset_id,
+        run_id=run.id,
+        dataset_metadata=dataset_metadata,
+        state=state,
+        options=options,
+        near_dup_payload=near_dup_payload,
+    )
+    _finalize_scan_run(
+        db,
+        run=run,
+        root=root,
+        options=options,
+        jsonl_path=jsonl_path,
+        samples_path=samples_path,
+        near_dup_path=near_dup_path,
+        samples_written=samples_written,
+        summary=summary,
+        cancelled=state.cancelled,
+    )
+    return {"ok": True, "files": int(total), "errors": int(state.errors), "reused": int(state.reused_files)}

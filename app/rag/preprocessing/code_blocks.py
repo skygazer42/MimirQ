@@ -61,6 +61,31 @@ def _should_strip_line_numbers(code_lines: list[str]) -> bool:
     return (inc / max(1, len(nums) - 1)) >= 0.5
 
 
+def _strip_line_numbers_from_block(code_lines: list[str]) -> tuple[list[str], int, bool]:
+    out: list[str] = []
+    lines_stripped = 0
+    changed_any = False
+    for ln in code_lines:
+        m = _LINE_NUMBER_RE.match(ln or "")
+        if not m:
+            out.append(ln)
+            continue
+        ws = m.group("ws") or ""
+        out.append(f"{m.group('prefix')}{ws[1:]}{m.group('body')}")
+        lines_stripped += 1
+        changed_any = True
+    return out, lines_stripped, changed_any
+
+
+def _flush_code_block(current_block: list[str]) -> tuple[list[str], int, int]:
+    if not current_block:
+        return [], 0, 0
+    if not _should_strip_line_numbers(current_block):
+        return list(current_block), 0, 0
+    cleaned_block, lines_stripped, changed_any = _strip_line_numbers_from_block(current_block)
+    return cleaned_block, 1 if changed_any else 0, lines_stripped
+
+
 def strip_fenced_code_line_numbers(text: str) -> CodeLineNumberStripResult:
     original = text or ""
     if not original:
@@ -73,34 +98,15 @@ def strip_fenced_code_line_numbers(text: str) -> CodeLineNumberStripResult:
     blocks_changed = 0
     lines_stripped = 0
 
-    def flush_block() -> None:
-        nonlocal blocks_changed, lines_stripped
-        if not current_block:
-            return
-        if not _should_strip_line_numbers(current_block):
-            out.extend(current_block)
-            current_block.clear()
-            return
-
-        changed_any = False
-        for ln in current_block:
-            m = _LINE_NUMBER_RE.match(ln or "")
-            if not m:
-                out.append(ln)
-                continue
-            ws = m.group("ws") or ""
-            out.append(f"{m.group('prefix')}{ws[1:]}{m.group('body')}")
-            lines_stripped += 1
-            changed_any = True
-        if changed_any:
-            blocks_changed += 1
-        current_block.clear()
-
     for ln in lines:
         if _CODE_FENCE_RE.match(ln):
             if in_code:
                 # End of block: flush collected lines before writing fence.
-                flush_block()
+                cleaned_block, block_changed, stripped_count = _flush_code_block(current_block)
+                out.extend(cleaned_block)
+                blocks_changed += block_changed
+                lines_stripped += stripped_count
+                current_block.clear()
                 in_code = False
                 out.append(ln)
                 continue

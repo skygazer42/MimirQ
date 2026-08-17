@@ -135,6 +135,69 @@ def _estimate_xlsx_shape(path: Path, *, max_sheets: int = 20) -> tuple[int, int,
             logger.debug("Ignoring workbook close failure during table routing: %s", exc)
 
 
+def _route_for_csv(
+    *,
+    file_path: Path,
+    stats: dict[str, Any],
+    row_threshold: int,
+    col_threshold: int,
+    csv_sample_bytes: int,
+) -> TableRouteDecision:
+    rows_est, cols_est, estimated_rows = _estimate_csv_shape(file_path, sample_bytes=int(csv_sample_bytes))
+    stats.update(
+        {
+            "rows": int(rows_est),
+            "cols": int(cols_est),
+            "estimated_rows": bool(estimated_rows),
+            "row_threshold": int(row_threshold),
+            "col_threshold": int(col_threshold),
+        }
+    )
+    if row_threshold > 0 and rows_est >= row_threshold:
+        stats["trigger"] = "rows"
+        return TableRouteDecision(route="tag", reason="rows_threshold", stats=stats)
+    if col_threshold > 0 and cols_est >= col_threshold:
+        stats["trigger"] = "cols"
+        return TableRouteDecision(route="tag", reason="cols_threshold", stats=stats)
+    return TableRouteDecision(route="rag", reason="below_threshold", stats=stats)
+
+
+def _route_for_xlsx(
+    *,
+    file_path: Path,
+    stats: dict[str, Any],
+    row_threshold: int,
+    col_threshold: int,
+    sheet_threshold: int,
+) -> TableRouteDecision:
+    max_rows, max_cols, sheet_count, ok, degraded_reason = _estimate_xlsx_shape(file_path)
+    stats.update(
+        {
+            "rows": int(max_rows),
+            "cols": int(max_cols),
+            "sheet_count": int(sheet_count),
+            "row_threshold": int(row_threshold),
+            "col_threshold": int(col_threshold),
+            "sheet_threshold": int(sheet_threshold),
+            "shape_ok": bool(ok),
+        }
+    )
+    if degraded_reason:
+        stats["degraded_reason"] = str(degraded_reason)
+    if ok:
+        if sheet_threshold > 0 and sheet_count >= sheet_threshold:
+            stats["trigger"] = "sheets"
+            return TableRouteDecision(route="tag", reason="sheet_threshold", stats=stats)
+        if row_threshold > 0 and max_rows >= row_threshold:
+            stats["trigger"] = "rows"
+            return TableRouteDecision(route="tag", reason="rows_threshold", stats=stats)
+        if col_threshold > 0 and max_cols >= col_threshold:
+            stats["trigger"] = "cols"
+            return TableRouteDecision(route="tag", reason="cols_threshold", stats=stats)
+        return TableRouteDecision(route="rag", reason="below_threshold", stats=stats)
+    return TableRouteDecision(route="rag", reason="shape_unknown", stats=stats)
+
+
 def decide_table_route(
     file_path: Path,
     *,
@@ -171,56 +234,23 @@ def decide_table_route(
     ct = int(col_threshold or 0)
     st = int(sheet_threshold or 0)
 
-    # CSV
     if ext == ".csv":
-        rows_est, cols_est, estimated_rows = _estimate_csv_shape(file_path, sample_bytes=int(csv_sample_bytes))
-        stats.update(
-            {
-                "rows": int(rows_est),
-                "cols": int(cols_est),
-                "estimated_rows": bool(estimated_rows),
-                "row_threshold": int(rt),
-                "col_threshold": int(ct),
-            }
+        return _route_for_csv(
+            file_path=file_path,
+            stats=stats,
+            row_threshold=rt,
+            col_threshold=ct,
+            csv_sample_bytes=csv_sample_bytes,
         )
-        if rt > 0 and rows_est >= rt:
-            stats["trigger"] = "rows"
-            return TableRouteDecision(route="tag", reason="rows_threshold", stats=stats)
-        if ct > 0 and cols_est >= ct:
-            stats["trigger"] = "cols"
-            return TableRouteDecision(route="tag", reason="cols_threshold", stats=stats)
-        return TableRouteDecision(route="rag", reason="below_threshold", stats=stats)
 
-    # XLSX
     if ext == ".xlsx":
-        max_rows, max_cols, sheet_count, ok, degraded_reason = _estimate_xlsx_shape(file_path)
-        stats.update(
-            {
-                "rows": int(max_rows),
-                "cols": int(max_cols),
-                "sheet_count": int(sheet_count),
-                "row_threshold": int(rt),
-                "col_threshold": int(ct),
-                "sheet_threshold": int(st),
-                "shape_ok": bool(ok),
-            }
+        return _route_for_xlsx(
+            file_path=file_path,
+            stats=stats,
+            row_threshold=rt,
+            col_threshold=ct,
+            sheet_threshold=st,
         )
-        if degraded_reason:
-            stats["degraded_reason"] = str(degraded_reason)
-        if ok:
-            if st > 0 and sheet_count >= st:
-                stats["trigger"] = "sheets"
-                return TableRouteDecision(route="tag", reason="sheet_threshold", stats=stats)
-            if rt > 0 and max_rows >= rt:
-                stats["trigger"] = "rows"
-                return TableRouteDecision(route="tag", reason="rows_threshold", stats=stats)
-            if ct > 0 and max_cols >= ct:
-                stats["trigger"] = "cols"
-                return TableRouteDecision(route="tag", reason="cols_threshold", stats=stats)
-            return TableRouteDecision(route="rag", reason="below_threshold", stats=stats)
-
-        # If we can't read shape, fall back to file-size only (already applied above).
-        return TableRouteDecision(route="rag", reason="shape_unknown", stats=stats)
 
     # XLS (legacy): best-effort, file-size only (already applied).
     # We keep the default conservative: do not force TAG when we don't have signals.

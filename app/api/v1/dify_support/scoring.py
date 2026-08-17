@@ -589,21 +589,40 @@ def _record_metadata_anchor_bonus(record: dict[str, Any], *, query: str) -> floa
         for key in _METADATA_ANCHOR_KEYS:
             for term in _metadata_terms(metadata.get(key)):
                 candidate = _normalize_match_term(term)
-                if len(candidate) < 4:
-                    continue
-                if candidate == query_term:
-                    best = max(best, 0.14)
-                elif candidate in query_term or query_term in candidate:
-                    best = max(best, 0.1 if key in _FUZZY_METADATA_ANCHOR_KEYS else 0.08)
-                elif key in _FUZZY_METADATA_ANCHOR_KEYS and _cjk_bigram_overlap_count(query_term, candidate) >= 2:
-                    best = max(best, 0.1)
-                elif key == "question" and has_query_region:
-                    overlap = _longest_common_substring_length(query_term, candidate)
-                    if overlap >= _MIN_REGIONAL_QUESTION_OVERLAP_CHARS:
-                        best = max(best, 0.12)
+                best = max(
+                    best,
+                    _metadata_term_anchor_bonus(
+                        key=key,
+                        candidate=candidate,
+                        query_term=query_term,
+                        has_query_region=has_query_region,
+                    ),
+                )
     if best > 0 and has_query_region:
         best += 0.02
     return best
+
+
+def _metadata_term_anchor_bonus(
+    *,
+    key: str,
+    candidate: str,
+    query_term: str,
+    has_query_region: bool,
+) -> float:
+    if len(candidate) < 4:
+        return 0.0
+    if candidate == query_term:
+        return 0.14
+    if candidate in query_term or query_term in candidate:
+        return 0.1 if key in _FUZZY_METADATA_ANCHOR_KEYS else 0.08
+    if key in _FUZZY_METADATA_ANCHOR_KEYS and _cjk_bigram_overlap_count(query_term, candidate) >= 2:
+        return 0.1
+    if key == "question" and has_query_region:
+        overlap = _longest_common_substring_length(query_term, candidate)
+        if overlap >= _MIN_REGIONAL_QUESTION_OVERLAP_CHARS:
+            return 0.12
+    return 0.0
 
 
 def _record_plugin_ref(record: dict[str, Any], *, fallback_plugin_refs: tuple[str, ...] = ()) -> str:

@@ -222,6 +222,49 @@ async def _get_arq_redis() -> Any | None:
         return None
 
 
+async def _read_queue_depth(*, redis: Any, queue_name: str) -> int | None:
+    try:
+        depth = int(await redis.zcard(queue_name))
+        return max(0, depth)
+    except Exception:
+        return None
+
+
+async def _read_active_workers(*, redis: Any, queue_name: str) -> int | None:
+    try:
+        ttl = _heartbeat_ttl_sec()
+        now_ts = time.time()
+        cutoff = now_ts - float(ttl)
+        registry_key = _workers_registry_key(queue_name)
+        await redis.zremrangebyscore(registry_key, "-inf", float(cutoff))
+        workers_active = int(await redis.zcard(registry_key))
+        return max(0, workers_active)
+    except Exception:
+        return None
+
+
+async def _read_recent_job_outcomes(*, redis: Any, queue_name: str) -> list[dict[str, Any]]:
+    try:
+        raw_items = await redis.lrange(_recent_jobs_key(queue_name), 0, int(_recent_job_outcomes_limit()) - 1)
+    except Exception:
+        return []
+
+    recent_job_outcomes: list[dict[str, Any]] = []
+    for raw in raw_items or []:
+        text = raw.decode("utf-8", "ignore") if isinstance(raw, (bytes, bytearray)) else str(raw or "")
+        text = text.strip()
+        if not text:
+            continue
+        try:
+            item = json.loads(text)
+        except Exception:
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            continue
+        if isinstance(item, dict):
+            recent_job_outcomes.append(item)
+    return recent_job_outcomes
+
+
 async def _refresh_from_redis(*, redis: Any, queue_name: str) -> tuple[bool, int | None, int | None, str | None]:
     """
     Return (broker_up, depth, workers_active, recent_job_outcomes, error).
@@ -238,47 +281,9 @@ async def _refresh_from_redis(*, redis: Any, queue_name: str) -> tuple[bool, int
     except Exception:
         return False, None, None, [], "redis_ping_failed"
 
-    depth: int | None = None
-    try:
-        depth = int(await redis.zcard(q))
-        if depth < 0:
-            depth = 0
-    except Exception:
-        depth = None
-
-    # Worker liveness: prune stale entries then count.
-    workers_active: int | None = None
-    try:
-        ttl = _heartbeat_ttl_sec()
-        now_ts = time.time()
-        cutoff = now_ts - float(ttl)
-        reg = _workers_registry_key(q)
-        # Remove workers that have not heartbeated within TTL.
-        await redis.zremrangebyscore(reg, "-inf", float(cutoff))
-        workers_active = int(await redis.zcard(reg))
-        if workers_active < 0:
-            workers_active = 0
-    except Exception:
-        workers_active = None
-
-    recent_job_outcomes: list[dict[str, Any]] = []
-    try:
-        raw_items = await redis.lrange(_recent_jobs_key(q), 0, int(_recent_job_outcomes_limit()) - 1)
-        for raw in raw_items or []:
-            text = raw.decode("utf-8", "ignore") if isinstance(raw, (bytes, bytearray)) else str(raw or "")
-            text = text.strip()
-            if not text:
-                continue
-            try:
-                item = json.loads(text)
-            except Exception:
-                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-                continue
-            if isinstance(item, dict):
-                recent_job_outcomes.append(item)
-    except Exception:
-        recent_job_outcomes = []
-
+    depth = await _read_queue_depth(redis=redis, queue_name=q)
+    workers_active = await _read_active_workers(redis=redis, queue_name=q)
+    recent_job_outcomes = await _read_recent_job_outcomes(redis=redis, queue_name=q)
     return broker_up, depth, workers_active, recent_job_outcomes, None
 
 

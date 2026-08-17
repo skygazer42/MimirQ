@@ -2,7 +2,6 @@
 Conversation helpers shared by different RAG pipelines.
 """
 
-
 from typing import Any
 
 
@@ -27,35 +26,38 @@ def format_history_text(
     if not hist_slice:
         return empty_placeholder
 
-    # Preserve the latest system message even when using a small rolling window.
-    # This enables summary-memory injection without requiring a large CHAT_HISTORY_WINDOW.
-    if window and history:
-        last_system = None
-        for msg in reversed(history):
-            if isinstance(msg, dict):
-                role_value = msg.get("role")
-            else:
-                role_value = getattr(msg, "role", None)
-            if role_value == "system":
-                last_system = msg
-                break
-        if last_system is not None and last_system not in hist_slice:
-            hist_slice = [last_system] + list(hist_slice)
-
-    parts: list[str] = []
-    for msg in hist_slice:
-        if isinstance(msg, dict):
-            role_value = msg.get("role")
-            content_value = msg.get("content", "")
-        else:
-            role_value = getattr(msg, "role", None)
-            content_value = getattr(msg, "content", "")
-
-        if role_value == "system":
-            role = "System"
-        else:
-            role = user_label if role_value == "user" else assistant_label
-        parts.append(f"{role}: {content_value}")
+    hist_slice = _with_latest_system_message(history, hist_slice)
+    parts = [
+        _format_history_message(message, user_label=user_label, assistant_label=assistant_label)
+        for message in hist_slice
+    ]
 
     text = "\n\n".join(parts).strip()
     return text or empty_placeholder
+
+
+def _message_value(message: Any, field_name: str, default: Any = None) -> Any:
+    if isinstance(message, dict):
+        return message.get(field_name, default)
+    return getattr(message, field_name, default)
+
+
+def _with_latest_system_message(history: list[Any], window_messages: list[Any]) -> list[Any]:
+    """Keep summary memory available even when it falls outside the rolling window."""
+    latest_system = next(
+        (message for message in reversed(history) if _message_value(message, "role") == "system"),
+        None,
+    )
+    if latest_system is None or latest_system in window_messages:
+        return window_messages
+    return [latest_system, *window_messages]
+
+
+def _format_history_message(message: Any, *, user_label: str, assistant_label: str) -> str:
+    role_value = _message_value(message, "role")
+    content = _message_value(message, "content", "")
+    if role_value == "system":
+        role = "System"
+    else:
+        role = user_label if role_value == "user" else assistant_label
+    return f"{role}: {content}"

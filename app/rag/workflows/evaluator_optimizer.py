@@ -161,19 +161,9 @@ Provide a clear, comprehensive answer:"""
     ) -> EvaluationResult:
         """Default evaluation using LLM."""
         if self._llm is None:
-            # Simple heuristic evaluation
-            score = 0.5
-            if len(answer) > 50:
-                score += 0.2
-            if len(answer) > 200:
-                score += 0.1
-            if any(c.get("content", "")[:100].lower() in answer.lower() for c in contexts[:3]):
-                score += 0.2
-            return EvaluationResult(min(score, 1.0), "Heuristic evaluation")
+            return self._heuristic_evaluation(answer, contexts)
 
-        context_text = "\n".join(
-            ctx.get("content", "")[:500] for ctx in contexts[:3]
-        ) if contexts else "No context"
+        context_text = self._evaluation_context_text(contexts)
 
         prompt = f"""Evaluate the quality of the following answer.
 
@@ -201,31 +191,51 @@ Feedback: [specific feedback for improvement]"""
 
         response = await self._llm.ainvoke(prompt)
         content = response.content if hasattr(response, 'content') else str(response)
+        return self._parse_evaluation_response(content)
 
-        # Parse scores
-        criteria_scores = {}
+    @staticmethod
+    def _heuristic_evaluation(answer: str, contexts: list[dict[str, Any]]) -> EvaluationResult:
+        score = 0.5
+        if len(answer) > 50:
+            score += 0.2
+        if len(answer) > 200:
+            score += 0.1
+        if any(c.get("content", "")[:100].lower() in answer.lower() for c in contexts[:3]):
+            score += 0.2
+        return EvaluationResult(min(score, 1.0), "Heuristic evaluation")
+
+    @staticmethod
+    def _evaluation_context_text(contexts: list[dict[str, Any]]) -> str:
+        if not contexts:
+            return "No context"
+        return "\n".join(ctx.get("content", "")[:500] for ctx in contexts[:3])
+
+    @staticmethod
+    def _parse_evaluation_response(content: str) -> EvaluationResult:
+        criteria_scores: dict[str, float] = {}
         overall = 0.5
         feedback = ""
 
         for line in content.strip().split("\n"):
             line = line.strip()
-            if ":" in line:
-                key, value = line.split(":", 1)
-                key = key.strip().lower()
-                value = value.strip()
+            if ":" not in line:
+                continue
+            key, value = line.split(":", 1)
+            key = key.strip().lower()
+            value = value.strip()
 
-                if key == "feedback":
-                    feedback = value
-                elif key == "overall":
-                    try:
-                        overall = float(value)
-                    except ValueError as exc:
-                        logger.debug("Ignoring non-critical evaluator optimizer parse fallback: %s", exc)
-                else:
-                    try:
-                        criteria_scores[key] = float(value)
-                    except ValueError as exc:
-                        logger.debug("Ignoring non-critical evaluator optimizer parse fallback: %s", exc)
+            if key == "feedback":
+                feedback = value
+                continue
+            try:
+                parsed_value = float(value)
+            except ValueError as exc:
+                logger.debug("Ignoring non-critical evaluator optimizer parse fallback: %s", exc)
+                continue
+            if key == "overall":
+                overall = parsed_value
+            else:
+                criteria_scores[key] = parsed_value
 
         return EvaluationResult(overall, feedback, criteria_scores)
 

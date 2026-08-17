@@ -133,6 +133,17 @@ def extract_pipe_tables(markdown: str) -> list[list[list[str]]]:
     return tables
 
 
+def _normalized_table_cells(tables: list[list[list[str]]]) -> list[str]:
+    cells: list[str] = []
+    for table in tables or []:
+        for row in table:
+            for cell in row:
+                normalized = _WS_RE.sub(" ", str(cell or "")).strip().lower()
+                if normalized:
+                    cells.append(normalized)
+    return cells
+
+
 def table_cell_f1(pred_tables: list[list[list[str]]], gold_tables: list[list[list[str]]]) -> float | None:
     """
     Proxy table similarity metric.
@@ -141,22 +152,8 @@ def table_cell_f1(pred_tables: list[list[list[str]]], gold_tables: list[list[lis
     - None when both sides have no table cells.
     - F1 in [0, 1] for cell text overlap (multiset).
     """
-    pred_cells: list[str] = []
-    for t in pred_tables or []:
-        for row in t:
-            for cell in row:
-                c = _WS_RE.sub(" ", str(cell or "")).strip().lower()
-                if c:
-                    pred_cells.append(c)
-
-    gold_cells: list[str] = []
-    for t in gold_tables or []:
-        for row in t:
-            for cell in row:
-                c = _WS_RE.sub(" ", str(cell or "")).strip().lower()
-                if c:
-                    gold_cells.append(c)
-
+    pred_cells = _normalized_table_cells(pred_tables)
+    gold_cells = _normalized_table_cells(gold_tables)
     if not pred_cells and not gold_cells:
         return None
 

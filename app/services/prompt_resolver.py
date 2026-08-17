@@ -24,6 +24,53 @@ def _stable_unit_interval(seed: str) -> float:
     return (num % 1_000_000) / 1_000_000.0
 
 
+def _active_prompt_template_query(*, db: Session, tenant_id: UUID):
+    return db.query(PromptTemplate).filter(
+        PromptTemplate.tenant_id == tenant_id,
+        PromptTemplate.is_active == True,  # noqa: E712
+    )
+
+
+def _weighted_variants(variants: list[PromptTemplate]) -> tuple[list[float], float]:
+    weights: list[float] = []
+    total = 0.0
+    for variant in variants:
+        weight = float(getattr(variant, "ab_weight", 1.0) or 0.0)
+        if weight < 0:
+            weight = 0.0
+        weights.append(weight)
+        total += weight
+    if total > 0:
+        return weights, total
+    return [1.0 for _ in variants], float(len(variants))
+
+
+def _resolve_ab_variant(
+    *,
+    query,
+    ab_experiment_key: str,
+    ab_user_key: str | None,
+) -> PromptTemplate | None:
+    variants = (
+        query.filter(PromptTemplate.ab_experiment_key == ab_experiment_key)
+        .order_by(PromptTemplate.ab_variant.asc().nullslast(), PromptTemplate.updated_at.desc())
+        .all()
+    )
+    if not variants:
+        return None
+    if len(variants) == 1:
+        return variants[0]
+
+    weights, total = _weighted_variants(variants)
+    r = _stable_unit_interval(f"{ab_experiment_key}:{ab_user_key or ''}") * total
+    acc = 0.0
+    for variant, weight in zip(variants, weights, strict=False):
+        acc += weight
+        if r <= acc:
+            return variant
+    return variants[-1]
+
+
 def resolve_prompt_template(
     *,
     db: Session,
@@ -43,19 +90,14 @@ def resolve_prompt_template(
     """
     if prompt_template_id:
         return (
-            db.query(PromptTemplate)
+            _active_prompt_template_query(db=db, tenant_id=tenant_id)
             .filter(
                 PromptTemplate.id == prompt_template_id,
-                PromptTemplate.tenant_id == tenant_id,
-                PromptTemplate.is_active == True,  # noqa: E712
             )
             .first()
         )
 
-    query = db.query(PromptTemplate).filter(
-        PromptTemplate.tenant_id == tenant_id,
-        PromptTemplate.is_active == True,  # noqa: E712
-    )
+    query = _active_prompt_template_query(db=db, tenant_id=tenant_id)
 
     if template_key:
         return (
@@ -65,35 +107,6 @@ def resolve_prompt_template(
         )
 
     if ab_experiment_key:
-        variants = (
-            query.filter(PromptTemplate.ab_experiment_key == ab_experiment_key)
-            .order_by(PromptTemplate.ab_variant.asc().nullslast(), PromptTemplate.updated_at.desc())
-            .all()
-        )
-        if not variants:
-            return None
-        if len(variants) == 1:
-            return variants[0]
-
-        weights = []
-        total = 0.0
-        for v in variants:
-            w = float(getattr(v, "ab_weight", 1.0) or 0.0)
-            if w < 0:
-                w = 0.0
-            weights.append(w)
-            total += w
-        if total <= 0:
-            weights = [1.0 for _ in variants]
-            total = float(len(variants))
-
-        seed = f"{ab_experiment_key}:{ab_user_key or ''}"
-        r = _stable_unit_interval(seed) * total
-        acc = 0.0
-        for v, w in zip(variants, weights, strict=False):
-            acc += w
-            if r <= acc:
-                return v
-        return variants[-1]
+        return _resolve_ab_variant(query=query, ab_experiment_key=ab_experiment_key, ab_user_key=ab_user_key)
 
     return None

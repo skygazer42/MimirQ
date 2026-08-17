@@ -79,42 +79,45 @@ def _normalize_exact_anchor(value: Any, *, compact: bool = False) -> str:
     return _COMPACT_ANCHOR_DROP_RE.sub("", text) if compact else text
 
 
+def _append_metadata_anchor_values(
+    out: list[tuple[str, str]],
+    seen: set[tuple[str, str]],
+    *,
+    field: str,
+    value: Any,
+) -> None:
+    field_s = str(field or "").strip()
+    if not field_s:
+        return
+    values = list(value) if isinstance(value, (list, tuple)) else [value]
+    for item in values:
+        if not isinstance(item, str):
+            continue
+        text = item.strip()
+        if not text:
+            continue
+        key = (field_s, text)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(key)
+
+
 def _iter_metadata_exact_anchor_values(meta: dict[str, Any]) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     seen: set[tuple[str, str]] = set()
-
-    def add(field: str, value: Any) -> None:
-        field_s = str(field or "").strip()
-        if not field_s:
-            return
-        values: list[Any]
-        if isinstance(value, (list, tuple)):
-            values = list(value)
-        else:
-            values = [value]
-        for item in values:
-            if not isinstance(item, str):
-                continue
-            text = item.strip()
-            if not text:
-                continue
-            key = (field_s, text)
-            if key in seen:
-                continue
-            seen.add(key)
-            out.append(key)
 
     for view_key in (_EVALUABLE_METADATA_KEY, _DISPLAY_METADATA_KEY, _INDEXED_METADATA_KEY):
         view = meta.get(view_key)
         if isinstance(view, dict):
             for field, value in view.items():
-                add(str(field), value)
+                _append_metadata_anchor_values(out, seen, field=str(field), value=value)
 
     for field, value in meta.items():
         field_s = str(field or "").strip()
         if not field_s or field_s.startswith("_"):
             continue
-        add(field_s, value)
+        _append_metadata_anchor_values(out, seen, field=field_s, value=value)
 
     return out
 

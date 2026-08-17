@@ -123,6 +123,33 @@ class TerraformHCLChunker(BaseChunker):
             add_start_index=True,
         )
 
+    def _chunk_metadata(
+        self,
+        *,
+        base_meta: dict[str, Any],
+        sd_meta: dict[str, Any],
+        abs_start: int,
+        abs_end: int,
+        current: _Block | None,
+    ) -> dict[str, Any]:
+        meta: dict[str, Any] = dict(base_meta)
+        meta.update(sd_meta)
+        meta["chunk_strategy"] = "terraform_hcl"
+        meta["start_char"] = abs_start
+        meta["end_char"] = abs_end
+        meta.setdefault("doc_type_kwd", "hcl")
+        if current is None:
+            return meta
+        meta["hcl_block_type"] = current.kind
+        if current.labels:
+            meta["hcl_block_labels"] = current.labels
+            meta["hcl_block_label"] = current.labels[0]
+        if current.kind in {"resource", "data"} and len(current.labels) >= 2:
+            meta["hcl_address"] = f"{current.kind}.{current.labels[0]}.{current.labels[1]}"
+        elif current.kind in {"module", "variable", "output", "provider"} and current.labels:
+            meta["hcl_address"] = f"{current.kind}.{current.labels[0]}"
+        return meta
+
     def split_documents(self, documents: list[Document]) -> list[Document]:
         out: list[Document] = []
 
@@ -145,27 +172,22 @@ class TerraformHCLChunker(BaseChunker):
 
                 split_docs = self._fallback_splitter.create_documents(texts=[sec_text], metadatas=[base_meta])
                 for sd in split_docs:
-                    local_start = sd.metadata.pop("start_index", None) or 0
+                    sd_meta = dict(sd.metadata or {})
+                    local_start = sd_meta.pop("start_index", None) or 0
                     abs_start = section.start + int(local_start)
                     abs_end = abs_start + len(sd.page_content)
-
-                    meta: dict[str, Any] = dict(base_meta)
-                    meta.update(sd.metadata or {})
-                    meta["chunk_strategy"] = "terraform_hcl"
-                    meta["start_char"] = abs_start
-                    meta["end_char"] = abs_end
-                    meta.setdefault("doc_type_kwd", "hcl")
-                    if current is not None:
-                        meta["hcl_block_type"] = current.kind
-                        if current.labels:
-                            meta["hcl_block_labels"] = current.labels
-                            meta["hcl_block_label"] = current.labels[0]
-                        if current.kind in {"resource", "data"} and len(current.labels) >= 2:
-                            meta["hcl_address"] = f"{current.kind}.{current.labels[0]}.{current.labels[1]}"
-                        elif current.kind in {"module", "variable", "output", "provider"} and current.labels:
-                            meta["hcl_address"] = f"{current.kind}.{current.labels[0]}"
-
-                    out.append(Document(page_content=sd.page_content, metadata=meta))
+                    out.append(
+                        Document(
+                            page_content=sd.page_content,
+                            metadata=self._chunk_metadata(
+                                base_meta=base_meta,
+                                sd_meta=sd_meta,
+                                abs_start=abs_start,
+                                abs_end=abs_end,
+                                current=current,
+                            ),
+                        )
+                    )
 
         for idx, chunk in enumerate(out):
             meta = dict(chunk.metadata or {})
