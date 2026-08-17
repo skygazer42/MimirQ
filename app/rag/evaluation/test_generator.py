@@ -3,6 +3,7 @@ Test question generator.
 
 Generates test questions from documents or conversation history for RAGAS regression.
 """
+
 import asyncio
 import re
 from collections import Counter
@@ -38,6 +39,7 @@ _ALLOWED_QUESTION_TYPES = {"factual", "multi_hop", "comparison", "conditional", 
 
 class GeneratedQuestion(BaseModel):
     """Generated question."""
+
     question: str = Field(description="Question content")
     expected_answer: str | None = Field(default=None, description="Expected answer (optional)")
     context: str | None = Field(default=None, description="Question source context")
@@ -81,9 +83,10 @@ def _close_testgen_http_clients(http_client: httpx.Client, http_async_client: ht
 
 
 # Prompt template for generating questions.
-GENERATE_QUESTIONS_FROM_TEXT_PROMPT = """You are an expert test question generator. Please generate high-quality test questions based on the following text content.
-
-Text content:
+GENERATE_QUESTIONS_FROM_TEXT_PROMPT = (
+    "You are an expert test question generator. Please generate high-quality test questions "
+    "based on the following text content.\n\n"
+    """Text content:
 {text}
 
 Requirements:
@@ -110,10 +113,12 @@ Please return in JSON format as follows:
   ]
 }}
 """
+)
 
-EXTRACT_QUESTIONS_FROM_CONVERSATION_PROMPT = """You are an expert Q&A extractor. Please extract and refine user questions from the following conversation history.
-
-Conversation history:
+EXTRACT_QUESTIONS_FROM_CONVERSATION_PROMPT = (
+    "You are an expert Q&A extractor. Please extract and refine user questions from the following "
+    "conversation history.\n\n"
+    """Conversation history:
 {conversations}
 
 Requirements:
@@ -137,6 +142,7 @@ Please return in JSON format as follows:
   ]
 }}
 """
+)
 
 
 def _build_testgen_prompt_inputs(
@@ -175,11 +181,15 @@ def _testgen_rows(result: dict[str, Any]) -> list[Any]:
 def _normalize_testgen_row(item: dict[str, Any]) -> dict[str, Any]:
     return {
         "question": item.get("question", ""),
-        "expected_answer": item.get("expected_answer") if "expected_answer" in item else item.get("ground_truth"),
-        "question_type": item.get("question_type") if "question_type" in item else item.get("difficulty"),
+        "expected_answer": (item.get("expected_answer") if "expected_answer" in item else item.get("ground_truth")),
+        "question_type": (item.get("question_type") if "question_type" in item else item.get("difficulty")),
         "expected_refusal": bool(item.get("expected_refusal")),
-        "evidence_quotes": list(item.get("evidence_quotes") or []) if isinstance(item.get("evidence_quotes"), list) else [],
-        "expected_chunks": list(item.get("expected_chunks") or []) if isinstance(item.get("expected_chunks"), list) else [],
+        "evidence_quotes": (
+            list(item.get("evidence_quotes") or []) if isinstance(item.get("evidence_quotes"), list) else []
+        ),
+        "expected_chunks": (
+            list(item.get("expected_chunks") or []) if isinstance(item.get("expected_chunks"), list) else []
+        ),
     }
 
 
@@ -272,12 +282,22 @@ def _resolve_testgen_prompt_selection(
     return TestGeneratorPromptSelection(
         prompt_template_text=prompt_template_text,
         prompt_variables=prompt_variables,
-        prompt_template_id=(str(getattr(selected_template, "id", "") or "") or None) if selected_template is not None else None,
-        prompt_template_key=(str(getattr(selected_template, "template_key", "") or "").strip() or None) if selected_template is not None else None,
-        prompt_ab_experiment_key=(
-            str(getattr(selected_template, "ab_experiment_key", "") or "").strip() or None
-        ) if selected_template is not None else None,
-        prompt_ab_variant=(str(getattr(selected_template, "ab_variant", "") or "").strip() or None) if selected_template is not None else None,
+        prompt_template_id=(
+            (str(getattr(selected_template, "id", "") or "") or None) if selected_template is not None else None
+        ),
+        prompt_template_key=(
+            (str(getattr(selected_template, "template_key", "") or "").strip() or None)
+            if selected_template is not None
+            else None
+        ),
+        prompt_ab_experiment_key=(str(getattr(selected_template, "ab_experiment_key", "") or "").strip() or None)
+        if selected_template is not None
+        else None,
+        prompt_ab_variant=(
+            (str(getattr(selected_template, "ab_variant", "") or "").strip() or None)
+            if selected_template is not None
+            else None
+        ),
     )
 
 
@@ -326,7 +346,7 @@ def _calculate_text_diversity_scores(texts: list[str]) -> list[float]:
 
     # Simple tokenization (by spaces and punctuation).
     def tokenize(text: str) -> list[str]:
-        return [w.lower() for w in re.findall(r'\w+', text) if len(w) > 1]
+        return [w.lower() for w in re.findall(r"\w+", text) if len(w) > 1]
 
     # Count token frequency.
     all_tokens = []
@@ -350,10 +370,7 @@ def _calculate_text_diversity_scores(texts: list[str]) -> list[float]:
 
         # Score = average IDF of unique tokens.
         token_counts = Counter(tokens)
-        score = sum(
-            (1.0 / doc_freq[token]) * count
-            for token, count in token_counts.items()
-        ) / len(tokens)
+        score = sum((1.0 / doc_freq[token]) * count for token, count in token_counts.items()) / len(tokens)
         scores.append(score)
 
     return scores
@@ -393,10 +410,7 @@ def _sample_diverse_chunks(
         diversity_scores = [s / max_score for s in diversity_scores]
 
     # Combine randomness: 70% diversity, 30% random.
-    combined_scores = [
-        0.7 * div + 0.3 * secure_random_float01()
-        for div in diversity_scores
-    ]
+    combined_scores = [0.7 * div + 0.3 * secure_random_float01() for div in diversity_scores]
 
     # Select top-scoring chunks.
     indexed_scores = list(enumerate(combined_scores))
@@ -498,9 +512,7 @@ def generate_questions_from_documents(
                     existing_questions=[item.question for item in all_questions if str(item.question or "").strip()],
                     prompt_variables=prompt_selection.prompt_variables,
                 )
-                result = chain.invoke(
-                    prompt_inputs
-                )
+                result = chain.invoke(prompt_inputs)
                 for q in _normalize_testgen_result_rows(result):
                     all_questions.append(
                         _generated_question_from_row(
@@ -582,12 +594,7 @@ def _load_scoped_conversations(
     conversation_ids: list[UUID],
 ) -> list[Conversation]:
     conversations = (
-        db.query(Conversation)
-        .filter(
-            Conversation.tenant_id == tenant_id,
-            Conversation.id.in_(conversation_ids)
-        )
-        .all()
+        db.query(Conversation).filter(Conversation.tenant_id == tenant_id, Conversation.id.in_(conversation_ids)).all()
     )
     if not conversations:
         return []
@@ -617,10 +624,7 @@ def _conversation_turn_quality(*, user_content: str, assistant_content: str, cit
 def _conversation_messages(db: Session, *, tenant_id: UUID, conversation_id: UUID) -> list[Message]:
     return (
         db.query(Message)
-        .filter(
-            Message.conversation_id == conversation_id,
-            Message.tenant_id == tenant_id
-        )
+        .filter(Message.conversation_id == conversation_id, Message.tenant_id == tenant_id)
         .order_by(Message.created_at.asc())
         .all()
     )
@@ -665,10 +669,7 @@ def _sample_high_quality_turns(
 
 
 def _conversation_turns_text(high_quality_turns: list[tuple[str, str, UUID]]) -> str:
-    return "\n\n".join(
-        f"User: {user}\nAssistant: {assistant}"
-        for user, assistant, _ in high_quality_turns
-    )
+    return "\n\n".join(f"User: {user}\nAssistant: {assistant}" for user, assistant, _ in high_quality_turns)
 
 
 def _conversation_generated_questions(result: Any) -> list[GeneratedQuestion]:
@@ -681,10 +682,7 @@ def _conversation_generated_questions(result: Any) -> list[GeneratedQuestion]:
                 question=q.get("question", ""),
                 expected_answer=q.get("expected_answer"),
                 context=q.get("original_question"),
-                metadata={
-                    "source_type": "conversation",
-                    "original_question": q.get("original_question", "")
-                }
+                metadata={"source_type": "conversation", "original_question": q.get("original_question", "")},
             )
         )
     return questions
@@ -709,8 +707,7 @@ def _generate_questions_from_conversation_text(
 
         parser = JsonOutputParser()
         prompt = PromptTemplate(
-            template=EXTRACT_QUESTIONS_FROM_CONVERSATION_PROMPT,
-            input_variables=["conversations", "num_questions"]
+            template=EXTRACT_QUESTIONS_FROM_CONVERSATION_PROMPT, input_variables=["conversations", "num_questions"]
         )
 
         chain = prompt | llm | parser

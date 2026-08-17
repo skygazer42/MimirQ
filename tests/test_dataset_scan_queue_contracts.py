@@ -57,10 +57,7 @@ def test_scan_uniqueness_migration_retries_concurrent_indexes_safely(monkeypatch
         "create",
     ]
     assert all(kwargs.get("if_exists") is True for operation, _name, kwargs in operations if operation == "drop")
-    assert all(
-        kwargs.get("postgresql_concurrently") is True
-        for _operation, _name, kwargs in operations
-    )
+    assert all(kwargs.get("postgresql_concurrently") is True for _operation, _name, kwargs in operations)
 
 
 class _ScanRunQuery:
@@ -414,10 +411,34 @@ async def test_stale_pending_scan_is_preserved_when_arq_job_is_still_live(
 @pytest.mark.parametrize(
     ("module_name", "model_name", "helper_name", "age", "expected_expired"),
     [
-        ("app.api.v1.datasets", "DBDatasetProfileScanRun", "_expire_stale_dataset_profile_scan_runs", timedelta(hours=1), 0),
-        ("app.api.v1.dataset_precheck", "DBDatasetPrecheckScanRun", "_expire_stale_precheck_scan_runs", timedelta(hours=1), 0),
-        ("app.api.v1.datasets", "DBDatasetProfileScanRun", "_expire_stale_dataset_profile_scan_runs", timedelta(hours=3), 1),
-        ("app.api.v1.dataset_precheck", "DBDatasetPrecheckScanRun", "_expire_stale_precheck_scan_runs", timedelta(hours=3), 1),
+        (
+            "app.api.v1.datasets",
+            "DBDatasetProfileScanRun",
+            "_expire_stale_dataset_profile_scan_runs",
+            timedelta(hours=1),
+            0,
+        ),
+        (
+            "app.api.v1.dataset_precheck",
+            "DBDatasetPrecheckScanRun",
+            "_expire_stale_precheck_scan_runs",
+            timedelta(hours=1),
+            0,
+        ),
+        (
+            "app.api.v1.datasets",
+            "DBDatasetProfileScanRun",
+            "_expire_stale_dataset_profile_scan_runs",
+            timedelta(hours=3),
+            1,
+        ),
+        (
+            "app.api.v1.dataset_precheck",
+            "DBDatasetPrecheckScanRun",
+            "_expire_stale_precheck_scan_runs",
+            timedelta(hours=3),
+            1,
+        ),
     ],
 )
 async def test_stale_pending_scan_uses_hard_expiry_when_queue_status_is_unavailable(
@@ -709,7 +730,9 @@ def test_delete_dataset_reconciles_stale_scans_before_active_scan_guard(
     monkeypatch.setattr(datasets_api, "_assert_no_active_dataset_scans", _assert_no_active, raising=True)
     monkeypatch.setattr(datasets_api, "_precheck_run_ids_for_dataset", lambda *_args, **_kwargs: [], raising=True)
     monkeypatch.setattr(datasets_api, "_cleanup_dataset_table_store", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(datasets_api, "_cleanup_dataset_precheck_artifacts", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(
+        datasets_api, "_cleanup_dataset_precheck_artifacts", lambda *_args, **_kwargs: None, raising=True
+    )
 
     result = datasets_api.delete_dataset(
         dataset_id=dataset_id,
@@ -753,7 +776,9 @@ async def test_purge_dataset_reconciles_stale_scans_before_active_scan_guard(
 
     monkeypatch.setattr(datasets_api, "_reconcile_stale_dataset_scan_runs", _reconcile, raising=True)
     monkeypatch.setattr(datasets_api, "_assert_no_active_dataset_scans", _assert_no_active, raising=True)
-    monkeypatch.setattr(datasets_api, "_dataset_document_ids_for_purge", lambda *_args, **_kwargs: [document_id], raising=True)
+    monkeypatch.setattr(
+        datasets_api, "_dataset_document_ids_for_purge", lambda *_args, **_kwargs: [document_id], raising=True
+    )
     monkeypatch.setattr(datasets_api, "_record_dataset_purge_audit", lambda *_args, **_kwargs: None, raising=True)
 
     result = await datasets_api.purge_dataset_documents(

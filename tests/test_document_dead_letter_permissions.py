@@ -164,11 +164,20 @@ def dead_letter_db() -> Iterator[tuple[Session, SimpleNamespace]]:
     db.add_all(
         [
             _dead_letter(offset_minutes=50, dataset_id=hidden_dataset_id, document_id=None, code="hidden-dataset"),
-            _dead_letter(offset_minutes=40, dataset_id=hidden_dataset_id, document_id=hidden_dataset_doc_id, code="hidden-document"),
-            _dead_letter(offset_minutes=30, dataset_id=readable_dataset_id, document_id=hidden_doc_acl_id, code="hidden-doc-acl"),
+            _dead_letter(
+                offset_minutes=40,
+                dataset_id=hidden_dataset_id,
+                document_id=hidden_dataset_doc_id,
+                code="hidden-document",
+            ),
+            _dead_letter(
+                offset_minutes=30, dataset_id=readable_dataset_id, document_id=hidden_doc_acl_id, code="hidden-doc-acl"
+            ),
             _dead_letter(offset_minutes=20, dataset_id=None, document_id=None, code="no-scope"),
             _dead_letter(offset_minutes=10, dataset_id=readable_dataset_id, document_id=None, code="readable-dataset"),
-            _dead_letter(offset_minutes=5, dataset_id=readable_dataset_id, document_id=readable_doc_id, code="readable-document"),
+            _dead_letter(
+                offset_minutes=5, dataset_id=readable_dataset_id, document_id=readable_doc_id, code="readable-document"
+            ),
             _dead_letter(offset_minutes=0, dataset_id=None, document_id=unassigned_doc_id, code="unassigned-document"),
         ]
     )
@@ -189,7 +198,9 @@ def dead_letter_db() -> Iterator[tuple[Session, SimpleNamespace]]:
 
 
 @pytest.fixture
-def dead_letter_client(dead_letter_db: tuple[Session, SimpleNamespace]) -> Iterator[tuple[TestClient, Session, SimpleNamespace]]:
+def dead_letter_client(
+    dead_letter_db: tuple[Session, SimpleNamespace],
+) -> Iterator[tuple[TestClient, Session, SimpleNamespace]]:
     db, ctx = dead_letter_db
 
     app = FastAPI()
@@ -206,7 +217,9 @@ def dead_letter_client(dead_letter_db: tuple[Session, SimpleNamespace]) -> Itera
         yield client, db, ctx
 
 
-def test_dead_letter_list_filters_acl_before_pagination(dead_letter_client: tuple[TestClient, Session, SimpleNamespace]) -> None:
+def test_dead_letter_list_filters_acl_before_pagination(
+    dead_letter_client: tuple[TestClient, Session, SimpleNamespace],
+) -> None:
     client, _db, ctx = dead_letter_client
 
     response = client.get("/api/v1/documents/dead-letters?limit=2")
@@ -292,7 +305,9 @@ def test_dead_letter_replay_uses_lifecycle_write_gate(monkeypatch: pytest.Monkey
     async def _unexpected_retry(**_kwargs):  # noqa: ANN001
         raise AssertionError("retry_document_processing should not run when lifecycle gate denies replay")
 
-    monkeypatch.setattr(document_dead_letters.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(
+        document_dead_letters.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True
+    )
     monkeypatch.setattr(
         document_dead_letters,
         "assert_document_writable_for_lifecycle",

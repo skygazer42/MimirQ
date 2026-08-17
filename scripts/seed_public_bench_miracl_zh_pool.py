@@ -21,7 +21,6 @@ Notes:
 - Nightly should only run retrieval evaluation (no re-embedding / no reindex).
 """
 
-
 import argparse
 import gzip
 import hashlib
@@ -229,24 +228,28 @@ def export_regression_cases_bundle(
     bundle = {
         "schema": "mimirq.regression_cases.v1",
         "dataset_id": str(dataset_id),
-        "items": [
-            {
-                "question": it.question,
-                "expected_answer": None,
-                "reference_sources": [{"chunk_id": str(_uuid_for_chunk(dataset_id=dataset_id, docid=docid))} for docid in it.positive_docids],
-                "tags": [
-                    "public_bench",
-                    "miracl",
-                    f"lang:{LANG}",
-                    f"split:{it.split}",
-                    f"qid:{it.qid}",
-                ],
-            }
-            for it in (case_items or [])
-        ],
+        "items": [_build_case_bundle_item(dataset_id=dataset_id, case_item=it) for it in (case_items or [])],
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(bundle, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _build_case_bundle_item(*, dataset_id: UUID, case_item: CaseItem) -> dict[str, Any]:
+    refs = [
+        {"chunk_id": str(_uuid_for_chunk(dataset_id=dataset_id, docid=docid))} for docid in case_item.positive_docids
+    ]
+    return {
+        "question": case_item.question,
+        "expected_answer": None,
+        "reference_sources": refs,
+        "tags": [
+            "public_bench",
+            "miracl",
+            f"lang:{LANG}",
+            f"split:{case_item.split}",
+            f"qid:{case_item.qid}",
+        ],
+    }
 
 
 def _iter_corpus_records(paths: Iterable[Path]) -> Iterator[dict[str, Any]]:
@@ -334,11 +337,236 @@ def _delete_dataset_documents(*, tenant_id: UUID, dataset_id: UUID) -> dict[str,
             except Exception:
                 pass
         # Cascade deletes chunks.
-        deleted = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id, DBDocument.dataset_id == dataset_id).delete()
+        deleted = (
+            db.query(DBDocument)
+            .filter(
+                DBDocument.tenant_id == tenant_id,
+                DBDocument.dataset_id == dataset_id,
+            )
+            .delete()
+        )
         db.commit()
         return {"deleted_documents": int(deleted or 0), "deleted_vectors_best_effort": int(len(doc_ids))}
     finally:
         db.close()
+
+
+@dataclass
+class _ShardBuffer:
+    shard_idx: int = 0
+    chunks: list[ChunkInput] | None = None
+    chars: int = 0
+    seeded_passages: int = 0
+    seeded_positive: int = 0
+    seeded_negative: int = 0
+
+    def __post_init__(self) -> None:
+        if self.chunks is None:
+            self.chunks = []
+
+
+def _positive_docids(case_items: Iterable[CaseItem]) -> set[str]:
+    out: set[str] = set()
+    for item in case_items or []:
+        for docid in item.positive_docids:
+            if docid:
+                out.add(str(docid))
+    return out
+
+
+def _resolve_target_counts(*, target_passages: int, positive_docids: set[str]) -> tuple[int, int, int]:
+    pos_cnt = int(len(positive_docids))
+    target = max(0, int(target_passages or 0))
+    if target <= 0:
+        raise ValueError("--target-passages must be > 0")
+    if target < pos_cnt:
+        target = pos_cnt
+    return pos_cnt, target, max(0, target - pos_cnt)
+
+
+def _dry_run_seed_result(
+    *,
+    corpus_filenames: list[str],
+    chunks_per_document: int,
+    overwrite: bool,
+    pos_cnt: int,
+    target: int,
+    neg_target: int,
+) -> dict[str, Any]:
+    return {
+        "ok": True,
+        "plan": {
+            "total_docs_in_corpus": None,
+            "positive_docids": int(pos_cnt),
+            "target_passages": int(target),
+            "target_negatives": int(neg_target),
+            "negative_sample_rate": None,
+            "negative_hash_threshold_u64": None,
+            "chunks_per_document": int(chunks_per_document),
+            "dry_run": True,
+            "overwrite": bool(overwrite),
+            "corpus_files": list(corpus_filenames),
+            "note": (
+                "Run with --execute to download/count corpus and compute the deterministic negative sampling threshold."
+            ),
+        },
+        "seeded": None,
+    }
+
+
+def _build_execute_plan(
+    *,
+    corpus_filenames: list[str],
+    chunks_per_document: int,
+    overwrite: bool,
+    pos_cnt: int,
+    target: int,
+    neg_target: int,
+    total_docs: int,
+    threshold: int,
+    elapsed_count_pass_sec: float,
+) -> dict[str, Any]:
+    non_pos_total = max(1, total_docs - pos_cnt)
+    neg_rate = float(neg_target) / float(non_pos_total)
+    return {
+        "total_docs_in_corpus": int(total_docs),
+        "positive_docids": int(pos_cnt),
+        "target_passages": int(target),
+        "target_negatives": int(neg_target),
+        "negative_sample_rate": round(float(neg_rate), 8),
+        "negative_hash_threshold_u64": int(threshold),
+        "chunks_per_document": int(chunks_per_document),
+        "dry_run": False,
+        "overwrite": bool(overwrite),
+        "elapsed_count_pass_sec": round(float(elapsed_count_pass_sec), 2),
+        "corpus_files": list(corpus_filenames),
+    }
+
+
+def _corpus_content(obj: dict[str, Any]) -> tuple[str, str, str] | None:
+    docid = str(obj.get("docid") or "").strip()
+    if not docid:
+        return None
+    title = str(obj.get("title") or "").strip()
+    text = str(obj.get("text") or "").strip()
+    if not text:
+        return None
+    content = f"{title}\n{text}" if title else text
+    return docid, title, content
+
+
+def _should_include_docid(*, docid: str, positive_docids: set[str], threshold: int) -> bool:
+    if docid in positive_docids:
+        return True
+    return _sha256_u64(docid) < threshold
+
+
+def _chunk_input_for_doc(*, dataset_id: UUID, docid: str, title: str, content: str) -> ChunkInput:
+    chunk_id = _uuid_for_chunk(dataset_id=dataset_id, docid=docid)
+    metadata: dict[str, Any] = {
+        "chunk_id": str(chunk_id),
+        "source": title or "miracl",
+        "language": LANG,
+        "public_bench": {"key": BENCH_KEY, "docid": docid},
+        "miracl_docid": docid,
+        "title": title,
+    }
+    return ChunkInput(
+        content=content,
+        metadata=metadata,
+        page_number=None,
+        start_char=None,
+        end_char=None,
+    )
+
+
+def _upsert_seed_document(
+    *,
+    db: Any,
+    dataset_id: UUID,
+    tenant_id: UUID,
+    shard_idx: int,
+    shard_chars: int,
+    shard_chunks: list[ChunkInput],
+) -> UUID:
+    doc_id = uuid5(dataset_id, f"doc:{shard_idx}")
+    filename = f"public_bench_miracl_zh_pool_{shard_idx:05}.md"
+    file_path = f"miracl://{LANG}/pool/{shard_idx:05}"
+
+    row = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id, DBDocument.id == doc_id).first()
+    if row is None:
+        row = DBDocument(
+            id=doc_id,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            filename=filename,
+            file_type="md",
+            file_size=int(shard_chars),
+            file_path=file_path,
+            status="completed",
+            publication_status="published",
+            chunk_count=len(shard_chunks),
+            total_characters=int(shard_chars),
+            doc_metadata={
+                "public_bench": {"key": BENCH_KEY, "lang": LANG},
+                "source": "miracl",
+            },
+        )
+        db.add(row)
+        db.commit()
+        return doc_id
+
+    row.dataset_id = dataset_id
+    row.filename = filename
+    row.file_type = "md"
+    row.file_size = int(shard_chars)
+    row.file_path = file_path
+    row.status = "completed"
+    row.error_message = None
+    row.publication_status = "published"
+    row.chunk_count = len(shard_chunks)
+    row.total_characters = int(shard_chars)
+    meta0 = row.doc_metadata if isinstance(row.doc_metadata, dict) else {}
+    meta0["public_bench"] = {"key": BENCH_KEY, "lang": LANG}
+    meta0.setdefault("source", "miracl")
+    row.doc_metadata = meta0
+    db.commit()
+    return doc_id
+
+
+def _flush_seed_shard(
+    *,
+    db: Any,
+    indexer: Indexer,
+    dataset_id: UUID,
+    tenant_id: UUID,
+    state: _ShardBuffer,
+) -> None:
+    shard_chunks = state.chunks or []
+    if not shard_chunks:
+        return
+
+    doc_id = _upsert_seed_document(
+        db=db,
+        dataset_id=dataset_id,
+        tenant_id=tenant_id,
+        shard_idx=state.shard_idx,
+        shard_chars=state.chars,
+        shard_chunks=shard_chunks,
+    )
+    filename = f"public_bench_miracl_zh_pool_{state.shard_idx:05}.md"
+    indexer.index_chunks(
+        document_id=doc_id,
+        tenant_id=tenant_id,
+        chunks=list(shard_chunks),
+        default_source=filename,
+        commit=True,
+        options=None,
+    )
+    state.seeded_passages += len(shard_chunks)
+    state.shard_idx += 1
+    state.chunks = []
+    state.chars = 0
 
 
 def seed_pool_corpus(
@@ -355,19 +583,12 @@ def seed_pool_corpus(
     """
     Stream the MIRACL corpus and seed a fixed-size "pool" dataset.
     """
-    positive_docids: set[str] = set()
-    for it in case_items or []:
-        for docid in it.positive_docids:
-            if docid:
-                positive_docids.add(str(docid))
-
-    pos_cnt = int(len(positive_docids))
-    target = max(0, int(target_passages or 0))
-    if target <= 0:
-        raise ValueError("--target-passages must be > 0")
-    if target < pos_cnt:
-        target = pos_cnt
-    neg_target = max(0, target - pos_cnt)
+    positive_docids = _positive_docids(case_items)
+    pos_cnt, target, neg_target = _resolve_target_counts(
+        target_passages=target_passages,
+        positive_docids=positive_docids,
+    )
+    chunks_per_document = max(1, int(chunks_per_document or 0))
 
     corpus_filenames = _list_corpus_files(revision=revision)
     if not corpus_filenames:
@@ -375,45 +596,32 @@ def seed_pool_corpus(
 
     # Dry-run must remain cheap: do not download/count the full corpus.
     if dry_run:
-        return {
-            "ok": True,
-            "plan": {
-                "total_docs_in_corpus": None,
-                "positive_docids": int(pos_cnt),
-                "target_passages": int(target),
-                "target_negatives": int(neg_target),
-                "negative_sample_rate": None,
-                "negative_hash_threshold_u64": None,
-                "chunks_per_document": int(max(1, int(chunks_per_document or 0))),
-                "dry_run": True,
-                "overwrite": bool(overwrite),
-                "corpus_files": list(corpus_filenames),
-                "note": "Run with --execute to download/count corpus and compute the deterministic negative sampling threshold.",
-            },
-            "seeded": None,
-        }
+        return _dry_run_seed_result(
+            corpus_filenames=corpus_filenames,
+            chunks_per_document=chunks_per_document,
+            overwrite=overwrite,
+            pos_cnt=pos_cnt,
+            target=target,
+            neg_target=neg_target,
+        )
 
     corpus_paths = _download_corpus_files(corpus_filenames, revision=revision)
 
     t0 = time.time()
     total_docs = _count_corpus_docs(corpus_paths)
     non_pos_total = max(1, total_docs - pos_cnt)
-    neg_rate = float(neg_target) / float(non_pos_total)
-    threshold = _stable_sample_threshold(rate=neg_rate)
-
-    plan = {
-        "total_docs_in_corpus": int(total_docs),
-        "positive_docids": int(pos_cnt),
-        "target_passages": int(target),
-        "target_negatives": int(neg_target),
-        "negative_sample_rate": round(float(neg_rate), 8),
-        "negative_hash_threshold_u64": int(threshold),
-        "chunks_per_document": int(max(1, int(chunks_per_document or 0))),
-        "dry_run": False,
-        "overwrite": bool(overwrite),
-        "elapsed_count_pass_sec": round(float(time.time() - t0), 2),
-        "corpus_files": list(corpus_filenames),
-    }
+    threshold = _stable_sample_threshold(rate=float(neg_target) / float(non_pos_total))
+    plan = _build_execute_plan(
+        corpus_filenames=corpus_filenames,
+        chunks_per_document=chunks_per_document,
+        overwrite=overwrite,
+        pos_cnt=pos_cnt,
+        target=target,
+        neg_target=neg_target,
+        total_docs=total_docs,
+        threshold=threshold,
+        elapsed_count_pass_sec=time.time() - t0,
+    )
 
     if overwrite:
         wipe = _delete_dataset_documents(tenant_id=tenant_id, dataset_id=dataset_id)
@@ -423,120 +631,51 @@ def seed_pool_corpus(
     db = SessionLocal()
     try:
         indexer = Indexer(db)
-
-        chunks_per_document = max(1, int(chunks_per_document or 0))
-        shard_idx = 0
-        shard_chunks: list[ChunkInput] = []
-        shard_chars = 0
-
-        seeded_passages = 0
-        seeded_positive = 0
-        seeded_negative = 0
-
-        def _flush() -> None:
-            nonlocal shard_idx, shard_chunks, shard_chars
-            nonlocal seeded_passages, seeded_positive, seeded_negative
-            if not shard_chunks:
-                return
-
-            doc_id = uuid5(dataset_id, f"doc:{shard_idx}")
-            filename = f"public_bench_miracl_zh_pool_{shard_idx:05}.md"
-            file_path = f"miracl://{LANG}/pool/{shard_idx:05}"
-
-            # Upsert document row (idempotent across reruns for the same shard id).
-            row = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id, DBDocument.id == doc_id).first()
-            if row is None:
-                row = DBDocument(
-                    id=doc_id,
-                    tenant_id=tenant_id,
-                    dataset_id=dataset_id,
-                    filename=filename,
-                    file_type="md",
-                    file_size=int(shard_chars),
-                    file_path=file_path,
-                    status="completed",
-                    publication_status="published",
-                    chunk_count=len(shard_chunks),
-                    total_characters=int(shard_chars),
-                    doc_metadata={
-                        "public_bench": {"key": BENCH_KEY, "lang": LANG},
-                        "source": "miracl",
-                    },
-                )
-                db.add(row)
-                db.commit()
-            else:
-                row.dataset_id = dataset_id
-                row.filename = filename
-                row.file_type = "md"
-                row.file_size = int(shard_chars)
-                row.file_path = file_path
-                row.status = "completed"
-                row.error_message = None
-                row.publication_status = "published"
-                row.chunk_count = len(shard_chunks)
-                row.total_characters = int(shard_chars)
-                meta0 = row.doc_metadata if isinstance(row.doc_metadata, dict) else {}
-                meta0["public_bench"] = {"key": BENCH_KEY, "lang": LANG}
-                meta0.setdefault("source", "miracl")
-                row.doc_metadata = meta0
-                db.commit()
-
-            # Index + persist chunks.
-            indexer.index_chunks(
-                document_id=doc_id,
-                tenant_id=tenant_id,
-                chunks=list(shard_chunks),
-                default_source=filename,
-                commit=True,
-                options=None,
-            )
-
-            seeded_passages += len(shard_chunks)
-
-            shard_idx += 1
-            shard_chunks = []
-            shard_chars = 0
+        state = _ShardBuffer()
 
         for obj in _iter_corpus_records(corpus_paths):
-            docid = str(obj.get("docid") or "").strip()
-            if not docid:
+            corpus_content = _corpus_content(obj)
+            if corpus_content is None:
+                continue
+            docid, title, content = corpus_content
+            if not _should_include_docid(
+                docid=docid,
+                positive_docids=positive_docids,
+                threshold=threshold,
+            ):
                 continue
 
             is_pos = docid in positive_docids
-            if not is_pos:
-                h = _sha256_u64(docid)
-                if h >= threshold:
-                    continue
-
-            title = str(obj.get("title") or "").strip()
-            text = str(obj.get("text") or "").strip()
-            if not text:
-                continue
-
-            content = f"{title}\n{text}" if title else text
-            shard_chars += len(content)
-
-            chunk_id = _uuid_for_chunk(dataset_id=dataset_id, docid=docid)
-            meta: dict[str, Any] = {
-                "chunk_id": str(chunk_id),
-                "source": title or "miracl",
-                "language": LANG,
-                "public_bench": {"key": BENCH_KEY, "docid": docid},
-                "miracl_docid": docid,
-                "title": title,
-            }
-            shard_chunks.append(ChunkInput(content=content, metadata=meta, page_number=None, start_char=None, end_char=None))
-
+            state.chars += len(content)
+            (state.chunks or []).append(
+                _chunk_input_for_doc(
+                    dataset_id=dataset_id,
+                    docid=docid,
+                    title=title,
+                    content=content,
+                )
+            )
             if is_pos:
-                seeded_positive += 1
+                state.seeded_positive += 1
             else:
-                seeded_negative += 1
+                state.seeded_negative += 1
 
-            if len(shard_chunks) >= chunks_per_document:
-                _flush()
+            if len(state.chunks or []) >= chunks_per_document:
+                _flush_seed_shard(
+                    db=db,
+                    indexer=indexer,
+                    dataset_id=dataset_id,
+                    tenant_id=tenant_id,
+                    state=state,
+                )
 
-        _flush()
+        _flush_seed_shard(
+            db=db,
+            indexer=indexer,
+            dataset_id=dataset_id,
+            tenant_id=tenant_id,
+            state=state,
+        )
         db.commit()
 
         return {
@@ -544,10 +683,10 @@ def seed_pool_corpus(
             "plan": plan,
             "wipe": wipe,
             "seeded": {
-                "passages": int(seeded_passages),
-                "positive": int(seeded_positive),
-                "negative": int(seeded_negative),
-                "documents": int(shard_idx),
+                "passages": int(state.seeded_passages),
+                "positive": int(state.seeded_positive),
+                "negative": int(state.seeded_negative),
+                "documents": int(state.shard_idx),
             },
         }
     finally:
@@ -560,7 +699,7 @@ def _iter_reference_chunk_ids(*, dataset_id: UUID, case_items: Iterable[CaseItem
     """
     out: set[UUID] = set()
     for it in case_items or []:
-        for docid in (it.positive_docids or ()):
+        for docid in it.positive_docids or ():
             out.add(_uuid_for_chunk(dataset_id=dataset_id, docid=str(docid)))
     return sorted(out, key=lambda x: str(x))
 
@@ -618,45 +757,93 @@ def verify_reference_integrity(
         db.close()
 
 
-def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description="Seed MIRACL zh pool public benchmark (DB + Milvus) and export cases bundle.")
-    p.add_argument("--tenant-id", type=str, default="", help="Tenant UUID (default: settings.DEFAULT_TENANT_ID)")
-
-    p.add_argument(
+def _build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description=("Seed MIRACL zh pool public benchmark (DB + Milvus) and export cases bundle.")
+    )
+    parser.add_argument(
+        "--tenant-id",
+        type=str,
+        default="",
+        help="Tenant UUID (default: settings.DEFAULT_TENANT_ID)",
+    )
+    parser.add_argument(
         "--hf-revision",
         type=str,
         default="",
-        help="Pin HuggingFace dataset revision/tag/commit for miracl/miracl (topics/qrels) (optional; recommended for reproducibility).",
+        help=(
+            "Pin HuggingFace dataset revision/tag/commit for miracl/miracl "
+            "(topics/qrels) (optional; recommended for reproducibility)."
+        ),
     )
-    p.add_argument(
+    parser.add_argument(
         "--hf-revision-corpus",
         type=str,
         default="",
-        help="Pin HuggingFace dataset revision/tag/commit for miracl/miracl-corpus (optional; recommended for reproducibility).",
+        help=(
+            "Pin HuggingFace dataset revision/tag/commit for miracl/miracl-corpus "
+            "(optional; recommended for reproducibility)."
+        ),
+    )
+    parser.add_argument(
+        "--splits",
+        type=str,
+        default="train,dev",
+        help="Comma-separated MIRACL splits: train,dev (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--max-cases",
+        type=int,
+        default=0,
+        help="Max cases to export (0 = all; keep <= 2000 for import)",
+    )
+    parser.add_argument(
+        "--max-refs-per-case",
+        type=int,
+        default=3,
+        help="Max positive refs per case (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--target-passages",
+        type=int,
+        default=200_000,
+        help="Target passages in pool corpus (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--chunks-per-document",
+        type=int,
+        default=1000,
+        help="Chunks per synthetic document shard (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Delete existing documents for this dataset before seeding",
+    )
+    parser.add_argument(
+        "--out-cases",
+        type=str,
+        default="",
+        help="Write regression case bundle JSON to this path (optional)",
+    )
+    parser.add_argument(
+        "--out-manifest",
+        type=str,
+        default="",
+        help="Write seed manifest JSON to this path (optional)",
     )
 
-    p.add_argument("--splits", type=str, default="train,dev", help="Comma-separated MIRACL splits: train,dev (default: %(default)s)")
-    p.add_argument("--max-cases", type=int, default=0, help="Max cases to export (0 = all; keep <= 2000 for import)")
-    p.add_argument("--max-refs-per-case", type=int, default=3, help="Max positive refs per case (default: %(default)s)")
-
-    p.add_argument("--target-passages", type=int, default=200_000, help="Target passages in pool corpus (default: %(default)s)")
-    p.add_argument("--chunks-per-document", type=int, default=1000, help="Chunks per synthetic document shard (default: %(default)s)")
-    p.add_argument("--overwrite", action="store_true", help="Delete existing documents for this dataset before seeding")
-
-    p.add_argument("--out-cases", type=str, default="", help="Write regression case bundle JSON to this path (optional)")
-    p.add_argument("--out-manifest", type=str, default="", help="Write seed manifest JSON to this path (optional)")
-
-    mode = p.add_mutually_exclusive_group()
+    mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="Plan only (no DB writes). Default.")
     mode.add_argument("--execute", action="store_true", help="Execute seeding (writes DB + vector store).")
+    return parser
 
-    args = p.parse_args(argv)
-    dry_run = not bool(args.execute)
 
-    from app.core.config import settings
+def _normalize_revision(raw_value: str) -> str | None:
+    return str(raw_value or "").strip() or None
 
-    hf_revision = str(args.hf_revision or "").strip() or None
-    hf_revision_corpus = str(args.hf_revision_corpus or "").strip() or None
+
+def _warn_unpinned_revisions(*, hf_revision: str | None, hf_revision_corpus: str | None) -> None:
     if not hf_revision:
         print(
             "[public_bench] WARN: --hf-revision not set; upstream dataset changes may break reproducibility",
@@ -667,6 +854,88 @@ def main(argv: list[str] | None = None) -> int:
             "[public_bench] WARN: --hf-revision-corpus not set; upstream dataset changes may break reproducibility",
             file=sys.stderr,
         )
+
+
+def _normalize_splits(raw_splits: str) -> list[str]:
+    splits_raw = [s.strip() for s in str(raw_splits or "").split(",") if s.strip()]
+    splits_norm = [str(s).strip().lower() for s in splits_raw if str(s).strip()]
+    return splits_norm or ["train", "dev"]
+
+
+def _build_manifest(
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    splits_norm: list[str],
+    hf_revision: str | None,
+    hf_revision_corpus: str | None,
+    args: argparse.Namespace,
+    case_items: list[CaseItem],
+    res: dict[str, Any],
+    dry_run: bool,
+    integrity: dict[str, Any] | None,
+) -> dict[str, Any]:
+    seeded = res.get("seeded")
+    plan = res.get("plan")
+    topics_files = [f"miracl-v1.0-{LANG}/topics/topics.miracl-v1.0-{LANG}-{s}.tsv" for s in splits_norm]
+    qrels_files = [f"miracl-v1.0-{LANG}/qrels/qrels.miracl-v1.0-{LANG}-{s}.tsv" for s in splits_norm]
+    corpus_files: list[str] = []
+    if isinstance(plan, dict):
+        corpus_files = list(plan.get("corpus_files") or [])
+
+    return {
+        "schema": MANIFEST_SCHEMA,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "bench_key": BENCH_KEY,
+        "tenant_id": str(tenant_id),
+        "dataset_id": str(dataset_id),
+        "hf": {
+            "miracl": {
+                "repo_id": MIRACL_DATASET_REPO,
+                "repo_type": "dataset",
+                "revision": hf_revision,
+                "files": {
+                    "topics": topics_files,
+                    "qrels": qrels_files,
+                },
+            },
+            "miracl_corpus": {
+                "repo_id": MIRACL_CORPUS_REPO,
+                "repo_type": "dataset",
+                "revision": hf_revision_corpus,
+                "files": {"corpus_files": corpus_files},
+            },
+        },
+        "params": {
+            "splits": splits_norm,
+            "max_cases": int(args.max_cases or 0),
+            "max_refs_per_case": int(args.max_refs_per_case or 0),
+            "target_passages": int(args.target_passages or 0),
+            "chunks_per_document": int(args.chunks_per_document or 0),
+            "overwrite": bool(args.overwrite),
+            "dry_run": bool(dry_run),
+        },
+        "counts": {
+            "cases": int(len(case_items)),
+            "seeded_passages": int((seeded or {}).get("passages") or 0) if not dry_run else None,
+        },
+        "plan": plan,
+        "reference_integrity": integrity,
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _build_arg_parser().parse_args(argv)
+    dry_run = not bool(args.execute)
+
+    from app.core.config import settings
+
+    hf_revision = _normalize_revision(args.hf_revision)
+    hf_revision_corpus = _normalize_revision(args.hf_revision_corpus)
+    _warn_unpinned_revisions(
+        hf_revision=hf_revision,
+        hf_revision_corpus=hf_revision_corpus,
+    )
 
     try:
         tenant_id = UUID(str(args.tenant_id or settings.DEFAULT_TENANT_ID))
@@ -683,10 +952,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     owner_id = "public-bench-bot"
 
-    splits_raw = [s.strip() for s in str(args.splits or "").split(",") if s.strip()]
-    splits_norm = [str(s).strip().lower() for s in splits_raw if str(s).strip()]
-    if not splits_norm:
-        splits_norm = ["train", "dev"]
+    splits_norm = _normalize_splits(args.splits)
     case_items = build_case_items(
         splits=splits_norm,
         max_cases=int(args.max_cases or 0),
@@ -745,58 +1011,28 @@ def main(argv: list[str] | None = None) -> int:
         integrity = verify_reference_integrity(tenant_id=tenant_id, dataset_id=dataset_id, case_items=case_items)
 
     if str(args.out_manifest or "").strip():
-        seeded = res.get("seeded") if isinstance(res, dict) else None
-        plan = res.get("plan") if isinstance(res, dict) else None
-        topics_files = [f"miracl-v1.0-{LANG}/topics/topics.miracl-v1.0-{LANG}-{s}.tsv" for s in splits_norm]
-        qrels_files = [f"miracl-v1.0-{LANG}/qrels/qrels.miracl-v1.0-{LANG}-{s}.tsv" for s in splits_norm]
-        manifest = {
-            "schema": MANIFEST_SCHEMA,
-            "generated_at": datetime.now(UTC).isoformat(),
-            "bench_key": BENCH_KEY,
-            "tenant_id": str(tenant_id),
-            "dataset_id": str(dataset_id),
-            "hf": {
-                "miracl": {
-                    "repo_id": MIRACL_DATASET_REPO,
-                    "repo_type": "dataset",
-                    "revision": hf_revision,
-                    "files": {
-                        "topics": topics_files,
-                        "qrels": qrels_files,
-                    },
-                },
-                "miracl_corpus": {
-                    "repo_id": MIRACL_CORPUS_REPO,
-                    "repo_type": "dataset",
-                    "revision": hf_revision_corpus,
-                    "files": {
-                        "corpus_files": list((plan or {}).get("corpus_files") or []) if isinstance(plan, dict) else [],
-                    },
-                },
-            },
-            "params": {
-                "splits": splits_norm,
-                "max_cases": int(args.max_cases or 0),
-                "max_refs_per_case": int(args.max_refs_per_case or 0),
-                "target_passages": int(args.target_passages or 0),
-                "chunks_per_document": int(args.chunks_per_document or 0),
-                "overwrite": bool(args.overwrite),
-                "dry_run": bool(dry_run),
-            },
-            "counts": {
-                "cases": int(len(case_items)),
-                "seeded_passages": int((seeded or {}).get("passages") or 0) if not dry_run else None,
-            },
-            "plan": plan,
-            "reference_integrity": integrity,
-        }
+        manifest = _build_manifest(
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            splits_norm=splits_norm,
+            hf_revision=hf_revision,
+            hf_revision_corpus=hf_revision_corpus,
+            args=args,
+            case_items=case_items,
+            res=res,
+            dry_run=dry_run,
+            integrity=integrity,
+        )
         write_json_file(Path(str(args.out_manifest)), manifest)
         print(f"[public_bench] wrote manifest: {args.out_manifest}", file=sys.stderr)
 
     if integrity and not bool(integrity.get("ok")):
         sample = ", ".join((integrity.get("missing_sample") or [])[:5])
         print(
-            f"[public_bench] ERROR: reference integrity check failed: missing={integrity.get('missing')} (e.g. {sample})",
+            (
+                "[public_bench] ERROR: reference integrity check failed: "
+                f"missing={integrity.get('missing')} (e.g. {sample})"
+            ),
             file=sys.stderr,
         )
         return 2

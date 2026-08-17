@@ -12,7 +12,6 @@ Notes:
   and each token may be stored as raw or `sha256:<hex>` for safer config handling.
 """
 
-
 import contextlib
 import hashlib
 import hmac
@@ -101,6 +100,7 @@ def _scim_error(*, status_code: int, detail: str, scim_type: str | None = None) 
     if scim_type:
         out["scimType"] = str(scim_type)
     return _scim_json(out, status_code=status_code)
+
 
 def _hash_pii(value: object) -> str:
     """Stable short hash for potentially sensitive identifiers."""
@@ -202,7 +202,9 @@ def _scim_page(*, start_index: int, count: int) -> tuple[int, int, int]:
     return skip, page_size, start
 
 
-def _list_response(*, resources: list[dict[str, Any]], total: int, start_index: int, items_per_page: int) -> dict[str, Any]:
+def _list_response(
+    *, resources: list[dict[str, Any]], total: int, start_index: int, items_per_page: int
+) -> dict[str, Any]:
     return {
         "schemas": [_URN_LIST_RESPONSE],
         "totalResults": int(total),
@@ -227,7 +229,12 @@ def _scim_user(member: TenantMember) -> dict[str, Any]:
     }
 
 
-def _scim_group(group: object, *, members: Iterable[str] | None = None, include_members: bool = False) -> dict[str, Any]:
+def _scim_group(
+    group: object,
+    *,
+    members: Iterable[str] | None = None,
+    include_members: bool = False,
+) -> dict[str, Any]:
     gid = str(getattr(group, "id", "") or "").strip()
     out: dict[str, Any] = {
         "schemas": [_URN_GROUP],
@@ -336,7 +343,14 @@ def list_schemas(*, _actor: Annotated[str, Depends(_require_scim_actor)]):
         ],
     }
     resources = [user_schema, group_schema]
-    return _scim_json(_list_response(resources=resources, total=len(resources), start_index=1, items_per_page=len(resources)))
+    return _scim_json(
+        _list_response(
+            resources=resources,
+            total=len(resources),
+            start_index=1,
+            items_per_page=len(resources),
+        )
+    )
 
 
 @router.get("/ResourceTypes", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -359,12 +373,19 @@ def list_resource_types(_actor: Annotated[str, Depends(_require_scim_actor)]):
             "description": "Tenant groups (read; optional mutate/membership PATCH via flags).",
         },
     ]
-    return _scim_json(_list_response(resources=resources, total=len(resources), start_index=1, items_per_page=len(resources)))
+    return _scim_json(
+        _list_response(
+            resources=resources,
+            total=len(resources),
+            start_index=1,
+            items_per_page=len(resources),
+        )
+    )
 
 
 @router.get("/Groups", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_groups(
-    start_index: Annotated[int, Query(ge=1, alias='startIndex')] = 1,
+    start_index: Annotated[int, Query(ge=1, alias="startIndex")] = 1,
     count: Annotated[int, Query(ge=1)] = 200,
     *,
     tenant_id: Annotated[UUID, Depends(get_scim_tenant_id)],
@@ -374,7 +395,14 @@ def list_groups(
     skip, limit, start = _scim_page(start_index=start_index, count=count)
     total, groups = TenantGroupService.list_groups(db, tenant_id=tenant_id, skip=skip, limit=limit)
     resources = [_scim_group(g, include_members=False) for g in groups]
-    return _scim_json(_list_response(resources=resources, total=total, start_index=start, items_per_page=len(resources)))
+    return _scim_json(
+        _list_response(
+            resources=resources,
+            total=total,
+            start_index=start,
+            items_per_page=len(resources),
+        )
+    )
 
 
 @router.get("/Groups/{group_id}", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -566,7 +594,7 @@ def delete_group(
 
 @router.get("/Users", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_users(
-    start_index: Annotated[int, Query(ge=1, alias='startIndex')] = 1,
+    start_index: Annotated[int, Query(ge=1, alias="startIndex")] = 1,
     count: Annotated[int, Query(ge=1)] = 200,
     *,
     tenant_id: Annotated[UUID, Depends(get_scim_tenant_id)],
@@ -577,7 +605,14 @@ def list_users(
     total, members = _list_users(db, tenant_id=tenant_id, skip=skip, limit=limit)
     resources = [_scim_user(m) for m in members]
     # Per SCIM, Resources are the only payload; keep it bounded.
-    return _scim_json(_list_response(resources=resources, total=total, start_index=start, items_per_page=len(resources)))
+    return _scim_json(
+        _list_response(
+            resources=resources,
+            total=total,
+            start_index=start,
+            items_per_page=len(resources),
+        )
+    )
 
 
 @router.get("/Users/{user_id}", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -904,7 +939,12 @@ def _apply_membership_patch(
         if to_add:
             added = TenantGroupService.add_members(db, tenant_id=tenant_id, group_id=group_id, member_ids=to_add)
         if to_remove:
-            removed = TenantGroupService.remove_members(db, tenant_id=tenant_id, group_id=group_id, member_ids=to_remove)
+            removed = TenantGroupService.remove_members(
+                db,
+                tenant_id=tenant_id,
+                group_id=group_id,
+                member_ids=to_remove,
+            )
     except HTTPException as exc:
         return _scim_error(status_code=int(exc.status_code), detail=str(exc.detail or "error"))
     return added, removed

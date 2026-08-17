@@ -1,4 +1,3 @@
-
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Any
@@ -59,14 +58,28 @@ def _authorize_health_document(*, db: Session, tenant_id: UUID, account_id: str,
     if document.dataset_id:
         dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
         DatasetService.assert_dataset_readable(db, dataset, account_id)
-    assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=dataset)
+    assert_document_acl_readable(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        document=document,
+        dataset=dataset,
+    )
 
 
 def _parsing_health(document, meta: dict[str, Any]) -> DocumentHealthParsing:
     pdf_quality = meta.get("pdf_quality") if isinstance(meta.get("pdf_quality"), dict) else None
-    is_scanned = bool(pdf_quality.get("is_scanned")) if isinstance(pdf_quality, dict) and isinstance(pdf_quality.get("is_scanned"), bool) else None
+    is_scanned = (
+        bool(pdf_quality.get("is_scanned"))
+        if isinstance(pdf_quality, dict) and isinstance(pdf_quality.get("is_scanned"), bool)
+        else None
+    )
     try:
-        page_count = int(pdf_quality.get("page_count")) if isinstance(pdf_quality, dict) and pdf_quality.get("page_count") is not None else None
+        page_count = (
+            int(pdf_quality.get("page_count"))
+            if isinstance(pdf_quality, dict) and pdf_quality.get("page_count") is not None
+            else None
+        )
     except Exception:
         page_count = None
     return DocumentHealthParsing(
@@ -92,7 +105,9 @@ def _document_target_pipeline_key(document_id: UUID, document) -> str | None:
     )
 
 
-def _load_health_chunk_ranges(*, db: Session, tenant_id: UUID, document_id: UUID, target_key: str | None) -> list[tuple[int, int]]:
+def _load_health_chunk_ranges(
+    *, db: Session, tenant_id: UUID, document_id: UUID, target_key: str | None
+) -> list[tuple[int, int]]:
     ranges: list[tuple[int, int]] = []
     chunk_query = db.query(DocumentChunk.start_char, DocumentChunk.end_char).filter(
         DocumentChunk.tenant_id == tenant_id,
@@ -174,7 +189,9 @@ def _semantic_quality_summary(
     )
 
 
-def _best_effort_kg_report(*, db: Session, meta: dict[str, Any], tenant_id: UUID, document_id: UUID) -> dict[str, Any] | None:
+def _best_effort_kg_report(
+    *, db: Session, meta: dict[str, Any], tenant_id: UUID, document_id: UUID
+) -> dict[str, Any] | None:
     try:
         from app.core.pipeline_versions import get_active_pipeline_hash
         from app.rag.kg.quality.kg_completeness_scorer import build_kg_quality_report
@@ -224,8 +241,12 @@ def _best_effort_index_readiness(*, db: Session, document):
 def get_document_health_card(
     document_id: uuid.UUID,
     window_minutes: Annotated[int, Query(ge=1, le=60 * 24 * 30, description="Metrics lookback window (minutes)")] = 60,
-    max_bytes: Annotated[int, Query(ge=1, le=50_000_000, description="Max bytes to read from metrics JSONL tail")] = 5_000_000,
-    max_chunks_scored: Annotated[int, Query(ge=0, le=2048, description="Max chunks to score for semantic quality")] = 256,
+    max_bytes: Annotated[
+        int, Query(ge=1, le=50_000_000, description="Max bytes to read from metrics JSONL tail")
+    ] = 5_000_000,
+    max_chunks_scored: Annotated[
+        int, Query(ge=0, le=2048, description="Max chunks to score for semantic quality")
+    ] = 256,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -274,7 +295,9 @@ def get_document_health_card(
         dataset_id=document.dataset_id,
         filename=getattr(document, "filename", None),
         file_type=getattr(document, "file_type", None),
-        file_size=int(getattr(document, "file_size", 0) or 0) if getattr(document, "file_size", None) is not None else None,
+        file_size=(
+            int(getattr(document, "file_size", 0) or 0) if getattr(document, "file_size", None) is not None else None
+        ),
         created_at=getattr(document, "created_at", None),
         updated_at=getattr(document, "updated_at", None),
         generated_at=now0,

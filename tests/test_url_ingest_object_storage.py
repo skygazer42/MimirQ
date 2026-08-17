@@ -313,7 +313,9 @@ async def test_ingest_url_request_persists_minio_uri_and_cleans_temp_after_queue
 
     monkeypatch.setattr(documents_module, "validate_url_for_ingest", _validate, raising=True)
     monkeypatch.setattr(documents_module, "download_url_to_path", _download, raising=True)
-    monkeypatch.setattr(documents_module, "_resolve_writable_dataset", lambda *_args, **_kwargs: _dataset(dataset_id), raising=True)
+    monkeypatch.setattr(
+        documents_module, "_resolve_writable_dataset", lambda *_args, **_kwargs: _dataset(dataset_id), raising=True
+    )
     monkeypatch.setattr(documents_module, "_prepare_document_ingestion", lambda **_kwargs: _prepared(), raising=True)
     monkeypatch.setattr(documents_module, "_create_url_ingestion_run", lambda **_kwargs: None, raising=True)
     monkeypatch.setattr(documents_module, "enqueue_document_processing", _queued, raising=True)
@@ -341,7 +343,9 @@ async def test_ingest_url_request_persists_minio_uri_and_cleans_temp_after_queue
 
 
 @pytest.mark.asyncio
-async def test_ingest_local_html_request_persists_minio_uri_and_cleans_temp_after_queue(monkeypatch, tmp_path: Path) -> None:
+async def test_ingest_local_html_request_persists_minio_uri_and_cleans_temp_after_queue(
+    monkeypatch, tmp_path: Path
+) -> None:
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
 
@@ -353,14 +357,18 @@ async def test_ingest_local_html_request_persists_minio_uri_and_cleans_temp_afte
     async def _queued(**_kwargs):  # noqa: ANN003, ANN202
         return "task-456"
 
-    monkeypatch.setattr(documents_module, "_resolve_writable_dataset", lambda *_args, **_kwargs: _dataset(dataset_id), raising=True)
+    monkeypatch.setattr(
+        documents_module, "_resolve_writable_dataset", lambda *_args, **_kwargs: _dataset(dataset_id), raising=True
+    )
     monkeypatch.setattr(documents_module, "_prepare_document_ingestion", lambda **_kwargs: _prepared(), raising=True)
     monkeypatch.setattr(documents_module, "_create_local_html_ingestion_run", lambda **_kwargs: None, raising=True)
     monkeypatch.setattr(documents_module, "enqueue_document_processing", _queued, raising=True)
     monkeypatch.setattr(
         documents_module.minio_service,
         "upload_document_file",
-        lambda **kwargs: f"minio://documents/documents/{kwargs['tenant_id']}/{kwargs['dataset_id']}/{kwargs['document_id']}.html",
+        lambda **kwargs: (
+            f"minio://documents/documents/{kwargs['tenant_id']}/{kwargs['dataset_id']}/{kwargs['document_id']}.html"
+        ),
         raising=True,
     )
 
@@ -398,7 +406,9 @@ async def test_ingest_local_html_request_enforces_upload_quota_before_object_sto
 
     monkeypatch.setattr(documents_module.settings, "URL_INGEST_ENABLED", True, raising=False)
     monkeypatch.setattr(documents_module.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
-    monkeypatch.setattr(documents_module, "_resolve_writable_dataset", lambda *_args, **_kwargs: _dataset(dataset_id), raising=True)
+    monkeypatch.setattr(
+        documents_module, "_resolve_writable_dataset", lambda *_args, **_kwargs: _dataset(dataset_id), raising=True
+    )
     monkeypatch.setattr(documents_module, "_prepare_document_ingestion", lambda **_kwargs: _prepared(), raising=True)
     monkeypatch.setattr(documents_module, "_create_local_html_ingestion_run", lambda **_kwargs: None, raising=True)
     monkeypatch.setattr(
@@ -509,13 +519,17 @@ async def test_ingest_url_request_reuses_existing_document_when_audit_metadata_d
 
     monkeypatch.setattr(documents_module.settings, "URL_INGEST_ENABLED", True, raising=False)
     monkeypatch.setattr(documents_module.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module, "_resolve_writable_dataset", lambda *_args, **_kwargs: _dataset(dataset_id), raising=True)
+    monkeypatch.setattr(
+        documents_module, "_resolve_writable_dataset", lambda *_args, **_kwargs: _dataset(dataset_id), raising=True
+    )
     monkeypatch.setattr(documents_module, "_prepare_document_ingestion", lambda **_kwargs: _prepared(), raising=True)
     monkeypatch.setattr(documents_module, "_create_url_ingestion_run", lambda **_kwargs: None, raising=True)
+
     async def _validate(url: str) -> str:
         return url
 
     monkeypatch.setattr(documents_module, "validate_url_for_ingest", _validate, raising=True)
+
     async def _download(**_kwargs):  # noqa: ANN202
         return documents_module.UrlIngestFile(
             file_id=uuid.uuid4(),
@@ -628,7 +642,9 @@ async def test_ingest_local_html_request_reuses_existing_document_when_source_ur
     monkeypatch.setattr(documents_module.settings, "URL_INGEST_ENABLED", True, raising=False)
     monkeypatch.setattr(documents_module.settings, "UPLOAD_DEDUP_ENABLED", True, raising=False)
     monkeypatch.setattr(documents_module.settings, "UPLOAD_DIR", str(tmp_path), raising=False)
-    monkeypatch.setattr(documents_module, "_resolve_writable_dataset", lambda *_args, **_kwargs: _dataset(dataset_id), raising=True)
+    monkeypatch.setattr(
+        documents_module, "_resolve_writable_dataset", lambda *_args, **_kwargs: _dataset(dataset_id), raising=True
+    )
     monkeypatch.setattr(documents_module, "_prepare_document_ingestion", lambda **_kwargs: _prepared(), raising=True)
     monkeypatch.setattr(documents_module, "_create_local_html_ingestion_run", lambda **_kwargs: None, raising=True)
     monkeypatch.setattr(

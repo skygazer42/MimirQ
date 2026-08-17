@@ -186,7 +186,12 @@ def test_email_parser_characterizes_markdown_and_html_fallback(tmp_path: Path) -
         (
             {"score": 0.4, "text_quality_score": 0.0, "page_count": 9, "is_scanned": True},
             None,
-            {"DEEPSEEK_OCR_ENABLED": True, "SILICONFLOW_API_KEY": "token", "QIANFAN_OCR_ENABLED": True, "QIANFAN_OCR_API_URL": "http://qianfan"},
+            {
+                "DEEPSEEK_OCR_ENABLED": True,
+                "SILICONFLOW_API_KEY": "token",
+                "QIANFAN_OCR_ENABLED": True,
+                "QIANFAN_OCR_API_URL": "http://qianfan",
+            },
             False,
             "deepseek_ocr",
         ),
@@ -220,8 +225,18 @@ def test_choose_pdf_backend_characterizes_precedence(
     for name, value in settings_overrides.items():
         monkeypatch.setattr(settings, name, value, raising=False)
     monkeypatch.setattr(routing, "magicpdf_service_configured", lambda _value=None: False, raising=True)
-    monkeypatch.setattr(routing, "resolve_magicpdf_models_dir", lambda _value=None: "/models" if magicpdf_available else None, raising=True)
-    monkeypatch.setattr(routing, "resolve_cli_command", lambda _value: "/usr/bin/magic-pdf" if magicpdf_available else None, raising=True)
+    monkeypatch.setattr(
+        routing,
+        "resolve_magicpdf_models_dir",
+        lambda _value=None: "/models" if magicpdf_available else None,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        routing,
+        "resolve_cli_command",
+        lambda _value: "/usr/bin/magic-pdf" if magicpdf_available else None,
+        raising=True,
+    )
 
     assert routing.choose_pdf_backend(quality, requested) == expected
 
@@ -240,18 +255,24 @@ def test_etl4llm_merge_partitions_characterizes_spacing_and_shifted_indexes(
             {
                 "type": "title",
                 "text": "Title",
-                "metadata": {"extra_data": {"indexes": [[0, 5]], "types": ["title"], "pages": [1], "bboxes": [[1, 2, 3, 4]]}},
+                "metadata": {
+                    "extra_data": {"indexes": [[0, 5]], "types": ["title"], "pages": [1], "bboxes": [[1, 2, 3, 4]]}
+                },
             },
             {
                 "type": "table",
                 "text": "|A|B|",
-                "metadata": {"extra_data": {"indexes": [[0, 5]], "types": ["table"], "pages": [1], "bboxes": [[5, 6, 7, 8]]}},
+                "metadata": {
+                    "extra_data": {"indexes": [[0, 5]], "types": ["table"], "pages": [1], "bboxes": [[5, 6, 7, 8]]}
+                },
             },
             {
                 "type": "image",
                 "text": "service image",
                 "element_id": "img-1",
-                "metadata": {"extra_data": {"indexes": [[0, 14]], "types": ["image"], "pages": [2], "bboxes": [[9, 10, 11, 12]]}},
+                "metadata": {
+                    "extra_data": {"indexes": [[0, 14]], "types": ["image"], "pages": [2], "bboxes": [[9, 10, 11, 12]]}
+                },
             },
         ],
         image_map={"img-1": "images/img-1.png"},
@@ -317,7 +338,9 @@ def test_magicpdf_parse_prefers_service_mode(monkeypatch: pytest.MonkeyPatch, tm
         return expected
 
     monkeypatch.setattr(parser, "_parse_service", _parse_service, raising=True)
-    monkeypatch.setattr(parser, "_ensure_cli", lambda: (_ for _ in ()).throw(AssertionError("CLI path should not run")), raising=True)
+    monkeypatch.setattr(
+        parser, "_ensure_cli", lambda: (_ for _ in ()).throw(AssertionError("CLI path should not run")), raising=True
+    )
 
     documents = parser.parse(pdf_path, dataset_id="ds-1", document_id="doc-1")
 

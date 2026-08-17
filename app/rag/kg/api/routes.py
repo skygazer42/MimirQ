@@ -273,8 +273,6 @@ def kg_extraction_options(
     )
 
 
-
-
 @router.get("/graph", response_model=KGGraphResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_kg_graph(
     params: Annotated[KGGraphProjectionParams, Depends(kg_graph_projection_params)],
@@ -536,7 +534,9 @@ def _search_kg_event_nodes(
         or_(KgSourceEvent.title.ilike(pattern), KgSourceEvent.summary.ilike(pattern)),
     )
     events_q = _apply_event_pipeline_scope(events_q, pipeline_hash=pipeline_hash)
-    return [_kg_event_search_node(event) for event in events_q.order_by(KgSourceEvent.updated_at.desc()).limit(limit).all()]
+    return [
+        _kg_event_search_node(event) for event in events_q.order_by(KgSourceEvent.updated_at.desc()).limit(limit).all()
+    ]
 
 
 @router.get("/graph/search", response_model=list[KGGraphNode], responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -932,7 +932,13 @@ def _kg_snapshot_detail_rows(
         KgSourceEvent.document_id.in_(allowed_doc_ids),
         KgSourceEvent.pipeline_hash == pipeline_hash,
     )
-    event_rows = db.query(KgSourceEvent).filter(*event_filter).order_by(KgSourceEvent.updated_at.desc(), KgSourceEvent.id.asc()).limit(int(detail_limit)).all()
+    event_rows = (
+        db.query(KgSourceEvent)
+        .filter(*event_filter)
+        .order_by(KgSourceEvent.updated_at.desc(), KgSourceEvent.id.asc())
+        .limit(int(detail_limit))
+        .all()
+    )
     entity_rows = (
         db.query(KgEntity)
         .join(KgEventEntity, KgEventEntity.entity_id == KgEntity.id)
@@ -973,7 +979,13 @@ def _kg_snapshot_event_node(event: Any, canonical_json_hash: Any) -> dict[str, A
         "chunk_id": str(event.chunk_id) if event.chunk_id else None,
         "extra_data": event.extra_data or {},
     }
-    return {"id": f"event:{event.id}", "kind": "event", "type": "event", "name": event.title, "props_hash": canonical_json_hash(props)}
+    return {
+        "id": f"event:{event.id}",
+        "kind": "event",
+        "type": "event",
+        "name": event.title,
+        "props_hash": canonical_json_hash(props),
+    }
 
 
 def _kg_snapshot_entity_node(entity: Any, canonical_json_hash: Any) -> dict[str, Any]:
@@ -1214,7 +1226,9 @@ def _kg_graphml_payload(graph: KGGraphResponse) -> str:
     return f'<?xml version="1.0" encoding="UTF-8"?>\n{xml_text}\n'
 
 
-def _kg_graph_export_content(*, payload: str, flags: KGGraphExportFlags, tenant_id: UUID) -> tuple[str | bytes, dict[str, str]]:
+def _kg_graph_export_content(
+    *, payload: str, flags: KGGraphExportFlags, tenant_id: UUID
+) -> tuple[str | bytes, dict[str, str]]:
     headers: dict[str, str] = {}
     if flags.download:
         ext = "graphml.gz" if flags.gzip_output else "graphml"
@@ -2016,7 +2030,13 @@ def merge_kg_entities(
         event_entity_model=KgEventEntity,
         relation_model=KgRelation,
     )
-    action = _create_merge_action(KgEntityResolutionAction, tenant_id=tenant_id, account_id=account_id, targets=targets, affected=affected)
+    action = _create_merge_action(
+        KgEntityResolutionAction,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        targets=targets,
+        affected=affected,
+    )
     db.add(action)
 
     _add_resolution_audit_log(
@@ -2135,7 +2155,13 @@ def _move_split_associations(source_assocs: list[Any], *, event_id_set: set[UUID
     return moved_assoc_ids
 
 
-def _move_split_relations(relations: list[Any], *, event_id_set: set[UUID], original_id: UUID, new_entity_id: UUID) -> list[str]:
+def _move_split_relations(
+    relations: list[Any],
+    *,
+    event_id_set: set[UUID],
+    original_id: UUID,
+    new_entity_id: UUID,
+) -> list[str]:
     moved_relation_ids: list[str] = []
     for relation in relations:
         event_id = getattr(relation, "event_id", None)
@@ -2458,7 +2484,12 @@ async def run_kg_extraction_for_document(
             effective=effective,
         )
 
-    events = await _run_sync_kg_extraction(chunks=chunks, tenant_id=tenant_id, account_id=account_id, effective=effective)
+    events = await _run_sync_kg_extraction(
+        chunks=chunks,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        effective=effective,
+    )
 
     # Best-effort audit log: extraction completed (PII-minimal).
     _audit_kg_extraction(

@@ -62,18 +62,19 @@ def test_safe_read_local_image_bytes_accepts_local_file_urls(tmp_path: Path) -> 
 
     assert data == expected
     assert reason == "ok"
-    assert vlm_image_caption._safe_read_local_image_bytes(
-        src=image_path.as_uri(),
-        origin_path=tmp_path,
-        max_bytes=10_000,
-    ) == expected
+    assert (
+        vlm_image_caption._safe_read_local_image_bytes(
+            src=image_path.as_uri(),
+            origin_path=tmp_path,
+            max_bytes=10_000,
+        )
+        == expected
+    )
 
 
 def test_add_image_captions_preserves_prefix_and_skips_existing_caption() -> None:
     markdown = (
-        "> ![System diagram](assets/diagram.png)\n"
-        "> caption: already there\n"
-        "- ![Quarterly chart](assets/chart.png)\n"
+        "> ![System diagram](assets/diagram.png)\n> caption: already there\n- ![Quarterly chart](assets/chart.png)\n"
     )
 
     result, added = image_caption.add_image_captions(markdown)
@@ -93,13 +94,11 @@ def test_add_formula_latex_blocks_characterizes_guard_and_metadata(
 ) -> None:
     image_path = tmp_path / "formula.png"
     _write_png(image_path)
-    monkeypatch.setattr(formula_ocr, "_call_formula_backend", lambda **_kwargs: (" $$ x + y $$ ", "ok_json"), raising=True)
-
-    markdown = (
-        "![formula](formula.png)\n"
-        "$ existing $\n"
-        "![equation](formula.png)\n"
+    monkeypatch.setattr(
+        formula_ocr, "_call_formula_backend", lambda **_kwargs: (" $$ x + y $$ ", "ok_json"), raising=True
     )
+
+    markdown = "![formula](formula.png)\n$ existing $\n![equation](formula.png)\n"
 
     result, added, audit = formula_ocr.add_formula_latex_blocks(
         markdown,
@@ -109,12 +108,7 @@ def test_add_formula_latex_blocks_characterizes_guard_and_metadata(
     )
 
     assert added == 1
-    assert result == (
-        "![formula](formula.png)\n"
-        "$ existing $\n"
-        "![equation](formula.png)\n"
-        "$$ x + y $$\n"
-    )
+    assert result == ("![formula](formula.png)\n$ existing $\n![equation](formula.png)\n$$ x + y $$\n")
     assert audit.formulas_added == 1
     assert audit.images_attempted == 1
     assert audit.images_succeeded == 1
@@ -144,7 +138,10 @@ def test_add_chart_data_blocks_characterizes_json_block_and_audit(
     monkeypatch.setattr(
         chart_to_data,
         "_call_chart_backend",
-        lambda **_kwargs: ({"title": "Revenue", "series": [{"name": "Q1", "values": [1, 2]}], "confidence": 1.3}, "ok_json"),
+        lambda **_kwargs: (
+            {"title": "Revenue", "series": [{"name": "Q1", "values": [1, 2]}], "confidence": 1.3},
+            "ok_json",
+        ),
         raising=True,
     )
 
@@ -275,7 +272,9 @@ def test_load_image_for_ocr_characterizes_path_then_base64_fallback(
     image.close()
 
     encoded = image_bytes.hex()
-    monkeypatch.setattr(image_understanding, "_b64_to_bytes", lambda _value: image_bytes if _value == encoded else b"", raising=True)
+    monkeypatch.setattr(
+        image_understanding, "_b64_to_bytes", lambda _value: image_bytes if _value == encoded else b"", raising=True
+    )
     image2, should_close2 = image_understanding.load_image_for_ocr(
         {"doc_type_kwd": "image", "image_base64": encoded},
         _tenant_id=tenant_id,
@@ -317,9 +316,13 @@ def test_bind_ocr_lines_to_table_cells_characterizes_bound_rows_and_confidence()
 
 
 def test_decode_image_codes_characterizes_clean_ean13_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(image_understanding, "_decode_clean_ean13_from_pixels", lambda _image: "5901234123457", raising=True)
+    monkeypatch.setattr(
+        image_understanding, "_decode_clean_ean13_from_pixels", lambda _image: "5901234123457", raising=True
+    )
     fake_pyzbar = SimpleNamespace(decode=lambda _image: [])
-    fake_cv2 = SimpleNamespace(QRCodeDetector=lambda: SimpleNamespace(detectAndDecode=lambda _candidate: ("", None, None)))
+    fake_cv2 = SimpleNamespace(
+        QRCodeDetector=lambda: SimpleNamespace(detectAndDecode=lambda _candidate: ("", None, None))
+    )
     monkeypatch.setitem(__import__("sys").modules, "pyzbar.pyzbar", fake_pyzbar)
     monkeypatch.setitem(__import__("sys").modules, "cv2", fake_cv2)
 

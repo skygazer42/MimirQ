@@ -12,7 +12,6 @@ Use --core-only to validate retrieval without an LLM and remove the temporary da
 Default behavior is PII-safe: it uploads synthetic content and avoids printing secrets.
 """
 
-
 import argparse
 import concurrent.futures
 import json
@@ -219,6 +218,15 @@ def _detect_auth_mode(client: httpx.Client, *, api_base: str, override: str | No
     return "jwt"
 
 
+def _extract_access_token(payload: Any) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    token_payload = payload.get("token")
+    if not isinstance(token_payload, dict):
+        return ""
+    return str(token_payload.get("access_token") or "")
+
+
 def _login_for_token(
     client: httpx.Client,
     *,
@@ -234,11 +242,14 @@ def _login_for_token(
         json={"identifier": identifier, "password": password},
     )
     payload = _parse_json(resp)
-    token = ""
-    if isinstance(payload, dict):
-        token = str(((payload.get("token") or {}) if isinstance(payload.get("token"), dict) else {}).get("access_token") or "")
+    token = _extract_access_token(payload)
     if not token:
-        raise CallError(method="POST", url=_join(api_base, "auth/login"), status_code=resp.status_code, detail="no access_token in response")
+        raise CallError(
+            method="POST",
+            url=_join(api_base, "auth/login"),
+            status_code=resp.status_code,
+            detail="no access_token in response",
+        )
     return token
 
 
@@ -258,11 +269,14 @@ def _register_for_token(
         json={"email": email, "username": username, "password": password},
     )
     payload = _parse_json(resp)
-    token = ""
-    if isinstance(payload, dict):
-        token = str(((payload.get("token") or {}) if isinstance(payload.get("token"), dict) else {}).get("access_token") or "")
+    token = _extract_access_token(payload)
     if not token:
-        raise CallError(method="POST", url=_join(api_base, "auth/register"), status_code=resp.status_code, detail="no access_token in response")
+        raise CallError(
+            method="POST",
+            url=_join(api_base, "auth/register"),
+            status_code=resp.status_code,
+            detail="no access_token in response",
+        )
     return token
 
 
@@ -436,9 +450,19 @@ def _wait_for_document_completion(
         if st == "completed":
             return {"status": st, "stage": stage, "progress": prog}
         if st == "failed":
-            raise CallError(method="GET", url=status_url, status_code=st_resp.status_code, detail="ingestion failed")
+            raise CallError(
+                method="GET",
+                url=status_url,
+                status_code=st_resp.status_code,
+                detail="ingestion failed",
+            )
         if now >= deadline:
-            raise CallError(method="GET", url=status_url, status_code=st_resp.status_code, detail="timeout waiting for ingestion")
+            raise CallError(
+                method="GET",
+                url=status_url,
+                status_code=st_resp.status_code,
+                detail="timeout waiting for ingestion",
+            )
 
         should_print = verbose or (now - last_print) >= 10.0 or stage != last_stage
         if should_print:
@@ -484,366 +508,772 @@ def _retrieve_core_evidence(
     return retrieval_summary
 
 
-def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description="Smoke test: ready -> ingest -> structured RAG query.")
-    p.add_argument("--base-url", default=None, help="API host (http://host:8000) OR API base (http://host:8000/api/v1).")
-    p.add_argument("--tenant-id", default=None, help="X-Tenant-ID header (recommended in prod).")
-    p.add_argument("--auth-mode", default=None, help="Override server-reported auth mode (jwt|header).")
-    p.add_argument("--user-id", default=None, help="X-User-ID header (AUTH_MODE=header).")
-    p.add_argument("--token", default=None, help="Bearer token (AUTH_MODE=jwt).")
-    p.add_argument("--identifier", default=None, help="Login identifier (email/username) when token is not provided.")
-    p.add_argument("--password", default=None, help="Login password when token is not provided.")
-    p.add_argument(
-        "--bootstrap-register",
-        action="store_true",
-        help="Create a temporary local account via /auth/register when no JWT token or login credentials are provided.",
+def _first_non_empty(*values: str | None) -> str:
+    for value in values:
+        if value:
+            return str(value)
+    return ""
+
+
+def _is_truthy(raw: str) -> bool:
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _create_client(*, timeout: httpx.Timeout, limits: httpx.Limits) -> httpx.Client:
+    return httpx.Client(
+        timeout=timeout,
+        limits=limits,
+        follow_redirects=False,
+        trust_env=False,
     )
 
-    p.add_argument("--dataset-id", default=None, help="Reuse an existing dataset id (skips dataset creation).")
-    p.add_argument("--secondary-base-url", default=None, help="Optional second API host/base used for shared-state checks.")
-    p.add_argument("--web-base-url", default=None, help="Optional frontend host/base used to verify the login page and API proxy entry.")
-    p.add_argument("--parser-backend", default="auto", help="Parser backend for upload (default: %(default)s)")
-    p.add_argument("--structured-preset", default="summary", help="Structured preset (faq|summary|action_items).")
-    p.add_argument("--allow-unstructured", action="store_true", help="Do not fail if structured output cannot be validated.")
-    p.add_argument(
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Smoke test: ready -> ingest -> structured RAG query.")
+    parser.add_argument(
+        "--base-url",
+        default=None,
+        help="API host (http://host:8000) OR API base (http://host:8000/api/v1).",
+    )
+    parser.add_argument(
+        "--tenant-id",
+        default=None,
+        help="X-Tenant-ID header (recommended in prod).",
+    )
+    parser.add_argument(
+        "--auth-mode",
+        default=None,
+        help="Override server-reported auth mode (jwt|header).",
+    )
+    parser.add_argument(
+        "--user-id",
+        default=None,
+        help="X-User-ID header (AUTH_MODE=header).",
+    )
+    parser.add_argument("--token", default=None, help="Bearer token (AUTH_MODE=jwt).")
+    parser.add_argument(
+        "--identifier",
+        default=None,
+        help="Login identifier (email/username) when token is not provided.",
+    )
+    parser.add_argument(
+        "--password",
+        default=None,
+        help="Login password when token is not provided.",
+    )
+    parser.add_argument(
+        "--bootstrap-register",
+        action="store_true",
+        help=(
+            "Create a temporary local account via /auth/register when no JWT token or login credentials are provided."
+        ),
+    )
+    parser.add_argument(
+        "--dataset-id",
+        default=None,
+        help="Reuse an existing dataset id (skips dataset creation).",
+    )
+    parser.add_argument(
+        "--secondary-base-url",
+        default=None,
+        help="Optional second API host/base used for shared-state checks.",
+    )
+    parser.add_argument(
+        "--web-base-url",
+        default=None,
+        help="Optional frontend host/base used to verify the login page and API proxy entry.",
+    )
+    parser.add_argument(
+        "--parser-backend",
+        default="auto",
+        help="Parser backend for upload (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--structured-preset",
+        default="summary",
+        help="Structured preset (faq|summary|action_items).",
+    )
+    parser.add_argument(
+        "--allow-unstructured",
+        action="store_true",
+        help="Do not fail if structured output cannot be validated.",
+    )
+    parser.add_argument(
         "--core-only",
         action="store_true",
         help="Validate retrieval without an LLM; delete a dataset created by this run after success.",
     )
+    parser.add_argument("--ready-timeout-sec", type=float, default=60.0)
+    parser.add_argument("--ingest-timeout-sec", type=float, default=600.0)
+    parser.add_argument("--poll-interval-sec", type=float, default=2.0)
+    parser.add_argument(
+        "--timeout-sec",
+        type=float,
+        default=60.0,
+        help="HTTP timeout seconds (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--out",
+        default="",
+        help="Write a JSON summary report to a file path.",
+    )
+    parser.add_argument("--verbose", action="store_true")
+    return parser
 
-    p.add_argument("--ready-timeout-sec", type=float, default=60.0)
-    p.add_argument("--ingest-timeout-sec", type=float, default=600.0)
-    p.add_argument("--poll-interval-sec", type=float, default=2.0)
-    p.add_argument("--timeout-sec", type=float, default=60.0, help="HTTP timeout seconds (default: %(default)s)")
-    p.add_argument("--out", default="", help="Write a JSON summary report to a file path.")
-    p.add_argument("--verbose", action="store_true")
 
-    args = p.parse_args(argv)
-
-    repo_root = Path(__file__).resolve().parents[1]
-    dotenv = load_dotenv(repo_root / ".env")
-
-    raw_base_url = args.base_url or env_or(dotenv, "NEXT_PUBLIC_API_URL", "http://localhost:8000")
+def _resolve_api_bases(
+    args: argparse.Namespace,
+    dotenv: dict[str, str],
+) -> tuple[str, str]:
+    raw_base_url = args.base_url or env_or(
+        dotenv,
+        "NEXT_PUBLIC_API_URL",
+        "http://localhost:8000",
+    )
     _root_base, api_base = _normalize_base_urls(raw_base_url)
     secondary_api_base = ""
     if args.secondary_base_url:
         _secondary_root, secondary_api_base = _normalize_base_urls(args.secondary_base_url)
+    return api_base, secondary_api_base
 
-    tenant_id = (args.tenant_id or env_or(dotenv, "NEXT_PUBLIC_TENANT_ID", "00000000-0000-0000-0000-000000000000")).strip()
+
+def _resolve_tenant_id(args: argparse.Namespace, dotenv: dict[str, str]) -> str:
+    return _first_non_empty(
+        args.tenant_id,
+        env_or(
+            dotenv,
+            "NEXT_PUBLIC_TENANT_ID",
+            "00000000-0000-0000-0000-000000000000",
+        ),
+    ).strip()
+
+
+def _bootstrap_register_enabled(
+    args: argparse.Namespace,
+    dotenv: dict[str, str],
+) -> bool:
+    return bool(args.bootstrap_register or _is_truthy(env_or(dotenv, "MIMIRQ_SMOKE_BOOTSTRAP_REGISTER", "")))
+
+
+def _resolve_jwt_token(
+    client: httpx.Client,
+    *,
+    args: argparse.Namespace,
+    dotenv: dict[str, str],
+    api_base: str,
+    token: str,
+) -> str:
+    if token:
+        return token
+    identifier = _first_non_empty(
+        args.identifier,
+        env_or(dotenv, "MIMIRQ_SMOKE_IDENTIFIER", ""),
+        env_or(dotenv, "MIMIRQ_DEMO_IDENTIFIER", ""),
+    ).strip()
+    password = _first_non_empty(
+        args.password,
+        env_or(dotenv, "MIMIRQ_SMOKE_PASSWORD", ""),
+        env_or(dotenv, "MIMIRQ_DEMO_PASSWORD", ""),
+    ).strip()
+    if identifier and password:
+        print("[smoke] login: using identifier/password")
+        return _login_for_token(
+            client,
+            api_base=api_base,
+            identifier=identifier,
+            password=password,
+        )
+    if _bootstrap_register_enabled(args, dotenv):
+        account_seed = uuid.uuid4().hex[:12]
+        print("[smoke] login: bootstrapping local account via register")
+        return _register_for_token(
+            client,
+            api_base=api_base,
+            email=f"smoke-{account_seed}@example.com",
+            username=f"smoke-{account_seed}",
+            password=f"smoke-{uuid.uuid4().hex}",
+        )
+    raise ValueError(
+        "AUTH_MODE=jwt but no token provided. Set --token / MIMIRQ_SMOKE_TOKEN, "
+        "or provide --identifier + --password to login, or pass "
+        "--bootstrap-register for local CI/dev stacks."
+    )
+
+
+def _resolve_auth_headers(
+    client: httpx.Client,
+    *,
+    args: argparse.Namespace,
+    dotenv: dict[str, str],
+    api_base: str,
+    tenant_id: str,
+    report: dict[str, Any],
+) -> dict[str, str]:
+    auth_mode = _detect_auth_mode(client, api_base=api_base, override=args.auth_mode)
+    if auth_mode not in {"jwt", "header"}:
+        raise ValueError(f"unsupported auth_mode: {auth_mode}")
+    report["auth_mode"] = auth_mode
+    print(f"[smoke] auth_mode={auth_mode}")
+
+    token = _first_non_empty(
+        args.token,
+        env_or(dotenv, "MIMIRQ_SMOKE_TOKEN", ""),
+        env_or(dotenv, "MIMIRQ_DEMO_TOKEN", ""),
+    ).strip()
+    user_id = _first_non_empty(
+        args.user_id,
+        env_or(dotenv, "NEXT_PUBLIC_USER_ID", "demo"),
+    ).strip()
+    if auth_mode == "jwt":
+        token = _resolve_jwt_token(
+            client,
+            args=args,
+            dotenv=dotenv,
+            api_base=api_base,
+            token=token,
+        )
+        user_id = ""
+
+    headers = build_headers(
+        tenant_id=tenant_id,
+        user_id=(user_id or None),
+        token=(token or None),
+    )
+    report["headers"] = {
+        "tenant": bool(headers.get("X-Tenant-ID")),
+        "user": bool(headers.get("X-User-ID")),
+        "bearer": bool(headers.get("Authorization")),
+    }
+    return headers
+
+
+def _ensure_dataset(
+    client: httpx.Client,
+    *,
+    api_base: str,
+    headers: dict[str, str],
+    dataset_id_arg: str | None,
+) -> tuple[str, bool]:
+    dataset_id = str(dataset_id_arg or "").strip() or None
+    created_dataset = dataset_id is None
+    if dataset_id:
+        print(f"[smoke] dataset: reuse {dataset_id}")
+        return dataset_id, created_dataset
+
+    ds_payload = {
+        "name": f"smoke-{uuid.uuid4().hex[:8]}",
+        "description": "smoke test dataset",
+    }
+    ds_resp = request_with_retries(
+        client,
+        "POST",
+        _join(api_base, "datasets/"),
+        expected={201},
+        headers=headers,
+        json=ds_payload,
+    )
+    ds_json = _parse_json(ds_resp)
+    dataset_id = str(ds_json.get("id") if isinstance(ds_json, dict) else "") or None
+    if not dataset_id:
+        raise CallError(
+            method="POST",
+            url=_join(api_base, "datasets/"),
+            status_code=ds_resp.status_code,
+            detail="dataset create returned no id",
+        )
+    print(f"[smoke] dataset: created {dataset_id}")
+    return dataset_id, created_dataset
+
+
+def _upload_smoke_document(
+    client: httpx.Client,
+    *,
+    api_base: str,
+    headers: dict[str, str],
+    dataset_id: str,
+    parser_backend: str,
+    core_only: bool,
+) -> tuple[str, str]:
+    smoke_fact = f"smoke-{uuid.uuid4().hex[:12]}"
+    doc_text = (
+        "MimirQ smoke test document (synthetic; no PII).\n\n"
+        f"SMOKE_FACT: launch_code={smoke_fact}\n"
+        "SMOKE_NOTE: This is a test artifact.\n"
+    )
+    files = {"file": ("smoke.txt", doc_text.encode("utf-8"), "text/plain")}
+    up_resp = request_with_retries(
+        client,
+        "POST",
+        _join(api_base, "documents/upload"),
+        expected={201},
+        headers=headers,
+        files=files,
+        data=_upload_form_data(
+            dataset_id=dataset_id,
+            parser_backend=parser_backend,
+            core_only=core_only,
+        ),
+    )
+    up_json = _parse_json(up_resp)
+    doc_id = str(up_json.get("id") if isinstance(up_json, dict) else "") or None
+    if not doc_id:
+        raise CallError(
+            method="POST",
+            url=_join(api_base, "documents/upload"),
+            status_code=up_resp.status_code,
+            detail="upload returned no document id",
+        )
+    print(f"[smoke] upload: document_id={doc_id}")
+    return doc_id, smoke_fact
+
+
+def _record_ingestion_status(
+    client: httpx.Client,
+    *,
+    args: argparse.Namespace,
+    api_base: str,
+    secondary_api_base: str,
+    headers: dict[str, str],
+    document_id: str,
+    report: dict[str, Any],
+) -> None:
+    report["ingest_status"] = _wait_for_document_completion(
+        client,
+        api_base=api_base,
+        headers=headers,
+        document_id=document_id,
+        timeout_sec=float(args.ingest_timeout_sec),
+        poll_interval_sec=float(args.poll_interval_sec),
+        verbose=bool(args.verbose),
+    )
+    print("[smoke] ingest: completed")
+    if secondary_api_base:
+        report["secondary_ingest_status"] = _wait_for_document_completion(
+            client,
+            api_base=secondary_api_base,
+            headers=headers,
+            document_id=document_id,
+            timeout_sec=float(args.ingest_timeout_sec),
+            poll_interval_sec=float(args.poll_interval_sec),
+            verbose=bool(args.verbose),
+        )
+        print("[smoke] secondary ingest view: completed")
+
+
+def _retrieve_with_new_client(
+    *,
+    api_base: str,
+    timeout: httpx.Timeout,
+    limits: httpx.Limits,
+    headers: dict[str, str],
+    dataset_id: str,
+    document_id: str,
+    marker: str,
+) -> dict[str, Any]:
+    with _create_client(timeout=timeout, limits=limits) as nested:
+        return _retrieve_core_evidence(
+            nested,
+            api_base=api_base,
+            headers=headers,
+            dataset_id=dataset_id,
+            document_id=document_id,
+            marker=marker,
+        )
+
+
+def _run_core_only_mode(
+    client: httpx.Client,
+    *,
+    api_base: str,
+    secondary_api_base: str,
+    timeout: httpx.Timeout,
+    limits: httpx.Limits,
+    headers: dict[str, str],
+    dataset_id: str,
+    document_id: str,
+    smoke_fact: str,
+    created_dataset: bool,
+    report: dict[str, Any],
+    started: float,
+) -> int:
+    marker = f"launch_code={smoke_fact}"
+    if secondary_api_base:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            primary_future = executor.submit(
+                _retrieve_with_new_client,
+                api_base=api_base,
+                timeout=timeout,
+                limits=limits,
+                headers=headers,
+                dataset_id=dataset_id,
+                document_id=document_id,
+                marker=marker,
+            )
+            secondary_future = executor.submit(
+                _retrieve_with_new_client,
+                api_base=secondary_api_base,
+                timeout=timeout,
+                limits=limits,
+                headers=headers,
+                dataset_id=dataset_id,
+                document_id=document_id,
+                marker=marker,
+            )
+            report["retrieval"] = {
+                "primary": primary_future.result(),
+                "secondary": secondary_future.result(),
+                "concurrent": True,
+            }
+        print("[smoke] retrieval: primary+secondary evidence ok")
+    else:
+        report["retrieval"] = _retrieve_core_evidence(
+            client,
+            api_base=api_base,
+            headers=headers,
+            dataset_id=dataset_id,
+            document_id=document_id,
+            marker=marker,
+        )
+        print("[smoke] retrieval: evidence ok")
+
+    if created_dataset:
+        report["cleanup"] = _cleanup_created_dataset(
+            client,
+            api_base=api_base,
+            headers=headers,
+            dataset_id=dataset_id,
+            document_id=document_id,
+        )
+        print("[smoke] cleanup: dataset deleted")
+    else:
+        report["cleanup"] = {"skipped": True, "reason": "dataset_reused"}
+
+    report["ok"] = True
+    report["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
+    print(f"[smoke] OK in {report['elapsed_ms']}ms")
+    return 0
+
+
+def _build_chat_payload(
+    *,
+    dataset_id: str,
+    structured_preset: str,
+) -> dict[str, Any]:
+    return {
+        "message": (
+            "What is the value of launch_code in SMOKE_FACT? Return only the structured JSON object as instructed."
+        ),
+        "dataset_id": dataset_id,
+        "structured_output": True,
+        "structured_preset": structured_preset,
+        "stream": False,
+        "rag_config": {
+            "use_graph": False,
+            "top_k": 10,
+            "enable_multi_query": False,
+        },
+    }
+
+
+def _validate_chat_response(
+    client: httpx.Client,
+    *,
+    api_base: str,
+    headers: dict[str, str],
+    chat_resp: httpx.Response,
+    chat_json: dict[str, Any],
+    smoke_fact: str,
+    structured_preset: str,
+    require_structured: bool,
+    report: dict[str, Any],
+) -> bool:
+    structured_flag = bool(chat_json.get("structured") is True)
+    structured_data = chat_json.get("structured_data")
+    content = str(chat_json.get("content") or "")
+    answer = ""
+    summary = ""
+    if isinstance(structured_data, dict):
+        answer = str(structured_data.get("answer") or "")
+        summary = str(structured_data.get("summary") or "")
+
+    report["chat"] = {
+        "structured": structured_flag,
+        "structured_type": (type(structured_data).__name__ if structured_data is not None else None),
+        "structured_preset": structured_preset,
+        "content_chars": len(content),
+    }
+
+    if require_structured and (not structured_flag or not isinstance(structured_data, dict)):
+        status = _get_system_status_best_effort(
+            client,
+            api_base=api_base,
+            headers=headers,
+        )
+        if status:
+            report["system_status"] = status
+        raise CallError(
+            method="POST",
+            url=_join(api_base, "chat"),
+            status_code=chat_resp.status_code,
+            detail=(
+                "structured output validation failed. Ensure LLM is configured and that structured presets are enabled."
+            ),
+        )
+
+    haystack = "\n".join([answer, summary, content])
+    if smoke_fact not in haystack:
+        excerpt = redact_secrets(haystack[:400])
+        raise CallError(
+            method="POST",
+            url=_join(api_base, "chat"),
+            status_code=chat_resp.status_code,
+            detail=f"answer does not contain expected launch_code. excerpt={excerpt!r}",
+        )
+    return structured_flag
+
+
+def _run_chat_mode(
+    client: httpx.Client,
+    *,
+    args: argparse.Namespace,
+    api_base: str,
+    headers: dict[str, str],
+    dataset_id: str,
+    smoke_fact: str,
+    report: dict[str, Any],
+    started: float,
+) -> None:
+    structured_preset = str(args.structured_preset or "summary")
+    chat_resp = request_with_retries(
+        client,
+        "POST",
+        _join(api_base, "chat"),
+        expected={200},
+        headers=headers,
+        json=_build_chat_payload(
+            dataset_id=dataset_id,
+            structured_preset=structured_preset,
+        ),
+    )
+    chat_json = _parse_json(chat_resp)
+    if not isinstance(chat_json, dict):
+        raise CallError(
+            method="POST",
+            url=_join(api_base, "chat"),
+            status_code=chat_resp.status_code,
+            detail="chat response is not JSON object",
+        )
+
+    report["chat"] = {
+        "structured": False,
+        "structured_type": None,
+        "structured_preset": structured_preset,
+        "content_chars": 0,
+    }
+    structured_flag = _validate_chat_response(
+        client,
+        api_base=api_base,
+        headers=headers,
+        chat_resp=chat_resp,
+        chat_json=chat_json,
+        smoke_fact=smoke_fact,
+        structured_preset=structured_preset,
+        require_structured=not bool(args.allow_unstructured),
+        report=report,
+    )
+    structured_data = chat_json.get("structured_data")
+    content = str(chat_json.get("content") or "")
+    report["chat"] = {
+        "structured": structured_flag,
+        "structured_type": (type(structured_data).__name__ if structured_data is not None else None),
+        "structured_preset": structured_preset,
+        "content_chars": len(content),
+    }
+    print("[smoke] chat: structured ok" if structured_flag else "[smoke] chat: ok (unstructured allowed)")
+    report["ok"] = True
+    report["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
+
+
+def _execute_smoke(
+    args: argparse.Namespace,
+    *,
+    dotenv: dict[str, str],
+    api_base: str,
+    secondary_api_base: str,
+    tenant_id: str,
+    report: dict[str, Any],
+    started: float,
+) -> int | None:
+    timeout = httpx.Timeout(float(args.timeout_sec))
+    limits = httpx.Limits(max_connections=10, max_keepalive_connections=10)
+    with _create_client(timeout=timeout, limits=limits) as client:
+        report["ready"] = wait_ready(
+            client,
+            api_base=api_base,
+            timeout_sec=float(args.ready_timeout_sec),
+            poll_interval_sec=float(args.poll_interval_sec),
+        )
+        print("[smoke] ready: ok")
+        if args.web_base_url:
+            report["web_auth"] = _probe_web_auth_page(
+                client,
+                web_base=str(args.web_base_url),
+            )
+            print("[smoke] web: auth page ok")
+        if secondary_api_base:
+            report["secondary_ready"] = wait_ready(
+                client,
+                api_base=secondary_api_base,
+                timeout_sec=float(args.ready_timeout_sec),
+                poll_interval_sec=float(args.poll_interval_sec),
+            )
+            print("[smoke] secondary ready: ok")
+
+        headers = _resolve_auth_headers(
+            client,
+            args=args,
+            dotenv=dotenv,
+            api_base=api_base,
+            tenant_id=tenant_id,
+            report=report,
+        )
+        dataset_id, created_dataset = _ensure_dataset(
+            client,
+            api_base=api_base,
+            headers=headers,
+            dataset_id_arg=args.dataset_id,
+        )
+        report["dataset_id"] = dataset_id
+        doc_id, smoke_fact = _upload_smoke_document(
+            client,
+            api_base=api_base,
+            headers=headers,
+            dataset_id=dataset_id,
+            parser_backend=str(args.parser_backend or "auto"),
+            core_only=bool(args.core_only),
+        )
+        report["document_id"] = doc_id
+        _record_ingestion_status(
+            client,
+            args=args,
+            api_base=api_base,
+            secondary_api_base=secondary_api_base,
+            headers=headers,
+            document_id=doc_id,
+            report=report,
+        )
+        if args.core_only:
+            return _run_core_only_mode(
+                client,
+                api_base=api_base,
+                secondary_api_base=secondary_api_base,
+                timeout=timeout,
+                limits=limits,
+                headers=headers,
+                dataset_id=dataset_id,
+                document_id=doc_id,
+                smoke_fact=smoke_fact,
+                created_dataset=created_dataset,
+                report=report,
+                started=started,
+            )
+        _run_chat_mode(
+            client,
+            args=args,
+            api_base=api_base,
+            headers=headers,
+            dataset_id=dataset_id,
+            smoke_fact=smoke_fact,
+            report=report,
+            started=started,
+        )
+    return None
+
+
+def _write_report(path: str, report: dict[str, Any]) -> None:
+    Path(path).write_text(
+        json.dumps(report, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _handle_call_error(
+    *,
+    args: argparse.Namespace,
+    report: dict[str, Any],
+    started: float,
+    exc: CallError,
+) -> int:
+    report["ok"] = False
+    report["error"] = str(exc)
+    report["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
+    print(f"[smoke] ERROR: {exc}", file=sys.stderr)
+    if args.out:
+        _write_report(args.out, report)
+        print(f"[smoke] wrote report: {args.out}", file=sys.stderr)
+    return 1
+
+
+def _handle_unexpected_error(
+    *,
+    args: argparse.Namespace,
+    report: dict[str, Any],
+    started: float,
+    exc: Exception,
+) -> int:
+    report["ok"] = False
+    report["error"] = redact_secrets(str(exc) or exc.__class__.__name__)
+    report["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
+    print(f"[smoke] ERROR: {report['error']}", file=sys.stderr)
+    if args.out:
+        _write_report(args.out, report)
+        print(f"[smoke] wrote report: {args.out}", file=sys.stderr)
+    return 2
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _build_parser().parse_args(argv)
+
+    repo_root = Path(__file__).resolve().parents[1]
+    dotenv = load_dotenv(repo_root / ".env")
+    api_base, secondary_api_base = _resolve_api_bases(args, dotenv)
+    tenant_id = _resolve_tenant_id(args, dotenv)
     if args.verbose:
         print(f"[smoke] api_base={api_base}")
         print(f"[smoke] tenant_id={tenant_id}")
 
-    timeout = httpx.Timeout(float(args.timeout_sec))
-    limits = httpx.Limits(max_connections=10, max_keepalive_connections=10)
     report: dict[str, Any] = {"api_base": api_base, "tenant_id": tenant_id}
-
     started = time.perf_counter()
     try:
-        with httpx.Client(timeout=timeout, limits=limits, follow_redirects=False, trust_env=False) as client:
-            ready_payload = wait_ready(
-                client,
-                api_base=api_base,
-                timeout_sec=float(args.ready_timeout_sec),
-                poll_interval_sec=float(args.poll_interval_sec),
-            )
-            report["ready"] = ready_payload
-            print("[smoke] ready: ok")
-            if args.web_base_url:
-                report["web_auth"] = _probe_web_auth_page(client, web_base=str(args.web_base_url))
-                print("[smoke] web: auth page ok")
-            if secondary_api_base:
-                report["secondary_ready"] = wait_ready(
-                    client,
-                    api_base=secondary_api_base,
-                    timeout_sec=float(args.ready_timeout_sec),
-                    poll_interval_sec=float(args.poll_interval_sec),
-                )
-                print("[smoke] secondary ready: ok")
-
-            auth_mode = _detect_auth_mode(client, api_base=api_base, override=args.auth_mode)
-            if auth_mode not in {"jwt", "header"}:
-                raise ValueError(f"unsupported auth_mode: {auth_mode}")
-            report["auth_mode"] = auth_mode
-            print(f"[smoke] auth_mode={auth_mode}")
-
-            token = (args.token or env_or(dotenv, "MIMIRQ_SMOKE_TOKEN", "") or env_or(dotenv, "MIMIRQ_DEMO_TOKEN", "") or "").strip()
-            user_id = (args.user_id or env_or(dotenv, "NEXT_PUBLIC_USER_ID", "demo")).strip()
-            bootstrap_register = bool(
-                args.bootstrap_register
-                or str(env_or(dotenv, "MIMIRQ_SMOKE_BOOTSTRAP_REGISTER", "")).strip().lower() in {"1", "true", "yes", "on"}
-            )
-
-            if auth_mode == "jwt":
-                if not token:
-                    identifier = (args.identifier or env_or(dotenv, "MIMIRQ_SMOKE_IDENTIFIER", "") or env_or(dotenv, "MIMIRQ_DEMO_IDENTIFIER", "")).strip()
-                    password = (args.password or env_or(dotenv, "MIMIRQ_SMOKE_PASSWORD", "") or env_or(dotenv, "MIMIRQ_DEMO_PASSWORD", "")).strip()
-                    if identifier and password:
-                        print("[smoke] login: using identifier/password")
-                        token = _login_for_token(client, api_base=api_base, identifier=identifier, password=password)
-                    elif bootstrap_register:
-                        account_seed = uuid.uuid4().hex[:12]
-                        print("[smoke] login: bootstrapping local account via register")
-                        token = _register_for_token(
-                            client,
-                            api_base=api_base,
-                            email=f"smoke-{account_seed}@example.com",
-                            username=f"smoke-{account_seed}",
-                            password=f"smoke-{uuid.uuid4().hex}",
-                        )
-                    else:
-                        raise ValueError(
-                            "AUTH_MODE=jwt but no token provided. Set --token / MIMIRQ_SMOKE_TOKEN, "
-                            "or provide --identifier + --password to login, or pass --bootstrap-register for local CI/dev stacks."
-                        )
-                user_id = ""
-
-            headers = build_headers(tenant_id=tenant_id, user_id=(user_id or None), token=(token or None))
-            report["headers"] = {
-                "tenant": bool(headers.get("X-Tenant-ID")),
-                "user": bool(headers.get("X-User-ID")),
-                "bearer": bool(headers.get("Authorization")),
-            }
-
-            dataset_id = (args.dataset_id or "").strip() or None
-            created_dataset = dataset_id is None
-            if dataset_id:
-                print(f"[smoke] dataset: reuse {dataset_id}")
-            else:
-                ds_payload = {"name": f"smoke-{uuid.uuid4().hex[:8]}", "description": "smoke test dataset"}
-                ds_resp = request_with_retries(
-                    client,
-                    "POST",
-                    _join(api_base, "datasets/"),
-                    expected={201},
-                    headers=headers,
-                    json=ds_payload,
-                )
-                ds_json = _parse_json(ds_resp)
-                dataset_id = str(ds_json.get("id") if isinstance(ds_json, dict) else "") or None
-                if not dataset_id:
-                    raise CallError(
-                        method="POST",
-                        url=_join(api_base, "datasets/"),
-                        status_code=ds_resp.status_code,
-                        detail="dataset create returned no id",
-                    )
-                print(f"[smoke] dataset: created {dataset_id}")
-            report["dataset_id"] = dataset_id
-
-            smoke_fact = f"smoke-{uuid.uuid4().hex[:12]}"
-            doc_text = (
-                "MimirQ smoke test document (synthetic; no PII).\n\n"
-                f"SMOKE_FACT: launch_code={smoke_fact}\n"
-                "SMOKE_NOTE: This is a test artifact.\n"
-            )
-            files = {"file": ("smoke.txt", doc_text.encode("utf-8"), "text/plain")}
-            data = _upload_form_data(
-                dataset_id=str(dataset_id),
-                parser_backend=str(args.parser_backend or "auto"),
-                core_only=bool(args.core_only),
-            )
-            up_resp = request_with_retries(
-                client,
-                "POST",
-                _join(api_base, "documents/upload"),
-                expected={201},
-                headers=headers,
-                files=files,
-                data=data,
-            )
-            up_json = _parse_json(up_resp)
-            doc_id = str(up_json.get("id") if isinstance(up_json, dict) else "") or None
-            if not doc_id:
-                raise CallError(
-                    method="POST",
-                    url=_join(api_base, "documents/upload"),
-                    status_code=up_resp.status_code,
-                    detail="upload returned no document id",
-                )
-            report["document_id"] = doc_id
-            print(f"[smoke] upload: document_id={doc_id}")
-
-            report["ingest_status"] = _wait_for_document_completion(
-                client,
-                api_base=api_base,
-                headers=headers,
-                document_id=doc_id,
-                timeout_sec=float(args.ingest_timeout_sec),
-                poll_interval_sec=float(args.poll_interval_sec),
-                verbose=bool(args.verbose),
-            )
-            print("[smoke] ingest: completed")
-            if secondary_api_base:
-                report["secondary_ingest_status"] = _wait_for_document_completion(
-                    client,
-                    api_base=secondary_api_base,
-                    headers=headers,
-                    document_id=doc_id,
-                    timeout_sec=float(args.ingest_timeout_sec),
-                    poll_interval_sec=float(args.poll_interval_sec),
-                    verbose=bool(args.verbose),
-                )
-                print("[smoke] secondary ingest view: completed")
-
-            if args.core_only:
-                marker = f"launch_code={smoke_fact}"
-                if secondary_api_base:
-                    def _retrieve_summary(base: str) -> dict[str, Any]:
-                        with httpx.Client(timeout=timeout, limits=limits, follow_redirects=False, trust_env=False) as nested:
-                            return _retrieve_core_evidence(
-                                nested,
-                                api_base=base,
-                                headers=headers,
-                                dataset_id=str(dataset_id),
-                                document_id=doc_id,
-                                marker=marker,
-                            )
-
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                        primary_future = executor.submit(_retrieve_summary, api_base)
-                        secondary_future = executor.submit(_retrieve_summary, secondary_api_base)
-                        report["retrieval"] = {
-                            "primary": primary_future.result(),
-                            "secondary": secondary_future.result(),
-                            "concurrent": True,
-                        }
-                    print("[smoke] retrieval: primary+secondary evidence ok")
-                else:
-                    report["retrieval"] = _retrieve_core_evidence(
-                        client,
-                        api_base=api_base,
-                        headers=headers,
-                        dataset_id=str(dataset_id),
-                        document_id=doc_id,
-                        marker=marker,
-                    )
-                    print("[smoke] retrieval: evidence ok")
-
-                if created_dataset:
-                    report["cleanup"] = _cleanup_created_dataset(
-                        client,
-                        api_base=api_base,
-                        headers=headers,
-                        dataset_id=str(dataset_id),
-                        document_id=doc_id,
-                    )
-                    print("[smoke] cleanup: dataset deleted")
-                else:
-                    report["cleanup"] = {"skipped": True, "reason": "dataset_reused"}
-
-                report["ok"] = True
-                report["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
-                print(f"[smoke] OK in {report['elapsed_ms']}ms")
-                return 0
-
-            require_structured = not bool(args.allow_unstructured)
-            chat_payload: dict[str, Any] = {
-                "message": (
-                    "What is the value of launch_code in SMOKE_FACT? "
-                    "Return only the structured JSON object as instructed."
-                ),
-                # Use the dataset scope for the freshly uploaded smoke corpus.
-                # In real environments this is more stable than document-id scoped
-                # retrieval immediately after ingestion, while still keeping the
-                # query bounded to the synthetic smoke dataset created by this script.
-                "dataset_id": str(dataset_id),
-                "structured_output": True,
-                "structured_preset": str(args.structured_preset or "summary"),
-                "stream": False,
-                # Keep the smoke path deterministic and bounded in real environments:
-                # - avoid the graph pipeline and multi-query fan-out
-                # - use a mid-scale top_k that matches the repo guardrail
-                "rag_config": {
-                    "use_graph": False,
-                    "top_k": 10,
-                    "enable_multi_query": False,
-                },
-            }
-            chat_resp = request_with_retries(
-                client,
-                "POST",
-                _join(api_base, "chat"),
-                expected={200},
-                headers=headers,
-                json=chat_payload,
-            )
-            chat_json = _parse_json(chat_resp)
-            if not isinstance(chat_json, dict):
-                raise CallError(
-                    method="POST",
-                    url=_join(api_base, "chat"),
-                    status_code=chat_resp.status_code,
-                    detail="chat response is not JSON object",
-                )
-
-            structured_flag = bool(chat_json.get("structured") is True)
-            structured_data = chat_json.get("structured_data")
-            content = str(chat_json.get("content") or "")
-            answer = ""
-            summary = ""
-            if isinstance(structured_data, dict):
-                answer = str(structured_data.get("answer") or "")
-                summary = str(structured_data.get("summary") or "")
-
-            report["chat"] = {
-                "structured": structured_flag,
-                "structured_type": type(structured_data).__name__ if structured_data is not None else None,
-                "structured_preset": str(args.structured_preset or "summary"),
-                "content_chars": len(content),
-            }
-
-            if require_structured and (not structured_flag or not isinstance(structured_data, dict)):
-                status = _get_system_status_best_effort(client, api_base=api_base, headers=headers)
-                if status:
-                    report["system_status"] = status
-                raise CallError(
-                    method="POST",
-                    url=_join(api_base, "chat"),
-                    status_code=chat_resp.status_code,
-                    detail=(
-                        "structured output validation failed. "
-                        "Ensure LLM is configured and that structured presets are enabled."
-                    ),
-                )
-
-            haystack = "\n".join([answer, summary, content])
-            if smoke_fact not in haystack:
-                excerpt = redact_secrets(haystack[:400])
-                raise CallError(
-                    method="POST",
-                    url=_join(api_base, "chat"),
-                    status_code=chat_resp.status_code,
-                    detail=f"answer does not contain expected launch_code. excerpt={excerpt!r}",
-                )
-
-            print("[smoke] chat: structured ok" if structured_flag else "[smoke] chat: ok (unstructured allowed)")
-            report["ok"] = True
-            report["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
-
+        exit_code = _execute_smoke(
+            args,
+            dotenv=dotenv,
+            api_base=api_base,
+            secondary_api_base=secondary_api_base,
+            tenant_id=tenant_id,
+            report=report,
+            started=started,
+        )
+        if exit_code is not None:
+            return exit_code
     except CallError as exc:
-        report["ok"] = False
-        report["error"] = str(exc)
-        report["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
-        print(f"[smoke] ERROR: {exc}", file=sys.stderr)
-        if args.out:
-            Path(args.out).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-            print(f"[smoke] wrote report: {args.out}", file=sys.stderr)
-        return 1
+        return _handle_call_error(
+            args=args,
+            report=report,
+            started=started,
+            exc=exc,
+        )
     except Exception as exc:
-        report["ok"] = False
-        report["error"] = redact_secrets(str(exc) or exc.__class__.__name__)
-        report["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
-        print(f"[smoke] ERROR: {report['error']}", file=sys.stderr)
-        if args.out:
-            Path(args.out).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-            print(f"[smoke] wrote report: {args.out}", file=sys.stderr)
-        return 2
+        return _handle_unexpected_error(
+            args=args,
+            report=report,
+            started=started,
+            exc=exc,
+        )
     finally:
         if args.out and report:
-            # Best-effort: on success write report too.
             try:
-                Path(args.out).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+                _write_report(args.out, report)
             except Exception:
                 pass
 
