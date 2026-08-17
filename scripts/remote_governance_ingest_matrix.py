@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# ruff: noqa: E402, I001
 """Run a remote governance ingest matrix against a live MimirQ API.
 
 This script validates governance behavior on real document ingestion paths:
@@ -11,32 +10,34 @@ This script validates governance behavior on real document ingestion paths:
 
 import argparse
 import json
-import sys
 import time
 from pathlib import Path
 from typing import Any
 
-
-def ensure_repo_root_on_sys_path(script_path: str | Path) -> str:
-    repo_root = str(Path(script_path).resolve().parents[1])
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-    return repo_root
-
-
-ensure_repo_root_on_sys_path(__file__)
-
-from scripts.remote_real_pdf_chain import (
-    DEFAULT_TENANT_ID,
-    DOCUMENT_CHUNK_LIST_LIMIT,
-    LiveApi,
-    list_count,
-    ok_status,
-    parsed_text_from_response,
-    perform_cleanup,
-    record_step,
-    snippet,
-)
+try:
+    from scripts.remote_real_pdf_chain import (
+        DEFAULT_TENANT_ID,
+        DOCUMENT_CHUNK_LIST_LIMIT,
+        LiveApi,
+        list_count,
+        ok_status,
+        parsed_text_from_response,
+        perform_cleanup,
+        record_step,
+        snippet,
+    )
+except ModuleNotFoundError:
+    from remote_real_pdf_chain import (  # type: ignore[no-redef]
+        DEFAULT_TENANT_ID,
+        DOCUMENT_CHUNK_LIST_LIMIT,
+        LiveApi,
+        list_count,
+        ok_status,
+        parsed_text_from_response,
+        perform_cleanup,
+        record_step,
+        snippet,
+    )
 
 BASE_PIPELINE: dict[str, Any] = {
     "governance_enabled": True,
@@ -238,6 +239,52 @@ def normalize_search_text(text: str) -> str:
     return str(text or "").replace("\\_", "_")
 
 
+def _required_text_failures(label: str, haystack: str, needles: list[str]) -> list[str]:
+    failures: list[str] = []
+    for needle in needles:
+        if needle and needle not in haystack:
+            failures.append(f"{label} missing expected text: {needle}")
+    return failures
+
+
+def _forbidden_text_failures(label: str, haystack: str, needles: list[str]) -> list[str]:
+    failures: list[str] = []
+    for needle in needles:
+        if needle and needle in haystack:
+            failures.append(f"{label} still contains forbidden text: {needle}")
+    return failures
+
+
+def _metadata_failures(case: dict[str, Any], metadata: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    for key in case.get("required_metadata_keys") or []:
+        if not metadata_has_nonempty_value(metadata, str(key)):
+            failures.append(f"metadata missing non-empty {key}")
+
+    required_rule_packs = [
+        str(item).strip().lower() for item in (case.get("required_rule_packs") or []) if str(item).strip()
+    ]
+    actual_rule_packs = {
+        str(item).strip().lower() for item in (metadata.get("governance_rule_packs") or []) if str(item).strip()
+    }
+    for pack in required_rule_packs:
+        if pack not in actual_rule_packs:
+            failures.append(f"metadata missing rule_pack {pack}")
+    return failures
+
+
+def _drop_reason_failures(case: dict[str, Any], metadata: dict[str, Any]) -> list[str]:
+    allowed_drop_reasons = [str(item).strip() for item in (case.get("allowed_drop_reasons") or []) if str(item).strip()]
+    if not allowed_drop_reasons:
+        return []
+    actual_drop_reasons = (
+        metadata.get("governance_drop_reasons") if isinstance(metadata.get("governance_drop_reasons"), dict) else {}
+    )
+    if any(str(reason) in actual_drop_reasons for reason in allowed_drop_reasons):
+        return []
+    return [f"drop_reasons missing one of {allowed_drop_reasons}"]
+
+
 def evaluate_case_expectations(
     case: dict[str, Any],
     *,
@@ -257,27 +304,8 @@ def evaluate_case_expectations(
     if metadata.get("governance_enabled") is not True:
         failures.append("metadata missing governance_enabled=true")
 
-    for key in case.get("required_metadata_keys") or []:
-        if not metadata_has_nonempty_value(metadata, str(key)):
-            failures.append(f"metadata missing non-empty {key}")
-
-    required_rule_packs = [
-        str(item).strip().lower() for item in (case.get("required_rule_packs") or []) if str(item).strip()
-    ]
-    actual_rule_packs = {
-        str(item).strip().lower() for item in (metadata.get("governance_rule_packs") or []) if str(item).strip()
-    }
-    for pack in required_rule_packs:
-        if pack not in actual_rule_packs:
-            failures.append(f"metadata missing rule_pack {pack}")
-
-    allowed_drop_reasons = [str(item).strip() for item in (case.get("allowed_drop_reasons") or []) if str(item).strip()]
-    if allowed_drop_reasons:
-        actual_drop_reasons = (
-            metadata.get("governance_drop_reasons") if isinstance(metadata.get("governance_drop_reasons"), dict) else {}
-        )
-        if not any(str(reason) in actual_drop_reasons for reason in allowed_drop_reasons):
-            failures.append(f"drop_reasons missing one of {allowed_drop_reasons}")
+    failures.extend(_metadata_failures(case, metadata))
+    failures.extend(_drop_reason_failures(case, metadata))
 
     checks: list[tuple[str, str, list[str]]] = [
         ("parsed", normalize_search_text(parsed_text), [str(item) for item in (case.get("present_in_parsed") or [])]),
@@ -289,9 +317,7 @@ def evaluate_case_expectations(
         ),
     ]
     for label, haystack, needles in checks:
-        for needle in needles:
-            if needle and needle not in haystack:
-                failures.append(f"{label} missing expected text: {needle}")
+        failures.extend(_required_text_failures(label, haystack, needles))
 
     anti_checks: list[tuple[str, str, list[str]]] = [
         ("parsed", normalize_search_text(parsed_text), [str(item) for item in (case.get("absent_in_parsed") or [])]),
@@ -303,9 +329,7 @@ def evaluate_case_expectations(
         ),
     ]
     for label, haystack, needles in anti_checks:
-        for needle in needles:
-            if needle and needle in haystack:
-                failures.append(f"{label} still contains forbidden text: {needle}")
+        failures.extend(_forbidden_text_failures(label, haystack, needles))
 
     if bool(case.get("require_citations")) and int(citation_count) <= 0:
         failures.append("retrieval returned no citations")
@@ -396,6 +420,20 @@ def metadata_subset(metadata: dict[str, Any]) -> dict[str, Any]:
         "governance_quality",
     )
     return {key: metadata.get(key) for key in keys if key in metadata}
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run a remote governance ingest matrix on a live MimirQ API.")
+    parser.add_argument("--base-url", default="http://127.0.0.1:8000")
+    parser.add_argument("--tenant-id", default=DEFAULT_TENANT_ID)
+    parser.add_argument("--account-id", default="demo")
+    parser.add_argument("--user-id", default="demo")
+    parser.add_argument("--artifact-dir", default="")
+    parser.add_argument("--timeout", type=int, default=600)
+    parser.add_argument("--poll-timeout", type=int, default=1800)
+    parser.add_argument("--cleanup-mode", default="purge_dataset")
+    parser.add_argument("--delete-dataset-after", action="store_true")
+    return parser.parse_args(argv)
 
 
 def run_case(
@@ -524,18 +562,8 @@ def run_case(
     }
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Run a remote governance ingest matrix on a live MimirQ API.")
-    parser.add_argument("--base-url", default="http://127.0.0.1:8000")
-    parser.add_argument("--tenant-id", default=DEFAULT_TENANT_ID)
-    parser.add_argument("--account-id", default="demo")
-    parser.add_argument("--user-id", default="demo")
-    parser.add_argument("--artifact-dir", default="")
-    parser.add_argument("--timeout", type=int, default=600)
-    parser.add_argument("--poll-timeout", type=int, default=1800)
-    parser.add_argument("--cleanup-mode", default="purge_dataset")
-    parser.add_argument("--delete-dataset-after", action="store_true")
-    args = parser.parse_args()
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
 
     run_id = time.strftime("%Y%m%d-%H%M%S")
     artifact_dir = Path(args.artifact_dir or f"artifacts/governance-ingest-matrix/{run_id}").resolve()

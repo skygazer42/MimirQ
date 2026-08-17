@@ -8,7 +8,6 @@ It exists so the caller can truly cancel parsing by terminating the process
 (docling/torch-based parsers are not cooperatively cancellable in-process).
 """
 
-
 import json
 import time
 import traceback
@@ -85,6 +84,81 @@ def _write_result(
     _safe_worker_io_path(path).write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")  # NOSONAR
 
 
+def _documents_need_image_persist(documents: list[Document]) -> bool:
+    for doc in documents:
+        meta = getattr(doc, "metadata", None) or {}
+        if not isinstance(meta, dict) or meta.get("image") is None:
+            continue
+        if str(meta.get("doc_type_kwd") or "").lower() == "image":
+            return True
+    return False
+
+
+def _prepare_ingest_image_dir(
+    *,
+    tenant_id: UUID,
+    artifact_root: Path | None,
+    needs_persist: bool,
+) -> tuple[Path | None, Path | None]:
+    if not needs_persist:
+        return artifact_root, None
+
+    if artifact_root is None:
+        artifact_root = _safe_upload_child(str(tenant_id), ".mimirq_parse", uuid.uuid4().hex)
+    else:
+        artifact_root = _safe_worker_io_path(artifact_root)
+
+    images_dir = artifact_root.joinpath("images").resolve(strict=False)
+    images_dir.mkdir(parents=True, exist_ok=True)
+    return artifact_root, images_dir
+
+
+def _finalize_non_image_metadata(doc: Document, meta: dict[str, Any]) -> None:
+    meta.pop("image", None)
+    doc.metadata = meta
+
+
+def _assign_ingest_image_metadata(
+    doc: Document,
+    *,
+    meta: dict[str, Any],
+    tenant_id: UUID,
+    artifact_root: Path | None,
+    images_dir: Path | None,
+) -> tuple[dict[str, Any], Path]:
+    if artifact_root is not None:
+        meta["artifact_dir"] = str(artifact_root)
+    out_id = uuid.uuid4().hex
+    out_path = (images_dir or _safe_upload_child(str(tenant_id), "images")).joinpath(f"{out_id}.jpg")
+    meta["image_path"] = str(out_path)
+    meta.pop("image", None)
+    doc.metadata = meta
+    return meta, out_path
+
+
+def _persist_ingest_image(raw: Any, *, out_path: Path, pil_image: Any | None) -> None:
+    if pil_image is None:
+        return
+
+    from io import BytesIO
+
+    image_obj = pil_image.open(BytesIO(bytes(raw))) if isinstance(raw, (bytes, bytearray)) else raw
+    try:
+        if getattr(image_obj, "mode", None) != "RGB":
+            image_obj = image_obj.convert("RGB")
+    except Exception as exc:
+        logger.debug("Ignoring non-critical subprocess worker image conversion failure: %s", exc)
+    image_obj.save(out_path, format="JPEG", quality=85, optimize=True)
+
+
+def _close_ingest_image(raw: Any) -> None:
+    try:
+        if raw is not None and not isinstance(raw, (bytes, bytearray)) and hasattr(raw, "close"):
+            raw.close()
+    except Exception as exc:
+        logger.debug("Ignoring non-critical subprocess worker image close failure: %s", exc)
+
+
 def _materialize_images_for_ingest(
     documents: list[Document],
     *,
@@ -98,30 +172,11 @@ def _materialize_images_for_ingest(
     if not documents:
         return []
 
-    needs_persist = False
-    for doc in documents:
-        meta = getattr(doc, "metadata", None) or {}
-        if not isinstance(meta, dict):
-            continue
-        raw = meta.get("image")
-        if raw is None:
-            continue
-        doc_type = str(meta.get("doc_type_kwd") or "").lower()
-        if doc_type == "image":
-            needs_persist = True
-            break
-
-    images_dir: Path | None = None
-    if needs_persist:
-        if artifact_root is None:
-            artifact_root = _safe_upload_child(str(tenant_id), ".mimirq_parse", uuid.uuid4().hex)
-        else:
-            artifact_root = _safe_worker_io_path(artifact_root)
-        images_dir = artifact_root.joinpath("images").resolve(strict=False)
-        images_dir.mkdir(parents=True, exist_ok=True)
-
-    from io import BytesIO
-
+    artifact_root, images_dir = _prepare_ingest_image_dir(
+        tenant_id=tenant_id,
+        artifact_root=artifact_root,
+        needs_persist=_documents_need_image_persist(documents),
+    )
     pil_image = _get_pil_image()
 
     for doc in documents:
@@ -131,46 +186,25 @@ def _materialize_images_for_ingest(
             doc.metadata = meta
             continue
 
-        doc_type = str(meta.get("doc_type_kwd") or "").lower()
-        if doc_type != "image":
-            # Non-image chunks: never keep non-serializable objects in metadata.
-            meta.pop("image", None)
-            doc.metadata = meta
+        if str(meta.get("doc_type_kwd") or "").lower() != "image":
+            _finalize_non_image_metadata(doc, meta)
             continue
 
-        # Best-effort: persist to a local JPEG.
-        if artifact_root is not None:
-            meta["artifact_dir"] = str(artifact_root)
-        out_id = uuid.uuid4().hex
-        out_path = (images_dir or _safe_upload_child(str(tenant_id), "images")).joinpath(f"{out_id}.jpg")
-        meta["image_path"] = str(out_path)
-        meta.pop("image", None)
-        doc.metadata = meta
-
-        if pil_image is None:
-            continue
+        _meta, out_path = _assign_ingest_image_metadata(
+            doc,
+            meta=meta,
+            tenant_id=tenant_id,
+            artifact_root=artifact_root,
+            images_dir=images_dir,
+        )
 
         try:
-            if isinstance(raw, (bytes, bytearray)):
-                img = pil_image.open(BytesIO(bytes(raw)))  # type: ignore[arg-type]
-            else:
-                img = raw
-            try:
-                if getattr(img, "mode", None) != "RGB":
-                    img = img.convert("RGB")
-            except Exception as exc:
-                logger.debug("Ignoring non-critical subprocess worker image conversion failure: %s", exc)
-            img.save(out_path, format="JPEG", quality=85, optimize=True)
+            _persist_ingest_image(raw, out_path=out_path, pil_image=pil_image)
         except Exception:
             # Keep metadata.image_path for downstream best-effort, but do not crash.
             get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-            continue
         finally:
-            try:
-                if raw is not None and not isinstance(raw, (bytes, bytearray)) and hasattr(raw, "close"):
-                    raw.close()
-            except Exception as exc:
-                logger.debug("Ignoring non-critical subprocess worker image close failure: %s", exc)
+            _close_ingest_image(raw)
 
     return list(documents)
 
@@ -239,12 +273,8 @@ def _parse_documents(payload: dict[str, Any]) -> dict[str, Any]:
         )
 
         account_id = str(payload.get("account_id") or "").strip() or None
-        documents = _materialize_extracted_images_for_preview(
-            documents, tenant_id=tenant_id, account_id=account_id
-        )
-        documents = _materialize_local_images_for_preview(
-            documents, tenant_id=tenant_id, account_id=account_id
-        )
+        documents = _materialize_extracted_images_for_preview(documents, tenant_id=tenant_id, account_id=account_id)
+        documents = _materialize_local_images_for_preview(documents, tenant_id=tenant_id, account_id=account_id)
     else:
         artifact_root = None
         raw_root = payload.get("artifact_root")

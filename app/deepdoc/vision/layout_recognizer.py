@@ -33,9 +33,7 @@ def get_default_resource_dir():
     """
     Return the repo-bundled layout model directory.
     """
-    resource_dir = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "../resources/models/layout")
-    )
+    resource_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../resources/models/layout"))
     return resource_dir
 
 
@@ -58,15 +56,96 @@ class LayoutRecognizer(Recognizer):
         super().__init__(self.labels, domain, get_default_resource_dir())
         self.garbage_layouts = ["footer", "header", "reference"]
 
-    def __call__(self, image_list, ocr_res, scale_factor=3,
-                 thr=0.2, batch_size=16, drop=True):
-        def __is_garbage(b):
-            patt = [r"^•+$", "^\\d{1,2} / ?\\d{1,2}$",
-                    r"^\d{1,2} of \d{1,2}$", "^http://[^ ]{12,}",
-                    "\\(cid *: *\\d+ *\\)"
-                    ]
-            return any(re.search(p, b["text"]) for p in patt)
+    @staticmethod
+    def _is_garbage_box(box):
+        patterns = [
+            r"^•+$",
+            "^\\d{1,2} / ?\\d{1,2}$",
+            r"^\d{1,2} of \d{1,2}$",
+            "^http://[^ ]{12,}",
+            "\\(cid *: *\\d+ *\\)",
+        ]
+        return any(re.search(pattern, box["text"]) for pattern in patterns)
 
+    @staticmethod
+    def _build_page_layouts(layouts, page_number, scale_factor, garbage_layouts):
+        return [
+            {
+                "type": box["type"],
+                "score": float(box["score"]),
+                "x0": box["bbox"][0] / scale_factor,
+                "x1": box["bbox"][2] / scale_factor,
+                "top": box["bbox"][1] / scale_factor,
+                "bottom": box["bbox"][-1] / scale_factor,
+                "page_number": page_number,
+            }
+            for box in layouts
+            if float(box["score"]) >= 0.4 or box["type"] not in garbage_layouts
+        ]
+
+    def _keep_garbage_layout_box(self, layout, box, image_height, scale_factor):
+        return any(
+            [
+                layout["type"] == "footer" and box["bottom"] < image_height * 0.9 / scale_factor,
+                layout["type"] == "header" and box["top"] > image_height * 0.1 / scale_factor,
+            ]
+        )
+
+    def _assign_layout_type(self, boxes, layouts, image_height, scale_factor, garbages, ty, drop):
+        layouts_of_type = [layout for layout in layouts if layout["type"] == ty]
+        index = 0
+        while index < len(boxes):
+            if boxes[index].get("layout_type"):
+                index += 1
+                continue
+            if self._is_garbage_box(boxes[index]):
+                boxes.pop(index)
+                continue
+
+            match_index = self.find_overlapped_with_threashold(boxes[index], layouts_of_type, thr=0.4)
+            if match_index is None:
+                boxes[index]["layout_type"] = ""
+                index += 1
+                continue
+
+            layout = layouts_of_type[match_index]
+            layout["visited"] = True
+            if (
+                drop
+                and layout["type"] in self.garbage_layouts
+                and not self._keep_garbage_layout_box(layout, boxes[index], image_height, scale_factor)
+            ):
+                garbages.setdefault(layout["type"], []).append(boxes[index]["text"])
+                boxes.pop(index)
+                continue
+
+            boxes[index]["layoutno"] = f"{ty}-{match_index}"
+            boxes[index]["layout_type"] = "figure" if layout["type"] == "equation" else layout["type"]
+            index += 1
+
+    @staticmethod
+    def _append_unvisited_figure_layouts(boxes, layouts):
+        for index, layout in enumerate([lt for lt in layouts if lt["type"] in ["figure", "equation"]]):
+            if layout.get("visited"):
+                continue
+            figure_layout = deepcopy(layout)
+            del figure_layout["type"]
+            figure_layout["text"] = ""
+            figure_layout["layout_type"] = "figure"
+            figure_layout["layoutno"] = f"figure-{index}"
+            boxes.append(figure_layout)
+
+    @staticmethod
+    def _deduplicate_garbage_texts(garbages):
+        garbage_set = set()
+        for key, values in garbages.items():
+            garbages[key] = Counter(values)
+            for value, count in garbages[key].items():
+                if count > 1:
+                    garbage_set.add(value)
+        return garbage_set
+
+    def __call__(self, image_list, ocr_res, scale_factor=3, thr=0.2, batch_size=16, drop=True):
         layouts = super().__call__(image_list, thr, batch_size)
         # save_results(image_list, layouts, self.labels, output_dir='output/', threshold=0.7)
         if len(image_list) != len(ocr_res):
@@ -79,83 +158,39 @@ class LayoutRecognizer(Recognizer):
         page_layout = []
         for pn, lts in enumerate(layouts):
             bxs = ocr_res[pn]
-            lts = [{"type": b["type"],
-                    "score": float(b["score"]),
-                    "x0": b["bbox"][0] / scale_factor, "x1": b["bbox"][2] / scale_factor,
-                    "top": b["bbox"][1] / scale_factor, "bottom": b["bbox"][-1] / scale_factor,
-                    "page_number": pn,
-                    } for b in lts if float(b["score"]) >= 0.4 or b["type"] not in self.garbage_layouts]
-            lts = self.sort_y_firstly(lts, np.mean(
-                [lt["bottom"] - lt["top"] for lt in lts]) / 2)
+            lts = self._build_page_layouts(lts, pn, scale_factor, self.garbage_layouts)
+            lts = self.sort_y_firstly(lts, np.mean([lt["bottom"] - lt["top"] for lt in lts]) / 2)
             lts = self.layouts_cleanup(bxs, lts)
             page_layout.append(lts)
 
-            # Tag layout type, layouts are ready
-            def find_layout(ty):
-                nonlocal bxs, lts, self
-                lts_ = [lt for lt in lts if lt["type"] == ty]
-                i = 0
-                while i < len(bxs):
-                    if bxs[i].get("layout_type"):
-                        i += 1
-                        continue
-                    if __is_garbage(bxs[i]):
-                        bxs.pop(i)
-                        continue
-
-                    ii = self.find_overlapped_with_threashold(bxs[i], lts_,
-                                                              thr=0.4)
-                    if ii is None:  # belong to nothing
-                        bxs[i]["layout_type"] = ""
-                        i += 1
-                        continue
-                    lts_[ii]["visited"] = True
-                    keep_feats = [
-                        lts_[
-                            ii]["type"] == "footer" and bxs[i]["bottom"] < image_list[pn].size[1] * 0.9 / scale_factor,
-                        lts_[
-                            ii]["type"] == "header" and bxs[i]["top"] > image_list[pn].size[1] * 0.1 / scale_factor,
-                    ]
-                    if drop and lts_[
-                        ii]["type"] in self.garbage_layouts and not any(keep_feats):
-                        if lts_[ii]["type"] not in garbages:
-                            garbages[lts_[ii]["type"]] = []
-                        garbages[lts_[ii]["type"]].append(bxs[i]["text"])
-                        bxs.pop(i)
-                        continue
-
-                    bxs[i]["layoutno"] = f"{ty}-{ii}"
-                    bxs[i]["layout_type"] = lts_[ii]["type"] if lts_[
-                                                                    ii]["type"] != "equation" else "figure"
-                    i += 1
-
-            for lt in ["footer", "header", "reference", "figure caption",
-                       "table caption", "title", "table", "text", "figure", "equation"]:
-                find_layout(lt)
-
-            # add box to figure layouts which has not text box
-            for i, lt in enumerate(
-                    [lt for lt in lts if lt["type"] in ["figure", "equation"]]):
-                if lt.get("visited"):
-                    continue
-                lt = deepcopy(lt)
-                del lt["type"]
-                lt["text"] = ""
-                lt["layout_type"] = "figure"
-                lt["layoutno"] = f"figure-{i}"
-                bxs.append(lt)
+            for lt in [
+                "footer",
+                "header",
+                "reference",
+                "figure caption",
+                "table caption",
+                "title",
+                "table",
+                "text",
+                "figure",
+                "equation",
+            ]:
+                self._assign_layout_type(
+                    bxs,
+                    lts,
+                    image_list[pn].size[1],
+                    scale_factor,
+                    garbages,
+                    lt,
+                    drop,
+                )
+            self._append_unvisited_figure_layouts(bxs, lts)
 
             boxes.extend(bxs)
 
         ocr_res = boxes
 
-        garbag_set = set()
-        for k in garbages:
-            garbages[k] = Counter(garbages[k])
-            for g, c in garbages[k].items():
-                if c > 1:
-                    garbag_set.add(g)
-
+        garbag_set = self._deduplicate_garbage_texts(garbages)
         ocr_res = [b for b in ocr_res if b["text"].strip() not in garbag_set]
         return ocr_res, page_layout
 
@@ -228,8 +263,9 @@ class LayoutRecognizer4YOLOv10(LayoutRecognizer):
         boxes[:, 2] -= inputs["scale_factor"][2]
         boxes[:, 1] -= inputs["scale_factor"][3]
         boxes[:, 3] -= inputs["scale_factor"][3]
-        input_shape = np.array([inputs["scale_factor"][0], inputs["scale_factor"][1], inputs["scale_factor"][0],
-                                inputs["scale_factor"][1]])
+        input_shape = np.array(
+            [inputs["scale_factor"][0], inputs["scale_factor"][1], inputs["scale_factor"][0], inputs["scale_factor"][1]]
+        )
         boxes = np.multiply(boxes, input_shape, dtype=np.float32)
 
         unique_class_ids = np.unique(class_ids)
@@ -241,8 +277,11 @@ class LayoutRecognizer4YOLOv10(LayoutRecognizer):
             class_keep_boxes = nms(class_boxes, class_scores, 0.45)
             indices.extend(class_indices[class_keep_boxes])
 
-        return [{
-            "type": self.label_list[class_ids[i]].lower(),
-            "bbox": [float(t) for t in boxes[i].tolist()],
-            "score": float(scores[i])
-        } for i in indices]
+        return [
+            {
+                "type": self.label_list[class_ids[i]].lower(),
+                "bbox": [float(t) for t in boxes[i].tolist()],
+                "score": float(scores[i]),
+            }
+            for i in indices
+        ]

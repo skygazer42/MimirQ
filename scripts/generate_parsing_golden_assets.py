@@ -164,6 +164,84 @@ def _draw_text_block(draw: ImageDraw.ImageDraw, *, x: int, y: int, lines: list[s
     return cursor
 
 
+def _draw_table_preamble(
+    draw: ImageDraw.ImageDraw,
+    *,
+    left: int,
+    top: int,
+    title: str,
+    leading_paragraph: list[str] | None,
+    ink: tuple[int, int, int],
+) -> int:
+    cursor_y = top
+    if title:
+        draw.text((left, cursor_y), title, fill=ink)
+        cursor_y += 36
+    if leading_paragraph:
+        cursor_y = (
+            _draw_text_block(
+                draw,
+                x=left,
+                y=cursor_y,
+                lines=list(leading_paragraph),
+                fill=ink,
+            )
+            + 20
+        )
+    return cursor_y
+
+
+def _draw_borderless_table(
+    draw: ImageDraw.ImageDraw,
+    *,
+    left: int,
+    cursor_y: int,
+    width: int,
+    row_height: int,
+    header: list[str],
+    rows: list[list[str]],
+    ink: tuple[int, int, int],
+    accent: tuple[int, int, int],
+) -> int:
+    draw.text((left, cursor_y), "   ".join(header), fill=ink)
+    cursor_y += row_height
+    draw.line([left, cursor_y - 10, left + width, cursor_y - 10], fill=accent, width=2)
+    for row in rows:
+        draw.text((left, cursor_y), "   ".join(row), fill=ink)
+        cursor_y += row_height
+    return cursor_y
+
+
+def _draw_bordered_table(
+    draw: ImageDraw.ImageDraw,
+    *,
+    left: int,
+    cursor_y: int,
+    width: int,
+    row_height: int,
+    col_width: int,
+    header: list[str],
+    rows: list[list[str]],
+    ink: tuple[int, int, int],
+    accent: tuple[int, int, int],
+) -> int:
+    total_rows = 1 + len(rows)
+    table_bottom = cursor_y + row_height * total_rows
+    draw.rectangle([left, cursor_y, left + width, table_bottom], outline=accent, width=2)
+    for index in range(1, len(header)):
+        x = left + index * col_width
+        draw.line([x, cursor_y, x, table_bottom], fill=accent, width=2)
+    for row_index in range(1, total_rows):
+        y = cursor_y + row_index * row_height
+        draw.line([left, y, left + width, y], fill=accent, width=2)
+    for col_index, cell in enumerate(header):
+        draw.text((left + col_index * col_width + 12, cursor_y + 16), cell, fill=ink)
+    for row_index, row in enumerate(rows, start=1):
+        for col_index, cell in enumerate(row):
+            draw.text((left + col_index * col_width + 12, cursor_y + row_index * row_height + 16), cell, fill=ink)
+    return table_bottom
+
+
 def _write_table_page(
     path: Path,
     *,
@@ -183,13 +261,14 @@ def _write_table_page(
     width = 756
     row_height = 58
     col_width = width // max(1, len(header))
-    cursor_y = top
-
-    if title:
-        draw.text((left, cursor_y), title, fill=ink)
-        cursor_y += 36
-    if leading_paragraph:
-        cursor_y = _draw_text_block(draw, x=left, y=cursor_y, lines=list(leading_paragraph), fill=ink) + 20
+    cursor_y = _draw_table_preamble(
+        draw,
+        left=left,
+        top=top,
+        title=title,
+        leading_paragraph=leading_paragraph,
+        ink=ink,
+    )
 
     table_top = cursor_y
     if merged_header:
@@ -198,27 +277,30 @@ def _write_table_page(
         cursor_y += row_height
 
     if borderless:
-        draw.text((left, cursor_y), "   ".join(header), fill=ink)
-        cursor_y += row_height
-        draw.line([left, cursor_y - 10, left + width, cursor_y - 10], fill=accent, width=2)
-        for row in rows:
-            draw.text((left, cursor_y), "   ".join(row), fill=ink)
-            cursor_y += row_height
+        cursor_y = _draw_borderless_table(
+            draw,
+            left=left,
+            cursor_y=cursor_y,
+            width=width,
+            row_height=row_height,
+            header=header,
+            rows=rows,
+            ink=ink,
+            accent=accent,
+        )
     else:
-        total_rows = 1 + len(rows)
-        draw.rectangle([left, cursor_y, left + width, cursor_y + row_height * total_rows], outline=accent, width=2)
-        for index in range(1, len(header)):
-            x = left + index * col_width
-            draw.line([x, cursor_y, x, cursor_y + row_height * total_rows], fill=accent, width=2)
-        for row_index in range(1, total_rows):
-            y = cursor_y + row_index * row_height
-            draw.line([left, y, left + width, y], fill=accent, width=2)
-        for col_index, cell in enumerate(header):
-            draw.text((left + col_index * col_width + 12, cursor_y + 16), cell, fill=ink)
-        for row_index, row in enumerate(rows, start=1):
-            for col_index, cell in enumerate(row):
-                draw.text((left + col_index * col_width + 12, cursor_y + row_index * row_height + 16), cell, fill=ink)
-        cursor_y += row_height * total_rows
+        cursor_y = _draw_bordered_table(
+            draw,
+            left=left,
+            cursor_y=cursor_y,
+            width=width,
+            row_height=row_height,
+            col_width=col_width,
+            header=header,
+            rows=rows,
+            ink=ink,
+            accent=accent,
+        )
 
     draw.text((left, cursor_y + 28), f"Rows: {len(rows)}", fill=accent)
     if table_top > top:

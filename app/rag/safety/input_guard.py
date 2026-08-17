@@ -28,6 +28,70 @@ class GuardResult:
     matched_rules: list[str]
 
 
+def _record_match(matched: dict[str, float], rule_name: str, score: float) -> None:
+    matched[rule_name] = max(float(matched.get(rule_name) or 0.0), float(score))
+
+
+def _record_rule_matches(text: str, rules: tuple[Any, ...], matched: dict[str, float]) -> None:
+    for rule in rules:
+        if rule.pattern.search(text):
+            _record_match(matched, rule.name, rule.score)
+
+
+def _base64_obfuscation_hits(text: str) -> int:
+    hits = 0
+    for candidate in BASE64_BLOCK_RE.findall(text):
+        if len(candidate) < 24:
+            continue
+        try:
+            decoded = base64.b64decode(candidate, validate=True).decode("utf-8", errors="ignore").lower()
+        except ValueError:
+            continue
+        if any(marker in decoded for marker in ("ignore previous", "system prompt", "developer message", "act as")):
+            hits += 1
+    return hits
+
+
+def _history_injection_hits(conversation_history: list[dict[str, Any]] | None) -> int:
+    hits = 0
+    for message in (conversation_history or [])[-4:]:
+        if not isinstance(message, dict):
+            continue
+        if str(message.get("role") or "").strip().lower() != "user":
+            continue
+        content = str(message.get("content") or "")
+        if not content:
+            continue
+        if any(rule.pattern.search(content) for rule in INSTRUCTION_OVERRIDE_RULES + SYSTEM_PROMPT_PROBE_RULES):
+            hits += 1
+    return hits
+
+
+def _collect_matches(
+    text: str,
+    conversation_history: list[dict[str, Any]] | None,
+) -> dict[str, float]:
+    matched: dict[str, float] = {}
+    for rules in (
+        ROLE_HIJACK_RULES,
+        INSTRUCTION_OVERRIDE_RULES,
+        SYSTEM_PROMPT_PROBE_RULES,
+        DELIMITER_ATTACK_RULES,
+    ):
+        _record_rule_matches(text, rules, matched)
+    if HTML_ENTITY_ATTACK_RE.search(text):
+        _record_match(matched, "html_entity_obfuscation", 0.75)
+    if any(character in text for character in ZERO_WIDTH_CHARS):
+        _record_match(matched, "zero_width_obfuscation", 0.78)
+    if _base64_obfuscation_hits(text) > 0:
+        _record_match(matched, "base64_obfuscation", 0.82)
+
+    history_hits = _history_injection_hits(conversation_history)
+    if history_hits > 0:
+        _record_match(matched, "indirect_injection_history", min(0.25 + (0.1 * history_hits), 0.55))
+    return matched
+
+
 class InputGuard:
     """Best-effort prompt injection and jailbreak detector."""
 
@@ -45,55 +109,7 @@ class InputGuard:
         conversation_history: list[dict[str, Any]] | None = None,
     ) -> GuardResult:
         text = str(query or "")
-        matched: dict[str, float] = {}
-
-        def _record(rule_name: str, score: float) -> None:
-            matched[rule_name] = max(float(matched.get(rule_name) or 0.0), float(score))
-
-        for rule in ROLE_HIJACK_RULES:
-            if rule.pattern.search(text):
-                _record(rule.name, rule.score)
-        for rule in INSTRUCTION_OVERRIDE_RULES:
-            if rule.pattern.search(text):
-                _record(rule.name, rule.score)
-        for rule in SYSTEM_PROMPT_PROBE_RULES:
-            if rule.pattern.search(text):
-                _record(rule.name, rule.score)
-        for rule in DELIMITER_ATTACK_RULES:
-            if rule.pattern.search(text):
-                _record(rule.name, rule.score)
-
-        if HTML_ENTITY_ATTACK_RE.search(text):
-            _record("html_entity_obfuscation", 0.75)
-        if any(ch in text for ch in ZERO_WIDTH_CHARS):
-            _record("zero_width_obfuscation", 0.78)
-
-        base64_hits = 0
-        for candidate in BASE64_BLOCK_RE.findall(text):
-            if len(candidate) < 24:
-                continue
-            try:
-                decoded = base64.b64decode(candidate, validate=True).decode("utf-8", errors="ignore").lower()
-            except ValueError:
-                continue
-            if any(marker in decoded for marker in ("ignore previous", "system prompt", "developer message", "act as")):
-                base64_hits += 1
-        if base64_hits > 0:
-            _record("base64_obfuscation", 0.82)
-
-        history_hits = 0
-        for msg in (conversation_history or [])[-4:]:
-            if not isinstance(msg, dict):
-                continue
-            if str(msg.get("role") or "").strip().lower() != "user":
-                continue
-            content = str(msg.get("content") or "")
-            if not content:
-                continue
-            if any(rule.pattern.search(content) for rule in INSTRUCTION_OVERRIDE_RULES + SYSTEM_PROMPT_PROBE_RULES):
-                history_hits += 1
-        if history_hits > 0:
-            _record("indirect_injection_history", min(0.25 + (0.1 * history_hits), 0.55))
+        matched = _collect_matches(text, conversation_history)
 
         score = min(1.0, sum(sorted(matched.values(), reverse=True)[:3]))
         matched_rules = sorted(matched.keys())

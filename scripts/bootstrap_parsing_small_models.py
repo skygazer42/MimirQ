@@ -12,7 +12,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from app.parsing.models.hf_cache import HfSnapshotResult, download_hf_snapshot  # noqa: E402,F401
+from app.parsing.models.hf_cache import download_hf_snapshot  # noqa: E402
 from app.parsing.models.manifest import SmallModelManifest, SmallModelSpec, load_small_model_manifest  # noqa: E402
 
 _DEFAULT_MANIFEST = _REPO_ROOT / "config" / "parsing_small_models.yaml"
@@ -75,6 +75,77 @@ def _cpu_skip_reason(spec: SmallModelSpec) -> str | None:
     return None
 
 
+def _load_optimum_exporter() -> tuple[Any | None, Exception | None]:
+    try:
+        from optimum.exporters.onnx import main_export  # type: ignore
+    except Exception as exc:  # noqa: BLE001
+        return None, exc
+    return main_export, None
+
+
+def _export_with_optimum(
+    *,
+    main_export: Any,
+    spec: SmallModelSpec,
+    snapshot_path: Path,
+    onnx_path: Path,
+    task: str,
+    opset: int,
+) -> dict[str, Any]:
+    main_export(
+        model_name_or_path=str(snapshot_path),
+        output=str(onnx_path.parent),
+        task=task,
+        opset=int(opset),
+        device="cpu",
+    )
+    produced = _find_onnx_files(onnx_path.parent)
+    if not produced:
+        raise RuntimeError(f"ONNX conversion finished without an .onnx file for {spec.task}.{spec.model_id}")
+    if produced[0] != onnx_path:
+        shutil.copy2(produced[0], onnx_path)
+    return {"backend": "optimum", "task": task, "opset": int(opset)}
+
+
+def _export_table_transformer(
+    *,
+    snapshot_path: Path,
+    onnx_path: Path,
+    task: str,
+    opset: int,
+) -> dict[str, Any]:
+    import torch  # type: ignore
+    from transformers import TableTransformerForObjectDetection  # type: ignore
+
+    model = TableTransformerForObjectDetection.from_pretrained(str(snapshot_path))
+    model.eval()
+    dummy_pixel_values = torch.zeros((1, 3, 800, 800), dtype=torch.float32)
+    with torch.no_grad():
+        torch.onnx.export(
+            model,
+            (dummy_pixel_values,),
+            str(onnx_path),
+            input_names=["pixel_values"],
+            output_names=["logits", "pred_boxes"],
+            dynamic_axes={
+                "pixel_values": {0: "batch", 2: "height", 3: "width"},
+                "logits": {0: "batch"},
+                "pred_boxes": {0: "batch"},
+            },
+            opset_version=int(opset),
+        )
+    return {"backend": "torch.onnx", "task": task, "opset": int(opset), "model_type": "table-transformer"}
+
+
+def _load_preprocessor(loaders: tuple[Any, ...], snapshot_path: Path) -> Any | None:
+    for loader in loaders:
+        try:
+            return loader.from_pretrained(str(snapshot_path))
+        except Exception:
+            continue
+    return None
+
+
 def _convert_transformers_to_onnx(
     *,
     spec: SmallModelSpec,
@@ -82,31 +153,19 @@ def _convert_transformers_to_onnx(
     onnx_path: Path,
     opset: int,
 ) -> dict[str, Any]:
-    try:
-        from optimum.exporters.onnx import main_export  # type: ignore
-    except Exception as exc:  # noqa: BLE001
-        main_export = None
-        optimum_error = exc
-    else:
-        optimum_error = None
-
     out_dir = onnx_path.parent
     out_dir.mkdir(parents=True, exist_ok=True)
     task = str(spec.pipeline_task or "auto").replace("_", "-")
+    main_export, optimum_error = _load_optimum_exporter()
     if main_export is not None:
-        main_export(  # type: ignore[misc]
-            model_name_or_path=str(snapshot_path),
-            output=str(out_dir),
+        return _export_with_optimum(
+            main_export=main_export,
+            spec=spec,
+            snapshot_path=snapshot_path,
+            onnx_path=onnx_path,
             task=task,
-            opset=int(opset),
-            device="cpu",
+            opset=opset,
         )
-        produced = _find_onnx_files(out_dir)
-        if not produced:
-            raise RuntimeError(f"ONNX conversion finished without an .onnx file for {spec.task}.{spec.model_id}")
-        if produced[0] != onnx_path:
-            shutil.copy2(produced[0], onnx_path)
-        return {"backend": "optimum", "task": task, "opset": int(opset)}
 
     # Transformers' built-in ONNX exporter supports a smaller but useful set of
     # model families (for example DETR/Table Transformer). This keeps the table
@@ -121,27 +180,12 @@ def _convert_transformers_to_onnx(
 
     config = AutoConfig.from_pretrained(str(snapshot_path))
     if str(getattr(config, "model_type", "") or "") == "table-transformer":
-        import torch  # type: ignore
-        from transformers import TableTransformerForObjectDetection  # type: ignore
-
-        model = TableTransformerForObjectDetection.from_pretrained(str(snapshot_path))
-        model.eval()
-        dummy_pixel_values = torch.zeros((1, 3, 800, 800), dtype=torch.float32)
-        with torch.no_grad():
-            torch.onnx.export(
-                model,
-                (dummy_pixel_values,),
-                str(onnx_path),
-                input_names=["pixel_values"],
-                output_names=["logits", "pred_boxes"],
-                dynamic_axes={
-                    "pixel_values": {0: "batch", 2: "height", 3: "width"},
-                    "logits": {0: "batch"},
-                    "pred_boxes": {0: "batch"},
-                },
-                opset_version=int(opset),
-            )
-        return {"backend": "torch.onnx", "task": task, "opset": int(opset), "model_type": "table-transformer"}
+        return _export_table_transformer(
+            snapshot_path=snapshot_path,
+            onnx_path=onnx_path,
+            task=task,
+            opset=opset,
+        )
 
     supported = FeaturesManager.get_supported_features_for_model_type(str(config.model_type))
     if task == "auto" or task not in supported:
@@ -150,13 +194,10 @@ def _convert_transformers_to_onnx(
     model = model_class.from_pretrained(str(snapshot_path))
     onnx_config = FeaturesManager.get_config(str(config.model_type), task)(config)
 
-    preprocessor = None
-    for loader in (AutoImageProcessor, AutoFeatureExtractor, AutoTokenizer):
-        try:
-            preprocessor = loader.from_pretrained(str(snapshot_path))
-            break
-        except Exception:
-            continue
+    preprocessor = _load_preprocessor(
+        (AutoImageProcessor, AutoFeatureExtractor, AutoTokenizer),
+        snapshot_path,
+    )
     if preprocessor is None:
         raise RuntimeError(
             f"Cannot load tokenizer/image processor for ONNX conversion of {spec.task}.{spec.model_id}"

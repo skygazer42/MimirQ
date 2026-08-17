@@ -26,6 +26,7 @@ import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, Callable
 from uuid import UUID
 
 if __package__ in {None, ""}:
@@ -45,7 +46,7 @@ def _parse_uuid(value: str) -> UUID:
         raise argparse.ArgumentTypeError("tenant-id must be a valid UUID") from exc
 
 
-def main(argv: list[str] | None = None) -> int:
+def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Run MimirQ DB maintenance jobs (bounded, idempotent).")
 
     # Postgres maintenance
@@ -73,8 +74,134 @@ def main(argv: list[str] | None = None) -> int:
 
     p.add_argument("--retention-days", type=int, default=90, help="Retention window in days (default: 90)")
     p.add_argument("--max-delete", type=int, default=100_000, help="Max rows to delete per tenant (default: 100000)")
+    return p
 
-    args = p.parse_args(argv)
+
+def _job_error(job: str, exc: Exception, *, tenant_id: UUID | None = None) -> dict[str, Any]:
+    result: dict[str, Any] = {"job": job}
+    if tenant_id is not None:
+        result["tenant_id"] = str(tenant_id)
+    result.update(
+        {
+            "ok": False,
+            "error": str(type(exc).__name__),
+            "detail": str(exc)[:200],
+        }
+    )
+    return result
+
+
+def _run_postgres_job(
+    args: argparse.Namespace,
+    *,
+    dry_run: bool,
+    ran_at: datetime,
+    results: list[dict[str, Any]],
+) -> bool:
+    try:
+        result = run_postgres_maintenance(
+            vacuum=bool(args.vacuum),
+            analyze=bool(args.analyze),
+            verbose=bool(args.verbose),
+            tables=[table for table in (args.table or []) if str(table or "").strip()],
+            dry_run=dry_run,
+            now=ran_at,
+        )
+        result["job"] = "postgres_maintenance"
+        results.append(result)
+        return bool(result.get("ok") is True)
+    except Exception as exc:  # noqa: BLE001
+        results.append(_job_error("postgres_maintenance", exc))
+        return False
+
+
+def _tenant_ids(args: argparse.Namespace, results: list[dict[str, Any]]) -> tuple[list[UUID], bool]:
+    if bool(args.all_tenants):
+        db = SessionLocal()
+        try:
+            rows = db.query(Tenant.id).all()
+            tenant_ids = [row[0] for row in rows if isinstance(row, tuple) and row and isinstance(row[0], UUID)]
+            return tenant_ids, True
+        except Exception as exc:  # noqa: BLE001
+            results.append(_job_error("tenant_list", exc))
+            return [], False
+        finally:
+            db.close()
+    if args.tenant_id is not None:
+        return [args.tenant_id], True
+    return [UUID(str(settings.DEFAULT_TENANT_ID))], True
+
+
+def _run_retention_job(
+    runner: Callable[..., dict[str, Any]],
+    job: str,
+    db: Any,
+    tenant_id: UUID,
+    args: argparse.Namespace,
+    *,
+    dry_run: bool,
+    ran_at: datetime,
+    results: list[dict[str, Any]],
+) -> bool:
+    try:
+        result = runner(
+            db,
+            tenant_id=tenant_id,
+            retention_days=int(args.retention_days or 0),
+            max_delete=int(args.max_delete or 0),
+            dry_run=dry_run,
+            actor_id="system:db_maintenance",
+            now=ran_at,
+        )
+        results.append({"job": job, "ok": True, **result})
+        return True
+    except Exception as exc:  # noqa: BLE001
+        results.append(_job_error(job, exc, tenant_id=tenant_id))
+        return False
+
+
+def _run_retention_jobs(
+    args: argparse.Namespace,
+    *,
+    dry_run: bool,
+    ran_at: datetime,
+    results: list[dict[str, Any]],
+) -> bool:
+    tenant_ids, ok = _tenant_ids(args, results)
+    for tenant_id in tenant_ids:
+        db = SessionLocal()
+        try:
+            if bool(args.audit_logs):
+                job_ok = _run_retention_job(
+                    run_audit_log_retention,
+                    "audit_logs_retention",
+                    db,
+                    tenant_id,
+                    args,
+                    dry_run=dry_run,
+                    ran_at=ran_at,
+                    results=results,
+                )
+                ok = job_ok and ok
+            if bool(args.regression_runs):
+                job_ok = _run_retention_job(
+                    run_regression_run_retention,
+                    "regression_runs_retention",
+                    db,
+                    tenant_id,
+                    args,
+                    dry_run=dry_run,
+                    ran_at=ran_at,
+                    results=results,
+                )
+                ok = job_ok and ok
+        finally:
+            db.close()
+    return ok
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _build_parser().parse_args(argv)
 
     selected = bool(args.vacuum) or bool(args.analyze) or bool(args.audit_logs) or bool(args.regression_runs)
     if not selected:
@@ -84,106 +211,15 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    dry_run = True
-    if bool(args.execute):
-        dry_run = False
-
+    dry_run = not bool(args.execute)
     ran_at = datetime.now(UTC)
-    results: list[dict] = []
+    results: list[dict[str, Any]] = []
     ok = True
 
-    # 1) Postgres maintenance (global, not per-tenant)
     if bool(args.vacuum) or bool(args.analyze):
-        try:
-            res = run_postgres_maintenance(
-                vacuum=bool(args.vacuum),
-                analyze=bool(args.analyze),
-                verbose=bool(args.verbose),
-                tables=[t for t in (args.table or []) if str(t or "").strip()],
-                dry_run=bool(dry_run),
-                now=ran_at,
-            )
-            res["job"] = "postgres_maintenance"
-            results.append(res)
-            ok = ok and bool(res.get("ok") is True)
-        except Exception as exc:  # noqa: BLE001
-            results.append(
-                {"job": "postgres_maintenance", "ok": False, "error": str(type(exc).__name__), "detail": str(exc)[:200]}
-            )
-            ok = False
-
-    # 2) Retention jobs (per-tenant)
+        ok = _run_postgres_job(args, dry_run=dry_run, ran_at=ran_at, results=results) and ok
     if bool(args.audit_logs) or bool(args.regression_runs):
-        tenant_ids: list[UUID] = []
-        if bool(args.all_tenants):
-            db = SessionLocal()
-            try:
-                rows = db.query(Tenant.id).all()
-                tenant_ids = [r[0] for r in rows if isinstance(r, tuple) and r and isinstance(r[0], UUID)]
-            except Exception as exc:  # noqa: BLE001
-                results.append(
-                    {"job": "tenant_list", "ok": False, "error": str(type(exc).__name__), "detail": str(exc)[:200]}
-                )
-                ok = False
-                tenant_ids = []
-            finally:
-                db.close()
-        elif args.tenant_id is not None:
-            tenant_ids = [args.tenant_id]
-        else:
-            tenant_ids = [UUID(str(settings.DEFAULT_TENANT_ID))]
-
-        for tid in tenant_ids:
-            db = SessionLocal()
-            try:
-                if bool(args.audit_logs):
-                    try:
-                        res = run_audit_log_retention(
-                            db,
-                            tenant_id=tid,
-                            retention_days=int(args.retention_days or 0),
-                            max_delete=int(args.max_delete or 0),
-                            dry_run=bool(dry_run),
-                            actor_id="system:db_maintenance",
-                            now=ran_at,
-                        )
-                        results.append({"job": "audit_logs_retention", "ok": True, **res})
-                    except Exception as exc:  # noqa: BLE001
-                        results.append(
-                            {
-                                "job": "audit_logs_retention",
-                                "tenant_id": str(tid),
-                                "ok": False,
-                                "error": str(type(exc).__name__),
-                                "detail": str(exc)[:200],
-                            }
-                        )
-                        ok = False
-                if bool(args.regression_runs):
-                    try:
-                        res = run_regression_run_retention(
-                            db,
-                            tenant_id=tid,
-                            retention_days=int(args.retention_days or 0),
-                            max_delete=int(args.max_delete or 0),
-                            dry_run=bool(dry_run),
-                            actor_id="system:db_maintenance",
-                            now=ran_at,
-                        )
-                        results.append({"job": "regression_runs_retention", "ok": True, **res})
-                    except Exception as exc:  # noqa: BLE001
-                        results.append(
-                            {
-                                "job": "regression_runs_retention",
-                                "tenant_id": str(tid),
-                                "ok": False,
-                                "error": str(type(exc).__name__),
-                                "detail": str(exc)[:200],
-                            }
-                        )
-                        ok = False
-            finally:
-                db.close()
+        ok = _run_retention_jobs(args, dry_run=dry_run, ran_at=ran_at, results=results) and ok
 
     print(json.dumps({"ok": bool(ok), "ran_at": ran_at.isoformat(), "results": results}, ensure_ascii=False))
     return 0 if ok else 1

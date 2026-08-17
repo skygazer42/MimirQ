@@ -111,39 +111,45 @@ def _int_simplex_partitions(total: int, parts: int) -> Iterator[tuple[int, ...]]
             yield (int(i),) + tuple(rest)
 
 
-def _weight_variants(*, channels: list[str], step: float) -> list[dict[str, float]]:
-    ch = [str(c).strip().lower() for c in (channels or []) if str(c).strip()]
-    if not ch:
+def _normalize_channels(channels: list[str]) -> list[str]:
+    normalized = [str(channel).strip().lower() for channel in (channels or []) if str(channel).strip()]
+    if not normalized:
         raise ValueError("channels must be non-empty")
-    if len(set(ch)) != len(ch):
+    if len(set(normalized)) != len(normalized):
         raise ValueError("channels must be unique")
+    return normalized
 
+
+def _grid_partition_total(step: float) -> int:
     step_f = float(step)
     if step_f <= 0.0 or step_f > 1.0:
         raise ValueError("step must be in (0,1]")
-    k = int(round(1.0 / step_f))
-    if k <= 0:
+    total = int(round(1.0 / step_f))
+    if total <= 0:
         raise ValueError("invalid step")
-    # Require step to evenly divide 1 for stable integer partitioning.
-    if abs(step_f * k - 1.0) > 1e-6:
+    if abs(step_f * total - 1.0) > 1e-6:
         raise ValueError("step must evenly divide 1.0 (e.g., 0.5, 0.25, 0.2, 0.1)")
+    return total
 
+
+def _normalized_partition_weights(*, channels: list[str], row: tuple[int, ...], total: int) -> dict[str, float]:
+    weights = {key: float(value) / float(total) for key, value in zip(channels, row, strict=True) if int(value) > 0}
+    if not weights:
+        return {}
+    scale = sum(float(value) for value in weights.values())
+    if scale <= 0.0:
+        return {}
+    return {key: round(float(value) / scale, 6) for key, value in sorted(weights.items())}
+
+
+def _weight_variants(*, channels: list[str], step: float) -> list[dict[str, float]]:
+    ch = _normalize_channels(channels)
+    total = _grid_partition_total(step)
     out: list[dict[str, float]] = []
-    for row in _int_simplex_partitions(k, len(ch)):
-        weights: dict[str, float] = {}
-        for key, n in zip(ch, row, strict=True):
-            if int(n) <= 0:
-                continue
-            weights[key] = float(n) / float(k)
+    for row in _int_simplex_partitions(total, len(ch)):
+        weights = _normalized_partition_weights(channels=ch, row=row, total=total)
         if not weights:
             continue
-        # Normalize (defense-in-depth against float rounding).
-        s = sum(float(v) for v in weights.values())
-        if s <= 0.0:
-            continue
-        weights = {k0: float(v0) / s for k0, v0 in weights.items()}
-        # Round for stable output/labels.
-        weights = {k0: round(float(v0), 6) for k0, v0 in sorted(weights.items())}
         out.append(weights)
     return out
 
@@ -171,70 +177,68 @@ def _variant_sig(weights: dict[str, float]) -> str:
     return ",".join(parts)
 
 
-def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description="Learn fusion weights offline via Evidence API (grid search).")
-    p.add_argument("--cases", required=True, help="Path to regression cases JSON (bundle v1 or legacy array)")
-    p.add_argument("--base-url", default="http://localhost:8000/api/v1", help="API base URL (default: %(default)s)")
-    p.add_argument("--tenant-id", default="", help="Tenant id (X-Tenant-ID header)")
-    p.add_argument("--user-id", default="", help="User id (X-User-ID header, for AUTH_MODE=header)")
-    p.add_argument("--bearer", default="", help="Bearer token (Authorization: Bearer ...)")
-    p.add_argument("--timeout-sec", type=float, default=30.0, help="HTTP timeout seconds (default: %(default)s)")
-
-    p.add_argument("--step", type=float, default=0.25, help="Grid step size on simplex (default: %(default)s)")
-    p.add_argument(
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Learn fusion weights offline via Evidence API (grid search).")
+    parser.add_argument("--cases", required=True, help="Path to regression cases JSON (bundle v1 or legacy array)")
+    parser.add_argument(
+        "--base-url",
+        default="http://localhost:8000/api/v1",
+        help="API base URL (default: %(default)s)",
+    )
+    parser.add_argument("--tenant-id", default="", help="Tenant id (X-Tenant-ID header)")
+    parser.add_argument("--user-id", default="", help="User id (X-User-ID header, for AUTH_MODE=header)")
+    parser.add_argument("--bearer", default="", help="Bearer token (Authorization: Bearer ...)")
+    parser.add_argument("--timeout-sec", type=float, default=30.0, help="HTTP timeout seconds (default: %(default)s)")
+    parser.add_argument("--step", type=float, default=0.25, help="Grid step size on simplex (default: %(default)s)")
+    parser.add_argument(
         "--channels",
         default="vector,bm25,lexical,sparse",
         help="Comma-separated channels to tune (default: %(default)s)",
     )
-    p.add_argument(
+    parser.add_argument(
         "--objective",
         default="mrr",
         help="Objective metric: mrr|recall|ndcg10|ndcg20|hit10|hit20 (default: %(default)s)",
     )
-    p.add_argument("--max-cases", type=int, default=0, help="Limit number of cases (default: all)")
-    p.add_argument("--top-k", type=int, default=50, help="Evidence API rag_config.top_k (default: %(default)s)")
-    p.add_argument(
+    parser.add_argument("--max-cases", type=int, default=0, help="Limit number of cases (default: all)")
+    parser.add_argument("--top-k", type=int, default=50, help="Evidence API rag_config.top_k (default: %(default)s)")
+    parser.add_argument(
         "--score-threshold",
         type=float,
         default=0.0,
         help="Evidence API rag_config.score_threshold (default: %(default)s)",
     )
-    p.add_argument("--retrieval-mode", default="hybrid", help="hybrid|vector|keyword|mmr (default: %(default)s)")
-    p.add_argument(
-        "--retrieval-profile", default="recall50", help="recall20|recall50|coverage80 (default: %(default)s)"
+    parser.add_argument("--retrieval-mode", default="hybrid", help="hybrid|vector|keyword|mmr (default: %(default)s)")
+    parser.add_argument(
+        "--retrieval-profile",
+        default="recall50",
+        help="recall20|recall50|coverage80 (default: %(default)s)",
     )
+    parser.add_argument("--out-json", default="", help="Optional: write full search result JSON to this path")
+    parser.add_argument("--out-weights", default="", help="Optional: write best weights JSON to this path")
+    parser.add_argument("--top-n", type=int, default=10, help="Print top-N leaderboard rows (default: %(default)s)")
+    return parser
 
-    p.add_argument("--out-json", default="", help="Optional: write full search result JSON to this path")
-    p.add_argument("--out-weights", default="", help="Optional: write best weights JSON to this path")
-    p.add_argument("--top-n", type=int, default=10, help="Print top-N leaderboard rows (default: %(default)s)")
-    args = p.parse_args(argv)
 
+def _load_cases_bundle(args: argparse.Namespace) -> tuple[str, list[dict[str, Any]]]:
     cases_path = Path(args.cases)
     if not cases_path.exists():
-        print(f"[fusion-learn] ERROR: cases file not found: {cases_path}", file=sys.stderr)
-        return 2
-
-    try:
-        raw_cases = _load_json(cases_path)
-        dataset_id, items = coerce_case_bundle(raw_cases)
-    except Exception as exc:  # noqa: BLE001
-        print(f"[fusion-learn] ERROR: failed to parse cases: {str(exc)[:200]}", file=sys.stderr)
-        return 2
-
+        raise FileNotFoundError(str(cases_path))
+    raw_cases = _load_json(cases_path)
+    dataset_id, items = coerce_case_bundle(raw_cases)
     if args.max_cases and int(args.max_cases) > 0:
         items = list(items)[: int(args.max_cases)]
+    return dataset_id, items
 
-    channels = [s.strip() for s in str(args.channels or "").split(",") if s.strip()]
-    try:
-        variants = _weight_variants(channels=channels, step=float(args.step))
-    except Exception as exc:  # noqa: BLE001
-        print(f"[fusion-learn] ERROR: invalid grid: {str(exc)[:200]}", file=sys.stderr)
-        return 2
 
-    url = str(args.base_url).rstrip("/") + "/rag/retrieve"
-    timeout = httpx.Timeout(float(args.timeout_sec or 30.0))
+def _build_grid_variants(args: argparse.Namespace) -> tuple[list[str], list[dict[str, float]]]:
+    channels = [segment.strip() for segment in str(args.channels or "").split(",") if segment.strip()]
+    variants = _weight_variants(channels=channels, step=float(args.step))
+    return channels, variants
 
-    global_rag = {
+
+def _global_rag_config(args: argparse.Namespace) -> dict[str, Any]:
+    return {
         "retrieval_profile": str(args.retrieval_profile),
         "retrieval_mode": str(args.retrieval_mode),
         "top_k": int(args.top_k),
@@ -245,89 +249,180 @@ def main(argv: list[str] | None = None) -> int:
         "fusion_strategy": "weighted",
     }
 
+
+def _evaluate_variant(
+    *,
+    client: httpx.Client,
+    url: str,
+    headers: dict[str, str],
+    args: argparse.Namespace,
+    dataset_id: str,
+    items: list[dict[str, Any]],
+    global_rag: dict[str, Any],
+    weights: dict[str, float],
+) -> dict[str, Any]:
+    items_meta: list[dict[str, Any]] = []
+    used = 0
+    errors: list[str] = []
+    rag_cfg = dict(global_rag)
+    rag_cfg["fusion_weights"] = dict(weights)
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        question = str(item.get("question") or item.get("query") or "").strip()
+        refs = item.get("reference_sources") or []
+        if (not question) or (not isinstance(refs, list)) or (not refs):
+            continue
+
+        body = {
+            "query": question,
+            "history": [],
+            "dataset_id": str(dataset_id),
+            "document_ids": [],
+            "rag_config": dict(rag_cfg),
+        }
+        try:
+            response = client.post(url, headers=headers, json=body)
+            response.raise_for_status()
+            payload = response.json() or {}
+        except Exception as exc:
+            errors.append(str(exc)[:200])
+            continue
+
+        citations = payload.get("citations") or []
+        if not isinstance(citations, list):
+            citations = []
+        meta = compute_retrieval_item_meta(case=item, citations=list(citations))
+        meta["abstain_triggered"] = bool(payload.get("abstain_triggered"))
+        meta["abstain_reason"] = payload.get("abstain_reason")
+        items_meta.append(meta)
+        used += 1
+
+    try:
+        objective = _objective_value(build_retrieval_gate_summary(items_meta), str(args.objective))
+    except Exception:
+        objective = 0.0
+    summary = build_retrieval_gate_summary(items_meta)
+    return {
+        "weights": weights,
+        "weights_hash": stable_hash(_variant_sig(weights), length=16),
+        "cases_used": used,
+        "errors": errors[:25],
+        "summary": summary,
+        "objective": float(objective),
+    }
+
+
+def _sort_key(row: dict[str, Any]) -> tuple[float, float, float, float]:
+    summary = row.get("summary") if isinstance(row.get("summary"), dict) else {}
+    return (
+        float(row.get("objective") or 0.0),
+        float((summary or {}).get("retrieval_recall") or 0.0),
+        float((summary or {}).get("retrieval_ndcg_at_10") or 0.0),
+        float((summary or {}).get("retrieval_hit_at_10") or 0.0),
+    )
+
+
+def _run_variant_search(
+    *,
+    args: argparse.Namespace,
+    dataset_id: str,
+    items: list[dict[str, Any]],
+    variants: list[dict[str, float]],
+    url: str,
+    timeout: httpx.Timeout,
+) -> tuple[list[dict[str, Any]], float]:
     started = time.time()
     results: list[dict[str, Any]] = []
-
+    headers = _headers(args)
+    global_rag = _global_rag_config(args)
     with httpx.Client(timeout=timeout) as client:
         for idx, weights in enumerate(variants, start=1):
-            items_meta: list[dict[str, Any]] = []
-            used = 0
-            errors: list[str] = []
-
-            rag_cfg = dict(global_rag)
-            rag_cfg["fusion_weights"] = dict(weights)
-
-            for item in items:
-                if not isinstance(item, dict):
-                    continue
-                question = str(item.get("question") or item.get("query") or "").strip()
-                if not question:
-                    continue
-                refs = item.get("reference_sources") or []
-                if not isinstance(refs, list) or not refs:
-                    continue
-
-                body = {
-                    "query": question,
-                    "history": [],
-                    "dataset_id": str(dataset_id),
-                    "document_ids": [],
-                    "rag_config": dict(rag_cfg),
-                }
-
-                try:
-                    r = client.post(url, headers=_headers(args), json=body)
-                    r.raise_for_status()
-                    payload = r.json() or {}
-                except Exception as exc:  # noqa: BLE001
-                    errors.append(str(exc)[:200])
-                    continue
-
-                citations = payload.get("citations") or []
-                if not isinstance(citations, list):
-                    citations = []
-                meta = compute_retrieval_item_meta(case=item, citations=list(citations))
-                meta["abstain_triggered"] = bool(payload.get("abstain_triggered"))
-                meta["abstain_reason"] = payload.get("abstain_reason")
-                items_meta.append(meta)
-                used += 1
-
-            summary = build_retrieval_gate_summary(items_meta)
-            try:
-                obj = _objective_value(summary, str(args.objective))
-            except Exception:
-                obj = 0.0
-
             results.append(
-                {
-                    "weights": weights,
-                    "weights_hash": stable_hash(_variant_sig(weights), length=16),
-                    "cases_used": used,
-                    "errors": errors[:25],
-                    "summary": summary,
-                    "objective": float(obj),
-                }
+                _evaluate_variant(
+                    client=client,
+                    url=url,
+                    headers=headers,
+                    args=args,
+                    dataset_id=dataset_id,
+                    items=items,
+                    global_rag=global_rag,
+                    weights=weights,
+                )
             )
-
             if idx == 1 or idx % 25 == 0:
                 elapsed = time.time() - started
                 print(
                     f"[fusion-learn] progress {idx}/{len(variants)} variants elapsed={elapsed:.1f}s",
                     file=sys.stderr,
                 )
+    results.sort(key=_sort_key, reverse=True)
+    return results, round(time.time() - started, 3)
 
-    def _sort_key(row: dict[str, Any]) -> tuple[float, float, float, float]:
-        summ = row.get("summary") if isinstance(row.get("summary"), dict) else {}
-        return (
-            float(row.get("objective") or 0.0),
-            float((summ or {}).get("retrieval_recall") or 0.0),
-            float((summ or {}).get("retrieval_ndcg_at_10") or 0.0),
-            float((summ or {}).get("retrieval_hit_at_10") or 0.0),
+
+def _write_outputs(
+    *,
+    args: argparse.Namespace,
+    out: dict[str, Any],
+    best: dict[str, Any] | None,
+) -> None:
+    if args.out_json:
+        _write_json(Path(args.out_json), out)
+    if args.out_weights and best and isinstance(best.get("weights"), dict):
+        _write_json(Path(args.out_weights), best.get("weights"))
+
+
+def _print_leaderboard(*, results: list[dict[str, Any]], top_n: int) -> None:
+    print("| rank | objective | recall | ndcg@10 | hit@10 | weights |")
+    print("| --- | --- | --- | --- | --- | --- |")
+    for i, row in enumerate(results[:top_n], start=1):
+        summary = row.get("summary") if isinstance(row.get("summary"), dict) else {}
+        weights = row.get("weights") if isinstance(row.get("weights"), dict) else {}
+        print(
+            "| "
+            + " | ".join(
+                [
+                    str(i),
+                    f"{float(row.get('objective') or 0.0):.4f}",
+                    f"{float((summary or {}).get('retrieval_recall') or 0.0):.4f}",
+                    f"{float((summary or {}).get('retrieval_ndcg_at_10') or 0.0):.4f}",
+                    f"{float((summary or {}).get('retrieval_hit_at_10') or 0.0):.4f}",
+                    json.dumps(weights, ensure_ascii=False, sort_keys=True),
+                ]
+            )
+            + " |"
         )
 
-    results.sort(key=_sort_key, reverse=True)
+
+def main(argv: list[str] | None = None) -> int:
+    args = _build_parser().parse_args(argv)
+    try:
+        dataset_id, items = _load_cases_bundle(args)
+    except FileNotFoundError:
+        print(f"[fusion-learn] ERROR: cases file not found: {Path(args.cases)}", file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"[fusion-learn] ERROR: failed to parse cases: {str(exc)[:200]}", file=sys.stderr)
+        return 2
+
+    try:
+        channels, variants = _build_grid_variants(args)
+    except Exception as exc:
+        print(f"[fusion-learn] ERROR: invalid grid: {str(exc)[:200]}", file=sys.stderr)
+        return 2
+
+    url = str(args.base_url).rstrip("/") + "/rag/retrieve"
+    timeout = httpx.Timeout(float(args.timeout_sec or 30.0))
+    results, elapsed = _run_variant_search(
+        args=args,
+        dataset_id=dataset_id,
+        items=items,
+        variants=variants,
+        url=url,
+        timeout=timeout,
+    )
     best = results[0] if results else None
-    elapsed = round(time.time() - started, 3)
 
     out = {
         "schema": "mimirq.fusion_weights_search.v1",
@@ -341,34 +436,10 @@ def main(argv: list[str] | None = None) -> int:
         "best": best,
         "results": results,
     }
+    _write_outputs(args=args, out=out, best=best)
 
-    if args.out_json:
-        _write_json(Path(args.out_json), out)
-
-    if args.out_weights and best and isinstance(best.get("weights"), dict):
-        _write_json(Path(args.out_weights), best.get("weights"))
-
-    # Print compact leaderboard to stdout.
     top_n = max(1, int(args.top_n or 0))
-    print("| rank | objective | recall | ndcg@10 | hit@10 | weights |")
-    print("| --- | --- | --- | --- | --- | --- |")
-    for i, row in enumerate(results[:top_n], start=1):
-        summ = row.get("summary") if isinstance(row.get("summary"), dict) else {}
-        w = row.get("weights") if isinstance(row.get("weights"), dict) else {}
-        print(
-            "| "
-            + " | ".join(
-                [
-                    str(i),
-                    f"{float(row.get('objective') or 0.0):.4f}",
-                    f"{float((summ or {}).get('retrieval_recall') or 0.0):.4f}",
-                    f"{float((summ or {}).get('retrieval_ndcg_at_10') or 0.0):.4f}",
-                    f"{float((summ or {}).get('retrieval_hit_at_10') or 0.0):.4f}",
-                    json.dumps(w, ensure_ascii=False, sort_keys=True),
-                ]
-            )
-            + " |"
-        )
+    _print_leaderboard(results=results, top_n=top_n)
 
     if best and isinstance(best.get("weights"), dict):
         print("\nBest weights:\n" + json.dumps(best.get("weights"), ensure_ascii=False, indent=2, sort_keys=True))

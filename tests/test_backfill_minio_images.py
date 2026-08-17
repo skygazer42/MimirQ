@@ -1,3 +1,5 @@
+import sys
+
 from scripts import backfill_minio_images
 
 
@@ -62,3 +64,104 @@ def test_storage_readiness_falls_back_to_legacy_ready_shape(monkeypatch) -> None
         "http://localhost:8000/api/v1/health/details",
         "http://localhost:8000/api/v1/health/ready",
     ]
+
+
+def test_main_dry_run_warns_and_lists_only_first_ten_candidates(monkeypatch, capsys) -> None:
+    document_ids = [f"doc-{index}" for index in range(12)]
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "backfill_minio_images.py",
+            "--dataset-id",
+            "dataset",
+            "--tenant-id",
+            "tenant",
+            "--user-id",
+            "user",
+            "--dry-run",
+        ],
+    )
+    monkeypatch.setattr(
+        backfill_minio_images,
+        "_read_storage_readiness",
+        lambda **_kwargs: {"minio": {"enabled": False, "status": "disabled"}},
+    )
+    monkeypatch.setattr(
+        backfill_minio_images,
+        "_iter_dataset_document_ids",
+        lambda **_kwargs: document_ids,
+    )
+    monkeypatch.setattr(
+        backfill_minio_images,
+        "_request_json",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("dry run must not retry")),
+    )
+
+    assert backfill_minio_images.main() == 0
+
+    output = capsys.readouterr().out
+    assert "object storage is disabled" in output
+    assert "Candidate documents: 12" in output
+    assert "  - doc-0" in output
+    assert "  - doc-9" in output
+    assert "doc-10" not in output
+    assert "  ... (+2 more)" in output
+
+
+def test_main_batches_retry_payloads_and_totals(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "backfill_minio_images.py",
+            "--dataset-id",
+            "dataset",
+            "--tenant-id",
+            "tenant",
+            "--user-id",
+            "user",
+            "--batch-size",
+            "2",
+            "--force",
+            "--skip-if-unchanged",
+        ],
+    )
+    monkeypatch.setattr(
+        backfill_minio_images,
+        "_read_storage_readiness",
+        lambda **_kwargs: {"minio": {"enabled": True, "status": "connected"}},
+    )
+    monkeypatch.setattr(
+        backfill_minio_images,
+        "_iter_dataset_document_ids",
+        lambda **_kwargs: ["doc-1", "doc-2", "doc-3"],
+    )
+    payloads: list[dict] = []
+
+    def retry(_url, *, method, headers, payload, timeout_sec):
+        payloads.append(payload)
+        return backfill_minio_images.HttpResult(
+            status_code=200,
+            elapsed_ms=1,
+            data={"queued": len(payload["document_ids"]), "skipped": 1, "conflicts": []},
+            error=None,
+        )
+
+    monkeypatch.setattr(backfill_minio_images, "_request_json", retry)
+
+    assert backfill_minio_images.main() == 0
+
+    assert payloads == [
+        {
+            "force": True,
+            "skip_if_unchanged": True,
+            "document_ids": ["doc-1", "doc-2"],
+        },
+        {
+            "force": True,
+            "skip_if_unchanged": True,
+            "document_ids": ["doc-3"],
+        },
+    ]
+    assert "Done: queued=3 skipped=2" in capsys.readouterr().out

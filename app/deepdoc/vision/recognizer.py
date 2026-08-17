@@ -26,9 +26,7 @@ from . import operators
 from .ocr import load_model
 from .operators import preprocess
 
-resource_dir = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "../../resources/data_parser/qieci")
-)
+resource_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../resources/data_parser/qieci"))
 
 
 def get_default_resource_dir():
@@ -38,9 +36,7 @@ def get_default_resource_dir():
     Then the resource dir is: project_root/resources/data_parser/qieci
     If the directory does not exist, it will be created automatically.
     """
-    resource_dir = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "../../resources/data_parser/qieci")
-    )
+    resource_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../resources/data_parser/qieci"))
     return resource_dir
 
 
@@ -86,10 +82,8 @@ class Recognizer:
                 # restore the order using th
                 if "C" not in arr[j] or "C" not in arr[j + 1]:
                     continue
-                if arr[j + 1]["C"] < arr[j]["C"] \
-                        or (
-                        arr[j + 1]["C"] == arr[j]["C"]
-                        and arr[j + 1]["top"] < arr[j]["top"]
+                if arr[j + 1]["C"] < arr[j]["C"] or (
+                    arr[j + 1]["C"] == arr[j]["C"] and arr[j + 1]["top"] < arr[j]["top"]
                 ):
                     tmp = arr[j]
                     arr[j] = arr[j + 1]
@@ -105,10 +99,8 @@ class Recognizer:
             for j in range(i, -1, -1):
                 if "R" not in arr[j] or "R" not in arr[j + 1]:
                     continue
-                if arr[j + 1]["R"] < arr[j]["R"] \
-                        or (
-                        arr[j + 1]["R"] == arr[j]["R"]
-                        and arr[j + 1]["x0"] < arr[j]["x0"]
+                if arr[j + 1]["R"] < arr[j]["R"] or (
+                    arr[j + 1]["R"] == arr[j]["R"] and arr[j + 1]["x0"] < arr[j]["x0"]
                 ):
                     tmp = arr[j]
                     arr[j] = arr[j + 1]
@@ -130,53 +122,63 @@ class Recognizer:
         btm_ = min(b["bottom"], btm)
         if tp_ > btm_:
             raise ValueError("Bbox mismatch! T:{},B:{},X0:{},X1:{} => {}".format(tp, btm, x0, x1, b))
-        ov = (btm_ - tp_) * (x1_ - x0_) if x1 - \
-                                           x0 != 0 and btm - tp != 0 else 0
+        ov = (btm_ - tp_) * (x1_ - x0_) if x1 - x0 != 0 and btm - tp != 0 else 0
         if ov > 0 and ratio:
             ov /= (x1 - x0) * (btm - tp)
         return ov
 
     @staticmethod
-    def layouts_cleanup(boxes, layouts, far=2, thr=0.7):
-        def not_overlapped(a, b):
-            return any([a["x1"] < b["x0"],
-                        a["x0"] > b["x1"],
-                        a["bottom"] < b["top"],
-                        a["top"] > b["bottom"]])
+    def _not_overlapped(a, b):
+        return any(
+            [
+                a["x1"] < b["x0"],
+                a["x0"] > b["x1"],
+                a["bottom"] < b["top"],
+                a["top"] > b["bottom"],
+            ]
+        )
 
+    @staticmethod
+    def _overlap_is_comparable(layouts, i, j, far):
+        _ = far
+        return layouts[i].get("type", "") == layouts[j].get("type", "") and not Recognizer._not_overlapped(
+            layouts[i], layouts[j]
+        )
+
+    @staticmethod
+    def _box_overlap_area(boxes, layout):
+        area = 0
+        for box in boxes:
+            if not Recognizer._not_overlapped(box, layout):
+                area += Recognizer.overlapped_area(box, layout, False)
+        return area
+
+    @staticmethod
+    def _drop_layout_index(boxes, layouts, i, j):
+        if layouts[i].get("score") and layouts[j].get("score"):
+            return j if layouts[i]["score"] > layouts[j]["score"] else i
+
+        area_i = Recognizer._box_overlap_area(boxes, layouts[i])
+        area_j = Recognizer._box_overlap_area(boxes, layouts[j])
+        return j if area_i > area_j else i
+
+    @staticmethod
+    def layouts_cleanup(boxes, layouts, far=2, thr=0.7):
         i = 0
         while i + 1 < len(layouts):
             j = i + 1
-            while j < min(i + far, len(layouts)) \
-                    and (layouts[i].get("type", "") != layouts[j].get("type", "")
-                         or not_overlapped(layouts[i], layouts[j])):
+            while j < min(i + far, len(layouts)) and not Recognizer._overlap_is_comparable(layouts, i, j, far):
                 j += 1
             if j >= min(i + far, len(layouts)):
                 i += 1
                 continue
-            if Recognizer.overlapped_area(layouts[i], layouts[j]) < thr \
-                    and Recognizer.overlapped_area(layouts[j], layouts[i]) < thr:
+            if (
+                Recognizer.overlapped_area(layouts[i], layouts[j]) < thr
+                and Recognizer.overlapped_area(layouts[j], layouts[i]) < thr
+            ):
                 i += 1
                 continue
-
-            if layouts[i].get("score") and layouts[j].get("score"):
-                if layouts[i]["score"] > layouts[j]["score"]:
-                    layouts.pop(j)
-                else:
-                    layouts.pop(i)
-                continue
-
-            area_i, area_i_1 = 0, 0
-            for b in boxes:
-                if not not_overlapped(b, layouts[i]):
-                    area_i += Recognizer.overlapped_area(b, layouts[i], False)
-                if not not_overlapped(b, layouts[j]):
-                    area_i_1 += Recognizer.overlapped_area(b, layouts[j], False)
-
-            if area_i > area_i_1:
-                layouts.pop(j)
-            else:
-                layouts.pop(i)
+            layouts.pop(Recognizer._drop_layout_index(boxes, layouts, i, j))
 
         return layouts
 
@@ -193,18 +195,16 @@ class Recognizer:
         im_shape = []
         scale_factor = []
         if len(imgs) == 1:
-            inputs['image'] = np.array((imgs[0],)).astype('float32')
-            inputs['im_shape'] = np.array(
-                (im_info[0]['im_shape'],)).astype('float32')
-            inputs['scale_factor'] = np.array(
-                (im_info[0]['scale_factor'],)).astype('float32')
+            inputs["image"] = np.array((imgs[0],)).astype("float32")
+            inputs["im_shape"] = np.array((im_info[0]["im_shape"],)).astype("float32")
+            inputs["scale_factor"] = np.array((im_info[0]["scale_factor"],)).astype("float32")
             return inputs
 
-        im_shape = np.array([info['im_shape'] for info in im_info], dtype='float32')
-        scale_factor = np.array([info['scale_factor'] for info in im_info], dtype='float32')
+        im_shape = np.array([info["im_shape"] for info in im_info], dtype="float32")
+        scale_factor = np.array([info["scale_factor"] for info in im_info], dtype="float32")
 
-        inputs['im_shape'] = np.concatenate(im_shape, axis=0)
-        inputs['scale_factor'] = np.concatenate(scale_factor, axis=0)
+        inputs["im_shape"] = np.concatenate(im_shape, axis=0)
+        inputs["scale_factor"] = np.concatenate(scale_factor, axis=0)
 
         imgs_shape = [[e.shape[1], e.shape[2]] for e in imgs]
         max_shape_h = max([e[0] for e in imgs_shape])
@@ -212,11 +212,10 @@ class Recognizer:
         padding_imgs = []
         for img in imgs:
             im_c, im_h, im_w = img.shape[:]
-            padding_im = np.zeros(
-                (im_c, max_shape_h, max_shape_w), dtype=np.float32)
+            padding_im = np.zeros((im_c, max_shape_h, max_shape_w), dtype=np.float32)
             padding_im[:, :im_h, :im_w] = img
             padding_imgs.append(padding_im)
-        inputs['image'] = np.stack(padding_imgs, axis=0)
+        inputs["image"] = np.stack(padding_imgs, axis=0)
         return inputs
 
     @staticmethod
@@ -258,8 +257,9 @@ class Recognizer:
         for i, b in enumerate(boxes):
             if box.get("layoutno", "0") != b.get("layoutno", "0"):
                 continue
-            dis = min(abs(box["x0"] - b["x0"]), abs(box["x1"] - b["x1"]),
-                      abs(box["x0"] + box["x1"] - b["x1"] - b["x0"]) / 2)
+            dis = min(
+                abs(box["x0"] - b["x0"]), abs(box["x1"] - b["x1"]), abs(box["x0"] + box["x1"] - b["x1"] - b["x0"]) / 2
+            )
             if dis < min_dis:
                 min_i = i
                 min_dis = dis
@@ -287,26 +287,34 @@ class Recognizer:
         if "scale_factor" in self.input_names:
             preprocess_ops = []
             for op_info in [
-                {'interp': 2, 'keep_ratio': False, 'target_size': [800, 608], 'type': 'LinearResize'},
-                {'is_scale': True, 'mean': [0.485, 0.456, 0.406], 'std': [0.229, 0.224, 0.225],
-                 'type': 'StandardizeImage'},
-                {'type': 'Permute'},
-                {'stride': 32, 'type': 'PadStride'}
+                {"interp": 2, "keep_ratio": False, "target_size": [800, 608], "type": "LinearResize"},
+                {
+                    "is_scale": True,
+                    "mean": [0.485, 0.456, 0.406],
+                    "std": [0.229, 0.224, 0.225],
+                    "type": "StandardizeImage",
+                },
+                {"type": "Permute"},
+                {"stride": 32, "type": "PadStride"},
             ]:
                 new_op_info = op_info.copy()
-                op_type = new_op_info.pop('type')
+                op_type = new_op_info.pop("type")
                 preprocess_ops.append(getattr(operators, op_type)(**new_op_info))
 
             for im_path in image_list:
                 im, im_info = preprocess(im_path, preprocess_ops)
-                inputs.append({"image": np.array((im,)).astype('float32'),
-                               "scale_factor": np.array((im_info["scale_factor"],)).astype('float32')})
+                inputs.append(
+                    {
+                        "image": np.array((im,)).astype("float32"),
+                        "scale_factor": np.array((im_info["scale_factor"],)).astype("float32"),
+                    }
+                )
         else:
             hh, ww = self.input_shape
             for img in image_list:
                 h, w = img.shape[:2]
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                img = cv2.resize(np.array(img).astype('float32'), (ww, hh))
+                img = cv2.resize(np.array(img).astype("float32"), (ww, hh))
                 # Scale input pixel values to 0 to 1
                 img /= 255.0
                 img = img.transpose(2, 0, 1)
@@ -316,98 +324,95 @@ class Recognizer:
 
     def postprocess(self, boxes, inputs, thr):
         if "scale_factor" in self.input_names:
-            bb = []
-            for b in boxes:
-                clsid, bbox, score = int(b[0]), b[2:], b[1]
-                if score < thr:
-                    continue
-                if clsid >= len(self.label_list):
-                    continue
-                bb.append({
+            return self._postprocess_scaled_inputs(boxes, thr)
+        return self._postprocess_xywh_boxes(boxes, inputs, thr)
+
+    def _postprocess_scaled_inputs(self, boxes, thr):
+        results = []
+        for box in boxes:
+            clsid, bbox, score = int(box[0]), box[2:], box[1]
+            if score < thr or clsid >= len(self.label_list):
+                continue
+            results.append(
+                {
                     "type": self.label_list[clsid].lower(),
                     "bbox": [float(t) for t in bbox.tolist()],
-                    "score": float(score)
-                })
-            return bb
+                    "score": float(score),
+                }
+            )
+        return results
 
-        def xywh2xyxy(x):
-            # [x, y, w, h] to [x1, y1, x2, y2]
-            y = np.copy(x)
-            y[:, 0] = x[:, 0] - x[:, 2] / 2
-            y[:, 1] = x[:, 1] - x[:, 3] / 2
-            y[:, 2] = x[:, 0] + x[:, 2] / 2
-            y[:, 3] = x[:, 1] + x[:, 3] / 2
-            return y
+    @staticmethod
+    def _xywh2xyxy(boxes):
+        # [x, y, w, h] to [x1, y1, x2, y2]
+        xyxy_boxes = np.copy(boxes)
+        xyxy_boxes[:, 0] = boxes[:, 0] - boxes[:, 2] / 2
+        xyxy_boxes[:, 1] = boxes[:, 1] - boxes[:, 3] / 2
+        xyxy_boxes[:, 2] = boxes[:, 0] + boxes[:, 2] / 2
+        xyxy_boxes[:, 3] = boxes[:, 1] + boxes[:, 3] / 2
+        return xyxy_boxes
 
-        def compute_iou(box, boxes):
-            # Compute xmin, ymin, xmax, ymax for both boxes
-            xmin = np.maximum(box[0], boxes[:, 0])
-            ymin = np.maximum(box[1], boxes[:, 1])
-            xmax = np.minimum(box[2], boxes[:, 2])
-            ymax = np.minimum(box[3], boxes[:, 3])
+    @staticmethod
+    def _compute_iou(box, boxes):
+        xmin = np.maximum(box[0], boxes[:, 0])
+        ymin = np.maximum(box[1], boxes[:, 1])
+        xmax = np.minimum(box[2], boxes[:, 2])
+        ymax = np.minimum(box[3], boxes[:, 3])
+        intersection_area = np.maximum(0, xmax - xmin) * np.maximum(0, ymax - ymin)
+        box_area = (box[2] - box[0]) * (box[3] - box[1])
+        boxes_area = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+        union_area = box_area + boxes_area - intersection_area
+        return intersection_area / union_area
 
-            # Compute intersection area
-            intersection_area = np.maximum(0, xmax - xmin) * np.maximum(0, ymax - ymin)
+    @classmethod
+    def _iou_filter(cls, boxes, scores, iou_threshold):
+        sorted_indices = np.argsort(scores)[::-1]
+        keep_boxes = []
+        while sorted_indices.size > 0:
+            box_id = sorted_indices[0]
+            keep_boxes.append(box_id)
+            ious = cls._compute_iou(boxes[box_id, :], boxes[sorted_indices[1:], :])
+            keep_indices = np.nonzero(ious < iou_threshold)[0]
+            sorted_indices = sorted_indices[keep_indices + 1]
+        return keep_boxes
 
-            # Compute union area
-            box_area = (box[2] - box[0]) * (box[3] - box[1])
-            boxes_area = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
-            union_area = box_area + boxes_area - intersection_area
-
-            # Compute IoU
-            iou = intersection_area / union_area
-
-            return iou
-
-        def iou_filter(boxes, scores, iou_threshold):
-            sorted_indices = np.argsort(scores)[::-1]
-
-            keep_boxes = []
-            while sorted_indices.size > 0:
-                # Pick the last box
-                box_id = sorted_indices[0]
-                keep_boxes.append(box_id)
-
-                # Compute IoU of the picked box with the rest
-                ious = compute_iou(boxes[box_id, :], boxes[sorted_indices[1:], :])
-
-                # Remove boxes with IoU over the threshold
-                keep_indices = np.nonzero(ious < iou_threshold)[0]
-
-                sorted_indices = sorted_indices[keep_indices + 1]
-
-            return keep_boxes
-
+    def _postprocess_xywh_boxes(self, boxes, inputs, thr):
         boxes = np.squeeze(boxes).T
-        # Filter out object confidence scores below threshold
         scores = np.max(boxes[:, 4:], axis=1)
         boxes = boxes[scores > thr, :]
         scores = scores[scores > thr]
         if len(boxes) == 0:
             return []
 
-        # Get the class with the highest confidence
         class_ids = np.argmax(boxes[:, 4:], axis=1)
         boxes = boxes[:, :4]
-        input_shape = np.array([inputs["scale_factor"][0], inputs["scale_factor"][1], inputs["scale_factor"][0],
-                                inputs["scale_factor"][1]])
+        input_shape = np.array(
+            [
+                inputs["scale_factor"][0],
+                inputs["scale_factor"][1],
+                inputs["scale_factor"][0],
+                inputs["scale_factor"][1],
+            ]
+        )
         boxes = np.multiply(boxes, input_shape, dtype=np.float32)
-        boxes = xywh2xyxy(boxes)
+        boxes = self._xywh2xyxy(boxes)
 
-        unique_class_ids = np.unique(class_ids)
         indices = []
-        for class_id in unique_class_ids:
+        for class_id in np.unique(class_ids):
             class_indices = np.nonzero(class_ids == class_id)[0]
             class_boxes = boxes[class_indices, :]
             class_scores = scores[class_indices]
-            class_keep_boxes = iou_filter(class_boxes, class_scores, 0.2)
+            class_keep_boxes = self._iou_filter(class_boxes, class_scores, 0.2)
             indices.extend(class_indices[class_keep_boxes])
 
-        return [{
-            "type": self.label_list[class_ids[i]].lower(),
-            "bbox": [float(t) for t in boxes[i].tolist()],
-            "score": float(scores[i])
-        } for i in indices]
+        return [
+            {
+                "type": self.label_list[class_ids[i]].lower(),
+                "bbox": [float(t) for t in boxes[i].tolist()],
+                "score": float(scores[i]),
+            }
+            for i in indices
+        ]
 
     def __call__(self, image_list, thr=0.7, batch_size=16):
         res = []
@@ -428,7 +433,11 @@ class Recognizer:
             for ins in inputs:
                 bb = self.postprocess(
                     self.ort_sess.run(None, {k: v for k, v in ins.items() if k in self.input_names}, self.run_options)[
-                        0], ins, thr)
+                        0
+                    ],
+                    ins,
+                    thr,
+                )
                 res.append(bb)
 
         # seeit.save_results(image_list, res, self.label_list, threshold=thr)

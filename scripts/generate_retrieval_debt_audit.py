@@ -115,6 +115,73 @@ def _render_unstable_profiles() -> tuple[str, dict[str, Any]]:
     return "\n".join(lines), {"profiles_flagged": len(rows)}
 
 
+def _extract_int(text: str, pattern: str) -> int | None:
+    match = re.search(pattern, text)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except Exception:
+        return None
+
+
+def _hierarchy_profile_checks(path: Path) -> tuple[list[tuple[str, str, str]], int]:
+    if not path.exists():
+        return [("hierarchy_profiles_present", "warn", "retrieval_profiles.py missing")], 1
+
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    has_profiles = all(
+        key in text for key in ("hierarchy_recall20", "hierarchy_hybrid_ce", "hierarchy_grounded_strict")
+    )
+    checks = [
+        (
+            "hierarchy_profiles_present",
+            "ok" if has_profiles else "warn",
+            "found hierarchy profiles" if has_profiles else "missing one or more hierarchy_* profiles",
+        )
+    ]
+    risk_signals = 0 if has_profiles else 1
+    parent_depth = _extract_int(text, r'out\["hierarchy_parent_depth"\]\s*=\s*(\d+)')
+    sibling_window = _extract_int(text, r'out\["hierarchy_sibling_window"\]\s*=\s*(\d+)')
+    if parent_depth is None or sibling_window is None:
+        checks.append(("hierarchy_overlay_safe_defaults", "warn", "could not detect default parent/sibling expansion"))
+        return checks, risk_signals + 1
+
+    safe = parent_depth == 0 and sibling_window == 0
+    checks.append(
+        (
+            "hierarchy_overlay_safe_defaults",
+            "ok" if safe else "warn",
+            f"parent_depth={parent_depth}, sibling_window={sibling_window}",
+        )
+    )
+    return checks, risk_signals + (0 if safe else 1)
+
+
+def _hierarchy_anchor_check(path: Path) -> tuple[tuple[str, str, str], int]:
+    name = "must_recall_anchor_excludes_hierarchy_context"
+    if not path.exists():
+        return (name, "warn", "orchestrator.py missing"), 1
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    ok = bool(re.search(r"exclude_retrieval_role_prefixes\s*=\s*\[\s*[\"']hierarchy_[\"']\s*\]", text))
+    observed = (
+        "exclude_retrieval_role_prefixes=['hierarchy_'] detected"
+        if ok
+        else "missing anchor-field exclusion for hierarchy_*"
+    )
+    return (name, "ok" if ok else "warn", observed), 0 if ok else 1
+
+
+def _hierarchy_eval_check(path: Path) -> tuple[tuple[str, str, str], int]:
+    name = "eval_summary_includes_doc_family_recall"
+    if not path.exists():
+        return (name, "warn", "evidence_retrieve_gate.py missing"), 1
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    ok = "retrieval_doc_recall" in text and "retrieval_family_recall" in text
+    observed = "doc/family recall metrics detected" if ok else "missing retrieval_doc_recall / retrieval_family_recall"
+    return (name, "ok" if ok else "warn", observed), 0 if ok else 1
+
+
 def _render_hierarchy_recall_audit() -> tuple[str, dict[str, Any]]:
     """
     Best-effort structural audit for hierarchy-aware recall overlay.
@@ -124,93 +191,18 @@ def _render_hierarchy_recall_audit() -> tuple[str, dict[str, Any]]:
     - Keep it deterministic: scan source files for expected knobs and guardrails.
     """
 
-    checks: list[tuple[str, str, str]] = []
-    risk_signals = 0
-
     profiles_path = REPO_ROOT / "app" / "rag" / "core" / "retrieval_profiles.py"
-    if not profiles_path.exists():
-        checks.append(("hierarchy_profiles_present", "warn", "retrieval_profiles.py missing"))
-        risk_signals += 1
-    else:
-        text = profiles_path.read_text(encoding="utf-8", errors="ignore")
-        has_profiles = all(
-            k in text for k in ("hierarchy_recall20", "hierarchy_hybrid_ce", "hierarchy_grounded_strict")
-        )
-        checks.append(
-            (
-                "hierarchy_profiles_present",
-                "ok" if has_profiles else "warn",
-                "found hierarchy profiles" if has_profiles else "missing one or more hierarchy_* profiles",
-            )
-        )
-        if not has_profiles:
-            risk_signals += 1
-
-        def _extract_int(pattern: str) -> int | None:
-            m = re.search(pattern, text)
-            if not m:
-                return None
-            try:
-                return int(m.group(1))
-            except Exception:
-                return None
-
-        parent_depth = _extract_int(r'out\["hierarchy_parent_depth"\]\s*=\s*(\d+)')
-        sibling_window = _extract_int(r'out\["hierarchy_sibling_window"\]\s*=\s*(\d+)')
-        if parent_depth is None or sibling_window is None:
-            checks.append(
-                ("hierarchy_overlay_safe_defaults", "warn", "could not detect default parent/sibling expansion")
-            )
-            risk_signals += 1
-        else:
-            safe = int(parent_depth) == 0 and int(sibling_window) == 0
-            checks.append(
-                (
-                    "hierarchy_overlay_safe_defaults",
-                    "ok" if safe else "warn",
-                    f"parent_depth={parent_depth}, sibling_window={sibling_window}",
-                )
-            )
-            if not safe:
-                risk_signals += 1
+    checks, risk_signals = _hierarchy_profile_checks(profiles_path)
 
     orchestrator_path = REPO_ROOT / "app" / "rag" / "retrieval" / "orchestrator.py"
-    if not orchestrator_path.exists():
-        checks.append(("must_recall_anchor_excludes_hierarchy_context", "warn", "orchestrator.py missing"))
-        risk_signals += 1
-    else:
-        text = orchestrator_path.read_text(encoding="utf-8", errors="ignore")
-        ok = bool(re.search(r"exclude_retrieval_role_prefixes\s*=\s*\[\s*[\"']hierarchy_[\"']\s*\]", text))
-        checks.append(
-            (
-                "must_recall_anchor_excludes_hierarchy_context",
-                "ok" if ok else "warn",
-                "exclude_retrieval_role_prefixes=['hierarchy_'] detected"
-                if ok
-                else "missing anchor-field exclusion for hierarchy_*",
-            )
-        )
-        if not ok:
-            risk_signals += 1
+    anchor_check, anchor_risks = _hierarchy_anchor_check(orchestrator_path)
+    checks.append(anchor_check)
+    risk_signals += anchor_risks
 
     eval_path = REPO_ROOT / "app" / "rag" / "evaluation" / "evidence_retrieve_gate.py"
-    if not eval_path.exists():
-        checks.append(("eval_summary_includes_doc_family_recall", "warn", "evidence_retrieve_gate.py missing"))
-        risk_signals += 1
-    else:
-        text = eval_path.read_text(encoding="utf-8", errors="ignore")
-        ok = "retrieval_doc_recall" in text and "retrieval_family_recall" in text
-        checks.append(
-            (
-                "eval_summary_includes_doc_family_recall",
-                "ok" if ok else "warn",
-                "doc/family recall metrics detected"
-                if ok
-                else "missing retrieval_doc_recall / retrieval_family_recall",
-            )
-        )
-        if not ok:
-            risk_signals += 1
+    eval_check, eval_risks = _hierarchy_eval_check(eval_path)
+    checks.append(eval_check)
+    risk_signals += eval_risks
 
     lines = ["| check | status | observed |", "|---|---|---|"]
     for name, status, observed in checks:

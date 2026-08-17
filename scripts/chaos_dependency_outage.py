@@ -81,7 +81,7 @@ def _scale(*, namespace: str, kind: str, name: str, replicas: int) -> CmdResult:
     return _run(cmd, timeout_sec=60.0)
 
 
-def main(argv: list[str] | None = None) -> int:
+def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Chaos helper: scale dependencies down/up (kubectl).")
     p.add_argument("--namespace", required=True, help="Kubernetes namespace where dependencies run.")
     p.add_argument(
@@ -94,11 +94,66 @@ def main(argv: list[str] | None = None) -> int:
         "--down-seconds", type=int, default=120, help="How long to keep resources at 0 replicas (default: 120)."
     )
     p.add_argument("--execute", action="store_true", help="Actually run kubectl scale (default: dry-run).")
+    return p
 
-    args = p.parse_args(argv)
+
+def _command_payload(result: CmdResult) -> dict[str, Any]:
+    return {
+        "cmd": result.cmd,
+        "exit_code": result.exit_code,
+        "stdout": (result.stdout or "").strip()[:200],
+        "stderr": (result.stderr or "").strip()[:200],
+    }
+
+
+def _read_originals(
+    *,
+    namespace: str,
+    resources: list[str],
+    report: dict[str, Any],
+) -> list[tuple[str, str, str, int]]:
+    originals: list[tuple[str, str, str, int]] = []
+    for resource in resources:
+        kind, name = resource.split("/", 1)
+        replicas, result = _get_replicas(namespace=namespace, kind=kind, name=name)
+        report["targets"].append(
+            {
+                "resource": resource,
+                "original_replicas": replicas,
+                "get_replicas": _command_payload(result),
+            }
+        )
+        if replicas is None:
+            report["ok"] = False
+            report["error"] = "failed_to_read_replicas"
+        else:
+            originals.append((resource, kind, name, replicas))
+    return originals
+
+
+def _scale_phase(
+    *,
+    namespace: str,
+    originals: list[tuple[str, str, str, int]],
+    report: dict[str, Any],
+    phase: str,
+    restore: bool,
+) -> bool:
+    for resource, kind, name, original_replicas in originals:
+        replicas = original_replicas if restore else 0
+        result = _scale(namespace=namespace, kind=kind, name=name, replicas=replicas)
+        report.setdefault(phase, []).append({"resource": resource, **_command_payload(result)})
+        if result.exit_code != 0:
+            report["ok"] = False
+            report["error"] = f"{phase}_failed"
+    return bool(report["ok"])
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _build_parser().parse_args(argv)
 
     namespace = str(args.namespace or "").strip()
-    resources = [str(r or "").strip() for r in (args.resource or []) if str(r or "").strip()]
+    resources = [str(resource or "").strip() for resource in (args.resource or []) if str(resource or "").strip()]
     if not namespace:
         print(json.dumps({"ok": False, "error": "namespace_required"}, ensure_ascii=False))
         return 2
@@ -124,29 +179,7 @@ def main(argv: list[str] | None = None) -> int:
         "ok": True,
     }
 
-    originals: list[tuple[str, str, str, int]] = []
-
-    # 1) Read originals
-    for r in resources:
-        kind, name = r.split("/", 1)
-        replicas, res = _get_replicas(namespace=namespace, kind=kind, name=name)
-        report["targets"].append(
-            {
-                "resource": r,
-                "original_replicas": replicas,
-                "get_replicas": {
-                    "cmd": res.cmd,
-                    "exit_code": res.exit_code,
-                    "stdout": (res.stdout or "").strip()[:200],
-                    "stderr": (res.stderr or "").strip()[:200],
-                },
-            }
-        )
-        if replicas is None:
-            report["ok"] = False
-            report["error"] = "failed_to_read_replicas"
-        else:
-            originals.append((r, kind, name, replicas))
+    originals = _read_originals(namespace=namespace, resources=resources, report=report)
 
     if not bool(report["ok"]):
         print(json.dumps(report, ensure_ascii=False))
@@ -156,46 +189,27 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(report, ensure_ascii=False))
         return 0
 
-    # 2) Scale down
-    for r, kind, name, _replicas in originals:
-        res = _scale(namespace=namespace, kind=kind, name=name, replicas=0)
-        report.setdefault("scale_down", []).append(
-            {
-                "resource": r,
-                "cmd": res.cmd,
-                "exit_code": res.exit_code,
-                "stdout": (res.stdout or "").strip()[:200],
-                "stderr": (res.stderr or "").strip()[:200],
-            }
-        )
-        if res.exit_code != 0:
-            report["ok"] = False
-            report["error"] = "scale_down_failed"
-
-    if not bool(report["ok"]):
+    if not _scale_phase(
+        namespace=namespace,
+        originals=originals,
+        report=report,
+        phase="scale_down",
+        restore=False,
+    ):
         print(json.dumps(report, ensure_ascii=False))
         return 1
 
-    # 3) Hold outage window
     report["outage_started_at"] = _utc_now_iso()
     time.sleep(float(down_seconds))
     report["outage_ended_at"] = _utc_now_iso()
 
-    # 4) Restore replicas (best-effort)
-    for r, kind, name, replicas in originals:
-        res = _scale(namespace=namespace, kind=kind, name=name, replicas=replicas)
-        report.setdefault("scale_up", []).append(
-            {
-                "resource": r,
-                "cmd": res.cmd,
-                "exit_code": res.exit_code,
-                "stdout": (res.stdout or "").strip()[:200],
-                "stderr": (res.stderr or "").strip()[:200],
-            }
-        )
-        if res.exit_code != 0:
-            report["ok"] = False
-            report["error"] = "scale_up_failed"
+    _scale_phase(
+        namespace=namespace,
+        originals=originals,
+        report=report,
+        phase="scale_up",
+        restore=True,
+    )
 
     print(json.dumps(report, ensure_ascii=False))
     return 0 if report["ok"] else 1

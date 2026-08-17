@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-# ruff: noqa: E402, I001
 """Verify upload-batch precheck flow against a live API."""
 
 import argparse
 import json
-import sys
 import tempfile
 import time
 from pathlib import Path
@@ -12,17 +10,10 @@ from typing import Any
 
 import requests
 
-
-def ensure_repo_root_on_sys_path(script_path: str | Path) -> str:
-    repo_root = str(Path(script_path).resolve().parents[1])
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-    return repo_root
-
-
-ensure_repo_root_on_sys_path(__file__)
-
-from scripts.remote_kb_boundary_matrix import LiveApi, ensure_success, record_step
+try:
+    from scripts.remote_kb_boundary_matrix import LiveApi, ensure_success, record_step
+except ModuleNotFoundError:
+    from remote_kb_boundary_matrix import LiveApi, ensure_success, record_step  # type: ignore[no-redef]
 
 
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"
@@ -74,7 +65,7 @@ def cleanup_dataset(api: LiveApi, *, steps: list[dict[str, Any]], dataset_id: st
     return summary
 
 
-def main() -> int:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run batch precheck verification against a live API.")
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--tenant-id", default=DEFAULT_TENANT_ID)
@@ -82,8 +73,97 @@ def main() -> int:
     parser.add_argument("--user-id", default="demo")
     parser.add_argument("--artifact-dir", default="")
     parser.add_argument("--timeout", type=int, default=180)
-    args = parser.parse_args()
+    return parser.parse_args(argv)
 
+
+def create_precheck_dataset(api: LiveApi, *, run_id: str, steps: list[dict[str, Any]]) -> str:
+    resp = api.json(
+        "POST",
+        "/api/v1/datasets/",
+        payload={
+            "name": f"Precheck Batch Probe {run_id}",
+            "description": "Disposable dataset for precheck batch probe.",
+            "permission": "all_team_members",
+            "default_parser_backend": "basic",
+            "default_chunk_strategy": "langchain_recursive",
+            "pipeline": {
+                "governance_enabled": True,
+                "persist_parsed_content": True,
+                "persist_parsed_content_max_chars": 200000,
+                "chunk_size": 1000,
+                "chunk_overlap": 200,
+                "chunk_vector_enabled": True,
+                "bm25_index_enabled": True,
+                "kg_enabled": False,
+                "event_vector_enabled": False,
+                "entity_vector_enabled": False,
+            },
+        },
+    )
+    record_step(steps, "create_dataset", resp)
+    ensure_success("create_dataset", resp)
+    dataset_id = str((resp.body or {}).get("id") or (resp.body or {}).get("dataset_id") or "")
+    if not dataset_id:
+        raise RuntimeError("create_dataset missing dataset id")
+    return dataset_id
+
+
+def upload_batch_precheck(
+    *,
+    args: argparse.Namespace,
+    dataset_id: str,
+    doc_path: Path,
+    steps: list[dict[str, Any]],
+) -> dict[str, Any]:
+    with doc_path.open("rb") as fh:
+        response = requests.post(
+            f"{args.base_url.rstrip('/')}/api/v1/documents/upload-batch",
+            headers={
+                "X-Tenant-ID": args.tenant_id,
+                "X-Account-ID": args.account_id,
+                "X-User-ID": args.user_id,
+            },
+            files=[("files", (doc_path.name, fh, "text/markdown"))],
+            data={
+                "dataset_id": dataset_id,
+                "parser_backend": "basic",
+                "chunk_strategy": "langchain_recursive",
+                "precheck_only": "true",
+            },
+            timeout=args.timeout,
+        )
+
+    upload_body: Any
+    try:
+        upload_body = response.json()
+    except Exception:
+        upload_body = response.text
+    upload_resp = type(
+        "UploadResp",
+        (),
+        {"status": int(response.status_code), "body": upload_body, "elapsed_sec": 0.0},
+    )()
+    record_step(steps, "upload_batch_precheck", upload_resp)  # type: ignore[arg-type]
+    if not (200 <= response.status_code < 300):
+        raise RuntimeError(f"upload_batch_precheck failed: {response.status_code}: {upload_body}")
+    return dict(upload_body or {}) if isinstance(upload_body, dict) else {}
+
+
+def poll_scan_run(api: LiveApi, *, dataset_id: str, scan_run_id: str, steps: list[dict[str, Any]]) -> dict[str, Any]:
+    latest_run_body: dict[str, Any] = {}
+    for _ in range(40):
+        run_resp = api.json("GET", f"/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}")
+        record_step(steps, "poll_scan_run", run_resp)
+        ensure_success("poll_scan_run", run_resp)
+        latest_run_body = dict(run_resp.body or {})
+        status = str(latest_run_body.get("status") or "").lower()
+        if status in {"completed", "failed", "cancelled"}:
+            return latest_run_body
+        time.sleep(5)
+    return latest_run_body
+
+
+def run_precheck_probe(args: argparse.Namespace) -> tuple[Path, dict[str, Any], list[dict[str, Any]], int]:
     run_id = time.strftime("%Y%m%d-%H%M%S")
     artifact_dir = Path(args.artifact_dir or f"artifacts/precheck-batch/{run_id}").resolve()
     artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -102,34 +182,7 @@ def main() -> int:
         record_step(steps, "health", resp)
         ensure_success("health", resp)
 
-        resp = api.json(
-            "POST",
-            "/api/v1/datasets/",
-            payload={
-                "name": f"Precheck Batch Probe {run_id}",
-                "description": "Disposable dataset for precheck batch probe.",
-                "permission": "all_team_members",
-                "default_parser_backend": "basic",
-                "default_chunk_strategy": "langchain_recursive",
-                "pipeline": {
-                    "governance_enabled": True,
-                    "persist_parsed_content": True,
-                    "persist_parsed_content_max_chars": 200000,
-                    "chunk_size": 1000,
-                    "chunk_overlap": 200,
-                    "chunk_vector_enabled": True,
-                    "bm25_index_enabled": True,
-                    "kg_enabled": False,
-                    "event_vector_enabled": False,
-                    "entity_vector_enabled": False,
-                },
-            },
-        )
-        record_step(steps, "create_dataset", resp)
-        ensure_success("create_dataset", resp)
-        dataset_id = str((resp.body or {}).get("id") or (resp.body or {}).get("dataset_id") or "")
-        if not dataset_id:
-            raise RuntimeError("create_dataset missing dataset id")
+        dataset_id = create_precheck_dataset(api, run_id=run_id, steps=steps)
         summary["dataset_id"] = dataset_id
 
         with tempfile.TemporaryDirectory(prefix="precheck-batch-") as td:
@@ -139,52 +192,13 @@ def main() -> int:
                 encoding="utf-8",
             )
 
-            with doc_path.open("rb") as fh:
-                response = requests.post(
-                    f"{args.base_url.rstrip('/')}/api/v1/documents/upload-batch",
-                    headers={
-                        "X-Tenant-ID": args.tenant_id,
-                        "X-Account-ID": args.account_id,
-                        "X-User-ID": args.user_id,
-                    },
-                    files=[("files", (doc_path.name, fh, "text/markdown"))],
-                    data={
-                        "dataset_id": dataset_id,
-                        "parser_backend": "basic",
-                        "chunk_strategy": "langchain_recursive",
-                        "precheck_only": "true",
-                    },
-                    timeout=args.timeout,
-                )
-
-            upload_body: Any
-            try:
-                upload_body = response.json()
-            except Exception:
-                upload_body = response.text
-            upload_resp = type(
-                "UploadResp", (), {"status": int(response.status_code), "body": upload_body, "elapsed_sec": 0.0}
-            )()
-            record_step(steps, "upload_batch_precheck", upload_resp)  # type: ignore[arg-type]
-            if not (200 <= response.status_code < 300):
-                raise RuntimeError(f"upload_batch_precheck failed: {response.status_code}: {upload_body}")
-
+            upload_body = upload_batch_precheck(args=args, dataset_id=dataset_id, doc_path=doc_path, steps=steps)
             scan_run_id = str((upload_body or {}).get("precheck_scan_run_id") or "")
             if not scan_run_id:
                 raise RuntimeError("upload_batch_precheck missing precheck_scan_run_id")
             summary["scan_run_id"] = scan_run_id
 
-            latest_run_body: dict[str, Any] = {}
-            for _ in range(40):
-                run_resp = api.json("GET", f"/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}")
-                record_step(steps, "poll_scan_run", run_resp)
-                ensure_success("poll_scan_run", run_resp)
-                latest_run_body = dict(run_resp.body or {})
-                status = str(latest_run_body.get("status") or "").lower()
-                if status in {"completed", "failed", "cancelled"}:
-                    break
-                time.sleep(5)
-
+            latest_run_body = poll_scan_run(api, dataset_id=dataset_id, scan_run_id=scan_run_id, steps=steps)
             final_status = str(latest_run_body.get("status") or "").lower()
             summary["scan_status"] = final_status
             if final_status != "completed":
@@ -218,6 +232,13 @@ def main() -> int:
         report = {"summary": summary, "steps": steps}
         (artifact_dir / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    return artifact_dir, summary, steps, return_code
+
+
+def main(argv: list[str] | None = None) -> int:
+    artifact_dir, summary, steps, return_code = run_precheck_probe(parse_args(argv))
+    report = {"summary": summary, "steps": steps}
+    (artifact_dir / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return return_code
 

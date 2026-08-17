@@ -51,6 +51,95 @@ def _resolve_profile_hash(*, args: argparse.Namespace, benchmark: dict[str, Any]
     return stable_hash(seed, length=24)
 
 
+def _policy_source(*, has_policy_json: bool, has_cli_overrides: bool) -> str:
+    if has_policy_json and has_cli_overrides:
+        return "policy_json+cli_overrides"
+    if has_policy_json:
+        return "policy_json"
+    if has_cli_overrides:
+        return "cli_overrides"
+    return "default"
+
+
+def _effective_policy(
+    *,
+    policy_json: Path | None,
+    miss_rate_regression_threshold: float | None,
+    weak_hit_rate_regression_threshold: float | None,
+    weak_hit_rr_threshold: float | None,
+    hard_cases_limit: int | None,
+) -> tuple[dict[str, Any], str]:
+    policy = _load_policy(policy_json)
+    overrides = (
+        ("miss_rate_regression_threshold", miss_rate_regression_threshold, float),
+        ("weak_hit_rate_regression_threshold", weak_hit_rate_regression_threshold, float),
+        ("weak_hit_rr_threshold", weak_hit_rr_threshold, float),
+        ("hard_cases_limit", hard_cases_limit, int),
+    )
+    has_cli_overrides = False
+    for key, value, coerce in overrides:
+        if value is None:
+            continue
+        policy[key] = coerce(value)
+        has_cli_overrides = True
+    source = _policy_source(
+        has_policy_json=policy_json is not None,
+        has_cli_overrides=has_cli_overrides,
+    )
+    return policy, source
+
+
+def _history_context(
+    history: Path | None,
+    load_history: Any,
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    if history is None:
+        return [], None
+    rows = load_history(history)
+    return rows, rows[-1] if rows else None
+
+
+def _write_snapshot(path: Path, snapshot: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _hard_case_ids(risk: dict[str, Any]) -> list[str]:
+    hard_cases = risk.get("hard_cases") if isinstance(risk.get("hard_cases"), list) else []
+    ids: list[str] = []
+    for row in hard_cases[:3]:
+        if not isinstance(row, dict):
+            continue
+        case_id = str(row.get("id") or "").strip()
+        if case_id:
+            ids.append(case_id)
+    return ids
+
+
+def _cron_summary(snapshot: dict[str, Any], out: Path) -> dict[str, Any]:
+    risk = snapshot.get("risk") if isinstance(snapshot.get("risk"), dict) else {}
+    return {
+        "schema": snapshot.get("schema"),
+        "status": snapshot.get("status"),
+        "degradation_flags": snapshot.get("degradation_flags"),
+        "profile_hash": snapshot.get("profile_hash"),
+        "policy_source": snapshot.get("policy_source"),
+        "policy_hash": snapshot.get("policy_hash"),
+        "policy_changed": bool((snapshot.get("trend") or {}).get("policy_changed")),
+        "miss_rate": risk.get("miss_rate"),
+        "weak_hit_rate": risk.get("weak_hit_rate"),
+        "hard_case_ids": _hard_case_ids(risk),
+        "out": str(out),
+    }
+
+
+def _print_summary(snapshot: dict[str, Any], out: Path, *, cron: bool) -> None:
+    if cron:
+        print(json.dumps(_cron_summary(snapshot, out), ensure_ascii=False))
+        return
+    print(f"[queryset-health] status={snapshot.get('status')} out={out} profile_hash={snapshot.get('profile_hash')}")
+
+
 def run(
     *,
     benchmark_report: Path,
@@ -74,40 +163,18 @@ def run(
     )
 
     bench = _load_json(benchmark_report)
-    has_policy_json = policy_json is not None
-    policy = _load_policy(policy_json)
-    has_cli_overrides = False
-    if miss_rate_regression_threshold is not None:
-        policy["miss_rate_regression_threshold"] = float(miss_rate_regression_threshold)
-        has_cli_overrides = True
-    if weak_hit_rate_regression_threshold is not None:
-        policy["weak_hit_rate_regression_threshold"] = float(weak_hit_rate_regression_threshold)
-        has_cli_overrides = True
-    if weak_hit_rr_threshold is not None:
-        policy["weak_hit_rr_threshold"] = float(weak_hit_rr_threshold)
-        has_cli_overrides = True
-    if hard_cases_limit is not None:
-        policy["hard_cases_limit"] = int(hard_cases_limit)
-        has_cli_overrides = True
-
-    if has_policy_json and has_cli_overrides:
-        policy_source = "policy_json+cli_overrides"
-    elif has_policy_json:
-        policy_source = "policy_json"
-    elif has_cli_overrides:
-        policy_source = "cli_overrides"
-    else:
-        policy_source = "default"
+    policy, policy_source = _effective_policy(
+        policy_json=policy_json,
+        miss_rate_regression_threshold=miss_rate_regression_threshold,
+        weak_hit_rate_regression_threshold=weak_hit_rate_regression_threshold,
+        weak_hit_rr_threshold=weak_hit_rr_threshold,
+        hard_cases_limit=hard_cases_limit,
+    )
 
     args_obj = argparse.Namespace(profile_hash=profile_hash, profile_json=str(profile_json) if profile_json else None)
     resolved_profile_hash = _resolve_profile_hash(args=args_obj, benchmark=bench)
 
-    prev = None
-    hist_rows: list[dict[str, Any]] = []
-    if history is not None:
-        hist_rows = load_queryset_health_history(history)
-        if hist_rows:
-            prev = hist_rows[-1]
+    hist_rows, prev = _history_context(history, load_queryset_health_history)
 
     snapshot = build_queryset_health_snapshot(
         benchmark_report=bench,
@@ -117,45 +184,13 @@ def run(
         policy_source=policy_source,
     )
 
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8")
+    _write_snapshot(out, snapshot)
 
     if history is not None:
         updated = update_queryset_health_history(history=hist_rows, current=snapshot, max_items=max_history)
         write_queryset_health_history(history, updated)
 
-    if cron:
-        risk = snapshot.get("risk") if isinstance(snapshot.get("risk"), dict) else {}
-        hard_cases = risk.get("hard_cases") if isinstance(risk.get("hard_cases"), list) else []
-        hard_case_ids: list[str] = []
-        for row in hard_cases[:3]:
-            if not isinstance(row, dict):
-                continue
-            cid = str(row.get("id") or "").strip()
-            if cid:
-                hard_case_ids.append(cid)
-        print(
-            json.dumps(
-                {
-                    "schema": snapshot.get("schema"),
-                    "status": snapshot.get("status"),
-                    "degradation_flags": snapshot.get("degradation_flags"),
-                    "profile_hash": snapshot.get("profile_hash"),
-                    "policy_source": snapshot.get("policy_source"),
-                    "policy_hash": snapshot.get("policy_hash"),
-                    "policy_changed": bool((snapshot.get("trend") or {}).get("policy_changed")),
-                    "miss_rate": risk.get("miss_rate"),
-                    "weak_hit_rate": risk.get("weak_hit_rate"),
-                    "hard_case_ids": hard_case_ids,
-                    "out": str(out),
-                },
-                ensure_ascii=False,
-            )
-        )
-    else:
-        print(
-            f"[queryset-health] status={snapshot.get('status')} out={out} profile_hash={snapshot.get('profile_hash')}"
-        )
+    _print_summary(snapshot, out, cron=cron)
 
     return snapshot
 

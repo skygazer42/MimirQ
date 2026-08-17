@@ -25,6 +25,90 @@ from docx import Document
 from ..src.model import rag_tokenizer
 
 
+def _table_block_type(block):
+    patterns = [
+        ("^(20|19)\\d{2}[年/-]\\d{1,2}[月/-]\\d{1,2}日*$", "Dt"),
+        (r"^(20|19)\d{2}年$", "Dt"),
+        (r"^(20|19)\d{2}[年/-]\d{1,2}月*$", "Dt"),
+        ("^\\d{1,2}[月/-]\\d{1,2}日*$", "Dt"),
+        (r"^第*[一二三四1-4]季度$", "Dt"),
+        (r"^(20|19)\d{2}年*[一二三四1-4]季度$", "Dt"),
+        (r"^(20|19)\d{2}[ABCDE]$", "DT"),
+        ("^[0-9.,+%/ -]+$", "Nu"),
+        (r"^[0-9A-Z/\._~-]+$", "Ca"),
+        (r"^[A-Z]*[a-z' -]+$", "En"),
+        (r"^[0-9.,+-]+[0-9A-Za-z/$￥%<>（）()' -]+$", "NE"),
+        (r"^.{1}$", "Sg"),
+    ]
+    for pattern, name in patterns:
+        if re.search(pattern, block):
+            return name
+
+    tokens = [token for token in rag_tokenizer.tokenize(block).split() if len(token) > 1]
+    if len(tokens) > 3:
+        return "Tx" if len(tokens) < 12 else "Lx"
+    if len(tokens) == 1 and rag_tokenizer.tag(tokens[0]) == "nr":
+        return "Nr"
+    return "Ot"
+
+
+def _dominant_table_type(df):
+    block_types = [
+        _table_block_type(str(df.iloc[row, column]))
+        for row in range(1, len(df))
+        for column in range(len(df.iloc[row, :]))
+    ]
+    return max(Counter(block_types).items(), key=lambda item: item[1])[0]
+
+
+def _header_rows(df, dominant_type):
+    header_rows = [0]
+    if dominant_type != "Nu":
+        return header_rows
+    for row in range(1, len(df)):
+        row_types = Counter(_table_block_type(str(df.iloc[row, column])) for column in range(len(df.iloc[row, :])))
+        if max(row_types.items(), key=lambda item: item[1])[0] != dominant_type:
+            header_rows.append(row)
+    return header_rows
+
+
+def _active_header_offsets(header_rows, row_index):
+    header_offsets = [header_row - row_index for header_row in header_rows]
+    header_offsets = [offset for offset in header_offsets if offset < 0]
+    index = len(header_offsets) - 1
+    while index > 0:
+        if header_offsets[index] - header_offsets[index - 1] > 1:
+            return header_offsets[index:]
+        index -= 1
+    return header_offsets
+
+
+def _header_prefixes(df, row_index, header_offsets):
+    headers = []
+    for column in range(len(df.iloc[row_index, :])):
+        values = []
+        for offset in header_offsets:
+            value = str(df.iloc[row_index + offset, column]).strip()
+            if value in values:
+                continue
+            values.append(value)
+        header = ",".join(values)
+        headers.append(f"{header}: " if header else "")
+    return headers
+
+
+def _compose_table_row(df, row_index, header_rows):
+    header_offsets = _active_header_offsets(header_rows, row_index)
+    headers = _header_prefixes(df, row_index, header_offsets)
+    cells = []
+    for column in range(len(df.iloc[row_index, :])):
+        cell = str(df.iloc[row_index, column])
+        if not cell:
+            continue
+        cells.append(headers[column] + cell)
+    return ";".join(cells)
+
+
 class IntegratedPipelineDocxParser:
     def __extract_table_content(self, tb):
         df = []
@@ -33,83 +117,16 @@ class IntegratedPipelineDocxParser:
         return self.__compose_table_content(pd.DataFrame(df))
 
     def __compose_table_content(self, df):
-
-        def block_type(b):
-            patt = [
-                ("^(20|19)\\d{2}[年/-]\\d{1,2}[月/-]\\d{1,2}日*$", "Dt"),
-                (r"^(20|19)\d{2}年$", "Dt"),
-                (r"^(20|19)\d{2}[年/-]\d{1,2}月*$", "Dt"),
-                ("^\\d{1,2}[月/-]\\d{1,2}日*$", "Dt"),
-                (r"^第*[一二三四1-4]季度$", "Dt"),
-                (r"^(20|19)\d{2}年*[一二三四1-4]季度$", "Dt"),
-                (r"^(20|19)\d{2}[ABCDE]$", "DT"),
-                ("^[0-9.,+%/ -]+$", "Nu"),
-                (r"^[0-9A-Z/\._~-]+$", "Ca"),
-                (r"^[A-Z]*[a-z' -]+$", "En"),
-                (r"^[0-9.,+-]+[0-9A-Za-z/$￥%<>（）()' -]+$", "NE"),
-                (r"^.{1}$", "Sg"),
-            ]
-            for p, n in patt:
-                if re.search(p, b):
-                    return n
-            tks = [t for t in rag_tokenizer.tokenize(b).split() if len(t) > 1]
-            if len(tks) > 3:
-                if len(tks) < 12:
-                    return "Tx"
-                else:
-                    return "Lx"
-
-            if len(tks) == 1 and rag_tokenizer.tag(tks[0]) == "nr":
-                return "Nr"
-
-            return "Ot"
-
         if len(df) < 2:
             return []
-        max_type = Counter(
-            [block_type(str(df.iloc[i, j])) for i in range(1, len(df)) for j in range(len(df.iloc[i, :]))]
-        )
-        max_type = max(max_type.items(), key=lambda x: x[1])[0]
-
+        max_type = _dominant_table_type(df)
         colnm = len(df.iloc[0, :])
-        hdrows = [0]  # header is not nessesarily appear in the first line
-        if max_type == "Nu":
-            for r in range(1, len(df)):
-                tys = Counter([block_type(str(df.iloc[r, j])) for j in range(len(df.iloc[r, :]))])
-                tys = max(tys.items(), key=lambda x: x[1])[0]
-                if tys != max_type:
-                    hdrows.append(r)
-
+        hdrows = _header_rows(df, max_type)
         lines = []
         for i in range(1, len(df)):
             if i in hdrows:
                 continue
-            hr = [r - i for r in hdrows]
-            hr = [r for r in hr if r < 0]
-            t = len(hr) - 1
-            while t > 0:
-                if hr[t] - hr[t - 1] > 1:
-                    hr = hr[t:]
-                    break
-                t -= 1
-            headers = []
-            for j in range(len(df.iloc[i, :])):
-                t = []
-                for h in hr:
-                    x = str(df.iloc[i + h, j]).strip()
-                    if x in t:
-                        continue
-                    t.append(x)
-                t = ",".join(t)
-                if t:
-                    t += ": "
-                headers.append(t)
-            cells = []
-            for j in range(len(df.iloc[i, :])):
-                if not str(df.iloc[i, j]):
-                    continue
-                cells.append(headers[j] + str(df.iloc[i, j]))
-            lines.append(";".join(cells))
+            lines.append(_compose_table_row(df, i, hdrows))
 
         if colnm > 3:
             return lines

@@ -125,6 +125,43 @@ def vision_figure_parser_figure_data_wraper(figures_data_without_positions):
     ]
 
 
+def _has_image_table(tbls):
+    try:
+        for item in tbls:
+            if isinstance(item, Image.Image):
+                return True
+            if not isinstance(item, tuple) or not item:
+                continue
+            head = item[0]
+            if isinstance(head, Image.Image):
+                return True
+            if isinstance(head, tuple) and head and isinstance(head[0], Image.Image):
+                return True
+    except Exception:
+        return False
+    return False
+
+
+def _load_vision_runtime(callback):
+    try:
+        from app.third_party.integrated_pipeline.common.constants import LLMType
+        from app.third_party.integrated_pipeline.stubs.llm_service import LLMBundle
+    except Exception as exc:  # pragma: no cover
+        if callback:
+            callback(-1, f"Vision enrichment import failed; using parsed tables unchanged. ({exc})")
+        return None, None
+    return LLMType, LLMBundle
+
+
+def _build_vision_model(llm_bundle, llm_type, tenant_id, callback):
+    try:
+        return llm_bundle(str(tenant_id or ""), llm_type.IMAGE2TEXT)
+    except Exception as exc:
+        if callback:
+            callback(-1, f"Vision enrichment unavailable; using parsed tables unchanged. ({exc})")
+        return None
+
+
 class VisionFigureParser:
     def __init__(self, vision_model, figures_data, *args, **kwargs):
         self.vision_model = vision_model
@@ -211,41 +248,15 @@ def vision_figure_parser_pdf_wrapper(*, tbls, callback=None, **kwargs):  # noqa:
 
     if not tbls or not isinstance(tbls, list):
         return tbls
-
-    # Avoid hard failures for non-image table representations.
-    has_image = False
-    try:
-        for item in tbls:
-            if isinstance(item, Image.Image):
-                has_image = True
-                break
-            if isinstance(item, tuple) and item:
-                head = item[0]
-                if isinstance(head, Image.Image):
-                    has_image = True
-                    break
-                if isinstance(head, tuple) and head and isinstance(head[0], Image.Image):
-                    has_image = True
-                    break
-    except Exception:
-        has_image = False
-
-    if not has_image:
+    if not _has_image_table(tbls):
         return tbls
 
-    try:
-        from app.third_party.integrated_pipeline.common.constants import LLMType
-        from app.third_party.integrated_pipeline.stubs.llm_service import LLMBundle
-    except Exception as exc:  # pragma: no cover
-        if callback:
-            callback(-1, f"Vision enrichment import failed; using parsed tables unchanged. ({exc})")
+    llm_type, llm_bundle = _load_vision_runtime(callback)
+    if llm_type is None or llm_bundle is None:
         return tbls
 
-    try:
-        vision_model = LLMBundle(str(kwargs.get("tenant_id", "") or ""), LLMType.IMAGE2TEXT)
-    except Exception as exc:
-        if callback:
-            callback(-1, f"Vision enrichment unavailable; using parsed tables unchanged. ({exc})")
+    vision_model = _build_vision_model(llm_bundle, llm_type, kwargs.get("tenant_id", ""), callback)
+    if vision_model is None:
         return tbls
 
     try:

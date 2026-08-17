@@ -22,6 +22,786 @@ from app.rag.retrieval.query_phrase_match import query_phrase_match
 class FusionMixin:
     """Merges per-channel candidate lists and applies weight/MMR reranking."""
 
+    _FUSION_CHANNELS = ("vector", "bm25", "lexical", "sparse")
+
+    @staticmethod
+    def _resolve_query_chunk_type_signal(text: str | None) -> str | None:
+        raw = str(text or "").strip().lower()
+        if not raw:
+            return None
+        if any(token in raw for token in ("表格", "字段", "列", "schema", "table", "column")):
+            return "table"
+        if any(token in raw for token in ("公式", "latex", "equation", "math", "公式识别")):
+            return "formula"
+        if any(token in raw for token in ("代码", "sql", "python", "bash", "json", "yaml", "脚本", "code")):
+            return "code"
+        if any(token in raw for token in ("图表", "曲线", "趋势图", "chart", "plot", "graph")):
+            return "chart_data"
+        if any(token in raw for token in ("公章", "印章", "seal", "stamp")):
+            return "seal"
+        return None
+
+    @staticmethod
+    def _build_fusion_runtime(query: str | None) -> dict[str, Any]:
+        field_aware_enabled = bool(getattr(settings, "RETRIEVAL_FIELD_AWARE_RECALL_ENABLED", False))
+        field_aware_title_boost = max(0.0, float(getattr(settings, "RETRIEVAL_FIELD_AWARE_TITLE_BOOST", 0.08) or 0.0))
+        field_aware_heading_boost = max(
+            0.0,
+            float(getattr(settings, "RETRIEVAL_FIELD_AWARE_HEADING_BOOST", 0.05) or 0.0),
+        )
+        field_aware_max_boost = max(0.0, float(getattr(settings, "RETRIEVAL_FIELD_AWARE_MAX_BOOST", 0.10) or 0.0))
+        chunk_type_weighting_enabled = bool(getattr(settings, "RETRIEVAL_CHUNK_TYPE_WEIGHTING_ENABLED", False))
+        chunk_type_match_boost = max(0.0, float(getattr(settings, "RETRIEVAL_CHUNK_TYPE_MATCH_BOOST", 0.08) or 0.0))
+        return {
+            "field_aware_enabled": field_aware_enabled,
+            "field_aware_title_boost": min(field_aware_title_boost, field_aware_max_boost),
+            "field_aware_heading_boost": min(field_aware_heading_boost, field_aware_max_boost),
+            "field_aware_max_boost": field_aware_max_boost,
+            "chunk_type_weighting_enabled": chunk_type_weighting_enabled,
+            "chunk_type_match_boost": chunk_type_match_boost,
+            "preferred_chunk_type": FusionMixin._resolve_query_chunk_type_signal(query),
+        }
+
+    @staticmethod
+    def _resolve_chunk_type(result: dict[str, Any]) -> str:
+        meta = result.get("metadata") or {}
+        raw = str(meta.get("chunk_type") or meta.get("content_type") or meta.get("visual_kind") or "").strip().lower()
+        if raw in {"text", "formula", "table", "code", "figure", "chart_data", "seal"}:
+            return raw
+        if raw == "chart":
+            return "figure"
+        role = str(meta.get("chunk_semantic_role") or "").strip().lower()
+        if role == "code":
+            return "code"
+        if role == "table":
+            return "table"
+        return "text"
+
+    @staticmethod
+    def _chunk_type_boost(chunk_type: str, runtime: dict[str, Any]) -> float:
+        if not runtime["chunk_type_weighting_enabled"] or not runtime["preferred_chunk_type"]:
+            return 0.0
+        if chunk_type == runtime["preferred_chunk_type"]:
+            return float(runtime["chunk_type_match_boost"])
+        if runtime["preferred_chunk_type"] == "chart_data" and chunk_type == "figure":
+            return max(0.0, float(runtime["chunk_type_match_boost"]) * 0.75)
+        return 0.0
+
+    def _resolve_field_signal(self, result: dict[str, Any]) -> str:
+        meta = result.get("metadata") or {}
+        hinted = (
+            str(meta.get("embedding_field_role") or meta.get("embedding_field_kind") or meta.get("field_channel") or "")
+            .strip()
+            .lower()
+        )
+        if hinted in {"title", "heading", "body"}:
+            return hinted
+        chunk_id = str(result.get("chunk_id") or meta.get("chunk_id") or "").strip().lower()
+        if chunk_id.endswith(":title"):
+            return "title"
+        if chunk_id.endswith(":heading"):
+            return "heading"
+        return "body"
+
+    @staticmethod
+    def _field_boost(field_signal: str, runtime: dict[str, Any]) -> float:
+        if not runtime["field_aware_enabled"]:
+            return 0.0
+        if field_signal == "title":
+            return float(runtime["field_aware_title_boost"])
+        if field_signal == "heading":
+            return float(runtime["field_aware_heading_boost"])
+        return 0.0
+
+    def _normalize_channel_results(
+        self,
+        results: list[dict[str, Any]],
+        *,
+        channel: str,
+        runtime: dict[str, Any],
+    ) -> dict[str, dict[str, Any]]:
+        if not results:
+            return {}
+        scores = [result.get("score", 0.0) for result in results]
+        min_score = min(scores)
+        max_score = max(scores)
+        score_range = max_score - min_score if max_score > min_score else 1.0
+        normalized: dict[str, dict[str, Any]] = {}
+        for result in results:
+            key = self._result_key(result)
+            norm_score = (result.get("score", 0.0) - min_score) / score_range
+            chunk_type = self._resolve_chunk_type(result)
+            chunk_type_boost = self._chunk_type_boost(chunk_type, runtime)
+            field_signal = "body"
+            field_boost = 0.0
+            if channel == "vector":
+                field_signal = self._resolve_field_signal(result)
+                field_boost = min(self._field_boost(field_signal, runtime), runtime["field_aware_max_boost"])
+            scored = float(norm_score) + float(field_boost) + float(chunk_type_boost)
+            existing = normalized.get(key)
+            if existing is not None and float(scored) <= float(existing.get("score", 0.0) or 0.0):
+                continue
+            normalized[key] = {
+                "score": float(scored),
+                "base_score": float(norm_score),
+                "data": result,
+                "chunk_type": chunk_type,
+                "chunk_type_boost": float(chunk_type_boost),
+                "field_aware_signal": field_signal if channel == "vector" else None,
+                "field_aware_boost": float(field_boost if channel == "vector" else 0.0),
+            }
+        return normalized
+
+    def _update_fusion_observability(
+        self,
+        *,
+        vector_norm: dict[str, dict[str, Any]],
+        runtime: dict[str, Any],
+    ) -> None:
+        try:
+            if not isinstance(self._last_channel_metrics, dict):
+                return
+            field_signal_counts: Counter[str] = Counter()
+            boosted = 0
+            chunk_type_counts: Counter[str] = Counter()
+            chunk_boosted = 0
+            for payload in vector_norm.values():
+                signal = str(payload.get("field_aware_signal") or "body").strip().lower() or "body"
+                field_signal_counts[signal] += 1
+                if float(payload.get("field_aware_boost") or 0.0) > 0.0:
+                    boosted += 1
+                chunk_signal = str(payload.get("chunk_type") or "text").strip().lower() or "text"
+                chunk_type_counts[chunk_signal] += 1
+                if float(payload.get("chunk_type_boost") or 0.0) > 0.0:
+                    chunk_boosted += 1
+            self._last_channel_metrics["field_aware"] = {
+                "enabled": bool(runtime["field_aware_enabled"]),
+                "title_boost": round(float(runtime["field_aware_title_boost"]), 6),
+                "heading_boost": round(float(runtime["field_aware_heading_boost"]), 6),
+                "max_boost": round(float(runtime["field_aware_max_boost"]), 6),
+                "candidates": int(len(vector_norm)),
+                "boosted_candidates": int(boosted),
+                "signals": dict(sorted((str(key), int(value)) for key, value in field_signal_counts.items())),
+            }
+            self._last_channel_metrics["chunk_type_weighting"] = {
+                "enabled": bool(runtime["chunk_type_weighting_enabled"]),
+                "preferred_chunk_type": runtime["preferred_chunk_type"],
+                "match_boost": round(float(runtime["chunk_type_match_boost"]), 6),
+                "candidates": int(len(vector_norm)),
+                "boosted_candidates": int(chunk_boosted),
+                "signals": dict(sorted((str(key), int(value)) for key, value in chunk_type_counts.items())),
+            }
+        except Exception as exc:
+            logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+
+    def _attach_field_aware_signal(
+        self,
+        item: dict[str, Any],
+        *,
+        key: str,
+        channel_norms: dict[str, dict[str, dict[str, Any]]],
+    ) -> None:
+        vector_payload = channel_norms["vector"].get(key, {})
+        field_signal = vector_payload.get("field_aware_signal")
+        field_boost = float(vector_payload.get("field_aware_boost") or 0.0)
+        chunk_type = None
+        chunk_type_boost = 0.0
+        for channel in self._FUSION_CHANNELS:
+            payload = channel_norms[channel].get(key, {})
+            chunk_type = chunk_type or payload.get("chunk_type")
+            chunk_type_boost = max(chunk_type_boost, float(payload.get("chunk_type_boost") or 0.0))
+        if field_signal:
+            item["field_aware_signal"] = str(field_signal)
+        if field_boost > 0.0:
+            item["field_aware_boost"] = field_boost
+        if chunk_type:
+            item["chunk_type_signal"] = str(chunk_type)
+        if chunk_type_boost > 0.0:
+            item["chunk_type_boost"] = chunk_type_boost
+
+    @staticmethod
+    def _channel_score(
+        channel_norms: dict[str, dict[str, dict[str, Any]]],
+        channel: str,
+        key: str,
+    ) -> float:
+        return float(channel_norms[channel].get(key, {}).get("score", 0.0) or 0.0)
+
+    @staticmethod
+    def _all_channel_keys(channel_norms: dict[str, dict[str, dict[str, Any]]]) -> list[str]:
+        return sorted({key for payload in channel_norms.values() for key in payload.keys()})
+
+    def _merged_channel_data(
+        self,
+        *,
+        key: str,
+        channel_norms: dict[str, dict[str, dict[str, Any]]],
+    ) -> dict[str, Any] | None:
+        channel_payloads = [channel_norms[channel].get(key, {}) for channel in self._FUSION_CHANNELS]
+        data = next((payload.get("data") for payload in channel_payloads if payload.get("data")), None)
+        if not data:
+            return None
+        merged_meta = dict(data.get("metadata") or {})
+        for payload in channel_payloads:
+            source = payload.get("data")
+            if not source or source is data:
+                continue
+            source_meta = source.get("metadata") or {}
+            for meta_key, meta_value in source_meta.items():
+                if meta_key not in merged_meta or merged_meta.get(meta_key) in (None, "", [], {}):
+                    merged_meta[meta_key] = meta_value
+        merged_data = dict(data)
+        merged_data["metadata"] = merged_meta
+        if merged_data.get("chunk_id"):
+            return merged_data
+        for payload in channel_payloads:
+            source = payload.get("data")
+            if source and source.get("chunk_id"):
+                merged_data["chunk_id"] = source.get("chunk_id")
+                break
+        return merged_data
+
+    def _rank_sort_key(self, result: dict[str, Any]) -> tuple[float, str]:
+        return (-float(result.get("score", 0.0) or 0.0), self._result_key(result))
+
+    def _build_rank_map(self, results: list[dict[str, Any]]) -> dict[str, int]:
+        rank_map: dict[str, int] = {}
+        for index, result in enumerate(results, 1):
+            key = self._result_key(result)
+            if key not in rank_map:
+                rank_map[key] = index
+        return rank_map
+
+    @staticmethod
+    def _rrf_raw_score(*, rank_maps: dict[str, dict[str, int]], key: str, k0: int) -> float:
+        total = 0.0
+        for channel in FusionMixin._FUSION_CHANNELS:
+            rank = rank_maps[channel].get(key)
+            total += (1.0 / (k0 + rank)) if rank else 0.0
+        return total
+
+    @staticmethod
+    def _rank_score(rank_map: dict[str, int], key: str) -> float:
+        rank = rank_map.get(key)
+        if not rank or int(rank) <= 0:
+            return 0.0
+        return 1.0 / float(rank)
+
+    def _build_rrf_merged_items(
+        self,
+        *,
+        channel_norms: dict[str, dict[str, dict[str, Any]]],
+        rank_maps: dict[str, dict[str, int]],
+        k0: int,
+        strategy: str,
+        include_rank_scores: bool,
+    ) -> tuple[dict[str, dict[str, Any]], list[float], list[str]]:
+        merged: dict[str, dict[str, Any]] = {}
+        raw_scores: list[float] = []
+        keys = self._all_channel_keys(channel_norms)
+        for key in keys:
+            data = self._merged_channel_data(key=key, channel_norms=channel_norms)
+            if not data:
+                continue
+            rrf_raw = self._rrf_raw_score(rank_maps=rank_maps, key=key, k0=k0)
+            raw_scores.append(float(rrf_raw))
+            item = {
+                **data,
+                "vector_score": self._channel_score(channel_norms, "vector", key),
+                "bm25_score": self._channel_score(channel_norms, "bm25", key),
+                "lexical_score": self._channel_score(channel_norms, "lexical", key),
+                "sparse_score": self._channel_score(channel_norms, "sparse", key),
+                "rrf_score_raw": float(rrf_raw),
+                "rrf_k": int(k0),
+                "rrf_rank_vector": rank_maps["vector"].get(key),
+                "rrf_rank_bm25": rank_maps["bm25"].get(key),
+                "rrf_rank_lexical": rank_maps["lexical"].get(key),
+                "rrf_rank_sparse": rank_maps["sparse"].get(key),
+                "fusion_strategy": strategy,
+                "score": float(rrf_raw),
+            }
+            if include_rank_scores:
+                item.update(
+                    {
+                        "vector_rank_score": self._rank_score(rank_maps["vector"], key),
+                        "bm25_rank_score": self._rank_score(rank_maps["bm25"], key),
+                        "lexical_rank_score": self._rank_score(rank_maps["lexical"], key),
+                        "sparse_rank_score": self._rank_score(rank_maps["sparse"], key),
+                    }
+                )
+            self._attach_field_aware_signal(item, key=key, channel_norms=channel_norms)
+            merged[key] = item
+        return merged, raw_scores, keys
+
+    @staticmethod
+    def _normalize_raw_scores(merged: dict[str, dict[str, Any]], raw_scores: list[float]) -> None:
+        if not merged:
+            return
+        min_score = min(raw_scores) if raw_scores else 0.0
+        max_score = max(raw_scores) if raw_scores else 0.0
+        score_range = max_score - min_score if max_score > min_score else 1.0
+        for item in merged.values():
+            raw = float(item.get("rrf_score_raw", 0.0) or 0.0)
+            item["score"] = (raw - min_score) / score_range
+
+    def _apply_phrase_bonus(self, *, query: str | None, merged: dict[str, dict[str, Any]]) -> None:
+        if not query:
+            return
+        phrase_boost_weight = max(
+            0.0,
+            float(getattr(settings, "RETRIEVAL_EXACT_PHRASE_RERANK_BOOST", 0.35) or 0.0),
+        )
+        for item in merged.values():
+            _apply_exact_content_bonus_to_result(
+                query=query,
+                result=item,
+                phrase_boost_weight=phrase_boost_weight,
+            )
+
+    def _sort_key_rrf(self, item: dict[str, Any]) -> tuple[float, float, float, float, float, float, str]:
+        return (
+            -float(item.get("score", 0.0) or 0.0),
+            -float(item.get("rrf_score_raw", 0.0) or 0.0),
+            -float(item.get("vector_score", 0.0) or 0.0),
+            -float(item.get("bm25_score", 0.0) or 0.0),
+            -float(item.get("lexical_score", 0.0) or 0.0),
+            -float(item.get("sparse_score", 0.0) or 0.0),
+            self._result_key(item),
+        )
+
+    def _sort_key_budgeted_rrf(self, item: dict[str, Any]) -> tuple[float, float, float, float, float, float, str]:
+        return (
+            -float(item.get("score", 0.0) or 0.0),
+            -float(item.get("rrf_score_raw", 0.0) or 0.0),
+            -float(item.get("vector_rank_score", 0.0) or 0.0),
+            -float(item.get("bm25_rank_score", 0.0) or 0.0),
+            -float(item.get("lexical_rank_score", 0.0) or 0.0),
+            -float(item.get("sparse_rank_score", 0.0) or 0.0),
+            self._result_key(item),
+        )
+
+    @staticmethod
+    def _coerce_budgets(raw: Any) -> dict[str, int]:
+        if not isinstance(raw, dict):
+            return {}
+        budgets: dict[str, int] = {}
+        for key, value in raw.items():
+            channel = str(key or "").strip().lower()
+            if not channel:
+                continue
+            try:
+                budgets[channel] = max(0, int(value) if value is not None else 0)
+            except (TypeError, ValueError, AttributeError):
+                continue
+        return budgets
+
+    @staticmethod
+    def _coerce_min_scores(raw: Any) -> dict[str, float]:
+        if not isinstance(raw, dict):
+            return {}
+        min_scores: dict[str, float] = {}
+        for key, value in raw.items():
+            channel = str(key or "").strip().lower()
+            if not channel:
+                continue
+            try:
+                min_scores[channel] = max(0.0, min(1.0, float(value) if value is not None else 0.0))
+            except (TypeError, ValueError, AttributeError):
+                continue
+        return min_scores
+
+    @staticmethod
+    def _coerce_weights(raw: Any) -> dict[str, float]:
+        if not isinstance(raw, dict):
+            return {}
+        allowed = set(FusionMixin._FUSION_CHANNELS)
+        weights: dict[str, float] = {}
+        for key, value in raw.items():
+            channel = str(key or "").strip().lower()
+            if not channel or channel not in allowed:
+                continue
+            try:
+                weight = float(value)
+            except (TypeError, ValueError, AttributeError):
+                continue
+            if weight > 0.0:
+                weights[channel] = weight
+        return weights
+
+    @classmethod
+    def _resolve_budgeted_budgets(
+        cls,
+        *,
+        configured: dict[str, int],
+        channel_results: dict[str, list[dict[str, Any]]],
+        k_prefix: int,
+    ) -> dict[str, int]:
+        if configured:
+            return configured
+        budgets = {channel: 0 for channel in cls._FUSION_CHANNELS}
+        active_channels = [channel for channel in cls._FUSION_CHANNELS if channel_results[channel]]
+        remaining = int(k_prefix)
+        for channel in active_channels:
+            if remaining <= 0:
+                break
+            budgets[channel] = 1
+            remaining -= 1
+        index = 0
+        while remaining > 0 and active_channels:
+            channel = active_channels[index % len(active_channels)]
+            budgets[channel] = int(budgets.get(channel, 0) or 0) + 1
+            remaining -= 1
+            index += 1
+        return budgets
+
+    def _candidate_eligible(
+        self,
+        *,
+        key: str,
+        rank_maps: dict[str, dict[str, int]],
+        min_scores: dict[str, float],
+    ) -> bool:
+        for channel in self._FUSION_CHANNELS:
+            rank_score = self._rank_score(rank_maps[channel], key)
+            if rank_score <= 0.0:
+                continue
+            threshold = min_scores.get(channel)
+            if threshold is None or rank_score >= float(threshold):
+                return True
+        return False
+
+    def _budget_channel_order(
+        self,
+        *,
+        channel_results: list[dict[str, Any]],
+        rank_map: dict[str, int],
+        merged: dict[str, dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        return sorted(
+            channel_results,
+            key=lambda item: (
+                -_float_or_default(
+                    merged.get(self._result_key(item), {}).get("exact_phrase_score"),
+                    0.0,
+                ),
+                int(rank_map.get(self._result_key(item), len(channel_results) + 1)),
+                self._result_key(item),
+            ),
+        )
+
+    def _consume_budget_channel(
+        self,
+        *,
+        channel: str,
+        sorted_results: list[dict[str, Any]],
+        rank_map: dict[str, int],
+        budgets: dict[str, int],
+        min_scores: dict[str, float],
+        used: set[str],
+        selected_keys: list[str],
+        picked_by_channel: dict[str, int],
+        rank_maps: dict[str, dict[str, int]],
+    ) -> None:
+        quota = int(budgets.get(channel, 0) or 0)
+        if quota <= 0:
+            return
+        picked = 0
+        threshold = min_scores.get(channel)
+        for result in sorted_results:
+            if picked >= quota:
+                break
+            key = self._result_key(result)
+            if key in used:
+                continue
+            rank_score = self._rank_score(rank_map, key)
+            if rank_score <= 0.0:
+                continue
+            if threshold is not None and rank_score < float(threshold):
+                continue
+            if not self._candidate_eligible(key=key, rank_maps=rank_maps, min_scores=min_scores):
+                continue
+            used.add(key)
+            selected_keys.append(key)
+            picked += 1
+            try:
+                picked_by_channel[channel] = int(picked_by_channel.get(channel, 0) or 0) + 1
+            except Exception as exc:
+                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+
+    def _fill_budgeted_prefix(
+        self,
+        *,
+        all_sorted: list[dict[str, Any]],
+        k_prefix: int,
+        rank_maps: dict[str, dict[str, int]],
+        min_scores: dict[str, float],
+        used: set[str],
+        selected_keys: list[str],
+        picked_by_channel: dict[str, int],
+    ) -> None:
+        for item in all_sorted:
+            if len(selected_keys) >= k_prefix:
+                break
+            key = self._result_key(item)
+            if key in used:
+                continue
+            if not self._candidate_eligible(key=key, rank_maps=rank_maps, min_scores=min_scores):
+                continue
+            used.add(key)
+            selected_keys.append(key)
+            try:
+                picked_by_channel["fill"] = int(picked_by_channel.get("fill", 0) or 0) + 1
+            except Exception as exc:
+                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+
+    def _record_budgeted_rrf_metrics(
+        self,
+        *,
+        budgets: dict[str, int],
+        min_scores: dict[str, float],
+        picked_by_channel: dict[str, int],
+        rank_maps: dict[str, dict[str, int]],
+        keys: list[str],
+        selected_keys: list[str],
+        k_prefix: int,
+        k0: int,
+    ) -> None:
+        try:
+            if not isinstance(self._last_channel_metrics, dict):
+                return
+            eligible_total = 0
+            for key in keys:
+                if self._candidate_eligible(key=key, rank_maps=rank_maps, min_scores=min_scores):
+                    eligible_total += 1
+            budgets_out = dict(sorted((str(key), int(value or 0)) for key, value in (budgets or {}).items()))
+            min_scores_out = dict(sorted((str(key), float(value or 0.0)) for key, value in (min_scores or {}).items()))
+            picked_out = {
+                channel: int(picked_by_channel.get(channel, 0) or 0)
+                for channel in ("vector", "bm25", "lexical", "sparse", "fill")
+            }
+            self._last_channel_metrics["fusion_budgeted_rrf"] = {
+                "k_prefix": int(k_prefix),
+                "rrf_k": int(k0),
+                "budgets": budgets_out,
+                "min_scores": min_scores_out or None,
+                "eligible_total": int(eligible_total),
+                "selected_prefix": int(len(selected_keys)),
+                "picked_by_channel": picked_out,
+            }
+        except Exception as exc:
+            logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+
+    def _merge_results_rrf(
+        self,
+        *,
+        channel_results: dict[str, list[dict[str, Any]]],
+        channel_norms: dict[str, dict[str, dict[str, Any]]],
+        query: str | None,
+        rrf_k: int | None,
+    ) -> list[dict[str, Any]]:
+        sorted_results = {
+            channel: sorted(channel_results[channel], key=self._rank_sort_key) for channel in self._FUSION_CHANNELS
+        }
+        rank_maps = {channel: self._build_rank_map(sorted_results[channel]) for channel in self._FUSION_CHANNELS}
+        k0 = max(1, int(rrf_k or 0) or int(getattr(self, "rrf_k", 60) or 60))
+        merged, raw_scores, _keys = self._build_rrf_merged_items(
+            channel_norms=channel_norms,
+            rank_maps=rank_maps,
+            k0=k0,
+            strategy="rrf",
+            include_rank_scores=False,
+        )
+        self._normalize_raw_scores(merged, raw_scores)
+        self._apply_phrase_bonus(query=query, merged=merged)
+        return self._apply_plugin_retrieval_policy(
+            sorted(merged.values(), key=self._sort_key_rrf),
+            query=query,
+        )
+
+    def _merge_results_budgeted_rrf(
+        self,
+        *,
+        channel_results: dict[str, list[dict[str, Any]]],
+        channel_norms: dict[str, dict[str, dict[str, Any]]],
+        query: str | None,
+        rrf_k: int | None,
+        top_k: int | None,
+    ) -> list[dict[str, Any]]:
+        sorted_results = {
+            channel: sorted(channel_results[channel], key=self._rank_sort_key) for channel in self._FUSION_CHANNELS
+        }
+        rank_maps = {channel: self._build_rank_map(sorted_results[channel]) for channel in self._FUSION_CHANNELS}
+        k_prefix = max(1, int(top_k or 0) or int(getattr(self, "k", 0) or 0) or 10)
+        budgets = self._resolve_budgeted_budgets(
+            configured=self._coerce_budgets(getattr(self, "fusion_budgets", None)),
+            channel_results=sorted_results,
+            k_prefix=k_prefix,
+        )
+        min_scores = self._coerce_min_scores(getattr(self, "fusion_min_scores", None))
+        k0 = max(1, int(rrf_k or 0) or int(getattr(self, "rrf_k", 60) or 60))
+        merged, raw_scores, keys = self._build_rrf_merged_items(
+            channel_norms=channel_norms,
+            rank_maps=rank_maps,
+            k0=k0,
+            strategy="budgeted_rrf",
+            include_rank_scores=True,
+        )
+        self._normalize_raw_scores(merged, raw_scores)
+        self._apply_phrase_bonus(query=query, merged=merged)
+        all_sorted = sorted(merged.values(), key=self._sort_key_budgeted_rrf)
+        budget_sorted = {
+            channel: self._budget_channel_order(
+                channel_results=sorted_results[channel],
+                rank_map=rank_maps[channel],
+                merged=merged,
+            )
+            for channel in self._FUSION_CHANNELS
+        }
+        selected_keys: list[str] = []
+        used: set[str] = set()
+        picked_by_channel = {"vector": 0, "bm25": 0, "lexical": 0, "sparse": 0, "fill": 0}
+        for channel in self._FUSION_CHANNELS:
+            self._consume_budget_channel(
+                channel=channel,
+                sorted_results=budget_sorted[channel],
+                rank_map=rank_maps[channel],
+                budgets=budgets,
+                min_scores=min_scores,
+                used=used,
+                selected_keys=selected_keys,
+                picked_by_channel=picked_by_channel,
+                rank_maps=rank_maps,
+            )
+        if len(selected_keys) < k_prefix:
+            self._fill_budgeted_prefix(
+                all_sorted=all_sorted,
+                k_prefix=k_prefix,
+                rank_maps=rank_maps,
+                min_scores=min_scores,
+                used=used,
+                selected_keys=selected_keys,
+                picked_by_channel=picked_by_channel,
+            )
+        selected_set = set(selected_keys)
+        prefix = [item for item in all_sorted if self._result_key(item) in selected_set]
+        rest = [item for item in all_sorted if self._result_key(item) not in selected_set]
+        for index, item in enumerate(prefix, 1):
+            item["fusion_budgeted_prefix_rank"] = int(index)
+        self._record_budgeted_rrf_metrics(
+            budgets=budgets,
+            min_scores=min_scores,
+            picked_by_channel=picked_by_channel,
+            rank_maps=rank_maps,
+            keys=keys,
+            selected_keys=selected_keys,
+            k_prefix=k_prefix,
+            k0=k0,
+        )
+        return self._apply_plugin_retrieval_policy(prefix + rest, query=query)
+
+    def _merge_results_weighted(
+        self,
+        *,
+        channel_norms: dict[str, dict[str, dict[str, Any]]],
+        query: str | None,
+    ) -> list[dict[str, Any]] | None:
+        weights_raw = self._coerce_weights(getattr(self, "fusion_weights", None))
+        weight_sum = sum(float(value) for value in weights_raw.values())
+        if weight_sum <= 0.0:
+            return None
+        weights = {key: float(value) / weight_sum for key, value in weights_raw.items()}
+        merged: dict[str, dict[str, Any]] = {}
+        for key in self._all_channel_keys(channel_norms):
+            data = self._merged_channel_data(key=key, channel_norms=channel_norms)
+            if not data:
+                continue
+            vector_score = self._channel_score(channel_norms, "vector", key)
+            bm25_score = self._channel_score(channel_norms, "bm25", key)
+            lexical_score = self._channel_score(channel_norms, "lexical", key)
+            sparse_score = self._channel_score(channel_norms, "sparse", key)
+            fused_score = (
+                float(weights.get("vector", 0.0) or 0.0) * float(vector_score)
+                + float(weights.get("bm25", 0.0) or 0.0) * float(bm25_score)
+                + float(weights.get("lexical", 0.0) or 0.0) * float(lexical_score)
+                + float(weights.get("sparse", 0.0) or 0.0) * float(sparse_score)
+            )
+            item = {
+                **data,
+                "vector_score": float(vector_score),
+                "bm25_score": float(bm25_score),
+                "lexical_score": float(lexical_score),
+                "sparse_score": float(sparse_score),
+                "fusion_strategy": "weighted",
+                "score": float(fused_score),
+            }
+            self._attach_field_aware_signal(item, key=key, channel_norms=channel_norms)
+            merged[key] = item
+        try:
+            if isinstance(self._last_channel_metrics, dict):
+                weights_out = dict(sorted((key, round(float(value), 6)) for key, value in (weights or {}).items()))
+                signature = ",".join([f"{key}:{weights_out.get(key, 0.0):.6f}" for key in sorted(weights_out.keys())])
+                self._last_channel_metrics["fusion_weighted"] = {
+                    "weights": weights_out,
+                    "weights_hash": stable_hash(signature, length=16) if signature else None,
+                }
+        except Exception as exc:
+            logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+        return self._apply_plugin_retrieval_policy(
+            sorted(merged.values(), key=self._sort_key_linear),
+            query=query,
+        )
+
+    def _sort_key_linear(self, item: dict[str, Any]) -> tuple[float, float, float, float, float, str]:
+        return (
+            -float(item.get("score", 0.0) or 0.0),
+            -float(item.get("vector_score", 0.0) or 0.0),
+            -float(item.get("bm25_score", 0.0) or 0.0),
+            -float(item.get("lexical_score", 0.0) or 0.0),
+            -float(item.get("sparse_score", 0.0) or 0.0),
+            self._result_key(item),
+        )
+
+    def _merge_results_linear(
+        self,
+        *,
+        channel_norms: dict[str, dict[str, dict[str, Any]]],
+        query: str | None,
+        alpha: float,
+    ) -> list[dict[str, Any]]:
+        merged: dict[str, dict[str, Any]] = {}
+        for key in self._all_channel_keys(channel_norms):
+            data = self._merged_channel_data(key=key, channel_norms=channel_norms)
+            if not data:
+                continue
+            vector_score = self._channel_score(channel_norms, "vector", key)
+            bm25_score = self._channel_score(channel_norms, "bm25", key)
+            lexical_score = self._channel_score(channel_norms, "lexical", key)
+            sparse_score = self._channel_score(channel_norms, "sparse", key)
+            keyword_score = max(float(bm25_score), float(lexical_score), float(sparse_score))
+            has_vector = key in channel_norms["vector"]
+            has_keyword = any(key in channel_norms[channel] for channel in ("bm25", "lexical", "sparse"))
+            if has_vector and has_keyword:
+                fused_score = alpha * float(vector_score) + (1 - alpha) * float(keyword_score)
+            elif has_vector:
+                fused_score = float(vector_score)
+            else:
+                fused_score = float(keyword_score)
+            item = {
+                **data,
+                "vector_score": float(vector_score),
+                "bm25_score": float(bm25_score),
+                "lexical_score": float(lexical_score),
+                "sparse_score": float(sparse_score),
+                "fusion_strategy": "linear",
+                "score": float(fused_score),
+            }
+            self._attach_field_aware_signal(item, key=key, channel_norms=channel_norms)
+            merged[key] = item
+        return self._apply_plugin_retrieval_policy(
+            sorted(merged.values(), key=self._sort_key_linear),
+            query=query,
+        )
+
     def _merge_results(
         self,
         vector_results: list[dict[str, Any]],
@@ -35,827 +815,39 @@ class FusionMixin:
         top_k: int | None = None,
     ) -> list[dict[str, Any]]:
         """Merge retrieval channel results into a single ranked list."""
-
-        lexical_results = list(lexical_results or [])
-        sparse_results = list(sparse_results or [])
-
-        field_aware_enabled = bool(getattr(settings, "RETRIEVAL_FIELD_AWARE_RECALL_ENABLED", False))
-        field_aware_title_boost = max(0.0, float(getattr(settings, "RETRIEVAL_FIELD_AWARE_TITLE_BOOST", 0.08) or 0.0))
-        field_aware_heading_boost = max(
-            0.0, float(getattr(settings, "RETRIEVAL_FIELD_AWARE_HEADING_BOOST", 0.05) or 0.0)
-        )
-        field_aware_max_boost = max(0.0, float(getattr(settings, "RETRIEVAL_FIELD_AWARE_MAX_BOOST", 0.10) or 0.0))
-        field_aware_title_boost = min(field_aware_title_boost, field_aware_max_boost)
-        field_aware_heading_boost = min(field_aware_heading_boost, field_aware_max_boost)
-        chunk_type_weighting_enabled = bool(getattr(settings, "RETRIEVAL_CHUNK_TYPE_WEIGHTING_ENABLED", False))
-        chunk_type_match_boost = max(0.0, float(getattr(settings, "RETRIEVAL_CHUNK_TYPE_MATCH_BOOST", 0.08) or 0.0))
-
-        def _resolve_chunk_type(result: dict[str, Any]) -> str:
-            meta = result.get("metadata") or {}
-            raw = (
-                str(meta.get("chunk_type") or meta.get("content_type") or meta.get("visual_kind") or "").strip().lower()
-            )
-            if raw in {"text", "formula", "table", "code", "figure", "chart_data", "seal"}:
-                return raw
-            if raw == "chart":
-                return "figure"
-            role = str(meta.get("chunk_semantic_role") or "").strip().lower()
-            if role == "code":
-                return "code"
-            if role == "table":
-                return "table"
-            return "text"
-
-        def _resolve_query_chunk_type_signal(text: str | None) -> str | None:
-            raw = str(text or "").strip().lower()
-            if not raw:
-                return None
-            if any(token in raw for token in ("表格", "字段", "列", "schema", "table", "column")):
-                return "table"
-            if any(token in raw for token in ("公式", "latex", "equation", "math", "公式识别")):
-                return "formula"
-            if any(token in raw for token in ("代码", "sql", "python", "bash", "json", "yaml", "脚本", "code")):
-                return "code"
-            if any(token in raw for token in ("图表", "曲线", "趋势图", "chart", "plot", "graph")):
-                return "chart_data"
-            if any(token in raw for token in ("公章", "印章", "seal", "stamp")):
-                return "seal"
-            return None
-
-        preferred_chunk_type = _resolve_query_chunk_type_signal(query)
-
-        def _chunk_type_boost(chunk_type: str) -> float:
-            if not chunk_type_weighting_enabled or not preferred_chunk_type:
-                return 0.0
-            if chunk_type == preferred_chunk_type:
-                return chunk_type_match_boost
-            if preferred_chunk_type == "chart_data" and chunk_type == "figure":
-                return max(0.0, chunk_type_match_boost * 0.75)
-            return 0.0
-
-        def _resolve_field_signal(result: dict[str, Any]) -> str:
-            meta = result.get("metadata") or {}
-            hinted = (
-                str(
-                    meta.get("embedding_field_role")
-                    or meta.get("embedding_field_kind")
-                    or meta.get("field_channel")
-                    or ""
-                )
-                .strip()
-                .lower()
-            )
-            if hinted in {"title", "heading", "body"}:
-                return hinted
-
-            chunk_id = str(result.get("chunk_id") or meta.get("chunk_id") or "").strip().lower()
-            if chunk_id.endswith(":title"):
-                return "title"
-            if chunk_id.endswith(":heading"):
-                return "heading"
-            return "body"
-
-        def _field_boost(field_signal: str) -> float:
-            if not field_aware_enabled:
-                return 0.0
-            if field_signal == "title":
-                return field_aware_title_boost
-            if field_signal == "heading":
-                return field_aware_heading_boost
-            return 0.0
-
-        def normalize(results: list[dict[str, Any]], *, channel: str) -> dict[str, dict[str, Any]]:
-            if not results:
-                return {}
-            scores = [r.get("score", 0.0) for r in results]
-            min_score = min(scores)
-            max_score = max(scores)
-            rng = max_score - min_score if max_score > min_score else 1.0
-            out: dict[str, dict[str, Any]] = {}
-            for r in results:
-                key = self._result_key(r)
-                norm_score = (r.get("score", 0.0) - min_score) / rng
-                field_signal = "body"
-                field_boost = 0.0
-                chunk_type = _resolve_chunk_type(r)
-                chunk_type_boost = _chunk_type_boost(chunk_type)
-                if channel == "vector":
-                    field_signal = _resolve_field_signal(r)
-                    field_boost = min(_field_boost(field_signal), field_aware_max_boost)
-                scored = float(norm_score) + float(field_boost) + float(chunk_type_boost)
-                existing = out.get(key)
-                if existing is None or float(scored) > float(existing.get("score", 0.0) or 0.0):
-                    out[key] = {
-                        "score": float(scored),
-                        "base_score": float(norm_score),
-                        "data": r,
-                        "chunk_type": chunk_type,
-                        "chunk_type_boost": float(chunk_type_boost),
-                        "field_aware_signal": field_signal if channel == "vector" else None,
-                        "field_aware_boost": float(field_boost if channel == "vector" else 0.0),
-                    }
-            return out
-
-        vector_norm = normalize(vector_results, channel="vector")
-        bm25_norm = normalize(bm25_results, channel="bm25")
-        lexical_norm = normalize(lexical_results, channel="lexical")
-        sparse_norm = normalize(sparse_results, channel="sparse")
-
-        def _attach_field_aware_signal(item: dict[str, Any], key: str) -> None:
-            field_signal = vector_norm.get(key, {}).get("field_aware_signal")
-            field_boost = float(vector_norm.get(key, {}).get("field_aware_boost") or 0.0)
-            chunk_type = (
-                vector_norm.get(key, {}).get("chunk_type")
-                or bm25_norm.get(key, {}).get("chunk_type")
-                or lexical_norm.get(key, {}).get("chunk_type")
-                or sparse_norm.get(key, {}).get("chunk_type")
-            )
-            chunk_type_boost = max(
-                float(vector_norm.get(key, {}).get("chunk_type_boost") or 0.0),
-                float(bm25_norm.get(key, {}).get("chunk_type_boost") or 0.0),
-                float(lexical_norm.get(key, {}).get("chunk_type_boost") or 0.0),
-                float(sparse_norm.get(key, {}).get("chunk_type_boost") or 0.0),
-            )
-            if field_signal:
-                item["field_aware_signal"] = str(field_signal)
-            if field_boost > 0.0:
-                item["field_aware_boost"] = float(field_boost)
-            if chunk_type:
-                item["chunk_type_signal"] = str(chunk_type)
-            if chunk_type_boost > 0.0:
-                item["chunk_type_boost"] = float(chunk_type_boost)
-
-        try:
-            if isinstance(self._last_channel_metrics, dict):
-                field_signal_counts: Counter[str] = Counter()
-                boosted = 0
-                for payload in vector_norm.values():
-                    signal = str(payload.get("field_aware_signal") or "body").strip().lower() or "body"
-                    field_signal_counts[signal] += 1
-                    if float(payload.get("field_aware_boost") or 0.0) > 0.0:
-                        boosted += 1
-
-                self._last_channel_metrics["field_aware"] = {
-                    "enabled": bool(field_aware_enabled),
-                    "title_boost": round(float(field_aware_title_boost), 6),
-                    "heading_boost": round(float(field_aware_heading_boost), 6),
-                    "max_boost": round(float(field_aware_max_boost), 6),
-                    "candidates": int(len(vector_norm)),
-                    "boosted_candidates": int(boosted),
-                    "signals": dict(sorted((str(k), int(v)) for k, v in field_signal_counts.items())),
-                }
-                chunk_type_counts: Counter[str] = Counter()
-                chunk_boosted = 0
-                for payload in vector_norm.values():
-                    signal = str(payload.get("chunk_type") or "text").strip().lower() or "text"
-                    chunk_type_counts[signal] += 1
-                    if float(payload.get("chunk_type_boost") or 0.0) > 0.0:
-                        chunk_boosted += 1
-                self._last_channel_metrics["chunk_type_weighting"] = {
-                    "enabled": bool(chunk_type_weighting_enabled),
-                    "preferred_chunk_type": preferred_chunk_type,
-                    "match_boost": round(float(chunk_type_match_boost), 6),
-                    "candidates": int(len(vector_norm)),
-                    "boosted_candidates": int(chunk_boosted),
-                    "signals": dict(sorted((str(k), int(v)) for k, v in chunk_type_counts.items())),
-                }
-        except Exception as exc:
-            logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-
+        channel_results = {
+            "vector": list(vector_results or []),
+            "bm25": list(bm25_results or []),
+            "lexical": list(lexical_results or []),
+            "sparse": list(sparse_results or []),
+        }
+        runtime = self._build_fusion_runtime(query)
+        channel_norms = {
+            channel: self._normalize_channel_results(channel_results[channel], channel=channel, runtime=runtime)
+            for channel in self._FUSION_CHANNELS
+        }
+        self._update_fusion_observability(vector_norm=channel_norms["vector"], runtime=runtime)
         fusion = (fusion_strategy or "linear").lower().strip()
         if fusion in ("rrf", "reciprocal_rank_fusion"):
-
-            def _rank_sort_key(r: dict[str, Any]) -> tuple[float, str]:
-                # Deterministic ordering is important for regression replay.
-                return (-float(r.get("score", 0.0) or 0.0), self._result_key(r))
-
-            v_sorted = sorted(vector_results, key=_rank_sort_key)
-            b_sorted = sorted(bm25_results, key=_rank_sort_key)
-            l_sorted = sorted(lexical_results, key=_rank_sort_key)
-            s_sorted = sorted(sparse_results, key=_rank_sort_key)
-
-            v_rank: dict[str, int] = {}
-            b_rank: dict[str, int] = {}
-            l_rank: dict[str, int] = {}
-            s_rank: dict[str, int] = {}
-            for idx, r in enumerate(v_sorted, 1):
-                key = self._result_key(r)
-                if key not in v_rank:
-                    v_rank[key] = idx
-            for idx, r in enumerate(b_sorted, 1):
-                key = self._result_key(r)
-                if key not in b_rank:
-                    b_rank[key] = idx
-            for idx, r in enumerate(l_sorted, 1):
-                key = self._result_key(r)
-                if key not in l_rank:
-                    l_rank[key] = idx
-            for idx, r in enumerate(s_sorted, 1):
-                key = self._result_key(r)
-                if key not in s_rank:
-                    s_rank[key] = idx
-
-            k0 = int(rrf_k or 0) or int(getattr(self, "rrf_k", 60) or 60)
-            k0 = max(1, k0)
-
-            merged: dict[str, dict[str, Any]] = {}
-            raw_scores: list[float] = []
-            keys = sorted(
-                set(vector_norm.keys()) | set(bm25_norm.keys()) | set(lexical_norm.keys()) | set(sparse_norm.keys())
+            return self._merge_results_rrf(
+                channel_results=channel_results,
+                channel_norms=channel_norms,
+                query=query,
+                rrf_k=rrf_k,
             )
-            for key in keys:
-                v_data = vector_norm.get(key, {}).get("data")
-                b_data = bm25_norm.get(key, {}).get("data")
-                l_data = lexical_norm.get(key, {}).get("data")
-                s_data = sparse_norm.get(key, {}).get("data")
-                data = v_data or b_data or l_data or s_data
-                if not data:
-                    continue
-
-                # Merge metadata from all channels (prefer existing non-empty values).
-                merged_meta = dict(data.get("metadata") or {})
-                for src in (v_data, b_data, l_data, s_data):
-                    if not src or src is data:
-                        continue
-                    src_meta = src.get("metadata") or {}
-                    for mk, mv in src_meta.items():
-                        if mk not in merged_meta or merged_meta.get(mk) in (None, "", [], {}):
-                            merged_meta[mk] = mv
-                merged_data = dict(data)
-                merged_data["metadata"] = merged_meta
-                if not merged_data.get("chunk_id"):
-                    for src in (v_data, b_data, l_data, s_data):
-                        if src and src.get("chunk_id"):
-                            merged_data["chunk_id"] = src.get("chunk_id")
-                            break
-                data = merged_data
-
-                vr = v_rank.get(key)
-                br = b_rank.get(key)
-                lr = l_rank.get(key)
-                sr = s_rank.get(key)
-                rrf_raw = (1.0 / (k0 + vr)) if vr else 0.0
-                rrf_raw += (1.0 / (k0 + br)) if br else 0.0
-                rrf_raw += (1.0 / (k0 + lr)) if lr else 0.0
-                rrf_raw += (1.0 / (k0 + sr)) if sr else 0.0
-                raw_scores.append(float(rrf_raw))
-
-                merged[key] = {
-                    **data,
-                    "vector_score": float(vector_norm.get(key, {}).get("score", 0.0) or 0.0),
-                    "bm25_score": float(bm25_norm.get(key, {}).get("score", 0.0) or 0.0),
-                    "lexical_score": float(lexical_norm.get(key, {}).get("score", 0.0) or 0.0),
-                    "sparse_score": float(sparse_norm.get(key, {}).get("score", 0.0) or 0.0),
-                    "rrf_score_raw": float(rrf_raw),
-                    "rrf_k": k0,
-                    "rrf_rank_vector": vr,
-                    "rrf_rank_bm25": br,
-                    "rrf_rank_lexical": lr,
-                    "rrf_rank_sparse": sr,
-                    "fusion_strategy": "rrf",
-                    "score": float(rrf_raw),
-                }
-                _attach_field_aware_signal(merged[key], key)
-
-            if merged:
-                min_s = min(raw_scores) if raw_scores else 0.0
-                max_s = max(raw_scores) if raw_scores else 0.0
-                rng = max_s - min_s if max_s > min_s else 1.0
-                for item in merged.values():
-                    raw = float(item.get("rrf_score_raw", 0.0) or 0.0)
-                    item["score"] = (raw - min_s) / rng
-
-            if query:
-                phrase_boost_weight = max(
-                    0.0,
-                    float(getattr(settings, "RETRIEVAL_EXACT_PHRASE_RERANK_BOOST", 0.35) or 0.0),
-                )
-                for item in merged.values():
-                    _apply_exact_content_bonus_to_result(
-                        query=query,
-                        result=item,
-                        phrase_boost_weight=phrase_boost_weight,
-                    )
-
-            def _sort_key(item: dict[str, Any]) -> tuple[float, float, float, float, float, float, str]:
-                return (
-                    -float(item.get("score", 0.0) or 0.0),
-                    -float(item.get("rrf_score_raw", 0.0) or 0.0),
-                    -float(item.get("vector_score", 0.0) or 0.0),
-                    -float(item.get("bm25_score", 0.0) or 0.0),
-                    -float(item.get("lexical_score", 0.0) or 0.0),
-                    -float(item.get("sparse_score", 0.0) or 0.0),
-                    self._result_key(item),
-                )
-
-            return self._apply_plugin_retrieval_policy(sorted(merged.values(), key=_sort_key), query=query)
-
         if fusion in ("budgeted_rrf", "budget_rrf"):
-
-            def _rank_sort_key(r: dict[str, Any]) -> tuple[float, str]:
-                # Deterministic ordering is important for regression replay.
-                return (-float(r.get("score", 0.0) or 0.0), self._result_key(r))
-
-            v_sorted = sorted(vector_results, key=_rank_sort_key)
-            b_sorted = sorted(bm25_results, key=_rank_sort_key)
-            l_sorted = sorted(lexical_results, key=_rank_sort_key)
-            s_sorted = sorted(sparse_results, key=_rank_sort_key)
-
-            v_rank: dict[str, int] = {}
-            b_rank: dict[str, int] = {}
-            l_rank: dict[str, int] = {}
-            s_rank: dict[str, int] = {}
-            for idx, r in enumerate(v_sorted, 1):
-                key = self._result_key(r)
-                if key not in v_rank:
-                    v_rank[key] = idx
-            for idx, r in enumerate(b_sorted, 1):
-                key = self._result_key(r)
-                if key not in b_rank:
-                    b_rank[key] = idx
-            for idx, r in enumerate(l_sorted, 1):
-                key = self._result_key(r)
-                if key not in l_rank:
-                    l_rank[key] = idx
-            for idx, r in enumerate(s_sorted, 1):
-                key = self._result_key(r)
-                if key not in s_rank:
-                    s_rank[key] = idx
-
-            def _rank_score(rank_map: dict[str, int], key: str) -> float:
-                rnk = rank_map.get(key)
-                if not rnk:
-                    return 0.0
-                rnk = int(rnk)
-                if rnk <= 0:
-                    return 0.0
-                return 1.0 / float(rnk)
-
-            def _coerce_budgets(raw: Any) -> dict[str, int]:
-                if not isinstance(raw, dict):
-                    return {}
-                out0: dict[str, int] = {}
-                for k, v in raw.items():
-                    key = str(k or "").strip().lower()
-                    if not key:
-                        continue
-                    try:
-                        iv = int(v) if v is not None else 0
-                    except (TypeError, ValueError, AttributeError):
-                        continue
-                    out0[key] = max(0, iv)
-                return out0
-
-            def _coerce_min_scores(raw: Any) -> dict[str, float]:
-                if not isinstance(raw, dict):
-                    return {}
-                out0: dict[str, float] = {}
-                for k, v in raw.items():
-                    key = str(k or "").strip().lower()
-                    if not key:
-                        continue
-                    try:
-                        fv = float(v) if v is not None else 0.0
-                    except (TypeError, ValueError, AttributeError):
-                        continue
-                    out0[key] = max(0.0, min(1.0, fv))
-                return out0
-
-            # Determine budgets (quotas) for the top_k prefix.
-            k_prefix = int(top_k or 0) or int(getattr(self, "k", 0) or 0) or 10
-            k_prefix = max(1, k_prefix)
-
-            budgets = _coerce_budgets(getattr(self, "fusion_budgets", None))
-            if not budgets:
-                channel_results = {
-                    "vector": v_sorted,
-                    "bm25": b_sorted,
-                    "lexical": l_sorted,
-                    "sparse": s_sorted,
-                }
-                active_channels = [channel for channel, rows in channel_results.items() if rows]
-                budgets = {channel: 0 for channel in channel_results}
-                if active_channels:
-                    # Default: allocate the visible prefix across channels that are
-                    # actually healthy enough to produce candidates. Give every active
-                    # channel one slot first, then distribute the remainder with a
-                    # stable priority that still favors dense recall slightly.
-                    remaining = int(k_prefix)
-                    for channel in active_channels:
-                        if remaining <= 0:
-                            break
-                        budgets[channel] = 1
-                        remaining -= 1
-
-                    priority = [
-                        channel for channel in ("vector", "bm25", "lexical", "sparse") if channel in active_channels
-                    ]
-                    idx = 0
-                    while remaining > 0 and priority:
-                        channel = priority[idx % len(priority)]
-                        budgets[channel] = int(budgets.get(channel, 0) or 0) + 1
-                        remaining -= 1
-                        idx += 1
-
-            min_scores = _coerce_min_scores(getattr(self, "fusion_min_scores", None))
-
-            k0 = int(rrf_k or 0) or int(getattr(self, "rrf_k", 60) or 60)
-            k0 = max(1, k0)
-
-            merged: dict[str, dict[str, Any]] = {}
-            raw_scores: list[float] = []
-            keys = sorted(
-                set(vector_norm.keys()) | set(bm25_norm.keys()) | set(lexical_norm.keys()) | set(sparse_norm.keys())
+            return self._merge_results_budgeted_rrf(
+                channel_results=channel_results,
+                channel_norms=channel_norms,
+                query=query,
+                rrf_k=rrf_k,
+                top_k=top_k,
             )
-
-            def _candidate_eligible(key: str) -> bool:
-                # Candidate must have at least one channel where it meets that channel's min score (if configured).
-                for ch, rmap in (("vector", v_rank), ("bm25", b_rank), ("lexical", l_rank), ("sparse", s_rank)):
-                    rs = _rank_score(rmap, key)
-                    if rs <= 0.0:
-                        continue
-                    th = min_scores.get(ch)
-                    if th is None or rs >= float(th):
-                        return True
-                return False
-
-            for key in keys:
-                v_data = vector_norm.get(key, {}).get("data")
-                b_data = bm25_norm.get(key, {}).get("data")
-                l_data = lexical_norm.get(key, {}).get("data")
-                s_data = sparse_norm.get(key, {}).get("data")
-                data = v_data or b_data or l_data or s_data
-                if not data:
-                    continue
-
-                # Merge metadata from all channels (prefer existing non-empty values).
-                merged_meta = dict(data.get("metadata") or {})
-                for src in (v_data, b_data, l_data, s_data):
-                    if not src or src is data:
-                        continue
-                    src_meta = src.get("metadata") or {}
-                    for mk, mv in src_meta.items():
-                        if mk not in merged_meta or merged_meta.get(mk) in (None, "", [], {}):
-                            merged_meta[mk] = mv
-                merged_data = dict(data)
-                merged_data["metadata"] = merged_meta
-                if not merged_data.get("chunk_id"):
-                    for src in (v_data, b_data, l_data, s_data):
-                        if src and src.get("chunk_id"):
-                            merged_data["chunk_id"] = src.get("chunk_id")
-                            break
-                data = merged_data
-
-                vr = v_rank.get(key)
-                br = b_rank.get(key)
-                lr = l_rank.get(key)
-                sr = s_rank.get(key)
-                rrf_raw = (1.0 / (k0 + vr)) if vr else 0.0
-                rrf_raw += (1.0 / (k0 + br)) if br else 0.0
-                rrf_raw += (1.0 / (k0 + lr)) if lr else 0.0
-                rrf_raw += (1.0 / (k0 + sr)) if sr else 0.0
-                raw_scores.append(float(rrf_raw))
-
-                merged[key] = {
-                    **data,
-                    "vector_score": float(vector_norm.get(key, {}).get("score", 0.0) or 0.0),
-                    "bm25_score": float(bm25_norm.get(key, {}).get("score", 0.0) or 0.0),
-                    "lexical_score": float(lexical_norm.get(key, {}).get("score", 0.0) or 0.0),
-                    "sparse_score": float(sparse_norm.get(key, {}).get("score", 0.0) or 0.0),
-                    "vector_rank_score": float(_rank_score(v_rank, key)),
-                    "bm25_rank_score": float(_rank_score(b_rank, key)),
-                    "lexical_rank_score": float(_rank_score(l_rank, key)),
-                    "sparse_rank_score": float(_rank_score(s_rank, key)),
-                    "rrf_score_raw": float(rrf_raw),
-                    "rrf_k": k0,
-                    "rrf_rank_vector": vr,
-                    "rrf_rank_bm25": br,
-                    "rrf_rank_lexical": lr,
-                    "rrf_rank_sparse": sr,
-                    "fusion_strategy": "budgeted_rrf",
-                    "score": float(rrf_raw),
-                }
-                _attach_field_aware_signal(merged[key], key)
-
-            if merged:
-                min_s = min(raw_scores) if raw_scores else 0.0
-                max_s = max(raw_scores) if raw_scores else 0.0
-                rng = max_s - min_s if max_s > min_s else 1.0
-                for item in merged.values():
-                    raw = float(item.get("rrf_score_raw", 0.0) or 0.0)
-                    item["score"] = (raw - min_s) / rng
-
-            if query:
-                phrase_boost_weight = max(
-                    0.0,
-                    float(getattr(settings, "RETRIEVAL_EXACT_PHRASE_RERANK_BOOST", 0.35) or 0.0),
-                )
-                for item in merged.values():
-                    _apply_exact_content_bonus_to_result(
-                        query=query,
-                        result=item,
-                        phrase_boost_weight=phrase_boost_weight,
-                    )
-
-            def _sort_key(item: dict[str, Any]) -> tuple[float, float, float, float, float, float, str]:
-                return (
-                    -float(item.get("score", 0.0) or 0.0),
-                    -float(item.get("rrf_score_raw", 0.0) or 0.0),
-                    -float(item.get("vector_rank_score", 0.0) or 0.0),
-                    -float(item.get("bm25_rank_score", 0.0) or 0.0),
-                    -float(item.get("lexical_rank_score", 0.0) or 0.0),
-                    -float(item.get("sparse_rank_score", 0.0) or 0.0),
-                    self._result_key(item),
-                )
-
-            all_sorted = sorted(merged.values(), key=_sort_key)
-
-            def _budget_channel_order(
-                channel_results: list[dict[str, Any]],
-                rank_map: dict[str, int],
-            ) -> list[dict[str, Any]]:
-                return sorted(
-                    channel_results,
-                    key=lambda item: (
-                        -_float_or_default(
-                            merged.get(self._result_key(item), {}).get("exact_phrase_score"),
-                            0.0,
-                        ),
-                        int(rank_map.get(self._result_key(item), len(channel_results) + 1)),
-                        self._result_key(item),
-                    ),
-                )
-
-            v_budget_sorted = _budget_channel_order(v_sorted, v_rank)
-            b_budget_sorted = _budget_channel_order(b_sorted, b_rank)
-            l_budget_sorted = _budget_channel_order(l_sorted, l_rank)
-            s_budget_sorted = _budget_channel_order(s_sorted, s_rank)
-
-            # Build a top_k prefix that enforces budgets/quotas but still orders by fused score.
-            selected_keys: list[str] = []
-            used: set[str] = set()
-            picked_by_channel: dict[str, int] = {"vector": 0, "bm25": 0, "lexical": 0, "sparse": 0, "fill": 0}
-
-            def _select_from_channel(
-                channel: str, sorted_results: list[dict[str, Any]], rank_map: dict[str, int]
-            ) -> None:
-                quota = int(budgets.get(channel, 0) or 0)
-                if quota <= 0:
-                    return
-                picked = 0
-                th = min_scores.get(channel)
-                for rr in sorted_results:
-                    if picked >= quota:
-                        break
-                    key = self._result_key(rr)
-                    if key in used:
-                        continue
-                    rs = _rank_score(rank_map, key)
-                    if rs <= 0.0:
-                        continue
-                    if th is not None and rs < float(th):
-                        # Exact-hit weighting may reorder a channel, so lower-ranked misses
-                        # cannot terminate the scan for later eligible candidates.
-                        continue
-                    if not _candidate_eligible(key):
-                        continue
-                    used.add(key)
-                    selected_keys.append(key)
-                    picked += 1
-                    try:
-                        picked_by_channel[channel] = int(picked_by_channel.get(channel, 0) or 0) + 1
-                    except Exception as exc:
-                        logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-
-            _select_from_channel("vector", v_budget_sorted, v_rank)
-            _select_from_channel("bm25", b_budget_sorted, b_rank)
-            _select_from_channel("lexical", l_budget_sorted, l_rank)
-            _select_from_channel("sparse", s_budget_sorted, s_rank)
-
-            if len(selected_keys) < k_prefix:
-                for item in all_sorted:
-                    if len(selected_keys) >= k_prefix:
-                        break
-                    key = self._result_key(item)
-                    if key in used:
-                        continue
-                    if not _candidate_eligible(key):
-                        continue
-                    used.add(key)
-                    selected_keys.append(key)
-                    try:
-                        picked_by_channel["fill"] = int(picked_by_channel.get("fill", 0) or 0) + 1
-                    except Exception as exc:
-                        logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-
-            selected_set = set(selected_keys)
-            prefix = [item for item in all_sorted if self._result_key(item) in selected_set]
-            rest = [item for item in all_sorted if self._result_key(item) not in selected_set]
-            for idx, item in enumerate(prefix, 1):
-                item["fusion_budgeted_prefix_rank"] = int(idx)
-
-            # Best-effort: surface fusion budget behavior into retriever_debug.channels for diagnostics.
-            # PII-safe: only small numeric counters and low-cardinality settings.
-            try:
-                eligible_total = 0
-                for key in keys:
-                    if _candidate_eligible(key):
-                        eligible_total += 1
-
-                budgets_out = dict(sorted((str(k), int(v or 0)) for k, v in (budgets or {}).items()))
-                min_scores_out = dict(sorted((str(k), float(v or 0.0)) for k, v in (min_scores or {}).items()))
-                picked_out = {
-                    k: int(picked_by_channel.get(k, 0) or 0) for k in ("vector", "bm25", "lexical", "sparse", "fill")
-                }
-
-                if isinstance(self._last_channel_metrics, dict):
-                    self._last_channel_metrics["fusion_budgeted_rrf"] = {
-                        "k_prefix": int(k_prefix),
-                        "rrf_k": int(k0),
-                        "budgets": budgets_out,
-                        "min_scores": min_scores_out or None,
-                        "eligible_total": int(eligible_total),
-                        "selected_prefix": int(len(selected_keys)),
-                        "picked_by_channel": picked_out,
-                    }
-            except Exception as exc:
-                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-            return self._apply_plugin_retrieval_policy(prefix + rest, query=query)
-
         if fusion in ("weighted", "weighted_linear", "weighted_sum"):
-
-            def _coerce_weights(raw: Any) -> dict[str, float]:
-                if not isinstance(raw, dict):
-                    return {}
-                allowed = {"vector", "bm25", "lexical", "sparse"}
-                out0: dict[str, float] = {}
-                for k, v in raw.items():
-                    key = str(k or "").strip().lower()
-                    if not key or key not in allowed:
-                        continue
-                    try:
-                        w = float(v)
-                    except (TypeError, ValueError, AttributeError):
-                        continue
-                    if w <= 0.0:
-                        continue
-                    out0[key] = float(w)
-                return out0
-
-            weights_raw = _coerce_weights(getattr(self, "fusion_weights", None))
-            w_sum = sum(float(x) for x in weights_raw.values())
-            if w_sum <= 0.0:
-                # Safe fallback: behave like linear fusion when weights are not configured.
-                fusion = "linear"
-            else:
-                weights = {k: (float(v) / w_sum) for k, v in weights_raw.items()}
-
-                merged: dict[str, dict[str, Any]] = {}
-                keys = sorted(
-                    set(vector_norm.keys()) | set(bm25_norm.keys()) | set(lexical_norm.keys()) | set(sparse_norm.keys())
-                )
-                for key in keys:
-                    v_score = float(vector_norm.get(key, {}).get("score", 0.0) or 0.0)
-                    b_score = float(bm25_norm.get(key, {}).get("score", 0.0) or 0.0)
-                    l_score = float(lexical_norm.get(key, {}).get("score", 0.0) or 0.0)
-                    s_score = float(sparse_norm.get(key, {}).get("score", 0.0) or 0.0)
-                    v_data = vector_norm.get(key, {}).get("data")
-                    b_data = bm25_norm.get(key, {}).get("data")
-                    l_data = lexical_norm.get(key, {}).get("data")
-                    s_data = sparse_norm.get(key, {}).get("data")
-                    data = v_data or b_data or l_data or s_data
-                    if not data:
-                        continue
-
-                    # Merge metadata from all channels (e.g., img_id may only exist in BM25/DB metadata).
-                    merged_meta = dict(data.get("metadata") or {})
-                    for src in (v_data, b_data, l_data, s_data):
-                        if not src or src is data:
-                            continue
-                        src_meta = src.get("metadata") or {}
-                        for mk, mv in src_meta.items():
-                            if mk not in merged_meta or merged_meta.get(mk) in (None, "", [], {}):
-                                merged_meta[mk] = mv
-                    merged_data = dict(data)
-                    merged_data["metadata"] = merged_meta
-                    if not merged_data.get("chunk_id"):
-                        for src in (v_data, b_data, l_data, s_data):
-                            if src and src.get("chunk_id"):
-                                merged_data["chunk_id"] = src.get("chunk_id")
-                                break
-                    data = merged_data
-
-                    fused_score = (
-                        float(weights.get("vector", 0.0) or 0.0) * float(v_score)
-                        + float(weights.get("bm25", 0.0) or 0.0) * float(b_score)
-                        + float(weights.get("lexical", 0.0) or 0.0) * float(l_score)
-                        + float(weights.get("sparse", 0.0) or 0.0) * float(s_score)
-                    )
-
-                    merged[key] = {
-                        **data,
-                        "vector_score": float(v_score),
-                        "bm25_score": float(b_score),
-                        "lexical_score": float(l_score),
-                        "sparse_score": float(s_score),
-                        "fusion_strategy": "weighted",
-                        "score": float(fused_score),
-                    }
-                    _attach_field_aware_signal(merged[key], key)
-
-                # Best-effort: surface weights used into retriever_debug.channels for diagnostics.
-                try:
-                    if isinstance(self._last_channel_metrics, dict):
-                        weights_out = dict(sorted((k, round(float(v), 6)) for k, v in (weights or {}).items()))
-                        sig = ",".join([f"{k}:{weights_out.get(k, 0.0):.6f}" for k in sorted(weights_out.keys())])
-                        self._last_channel_metrics["fusion_weighted"] = {
-                            "weights": weights_out,
-                            "weights_hash": stable_hash(sig, length=16) if sig else None,
-                        }
-                except Exception as exc:
-                    logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-
-                def _sort_key(item: dict[str, Any]) -> tuple[float, float, float, float, float, str]:
-                    return (
-                        -float(item.get("score", 0.0) or 0.0),
-                        -float(item.get("vector_score", 0.0) or 0.0),
-                        -float(item.get("bm25_score", 0.0) or 0.0),
-                        -float(item.get("lexical_score", 0.0) or 0.0),
-                        -float(item.get("sparse_score", 0.0) or 0.0),
-                        self._result_key(item),
-                    )
-
-                return self._apply_plugin_retrieval_policy(sorted(merged.values(), key=_sort_key), query=query)
-
-        merged: dict[str, dict[str, Any]] = {}
-        keys = sorted(
-            set(vector_norm.keys()) | set(bm25_norm.keys()) | set(lexical_norm.keys()) | set(sparse_norm.keys())
-        )
-        for key in keys:
-            v_score = vector_norm.get(key, {}).get("score", 0.0)
-            b_score = bm25_norm.get(key, {}).get("score", 0.0)
-            l_score = lexical_norm.get(key, {}).get("score", 0.0)
-            s_score = sparse_norm.get(key, {}).get("score", 0.0)
-            v_data = vector_norm.get(key, {}).get("data")
-            b_data = bm25_norm.get(key, {}).get("data")
-            l_data = lexical_norm.get(key, {}).get("data")
-            s_data = sparse_norm.get(key, {}).get("data")
-            data = v_data or b_data or l_data or s_data
-            if not data:
-                continue
-
-            # Merge metadata from all channels (e.g., img_id may only exist in BM25/DB metadata).
-            merged_meta = dict(data.get("metadata") or {})
-            for src in (v_data, b_data, l_data, s_data):
-                if not src or src is data:
-                    continue
-                src_meta = src.get("metadata") or {}
-                for mk, mv in src_meta.items():
-                    if mk not in merged_meta or merged_meta.get(mk) in (None, "", [], {}):
-                        merged_meta[mk] = mv
-            merged_data = dict(data)
-            merged_data["metadata"] = merged_meta
-            if not merged_data.get("chunk_id"):
-                for src in (v_data, b_data, l_data, s_data):
-                    if src and src.get("chunk_id"):
-                        merged_data["chunk_id"] = src.get("chunk_id")
-                        break
-            data = merged_data
-
-            has_v = key in vector_norm
-            has_b = key in bm25_norm
-            has_l = key in lexical_norm
-            has_s = key in sparse_norm
-            keyword_score = max(float(b_score), float(l_score), float(s_score))
-            if has_v and (has_b or has_l or has_s):
-                fused_score = alpha * float(v_score) + (1 - alpha) * float(keyword_score)
-            elif has_v:
-                fused_score = float(v_score)
-            else:
-                fused_score = float(keyword_score)
-
-            merged[key] = {
-                **data,
-                "vector_score": float(v_score),
-                "bm25_score": float(b_score),
-                "lexical_score": float(l_score),
-                "sparse_score": float(s_score),
-                "fusion_strategy": "linear",
-                "score": fused_score,
-            }
-            _attach_field_aware_signal(merged[key], key)
-
-        def _sort_key(item: dict[str, Any]) -> tuple[float, float, float, float, float, str]:
-            return (
-                -float(item.get("score", 0.0) or 0.0),
-                -float(item.get("vector_score", 0.0) or 0.0),
-                -float(item.get("bm25_score", 0.0) or 0.0),
-                -float(item.get("lexical_score", 0.0) or 0.0),
-                -float(item.get("sparse_score", 0.0) or 0.0),
-                self._result_key(item),
-            )
-
-        return self._apply_plugin_retrieval_policy(sorted(merged.values(), key=_sort_key), query=query)
+            weighted = self._merge_results_weighted(channel_norms=channel_norms, query=query)
+            if weighted is not None:
+                return weighted
+        return self._merge_results_linear(channel_norms=channel_norms, query=query, alpha=alpha)
 
     def _weight_rerank(
         self,

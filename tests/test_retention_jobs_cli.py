@@ -253,3 +253,79 @@ def test_retention_jobs_cli_runs_dataset_retention(
     assert calls[0]["dry_run"] is True
     assert session.closed is True
     assert json.loads(capsys.readouterr().out)["ok"] is True
+
+
+def test_retention_jobs_cli_requires_a_selected_job(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "_load_runtime_dependencies",
+        lambda: (_ for _ in ()).throw(AssertionError("dependencies must not load")),
+    )
+
+    assert cli.main([]) == 2
+    assert "No job selected" in capsys.readouterr().err
+
+
+def test_retention_jobs_cli_runs_regression_and_knowledge_asset_retention(
+    capsys: pytest.CaptureFixture[str],
+    runtime_deps: SimpleNamespace,
+) -> None:
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    class _FakeSession:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    def run_regression(_db: object, **kwargs: object) -> dict[str, object]:
+        calls.append(("regression", kwargs))
+        return {"job": "regression", "failed": False}
+
+    async def run_knowledge(_db: object, **kwargs: object) -> dict[str, object]:
+        calls.append(("knowledge", kwargs))
+        return {"job": "knowledge", "failed": False}
+
+    session = _FakeSession()
+    runtime_deps.SessionLocal = lambda: session
+    runtime_deps.run_regression_run_retention = run_regression
+    runtime_deps.run_knowledge_asset_retention = run_knowledge
+
+    assert (
+        cli.main(
+            [
+                "--regression-runs",
+                "--knowledge-assets",
+                "--tenant-id",
+                str(tenant_id),
+                "--dataset-id",
+                str(dataset_id),
+                "--lifecycle-state",
+                "archived",
+                "--retention-days",
+                "45",
+                "--max-delete",
+                "9",
+                "--execute",
+            ]
+        )
+        == 0
+    )
+
+    assert [name for name, _kwargs in calls] == ["regression", "knowledge"]
+    assert calls[0][1]["tenant_id"] == tenant_id
+    assert calls[0][1]["retention_days"] == 45
+    assert calls[0][1]["dry_run"] is False
+    assert calls[1][1]["dataset_id"] == dataset_id
+    assert calls[1][1]["lifecycle_state"] == "archived"
+    assert calls[1][1]["now"] == calls[0][1]["now"]
+    assert session.closed is True
+    assert json.loads(capsys.readouterr().out)["results"] == [
+        {"job": "regression", "failed": False},
+        {"job": "knowledge", "failed": False},
+    ]

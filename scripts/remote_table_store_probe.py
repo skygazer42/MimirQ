@@ -1,55 +1,47 @@
 #!/usr/bin/env python3
-# ruff: noqa: E402, I001
 """Verify table-store dataset table endpoints against a live API."""
-
 
 import argparse
 import json
-import sys
 import tempfile
 import time
 from pathlib import Path
 from typing import Any
 
-
-def ensure_repo_root_on_sys_path(script_path: str | Path) -> str:
-    repo_root = str(Path(script_path).resolve().parents[1])
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-    return repo_root
-
-
-ensure_repo_root_on_sys_path(__file__)
-
-from scripts.remote_kb_boundary_matrix import LiveApi, ensure_success, record_step, wait_for_document_completed
+try:
+    from scripts.remote_kb_boundary_matrix import LiveApi, ensure_success, record_step, wait_for_document_completed
+except ModuleNotFoundError:
+    from remote_kb_boundary_matrix import (  # type: ignore[no-redef]
+        LiveApi,
+        ensure_success,
+        record_step,
+        wait_for_document_completed,
+    )
 
 
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 
 
-def validate_table_store_probe(
-    *,
-    table_list_body: Any,
-    table_detail_body: Any,
-    table_preview_body: Any,
-    table_query_body: Any,
-) -> list[str]:
-    failures: list[str] = []
-
-    list_items = []
+def _list_items(table_list_body: Any) -> list[dict[str, Any]]:
     if isinstance(table_list_body, dict) and isinstance(table_list_body.get("items"), list):
-        list_items = [item for item in table_list_body["items"] if isinstance(item, dict)]
-    if not list_items:
-        failures.append("table_list expected non-empty items")
-        return failures
+        return [item for item in table_list_body["items"] if isinstance(item, dict)]
+    return []
 
+
+def _table_list_failures(list_items: list[dict[str, Any]]) -> list[str]:
+    if not list_items:
+        return ["table_list expected non-empty items"]
     first = list_items[0]
+    failures: list[str] = []
     if int(first.get("row_count") or 0) < 1:
         failures.append(f"table_list.row_count expected>=1 actual={int(first.get('row_count') or 0)}")
     if int(first.get("col_count") or 0) < 1:
         failures.append(f"table_list.col_count expected>=1 actual={int(first.get('col_count') or 0)}")
+    return failures
 
-    detail = table_detail_body if isinstance(table_detail_body, dict) else {}
+
+def _table_detail_failures(detail: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
     detail_columns = detail.get("columns")
     if not isinstance(detail_columns, list) or len(detail_columns) < 3:
         failures.append(f"table_detail.columns expected>=3 actual={detail_columns!r}")
@@ -68,25 +60,43 @@ def validate_table_store_probe(
             failures.append(f"table_detail.sample_rows[0].region expected=APAC actual={first_row.get('region')!r}")
         if str(first_row.get("status") or "") != "review":
             failures.append(f"table_detail.sample_rows[0].status expected=review actual={first_row.get('status')!r}")
+    return failures
 
+
+def _table_rows_failures(name: str, payload: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    columns = payload.get("columns")
+    rows = payload.get("rows")
+    if not isinstance(columns, list) or columns[:3] != ["region", "amount", "status"]:
+        failures.append(f"{name}.columns expected=['region','amount','status'] actual={columns!r}")
+    if not isinstance(rows, list) or len(rows) < 2:
+        failures.append(f"{name}.rows expected>=2 actual={rows!r}")
+        return failures
+    first_row = rows[0] if isinstance(rows[0], list) else []
+    if len(first_row) < 3:
+        failures.append(f"{name}.rows[0] expected len>=3 actual={first_row!r}")
+        return failures
+    if str(first_row[0]) != "APAC":
+        failures.append(f"{name}.rows[0][0] expected=APAC actual={first_row[0]!r}")
+    if str(first_row[2]) != "review":
+        failures.append(f"{name}.rows[0][2] expected=review actual={first_row[2]!r}")
+    return failures
+
+
+def validate_table_store_probe(
+    *,
+    table_list_body: Any,
+    table_detail_body: Any,
+    table_preview_body: Any,
+    table_query_body: Any,
+) -> list[str]:
+    detail = table_detail_body if isinstance(table_detail_body, dict) else {}
+    failures = _table_list_failures(_list_items(table_list_body))
+    if failures == ["table_list expected non-empty items"]:
+        return failures
+    failures.extend(_table_detail_failures(detail))
     for name, body in (("preview", table_preview_body), ("query", table_query_body)):
-        payload = body if isinstance(body, dict) else {}
-        columns = payload.get("columns")
-        rows = payload.get("rows")
-        if not isinstance(columns, list) or columns[:3] != ["region", "amount", "status"]:
-            failures.append(f"{name}.columns expected=['region','amount','status'] actual={columns!r}")
-        if not isinstance(rows, list) or len(rows) < 2:
-            failures.append(f"{name}.rows expected>=2 actual={rows!r}")
-            continue
-        first_row = rows[0] if isinstance(rows[0], list) else []
-        if len(first_row) < 3:
-            failures.append(f"{name}.rows[0] expected len>=3 actual={first_row!r}")
-            continue
-        if str(first_row[0]) != "APAC":
-            failures.append(f"{name}.rows[0][0] expected=APAC actual={first_row[0]!r}")
-        if str(first_row[2]) != "review":
-            failures.append(f"{name}.rows[0][2] expected=review actual={first_row[2]!r}")
-
+        failures.extend(_table_rows_failures(name, body if isinstance(body, dict) else {}))
     return failures
 
 
@@ -102,7 +112,7 @@ def cleanup_dataset(api: LiveApi, *, steps: list[dict[str, Any]], dataset_id: st
     return summary
 
 
-def main(argv: list[str] | None = None) -> int:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run a live table-store endpoint probe.")
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--tenant-id", default=DEFAULT_TENANT_ID)
@@ -111,7 +121,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--artifact-dir", default="")
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--poll-timeout", type=int, default=300)
-    args = parser.parse_args(argv)
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
 
     run_id = time.strftime("%Y%m%d-%H%M%S")
     artifact_dir = Path(args.artifact_dir or f"artifacts/table-store-probe/{run_id}").resolve()
@@ -164,9 +178,7 @@ def main(argv: list[str] | None = None) -> int:
         with tempfile.TemporaryDirectory(prefix="table-store-probe-") as td:
             csv_path = Path(td) / "sample.csv"
             csv_path.write_text(
-                "region,amount,status\n"
-                "APAC,1200,review\n"
-                "EMEA,800,done\n",
+                "region,amount,status\nAPAC,1200,review\nEMEA,800,done\n",
                 encoding="utf-8",
             )
 

@@ -874,28 +874,25 @@ def _normalize_answer_item(raw: Any) -> dict[str, Any]:
     return {"answer": _text(raw)}
 
 
+def _answer_list_to_map(items: list[Any]) -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {}
+    for raw in items:
+        if not isinstance(raw, dict):
+            continue
+        case_id = _text(raw.get("id") or raw.get("case_id"))
+        if case_id:
+            out[case_id] = dict(raw)
+    return out
+
+
 def load_answer_map(path: str) -> dict[str, dict[str, Any]]:
     if not _text(path):
         return {}
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     if isinstance(payload, dict) and isinstance(payload.get("answers"), list):
-        out: dict[str, dict[str, Any]] = {}
-        for raw in payload.get("answers") or []:
-            if not isinstance(raw, dict):
-                continue
-            case_id = _text(raw.get("id") or raw.get("case_id"))
-            if case_id:
-                out[case_id] = dict(raw)
-        return out
+        return _answer_list_to_map(payload.get("answers") or [])
     if isinstance(payload, list):
-        out: dict[str, dict[str, Any]] = {}
-        for raw in payload:
-            if not isinstance(raw, dict):
-                continue
-            case_id = _text(raw.get("id") or raw.get("case_id"))
-            if case_id:
-                out[case_id] = dict(raw)
-        return out
+        return _answer_list_to_map(payload)
     if isinstance(payload, dict):
         return {_text(case_id): _normalize_answer_item(raw) for case_id, raw in payload.items() if _text(case_id)}
     raise ValueError("answers file must be an object, an object with answers[], or an answers[] list")

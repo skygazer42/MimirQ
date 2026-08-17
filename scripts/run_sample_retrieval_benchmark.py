@@ -70,18 +70,14 @@ def _family_key(meta: dict[str, Any], *, chunk_id: str) -> str:
     return str(chunk_id or "").strip() or "unknown"
 
 
-def _validate_fixture(payload: dict[str, Any]) -> None:
-    schema = str(payload.get("schema") or "").strip()
-    if schema != _FIXTURE_SCHEMA:
-        raise ValueError(f"Unsupported fixture schema: expected {_FIXTURE_SCHEMA}, got {schema or '<empty>'}")
+def _require_fixture_rows(payload: dict[str, Any], *, key: str, message: str) -> list[Any]:
+    rows = payload.get(key)
+    if not isinstance(rows, list) or not rows:
+        raise ValueError(message)
+    return rows
 
-    docs = payload.get("documents")
-    queries = payload.get("queries")
-    if not isinstance(docs, list) or not docs:
-        raise ValueError("Fixture must include a non-empty documents list")
-    if not isinstance(queries, list) or not queries:
-        raise ValueError("Fixture must include a non-empty queries list")
 
+def _validate_fixture_documents(docs: list[Any]) -> set[str]:
     known_chunk_ids: set[str] = set()
     for i, row in enumerate(docs):
         if not isinstance(row, dict):
@@ -95,19 +91,32 @@ def _validate_fixture(payload: dict[str, Any]) -> None:
         if cid in known_chunk_ids:
             raise ValueError(f"Duplicate chunk_id in fixture: {cid}")
         known_chunk_ids.add(cid)
+    return known_chunk_ids
 
+
+def _validate_fixture_queries(queries: list[Any], *, known_chunk_ids: set[str]) -> None:
     for i, row in enumerate(queries):
         if not isinstance(row, dict):
             raise ValueError(f"queries[{i}] must be an object")
-        q = str(row.get("question") or "").strip()
+        question = str(row.get("question") or "").strip()
         expected = _normalize_expected_ids(row.get("expected_chunk_ids"))
-        if not q:
+        if not question:
             raise ValueError(f"queries[{i}].question is required")
         if not expected:
             raise ValueError(f"queries[{i}].expected_chunk_ids must be non-empty")
         missing = [cid for cid in expected if cid not in known_chunk_ids]
         if missing:
             raise ValueError(f"queries[{i}] references unknown chunk_id(s): {missing}")
+
+
+def _validate_fixture(payload: dict[str, Any]) -> None:
+    schema = str(payload.get("schema") or "").strip()
+    if schema != _FIXTURE_SCHEMA:
+        raise ValueError(f"Unsupported fixture schema: expected {_FIXTURE_SCHEMA}, got {schema or '<empty>'}")
+
+    docs = _require_fixture_rows(payload, key="documents", message="Fixture must include a non-empty documents list")
+    queries = _require_fixture_rows(payload, key="queries", message="Fixture must include a non-empty queries list")
+    _validate_fixture_queries(queries, known_chunk_ids=_validate_fixture_documents(docs))
 
 
 def _build_documents(
@@ -169,6 +178,54 @@ def _ndcg_at_k_binary(ranked_chunk_ids: list[str], expected_ids: set[str], k: in
     return float(dcg / idcg)
 
 
+def _ranked_retrieval_lists(
+    *,
+    rows: list[Any],
+    chunk_doc_ids: dict[str, str] | None,
+    chunk_family_keys: dict[str, str] | None,
+) -> tuple[list[str], list[str], list[str]]:
+    ranked: list[str] = []
+    ranked_docs: list[str] = []
+    ranked_families: list[str] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        cid = str(row.get("chunk_id") or "").strip()
+        if not cid:
+            continue
+        ranked.append(cid)
+        doc_id = str((chunk_doc_ids or {}).get(cid) or "").strip()
+        if doc_id:
+            ranked_docs.append(doc_id)
+        family = str((chunk_family_keys or {}).get(cid) or cid).strip() or cid
+        ranked_families.append(family)
+    return ranked, ranked_docs, ranked_families
+
+
+def _first_hit_reciprocal_rank(ranked_ids: list[str], expected_ids: set[str]) -> float:
+    for idx, cid in enumerate(ranked_ids, start=1):
+        if cid in expected_ids:
+            return 1.0 / float(idx)
+    return 0.0
+
+
+def _dedupe_preserve_order(values: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+    return out
+
+
+def _top_share(values: list[str]) -> float:
+    if not values:
+        return 0.0
+    return max(values.count(value) for value in set(values)) / float(len(values))
+
+
 def _evaluate_query(
     *,
     retriever: Any,
@@ -193,62 +250,29 @@ def _evaluate_query(
     )
     elapsed_ms = (time.perf_counter() - t0) * 1000.0
 
-    ranked: list[str] = []
-    ranked_docs: list[str] = []
-    ranked_families: list[str] = []
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        cid = str(row.get("chunk_id") or "").strip()
-        if cid:
-            ranked.append(cid)
-            doc_id = str((chunk_doc_ids or {}).get(cid) or "").strip()
-            if doc_id:
-                ranked_docs.append(doc_id)
-            fam = str((chunk_family_keys or {}).get(cid) or cid).strip() or cid
-            ranked_families.append(fam)
+    ranked, ranked_docs, ranked_families = _ranked_retrieval_lists(
+        rows=rows,
+        chunk_doc_ids=chunk_doc_ids,
+        chunk_family_keys=chunk_family_keys,
+    )
 
     expected_set = set(expected_chunk_ids)
     hit = 1.0 if any(cid in expected_set for cid in ranked[:top_k]) else 0.0
-
-    rr = 0.0
-    for idx, cid in enumerate(ranked, start=1):
-        if cid in expected_set:
-            rr = 1.0 / float(idx)
-            break
-
+    rr = _first_hit_reciprocal_rank(ranked, expected_set)
     ndcg = _ndcg_at_k_binary(ranked, expected_set, top_k)
 
     expected_families = _normalize_expected_ids(list(expected_family_keys or []))
     expected_family_set = set(expected_families)
     ranked_families_k = ranked_families[:top_k]
-    ranked_family_unique: list[str] = []
-    seen_fams: set[str] = set()
-    for fid in ranked_families_k:
-        if fid in seen_fams:
-            continue
-        seen_fams.add(fid)
-        ranked_family_unique.append(fid)
+    ranked_family_unique = _dedupe_preserve_order(ranked_families_k)
     family_hit = 1.0 if any(fid in expected_family_set for fid in ranked_family_unique) else 0.0
-
-    family_rr = 0.0
-    for idx, fid in enumerate(ranked_family_unique, start=1):
-        if fid in expected_family_set:
-            family_rr = 1.0 / float(idx)
-            break
-
+    family_rr = _first_hit_reciprocal_rank(ranked_family_unique, expected_family_set)
     family_ndcg = _ndcg_at_k_binary(ranked_family_unique, expected_family_set, top_k)
 
     distinct_docs = len(set(ranked_docs))
     distinct_fams = len(set(ranked_family_unique))
-    top_doc_share = 0.0
-    if ranked_docs:
-        top_doc_share = max(ranked_docs.count(d) for d in set(ranked_docs)) / float(len(ranked_docs))
-    top_family_share = 0.0
-    if ranked_families_k:
-        top_family_share = max(ranked_families_k.count(f) for f in set(ranked_families_k)) / float(
-            len(ranked_families_k)
-        )
+    top_doc_share = _top_share(ranked_docs)
+    top_family_share = _top_share(ranked_families_k)
     return {
         "question": question,
         "expected_chunk_ids": expected_chunk_ids,

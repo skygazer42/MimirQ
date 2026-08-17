@@ -195,6 +195,18 @@ def _iter_dataset_document_ids(
     return out
 
 
+def _warn_storage_readiness(readiness: dict[str, Any]) -> None:
+    minio_status = readiness.get("minio")
+    if not isinstance(minio_status, dict):
+        return
+    enabled = bool(minio_status.get("enabled"))
+    status = str(minio_status.get("status") or "")
+    if not enabled:
+        print("[backfill] WARN: object storage is disabled; backfill will not upload images")
+    elif status and status != "connected":
+        print(f"[backfill] WARN: object storage status={status}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
@@ -282,14 +294,7 @@ def main() -> int:
 
     # Best-effort warning (does not block execution).
     readiness = _read_storage_readiness(base_url=base_url, headers=headers, timeout_sec=timeout_sec)
-    minio_status = readiness.get("minio")
-    if isinstance(minio_status, dict):
-        enabled = bool(minio_status.get("enabled"))
-        status = str(minio_status.get("status") or "")
-        if not enabled:
-            print("[backfill] WARN: object storage is disabled; backfill will not upload images")
-        elif status and status != "connected":
-            print(f"[backfill] WARN: object storage status={status}")
+    _warn_storage_readiness(readiness)
 
     print("[backfill] Listing documents...")
     doc_ids = _iter_dataset_document_ids(

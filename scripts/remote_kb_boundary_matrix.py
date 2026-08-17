@@ -175,6 +175,39 @@ def response_text_from_body(body: Any) -> str:
     return "\n".join(parts)
 
 
+def _case_string_list(case: dict[str, Any], key: str) -> list[str]:
+    return [str(item) for item in (case.get(key) or []) if str(item).strip()]
+
+
+def _citation_range_failures(*, name: str, citation_count: int, case: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    min_citations = case.get("min_citations")
+    if min_citations is not None and int(citation_count) < int(min_citations):
+        failures.append(f"{name}: min_citations={min_citations} actual={citation_count}")
+    max_citations = case.get("max_citations")
+    if max_citations is not None and int(citation_count) > int(max_citations):
+        failures.append(f"{name}: max_citations={max_citations} actual={citation_count}")
+    return failures
+
+
+def _term_failures(
+    *,
+    name: str,
+    response_text: str,
+    expected_terms: list[str],
+    forbidden_terms: list[str],
+) -> list[str]:
+    failures: list[str] = []
+    lowered = str(response_text or "").casefold()
+    missing_terms = [term for term in expected_terms if term.casefold() not in lowered]
+    if missing_terms:
+        failures.append(f"{name}: missing expected_terms={missing_terms}")
+    hit_forbidden = [term for term in forbidden_terms if term.casefold() in lowered]
+    if hit_forbidden:
+        failures.append(f"{name}: forbidden_terms={hit_forbidden}")
+    return failures
+
+
 def evaluate_boundary_case(
     case: dict[str, Any],
     *,
@@ -185,11 +218,11 @@ def evaluate_boundary_case(
     failures: list[str] = []
     name = str(case.get("name") or "case")
     actual_ids = [str(item) for item in citation_doc_ids if str(item).strip()]
-    allowed_ids = [str(item) for item in (case.get("allowed_document_ids") or []) if str(item).strip()]
-    expected_ids = [str(item) for item in (case.get("expected_document_ids") or []) if str(item).strip()]
-    required_ids = [str(item) for item in (case.get("required_document_ids") or []) if str(item).strip()]
-    expected_terms = [str(item) for item in (case.get("expected_terms") or []) if str(item).strip()]
-    forbidden_terms = [str(item) for item in (case.get("forbidden_terms") or []) if str(item).strip()]
+    allowed_ids = _case_string_list(case, "allowed_document_ids")
+    expected_ids = _case_string_list(case, "expected_document_ids")
+    required_ids = _case_string_list(case, "required_document_ids")
+    expected_terms = _case_string_list(case, "expected_terms")
+    forbidden_terms = _case_string_list(case, "forbidden_terms")
 
     if allowed_ids:
         leaked = [item for item in actual_ids if item not in allowed_ids]
@@ -205,23 +238,15 @@ def evaluate_boundary_case(
         if missing_ids:
             failures.append(f"{name}: required_document_ids missing={missing_ids} actual={actual_ids}")
 
-    min_citations = case.get("min_citations")
-    if min_citations is not None and int(citation_count) < int(min_citations):
-        failures.append(f"{name}: min_citations={min_citations} actual={citation_count}")
-
-    max_citations = case.get("max_citations")
-    if max_citations is not None and int(citation_count) > int(max_citations):
-        failures.append(f"{name}: max_citations={max_citations} actual={citation_count}")
-
-    lowered = str(response_text or "").casefold()
-    missing_terms = [term for term in expected_terms if term.casefold() not in lowered]
-    if missing_terms:
-        failures.append(f"{name}: missing expected_terms={missing_terms}")
-
-    hit_forbidden = [term for term in forbidden_terms if term.casefold() in lowered]
-    if hit_forbidden:
-        failures.append(f"{name}: forbidden_terms={hit_forbidden}")
-
+    failures.extend(_citation_range_failures(name=name, citation_count=citation_count, case=case))
+    failures.extend(
+        _term_failures(
+            name=name,
+            response_text=response_text,
+            expected_terms=expected_terms,
+            forbidden_terms=forbidden_terms,
+        )
+    )
     return failures
 
 
@@ -344,7 +369,7 @@ def perform_cleanup(api: LiveApi, *, steps: list[dict[str, Any]], dataset_id: st
     return summary
 
 
-def main() -> int:
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run knowledge-base dataset-boundary checks against a live API.")
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--tenant-id", default=DEFAULT_TENANT_ID)
@@ -353,8 +378,335 @@ def main() -> int:
     parser.add_argument("--artifact-dir", default="")
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--poll-timeout", type=int, default=300)
-    args = parser.parse_args()
+    return parser
 
+
+def _dataset_specs(run_id: str, fixtures: dict[str, Path]) -> dict[str, dict[str, Any]]:
+    return {
+        "alpha": {"name": f"KB Boundary Alpha {run_id}", "fixture": fixtures["alpha-handbook.md"]},
+        "beta": {"name": f"KB Boundary Beta {run_id}", "fixture": fixtures["beta-runbook.md"]},
+    }
+
+
+def _dataset_payload(*, key: str, name: str) -> dict[str, Any]:
+    return {
+        "name": name,
+        "description": f"Knowledge-base boundary validation dataset ({key}).",
+        "default_parser_backend": "auto",
+        "default_chunk_strategy": "langchain_recursive",
+        "pipeline": {
+            "governance_enabled": True,
+            "governance_remove_noise_lines": True,
+            "governance_unwrap_lines": True,
+            "governance_drop_duplicate_paragraphs": True,
+            "persist_parsed_content": True,
+            "persist_parsed_content_max_chars": 200000,
+            "chunk_size": 1200,
+            "chunk_overlap": 120,
+            "chunk_vector_enabled": True,
+            "bm25_index_enabled": True,
+            "kg_enabled": False,
+            "event_vector_enabled": False,
+            "entity_vector_enabled": False,
+        },
+        "rag_defaults": {
+            "top_k": 4,
+            "score_threshold": 0.0,
+            "retrieval_mode": "keyword",
+            "enable_reranker": False,
+            "enable_multi_query": False,
+            "enable_hyde": False,
+            "enable_query_decomposition": False,
+        },
+    }
+
+
+def _dataset_upload_fields(*, dataset_id: str) -> dict[str, str]:
+    return {
+        "dataset_id": dataset_id,
+        "parser_backend": "auto",
+        "chunk_strategy": "langchain_recursive",
+        "governance_enabled": "true",
+        "chunk_vector_enabled": "true",
+        "bm25_index_enabled": "true",
+        "kg_enabled": "false",
+        "event_vector_enabled": "false",
+        "entity_vector_enabled": "false",
+    }
+
+
+def _prepare_dataset(
+    *,
+    api: LiveApi,
+    steps: list[dict[str, Any]],
+    key: str,
+    spec: dict[str, Any],
+    poll_timeout: int,
+) -> dict[str, Any]:
+    resp = api.json("POST", "/api/v1/datasets/", payload=_dataset_payload(key=key, name=spec["name"]))
+    record_step(steps, f"create_dataset:{key}", resp)
+    ensure_success(f"create_dataset:{key}", resp)
+    dataset_id = str((resp.body or {}).get("id") or (resp.body or {}).get("dataset_id") or "")
+    if not dataset_id:
+        raise RuntimeError(f"create_dataset:{key} missing dataset id: {snippet(resp.body)}")
+
+    resp = api.multipart(
+        "POST",
+        "/api/v1/documents/upload",
+        fields=_dataset_upload_fields(dataset_id=dataset_id),
+        file_path=Path(spec["fixture"]),
+    )
+    record_step(steps, f"upload:{key}", resp)
+    ensure_success(f"upload:{key}", resp)
+    document_id = str((resp.body or {}).get("id") or (resp.body or {}).get("document_id") or "")
+    if not document_id:
+        raise RuntimeError(f"upload:{key} missing document id: {snippet(resp.body)}")
+
+    detail = wait_for_document_completed(
+        api,
+        steps=steps,
+        filename=key,
+        document_id=document_id,
+        poll_timeout=poll_timeout,
+    )
+    chunks_resp = api.json("GET", f"/api/v1/documents/{document_id}/chunks?limit=200")
+    record_step(steps, f"chunks:{key}", chunks_resp, chunk_count=list_count(chunks_resp.body))
+    ensure_success(f"chunks:{key}", chunks_resp)
+    parsed_resp = api.json("GET", f"/api/v1/documents/{document_id}/parsed-content?max_chars=8000")
+    record_step(steps, f"parsed:{key}", parsed_resp, parsed_chars=len(parsed_text_from_response(parsed_resp.body)))
+    ensure_success(f"parsed:{key}", parsed_resp)
+    return {
+        "dataset_id": dataset_id,
+        "document_id": document_id,
+        "status": str(detail.get("status") or "").lower(),
+        "chunk_count": list_count(chunks_resp.body),
+        "parsed_chars": len(parsed_text_from_response(parsed_resp.body)),
+    }
+
+
+def _verify_dataset_inventory(
+    *,
+    api: LiveApi,
+    steps: list[dict[str, Any]],
+    summary: dict[str, Any],
+    dataset_info: dict[str, dict[str, Any]],
+) -> None:
+    for key, info in dataset_info.items():
+        resp = api.json("GET", f"/api/v1/datasets/{info['dataset_id']}/documents/export?export_format=json&limit=20")
+        export_ids = exported_document_ids(resp.body)
+        record_step(steps, f"inventory_export:{key}", resp, document_ids=export_ids)
+        ensure_success(f"inventory_export:{key}", resp)
+        ok = export_ids == [info["document_id"]]
+        summary["inventory_checks"].append(
+            {
+                "name": f"dataset_{key}_inventory",
+                "status_code": resp.status,
+                "ok": ok,
+                "expected_document_ids": [info["document_id"]],
+                "actual_document_ids": export_ids,
+            }
+        )
+        if not ok:
+            raise RuntimeError(f"dataset inventory mismatch for {key}: {export_ids}")
+
+
+def _retrieve_cases(dataset_info: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "name": "dataset_alpha_positive",
+            "query": "Who owns token ALOE-COMET?",
+            "dataset_id": dataset_info["alpha"]["dataset_id"],
+            "allowed_document_ids": [dataset_info["alpha"]["document_id"]],
+            "expected_document_ids": [dataset_info["alpha"]["document_id"]],
+            "expected_terms": ["ALOE-COMET"],
+            "min_citations": 1,
+        },
+        {
+            "name": "dataset_alpha_negative_beta_query",
+            "query": "Who owns token BETA-QUARTZ?",
+            "dataset_id": dataset_info["alpha"]["dataset_id"],
+            "allowed_document_ids": [dataset_info["alpha"]["document_id"]],
+            "forbidden_terms": ["Bob Quartz", "BETA-QUARTZ"],
+        },
+        {
+            "name": "dataset_beta_positive",
+            "query": "Who owns token BETA-QUARTZ?",
+            "dataset_id": dataset_info["beta"]["dataset_id"],
+            "allowed_document_ids": [dataset_info["beta"]["document_id"]],
+            "expected_document_ids": [dataset_info["beta"]["document_id"]],
+            "expected_terms": ["BETA-QUARTZ"],
+            "min_citations": 1,
+        },
+        {
+            "name": "cross_dataset_beta_positive",
+            "query": "Who owns token BETA-QUARTZ?",
+            "document_ids": [dataset_info["alpha"]["document_id"], dataset_info["beta"]["document_id"]],
+            "allowed_document_ids": [dataset_info["alpha"]["document_id"], dataset_info["beta"]["document_id"]],
+            "required_document_ids": [dataset_info["beta"]["document_id"]],
+            "expected_terms": ["BETA-QUARTZ"],
+            "min_citations": 1,
+        },
+    ]
+
+
+def _chat_cases(dataset_info: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "name": "dataset_alpha_chat_positive",
+            "message": "Who owns token ALOE-COMET?",
+            "dataset_id": dataset_info["alpha"]["dataset_id"],
+            "allowed_document_ids": [dataset_info["alpha"]["document_id"]],
+            "expected_document_ids": [dataset_info["alpha"]["document_id"]],
+            "expected_terms": ["ALOE-COMET"],
+            "min_citations": 1,
+        },
+        {
+            "name": "cross_dataset_beta_chat_positive",
+            "message": "Who owns token BETA-QUARTZ?",
+            "document_ids": [dataset_info["alpha"]["document_id"], dataset_info["beta"]["document_id"]],
+            "allowed_document_ids": [dataset_info["alpha"]["document_id"], dataset_info["beta"]["document_id"]],
+            "required_document_ids": [dataset_info["beta"]["document_id"]],
+            "expected_terms": ["BETA-QUARTZ"],
+            "min_citations": 1,
+        },
+    ]
+
+
+def _rag_config() -> dict[str, Any]:
+    return {
+        "top_k": 4,
+        "score_threshold": 0.0,
+        "retrieval_mode": "keyword",
+        "enable_reranker": False,
+        "enable_multi_query": False,
+        "enable_hyde": False,
+        "enable_query_decomposition": False,
+    }
+
+
+def _append_boundary_result(
+    *,
+    rows: list[dict[str, Any]],
+    case: dict[str, Any],
+    resp: ApiResponse,
+    failures: list[str],
+    citation_ids: list[str],
+    citation_count: int,
+    preview_key: str,
+    preview_text: str,
+) -> None:
+    rows.append(
+        {
+            "name": case["name"],
+            "status_code": resp.status,
+            "ok": not failures,
+            "citation_document_ids": citation_ids,
+            "citation_count": citation_count,
+            preview_key: preview_text[:300],
+            "failures": failures,
+        }
+    )
+
+
+def _run_retrieve_checks(
+    *,
+    api: LiveApi,
+    steps: list[dict[str, Any]],
+    summary: dict[str, Any],
+    dataset_info: dict[str, dict[str, Any]],
+) -> None:
+    rag_config = _rag_config()
+    for case in _retrieve_cases(dataset_info):
+        payload: dict[str, Any] = {"query": case["query"], "rag_config": rag_config}
+        if case.get("dataset_id"):
+            payload["dataset_id"] = case["dataset_id"]
+        if case.get("document_ids"):
+            payload["document_ids"] = case["document_ids"]
+        resp = api.json("POST", "/api/v1/rag/retrieve-preview", payload=payload)
+        citation_count = list_count(resp.body)
+        record_step(steps, f"retrieve:{case['name']}", resp, citation_count=citation_count)
+        ensure_success(f"retrieve:{case['name']}", resp)
+        citation_ids = citation_document_ids(resp.body)
+        text = response_text_from_body(resp.body)
+        failures = evaluate_boundary_case(
+            case,
+            citation_doc_ids=citation_ids,
+            citation_count=citation_count,
+            response_text=text,
+        )
+        _append_boundary_result(
+            rows=summary["retrieve_checks"],
+            case=case,
+            resp=resp,
+            failures=failures,
+            citation_ids=citation_ids,
+            citation_count=citation_count,
+            preview_key="response_preview",
+            preview_text=text,
+        )
+        if failures:
+            raise RuntimeError(f"retrieve case failed {case['name']}: {failures}")
+
+
+def _run_chat_checks(
+    *,
+    api: LiveApi,
+    steps: list[dict[str, Any]],
+    summary: dict[str, Any],
+    dataset_info: dict[str, dict[str, Any]],
+) -> None:
+    rag_config = _rag_config()
+    for case in _chat_cases(dataset_info):
+        payload: dict[str, Any] = {
+            "message": case["message"],
+            "stream": False,
+            "rag_config": {**rag_config, "answer_mode": "extractive", "max_tokens": 400},
+        }
+        if case.get("dataset_id"):
+            payload["dataset_id"] = case["dataset_id"]
+        if case.get("document_ids"):
+            payload["document_ids"] = case["document_ids"]
+        resp = api.json("POST", "/api/v1/chat", payload=payload)
+        citations_body = (resp.body or {}).get("citations") if isinstance(resp.body, dict) else resp.body
+        citation_count = list_count(citations_body)
+        record_step(steps, f"chat:{case['name']}", resp, citation_count=list_count(resp.body))
+        ensure_success(f"chat:{case['name']}", resp)
+        citation_ids = citation_document_ids(resp.body)
+        text = response_text_from_body(resp.body)
+        failures = evaluate_boundary_case(
+            case,
+            citation_doc_ids=citation_ids,
+            citation_count=citation_count,
+            response_text=text,
+        )
+        _append_boundary_result(
+            rows=summary["chat_checks"],
+            case=case,
+            resp=resp,
+            failures=failures,
+            citation_ids=citation_ids,
+            citation_count=citation_count,
+            preview_key="answer_preview",
+            preview_text=text,
+        )
+        if failures:
+            raise RuntimeError(f"chat case failed {case['name']}: {failures}")
+
+
+def _run_cleanup(
+    *,
+    api: LiveApi,
+    steps: list[dict[str, Any]],
+    dataset_info: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    cleanup: dict[str, Any] = {}
+    for key, info in dataset_info.items():
+        cleanup[key] = perform_cleanup(api, steps=steps, dataset_id=info["dataset_id"])
+    return cleanup
+
+
+def main() -> int:
+    args = _build_parser().parse_args()
     run_id = time.strftime("%Y%m%d-%H%M%S")
     artifact_dir = Path(args.artifact_dir or f"artifacts/kb-boundary-matrix/{run_id}").resolve()
     artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -372,265 +724,26 @@ def main() -> int:
         "chat_checks": [],
     }
 
-    created_dataset_ids: list[str] = []
-
     try:
         resp = api.json("GET", "/api/v1/health")
         record_step(steps, "health", resp)
         ensure_success("health", resp)
 
-        dataset_specs = {
-            "alpha": {"name": f"KB Boundary Alpha {run_id}", "fixture": fixtures["alpha-handbook.md"]},
-            "beta": {"name": f"KB Boundary Beta {run_id}", "fixture": fixtures["beta-runbook.md"]},
-        }
+        dataset_specs = _dataset_specs(run_id, fixtures)
         dataset_info: dict[str, dict[str, Any]] = {}
-
         for key, spec in dataset_specs.items():
-            dataset_payload = {
-                "name": spec["name"],
-                "description": f"Knowledge-base boundary validation dataset ({key}).",
-                "default_parser_backend": "auto",
-                "default_chunk_strategy": "langchain_recursive",
-                "pipeline": {
-                    "governance_enabled": True,
-                    "governance_remove_noise_lines": True,
-                    "governance_unwrap_lines": True,
-                    "governance_drop_duplicate_paragraphs": True,
-                    "persist_parsed_content": True,
-                    "persist_parsed_content_max_chars": 200000,
-                    "chunk_size": 1200,
-                    "chunk_overlap": 120,
-                    "chunk_vector_enabled": True,
-                    "bm25_index_enabled": True,
-                    "kg_enabled": False,
-                    "event_vector_enabled": False,
-                    "entity_vector_enabled": False,
-                },
-                "rag_defaults": {
-                    "top_k": 4,
-                    "score_threshold": 0.0,
-                    "retrieval_mode": "keyword",
-                    "enable_reranker": False,
-                    "enable_multi_query": False,
-                    "enable_hyde": False,
-                    "enable_query_decomposition": False,
-                },
-            }
-            resp = api.json("POST", "/api/v1/datasets/", payload=dataset_payload)
-            record_step(steps, f"create_dataset:{key}", resp)
-            ensure_success(f"create_dataset:{key}", resp)
-            dataset_id = str((resp.body or {}).get("id") or (resp.body or {}).get("dataset_id") or "")
-            if not dataset_id:
-                raise RuntimeError(f"create_dataset:{key} missing dataset id: {snippet(resp.body)}")
-            created_dataset_ids.append(dataset_id)
-
-            fields = {
-                "dataset_id": dataset_id,
-                "parser_backend": "auto",
-                "chunk_strategy": "langchain_recursive",
-                "governance_enabled": "true",
-                "chunk_vector_enabled": "true",
-                "bm25_index_enabled": "true",
-                "kg_enabled": "false",
-                "event_vector_enabled": "false",
-                "entity_vector_enabled": "false",
-            }
-            resp = api.multipart("POST", "/api/v1/documents/upload", fields=fields, file_path=Path(spec["fixture"]))
-            record_step(steps, f"upload:{key}", resp)
-            ensure_success(f"upload:{key}", resp)
-            document_id = str((resp.body or {}).get("id") or (resp.body or {}).get("document_id") or "")
-            if not document_id:
-                raise RuntimeError(f"upload:{key} missing document id: {snippet(resp.body)}")
-
-            detail = wait_for_document_completed(
-                api, steps=steps, filename=key, document_id=document_id, poll_timeout=args.poll_timeout
+            dataset_info[key] = _prepare_dataset(
+                api=api,
+                steps=steps,
+                key=key,
+                spec=spec,
+                poll_timeout=args.poll_timeout,
             )
-            chunks_resp = api.json("GET", f"/api/v1/documents/{document_id}/chunks?limit=200")
-            record_step(steps, f"chunks:{key}", chunks_resp, chunk_count=list_count(chunks_resp.body))
-            ensure_success(f"chunks:{key}", chunks_resp)
-            parsed_resp = api.json("GET", f"/api/v1/documents/{document_id}/parsed-content?max_chars=8000")
-            record_step(
-                steps, f"parsed:{key}", parsed_resp, parsed_chars=len(parsed_text_from_response(parsed_resp.body))
-            )
-            ensure_success(f"parsed:{key}", parsed_resp)
-
-            dataset_info[key] = {
-                "dataset_id": dataset_id,
-                "document_id": document_id,
-                "status": str(detail.get("status") or "").lower(),
-                "chunk_count": list_count(chunks_resp.body),
-                "parsed_chars": len(parsed_text_from_response(parsed_resp.body)),
-            }
-
         summary["datasets"] = dataset_info
-
-        for key, info in dataset_info.items():
-            resp = api.json(
-                "GET", f"/api/v1/datasets/{info['dataset_id']}/documents/export?export_format=json&limit=20"
-            )
-            export_ids = exported_document_ids(resp.body)
-            record_step(steps, f"inventory_export:{key}", resp, document_ids=export_ids)
-            ensure_success(f"inventory_export:{key}", resp)
-            ok = export_ids == [info["document_id"]]
-            summary["inventory_checks"].append(
-                {
-                    "name": f"dataset_{key}_inventory",
-                    "status_code": resp.status,
-                    "ok": ok,
-                    "expected_document_ids": [info["document_id"]],
-                    "actual_document_ids": export_ids,
-                }
-            )
-            if not ok:
-                raise RuntimeError(f"dataset inventory mismatch for {key}: {export_ids}")
-
-        retrieve_cases = [
-            {
-                "name": "dataset_alpha_positive",
-                "query": "Who owns token ALOE-COMET?",
-                "dataset_id": dataset_info["alpha"]["dataset_id"],
-                "allowed_document_ids": [dataset_info["alpha"]["document_id"]],
-                "expected_document_ids": [dataset_info["alpha"]["document_id"]],
-                "expected_terms": ["ALOE-COMET"],
-                "min_citations": 1,
-            },
-            {
-                "name": "dataset_alpha_negative_beta_query",
-                "query": "Who owns token BETA-QUARTZ?",
-                "dataset_id": dataset_info["alpha"]["dataset_id"],
-                "allowed_document_ids": [dataset_info["alpha"]["document_id"]],
-                "forbidden_terms": ["Bob Quartz", "BETA-QUARTZ"],
-            },
-            {
-                "name": "dataset_beta_positive",
-                "query": "Who owns token BETA-QUARTZ?",
-                "dataset_id": dataset_info["beta"]["dataset_id"],
-                "allowed_document_ids": [dataset_info["beta"]["document_id"]],
-                "expected_document_ids": [dataset_info["beta"]["document_id"]],
-                "expected_terms": ["BETA-QUARTZ"],
-                "min_citations": 1,
-            },
-            {
-                "name": "cross_dataset_beta_positive",
-                "query": "Who owns token BETA-QUARTZ?",
-                "document_ids": [dataset_info["alpha"]["document_id"], dataset_info["beta"]["document_id"]],
-                "allowed_document_ids": [dataset_info["alpha"]["document_id"], dataset_info["beta"]["document_id"]],
-                "required_document_ids": [dataset_info["beta"]["document_id"]],
-                "expected_terms": ["BETA-QUARTZ"],
-                "min_citations": 1,
-            },
-        ]
-
-        rag_config = {
-            "top_k": 4,
-            "score_threshold": 0.0,
-            "retrieval_mode": "keyword",
-            "enable_reranker": False,
-            "enable_multi_query": False,
-            "enable_hyde": False,
-            "enable_query_decomposition": False,
-        }
-
-        for case in retrieve_cases:
-            payload = {
-                "query": case["query"],
-                "rag_config": rag_config,
-            }
-            if case.get("dataset_id"):
-                payload["dataset_id"] = case["dataset_id"]
-            if case.get("document_ids"):
-                payload["document_ids"] = case["document_ids"]
-            resp = api.json("POST", "/api/v1/rag/retrieve-preview", payload=payload)
-            record_step(steps, f"retrieve:{case['name']}", resp, citation_count=list_count(resp.body))
-            ensure_success(f"retrieve:{case['name']}", resp)
-            citation_ids = citation_document_ids(resp.body)
-            text = response_text_from_body(resp.body)
-            failures = evaluate_boundary_case(
-                case,
-                citation_doc_ids=citation_ids,
-                citation_count=list_count(resp.body),
-                response_text=text,
-            )
-            row = {
-                "name": case["name"],
-                "status_code": resp.status,
-                "ok": not failures,
-                "citation_document_ids": citation_ids,
-                "citation_count": list_count(resp.body),
-                "response_preview": text[:300],
-                "failures": failures,
-            }
-            summary["retrieve_checks"].append(row)
-            if failures:
-                raise RuntimeError(f"retrieve case failed {case['name']}: {failures}")
-
-        chat_cases = [
-            {
-                "name": "dataset_alpha_chat_positive",
-                "message": "Who owns token ALOE-COMET?",
-                "dataset_id": dataset_info["alpha"]["dataset_id"],
-                "allowed_document_ids": [dataset_info["alpha"]["document_id"]],
-                "expected_document_ids": [dataset_info["alpha"]["document_id"]],
-                "expected_terms": ["ALOE-COMET"],
-                "min_citations": 1,
-            },
-            {
-                "name": "cross_dataset_beta_chat_positive",
-                "message": "Who owns token BETA-QUARTZ?",
-                "document_ids": [dataset_info["alpha"]["document_id"], dataset_info["beta"]["document_id"]],
-                "allowed_document_ids": [dataset_info["alpha"]["document_id"], dataset_info["beta"]["document_id"]],
-                "required_document_ids": [dataset_info["beta"]["document_id"]],
-                "expected_terms": ["BETA-QUARTZ"],
-                "min_citations": 1,
-            },
-        ]
-
-        for case in chat_cases:
-            payload = {
-                "message": case["message"],
-                "stream": False,
-                "rag_config": {
-                    **rag_config,
-                    "answer_mode": "extractive",
-                    "max_tokens": 400,
-                },
-            }
-            if case.get("dataset_id"):
-                payload["dataset_id"] = case["dataset_id"]
-            if case.get("document_ids"):
-                payload["document_ids"] = case["document_ids"]
-            resp = api.json("POST", "/api/v1/chat", payload=payload)
-            record_step(steps, f"chat:{case['name']}", resp, citation_count=list_count(resp.body))
-            ensure_success(f"chat:{case['name']}", resp)
-            citation_ids = citation_document_ids(resp.body)
-            text = response_text_from_body(resp.body)
-            failures = evaluate_boundary_case(
-                case,
-                citation_doc_ids=citation_ids,
-                citation_count=list_count(
-                    (resp.body or {}).get("citations") if isinstance(resp.body, dict) else resp.body
-                ),
-                response_text=text,
-            )
-            row = {
-                "name": case["name"],
-                "status_code": resp.status,
-                "ok": not failures,
-                "citation_document_ids": citation_ids,
-                "citation_count": list_count(
-                    (resp.body or {}).get("citations") if isinstance(resp.body, dict) else resp.body
-                ),
-                "answer_preview": text[:300],
-                "failures": failures,
-            }
-            summary["chat_checks"].append(row)
-            if failures:
-                raise RuntimeError(f"chat case failed {case['name']}: {failures}")
-
-        cleanup: dict[str, Any] = {}
-        for key, info in dataset_info.items():
-            cleanup[key] = perform_cleanup(api, steps=steps, dataset_id=info["dataset_id"])
-        summary["cleanup"] = cleanup
+        _verify_dataset_inventory(api=api, steps=steps, summary=summary, dataset_info=dataset_info)
+        _run_retrieve_checks(api=api, steps=steps, summary=summary, dataset_info=dataset_info)
+        _run_chat_checks(api=api, steps=steps, summary=summary, dataset_info=dataset_info)
+        summary["cleanup"] = _run_cleanup(api=api, steps=steps, dataset_info=dataset_info)
         summary["ok"] = True
         return_code = 0
     except Exception as exc:  # noqa: BLE001

@@ -134,33 +134,36 @@ def _is_golden_enabled(plugin: dict[str, Any]) -> bool:
     return isinstance(golden, dict) and golden.get("enabled") is True
 
 
+def _plugin_candidate(item: object) -> tuple[int, str] | None:
+    if not isinstance(item, dict):
+        return None
+    refs = item.get("refs")
+    if not isinstance(refs, dict):
+        return None
+    chunk_ref = str(refs.get("chunk") or "").strip()
+    if not chunk_ref or item.get("executable") is not True or not _is_golden_enabled(item):
+        return None
+
+    score = 0
+    if item.get("test_status") == "passed":
+        score += 4
+    if item.get("published") is True:
+        score += 2
+    if str(item.get("package_hash") or "").strip():
+        score += 1
+    return score, chunk_ref
+
+
 def select_plugin_ref(plugin_list: dict[str, Any]) -> str:
     items = plugin_list.get("items") if isinstance(plugin_list, dict) else []
     if not isinstance(items, list):
         raise RuntimeError("plugin list response must contain items[]")
 
-    candidates: list[tuple[int, str, dict[str, Any]]] = []
+    candidates: list[tuple[int, str]] = []
     for item in items:
-        if not isinstance(item, dict):
-            continue
-        refs = item.get("refs")
-        if not isinstance(refs, dict):
-            continue
-        chunk_ref = str(refs.get("chunk") or "").strip()
-        if not chunk_ref:
-            continue
-        if item.get("executable") is not True:
-            continue
-        if not _is_golden_enabled(item):
-            continue
-        score = 0
-        if item.get("test_status") == "passed":
-            score += 4
-        if item.get("published") is True:
-            score += 2
-        if str(item.get("package_hash") or "").strip():
-            score += 1
-        candidates.append((score, chunk_ref, item))
+        candidate = _plugin_candidate(item)
+        if candidate is not None:
+            candidates.append(candidate)
 
     if not candidates:
         errors = plugin_list.get("errors") if isinstance(plugin_list, dict) else None

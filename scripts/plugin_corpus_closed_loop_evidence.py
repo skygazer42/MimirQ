@@ -141,6 +141,77 @@ def _case_count(golden: dict[str, Any]) -> int:
     return int(counts["created"] + counts["updated"] + counts["skipped"])
 
 
+def _corpus_failed_checks(summary: dict[str, int], documents: list[Any]) -> list[str]:
+    failed: list[str] = []
+    if summary["uploaded_count"] <= 0:
+        failed.append("uploaded_count")
+    if summary["document_count"] <= 0:
+        failed.append("document_count")
+    if summary["completed_documents"] != summary["document_count"]:
+        failed.append("completed_documents")
+    if any(isinstance(item, dict) and _int_value(item.get("chunk_total")) <= 0 for item in documents):
+        failed.append("document_chunks")
+    return failed
+
+
+def _golden_import_failed_checks(golden: dict[str, Any]) -> list[str]:
+    failed: list[str] = []
+    if _import_counts(golden)["errors"] > 0:
+        failed.append("golden_import_errors")
+    if _case_count(golden) <= 0:
+        failed.append("golden_case_count")
+    return failed
+
+
+def _retrieval_failed_checks(
+    metrics: dict[str, Any],
+    *,
+    min_retrieval_recall: float,
+    min_retrieval_hit_at_3: float,
+) -> list[str]:
+    failed: list[str] = []
+    if _float_value(metrics.get("retrieval_recall")) < float(min_retrieval_recall):
+        failed.append("retrieval_recall")
+    if _float_value(metrics.get("retrieval_hit_at_3")) < float(min_retrieval_hit_at_3):
+        failed.append("retrieval_hit_at_3")
+    return failed
+
+
+def _metadata_failed_checks(
+    metrics: dict[str, Any],
+    *,
+    min_expected_metadata_hit_rate: float,
+    min_expected_metadata_recall: float,
+) -> list[str]:
+    failed: list[str] = []
+    if _float_value(metrics.get("expected_metadata_cases_total")) <= 0:
+        failed.append("expected_metadata_cases_total")
+    if _float_value(metrics.get("expected_metadata_fields_total")) <= 0:
+        failed.append("expected_metadata_fields_total")
+    if _float_value(metrics.get("expected_metadata_hit_rate")) < float(min_expected_metadata_hit_rate):
+        failed.append("expected_metadata_hit_rate")
+    if _float_value(metrics.get("expected_metadata_recall")) < float(min_expected_metadata_recall):
+        failed.append("expected_metadata_recall")
+    return failed
+
+
+def _citation_failed_checks(
+    metrics: dict[str, Any],
+    *,
+    min_citation_accuracy: float,
+    min_citation_coverage: float,
+) -> list[str]:
+    failed: list[str] = []
+    citation_gate_enabled = float(min_citation_accuracy) > 0.0 or float(min_citation_coverage) > 0.0
+    if citation_gate_enabled and any(_float_value(metrics.get(key)) <= 0.0 for key in CITATION_EVAL_WINDOW_KEYS):
+        failed.append("citation_eval_window")
+    if _float_value(metrics.get("citation_accuracy")) < float(min_citation_accuracy):
+        failed.append("citation_accuracy")
+    if _float_value(metrics.get("citation_coverage")) < float(min_citation_coverage):
+        failed.append("citation_coverage")
+    return failed
+
+
 def _failed_checks(
     *,
     summary: dict[str, int],
@@ -153,43 +224,26 @@ def _failed_checks(
     min_citation_accuracy: float,
     min_citation_coverage: float,
 ) -> list[str]:
-    failed: list[str] = []
-    if summary["uploaded_count"] <= 0:
-        failed.append("uploaded_count")
-    if summary["document_count"] <= 0:
-        failed.append("document_count")
-    if summary["completed_documents"] != summary["document_count"]:
-        failed.append("completed_documents")
-    if any(isinstance(item, dict) and _int_value(item.get("chunk_total")) <= 0 for item in documents):
-        failed.append("document_chunks")
-
-    import_counts = _import_counts(golden)
-    if import_counts["errors"] > 0:
-        failed.append("golden_import_errors")
-    if _case_count(golden) <= 0:
-        failed.append("golden_case_count")
-
     metrics = _golden_summary(golden)
-    if _float_value(metrics.get("retrieval_recall")) < float(min_retrieval_recall):
-        failed.append("retrieval_recall")
-    if _float_value(metrics.get("retrieval_hit_at_3")) < float(min_retrieval_hit_at_3):
-        failed.append("retrieval_hit_at_3")
-    if _float_value(metrics.get("expected_metadata_cases_total")) <= 0:
-        failed.append("expected_metadata_cases_total")
-    if _float_value(metrics.get("expected_metadata_fields_total")) <= 0:
-        failed.append("expected_metadata_fields_total")
-    if _float_value(metrics.get("expected_metadata_hit_rate")) < float(min_expected_metadata_hit_rate):
-        failed.append("expected_metadata_hit_rate")
-    if _float_value(metrics.get("expected_metadata_recall")) < float(min_expected_metadata_recall):
-        failed.append("expected_metadata_recall")
-    citation_gate_enabled = float(min_citation_accuracy) > 0.0 or float(min_citation_coverage) > 0.0
-    if citation_gate_enabled and any(_float_value(metrics.get(key)) <= 0.0 for key in CITATION_EVAL_WINDOW_KEYS):
-        failed.append("citation_eval_window")
-    if _float_value(metrics.get("citation_accuracy")) < float(min_citation_accuracy):
-        failed.append("citation_accuracy")
-    if _float_value(metrics.get("citation_coverage")) < float(min_citation_coverage):
-        failed.append("citation_coverage")
-    return failed
+    return [
+        *_corpus_failed_checks(summary, documents),
+        *_golden_import_failed_checks(golden),
+        *_retrieval_failed_checks(
+            metrics,
+            min_retrieval_recall=min_retrieval_recall,
+            min_retrieval_hit_at_3=min_retrieval_hit_at_3,
+        ),
+        *_metadata_failed_checks(
+            metrics,
+            min_expected_metadata_hit_rate=min_expected_metadata_hit_rate,
+            min_expected_metadata_recall=min_expected_metadata_recall,
+        ),
+        *_citation_failed_checks(
+            metrics,
+            min_citation_accuracy=min_citation_accuracy,
+            min_citation_coverage=min_citation_coverage,
+        ),
+    ]
 
 
 def build_evidence(

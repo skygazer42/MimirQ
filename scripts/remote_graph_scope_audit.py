@@ -1,32 +1,30 @@
 #!/usr/bin/env python3
-# ruff: noqa: E402, I001
 """Audit dataset-scoped vs document-scoped KG graph responses on a live API."""
 
 import argparse
 import json
-import sys
 import time
 from pathlib import Path
 from typing import Any
 
-
-def ensure_repo_root_on_sys_path(script_path: str | Path) -> str:
-    repo_root = str(Path(script_path).resolve().parents[1])
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-    return repo_root
-
-
-ensure_repo_root_on_sys_path(__file__)
-
-from scripts.remote_real_pdf_chain import (
-    DEFAULT_TENANT_ID,
-    LiveApi,
-    ok_status,
-    perform_cleanup,
-    record_step,
-    snippet,
-)
+try:
+    from scripts.remote_real_pdf_chain import (
+        DEFAULT_TENANT_ID,
+        LiveApi,
+        ok_status,
+        perform_cleanup,
+        record_step,
+        snippet,
+    )
+except ModuleNotFoundError:
+    from remote_real_pdf_chain import (  # type: ignore[no-redef]
+        DEFAULT_TENANT_ID,
+        LiveApi,
+        ok_status,
+        perform_cleanup,
+        record_step,
+        snippet,
+    )
 
 
 def build_repeated_query(key: str, values: list[str]) -> str:
@@ -93,7 +91,7 @@ def _list_items(body: Any) -> list[dict[str, Any]]:
     return []
 
 
-def main() -> int:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Audit dataset-scoped vs document-scoped KG graph responses.")
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--tenant-id", default=DEFAULT_TENANT_ID)
@@ -103,8 +101,154 @@ def main() -> int:
     parser.add_argument("--timeout", type=int, default=1800)
     parser.add_argument("--poll-timeout", type=int, default=180)
     parser.add_argument("--delete-dataset-after", action="store_true")
-    args = parser.parse_args()
+    return parser.parse_args(argv)
 
+
+def _graph_queries(dataset_id: str, document_ids: list[str]) -> dict[str, str]:
+    document_ids_query = build_repeated_query("document_ids", document_ids)
+    return {
+        "dataset_stats": f"/api/v1/kg/stats?dataset_id={dataset_id}",
+        "document_stats": f"/api/v1/kg/stats?{document_ids_query}",
+        "dataset_graph": (
+            f"/api/v1/kg/graph?dataset_id={dataset_id}"
+            "&include_entity_links=true&min_shared_events=1&max_events=200&max_entities=400&max_links=2000"
+        ),
+        "document_graph": (
+            f"/api/v1/kg/graph?{document_ids_query}"
+            "&include_entity_links=true&min_shared_events=1&max_events=200&max_entities=400&max_links=2000"
+        ),
+        "unscoped_stats": "/api/v1/kg/stats",
+        "list_documents": f"/api/v1/documents/?dataset_id={dataset_id}&limit=50",
+    }
+
+
+def _graph_fixtures() -> list[dict[str, str]]:
+    return [
+        {
+            "filename": "atlas-acquisition.md",
+            "content": (
+                "# Atlas Acquisition\n\nAtlas Systems acquired Beacon Labs. Mira Chen led the integration workstream.\n"
+            ),
+        },
+        {
+            "filename": "orion-migration.md",
+            "content": (
+                "# Orion Migration\n\nMira Chen coordinated the Orion billing service "
+                "migration with Beacon Labs engineers.\n"
+            ),
+        },
+    ]
+
+
+def create_graph_audit_dataset(
+    api: LiveApi,
+    *,
+    run_id: str,
+    steps: list[dict[str, Any]],
+    timeout: int,
+) -> str:
+    status, body, elapsed = api.json(
+        "POST",
+        "/api/v1/datasets/",
+        payload={
+            "name": f"Graph Scope Audit {run_id}",
+            "description": "Audit graph dataset scope against explicit document_ids",
+            "default_parser_backend": "basic",
+            "default_chunk_strategy": "langchain_recursive",
+        },
+        timeout=timeout,
+    )
+    record_step(steps, "create_dataset", status, body, elapsed)
+    if not ok_status(status):
+        raise RuntimeError(f"create_dataset failed: {snippet(body)}")
+    dataset_id = str((body or {}).get("id") or (body or {}).get("dataset_id") or "")
+    if not dataset_id:
+        raise RuntimeError(f"create_dataset missing id: {snippet(body)}")
+    return dataset_id
+
+
+def upload_graph_audit_documents(
+    api: LiveApi,
+    *,
+    dataset_id: str,
+    fixture_dir: Path,
+    steps: list[dict[str, Any]],
+    timeout: int,
+) -> list[str]:
+    document_ids: list[str] = []
+    for fixture in _graph_fixtures():
+        file_path = fixture_dir / fixture["filename"]
+        file_path.write_text(fixture["content"], encoding="utf-8")
+        status, body, elapsed = api.multipart(
+            "POST",
+            "/api/v1/documents/upload",
+            fields={
+                "dataset_id": dataset_id,
+                "parser_backend": "basic",
+                "chunk_strategy": "langchain_recursive",
+                "governance_enabled": "true",
+                "chunk_vector_enabled": "true",
+                "bm25_index_enabled": "true",
+                "kg_enabled": "false",
+                "event_vector_enabled": "false",
+                "entity_vector_enabled": "false",
+            },
+            file_path=file_path,
+            timeout=timeout,
+        )
+        record_step(steps, "upload_document", status, body, elapsed, filename=fixture["filename"])
+        if not ok_status(status):
+            raise RuntimeError(f"upload_document failed: {fixture['filename']} {snippet(body)}")
+        document_id = str((body or {}).get("id") or (body or {}).get("document_id") or "")
+        if not document_id:
+            raise RuntimeError(f"upload_document missing id: {snippet(body)}")
+        document_ids.append(document_id)
+    return document_ids
+
+
+def fetch_graph_audit_results(
+    api: LiveApi,
+    *,
+    dataset_id: str,
+    document_ids: list[str],
+    steps: list[dict[str, Any]],
+    timeout: int,
+) -> dict[str, Any]:
+    results: dict[str, Any] = {}
+    for name, path in _graph_queries(dataset_id, document_ids).items():
+        status, body, elapsed = api.json("GET", path, timeout=min(int(timeout), 300))
+        record_step(steps, name, status, body, elapsed)
+        if not ok_status(status):
+            raise RuntimeError(f"{name} failed: {snippet(body)}")
+        results[name] = body
+    return results
+
+
+def build_graph_audit_summary(results: dict[str, Any]) -> dict[str, Any]:
+    dataset_stats = results["dataset_stats"] if isinstance(results["dataset_stats"], dict) else {}
+    document_stats = results["document_stats"] if isinstance(results["document_stats"], dict) else {}
+    dataset_graph = summarize_graph_response(results["dataset_graph"])
+    document_graph = summarize_graph_response(results["document_graph"])
+    comparison = compare_scope_counts(
+        dataset_stats=dataset_stats,
+        document_stats=document_stats,
+        dataset_graph=dataset_graph,
+        document_graph=document_graph,
+    )
+    items = _list_items(results["list_documents"])
+    return {
+        "dataset_stats": dataset_stats,
+        "document_stats": document_stats,
+        "unscoped_stats": results["unscoped_stats"],
+        "dataset_graph": dataset_graph,
+        "document_graph": document_graph,
+        "comparison": comparison,
+        "list_documents_count": len(items),
+        "list_document_ids": [str((row or {}).get("id") or (row or {}).get("document_id") or "") for row in items],
+    }
+
+
+def run_graph_scope_audit(args: argparse.Namespace) -> tuple[Path, dict[str, Any], list[dict[str, Any]]]:
     run_id = time.strftime("%Y%m%d-%H%M%S")
     artifact_dir = Path(args.artifact_dir or f"artifacts/graph-scope-audit/{run_id}").resolve()
     artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -118,69 +262,16 @@ def main() -> int:
     dataset_id = ""
     document_ids: list[str] = []
     try:
-        status, body, elapsed = api.json(
-            "POST",
-            "/api/v1/datasets/",
-            payload={
-                "name": f"Graph Scope Audit {run_id}",
-                "description": "Audit graph dataset scope against explicit document_ids",
-                "default_parser_backend": "basic",
-                "default_chunk_strategy": "langchain_recursive",
-            },
-            timeout=args.timeout,
-        )
-        record_step(steps, "create_dataset", status, body, elapsed)
-        if not ok_status(status):
-            raise RuntimeError(f"create_dataset failed: {snippet(body)}")
-        dataset_id = str((body or {}).get("id") or (body or {}).get("dataset_id") or "")
-        if not dataset_id:
-            raise RuntimeError(f"create_dataset missing id: {snippet(body)}")
+        dataset_id = create_graph_audit_dataset(api, run_id=run_id, steps=steps, timeout=args.timeout)
         summary["dataset_id"] = dataset_id
 
-        fixtures = [
-            {
-                "filename": "atlas-acquisition.md",
-                "content": (
-                    "# Atlas Acquisition\n\nAtlas Systems acquired Beacon Labs. "
-                    "Mira Chen led the integration workstream.\n"
-                ),
-            },
-            {
-                "filename": "orion-migration.md",
-                "content": (
-                    "# Orion Migration\n\nMira Chen coordinated the Orion billing service "
-                    "migration with Beacon Labs engineers.\n"
-                ),
-            },
-        ]
-        for fixture in fixtures:
-            file_path = fixture_dir / fixture["filename"]
-            file_path.write_text(fixture["content"], encoding="utf-8")
-            status, body, elapsed = api.multipart(
-                "POST",
-                "/api/v1/documents/upload",
-                fields={
-                    "dataset_id": dataset_id,
-                    "parser_backend": "basic",
-                    "chunk_strategy": "langchain_recursive",
-                    "governance_enabled": "true",
-                    "chunk_vector_enabled": "true",
-                    "bm25_index_enabled": "true",
-                    "kg_enabled": "false",
-                    "event_vector_enabled": "false",
-                    "entity_vector_enabled": "false",
-                },
-                file_path=file_path,
-                timeout=args.timeout,
-            )
-            record_step(steps, "upload_document", status, body, elapsed, filename=fixture["filename"])
-            if not ok_status(status):
-                raise RuntimeError(f"upload_document failed: {fixture['filename']} {snippet(body)}")
-            document_id = str((body or {}).get("id") or (body or {}).get("document_id") or "")
-            if not document_id:
-                raise RuntimeError(f"upload_document missing id: {snippet(body)}")
-            document_ids.append(document_id)
-
+        document_ids = upload_graph_audit_documents(
+            api,
+            dataset_id=dataset_id,
+            fixture_dir=fixture_dir,
+            steps=steps,
+            timeout=args.timeout,
+        )
         summary["document_ids"] = document_ids
 
         for document_id in document_ids:
@@ -200,56 +291,15 @@ def main() -> int:
             if not ok_status(status):
                 raise RuntimeError(f"kg extract failed: {document_id} {snippet(body)}")
 
-        document_ids_query = build_repeated_query("document_ids", document_ids)
-        queries = {
-            "dataset_stats": f"/api/v1/kg/stats?dataset_id={dataset_id}",
-            "document_stats": f"/api/v1/kg/stats?{document_ids_query}",
-            "dataset_graph": (
-                f"/api/v1/kg/graph?dataset_id={dataset_id}"
-                "&include_entity_links=true&min_shared_events=1&max_events=200&max_entities=400&max_links=2000"
-            ),
-            "document_graph": (
-                f"/api/v1/kg/graph?{document_ids_query}"
-                "&include_entity_links=true&min_shared_events=1&max_events=200&max_entities=400&max_links=2000"
-            ),
-            "unscoped_stats": "/api/v1/kg/stats",
-            "list_documents": f"/api/v1/documents/?dataset_id={dataset_id}&limit=50",
-        }
-
-        results: dict[str, Any] = {}
-        for name, path in queries.items():
-            status, body, elapsed = api.json("GET", path, timeout=min(int(args.timeout), 300))
-            record_step(steps, name, status, body, elapsed)
-            if not ok_status(status):
-                raise RuntimeError(f"{name} failed: {snippet(body)}")
-            results[name] = body
-
-        dataset_stats = results["dataset_stats"] if isinstance(results["dataset_stats"], dict) else {}
-        document_stats = results["document_stats"] if isinstance(results["document_stats"], dict) else {}
-        dataset_graph = summarize_graph_response(results["dataset_graph"])
-        document_graph = summarize_graph_response(results["document_graph"])
-        comparison = compare_scope_counts(
-            dataset_stats=dataset_stats,
-            document_stats=document_stats,
-            dataset_graph=dataset_graph,
-            document_graph=document_graph,
+        results = fetch_graph_audit_results(
+            api,
+            dataset_id=dataset_id,
+            document_ids=document_ids,
+            steps=steps,
+            timeout=args.timeout,
         )
-
-        items = _list_items(results["list_documents"])
-        summary.update(
-            {
-                "dataset_stats": dataset_stats,
-                "document_stats": document_stats,
-                "unscoped_stats": results["unscoped_stats"],
-                "dataset_graph": dataset_graph,
-                "document_graph": document_graph,
-                "comparison": comparison,
-                "list_documents_count": len(items),
-                "list_document_ids": [
-                    str((row or {}).get("id") or (row or {}).get("document_id") or "") for row in items
-                ],
-            }
-        )
+        summary.update(build_graph_audit_summary(results))
+        comparison = summary["comparison"]
         if not comparison["stats_match"] or not comparison["graph_match"]:
             raise RuntimeError(f"graph scope mismatch: {json.dumps(comparison, ensure_ascii=False)}")
         summary["ok"] = True
@@ -267,7 +317,11 @@ def main() -> int:
                 )
             except Exception as exc:  # pragma: no cover - best effort reporting
                 summary["cleanup_error"] = str(exc)
+    return artifact_dir, summary, steps
 
+
+def main(argv: list[str] | None = None) -> int:
+    artifact_dir, summary, steps = run_graph_scope_audit(parse_args(argv))
     report = {"summary": summary, "steps": steps}
     (artifact_dir / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(summary, ensure_ascii=False, indent=2))
