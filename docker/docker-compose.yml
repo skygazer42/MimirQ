@@ -41,6 +41,10 @@ x-backend-env: &backend_env
   UPLOAD_DEDUP_ENABLED: ${UPLOAD_DEDUP_ENABLED_DOCKER:-true}
   RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED: ${RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED_DOCKER:-true}
   RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY: ${RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY_DOCKER:-3}
+  # Keep user .env values by default while allowing offline Docker CI to select
+  # the deterministic test embedding space without rewriting the env file.
+  EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER_DOCKER:-${EMBEDDING_PROVIDER}}
+  EMBEDDING_MODEL: ${EMBEDDING_MODEL_DOCKER:-${EMBEDDING_MODEL}}
 
 x-docker-logging: &docker_logging
   driver: "json-file"

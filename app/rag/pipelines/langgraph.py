@@ -1740,7 +1740,10 @@ def build_rag_state(
     """Build initial RAG graph state shared by run/stream entrypoints."""
 
     resolved = _resolve_rag_state_build_options(options=options, legacy_overrides=legacy_overrides)
-    state = asdict(resolved)
+    # ``db`` is a live SQLAlchemy session and can contain module objects that
+    # ``dataclasses.asdict`` cannot deepcopy. Keep deep-copy semantics for the
+    # serializable graph inputs while excluding this execution-only dependency.
+    state = asdict(replace(resolved, db=None))
     state["history"] = resolved.history or []
     state["intent_router_policy"] = _normalize_intent_router_policy_or_none(resolved.intent_router_policy)
     state["format_instructions"] = (

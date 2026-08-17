@@ -636,8 +636,14 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     assert "--build-arg NEXT_PUBLIC_API_URL=/" in docker_job
     assert "README docker quickstart smoke" in docker_job
     assert 'API_HEALTHCHECK_START_PERIOD: "420s"' in docker_job
+    assert "EMBEDDING_PROVIDER_DOCKER: deterministic_test" in docker_job
+    assert "EMBEDDING_MODEL_DOCKER: mimirq-deterministic-test-v1" in docker_job
+    assert "Diagnose README docker quickstart failure" in docker_job
+    assert '"${compose[@]}" logs --tail=300 mimirq-api mimirq-worker' in docker_job
     for compose in (full_compose, lite_compose, retrieval_compose):
         assert "start_period: ${API_HEALTHCHECK_START_PERIOD:-240s}" in compose
+    assert "EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER_DOCKER:-${EMBEDDING_PROVIDER}}" in full_compose
+    assert "EMBEDDING_MODEL: ${EMBEDDING_MODEL_DOCKER:-${EMBEDDING_MODEL}}" in full_compose
     assert "make up-web" in docker_job
     assert "artifacts/core-e2e.readme-docker.json" in docker_job
     assert "README lite quickstart smoke" in docker_job

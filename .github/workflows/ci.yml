@@ -411,6 +411,8 @@ jobs:
           API_HEALTHCHECK_START_PERIOD: "420s"
           BACKEND_PORT: "0"
           COMPOSE_PROJECT_NAME: mimirq-readme-${{ github.run_id }}-${{ github.run_attempt }}
+          EMBEDDING_MODEL_DOCKER: mimirq-deterministic-test-v1
+          EMBEDDING_PROVIDER_DOCKER: deterministic_test
           MARKDOWN_IMAGE_PROXY_SECRET: ci-markdown-image-proxy-secret
           WEB_PORT: "0"
         run: |
@@ -423,6 +425,19 @@ jobs:
             CORE_E2E_BASE_URL=http://127.0.0.1:$api_port \
             CORE_E2E_BOOTSTRAP_REGISTER=1 \
             CORE_E2E_OUT=artifacts/core-e2e.readme-docker.json
+
+      - name: Diagnose README docker quickstart failure
+        if: failure()
+        env:
+          BACKEND_PORT: "0"
+          COMPOSE_PROJECT_NAME: mimirq-readme-${{ github.run_id }}-${{ github.run_attempt }}
+          EMBEDDING_MODEL_DOCKER: mimirq-deterministic-test-v1
+          EMBEDDING_PROVIDER_DOCKER: deterministic_test
+          WEB_PORT: "0"
+        run: |
+          compose=(docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file .env -f docker/docker-compose.yml -f docker/docker-compose.web.yml)
+          "${compose[@]}" ps
+          "${compose[@]}" logs --tail=300 mimirq-api mimirq-worker
 
       - name: Clean up README docker quickstart stack
         if: always()
